@@ -1408,7 +1408,7 @@
         },
         "target" : {
           "description" : "Target",
-          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "CustomCACertificate", "Alert", "AlertTemplateSettings", "AlertTemplateVariables", "AlertChannel", "AlertChannelTemplates", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "DrConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "TelemetryProvider", "TroubleshootingPlatform", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense", "PerformanceRecommendation", "PerformanceAdvisorSettings", "PerformanceAdvisorRun", "Role", "RoleBinding", "OIDCGroupMapping", "GroupMapping" ],
+          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "CustomCACertificate", "Alert", "AlertTemplateSettings", "AlertTemplateVariables", "AlertChannel", "AlertChannelTemplates", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "DrConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "TelemetryProvider", "TroubleshootingPlatform", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense", "PerformanceRecommendation", "PerformanceAdvisorSettings", "PerformanceAdvisorRun", "Role", "RoleBinding", "GroupMapping" ],
           "example" : "User",
           "readOnly" : true,
           "type" : "string"
@@ -20324,78 +20324,6 @@
         "tags" : [ "Encryption at rest" ]
       }
     },
-    "/api/v1/customers/{cUUID}/ldap_mappings" : {
-      "get" : {
-        "description" : "Available since YBA version 2.18.1.0",
-        "operationId" : "listLdapDnToYbaRoles",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/LdapDnToYbaRoleData"
-            }
-          }
-        },
-        "responsesObject" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/LdapDnToYbaRoleData"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "List LDAP Mappings",
-        "tags" : [ "LDAPOIDC Role management" ]
-      },
-      "put" : {
-        "description" : "Available since YBA version 2.18.1.0",
-        "operationId" : "setLdapDnToYbaRoles",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        }, {
-          "description" : "New LDAP Mappings to be set",
-          "in" : "body",
-          "name" : "ldapMappings",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/LdapDnToYbaRoleData"
-          }
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "responsesObject" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Set LDAP Mappings",
-        "tags" : [ "LDAPOIDC Role management" ]
-      }
-    },
     "/api/v1/customers/{cUUID}/licenses" : {
       "post" : {
         "description" : "",
@@ -20911,121 +20839,6 @@
         } ],
         "summary" : "Get a node instance",
         "tags" : [ "Node instances" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/oidc_mappings" : {
-      "get" : {
-        "description" : "WARNING: This is a preview API that could change,Available since YBA version 2.21.0.0",
-        "operationId" : "listOidcGroupToYbaRoles",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/OidcGroupToYbaRolesData"
-            }
-          }
-        },
-        "responsesObject" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/OidcGroupToYbaRolesData"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "List OIDC Group Mappings",
-        "tags" : [ "LDAPOIDC Role management" ]
-      },
-      "put" : {
-        "description" : "WARNING: This is a preview API that could change,Available since YBA version 2.21.0.0",
-        "operationId" : "mapOidcGroupToYbaRoles",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        }, {
-          "description" : "New OIDC Mappings to be set",
-          "in" : "body",
-          "name" : "oidcMappings",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/OidcGroupToYbaRolesData"
-          }
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "responsesObject" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Set OIDC Mappings",
-        "tags" : [ "LDAPOIDC Role management" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/oidc_mappings/{groupName}" : {
-      "delete" : {
-        "description" : "WARNING: This is a preview API that could change,Available since YBA version 2.21.0.0",
-        "operationId" : "deleteOidcGroupMapping",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "path",
-          "name" : "groupName",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPSuccess"
-            }
-          }
-        },
-        "responsesObject" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPSuccess"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Delete a OIDC group mapping",
-        "tags" : [ "LDAPOIDC Role management" ]
       }
     },
     "/api/v1/customers/{cUUID}/performance_recommendation_state_change/page" : {
@@ -29373,8 +29186,6 @@
     "name" : "KubernetesOverridesController"
   }, {
     "name" : "LDAP Role management"
-  }, {
-    "name" : "LDAPOIDC Role management"
   }, {
     "name" : "License management"
   }, {

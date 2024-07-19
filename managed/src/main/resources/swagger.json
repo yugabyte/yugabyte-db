@@ -1420,7 +1420,7 @@
         },
         "target" : {
           "description" : "Target",
-          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "CustomCACertificate", "Alert", "AlertTemplateSettings", "AlertTemplateVariables", "AlertChannel", "AlertChannelTemplates", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "DrConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "TelemetryProvider", "TroubleshootingPlatform", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense", "PerformanceRecommendation", "PerformanceAdvisorSettings", "PerformanceAdvisorRun", "Role", "RoleBinding", "OIDCGroupMapping", "GroupMapping" ],
+          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "CustomCACertificate", "Alert", "AlertTemplateSettings", "AlertTemplateVariables", "AlertChannel", "AlertChannelTemplates", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "DrConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "TelemetryProvider", "TroubleshootingPlatform", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense", "PerformanceRecommendation", "PerformanceAdvisorSettings", "PerformanceAdvisorRun", "Role", "RoleBinding", "GroupMapping" ],
           "example" : "User",
           "readOnly" : true,
           "type" : "string"
@@ -20788,7 +20788,8 @@
     },
     "/api/v1/customers/{cUUID}/ldap_mappings" : {
       "get" : {
-        "description" : "Available since YBA version 2.18.1.0",
+        "deprecated" : true,
+        "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2024.2.0.0.</b> Please use the v2 /auth/group-mappings GET endpoint instead. Note that this API will not return the custom roles assigned to groups via the new /api/v2/customers/{cUUID}/auth/group-mappings API.",
         "operationId" : "listLdapDnToYbaRoles",
         "parameters" : [ {
           "format" : "uuid",
@@ -20820,7 +20821,8 @@
         "tags" : [ "LDAPOIDC Role management" ]
       },
       "put" : {
-        "description" : "Available since YBA version 2.18.1.0",
+        "deprecated" : true,
+        "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2024.2.0.0.</b> Please use the v2 /auth/group-mappings PUT endpoint instead",
         "operationId" : "setLdapDnToYbaRoles",
         "parameters" : [ {
           "format" : "uuid",
@@ -21377,7 +21379,8 @@
     },
     "/api/v1/customers/{cUUID}/oidc_mappings" : {
       "get" : {
-        "description" : "WARNING: This is a preview API that could change,Available since YBA version 2.21.0.0",
+        "deprecated" : true,
+        "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2024.2.0.0.</b> Please use the v2 /auth/group-mappings GET endpoint instead. Note that this API will not return the custom roles assigned to groups via the new /api/v2/customers/{cUUID}/auth/group-mappings API.",
         "operationId" : "listOidcGroupToYbaRoles",
         "parameters" : [ {
           "format" : "uuid",
@@ -21409,7 +21412,8 @@
         "tags" : [ "LDAPOIDC Role management" ]
       },
       "put" : {
-        "description" : "WARNING: This is a preview API that could change,Available since YBA version 2.21.0.0",
+        "deprecated" : true,
+        "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2024.2.0.0.</b> Please use the v2 /auth/group-mappings PUT endpoint instead",
         "operationId" : "mapOidcGroupToYbaRoles",
         "parameters" : [ {
           "format" : "uuid",
@@ -21449,7 +21453,8 @@
     },
     "/api/v1/customers/{cUUID}/oidc_mappings/{groupName}" : {
       "delete" : {
-        "description" : "WARNING: This is a preview API that could change,Available since YBA version 2.21.0.0",
+        "deprecated" : true,
+        "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2024.2.0.0.</b> Please use the v2 /auth/group-mappings/{groupUUID} DELETE endpoint instead",
         "operationId" : "deleteOidcGroupMapping",
         "parameters" : [ {
           "format" : "uuid",

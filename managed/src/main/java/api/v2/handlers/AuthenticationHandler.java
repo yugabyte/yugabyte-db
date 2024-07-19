@@ -19,6 +19,7 @@ import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.models.GroupMappingInfo;
 import com.yugabyte.yw.models.GroupMappingInfo.GroupType;
 import com.yugabyte.yw.models.rbac.Role;
+import com.yugabyte.yw.models.rbac.Role.RoleType;
 import com.yugabyte.yw.models.rbac.RoleBinding;
 import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
 import io.ebean.annotation.Transactional;
@@ -51,8 +52,13 @@ public class AuthenticationHandler {
               .uuid(info.getGroupUUID());
 
       List<RoleResourceDefinition> roleResourceDefinitions = new ArrayList<>();
+      RoleResourceDefinition rrd = new RoleResourceDefinition();
+      rrd.setRoleUUID(info.getRoleUUID());
+      // Fetch all role rolebindings for the current group if RBAC is on.
       if (confGetter.getGlobalConf(GlobalConfKeys.useNewRbacAuthz)) {
-        // fetch all role rolebindings for the current group
+        if (Role.get(cUUID, "ConnectOnly").getRoleUUID().equals(info.getRoleUUID())) {
+          roleResourceDefinitions.add(rrd);
+        }
         List<RoleBinding> roleBindingList = RoleBinding.getAll(info.getGroupUUID());
         for (RoleBinding rb : roleBindingList) {
           RoleResourceDefinition roleResourceDefinition =
@@ -60,9 +66,6 @@ public class AuthenticationHandler {
           roleResourceDefinitions.add(roleResourceDefinition);
         }
       } else {
-        // No role bindings present if RBAC is off.
-        RoleResourceDefinition rrd = new RoleResourceDefinition();
-        rrd.setRoleUUID(info.getRoleUUID());
         roleResourceDefinitions.add(rrd);
       }
       spec.setRoleResourceDefinitions(
@@ -102,7 +105,7 @@ public class AuthenticationHandler {
                 GroupType.valueOf(mapping.getType().toString()));
       } else {
         // clear role bindings for existing group
-        clearRoleBindings(mappingInfo);
+        RoleBindingUtil.clearRoleBindingsForGroup(mappingInfo);
       }
 
       List<RoleResourceDefinition> roleResourceDefinitions =
@@ -112,11 +115,18 @@ public class AuthenticationHandler {
       roleBindingUtil.validateRoles(cUUID, roleResourceDefinitions);
       roleBindingUtil.validateResourceGroups(cUUID, roleResourceDefinitions);
 
+      // Add role bindings if rbac is on.
       if (confGetter.getGlobalConf(GlobalConfKeys.useNewRbacAuthz)) {
-        // Add role bindings if rbac is on.
         for (RoleResourceDefinition rrd : roleResourceDefinitions) {
           Role rbacRole = Role.getOrBadRequest(cUUID, rrd.getRoleUUID());
-          RoleBinding.create(mappingInfo, RoleBindingType.Custom, rbacRole, rrd.getResourceGroup());
+          // Resource group is null for system roles, so need to populate that before
+          // adding role binding.
+          if (rbacRole.getRoleType().equals(RoleType.Custom)) {
+            RoleBinding.create(
+                mappingInfo, RoleBindingType.Custom, rbacRole, rrd.getResourceGroup());
+          } else {
+            RoleBindingUtil.createSystemRoleBindingsForGroup(mappingInfo, rbacRole);
+          }
         }
         // This role will be ignored when rbac is on.
         mappingInfo.setRoleUUID(Role.get(cUUID, "ConnectOnly").getRoleUUID());
@@ -148,16 +158,8 @@ public class AuthenticationHandler {
       throw new PlatformServiceException(NOT_FOUND, "No group mapping found with uuid: " + gUUID);
     }
 
-    // Delete all role bindings
-    clearRoleBindings(entity);
     log.info("Deleting Group Mapping with name: " + entity.getIdentifier());
     entity.delete();
-  }
-
-  private void clearRoleBindings(GroupMappingInfo mappingInfo) {
-    log.info("Clearing role bindings for group: " + mappingInfo.getIdentifier());
-    List<RoleBinding> list = RoleBinding.getAll(mappingInfo.getGroupUUID());
-    list.forEach(rb -> rb.delete());
   }
 
   private void checkRuntimeConfig() {
