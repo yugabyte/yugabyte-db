@@ -12896,5 +12896,22 @@ CatalogManager::GetStatefulServicesStatus() const {
   return result;
 }
 
+Status CatalogManager::GetTableGroupAndColocationInfo(
+    const TableId& table_id, TablegroupId& out_tablegroup_id, bool& out_colocated_database) {
+  SharedLock lock(mutex_);
+  const auto* tablegroup = tablegroup_manager_->FindByTable(table_id);
+  SCHECK_FORMAT(tablegroup, NotFound, "No tablegroup found for table: $0", table_id);
+
+  out_tablegroup_id = tablegroup->id();
+
+  auto ns = FindPtrOrNull(namespace_ids_map_, tablegroup->database_id());
+  SCHECK(
+      ns, NotFound,
+      Format("Could not find namespace by namespace id $0", tablegroup->database_id()));
+  out_colocated_database = ns->colocated();
+
+  return Status::OK();
+}
+
 }  // namespace master
 }  // namespace yb

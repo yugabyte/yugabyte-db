@@ -395,7 +395,8 @@
         "flagsModifiedModalBody1": "The Gflags has been modified in another tab/browser/device.",
         "flagsModifiedModalBody2": "If you don't want to lose modified flags, please reload the page.",
         "flagsModifiedModalLine1": "Do you want to reload ?",
-        "flagsModifiedModalLine2": "Note that current changes will be lost."
+        "flagsModifiedModalLine2": "Note that current changes will be lost.",
+        "pgGroupWarning": "You can't change this flag because it was set using the Enhanced Postgres Compatibility option"
       },
       "helmOverrides": {
         "addK8sOverrides": "Add Kubernetes Overrides",
@@ -415,6 +416,7 @@
         "dedicatedNodesHelper": "Place tserver and master processes on separate nodes.",
         "ebs": "EBS Type",
         "ephemeralStorage": "! Selected instance type is with ephemeral storage, If you will pause this universe your data will get lost.",
+        "premiumv2Storage": "! Selected storage type is only available in select regions. Your creation will fail if you choose incorrect region.",
         "instanceType": "Instance Type",
         "k8NumCores": "Number of Cores",
         "k8Memory": "Memory (Gib)",

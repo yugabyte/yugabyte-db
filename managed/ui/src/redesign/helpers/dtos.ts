@@ -86,6 +86,7 @@ export enum StorageType {
   Persistent = 'Persistent',
   StandardSSD_LRS = 'StandardSSD_LRS',
   Premium_LRS = 'Premium_LRS',
+  PremiumV2_LRS = 'PremiumV2_LRS',
   UltraSSD_LRS = 'UltraSSD_LRS'
 }
 
