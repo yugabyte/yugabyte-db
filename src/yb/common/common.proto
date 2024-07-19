@@ -639,6 +639,8 @@ message DatumMessagePB {
     // The Walsender does the conversion from QLValuePB to the PG datum.
     QLValuePB pg_ql_value = 15;
   }
+  // This is applicable only for YSQL table columns.
+  optional int32 col_attr_num = 16;
 }
 
 message PgDatumPB {

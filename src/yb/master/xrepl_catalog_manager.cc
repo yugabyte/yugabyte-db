@@ -1930,7 +1930,6 @@ bool CatalogManager::IsTableEligibleForCDCSDKStream(
     const TableInfoPtr& table_info, const std::optional<Schema>& schema) const {
   if (schema.has_value()) {
     bool has_pk = true;
-    bool has_invalid_pg_typeoid = false;
     for (const auto& col : schema->columns()) {
       if (col.order() == static_cast<int32_t>(PgSystemAttrNum::kYBRowId)) {
         // ybrowid column is added for tables that don't have user-specified primary key.
@@ -1939,18 +1938,15 @@ bool CatalogManager::IsTableEligibleForCDCSDKStream(
         has_pk = false;
         break;
       }
-      if (col.pg_type_oid() == 0) {
-        has_invalid_pg_typeoid = true;
-      }
     }
-    if (!has_pk || has_invalid_pg_typeoid) {
-      if (FLAGS_TEST_cdcsdk_add_indexes_to_stream) {
-        // allow adding user created indexes to CDC stream.
-        if (IsUserIndexUnlocked(*table_info)) {
-          return true;
-        }
-      }
+
+    if (!has_pk) {
       return false;
+    }
+
+    // Allow adding user created indexes to CDC stream.
+    if (FLAGS_TEST_cdcsdk_add_indexes_to_stream && IsUserIndexUnlocked(*table_info)) {
+      return true;
     }
   }
 
