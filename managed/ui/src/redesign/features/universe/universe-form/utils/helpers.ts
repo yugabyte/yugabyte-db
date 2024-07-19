@@ -62,22 +62,31 @@ export const getPrimaryInheritedValues = (formData: UniverseFormData) =>
 
 //create error msg from reponse payload
 export const createErrorMessage = (payload: any) => {
-  const structuredError = payload?.response?.data?.error;
-  if (structuredError) {
-    if (typeof structuredError == 'string') {
-      return structuredError;
-    }
-    const message = Object.keys(structuredError)
-      .map((fieldName) => {
-        const messages = structuredError[fieldName];
-        return fieldName + ': ' + messages.join(', ');
-      })
-      .join('\n');
-    return message;
-  }
-  return payload.message;
-};
+  try {
+    const structuredError = payload?.response?.data?.error;
+    if (structuredError) {
+      if (typeof structuredError === 'string') {
+        return structuredError;
+      }
+      if (_.has(structuredError, 'message')) {
+        return _.get(structuredError, 'message');
+      }
 
+      const message = (Object.keys(structuredError)
+        ?.map((fieldName) => {
+          const messages = structuredError[fieldName];
+          return fieldName + ': ' + (messages?.join(', ') ?? '');
+        })
+        ?.join('\n')) ?? 'Something went wrong. Please try again';
+      return message;
+    }
+    return payload.message;
+  }
+  catch (e) {
+    console.error(e);
+    return 'Something went wrong. Please try again';
+  }
+};
 //Filter form data by cluster type
 export const filterFormDataByClusterType = (
   formData: UniverseFormData,
