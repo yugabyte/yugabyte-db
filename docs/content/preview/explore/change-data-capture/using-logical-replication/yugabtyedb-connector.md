@@ -82,134 +82,6 @@ If the connector fails, is rebalanced, or stops after Step 1 begins but before S
 | `initial` (default) | The connector performs a database snapshot when no Kafka offsets topic exists. After the database snapshot completes the Kafka offsets topic is written. If there is a previously stored LSN in the Kafka offsets topic, the connector continues streaming changes from that position. |
 | `initial_only` | The connector performs a database snapshot and stops before streaming any change event records. If the connector had started but did not complete a snapshot before stopping, the connector restarts the snapshot process and stops when the snapshot completes. |
 
-### Custom snapshotter SPI
-
-For more advanced uses, you can provide an implementation of the `io.debezium.connector.postgresql.spi.Snapshotter` interface. This interface allows control of most of the aspects of how the connector performs snapshots. This includes whether or not to take a snapshot, the options for opening the snapshot transaction, and whether to take locks.
-
-Following is the full API for the interface. All built-in snapshot modes implement this interface.
-
-```java
-/**
- * This interface is used to determine details about the snapshot process:
- *
- * Namely:
- * - Should a snapshot occur at all
- * - Should streaming occur
- * - What queries should be used to snapshot
- *
- * While many default snapshot modes are provided with Debezium,
- * a custom implementation of this interface can be provided by the implementor, which
- * can provide more advanced functionality, such as partial snapshots.
- *
- * Implementations must return true for either {@link #shouldSnapshot()} or {@link #shouldStream()}
- * or true for both.
- */
-@Incubating
-public interface Snapshotter {
-
-    void init(PostgresConnectorConfig config, OffsetState sourceInfo,
-              SlotState slotState);
-
-    /**
-     * @return true if the snapshotter should take a snapshot
-     */
-    boolean shouldSnapshot();
-
-    /**
-     * @return true if the snapshotter should stream after taking a snapshot
-     */
-    boolean shouldStream();
-
-    /**
-     *
-     * @return true if streaming should resume from the start of the snapshot
-     * transaction, or false for when a connector resumes and takes a snapshot,
-     * streaming should resume from where streaming previously left off.
-     */
-    default boolean shouldStreamEventsStartingFromSnapshot() {
-        return true;
-    }
-    /**
-     * Generate a valid postgres query string for the specified table, or an empty {@link Optional}
-     * to skip snapshotting this table (but that table will still be streamed from)
-     *
-     * @param tableId the table to generate a query for
-     * @param snapshotSelectColumns the columns to be used in the snapshot select based on the column
-     *                              include/exclude filters
-     * @return a valid query string, or none to skip snapshotting this table
-     */
-    Optional<String> buildSnapshotQuery(TableId tableId, List<String> snapshotSelectColumns);
-
-    /**
-     * Return a new string that set up the transaction for snapshotting
-     *
-     * @param newSlotInfo if a new slow was created for snapshotting, this contains information from
-     *                    the `create_replication_slot` command
-     */
-    default String snapshotTransactionIsolationLevelStatement(SlotCreationResult newSlotInfo) {
-        // we're using the same isolation level that pg_backup uses
-        return "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE, READ ONLY, DEFERRABLE;";
-    }
-
-    /**
-     * Returns a SQL statement for locking the given tables during snapshotting, if required by the specific snapshotter
-     * implementation.
-     */
-    default Optional<String> snapshotTableLockingStatement(Duration lockTimeout, Set<TableId> tableIds) {
-        String lineSeparator = System.lineSeparator();
-        StringBuilder statements = new StringBuilder();
-        statements.append("SET lock_timeout = ").append(lockTimeout.toMillis()).append(";").append(lineSeparator);
-        // we're locking in ACCESS SHARE MODE to avoid concurrent schema changes while we're taking the snapshot
-        // this does not prevent writes to the table, but prevents changes to the table's schema....
-        // DBZ-298 Quoting name in case it has been quoted originally; it doesn't do harm if it hasn't been quoted
-        tableIds.forEach(tableId -> statements.append("LOCK TABLE ")
-                .append(tableId.toDoubleQuotedString())
-                .append(" IN ACCESS SHARE MODE;")
-                .append(lineSeparator));
-        return Optional.of(statements.toString());
-    }
-
-    /**
-     * Lifecycle hook called once the snapshot phase is finished.
-     */
-    default void snapshotCompleted() {
-        // no operation
-    }
-}
-```
-
-#### Blocking snapshots
-
-To provide more flexibility in managing snapshots, Debezium includes a supplementary ad hoc snapshot mechanism, known as a blocking snapshot. Blocking snapshots rely on the Debezium mechanism for [sending signals to a Debezium connector](#reminder).
-
-A blocking snapshot behaves just like an *initial snapshot*, except that you can trigger it at run time.
-
-You might want to run a blocking snapshot rather than use the standard initial snapshot process in the following situations:
-* You add a new table and you want to complete the snapshot while the connector is running.
-* You add a large table, and you want the snapshot to complete in less time than is possible with an incremental snapshot.
-
-#### Blocking snapshot process
-
-When you run a blocking snapshot, Debezium stops streaming, and then initiates a snapshot of the specified table, following the same process that it uses during an initial snapshot. After the snapshot completes, the streaming is resumed.
-
-#### Configure snapshot
-
-You can set the following properties in the data component of a signal:
-
-* `data-collections`: to specify which tables must be snapshot
-* `additional-conditions`: You can specify different filters for different table.
-    * The `data-collection` property is the fully-qualified name of the table for which the filter will be applied.
-    * The `filter` property will have the same value used in the `snapshot.select.statement.overrides`
-
-For example:
-```json
-  {"type": "blocking", "data-collections": ["schema1.table1", "schema1.table2"], "additional-conditions": [{"data-collection": "schema1.table1", "filter": "SELECT * FROM [schema1].[table1] WHERE column1 = 0 ORDER BY column2 DESC"}, {"data-collection": "schema1.table2", "filter": "SELECT * FROM [schema1].[table2] WHERE column2 > 0"}]}
-```
-
-#### Possible duplicates
-
-A delay might exist between the time that you send the signal to trigger the snapshot, and the time when streaming stops and the snapshot starts. As a result of this delay, after the snapshot completes, the connector might emit some event records that duplicate records captured by the snapshot.
-
 ### Streaming changes
 
 The YugabyteDB connector typically spends the vast majority of its time streaming changes from the YugabyteDB server to which it is connected. This mechanism relies on [YugabyteDB’s replication protocol](#reminder). This protocol enables clients to receive changes from the server as they are committed in the server’s transaction log at certain positions, which are referred to as Log Sequence Numbers (LSNs).
@@ -1633,8 +1505,6 @@ The following advanced configuration properties have defaults that work in most 
 | signal.data.collection | No default value | Fully-qualified name of the data collection that is used to send signals to the connector. Use the following format to specify the collection name:<br/>```<schemaName>.<tableName>``` |
 | signal.enabled.channels | source | List of the signaling channel names that are enabled for the connector. By default, the following channels are available:<br/><ul><li>source</li><li>kafka</li><li>file</li><li>jmx Optionally, you can also implement a [custom signaling channel](https://debezium.io/documentation/reference/2.5/configuration/signalling.html#debezium-signaling-enabling-custom-signaling-channel).</li></ul> |
 | notification.enabled.channels | No default | List of notification channel names that are enabled for the connector. By default, the following channels are available:<br/><ul><li>sink</li><li>log</li><li>jmx Optionally, you can also implement a custom notification channel.</li></ul> |
-| incremental.snapshot.chunk.size | 1024 | The maximum number of rows that the connector fetches and reads into memory during an incremental snapshot chunk. Increasing the chunk size provides greater efficiency, because the snapshot runs fewer snapshot queries of a greater size. However, larger chunk sizes also require more memory to buffer the snapshot data. Adjust the chunk size to a value that provides the best performance in your environment. |
-| incremental.snapshot.watermarking.strategy | insert_insert | Specifies the watermarking mechanism that the connector uses during an incremental snapshot to deduplicate events that might be captured by an incremental snapshot and then recaptured after streaming resumes. You can specify one of the following options:<br/><br/>**insert_insert**<br/>When you send a signal to initiate an incremental snapshot, for every chunk that Debezium reads during the snapshot, it writes an entry to the signaling data collection to record the signal to open the snapshot window. After the snapshot completes, Debezium inserts a second entry to record the closing of the window.**insert_delete**<br/>When you send a signal to initiate an incremental snapshot, for every chunk that Debezium reads, it writes a single entry to the signaling data collection to record the signal to open the snapshot window. After the snapshot completes, this entry is removed. No entry is created for the signal to close the snapshot window. Set this option to prevent rapid growth of the signaling data collection. |
 | xmin.fetch.interval.ms | 0 | How often, in milliseconds, the XMIN will be read from the replication slot. The XMIN value provides the lower bounds of where a new replication slot could start from. The default value of `0` disables tracking XMIN tracking. |
 | topic.naming.strategy | `io.debezium.schema.SchemaTopicNamingStrategy` | The name of the TopicNamingStrategy class that should be used to determine the topic name for data change, schema change, transaction, heartbeat event etc., defaults to `SchemaTopicNamingStrategy`. |
 | topic.delimiter | `.` | Specify the delimiter for topic name, defaults to `.`. |
@@ -1715,16 +1585,6 @@ The following table lists the shapshot metrics that are available.
 | `RowsScanned` | Map<String, Long> | Map containing the number of rows scanned for each table in the snapshot. Tables are incrementally added to the Map during processing. Updates every 10,000 rows scanned and upon completing a table. |
 | `MaxQueueSizeInBytes` | long | The maximum buffer of the queue in bytes. This metric is available if `max.queue.size.in.bytes` is set to a positive long value. |
 | `CurrentQueueSizeInBytes` | long | The current volume, in bytes, of records in the queue. |
-
-The connector also provides the following additional snapshot metrics when an incremental snapshot is executed:
-
-| Attributes | Type | Description |
-| :--------- | :--- | :---------- |
-| `ChunkId` | string | The identifier of the current snapshot chunk. |
-| `ChunkFrom` | string | The lower bound of the primary key set defining the current chunk. |
-| `ChunkTo` | string | The upper bound of the primary key set defining the current chunk. |
-| `TableFrom` | string | The lower bound of the primary key set of the currently snapshotted table. |
-| `TableTo` | string | The upper bound of the primary key set of the currently snapshotted table. |
 
 ### Streaming metrics
 
