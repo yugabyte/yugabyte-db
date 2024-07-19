@@ -19,9 +19,9 @@ CDC in YugabyteDB is based on the PostgreSQL Logical Replication model. The fund
 
 ## Architecture
 
-![Logical-Replication-Architecture](/images/architecture/logical_replication_architecture.png)
+![Logical replication architecture](/images/architecture/cdc-logical-replication-architecture.png)
 
-The following are the main components of the Yugabyte CDC solution -
+The following are the main components of the Yugabyte CDC solution:
 
 1. Walsender - A special purpose PG backend responsible for streaming changes to the client and handling acknowledgments.
 
@@ -41,7 +41,7 @@ The initial snapshot data for each table is consumed by executing a correspondin
 
 First, a `SET LOCAL yb_read_time TO '<consistent_point commit time> ht'` command should be executed on the connection (session). The SELECT statement corresponding to the snapshot query should then be executed as part of the same transaction.
 
-The HybridTime value to use in the `SET LOCAL yb_read_time `command is the value of the `snapshot_name` field that is returned by the `CREATE_REPLICATION_SLOT` command. Alternatively, it can be obtained by querying the `pg_replication_slots` view.
+The HybridTime value to use in the `SET LOCAL yb_read_time` command is the value of the `snapshot_name` field that is returned by the `CREATE_REPLICATION_SLOT` command. Alternatively, it can be obtained by querying the `pg_replication_slots` view.
 
 During Snapshot consumption, the snapshot data from all tables will be from the same consistent state (`consistent_point`). At the end of Snapshot consumption, the state of the target system is at/based on the `consistent_point`. History of the tables as of the `consistent_point` is retained on the source until the snapshot is consumed.
 
@@ -67,14 +67,16 @@ VWAL collects changes across multiple tablets, assembles the transactions, assig
 
 Walsender sends changes to the output plugin, which filters them according to the slot's publication and converts them into the client's desired format. These changes are then streamed to the client using the appropriate streaming replication protocols determined by the output plugin. Yugabyte follows the same streaming replication protocols as defined in PostgreSQL.
 
+<!--TODO (Siddharth): Fix the Links to the protocol section.
+
 {{< note title="Note" >}}
-<!--TODO (Siddharth): Fix the Link to the protocol section. -->
-Refer to [Replication Protocol](../../../explore/logical-replication/#Streaming-Protocol) for more details.
+Refer to [Replication Protocol](../../../explore/change-data-capture/using-logical-replication/#streaming-protocol) for more details.
 
 {{< /note >}}
 
 {{< tip title="Explore" >}}
-<!--TODO (Siddharth): Fix the Link to the getting started section. -->
-See [Getting Started with Logical Replication](../../../explore/logical-replication/getting-started) to set up Logical Replication in YugabyteDB.
+
+See [Getting Started with Logical Replication](../../../explore/change-data-capture/using-logical-replication/getting-started/) to set up Logical Replication in YugabyteDB.
 
 {{< /tip >}}
+-->
