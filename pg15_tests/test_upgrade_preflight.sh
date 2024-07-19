@@ -99,7 +99,7 @@ SELECT array_accum(data) AS data_array FROM polymorph_table;
 EOT
 
 # Check failure
-grep -qz "Your installation contains user-defined objects that refer to internal\npolymorphic functions" \
+grep -qE "Checking for incompatible polymorphic functions\s+fatal" \
   <(run_preflight_checks 2>&1)
 
 # Drop polymorph_table
