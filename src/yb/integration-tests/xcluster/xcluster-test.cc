@@ -124,8 +124,6 @@ DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_int32(log_min_segments_to_retain);
 DECLARE_uint64(log_segment_size_bytes);
 DECLARE_int64(log_stop_retaining_min_disk_mb);
-DECLARE_int32(ns_replication_sync_backoff_secs);
-DECLARE_int32(ns_replication_sync_retry_secs);
 DECLARE_uint32(replication_failure_delay_exponent);
 DECLARE_int64(rpc_throttle_threshold_bytes);
 DECLARE_int32(transaction_table_num_tablets);
