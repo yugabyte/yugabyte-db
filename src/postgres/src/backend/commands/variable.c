@@ -539,7 +539,8 @@ check_XactIsoLevel(int *newval, void **extra, GucSource source)
 {
 	int			newXactIsoLevel = *newval;
 
-	if (newXactIsoLevel == XACT_READ_COMMITTED &&
+	if (source >= PGC_S_INTERACTIVE &&
+		newXactIsoLevel == XACT_READ_COMMITTED &&
 		!YBIsReadCommittedSupported())
 	{
 		ereport(WARNING,
@@ -604,7 +605,8 @@ yb_assign_XactIsoLevel(int newval, void *extra)
 bool
 check_yb_default_xact_isolation(int *newval, void **extra, GucSource source)
 {
-	if ((*newval == XACT_READ_COMMITTED) && !YBIsReadCommittedSupported())
+	if (source >= PGC_S_INTERACTIVE && (*newval == XACT_READ_COMMITTED) &&
+		!YBIsReadCommittedSupported())
 	{
 		ereport(WARNING,
 					(errmsg("read committed isolation is disabled"),

@@ -26,7 +26,7 @@ fi
 # Check schedule style: tests should match pattern "test: <test_name>".
 TESTS=$(diff \
           <(grep '^test: ' "$schedule") \
-          <(grep -E '^test: \w+$' "$schedule") \
+          <(grep -E '^test: [._[:alnum:]]+$' "$schedule") \
         | grep '^<' \
         | sed 's/^< //')
 if [ -n "$TESTS" ]; then

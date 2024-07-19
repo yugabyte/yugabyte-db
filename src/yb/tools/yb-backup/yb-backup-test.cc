@@ -286,7 +286,9 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreBackupToNewKey
         Indexes:
             "orders_pkey" PRIMARY KEY, lsm (o_no HASH)
         Foreign-key constraints:
-            "orders_i_code_fkey" FOREIGN KEY (i_code, i_name) REFERENCES items(i_code, i_name)
+            "orders_i_code_i_name_fkey" FOREIGN KEY (i_code, i_name) REFERENCES items(i_code, )#"
+      "i_name)"
+      R"#(
             "orders_v_code_fkey" FOREIGN KEY (v_code) REFERENCES vendors(v_code)
       )#"
   ));
@@ -466,7 +468,9 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreBackupToNewKey
         Indexes:
             "orders_pkey" PRIMARY KEY, lsm (o_no HASH)
         Foreign-key constraints:
-            "orders_i_code_fkey" FOREIGN KEY (i_code, i_name) REFERENCES items(i_code, i_name)
+            "orders_i_code_i_name_fkey" FOREIGN KEY (i_code, i_name) REFERENCES items(i_code, )#"
+      "i_name)"
+      R"#(
             "orders_v_code_fkey" FOREIGN KEY (v_code) REFERENCES vendors(v_code)
       )#"
   ));

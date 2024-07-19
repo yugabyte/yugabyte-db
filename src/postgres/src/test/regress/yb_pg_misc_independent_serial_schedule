@@ -15,6 +15,7 @@ test: yb_pg_namespace
 test: yb_pg_security_label
 test: yb_pg_lock
 test: yb_pg_drop_operator
+test: yb_pg_identity
 test: yb_pg_alter_generic
 test: yb_pg_alter_operator
 test: yb_pg_dbsize
@@ -22,4 +23,3 @@ test: yb_pg_indirect_toast
 test: yb_pg_conversion
 test: yb_pg_truncate
 test: yb_pg_sequence
-test: yb_pg_identity

@@ -4613,13 +4613,8 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
-#ifdef YB_TODO
-	/* deepthi@yugabyte
-	 * - QUERY_TUNING is no longer defined in Postgres source code.
-	 * - Please make appropriate modification.
-	 */
 	{
-		{"yb_test_planner_custom_plan_threshold", PGC_USERSET, QUERY_TUNING,
+		{"yb_test_planner_custom_plan_threshold", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("The number of times to force custom plan generation "
 						 "for prepared statements before considering a "
 						 "generic plan."),
@@ -4629,7 +4624,6 @@ static struct config_int ConfigureNamesInt[] =
 		5, 1, INT_MAX,
 		NULL, NULL, NULL
 	},
-#endif
 
 	{
 		{"yb_fetch_row_limit", PGC_USERSET, QUERY_TUNING_METHOD,
