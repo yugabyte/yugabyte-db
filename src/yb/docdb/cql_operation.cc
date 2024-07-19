@@ -1699,7 +1699,8 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
                                 const DocReadContext& doc_read_context,
                                 std::reference_wrapper<const ScopedRWOperation> pending_op,
                                 QLResultSet* resultset,
-                                HybridTime* restart_read_ht) {
+                                HybridTime* restart_read_ht,
+                                const docdb::DocDBStatistics* statistics) {
   auto se = ScopeExit([resultset] {
     resultset->Complete();
   });
@@ -1744,7 +1745,7 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
       &static_row_spec));
   RETURN_NOT_OK(ql_storage.GetIterator(
       request_, full_projection, doc_read_context, txn_op_context_, read_operation_data,
-      *spec, pending_op, &iter));
+      *spec, pending_op, &iter, statistics));
   VTRACE(1, "Initialized iterator");
 
   QLTableRow static_row;
@@ -1759,7 +1760,7 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
     std::unique_ptr<YQLRowwiseIteratorIf> static_row_iter;
     RETURN_NOT_OK(ql_storage.GetIterator(
         request_, static_projection, doc_read_context, txn_op_context_, read_operation_data,
-        *static_row_spec, pending_op, &static_row_iter));
+        *static_row_spec, pending_op, &static_row_iter, statistics));
     RETURN_NOT_OK(static_row_iter->FetchNext(&static_row));
   }
 
