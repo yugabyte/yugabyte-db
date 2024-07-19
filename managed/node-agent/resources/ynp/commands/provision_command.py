@@ -123,7 +123,6 @@ class ProvisionCommand(Command):
             context = self.config[key]
 
             context["templatedir"] = os.path.join(os.path.dirname(module[1]), "templates")
-            logger.info(context)
             module_instance = module[0]()
             rendered_template = module_instance.render_templates(context)
             if rendered_template is not None:

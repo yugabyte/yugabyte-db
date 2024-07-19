@@ -87,11 +87,12 @@ else
     add_result "kernel.core_pattern" "FAIL" "kernel.core_pattern is set to $kernel_core_pattern_value (expected: {{ kernel_core_pattern }})"
 fi
 
+threshold=49 #Gigabytes
 mount_point_array={{ mount_points }}
 # Verify each mount point
 for mount_point in "${mount_point_array[@]}"; do
     if [ -d "$mount_point" ]; then
-        if [ -w "$mount_point" ] && [ "$(stat -c %A "$mount_point" | cut -c 10)" == "w" ]; then
+        if [ -w "$mount_point" ] && [ $(( $(stat -c %a "$mount_point") % 10 & 2 )) -ne 0 ]; then
             result="PASS"
             message="Directory $mount_point exists and is world-writable."
             echo "[PASS] $message"
@@ -107,6 +108,19 @@ for mount_point in "${mount_point_array[@]}"; do
         echo "[FAIL] $message"
         any_fail=1
     fi
-
     add_result "$mount_point Check" "$result" "$message"
+
+    # Get the available disk space in gigabytes.
+    free_space_gb=$(df -BG --output=avail "$MOUNT_POINT" | tail -n 1 | tr -d 'G ')
+    if [ "$free_space_gb" -gt "$threshold" ]; then
+        result="PASS"
+        message="Sufficient disk space available: ${AVAILABLE}G"
+        echo "[PASS] $message"
+    else
+        result="FAIL"
+        message="Insufficient disk space: ${AVAILABLE}G available, ${THRESHOLD}G required"
+        echo "[FAIL] $message"
+        any_fail=1
+    fi
+    add_result "$mount_point Free space check" "$result" "$message"
 done
