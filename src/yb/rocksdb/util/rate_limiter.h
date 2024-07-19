@@ -49,9 +49,10 @@ class GenericRateLimiter : public RateLimiter {
   void SetBytesPerSecond(int64_t bytes_per_second) override;
 
   // Request for token to write bytes. If this request can not be satisfied,
-  // the call is blocked. Caller is responsible to make sure
-  // bytes <= GetSingleBurstBytes()
+  // the call is blocked. If the request is bigger than GetSingleBurstBytes() then the call is
+  // broken up into multiple requests of the same priority.
   void Request(const int64_t bytes, const yb::IOPriority pri) override;
+  void RequestInternal(const int64_t bytes, const yb::IOPriority pri);
 
   int64_t GetSingleBurstBytes() const override {
     return refill_bytes_per_period_.load(std::memory_order_relaxed);
