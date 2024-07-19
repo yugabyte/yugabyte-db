@@ -15,6 +15,7 @@
   HUGO_VERSION = "0.125.6"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
+  SEGMENT_API_KEY = "TUxwdnFRYlNlQzl5V0hNdnRBNVQ1TVhUZ0Rpc1ZMZE0="
   RUDDERSTACK_API_KEY = "Mmo5Zmp5M1lONWFLM2xYS044N3k5cGhic3R4"
 
 [context.branch-deploy.environment]
@@ -22,6 +23,7 @@
   HUGO_VERSION = "0.125.6"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
+  SEGMENT_API_KEY = "TUxwdnFRYlNlQzl5V0hNdnRBNVQ1TVhUZ0Rpc1ZMZE0="
   RUDDERSTACK_API_KEY = "Mmo5Zmp5M1lONWFLM2xYS044N3k5cGhic3R4"
 
 [context.production.environment]
@@ -29,6 +31,7 @@
   HUGO_VERSION = "0.125.6"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
+  SEGMENT_API_KEY = "WFp1RWk3dUVBbjM2NmpncnNnbzBMZUpIVXB1ZVRvTHg="
   RUDDERSTACK_API_KEY = "Mmo5Y252MjZ6R290ZjhPa3BROUx4cFl6VFVK"
 
 ################ REDIRECTS ################
@@ -1352,6 +1355,8 @@
             https://umbcujcbe8-dsn.algolia.net/
             https://www.google-analytics.com/
             https://www.yugabyte.com
+            https://api.segment.io/
+            https://cdn.segment.com/
             https://c.6sc.co/
             https://ipv6.6sc.co/
             https://ingesteer.services-prod.nsvcs.net/rum_collection
@@ -1381,6 +1386,7 @@
             https://www.gstatic.com/recaptcha/
             https://x.clearbitjs.com
             https://js.driftt.com/
+            https://cdn.segment.com/
             https://j.6sc.co/
             https://cdn.rudderlabs.com/
             https://d2wy8f7a9ursnm.cloudfront.net/v6/bugsnag.min.js
