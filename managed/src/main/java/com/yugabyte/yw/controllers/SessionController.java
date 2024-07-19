@@ -193,8 +193,8 @@ public class SessionController extends AbstractPlatformController {
     SessionInfo sessionInfo =
         new SessionInfo(
             authCookie.isPresent() ? authCookie.get().value() : null,
-            user.upsertApiToken(),
-            user.getApiTokenVersion(),
+            null,
+            null,
             cust.getUuid(),
             user.getUuid());
     return withData(sessionInfo);
