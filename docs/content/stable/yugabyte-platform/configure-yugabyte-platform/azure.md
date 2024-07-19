@@ -49,13 +49,13 @@ When deploying a universe, YBA uses the provider configuration settings to do th
 
 ## Prerequisites
 
-You need to add the following Azure cloud provider credentials via YBA:
+You need to add the following Azure cloud provider credentials:
 
+- Application client ID and (if using credentials) client secret
+- Resource group name
 - Subscription ID
 - Tenant ID
 - SSH port and user
-- Application client ID and secret
-- Resource group
 
 YBA uses the credentials to automatically provision and deprovision YugabyteDB instances.
 
@@ -105,11 +105,29 @@ Enter a Provider name. The Provider name is an internal tag used for organizing 
 
 ### Cloud Info
 
-- **Client ID** represents the [ID of an application](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#option-2-create-a-new-application-secret) registered in your Azure Active Directory.
-- **Client Secret** represents the secret of an application registered in your Azure Active Directory. You need to enter the `Value` of the secret (not the `Secret ID`).
-- **Resource Group** represents the group in which YugabyteDB nodes compute and network resources are created. Your Azure Active Directory application (client ID and client secret) needs to have `Network Contributor` and `Virtual Machine Contributor` roles assigned for this resource group.
-- **Subscription ID** is required for cost management. The virtual machine resources managed by YBA are tagged with this subscription.
-- **Tenant ID** represents the Azure Active Directory tenant ID which belongs to an active subscription. To find your tenant ID, follow instructions provided in [How to find your Azure Active Directory tenant ID](https://learn.microsoft.com/en-us/azure/active-directory/fundamentals/how-to-find-tenant).
+Enter the following details of your Azure cloud account, as described in [Azure cloud permissions](../../prepare/cloud-permissions/cloud-permissions-nodes-azure/).
+
+#### Client ID
+
+Provide the ID of the application you registered with the Microsoft Identity Platform.
+
+#### Credential type
+
+If you [added credentials](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app?tabs=client-secret#add-credentials) in the form of a client secret to your registered application:
+
+1. Select **Specify Client Secret**.
+1. Enter the Client Secret of the application associated with the Client ID you provided. You need to enter the `Value` of the secret (not the `Secret ID`).
+
+If you are using the [managed identity](https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/qs-configure-portal-windows-vm) of the Azure VM hosting YugabyteDB Anywhere to authenticate:
+
+- Select **Use Managed Identity from this YBA host's instance**.
+
+#### Additional fields
+
+- **Resource Group** is the name of the resource group you created for your application, and in which YugabyteDB node compute and network resources will be created.
+- **Subscription ID** is required for cost management. The virtual machine resources managed by YBA are tagged with this subscription. To get the subscription ID, open Subscriptions in Azure portal and find your subscription. Then, copy the Subscription ID.
+- Optionally, if you created a different resource group for your network interfaces, provide the **Network Resource Group** name and the associated **Network Subscription ID**. If you do not provide a Network Resource Group or Subscription ID, network resources will be created in the default resource group.
+- **Tenant ID** represents the tenant ID which belongs to an active subscription. To find your tenant ID, follow instructions provided in [How to find your Microsoft Entra tenant ID](https://learn.microsoft.com/en-us/entra/fundamentals/how-to-find-tenant).
 - **Private DNS zone** lets you use a custom domain name for the nodes in your universe. For details and instructions, see [Define a private DNS zone](#define-a-private-dns-zone).
 
 ### Regions
