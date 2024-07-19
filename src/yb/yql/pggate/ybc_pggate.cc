@@ -400,6 +400,14 @@ std::string HumanReadableTableType(yb::TableType table_type) {
   FATAL_INVALID_ENUM_VALUE(yb::TableType, table_type);
 }
 
+const YBCPgTypeEntity* GetTypeEntity(
+    int pg_type_oid, int attr_num, YBCPgOid table_oid, YBCTypeEntityProvider type_entity_provider) {
+
+  // TODO(23239): Optimize the lookup of type entities for dynamic types.
+  return pg_type_oid == kPgInvalidOid ? (*type_entity_provider)(attr_num, table_oid)
+                                      : pgapi->FindTypeEntity(pg_type_oid);
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -2425,7 +2433,9 @@ YBCPgRowMessageAction GetRowMessageAction(yb::cdc::RowMessage row_message_pb) {
 }
 
 YBCStatus YBCPgGetCDCConsistentChanges(
-    const char *stream_id, YBCPgChangeRecordBatch **record_batch) {
+    const char* stream_id,
+    YBCPgChangeRecordBatch** record_batch,
+    YBCTypeEntityProvider type_entity_provider) {
   const auto result = pgapi->GetConsistentChangesForCDC(std::string(stream_id));
   if (!result.ok()) {
     return ToYBCStatus(result.status());
@@ -2484,6 +2494,10 @@ YBCStatus YBCPgGetCDCConsistentChanges(
       old_tuple_idx++;
     }
 
+    const auto table_oid = row_message_pb.has_table_id()
+                               ? PgObjectId(row_message_pb.table_id()).object_oid
+                               : kPgInvalidOid;
+
     auto col_count = narrow_cast<int>(col_name_idx_map.size());
     YBCPgDatumMessage *cols = nullptr;
     if (col_count > 0) {
@@ -2501,8 +2515,10 @@ YBCStatus YBCPgGetCDCConsistentChanges(
         if (!before_op_is_omitted) {
           const auto old_datum_pb =
               &row_message_pb.old_tuple(static_cast<int>(col_idxs.second.first));
-          const auto *type_entity =
-              pgapi->FindTypeEntity(static_cast<int>(old_datum_pb->column_type()));
+          DCHECK(table_oid != kPgInvalidOid);
+          const auto* type_entity = GetTypeEntity(
+              static_cast<int>(old_datum_pb->column_type()), old_datum_pb->col_attr_num(),
+              table_oid, type_entity_provider);
           auto s = PBToDatum(
               type_entity, type_attrs, old_datum_pb->pg_ql_value(), &before_op_datum,
               &before_op_is_null);
@@ -2518,8 +2534,10 @@ YBCStatus YBCPgGetCDCConsistentChanges(
         if (!after_op_is_omitted) {
           const auto new_datum_pb =
               &row_message_pb.new_tuple(static_cast<int>(col_idxs.second.second));
-          const auto *type_entity =
-              pgapi->FindTypeEntity(static_cast<int>(new_datum_pb->column_type()));
+          DCHECK(table_oid != kPgInvalidOid);
+          const auto* type_entity = GetTypeEntity(
+              static_cast<int>(new_datum_pb->column_type()), new_datum_pb->col_attr_num(),
+              table_oid, type_entity_provider);
           auto s = PBToDatum(
               type_entity, type_attrs, new_datum_pb->pg_ql_value(), &after_op_datum,
               &after_op_is_null);
@@ -2539,12 +2557,6 @@ YBCStatus YBCPgGetCDCConsistentChanges(
       }
     }
 
-    // Only present for DML records.
-    YBCPgOid table_oid = kPgInvalidOid;
-    if (row_message_pb.has_table_id()) {
-      auto table_id = PgObjectId(row_message_pb.table_id());
-      table_oid = table_id.object_oid;
-    }
 
     new (&resp_rows[row_idx]) YBCPgRowMessage{
         .col_count = col_count,

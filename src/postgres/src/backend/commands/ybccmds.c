@@ -2030,9 +2030,10 @@ YBCDestroyVirtualWalForCDC()
 
 void
 YBCGetCDCConsistentChanges(const char *stream_id,
-						   YBCPgChangeRecordBatch **record_batch)
+						   YBCPgChangeRecordBatch **record_batch,
+						   YBCTypeEntityProvider type_entity_provider)
 {
-	HandleYBStatus(YBCPgGetCDCConsistentChanges(stream_id, record_batch));
+	HandleYBStatus(YBCPgGetCDCConsistentChanges(stream_id, record_batch, type_entity_provider));
 }
 
 void
