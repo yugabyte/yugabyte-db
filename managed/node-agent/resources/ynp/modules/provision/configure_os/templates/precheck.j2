@@ -88,7 +88,8 @@ else
 fi
 
 threshold=49 #Gigabytes
-mount_point_array={{ mount_points }}
+# Convert the space-separated string to an array in bash
+IFS=' ' read -r -a mount_points_array <<< {{ mount_points }}
 # Verify each mount point
 for mount_point in "${mount_point_array[@]}"; do
     if [ -d "$mount_point" ]; then
@@ -118,7 +119,7 @@ for mount_point in "${mount_point_array[@]}"; do
         echo "[PASS] $message"
     else
         result="FAIL"
-        message="Insufficient disk space: ${AVAILABLE}G available, ${THRESHOLD}G required"
+        message="Insufficient disk space: ${free_space_gb}G available, ${threshold}G required"
         echo "[FAIL] $message"
         any_fail=1
     fi
