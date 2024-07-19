@@ -1,4 +1,4 @@
-// Copyright (c) YugabyteDB, Inc.
+// Copyright (c) YugaByte, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -23,6 +23,7 @@
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
+#include "yb/tserver/mini_tablet_server.h"
 #include "yb/util/backoff_waiter.h"
 
 DECLARE_bool(xcluster_wait_on_ddl_alter);
@@ -118,6 +119,7 @@ class XClusterYsqlColocatedTest : public XClusterYsqlTestBase {
       auto& tables = onlyColocated ? colocated_consumer_tables : consumer_tables_;
       for (const auto& consumer_table : tables) {
         LOG(INFO) << "Checking records for table " << consumer_table->name().ToString();
+        RETURN_NOT_OK(WaitForRowCount(consumer_table->name(), num_results, &consumer_cluster_));
         RETURN_NOT_OK(ValidateRows(consumer_table->name(), num_results, &consumer_cluster_));
       }
       return true;
@@ -196,20 +198,50 @@ class XClusterYsqlColocatedTest : public XClusterYsqlTestBase {
         [&]() -> Result<bool> {
           LOG(INFO) << "Checking records for table "
                     << new_colocated_consumer_table->name().ToString();
-          RETURN_NOT_OK(
-              ValidateRows(new_colocated_consumer_table->name(), kRecordBatch, &consumer_cluster_));
+          RETURN_NOT_OK(WaitForRowCount(
+              new_colocated_consumer_table->name(), kRecordBatch, &consumer_cluster_));
+          RETURN_NOT_OK(ValidateRows(
+              new_colocated_consumer_table->name(), kRecordBatch, &consumer_cluster_));
           return true;
         },
         MonoDelta::FromSeconds(20 * kTimeMultiplier),
         "IsDataReplicatedCorrectly new colocated table"));
 
-    // 6. Drop the new table and ensure that data is getting replicated correctly for
+    // 6. Shutdown the colocated tablet leader and verify that replication is still happening.
+    {
+      auto tablet_ids = ListTabletIdsForTable(consumer_cluster(), colocated_parent_table_id);
+      auto old_ts = FindTabletLeader(consumer_cluster(), *tablet_ids.begin());
+      old_ts->Shutdown();
+      const MonoTime deadline = MonoTime::Now() + MonoDelta::FromSeconds(10 * kTimeMultiplier);
+      RETURN_NOT_OK(WaitUntilTabletHasLeader(consumer_cluster(), *tablet_ids.begin(), deadline));
+      RETURN_NOT_OK(old_ts->RestartStoppedServer());
+      RETURN_NOT_OK(old_ts->WaitStarted());
+
+      RETURN_NOT_OK(InsertRowsInProducer(
+          kRecordBatch, 2 * kRecordBatch, new_colocated_producer_table,
+          use_transaction));
+
+      RETURN_NOT_OK(WaitFor(
+          [&]() -> Result<bool> {
+            LOG(INFO) << "Checking records for table "
+                      << new_colocated_consumer_table->name().ToString();
+            RETURN_NOT_OK(WaitForRowCount(
+                new_colocated_consumer_table->name(), 2 * kRecordBatch, &consumer_cluster_));
+            RETURN_NOT_OK(ValidateRows(
+                new_colocated_consumer_table->name(), 2 * kRecordBatch, &consumer_cluster_));
+            return true;
+      },
+          MonoDelta::FromSeconds(20 * kTimeMultiplier),
+          "IsDataReplicatedCorrectly new colocated table"));
+    }
+
+    // 7. Drop the new table and ensure that data is getting replicated correctly for
     // the other tables
     RETURN_NOT_OK(
         DropYsqlTable(&producer_cluster_, namespace_name, "", Format("test_table_$0", idx)));
     LOG(INFO) << Format("Dropped test_table_$0 on Producer side", idx);
 
-    // 7. Add additional data to the original tables.
+    // 8. Add additional data to the original tables.
     for (const auto& producer_table : producer_tables_) {
       LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
       RETURN_NOT_OK(
@@ -217,7 +249,7 @@ class XClusterYsqlColocatedTest : public XClusterYsqlTestBase {
     }
     count += kRecordBatch;
 
-    // 8. Verify all tables are properly replicated.
+    // 9. Verify all tables are properly replicated.
     RETURN_NOT_OK(WaitFor(
         [&]() -> Result<bool> { return data_replicated_correctly(count, false); },
         MonoDelta::FromSeconds(20 * kTimeMultiplier),

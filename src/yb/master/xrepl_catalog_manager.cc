@@ -5667,16 +5667,22 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
   schema_cached->Clear();
 
   cdc::SchemaVersionsPB* schema_versions_pb = nullptr;
+  bool schema_versions_updated = false;
 
   // TODO (#16557): Support remove_table_id() for colocated tables / tablegroups.
   if (IsColocationParentTableId(consumer_table_id) && req->colocation_id() != kColocationIdNotSet) {
     auto map = stream_entry->mutable_colocated_schema_versions();
-    schema_versions_pb = &((*map)[req->colocation_id()]);
+    schema_versions_pb = FindOrNull(*map, req->colocation_id());
+    if (nullptr == schema_versions_pb) {
+      // If the colocation_id itself does not exist, it needs to be recorded in clusterconfig.
+      // This is to handle the case where source-target schema version mapping is 0:0.
+      schema_versions_updated = true;
+      schema_versions_pb = &((*map)[req->colocation_id()]);
+    }
   } else {
     schema_versions_pb = stream_entry->mutable_schema_versions();
   }
 
-  bool schema_versions_updated = false;
   SchemaVersion current_producer_schema_version =
       schema_versions_pb->current_producer_schema_version();
   SchemaVersion current_consumer_schema_version =
