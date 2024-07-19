@@ -1396,10 +1396,9 @@ CreateCteSelectQuery(CommonTableExpr *baseCte, const char *prefix, int stageNum,
 		TargetEntry *tle = (TargetEntry *) lfirst(cell);
 		Var *newQueryOutput = makeVar(rtIndex, tle->resno, BsonTypeId(), -1,
 									  InvalidOid, 0);
-		bool resJunk = false;
 		TargetEntry *upperEntry = makeTargetEntry((Expr *) newQueryOutput, tle->resno,
 												  tle->resname,
-												  resJunk);
+												  tle->resjunk);
 		upperTargetList = lappend(upperTargetList, upperEntry);
 	}
 
