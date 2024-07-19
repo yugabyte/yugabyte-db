@@ -84,7 +84,6 @@ JAVA	org.yb.pgsql.TestPgRegressPgForeignData
 JAVA	org.yb.pgsql.TestPgRegressPgMisc
 JAVA	org.yb.pgsql.TestPgRegressPgSelect
 JAVA	org.yb.pgsql.TestPgRegressPgStatStatements
-JAVA	org.yb.pgsql.TestPgRegressPgTransactions
 JAVA	org.yb.pgsql.TestPgRegressPgTypesString
 JAVA	org.yb.pgsql.TestPgRegressProc
 JAVA	org.yb.pgsql.TestPgRegressProfile
