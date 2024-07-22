@@ -1201,7 +1201,26 @@ Decimal handling mode `precise` is not yet supported by `YugabyteDBConnector`.
 
 ### HSTORE types
 
+The setting of the YugabyteDB connector configuration property `hstore.handling.mode` determines how the connector maps `HSTORE` values.
+
+When the `hstore.handling.mode` property is set to json (the default), the connector represents `HSTORE` values as string representations of `JSON` values and encodes them as shown in the following table. When the `hstore.handling.mode` property is set to map, the connector uses the `MAP` schema type for `HSTORE` values.
+
+| YugabyteDB data type | Literal type (schema type) | Semantic type (schema name) and Notes |
+| :----- | :----- | :----- |
+| `HSTORE` | `STRING` | `io.debezium.data.Json`<br/><br/>Example: output representation using the JSON converter is `{"key" : "val"}` |
+| `HSTORE` | `MAP` | n/a<br/><br/>Example: output representation using the `JSON` converter is `{"key" : "val"}` |
+
 ### Domain types
+
+YugabyteDB supports user-defined types that are based on other underlying types. When such column types are used, Debezium exposes the column’s representation based on the full type hierarchy.
+
+{{< note title="Note" >}}
+
+Capturing changes in columns that use YugabyteDB domain types requires special consideration. When a column is defined to contain a domain type that extends one of the default database types and the domain type defines a custom length or scale, the generated schema inherits that defined length or scale.
+
+When a column is defined to contain a domain type that extends another domain type that defines a custom length or scale, the generated schema does not inherit the defined length or scale because that information is not available in the YugabyteDB driver’s column metadata.
+
+{{< /note >}}
 
 ### Network address types
 
