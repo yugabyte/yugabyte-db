@@ -54,11 +54,27 @@ v_time                          timestamptz;
 v_partition_type                          text;
 v_unlogged                      char;
 v_year                          text;
+yb_v_child_table                record;
+yb_v_child_tables               text[] := '{}';
+yb_v_is_child_table_attached    boolean;
+yb_v_constraint_name            text;
 
 BEGIN
 /*
  * Function to create a child table in a time-based partition set
  */
+
+-- Fetch child tables using pg_inherits
+FOR yb_v_child_table IN
+    SELECT child.relname
+    FROM pg_inherits
+    JOIN pg_class parent ON pg_inherits.inhparent = parent.oid
+    JOIN pg_class child ON pg_inherits.inhrelid = child.oid
+    WHERE parent.relname = split_part(p_parent_table, '.', 2)
+LOOP
+    -- Append each child table name to the array
+    yb_v_child_tables := array_append(yb_v_child_tables, yb_v_child_table.relname::text);
+END LOOP;
 
 SELECT partition_type
     , control
@@ -158,6 +174,15 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
     -- This suffix generation code is in partition_data_time() as well
     v_partition_suffix := to_char(v_time, v_datetime_string);
     v_partition_name := @extschema@.check_name_length(v_parent_tablename, v_partition_suffix, TRUE);
+
+    -- YB: check if child table is already attached
+    yb_v_is_child_table_attached := v_partition_name = ANY(yb_v_child_tables);
+    IF yb_v_is_child_table_attached THEN
+        RAISE NOTICE 'Table % already attached', v_partition_name;
+        v_partition_created := true;
+        CONTINUE;
+    END IF;
+
     -- Check if child exists. 
     SELECT count(*) INTO v_exists
     FROM pg_catalog.pg_class c
@@ -165,9 +190,14 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
     WHERE n.nspname = v_parent_schema::name 
     AND c.relname = v_partition_name::name;
 
+    /* YB: Don't continue whole loop iteration, there could be
+    case that child partition was created but not attached due to
+    previous create_partition_time failed as YB does not support
+    transactional DDL.
     IF v_exists > 0 THEN
         CONTINUE;
     END IF;
+    */
 
     -- Ensure analyze is run if a new partition is created. Otherwise if one isn't, will be false and analyze will be skipped
     v_analyze := TRUE;
@@ -229,9 +259,10 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
         END IF;
     END IF;
 
-    RAISE DEBUG 'create_partition_time v_sql: %', v_sql;
-    EXECUTE v_sql;
-
+    IF v_exists IS NULL THEN
+        RAISE DEBUG 'create_partition_time v_sql: %', v_sql;
+        EXECUTE v_sql;
+    END IF;
 
     IF v_partition_type = 'native' THEN
 
@@ -284,13 +315,22 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
                     , EXTRACT('epoch' FROM v_partition_timestamp_end)::bigint * 1000000000);
             END IF;
             -- Create secondary, time-based constraint since native's constraint is already integer based
-            EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I CHECK (%s >= %L AND %4$s < %6$L)'
-                , v_parent_schema
-                , v_partition_name
-                , v_partition_name||'_partition_check'
-                , v_partition_expression
-                , v_partition_timestamp_start
-                , v_partition_timestamp_end);
+            -- YB: Check if the constraint already exists
+            SELECT conname INTO yb_v_constraint_name
+            FROM pg_constraint
+            WHERE conname = v_partition_name||'_partition_check'
+            AND conrelid = (quote_ident(v_parent_schema) || '.' || quote_ident(v_partition_name))::regclass;
+
+            -- YB: If the constraint does not exist, create it
+            IF yb_v_constraint_name IS NULL THEN
+                EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I CHECK (%s >= %L AND %4$s < %6$L)'
+                       , v_parent_schema
+                       , v_partition_name
+                       , v_partition_name||'_partition_check'
+                       , v_partition_expression
+                       , v_partition_timestamp_start
+                       , v_partition_timestamp_end);
+            END IF;
         END IF;
     ELSE -- non-native
 
