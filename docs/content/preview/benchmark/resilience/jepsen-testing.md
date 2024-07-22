@@ -8,6 +8,9 @@ menu:
     identifier: jepsen-testing-1
     parent: resilience
     weight: 13
+aliases:
+  - /preview/benchmark/resilience/jepsen-testing-ysql/
+  - /preview/benchmark/resilience/jepsen-testing-ycql/
 type: docs
 ---
 
