@@ -43,7 +43,6 @@ step "s1_select_1"  { SELECT 1; }
 step "s1_select"		{ SELECT * FROM test; }
 step "s1_update"		{ UPDATE test SET v=v+1 WHERE k=1; }
 step "s1_savepoint"		{ SAVEPOINT a; }
-step "s1_deferrable" { SET TRANSACTION DEFERRABLE; }
 step "s1_read_only" { SET TRANSACTION READ ONLY; }
 step "s1_read_write" { SET TRANSACTION READ WRITE; }
 step "s1_commit"		{ COMMIT; }
