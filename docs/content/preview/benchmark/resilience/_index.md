@@ -32,7 +32,7 @@ Jepsen employs a rigorous verification process, which includes generating comple
 YugabyteDB passes 99.9% of the Jepsen tests.
 
 {{<lead link="jepsen-testing-ysql/">}}
-For more details, see [Jepsen test results](jepsen-testing-ysql/).
+For more details, see [Jepsen test results](jepsen-testing/).
 {{</lead>}}
 
 ## Learn more

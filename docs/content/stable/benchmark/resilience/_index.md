@@ -6,7 +6,7 @@ description: Benchmark YugabyteDB's ability to withstand component failure.
 image: /images/section_icons/explore/high_performance.png
 headcontent: Benchmarking the ability to withstand component failure
 menu:
-  stable:
+  preview:
     identifier: resilience
     parent: benchmark
     weight: 21
@@ -32,7 +32,7 @@ Jepsen employs a rigorous verification process, which includes generating comple
 YugabyteDB passes 99.9% of the Jepsen tests.
 
 {{<lead link="jepsen-testing-ysql/">}}
-For more details, see [Jepsen test results](jepsen-testing-ysql/).
+For more details, see [Jepsen test results](jepsen-testing/).
 {{</lead>}}
 
 ## Learn more
