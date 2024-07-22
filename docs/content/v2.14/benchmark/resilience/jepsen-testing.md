@@ -50,7 +50,6 @@ UPDATE T SET balance = balance + x WHERE id = ?;
 UPDATE T SET balance = balance - x WHERE id = ?;
 COMMIT;
 
-
 -- inserts
 BEGIN TXN;
 INSERT INTO T (id, balance) VALUES (?, ?);
