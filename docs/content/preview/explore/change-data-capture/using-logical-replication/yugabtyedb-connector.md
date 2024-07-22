@@ -1199,6 +1199,10 @@ Decimal handling mode `precise` is not yet supported by `YugabyteDBConnector`.
 
 {{< /note >}}
 
+### HSTORE types
+
+### Domain types
+
 ### Network address types
 
 YugabyteDB has data types that can store IPv4, IPv6, and MAC addresses. It is better to use these types instead of plain text types to store network addresses. Network address types offer input error checking and specialized operators and functions.
@@ -1210,7 +1214,8 @@ YugabyteDB has data types that can store IPv4, IPv6, and MAC addresses. It is be
 | `MACADDR` | `STRING` | n/a<br/><br/>MAC addresses |
 | `MACADDR8` | `STRING` | n/a<br/><br/>MAC addresses in EUI-64 format |
 
-### Default values
+<!-- todo Vaibhav: this default section needs verification -->
+<!-- ### Default values
 
 If a default value is specified for a column in the database schema, the YugabyteDB connector will attempt to propagate this value to the Kafka schema whenever possible. Most common data types are supported, including:
 * `BOOLEAN`
@@ -1242,7 +1247,7 @@ Support for the propagation of default values exists primarily to allow for safe
 
 This behaviour may be unexpected, but it is still safe. Only the schema definition is affected, while the real values present in the message will remain consistent with what was written to the source database.
 
-{{< /warning >}}
+{{< /warning >}} -->
 
 ## Setting up YugabyteDB
 
@@ -1276,7 +1281,7 @@ Debezium uses include list and exclude list properties to specify how data is in
 For Debezium to create a YugabyteDB publication, it must run as a user that has the following privileges:
 * Replication privileges in the database to add the table to a publication.
 * `CREATE` privileges on the database to add publications.
-* `SELECT` privileges on the tables to copy the initial table data. Table owners automatically have `SELECT` permission for the table. (Is this relevant?)
+* `SELECT` privileges on the tables to copy the initial table data. Table owners automatically have `SELECT` permission for the table.
 
 To add tables to a publication, the user must be an owner of the table. But because the source table already exists, you need a mechanism to share ownership with the original owner. To enable shared ownership, you create a YugabyteDB replication group, and then add the existing table owner and the replication user to the group.
 
@@ -1316,13 +1321,11 @@ Procedure
 
 ### Supported YugabyteDB topologies
 
-The YugabyteDB connector can be used with a standalone YugabyteDB server or with a distributed setup of YugabyteDB servers.
-
-As mentioned in the beginning, YugabyteDB (for all versions > 2024.1.1) supports logical replication slots. This means that any node in a YugabyteDB cluster can be configured for logical replication, and consequently the Debezium YugabyteDB connector can connect and communicate with the server using [YugabyteDB Java driver](../../reference/drivers/java/yugabyte-jdbc-reference). Should this server fail, the connector receives an error and restarts, upon restart, the connector connects to the available node and continues streaming from that node.
+As mentioned in the beginning, YugabyteDB (for all versions > 2024.1.1) supports logical replication slots. The Debezium YugabyteDB connector can communicate with the server by connecting to any node using the [YugabyteDB Java driver](../../../reference/drivers/java/yugabyte-jdbc-reference). Should any node fail, the connector receives an error and restarts. Upon restart, the connector connects to any available node and continues streaming from that node.
 
 ### Setting up multiple connectors for same database server
 
-Debezium uses replication slots to stream changes from a database. These replication slots maintain the current position in form of a LSN (Log Sequence Number). This helps YugabyteDB keep the WAL available until it is processed by Debezium. A single replication slot can exist only for a single consumer or process - as different consumer might have different state and may need data from different position.
+Debezium uses replication slots to stream changes from a database. These replication slots maintain the current position in form of a LSN. This helps YugabyteDB keep the WAL available until it is processed by Debezium. A single replication slot can exist only for a single consumer or process - as different consumer might have different state and may need data from different position.
 
 Since a replication slot can only be used by a single connector, it is essential to create a unique replication slot for each Debezium connector. Although when a connector is not active, YugabyteDB may allow other connector to consume the replication slot - which could be dangerous as it may lead to data loss as a slot will emit each change just once [[See More](#reminder)].
 
@@ -1350,8 +1353,8 @@ If you are working with immutable containers, see [Debezium’s Container images
 
 If [auto creation of topics](https://debezium.io/documentation/reference/2.5/configuration/topic-auto-create-config.html) is not enabled in the Kafka Connect cluster then you will need to create the following topics manually:
 
-* Topic for each table in the format `*<topic.prefix>.<schemaName>.<tableName>*`
-* Heartbeat topic in the format `*<topic.heartbeat.prefix>.<topic.prefix>*`
+* Topic for each table in the format `<topic.prefix>.<schemaName>.<tableName>`
+* Heartbeat topic in the format `<topic.heartbeat.prefix>.<topic.prefix>`. The [topic.heartbeat.prefix](#connector-properties) has a default value of `__debezium-heartbeat`.
 
 ### Connector configuration example
 
@@ -1364,7 +1367,7 @@ You can choose to produce events for a subset of the schemas and tables in a dat
   "name": "fulfillment-connector",  --> 1
   "config": {
     "connector.class": "io.debezium.connector.postgresql.YugabyteDBConnector", --> 2
-    "database.hostname": "192.168.99.100", --> 3
+    "database.hostname": "192.168.99.100:5433,192.168.1.10:5433,192.168.1.68:5433", --> 3
     "database.port": "5432", --> 4
     "database.user": "postgres", --> 5
     "database.password": "postgres", --> 6
@@ -1377,7 +1380,7 @@ You can choose to produce events for a subset of the schemas and tables in a dat
 
 1. The name of the connector when registered with a Kafka Connect service.
 2. The name of this YugabyteDB connector class.
-3. The address of the YugabyteDB server.
+3. The addresses of the YugabyteDB tserver nodes. This can take a value of multiple addresses in the format `IP1:PORT1,IP2:PORT2,IP3:PORT3`.
 4. The port number of the YugabyteDB server.
 5. The name of the YugabyteDB user that has the [required privileges](#setting-up-yugabytedb).
 6. The password for the YugabyteDB user that has the [required privileges](#setting-up-yugabytedb).
@@ -1428,7 +1431,7 @@ The following configuration properties are *required* unless a default value is 
 | slot.name | debezium | The name of the YugabyteDB logical decoding slot that was created for streaming changes from a particular plug-in for a particular database/schema. The server uses this slot to stream events to the Debezium connector that you are configuring.<br/>Slot names must conform to [YugabyteDB replication slot naming rules](#reminder), which state: *"Each replication slot has a name, which can contain lower-case letters, numbers, and the underscore character."* |
 | slot.drop.on.stop | false | Whether or not to delete the logical replication slot when the connector stops in a graceful, expected way. The default behavior is that the replication slot remains configured for the connector when the connector stops. When the connector restarts, having the same replication slot enables the connector to start processing where it left off.<br/>Set to true in only testing or development environments. Dropping the slot allows the database to discard WAL segments. When the connector restarts it performs a new snapshot or it can continue from a persistent offset in the Kafka Connect offsets topic. |
 | publication.name | `dbz_publication` | The name of the YugabyteDB publication created for streaming changes when using pgoutput.<br/>This publication is created at start-up if it does not already exist and it includes all tables. Debezium then applies its own include/exclude list filtering, if configured, to limit the publication to change events for the specific tables of interest. The connector user must have superuser permissions to create this publication, so it is usually preferable to create the publication before starting the connector for the first time.<br/>If the publication already exists, either for all tables or configured with a subset of tables, Debezium uses the publication as it is defined. |
-| database.hostname | No default | IP address or hostname of the YugabyteDB database server. |
+| database.hostname | No default | IP address or hostname of the YugabyteDB database server. This needs to be in the format `IP1:PORT1,IP2:PORT2,IP3:PORT3` |
 | database.port | 5433 | Integer port number of the YugabyteDB database server. |
 | database.user | No default | Name of the YugabyteDB database user for connecting to the YugabyteDB database server. |
 | database.password | No default | Password to use when connecting to the YugabyteDB database server. |
@@ -1484,12 +1487,12 @@ The following advanced configuration properties have defaults that work in most 
 | schema.refresh.mode | columns_diff | Specify the conditions that trigger a refresh of the in-memory schema for a table.<br/><br/>`columns_diff` is the safest mode. It ensures that the in-memory schema stays in sync with the database table’s schema at all times.<br/><br/>`columns_diff_exclude_unchanged_toast` instructs the connector to refresh the in-memory schema cache if there is a discrepancy with the schema derived from the incoming message, unless unchanged TOASTable data fully accounts for the discrepancy.<br/><br/>This setting can significantly improve connector performance if there are frequently-updated tables that have TOASTed data that are rarely part of updates. However, it is possible for the in-memory schema to become outdated if TOASTable columns are dropped from the table. |
 | snapshot.delay.ms | No default | An interval in milliseconds that the connector should wait before performing a snapshot when the connector starts. If you are starting multiple connectors in a cluster, this property is useful for avoiding snapshot interruptions, which might cause re-balancing of connectors. |
 | snapshot.fetch.size | 10240 | During a snapshot, the connector reads table content in batches of rows. This property specifies the maximum number of rows in a batch. |
-| slot.stream.params | No default | Semicolon separated list of parameters to pass to the configured logical decoding plug-in. For example, `add-tables=public.table,public.table2;include-lsn=true`. |
+| slot.stream.params | No default | Semicolon separated list of parameters to pass to the configured logical decoding plug-in. |
 | slot.max.retries | 6 | If connecting to a replication slot fails, this is the maximum number of consecutive attempts to connect. |
 | slot.retry.delay.ms | 10000 (10 seconds) | The number of milliseconds to wait between retry attempts when the connector fails to connect to a replication slot. |
 | unavailable.value.placeholder | __debezium_unavailable_value | Specifies the constant that the connector provides to indicate that the original value is a toasted value that is not provided by the database. If the setting of `unavailable.value.placeholder` starts with the `hex:` prefix it is expected that the rest of the string represents hexadecimally encoded octets. |
 | provide.transaction.metadata | false | Determines whether the connector generates events with transaction boundaries and enriches change event envelopes with transaction metadata. Specify true if you want the connector to do this. For more information, see [Transaction metadata](#transaction-metadata). |
-| flush.lsn.source | true | Determines whether the connector should commit the LSN of the processed records in the source postgres database so that the WAL logs can be deleted. Specify `false` if you don’t want the connector to do this. Please note that if set to `false` LSN will not be acknowledged by Debezium and as a result WAL logs will not be cleared which might result in disk space issues. User is expected to handle the acknowledgement of LSN outside Debezium. |
+| flush.lsn.source | true | Determines whether the connector should commit the LSN of the processed records in the source YugabyteDB database so that the WAL logs can be deleted. Specify `false` if you don’t want the connector to do this. Please note that if set to `false` LSN will not be acknowledged by Debezium and as a result WAL logs will not be cleared which might result in disk space issues. User is expected to handle the acknowledgement of LSN outside Debezium. |
 | retriable.restart.connector.wait.ms | 10000 (10 seconds) | The number of milliseconds to wait before restarting a connector after a retriable error occurs. |
 | skipped.operations | t | A comma-separated list of operation types that will be skipped during streaming. The operations include: `c` for inserts/create, `u` for updates, `d` for deletes, `t` for truncates, and `none` to not skip any operations. By default, truncate operations are skipped. |
 | xmin.fetch.interval.ms | 0 | How often, in milliseconds, the XMIN will be read from the replication slot. The XMIN value provides the lower bounds of where a new replication slot could start from. The default value of `0` disables tracking XMIN tracking. |
@@ -1584,7 +1587,7 @@ In the following situations, the connector fails when trying to start, reports a
 
 * The connector’s configuration is invalid.
 * The connector cannot successfully connect to YugabyteDB by using the specified connection parameters.
-* The connector is restarting from a previously-recorded position in the YugabyteDB WAL (by using the LSN) and YugabyteDB no longer has that history available.
+* The connector is restarting from a previously-recorded LSN and YugabyteDB no longer has that history available.
 
 In these cases, the error message has details about the problem and possibly a suggested workaround. After you correct the configuration or address the YugabyteDB problem, restart the connector.
 
