@@ -29629,7 +29629,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Get current user/customer uuid auth/api token",
+        "summary" : "Get current user and customer uuid. This will not generate or return the API token, use /api_token API for that.",
         "tags" : [ "Session management" ]
       }
     },
