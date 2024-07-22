@@ -1173,6 +1173,7 @@ def get_predefined_devices(ami):
 
 def modify_tags(region, instance_id, tags_to_set_str, tags_to_remove_str):
     instance = get_client(region).Instance(instance_id)
+    client = boto3.client('ec2', region)
     # Remove all the tags we were asked to, except the internal ones.
     tags_to_remove = set(tags_to_remove_str.split(",") if tags_to_remove_str else [])
     # TODO: combine these with the above instance creation function.
@@ -1182,15 +1183,37 @@ def modify_tags(region, instance_id, tags_to_set_str, tags_to_remove_str):
             "Was asked to remove tags: {}, which contain internal tags: {}".format(
                 tags_to_remove, internal_tags
             ))
+
+    resources_list = []
+    if instance.spot_instance_request_id:
+        resources_list.append(instance.spot_instance_request_id)
+    for volume in instance.volumes.all():
+        resources_list.append(volume.id)
+    for network_interfaces in instance.network_interfaces_attribute:
+        resources_list.append(network_interfaces.get('NetworkInterfaceId'))
+        if 'Association' not in network_interfaces:
+            continue
+        public_ip_address = network_interfaces['Association'].get('PublicIp')
+        if public_ip_address:
+            elastic_ip_list = client.describe_addresses(
+                Filters=[{'Name': 'public-ip', 'Values': [public_ip_address]}]
+            )["Addresses"]
+            for elastic_ip in elastic_ip_list:
+                resources_list.append(elastic_ip["AllocationId"])
+
     # Note: passing an empty list to Tags will remove all tags from the instance.
     if tags_to_remove:
-        instance.delete_tags(Tags=[{"Key": k} for k in tags_to_remove])
+        to_remove_obj = [{"Key": k} for k in tags_to_remove]
+        instance.delete_tags(Tags=to_remove_obj)
+        client.delete_tags(Resources=resources_list, Tags=to_remove_obj)
+
     # Set all the tags provided.
     tags_to_set = json.loads(tags_to_set_str if tags_to_set_str else "{}")
     customer_tags = []
     for k, v in tags_to_set.items():
         customer_tags.append({"Key": k, "Value": v})
     instance.create_tags(Tags=customer_tags)
+    client.create_tags(Resources=resources_list, Tags=customer_tags)
 
 
 def update_disk(args, instance_id):
