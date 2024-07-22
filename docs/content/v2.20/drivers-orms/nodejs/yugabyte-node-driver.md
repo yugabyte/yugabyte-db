@@ -76,7 +76,7 @@ The following table describes the connection parameters required to connect, inc
 | user | Database user | yugabyte |
 | password | User password | yugabyte |
 | `loadBalance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to 'true' |
-| `ybServersRefreshInterval` | If `load_balance` is true, the interval in seconds to refresh the node list | 300
+| `ybServersRefreshInterval` | If `loadBalance` is true, the interval in seconds to refresh the node list | 300
 | `topologyKeys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `loadBalance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`. |
 
 Create a client to connect to the cluster using a connection string. The following is an example connection string for connecting to a YugabyteDB cluster with uniform and topology load balancing:
