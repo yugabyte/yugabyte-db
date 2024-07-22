@@ -82,17 +82,17 @@ LSN values for a single replication slot satisfy the following properties:
 
 - **Uniqueness** 
 
-  - LSN values for the change and transaction boundary records for a given replication slot are unique. In particular, changes from different tablets of the same table will have unique LSN values.
+  - LSN values for the change and `COMMIT` records for a given replication slot are unique. In particular, changes from different tablets of the same or different tables will have unique LSN values for a replication slot.
 
 * **Ordering** 
 
   - LSN values can be compared ( <, >, = ).
 
-  - The LSN of the BEGIN record of a transaction will be strictly lower than the LSN of the changes in that transaction that in turn will be strictly lower than the LSN of the COMMIT record of the same transaction.
+  - The LSN of the change records in a transaction will be strictly lower than the LSN of the COMMIT record of the same transaction.
 
   - The LSNs of change records within a transaction will be in increasing order and will correspond to the order in which those changes were made in that transaction. That is, the LSN of an earlier change will have a strictly lower value than the LSN of a later change within the same transaction. This is the case even if the changes correspond to rows in different tablets of the same or different tables.
 
-  - The LSN of the commit record of a transaction will be strictly lower than the LSN of the BEGIN record of  a transaction with greater commit time.
+  - For a given replication slot, the LSN of a `COMMIT` record of an earlier transaction will be strictly lower than the LSN of the `COMMIT` record of a later transaction.
 
 - **Determinism** 
 
