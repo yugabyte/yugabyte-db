@@ -55,7 +55,8 @@ public class WaitForReplicationDrain extends XClusterConfigTaskBase {
     if (!Set.of(ConfigType.Txn, ConfigType.Db).contains(xClusterConfig.getType())) {
       throw new IllegalArgumentException(
           String.format(
-              "WaitForReplicationDrain only works for Txn xCluster; the current type is %s",
+              "WaitForReplicationDrain only works for Txn or DB scoped xCluster; the current type"
+                  + " is %s",
               xClusterConfig.getType()));
     }
 
@@ -90,6 +91,8 @@ public class WaitForReplicationDrain extends XClusterConfigTaskBase {
                         + " XClusterConfig(%s): %s",
                     universe.getUniverseUUID(), xClusterConfig, rgInfo.errorMessage()));
           }
+
+          log.debug("Got namespace infos: {}", rgInfo.getNamespaceInfos());
 
           rgInfo.getNamespaceInfos().stream()
               .filter(i -> xClusterConfig.getDbIds().contains(i.getNamespaceId()))

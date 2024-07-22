@@ -5485,9 +5485,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     createDeleteReplicationTask(xClusterConfig, forceDelete)
         .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
     if (xClusterConfig.getType() == ConfigType.Db) {
-      // TODO: add forceDelete.
-      createDeleteReplicationOnSourceTask(xClusterConfig)
-          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
+      // If it's in the middle of a repair, there's no replication on source.
+      if (!(xClusterConfig.isUsedForDr() && xClusterConfig.getDrConfig().isHalted())) {
+        // TODO: add forceDelete.
+        createDeleteReplicationOnSourceTask(xClusterConfig)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
+      }
     } else {
       // Delete bootstrap IDs created by bootstrap universe subtask.
       createDeleteBootstrapIdsTask(xClusterConfig, xClusterConfig.getTableIds(), forceDelete)
