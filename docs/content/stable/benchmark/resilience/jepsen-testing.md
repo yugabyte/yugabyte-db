@@ -15,9 +15,9 @@ type: docs
 This documentation page contains descriptions of Jepsen tests that YugabyteDB runs daily for each
 major release currently available, including master branch releases.
 
-# Scenarios
+## Scenarios
 
-## Bank
+### Bank
 
 This test simulates money transfer between accounts; it uses a table of form T`(id int PRIMARY KEY,
 balance bigint)`. The workload performs transactional transfers between accounts - `(UPDATE T
@@ -34,7 +34,7 @@ UPDATE T SET balance = balance - x WHERE id = ?;
 COMMIT;
 ```
 
-## Bank-contention (YSQL)
+### Bank-contention (YSQL)
 
 In addition to UPDATE transactions, there are also INSERT or INSERT/DELETE transactions, all
 operating under the assumption that the overall `SUM(balance)` must remain consistent. To avoid
@@ -65,7 +65,7 @@ DELETE FROM T WHERE id = ?;
 COMMIT;
 ```
 
-## Counter
+### Counter
 
 This test uses a table T`(id int PRIMARY KEY, count int)` with a single row, with the workload
 consisting of concurrent increments `(UPDATE T SET count = count + ? WHERE id = 0)` and reads. At
@@ -77,7 +77,7 @@ The test utilizes the int column type for YSQL and counter type for YCQL.
 
 ![Load Phase Results](/images/benchmark/jepsen/jepsen-3-counter.png)
 
-## Set
+### Set
 
 This scenario uses a table with T`(id int PRIMARY KEY, val int, grp int)`. Concurrently, values are
 inserted into this table while simultaneously reading the entire table. Once an insert operation
@@ -93,7 +93,7 @@ INSERT INTO T (id, val, grp) VALUES (?, ?, ?);
 SELECT val FROM T where id = 0;
 ```
 
-## Long fork
+### Long fork
 
 The long-fork test uses a table T`(key int PRIMARY KEY, key2 int, val int)`, where individual
 workers
@@ -105,7 +105,7 @@ To read more about the long-fork test see here.
 
 ![Load Phase Results](/images/benchmark/jepsen/jepsen-5-long-fork.png)
 
-## Default value
+### Default value
 
 This scenario entails concurrent Data Definition Language (DDL) and Data Manipulation Language (DML)
 operations, simulating a migration scenario. Here, the user adds a `DEFAULT 0` column, ensuring that
@@ -113,7 +113,7 @@ it is actually zero and not null when performing inserts and reads.
 
 ![Load Phase Results](/images/benchmark/jepsen/jepsen-6-default-value.png)
 
-## Single Key ACID
+### Single Key ACID
 
 The test uses a table T`(id int PRIMARY KEY, val int)` with a fixed number of rows, each row having
 several worker threads assigned to it. Each worker can either read the row, update the row, or
@@ -123,7 +123,7 @@ history is linearizable - i.e. that reads observe previous writes and writes don
 
 ![Load Phase Results](/images/benchmark/jepsen/jepsen-7-single-key-acid.png)
 
-## Multi Key ACID
+### Multi Key ACID
 
 Similar to the single-key ACID test, but uses a composite primary key T`(k1 int, k2 int, val int,
 PRIMARY KEY (k1, k2))` and UPSERTs (for YSQL it is `INSERT .. ON CONFLICT DO UPDATE SET`) instead of
@@ -134,7 +134,7 @@ INSERT INTO T VALUES (k1, k2, val) ON CONFLICT DO UPDATE SET val = ?;
 SELECT k1, value FROM T where k2 = ? and k1 = ?;
 ```
 
-## Append
+### Append
 
 In addition to a usual integer primary key, the table schema for this test uses a few text columns
 that hold comma-separated integers. Workers perform small transactions - a mix of concatenated
@@ -154,7 +154,7 @@ currently supported in YugabyteDB.
 
 ![Load Phase Results](/images/benchmark/jepsen/jepsen-8-append.png)
 
-# Nemesis
+## Nemesis
 
 In our daily testing, an [LXC configuration](https://linuxcontainers.org/lxc/introduction/) is used
 with a 5-node setup. The original nemesis list
@@ -165,23 +165,23 @@ stress framework.
 
 The complete nemeses list includes:
 
-## Software Clock Skew
+### Software Clock Skew
 
 YugabyteDB has special Gflag options that can utilize software clock skew. This nemesis assigns
 random clock skew values to each tserver or master process in scenarios where process restart is
 used.
 
-## Restart of yb-master or yb-tserver process
+### Restart of yb-master or yb-tserver process
 
 Nemesis uses the ps utility to identify master or tserver processes and then use the `kill -9` command
 to forcefully stop and restart them.
 
-## Pause of yb-master or yb-tserver process
+### Pause of yb-master or yb-tserver process
 
 Instead of killing the process, a STOP signal is sent to it, which may lead to tricky behavior
 between node interactions using the same `kill` utility as before.
 
-## Network Partitioning
+### Network Partitioning
 
 This nemesis uses the `iptables` utility to drop connectivity between testing nodes.
 
@@ -194,7 +194,7 @@ iptables -F -w
 iptables -X -w
 ```
 
-## Combination of Kill, Partition, and Pause Nemeses
+### Combination of Kill, Partition, and Pause Nemeses
 
 Here is an example of how it works in combination during the test. Notice that there is some space
 for no nemesis so the test can execute and achieve some successful operations. The test fails if an
@@ -202,7 +202,7 @@ additional check shows that the number of write or read operations is zero.
 
 ![Load Phase Results](/images/benchmark/jepsen/jepsen-9-nemesis-combine.png)
 
-# Known issues
+## Known issues
 
 All issues related to Jepsen are tracked in our GitHub
 issues [here](https://github.com/yugabyte/yugabyte-db/issues/10052), latest info can be found there.
