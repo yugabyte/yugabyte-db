@@ -11,43 +11,68 @@ menu:
 type: docs
 ---
 
-## Status of the deployed connector
+## Catalog Objects & Views
 
-You can use the rest APIs to monitor your deployed connectors. The following operations are available:
+### pg_publication
 
-* List all connectors
+Contains all publication objects contained in the database.
 
-   ```sh
-   curl -X GET localhost:8083/connectors/
-   ```
+| Column name  | Data type | Description |
+| :----- | :----- | :----- |
+| oid | oid | Row identifier |
+| pubname | name | Name of the publication |
+| pubowner | oid | OID of the owner. |
+| puballtables | bool | If true, this publication includes all tables in the database including those added in the future. |
+| pubinsert | bool | If true, INSERT operations are replicated for tables in the publication. |
+| pubupdate | bool | If true, UPDATE operations are replicated for tables in the publication. |
+| pubdelete | bool | If true, DELETE operations are replicated for tables in the publication. |
+| pubtruncate | bool | If true, TRUNCATE operations are replicated for tables in the publication. |
 
-* Get a connector's configuration
 
-   ```sh
-   curl -X GET localhost:8083/connectors/<connector-name>
-   ```
+### pg_publication_rel
 
-* Get the status of all tasks with their configuration
+Contains mapping between publications and tables. This is a many to many mapping.
 
-   ```sh
-   curl -X GET localhost:8083/connectors/<connector-name>/tasks
-   ```
+| Column name | Data type | Description |
+| :----- | :----- | :----- |
+| oid | oid | Row identifier |
+| prpubid | oid | OID of the publication. References pg_publication.oid |
+| prrelid| oid  | OID of the relation. References pg_class.oid |
 
-* Get the status of the specified task
 
-   ```sh
-   curl -X GET localhost:8083/connectors/<connector-name>/tasks/<task-id>
-   ```
+### pg_publication_tables
 
-* Get the connector's status, and the status of its tasks
+Contains mapping between publications and tables. It is a wrapper over `pg_publication_rel` as it expands the publications defined as FOR ALL TABLES, so for such publications there will be a row for each eligible table.
 
-   ```sh
-   curl -X GET localhost:8083/connectors/<connector-name>/status
-   ```
+| Column name | Data type | Description |
+| :----- | :----- | :----- |
+| pubname | name | Name of publication |
+| schemaname | name | Name of schema containing table |
+| tablename | name | Name of table |
 
-## Metrics
 
-### CDC Service metrics
+### pg_replication_slots
+
+Provides a list of all replication slots that currently exist on the database cluster, along with their metadata.
+
+| Column name | Data type | Description |
+| :----- | :----- | :----- |
+| slot_name | name | Name of the replication slot |
+| plugin | name | Output plugin name (Always `yboutput`) |
+| slot_type | text | Always logical |
+| datoid | oid | The OID of the database this slot is associated with. |
+| database | text | The name of the database this slot is associated with. |
+| temporary | boolean | True if this is a temporary replication slot. Temporary slots are automatically dropped on error or when the session has finished. |
+| active | boolean | True if this slot is currently actively being used. In YSQL, an "active" replication slot means a slot which has been consumed at least once in a certain timeframe. We will define this timeframe via a GFlag `ysql_replication_slot_activity_threshold` with a default value of 5 minutes. |
+| active_pid | integer | The process ID of the session using this slot if the slot is currently actively being used. `NULL` if no replication process is ongoing. |
+| xmin | xid | The oldest transaction that this slot needs the database to retain. |
+| catalog_xmin | xid | Not applicable for YSQL. Always set to xmin. |
+| restart_lsn | pg_lsn | The LSN of the oldest change record which still might be required by the consumer of this slot and thus won't be automatically removed during checkpoints. |
+| confirmed_flush_lsn | pg_lsn | The LSN up to which the logical slot's consumer has confirmed receiving data. Data older than this is not available anymore. Transactions with commit LSN lower than the confirmed_flush_lsn are not available anymore. |
+| yb_stream_id | text | UUID of the CDC stream |
+| yb_restart_commit_ht | int8 | A uint64 representation of the commit Hybrid Time corresponding to the restart_lsn. This can be used by the client (like YugabyteDB connector) to perform a consistent snapshot (as of the consistent_point) in the case when a replication slot already exists. |   
+
+## CDC Service metrics
 
 Provide information about CDC service in YugabyteDB.
 
@@ -58,69 +83,8 @@ Provide information about CDC service in YugabyteDB.
 | cdcsdk_event_lag_micros | `long` | The LAG metric is calculated by subtracting the timestamp of the latest record in the WAL of a tablet from the last record sent to the CDC connector. |
 | cdcsdk_expiry_time_ms | `long` | The time left to read records from WAL is tracked by the Stream Expiry Time (ms). |
 
-In addition to the built-in support for JMX metrics that Zookeeper, Kafka, and Kafka Connect provide, the Debezium YugabyteDB connector provides the following types of metrics.
+## Connector metrics
 
-### Snapshot metrics
+<!-- TODO (Siddharth): Fix link to connector metrics section -->
 
-The **MBean** is `debezium.postgres:type=connector-metrics,context=snapshot,server=<topic.prefix>`.
-
-Snapshot metrics are not exposed unless a snapshot operation is active, or if a snapshot has occurred since the last connector start.
-
-The following table lists the shapshot metrics that are available.
-
-| Attributes | Type | Description |
-| :--------- | :--- | :---------- |
-| `LastEvent` | string | The last snapshot event that the connector has read. |
-| `MilliSecondsSinceLastEvent` | long | The number of milliseconds since the connector has read and processed the most recent event. |
-| `TotalNumberOfEventsSeen` | long | The total number of events that this connector has seen since last started or reset. |
-| `NumberOfEventsFiltered` | long | The number of events that have been filtered by include/exclude list filtering rules configured on the connector. |
-| `CapturedTables` | string[] | The list of tables that are captured by the connector. |
-| `QueueTotalCapacity` | int | The length the queue used to pass events between the snapshotter and the main Kafka Connect loop. |
-| `QueueRemainingCapacity` | int | The free capacity of the queue used to pass events between the snapshotter and the main Kafka Connect loop. |
-| `TotalTableCount` | int | The total number of tables that are being included in the snapshot. |
-| `RemainingTableCount` | int | The number of tables that the snapshot has yet to copy. |
-| `SnapshotRunning` | boolean | Whether the snapshot was started. |
-| `SnapshotPaused` | boolean | Whether the snapshot was paused. |
-| `SnapshotAborted` | boolean | Whether the snapshot was aborted. |
-| `SnapshotCompleted` | boolean | Whether the snapshot completed. |
-| `SnapshotDurationInSeconds` | long | The total number of seconds that the snapshot has taken so far, even if not complete. Includes also time when snapshot was paused. |
-| `SnapshotPausedDurationInSeconds` | long | The total number of seconds that the snapshot was paused. If the snapshot was paused several times, the paused time adds up. |
-| `RowsScanned` | Map<String, Long> | Map containing the number of rows scanned for each table in the snapshot. Tables are incrementally added to the Map during processing. Updates every 10,000 rows scanned and upon completing a table. |
-| `MaxQueueSizeInBytes` | long | The maximum buffer of the queue in bytes. This metric is available if `max.queue.size.in.bytes` is set to a positive long value. |
-| `CurrentQueueSizeInBytes` | long | The current volume, in bytes, of records in the queue. |
-
-The connector also provides the following additional snapshot metrics when an incremental snapshot is executed:
-
-| Attributes | Type | Description |
-| :--------- | :--- | :---------- |
-| `ChunkId` | string | The identifier of the current snapshot chunk. |
-| `ChunkFrom` | string | The lower bound of the primary key set defining the current chunk. |
-| `ChunkTo` | string | The upper bound of the primary key set defining the current chunk. |
-| `TableFrom` | string | The lower bound of the primary key set of the currently snapshotted table. |
-| `TableTo` | string | The upper bound of the primary key set of the currently snapshotted table. |
-
-### Streaming metrics
-
-The **MBean** is `debezium.postgres:type=connector-metrics,context=streaming,server=<topic.prefix>`.
-
-The following table lists the streaming metrics that are available.
-
-| Attributes | Type | Description |
-| :--------- | :--- | :---------- |
-| `LastEvent` | string | The last streaming event that the connector has read. |
-| `MilliSecondsSinceLastEvent` | long | The number of milliseconds since the connector has read and processed the most recent event. |
-| `TotalNumberOfEventsSeen` | long | The total number of events that this connector has seen since the last start or metrics reset. |
-| `TotalNumberOfCreateEventsSeen` | long | The total number of create events that this connector has seen since the last start or metrics reset. |
-| `TotalNumberOfUpdateEventsSeen` | long | The total number of update events that this connector has seen since the last start or metrics reset. |
-| `TotalNumberOfDeleteEventsSeen` | long | The total number of delete events that this connector has seen since the last start or metrics reset. |
-| `NumberOfEventsFiltered` | long | The number of events that have been filtered by include/exclude list filtering rules configured on the connector. |
-| `CapturedTables` | string[] | The list of tables that are captured by the connector. |
-| `QueueTotalCapacity` | int | The length the queue used to pass events between the streamer and the main Kafka Connect loop. |
-| `QueueRemainingCapacity` | int | The free capacity of the queue used to pass events between the streamer and the main Kafka Connect loop. |
-| `Connected` | boolean | Flag that denotes whether the connector is currently connected to the database server. |
-| `MilliSecondsBehindSource` | long | The number of milliseconds between the last change event’s timestamp and the connector processing it. The values will incoporate any differences between the clocks on the machines where the database server and the connector are running. |
-| `NumberOfCommittedTransactions` | long | The number of processed transactions that were committed. |
-| `SourceEventPosition` | Map<String, String> | The coordinates of the last received event. |
-| `LastTransactionId` | string | Transaction identifier of the last processed transaction. |
-| `MaxQueueSizeInBytes` | long | The maximum buffer of the queue in bytes. This metric is available if `max.queue.size.in.bytes` is set to a positive long value. |
-| `CurrentQueueSizeInBytes` | long | The current volume, in bytes, of records in the queue. |
+Refer to the [monitoring section](../yugabytedb-connector#monitoring) of YugabyteDB connector for connector metrics.
