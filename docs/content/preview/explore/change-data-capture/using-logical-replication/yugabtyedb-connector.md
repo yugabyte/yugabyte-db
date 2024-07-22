@@ -1473,7 +1473,6 @@ The following advanced configuration properties have defaults that work in most 
 | converters | No default | Enumerates a comma-separated list of the symbolic names of the custom converter instances that the connector can use. For example,<br/><br/>```isbn```<br/><br/>You must set the converters property to enable the connector to use a custom converter.<br/>For each converter that you configure for a connector, you must also add a .type property, which specifies the fully-qualified name of the class that implements the converter interface. The `.type` property uses the following format:<br/>`<converterSymbolicName>.type`<br/>For example,<br/><br/>```isbn.type: io.debezium.test.IsbnConverter```<br/><br/>If you want to further control the behavior of a configured converter, you can add one or more configuration parameters to pass values to the converter. To associate any additional configuration parameter with a converter, prefix the parameter names with the symbolic name of the converter.<br/>For example,<br/><br/>```isbn.schema.name: io.debezium.YugabyteDB.type.Isbn``` |
 | snapshot.mode | `initial` | Specifies the criteria for performing a snapshot when the connector starts:<br/><br/>`initial` - The connector performs a snapshot only when no offsets have been recorded for the logical server name.<br/><br/>`never` - The connector never performs snapshots. When a connector is configured this way, its behavior when it starts is as follows. If there is a previously stored LSN in the Kafka offsets topic, the connector continues streaming changes from that position. If no LSN has been stored, the connector starts streaming changes from the point in time when the YugabyteDB logical replication slot was created on the server. The never snapshot mode is useful only when you know all data of interest is still reflected in the WAL.<br/><br/>`initial_only` - The connector performs an initial snapshot and then stops, without processing any subsequent changes. |
 | snapshot.include.collection.list | All tables included in `table.include.list` | An optional, comma-separated list of regular expressions that match the fully-qualified names (`<schemaName>.<tableName>`) of the tables to include in a snapshot. The specified items must be named in the connector’s `table.include.list` property. This property takes effect only if the connector’s `snapshot.mode` property is set to a value other than `never`.<br/>This property does not affect the behavior of incremental snapshots.<br/>To match the name of a table, Debezium applies the regular expression that you specify as an *anchored* regular expression. That is, the specified expression is matched against the entire name string of the table; it does not match substrings that might be present in a table name. |
-| snapshot.lock.timeout.ms | 10000 | Positive integer value that specifies the maximum amount of time (in milliseconds) to wait to obtain table locks when performing a snapshot. If the connector cannot acquire table locks in this time interval, the snapshot fails. [How the connector performs snapshots](#reminder) provides details. |
 | event.processing.failure.handling.mode | fail | Specifies how the connector should react to exceptions during processing of events:<br/><br/>`fail` propagates the exception, indicates the offset of the problematic event, and causes the connector to stop.<br/><br/>`warn` logs the offset of the problematic event, skips that event, and continues processing.<br/><br/>`skip` skips the problematic event and continues processing. |
 | max.batch.size | 2048 | Positive integer value that specifies the maximum size of each batch of events that the connector processes. |
 | max.queue.size | 8192 | Positive integer value that specifies the maximum number of records that the blocking queue can hold. When Debezium reads events streamed from the database, it places the events in the blocking queue before it writes them to Kafka. The blocking queue can provide backpressure for reading change events from the database in cases where the connector ingests messages faster than it can write them to Kafka, or when Kafka becomes unavailable. Events that are held in the queue are disregarded when the connector periodically records offsets. Always set the value of `max.queue.size` to be larger than the value of `max.batch.size`. |
@@ -1493,9 +1492,6 @@ The following advanced configuration properties have defaults that work in most 
 | flush.lsn.source | true | Determines whether the connector should commit the LSN of the processed records in the source postgres database so that the WAL logs can be deleted. Specify `false` if you don’t want the connector to do this. Please note that if set to `false` LSN will not be acknowledged by Debezium and as a result WAL logs will not be cleared which might result in disk space issues. User is expected to handle the acknowledgement of LSN outside Debezium. |
 | retriable.restart.connector.wait.ms | 10000 (10 seconds) | The number of milliseconds to wait before restarting a connector after a retriable error occurs. |
 | skipped.operations | t | A comma-separated list of operation types that will be skipped during streaming. The operations include: `c` for inserts/create, `u` for updates, `d` for deletes, `t` for truncates, and `none` to not skip any operations. By default, truncate operations are skipped. |
-| signal.data.collection | No default value | Fully-qualified name of the data collection that is used to send signals to the connector. Use the following format to specify the collection name:<br/>```<schemaName>.<tableName>``` |
-| signal.enabled.channels | source | List of the signaling channel names that are enabled for the connector. By default, the following channels are available:<br/><ul><li>source</li><li>kafka</li><li>file</li><li>jmx Optionally, you can also implement a [custom signaling channel](https://debezium.io/documentation/reference/2.5/configuration/signalling.html#debezium-signaling-enabling-custom-signaling-channel).</li></ul> |
-| notification.enabled.channels | No default | List of notification channel names that are enabled for the connector. By default, the following channels are available:<br/><ul><li>sink</li><li>log</li><li>jmx Optionally, you can also implement a custom notification channel.</li></ul> |
 | xmin.fetch.interval.ms | 0 | How often, in milliseconds, the XMIN will be read from the replication slot. The XMIN value provides the lower bounds of where a new replication slot could start from. The default value of `0` disables tracking XMIN tracking. |
 | topic.naming.strategy | `io.debezium.schema.SchemaTopicNamingStrategy` | The name of the TopicNamingStrategy class that should be used to determine the topic name for data change, schema change, transaction, heartbeat event etc., defaults to `SchemaTopicNamingStrategy`. |
 | topic.delimiter | `.` | Specify the delimiter for topic name, defaults to `.`. |
@@ -1511,34 +1507,6 @@ The following advanced configuration properties have defaults that work in most 
 The connector also supports pass-through configuration properties that are used when creating the Kafka producer and consumer.
 
 Be sure to consult the [Kafka documentation](https://kafka.apache.org/documentation.html) for all of the configuration properties for Kafka producers and consumers. The YugabyteDB connector does use the [new consumer configuration properties](https://kafka.apache.org/documentation.html#consumerconfigs).
-
-##### Debezium connector Kafka signals configuration properties
-
-Debezium provides a set of `signal.*` properties that control how the connector interacts with the Kafka signals topic.
-
-The following table describes the Kafka `signal` properties.
-
-| Property | Default value | Description |
-| :------- | :------------ | :---------- |
-| signal.kafka.topic | `<topic.prefix>-signal` | The name of the Kafka topic that the connector monitors for ad hoc signals. {{<note title="Note">}} If [automatic topic creation](https://debezium.io/documentation/reference/2.5/configuration/topic-auto-create-config.html#topic-auto-create-config) is disabled, you must manually create the required signaling topic. A signaling topic is required to preserve signal ordering. The signaling topic must have a single partition. {{< /note >}} |
-| signal.kafka.groupId | kafka-signal | The name of the group ID that is used by Kafka consumers. |
-| signal.kafka.bootstrap.servers | No default | A list of host/port pairs that the connector uses for establishing an initial connection to the Kafka cluster. Each pair references the Kafka cluster that is used by the Debezium Kafka Connect process. |
-| signal.kafka.poll.timeout.ms | 100 | An integer value that specifies the maximum number of milliseconds that the connector waits when polling signals. |
-| kafka.consumer.offset.commit.enabled | false | Enable the offset commit for the signal topic in order to guarantee At-Least-Once delivery. If disabled, only signals received when the consumer is up&running are processed. Any signals received when the consumer is down are lost. |
-
-##### Debezium connector pass-through signals Kafka consumer client configuration properties
-
-The Debezium connector provides for pass-through configuration of the signals Kafka consumer. Pass-through signals properties begin with the prefix `signals.consumer.*`. For example, the connector passes properties such as `signal.consumer.security.protocol=SSL` to the Kafka consumer.
-
-Debezium strips the prefixes from the properties before it passes the properties to the Kafka signals consumer.
-
-##### Debezium connector sink notifications configuration properties
-
-The following table describes the `notification` properties.
-
-| Property | Default value | Description |
-| :------- | :------------ | :---------- |
-| notification.sink.topic.name | No default | The name of the topic that receives notifications from Debezium. This property is required when you configure the `notification.enabled.channels` property to include sink as one of the enabled notification channels. |
 
 ## Monitoring
 
@@ -1621,8 +1589,6 @@ In the following situations, the connector fails when trying to start, reports a
 In these cases, the error message has details about the problem and possibly a suggested workaround. After you correct the configuration or address the YugabyteDB problem, restart the connector.
 
 ### tserver node becomes unavailable
-
-<!-- todo Vaibhav: what will be the behavior of the connector when tserver goes down. talk about the resiliency in terms of smart driver -->
 
 When the connector is running, the tserver that it is connected to could become unavailable for any number of reasons. If this happens, the connector fails with an error and retries to connect to the YugabyteDB server. Since the connector uses [YugabyteDB Java driver](#reminder), the connection is handled internally and the connector restores the connection to another running node.
 
