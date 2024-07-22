@@ -477,7 +477,7 @@ InitApiConfigurations(char *prefix)
 		gettext_noop(
 			"Simulates a database recovery state and throws an error for read-write operations."),
 		NULL, &SimulateRecoveryState, DEFAULT_SIMULATE_RECOVERY_STATE,
-		PGC_USERSET, GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE, NULL, NULL, NULL);
+		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	/* Added variable for testing cursor continuations */
 	DefineCustomIntVariable(

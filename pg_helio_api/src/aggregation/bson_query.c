@@ -95,7 +95,7 @@ TraverseQueryDocumentAndProcess(bson_iter_t *queryDocument, void *context,
 			if (!BSON_ITER_HOLDS_ARRAY(queryDocument) ||
 				!bson_iter_recurse(queryDocument, &andIterator))
 			{
-				ereport(ERROR, (errmsg(
+				ereport(ERROR, (errcode(MongoBadValue), errmsg(
 									"Could not iterate through query document $and.")));
 			}
 
@@ -105,7 +105,7 @@ TraverseQueryDocumentAndProcess(bson_iter_t *queryDocument, void *context,
 				if (!BSON_ITER_HOLDS_DOCUMENT(&andIterator) ||
 					!bson_iter_recurse(&andIterator, &andElementIterator))
 				{
-					ereport(ERROR, (errmsg(
+					ereport(ERROR, (errcode(MongoBadValue), errmsg(
 										"Could not iterate through elements within $and query.")));
 				}
 
@@ -120,7 +120,7 @@ TraverseQueryDocumentAndProcess(bson_iter_t *queryDocument, void *context,
 			if (!BSON_ITER_HOLDS_ARRAY(queryDocument) ||
 				!bson_iter_recurse(queryDocument, &orIterator))
 			{
-				ereport(ERROR, (errmsg(
+				ereport(ERROR, (errcode(MongoBadValue), errmsg(
 									"Could not iterate through query document $or.")));
 			}
 

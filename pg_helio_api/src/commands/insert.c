@@ -243,8 +243,10 @@ CreateCollectionForInsert(Datum databaseNameDatum, Datum collectionNameDatum)
 
 	if (collection == NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-						errmsg("failed to create collection")));
+		ereport(ERROR, (errcode(MongoInternalError),
+						errmsg("failed to create collection"),
+						errhint(
+							"Could not get collection from cache after creating the collection")));
 	}
 
 	return collection;

@@ -37,6 +37,7 @@
 #include <utils/builtins.h>
 #include <utils/lsyscache.h>
 #include <parser/parse_relation.h>
+#include <access/xact.h>
 
 #include "io/helio_bson_core.h"
 #include "metadata/metadata_cache.h"
@@ -600,6 +601,13 @@ HandleIndexStats(const bson_value_t *existingValue, Query *query,
 		ereport(ERROR, (errcode(MongoLocation40602),
 						errmsg(
 							"$indexStats is only valid as the first stage in the pipeline.")));
+	}
+
+	bool isTopLevel = true;
+	if (IsInTransactionBlock(isTopLevel))
+	{
+		ereport(ERROR, (errcode(MongoOperationNotSupportedInTransaction),
+						errmsg("$indexStats cannot be used in a transaction")));
 	}
 
 	Const *databaseConst = makeConst(TEXTOID, -1, InvalidOid, -1,
