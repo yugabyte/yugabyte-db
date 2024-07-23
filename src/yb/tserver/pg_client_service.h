@@ -17,12 +17,16 @@
 #include <future>
 #include <memory>
 #include <optional>
+#include <string>
+#include <unordered_map>
 
 #include "yb/client/client_fwd.h"
 
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/rpc/rpc_fwd.h"
+
+#include "yb/server/server_base_options.h"
 
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/pg_client.service.h"
@@ -113,6 +117,48 @@ class PgClientServiceImpl : public PgClientServiceIf {
   class Impl;
 
   std::unique_ptr<Impl> impl_;
+};
+
+#define YB_PG_CLIENT_MOCKABLE_METHODS \
+    (Perform) \
+    YB_PG_CLIENT_METHODS \
+    /**/
+
+// PgClientServiceMockImpl implements the PgClientService interface to allow for mocking of tserver
+// responses in MiniCluster tests. This implementation defaults to forwarding calls to
+// PgClientServiceImpl if a suitable mock is not available. Usage of this implementation can be
+// toggled via the test tserver gflag 'FLAGS_TEST_enable_pg_client_mock'.
+class PgClientServiceMockImpl : public PgClientServiceIf {
+ public:
+  using Functor = std::function<Status(const void*, void*, rpc::RpcContext*)>;
+  using SharedFunctor = std::shared_ptr<Functor>;
+
+  PgClientServiceMockImpl(const scoped_refptr<MetricEntity>& entity, PgClientServiceIf* impl);
+
+  class Handle {
+    explicit Handle(SharedFunctor&& mock) : mock_(std::move(mock)) {}
+    SharedFunctor mock_;
+
+    friend class PgClientServiceMockImpl;
+  };
+
+#define YB_PG_CLIENT_MOCK_METHOD_SETTER_DECLARE(r, data, method) \
+  [[nodiscard]] Handle BOOST_PP_CAT(Mock, method)( \
+      const std::function<Status( \
+          const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)*, \
+          BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)*, rpc::RpcContext*)>& mock);
+
+  BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DECLARE, ~, YB_PG_CLIENT_MOCKABLE_METHODS);
+  BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_MOCK_METHOD_SETTER_DECLARE, ~, YB_PG_CLIENT_MOCKABLE_METHODS);
+
+ private:
+  PgClientServiceIf* impl_;
+  std::unordered_map<std::string, SharedFunctor::weak_type> mocks_;
+  rw_spinlock mutex_;
+
+  Result<bool> DispatchMock(
+      const std::string& method, const void* req, void* resp, rpc::RpcContext* context);
+  Handle SetMock(const std::string& method, SharedFunctor&& mock);
 };
 
 }  // namespace tserver

@@ -241,6 +241,8 @@ DEFINE_RUNTIME_int32(check_pg_object_id_allocators_interval_secs, 3600 * 3,
     "Interval at which the TS check pg object id allocators for dropped databases.");
 TAG_FLAG(check_pg_object_id_allocators_interval_secs, advanced);
 
+DEFINE_test_flag(bool, enable_pg_client_mock, false, "Enable mocking of PgClient service in tests");
+
 namespace yb {
 namespace tserver {
 
@@ -635,13 +637,24 @@ Status TabletServer::RegisterServices() {
     remote_bootstrap_service.get();
   RETURN_NOT_OK(RegisterService(
       FLAGS_ts_remote_bootstrap_svc_queue_length, std::move(remote_bootstrap_service)));
-  auto pg_client_service = std::make_shared<PgClientServiceImpl>(
+
+  auto pg_client_service_holder = std::make_shared<PgClientServiceHolder>(
       *this, tablet_manager_->client_future(), clock(),
       std::bind(&TabletServer::TransactionPool, this), mem_tracker(), metric_entity(),
       &messenger()->scheduler(), xcluster_context_.get(), &pg_node_level_mutation_counter_);
-  pg_client_service_ = pg_client_service;
-  LOG(INFO) << "yb::tserver::PgClientServiceImpl created at " << pg_client_service.get();
-  RETURN_NOT_OK(RegisterService(FLAGS_pg_client_svc_queue_length, std::move(pg_client_service)));
+  PgClientServiceIf* pg_client_service_if = &pg_client_service_holder->impl;
+  LOG(INFO) << "yb::tserver::PgClientServiceImpl created at " << pg_client_service_if;
+
+  if (PREDICT_FALSE(FLAGS_TEST_enable_pg_client_mock)) {
+    pg_client_service_holder->mock.emplace(metric_entity(), pg_client_service_if);
+    pg_client_service_if = &pg_client_service_holder->mock.value();
+    LOG(INFO) << "Mock created for yb::tserver::PgClientServiceImpl";
+  }
+
+  pg_client_service_ = pg_client_service_holder;
+  RETURN_NOT_OK(RegisterService(
+      FLAGS_pg_client_svc_queue_length, std::shared_ptr<PgClientServiceIf>(
+          std::move(pg_client_service_holder), pg_client_service_if)));
 
   if (FLAGS_TEST_echo_service_enabled) {
     auto test_echo_service = std::make_unique<stateful_service::TestEchoService>(
@@ -1182,7 +1195,7 @@ void TabletServer::InvalidatePgTableCache() {
   auto pg_client_service = pg_client_service_.lock();
   if (pg_client_service) {
     LOG(INFO) << "Invalidating the entire PgTableCache cache since catalog version incremented";
-    pg_client_service->InvalidateTableCache();
+    pg_client_service->impl.InvalidateTableCache();
   }
 }
 
@@ -1412,7 +1425,7 @@ void TabletServer::ScheduleCheckObjectIdAllocators() {
         if (db_oids.ok()) {
           auto pg_client_service = pg_client_service_.lock();
           if (pg_client_service) {
-            pg_client_service->CheckObjectIdAllocators(*db_oids);
+            pg_client_service->impl.CheckObjectIdAllocators(*db_oids);
           } else {
             LOG(WARNING) << "Could not call CheckObjectIdAllocators";
           }

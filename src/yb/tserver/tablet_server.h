@@ -54,6 +54,7 @@
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/server/webserver_options.h"
 #include "yb/tserver/db_server_base.h"
+#include "yb/tserver/pg_client_service.h"
 #include "yb/tserver/pg_mutation_counter.h"
 #include "yb/tserver/remote_bootstrap_service.h"
 #include "yb/tserver/tserver_shared_mem.h"
@@ -305,7 +306,13 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::string GetCertificateDetails() override;
 
   PgClientServiceImpl* TEST_GetPgClientService() {
-    return pg_client_service_.lock().get();
+    auto holder = pg_client_service_.lock();
+    return holder ? &holder->impl : nullptr;
+  }
+
+  PgClientServiceMockImpl* TEST_GetPgClientServiceMock() {
+    auto holder = pg_client_service_.lock();
+    return holder && holder->mock.has_value() ? &holder->mock.value() : nullptr;
   }
 
   RemoteBootstrapServiceImpl* GetRemoteBootstrapService() {
@@ -320,6 +327,14 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   }
 
   std::shared_ptr<cdc::CDCServiceImpl> GetCDCService() const { return cdc_service_; }
+
+  struct PgClientServiceHolder {
+    template<class... Args>
+    explicit PgClientServiceHolder(Args&&... args) : impl(std::forward<Args>(args)...) {}
+
+    PgClientServiceImpl impl;
+    std::optional<PgClientServiceMockImpl> mock;
+  };
 
  protected:
   virtual Status RegisterServices();
@@ -420,7 +435,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   // An instance to pg client service. This pointer is no longer valid after RpcAndWebServerBase
   // is shut down.
-  std::weak_ptr<PgClientServiceImpl> pg_client_service_;
+  std::weak_ptr<PgClientServiceHolder> pg_client_service_;
 
  private:
   // Auto initialize some of the service flags that are defaulted to -1.
