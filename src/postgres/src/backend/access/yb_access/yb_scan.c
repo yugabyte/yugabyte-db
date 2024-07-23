@@ -4069,7 +4069,6 @@ yb_init_partition_key_data(void *data)
 	ConditionVariableInit(&ppk->cv_empty);
 	ppk->database_oid = InvalidOid;
 	ppk->table_relfilenode_oid = InvalidOid;
-	ppk->used_ht_for_read = 0;
 	ppk->fetch_status = FETCH_STATUS_IDLE;
 	ppk->low_offset = 0;
 	ppk->high_offset = 0;
@@ -4356,7 +4355,6 @@ yb_fetch_partition_keys(YBParallelPartitionKeys ppk)
 		ppk->is_forward ? 0 : latest_key_size /* upper_bound_key_size */,
 		max_num_ranges,  yb_parallel_range_size, ppk->is_forward,
 		(ppk->key_data_capacity / 3) - sizeof(keylen_t) /* max_key_length */,
-		NULL /* current_tserver_ht */,
 		ppk_buffer_fetch_callback, &fkp));
 	SpinLockAcquire(&ppk->mutex);
 	/* Update fetch status */
@@ -4423,30 +4421,24 @@ ybParallelPrepare(YBParallelPartitionKeys ppk, Relation relation,
 	 * disclose if DSM is initialized for main process or for the background
 	 * worker. However, it is still guaranteed that background workers do not
 	 * start until main worker DSM initialization is completed.
-	 * Hence we always call ybParallelPrepare and use table_oid as indicator:
-	 * if table_relfilenode_oid is valid, it is a background worker and no
-	 * initialization is needed.
+	 * Hence we always call ybParallelPrepare and use table_relfilenode_oid as
+	 * an indicator: if table_relfilenode_oid is valid, it is a background
+	 * worker and no initialization is needed.
 	 * The table_relfilenode_oid is never changed once initialized,
 	 * so spinlock is not required to check it. The rest of the code still
 	 * has the YBParallelPartitionKeys structure exclusively.
 	 */
-	if (ppk->table_relfilenode_oid == InvalidOid)
-	{
-		/* We expect frershly initialized parallel state */
-		Assert(ppk->fetch_status == FETCH_STATUS_IDLE);
-		Assert(ppk->low_offset == 0);
-		Assert(ppk->high_offset == 0);
-		Assert(ppk->key_count == 0);
-		ppk->database_oid = YBCGetDatabaseOid(relation);
-		ppk->table_relfilenode_oid = YbGetRelfileNodeId(relation);
-		ppk->is_forward = is_forward;
-		ppk->used_ht_for_read = *exec_params->stmt_in_txn_limit_ht_for_reads;
-	}
-	else
-	{
-		*exec_params->stmt_in_txn_limit_ht_for_reads = ppk->used_ht_for_read;
+	if (OidIsValid(ppk->table_relfilenode_oid))
 		return;
-	}
+
+	/* We expect freshly initialized parallel state */
+	Assert(ppk->fetch_status == FETCH_STATUS_IDLE);
+	Assert(ppk->low_offset == 0);
+	Assert(ppk->high_offset == 0);
+	Assert(ppk->key_count == 0);
+	ppk->database_oid = YBCGetDatabaseOid(relation);
+	ppk->table_relfilenode_oid = YbGetRelfileNodeId(relation);
+	ppk->is_forward = is_forward;
 	/*
 	 * Put empty key as the first to be taken.
 	 * Empty key means lower bound unchanged, so if original request has
@@ -4465,14 +4457,10 @@ ybParallelPrepare(YBParallelPartitionKeys ppk, Relation relation,
 		YB_PARTITION_KEYS_DEFAULT_FETCH_SIZE,
 		yb_parallel_range_size, is_forward,
 		(ppk->key_data_capacity / 3) - sizeof(keylen_t),
-		ppk->used_ht_for_read ? NULL : &ppk->used_ht_for_read,
 		ppk_buffer_initialize_callback, ppk));
 	/* Update fetch status, unless updated by the callback */
 	if (ppk->fetch_status == FETCH_STATUS_WORKING)
 		ppk->fetch_status = FETCH_STATUS_IDLE;
-	/* Key ranges fetch might set new read time, update the local value */
-	if (*exec_params->stmt_in_txn_limit_ht_for_reads == 0)
-		*exec_params->stmt_in_txn_limit_ht_for_reads = ppk->used_ht_for_read;
 }
 
 typedef enum YbNextRangeResult

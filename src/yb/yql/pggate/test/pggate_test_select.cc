@@ -373,17 +373,13 @@ Result<size_t> TestGetTableKeyRanges(
                         << " range_size_bytes: " << range_size_bytes
                         << " max_key_length: " << max_key_length << " is_forward: " << is_forward;
 
-    uint64_t current_tserver_ht = 0;
     /* Request server HT on the first call for the key ranges */
     end_keys.clear();
     CHECK_YBC_STATUS(YBCGetTableKeyRanges(
         database_oid, table_oid, lower_bound_key.cdata(), lower_bound_key.size(),
         upper_bound_key.cdata(), upper_bound_key.size(), std::numeric_limits<uint64_t>::max(),
-        range_size_bytes, is_forward, max_key_length, &current_tserver_ht,
-        &InvokeFunctionWithKeyPtrAndSize, &func));
+        range_size_bytes, is_forward, max_key_length, &InvokeFunctionWithKeyPtrAndSize, &func));
     LOG(INFO) << "Got " << end_keys.size() << " ranges";
-    LOG(INFO) << "current tserver HT: " << HybridTime(current_tserver_ht).ToString();
-    SCHECK_GT(current_tserver_ht, 0, InternalError, "No tserver hybrid time");
 
     RETURN_NOT_OK(CheckRanges(end_keys, is_forward));
 
@@ -408,8 +404,7 @@ Result<size_t> TestGetTableKeyRanges(
           database_oid, table_oid, is_forward ? bound.data() : nullptr,
           is_forward ? bound.size() : 0, is_forward ? nullptr : bound.data(),
           is_forward ? 0 : bound.size(), num_ranges_limit, range_size_bytes, is_forward,
-          max_key_length, /* current_tserver_ht = */ nullptr, &InvokeFunctionWithKeyPtrAndSize,
-          &func));
+          max_key_length, &InvokeFunctionWithKeyPtrAndSize, &func));
 
       const auto size_diff = end_keys.size() - prev_size;
 

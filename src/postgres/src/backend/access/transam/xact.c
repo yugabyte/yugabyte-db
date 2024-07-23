@@ -6318,6 +6318,22 @@ void YbClearCurrentTransactionId()
 }
 
 /*
+ * YbClearParallelContexts
+ * Clean up parallel contexts as a part of transparent query restart.
+ */
+void
+YbClearParallelContexts()
+{
+	TransactionState s = CurrentTransactionState;
+	Assert(IsInParallelMode());
+	if (s->subTransactionId == InvalidSubTransactionId)
+		AtEOXact_Parallel(false);
+	else
+		AtEOSubXact_Parallel(false, s->subTransactionId);
+	ExitParallelMode();
+}
+
+/*
  * ```increment_sticky_object_count()``` is called when any database object which requires
  * stickiness is created.
  */
