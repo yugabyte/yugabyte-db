@@ -107,9 +107,7 @@ A database is the highest level of data organization and serves as a container f
 
 ### Default databases
 
-When a YugabyteDB cluster is deployed, YugabyteDB creates a set of default databases.
-
-The following table describes the default databases created by YugabyteDB when deploying a cluster.
+When a YugabyteDB cluster is deployed, YugabyteDB creates a set of default databases as described in the following table.
 
 | Database | Source | Description |
 | :--- | :--- | :--- |
