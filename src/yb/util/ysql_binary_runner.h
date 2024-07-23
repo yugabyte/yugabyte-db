@@ -42,18 +42,22 @@ class YsqlDumpRunner : public YsqlBinaryRunner {
     std::string tool_path = VERIFY_RESULT(path_utils::GetPgToolPath("ysql_dump"));
     return YsqlDumpRunner(tool_path, pg_host_port);
   }
+
   Result<std::string> DumpSchemaAsOfTime(
       const std::string& db_name, const HybridTime& restore_time);
-  // Change the database name to new_db_name inside sql_dump_script. The change happens in place.
-  std::string ModifyDBNameInScript(
-      const std::string& sql_dump_script, const std::string& new_db_name,
-      bool unset_tablespaces = true);
+
+  Result<std::string> RunAndModifyForClone(
+    const std::string& source_db_name, const std::string& target_db_name,
+    const std::string& source_owner, const std::string& target_owner,
+    const HybridTime& restore_time);
 
  private:
   YsqlDumpRunner(std::string tool_path, HostPort pg_host_port)
       : YsqlBinaryRunner(tool_path, pg_host_port) {}
-  // Utility methods used for replacing the DB name in the dump output (Used for cloning)
-  std::string Replace(std::string& src, const std::string& new_db, bool unset_tablespaces);
+
+  std::string ModifyLine(
+      const std::string& line, const std::string& new_db, const boost::regex& source_owner_re,
+      const std::string& alter_owner);
 };
 
 class YsqlshRunner : public YsqlBinaryRunner {
@@ -63,7 +67,8 @@ class YsqlshRunner : public YsqlBinaryRunner {
     return YsqlshRunner(tool_path, pg_host_port);
   }
 
-  Result<std::string> ExecuteSqlScript(const std::string& sql_script_path);
+  Result<std::string> ExecuteSqlScript(
+      const std::string& sql_script, const std::string& file_prefix);
 
  private:
   YsqlshRunner(std::string tool_path, HostPort pg_host_port)

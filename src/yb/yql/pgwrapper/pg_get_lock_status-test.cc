@@ -960,10 +960,17 @@ TEST_F(PgGetLockStatusTestRF3, TestLocksOfSingleShardWaiters) {
   ASSERT_EQ(waiter1_start_time, ASSERT_RESULT(setup_conn.FetchRow<MonoDelta>(
       "SELECT DISTINCT(waitstart) FROM pg_locks WHERE fastpath"
   )));
-  // Wait for kSingleShardWaiterRetryMs and check that the start time of the
-  // single shard waiter remains consistent.
+  // Wait for both the fast path waiters to re-enter the wait-queue post timing out after waiting
+  // for kSingleShardWaiterRetryMs. Check that the start time of fast path waiter remains the same.
+  std::atomic<int> refreshed_fastpath_waiters{0};
   yb::SyncPoint::GetInstance()->LoadDependency({
-    {"WaitQueue::Impl::SetupWaiterUnlocked:1", "TestLocksOfSingleShardWaiters"}});
+    {"ConflictResolver::OnConflictingTransactionsFound", "TestLocksOfSingleShardWaiters"}});
+  yb::SyncPoint::GetInstance()->SetCallBack(
+      "ConflictResolver::OnConflictingTransactionsFound",
+      [&](void* arg) {
+        refreshed_fastpath_waiters++;
+        while (refreshed_fastpath_waiters.load() < 2) {}
+      });
   yb::SyncPoint::GetInstance()->ClearTrace();
   yb::SyncPoint::GetInstance()->EnableProcessing();
 

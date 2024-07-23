@@ -7,7 +7,7 @@ import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
 import org.mapstruct.factory.Mappers;
 
-@Mapper
+@Mapper(config = CentralConfig.class)
 public interface UniverseThirdPartySoftwareUpgradeMapper {
   UniverseThirdPartySoftwareUpgradeMapper INSTANCE =
       Mappers.getMapper(UniverseThirdPartySoftwareUpgradeMapper.class);

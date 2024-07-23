@@ -14,8 +14,9 @@
 #include <filesystem>
 
 #include "yb/util/flags.h"
-#include "yb/util/status.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/status_log.h"
+#include "yb/util/status.h"
 #include "yb/util/test_util.h"
 
 using std::string;
@@ -34,6 +35,19 @@ DECLARE_string(vmodule);
 
 DECLARE_string(allowed_preview_flags_csv);
 DEFINE_RUNTIME_PREVIEW_bool(preview_flag, false, "preview flag");
+
+DEFINE_NON_RUNTIME_string(flagstest_secret_flag, "", "This is a secret");
+TAG_FLAG(flagstest_secret_flag, sensitive_info);
+
+const auto kBadSecretValue = "yb_rox";
+bool ValidateSecretFlag(const char* flag_name, const std::string& new_val) {
+  if (new_val == kBadSecretValue) {
+    LOG_FLAG_VALIDATION_ERROR(flag_name, new_val) << "This is no secret. Everyone knows it!";
+    return false;
+  }
+  return true;
+}
+DEFINE_validator(flagstest_secret_flag, &ValidateSecretFlag);
 
 namespace yb {
 
@@ -97,17 +111,23 @@ TEST_F(FlagsTest, TestVmodule) {
 
   // Set to invalid value
   string old_value, output_msg;
-  ASSERT_DEATH(
+  ASSERT_EQ(
       SetFlag("vmodule", "BadValue", SetFlagForce::kFalse, &old_value, &output_msg),
-      "'BadValue' is not valid");
+      SetFlagResult::BAD_VALUE);
+  ASSERT_STR_CONTAINS(output_msg, "'BadValue' is not valid");
 
-  ASSERT_DEATH(
+  ASSERT_EQ(
       SetFlag("vmodule", "files=", SetFlagForce::kFalse, &old_value, &output_msg),
-      "'files=' is not valid");
+      SetFlagResult::BAD_VALUE);
+  ASSERT_STR_CONTAINS(output_msg, "'files=' is not valid");
 
-  ASSERT_DEATH(
+  ASSERT_EQ(
       SetFlag("vmodule", "biggerThanInt=2147483648", SetFlagForce::kFalse, &old_value, &output_msg),
-      "'2147483648' is not a valid integer number");
+      SetFlagResult::BAD_VALUE);
+  ASSERT_STR_CONTAINS(
+      output_msg,
+      "Invalid logging level '2147483648' for module 'biggerThanInt'. Only integer values between "
+      "-2147483648 and 2147483647 are allowed");
 
   ASSERT_EQ(FLAGS_vmodule, expected_old);
   ASSERT_FALSE(VLOG_IS_ON(1));
@@ -218,4 +238,74 @@ TEST_F(FlagsTest, TestPreviewFlagsAllowList) {
   ASSERT_EQ(FLAGS_allowed_preview_flags_csv, "");
   expected_old_allow_list = FLAGS_allowed_preview_flags_csv;
 }
+
+TEST_F(FlagsTest, ValidateFlagValue) {
+  StringVectorSink sink;
+  ScopedRegisterSink srs(&sink);
+
+  // Test a valid value and make sure the flag is not changed.
+  ASSERT_OK(flags_internal::ValidateFlagValue("flagstest_testflag", "1"));
+  ASSERT_EQ(FLAGS_flagstest_testflag, 0);
+
+  // Test an invalid value.
+  const auto kBadValueMessage = "Must be >= 0";
+  ASSERT_NOK_STR_CONTAINS(
+      flags_internal::ValidateFlagValue("flagstest_testflag", "-1"), kBadValueMessage);
+  ASSERT_EQ(FLAGS_flagstest_testflag, 0);
+
+  // We should have logged the error to the logs as well.
+  ASSERT_STR_CONTAINS(AsString(sink.logged_msgs()), kBadValueMessage);
+
+  // Test validating a flag with tag sensitive_info.
+  const auto kSecretValue = "$secr3t#";
+  ASSERT_OK(flags_internal::ValidateFlagValue("flagstest_secret_flag", kSecretValue));
+  ASSERT_EQ(FLAGS_flagstest_secret_flag, "");
+
+  // Test an invalid value and make sure the status does not contain the secret value.
+  auto status = flags_internal::ValidateFlagValue("flagstest_secret_flag", kBadSecretValue);
+  ASSERT_NOK(status);
+  ASSERT_STR_NOT_CONTAINS(status.ToString(), kBadSecretValue);
+  ASSERT_EQ(FLAGS_flagstest_secret_flag, "");
+
+  // We should not have logged the secret values to the logs.
+  ASSERT_STR_NOT_CONTAINS(AsString(sink.logged_msgs()), kSecretValue);
+  ASSERT_STR_NOT_CONTAINS(AsString(sink.logged_msgs()), kBadSecretValue);
+
+  // Test the vmodule flag.
+  const auto kVmoduleValue = "file=1";
+  ASSERT_OK(SET_FLAG(vmodule, kVmoduleValue));
+  ASSERT_EQ(FLAGS_vmodule, kVmoduleValue);
+  ASSERT_OK(flags_internal::ValidateFlagValue("vmodule", "files=1"));
+  ASSERT_NOK(flags_internal::ValidateFlagValue("vmodule", "files="));
+  ASSERT_EQ(FLAGS_vmodule, kVmoduleValue);
+
+  // Test Preview flags.
+  // When not in allow list we should only be able to set to the default value.
+  ASSERT_OK(flags_internal::ValidateFlagValue("preview_flag", "false"));
+  constexpr auto kPreviewFlagMissingError =
+      "Flag 'preview_flag' protects a feature that is currently in preview. In order for it to be "
+      "modified, you must acknowledge the risks by adding 'preview_flag' to the flag "
+      "'allowed_preview_flags_csv'";
+  ASSERT_NOK_STR_CONTAINS(
+      flags_internal::ValidateFlagValue("preview_flag", "true"), kPreviewFlagMissingError);
+
+  // Test the allowed_preview_flags_csv flag.
+  ASSERT_OK(flags_internal::ValidateFlagValue("allowed_preview_flags_csv", "na_flag"));
+  ASSERT_OK(flags_internal::ValidateFlagValue("allowed_preview_flags_csv", "preview_flag"));
+  std::string old_value, output_msg;
+  ASSERT_EQ(
+      SetFlag(
+          "allowed_preview_flags_csv", "preview_flag", flags_internal::SetFlagForce::kFalse,
+          &old_value, &output_msg),
+      flags_internal::SetFlagResult::SUCCESS);
+  ASSERT_OK(flags_internal::ValidateFlagValue("preview_flag", "true"));
+
+  ASSERT_EQ(
+      SetFlag(
+          "preview_flag", "true", flags_internal::SetFlagForce::kFalse, &old_value, &output_msg),
+      flags_internal::SetFlagResult::SUCCESS);
+  ASSERT_NOK_STR_CONTAINS(
+      flags_internal::ValidateFlagValue("allowed_preview_flags_csv", ""), kPreviewFlagMissingError);
+}
+
 } // namespace yb

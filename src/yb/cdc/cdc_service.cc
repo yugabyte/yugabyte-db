@@ -96,9 +96,7 @@ using std::vector;
 
 constexpr uint32_t kUpdateIntervalMs = 15 * 1000;
 
-DEFINE_NON_RUNTIME_int32(cdc_read_rpc_timeout_ms, 30 * 1000,
-    "Timeout used for CDC read rpc calls.  Reads normally occur cross-cluster.");
-TAG_FLAG(cdc_read_rpc_timeout_ms, advanced);
+DECLARE_int32(cdc_read_rpc_timeout_ms);
 
 DEFINE_NON_RUNTIME_int32(cdc_write_rpc_timeout_ms, 30 * 1000,
     "Timeout used for CDC write rpc calls.  Writes normally occur intra-cluster.");
@@ -108,12 +106,6 @@ DEPRECATE_FLAG(int32, cdc_ybclient_reactor_threads, "09_2023");
 
 DEFINE_RUNTIME_int32(cdc_state_checkpoint_update_interval_ms, kUpdateIntervalMs,
     "Rate at which CDC state's checkpoint is updated.");
-
-DEFINE_NON_RUNTIME_string(certs_for_cdc_dir, "",
-    "The parent directory of where all certificates for xCluster producer universes will "
-    "be stored, for when the producer and consumer clusters use different certificates. "
-    "Place the certificates for each producer cluster in "
-    "<certs_for_cdc_dir>/<producer_cluster_id>/*.");
 
 DEFINE_RUNTIME_int32(update_min_cdc_indices_interval_secs, 60,
     "How often to read cdc_state table to get the minimum applied index for each tablet "

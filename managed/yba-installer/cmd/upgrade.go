@@ -128,11 +128,6 @@ func upgradeCmd() *cobra.Command {
 				log.Fatal("preflight failed")
 			}
 
-			state.CurrentStatus = ybactlstate.UpgradingStatus
-			if err := ybactlstate.StoreState(state); err != nil {
-				log.Fatal("could not update state: " + err.Error())
-			}
-
 			// Take a backup of YBA as a safety measure
 			backupDir := filepath.Join(common.GetDataRoot(), "upgradeYbaBackup")
 			if err := common.MkdirAll(backupDir, common.DirMode); err == nil {

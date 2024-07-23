@@ -35,6 +35,7 @@
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
+#include "yb/util/stack_trace.h"
 #include "yb/util/thread.h"
 
 #include "yb/yql/pggate/util/ybc-internal.h"
@@ -484,6 +485,15 @@ const char* YBCGetWaitEventType(uint32_t wait_event_info) {
 
 uint8_t YBCGetQueryIdForCatalogRequests() {
   return static_cast<uint8_t>(ash::FixedQueryId::kQueryIdForCatalogRequests);
+}
+
+// Get a random integer between a and b
+int YBCGetRandomUniformInt(int a, int b) {
+  return RandomUniformInt<int>(a, b);
+}
+
+int YBCGetCallStackFrames(void** result, int max_depth, int skip_count) {
+  return google::GetStackTrace(result, max_depth, skip_count);
 }
 
 } // extern "C"

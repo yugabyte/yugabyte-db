@@ -70,6 +70,7 @@ YB_DEFINE_ENUM(MonitoredTaskType,
   (kCloneTablet)
   (kCreateReplica)
   (kDeleteReplica)
+  (kEnableDbConns)
   (kFlushTablets)
   (kGetSafeTime)
   (kGetTabletSplitKey)

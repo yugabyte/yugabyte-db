@@ -703,6 +703,13 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::Load(
   return ret;
 }
 
+Result<RaftGroupMetadataPtr> RaftGroupMetadata::LoadFromPath(
+    FsManager* fs_manager, const std::string& path) {
+  RaftGroupMetadataPtr ret(new RaftGroupMetadata(fs_manager, ""));
+  RETURN_NOT_OK(ret->LoadFromDisk(path));
+  return ret;
+}
+
 Result<RaftGroupMetadataPtr> RaftGroupMetadata::TEST_LoadOrCreate(
     const RaftGroupMetadataData& data) {
   if (data.fs_manager->LookupTablet(data.raft_group_id)) {
@@ -770,6 +777,18 @@ Result<TableInfoPtr> RaftGroupMetadata::GetTableInfoUnlocked(const TableId& tabl
     RETURN_TABLE_NOT_FOUND(table_id, tables);
   }
   return iter->second;
+}
+
+std::vector<TableInfoPtr> RaftGroupMetadata::GetColocatedTableInfos() const {
+  std::vector<TableInfoPtr> table_infos;
+  {
+    std::lock_guard lock(data_mutex_);
+    for (const auto& [_, table_info] : kv_store_.colocation_to_table) {
+      DCHECK(table_info->schema().has_colocation_id());
+      table_infos.push_back(table_info);
+    }
+  }
+  return table_infos;
 }
 
 Result<TableInfoPtr> RaftGroupMetadata::GetTableInfoUnlocked(ColocationId colocation_id) const {
@@ -965,7 +984,7 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
     std::lock_guard lock(data_mutex_);
 
     // Verify that the Raft group id matches with the one in the protobuf.
-    if (superblock.raft_group_id() != raft_group_id_) {
+    if (!raft_group_id_.empty() && superblock.raft_group_id() != raft_group_id_) {
       return STATUS(Corruption, "Expected id=" + raft_group_id_ +
                                 " found " + superblock.raft_group_id(),
                                 superblock.DebugString());

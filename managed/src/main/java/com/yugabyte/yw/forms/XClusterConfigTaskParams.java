@@ -114,6 +114,7 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
 
   public XClusterConfigTaskParams(
       XClusterConfig xClusterConfig,
+      XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
       XClusterConfigEditFormData editFormData,
       Set<String> databaseIdsToAdd,
       Set<String> databaseIdsToRemove) {

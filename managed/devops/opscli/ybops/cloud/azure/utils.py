@@ -8,6 +8,7 @@
 import time
 
 from azure.core.exceptions import HttpResponseError
+from azure.core.pipeline.policies import RetryPolicy
 from azure.identity import DefaultAzureCredential
 from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.resource import ResourceManagementClient
@@ -49,8 +50,10 @@ NETWORK_PROVIDER_BASE_PATH = "/subscriptions/{}/resourceGroups/{}/providers/Micr
 SUBNET_ID_FORMAT_STRING = NETWORK_PROVIDER_BASE_PATH + "/virtualNetworks/{}/subnets/{}"
 NSG_ID_FORMAT_STRING = NETWORK_PROVIDER_BASE_PATH + "/networkSecurityGroups/{}"
 ULTRASSD_LRS = "ultrassd_lrs"
+PREMIUMV2_LRS = "premiumv2_lrs"
 VNET_ID_FORMAT_STRING = NETWORK_PROVIDER_BASE_PATH + "/virtualNetworks/{}"
 AZURE_SKU_FORMAT = {"premium_lrs": "Premium_LRS",
+                    "premiumv2_lrs": "PremiumV2_LRS",
                     "standardssd_lrs": "StandardSSD_LRS",
                     ULTRASSD_LRS: "UltraSSD_LRS"}
 YUGABYTE_VNET_PREFIX = "yugabyte-vnet-{}"
@@ -398,10 +401,15 @@ class AzureCloudAdmin():
     def __init__(self, metadata):
         self.metadata = metadata
         self.credentials = get_credentials()
-        self.compute_client = ComputeManagementClient(self.credentials, SUBSCRIPTION_ID)
-        self.network_client = NetworkManagementClient(self.credentials, NETWORK_SUBSCRIPTION_ID)
+        self.compute_client = ComputeManagementClient(self.credentials, SUBSCRIPTION_ID,
+                                                      retry_policy=self.get_retry_policy())
+        self.network_client = NetworkManagementClient(self.credentials, NETWORK_SUBSCRIPTION_ID,
+                                                      retry_policy=self.get_retry_policy())
 
         self.dns_client = None
+
+    def get_retry_policy(self):
+        return RetryPolicy(retry_backoff_max=60, retry_total=5, retry_backoff_factor=5)
 
     def network(self, per_region_meta={}):
         return AzureBootstrapClient(per_region_meta, self.network_client, self.metadata)
@@ -423,7 +431,7 @@ class AzureCloudAdmin():
         if tags:
             disk_params["tags"] = tags
 
-        if vol_type == ULTRASSD_LRS:
+        if vol_type == ULTRASSD_LRS or vol_type == PREMIUMV2_LRS:
             if disk_iops is not None:
                 disk_params['disk_iops_read_write'] = disk_iops
             if disk_throughput is not None:
@@ -842,7 +850,7 @@ class AzureCloudAdmin():
                 local_compute_client = self.compute_client
             else:
                 local_compute_client = ComputeManagementClient(
-                    self.credentials, fields['subscription_id'])
+                    self.credentials, fields['subscription_id'], self.get_retry_policy())
 
             image_identifier = local_compute_client.gallery_images.get(
                 fields['resource_group'],

@@ -1,6 +1,9 @@
 // Copyright (c) Yugabyte, Inc.
 package api.v2.handlers;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
+import api.v2.mappers.UniverseCertsRotateParamsMapper;
 import api.v2.mappers.UniverseDefinitionTaskParamsMapper;
 import api.v2.mappers.UniverseEditGFlagsMapper;
 import api.v2.mappers.UniverseRestartParamsMapper;
@@ -9,7 +12,11 @@ import api.v2.mappers.UniverseSoftwareFinalizeMapper;
 import api.v2.mappers.UniverseSoftwareFinalizeRespMapper;
 import api.v2.mappers.UniverseSoftwareUpgradePrecheckMapper;
 import api.v2.mappers.UniverseSoftwareUpgradeStartMapper;
+import api.v2.mappers.UniverseSystemdUpgradeMapper;
 import api.v2.mappers.UniverseThirdPartySoftwareUpgradeMapper;
+import api.v2.mappers.UniverseTlsToggleParamsMapper;
+import api.v2.models.UniverseCertRotateSpec;
+import api.v2.models.UniverseEditEncryptionInTransit;
 import api.v2.models.UniverseEditGFlags;
 import api.v2.models.UniverseRestart;
 import api.v2.models.UniverseRollbackUpgradeReq;
@@ -18,6 +25,7 @@ import api.v2.models.UniverseSoftwareUpgradeFinalizeInfo;
 import api.v2.models.UniverseSoftwareUpgradePrecheckReq;
 import api.v2.models.UniverseSoftwareUpgradePrecheckResp;
 import api.v2.models.UniverseSoftwareUpgradeStart;
+import api.v2.models.UniverseSystemdEnableStart;
 import api.v2.models.UniverseThirdPartySoftwareUpgradeStart;
 import api.v2.models.YBATask;
 import api.v2.utils.ApiControllerUtils;
@@ -26,16 +34,20 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
+import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
+import com.yugabyte.yw.forms.SystemdUpgradeParams;
 import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
+import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Release;
@@ -235,6 +247,63 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     }
     YBATask ybaTask = new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
     log.info("Started universe restart task {}", mapper.writeValueAsString(ybaTask));
+    return ybaTask;
+  }
+
+  public YBATask systemdEnable(
+      Http.Request request, UUID cUUID, UUID uniUUID, UniverseSystemdEnableStart systemd)
+      throws JsonProcessingException {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+
+    if (universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd) {
+      throw new PlatformServiceException(BAD_REQUEST, "universe already using systemd services");
+    }
+
+    SystemdUpgradeParams v1Params =
+        UniverseDefinitionTaskParamsMapper.INSTANCE.toSystemdUpgradeParams(
+            universe.getUniverseDetails());
+    UniverseSystemdUpgradeMapper.INSTANCE.copToV1SystemdUpgradeParams(systemd, v1Params);
+
+    UUID taskUUID = v1Handler.upgradeSystemd(v1Params, customer, universe);
+    YBATask ybaTask = new YBATask().taskUuid(taskUUID).resourceUuid(uniUUID);
+    log.info("Started systemd enable task {}", mapper.writeValueAsString(ybaTask));
+    return ybaTask;
+  }
+
+  public YBATask tlsToggle(
+      Http.Request request, UUID cUUID, UUID uniUUID, UniverseEditEncryptionInTransit spec)
+      throws JsonProcessingException {
+
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+
+    TlsToggleParams v1Params =
+        UniverseDefinitionTaskParamsMapper.INSTANCE.toTlsToggleParams(
+            universe.getUniverseDetails());
+    UniverseTlsToggleParamsMapper.INSTANCE.copyToV1TlsToggleParams(spec, v1Params);
+
+    UUID taskUUID = v1Handler.toggleTls(v1Params, customer, universe);
+    YBATask ybaTask = new YBATask().taskUuid(taskUUID).resourceUuid(uniUUID);
+    log.info("Started tls toggle task {}", mapper.writeValueAsString(ybaTask));
+    return ybaTask;
+  }
+
+  public YBATask certRotate(
+      Http.Request request, UUID cUUID, UUID uniUUID, UniverseCertRotateSpec spec)
+      throws JsonProcessingException {
+
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+
+    CertsRotateParams v1Params =
+        UniverseDefinitionTaskParamsMapper.INSTANCE.toCertsRotateParams(
+            universe.getUniverseDetails());
+    v1Params = UniverseCertsRotateParamsMapper.INSTANCE.copyToV1CertsRotateParams(spec, v1Params);
+
+    UUID taskUUID = v1Handler.rotateCerts(v1Params, customer, universe);
+    YBATask ybaTask = new YBATask().taskUuid(taskUUID).resourceUuid(uniUUID);
+    log.info("Started cert rotate task {}", mapper.writeValueAsString(ybaTask));
     return ybaTask;
   }
 }

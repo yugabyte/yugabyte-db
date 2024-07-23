@@ -41,7 +41,7 @@ export const exportLogStyles = makeStyles((theme) => ({
   exportListContainer: {
     display: 'flex',
     flexDirection: 'column',
-    height: '560px',
+    height: '100%',
     width: '100%',
     padding: theme.spacing(2, 2, 4, 2),
     backgroundColor: '#FFFFFF',
@@ -62,5 +62,8 @@ export const exportLogStyles = makeStyles((theme) => ({
     height: 'auto',
     alignItems: 'center',
     textAlign: 'center'
+  },
+  mr4: {
+    marginRight: theme.spacing(0.5)
   }
 }));

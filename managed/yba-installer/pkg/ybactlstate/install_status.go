@@ -96,7 +96,7 @@ func (s status) String() string {
 
 // Validate this is a known status.
 func (s status) Validate() bool {
-	return s > 0 && s < endStatus
+	return s >= NoStatus && s < endStatus
 }
 
 func (s status) MarshalJSON() ([]byte, error) {

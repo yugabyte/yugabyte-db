@@ -14,49 +14,32 @@
 
 #pragma once
 
+#include <memory>
+#include <vector>
+
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+
 #include "yb/yql/pggate/pg_select.h"
 
-namespace yb {
-namespace pggate {
-
-//--------------------------------------------------------------------------------------------------
-// SELECT FROM Secondary Index Table
-//--------------------------------------------------------------------------------------------------
+namespace yb::pggate {
 
 class PgSelectIndex : public PgSelect {
  public:
-  PgSelectIndex(PgSession::ScopedRefPtr pg_session,
-                const PgObjectId& table_id,
-                const PgObjectId& index_id,
-                const PgPrepareParameters *prepare_params,
-                bool is_region_local);
+  PgSelectIndex(
+      PgSession::ScopedRefPtr pg_session, const PgObjectId& index_id,
+      bool is_region_local, const PrepareParameters& prepare_params = {});
 
   // Prepare NESTED query for secondary index. This function is called when Postgres layer is
   // accessing the IndexTable via an outer select (Sequential or primary scans)
   Status PrepareSubquery(std::shared_ptr<LWPgsqlReadRequestPB> read_req);
 
-  Result<PgTableDescPtr> LoadTable() override;
+  virtual Result<const std::vector<Slice>*> FetchYbctidBatch();
 
-  bool UseSecondaryIndex() const override;
-
-  // The output parameter "ybctids" are pointer to the data buffer in "ybctid_batch_".
-  virtual Result<bool> FetchYbctidBatch(const std::vector<Slice> **ybctids);
-
+ private:
   // Get next batch of ybctids from either PgGate::cache or server.
   Result<bool> GetNextYbctidBatch();
 
-  void set_is_executed(bool value) {
-    is_executed_ = value;
-  }
-
-  bool is_executed() {
-    return is_executed_;
-  }
-
- private:
-  // This secondary query should be executed just one time.
-  bool is_executed_ = false;
 };
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

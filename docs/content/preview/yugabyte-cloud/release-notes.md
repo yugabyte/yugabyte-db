@@ -19,6 +19,19 @@ On this page:
 
 ## Change log
 
+### July 11, 2024
+
+**New features**
+
+- Support for JumpCloud Single Sign-On [federated authentication](../managed-security/managed-authentication/), to provide single sign-on access for your account users.
+
+**Database**
+
+- Ability to choose the latest [stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) when creating a dedicated or Sandbox cluster using the new Early Access track. Early Access has more frequent updates for faster access to the most recent stable version of YugabyteDB. Currently features YugabyteDB v2024.1.0.0.
+- Production track updated to 2.18.8.0.
+- Innovation track updated to 2.20.4.1.
+- Preview track updated to 2.21.1.0.
+
 ### June 24, 2024
 
 **New Features**
@@ -265,7 +278,7 @@ On this page:
 
 **Database**
 
-- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.16.1](../../releases/ybdb-releases/v2.16/#v2.16.1.0) for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version 2.16.1 for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
 
 ### January 27, 2023
 
@@ -277,7 +290,7 @@ On this page:
 
 **Database**
 
-- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.16.0](../../releases/ybdb-releases/v2.16/#v2.16.0.1) for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version 2.16.0 for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
 
 **Infrastructure**
 

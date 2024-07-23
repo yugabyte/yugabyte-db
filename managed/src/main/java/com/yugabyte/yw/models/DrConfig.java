@@ -6,7 +6,6 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams;
 import com.yugabyte.yw.forms.XClusterConfigRestartFormData;
 import com.yugabyte.yw.models.XClusterConfig.ConfigType;
@@ -86,7 +85,7 @@ public class DrConfig extends Model {
       UUID sourceUniverseUUID,
       UUID targetUniverseUUID,
       Set<String> tableIds,
-      BootstrapParams.BootstarpBackupParams bootstrapBackupParams) {
+      BootstrapParams.BootstrapBackupParams bootstrapBackupParams) {
     DrConfig drConfig = new DrConfig();
     drConfig.name = name;
     drConfig.setCreateTime(new Date());
@@ -109,7 +108,7 @@ public class DrConfig extends Model {
       String name,
       UUID sourceUniverseUUID,
       UUID targetUniverseUUID,
-      BootstrapParams.BootstarpBackupParams bootstrapBackupParams,
+      BootstrapParams.BootstrapBackupParams bootstrapBackupParams,
       Set<String> sourceNamespaceIds) {
     DrConfig drConfig = new DrConfig();
     drConfig.name = name;
@@ -292,8 +291,8 @@ public class DrConfig extends Model {
   public XClusterConfigRestartFormData.RestartBootstrapParams getBootstrapBackupParams() {
     XClusterConfigRestartFormData.RestartBootstrapParams bootstrapParams =
         new XClusterConfigRestartFormData.RestartBootstrapParams();
-    XClusterConfigCreateFormData.BootstrapParams.BootstarpBackupParams backupRequestParams =
-        new XClusterConfigCreateFormData.BootstrapParams.BootstarpBackupParams();
+    BootstrapParams.BootstrapBackupParams backupRequestParams =
+        new BootstrapParams.BootstrapBackupParams();
     backupRequestParams.storageConfigUUID = this.storageConfigUuid;
     backupRequestParams.parallelism = this.parallelism;
     bootstrapParams.backupRequestParams = backupRequestParams;

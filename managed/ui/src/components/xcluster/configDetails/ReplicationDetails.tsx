@@ -628,7 +628,7 @@ export function ReplicationDetails({
         </div>
         {isEditTableModalVisible && (
           <EditTablesModal
-            xClusterConfig={xClusterConfig}
+            xClusterConfigUuid={xClusterConfig.uuid}
             isDrInterface={false}
             modalProps={{ open: isEditTableModalVisible, onClose: hideModal }}
           />
@@ -651,7 +651,7 @@ export function ReplicationDetails({
             allowedTasks={allowedTasks!}
             isVisible={isRestartConfigModalVisible}
             onHide={hideModal}
-            xClusterConfig={xClusterConfig}
+            xClusterConfigUuid={xClusterConfig.uuid}
           />
         )}
         {isSyncConfigModalVisible && (

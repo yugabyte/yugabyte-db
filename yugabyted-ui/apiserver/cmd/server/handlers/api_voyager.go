@@ -600,47 +600,47 @@ func (c *Container) GetVoyagerAssessmentReport(ctx echo.Context) error {
     voyagerAssessmentReportResponse.SourceEnvironment.NoOfConnections = ""
 
     voyagerAssessmentReportResponse.SourceDatabase.TableSize =
-        int32(assessmentReportVisualisationData.Report.SourceSizeDetails.TotalTableSize)
+        assessmentReportVisualisationData.Report.SourceSizeDetails.TotalTableSize
     voyagerAssessmentReportResponse.SourceDatabase.TableRowCount =
-        int32(assessmentReportVisualisationData.Report.SourceSizeDetails.TotalTableRowCount)
+        assessmentReportVisualisationData.Report.SourceSizeDetails.TotalTableRowCount
     voyagerAssessmentReportResponse.SourceDatabase.TotalTableSize =
-        int32(assessmentReportVisualisationData.Report.SourceSizeDetails.TotalDBSize)
+        assessmentReportVisualisationData.Report.SourceSizeDetails.TotalDBSize
     voyagerAssessmentReportResponse.SourceDatabase.TotalIndexSize =
-        int32(assessmentReportVisualisationData.Report.SourceSizeDetails.TotalIndexSize)
+        assessmentReportVisualisationData.Report.SourceSizeDetails.TotalIndexSize
 
 
     voyagerAssessmentReportResponse.TargetRecommendations.RecommendationSummary =
         assessmentReport.Sizing.SizingRecommendation.ColocatedReasoning
     voyagerAssessmentReportResponse.TargetRecommendations.
         TargetClusterRecommendation.NumNodes =
-        int32(assessmentReport.Sizing.SizingRecommendation.NumNodes)
+        int64(assessmentReport.Sizing.SizingRecommendation.NumNodes)
     voyagerAssessmentReportResponse.TargetRecommendations.
         TargetClusterRecommendation.VcpuPerNode =
-        int32(assessmentReport.Sizing.SizingRecommendation.VCPUsPerInstance)
+        int64(assessmentReport.Sizing.SizingRecommendation.VCPUsPerInstance)
     voyagerAssessmentReportResponse.TargetRecommendations.
         TargetClusterRecommendation.MemoryPerNode =
-        int32(assessmentReport.Sizing.SizingRecommendation.MemoryPerInstance)
+        int64(assessmentReport.Sizing.SizingRecommendation.MemoryPerInstance)
     voyagerAssessmentReportResponse.TargetRecommendations.
         TargetClusterRecommendation.InsertsPerNode =
-        int32(assessmentReport.Sizing.SizingRecommendation.OptimalInsertConnectionsPerNode)
+        assessmentReport.Sizing.SizingRecommendation.OptimalInsertConnectionsPerNode
     voyagerAssessmentReportResponse.TargetRecommendations.
         TargetClusterRecommendation.ConnectionsPerNode =
-        int32(assessmentReport.Sizing.SizingRecommendation.OptimalSelectConnectionsPerNode)
+        assessmentReport.Sizing.SizingRecommendation.OptimalSelectConnectionsPerNode
 
     voyagerAssessmentReportResponse.TargetRecommendations.
         TargetSchemaRecommendation.NoOfColocatedTables =
-            int32(len(assessmentReport.Sizing.SizingRecommendation.ColocatedTables))
+            int64(len(assessmentReport.Sizing.SizingRecommendation.ColocatedTables))
     voyagerAssessmentReportResponse.TargetRecommendations.
         TargetSchemaRecommendation.NoOfShardedTables =
-            int32(len(assessmentReport.Sizing.SizingRecommendation.ShardedTables))
+            int64(len(assessmentReport.Sizing.SizingRecommendation.ShardedTables))
     voyagerAssessmentReportResponse.TargetRecommendations.
         TargetSchemaRecommendation.TotalSizeColocatedTables =
-            int32(assessmentReportVisualisationData.Report.
-                TargetSizingRecommendations.TotalColocatedSize)
+            assessmentReportVisualisationData.Report.
+                TargetSizingRecommendations.TotalColocatedSize
     voyagerAssessmentReportResponse.TargetRecommendations.
         TargetSchemaRecommendation.TotalSizeShardedTables =
-            int32(assessmentReportVisualisationData.Report.
-                TargetSizingRecommendations.TotalShardedSize)
+            assessmentReportVisualisationData.Report.
+                TargetSizingRecommendations.TotalShardedSize
 
     dbObjectsMap := map[string]int{}
     for _, dbObject := range assessmentReport.SchemaSummary.DBObjects {
@@ -662,29 +662,47 @@ func (c *Container) GetVoyagerAssessmentReport(ctx echo.Context) error {
         _, ok := dbObjectsMap[dbObjectType]
         if ok {
             dbObjectsMap[dbObjectType] = dbObjectsMap[dbObjectType] - count
+
         }
     }
 
-    voyagerAssessmentReportResponse.RecommendedRefactoring.Function.Automatic =
-        int32(dbObjectsMap["FUNCTION"])
-    voyagerAssessmentReportResponse.RecommendedRefactoring.Function.Manual =
-        int32(dbObjectConversionIssuesMap["FUNCTION"])
-    voyagerAssessmentReportResponse.RecommendedRefactoring.SqlType.Automatic =
-        int32(dbObjectsMap["TYPE"])
-    voyagerAssessmentReportResponse.RecommendedRefactoring.SqlType.Manual =
-        int32(dbObjectConversionIssuesMap["TYPE"])
-    voyagerAssessmentReportResponse.RecommendedRefactoring.Table.Automatic =
-        int32(dbObjectsMap["TABLE"])
-    voyagerAssessmentReportResponse.RecommendedRefactoring.Table.Manual =
-        int32(dbObjectConversionIssuesMap["TABLE"])
-    voyagerAssessmentReportResponse.RecommendedRefactoring.Triggers.Automatic =
-        int32(dbObjectsMap["TRIGGER"])
-    voyagerAssessmentReportResponse.RecommendedRefactoring.Triggers.Manual =
-        int32(dbObjectConversionIssuesMap["TRIGGER"])
-    voyagerAssessmentReportResponse.RecommendedRefactoring.View.Automatic =
-        int32(dbObjectsMap["VIEW"])
-    voyagerAssessmentReportResponse.RecommendedRefactoring.View.Manual =
-        int32(dbObjectConversionIssuesMap["VIEW"])
+    recommendedRefactoringList := []models.RefactoringCount{}
+    for sqlObjectType, sqlObjectcount := range dbObjectsMap {
+        var refactorCount models.RefactoringCount
+        refactorCount.SqlObjectType = sqlObjectType
+        issueCount, ok := dbObjectConversionIssuesMap[sqlObjectType]
+        if ok {
+            refactorCount.Automatic = int32(sqlObjectcount - issueCount)
+            refactorCount.Manual = int32(issueCount)
+        } else {
+            refactorCount.Automatic = int32(sqlObjectcount)
+            refactorCount.Manual = 0
+        }
+        recommendedRefactoringList = append(recommendedRefactoringList, refactorCount)
+    }
+
+    voyagerAssessmentReportResponse.RecommendedRefactoring.RefactorDetails =
+            recommendedRefactoringList
+    // voyagerAssessmentReportResponse.RecommendedRefactoring.Function.Automatic =
+    //     int32(dbObjectsMap["FUNCTION"])
+    // voyagerAssessmentReportResponse.RecommendedRefactoring.Function.Manual =
+    //     int32(dbObjectConversionIssuesMap["FUNCTION"])
+    // voyagerAssessmentReportResponse.RecommendedRefactoring.SqlType.Automatic =
+    //     int32(dbObjectsMap["TYPE"])
+    // voyagerAssessmentReportResponse.RecommendedRefactoring.SqlType.Manual =
+    //     int32(dbObjectConversionIssuesMap["TYPE"])
+    // voyagerAssessmentReportResponse.RecommendedRefactoring.Table.Automatic =
+    //     int32(dbObjectsMap["TABLE"])
+    // voyagerAssessmentReportResponse.RecommendedRefactoring.Table.Manual =
+    //     int32(dbObjectConversionIssuesMap["TABLE"])
+    // voyagerAssessmentReportResponse.RecommendedRefactoring.Triggers.Automatic =
+    //     int32(dbObjectsMap["TRIGGER"])
+    // voyagerAssessmentReportResponse.RecommendedRefactoring.Triggers.Manual =
+    //     int32(dbObjectConversionIssuesMap["TRIGGER"])
+    // voyagerAssessmentReportResponse.RecommendedRefactoring.View.Automatic =
+    //     int32(dbObjectsMap["VIEW"])
+    // voyagerAssessmentReportResponse.RecommendedRefactoring.View.Manual =
+    //     int32(dbObjectConversionIssuesMap["VIEW"])
 
     // Convert the backend model []UnsupportedDataTypes into UX model []UnsupportedSqlInfo
     unsupportedDataTypeMap := make(map[string]models.UnsupportedSqlInfo)
@@ -755,4 +773,71 @@ func getMigrationAssessmentReportFuture(log logger.Logger, migrationUuid string,
 
         MigrationAsessmentReportResponse.Report = assessmentVisualisationData
         future <- MigrationAsessmentReportResponse
+    }
+
+    func (c *Container) GetAssessmentSourceDBDetails(ctx echo.Context) error {
+
+        assessmentSourceDBDetails := models.AssessmentSourceDbObject {
+            SqlObjectsCount: []models.SqlObjectCount{},
+            SqlObjectsMetadata: []models.SqlObjectMetadata{},
+        }
+
+        sqlObjectsList := []models.SqlObjectCount{}
+        var sqlObject1 models.SqlObjectCount
+        sqlObject1.SqlType = "Table"
+        sqlObject1.Count = 10
+        sqlObjectsList = append(sqlObjectsList, sqlObject1)
+        var sqlObject2 models.SqlObjectCount
+        sqlObject2.SqlType = "Index"
+        sqlObject2.Count = 5
+        sqlObjectsList = append(sqlObjectsList, sqlObject2)
+        var sqlObject3 models.SqlObjectCount
+        sqlObject3.SqlType = "Sequence"
+        sqlObject3.Count = 5
+        sqlObjectsList = append(sqlObjectsList, sqlObject3)
+        assessmentSourceDBDetails.SqlObjectsCount = sqlObjectsList
+
+        sqlMetadataList := []models.SqlObjectMetadata{}
+        var sqlMetadata1 models.SqlObjectMetadata
+        sqlMetadata1.ObjectName = "gemoteric_shape"
+        sqlMetadata1.SqlType = "Table"
+        sqlMetadata1.RowCount = 1000000
+        sqlMetadata1.Iops = 1000
+        sqlMetadata1.Size = 12321312312
+        sqlMetadataList = append(sqlMetadataList, sqlMetadata1)
+        assessmentSourceDBDetails.SqlObjectsMetadata = sqlMetadataList
+
+        return ctx.JSON(http.StatusOK, assessmentSourceDBDetails)
+    }
+
+    func (c *Container) GetTargetRecommendations(ctx echo.Context) error {
+
+        targetRecommendationDetails := models.AssessmentTargetRecommendationObject {
+            NumOfColocatedTables: 0,
+            TotalSizeColocatedTables: 0,
+            NumOfShardedTable: 0,
+            TotalSizeShardedTables: 0,
+            RecommendationDetails: []models.TargetRecommendationItem{},
+        }
+
+        targetRecommendationDetails.NumOfColocatedTables = 10
+        targetRecommendationDetails.TotalSizeColocatedTables = 123455
+        targetRecommendationDetails.NumOfShardedTable = 5
+        targetRecommendationDetails.TotalSizeShardedTables = 321413241
+
+        var recommendation1 models.TargetRecommendationItem
+        recommendation1.TableName = "Table1"
+        recommendation1.SchemaRecommendation = "Colocated"
+        recommendation1.DiskSize = 123124
+        targetRecommendationDetails.RecommendationDetails =
+            append(targetRecommendationDetails.RecommendationDetails, recommendation1)
+
+        var recommendation2 models.TargetRecommendationItem
+        recommendation2.TableName = "Table2"
+        recommendation2.SchemaRecommendation = "Sharded"
+        recommendation2.DiskSize = 123124
+        targetRecommendationDetails.RecommendationDetails =
+            append(targetRecommendationDetails.RecommendationDetails, recommendation2)
+
+        return ctx.JSON(http.StatusOK, targetRecommendationDetails)
     }

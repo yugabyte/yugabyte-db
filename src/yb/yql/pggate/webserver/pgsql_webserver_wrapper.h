@@ -34,7 +34,7 @@ extern "C" {
 struct WebserverWrapper;
 
 typedef struct ybpgmEntry {
-  char name[100];
+  char name[120];
   YB_ATOMIC_ULLONG calls;
   YB_ATOMIC_ULLONG total_time;
   YB_ATOMIC_ULLONG rows;

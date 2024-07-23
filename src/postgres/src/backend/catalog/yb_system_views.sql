@@ -43,9 +43,95 @@ LANGUAGE INTERNAL
 STRICT STABLE PARALLEL SAFE
 AS 'yb_is_database_colocated';
 
+CREATE OR REPLACE FUNCTION
+  yb_reset_analyze_statistics(table_oid oid)
+RETURNS void AS
+$$
+    UPDATE pg_class c SET reltuples = -1
+    WHERE
+        relkind IN ('r', 'p', 'm', 'i')
+        AND reltuples >= 0
+        AND NOT EXISTS (
+            SELECT 0 FROM pg_namespace ns
+            WHERE ns.oid = relnamespace
+                  AND nspname IN ('pg_toast', 'pg_toast_temp')
+        )
+        AND (table_oid IS NULL
+             OR c.oid = table_oid
+             OR c.oid IN (SELECT indexrelid FROM pg_index WHERE indrelid = table_oid))
+        AND ((SELECT rolsuper FROM pg_roles r WHERE rolname = session_user)
+             OR (NOT relisshared
+                 AND (relowner = session_user::regrole
+                      OR ((SELECT datdba
+                           FROM pg_database d
+                           WHERE datname = current_database())
+                          = session_user::regrole)
+                     )
+                 )
+        );
+    DELETE
+    FROM pg_statistic
+    WHERE
+        EXISTS (
+            SELECT 0 FROM pg_class c
+            WHERE c.oid = starelid
+                  AND (table_oid IS NULL OR c.oid = table_oid)
+                  AND ((SELECT rolsuper FROM pg_roles r
+                        WHERE rolname = session_user)
+                       OR (NOT relisshared
+                           AND (relowner = session_user::regrole
+                                OR ((SELECT datdba
+                                     FROM pg_database d
+                                     WHERE datname = current_database())
+                                    = session_user::regrole)
+                               )
+                          )
+                      )
+        );
+    DELETE FROM pg_statistic_ext_data
+    WHERE
+        EXISTS (
+            SELECT 0 FROM pg_class c
+            JOIN pg_statistic_ext e ON c.oid = e.stxrelid
+            WHERE e.oid = stxoid
+                  AND (table_oid IS NULL OR c.oid = table_oid)
+                  AND ((SELECT rolsuper FROM pg_roles r
+                        WHERE rolname = session_user)
+                       OR (NOT relisshared
+                           AND (relowner = session_user::regrole
+                                OR ((SELECT datdba
+                                     FROM pg_database d
+                                     WHERE datname = current_database())
+                                    = session_user::regrole)
+                               )
+                          )
+                      )
+        );
+    UPDATE pg_yb_catalog_version SET current_version = current_version + 1
+    WHERE db_oid = (SELECT oid FROM pg_database
+                    WHERE datname = current_database());
+$$
+LANGUAGE SQL
+CALLED ON NULL INPUT
+VOLATILE
+SECURITY DEFINER
+SET yb_non_ddl_txn_for_sys_tables_allowed = ON;
+
+CREATE OR REPLACE FUNCTION
+  yb_query_diagnostics(query_id int8, diagnostics_interval_sec int8 DEFAULT 300,
+                       explain_sample_rate int8 DEFAULT 1, explain_analyze bool DEFAULT false,
+                       explain_dist bool DEFAULT false, explain_debug bool DEFAULT false,
+                       bind_var_query_min_duration_ms int8 DEFAULT 10)
+RETURNS text
+LANGUAGE INTERNAL
+VOLATILE STRICT PARALLEL SAFE
+AS 'yb_query_diagnostics';
+
 --
 -- Grant and revoke statements on YB objects.
 --
 REVOKE EXECUTE ON FUNCTION yb_increment_all_db_catalog_versions(boolean) FROM public;
 GRANT EXECUTE ON FUNCTION yb_increment_all_db_catalog_versions(boolean) TO yb_db_admin;
 REVOKE EXECUTE ON FUNCTION yb_fix_catalog_version_table(boolean) FROM public;
+REVOKE EXECUTE ON FUNCTION yb_query_diagnostics(int8,int8,int8,boolean,boolean,boolean,int8) FROM public;
+GRANT EXECUTE ON FUNCTION yb_query_diagnostics(int8,int8,int8,boolean,boolean,boolean,int8) TO yb_db_admin;

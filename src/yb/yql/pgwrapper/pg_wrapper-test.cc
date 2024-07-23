@@ -52,6 +52,7 @@ using yb::rpc::RpcController;
 using namespace std::literals;
 
 DECLARE_int32(ysql_log_min_duration_statement);
+DECLARE_string(ysql_pg_conf_csv);
 
 namespace yb {
 namespace pgwrapper {
@@ -688,6 +689,27 @@ TEST_F_EX(
   ASSERT_NO_FATALS(ValidateCurrentGucValue("ysql_yb_enable_pg_locks", "false"));
 
   ASSERT_NO_FATALS(CheckAutoFlagValues(false /* expect_target_value */));
+}
+
+class ValidateYsqlPgConfCsvTest : public YBTest {};
+
+TEST_F_EX(PgWrapperFlagsTest, ValidateYsqlPgConfCsv, ValidateYsqlPgConfCsvTest) {
+  // Valid values
+  ASSERT_OK(SET_FLAG(ysql_pg_conf_csv, ""));
+  ASSERT_OK(SET_FLAG(ysql_pg_conf_csv, "a=1"));
+  ASSERT_OK(SET_FLAG(ysql_pg_conf_csv, "a =1 ,b 2"));
+  ASSERT_OK(SET_FLAG(ysql_pg_conf_csv, "a=1, b= 'String with spaces' "));
+  ASSERT_OK(SET_FLAG(ysql_pg_conf_csv, R"(a=1,b='Special \'String''')"));
+  ASSERT_OK(SET_FLAG(ysql_pg_conf_csv, "a=1, # Comment out the bad pattern b='This won't work'"));
+  ASSERT_OK(SET_FLAG(ysql_pg_conf_csv, "a=1,b='String # with a comment'"));
+  ASSERT_OK(SET_FLAG(ysql_pg_conf_csv, "a=1,b'String with \\n string'"));
+
+  // Invalid values
+  ASSERT_NOK(SET_FLAG(ysql_pg_conf_csv, R"(1, "two)"));
+  ASSERT_NOK(SET_FLAG(ysql_pg_conf_csv, R"(1, "two")"));
+  ASSERT_NOK(SET_FLAG(ysql_pg_conf_csv, R"(1,two "2")"));
+  ASSERT_NOK(SET_FLAG(ysql_pg_conf_csv, R"(1,"tw"o")"));
+  ASSERT_NOK(SET_FLAG(ysql_pg_conf_csv, "a=1,b='String with a \n char'"));
 }
 
 }  // namespace pgwrapper

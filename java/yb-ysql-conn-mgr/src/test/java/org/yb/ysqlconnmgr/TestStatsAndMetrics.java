@@ -27,7 +27,7 @@ public class TestStatsAndMetrics extends BaseYsqlConnMgr {
        "user_name",
        "active_logical_connections",
        "queued_logical_connections",
-       "idle_or_pending_logical_connections",
+       "waiting_logical_connections",
        "active_physical_connections",
        "idle_physical_connections",
        "avg_wait_time_ns",
@@ -117,7 +117,7 @@ public class TestStatsAndMetrics extends BaseYsqlConnMgr {
     int num_logical_conn =
     pool.get("active_logical_connections").getAsInt() +
     pool.get("queued_logical_connections").getAsInt() +
-    pool.get("idle_or_pending_logical_connections").getAsInt();
+    pool.get("waiting_logical_connections").getAsInt();
     assertEquals("Did not get the expected number of logical connections for pool with user "
         + user_name + " and database " + db_name, exp_val, num_logical_conn);
   }
@@ -159,5 +159,33 @@ public class TestStatsAndMetrics extends BaseYsqlConnMgr {
     Thread.sleep(4000);
     testNumPhysicalConnections("yugabyte", "yugabyte", 1);
     testNumLogicalConnections("yugabyte", "yugabyte", 0);
+  }
+
+  @Test
+  public void testSingleStickyConnectionClose() throws Exception {
+    // Create a connection on the Ysql Connection Manager port
+    try (Connection conn = getConnectionBuilder().withTServer(TSERVER_IDX)
+                .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                .connect();
+         Statement stmt = conn.createStatement()) {
+        stmt.execute("CREATE TEMP TABLE names(id int)");
+
+        Thread.sleep(4000);
+        testStatsFields();
+
+        testNumPhysicalConnections("control_connection", "control_connection", 1);
+        testNumLogicalConnections("control_connection", "control_connection", 0);
+
+        testNumPhysicalConnections("yugabyte", "yugabyte", 1);
+        testNumLogicalConnections("yugabyte", "yugabyte", 1);
+    }
+
+    Thread.sleep(4000);
+
+    JsonObject pool = getPool("yugabyte", "yugabyte");
+    if (pool != null) {
+        testNumPhysicalConnections("yugabyte", "yugabyte", 0);
+        testNumLogicalConnections("yugabyte", "yugabyte", 0);
+    }
   }
 }

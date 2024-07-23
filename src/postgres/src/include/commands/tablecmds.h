@@ -72,7 +72,8 @@ extern ObjectAddress renameatt(RenameStmt *stmt);
 
 extern ObjectAddress RenameConstraint(RenameStmt *stmt);
 
-extern ObjectAddress RenameRelation(RenameStmt *stmt);
+extern ObjectAddress RenameRelation(RenameStmt *stmt,
+									bool yb_is_internal_clone_rename);
 
 extern void RenameRelationInternal(Oid myrelid,
 								   const char *newrelname, bool is_internal,

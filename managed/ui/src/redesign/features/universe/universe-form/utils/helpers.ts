@@ -25,6 +25,15 @@ import {
 } from './constants';
 import { api } from './api';
 import { getPlacementsFromCluster } from '../form/fields/PlacementsField/PlacementsFieldHelper';
+import {
+  compareYBSoftwareVersions,
+  isVersionStable
+} from '../../../../../utils/universeUtilsTyped';
+import {
+  GFLAG_GROUPS,
+  MIN_PG_SUPPORTED_PREVIEW_VERSION,
+  MIN_PG_SUPPORTED_STABLE_VERSION
+} from '../../../../helpers/constants';
 
 export const transitToUniverse = (universeUUID?: string) =>
   universeUUID
@@ -63,8 +72,6 @@ export const getPrimaryInheritedValues = (formData: UniverseFormData) =>
 //create error msg from reponse payload
 export const createErrorMessage = (payload: any) => {
   try {
-
-
     const structuredError = payload?.response?.data?.error;
     if (structuredError) {
       if (typeof structuredError === 'string') {
@@ -74,17 +81,17 @@ export const createErrorMessage = (payload: any) => {
         return _.get(structuredError, 'message');
       }
 
-      const message = (Object.keys(structuredError)
-        ?.map((fieldName) => {
-          const messages = structuredError[fieldName];
-          return fieldName + ': ' + (messages?.join(', ') ?? '');
-        })
-        ?.join('\n')) ?? 'Something went wrong. Please try again';
+      const message =
+        Object.keys(structuredError)
+          ?.map((fieldName) => {
+            const messages = structuredError[fieldName];
+            return fieldName + ': ' + (messages?.join(', ') ?? '');
+          })
+          ?.join('\n') ?? 'Something went wrong. Please try again';
       return message;
     }
     return payload.message;
-  }
-  catch (e) {
+  } catch (e) {
     console.error(e);
     return 'Something went wrong. Please try again';
   }
@@ -157,6 +164,11 @@ export const transformTagsArrayToObject = (instanceTags: InstanceTags) =>
     return tagsObj;
   }, {});
 
+export const isPGEnabledFromIntent = (intent: UserIntent) => {
+  const gFlagGroups = _.get(intent, 'specificGFlags.gflagGroups', []);
+  return gFlagGroups.includes(GFLAG_GROUPS.ENHANCED_POSTGRES_COMPATIBILITY);
+};
+
 //Transform universe data to form data
 export const getFormData = (universeData: UniverseDetails, clusterType: ClusterType) => {
   const { communicationPorts, encryptionAtRestConfig, rootCA } = universeData;
@@ -213,7 +225,8 @@ export const getFormData = (universeData: UniverseDetails, clusterType: ClusterT
       ybSoftwareVersion: userIntent.ybSoftwareVersion,
       communicationPorts,
       customizePort: false, //** */
-      ybcPackagePath: null //** */
+      ybcPackagePath: null, //** */,
+      enablePGCompatibitilty: isPGEnabledFromIntent(userIntent)
     },
     instanceTags: transformInstanceTags(userIntent.instanceTags),
     gFlags: userIntent?.specificGFlags
@@ -308,7 +321,10 @@ export const getUserIntent = (
             TSERVER: tserverGFlags
           }
         },
-        perAZ: specificGFlagsAzOverrides ?? {}
+        perAZ: specificGFlagsAzOverrides ?? {},
+        gflagGroups: advancedConfig.enablePGCompatibitilty
+          ? [GFLAG_GROUPS.ENHANCED_POSTGRES_COMPATIBILITY]
+          : []
       };
     }
   } else {
@@ -433,21 +449,31 @@ export const getDiffClusterData = (currentClusterConfig?: Cluster, newClusterCon
       currentNodeCount: 0,
       newNodeCount: 0,
       oldNumReadReplicas: 0,
-      newNumReadReplicas: 0
+      newNumReadReplicas: 0,
+      oldInstanceTags: null,
+      newInstanceTags: null
     };
   }
 
   return {
-    masterPlacementChanged: currentClusterConfig?.userIntent?.dedicatedNodes !== newClusterConfig?.userIntent?.dedicatedNodes,
-    numNodesChanged: currentClusterConfig?.userIntent?.numNodes !== newClusterConfig?.userIntent?.numNodes,
+    masterPlacementChanged:
+      currentClusterConfig?.userIntent?.dedicatedNodes !==
+      newClusterConfig?.userIntent?.dedicatedNodes,
+    numNodesChanged:
+      currentClusterConfig?.userIntent?.numNodes !== newClusterConfig?.userIntent?.numNodes,
     currentNodeCount: currentClusterConfig?.userIntent?.numNodes,
     newNodeCount: newClusterConfig?.userIntent?.numNodes,
     oldNumReadReplicas: currentClusterConfig?.userIntent?.replicationFactor,
     newNumReadReplicas: newClusterConfig?.userIntent?.replicationFactor,
+    oldInstanceTags: currentClusterConfig?.userIntent?.instanceTags,
+    newInstanceTags: newClusterConfig?.userIntent?.instanceTags
   };
 };
 
-export const getKubernetesDiffClusterData = (currentClusterConfig?: Cluster, newClusterConfig?: Cluster) => {
+export const getKubernetesDiffClusterData = (
+  currentClusterConfig?: Cluster,
+  newClusterConfig?: Cluster
+) => {
   if (!currentClusterConfig || !newClusterConfig) {
     return {
       numNodesChanged: false,
@@ -469,7 +495,8 @@ export const getKubernetesDiffClusterData = (currentClusterConfig?: Cluster, new
   }
 
   return {
-    numNodesChanged: currentClusterConfig?.userIntent?.numNodes !== newClusterConfig?.userIntent?.numNodes,
+    numNodesChanged:
+      currentClusterConfig?.userIntent?.numNodes !== newClusterConfig?.userIntent?.numNodes,
     currentNodeCount: currentClusterConfig?.userIntent?.numNodes,
     newNodeCount: newClusterConfig?.userIntent?.numNodes,
     oldNumReadReplicas: currentClusterConfig?.userIntent?.replicationFactor,
@@ -485,4 +512,18 @@ export const getKubernetesDiffClusterData = (currentClusterConfig?: Cluster, new
     oldMasterMemory: currentClusterConfig?.userIntent?.masterK8SNodeResourceSpec?.memoryGib,
     newMasterMemory: newClusterConfig?.userIntent?.masterK8SNodeResourceSpec?.memoryGib
   };
+};
+
+export const isVersionPGSupported = (dbVersion: string) => {
+  return (
+    compareYBSoftwareVersions({
+      versionA: dbVersion,
+      versionB: isVersionStable(dbVersion)
+        ? MIN_PG_SUPPORTED_STABLE_VERSION
+        : MIN_PG_SUPPORTED_PREVIEW_VERSION,
+      options: {
+        suppressFormatError: true
+      }
+    }) >= 0
+  );
 };

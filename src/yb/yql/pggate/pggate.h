@@ -241,10 +241,9 @@ class PgApiImpl {
   Status NewCreateDatabase(const char *database_name,
                            PgOid database_oid,
                            PgOid source_database_oid,
-                           const char *source_database_name,
                            PgOid next_oid,
                            const bool colocated,
-                           const int64_t clone_time,
+                           YbCloneInfo *yb_clone_info,
                            PgStatement **handle);
   Status ExecCreateDatabase(PgStatement *handle);
 
@@ -587,11 +586,9 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Select.
-  Status NewSelect(const PgObjectId& table_id,
-                   const PgObjectId& index_id,
-                   const PgPrepareParameters *prepare_params,
-                   bool is_region_local,
-                   PgStatement **handle);
+  Status NewSelect(
+      const PgObjectId& table_id, const PgObjectId& index_id,
+      const PgPrepareParameters* prepare_params, bool is_region_local, PgStatement** handle);
 
   Status SetForwardScan(PgStatement *handle, bool is_forward_scan);
 
@@ -640,11 +637,11 @@ class PgApiImpl {
   Status InitRandomState(
       PgStatement *handle, double rstate_w, uint64_t rand_state_s0, uint64_t rand_state_s1);
 
-  Status SampleNextBlock(PgStatement *handle, bool *has_more);
+  Result<bool> SampleNextBlock(PgStatement* handle);
 
   Status ExecSample(PgStatement *handle);
 
-  Status GetEstimatedRowCount(PgStatement *handle, double *liverows, double *deadrows);
+  Result<EstimatedRowCount> GetEstimatedRowCount(PgStatement* handle);
 
   //------------------------------------------------------------------------------------------------
   // Transaction control.
@@ -662,7 +659,7 @@ class PgApiImpl {
   Status SetInTxnBlock(bool in_txn_blk);
   Status SetReadOnlyStmt(bool read_only_stmt);
   Status SetEnableTracing(bool tracing);
-  Status EnableFollowerReads(bool enable_follower_reads, int32_t staleness_ms);
+  Status UpdateFollowerReadsConfig(bool enable_follower_reads, int32_t staleness_ms);
   Status EnterSeparateDdlTxnMode();
   bool HasWriteOperationsInDdlTxnMode() const;
   Status ExitSeparateDdlTxnMode(PgOid db_oid, bool is_silent_modification);
@@ -761,13 +758,16 @@ class PgApiImpl {
   // Using this function instead of GetRootMemTracker allows us to avoid copying a shared_pointer
   int64_t GetRootMemTrackerConsumption() { return MemTracker::GetRootTrackerConsumption(); }
 
-  uint64_t GetReadTimeSerialNo();
+  // DEPRECATED, will be removed
+  [[nodiscard]] uint64_t GetReadTimeSerialNo() const;
 
-  uint64_t GetTxnSerialNo();
+  // DEPRECATED, will be removed
+  [[nodiscard]] uint64_t GetTxnSerialNo() const;
 
-  SubTransactionId GetActiveSubTransactionId();
+  // DEPRECATED, will be removed
+  [[nodiscard]] SubTransactionId GetActiveSubTransactionId() const;
 
-  void RestoreSessionParallelData(const YBCPgSessionParallelData* session_data);
+  void RestoreSessionParallelData(const YBCPgSessionParallelData& session_data);
 
   //------------------------------------------------------------------------------------------------
   // Replication Slots Functions.
@@ -811,6 +811,9 @@ class PgApiImpl {
   Result<tserver::PgTabletsMetadataResponsePB> TabletsMetadata();
 
   bool IsCronLeader() const;
+
+  [[nodiscard]] uint64_t GetCurrentReadTimePoint() const;
+  Status RestoreReadTimePoint(uint64_t read_time_point_handle);
 
  private:
   void ClearSessionState();

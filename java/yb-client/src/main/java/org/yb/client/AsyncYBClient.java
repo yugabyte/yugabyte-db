@@ -1454,6 +1454,42 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * Gets xCluster replication info between the source and target universes (replication scope,
+   * tables/dbs being replicated).
+   *
+   * <p>Prerequisites: AsyncYBClient must be created with target universe as the context.
+   *
+   * @param replicationGroupName Replication group name
+   * @return a deferred object that yields a get xCluster replication info response.
+   */
+  public Deferred<GetUniverseReplicationInfoResponse> getUniverseReplicationInfo(
+    String replicationGroupName) {
+    checkIsClosed();
+    GetUniverseReplicationInfoRequest request =
+      new GetUniverseReplicationInfoRequest(masterTable, replicationGroupName);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
+   * Gets xCluster outbound replication group info (namespace IDs and their maps of
+   * source table ID -> stream ID)
+   *
+   * <p>Prerequisites: AsyncYBClient must be created with the source universe as context.
+   *
+   * @param replicationGroupName Replication group name
+   * @return a deferred object that yields a get xCluster replication info response.
+   */
+  public Deferred<GetXClusterOutboundReplicationGroupInfoResponse>
+      getXClusterOutboundReplicationGroupInfo(String replicationGroupName) {
+    checkIsClosed();
+    GetXClusterOutboundReplicationGroupInfoRequest request =
+        new GetXClusterOutboundReplicationGroupInfoRequest(masterTable, replicationGroupName);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
    * Sets existing xCluster replication relationships between the source and target universes to be
    * either active or inactive
    *

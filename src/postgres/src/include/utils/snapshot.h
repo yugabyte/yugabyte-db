@@ -122,6 +122,12 @@ typedef struct SnapshotData *Snapshot;
 
 #define InvalidSnapshot		((Snapshot) NULL)
 
+typedef struct YbReadTimePointHandle
+{
+	bool has_value;
+	uint64 value;
+} YbReadTimePointHandle;
+
 /*
  * Struct representing all kind of possible snapshots.
  *
@@ -214,6 +220,7 @@ typedef struct SnapshotData
 	 * transactions completed since the last GetSnapshotData().
 	 */
 	uint64		snapXactCompletionCount;
+	YbReadTimePointHandle yb_read_time_point_handle;
 } SnapshotData;
 
 #endif							/* SNAPSHOT_H */

@@ -9,15 +9,14 @@ import static org.junit.Assert.assertTrue;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.LocalNodeManager;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
-import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.TableInfoForm;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
+import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams.BootstrapBackupParams;
 import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -32,30 +31,7 @@ import play.libs.Json;
 import play.mvc.Result;
 
 @Slf4j
-public class XClusterLocalTest extends LocalProviderUniverseTestBase {
-
-  @Override
-  protected Pair<Integer, Integer> getIpRange() {
-    return new Pair<>(120, 150);
-  }
-
-  private Result createXClusterConfig(XClusterConfigCreateFormData formData) {
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(
-        app,
-        "POST",
-        "/api/customers/" + customer.getUuid() + "/xcluster_configs",
-        user.createAuthToken(),
-        Json.toJson(formData));
-  }
-
-  private Result editXClusterConfig(XClusterConfigEditFormData formData, UUID xClusterUUID) {
-    return FakeApiHelper.doRequestWithAuthTokenAndBody(
-        app,
-        "PUT",
-        "/api/customers/" + customer.getUuid() + "/xcluster_configs/" + xClusterUUID,
-        user.createAuthToken(),
-        Json.toJson(formData));
-  }
+public class XClusterLocalTest extends XClusterLocalTestBase {
 
   @Test
   public void testXClusterConfigSetup() throws InterruptedException {
@@ -92,8 +68,7 @@ public class XClusterLocalTest extends LocalProviderUniverseTestBase {
     }
     formData.bootstrapParams = new XClusterConfigCreateFormData.BootstrapParams();
     formData.bootstrapParams.tables = formData.tables;
-    formData.bootstrapParams.backupRequestParams =
-        new XClusterConfigCreateFormData.BootstrapParams.BootstarpBackupParams();
+    formData.bootstrapParams.backupRequestParams = new BootstrapBackupParams();
     formData.bootstrapParams.backupRequestParams.storageConfigUUID = customerConfig.getConfigUUID();
 
     Result result = createXClusterConfig(formData);
@@ -160,8 +135,7 @@ public class XClusterLocalTest extends LocalProviderUniverseTestBase {
     }
     formData.bootstrapParams = new XClusterConfigCreateFormData.BootstrapParams();
     formData.bootstrapParams.tables = formData.tables;
-    formData.bootstrapParams.backupRequestParams =
-        new XClusterConfigCreateFormData.BootstrapParams.BootstarpBackupParams();
+    formData.bootstrapParams.backupRequestParams = new BootstrapBackupParams();
     formData.bootstrapParams.backupRequestParams.storageConfigUUID = customerConfig.getConfigUUID();
 
     Result result = createXClusterConfig(formData);

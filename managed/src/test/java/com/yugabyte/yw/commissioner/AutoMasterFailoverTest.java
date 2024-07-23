@@ -14,12 +14,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
-import com.typesafe.config.Config;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeUIApiHelper;
-import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -45,13 +43,12 @@ import org.yb.util.ServerInfo;
 
 @RunWith(MockitoJUnitRunner.class)
 public class AutoMasterFailoverTest extends FakeDBApplication {
-  @Mock private PlatformScheduler mockPlatformScheduler;
   @Mock private RuntimeConfGetter mockRuntimeConfGetter;
   @Mock private YBClientService mockYbClientService;
   @Mock private NodeUIApiHelper mockApiHelper;
-  @Mock private Config mockUniverseConfig;
   @Mock private YBClient mockYbClient;
   @Mock private Commissioner mockCommissioner;
+  @Mock private BaseTaskDependencies mockBaseTaskDependencies;
   @Mock private CustomerTaskManager mockCustomerTaskManager;
 
   private Customer defaultCustomer;
@@ -103,14 +100,12 @@ public class AutoMasterFailoverTest extends FakeDBApplication {
     when(mockYbClient.listMasters()).thenReturn(mockListMastersResponse);
     when(mockYbClient.waitForServer(any(), anyLong())).thenReturn(true);
 
+    when(mockBaseTaskDependencies.getYbService()).thenReturn(mockYbClientService);
+    when(mockBaseTaskDependencies.getConfGetter()).thenReturn(mockRuntimeConfGetter);
+    when(mockBaseTaskDependencies.getCommissioner()).thenReturn(mockCommissioner);
+    when(mockBaseTaskDependencies.getNodeUIApiHelper()).thenReturn(mockApiHelper);
     automatedMasterFailover =
-        spy(
-            new AutoMasterFailover(
-                mockRuntimeConfGetter,
-                mockYbClientService,
-                mockApiHelper,
-                mockCommissioner,
-                mockCustomerTaskManager));
+        spy(new AutoMasterFailover(mockBaseTaskDependencies, mockCustomerTaskManager));
     automatedMasterFailover = spy(automatedMasterFailover);
     Map<String, Long> followerLags = new HashMap<>();
     followerLags.put("tablet-id-1", 100L);

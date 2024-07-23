@@ -143,14 +143,14 @@ Next, type in the following to find a movie for a space adventure:
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
-    <a href="#fulltext" class="nav-link active" id="fulltext-tab" data-toggle="tab"
+    <a href="#fulltext" class="nav-link active" id="fulltext-tab" data-bs-toggle="tab"
       role="tab" aria-controls="fulltext" aria-selected="true">
       <img src="/icons/search.svg" alt="full-text search">
       Full-Text Search
     </a>
   </li>
   <li>
-    <a href="#similarity" class="nav-link" id="similarity-tab" data-toggle="tab"
+    <a href="#similarity" class="nav-link" id="similarity-tab" data-bs-toggle="tab"
       role="tab" aria-controls="similarity" aria-selected="false">
       <img src="/icons/openai-logomark.svg" alt="vector similarity search">
       Vector Similarity Search

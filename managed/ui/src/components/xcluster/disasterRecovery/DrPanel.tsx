@@ -148,12 +148,12 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
   const { primaryUniverseUuid: sourceUniverseUuid, drReplicaUniverseUuid: targetUniverseUuid } =
     drConfigQuery.data ?? {};
   // For DR, the currentUniverseUuid is not guaranteed to be the sourceUniverseUuid.
-  const participantUniveresUuid =
+  const participantUniverseUuid =
     currentUniverseUuid !== targetUniverseUuid ? targetUniverseUuid : sourceUniverseUuid;
   const participantUniverseQuery = useQuery(
-    universeQueryKey.detail(participantUniveresUuid),
-    () => api.fetchUniverse(participantUniveresUuid),
-    { enabled: !!participantUniveresUuid }
+    universeQueryKey.detail(participantUniverseUuid),
+    () => api.fetchUniverse(participantUniverseUuid),
+    { enabled: !!participantUniverseUuid }
   );
 
   const [sourceUniverse, targetUniverse] =
@@ -182,12 +182,15 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
       queryClient.invalidateQueries(drConfigQueryKey.detail(drConfigUuid));
     }
   }, PollingIntervalMs.DR_CONFIG_STATE_TRANSITIONS);
+  useInterval(() => {
+    queryClient.invalidateQueries(drConfigQueryKey.detail(drConfigUuid));
+  }, PollingIntervalMs.DR_CONFIG);
 
   if (currentUniverseQuery.isError || participantUniverseQuery.isError) {
     return (
       <YBErrorIndicator
         customErrorMessage={t('error.failToFetchUniverse', {
-          universeUuid: currentUniverseQuery.isError ? currentUniverseUuid : participantUniveresUuid
+          universeUuid: currentUniverseQuery.isError ? currentUniverseUuid : participantUniverseUuid
         })}
       />
     );
@@ -542,7 +545,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
         )}
         {isEditTablesModalOpen && (
           <EditTablesModal
-            xClusterConfig={xClusterConfig}
+            xClusterConfigUuid={xClusterConfig.uuid}
             isDrInterface={true}
             drConfigUuid={drConfig.uuid}
             storageConfigUuid={drConfig.bootstrapParams?.backupRequestParams?.storageConfigUUID}
@@ -562,7 +565,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
             drConfig={drConfig}
             isVisible={isRestartConfigModalOpen}
             onHide={closeRestartConfigModal}
-            xClusterConfig={xClusterConfig}
+            xClusterConfigUuid={xClusterConfig.uuid}
           />
         )}
         {isDbSyncModalOpen && (
