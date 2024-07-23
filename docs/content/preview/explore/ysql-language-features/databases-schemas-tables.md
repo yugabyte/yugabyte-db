@@ -132,7 +132,7 @@ yugabyte=# \l
 (6 rows)
 ```
 
-To connect to this database, use the `\c` meta-command.
+To connect to the database you created, use the `\c` meta-command.
 
 ```sql
 yugabyte=# \c testdb
