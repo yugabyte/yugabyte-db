@@ -24,14 +24,7 @@ import io.ebean.ExpressionList;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -156,6 +149,12 @@ public class CustomerTaskController extends AuthenticatedController {
             .orderBy("create_time desc")
             .findPagedList()
             .getList();
+
+    return buildTaskListMap(customer, customerTaskList);
+  }
+
+  private Map<UUID, List<CustomerTaskFormData>> buildTaskListMap(
+      Customer customer, Collection<CustomerTask> customerTaskList) {
 
     Map<UUID, List<CustomerTaskFormData>> taskListMap = new HashMap<>();
 
@@ -335,5 +334,27 @@ public class CustomerTaskController extends AuthenticatedController {
         .createAuditEntry(
             request, Audit.TargetType.CustomerTask, taskUUID.toString(), Audit.ActionType.Resume);
     return YBPSuccess.withMessage("Task is resumed.");
+  }
+
+  @ApiOperation(value = "Get customer task with details", hidden = true)
+  public Result getTaskStatusWithDetails(UUID customerUUID, UUID taskUUID) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    CustomerTask customerTask = CustomerTask.getOrBadRequest(customerUUID, taskUUID);
+
+    Map<UUID, List<CustomerTaskFormData>> taskList =
+        buildTaskListMap(customer, Collections.singletonList(customerTask));
+    CustomerTaskFormData response =
+        taskList.values().stream()
+            .flatMap(List::stream)
+            .findFirst()
+            .orElseThrow(
+                () ->
+                    new IllegalStateException("Expecting exactly one task form data in response"));
+
+    response.taskInfo = TaskInfo.get(customerTask.getTaskUUID());
+    if (response.taskInfo != null) {
+      response.subtaskInfos = response.taskInfo.getSubTasks();
+    }
+    return PlatformResults.withData(taskList);
   }
 }
