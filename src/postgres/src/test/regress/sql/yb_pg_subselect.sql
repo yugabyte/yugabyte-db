@@ -2,8 +2,6 @@
 -- SUBSELECT
 --
 
-SET compute_query_id to regress; -- YB: hide query id for EXPLAIN VERBOSE
-
 -- another variant of that (bug #16213)
 explain (verbose, costs off)
 select * from

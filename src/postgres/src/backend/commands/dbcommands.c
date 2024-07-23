@@ -1380,25 +1380,25 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	 * CREATE DATABASE using templates other than template0 and template1 will 
 	 * always go through the DB clone workflow.
 	 */
-	bool is_clone = strcmp(dbtemplate, "template0") != 0 && strcmp(dbtemplate, "template1") != 0;
-	YbCloneInfo yb_clone_info = {
-		.clone_time = dbclonetime,
-		.src_db_name = dbtemplate,
-		.src_owner = is_clone ? GetUserNameFromId(src_owner, true /* noerr */) : NULL,
-		.tgt_owner = is_clone ? GetUserNameFromId(datdba, true /* noerr */) : NULL,
-	};
-	if (is_clone) {
-		if (!yb_clone_info.src_owner) {
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					errmsg("Could not get source database owner name from oid")));
-		}
-		if (!yb_clone_info.tgt_owner) {
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					errmsg("Could not get target database owner name from oid")));
-		}
-	}
+  bool is_clone = strcmp(dbtemplate, "template0") != 0 && strcmp(dbtemplate, "template1") != 0;
+  YbCloneInfo yb_clone_info = {
+    .clone_time = dbclonetime,
+    .src_db_name = dbtemplate,
+    .src_owner = is_clone ? GetUserNameFromId(src_owner, true /* noerr */) : NULL,
+    .tgt_owner = is_clone ? GetUserNameFromId(datdba, true /* noerr */) : NULL,
+  };
+  if (is_clone) {
+    if (!yb_clone_info.src_owner) {
+      ereport(ERROR,
+          (errcode(ERRCODE_UNDEFINED_OBJECT),
+          errmsg("Could not get source database owner name from oid")));
+    }
+    if (!yb_clone_info.tgt_owner) {
+      ereport(ERROR,
+          (errcode(ERRCODE_UNDEFINED_OBJECT),
+          errmsg("Could not get target database owner name from oid")));
+    }
+  }
 
 	/*
 	 * If database OID is configured, check if the OID is already in use or
@@ -1424,9 +1424,10 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 		 * OID was used by a database that's been dropped.
 		 */
 		if (IsYugaByteEnabled())
-			YBCCreateDatabase(dboid, dbname, src_dboid, /* next_oid */ InvalidOid,
-												dbcolocated, /*retry_on_oid_collision=*/ NULL,
-												is_clone ? &yb_clone_info : NULL);
+			YBCCreateDatabase(dboid, dbname, src_dboid,
+							  /* next_oid */ InvalidOid, dbcolocated,
+							  /*retry_on_oid_collision=*/ NULL,
+							  is_clone ? &yb_clone_info : NULL);
 	}
 	else
 	{
@@ -1452,9 +1453,10 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 
 			retry_on_oid_collision = false;
 			if (IsYugaByteEnabled())
-				YBCCreateDatabase(dboid, dbname, src_dboid, /* next_oid */ InvalidOid,
-													dbcolocated, &retry_on_oid_collision,
-													is_clone ? &yb_clone_info : NULL);
+				YBCCreateDatabase(dboid, dbname, src_dboid,
+								  /* next_oid */ InvalidOid, dbcolocated,
+								  &retry_on_oid_collision,
+								  is_clone ? &yb_clone_info : NULL);
 		} while (retry_on_oid_collision);
 	}
 

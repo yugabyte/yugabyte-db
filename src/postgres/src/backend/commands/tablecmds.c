@@ -505,7 +505,7 @@ static ObjectAddress ATExecSetStorage(Relation rel, const char *colName,
 static void ATPrepDropColumn(List **wqueue, Relation rel, bool recurse, bool recursing,
 							 AlterTableCmd *cmd, LOCKMODE lockmode,
 							 AlterTableUtilityContext *context);
-static ObjectAddress ATExecDropColumn(List **wqueue,  AlteredTableInfo *yb_tab,
+static ObjectAddress ATExecDropColumn(List **wqueue, AlteredTableInfo *yb_tab,
 									  Relation rel, const char *colName,
 									  DropBehavior behavior,
 									  bool recurse, bool recursing,
@@ -9165,8 +9165,8 @@ ATExecDropColumn(List **wqueue, AlteredTableInfo *yb_tab, Relation rel,
 	{
 		/* Recursion has ended, drop everything that was collected */
 		/*
-		 * YB: Skip YB drop on the column, as that will be handled separately
-		 * by the ALTER TABLE flow.
+		 * YB: Skip YB drop on the column, as that will be handled separately by
+		 * the ALTER TABLE flow.
 		 */
 		performMultipleDeletions(addrs, behavior,
 			IsYugaByteEnabled() ? YB_SKIP_YB_DROP_COLUMN : 0);

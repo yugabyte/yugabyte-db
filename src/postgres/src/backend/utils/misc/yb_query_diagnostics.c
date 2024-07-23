@@ -115,8 +115,6 @@ YbQueryDiagnosticsShmemInit(void)
 	if (!found)
 	{
 		/* First time through ... */
-		LWLockRegisterTranche(LWTRANCHE_YB_QUERY_DIAGNOSTICS,
-							  "yb_query_diagnostics");
 		LWLockInitialize(yb_query_diagnostics_lock,
 						 LWTRANCHE_YB_QUERY_DIAGNOSTICS);
 	}

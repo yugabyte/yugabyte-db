@@ -44,7 +44,6 @@ class PgSamplePicker : public PgSelectIndex {
     return Status::OK();
   }
 
-
   Status PrepareSamplingState(
       int targrows, double rstate_w, uint64_t rand_state_s0, uint64_t rand_state_s1) {
     auto* sampling_state = read_req_->mutable_sampling_state();
