@@ -943,6 +943,10 @@ YBCAbortTransaction()
 	 * scenarios to avoid a recursive loop of aborting again and again as part
 	 * of error handling in PostgresMain() because of the error faced during
 	 * abort.
+	 *
+	 * Note - If you are changing the behavior to not terminate the backend,
+	 * please consider its impact on sub-transaction abort failures
+	 * (YBCRollbackToSubTransaction) as well.
 	 */
 	if (unlikely(status))
 		elog(FATAL, "Failed to abort DDL transaction: %s", YBCMessageAsCString(status));
@@ -961,7 +965,27 @@ YBCSetActiveSubTransaction(SubTransactionId id)
 void
 YBCRollbackToSubTransaction(SubTransactionId id)
 {
-	HandleYBStatus(YBCPgRollbackToSubTransaction(id));
+	/*
+	 * This function is invoked:
+	 * - explicitly by user flows ("ROLLBACK TO <savepoint>" commands)
+	 * - implicitly as a result of abort/commit flows
+	 * - implicitly to implement exception handling in procedures and statement
+	 *   retries for YugabyteDB's read committed isolation level
+	 * An error in rolling back to a subtransaction is likely due to issues in
+	 * communicating with the tserver. Closing the backend connection
+	 * here prevents Postgres from attempting transaction error recovery, which
+	 * invokes the AbortCurrentTransaction flow (via the top level error handler
+	 * in PostgresMain()), and likely ending up in a PANIC'ed state due to
+	 * repeated failures caused by AbortSubTransaction not being reentrant.
+	 * Closing the backend here is acceptable because alternate ways of
+	 * handling this failure end up trying to abort the transaction which
+	 * would anyway terminate the backend on failure. Revisit this approach in
+	 * case the behavior of YBCAbortTransaction changes.
+	 */
+	YBCStatus status = YBCPgRollbackToSubTransaction(id);
+	if (unlikely(status))
+		elog(FATAL, "Failed to rollback to subtransaction %" PRId32 ": %s",
+			id, YBCMessageAsCString(status));
 }
 
 bool
