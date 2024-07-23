@@ -159,7 +159,7 @@ For more details on `pg_replication_slots` catalog view, please refer the [pg_re
 
 Only a superuser can execute the command to set the value of the `yb_read_time`.
 
-{{< /note }}
+{{< /note >}}
 
 For a non-super user to be able to perform an initial snapshot, the following YugabyteDB specific additional setup is required (apart from granting the required SELECT and USAGE privileges)
 
