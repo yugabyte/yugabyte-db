@@ -113,8 +113,8 @@ When a YugabyteDB cluster is deployed, YugabyteDB creates a set of default datab
 | :--- | :--- | :--- |
 | postgres | PostgreSQL | PostgreSQL default database meant for use by users, utilities, and third party applications. |
 | system_platform | YugabyteDB | Used by [YugabyteDB Anywhere](../../../yugabyte-platform/) to run periodic read and write tests to check the health of the node's YSQL endpoint. |
-| template0 | PostgreSQL | [PostgreSQL template database](https://www.postgresql.org/docs/current/manage-ag-templatedbs.html), to be copied when using CREATE DATABASE commands. template0 should never be modified. |
-| template1 | PostgreSQL | [PostgreSQL template database](https://www.postgresql.org/docs/current/manage-ag-templatedbs.html), copied when using CREATE DATABASE commands. You can add objects to template1; these are copied into databases created later. |
+| template0 | PostgreSQL | [PostgreSQL template database](https://www.postgresql.org/docs/11/manage-ag-templatedbs.html), to be copied when using CREATE DATABASE commands. template0 should never be modified. |
+| template1 | PostgreSQL | [PostgreSQL template database](https://www.postgresql.org/docs/11/manage-ag-templatedbs.html), copied when using CREATE DATABASE commands. You can add objects to template1; these are copied into databases created later. |
 | yugabyte | YugabyteDB | The default database for YSQL API connections. See [Default user](../../../secure/enable-authentication/authentication-ysql/#default-user-and-password). |
 
 For more information on the default PostgreSQL databases, refer to [Managing Databases](https://www.postgresql.org/docs/11/managing-databases.html) on the PostgreSQL documentation.
