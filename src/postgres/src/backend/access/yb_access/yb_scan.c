@@ -2319,7 +2319,7 @@ YbBindHashKeys(YbScanDesc ybScan)
 		Assert(YbIsHashCodeSearch(key));
 		YbBound bound = {
 			.type = YB_YQL_BOUND_VALID,
-			.value = key->sk_argument
+			.value = (key->sk_argument > INT_MAX) ? 0 : key->sk_argument
 		};
 		switch (key->sk_strategy)
 		{

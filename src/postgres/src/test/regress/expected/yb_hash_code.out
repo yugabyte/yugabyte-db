@@ -952,3 +952,39 @@ SELECT yb_hash_code(x), y FROM t WHERE yb_hash_code(x) = 2675 AND y IN (5, 6);
 (1 row)
 
 DROP TABLE t;
+- Issue #18360
+CREATE TABLE tt (i int, j int);
+CREATE INDEX ON tt (i, j);
+INSERT INTO tt VALUES (1, 2);
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE)/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > -1;
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Index Scan using tt_i_j_idx on tt  (cost=0.00..129.00 rows=1000 width=8)
+   Index Cond: (yb_hash_code(i) > '-1'::integer)
+(2 rows)
+
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > -1;
+ i | j
+---+---
+ 1 | 2
+(1 row)
+
+/*+SeqScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > -1;
+ i | j
+---+---
+ 1 | 2
+(1 row)
+
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >  2^31 - 1;
+ i | j 
+---+---
+(0 rows)
+
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >  2^31;
+ i | j 
+---+---
+(0 rows)
+
+
+
+DROP TABLE tt;

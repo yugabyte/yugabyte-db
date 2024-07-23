@@ -208,3 +208,14 @@ CREATE INDEX t_x_hash_y_asc_idx ON t (x HASH, y ASC);
 EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT yb_hash_code(x), y FROM t WHERE yb_hash_code(x) = 2675 AND y IN (5, 6);
 SELECT yb_hash_code(x), y FROM t WHERE yb_hash_code(x) = 2675 AND y IN (5, 6);
 DROP TABLE t;
+
+-- Issue #18360
+CREATE TABLE tt (i int, j int);
+CREATE INDEX ON tt (i, j);
+INSERT INTO tt VALUES (1, 2);
+EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE)/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > -1;
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > -1;
+/*+SeqScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > -1;
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > 2^31 - 1; 
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > 2^31; 
+DROP TABLE tt;
