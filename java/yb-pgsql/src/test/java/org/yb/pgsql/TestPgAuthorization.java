@@ -3341,4 +3341,17 @@ public class TestPgAuthorization extends BasePgSQLTest {
     }
   }
 
+  @Test
+  public void testPgLocksAuthorization() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE ROLE yb_db_admin_member LOGIN");
+      statement.execute("GRANT yb_db_admin TO yb_db_admin_member");
+    }
+
+    try (Connection connection = getConnectionBuilder().withUser("yb_db_admin_member").connect();
+         Statement statement = connection.createStatement()) {
+      // yb_db_admin_member should be able to query pg_locks without superuser access.
+      statement.executeQuery("SELECT * FROM pg_locks");
+    }
+  }
 }
