@@ -57,10 +57,4 @@ For simplified deployment, use the yugabyted utility. yugabyted acts as a parent
       href="default-ports/"
       icon="/images/section_icons/deploy/enterprise/administer.png">}}
 
-  {{<index/item
-      title="Default databases"
-      body="Default PostgreSQL databases created when deploying a cluster."
-      href="default-databases/"
-      icon="/images/section_icons/deploy/enterprise/administer.png">}}
-
 {{</index/block>}}
