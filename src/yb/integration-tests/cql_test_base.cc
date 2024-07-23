@@ -30,6 +30,8 @@
 using std::string;
 using std::vector;
 
+DECLARE_string(cql_proxy_bind_address);
+
 namespace yb {
 
 template <class MiniClusterType>
@@ -59,9 +61,9 @@ void CqlTestBase<ExternalMiniCluster>::SetUp() {
 
 template <>
 std::unique_ptr<cqlserver::CQLServer> CqlTestBase<MiniCluster>::MakeCQLServerForTServer(
-    MiniCluster* cluster, int idx, client::YBClient* client, std::string* cql_host,
+    MiniCluster* cluster, int ts_idx, client::YBClient* client, std::string* cql_host,
     uint16_t* cql_port) {
-  auto* mini_tserver = cluster->mini_tablet_server(idx);
+  auto* mini_tserver = cluster->mini_tablet_server(ts_idx);
   auto* tserver = mini_tserver->server();
 
   const auto& tserver_options = tserver->options();
@@ -76,7 +78,10 @@ std::unique_ptr<cqlserver::CQLServer> CqlTestBase<MiniCluster>::MakeCQLServerFor
   if (cql_host->empty()) {
     *cql_host = mini_tserver->bound_rpc_addr().address().to_string();
   }
-  cql_server_options.rpc_opts.rpc_bind_addresses = Format("$0:$1", *cql_host, *cql_port);
+
+  const auto cql_host_port = Format("$0:$1", *cql_host, *cql_port);
+  cql_server_options.rpc_opts.rpc_bind_addresses = cql_host_port;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cql_proxy_bind_address) = cql_host_port;
 
   return std::make_unique<cqlserver::CQLServer>(
       cql_server_options, &client->messenger()->io_service(), tserver);
@@ -84,7 +89,8 @@ std::unique_ptr<cqlserver::CQLServer> CqlTestBase<MiniCluster>::MakeCQLServerFor
 
 template <>
 Status CqlTestBase<MiniCluster>::StartCQLServer() {
-  cql_server_ = MakeCQLServerForTServer(cluster_.get(), 0, client_.get(), &cql_host_, &cql_port_);
+  cql_server_ = MakeCQLServerForTServer(
+      cluster_.get(), /* ts_idx */ 0, client_.get(), &cql_host_, &cql_port_);
   return cql_server_->Start();
 }
 
