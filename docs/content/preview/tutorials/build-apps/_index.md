@@ -68,6 +68,13 @@ The tutorials assume you have deployed a YugabyteDB cluster in YugabyteDB Aeon o
   </li>
 
   <li>
+    <a href="elixir/cloud-ysql-elixir/" class="orange">
+      <i class="fa-brands fa-node-js"></i>
+      Elixir
+    </a>
+  </li>
+
+  <li>
     <a href="c/cloud-ysql-c/" class="orange">
       <i class="icon-c"></i>
       C
