@@ -94,7 +94,7 @@ Any changes that gets replicated will be printed on the stdout.
 
 For more `pg_recvlogical` configurations, please refer the official documentation of [pg_recvlogical](https://www.postgresql.org/docs/11/app-pgrecvlogical.html) from PostgreSQL.
 
-<< /tip>>
+{{< /tip >}}
 
 #### Verify Replication
 
