@@ -427,6 +427,8 @@ void HandlePreParsedDollarDateTrunc(pgbson *doc, void *arguments,
 									ExpressionResult *expressionResult);
 void HandlePreParsedDollarEq(pgbson *doc, void *arguments,
 							 ExpressionResult *expressionResult);
+void HandlePreParsedDollarGetField(pgbson *doc, void *arguments,
+								   ExpressionResult *expressionResult);
 void HandlePreParsedDollarGt(pgbson *doc, void *arguments,
 							 ExpressionResult *expressionResult);
 void HandlePreParsedDollarGte(pgbson *doc, void *arguments,
@@ -509,6 +511,7 @@ void ParseDollarDateSubtract(const bson_value_t *argument,
 							 AggregationExpressionData *data);
 void ParseDollarDateTrunc(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarEq(const bson_value_t *argument, AggregationExpressionData *data);
+void ParseDollarGetField(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarGt(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarGte(const bson_value_t *argument, AggregationExpressionData *data);
 void ParseDollarLet(const bson_value_t *argument, AggregationExpressionData *data);

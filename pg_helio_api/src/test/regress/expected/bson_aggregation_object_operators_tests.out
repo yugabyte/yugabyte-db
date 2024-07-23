@@ -1,0 +1,126 @@
+SET search_path TO helio_api,helio_core;
+SET helio_api.next_collection_id TO 3600;
+SET helio_api.next_collection_index_id TO 3600;
+-- $getField operator
+-- positive cases
+-- entire expression
+-- field parsed from $literal
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {"field": { "$literal": "a" }, "input": {"a": { "b": 3 }}}}}}');
+                        bson_dollar_project                         
+--------------------------------------------------------------------
+ { "result" : { "fieldValue" : { "b" : { "$numberInt" : "3" } } } }
+(1 row)
+
+-- input be a system variable
+SELECT * FROM helio_api_catalog.bson_dollar_project('{"a": { "b": 3 }}', '{"result": { "fieldValue": {"$getField": {"field": "a", "input": "$$ROOT"}}}}');
+                        bson_dollar_project                         
+--------------------------------------------------------------------
+ { "result" : { "fieldValue" : { "b" : { "$numberInt" : "3" } } } }
+(1 row)
+
+-- input be null
+SELECT * FROM helio_api_catalog.bson_dollar_project('{"a": { "b": 3 }}', '{"result": { "fieldValue": {"$getField": {"field": "a", "input": null}}}}');
+          bson_dollar_project           
+----------------------------------------
+ { "result" : { "fieldValue" : null } }
+(1 row)
+
+-- input be a path
+SELECT * FROM helio_api_catalog.bson_dollar_project('{"a": { "b": 3 }}', '{"result": { "fieldValue": {"$getField": {"field": "b", "input": "$a"}}}}');
+                   bson_dollar_project                    
+----------------------------------------------------------
+ { "result" : { "fieldValue" : { "$numberInt" : "3" } } }
+(1 row)
+
+-- input be a missing path
+SELECT * FROM helio_api_catalog.bson_dollar_project('{"a": { "b": 3 }}', '{"result": { "fieldValue": {"$getField": {"field": "b", "input": "$adf"}}}}');
+ bson_dollar_project 
+---------------------
+ { "result" : {  } }
+(1 row)
+
+-- input be constant
+SELECT * FROM helio_api_catalog.bson_dollar_project('{"a": { "b": 3 }}', '{"result": { "fieldValue": {"$getField": {"field": "b", "input": "dx"}}}}');
+ bson_dollar_project 
+---------------------
+ { "result" : {  } }
+(1 row)
+
+-- get array field value
+SELECT * FROM helio_api_catalog.bson_dollar_project('{"a": { "b": ["1"] }}', '{"result": { "fieldValue": {"$getField": {"field": "b", "input": "$a"}}}}');
+            bson_dollar_project            
+-------------------------------------------
+ { "result" : { "fieldValue" : [ "1" ] } }
+(1 row)
+
+-- get document field value
+SELECT * FROM helio_api_catalog.bson_dollar_project('{"a": { "b": {"c": "1"} }}', '{"result": { "fieldValue": {"$getField": {"field": "b", "input": "$a"}}}}');
+               bson_dollar_project               
+-------------------------------------------------
+ { "result" : { "fieldValue" : { "c" : "1" } } }
+(1 row)
+
+-- field name contains $ and .
+SELECT * FROM helio_api_catalog.bson_dollar_project('{"a": { "b": {"c": "nested text"}, "b.c": "plain text" }}', '{"result": { "fieldValue": {"$getField": {"field": "b.c", "input": "$a"}}}}');
+              bson_dollar_project               
+------------------------------------------------
+ { "result" : { "fieldValue" : "plain text" } }
+(1 row)
+
+SELECT * FROM helio_api_catalog.bson_dollar_project('{"a": { "$b.01": {"c": "1"} }}', '{"result": { "fieldValue": {"$getField": {"field": { "$literal": "$b.01" }, "input": "$a"}}}}');
+               bson_dollar_project               
+-------------------------------------------------
+ { "result" : { "fieldValue" : { "c" : "1" } } }
+(1 row)
+
+-- nested expression
+SELECT * FROM helio_api_catalog.bson_dollar_project('{"a": { "b": 3 }}', '{"result": { "fieldValue": {"$getField": {"field": "b", "input": { "$getField": "a" }}}}}');
+                   bson_dollar_project                    
+----------------------------------------------------------
+ { "result" : { "fieldValue" : { "$numberInt" : "3" } } }
+(1 row)
+
+-- shorthand expression
+-- input will be $$CURRENT
+SELECT * FROM helio_api_catalog.bson_dollar_project('{"a": { "b": 3 }}', '{"result": { "fieldValue": {"$getField": "a"}}}');
+                        bson_dollar_project                         
+--------------------------------------------------------------------
+ { "result" : { "fieldValue" : { "b" : { "$numberInt" : "3" } } } }
+(1 row)
+
+SELECT * FROM helio_api_catalog.bson_dollar_project('{"a": { "b": 3 }}', '{"result": { "fieldValue": {"$getField": "b"}}}');
+ bson_dollar_project 
+---------------------
+ { "result" : {  } }
+(1 row)
+
+-- negative cases
+-- full expression
+-- field is required
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {}}}}');
+ERROR:  $getField requires 'field' to be specified
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {"input": {}}}}}');
+ERROR:  $getField requires 'field' to be specified
+-- input is required
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {"field": "a"}}}}');
+ERROR:  $getField requires 'input' to be specified
+-- field must be a string
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {"field": null, "input": {}}}}}');
+ERROR:  $getField requires 'field' to evaluate to type String, but got null
+HINT:  $getField requires 'field' to evaluate to type String, but got null
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {"field": 1, "input": {}}}}}');
+ERROR:  $getField requires 'field' to evaluate to type String, but got int
+HINT:  $getField requires 'field' to evaluate to type String, but got int
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {"field": [], "input": {}}}}}');
+ERROR:  $getField requires 'field' to evaluate to a constant, but got a non-constant argument
+-- field is a path
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {"field": "$a", "input": {"a": { "b": 3 }}}}}}');
+ERROR:  A field path reference which is not allowed in this context. Did you mean {$literal: '$a'}?
+HINT:  A field path reference which is not allowed in this context. Did you mean {$literal: '$a'}?
+-- shorthand expression
+-- field must be a string
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": []}}}');
+ERROR:  $getField requires 'field' to evaluate to a constant, but got a non-constant argument
+-- field is an operator
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": { "$add": [2, 3 ]}}}}');
+ERROR:  $getField requires 'field' to evaluate to a constant, but got a non-constant argument

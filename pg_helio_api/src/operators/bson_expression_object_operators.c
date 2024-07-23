@@ -17,6 +17,16 @@
 #include "aggregation/bson_tree_write.h"
 #include "utils/mongo_errors.h"
 
+/* Struct that represents the parsed arguments to a $getField expression. */
+typedef struct DollarGetFieldArguments
+{
+	/* The input object to the $getField expression. */
+	AggregationExpressionData input;
+
+	/* The field in the input object for which you want to return a value */
+	AggregationExpressionData field;
+} DollarGetFieldArguments;
+
 /* Struct that represents the parsed arguments to a $setField expression. */
 typedef struct DollarSetFieldArguments
 {
@@ -37,10 +47,14 @@ static void AppendDocumentForMergeObjects(pgbson *sourceDocument, const
 										  bson_value_t *value,
 										  BsonIntermediatePathNode *tree,
 										  ExpressionResult *parent);
+static bson_value_t GetResultForDollarGetField(bson_value_t field, bson_value_t input);
 static bool IsAggregationExpressionEvaluatesToNull(
 	AggregationExpressionData *expressionData);
 static AggregationExpressionData * PerformConstantFolding(
 	AggregationExpressionData *expressionData, const bson_value_t *value);
+static void ParseFieldExpressionForDollarGetField(const bson_value_t *field,
+												  AggregationExpressionData *
+												  fieldExpression);
 
 /*
  * Evaluates the output of an $mergeObjects expression.
@@ -541,6 +555,172 @@ ParseDollarSetField(const bson_value_t *argument, AggregationExpressionData *dat
 }
 
 
+/*
+ * Evaluates the output of a $getField expression.
+ * $getField is expressed as:
+ * $getField { "field": <const expression>, "input": <document> default to be "$$CURRENT" } }
+ * or $getField: <const expression of field> to retirved field from $$CURRENT
+ */
+void
+HandlePreParsedDollarGetField(pgbson *doc, void *arguments,
+							  ExpressionResult *expressionResult)
+{
+	DollarGetFieldArguments *getFieldArguments = (DollarGetFieldArguments *) arguments;
+
+	bool isNullOnEmpty = false;
+
+	ExpressionResult fieldExpression = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(&getFieldArguments->field, doc, &fieldExpression,
+									  isNullOnEmpty);
+	bson_value_t evaluatedFieldArg = fieldExpression.value;
+
+	ExpressionResult inputExpression = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(&getFieldArguments->input, doc, &inputExpression,
+									  isNullOnEmpty);
+	bson_value_t evaluatedInputArg = inputExpression.value;
+
+	if (evaluatedInputArg.value_type == BSON_TYPE_DOCUMENT)
+	{
+		bson_value_t result = GetResultForDollarGetField(evaluatedFieldArg,
+														 evaluatedInputArg);
+		if (result.value_type != BSON_TYPE_EOD)
+		{
+			ExpressionResultSetValue(expressionResult, &result);
+		}
+	}
+
+	/* If the field is not found, or input is missing or doesn't resolve to an object, do nothing to return missing directly */
+	/* which is not the same with mongodb documentation. */
+}
+
+
+/* Parses the $getField expression specified in the bson_value_t and stores it in the data argument.
+ * 1. full expression
+ * $getField { "field": <const expression>, "input": <document> default to be "$$CURRENT" } }
+ *      example: {"$getField": {"field": "a", "input": "$$CURRENT"}}
+ * 2. shorthand expression
+ * $getField: <const expression of field> to retirved field from $$CURRENT
+ *		example: {"$getField": "a"}
+ *
+ * validation cases:
+ * If the argument is a document, traverse the argument, and check the key got by iterator
+ * 1. key is "field" or "input", store the value to field or input
+ * 2. the first key starts with "$", the expression is a shorthand expression, took argument as field, and "$$CURRENT" as input, validate field argument later
+ * 3. if key is unknown, throw error
+ * If the argument is not a document, it is a shorthand expression, store the argument to field, and "$$CURRENT" to input
+ *
+ * Then validate field argument, which is completed in function ParseFieldExpressionForDollarGetField
+ * 4. if input is EOD, throw error
+ * 5. if input is null, return null
+ * 6. if other cases, do nothing to return missing
+ */
+void
+ParseDollarGetField(const bson_value_t *argument, AggregationExpressionData *data)
+{
+	bson_value_t input = { 0 };
+	bson_value_t field = { 0 };
+
+	if (argument->value_type == BSON_TYPE_DOCUMENT)
+	{
+		/* iterate over docuemnt to get input and field */
+		bson_iter_t docIter;
+		BsonValueInitIterator(argument, &docIter);
+		bool isFirstKey = true;
+		while (bson_iter_next(&docIter))
+		{
+			const char *key = bson_iter_key(&docIter);
+
+			/* if the first key starts with "$", the expression is a shorthand expression */
+			/* it may be an operator expression, copy to field and parse in ParseFieldExpressionForDollarGetField */
+			if (isFirstKey && key[0] == '$')
+			{
+				field = *argument;
+				input.value_type = BSON_TYPE_UTF8;
+				input.value.v_utf8.len = 9;
+				input.value.v_utf8.str = "$$CURRENT";
+				break;
+			}
+
+			isFirstKey = false;
+			if (strcmp(key, "input") == 0)
+			{
+				input = *bson_iter_value(&docIter);
+			}
+			else if (strcmp(key, "field") == 0)
+			{
+				field = *bson_iter_value(&docIter);
+			}
+			else
+			{
+				ereport(ERROR, (errcode(MongoLocation3041701), errmsg(
+									"$getField found an unknown argument: %s",
+									key)));
+			}
+		}
+	}
+	else
+	{
+		/* the expression is a shorthand expression */
+		field = *argument;
+		input.value_type = BSON_TYPE_UTF8;
+		input.value.v_utf8.len = 9;
+		input.value.v_utf8.str = "$$CURRENT";
+	}
+
+	/* check if required key is missing */
+	if (field.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(MongoLocation3041702),
+						errmsg(
+							"$getField requires 'field' to be specified")));
+	}
+
+	if (input.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(MongoLocation3041703),
+						errmsg(
+							"$getField requires 'input' to be specified")));
+	}
+
+	DollarGetFieldArguments *arguments = palloc0(sizeof(DollarGetFieldArguments));
+
+	data->operator.arguments = arguments;
+	data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
+
+	/* Parse field */
+	ParseFieldExpressionForDollarGetField(&field, &arguments->field);
+
+	/* Parse input */
+	ParseAggregationExpressionData(&arguments->input, &input);
+
+
+	/* if input is null, return null */
+	if (input.value_type == BSON_TYPE_NULL || IsAggregationExpressionEvaluatesToNull(
+			&arguments->input))
+	{
+		data->value = (bson_value_t) {
+			.value_type = BSON_TYPE_NULL
+		};
+
+		data->kind = AggregationExpressionKind_Constant;
+	}
+	else if (IsAggregationExpressionConstant(&arguments->input) && input.value_type ==
+			 BSON_TYPE_DOCUMENT)
+	{
+		/* if input is a constant document, we can evaluate the result directly */
+		bson_value_t result = GetResultForDollarGetField(field, input);
+		if (result.value_type != BSON_TYPE_EOD)
+		{
+			data->value = result;
+			data->kind = AggregationExpressionKind_Constant;
+		}
+	}
+
+	/* if the value type of input is not an object, do nothing to return missing */
+	/* which is not the same with mongodb documentation. */
+}
+
+
 /* Function verifies if we can simplify expressions by constant folding, especially during parse time
  * so that later when we handle the pre-parsed tree during document procession, we make it as fast
  * as possible. Some notes: to make the input to $setField expression, is such that the expression result will
@@ -640,4 +820,108 @@ PerformConstantFolding(AggregationExpressionData *expressionData,
 	}
 
 	return expressionData;
+}
+
+
+/* Function parses field argument for $getField
+ * validation cases:
+ * 1. if field is EOD, throw error missing required key 'field'
+ * 2. if field is a document, check if it is a valid $const or $literal expression, update flag and store evaluated result
+ * 3. If field not a $const or $literal expression:
+ *      3.1 If it's a path/system variable, throw error 5654600
+ *      3.2 Else if it's a document/array, throw error 5654601
+ *      3.3 Else if it's value type is not utf-8, throw error 5654602
+ * 4. Else if the type of evaluated result is not utf-8 throw error 5654602
+ * 5. Then it is a valid field argument, and the value has been updated */
+static void
+ParseFieldExpressionForDollarGetField(const bson_value_t *field,
+									  AggregationExpressionData *
+									  fieldExpression)
+{
+	bool isConstOrLiteralExpression = false;
+
+	/* Parse the expression first */
+	/* If there are more than one key, throw error */
+	/*      example: {"$getField": {$unknown: "a", "b": "c"}} */
+	/*      throw error: An object representing an expression must have exactly one field... */
+	/* If the first key is not a recognized operator, throw error */
+	/*      example: {"$getField": {$unknown: "a"}} */
+	/*      throw error: Unrecognized expression '$unknown' */
+	ParseAggregationExpressionData(fieldExpression, field);
+
+	/* We should check if the field is a valid $const or $literal expression */
+	/* as we need to separate these two cases where fieldExpression->kind are both AggregationExpressionKind_Constant */
+	/* and fieldExpression->value.value_type are both BSON_TYPE_ARRAY */
+	/* example: */
+	/*		{ $getField: { $const: [1,2]}} should throw MongoLocation5654602 */
+	/*		{ $getField: { $zip: { inputs: [ [ "a" ], [ "b" ], [ "c" ] ] }}} should throw MongoLocation5654601 */
+	if (field->value_type == BSON_TYPE_DOCUMENT)
+	{
+		bson_iter_t docIter;
+		BsonValueInitIterator(field, &docIter);
+		if (bson_iter_next(&docIter))
+		{
+			const char *key = bson_iter_key(&docIter);
+			if (strcmp(key, "$const") == 0 || strcmp(key, "$literal") == 0)
+			{
+				isConstOrLiteralExpression = true;
+			}
+		}
+	}
+
+	if (!isConstOrLiteralExpression)
+	{
+		if (fieldExpression->kind == AggregationExpressionKind_Path ||
+			fieldExpression->kind == AggregationExpressionKind_SystemVariable)
+		{
+			ereport(ERROR, (errcode(MongoLocation5654600),
+							errmsg(
+								"A field path reference which is not allowed in this context. Did you mean {$literal: '%s'}?",
+								fieldExpression->value.value.v_utf8.str),
+							errhint(
+								"A field path reference which is not allowed in this context. Did you mean {$literal: '%s'}?",
+								fieldExpression->value.value.v_utf8.str)));
+		}
+		else if (field->value_type == BSON_TYPE_DOCUMENT ||
+				 field->value_type == BSON_TYPE_ARRAY)
+		{
+			ereport(ERROR, (errcode(
+								MongoLocation5654601),
+							errmsg(
+								"$getField requires 'field' to evaluate to a constant, but got a non-constant argument")));
+		}
+	}
+
+	/* if the field is a $const or $literal expression, or any constant value, we should check if the value type is utf-8 */
+	if (fieldExpression->value.value_type != BSON_TYPE_UTF8)
+	{
+		ereport(ERROR, (errcode(
+							MongoLocation5654602),
+						errmsg(
+							"$getField requires 'field' to evaluate to type String, but got %s",
+							BsonTypeName(fieldExpression->value.value_type)),
+						errhint(
+							"$getField requires 'field' to evaluate to type String, but got %s",
+							BsonTypeName(fieldExpression->value.value_type))));
+	}
+}
+
+
+static bson_value_t
+GetResultForDollarGetField(bson_value_t field, bson_value_t input)
+{
+	bson_value_t result = { 0 };
+	bson_iter_t inputIter;
+	BsonValueInitIterator(&input, &inputIter);
+	while (bson_iter_next(&inputIter))
+	{
+		const char *key = bson_iter_key(&inputIter);
+		const bson_value_t *val = bson_iter_value(&inputIter);
+
+		if (strcmp(key, field.value.v_utf8.str) == 0)
+		{
+			result = *val;
+		}
+	}
+	return result;
 }
