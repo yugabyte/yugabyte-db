@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks.local;
 
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.forms.DrConfigCreateForm;
+import com.yugabyte.yw.forms.DrConfigSetDatabasesForm;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
@@ -18,6 +19,15 @@ public class DRLocalTestBase extends XClusterLocalTestBase {
         app,
         "POST",
         "/api/customers/" + customer.getUuid() + "/dr_configs",
+        user.createAuthToken(),
+        Json.toJson(formData));
+  }
+
+  protected Result setDatabasesDrConfig(UUID drConfigUUID, DrConfigSetDatabasesForm formData) {
+    return FakeApiHelper.doRequestWithAuthTokenAndBody(
+        app,
+        "PUT",
+        "/api/customers/" + customer.getUuid() + "/dr_configs/" + drConfigUUID + "/set_dbs",
         user.createAuthToken(),
         Json.toJson(formData));
   }
