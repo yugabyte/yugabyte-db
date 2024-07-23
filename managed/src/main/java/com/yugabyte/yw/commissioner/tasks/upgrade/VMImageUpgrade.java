@@ -151,7 +151,6 @@ public class VMImageUpgrade extends UpgradeTaskBase {
     Universe universe = getUniverse();
     UUID imageBundleUUID;
     for (NodeDetails node : nodes) {
-      createSetNodeStateTask(node, getNodeState());
       UUID region = taskParams().nodeToRegion.get(node.nodeUuid);
       String machineImage = "";
       String sshUserOverride = "";
@@ -200,6 +199,8 @@ public class VMImageUpgrade extends UpgradeTaskBase {
         tservers.add(node);
       }
       if (universe.isYbcEnabled()) processTypes.add(ServerType.CONTROLLER);
+
+      createSetNodeStateTask(node, getNodeState());
 
       createCheckNodesAreSafeToTakeDownTask(masters, tservers, null);
 
@@ -291,9 +292,9 @@ public class VMImageUpgrade extends UpgradeTaskBase {
           clusterToImageBundleMap.put(node.placementUuid, imageBundleUUID);
         }
       }
+      createSetNodeStateTask(node, NodeState.Live);
       createNodeDetailsUpdateTask(node, !taskParams().isSoftwareUpdateViaVm)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-      createSetNodeStateTask(node, NodeState.Live);
     }
 
     // Update the imageBundleUUID in the cluster -> userIntent

@@ -99,8 +99,8 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
           TaskType.WaitForServerReady,
           TaskType.WaitStartingFromTime,
           TaskType.WaitForEncryptionKeyInMemory,
-          TaskType.UpdateNodeDetails,
-          TaskType.SetNodeState);
+          TaskType.SetNodeState,
+          TaskType.UpdateNodeDetails);
 
   private static final List<TaskType> NODE_VALIDATION_TASKS =
       ImmutableList.of(TaskType.CheckLocale, TaskType.CheckGlibc);
