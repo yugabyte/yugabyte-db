@@ -27,7 +27,15 @@ const LDAP_KEYS = [
   'ldapurl'
 ];
 
-const JWT_KEYS = ['map', 'jwt_audiences', 'jwt_issuers', 'jwt_matching_claim_key', 'jwks'];
+const JWT_KEYS = [
+  'map',
+  'jwt_audiences',
+  'jwt_issuers',
+  'jwt_matching_claim_key',
+  'jwks',
+  'jwt_jwks_path',
+  'jwt_jwks_url'
+];
 
 export const CONST_VALUES = {
   JWT: 'jwt',
