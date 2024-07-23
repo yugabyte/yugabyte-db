@@ -121,7 +121,7 @@ DECLARE_bool(cdcsdk_enable_dynamic_tables_disable_option);
 DECLARE_bool(TEST_cdcsdk_skip_updating_cdc_state_entries_on_table_removal);
 DECLARE_bool(TEST_cdcsdk_add_indexes_to_stream);
 DECLARE_bool(cdcsdk_enable_cleanup_of_non_eligible_tables_from_stream);
-
+DECLARE_bool(TEST_cdcsdk_skip_stream_active_check);
 namespace yb {
 
 using client::YBClient;

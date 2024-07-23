@@ -1556,6 +1556,11 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
             status = StatusFromPB(change_resp.error().status());
             if (status.IsNotFound() || status.IsInvalidArgument()) {
               RETURN_NOT_OK(status);
+            } else if (status.IsInternalError()) {
+              auto err_msg = status.message().ToBuffer();
+              if ((err_msg.find("expired for Tablet") ||
+                   err_msg.find("CDCSDK Trying to fetch already GCed intents")))
+                RETURN_NOT_OK(status);
             }
           }
 
@@ -1981,7 +1986,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     if (init_virtual_wal) {
       Status s = InitVirtualWAL(stream_id, table_ids, session_id);
       if (!s.ok()) {
-        LOG(ERROR) << "Error while trying to initialize virtual WAL";
+        LOG(ERROR) << "Error while trying to initialize virtual WAL: " << s;
         RETURN_NOT_OK(s);
       }
     }
