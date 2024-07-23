@@ -63,16 +63,15 @@ The following table describes views in YSQL you can use to monitor and tune quer
 | :--- | :---------- |
 | [pg_stat_statements](../query-1-performance/pg-stat-statements) | Get query statistics (such as the _time spent by a query_) |
 | [pg_stat_activity](./pg-stat-activity) | View and analyze live queries |
-| [yb_local_tablets](./yb-local-tablets) | Get YSQL/YCQL and tablet metadata details |
 | [yb_terminated_queries](./yb-pg-stat-get-queries/) | Identify terminated queries |
 | [pg_stat_progress_copy](./pg-stat-progress-copy) | Get the status of a COPY command execution |
 | [pg_locks](./pg-locks) | Get information on locks held by a transaction |
 
 To get more details about the various steps of a query execution, use the [Explain Analyze](../query-1-performance/explain-analyze) command.
 
-## Active Session History
+<!-- ## Active Session History
 
-[Active Session History](active-session-history/) (ASH) offers insight into current and past system activity by periodically sampling session behavior in the database. ASH functionality extends to [YSQL](../../api/ysql/), [YCQL](../../api/ycql/), and [YB-TServer](../../architecture/yb-tserver/) processes, and helps you to conduct analytical queries, perform aggregations, and troubleshoot performance issues.
+[Active Session History](active-session-history/) (ASH) offers insight into current and past system activity by periodically sampling session behavior in the database. ASH functionality extends to [YSQL](../../api/ysql/), [YCQL](../../api/ycql/), and [YB-TServer](../../architecture/yb-tserver/) processes, and helps you to conduct analytical queries, perform aggregations, and troubleshoot performance issues. -->
 
 ## Learn more
 
@@ -95,11 +94,11 @@ To get more details about the various steps of a query execution, use the [Expla
       href="./pg-stat-activity/"
       icon="/images/section_icons/manage/diagnostics.png">}}
 
-  {{<index/item
+  <!-- {{<index/item
       title="View YQL and tablet metadata with yb_local_tablets"
       body="See metadata about the YSQL and YCQL statements, and system tablets of a node."
       href="./yb-local-tablets/"
-      icon="fa-solid fa-tablets">}}
+      icon="fa-solid fa-tablets">}} -->
 
   {{<index/item
       title="View terminated queries with yb_terminated_queries"

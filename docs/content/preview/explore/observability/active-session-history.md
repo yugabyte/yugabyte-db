@@ -31,9 +31,9 @@ To use ASH, enable and configure the following flags for each node of your clust
 
 | Flag | Description |
 | :--- | :---------- |
-| allowed_preview_flags_csv | Set the value of this flag to include `ysql_yb_ash_enable_infra`, `ysql_yb_enable_ash`. |
+| allowed_preview_flags_csv | Set the value of this flag to include `ysql_yb_ash_enable_infra,ysql_yb_enable_ash`. |
 | ysql_yb_ash_enable_infra | Enable or disable ASH infrastructure. <br>Default: false. Changing this flag requires a VM restart. |
-| ysql_yb_enable_ash | Works only in conjunction with the flag `ysql_yb_ash_enable_infra`. Setting this flag to true enables collecting of wait events for YSQL and YCQL queries, and YB-TServer requests.<br> Default: false. Changing this flag doesn't require a VM restart. |
+| ysql_yb_enable_ash | Works only in conjunction with the flag `ysql_yb_ash_enable_infra`. Setting this flag to true enables the collection of wait events for YSQL and YCQL queries, and YB-TServer requests.<br> Default: false. Changing this flag doesn't require a VM restart. |
 
 ### Additional flags
 
@@ -69,15 +69,16 @@ This view provides a list of wait events and their metadata. The columns of the 
 
 | Column | Type | Description |
 | :----- | :--- | :---------- |
+| sample_time | timestamp | Timestamp when the sample was captured |
 | root_request_id | UUID | A 16-byte UUID that is generated per request. Generated for queries at YSQL/YCQL layer. |
 | rpc_request_id | integer | ID for internal requests, it is a monotonically increasing number for the lifetime of a YB-TServer. |
-| wait_event_component | text | Component of the wait event which can be YSQL, YCQL, and TServer. |
-| wait_event_class | text | Class of the wait event such as TabletWait, RocksDB, and so on.  |
+| wait_event_component | text | Component of the wait event, which can be YSQL, YCQL, and TServer. |
+| wait_event_class | text | Class of the wait event, such as TabletWait, RocksDB, and so on.  |
 | wait_event | text | Name of the wait event. |
 | wait_event_type | text | Type of the wait event such as CPU, WaitOnCondition, Network, Disk IO, and so on. |
 | wait_event_aux | text | Additional information for the wait event. For example, tablet ID for TServer wait events. |
 | top_level_node_id | UUID | 16-byte TServer UUID of the YSQL/YCQL node where the query is being executed. |
-| query_id | bigint | Query ID as seen on the `/statements` endpoint. This can be used to join with [pg_stat_statements](../../query-1-performance/pg-stat-statements/)/[ycql_stat_statements](../../query-1-performance/ycql-stat-statements/). It is a known constant for background activities. For example, _flush_ is 2, _compaction_ is 3, and so on. |
+| query_id | bigint | Query ID as seen on the `/statements` endpoint. This can be used to join with [pg_stat_statements](../../query-1-performance/pg-stat-statements/)/[ycql_stat_statements](../../query-1-performance/ycql-stat-statements/). It is set as a known constant for background activities. For example, _flush_ is 2, _compaction_ is 3, and so on. |
 | ysql_session_id | bigint | YSQL session identifier. Zero for YCQL and background activities. |
 | client_node_ip | text | IP address of the client which sent the query to YSQL/YCQL. Null for background activities. |
 | sample_weight | float | If in any sampling interval there are too many events, YugabyteDB only collects `ysql_yb_ash_sample_size` samples/events. Based on how many were sampled, weights are assigned to the collected events. <br><br>For example, if there are 200 events, but only 100 events are collected, each of the collected samples will have a weight of (200 / 100) = 2.0 |
