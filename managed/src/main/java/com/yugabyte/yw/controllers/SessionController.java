@@ -181,7 +181,9 @@ public class SessionController extends AbstractPlatformController {
 
   @ApiOperation(
       nickname = "getSessionInfo",
-      value = "Get current user/customer uuid auth/api token",
+      value =
+          "Get current user and customer uuid. This will not generate or return the API token, use"
+              + " /api_token API for that.",
       authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH),
       response = SessionInfo.class)
   @With(TokenAuthenticator.class)

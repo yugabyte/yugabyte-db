@@ -253,7 +253,14 @@ ERROR:  constraint "checkb2" for table "atacc1" does not exist
 alter table atacc1 drop constraint if exists checkb3;
 delete from atacc1 where b = 5;
 -- test rename
-alter table atacc1 rename b to e;
+alter table atacc1 rename b to d; -- should fail: d already exists
+ERROR:  column "d" of relation "atacc1" already exists
+alter table atacc1 rename b to f;
+alter table atacc1 rename column f to e;
+alter table if exists doesnt_exist_tab rename b to f;
+NOTICE:  relation "doesnt_exist_tab" does not exist, skipping
+alter table if exists doesnt_exist_tab rename column f to e;
+NOTICE:  relation "doesnt_exist_tab" does not exist, skipping
 select * from atacc1;
  e  | c  | d
 ----+----+----
