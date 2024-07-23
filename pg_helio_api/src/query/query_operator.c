@@ -221,6 +221,15 @@ IsDoubleAFixedInteger(double value)
 }
 
 
+static inline void
+pg_attribute_noreturn()
+ThrowInvalidRegexOptions(char c)
+{
+	ereport(ERROR, (errcode(MongoLocation51108), errmsg(
+						"invalid flag in regex options %c", c),
+					errhint("invalid flag in regex options %c", c)));
+}
+
 /* --------------------------------------------------------- */
 /* Top level exports */
 /* --------------------------------------------------------- */
@@ -3974,10 +3983,20 @@ ValidateOptionsArgument(const bson_value_t *argBsonValue)
 							"$options has to be a string")));
 	}
 
-	if (strlen(argBsonValue->value.v_utf8.str) < argBsonValue->value.v_utf8.len)
+	/* Only options which mongo supports are i, m, x, s, u*/
+	char *valueString = argBsonValue->value.v_utf8.str;
+	for (uint32_t index = 0; index < argBsonValue->value.v_utf8.len; index++)
 	{
-		ereport(ERROR, (errcode(MongoBadValue), errmsg(
-							"Regular expression options string cannot contain an embedded null byte")));
+		if (valueString[index] == 'i' || valueString[index] == 'm' ||
+			valueString[index] == 'x' || valueString[index] == 's' ||
+			valueString[index] == 'u')
+		{
+			continue;
+		}
+		else
+		{
+			ThrowInvalidRegexOptions(valueString[index]);
+		}
 	}
 }
 
@@ -3993,6 +4012,26 @@ ValidateRegexArgument(const bson_value_t *argBsonValue)
 	{
 		ereport(ERROR, (errcode(MongoBadValue), errmsg(
 							"$regex has to be a string")));
+	}
+
+	/* Validate options when input type is BSON_TYPE_REGEX. */
+	/* This is different from options validation as we support less flags when bson type is regex as per mongo behaviour */
+	if (argBsonValue->value_type == BSON_TYPE_REGEX)
+	{
+		char *optionStr = argBsonValue->value.v_regex.options;
+		int lenOptionStr = strlen(optionStr);
+		for (int index = 0; index < lenOptionStr; index++)
+		{
+			if (optionStr[index] == 'i' || optionStr[index] == 'm' ||
+				optionStr[index] == 'u')
+			{
+				continue;
+			}
+			else
+			{
+				ThrowInvalidRegexOptions(optionStr[index]);
+			}
+		}
 	}
 
 	if (argBsonValue->value_type == BSON_TYPE_UTF8 &&
