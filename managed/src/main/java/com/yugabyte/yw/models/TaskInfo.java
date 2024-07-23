@@ -8,6 +8,7 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.TaskExecutor.TaskCache;
@@ -15,6 +16,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.ExpressionList;
 import io.ebean.FetchGroup;
@@ -196,16 +198,8 @@ public class TaskInfo extends Model {
     return universeUUID;
   }
 
-  public State getTaskState() {
-    return taskState;
-  }
-
   public boolean hasCompleted() {
     return COMPLETED_STATES.contains(taskState);
-  }
-
-  public TaskType getTaskType() {
-    return taskType;
   }
 
   public UUID getTaskUUID() {
@@ -214,6 +208,16 @@ public class TaskInfo extends Model {
 
   public void setTaskUUID(UUID taskUUID) {
     uuid = taskUUID;
+  }
+
+  @JsonIgnore
+  public JsonNode getTaskParams() {
+    return details;
+  }
+
+  @JsonProperty("taskParams")
+  public JsonNode getRedactedParams() {
+    return RedactingService.filterSecretFields(details, RedactingService.RedactionTarget.LOGS);
   }
 
   public static final Finder<UUID, TaskInfo> find = new Finder<UUID, TaskInfo>(TaskInfo.class) {};
@@ -257,6 +261,7 @@ public class TaskInfo extends Model {
   }
 
   // Returns  partial object
+  @JsonIgnore
   public List<TaskInfo> getSubTasks() {
     ExpressionList<TaskInfo> subTaskQuery =
         TaskInfo.find
@@ -268,6 +273,7 @@ public class TaskInfo extends Model {
     return subTaskQuery.findList();
   }
 
+  @JsonIgnore
   public List<TaskInfo> getIncompleteSubTasks() {
     return TaskInfo.find
         .query()
@@ -287,6 +293,7 @@ public class TaskInfo extends Model {
     return sb.toString();
   }
 
+  @JsonIgnore
   public UserTaskDetails getUserTaskDetails() {
     return getUserTaskDetails(null);
   }
@@ -351,6 +358,7 @@ public class TaskInfo extends Model {
    *
    * @return a number between 0.0 and 100.0.
    */
+  @JsonIgnore
   public double getPercentCompleted() {
     int numSubtasks = TaskInfo.find.query().where().eq("parent_uuid", getTaskUUID()).findCount();
     if (numSubtasks == 0) {
