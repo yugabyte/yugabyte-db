@@ -1,0 +1,35 @@
+ynp:
+  # Home directory for the yugabyte user
+  yb_home_dir: /home/yugabyte
+  # NTP servers for the node
+  chrony_servers: ["0.pool.ntp.org", "1.pool.ntp.org"]
+  yb_user_id: 994
+  # Public key path for the key to be used for yugabyte user.
+  # Default's to current user public key.
+  public_key_filepath: ""
+  # Airgapped
+  is_airgap: false
+  use_system_level_systemd: false
+  ip_address: "127.0.0.1"
+  tmp_directory: /tmp
+
+yba:
+  url: <url>
+  customer_uuid: <customer_uuid>
+  api_key: <api_key>
+  node_name: <name>
+  node_ip: <ip>
+  provider:
+    name: provider_name
+    region:
+      name: region_name
+      zone:
+        name: zone_name
+    access_key_path: <key_content>
+  instance_type:
+    name: instance_name
+    cores: cores
+    memory_size: size
+    volume_size: size
+    mount_points:
+    - /mnt/d1

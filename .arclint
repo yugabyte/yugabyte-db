@@ -48,6 +48,7 @@
       "exclude": [
         "(^managed/.*[.]go$)",
         "(^managed/.*/go[.]mod)",
+        "(^managed/.*[.]j2$)",
         "(^managed/.*/go[.]sum)",
         "(^managed/ui/)",
         "(^yugabyted-ui/.*/go[.]mod)",

@@ -20,6 +20,7 @@ SKIP_VERIFY_CERT=""
 DISABLE_EGRESS="false"
 SILENT_INSTALL="false"
 AIRGAP_INSTALL="false"
+SKIP_PACKAGE_DOWNLOAD="false"
 CERT_DIR=""
 CUSTOMER_ID=""
 NODE_NAME=""
@@ -519,6 +520,9 @@ while [[ $# -gt 0 ]]; do
     ;;
     --airgap)
       AIRGAP_INSTALL="true"
+    ;;
+    --skip_package_download)
+      SKIP_PACKAGE_DOWNLOAD="true"
     ;;
     --node_name)
       NODE_NAME="$2"

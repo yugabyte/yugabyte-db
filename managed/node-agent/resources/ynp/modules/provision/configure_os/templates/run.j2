@@ -1,0 +1,71 @@
+# Set system limits
+# Append limits to /etc/security/limits.conf if they don't already exist
+#
+{% for key, value in limits.items() %}
+if ! grep -qP "^\*\s+-\s+{{ key }}\s+{{ value }}$" /etc/security/limits.conf; then
+  echo "*                -       {{ key }}            {{ value }}" | \
+  tee -a /etc/security/limits.conf
+fi
+{% endfor %}
+
+if test ! -f /etc/security/limits.d/20-nproc.conf; then
+  touch /etc/security/limits.d/20-nproc.conf
+  echo "File /etc/security/limits.d/20-nproc.conf created."
+else
+  echo "File /etc/security/limits.d/20-nproc.conf already exists."
+fi
+
+sed -i 's/*          soft    nproc     4096/*          soft    nproc     \
+{{ nproc_limit }}/' /etc/security/limits.d/20-nproc.conf
+
+
+# Determine the PLATFORM_ID
+platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"')
+
+if [[ "$platform_id" == "platform:el8" ]]; then
+  # Check and set DefaultLimitNOFILE in /etc/systemd/system.conf
+  if ! grep -q "^DefaultLimitNOFILE={{ fd_limit }}" /etc/systemd/system.conf; then
+    echo 'DefaultLimitNOFILE={{ fd_limit }}' | tee -a /etc/systemd/system.conf
+  fi
+
+  # Check and set DefaultLimitNOFILE in /etc/systemd/user.conf
+  if ! grep -q "^DefaultLimitNOFILE={{ fd_limit }}" /etc/systemd/user.conf; then
+    echo 'DefaultLimitNOFILE={{ fd_limit }}' | tee -a /etc/systemd/user.conf
+  fi
+else
+  echo "el8 not detected, not updating file limits"
+fi
+
+echo "Systemd file limits configured."
+
+
+# Reload systemd to apply changes
+systemctl daemon-reload
+
+# Apply some changes to the current shell session
+ulimit -n {{ fd_limit }}
+ulimit -u {{ nproc_limit }}
+
+
+# Configure kernel settings
+# Set and persist vm.swappiness
+if ! grep -q "^vm.swappiness=" /etc/sysctl.conf; then
+  echo "vm.swappiness={{ vm_swappiness }}" >> /etc/sysctl.conf
+fi
+sysctl -w vm.swappiness={{ vm_swappiness }}
+
+# Set and persist kernel.core_pattern
+if ! grep -q "^kernel.core_pattern=" /etc/sysctl.conf; then
+  echo "kernel.core_pattern={{ kernel_core_pattern }}" >> /etc/sysctl.conf
+fi
+sysctl -w kernel.core_pattern={{ kernel_core_pattern }}
+
+# Set and persist vm.max_map_count
+if ! grep -q "^vm.max_map_count=" /etc/sysctl.conf; then
+  echo "vm.max_map_count={{ vm_max_map_count }}" >> /etc/sysctl.conf
+fi
+sysctl -w vm.max_map_count={{ vm_max_map_count }}
+
+echo "Kernel settings configured."
+
+echo "OS Configuration applied successfully."
