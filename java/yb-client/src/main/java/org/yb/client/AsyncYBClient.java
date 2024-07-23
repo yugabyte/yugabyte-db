@@ -3709,22 +3709,34 @@ public class AsyncYBClient implements AutoCloseable {
    *     couldn't be resolved.
    */
   private static String getIP(final String host) {
-    final long start = System.nanoTime();
-    try {
-      final String ip = InetAddress.getByName(host).getHostAddress();
-      final long latency = System.nanoTime() - start;
-      if (latency > 500000 /*ns*/ && LOG.isDebugEnabled()) {
-        LOG.debug("Resolved IP of `" + host + "' to " + ip + " in " + latency + "ns");
-      } else if (latency >= 3000000 /*ns*/) {
-        LOG.warn(
-            "Slow DNS lookup!  Resolved IP of `" + host + "' to " + ip + " in " + latency + "ns");
-      }
-      return ip;
-    } catch (UnknownHostException e) {
-      LOG.error(
-          "Failed to resolve the IP of `" + host + "' in " + (System.nanoTime() - start) + "ns");
+    // We have seen rare instances where DNS won't resolve, but a retry will resolve the issue.
+    for (int i = 0; i < 3; i++) {
+     final long start = System.nanoTime();
+     try {
+       final String ip = InetAddress.getByName(host).getHostAddress();
+       final long latency = System.nanoTime() - start;
+       if (latency > 500000 /*ns*/ && LOG.isDebugEnabled()) {
+         LOG.debug("Resolved IP of `" + host + "' to " + ip + " in " + latency + "ns");
+       } else if (latency >= 3000000 /*ns*/) {
+         LOG.warn(
+             "Slow DNS lookup!  Resolved IP of `" + host + "' to " + ip + " in " + latency + "ns");
+       }
+       return ip;
+     } catch (UnknownHostException e) {
+       LOG.warn(
+           "Failed to resolve the IP of `" + host + "' in " + (System.nanoTime() - start) + "ns. " +
+           "Retrying.");
+     }
+     // Sleep for 1 second before retry.
+     try {
+      Thread.sleep(1000);
+     } catch (InterruptedException e) {
+      LOG.error("sleep interrupted while retrying getIP", e);
       return null;
+     }
     }
+    LOG.error("Failed to resolve the IP of `" + host + "' after retries.");
+    return null;
   }
 
   /**
