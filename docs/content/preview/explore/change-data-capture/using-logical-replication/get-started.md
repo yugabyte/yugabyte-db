@@ -3,7 +3,7 @@ title: Get started with CDC logical replication in YugabyteDB
 headerTitle: Get started
 linkTitle: Get started
 description: Get started with Change Data Capture  in YugabyteDB.
-headcontent: Get set up for using CDC using logical replication in YugabyteDB
+headcontent: Start using CDC with logical replication
 menu:
   preview:
     parent: explore-change-data-capture-logical-replication
@@ -12,7 +12,10 @@ menu:
 type: docs
 ---
 
-To get started for streaming data change events from a YugabyteDB database using a replication slot, user has either of the client options: `pg_recvlogical`, or the Debezium YugabyteDB connector.
+To get started streaming data change events from a YugabyteDB database using a replication slot, you can use either of the following client options:
+
+- `pg_recvlogical`
+- Debezium YugabyteDB connector
 
 {{< note title="Note" >}}
 
@@ -20,15 +23,15 @@ CDC via logical replication is supported in YugabyteDB starting from version 202
 
 {{< /note >}}
 
-## Getting started with pg_recvlogical
+## Get started with pg_recvlogical
 
 `pg_recvlogical` is a command-line tool provided by PostgreSQL for interacting with the logical replication feature. It is specifically used to receive changes from the database using logical replication slots.
 
-YugabyteDB provides the `pg_recvlogical` binary located in `<yugabyte-db-dir>/postgres/bin/`, which is inherited and based on `PostgreSQL-11.2`. Although PostgreSQL also offers a `pg_recvlogical` binary, users are strongly advised to use YugabyteDB's version to avoid compatibility issues due to `PostgreSQL` version.
+YugabyteDB provides the `pg_recvlogical` binary in the `<yugabyte-db-dir>/postgres/bin/` directory, which is inherited and based on `PostgreSQL-11.2`. Although PostgreSQL also offers a `pg_recvlogical` binary, users are strongly advised to use the YugabyteDB version to avoid compatibility issues due to `PostgreSQL` version.
 
-### Setting up pg_recvlogical
+### Set up pg_recvlogical
 
-1. Create and start the local cluster by running the following command from your YugabyteDB home directory:
+To set up pg_recvlogical, create and start the local cluster by running the following command from your YugabyteDB home directory:
 
 ```sh
 ./bin/yugabyted start \
@@ -39,26 +42,26 @@ YugabyteDB provides the `pg_recvlogical` binary located in `<yugabyte-db-dir>/po
 
 #### Create tables
 
-1. Open ysqlsh and connect to the default `yugabyte` database with the default superuser `yugabyte`, as follows:
+1. Use ysqlsh to connect to the default `yugabyte` database with the default superuser `yugabyte`, as follows:
 
-```sh
-bin/ysqlsh -h 127.0.0.1 -U yugabyte -d yugabyte
-```
+    ```sh
+    bin/ysqlsh -h 127.0.0.1 -U yugabyte -d yugabyte
+    ```
 
-2. In the `yugabyte` database, you can create a table `employees`.
+1. In the `yugabyte` database, create a table `employees`.
 
-```sql
-CREATE TABLE employees (
-    employee_id SERIAL PRIMARY KEY,
-    name VARCHAR(255),
-    email VARCHAR(255),
-    department_id INTEGER
-);
-```
+    ```sql
+    CREATE TABLE employees (
+        employee_id SERIAL PRIMARY KEY,
+        name VARCHAR(255),
+        email VARCHAR(255),
+        department_id INTEGER
+    );
+    ```
 
-#### Create Replication slot
+#### Create a Replication slot
 
-1. Create a logical replication slot named `test_logical_replication_slot` using the `test_decoding` output plugin via the following function:
+Create a logical replication slot named `test_logical_replication_slot` using the `test_decoding` output plugin via the following function:
 
 ```sql
 SELECT *
@@ -67,17 +70,17 @@ FROM pg_create_logical_replication_slot('test_logical_replication_slot', 'test_d
 
 Expected output after running the command that indicates successful creation of the slot:
 
-```sql
+```output
            slot_name           | lsn
 -------------------------------+-----
  test_logical_replication_slot | 0/2
 ```
 
-#### Configure & start pg_recvlogical
+#### Configure and start pg_recvlogical
 
-`pg_recvlogical` binary can be found under `<yugabyte-db-dir>/postgres/bin/`. We'll use the same replication slot created in previous section with `pg_recvlogical`.
+The `pg_recvlogical` binary can be found under `<yugabyte-db-dir>/postgres/bin/`. We'll use the same replication slot created in the previous section with `pg_recvlogical`.
 
-1. Open a new shell and start `pg_recvlogical` to connect to the `yugabyte` database with the superuser `yugabyte` and replicate changes using the following command: 
+Open a new shell and start `pg_recvlogical` to connect to the `yugabyte` database with the superuser `yugabyte` and replicate changes using the following command:
 
 ```sh
 ./pg_recvlogical -d yugabyte \
@@ -86,19 +89,15 @@ Expected output after running the command that indicates successful creation of 
   --slot test_logical_replication_slot \
   --start \
   -f -
-
 ```
-Any changes that gets replicated will be printed on the stdout.
 
-{{< tip title="Explore" >}}
+Any changes that get replicated are printed to stdout.
 
-For more `pg_recvlogical` configurations, please refer the official documentation of [pg_recvlogical](https://www.postgresql.org/docs/11/app-pgrecvlogical.html) from PostgreSQL.
-
-{{< /tip >}}
+For more `pg_recvlogical` configurations, refer to the PostgreSQL [pg_recvlogical](https://www.postgresql.org/docs/11/app-pgrecvlogical.html) documentation.
 
 #### Verify Replication
 
-1. Return to the shell where `ysqlsh` is running. Perform DMLs on `employees` table.
+Return to the shell where `ysqlsh` is running. Perform DMLs on `employees` table.
 
 ```sql
 BEGIN;
@@ -114,38 +113,37 @@ COMMIT;
 
 Expected output observed on stdout where pg_recvlogical is running:
 
-```sh
+```output
 BEGIN 2
 table public.employees: INSERT: employee_id[integer]:1 name[character varying]:'Alice Johnson' email[character varying]:'alice@example.com' department_id[integer]:1
 table public.employees: INSERT: employee_id[integer]:2 name[character varying]:'Bob Smith' email[character varying]:'bob@example.com' department_id[integer]:2
 COMMIT 2
 ```
 
-#### Add New Tables (Dynamic table addition)
+#### Add tables (Dynamic table addition)
 
 You can add a new table to the `yugabyte` database and any DMLs performed on the new table would also be replicated to `pg_recvlogical`.
 
-1. In the `yugabyte` database, you can create a new table `projects`.
+1. In the `yugabyte` database, create a new table `projects`:
 
-```sql
-CREATE TABLE projects (
-  project_id SERIAL PRIMARY KEY,
-  name VARCHAR(255),
-  description TEXT
-);
-```
+    ```sql
+    CREATE TABLE projects (
+      project_id SERIAL PRIMARY KEY,
+      name VARCHAR(255),
+      description TEXT
+    );
+    ```
 
-2. Perform DMLs on 'projects' table
+2. Perform DMLs on the `projects` table:
 
-```sql
-INSERT INTO projects (name, description)
-VALUES ('Project A', 'Description of Project A');
-
-```
+    ```sql
+    INSERT INTO projects (name, description)
+    VALUES ('Project A', 'Description of Project A');
+    ```
 
 Expected output observed on stdout where pg_recvlogical is running:
 
-```sh
+```output
 BEGIN 3
 table public.projects: INSERT: project_id[integer]:1 name[character varying]:'Project A' description[text]:'Description of Project A'
 COMMIT 3
@@ -153,33 +151,34 @@ COMMIT 3
 
 {{% explore-cleanup-local %}}
 
-
-## Getting started with YugabyteDB connector
+## Get started with YugabyteDB connector
 
 This tutorial demonstrates how to use Debezium to monitor a YugabyteDB database. As the data in the database changes, you will see the resulting event streams.
 
-In this tutorial you will start the Debezium services, run a YugabyteDB instance with a simple example database, and use Debezium to monitor the database for changes.
+In this tutorial you will start the Debezium services, run a YugabyteDB instance with a basic example database, and use Debezium to monitor the database for changes.
 
 **Prerequisites**
-* Docker is installed and running.
 
-This tutorial uses Docker and the Debezium container images to run the required services. You should use the latest version of Docker. For more information, see [the Docker Engine installation documentation](https://docs.docker.com/engine/installation/).
+- Docker is installed and running.
 
-### Starting the services
+    This tutorial uses Docker and the Debezium container images to run the required services. You should use the latest version of Docker. For more information, see the [Docker Engine installation](https://docs.docker.com/engine/installation/) documentation.
 
-Using Debezium requires three separate services: [Zookeeper](http://zookeeper.apache.org/), [Kafka](), and the Debezium connector service. In this tutorial, you will set up a single instance of each service using Docker and the Debezium container images.
+### Start the services
+
+Using Debezium requires three separate services: [Zookeeper](http://zookeeper.apache.org/), [Kafka](), and the Debezium connector service.
+
+In this tutorial, you will set up a single instance of each service using Docker and the Debezium container images.
 
 To start the services needed for this tutorial, you must:
-* [Start Zookeeper](#starting-zookeeper)
-* [Start Kafka](#starting-kafka)
-* [Start a YugabyteDB database](#starting-a-yugabytedb-database)
-* Start Kafka Connect
 
-#### Starting Zookeeper
+- [Start Zookeeper](#start-zookeeper)
+- [Start Kafka](#start-kafka)
+- [Start a YugabyteDB database](#start-a-yugabytedb-database)
+- [Start Kafka Connect](#start-kafka-connect)
+
+#### Start Zookeeper
 
 Zookeeper is the first service you must start.
-
-**Procedure**
 
 1. Open a terminal and use it to start Zookeeper in a container. This command runs a new container using version `2.5.2.Final` of the `debezium/zookeeper` image:
 
@@ -187,11 +186,9 @@ Zookeeper is the first service you must start.
 docker run -d --rm --name zookeeper -p 2181:2181 -p 2888:2888 -p 3888:3888 debezium/zookeeper:2.5.2.Final
 ```
 
-#### Starting Kafka
+#### Start Kafka
 
 After starting Zookeeper, you can start Kafka in a new container.
-
-**Procedure**
 
 1. Open a new terminal and use it to start Kafka in a container. This command runs a new container using version `2.5.2.Final` of the `debezium/kafka` image:
 
@@ -201,19 +198,19 @@ docker run -d --rm --name kafka -p 9092:9092 --link zookeeper:zookeeper debezium
 
 {{< note title="Note" >}}
 
-In this tutorial, you will always connect to Kafka from within a Docker container. Any of these containers can communicate with the `kafka` container by linking to it. If you needed to connect to Kafka from outside of a Docker container, you would have to set the `-e` option to advertise the Kafka address through the Docker host (`-e ADVERTISED_HOST_NAME=` followed by either the IP address or resolvable host name of the Docker host).
+In this tutorial, you will always connect to Kafka from in a Docker container. Any of these containers can communicate with the `kafka` container by linking to it. If you need to connect to Kafka from outside of a Docker container, you have to set the `-e` option to advertise the Kafka address through the Docker host (`-e ADVERTISED_HOST_NAME=` followed by either the IP address or resolvable host name of the Docker host).
 
 {{< /note >}}
 
-#### Starting a YugabyteDB database
+#### Start a YugabyteDB database
 
-At this point, you have started Zookeeper and Kafka, but you still need a database server from which Debezium can capture changes. In this procedure, you will start a YugabyteDB instance with an example database. Follow the [Quick Start](../../../quick-start) to start an instance with yugabyted.
+At this point, you have started Zookeeper and Kafka, but you still need a database server from which Debezium can capture changes. In this procedure, you start a YugabyteDB instance with an example database. Follow the [Quick Start](../../../../quick-start) to start an instance using yugabyted.
 
 {{< note title="Note" >}}
 
-You need to start the database on an IP that is resolvable by the docker containers. If you use the localhost address i.e. `127.0.0.1` then if we deploy the connectors in the docker containers, they will not be able to talk to the database and will keep trying to connect to `127.0.0.1` inside the container. You can use the [--advertise_address option for yugabyted](../../../reference/configuration/yugabyted#flags-8) to specify the IP you want to start your database instance.
+You need to start the database on an IP that is resolvable by the docker containers. If you use the localhost address (that is, `127.0.0.1`) then if you deploy the connectors in the docker containers, they won't be able to talk to the database and will keep trying to connect to `127.0.0.1` inside the container. Use the [--advertise_address option for yugabyted](../../../../reference/configuration/yugabyted#flags-8) to specify the IP you want to start your database instance.
 
-For example, linux users can use:
+For example, Linux users can use the following:
 
 ```sh
 ./bin/yugabyted start --advertise_address $(hostname -i)
@@ -221,97 +218,103 @@ For example, linux users can use:
 
 {{< /note >}}
 
-##### Starting a YSQL command line client
+##### Use the YSQL command line client
 
+After starting YugabyteDB, use ysqlsh to create your database:
 
-After starting YugabyteDB, you start a YugabyteDB command line client `ysqlsh` so that you can create your database.
+1. Connect the client to the database process running on the IP you specified when you started up the database instance.
 
-**Procedure**
+    ```sh
+    ./bin/ysqlsh -h <ip-of-your-machine>
+    ```
 
-1. Connect the client to the database process running on the IP you specified while starting up the database instance.
+    You should see output similar to the following:
 
-```sh
-./bin/ysqlsh -h <ip-of-your-machine>
-```
+    ```output
+    ysqlsh (11.2-YB-2.21.1.0-b0)
+    Type "help" for help.
 
-2. Verify that `ysqlsh` started. You should see output similar to the following:
+    yugabyte=#
+    ```
 
-```sh
-ysqlsh (11.2-YB-2.21.1.0-b0)
-Type "help" for help.
+1. Load the schema of the sample tables:
 
-yugabyte=#
-```
+    ```sql
+    yugabyte=# \i share/schema.sql
+    CREATE TABLE
+    CREATE TABLE
+    CREATE TABLE
+    CREATE TABLE
+    ```
 
-3. Load the schema of the sample tables:
+1. List the tables
 
-```sql
-yugabyte=# \i share/schema.sql
-CREATE TABLE
-CREATE TABLE
-CREATE TABLE
-CREATE TABLE
-```
+    ```sql
+    yugabyte=# \d
+    ```
 
-4. List the tables
+    ```output
+                  List of relations
+    Schema |      Name       |   Type   |  Owner
+    --------+-----------------+----------+----------
+    public | orders          | table    | yugabyte
+    public | orders_id_seq   | sequence | yugabyte
+    public | products        | table    | yugabyte
+    public | products_id_seq | sequence | yugabyte
+    public | reviews         | table    | yugabyte
+    public | reviews_id_seq  | sequence | yugabyte
+    public | users           | table    | yugabyte
+    public | users_id_seq    | sequence | yugabyte
+    (8 rows)
+    ```
 
-```sql
-yugabyte=# \d
-               List of relations
- Schema |      Name       |   Type   |  Owner
---------+-----------------+----------+----------
- public | orders          | table    | yugabyte
- public | orders_id_seq   | sequence | yugabyte
- public | products        | table    | yugabyte
- public | products_id_seq | sequence | yugabyte
- public | reviews         | table    | yugabyte
- public | reviews_id_seq  | sequence | yugabyte
- public | users           | table    | yugabyte
- public | users_id_seq    | sequence | yugabyte
-(8 rows)
-```
+1. Load data in one of the tables and verify the count.
 
-5. Load data in one of the tables and verify the count
+    ```sql
+    yugabyte=# \i share/products.sql
+    ```
 
-```sql
-yugabyte=# \i share/products.sql
+    ```output
+    yugabyte=# select count(*) from products;
+    count
+    -------
+      200
+    (1 row)
+    ```
 
-yugabyte=# select count(*) from products;
- count
--------
-   200
-(1 row)
-```
-
-#### Starting Kafka Connect
+#### Start Kafka Connect
 
 After starting YugabyteDB, you start the Kafka Connect service. This service exposes a REST API to manage the Debezium YugabyteDB connector.
 
-**Procedure**
+1. Open a new terminal, and use it to start the Kafka Connect service in a container.
 
-1. Open a new terminal, and use it to start the Kafka Connect service in a container. This command runs a new container using the `dz.2.5.2.yb.2024.1.SNAPSHOT.1` version of the `quay.io/yugabyte/ybdb-debezium` image:
+    The following command runs a new container using the `dz.2.5.2.yb.2024.1.SNAPSHOT.1` version of the `quay.io/yugabyte/ybdb-debezium` image:
 
-```sh
-docker run -it --rm --name connect -p 8083:8083 -p 1976:1976 -e GROUP_ID=1 -e CONFIG_STORAGE_TOPIC=my_connect_configs -e OFFSET_STORAGE_TOPIC=my_connect_offsets -e STATUS_STORAGE_TOPIC=my_connect_statuses -e CLASSPATH=/kafka/connect/ --link zookeeper:zookeeper --link kafka:kafka quay.io/yugabyte/ybdb-debezium:dz.2.5.2.yb.2024.1.SNAPSHOT.1
-```
+    ```sh
+    docker run -it --rm --name connect -p 8083:8083 -p 1976:1976 -e GROUP_ID=1 -e CONFIG_STORAGE_TOPIC=my_connect_configs -e OFFSET_STORAGE_TOPIC=my_connect_offsets -e STATUS_STORAGE_TOPIC=my_connect_statuses -e CLASSPATH=/kafka/connect/ --link zookeeper:zookeeper --link kafka:kafka quay.io/yugabyte/ybdb-debezium:dz.2.5.2.yb.2024.1.SNAPSHOT.1
+    ```
 
-2. Verify that Kafka Connect started and is ready to accept connections. You should see output similar to the following:
+1. Verify that Kafka Connect started and is ready to accept connections. You should see output similar to the following:
 
-```sh
-...
-2024-07-19 12:04:33,044 INFO   ||  Kafka version: 3.6.1   [org.apache.kafka.common.utils.AppInfoParser]
-...
-2024-07-19 12:04:33,661 INFO   ||  [Worker clientId=connect-1, groupId=1] Starting connectors and tasks using config offset -1   [org.apache.kafka.connect.runtime.distributed.DistributedHerder]
-2024-07-19 12:04:33,661 INFO   ||  [Worker clientId=connect-1, groupId=1] Finished starting connectors and tasks   [org.apache.kafka.connect.runtime.distributed.DistributedHerder]
-```
+    ```output
+    ...
+    2024-07-19 12:04:33,044 INFO   ||  Kafka version: 3.6.1   [org.apache.kafka.common.utils.AppInfoParser]
+    ...
+    2024-07-19 12:04:33,661 INFO   ||  [Worker clientId=connect-1, groupId=1] Starting connectors and tasks using config offset -1   [org.apache.kafka.connect.runtime.distributed.DistributedHerder]
+    2024-07-19 12:04:33,661 INFO   ||  [Worker clientId=connect-1, groupId=1] Finished starting connectors and tasks   [org.apache.kafka.connect.runtime.distributed.DistributedHerder]
+    ```
 
-3. Use the Kafka Connect REST API to check the status of the Kafka Connect service. Kafka Connect exposes a REST API to manage Debezium connectors. To communicate with the Kafka Connect service, you can use the `curl` command to send API requests to port 8083 of the Docker host (which you mapped to port 8083 in the `connect` container when you started Kafka Connect). Open a new terminal and check the status of the Kafka Connect service:
+1. Use the Kafka Connect REST API to check the status of the Kafka Connect service.
 
-```sh
-$ curl -H "Accept:application/json" localhost:8083/
+    Kafka Connect exposes a REST API to manage Debezium connectors. To communicate with the Kafka Connect service, you can use the `curl` command to send API requests to port 8083 of the Docker host (which you mapped to port 8083 in the `connect` container when you started Kafka Connect).
 
-{"version":"3.6.1","commit":"5e3c2b738d253ff5","kafka_cluster_id":"kafka-cluster-id"}
-```
+    Open a new terminal and check the status of the Kafka Connect service:
+
+    ```sh
+    $ curl -H "Accept:application/json" localhost:8083/
+
+    {"version":"3.6.1","commit":"5e3c2b738d253ff5","kafka_cluster_id":"kafka-cluster-id"}
+    ```
 
 {{< note title="Note" >}}
 
@@ -319,102 +322,100 @@ These commands use `localhost`. If you are using a non-native Docker platform (s
 
 {{< /note >}}
 
-### Deploying the YugabyteDB connector
+### Deploy the YugabyteDB connector
 
 After starting the Debezium and YugabyteDB service, you are ready to deploy the YugabyteDB connector. To deploy the connector, you must:
 
-* [Register the YugabyteDB connector to monitor the `yugabyte` database](#registering-a-connector-to-monitor-yugabyte-database)
-* Watch the connector start
+- [Register the YugabyteDB connector to monitor the `yugabyte` database](#register-a-connector-to-monitor-yugabyte-database)
+- Watch the connector start
 
-#### Registering a connector to monitor `yugabyte` database
+#### Register a connector to monitor `yugabyte` database
 
 By registering the Debezium YugabyteDB connector, the connector will start monitoring the YugabyteDB database's table `products`. When a row in the table changes, Debezium generates a change event.
 
 {{< note title="Note" >}}
 
-In a production environment, you would typically either use the Kafka tools to manually create the necessary topics, including specifying the number of replicas, or you’d use the Kafka Connect mechanism for customizing the settings of [auto-created](https://debezium.io/documentation/reference/2.5/configuration/topic-auto-create-config.html) topics. However, for this tutorial, Kafka is configured to automatically create the topics with just one replica.
+In a production environment, you would typically either use the Kafka tools to manually create the necessary topics, including specifying the number of replicas, or you would use the Kafka Connect mechanism for customizing the settings of [auto-created](https://debezium.io/documentation/reference/2.5/configuration/topic-auto-create-config.html) topics. However, for this tutorial, Kafka is configured to automatically create the topics with just one replica.
 
 {{< /note >}}
-
-**Procedure**
 
 1. Review the configuration of the Debezium YugabyteDB connector that you will register. Before registering the connector, you should be familiar with its configuration. In the next step, you will register the following connector:
 
-```json
-{
-  "name": "ybconnector",
-  "config": {
-    "tasks.max":"1",
-    "connector.class": "io.debezium.connector.postgresql.YugabyteDBConnector",
-    "database.hostname":"'$(hostname -i)'",
-    "database.port":"5433",
-    "database.user": "yugabyte",
-    "database.password":"yugabyte",
-    "database.dbname":"yugabyte",
-    "topic.prefix":"dbserver1",
-    "snapshot.mode":"initial",
-    "table.include.list":"public.products",
-    "plugin.name":"yboutput",
-    "slot.name":"yb_replication_slot"
-  }
-}
-```
+    ```json
+    {
+      "name": "ybconnector",
+      "config": {
+        "tasks.max":"1",
+        "connector.class": "io.debezium.connector.postgresql.YugabyteDBConnector",
+        "database.hostname":"'$(hostname -i)'",
+        "database.port":"5433",
+        "database.user": "yugabyte",
+        "database.password":"yugabyte",
+        "database.dbname":"yugabyte",
+        "topic.prefix":"dbserver1",
+        "snapshot.mode":"initial",
+        "table.include.list":"public.products",
+        "plugin.name":"yboutput",
+        "slot.name":"yb_replication_slot"
+      }
+    }
+    ```
 
-* `name` - The name of the connector.
-* `config` - The connector's configuration.
-* `database.hostname` - The database host, which is the IP of the machine running YugabyteDB. If YugabyteDB were running on a normal network, you would specify the IP address or resolvable host name for this value.
-* `topic.prefix` - A unique topic prefix. This name will be used as the prefix for all Kafka topics.
-* `table.include.list` - Only changes in the table `products` of the schema `public` will be detected.
-* `plugin.name` - [Plugin](./overview#output-plugin) to be used for replication.
-* `slot.name` - Name of the [replication slot](./overview#replication-slot).
+    - `name` - The name of the connector.
+    - `config` - The connector's configuration.
+    - `database.hostname` - The database host, which is the IP of the machine running YugabyteDB. If YugabyteDB were running on a normal network, you would specify the IP address or resolvable host name for this value.
+    - `topic.prefix` - A unique topic prefix. This name will be used as the prefix for all Kafka topics.
+    - `table.include.list` - Only changes in the table `products` of the schema `public` will be detected.
+    - `plugin.name` - [Plugin](../overview/#output-plugin) to be used for replication.
+    - `slot.name` - Name of the [replication slot](../overview/#replication-slot).
 
-For more information, see [YugabyteDB connector configuration properties](./yugabtyedb-connector#connector-properties).
+    For more information, see [YugabyteDB connector configuration properties](../yugabtyedb-connector/#connector-properties).
 
-2. Open a new terminal, and use the `curl` command to register the Debezium YugabyteDB connector. This command uses the Kafka Connect service’s API to submit a `POST` request against the `/connectors` resource with a `JSON` document that describes the new connector (called `ybconnector`).
+1. Open a new terminal and use the `curl` command to register the Debezium YugabyteDB connector.
 
-```sh
-curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" localhost:8083/connectors/ -d '{
-  "name": "ybconnector",
-  "config": {
-    "tasks.max":"1",
-    "connector.class": "io.debezium.connector.postgresql.YugabyteDBConnector",
-    "database.hostname":"'$(hostname -i)'",
-    "database.port":"5433",
-    "database.user": "yugabyte",
-    "database.password":"yugabyte",
-    "database.dbname":"yugabyte",
-    "topic.prefix":"dbserver1",
-    "snapshot.mode":"initial",
-    "table.include.list":"public.products",
-    "plugin.name":"yboutput",
-    "slot.name":"yb_replication_slot"
-  }
-}'
-```
+    This command uses the Kafka Connect service API to submit a `POST` request against the `/connectors` resource with a `JSON` document that describes the new connector (called `ybconnector`).
 
-{{< note title="Note" >}}
+    ```sh
+    curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" localhost:8083/connectors/ -d '{
+      "name": "ybconnector",
+      "config": {
+        "tasks.max":"1",
+        "connector.class": "io.debezium.connector.postgresql.YugabyteDBConnector",
+        "database.hostname":"'$(hostname -i)'",
+        "database.port":"5433",
+        "database.user": "yugabyte",
+        "database.password":"yugabyte",
+        "database.dbname":"yugabyte",
+        "topic.prefix":"dbserver1",
+        "snapshot.mode":"initial",
+        "table.include.list":"public.products",
+        "plugin.name":"yboutput",
+        "slot.name":"yb_replication_slot"
+      }
+    }'
+    ```
 
+    {{< note title="Note" >}}
 Windows users may need to escape the double-quotes.
+    {{< /note >}}
 
-{{< /note >}}
+1. Verify that `ybconnector` is included in the list of connectors:
 
-3. Verify that `ybconnector` is included in the list of connectors:
+    ```sh
+    $ curl -H "Accept:application/json" localhost:8083/connectors/
 
-```sh
-$ curl -H "Accept:application/json" localhost:8083/connectors/
+    ["ybconnector"]
+    ```
 
-["ybconnector"]
-```
-
-#### Watching the connector start
+#### Watch the connector start
 
 When you register a connector, it generates a large amount of log output in the Kafka Connect container. By reviewing this output, you can better understand the process that the connector goes through from the time it is created until it begins reading the change events.
 
-After registering the `ybconnector` connector, you can review the log output in the Kafka Connect container (`connect`) to track the connector’s status.
+After registering the `ybconnector` connector, you can review the log output in the Kafka Connect container (`connect`) to track the connector's status.
 
 Kafka Connect reports some "errors". However, you can safely ignore these warnings: these messages just mean that new Kafka topics were created and that Kafka had to assign a new leader for each one:
 
-```sh
+```output
 2021-11-30 01:38:45,555 WARN   ||  [Producer clientId=connector-producer-inventory-connector-0] Error while fetching metadata with correlation id 3 : {dbserver1=LEADER_NOT_AVAILABLE}   [org.apache.kafka.clients.NetworkClient]
 2021-11-30 01:38:45,691 WARN   ||  [Producer clientId=connector-producer-inventory-connector-0] Error while fetching metadata with correlation id 9 : {dbserver1.public.orders=LEADER_NOT_AVAILABLE}   [org.apache.kafka.clients.NetworkClient]
 2021-11-30 01:38:45,813 WARN   ||  [Producer clientId=connector-producer-inventory-connector-0] Error while fetching metadata with correlation id 13 : {dbserver1.public.users=LEADER_NOT_AVAILABLE}   [org.apache.kafka.clients.NetworkClient]
@@ -422,17 +423,17 @@ Kafka Connect reports some "errors". However, you can safely ignore these warnin
 2021-11-30 01:38:46,043 WARN   ||  [Producer clientId=connector-producer-inventory-connector-0] Error while fetching metadata with correlation id 22 : {dbserver1.public.reviews=LEADER_NOT_AVAILABLE}   [org.apache.kafka.clients.NetworkClient]
 ```
 
-### Viewing change events
+### View change events
 
 After deploying the Debezium YugabyteDB connector, it starts monitoring the `yugabyte` database for data change events.
 
 For this tutorial, you will explore the `dbserver1.public.products` topic.
 
-#### Viewing a change event
+#### View a change event
 
-**Procedure**
+Open a new terminal, and use it to start the watch-topic utility to watch the `dbserver1.public.products` topic from the beginning of the topic.
 
-1. Open a new terminal, and use it to start the watch-topic utility to watch the `dbserver1.public.products` topic from the beginning of the topic. This command runs the `watch-topic` utility in a new container using the `2.5.2.Final` version of the `debezium/kafka` image:
+The following command runs the `watch-topic` utility in a new container using the `2.5.2.Final` version of the `debezium/kafka` image:
 
 ```sh
 docker run -it --rm --name consumer --link zookeeper:zookeeper --link kafka:kafka debezium/kafka:2.5.2.Final watch-topic -a dbserver1.public.products
@@ -442,7 +443,7 @@ The `watch-topic` utility returns the event records from the `products` table. T
 
 You should see output similar to the following:
 
-```sh
+```output.json
 Using ZOOKEEPER_CONNECT=172.17.0.2:2181
 Using KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://172.17.0.7:9092
 Using KAFKA_BROKER=172.17.0.3:9092
@@ -458,122 +459,121 @@ This utility keeps watching the topic, so any new events will automatically appe
 
 {{< /note >}}
 
-#### Updating the database and viewing the update event
+#### Update the database and view the update event
 
-Now that you have seen how the Debezium YugabyteDB connector captured the create events in the `yugabyte` database, you will now change one of the records and see how the connector captures it.
+Now that you have seen how the Debezium YugabyteDB connector captured the create events in the `yugabyte` database, change one of the records and see how the connector captures it.
 
 By completing this procedure, you will learn how to find details about what changed in a database commit, and how you can compare change events to determine when the change occurred in relation to other changes.
 
-**Procedure**
+1. In the terminal that is running ysqlsh, run the following statement:
 
-1. In the terminal that is running the `ysqlsh` utility, run the following statement:
+    ```sql
+    update products set title = 'Enormous Granite Shiny Shoes' where id = 22;
+    ```
 
-```sql
-update products set title = 'Enormous Granite Shiny Shoes' where id = 22;
-```
+1. View the updated `products` table:
 
-2. View the updated `products` table:
+    ```sql
+    yugabyte=# select * from products where id = 22;
+    ```
 
-```sql
-yugabyte=# select * from products where id = 22;
- id |       created_at        | category |      ean      |      price       | quantity | rating |            title             |          vendor
-----+-------------------------+----------+---------------+------------------+----------+--------+------------------------------+---------------------------
- 22 | 2017-11-24 20:14:28.415 | Gizmo    | 7595223735110 | 21.4245199604423 |     5000 |    4.2 | Enormous Granite Shiny Shoes | Mayer, Kiehn and Turcotte
-(1 row)
-```
+    ```output
+    id |       created_at        | category |      ean      |      price       | quantity | rating |            title             |          vendor
+    ----+-------------------------+----------+---------------+------------------+----------+--------+------------------------------+---------------------------
+    22 | 2017-11-24 20:14:28.415 | Gizmo    | 7595223735110 | 21.4245199604423 |     5000 |    4.2 | Enormous Granite Shiny Shoes | Mayer, Kiehn and Turcotte
+    (1 row)
+    ```
 
-3. Switch to the terminal running `watch-topic` to see a new event.
+1. Switch to the terminal running `watch-topic` to see a new event.
 
-By changing a record in the `products` table, the Debezium YugabyteDB connector generated a new event.
+    By changing a record in the `products` table, the Debezium YugabyteDB connector generated a new event.
 
-Here are the details for the payload of the *update* event (formatted for readability):
+    The details for the payload of the *update* event will look similar to the following (formatted for readability):
 
-```json
-{
-  "before": null,
-  "after": {
-    "id": {
-      "value": 22,
-      "set": true
-    },
-    "created_at": null,
-    "category": null,
-    "ean": null,
-    "price": null,
-    "quantity": null,
-    "rating": null,
-    "title": {
-      "value": "Enormous Granite Shiny Shoes",
-      "set": true
-    },
-    "vendor": null
-  }
-}
-```
-
-Note that the fields which were not updated are coming out as `null` - this is because the [REPLICA IDENTITY](./overview#replica-identity) of the table is `CHANGE` by default where we only send the values of the updated columns in the change event.
-
-#### Deleting a row in database and viewing the delete event
-
-**Procedure**
-
-1. In the terminal that is running the `ysqlsh` utility, run the following statement:
-
-```sql
-delete from products where id = 22;
-```
-
-2. Switch to the terminal running `watch-topic` to see 2 new events. By deleting a row in the `products` table, the Debezium YugabyteDB connector generated 2 new events.
-
-Here are the details of the payload for the first new event (formatted for readability):
-
-```json
-{
-  "before": {
-    "id": {
-      "value": 22,
-      "set": true
-    },
-    "created_at": {
-      "value": null,
-      "set": true
-    },
-    "category": {
-      "value": null,
-      "set": true
-    },
-    "ean": {
-      "value": null,
-      "set": true
-    },
-    "price": {
-      "value": null,
-      "set": true
-    },
-    "quantity": {
-      "value": 5000,
-      "set": true
-    },
-    "rating": {
-      "value": null,
-      "set": true
-    },
-    "title": {
-      "value": null,
-      "set": true
-    },
-    "vendor": {
-      "value": null,
-      "set": true
+    ```json
+    {
+      "before": null,
+      "after": {
+        "id": {
+          "value": 22,
+          "set": true
+        },
+        "created_at": null,
+        "category": null,
+        "ean": null,
+        "price": null,
+        "quantity": null,
+        "rating": null,
+        "title": {
+          "value": "Enormous Granite Shiny Shoes",
+          "set": true
+        },
+        "vendor": null
+      }
     }
-  },
-  "after": null
-}
-```
+    ```
 
-The second event will have a *key* but the *value* will be `null` - that is a [tombstone event](./yugabtyedb-connector#tombstone-events) generated by the Debezium YugabyteDB connector.
+Note that the fields which were not updated are coming out as `null`. This is because the [REPLICA IDENTITY](../overview/#replica-identity) of the table is `CHANGE` by default, where you only send the values of the updated columns in the change event.
 
-### Cleaning up
+#### Delete a row and view the delete event
+
+1. In the terminal that is running ysqlsh, run the following statement:
+
+    ```sql
+    delete from products where id = 22;
+    ```
+
+1. Switch to the terminal running `watch-topic` to see two new events. By deleting a row in the `products` table, the Debezium YugabyteDB connector generated 2 new events.
+
+    The details for the payload of the first event will look similar to the following (formatted for readability):
+
+    ```json
+    {
+      "before": {
+        "id": {
+          "value": 22,
+          "set": true
+        },
+        "created_at": {
+          "value": null,
+          "set": true
+        },
+        "category": {
+          "value": null,
+          "set": true
+        },
+        "ean": {
+          "value": null,
+          "set": true
+        },
+        "price": {
+          "value": null,
+          "set": true
+        },
+        "quantity": {
+          "value": 5000,
+          "set": true
+        },
+        "rating": {
+          "value": null,
+          "set": true
+        },
+        "title": {
+          "value": null,
+          "set": true
+        },
+        "vendor": {
+          "value": null,
+          "set": true
+        }
+      },
+      "after": null
+    }
+    ```
+
+The second event will have a *key* but the *value* will be `null`; that is a [tombstone event](../yugabtyedb-connector/#tombstone-events) generated by the Debezium YugabyteDB connector.
+
+### Clean up
 
 After you are finished with the tutorial, you can use Docker to stop all of the running containers.
 
