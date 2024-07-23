@@ -911,6 +911,7 @@ public class XClusterConfigController extends AuthenticatedController {
       boolean dryRun,
       boolean isForceDelete,
       boolean isForceBootstrap) {
+
     // Add index tables.
     Map<String, List<String>> mainTableIndexTablesMap =
         XClusterConfigTaskBase.getMainTableIndexTablesMap(ybService, sourceUniverse, tableIds);
@@ -960,6 +961,32 @@ public class XClusterConfigController extends AuthenticatedController {
         mainTableIndexTablesMap,
         sourceTableIdTargetTableIdMap,
         isForceDelete,
+        isForceBootstrap);
+  }
+
+  static XClusterConfigTaskParams getDbScopedRestartTaskParams(
+      YBClientService ybService,
+      XClusterConfig xClusterConfig,
+      Universe sourceUniverse,
+      Universe targetUniverse,
+      Set<String> dbIds,
+      RestartBootstrapParams restartBootstrapParams,
+      boolean dryRun,
+      boolean isForceDelete,
+      boolean isForceBootstrap) {
+
+    XClusterConfigCreateFormData.BootstrapParams bootstrapParams = null;
+    if (restartBootstrapParams != null) {
+      bootstrapParams = new XClusterConfigCreateFormData.BootstrapParams();
+      bootstrapParams.backupRequestParams = restartBootstrapParams.backupRequestParams;
+      bootstrapParams.tables = new HashSet<>();
+    }
+
+    return new XClusterConfigTaskParams(
+        xClusterConfig,
+        bootstrapParams,
+        CollectionUtils.isEmpty(dbIds) ? xClusterConfig.getDbIds() : dbIds,
+        null,
         isForceBootstrap);
   }
 

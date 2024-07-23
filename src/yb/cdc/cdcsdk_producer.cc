@@ -168,6 +168,7 @@ Status AddColumnToMap(
     // send NULL values to the walsender. This is needed to be able to differentiate between NULL
     // and Omitted values.
     if (request_source == CDCSDKRequestSource::WALSENDER) {
+      cdc_datum_message->set_col_attr_num(col_schema.order());
       cdc_datum_message->set_column_type(col_schema.pg_type_oid());
       cdc_datum_message->mutable_pg_ql_value()->CopyFrom(ql_value);
       return Status::OK();

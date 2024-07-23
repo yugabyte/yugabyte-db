@@ -144,7 +144,13 @@ alter table atacc1 drop constraint if exists checkb3;
 delete from atacc1 where b = 5;
 
 -- test rename
-alter table atacc1 rename b to e;
+alter table atacc1 rename b to d; -- should fail: d already exists
+alter table atacc1 rename b to f;
+alter table atacc1 rename column f to e;
+
+alter table if exists doesnt_exist_tab rename b to f;
+alter table if exists doesnt_exist_tab rename column f to e;
+
 select * from atacc1;
 
 -- try dropping all columns
