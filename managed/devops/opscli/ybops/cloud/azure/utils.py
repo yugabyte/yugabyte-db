@@ -844,30 +844,56 @@ class AzureCloudAdmin():
                 local_compute_client = ComputeManagementClient(
                     self.credentials, fields['subscription_id'])
 
-            image_identifier = local_compute_client.gallery_images.get(
+            image_name = fields["image_definition_name"] + "/versions/" + fields["version_id"]
+            gallery_image = local_compute_client.gallery_images.get(
                 fields['resource_group'],
                 fields['gallery_name'],
-                fields['image_definition_name']).as_dict().get('identifier')
+                image_name)
+            image_tags = gallery_image.tags
+            logging.info("Gallery Image tags = " + str(image_tags))
 
             # When creating VMs with images that are NOT from the marketplace,
             # the creator of the VM needs to provide the plan information.
-            # We try to extract this info from the publisher, offer, sku fields
-            # of the image definition.
-            logging.info("Image parameters: {}, publisher = {}, offer={}, sku={}".format(
-                image_identifier,
-                image_identifier['publisher'],
-                image_identifier['offer'],
-                image_identifier['sku']))
-
-            if (image_identifier is not None
-                    and image_identifier['publisher'] is not None
-                    and image_identifier['offer'] is not None
-                    and image_identifier['sku'] is not None):
+            # For images created via packer, this info is added to the tags.
+            # Otherwise, we try to extract this info from the purchase plan
+            # or identifier of the image definition.
+            if (image_tags is not None
+                    and image_tags['PlanPublisher'] is not None
+                    and image_tags['PlanProduct'] is not None
+                    and image_tags['PlanInfo'] is not None):
                 plan = {
-                    "publisher": image_identifier['publisher'],
-                    "product": image_identifier['offer'],
-                    "name": image_identifier['sku'],
+                    "publisher": image_tags['PlanPublisher'],
+                    "product": image_tags['PlanProduct'],
+                    "name": image_tags['PlanInfo'],
                 }
+            # Try to use purchase plan if info is absent from tags.
+            if plan is None:
+                image_purchase_plan = gallery_image.purchase_plan
+                logging.info("Gallery Image purchase plan = " + str(image_purchase_plan))
+                if (image_purchase_plan is not None
+                        and image_purchase_plan.publisher is not None
+                        and image_purchase_plan.product is not None
+                        and image_purchase_plan.name is not None):
+                    plan = {
+                        "publisher": image_purchase_plan.publisher,
+                        "product": image_purchase_plan.product,
+                        "name": image_purchase_plan.name,
+                    }
+            # Try to fetch info from identifier.
+            if plan is None:
+                image_identifier = gallery_image.as_dict().get('identifier')
+                logging.info("Gallery Image identifier = " + str(image_identifier))
+                if (image_identifier is not None
+                        and image_identifier["publisher"] is not None
+                        and image_identifier["offer"] is not None
+                        and image_identifier["sku"] is not None):
+                    plan = {
+                        "publisher": image_identifier["publisher"],
+                        "product": image_identifier["offer"],
+                        "name": image_identifier["sku"],
+                    }
+            if plan is None:
+                logging.warn("Plan info absent from the following VM image: " + str(image))
         else:
             # machine image URN - "OpenLogic:CentOS:7_8:7.8.2020051900"
             pub, offer, sku, version = image.split(':')
