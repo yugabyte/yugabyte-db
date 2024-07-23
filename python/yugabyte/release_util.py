@@ -261,8 +261,10 @@ class ReleaseUtil:
             # in our downsstream release code.  So here we munge the name to 'centos' to keep things
             # working while we fix downstream code.
             # TODO(jharveymsith): Remove the almalinux to centos mapping once downstream is fixed.
+            # DEVOPS-3154
             if distro.id() == "centos" and distro.major_version() == "7" \
-                    or distro.id() == "almalinux" and platform.machine().lower() == "x86_64":
+                    or distro.id() == "almalinux" and platform.machine().lower() == "x86_64" \
+                    or distro.id() == "amzn" and platform.machine().lower() == "aarch64":
                 system = "centos"
             elif distro.id == "ubuntu":
                 system = distro.id() + distro.version()

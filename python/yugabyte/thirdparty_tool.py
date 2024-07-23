@@ -258,19 +258,22 @@ class GitHubThirdPartyRelease(ThirdPartyReleaseBase):
 
     def should_skip_as_too_os_specific(self) -> bool:
         """
+        Centos7 is EOL June 2024, this condition no longer applies.
+
         Certain build types of specific OSes could be skipped because we can use the CentOS 7 build
         instead. We can do that in cases we know we don't need to run ASAN/TSAN. We know that we
         don't use ASAN/TSAN on aarch64 or for LTO builds as of 11/07/2022. Also we don't skip
         Linuxbrew builds or GCC builds.
         """
-        return (
-            self.os_type != 'centos7' and
-            self.compiler_type.startswith('clang') and
-            # We handle Linuxbrew builds in a special way, e.g. they could be built on AlmaLinux 8.
-            not self.is_linuxbrew and
-            # We don't run ASAN/TSAN on aarch64 or with LTO yet.
-            (self.architecture == 'aarch64' or self.lto_type is not None)
-        )
+        # return (
+        #    self.os_type != 'centos7' and
+        #    self.compiler_type.startswith('clang') and
+        #    # We handle Linuxbrew builds in a special way, e.g. they could be built on AlmaLinux 8.
+        #    not self.is_linuxbrew and
+        #    # We don't run ASAN/TSAN on aarch64 or with LTO yet.
+        #    (self.architecture == 'aarch64' or self.lto_type is not None)
+        # )
+        return False
 
 
 @ruamel_yaml_object.register_class

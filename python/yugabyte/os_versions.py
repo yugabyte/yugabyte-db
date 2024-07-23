@@ -14,6 +14,7 @@ import re
 
 
 UBUNTU_OS_TYPE_RE = re.compile(r'^(ubuntu)([0-9]{2})([0-9]{2})$')
+AMZN_OS_TYPE_RE = re.compile(r'^(amzn|amazonlinux)([0-9]+)$')
 RHEL_FAMILY_RE = re.compile(r'^(almalinux|centos|rhel)([0-9]+)$')
 
 
@@ -22,6 +23,10 @@ def adjust_os_type(os_type: str) -> str:
     if match:
         # Convert e.g. ubuntu2004 -> ubuntu20.04 for clarity.
         return f'{match.group(1)}{match.group(2)}.{match.group(3)}'
+    match = AMZN_OS_TYPE_RE.match(os_type)
+    if match:
+        # Convert e.g. amazonlinux2 -> amzn2 to match OS ID name
+        return f'amzn{match.group(2)}'
     return os_type
 
 
