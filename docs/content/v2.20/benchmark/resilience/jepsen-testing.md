@@ -100,7 +100,7 @@ execute either single-row inserts or perform multi-row reads. The expectation is
 results are serializable. This means that for two write operations, W1 and W2, it should not be
 possible for a read operation R1 to observe write W1 but not W2, while another read operation R2
 observes W2 but not W1.
-To read more about the long-fork test see here.
+To read more about the long-fork test see [here](https://jepsen-io.github.io/jepsen/jepsen.tests.long-fork.html).
 
 ![Load Phase Results](/images/benchmark/jepsen/jepsen-5-long-fork.png)
 
