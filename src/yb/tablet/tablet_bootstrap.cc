@@ -136,6 +136,9 @@ DEFINE_RUNTIME_bool(skip_flushed_entries_in_first_replayed_segment, true,
             "If applicable, only replay entries that are not flushed to RocksDB or necessary "
             "to bootstrap retryable requests in the first replayed wal segment.");
 
+DEFINE_RUNTIME_bool(use_bootstrap_intent_ht_filter, false,
+                    "Use min running hybrid time filter for bootstrap.");
+
 DECLARE_int32(retryable_request_timeout_secs);
 
 DEFINE_UNKNOWN_uint64(transaction_status_tablet_log_segment_size_bytes, 4_MB,
@@ -509,8 +512,10 @@ class TabletBootstrap {
       if (result.ok()) {
         bootstrap_state_pb = std::move(*result);
 
-        const auto& bootstrap_state = data_.bootstrap_state_manager->bootstrap_state();
-        min_running_ht = bootstrap_state.GetMinRunningHybridTime();
+        if (GetAtomicFlag(&FLAGS_use_bootstrap_intent_ht_filter)) {
+          const auto& bootstrap_state = data_.bootstrap_state_manager->bootstrap_state();
+          min_running_ht = bootstrap_state.GetMinRunningHybridTime();
+        }
       } else if (!result.status().IsNotFound()) {
         return result.status();
       }

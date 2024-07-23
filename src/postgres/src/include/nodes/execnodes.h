@@ -1762,6 +1762,7 @@ typedef struct YbBitmapIndexScanState
 	ExprContext *biss_RuntimeContext;
 	Relation	biss_RelationDesc;
 	struct IndexScanDescData *biss_ScanDesc;
+	bool		biss_requires_recheck;
 } YbBitmapIndexScanState;
 
 /* ----------------
@@ -1886,6 +1887,7 @@ typedef struct YbBitmapTableScanState
 	bool		work_mem_exceeded;
 	size_t		average_ybctid_bytes;
 	int			skipped_tuples;
+	List	   *aggrefs;		/* aggregate pushdown information */
 } YbBitmapTableScanState;
 
 /* ----------------

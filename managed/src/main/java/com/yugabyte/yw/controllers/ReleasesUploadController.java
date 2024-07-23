@@ -72,9 +72,7 @@ public class ReleasesUploadController extends AuthenticatedController {
       throw new PlatformServiceException(BAD_REQUEST, "no 'file' found in body");
     }
     String fileName = FilenameUtils.getName(filePart.getFilename());
-    Path destPath =
-        Paths.get(
-            appConfig.getString(releaseUtils.RELEASE_PATH_CONFKEY), uuid.toString(), fileName);
+    Path destPath = Paths.get(releaseUtils.getUploadStoragePath(), uuid.toString(), fileName);
     if (!destPath.getParent().toFile().mkdir()) {
       log.error("failed to create directory {}", destPath.getParent());
       throw new PlatformServiceException(

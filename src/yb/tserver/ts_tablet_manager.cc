@@ -156,7 +156,7 @@ DEFINE_UNKNOWN_int32(tablet_start_warn_threshold_ms, 500,
              "a warning with a trace.");
 TAG_FLAG(tablet_start_warn_threshold_ms, hidden);
 
-DEFINE_UNKNOWN_int32(cleanup_split_tablets_interval_sec, 60,
+DEFINE_NON_RUNTIME_int32(cleanup_split_tablets_interval_sec, 60,
              "Interval at which tablet manager tries to cleanup split tablets which are no longer "
              "needed. Setting this to 0 disables cleanup of split tablets.");
 
@@ -218,6 +218,12 @@ DEFINE_test_flag(bool, crash_before_source_tablet_mark_split_done, false,
 
 DEFINE_test_flag(bool, force_single_tablet_failure, false,
                  "Force exactly one tablet to a failed state.");
+
+DEFINE_test_flag(bool, fail_apply_clone_op, false,
+                 "Whether to fail the RAFT apply of the clone op.");
+
+DEFINE_test_flag(bool, expect_clone_apply_failure, false,
+                 "Whether to simply log (instead of DFATAL) if the clone RAFT apply fails.");
 
 DEFINE_test_flag(int32, apply_tablet_split_inject_delay_ms, 0,
                  "Inject delay into TSTabletManager::ApplyTabletSplit.");
@@ -1236,16 +1242,17 @@ Status TSTabletManager::ApplyTabletSplit(
   return Status::OK();
 }
 
-Status TSTabletManager::ApplyCloneTablet(
+Status TSTabletManager::DoApplyCloneTablet(
     tablet::CloneOperation* operation, log::Log* raft_log,
     std::optional<RaftConfigPB> committed_raft_config) {
-  if (state() != MANAGER_RUNNING) {
-    return STATUS_FORMAT(IllegalState, "Manager is not running: $0", state());
+  if (FLAGS_TEST_fail_apply_clone_op) {
+    return STATUS(
+        RuntimeError, "Failing DoApplyCloneTablet due to FLAGS_TEST_fail_apply_clone_op");
   }
 
   auto clone_op_id = operation->op_id();
-  auto source_tablet = VERIFY_RESULT(operation->tablet_safe());
-  auto source_table = VERIFY_RESULT(source_tablet->GetTableInfo(kColocationIdNotSet));
+  const auto source_tablet = VERIFY_RESULT(operation->tablet_safe());
+  const auto source_table = VERIFY_RESULT(source_tablet->GetTableInfo(kColocationIdNotSet));
   const auto source_tablet_id = source_tablet->tablet_id();
   const auto* request = operation->request();
   const auto source_snapshot_id = VERIFY_RESULT(
@@ -1255,7 +1262,6 @@ Status TSTabletManager::ApplyCloneTablet(
   const auto target_table_id = request->target_table_id().ToBuffer();
   const auto target_tablet_id = request->target_tablet_id().ToBuffer();
   const auto target_namespace_name = request->target_namespace_name().ToBuffer();
-  const auto clone_request_seq_no = request->clone_request_seq_no();
   const auto target_pg_table_id = request->target_pg_table_id().ToBuffer();
   const auto target_skip_table_tombstone_check =
       request->target_skip_table_tombstone_check();
@@ -1279,24 +1285,12 @@ Status TSTabletManager::ApplyCloneTablet(
         VERIFY_RESULT(tablet_peer->GetRaftConsensus())->CommittedConfigUnlocked();
   }
 
-  auto& source_meta = *CHECK_NOTNULL(source_tablet->metadata());
-  if (source_meta.HasAttemptedClone(clone_request_seq_no)) {
-    LOG_WITH_PREFIX(INFO) << Format(
-        "Clone operation for tablet $0 has been trivially applied because clone was already "
-        "attempted with the same seq no ($1)", source_tablet_id, clone_request_seq_no);
-    return Status::OK();
-  }
-
-  LOG(INFO) << Format(
-      "Applying clone op on tablet $0 with seq_no $1", source_tablet_id, clone_request_seq_no);
-
   // State transition for clone target could be already registered because it is remote
   // bootstrapping from an existing quorum. We would ideally avoid this by passing
   // clone_request_seq_no everywhere we call StartRemoteBootstrap (which would cause the RBS to be
   // rejected instead), but it is worth having this check to be safe.
   // TODO(anubhav): go through StartRemoteBootstrap calls and add clone_request_seq_no wherever
   //                possible.
-  bool should_create_target_tablet = true;
   auto transition_deleter_result = StartTabletStateTransitionForCreation(target_tablet_id);
   if (!transition_deleter_result.ok()) {
     auto status = transition_deleter_result.status();
@@ -1307,111 +1301,154 @@ Status TSTabletManager::ApplyCloneTablet(
     // created tablet. We would fail the subsequent restore so it's not a huge issue for clone, but
     // we should fix this for tablet splitting.
     LOG_WITH_PREFIX(INFO) << "Clone target tablet is already present or in transition: " << status;
-    should_create_target_tablet = false;
+    return Status::OK();
   }
 
-  if (should_create_target_tablet) {
-    // Data and WAL dirs should be the same as the source tablet so we can hard link SSTs.
-    RETURN_NOT_OK(CleanUpSubtabletIfExistsOnDisk(
-        source_meta, target_tablet_id, fs_manager_->env()));
-    string data_root_dir = source_meta.data_root_dir();
-    string wal_root_dir = source_meta.wal_root_dir();
-    RegisterDataAndWalDir(
-        fs_manager_, target_table_id, target_tablet_id, data_root_dir, wal_root_dir);
-    fs_manager_->SetTabletPathByDataPath(target_tablet_id, data_root_dir);
+  // Data and WAL dirs should be the same as the source tablet so we can hard link SSTs.
+  const auto& source_meta = *CHECK_NOTNULL(source_tablet->metadata());
+  RETURN_NOT_OK(CleanUpSubtabletIfExistsOnDisk(
+      source_meta, target_tablet_id, fs_manager_->env()));
+  string data_root_dir = source_meta.data_root_dir();
+  string wal_root_dir = source_meta.wal_root_dir();
+  RegisterDataAndWalDir(
+      fs_manager_, target_table_id, target_tablet_id, data_root_dir, wal_root_dir);
+  fs_manager_->SetTabletPathByDataPath(target_tablet_id, data_root_dir);
 
-    bool successfully_created_target = false;
-    auto se = ScopeExit([&] {
-      if (!successfully_created_target) {
-        UnregisterDataWalDir(target_table_id, target_tablet_id, data_root_dir, wal_root_dir);
-      }
-    });
+  bool successfully_created_target = false;
+  auto se = ScopeExit([&] {
+    if (!successfully_created_target) {
+      UnregisterDataWalDir(target_table_id, target_tablet_id, data_root_dir, wal_root_dir);
+    }
+  });
 
-    std::unique_ptr<ConsensusMetadata> cmeta = VERIFY_RESULT(ConsensusMetadata::Create(
-        fs_manager_, target_tablet_id, fs_manager_->uuid(), committed_raft_config.value(),
-        clone_op_id.term));
-    cmeta->set_clone_source_info(clone_request_seq_no, source_tablet_id);
-    RETURN_NOT_OK(cmeta->Flush());
+  std::unique_ptr<ConsensusMetadata> cmeta = VERIFY_RESULT(ConsensusMetadata::Create(
+      fs_manager_, target_tablet_id, fs_manager_->uuid(), committed_raft_config.value(),
+      clone_op_id.term));
+  cmeta->set_clone_source_info(request->clone_request_seq_no(), source_tablet_id);
+  RETURN_NOT_OK(cmeta->Flush());
 
-    auto target_table = std::make_shared<tablet::TableInfo>(
-        consensus::MakeTabletLogPrefix(target_tablet_id, server_->permanent_uuid()),
-        tablet::Primary(source_table->primary()),
-        target_table_id,
-        target_namespace_name,
-        source_table->table_name,
-        source_table->table_type,
-        /* Fixed by restore, but we need it to get partition_schema so might as well set it. */
-        target_schema,
-        *source_table->index_map, /* fixed by restore */
-        std::move(target_table_index_info),
-        source_table->schema_version, /* fixed by restore */
-        target_partition_schema,
-        target_pg_table_id,
-        tablet::SkipTableTombstoneCheck(target_skip_table_tombstone_check));
+  auto target_table = std::make_shared<tablet::TableInfo>(
+      consensus::MakeTabletLogPrefix(target_tablet_id, server_->permanent_uuid()),
+      tablet::Primary(source_table->primary()),
+      target_table_id,
+      target_namespace_name,
+      source_table->table_name,
+      source_table->table_type,
+      /* Fixed by restore, but we need it to get partition_schema so might as well set it. */
+      target_schema,
+      *source_table->index_map, /* fixed by restore */
+      std::move(target_table_index_info),
+      source_table->schema_version, /* fixed by restore */
+      target_partition_schema,
+      target_pg_table_id,
+      tablet::SkipTableTombstoneCheck(target_skip_table_tombstone_check));
 
-    // Setup raft group metadata. If we crash between here and when we set the tablet data state to
-    // TABLET_DATA_READY, the tablet will be deleted on the next bootstrap.
-    tablet::RaftGroupMetadataData target_meta_data {
-      .fs_manager = fs_manager_,
-      .table_info = target_table,
-      .raft_group_id = target_tablet_id,
-      .partition = *source_meta.partition(),
-      .tablet_data_state = TABLET_DATA_INIT_STARTED,
-      .colocated = source_meta.colocated(),
-      .snapshot_schedules = {},
-      .hosted_services = {},
-    };
-    auto target_meta = VERIFY_RESULT(RaftGroupMetadata::CreateNew(
-        target_meta_data, data_root_dir, wal_root_dir));
+  // Setup raft group metadata. If we crash between here and when we set the tablet data state to
+  // TABLET_DATA_READY, the tablet will be deleted on the next bootstrap.
+  tablet::RaftGroupMetadataData target_meta_data {
+    .fs_manager = fs_manager_,
+    .table_info = target_table,
+    .raft_group_id = target_tablet_id,
+    .partition = *source_meta.partition(),
+    .tablet_data_state = TABLET_DATA_INIT_STARTED,
+    .colocated = source_meta.colocated(),
+    .snapshot_schedules = {},
+    .hosted_services = {},
+  };
+  auto target_meta = VERIFY_RESULT(RaftGroupMetadata::CreateNew(
+      target_meta_data, data_root_dir, wal_root_dir));
 
-    // Create target parent table directory if required.
-    auto target_parent_table_dir = DirName(target_meta->snapshots_dir());
-    RETURN_NOT_OK_PREPEND(
-        fs_manager_->CreateDirIfMissingAndSync(target_parent_table_dir),
-        Format("Failed to create RocksDB table directory $0", target_parent_table_dir));
-    auto target_snapshot_dir = JoinPathSegments(
-        VERIFY_RESULT(target_meta->TopSnapshotsDir()), target_snapshot_id.ToString());
+  // Create target parent table directory if required.
+  auto target_parent_table_dir = DirName(target_meta->snapshots_dir());
+  RETURN_NOT_OK_PREPEND(
+      fs_manager_->CreateDirIfMissingAndSync(target_parent_table_dir),
+      Format("Failed to create RocksDB table directory $0", target_parent_table_dir));
+  auto target_snapshot_dir = JoinPathSegments(
+      VERIFY_RESULT(target_meta->TopSnapshotsDir()), target_snapshot_id.ToString());
 
-    // Copy or create the snapshot into the target snapshot directory.
-    if (request->clone_from_active_rocksdb()) {
-      RETURN_NOT_OK_PREPEND(source_tablet->snapshots().Create(tablet::CreateSnapshotData {
-          .snapshot_hybrid_time = operation->hybrid_time(),
-          .hybrid_time = operation->hybrid_time(),
-          .op_id = operation->op_id(),
-          .snapshot_dir = target_snapshot_dir,
-          .schedule_id = SnapshotScheduleId::Nil(),
-      }), Format("Could not create from active rocksdb of tablet $0", source_tablet_id));
+  // Copy or create the snapshot into the target snapshot directory.
+  if (request->clone_from_active_rocksdb()) {
+    RETURN_NOT_OK_PREPEND(source_tablet->snapshots().Create(tablet::CreateSnapshotData {
+        .snapshot_hybrid_time = operation->hybrid_time(),
+        .hybrid_time = operation->hybrid_time(),
+        .op_id = clone_op_id,
+        .snapshot_dir = target_snapshot_dir,
+        .schedule_id = SnapshotScheduleId::Nil(),
+    }), Format("Could not create from active rocksdb of tablet $0", source_tablet_id));
+  } else {
+    auto source_snapshot_dir = JoinPathSegments(VERIFY_RESULT(
+        source_tablet->metadata()->TopSnapshotsDir()), source_snapshot_id.ToString());
+    LOG(INFO) << Format("Hard-linking from $0 to $1", source_snapshot_dir, target_snapshot_dir);
+    RETURN_NOT_OK(CopyDirectory(
+        fs_manager_->env(), source_snapshot_dir, target_snapshot_dir, UseHardLinks::kTrue,
+        CreateIfMissing::kTrue));
+  }
+
+  if (PREDICT_FALSE(FLAGS_TEST_crash_before_clone_target_marked_ready)) {
+    LOG(FATAL) << "Crashing due to FLAGS_TEST_crash_before_clone_target_marked_ready";
+  }
+  // Mark this tablet as ready now that we have copied the snapshot files.
+  target_meta->set_tablet_data_state(TABLET_DATA_READY);
+  RETURN_NOT_OK(target_meta->Flush());
+
+  // Call CreatePeerAndOpenTablet asynchronously to avoid write-locking TSTabletManager::mutex_
+  // here since apply of CLONE_OP is done under ReplicaState lock and this could lead to deadlock
+  // in case of reverse lock order in some other thread.
+  // See https://github.com/yugabyte/yugabyte-db/issues/4312 for more details.
+  RETURN_NOT_OK(apply_pool_->SubmitFunc(std::bind(
+      &TSTabletManager::CreatePeerAndOpenTablet, this, target_meta, *transition_deleter_result)));
+  successfully_created_target = true;
+
+  return Status::OK();
+}
+
+Status TSTabletManager::ApplyCloneTablet(
+    tablet::CloneOperation* operation, log::Log* raft_log,
+    std::optional<RaftConfigPB> committed_raft_config) {
+  // The semantics of clone op are different from most operations. During apply, a clone op will:
+  // 1. ATTEMPT to create a clone of source tablet AND
+  // 2. Set last_attempted_clone_seq_no_ to clone_request_seq_no
+  // Thus, a clone op that has failed to create a target tablet will still apply successfully.
+  // As long as applying the clone op affects each replica of the source tablet in the same way,
+  // the invariant that applying the same op to identical replicas A and B will yield identical
+  // replicas A' and B' is maintained. Since the only way the clone op modifies the source tablet
+  // is to set last_attempted_clone_seq_no_, this assumption is met.
+
+  if (state() != MANAGER_RUNNING) {
+    return STATUS_FORMAT(IllegalState, "Manager is not running: $0", state());
+  }
+
+  auto source_tablet = VERIFY_RESULT(operation->tablet_safe());
+  const auto source_tablet_id = source_tablet->tablet_id();
+  const auto clone_request_seq_no = operation->request()->clone_request_seq_no();
+
+  auto& source_meta = *CHECK_NOTNULL(source_tablet->metadata());
+  if (source_meta.HasAttemptedClone(clone_request_seq_no)) {
+    LOG_WITH_PREFIX(INFO) << Format(
+        "Clone operation for tablet $0 has been trivially applied because clone was already "
+        "attempted with the same seq no ($1)", source_tablet_id, clone_request_seq_no);
+    return Status::OK();
+  }
+
+  LOG(INFO) << Format(
+      "Starting apply of clone op with seq_no $0 on tablet $1", clone_request_seq_no,
+      source_tablet_id);
+  auto status = DoApplyCloneTablet(operation, raft_log, committed_raft_config);
+  if (!status.ok()) {
+    if (FLAGS_TEST_expect_clone_apply_failure) {
+      LOG(INFO) << "Failed to apply clone tablet: " << status;
     } else {
-      auto source_snapshot_dir = JoinPathSegments(VERIFY_RESULT(
-          source_tablet->metadata()->TopSnapshotsDir()), source_snapshot_id.ToString());
-      LOG(INFO) << Format("Hard-linking from $0 to $1", source_snapshot_dir, target_snapshot_dir);
-      RETURN_NOT_OK(CopyDirectory(
-          fs_manager_->env(), source_snapshot_dir, target_snapshot_dir, UseHardLinks::kTrue,
-          CreateIfMissing::kTrue));
+      LOG(DFATAL) << "Failed to apply clone tablet: " << status;
     }
-
-    if (PREDICT_FALSE(FLAGS_TEST_crash_before_clone_target_marked_ready)) {
-      LOG(FATAL) << "Crashing due to FLAGS_TEST_crash_before_clone_target_marked_ready";
-    }
-    // Mark this tablet as ready now that we have copied the snapshot files.
-    target_meta->set_tablet_data_state(TABLET_DATA_READY);
-    RETURN_NOT_OK(target_meta->Flush());
-
-    // Call CreatePeerAndOpenTablet asynchronously to avoid write-locking TSTabletManager::mutex_
-    // here since apply of CLONE_OP is done under ReplicaState lock and this could lead to deadlock
-    // in case of reverse lock order in some other thread.
-    // See https://github.com/yugabyte/yugabyte-db/issues/4312 for more details.
-    RETURN_NOT_OK(apply_pool_->SubmitFunc(std::bind(
-        &TSTabletManager::CreatePeerAndOpenTablet, this, target_meta, *transition_deleter_result)));
-    successfully_created_target = true;
   }
+
   if (PREDICT_FALSE(FLAGS_TEST_crash_before_mark_clone_attempted)) {
     LOG(FATAL) << "Crashing due to FLAGS_TEST_crash_before_mark_clone_attempted";
   }
   source_meta.MarkClonesAttemptedUpTo(clone_request_seq_no);
   RETURN_NOT_OK(source_meta.Flush());
   LOG_WITH_PREFIX(INFO) << Format(
-      "Clone operation for tablet $0 with seq_no $1 has been applied", source_tablet_id,
+      "Clone operation for tablet $0 with seq_no $1 has been marked as attempted", source_tablet_id,
       clone_request_seq_no);
   return Status::OK();
 }

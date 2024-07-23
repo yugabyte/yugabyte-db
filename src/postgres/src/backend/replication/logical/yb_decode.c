@@ -88,11 +88,11 @@ YBLogicalDecodingProcessRecord(LogicalDecodingContext *ctx,
 		/* Nothing to handle here. */
 		case YB_PG_ROW_MESSAGE_ACTION_DDL:
 			elog(DEBUG4,
-				 "Received DDL record for table: %d, xid: %d, commit_time: "
+				 "Received DDL record for table: %d, xid: %d, commit_time_ht: "
 				 "%" PRIu64,
 				 record->yb_virtual_wal_record->table_oid,
 				 record->yb_virtual_wal_record->xid,
-				 record->yb_virtual_wal_record->commit_time);
+				 record->yb_virtual_wal_record->commit_time_ht);
 			break;
 
 		case YB_PG_ROW_MESSAGE_ACTION_BEGIN:
@@ -540,11 +540,11 @@ YBHandleRelcacheRefresh(LogicalDecodingContext *ctx, XLogReaderState *record)
 			{
 				uint64_t read_time_ht;
 
-				/* Use the commit_time of the DML. */
-				read_time_ht = record->yb_virtual_wal_record->commit_time;
+				/* Use the commit_time_ht of the DML. */
+				read_time_ht = record->yb_virtual_wal_record->commit_time_ht;
 
 				elog(DEBUG2,
-					 "Setting yb_read_time to record's commit_time: %" PRIu64,
+					 "Setting yb_read_time to record's commit_time_ht: %" PRIu64,
 					 read_time_ht);
 				YBCUpdateYbReadTimeAndInvalidateRelcache(read_time_ht);
 

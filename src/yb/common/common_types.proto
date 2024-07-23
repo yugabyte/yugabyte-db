@@ -159,6 +159,12 @@ enum ReplicationErrorPb {
   // The AutoFlags config has changed and the new version is not compatible, or
   // has not yet been validated.
   REPLICATION_AUTO_FLAG_CONFIG_VERSION_MISMATCH = 6;
+
+  // Error connecting to the source universe.
+  REPLICATION_SOURCE_UNREACHABLE = 7;
+
+  // There was a generic system error.
+  REPLICATION_SYSTEM_ERROR = 8;
 }
 
 // Stateful services.

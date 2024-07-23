@@ -1377,6 +1377,30 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	pg_database_rel = table_open(DatabaseRelationId, RowExclusiveLock);
 
 	/*
+	 * CREATE DATABASE using templates other than template0 and template1 will 
+	 * always go through the DB clone workflow.
+	 */
+  bool is_clone = strcmp(dbtemplate, "template0") != 0 && strcmp(dbtemplate, "template1") != 0;
+  YbCloneInfo yb_clone_info = {
+    .clone_time = dbclonetime,
+    .src_db_name = dbtemplate,
+    .src_owner = is_clone ? GetUserNameFromId(src_owner, true /* noerr */) : NULL,
+    .tgt_owner = is_clone ? GetUserNameFromId(datdba, true /* noerr */) : NULL,
+  };
+  if (is_clone) {
+    if (!yb_clone_info.src_owner) {
+      ereport(ERROR,
+          (errcode(ERRCODE_UNDEFINED_OBJECT),
+          errmsg("Could not get source database owner name from oid")));
+    }
+    if (!yb_clone_info.tgt_owner) {
+      ereport(ERROR,
+          (errcode(ERRCODE_UNDEFINED_OBJECT),
+          errmsg("Could not get target database owner name from oid")));
+    }
+  }
+
+	/*
 	 * If database OID is configured, check if the OID is already in use or
 	 * data directory already exists.
 	 */
@@ -1400,9 +1424,10 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 		 * OID was used by a database that's been dropped.
 		 */
 		if (IsYugaByteEnabled())
-			YBCCreateDatabase(dboid, dbname, src_dboid, dbtemplate,
-							  InvalidOid, dbcolocated,
-							  /*retry_on_oid_collision=*/ NULL, dbclonetime);
+			YBCCreateDatabase(dboid, dbname, src_dboid,
+							  /* next_oid */ InvalidOid, dbcolocated,
+							  /*retry_on_oid_collision=*/ NULL,
+							  is_clone ? &yb_clone_info : NULL);
 	}
 	else
 	{
@@ -1428,21 +1453,19 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 
 			retry_on_oid_collision = false;
 			if (IsYugaByteEnabled())
-				YBCCreateDatabase(dboid, dbname, src_dboid, dbtemplate,
-								  InvalidOid, dbcolocated,
-								  &retry_on_oid_collision, dbclonetime);
+				YBCCreateDatabase(dboid, dbname, src_dboid,
+								  /* next_oid */ InvalidOid, dbcolocated,
+								  &retry_on_oid_collision,
+								  is_clone ? &yb_clone_info : NULL);
 		} while (retry_on_oid_collision);
 	}
 
 	/*
-	 * CREATE DATABASE using templates other than template0 and template1 will 
-	 * always go through the DB clone workflow.
 	 * A database created using the clone workflow already has an entry in
 	 * pg_database as it is created by executing ysql_dump script.
 	 * Thus, close pg_database relation and return the dboid in case of clone.
 	 */
-	if (strcmp(dbtemplate, "template0") != 0 &&
-		strcmp(dbtemplate, "template1") != 0)
+	if (is_clone)
 	{
 		table_close(pg_database_rel, RowExclusiveLock);
 		// TODO(yamen): return the correct target dboid from the clone namespace.

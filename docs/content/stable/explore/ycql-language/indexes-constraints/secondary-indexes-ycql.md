@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Using indexes enhances database performance by enabling the database server to find rows faster. You can create, drop, and list indexes, as well as use indexes on expressions.
+Using indexes enhances database performance by enabling the database server to find rows faster. You can create, drop, and list indexes.
 
 ## Create indexes
 

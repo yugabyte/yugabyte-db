@@ -277,6 +277,8 @@ message CloneNamespaceRequestPB {
   optional NamespaceIdentifierPB source_namespace = 1;
   optional fixed64 restore_ht = 2;
   optional string target_namespace_name = 3;
+  optional string pg_source_owner = 4;
+  optional string pg_target_owner = 5;
 }
 
 message CloneNamespaceResponsePB {

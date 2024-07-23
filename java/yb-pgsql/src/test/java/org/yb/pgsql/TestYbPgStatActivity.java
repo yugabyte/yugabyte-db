@@ -109,6 +109,7 @@ public class TestYbPgStatActivity extends BasePgSQLTest {
   public void testSetMemoryTracking() throws Exception {
     forceCatalogCacheRefresh();
     try (Statement stmt = connection.createStatement()) {
+      consumeMem(stmt);
       int beid = getPgBackendBeid(stmt);
 
       // Verify that the allocated_mem_bytes and rss_mem_bytes are successfully retrieved

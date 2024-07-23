@@ -91,6 +91,8 @@ class SnapshotState : public StateWithTablets {
     return retention_duration_hours_ ? true : false;
   }
 
+  Result<bool> Complete() const;
+
   // Whether to block object (table / tablet) cleanup until the retention window specified in
   // retention_duration_hours (if set) has passed. If true, the objects will be hidden instead
   // of deleted until retention_duration_hours have passed.
@@ -119,6 +121,7 @@ class SnapshotState : public StateWithTablets {
       ListSnapshotsDetailOptionsPB options) const;
   Status StoreToWriteBatch(docdb::KeyValueWriteBatchPB* out);
   Status TryStartDelete();
+  bool delete_started() const;
   void PrepareOperations(TabletSnapshotOperations* out);
   void SetVersion(int value);
   bool NeedCleanup() const;

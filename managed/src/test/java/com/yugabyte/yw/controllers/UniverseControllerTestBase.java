@@ -308,7 +308,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
       case gcp:
         return createDeviceInfo(StorageType.Persistent, 1, 100, null, null, null);
       case azu:
-        return createDeviceInfo(StorageType.Premium_LRS, 1, 100, null, null, null);
+        return createDeviceInfo(StorageType.PremiumV2_LRS, 1, 100, null, null, null);
       case kubernetes:
         return createDeviceInfo(null, 1, 100, null, null, null);
       default:

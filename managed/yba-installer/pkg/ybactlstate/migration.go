@@ -3,6 +3,7 @@ package ybactlstate
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"strconv"
 
 	"github.com/spf13/viper"
@@ -19,18 +20,50 @@ const ymlTypeFixMV = 4
 const promOomConfgMV = 5
 const promTLSCipherSuites = 6
 const asRoot = 7
+const ybaWait = 8
+
+// Please do not use this in ybactlstate package, only use getSchemaVersion()
+var schemaVersionCache = -1
 
 func handleMigration(state *State) error {
-	for state._internalFields.SchemaVersion < schemaVersion {
-		nextSchema := state._internalFields.SchemaVersion + 1
+	if err := updateSchemaTracking(state); err != nil {
+		return err
+	}
+	nextSchema := 0
+	endSchema := getSchemaVersion()
+	for nextSchema < endSchema {
+		nextSchema++
+		if slices.Contains(state._internalFields.RunSchemas, nextSchema) {
+			continue
+		}
 		migrate := getMigrationHandler(nextSchema)
+		if migrate == nil {
+			log.Debug("skipping migration " + strconv.Itoa(nextSchema) + " as it is not defined")
+			continue
+		}
 		if err := migrate(state); err != nil {
 			return err
 		}
-		state._internalFields.SchemaVersion = nextSchema
+		state._internalFields.RunSchemas = append(state._internalFields.RunSchemas, nextSchema)
 	}
 	// StoreState in order to persist migration SchemaVersion
 	return StoreState(state)
+}
+
+// Update how we track the schema version. Previously, we tracked the max version with the schema
+// Version variable. Now, we want to explicitly track only the executed schemas. We will assume if
+// this transfer needs to be run, all migrations below the tracked schema version have been run, and
+// mark them as run.
+func updateSchemaTracking(state *State) error {
+	if state._internalFields.RunSchemas != nil {
+		return nil
+	}
+	// allSchemaSlice returns the list for the current max schema, but we need specifically those
+	// that have already been run - tracked previously by the state SchemaVersion
+	state._internalFields.RunSchemas = allSchemaSlice()[:state._internalFields.SchemaVersion]
+	log.DebugLF(fmt.Sprintf("updating schema tracking with run schemas of %v",
+		state._internalFields.RunSchemas))
+	return nil
 }
 
 type migrator func(state *State) error
@@ -183,7 +216,24 @@ func migrateAsRootConfig(state *State) error {
 	return nil
 }
 
-// TODO: Also need to remember to update schemaVersion when adding migration! (automate testing?)
+func migrateYbaWait(state *State) error {
+	if !viper.IsSet("wait_for_yba_ready_secs") {
+		log.Info("wait for ready not set")
+		viper.ReadConfig(bytes.NewBufferString(config.ReferenceYbaCtlConfig))
+		log.Info(fmt.Sprintf("setting to %d", viper.GetInt("wait_for_yba_ready_secs")))
+		err := common.SetYamlValue(common.InputFile(), "wait_for_yba_ready_secs",
+			viper.GetInt("wait_for_yba_ready_secs"))
+		if err != nil {
+			return fmt.Errorf("Error migrating yb_wait config: %s", err.Error())
+		}
+	} else {
+		log.Info("wait for ready set")
+	}
+
+	common.InitViper()
+	return nil
+}
+
 var migrations map[int]migrator = map[int]migrator{
 	defaultMigratorValue: defaultMigrate,
 	promConfigMV:         migratePrometheus,
@@ -192,12 +242,24 @@ var migrations map[int]migrator = map[int]migrator{
 	promOomConfgMV:       migratePrometheusOOMConfig,
 	promTLSCipherSuites:  migratePrometheusTLSCipherSuites,
 	asRoot:               migrateAsRootConfig,
+	ybaWait:              migrateYbaWait,
 }
 
 func getMigrationHandler(toSchema int) migrator {
 	m, ok := migrations[toSchema]
 	if !ok {
-		m = migrations[defaultMigratorValue]
+		return nil
 	}
 	return m
+}
+
+func getSchemaVersion() int {
+	if schemaVersionCache == -1 {
+		for k := range migrations {
+			if k > schemaVersionCache {
+				schemaVersionCache = k
+			}
+		}
+	}
+	return schemaVersionCache
 }

@@ -150,4 +150,9 @@ extern const bool kTestOnlyUseOSDefaultCollation;
  */
 extern bool YBColocateDatabaseByDefault();
 
+/**
+ * Returns whether the query diagnostics feature is enabled. 
+ */
+extern bool YBIsQueryDiagnosticsEnabled();
+
 #endif /* PG_YB_COMMON_H */

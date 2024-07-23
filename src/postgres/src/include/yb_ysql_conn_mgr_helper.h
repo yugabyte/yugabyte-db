@@ -45,6 +45,13 @@ extern int yb_logical_client_shmem_key;
 extern int ysql_conn_mgr_sticky_object_count;
 
 /*
+ * `yb_ysql_conn_mgr_sticky_guc` is used to denote stickiness of a connection
+ * due to the setting of GUC variables that cannot be directly supported
+ * by Connection Manager.
+ */
+extern bool yb_ysql_conn_mgr_sticky_guc;
+
+/*
  * Check whether the connection is made from Ysql Connection Manager.
  */
 extern bool YbIsClientYsqlConnMgr();

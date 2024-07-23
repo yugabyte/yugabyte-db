@@ -163,4 +163,6 @@ extern bool planstate_tree_walker(struct PlanState *planstate, bool (*walker) ()
 /* YB additions. */
 extern List **YbPlanStateTryGetAggrefs(struct PlanState *planstate);
 
+extern bool YbGetBitmapScanRecheckRequired(struct PlanState *planstate);
+
 #endif							/* NODEFUNCS_H */

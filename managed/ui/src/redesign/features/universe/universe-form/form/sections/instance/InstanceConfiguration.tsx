@@ -91,7 +91,6 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
   const isCreateMode = mode === ClusterModes.CREATE; //Form is in edit mode
   const isCreatePrimary = isCreateMode && isPrimary; //Creating Primary Cluster
   const isCreateRR = !newUniverse && isCreateMode && !isPrimary; //Adding Async Cluster to an existing Universe
-  const isNodeResizable = true;
   //field data
   const provider = useWatch({ name: PROVIDER_FIELD });
   const deviceInfo = useWatch({ name: DEVICE_INFO_FIELD });
@@ -125,7 +124,7 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
             <K8VolumeInfoField
               isEditMode={!isCreateMode}
               isDedicatedMasterField={isDedicatedMasterField}
-              disableVolumeSize={!isNodeResizable || isViewMode}
+              disableVolumeSize={isViewMode}
               disableNumVolumes={!isCreateMode && provider?.code === CloudType.kubernetes}
               maxVolumeCount={maxVolumeCount}
             />
@@ -140,11 +139,7 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
             <VolumeInfoField
               isEditMode={!isCreateMode}
               isPrimary={isPrimary}
-              disableVolumeSize={!isNodeResizable || isViewMode}
-              disableNumVolumes={isViewMode}
-              disableStorageType={!isCreatePrimary && !isCreateRR}
-              disableIops={!isCreatePrimary && !isCreateRR}
-              disableThroughput={!isCreatePrimary && !isCreateRR}
+              isViewMode={isViewMode}
               isDedicatedMasterField={isDedicatedMasterField}
               maxVolumeCount={maxVolumeCount}
               updateOptions={updateOptions}
@@ -203,7 +198,7 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
           provider?.code === CloudType.gcp &&
           masterPlacement === MasterPlacementMode.DEDICATED && (
             <Box width="50%">
-              <StorageTypeField disableStorageType={!isCreatePrimary && !isCreateRR} />
+              <StorageTypeField isViewMode={isViewMode} isEditMode={!isCreateMode} />
             </Box>
           )}
       </Box>

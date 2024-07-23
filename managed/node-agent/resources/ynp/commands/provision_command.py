@@ -5,6 +5,7 @@ import subprocess
 import logging
 import pkgutil
 import jinja2
+import sys
 
 import modules.base_module as mbm
 from .base_command import Command
@@ -42,12 +43,15 @@ class ProvisionCommand(Command):
     def _build_script(self, all_templates, phase):
         with tempfile.NamedTemporaryFile(mode="w+", delete=False) as temp_file:
             temp_file.write("#!/bin/bash\n\n")
-            temp_file.write("set -ex\n")
+            temp_file.write("set -e\n")
+            self.add_results_helper(temp_file)
             self.populate_sudo_check(temp_file)
             for key in all_templates:
                 temp_file.write(f"\n######## BEGIN {key} #########\n")
                 temp_file.write(all_templates[key][phase])
                 temp_file.write(f"\n######## END {key} #########\n")
+            self.print_results_helper(temp_file)
+
         os.chmod(temp_file.name, 0o755)
         logger.info(temp_file.name)
         return temp_file.name
@@ -58,14 +62,54 @@ class ProvisionCommand(Command):
         logger.info("Error: %s", result.stderr)
         logger.info("Return Code: %s", result.returncode)
 
+    def add_results_helper(self, file):
+        file.write("""
+            # Initialize the JSON results array
+            json_results='{"results":['
+
+            add_result() {
+                local check="$1"
+                local result="$2"
+                local message="$3"
+                if [ "${#json_results}" -gt 12 ]; then
+                    json_results+=','
+                fi
+                json_results+='{"check":"'$check'","result":"'$result'","message":"'$message'"}'
+            }
+        """)
+
+    def print_results_helper(self, file):
+        file.write("""
+            print_results() {
+                any_fail=0
+                if [[ $json_results == *'"result":"FAIL"'* ]]; then
+                    any_fail=1
+                fi
+                json_results+=']}'
+
+                # Output the JSON
+                echo "$json_results"
+
+                # Exit with status code 1 if any check has failed
+                if [ $any_fail -eq 1 ]; then
+                    echo "Pre-flight checks failed, Please fix them before continuing."
+                    exit 1
+                else
+                    echo "Pre-flight checks successful"
+                fi
+            }
+
+            print_results
+        """)
+
     def populate_sudo_check(self, file):
         file.write("\n######## Check the SUDO Access #########\n")
         file.write("SUDO_ACCESS=\"false\"\n")
         file.write("set +e\n")
         file.write("if [ $(id -u) = 0 ]; then\n")
-        file.write("\tSUDO_ACCESS=\"true\"\n")
+        file.write("  SUDO_ACCESS=\"true\"\n")
         file.write("elif sudo -n pwd >/dev/null 2>&1; then\n")
-        file.write("\tSUDO_ACCESS=\"true\"\n")
+        file.write("  SUDO_ACCESS=\"true\"\n")
         file.write("fi\n")
         file.write("set -e\n")
 
@@ -79,7 +123,6 @@ class ProvisionCommand(Command):
             context = self.config[key]
 
             context["templatedir"] = os.path.join(os.path.dirname(module[1]), "templates")
-            logger.info(context)
             module_instance = module[0]()
             rendered_template = module_instance.render_templates(context)
             if rendered_template is not None:
@@ -88,7 +131,7 @@ class ProvisionCommand(Command):
         precheck_combined_script = self._build_script(all_templates, "precheck")
         run_combined_script = self._build_script(all_templates, "run")
 
-        return precheck_combined_script, run_combined_script
+        return run_combined_script, precheck_combined_script
 
     def _check_package(self, package_manager, package_name):
         """Check if a package is installed."""
@@ -102,6 +145,7 @@ class ProvisionCommand(Command):
             logger.info(f"{package_name} is installed.")
         except subprocess.CalledProcessError:
             logger.info(f"{package_name} is not installed.")
+            sys.exit()
 
     def _validate_required_packages(self):
         package_manager = None

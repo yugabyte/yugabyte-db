@@ -51,10 +51,6 @@ class XClusterSourceManager {
 
   std::optional<uint32> GetDefaultWalRetentionSec(const NamespaceId& namespace_id) const;
 
-  bool IsTableReplicated(const TableId& table_id) const EXCLUDES(tables_to_stream_map_mutex_);
-  bool DoesTableHaveAnyBootstrappingStream(const TableId& table_id) const
-      EXCLUDES(tables_to_stream_map_mutex_);
-
   void PopulateTabletDeleteRetainerInfoForTabletDrop(
       const TabletInfo& tablet_info, TabletDeleteRetainerInfo& delete_retainer) const
       EXCLUDES(tables_to_stream_map_mutex_);
@@ -115,9 +111,15 @@ class XClusterSourceManager {
       const xcluster::ReplicationGroupId& replication_group_id,
       const NamespaceId& namespace_id) const;
 
+  // If opt_table_names is empty, all tables in the namespace are returned.
   Result<std::optional<NamespaceCheckpointInfo>> GetXClusterStreams(
       const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
-      std::vector<std::pair<TableName, PgSchemaName>> opt_table_names) const;
+      const std::vector<std::pair<TableName, PgSchemaName>>& opt_table_names) const;
+
+  // Expects source_table_ids to be non-empty.
+  Result<std::optional<NamespaceCheckpointInfo>> GetXClusterStreamsForTableIds(
+      const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
+      const std::vector<TableId>& source_table_ids) const;
 
   Status CreateXClusterReplication(
       const xcluster::ReplicationGroupId& replication_group_id,
@@ -160,6 +162,10 @@ class XClusterSourceManager {
 
   Result<std::unordered_map<NamespaceId, std::unordered_map<TableId, xrepl::StreamId>>>
   GetXClusterOutboundReplicationGroupInfo(const xcluster::ReplicationGroupId& replication_group_id);
+
+  bool IsTableReplicated(const TableId& table_id) const EXCLUDES(tables_to_stream_map_mutex_);
+
+  Status ValidateSplitCandidateTable(const TableId& table_id) const;
 
  private:
   friend class XClusterOutboundReplicationGroup;
@@ -225,6 +231,9 @@ class XClusterSourceManager {
       const TabletId& tablet_id, const HiddenTabletInfo& hidden_tablet,
       const std::vector<CDCStreamInfoPtr>& outbound_streams,
       std::vector<cdc::CDCStateTableKey>& entries_to_delete);
+
+  bool DoesTableHaveAnyBootstrappingStream(const TableId& table_id) const
+      EXCLUDES(tables_to_stream_map_mutex_);
 
   Master& master_;
   CatalogManager& catalog_manager_;

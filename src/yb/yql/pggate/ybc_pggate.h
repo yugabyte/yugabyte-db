@@ -113,6 +113,7 @@ YBCStatus YBCGetHeapConsumption(YbTcmallocStats *desc);
 
 // Validate the JWT based on the options including the identity matching based on the identity map.
 YBCStatus YBCValidateJWT(const char *token, const YBCPgJwtAuthOptions *options);
+YBCStatus YBCFetchFromUrl(const char *url, char **buf);
 
 // Is this node acting as the pg_cron leader?
 bool YBCIsCronLeader();
@@ -224,10 +225,9 @@ YBCStatus YBCPgNewDropDBSequences(const YBCPgOid database_oid,
 YBCStatus YBCPgNewCreateDatabase(const char *database_name,
                                  YBCPgOid database_oid,
                                  YBCPgOid source_database_oid,
-                                 const char *source_database_name,
                                  YBCPgOid next_oid,
                                  const bool colocated,
-                                 const int64_t clone_time,
+                                 YbCloneInfo *yb_clone_info,
                                  YBCPgStatement *handle);
 YBCStatus YBCPgExecCreateDatabase(YBCPgStatement handle);
 
@@ -676,7 +676,7 @@ YBCStatus YBCPgSetTransactionDeferrable(bool deferrable);
 YBCStatus YBCPgSetInTxnBlock(bool in_txn_blk);
 YBCStatus YBCPgSetReadOnlyStmt(bool read_only_stmt);
 YBCStatus YBCPgSetEnableTracing(bool tracing);
-YBCStatus YBCPgEnableFollowerReads(bool enable_follower_reads, int32_t staleness_ms);
+YBCStatus YBCPgUpdateFollowerReadsConfig(bool enable_follower_reads, int32_t staleness_ms);
 YBCStatus YBCPgEnterSeparateDdlTxnMode();
 bool YBCPgHasWriteOperationsInDdlTxnMode();
 YBCStatus YBCPgExitSeparateDdlTxnMode(YBCPgOid db_oid, bool is_silent_altering);
@@ -892,6 +892,9 @@ void YBCStoreTServerAshSamples(
     uint64_t sample_time);
 
 YBCStatus YBCLocalTablets(YBCPgTabletsDescriptor** tablets, size_t* count);
+
+uint64_t YBCPgGetCurrentReadTimePoint();
+YBCStatus YBCRestoreReadTimePoint(uint64_t read_time_point_handle);
 
 #ifdef __cplusplus
 }  // extern "C"

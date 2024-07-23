@@ -51,4 +51,9 @@ class PgWaitEventWatcher {
   DISALLOW_COPY_AND_ASSIGN(PgWaitEventWatcher);
 };
 
+struct EstimatedRowCount {
+  double live;
+  double dead;
+};
+
 } // namespace yb::pggate

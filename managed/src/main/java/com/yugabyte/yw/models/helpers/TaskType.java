@@ -796,6 +796,12 @@ public enum TaskType {
   DeleteReplicationOnSource(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteReplicationOnSource.class),
 
+  DeleteXClusterBackupRestoreEntries(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteXClusterBackupRestoreEntries
+          .class),
+
+  SetRestoreState(com.yugabyte.yw.commissioner.tasks.subtasks.SetRestoreState.class),
+
   // Tasks belonging to subtasks.cloud classpath
   CloudAccessKeyCleanup(
       com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudAccessKeyCleanup.class),
@@ -830,6 +836,10 @@ public enum TaskType {
   RestoreUniverseKeysYb(com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeysYb.class),
 
   RestoreUniverseKeysYbc(com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeysYbc.class),
+
+  SetBackupHiddenState(com.yugabyte.yw.commissioner.tasks.subtasks.SetBackupHiddenState.class),
+
+  SetRestoreHiddenState(com.yugabyte.yw.commissioner.tasks.subtasks.SetRestoreHiddenState.class),
 
   RestorePreflightValidate(
       com.yugabyte.yw.commissioner.tasks.subtasks.RestorePreflightValidate.class),

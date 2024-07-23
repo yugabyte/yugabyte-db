@@ -319,7 +319,7 @@ ybcinmightrecheck(Relation heap, Relation index, bool xs_want_itup,
 }
 
 static int64
-ybcgetbitmap(IndexScanDesc scan, YbTIDBitmap *ybtbm, bool recheck)
+ybcgetbitmap(IndexScanDesc scan, YbTIDBitmap *ybtbm)
 {
 	size_t		new_tuples = 0;
 	SliceVector ybctids;
@@ -334,14 +334,8 @@ ybcgetbitmap(IndexScanDesc scan, YbTIDBitmap *ybtbm, bool recheck)
 	if (!ybscan->is_exec_done)
 		pgstat_count_index_scan(scan->indexRelation);
 
-	/* Special case: aggregate pushdown. */
-	if (scan->yb_aggrefs)
-		elog(ERROR, "TODO: Handle aggregate pushdown");
-
 	if (ybscan->quit_scan || ybtbm->work_mem_exceeded)
 		return 0;
-
-	ybtbm->recheck |= recheck;
 
 	HandleYBStatus(YBCPgRetrieveYbctids(ybscan->handle, ybscan->exec_params,
 										ybscan->target_desc->natts, &ybctids, &new_tuples,

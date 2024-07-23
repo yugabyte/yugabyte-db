@@ -138,6 +138,7 @@ set(MASTER_SRCS
   xcluster/add_table_to_xcluster_source_task.cc
   xcluster/add_table_to_xcluster_target_task.cc
   xcluster/master_xcluster_util.cc
+  xcluster/xcluster_bootstrap_helper.cc
   xcluster/xcluster_catalog_entity.cc
   xcluster/xcluster_config.cc
   xcluster/xcluster_consumer_metrics.cc
@@ -148,6 +149,8 @@ set(MASTER_SRCS
   xcluster/xcluster_safe_time_service.cc
   xcluster/xcluster_source_manager.cc
   xcluster/xcluster_target_manager.cc
+  xcluster/xcluster_universe_replication_alter_helper.cc
+  xcluster/xcluster_universe_replication_setup_helper.cc
   xrepl_catalog_manager.cc
   yql_aggregates_vtable.cc
   yql_auth_resource_role_permissions_index.cc
@@ -260,6 +263,7 @@ ADD_YB_TEST(table_index_test)
 ADD_YB_TEST(tablet_creation_limits_test)
 ADD_YB_TEST(xcluster/xcluster_safe_time_service-test)
 ADD_YB_TEST(xcluster/xcluster_outbound_replication_group-test)
+YB_TEST_TARGET_LINK_LIBRARIES(xcluster/xcluster_outbound_replication_group-test yb_client_mock)
 
 # Actual master executable. In LTO mode, can also act as the tablet server if executed through a
 # symlink named as the tablet server executable.

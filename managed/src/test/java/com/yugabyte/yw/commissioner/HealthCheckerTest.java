@@ -144,6 +144,9 @@ public class HealthCheckerTest extends FakeDBApplication {
     when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.enableTriggerAPI)))
         .thenReturn(false);
     when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.healthCheckTimeDrift)))
+        .thenReturn(false);
+    when(mockConfGetter.getConfForScope(
             any(Universe.class), eq(UniverseConfKeys.nodeCheckTimeoutSec)))
         .thenReturn(1);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.backwardCompatibleDate))).thenReturn(false);

@@ -499,7 +499,7 @@ ALTER TABLE demo DROP CONSTRAINT demoi;
 INSERT INTO demo VALUES (1);
 SELECT * FROM demo;
 
--- Test that an attemp to drop primary key column with sequence generator
+-- Test dropping a primary key column with sequence generator
 -- does not delete the associated sequence.
 CREATE TABLE tbl_serial_primary_key (k serial PRIMARY KEY, v text);
 ALTER TABLE tbl_serial_primary_key DROP COLUMN k;

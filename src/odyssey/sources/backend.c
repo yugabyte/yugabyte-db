@@ -19,6 +19,7 @@ void od_backend_close(od_server_t *server)
 	assert(server->tls == NULL);
 	server->is_transaction = 0;
 	server->yb_sticky_connection = false;
+	server->reset_timeout = false;
 	server->idle_time = 0;
 	kiwi_key_init(&server->key);
 	kiwi_key_init(&server->key_client);
@@ -736,7 +737,8 @@ int od_backend_ready_wait(od_server_t *server, char *context, int count,
 					 "read error: %s",
 					 od_io_error(&server->io));
 			}
-			return -1;
+			/* return new status if timeout error */
+			return -2;
 		}
 		kiwi_be_type_t type = *(char *)machine_msg_data(msg);
 		od_debug(&instance->logger, context, server->client, server,

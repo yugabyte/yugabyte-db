@@ -1,0 +1,22 @@
+title: UniverseCertRotateSpec
+description: |
+  UniverseCertRotateSpec
+
+  Request payload to rotate the certs used for encryption
+  in transit. Part of UniverseCertRotateReq.
+type: object
+allOf:
+  - $ref: "./SleepAfterRestartSchema.yaml"
+  - $ref: "./UniverseUpgradeOptionRolling.yaml"
+  - type: object
+    properties:
+      self_signed_server_cert_rotate:
+        type: boolean
+      self_signed_client_cert_rotate:
+        type: boolean
+      root_ca:
+        type: string
+        format: uuid
+      client_root_ca:
+        type: string
+        format: uuid

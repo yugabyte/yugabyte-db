@@ -30,7 +30,7 @@ export const DeleteTelProviderModal: FC<DeleteTelProviderProps> = ({
     },
     {
       onSuccess: () => {
-        toast.success(`Created log export configuration ${telemetryProviderProps.name}`);
+        toast.success(t('exportAuditLog.deleteConfirmMsg', { name: telemetryProviderProps.name }));
         onClose();
       },
       onError: (error: any) => {
@@ -57,6 +57,8 @@ export const DeleteTelProviderModal: FC<DeleteTelProviderProps> = ({
       overrideHeight={'250px'}
       onSubmit={onSubmit}
       onClose={onClose}
+      submitTestId="DeleteTelProviderModal-Submit"
+      cancelTestId="DeleteTelProviderModal-Cancel"
     >
       <Trans
         i18nKey={'exportAuditLog.deleteModalMsg'}

@@ -377,7 +377,7 @@ Status MetricsSnapshotter::Thread::DoYsqlConnMgrMetricsSnapshot(const client::Ta
     if (strcmp(stat.database_name, "control_connection") != 0) {
       total_logical_connections += stat.active_clients +
                                    stat.queued_clients +
-                                   stat.idle_or_pending_clients;
+                                   stat.waiting_clients;
       total_physical_connections += stat.active_servers + stat.idle_servers;
     }
   }
@@ -465,6 +465,7 @@ Status MetricsSnapshotter::Thread::DoMetricsSnapshot() {
       uint64_t total_ticks = cur_ticks[0] - prev_ticks_[0];
       uint64_t user_ticks = cur_ticks[1] - prev_ticks_[1];
       uint64_t system_ticks = cur_ticks[2] - prev_ticks_[2];
+      prev_ticks_ = cur_ticks;
       if (total_ticks <= 0) {
         YB_LOG_EVERY_N_SECS(ERROR, 120) << Format("Failed to calculate CPU usage - "
                                                  "invalid total CPU ticks: $0.", total_ticks);

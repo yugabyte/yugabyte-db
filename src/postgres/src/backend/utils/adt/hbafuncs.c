@@ -154,6 +154,11 @@ get_hba_options(HbaLine *hba)
 				CStringGetTextDatum(psprintf("jwt_jwks_path=%s",
 											 hba->yb_jwt_jwks_path));
 
+		if (hba->yb_jwt_jwks_url)
+			options[noptions++] =
+				CStringGetTextDatum(psprintf("jwt_jwks_url=%s",
+											 hba->yb_jwt_jwks_url));
+
 		if (hba->yb_jwt_audiences_s)
 			options[noptions++] =
 				CStringGetTextDatum(psprintf("jwt_audiences=%s",

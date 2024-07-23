@@ -27,6 +27,8 @@ import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.Service;
 import io.fabric8.kubernetes.api.model.ServiceList;
 import io.fabric8.kubernetes.api.model.Volume;
+import io.fabric8.kubernetes.api.model.apps.StatefulSet;
+import io.fabric8.kubernetes.api.model.apps.StatefulSetList;
 import io.fabric8.kubernetes.api.model.events.v1.Event;
 import io.fabric8.kubernetes.api.model.events.v1.EventList;
 import io.fabric8.kubernetes.api.model.storage.StorageClass;
@@ -45,6 +47,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.yaml.snakeyaml.Yaml;
@@ -632,7 +635,7 @@ public class ShellKubernetesManager extends KubernetesManager {
   }
 
   @Override
-  public void performYbcAction(
+  public String performYbcAction(
       Map<String, String> config,
       String namespace,
       String podName,
@@ -650,9 +653,11 @@ public class ShellKubernetesManager extends KubernetesManager {
                 containerName,
                 "--"));
     commandList.addAll(commandArgs);
-    execCommand(config, commandList)
-        .processErrors(
-            String.format("Unable to run the command: %s", String.join(" ", commandArgs)));
+    ShellResponse response =
+        execCommand(config, commandList)
+            .processErrors(
+                String.format("Unable to run the command: %s", String.join(" ", commandArgs)));
+    return response.getMessage();
   }
 
   // Ref: https://kubernetes.io/blog/2022/05/05/volume-expansion-ga/
@@ -1099,5 +1104,41 @@ public class ShellKubernetesManager extends KubernetesManager {
       throw e;
     }
     return true;
+  }
+
+  @Override
+  public Map<ServerType, String> getServerTypeGflagsChecksumMap(
+      String namespace, String helmReleaseName, Map<String, String> config) {
+    Map<ServerType, String> serverTypeGflagsChecksumMap = new HashMap<>();
+    List<String> commandList =
+        ImmutableList.of(
+            "kubectl",
+            "get",
+            "sts",
+            "--namespace",
+            namespace,
+            "-o",
+            "json",
+            "-l",
+            "release=" + helmReleaseName);
+    ShellResponse response =
+        execCommand(config, commandList, false /* logCmdOutput */).processErrors();
+    List<StatefulSet> stsList = deserialize(response.message, StatefulSetList.class).getItems();
+    if (CollectionUtils.isNotEmpty(stsList)) {
+      serverTypeGflagsChecksumMap =
+          stsList.stream()
+              .collect(
+                  Collectors.toMap(
+                      sts -> serverTypeLabelConverter.apply(sts.getMetadata()),
+                      sts -> {
+                        Map<String, String> annotations =
+                            sts.getSpec().getTemplate().getMetadata().getAnnotations();
+                        if (annotations == null) {
+                          annotations = new HashMap<>();
+                        }
+                        return annotations.getOrDefault("checksum/gflags", "");
+                      }));
+    }
+    return serverTypeGflagsChecksumMap;
   }
 }
