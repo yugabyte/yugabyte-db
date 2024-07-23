@@ -74,6 +74,7 @@ v_top_datetime_string           text;
 v_top_parent_schema             text := split_part(p_parent_table, '.', 1);
 v_top_parent_table              text := split_part(p_parent_table, '.', 2);
 v_unlogged                      char;
+yb_v_parent_table_default       regclass;
 
 BEGIN
 /*
@@ -744,7 +745,7 @@ IF p_type = 'native' AND current_setting('server_version_num')::int >= 110000 TH
     */
 
     -- Same INCLUDING list is used in create_partition_*(). INDEXES is handled when partition is attached if it's supported.
-    v_sql := v_sql || format(' TABLE %I.%I (LIKE %I.%I INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING STORAGE INCLUDING COMMENTS '
+    v_sql := v_sql || format(' TABLE IF NOT EXISTS %I.%I (LIKE %I.%I INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING STORAGE INCLUDING COMMENTS '
         , v_parent_schema, v_default_partition, v_parent_schema, v_parent_tablename);
     IF current_setting('server_version_num')::int >= 120000 THEN
         v_sql := v_sql || ' INCLUDING GENERATED ';
@@ -753,7 +754,12 @@ IF p_type = 'native' AND current_setting('server_version_num')::int >= 110000 TH
     EXECUTE v_sql;
     v_sql := format('ALTER TABLE %I.%I ATTACH PARTITION %I.%I DEFAULT'
         , v_parent_schema, v_parent_tablename, v_parent_schema, v_default_partition);
-    EXECUTE v_sql;
+    SELECT inhparent::regclass INTO yb_v_parent_table_default
+    FROM pg_inherits
+    WHERE inhrelid = (quote_ident(v_parent_schema) || '.' || quote_ident(v_default_partition))::regclass;
+    IF yb_v_parent_table_default is NULL THEN
+        EXECUTE v_sql;
+    END IF;
 
     IF p_publications IS NOT NULL THEN
         -- NOTE: Native publication inheritance is only supported on PG14+

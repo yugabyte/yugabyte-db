@@ -41,11 +41,26 @@ v_sub_id_max            bigint;
 v_sub_id_min            bigint;
 v_template_table        text;
 v_unlogged              char;
+yb_v_child_tables       text[] := '{}';
+yb_v_child_table        record;
+yb_v_is_child_table_attached  boolean;
 
 BEGIN
 /*
  * Function to create id partitions
  */
+
+-- Fetch child tables using pg_inherits
+FOR yb_v_child_table IN
+    SELECT child.relname
+    FROM pg_inherits
+    JOIN pg_class parent ON pg_inherits.inhparent = parent.oid
+    JOIN pg_class child ON pg_inherits.inhrelid = child.oid
+    WHERE parent.relname = split_part(p_parent_table, '.', 2)
+LOOP
+    -- Append each child table name to the array
+    yb_v_child_tables := array_append(yb_v_child_tables, yb_v_child_table.relname::text);
+END LOOP;
 
 SELECT control
     , partition_type
@@ -114,15 +129,29 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
     END IF;
 
     v_partition_name := @extschema@.check_name_length(v_parent_tablename, v_id::text, TRUE);
+
+    -- YB: check if child table is already attached
+    yb_v_is_child_table_attached := v_partition_name = ANY(yb_v_child_tables);
+    IF yb_v_is_child_table_attached THEN
+        RAISE NOTICE 'Table % already attached', v_partition_name;
+        v_partition_created := true;
+        CONTINUE;
+    END IF;
+
     -- If child table already exists, skip creation
     -- Have to check pg_class because if subpartitioned, table will not be in pg_tables
     SELECT c.relname INTO v_exists 
     FROM pg_catalog.pg_class c
     JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
     WHERE n.nspname = v_parent_schema::name AND c.relname = v_partition_name::name;
+    /* YB: Don't continue whole loop iteration, there could be
+    case that child partition was created but not attached due to
+    previous create_partition_id failed as YB does not support
+    transactional DDL.
     IF v_exists IS NOT NULL THEN
         CONTINUE;
     END IF;
+    */
 
     -- Ensure analyze is run if a new partition is created. Otherwise if one isn't, will be false and analyze will be skipped
     v_analyze := TRUE;
@@ -180,8 +209,10 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
         END IF;
     END IF;
 
-    RAISE DEBUG 'create_partition_id v_sql: %', v_sql;
-    EXECUTE v_sql;
+    IF v_exists IS NULL THEN
+        RAISE DEBUG 'create_partition_id v_sql: %', v_sql;
+        EXECUTE v_sql;
+    END IF;
 
     IF v_partition_type = 'native' THEN
 

@@ -2043,6 +2043,32 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
                 tableInfo -> getTableId(tableInfo), tableInfo -> tableInfo.getIndexedTableId()));
   }
 
+  public static List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> getRequestedTableInfoList(
+      Set<String> dbIds,
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList) {
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
+        sourceTableInfoList.stream()
+            .filter(
+                tableInfo ->
+                    isXClusterSupported(tableInfo)
+                        && dbIds.contains(tableInfo.getNamespace().getId().toStringUtf8()))
+            .collect(Collectors.toList());
+    Set<String> foundDbIds =
+        requestedTableInfoList.stream()
+            .map(tableInfo -> tableInfo.getNamespace().getId().toStringUtf8())
+            .collect(Collectors.toSet());
+    // Ensure all DB names are found.
+    if (foundDbIds.size() != dbIds.size()) {
+      Set<String> missingDbIds =
+          dbIds.stream().filter(dbId -> !foundDbIds.contains(dbId)).collect(Collectors.toSet());
+      throw new IllegalArgumentException(
+          String.format(
+              "Some of the DB ids were not found: was %d, found %d, missing dbs: %s",
+              dbIds.size(), foundDbIds.size(), missingDbIds));
+    }
+    return requestedTableInfoList;
+  }
+
   // DR methods.
   // --------------------------------------------------------------------------------
   protected DrConfig getDrConfigFromTaskParams() {
