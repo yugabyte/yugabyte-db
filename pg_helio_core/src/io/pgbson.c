@@ -763,7 +763,8 @@ PgbsonWriterAppendValue(pgbson_writer *writer, const char *path, uint32_t pathLe
 	if (!bson_append_value(&(writer->innerBson), path, pathLength, value))
 	{
 		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), errmsg(
-							"adding value: failed due to value being too large"))
+							"adding %s value: failed due to value being too large",
+							BsonTypeName(value->value_type)))
 				);
 	}
 }
@@ -779,7 +780,8 @@ PgbsonWriterAppendInt64(pgbson_writer *writer, const char *path, uint32_t pathLe
 	if (!bson_append_int64(&(writer->innerBson), path, pathLength, value))
 	{
 		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-						errmsg("adding value: failed due to value being too large")));
+						errmsg(
+							"adding Int64 value: failed due to value being too large")));
 	}
 }
 
@@ -794,7 +796,8 @@ PgbsonWriterAppendInt32(pgbson_writer *writer, const char *path, uint32_t pathLe
 	if (!bson_append_int32(&(writer->innerBson), path, pathLength, value))
 	{
 		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-						errmsg("adding value: failed due to value being too large")));
+						errmsg(
+							"adding Int32 value: failed due to value being too large")));
 	}
 }
 
@@ -809,7 +812,8 @@ PgbsonWriterAppendDouble(pgbson_writer *writer, const char *path, uint32_t pathL
 	if (!bson_append_double(&(writer->innerBson), path, pathLength, value))
 	{
 		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-						errmsg("adding value: failed due to value being too large")));
+						errmsg(
+							"adding Double value: failed due to value being too large")));
 	}
 }
 
@@ -824,7 +828,8 @@ PgbsonWriterAppendUtf8(pgbson_writer *writer, const char *path, uint32_t pathLen
 	if (!bson_append_utf8(&(writer->innerBson), path, pathLength, string, strlen(string)))
 	{
 		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-						errmsg("adding value: failed due to value being too large")));
+						errmsg(
+							"adding UTF8 value: failed due to value being too large")));
 	}
 }
 
@@ -849,7 +854,8 @@ PgbsonWriterAppendTimestampTz(pgbson_writer *writer, const char *path, uint32_t
 							   milliSecondsSinceEpoch))
 	{
 		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-						errmsg("adding value: failed due to value being too large")));
+						errmsg(
+							"adding TimeStamp value: failed due to value being too large")));
 	}
 }
 
@@ -864,7 +870,8 @@ PgbsonWriterAppendBool(pgbson_writer *writer, const char *path, uint32_t pathLen
 	if (!bson_append_bool(&(writer->innerBson), path, pathLength, value))
 	{
 		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-						errmsg("adding value: failed due to value being too large")));
+						errmsg(
+							"adding Bool value: failed due to value being too large")));
 	}
 }
 
@@ -899,7 +906,7 @@ PgbsonWriterStartArray(pgbson_writer *writer, const char *path, uint32_t pathLen
 								 &(childWriter->innerBson)))
 	{
 		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), errmsg(
-							"adding value: failed due to value being too large"))
+							"adding StartArray value: failed due to value being too large"))
 				);
 	}
 
@@ -919,7 +926,7 @@ PgbsonHeapWriterStartArray(pgbson_heap_writer *writer, const char *path, uint32_
 								 &(childWriter->innerBson)))
 	{
 		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), errmsg(
-							"adding value: failed due to value being too large"))
+							"adding HeapWriterStartArray value: failed due to value being too large"))
 				);
 	}
 
@@ -936,7 +943,7 @@ PgbsonWriterEndArray(pgbson_writer *writer, pgbson_array_writer *childWriter)
 	if (!bson_append_array_end(&(writer->innerBson), &(childWriter->innerBson)))
 	{
 		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), errmsg(
-							"adding value: failed due to value being too large"))
+							"adding EndArray value: failed due to value being too large"))
 				);
 	}
 }
@@ -951,7 +958,7 @@ PgbsonHeapWriterEndArray(pgbson_heap_writer *writer, pgbson_array_writer *childW
 	if (!bson_append_array_end(writer->innerBsonRef, &(childWriter->innerBson)))
 	{
 		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), errmsg(
-							"adding value: failed due to value being too large"))
+							"adding End Array value: failed due to value being too large"))
 				);
 	}
 }
@@ -971,7 +978,7 @@ PgbsonArrayWriterStartArray(pgbson_array_writer *writer, pgbson_array_writer *ch
 								 &(childWriter->innerBson)))
 	{
 		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), errmsg(
-							"adding value: failed due to value being too large"))
+							"adding ArrayWriterStartArray value: failed due to value being too large"))
 				);
 	}
 
@@ -988,7 +995,7 @@ PgbsonArrayWriterEndArray(pgbson_array_writer *writer, pgbson_array_writer *chil
 	if (!bson_append_array_end(&(writer->innerBson), &(childWriter->innerBson)))
 	{
 		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), errmsg(
-							"adding value: failed due to value being too large"))
+							"adding ArrayWriterEndArray value: failed due to value being too large"))
 				);
 	}
 
@@ -1044,7 +1051,7 @@ PgbsonWriterStartDocument(pgbson_writer *writer, const char *path, uint32_t path
 									&(childWriter->innerBson)))
 	{
 		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), errmsg(
-							"adding value: failed due to value being too large"))
+							"adding StartDocument( value: failed due to value being too large"))
 				);
 	}
 }
@@ -1059,7 +1066,7 @@ PgbsonWriterEndDocument(pgbson_writer *writer, pgbson_writer *childWriter)
 	if (!bson_append_document_end(&(writer->innerBson), &(childWriter->innerBson)))
 	{
 		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), errmsg(
-							"adding value: failed due to value being too large"))
+							"adding EndDocument value: failed due to value being too large"))
 				);
 	}
 }
@@ -1079,7 +1086,7 @@ PgbsonArrayWriterStartDocument(pgbson_array_writer *writer, pgbson_writer *child
 									&(childWriter->innerBson)))
 	{
 		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), errmsg(
-							"adding value: failed due to value being too large"))
+							"adding ArrayWriterStartDocument value: failed due to value being too large"))
 				);
 	}
 }
@@ -1094,7 +1101,7 @@ PgbsonArrayWriterEndDocument(pgbson_array_writer *writer, pgbson_writer *childWr
 	if (!bson_append_document_end(&(writer->innerBson), &(childWriter->innerBson)))
 	{
 		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), errmsg(
-							"adding value: failed due to value being too large"))
+							"adding ArrayWriterEndDocument value: failed due to value being too large"))
 				);
 	}
 
@@ -1162,7 +1169,8 @@ PgbsonArrayWriterWriteValue(pgbson_array_writer *writer,
 	if (!bson_append_value(&(writer->innerBson), key, keyLength, value))
 	{
 		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), errmsg(
-							"adding value: failed due to value being too large"))
+							"adding ArrayWriterWriteValue %s value: failed due to value being too large",
+							BsonTypeName(value->value_type)))
 				);
 	}
 	writer->index++;
@@ -1219,7 +1227,7 @@ PgbsonWriterAppendEmptyArray(pgbson_writer *writer, const char *path, uint32_t p
 	if (!bson_append_array(&(writer->innerBson), path, pathLength, &emptyArray))
 	{
 		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), errmsg(
-							"adding value: failed due to value being too large"))
+							"adding AppendEmptyArray value: failed due to value being too large"))
 				);
 	}
 }
@@ -1263,7 +1271,7 @@ PgbsonWriterAppendNull(pgbson_writer *writer, const char *path, uint32_t pathLen
 	if (!bson_append_null(&(writer->innerBson), path, pathLength))
 	{
 		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), errmsg(
-							"adding value: failed due to value being too large"))
+							"adding AppendEmptyArray value: failed due to value being too large"))
 				);
 	}
 }
@@ -1369,7 +1377,7 @@ PgbsonWriterConcatWriter(pgbson_writer *writer, pgbson_writer *writerToConcat)
 	if (!bson_concat(&(writer->innerBson), &(writerToConcat->innerBson)))
 	{
 		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), errmsg(
-							"concatenating bson: failed due to value being too large"))
+							"ConcatWriter concatenating bson: failed due to value being too large"))
 				);
 	}
 }
@@ -1385,7 +1393,7 @@ PgbsonWriterConcatHeapWriter(pgbson_writer *writer, pgbson_heap_writer *writerTo
 	if (!bson_concat(&(writer->innerBson), writerToConcat->innerBsonRef))
 	{
 		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), errmsg(
-							"concatenating bson: failed due to value being too large"))
+							"ConcatHeapWriter concatenating bson: failed due to value being too large"))
 				);
 	}
 }
@@ -1400,7 +1408,7 @@ PgbsonWriterConcatBytes(pgbson_writer *writer, const uint8_t *bsonBytes, uint32_
 	if (!bson_concat(&(writer->innerBson), &rightBson))
 	{
 		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), errmsg(
-							"concatenating bson: failed due to value being too large"))
+							"ConcatBytesWriter concatenating bson: failed due to value being too large"))
 				);
 	}
 }

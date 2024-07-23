@@ -365,6 +365,15 @@ gin_bson_consistent(PG_FUNCTION_ARGS)
  * path index option specification.
  * The function gets a document, path, and if it's a wildcard, and sets up the index structures
  * to call 'generateTerms' and returns it as a SETOF records.
+ *
+ * gin_bson_get_single_path_generated_terms(
+ *      document bson,
+ *      path text,
+ *      isWildcard bool,
+ *      generateNotFoundTerm bool default false,
+ *      addMetadata bool default false,
+ *      termLength int)
+ *
  */
 Datum
 gin_bson_get_single_path_generated_terms(PG_FUNCTION_ARGS)

@@ -21,6 +21,8 @@
 #define IndexTermTruncatedFlag 0x1
 #define IndexTermMetadataFlag 0x2
 
+extern bool EnableIndexTermTruncationOnNestedObjects;
+
 /* --------------------------------------------------------- */
 /* Forward Declaration */
 /* --------------------------------------------------------- */
@@ -32,6 +34,14 @@ static BsonIndexTermSerialized SerializeBsonIndexTermCore(pgbsonelement *indexEl
 														  createMetadata,
 														  bool forceTruncated,
 														  bool isMetadataTerm);
+static bool TruncateDocumentTerm(int32_t dataSize, int32_t softLimit, int32_t hardLimit,
+								 bson_iter_t *documentIterator,
+								 pgbson_writer *documentWriter);
+
+static bool TruncateArrayTerm(int32_t dataSize, int32_t indexTermSoftLimit, int32_t
+							  indexTermHardLimit,
+							  bson_iter_t *arrayIterator,
+							  pgbson_array_writer *arrayWriter);
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -212,7 +222,7 @@ TruncateStringOrBinaryTerm(int32_t dataSize, int32_t indexTermSizeLimit,
 static bool
 TruncateNestedEntry(pgbson_element_writer *elementWriter, const
 					bson_value_t *currentValue,
-					bool *forceAsNotTruncated, int32_t indexTermSizeLimit, int32_t
+					bool *forceAsNotTruncated, int32_t sizeBudgetForElementWriter, int32_t
 					currentLength)
 {
 	switch (currentValue->value_type)
@@ -290,14 +300,67 @@ TruncateNestedEntry(pgbson_element_writer *elementWriter, const
 			return false;
 		}
 
-		case BSON_TYPE_ARRAY:
 		case BSON_TYPE_DOCUMENT:
+		{
+			if (!EnableIndexTermTruncationOnNestedObjects)
+			{
+				*forceAsNotTruncated = true;
+				PgbsonElementWriterWriteValue(elementWriter, currentValue);
+				return false;
+			}
+
+			/* See details about size constant in SerializeTermToWriter() */
+			int32_t fixedTermLimit = 17;
+			int32_t softLimit = sizeBudgetForElementWriter - fixedTermLimit;
+			int32_t dataSize = 5;
+
+
+			bson_iter_t documentIterator;
+			pgbson_writer documentWriter;
+			BsonValueInitIterator(currentValue, &documentIterator);
+			PgbsonElementWriterStartDocument(elementWriter, &documentWriter);
+
+			bool isTruncated = TruncateDocumentTerm(dataSize, softLimit,
+													sizeBudgetForElementWriter,
+													&documentIterator,
+													&documentWriter);
+			PgbsonElementWriterEndDocument(elementWriter, &documentWriter);
+
+			return isTruncated;
+		}
+
+		case BSON_TYPE_ARRAY:
+		{
+			if (!EnableIndexTermTruncationOnNestedObjects)
+			{
+				*forceAsNotTruncated = true;
+				PgbsonElementWriterWriteValue(elementWriter, currentValue);
+				return false;
+			}
+
+			/* See details about size constant in SerializeTermToWriter() */
+			int32_t fixedTermSize = 21;
+			int32_t loweredSizeLimit = sizeBudgetForElementWriter - fixedTermSize;
+			int32_t dataSize = 5;
+
+			bson_iter_t arrayIterator;
+			pgbson_array_writer arrayWriter;
+			BsonValueInitIterator(currentValue, &arrayIterator);
+			PgbsonElementWriterStartArray(elementWriter, &arrayWriter);
+			bool isTruncated = TruncateArrayTerm(dataSize, loweredSizeLimit,
+												 sizeBudgetForElementWriter,
+												 &arrayIterator, &arrayWriter);
+			PgbsonElementWriterEndArray(elementWriter, &arrayWriter);
+
+			return isTruncated;
+		}
+
 		case BSON_TYPE_CODEWSCOPE:
 		case BSON_TYPE_DBPOINTER:
 		case BSON_TYPE_REGEX:
 		case BSON_TYPE_CODE:
 		{
-			/* TODO: Support truncating this? */
+			/* TODO: Support truncating this?  We fail when obejct or arrays or arrays of arrays/objects goes over 2K limit*/
 			*forceAsNotTruncated = true;
 			PgbsonElementWriterWriteValue(elementWriter, currentValue);
 			return false;
@@ -307,7 +370,7 @@ TruncateNestedEntry(pgbson_element_writer *elementWriter, const
 		case BSON_TYPE_SYMBOL:
 		case BSON_TYPE_UTF8:
 		{
-			int valueSizeLimit = indexTermSizeLimit - currentLength;
+			int valueSizeLimit = sizeBudgetForElementWriter - currentLength;
 			bson_value_t valueCopy = *currentValue;
 
 			/* The prefix for the string/binary is 1 byte for the type code
@@ -337,6 +400,18 @@ TruncateNestedEntry(pgbson_element_writer *elementWriter, const
 /*
  * Write and truncate an array into the target array writer accounting
  * for the index term size limit.
+ *
+ *  dataSize: currentsize of the arrayWriter
+ *  indexTermSoftLimit: Before writing any new element we check if it will take us over the soft limit.
+ *      If it does, we don't write it and return as truncated. This is to make sure that the index terms
+ *      are comparable irrespective of the datatype of the new element. A bool might have space, but a decimal 128
+ *      may not. The soft limit preserves the space or large fixed types like Decimal128, so that we can accurately
+ *      determine truncation boundary.
+ *  indexTermHardLimit: This is absolute limit for the index term. While calling from the Top level object we preserve
+ *      2 bytes for writing MaxKey (see caller). For subsequent calls we don't need that 2 bytes.
+ *  arrayIterator: Source iterator of the array elements.
+ *  arrayWriter: Writer for serializing the Index terms.
+ *
  */
 static bool
 TruncateArrayTerm(int32_t dataSize, int32_t indexTermSoftLimit, int32_t
@@ -406,7 +481,7 @@ TruncateArrayTerm(int32_t dataSize, int32_t indexTermSoftLimit, int32_t
  * for the index term size limit.
  */
 static bool
-TruncateDocumentTerm(int32_t dataSize, int32_t softLimit, int32_t hardLimit,
+TruncateDocumentTerm(int32_t existingTermSize, int32_t softLimit, int32_t hardLimit,
 					 bson_iter_t *documentIterator, pgbson_writer *documentWriter)
 {
 	bool forceAsNotTruncated = false;
@@ -418,7 +493,7 @@ TruncateDocumentTerm(int32_t dataSize, int32_t softLimit, int32_t hardLimit,
 	{
 		/* Get the current size */
 		currentLength = (int32_t) PgbsonWriterGetSize(documentWriter);
-		if (currentLength + dataSize > softLimit)
+		if (currentLength + existingTermSize > softLimit)
 		{
 			/* We've exceeded the limit - mark as truncated */
 			if (forceAsNotTruncated)
@@ -441,7 +516,7 @@ TruncateDocumentTerm(int32_t dataSize, int32_t softLimit, int32_t hardLimit,
 		lastType = iterValue->value_type;
 
 		/* Determine how we're going to write this value */
-		int32_t requiredLengthWithPath = currentLength + dataSize +
+		int32_t requiredLengthWithPath = currentLength + existingTermSize +
 										 (int32_t) pathView.length + 1;
 
 		bool truncated;
@@ -452,7 +527,7 @@ TruncateDocumentTerm(int32_t dataSize, int32_t softLimit, int32_t hardLimit,
 										  pathView.length);
 
 			/* Since the path is under the limit, the value for this path can go until the hard limit */
-			int32_t valueLengthLeft = hardLimit - dataSize - pathView.length - 1;
+			int32_t valueLengthLeft = hardLimit - existingTermSize - pathView.length - 1;
 			truncated = TruncateNestedEntry(&elementWriter, iterValue,
 											&forceAsNotTruncated,
 											valueLengthLeft, currentLength);
@@ -493,7 +568,7 @@ TruncateDocumentTerm(int32_t dataSize, int32_t softLimit, int32_t hardLimit,
 	}
 
 	currentLength = (int32_t) PgbsonWriterGetSize(documentWriter);
-	if (currentLength + dataSize > softLimit)
+	if (currentLength + existingTermSize > softLimit)
 	{
 		/* We've exceeded the limit - mark as truncated */
 		return !forceAsNotTruncated;
@@ -544,10 +619,15 @@ SerializeTermToWriter(pgbson_writer *writer, pgbsonelement *indexElement,
 		if (!termMetadata->isWildcardProjection && termMetadata->pathPrefix.length > 0 &&
 			indexPath.length > 0)
 		{
-			uint32_t newIndexPathLength = indexPath.length -
-										  termMetadata->pathPrefix.length;
+			int32_t newIndexPathLength = indexPath.length -
+										 termMetadata->pathPrefix.length;
 
-			/* We only proceed with the optimization if the new index path length > 0, otherwise we lose the root term */
+			/* We only proceed with the optimization if the new index path length >= 0, otherwise we lose the root term */
+			if (newIndexPathLength == 0)
+			{
+				indexPath.string = "$";
+				indexPath.length = 1;
+			}
 			if (newIndexPathLength > 0)
 			{
 				newPath = palloc0(sizeof(char) * (newIndexPathLength + 2));
@@ -622,8 +702,8 @@ SerializeTermToWriter(pgbson_writer *writer, pgbsonelement *indexElement,
 			 * 8 bytes:datetime, double, int64, timestamp
 			 * 12 bytes: oid
 			 * 16 bytes: decimal128
-			 * For an array term, the value length is
-			 * <index-as-path> <typeCode> <value>
+			 * For an array term, the value for each array element is
+			 *  : <index-as-path> <typeCode> <value>
 			 * Given ~2500 bytes, with the "smallest" type which is 1 byte,
 			 * we would expect indexes of <= 900. Consequently, if you presume
 			 * that the index is 4 bytes long ("900\0"), then the largest

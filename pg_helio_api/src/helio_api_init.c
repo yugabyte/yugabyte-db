@@ -290,6 +290,10 @@ bool EnableLookupLetSupport = DEFAULT_ENABLE_LOOKUP_LET_SUPPORT;
 #define DEFAULT_IGNORE_LET_ON_QUERY false
 bool IgnoreLetOnQuerySupport = DEFAULT_IGNORE_LET_ON_QUERY;
 
+#define DEFAULT_ENABLE_INDEX_TERM_TRUNCATION_NESTED_OBJECTS false
+bool EnableIndexTermTruncationOnNestedObjects =
+	DEFAULT_ENABLE_INDEX_TERM_TRUNCATION_NESTED_OBJECTS;
+
 /* --------------------------------------------------------- */
 /* Top level exports */
 /* --------------------------------------------------------- */
@@ -788,6 +792,14 @@ InitApiConfigurations(char *prefix)
 		gettext_noop(
 			"Determines whether to ignore the spec let in commands and $lookup"),
 		NULL, &IgnoreLetOnQuerySupport, DEFAULT_IGNORE_LET_ON_QUERY,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		"helio_api.enableIndexTermTruncationOnNestedObjects",
+		gettext_noop(
+			"Determines whether to truncate index terms with nested objects (arrays/objects of arrays/objects)"),
+		NULL, &EnableIndexTermTruncationOnNestedObjects,
+		DEFAULT_ENABLE_INDEX_TERM_TRUNCATION_NESTED_OBJECTS,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 }
 
