@@ -38,11 +38,9 @@ It works as follows:
 
 This is the recommended approach for most CDC applications due to its compatibility with PostgreSQL.
 
-<!--
 {{<lead link="./using-logical-replication/">}}
-To learn about PostgreSQL Logical Replication, see [Using PostgreSQL Logical Replication](./debezium-connector-yugabytedb/).
+To learn about YugabyteDB Logical Replication, see [Using YugabyteDB logical replication](./using-logical-replication).
 {{</lead>}}
--->
 
 ## YugabyteDB gRPC Replication Protocol
 
@@ -55,5 +53,5 @@ It works as follows:
 1. The connector captures change events using YugabyteDB's native gRPC replication and directly publishes them to a Kafka topic.
 
 {{<lead link="./using-yugabytedb-grpc-replication/">}}
-To learn about gRPC Replication, see [Using YugabyteDB gRPC Replication](./using-yugabytedb-grpc-replication/).
+To learn about gRPC Replication, see [Using YugabyteDB gRPC replication](./using-yugabytedb-grpc-replication/).
 {{</lead>}}
