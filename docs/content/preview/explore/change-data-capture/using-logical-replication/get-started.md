@@ -14,8 +14,8 @@ type: docs
 
 To get started streaming data change events from a YugabyteDB database using a replication slot, you can use either of the following client options:
 
-- `pg_recvlogical`
-- Debezium YugabyteDB connector
+- [`pg_recvlogical`](#get-started-with-pg_recvlogical)
+- [Debezium YugabyteDB connector](#get-started-with-yugabytedb-connector)
 
 {{< note title="Note" >}}
 
