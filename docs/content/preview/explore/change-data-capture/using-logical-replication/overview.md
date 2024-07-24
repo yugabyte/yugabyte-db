@@ -49,7 +49,7 @@ For more information, refer to [Logical Decoding Output Plugins](https://www.pos
 
 ### LSN
 
-LSN in YugabyteDB is an unsigned 64-bit integer that uniquely identifies a change record or a transaction boundary record that is consumed from a given replication slot.
+LSN (Log Sequence Number) in YugabyteDB is an unsigned 64-bit integer that uniquely identifies a change record or a transaction boundary record that is consumed from a given replication slot.
 
 In YugabyteDB, LSN values from different slots are considered unrelated and should not be compared. In YugabyteDB, LSN no longer represents the byte offset of a WAL record.
 
