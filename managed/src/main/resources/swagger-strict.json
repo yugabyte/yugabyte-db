@@ -19313,6 +19313,58 @@
         "tags" : [ "Disaster Recovery" ]
       }
     },
+    "/api/v1/customers/{cUUID}/dr_configs/{drUUID}/pause" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "pauseDrConfig",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "drUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "XCluster Replication Edit Form Data",
+          "in" : "body",
+          "name" : "xcluster_replication_edit_form_data",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/XClusterConfigEditFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Pause DR config",
+        "tags" : [ "Disaster Recovery" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/dr_configs/{drUUID}/replace_replica" : {
       "post" : {
         "description" : "",
@@ -19420,6 +19472,58 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Restart disaster recovery config",
+        "tags" : [ "Disaster Recovery" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/dr_configs/{drUUID}/resume" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "resumeDrConfig",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "drUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "XCluster Replication Edit Form Data",
+          "in" : "body",
+          "name" : "xcluster_replication_edit_form_data",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/XClusterConfigEditFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Resume DR config",
         "tags" : [ "Disaster Recovery" ]
       }
     },

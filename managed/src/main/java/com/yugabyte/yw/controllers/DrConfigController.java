@@ -36,6 +36,7 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams;
+import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.forms.XClusterConfigRestartFormData;
 import com.yugabyte.yw.forms.XClusterConfigSyncFormData;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
@@ -1183,6 +1184,85 @@ public class DrConfigController extends AuthenticatedController {
             Audit.ActionType.Delete,
             taskUUID);
     return new YBPTask(taskUUID, drConfigUuid).asResult();
+  }
+
+  private Result toggleDrState(
+      UUID customerUUID, UUID drConfigUUID, Http.Request request, CustomerTask.TaskType taskType) {
+    String operation = taskType == CustomerTask.TaskType.Resume ? "resume" : "pause";
+    log.info("Received {} DrConfig({}) request", operation, drConfigUUID);
+
+    // Parse and validate request.
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUUID);
+    XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
+    editFormData.status = taskType == CustomerTask.TaskType.Resume ? "Running" : "Paused";
+    XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
+    XClusterConfigController.verifyTaskAllowed(xClusterConfig, TaskType.EditXClusterConfig);
+
+    Universe sourceUniverse =
+        Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
+    Universe targetUniverse =
+        Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
+
+    if (confGetter.getGlobalConf(GlobalConfKeys.xclusterEnableAutoFlagValidation)) {
+      autoFlagUtil.checkSourcePromotedAutoFlagsPromotedOnTarget(sourceUniverse, targetUniverse);
+    }
+
+    XClusterConfigTaskParams params =
+        new XClusterConfigTaskParams(
+            xClusterConfig,
+            editFormData,
+            null /* requestedTableInfoList */,
+            null /* mainTableToAddIndexTablesMap */,
+            null /* tableIdsToAdd */,
+            Collections.emptyMap() /* sourceTableIdTargetTableIdMap */,
+            null /* tableIdsToRemove */);
+
+    // Submit task to edit xCluster config.
+    UUID taskUUID = commissioner.submit(TaskType.EditXClusterConfig, params);
+    CustomerTask.create(
+        customer,
+        xClusterConfig.getSourceUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.DrConfig,
+        taskType,
+        drConfig.getName());
+
+    log.info("Submitted {} DrConfig({}), task {}", operation, drConfigUUID, taskUUID);
+
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.DrConfig,
+            drConfigUUID.toString(),
+            taskType == CustomerTask.TaskType.Resume
+                ? Audit.ActionType.Resume
+                : Audit.ActionType.Pause,
+            Json.toJson(editFormData),
+            taskUUID);
+    return new YBPTask(taskUUID, drConfigUUID).asResult();
+  }
+
+  @ApiOperation(nickname = "pauseDrConfig", value = "Pause DR config", response = YBPTask.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.PAUSE_RESUME),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result pause(UUID customerUUID, UUID drConfigUUID, Http.Request request) {
+    return toggleDrState(customerUUID, drConfigUUID, request, CustomerTask.TaskType.Pause);
+  }
+
+  @ApiOperation(nickname = "resumeDrConfig", value = "Resume DR config", response = YBPTask.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.PAUSE_RESUME),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result resume(UUID customerUUID, UUID drConfigUUID, Http.Request request) {
+    return toggleDrState(customerUUID, drConfigUUID, request, CustomerTask.TaskType.Resume);
   }
 
   /**

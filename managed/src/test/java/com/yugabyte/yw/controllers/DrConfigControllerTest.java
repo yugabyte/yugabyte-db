@@ -30,6 +30,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
@@ -46,6 +47,7 @@ import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams.Bootst
 import com.yugabyte.yw.forms.XClusterConfigRestartFormData.RestartBootstrapParams;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.Universe;
@@ -76,6 +78,7 @@ import org.yb.master.MasterReplicationOuterClass;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -90,6 +93,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
   private final AutoFlagUtil mockAutoFlagUtil = mock(AutoFlagUtil.class);
   private final XClusterScheduler mockXClusterScheduler = mock(XClusterScheduler.class);
   private final YBClient mockYBClient = mock(YBClient.class);
+  private final AuditService auditService = spy(new AuditService());
 
   private Universe sourceUniverse;
   private Universe targetUniverse;
@@ -135,6 +139,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
         .overrides(bind(XClusterUniverseService.class).toInstance(mockXClusterUniverseService))
         .overrides(bind(YBClientService.class).toInstance(mockYBClientService))
         .overrides(bind(XClusterScheduler.class).toInstance(mockXClusterScheduler))
+        .overrides(bind(AuditService.class).toInstance(auditService))
         .build();
   }
 
@@ -555,7 +560,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
   }
 
   @Test
-  public void testDbScopedRepair() throws Exception {
+  public void testDbScopedRepair() {
     String sourceNamespace = "sourceNamespace";
     DrConfig drConfig =
         DrConfig.create(
@@ -569,7 +574,6 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
     drConfig.update();
     UUID taskUUID = buildTaskInfo(null, TaskType.RestartDrConfig);
     when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
-    String targetNamespace = "targetNamespace";
 
     DrConfigRestartForm form = new DrConfigRestartForm();
     form.dbs = Set.of(sourceNamespace);
@@ -594,7 +598,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
   }
 
   @Test
-  public void testDbScopedReplicaReplacement() throws Exception {
+  public void testDbScopedReplicaReplacement() {
     Universe newReplica = createUniverse("new replication target");
     DrConfig drConfig =
         spy(
@@ -634,5 +638,65 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
     assertNotNull(newConfig);
     assertEquals(newConfig.getDbIds(), drConfig.getActiveXClusterConfig().getDbIds());
     assertTrue(newConfig.getTableIds().isEmpty());
+  }
+
+  private void testToggleState(String operation) {
+    DrConfig drConfig =
+        DrConfig.create(
+            "test",
+            sourceUniverse.getUniverseUUID(),
+            targetUniverse.getUniverseUUID(),
+            new BootstrapBackupParams(),
+            Set.of("sourceNamespace"));
+    drConfig.setState(State.Replicating);
+    drConfig.getActiveXClusterConfig().setStatus(XClusterConfigStatusType.Running);
+    drConfig.update();
+    UUID taskUUID = buildTaskInfo(null, TaskType.EditXClusterConfig);
+    when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
+
+    Result result =
+        doRequestWithAuthToken(
+            "POST",
+            String.format(
+                "/api/customers/%s/dr_configs/%s/%s",
+                defaultCustomer.getUuid(), drConfig.getUuid(), operation),
+            authToken);
+
+    assertOk(result);
+    ArgumentCaptor<XClusterConfigTaskParams> paramsArgumentCaptor =
+        ArgumentCaptor.forClass(XClusterConfigTaskParams.class);
+    verify(mockCommissioner)
+        .submit(eq(TaskType.EditXClusterConfig), paramsArgumentCaptor.capture());
+    XClusterConfigTaskParams params = paramsArgumentCaptor.getValue();
+    String status = params.getEditFormData().status;
+    ArgumentCaptor<Audit.ActionType> auditActionTypeCaptor =
+        ArgumentCaptor.forClass(Audit.ActionType.class);
+    verify(auditService)
+        .createAuditEntryWithReqBody(
+            any(Http.Request.class),
+            eq(Audit.TargetType.DrConfig),
+            eq(drConfig.getUuid().toString()),
+            auditActionTypeCaptor.capture(),
+            any(),
+            eq(taskUUID));
+    Audit.ActionType auditActionType = auditActionTypeCaptor.getValue();
+
+    if (operation.equals("pause")) {
+      assertEquals("Paused", status);
+      assertEquals(Audit.ActionType.Pause, auditActionType);
+    } else {
+      assertEquals("Running", status);
+      assertEquals(Audit.ActionType.Resume, auditActionType);
+    }
+  }
+
+  @Test
+  public void testPause() {
+    testToggleState("pause");
+  }
+
+  @Test
+  public void testResume() {
+    testToggleState("resume");
   }
 }
