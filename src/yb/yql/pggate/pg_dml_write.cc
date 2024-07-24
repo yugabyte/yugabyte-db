@@ -15,6 +15,10 @@
 
 #include "yb/yql/pggate/pg_dml_write.h"
 
+#include <limits>
+#include <string>
+#include <utility>
+
 #include "yb/dockv/packed_row.h"
 
 #include "yb/gutil/casts.h"
@@ -24,29 +28,19 @@
 
 #include "catalog/pg_type_d.h"
 
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
 
-//--------------------------------------------------------------------------------------------------
-// PgDmlWrite
-//--------------------------------------------------------------------------------------------------
-
-PgDmlWrite::PgDmlWrite(PgSession::ScopedRefPtr pg_session,
-                       const PgObjectId& table_id,
-                       bool is_region_local,
-                       YBCPgTransactionSetting transaction_setting,
-                       bool packed)
+PgDmlWrite::PgDmlWrite(
+    PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id,
+    bool is_region_local, YBCPgTransactionSetting transaction_setting, bool packed)
     : PgDml(std::move(pg_session), table_id, is_region_local),
       transaction_setting_(transaction_setting),
       packed_(packed) {
 }
 
-PgDmlWrite::~PgDmlWrite() {
-}
-
 Status PgDmlWrite::Prepare() {
   // Setup descriptors for target and bind columns.
-  target_ = bind_ = PgTable(VERIFY_RESULT(pg_session_->LoadTable(table_id_)));
+  target_ = bind_ = PgTable(VERIFY_RESULT(LoadTable()));
 
   // Allocate either INSERT, UPDATE, DELETE, or TRUNCATE_COLOCATED request.
   AllocWriteRequest();
@@ -171,20 +165,20 @@ Result<LWPgsqlExpressionPB*> PgDmlWrite::AllocColumnBindPB(PgColumn* col, PgExpr
   return col->AllocBindPB(write_req_.get(), expr);
 }
 
-LWPgsqlExpressionPB *PgDmlWrite::AllocColumnAssignPB(PgColumn *col) {
+LWPgsqlExpressionPB* PgDmlWrite::AllocColumnAssignPB(PgColumn* col) {
   return col->AllocAssignPB(write_req_.get());
 }
 
-LWPgsqlExpressionPB *PgDmlWrite::AllocTargetPB() {
+LWPgsqlExpressionPB* PgDmlWrite::AllocTargetPB() {
   return write_req_->add_targets();
 }
 
-LWPgsqlExpressionPB *PgDmlWrite::AllocQualPB() {
+LWPgsqlExpressionPB* PgDmlWrite::AllocQualPB() {
   LOG(FATAL) << "Pure virtual function is being called";
   return nullptr;
 }
 
-LWPgsqlColRefPB *PgDmlWrite::AllocColRefPB() {
+LWPgsqlColRefPB* PgDmlWrite::AllocColRefPB() {
   return write_req_->add_col_refs();
 }
 
@@ -451,5 +445,4 @@ Status PgDmlWrite::BindPackedRow(uint64_t ybctid, YBCBindColumn* columns, int co
   return Status::OK();
 }
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

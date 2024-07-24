@@ -256,6 +256,7 @@ libraryDependencies ++= Seq(
   "com.icegreen" % "greenmail-junit4" % "2.0.1" % Test,
   "com.squareup.okhttp3" % "mockwebserver" % "4.9.2" % Test,
   "io.grpc" % "grpc-testing" % "1.48.0" % Test,
+  "io.grpc" % "grpc-inprocess" % "1.63.1" % Test,
   "io.zonky.test" % "embedded-postgres" % "2.0.1" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
   "com.yugabyte" % "yba-client-v2" % "0.1.0-SNAPSHOT" % Test,
@@ -926,7 +927,7 @@ runPlatform := {
 }
 
 libraryDependencies += "org.yb" % "yb-client" % "0.8.92-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.1.0.0-b9"
+libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.0-b2"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b33"
 
 libraryDependencies ++= Seq(

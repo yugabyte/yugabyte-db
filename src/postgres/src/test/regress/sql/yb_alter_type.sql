@@ -56,9 +56,8 @@ INSERT INTO holidays(num_weeks,happiness_level) VALUES (8, 'ecstatic');
 SELECT * FROM holidays ORDER BY num_weeks;
 
 DROP TYPE new_name;  -- fail
-DROP TYPE new_name CASCADE; -- fail (happiness_level is a key column)
-ALTER TABLE holidays DROP CONSTRAINT holidays_pkey;
-DROP TYPE new_name CASCADE;
+DROP TYPE new_name CASCADE; -- requires table rewrite (happiness_level is a key column)
+ALTER TABLE holidays DROP CONSTRAINT holidays_pkey; -- fail
 
 \d holidays
 SELECT * FROM holidays ORDER BY num_weeks;

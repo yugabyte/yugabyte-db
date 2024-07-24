@@ -145,6 +145,7 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
       if (primaryCluster && !_.isEmpty(primaryCluster)) {
         const { masterGFlags, tserverGFlags } = transformFlagArrayToObject(gFlags);
         primaryCluster.userIntent.specificGFlags = {
+          ...primaryCluster.userIntent.specificGFlags,
           inheritFromPrimary: false,
           perProcessFlags: {
             value: {
@@ -160,12 +161,14 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
       if (asyncCluster && !_.isEmpty(asyncCluster)) {
         if (inheritFlagsFromPrimary) {
           asyncCluster.userIntent.specificGFlags = {
+            ...asyncCluster.userIntent.specificGFlags,
             inheritFromPrimary: true,
             perProcessFlags: {}
           };
         } else {
           const { tserverGFlags } = transformFlagArrayToObject(asyncGflags);
           asyncCluster.userIntent.specificGFlags = {
+            ...asyncCluster.userIntent.specificGFlags,
             inheritFromPrimary: false,
             perProcessFlags: {
               value: {
