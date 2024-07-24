@@ -17,7 +17,7 @@ type: docs
 {{<tabitem href="../ycql-stat-statements/" text="YCQL" icon="cassandra" active="true" >}}
 {{</tabs>}}
 
-Databases can be resource-intensive, consuming a lot of memory, CPU, IO, and network resources. By optimizing your CQL, you can minimize resource use. The `ycql_stat_statements` module helps you track execution statistics for all the YCQL statements executed by a server.
+Databases can be resource-intensive, consuming a lot of memory, CPU, IO, and network resources. By optimizing your YCQL, you can minimize resource use. The `ycql_stat_statements` module helps you track execution statistics for all the YCQL statements executed by a server.
 
 This view is accessible only via YSQL and provides YCQL statement metrics (similar to pg_stat_statements) that are also present on `<yb-tserver-ip>:12000/statements`. The view can be joined with YCQL wait events in the [yb_active_session_history](../../observability/active-session-history/#yb-active-session-history) view on the query ID.
 
@@ -29,7 +29,7 @@ The columns of the `ycql_stat_statements` view are described in the following ta
 | :----- | :--- | :---------- |
 | queryid | int8 | Hash code to identify identical normalized queries. |
 | query | text | Text of a representative statement. |
-| is_prepared  | bool | Indicates whether the query statement is prepared statement or unprepared. |
+| is_prepared  | bool | Indicates whether the query is prepared or unprepared. |
 | calls | int8 | Number of times the statement is executed.|
 | total_time | float8 | Total time spent executing the statement, in milliseconds. |
 | min_time | float8 | Minimum time spent executing the statement, in milliseconds. |

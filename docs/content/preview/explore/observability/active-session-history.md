@@ -72,7 +72,7 @@ This view provides a list of wait events and their metadata. The columns of the 
 | sample_time | timestamp | Timestamp when the sample was captured |
 | root_request_id | UUID | A 16-byte UUID that is generated per request. Generated for queries at YSQL/YCQL layer. |
 | rpc_request_id | integer | ID for internal requests, it is a monotonically increasing number for the lifetime of a YB-TServer. |
-| wait_event_component | text | Component of the wait event, which can be YSQL, YCQL, and TServer. |
+| wait_event_component | text | Component of the wait event, which can be YSQL, YCQL, or TServer. |
 | wait_event_class | text | Class of the wait event, such as TabletWait, RocksDB, and so on.  |
 | wait_event | text | Name of the wait event. |
 | wait_event_type | text | Type of the wait event such as CPU, WaitOnCondition, Network, Disk IO, and so on. |
