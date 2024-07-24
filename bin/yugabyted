@@ -100,14 +100,7 @@ SYSTEM_NAMESPACES = [
     "system_platform", "template0", "template1"
 ]
 EXIT_SIGNALS = (SIGABRT, SIGINT, SIGTERM)
-REQUIRED_LOOPBACK_ADDRESSES = [
-    '127\.0\.0\.2',
-    '127\.0\.0\.3',
-    '127\.0\.0\.4',
-    '127\.0\.0\.5',
-    '127\.0\.0\.6',
-    '127\.0\.0\.7'
-]
+
 MAX_PROC = {
     'Linux' : 12000,
     'Darwin' : 2500,
@@ -1892,7 +1885,7 @@ class ControlScript(object):
     # Check that `openssl` binary is in our PATH
     # This actually returns true when it is _not_ present!
     def check_openssl(self):
-        return find_executable('openssl') == None
+        return shutil.which('openssl') == None
 
     # Transparent Hugepage check.  Not all distros have this enabled so we need to check for
     # /sys/kernel/mm/transparent_hugepage before checking enabled
@@ -1902,7 +1895,7 @@ class ControlScript(object):
         if os.path.exists(thp_dir):
             with open(os.path.join(thp_dir, 'enabled'), 'r') as thp_enabled:
                 thp_enabled = thp_enabled.read()
-                thp_mode = re.search("\[(.*)\]", thp_enabled).group(1)
+                thp_mode = re.search(r"\[(.*)\]", thp_enabled).group(1)
         return thp_mode == 'always'
 
     def check_ports(self):
@@ -3324,7 +3317,7 @@ class ControlScript(object):
     def is_yw_initialized(self):
         # Check Play evolutions table was created.
         Output.log("Checking play_evolutions table")
-        list_tables_cmd = [find_binary_location("ysqlsh"), "-d", WEBSERVER_DB, "-c", "\d"]
+        list_tables_cmd = [find_binary_location("ysqlsh"), "-d", WEBSERVER_DB, "-c", r"\d"]
         out, err, ret_code = run_process(list_tables_cmd)
         Output.log("Finished checking play evolutions table")
         return not err and not ret_code and "play_evolutions" in out
@@ -5022,14 +5015,14 @@ class ControlScript(object):
     # Check whether the hostnames or IP provided is in correct format.
     def validate_hostname_ip(self, ip):
         # Regex expression for validating IPv4
-        ipv4_regex = "^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4]"\
+        ipv4_regex = r"^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4]"\
             "[0-9]|1[0-9][0-9]|[1-9]?[0-9])$"
 
         # Regex expression for validating IPv6
         ipv6_regex = "((([0-9a-fA-F]){1,4})\\:){7}([0-9a-fA-F]){1,4}"
 
         # Regex expression for validating DNS names
-        dns_regex = "^(?=.{1,255}$)(?:(?!-)[a-zA-Z0-9-]{1,63}(?<!-)\.?)+[a-zA-Z]{2,}$"
+        dns_regex = r"^(?=.{1,255}$)(?:(?!-)[a-zA-Z0-9-]{1,63}(?<!-)\.?)+[a-zA-Z]{2,}$"
 
         # Regex expression for validating hostname
         hostname_regex = "^[a-zA-Z0-9.-]+$"
@@ -6226,8 +6219,9 @@ class ControlScript(object):
             else:
                 args.backup_daemon = self.configs.saved_data.get("backup_daemon")
 
-            self.configs.temp_data["ui_port_available"] = self.is_port_available(
-                args.advertise_address, self.configs.saved_data.get("yugabyted_ui_port"))
+            if not has_errors:
+                self.configs.temp_data["ui_port_available"] = self.is_port_available(
+                    args.advertise_address, self.configs.saved_data.get("yugabyted_ui_port"))
 
             if args.callhome is not None:
                 args.callhome = self.parse_bool(args.callhome)
