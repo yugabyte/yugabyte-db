@@ -110,6 +110,12 @@ Use HELP for help.
 ycqlsh>
 ```
 
+Docker:
+
+```sh
+docker run -it yugabytedb/yugabyte-client:latest ycqlsh
+```
+
 ### Online help
 
 Run `ycqlsh --help` to display the online help.

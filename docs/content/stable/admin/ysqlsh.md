@@ -110,6 +110,12 @@ Type "help" for help.
 yugabyte=#
 ```
 
+Docker:
+
+```sh
+docker run -it yugabytedb/yugabyte-client:latest ysqlsh
+```
+
 ### Online help
 
 Run `ysqlsh --help` to display the online help.
