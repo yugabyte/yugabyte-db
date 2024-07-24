@@ -292,8 +292,7 @@ class PgClientSession {
       client::YBSessionPtr session, const std::shared_ptr<client::YBTable>& table,
       Slice lower_bound_key, Slice upper_bound_key, uint64_t max_num_ranges,
       uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length, rpc::Sidecars* sidecars,
-      PgsqlPagingStatePB* paging_state, std::function<void(Status)> callback,
-      UsedReadTimeApplier&& applier);
+      PgsqlPagingStatePB* paging_state, std::function<void(Status)> callback);
 
   Status CheckPlainSessionPendingUsedReadTime(uint64_t txn_serial_no);
   Status CheckPlainSessionReadTimeIsSet() const;

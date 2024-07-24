@@ -15,9 +15,9 @@ type: docs
 
 Active Session History (ASH) provides a current and historical view of system activity by sampling session activity in the database. A database session or connection is considered active if it is consuming CPU, or has an active RPC call that is waiting on one of the wait events.
 
-ASH exposes session activity in the form of [SQL views](../../ysql-language-features/advanced-features/views/) so that you can run analytical queries, aggregations for analysis, and troubleshoot performance issues. To run ASH, you need to enable [YSQL](../../../api/ysql/) or [YCQL](../../../api/ycql/) for their respective sessions.
+ASH exposes session activity in the form of [SQL views](../../ysql-language-features/advanced-features/views/) so that you can run analytical queries, aggregations for analysis, and troubleshoot performance issues. To run ASH queries, you need to enable [YSQL](../../../api/ysql/).
 
-Currently, ASH is available for [YSQL](../../../api/ysql/), [YCQL](../../../api/ycql/), and [YB-TServer](../../../architecture/yb-tserver/) processes. ASH facilitates analysis by recording wait events related to YSQL, YCQL, or YB-TServer requests while they are being executed. These wait events belong to the categories including but not limited to _CPU_, _WaitOnCondition_, _Network_, and _Disk IO_.
+Currently, ASH is available for [YSQL](../../../api/ysql/), [YCQL](../../../api/ycql/), and [YB-TServer](../../../architecture/yb-tserver/). ASH facilitates analysis by recording wait events related to YSQL, YCQL, or YB-TServer requests while they are being executed. These wait events belong to the categories including but not limited to _CPU_, _WaitOnCondition_, _Network_, and _Disk IO_.
 
 Analyzing the wait events and wait event types lets you troubleshoot, answer the following questions, and subsequently tune performance:
 
@@ -31,9 +31,9 @@ To use ASH, enable and configure the following flags for each node of your clust
 
 | Flag | Description |
 | :--- | :---------- |
-| allowed_preview_flags_csv | Pass the flags `ysql_yb_ash_enable_infra` and `ysql_yb_enable_ash` in this flag in CSV format. |
+| allowed_preview_flags_csv | Set the value of this flag to include `ysql_yb_ash_enable_infra,ysql_yb_enable_ash`. |
 | ysql_yb_ash_enable_infra | Enable or disable ASH infrastructure. <br>Default: false. Changing this flag requires a VM restart. |
-| ysql_yb_enable_ash | Works only in conjunction with the flag `ysql_yb_ash_enable_infra`. Start sampling and instrumentation (that is, periodically check and keep track) of YSQL and YCQL queries, and YB-TServer requests.<br> Default: false. Changing this flag doesn't require a VM restart. |
+| ysql_yb_enable_ash | Works only in conjunction with the flag `ysql_yb_ash_enable_infra`. Setting this flag to true enables the collection of wait events for YSQL and YCQL queries, and YB-TServer requests.<br> Default: false. Changing this flag doesn't require a VM restart. |
 
 ### Additional flags
 
@@ -41,18 +41,17 @@ You can also use the following flags based on your requirements.
 
 | Flag | Description |
 | :--- | :---------- |
-| ysql_yb_ash_circular_buffer_size | Size (in KBs) of circular buffer where the samples are stored. <br> Default: 16000. Changing this flag requires a VM restart. |
-| ysql_yb_ash_sampling_interval_ms | Time (in milliseconds) duration between two sampling events (ysql, ycql, yb-tserver). <br>Default: 1000. Changing this flag doesn't require a VM restart. |
+| ysql_yb_ash_circular_buffer_size | Size (in KBs) of circular buffer where the samples are stored. <br> Default: 16*1024. Changing this flag requires a VM restart. |
+| ysql_yb_ash_sampling_interval_ms | Sampling interval (in milliseconds). <br>Default: 1000. Changing this flag doesn't require a VM restart. |
 | ysql_yb_ash_sample_size | Maximum number of events captured per sampling interval. <br>Default: 500. Changing this flag doesn't require a VM restart. |
 
 ## Limitations
 
 Note that the following limitations are subject to change as the feature is in [Tech Preview](/preview/releases/versioning/#feature-maturity).
 
-- ASH is available per node only. [Aggregations](../../../develop/learn/aggregations-ycql/) need to be done by you.
+- ASH is available per node and is not aggregated across the cluster.
 - ASH is not available for [YB-Master](../../../architecture/yb-master/) processes.
-- ASH is available only for foreground activities or queries from customer applications.
-- ASH does not capture start and end time of wait events.
+- ASH is available for queries and a few background activities like compaction and flushes. ASH support for other background activities will be added in future releases.
 
 <!-- While ASH is not available for most background activities such as backups, restore, remote bootstrap, CDC, tablet splitting. ASH is available for flushes and compactions.
 Work done in the TServer process is tracked, even for remote-bootstrap etc. However, we do not collect them under a specific query-id of sorts.
@@ -66,30 +65,31 @@ ASH exposes the following views in each node to analyze and troubleshoot perform
 
 ### yb_active_session_history
 
-Get information on wait events for each normalized query, YSQL, or YCQL request.
+This view provides a list of wait events and their metadata. The columns of the view are described in the following table.
 
 | Column | Type | Description |
 | :----- | :--- | :---------- |
+| sample_time | timestamp | Timestamp when the sample was captured |
 | root_request_id | UUID | A 16-byte UUID that is generated per request. Generated for queries at YSQL/YCQL layer. |
 | rpc_request_id | integer | ID for internal requests, it is a monotonically increasing number for the lifetime of a YB-TServer. |
-| wait_event_component | text | There are three components: YSQL, YCQL, and YB-TServer. |
-| wait_event_class | text | Every wait event has a class associated with it. |
-| wait_event | text | Provides insight into what the RPC is waiting on. |
+| wait_event_component | text | Component of the wait event, which can be YSQL, YCQL, or TServer. |
+| wait_event_class | text | Class of the wait event, such as TabletWait, RocksDB, and so on.  |
+| wait_event | text | Name of the wait event. |
 | wait_event_type | text | Type of the wait event such as CPU, WaitOnCondition, Network, Disk IO, and so on. |
-| wait_event_aux | text | Additional information for the wait event. For example, tablet ID for YB-TServer wait events. |
-| top_level_node_id | UUID | 16-byte YB-TServer UUID of the YSQL/YCQL node where the query is being executed. |
-| query_id | bigint | Query ID as seen on the `/statements` endpoint. This can be used to join with [pg_stat_statements](../../query-1-performance/pg-stat-statements/)/[ycql_stat_statements](../../query-1-performance/ycql-stat-statements/). A known constant for background activities. For example, _flush_ is 2, _compaction_ is 3, and so on. |
+| wait_event_aux | text | Additional information for the wait event. For example, tablet ID for TServer wait events. |
+| top_level_node_id | UUID | 16-byte TServer UUID of the YSQL/YCQL node where the query is being executed. |
+| query_id | bigint | Query ID as seen on the `/statements` endpoint. This can be used to join with [pg_stat_statements](../../query-1-performance/pg-stat-statements/)/[ycql_stat_statements](../../query-1-performance/ycql-stat-statements/). It is set as a known constant for background activities. For example, _flush_ is 2, _compaction_ is 3, and so on. |
 | ysql_session_id | bigint | YSQL session identifier. Zero for YCQL and background activities. |
 | client_node_ip | text | IP address of the client which sent the query to YSQL/YCQL. Null for background activities. |
-| sample_weight | float | If in any sampling interval there are too many events, YugabyteDB only collects `yb_ash_sample_size` samples/events. Based on how many were sampled, weights are assigned to the collected events. <br><br>For example, if there are 200 events, but only 100 events are collected, each of the collected samples will have a weight of (200 / 100) = 2.0 |
+| sample_weight | float | If in any sampling interval there are too many events, YugabyteDB only collects `ysql_yb_ash_sample_size` samples/events. Based on how many were sampled, weights are assigned to the collected events. <br><br>For example, if there are 200 events, but only 100 events are collected, each of the collected samples will have a weight of (200 / 100) = 2.0 |
 
 ## Wait events
 
-List of wait events by the following request types.
+List of wait events by the wait event components.
 
 ### YSQL
 
-These are only the wait events introduced by YugabyteDB, however some of the following [wait events](https://www.postgresql.org/docs/current/monitoring-stats.html) inherited from PostgreSQL might also show up in the [yb_active_session_history](#yb-active-session-history) view.
+These are the wait events introduced by YugabyteDB, however some of the following [wait events](https://www.postgresql.org/docs/current/monitoring-stats.html) inherited from PostgreSQL might also show up in the [yb_active_session_history](#yb-active-session-history) view.
 
 | Class | Wait Event | Wait Event Type | Wait Event Aux | Description |
 | :--------------- |:---------- | :-------------- |:--- | :---------- |
@@ -141,7 +141,7 @@ Make sure you have an active ysqlsh session (`./bin/ysqlsh`) to run the followin
 
 ### Distribution of wait events for each query_id
 
-Check the distribution of wait events for each query_id, only for the last 20 minutes.
+Check the distribution of wait events for each query_id, for the last 20 minutes.
 
 ```sql
 SELECT

@@ -133,8 +133,6 @@ class PgApiImpl {
   void Interrupt();
   void ResetCatalogReadTime();
 
-  uint64_t GetSessionId();
-
   // Initialize a session to process statements that come from the same client connection.
   // If database_name is empty, a session is created without connecting to any database.
   Status InitSession(const std::string& database_name, YBCPgExecStatsState* session_stats);
@@ -649,6 +647,7 @@ class PgApiImpl {
   Status RecreateTransaction();
   Status RestartTransaction();
   Status ResetTransactionReadPoint();
+  Status EnsureReadPoint();
   Status RestartReadPoint();
   bool IsRestartReadPointRequested();
   Status CommitPlainTransaction();
@@ -747,7 +746,7 @@ class PgApiImpl {
 
   Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
 
-  Result<TableKeyRangesWithHt> GetTableKeyRanges(
+  Result<TableKeyRanges> GetTableKeyRanges(
       const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
       uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length);
 
@@ -758,16 +757,9 @@ class PgApiImpl {
   // Using this function instead of GetRootMemTracker allows us to avoid copying a shared_pointer
   int64_t GetRootMemTrackerConsumption() { return MemTracker::GetRootTrackerConsumption(); }
 
-  // DEPRECATED, will be removed
-  [[nodiscard]] uint64_t GetReadTimeSerialNo() const;
+  void DumpSessionState(YBCPgSessionState* session_data);
 
-  // DEPRECATED, will be removed
-  [[nodiscard]] uint64_t GetTxnSerialNo() const;
-
-  // DEPRECATED, will be removed
-  [[nodiscard]] SubTransactionId GetActiveSubTransactionId() const;
-
-  void RestoreSessionParallelData(const YBCPgSessionParallelData& session_data);
+  void RestoreSessionState(const YBCPgSessionState& session_data);
 
   //------------------------------------------------------------------------------------------------
   // Replication Slots Functions.

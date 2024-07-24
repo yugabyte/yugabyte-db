@@ -87,6 +87,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.DB;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -656,6 +657,18 @@ public class UniverseCRUDHandler {
             GFlagsUtil.getBaseGFlags(UniverseTaskBase.ServerType.MASTER, c, taskParams.clusters);
         c.userIntent.tserverGFlags =
             GFlagsUtil.getBaseGFlags(UniverseTaskBase.ServerType.TSERVER, c, taskParams.clusters);
+        try {
+          String errMsg =
+              GFlagsUtil.checkPreviewGFlagsOnSpecificGFlags(
+                  c.userIntent.specificGFlags, gFlagsValidation, c.userIntent.ybSoftwareVersion);
+          if (errMsg != null) {
+            throw new PlatformServiceException(BAD_REQUEST, errMsg);
+          }
+        } catch (IOException e) {
+          LOG.error("Error while checking preview flags on the cluster: {}", c.uuid, e);
+          throw new PlatformServiceException(
+              INTERNAL_SERVER_ERROR, "Error while checking preview flags on cluster: " + c.uuid);
+        }
       } else {
         if (c.clusterType == ClusterType.ASYNC) {
           c.userIntent.specificGFlags = SpecificGFlags.constructInherited();
@@ -1484,14 +1497,14 @@ public class UniverseCRUDHandler {
     readOnlyCluster.userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
     readOnlyCluster.validate(!cloudEnabled, isAuthEnforced, taskParams.nodeDetailsSet);
     if (readOnlyCluster.userIntent.specificGFlags != null) {
-      if (readOnlyCluster.userIntent.specificGFlags.isInheritFromPrimary()) {
-        SpecificGFlags primaryGFlags = primaryCluster.userIntent.specificGFlags;
-        if (primaryGFlags != null) {
+      SpecificGFlags primaryGFlags = primaryCluster.userIntent.specificGFlags;
+      if (primaryGFlags != null) {
+        if (readOnlyCluster.userIntent.specificGFlags.isInheritFromPrimary()) {
           readOnlyCluster.userIntent.specificGFlags.setPerProcessFlags(
               primaryGFlags.getPerProcessFlags());
           readOnlyCluster.userIntent.specificGFlags.setPerAZ(primaryGFlags.getPerAZ());
-          readOnlyCluster.userIntent.specificGFlags.setGflagGroups(primaryGFlags.getGflagGroups());
         }
+        readOnlyCluster.userIntent.specificGFlags.setGflagGroups(primaryGFlags.getGflagGroups());
       }
       List<Cluster> clusters = new ArrayList<>(universe.getUniverseDetails().clusters);
       clusters.add(readOnlyCluster);
