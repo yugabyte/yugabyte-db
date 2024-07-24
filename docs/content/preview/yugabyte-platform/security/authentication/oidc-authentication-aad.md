@@ -22,7 +22,7 @@ type: docs
   </li>
   <li >
     <a href="../oidc-authentication-jumpcloud/" class="nav-link">
-      <i class="fa-solid fa-cubes"></i>
+      <i class="fa-sharp fa-regular fa-cloud"></i>
       JumpCloud
     </a>
   </li>

@@ -9,7 +9,7 @@ menu:
   preview_yugabyte-platform:
     identifier: oidc-authentication-jumpcloud
     parent: authentication
-    weight: 20
+    weight: 30
 type: docs
 ---
 
@@ -22,7 +22,7 @@ type: docs
   </li>
   <li >
     <a href="../oidc-authentication-jumpcloud/" class="nav-link active">
-      <i class="fa-solid fa-cubes"></i>
+      <i class="fa-sharp fa-regular fa-cloud"></i>
       JumpCloud
     </a>
   </li>
@@ -60,9 +60,9 @@ To use JumpCloud for your IdP, do the following:
 
     Under **SSO > Endpoint Configuration**, configure the following:
 
-    - **Redirect URIs** - enter `https://<your YugabyteDB Anywhere IP address>/api/v1/callback?client_name=OidcClient`.
+    - **Redirect URIs** - enter `https://<your-YugabyteDB-Anywhere-IP-address>/api/v1/callback?client_name=OidcClient`.
     - **Client Authentication Type** - select **Client Secret Post**.
-    - **Login URL** - enter `https://<YugabyteDB Anywhere IP address>/login`.
+    - **Login URL** - enter `https://<your-YugabyteDB-Anywhere-IP-address>/login`.
 
     Under **Attribute Mapping**, for **Standard Scopes**, select **Email** and **Profile**.
 
@@ -82,11 +82,11 @@ To configure JumpCloud federated authentication in YugabyteDB Aeon, you need the
 
 For more information, refer to the [JumpCloud](https://jumpcloud.com/support/sso-with-oidc) documentation.
 
-## Configure authentication
+## Configure OIDC authentication
 
 To configure User authentication in YugabyteDB Anywhere, do the following:
 
-1. Navigate to **Admin > User Management > User Authentication** and select **ODIC configuration**.
+1. Navigate to **Admin > Access Management > User Authentication** and select **ODIC configuration**.
 1. Under **OIDC configuration**,  configure the following:
 
     - **Client ID** and **Client Secret** - enter the client ID and secret of the JumpCloud application you created.
@@ -96,4 +96,4 @@ To configure User authentication in YugabyteDB Anywhere, do the following:
 
 1. Click **Save**.
 
-You are redirected to sign in to your IdP to test the connection. After the test connection is successful, federated authentication is enabled.
+You are redirected to sign in to your IdP to test the connection. After the test connection is successful, OIDC authentication is enabled.
