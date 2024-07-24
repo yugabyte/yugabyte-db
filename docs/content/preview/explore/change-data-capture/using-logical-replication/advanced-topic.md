@@ -80,7 +80,7 @@ This is illustrated in the following example. The client used for the example is
 
 Addition of tables to the streaming list after slot creation is currently a preview feature. To enable dynamic table addition, set the [cdcsdk_enable_dynamic_table_support](../../../../reference/configuration/yb-tserver/#cdcsdk_enable_dynamic_table_support) flag to true.
 
-The Publication's tables list can change in two cases. The first case is when a previously created table is added to the publication by performing an alter publication.
+The Publication's tables list can change in two ways. The first way is by adding a table to the publication by performing an alter publication.
 
 ```sql
 CREATE TABLE test_table_1(id INT PRIMARY KEY, aa INT, bb INT);
@@ -91,9 +91,13 @@ CREATE PUBLICATION PUB FOR TABLE test_table_1;
 -- Start consumption through a replication slot.
 
 ALTER PUBLICATION ADD TABLE test_table_2;
+
+CREATE TABLE test_table_3(id INT PRIMARY KEY, aa INT, bb INT);
+
+ALTER PUBLICATION ADD TABLE test_table_3;
 ```
 
-The second case is when a dynamically created table is added to `ALL TABLES` publication upon creation.
+The second way is when a table is added to `ALL TABLES` publication upon creation.
 
 ```sql
 CREATE TABLE test_table_1(id INT PRIMARY KEY, aa INT, bb INT);
@@ -103,11 +107,12 @@ CREATE PUBLICATION PUB FOR ALL TABLES;
 -- Start consumption through a replication slot.
 
 CREATE TABLE test_table_2(id INT PRIMARY KEY, aa INT, bb INT);
+-- Since the publication was created for ALL TABLES, alter publication is not requirred.
 ```
 
 ### YugabyteDB semantics
 
-Unlike PostgreSQL, any changes made to the publication tables list are not applied immediately in YugabyteDB. Instead the publication's tables list is periodically refreshed, and changes, if any, are applied. The refresh interval is managed using the [cdcsdk_publication_list_refresh_interval_secs](../../../../reference/configuration/yb-tserver/#cdcsdk-publication-list-refresh-interval-secs) flag. The default is one hour (3600 sec). This means that any changes made to the publication's tables list will be applied after `cdcsdk_publication_list_refresh_interval_secs` in the worst case.
+Unlike PostgreSQL, any changes made to the publication's tables list are not applied immediately in YugabyteDB. Instead the publication's tables list is periodically refreshed, and changes, if any, are applied. The refresh interval is managed using the [cdcsdk_publication_list_refresh_interval_secs](../../../../reference/configuration/yb-tserver/#cdcsdk-publication-list-refresh-interval-secs) flag. The default is one hour (3600 sec). This means that any changes made to the publication's tables list will be applied after `cdcsdk_publication_list_refresh_interval_secs` in the worst case.
 
 Consider the following example:
 
