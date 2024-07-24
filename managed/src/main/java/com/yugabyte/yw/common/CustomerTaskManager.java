@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyKubernetesClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
+import com.yugabyte.yw.commissioner.tasks.ReprovisionNode;
 import com.yugabyte.yw.commissioner.tasks.params.IProviderTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -503,6 +504,7 @@ public class CustomerTaskManager {
       case StartNodeInUniverse:
       case StopNodeInUniverse:
       case StartMasterOnNode:
+      case ReprovisionNode:
       case MasterFailover:
         String nodeName = oldTaskParams.get("nodeName").textValue();
         String universeUUIDStr = oldTaskParams.get("universeUUID").textValue();
