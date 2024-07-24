@@ -209,7 +209,10 @@ package_for_platform() {
     cp -rf node-agent-provision.sh "${script_dir}"/node-agent-provision.sh
     cp -rf node-agent-provision.yaml "${script_dir}"/node-agent-provision.yaml
     pushd "$project_dir"
-    cp -rf ../devops/roles/configure-cluster-server/templates/* \
+    cp -rf ../devops/roles/provision-cluster-server/templates/* \
+        "${script_dir}"/ynp/modules/provision/systemd/templates/
+    # Need this for 2.20 as files are spread in multiple places.
+    cp -rf ../devops/roles/configure-cluster-server/templates/clock-sync.sh.j2  \
         "${script_dir}"/ynp/modules/provision/systemd/templates/
     popd
     chmod 755 "${script_dir}"/*.sh
