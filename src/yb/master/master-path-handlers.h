@@ -237,7 +237,7 @@ class MasterPathHandlers {
       bool is_styled = false, bool is_on_nav_bar = false, const std::string icon = "") {
     server->RegisterPathHandler(
         path, alias, std::bind(f, this, std::placeholders::_1, std::placeholders::_2), is_styled,
-        is_on_nav_bar);
+        is_on_nav_bar, icon);
   }
 
   template <class F>
