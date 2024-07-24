@@ -34,7 +34,7 @@ The name of the output plugin used for logical decoding.
 
 Decides what to do with the snapshot created during logical slot initialization.
 
-`USE_SNAPSHOT` will use the snapshot for the current transaction executing the command. This option must be used in a transaction, and `CREATE_REPLICATION_SLOT` must be the first command run in that transaction.
+`USE_SNAPSHOT` indicates the intention of the client to consume the snapshot. This option must be used in a transaction, and `CREATE_REPLICATION_SLOT` must be the first command run in that transaction.
 
 `NOEXPORT_SNAPSHOT` will just use the snapshot for logical decoding as normal but won't do anything else with it.
 
