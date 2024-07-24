@@ -14,7 +14,8 @@ import {
   XClusterConfigType,
   XClusterTableEligibility,
   XClusterTableStatus,
-  TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD
+  TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD,
+  XCLUSTER_UNDEFINED_LAG_NUMERIC_REPRESENTATION
 } from './constants';
 import {
   alertConfigQueryKey,
@@ -623,7 +624,10 @@ export const augmentTablesWithXClusterDetails = <TIncludeDroppedTables extends b
   const tables = xClusterConfigTables.reduce((tables: XClusterReplicationTable[], table) => {
     const { tableId, ...xClusterTableDetails } = table;
     const sourceUniverseTableDetails = tableIdToSourceUniverseTableDetails.get(tableId);
-    const replicationLag = tableIdToReplicationLag.get(tableId);
+    // We use -1 to indicate 'not reported'/undefined lag. This is because it is easier to work with
+    // when sorting or filtering by replication lag.
+    const replicationLag =
+      tableIdToReplicationLag.get(tableId) ?? XCLUSTER_UNDEFINED_LAG_NUMERIC_REPRESENTATION;
     if (sourceUniverseTableDetails) {
       const tableStatus =
         xClusterTableDetails.status === XClusterTableStatus.RUNNING &&
