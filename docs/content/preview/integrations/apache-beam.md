@@ -7,6 +7,8 @@ menu:
     identifier: apache-beam
     parent: data-integration
     weight: 571
+alises:
+  - /preview/integrations/apache/
 type: docs
 ---
 

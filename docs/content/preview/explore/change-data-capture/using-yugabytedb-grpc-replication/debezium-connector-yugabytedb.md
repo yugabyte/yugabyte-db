@@ -34,7 +34,7 @@ The connector is compatible with the following versions of YugabyteDB.
 Compatibility
 * Kafka Connect: The connector supports version 2.x and later.
 * YugabyteDB: The connector supports version 2.14 and later.
-  
+
 {{< note title="Note" >}}
 
 Starting with YugabyteDB v2.20, the naming convention for releases of the connector uses the scheme *major.y.minor*, as follows:
