@@ -266,6 +266,18 @@ alter_materialized_view_action =
   ( 'RENAME' 'TO' new_name
     | 'SET' 'TABLESPACE' tablespace_name ) ;
 
+(* 'ALTER' 'PUBLICATION' *)
+alter_publication = 
+  'ALTER' 'PUBLICATION' publication_name 
+  [ alter_publication_action { ',' alter_publication_action } ] ;
+
+alter_publication_action =
+  'ADD' 'TABLE' table_name { ',' table_name } |
+  'SET' 'TABLE' table_name { ',' table_name } |
+  'DROP' 'TABLE' table_name { ',' table_name } |
+  'RENAME' 'TO' publication_name |
+  'OWNER' 'TO' new_owner ;
+
 (* 'ALTER' 'SCHEMA' *)
 alter_schema = 'ALTER' 'SCHEMA' schema_name (
                 'RENAME' 'TO' new_name |
@@ -630,6 +642,20 @@ create_procedure =  'CREATE' [ 'OR' 'REPLACE' ] 'PROCEDURE'
 (* ( 'TRANSFORM' ( 'FOR' 'TYPE' type_name ) { ',' ( 'FOR' 'TYPE' type_name ) } bllewell: n/a except with implementation langauges like C *)
 unalterable_proc_attribute = 'LANGUAGE' lang_name | 'AS' subprogram_implementation ;
 
+(* 'CREATE' 'PUBLICATION' *)
+create_publication = 
+  'CREATE' 'PUBLICATION' publication_name 
+  [ 'FOR' publication_for_option ] ;
+
+publication_for_option = 
+  'TABLE' table_name { ',' table_name } |
+  'ALL' 'TABLES' ;
+
+(* 'CREATE_REPLICATION_SLOT' *)
+create_replication_slot = 
+  'CREATE_REPLICATION_SLOT' slot_name 'LOGICAL' output_plugin 
+  [ 'NOEXPORT_SNAPSHOT' | 'USE_SNAPSHOT' ] ;
+
 (* 'CREATE' 'RULE' *)
 create_rule = 'CREATE' [ 'OR' 'REPLACE' ] 'RULE' rule_name 'AS' 'ON' rule_event 'TO' table_name \
               [ 'WHERE' boolean_expression ]
@@ -960,6 +986,13 @@ drop_procedure = 'DROP' 'PROCEDURE' [ 'IF' 'EXISTS' ] \
                   { ',' ( subprogram_name '(' [ subprogram_signature ] ')' ) }
                   [ 'CASCADE' | 'RESTRICT' ] ;
 
+(* 'DROP' 'PUBLICATION' *)
+drop_publication = 'DROP' 'PUBLICATION' [ 'IF' 'EXISTS' ] publication_name
+                   [ 'CASCADE' | 'RESTRICT' ] ;
+
+(* DROP_REPLICATION_SLOT *)
+drop_replication_slot = DROP_REPLICATION_SLOT slot_name
+
 (* 'DROP' 'ROLE' *)
 drop_role = 'DROP' 'ROLE' [ 'IF' 'EXISTS' ] role_name { ',' role_name } ;
 
@@ -1256,6 +1289,14 @@ show_stmt = 'SHOW' ( run_time_parameter | 'ALL' ) ;
 (* 'SHOW' 'TRANSACTION' *)
 show_transaction = 'SHOW' 'TRANSACTION' 'ISOLATION' 'LEVEL' ;
 
+(* 'START_REPLICATION' *)
+start_replication = 
+  'START_REPLICATION' 'SLOT' slot_name 'LOGICAL' log_sequence_number 
+    [ '(' start_replication_option { ',' start_replication_option } ')' ] ;
+
+start_replication_option = 
+  start_replication_option_name [ start_replication_option_value ] ;
+
 (* 'START' 'TRANSACTION' *)
 start_transaction = 'START' 'TRANSACTION' { transaction_mode } ;
 
@@ -1353,7 +1394,13 @@ having_clause = 'HAVING' ( boolean_expression ) ;
 qualified_name = name { '.' name } ;
 role_name = name ;
 database_name = name ;
+log_sequence_number = text_literal ; (* Format: 'XXX/XXX' representing a log sequence number *)
+output_plugin = name ;
+publication_name = name ;
 schema_name = name ;
+slot_name = name ;
+start_replication_option_name = text_literal ;
+start_replication_option_value = text_literal ;
 table_name = qualified_name ;
 cte_name = name ;
 column_name = name ;
