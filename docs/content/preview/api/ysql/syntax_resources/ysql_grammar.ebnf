@@ -991,7 +991,7 @@ drop_publication = 'DROP' 'PUBLICATION' [ 'IF' 'EXISTS' ] publication_name
                    [ 'CASCADE' | 'RESTRICT' ] ;
 
 (* DROP_REPLICATION_SLOT *)
-drop_replication_slot = DROP_REPLICATION_SLOT slot_name
+drop_replication_slot = DROP_REPLICATION_SLOT slot_name ;
 
 (* 'DROP' 'ROLE' *)
 drop_role = 'DROP' 'ROLE' [ 'IF' 'EXISTS' ] role_name { ',' role_name } ;
