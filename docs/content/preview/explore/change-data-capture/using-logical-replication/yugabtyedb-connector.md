@@ -13,27 +13,27 @@ type: docs
 
 The Debezium YugabyteDB connector captures row-level changes in the schemas of a YugabyteDB database.
 
-The first time it connects to a YugabyteDB server, the connector takes a consistent snapshot of all schemas. After that snapshot is complete, the connector continuously captures row-level changes that insert, update, and delete database content and that were committed to a YugabyteDB database. The connector generates data change event records and streams them to Kafka topics. For each table, the default behavior is that the connector streams all generated events to a separate Kafka topic for that table. Applications and services consume data change event records from that topic.
+The first time it connects to a YugabyteDB server, the connector takes a consistent snapshot of all schemas. After that snapshot is complete, the connector continuously captures row-level changes that insert, update, and delete database content, and that were committed to a YugabyteDB database. The connector generates data change event records and streams them to Kafka topics. For each table, the default behavior is that the connector streams all generated events to a separate Kafka topic for that table. Applications and services consume data change event records from that topic.
 
 ## Compatibility matrix
 
 ## Overview
 
-YugabyteDB’s [logical decoding](#reminder) feature was introduced in YugabyteDB version 2024.1.1. It is a mechanism that allows the extraction of the changes that were committed to the transaction log and the processing of these changes in a user-friendly manner with the help of an [output plug-in](#reminder). The output plug-in enables clients to consume the changes.
+YugabyteDB's [logical decoding](#reminder) feature was introduced in YugabyteDB version 2024.1.1. It is a mechanism that allows the extraction of the changes that were committed to the transaction log and the processing of these changes in a user-friendly manner with the help of an [output plug-in](#reminder). The output plug-in enables clients to consume the changes.
 
 The YugabyteDB connector contains two main parts that work together to read and process database changes:
 
 * You must configure a replication slot that uses your chosen output plug-in before running the YugabyteDB server. The plug-in can be one of the following:
 
-    <!-- YB specific -->
-    * `yboutput` is the plugin packaged with YugabyteDB. It is maintained by Yugabyte and is always present with the distribution.
+  <!-- YB specific -->
+  * `yboutput` is the plugin packaged with YugabyteDB. It is maintained by Yugabyte and is always present with the distribution.
 
-    * `pgoutput` is the standard logical decoding output plug-in in PostgreSQL 10+. It is maintained by the PostgreSQL community, and used by PostgreSQL itself for logical replication. YugabyteDB bundles this plug-in with the standard distribution so it is always present and no additional libraries need to be installed. The Debezium YugabyteDB connector interprets the raw replication event stream directly into change events.
+  * `pgoutput` is the standard logical decoding output plug-in in PostgreSQL 10+. It is maintained by the PostgreSQL community, and used by PostgreSQL itself for logical replication. YugabyteDB bundles this plug-in with the standard distribution so it is always present and no additional libraries need to be installed. The Debezium YugabyteDB connector interprets the raw replication event stream directly into change events.
 
 <!-- YB note driver part -->
-* Java code (the actual Kafka Connect connector) that reads the changes produced by the chosen logical decoding output plug-in. It uses YugabyteDB’s [streaming replication protocol](https://www.postgresql.org/docs/11/protocol-replication.html), by means of the YugabyteDB JDBC driver.
+* Java code (the actual Kafka Connect connector) that reads the changes produced by the chosen logical decoding output plug-in. It uses YugabyteDB's [streaming replication protocol](https://www.postgresql.org/docs/11/protocol-replication.html), by means of the YugabyteDB JDBC driver.
 
-The connector produces a change event for every row-level insert, update, and delete operation that was captured and sends change event records for each table in a separate Kafka topic. Client applications read the Kafka topics that correspond to the database tables of interest, and can react to every row-level event they receive from those topics.
+The connector produces a change event for every row-level insert, update, and delete operation that was captured, and sends change event records for each table in a separate Kafka topic. Client applications read the Kafka topics that correspond to the database tables of interest, and can react to every row-level event they receive from those topics.
 
 YugabyteDB normally purges write-ahead log (WAL) segments after some period of time. This means that the connector does not have the complete history of all changes that have been made to the database. Therefore, when the YugabyteDB connector first connects to a particular YugabyteDB database, it starts by performing a consistent snapshot of each of the configured tables. After the connector completes the snapshot, it continues streaming changes from the exact point at which the snapshot was made. This way, the connector starts with a consistent view of all of the data, and does not omit any changes that were made while the snapshot was being taken.
 
@@ -75,31 +75,31 @@ The default behavior for performing a snapshot consists of the following steps. 
 
 If the connector fails, is rebalanced, or stops after Step 1 begins but before Step 5 completes, upon restart the connector begins a new snapshot. After the connector completes its initial snapshot, the YugabyteDB connector continues streaming from the position that it read in Step 2. This ensures that the connector does not miss any updates. If the connector stops again for any reason, upon restart, the connector continues streaming changes from where it previously left off.
 
-*Options for the **snapshot.mode** connector configuration property:*
+The following table describes the options for the `snapshot.mode` connector configuration property.
 
 | Option | Description |
 | :--- | :--- |
-| `never` | The connector never performs snapshots. When a connector is configured this way, its behavior when it starts is as follows. If there is a previously stored LSN in the Kafka offsets topic, the connector continues streaming changes from that position. If no LSN has been stored, the connector starts streaming changes from the point in time when the YugabyteDB logical replication slot was created on the server. The `never` snapshot mode is useful only when you know all data of interest is still reflected in the WAL. |
+| `never` | The connector never performs snapshots. When a connector is configured this way, its behavior when it starts is as follows. If there is a previously stored LSN in the Kafka offsets topic, the connector continues streaming changes from that position. If no LSN has been stored, the connector starts streaming changes from the point in time when the YugabyteDB logical replication slot was created on the server. The `never` snapshot mode is beneficial only when you know all data of interest is still reflected in the WAL. |
 | `initial` (default) | The connector performs a database snapshot when no Kafka offsets topic exists. After the database snapshot completes the Kafka offsets topic is written. If there is a previously stored LSN in the Kafka offsets topic, the connector continues streaming changes from that position. |
 | `initial_only` | The connector performs a database snapshot and stops before streaming any change event records. If the connector had started but did not complete a snapshot before stopping, the connector restarts the snapshot process and stops when the snapshot completes. |
 
 ### Streaming changes
 
-The YugabyteDB connector typically spends the vast majority of its time streaming changes from the YugabyteDB server to which it is connected. This mechanism relies on [PostgreSQL's replication protocol](https://www.postgresql.org/docs/11/protocol-replication.html). This protocol enables clients to receive changes from the server as they are committed in the server’s transaction logs.
+The YugabyteDB connector typically spends the vast majority of its time streaming changes from the YugabyteDB server to which it is connected. This mechanism relies on [PostgreSQL's replication protocol](https://www.postgresql.org/docs/11/protocol-replication.html). This protocol enables clients to receive changes from the server as they are committed in the server's transaction logs.
 
 Whenever the server commits a transaction, a separate server process invokes a callback function from the [logical decoding plug-in](./overview/#output-plugin). This function processes the changes from the transaction, converts them to a specific format and writes them on an output stream, which can then be consumed by clients.
 
-The Debezium YugabyteDB connector acts as a YugabyteDB client. When the connector receives changes it transforms the events into Debezium *create*, *update*, or *delete* events that include the LSN of the event. The YugabyteDB connector forwards these change events in records to the Kafka Connect framework, which is running in the same process. The Kafka Connect process asynchronously writes the change event records in the same order in which they were generated to the appropriate Kafka topic.
+The Debezium YugabyteDB connector acts as a YugabyteDB client. When the connector receives changes it transforms the events into Debezium create, update, or delete events that include the LSN of the event. The YugabyteDB connector forwards these change events in records to the Kafka Connect framework, which is running in the same process. The Kafka Connect process asynchronously writes the change event records in the same order in which they were generated to the appropriate Kafka topic.
 
-Periodically, Kafka Connect records the most recent *offset* in another Kafka topic. The offset indicates source-specific position information that Debezium includes with each event. For the YugabyteDB connector, the LSN recorded in each change event is the offset.
+Periodically, Kafka Connect records the most recent offset in another Kafka topic. The offset indicates source-specific position information that Debezium includes with each event. For the YugabyteDB connector, the LSN recorded in each change event is the offset.
 
 When Kafka Connect gracefully shuts down, it stops the connectors, flushes all event records to Kafka, and records the last offset received from each connector. When Kafka Connect restarts, it reads the last recorded offset for each connector, and starts each connector at its last recorded offset. When the connector restarts, it sends a request to the YugabyteDB server to send the events starting just after that position.
 
-### YugabyteDB 2024.1.1+ logical decoding support (yboutput)
+### Logical decoding plugin support
 
-As of YugabyteDB 2024.1.1+, there is an [output plugin](./overview/#output-plugin), called `yboutput` that is natively supported by YugabyteDB.
+As of YugabyteDB v2024.1.1 and later, YugabyteDB supports the [yboutput plugin](./overview/#output-plugin), a native output plugin for logical decoding.
 
-Additionally, YugabyteDB also supports PostgreSQL's plugin `pgoutput` natively. This means that the Debezium YugabyteDB connector can work with an existing setup which are configured using `pgoutput`.
+Additionally, YugabyteDB also supports the PostgreSQL `pgoutput` plugin natively. This means that the Debezium YugabyteDB connector can work with an existing setup configured using `pgoutput`.
 
 ### Topic names
 
@@ -212,7 +212,7 @@ Following is an example of a message:
 
 The Debezium YugabyteDB connector generates a data change event for each row-level `INSERT`, `UPDATE`, and `DELETE` operation. Each event contains a key and a value. The structure of the key and the value depends on the table that was changed.
 
-Debezium and Kafka Connect are designed around *continuous streams of event messages*. However, the structure of these events may change over time, which can be difficult for consumers to handle. To address this, each event contains the schema for its content or, if you are using a schema registry, a schema ID that a consumer can use to obtain the schema from the registry. This makes each event self-contained.
+Debezium and Kafka Connect are designed around _continuous streams of event messages_. However, the structure of these events may change over time, which can be difficult for consumers to handle. To address this, each event contains the schema for its content or, if you are using a schema registry, a schema ID that a consumer can use to obtain the schema from the registry. This makes each event self-contained.
 
 The following skeleton JSON shows the basic four parts of a change event. However, how you configure the Kafka Connect converter that you choose to use in your application determines the representation of these four parts in change events. A `schema` field is in a change event only when you configure the converter to produce it. Likewise, the event key and event payload are in a change event only if you configure a converter to produce it. If you use the JSON converter and you configure it to produce all four basic change event parts, change events have this structure:
 
@@ -242,7 +242,7 @@ The following skeleton JSON shows the basic four parts of a change event. Howeve
 | 3 | `schema` | The second `schema` field is part of the event value. It specifies the Kafka Connect schema that describes what is in the event value's `payload` portion. In other words, the second `schema` describes the structure of the row that was changed. Typically, this schema contains nested schemas. |
 | 4 | `payload` | The second `payload` field is part of the event value. It has the structure described by the previous `schema` field and it contains the actual data for the row that was changed. |
 
-By default behavior is that the connector streams change event records to [topics with names that are the same as the event’s originating table](#reminder).
+By default behavior is that the connector streams change event records to [topics with names that are the same as the event's originating table](#reminder).
 
 {{< note title="Note" >}}
 
@@ -260,7 +260,7 @@ This can lead to unexpected conflicts if the topic prefix, a schema name, or a t
 
 ### Change event keys
 
-For a given table, the change event’s key has a structure that contains a field for each column in the primary key of the table at the time the event was created. Alternatively, if the table has `REPLICA IDENTITY` set to `FULL` there is a field for each unique key constraint.
+For a given table, the change event's key has a structure that contains a field for each column in the primary key of the table at the time the event was created. Alternatively, if the table has `REPLICA IDENTITY` set to `FULL` there is a field for each unique key constraint.
 
 Consider a `customers` table defined in the `public` database schema and the example of a change event key for that table.
 
@@ -315,7 +315,7 @@ If the `topic.prefix` connector configuration property has the value `YugabyteDB
 
 {{< note title="Note" >}}
 
-Although the `column.exclude.list` and `column.include.list` connector configuration properties allow you to capture only a subset of table columns, all columns in a primary or unique key are always included in the event’s key.
+Although the `column.exclude.list` and `column.include.list` connector configuration properties allow you to capture only a subset of table columns, all columns in a primary or unique key are always included in the event's key.
 
 {{< /note >}}
 
@@ -348,6 +348,7 @@ The value portion of a change event for a change to this table varies according 
 [REPLICA IDENTITY](#reminder) is a YugabyteDB-specific table-level setting that determines the amount of information that is available to the logical decoding plug-in for `UPDATE` and `DELETE` events. More specifically, the setting of `REPLICA IDENTITY` controls what (if any) information is available for the previous values of the table columns involved, whenever an `UPDATE` or `DELETE` event occurs.
 
 There are 4 possible values for `REPLICA IDENTITY`:
+
 * `CHANGE` - Emitted events for `UPDATE` operations will only contain the value of the changed column along with the primary key column with no previous values present. `DELETE` operations will only contain the previous value of the primary key column in the table.
 * `DEFAULT` - The default behavior is that only `DELETE` events contain the previous values for the primary key columns of a table. For an `UPDATE` event, no previous values will be present and the new values will be present for all the columns in the table.
 * `FULL` - Emitted events for `UPDATE` and `DELETE` operations contain the previous values of all columns in the table.
@@ -380,13 +381,14 @@ DELETE FROM employee WHERE employee_id = 1001;
 
   {{% tab header="CHANGE" lang="change" %}}
 
+**yboutput plugin**
+
 <table>
 <tr>
-<td> <b>Plugin</b> </td> <td> <b>INSERT</b> </td> <td> <b>UPDATE:</b> </td> <td> <b>DELETE:</b> </td>
+<td> <b>INSERT</b> </td> <td> <b>UPDATE</b> </td> <td> <b>DELETE</b> </td>
 </tr>
 
 <tr>
-<td> <em>yboutput</em> </td>
 <td>
 <pre>
 {
@@ -446,7 +448,7 @@ DELETE FROM employee WHERE employee_id = 1001;
 }
 </pre>
 </td>
-</tr> 
+</tr>
 
 </table>
 
@@ -454,13 +456,14 @@ DELETE FROM employee WHERE employee_id = 1001;
 
   {{% tab header="DEFAULT" lang="default" %}}
 
+**yboutput plugin**
+
 <table>
 <tr>
-<td> <b>Plugin</b> </td> <td> <b>INSERT</b> </td> <td> <b>UPDATE:</b> </td> <td> <b>DELETE:</b> </td>
+<td> <b>INSERT</b> </td> <td> <b>UPDATE</b> </td> <td> <b>DELETE</b> </td>
 </tr>
 
 <tr>
-<td> <em>yboutput</em> </td>
 
 <td>
 <pre>
@@ -521,10 +524,17 @@ DELETE FROM employee WHERE employee_id = 1001;
 }
 </pre>
 </td>
-</tr> 
+</tr>
+</table>
+
+**pgoutput plugin**
+
+<table>
+<tr>
+<td> <b>INSERT</b> </td> <td> <b>UPDATE</b> </td> <td> <b>DELETE</b> </td>
+</tr>
 
 <tr>
-<td> <em>pgoutput</em> </td>
 
 <td>
 <pre>
@@ -565,7 +575,7 @@ DELETE FROM employee WHERE employee_id = 1001;
 }
 </pre>
 </td>
-</tr> 
+</tr>
 
 </table>
 
@@ -573,13 +583,14 @@ DELETE FROM employee WHERE employee_id = 1001;
 
   {{% tab header="FULL" lang="full" %}}
 
+**yboutput plugin**
+
 <table>
 <tr>
-<td> <b>Plugin</b> </td> <td> <b>INSERT</b> </td> <td> <b>UPDATE:</b> </td> <td> <b>DELETE:</b> </td>
+<td> <b>INSERT</b> </td> <td> <b>UPDATE</b> </td> <td> <b>DELETE</b> </td>
 </tr>
 
 <tr>
-<td> <em>yboutput</em> </td>
 
 <td>
 <pre>
@@ -663,11 +674,17 @@ DELETE FROM employee WHERE employee_id = 1001;
 }
 </pre>
 </td>
-</tr> 
+</tr>
+</table>
+
+**pgoutput plugin**
+
+<table>
+<tr>
+<td> <b>INSERT</b> </td> <td> <b>UPDATE</b> </td> <td> <b>DELETE</b> </td>
+</tr>
 
 <tr>
-<td> <em>pgoutput</em> </td>
-
 <td>
 <pre>
 {
@@ -722,15 +739,14 @@ DELETE FROM employee WHERE employee_id = 1001;
 
   {{% tab header="NOTHING" lang="nothing" %}}
 
-##### NOTHING
+**yboutput plugin**
 
 <table>
 <tr>
-<td> <b>Plugin</b> </td> <td> <b>INSERT:</b> </td>
+<td> <b>INSERT</b> </td>
 </tr>
 
 <tr>
-<td> <em>yboutput</em> </td>
 
 <td>
 <pre>
@@ -754,11 +770,17 @@ DELETE FROM employee WHERE employee_id = 1001;
 }
 </pre>
 </td>
-</tr> 
+</tr>
+</table>
+
+**pgoutput plugin**
+
+<table>
+<tr>
+<td> <b>INSERT</b> </td>
+</tr>
 
 <tr>
-<td> <em>pgoutput</em> </td>
-
 <td>
 <pre>
 {
@@ -767,13 +789,12 @@ DELETE FROM employee WHERE employee_id = 1001;
     "employee_id": 1001,
     "employee_name": "Alice",
     "employee_dept": "Packaging",
-    }
   }
   "op": "c"
 }
 </pre>
 </td>
-</tr> 
+</tr>
 
 </table>
 
@@ -783,7 +804,7 @@ DELETE FROM employee WHERE employee_id = 1001;
 
 {{< note title="Note" >}}
 
-If `UPDATE` and `DELETE` operations will be performed on a table in publication without any replica identity i.e. `REPLICA IDENTITY` set to `NOTHING` then the operations will cause an error on the publisher. For more details, see [Publication](https://www.postgresql.org/docs/current/logical-replication-publication.html).
+If `UPDATE` and `DELETE` operations will be performed on a table in publication without any replica identity (that is, `REPLICA IDENTITY` set to `NOTHING`), then the operations will cause an error on the publisher. For more details, see [Publication](https://www.postgresql.org/docs/current/logical-replication-publication.html).
 
 {{< /note >}}
 
@@ -962,20 +983,20 @@ The following example shows the value portion of a change event that the connect
 
 | Item | Field name | Description |
 | :---- | :------ | :------------ |
-| 1 | schema | The value’s schema, which describes the structure of the value’s payload. A change event’s value schema is the same in every change event that the connector generates for a particular table. |
-| 2 | name | In the schema section, each name field specifies the schema for a field in the value’s payload.<br/><br/>`YugabyteDB_server.inventory.customers.Value` is the schema for the payload’s *before* and *after* fields. This schema is specific to the customers table.<br/><br/>Names of schemas for *before* and *after* fields are of the form *logicalName.tableName.Value*, which ensures that the schema name is unique in the database. This means that when using the [Avro converter](#reminder), the resulting Avro schema for each table in each logical source has its own evolution and history. |
-| 3 | name | `io.debezium.connector.postgresql.Source` is the schema for the payload’s `source` field. This schema is specific to the YugabyteDB connector. The connector uses it for all events that it generates. |
+| 1 | schema | The value's schema, which describes the structure of the value's payload. A change event's value schema is the same in every change event that the connector generates for a particular table. |
+| 2 | name | In the schema section, each name field specifies the schema for a field in the value's payload.<br/><br/>`YugabyteDB_server.inventory.customers.Value` is the schema for the payload's *before* and *after* fields. This schema is specific to the customers table.<br/><br/>Names of schemas for *before* and *after* fields are of the form *logicalName.tableName.Value*, which ensures that the schema name is unique in the database. This means that when using the [Avro converter](#reminder), the resulting Avro schema for each table in each logical source has its own evolution and history. |
+| 3 | name | `io.debezium.connector.postgresql.Source` is the schema for the payload's `source` field. This schema is specific to the YugabyteDB connector. The connector uses it for all events that it generates. |
 | 4 | name | `YugabyteDB_server.inventory.customers.Envelope` is the schema for the overall structure of the payload, where `YugabyteDB_server` is the connector name, `public` is the schema, and `customers` is the table. |
-| 5 | payload | The value’s actual data. This is the information that the change event is providing.<br/><br/>It may appear that the JSON representations of the events are much larger than the rows they describe. This is because the JSON representation must include the schema and the payload portions of the message. However, by using the [Avro converter](#reminder), you can significantly decrease the size of the messages that the connector streams to Kafka topics. |
-| 6 | before | An optional field that specifies the state of the row before the event occurred. When the op field is `c` for create, as it is in this example, the `before` field is `null` since this change event is for new content.<br/>{{< note title="Note" >}}Whether or not this field is available is dependent on the [REPLICA IDENTITY](#replica-identity) setting for each table.{{< /note >}} |
-| 7 | after | An optional field that specifies the state of the row after the event occurred. In this example, the `after` field contains the values of the new row’s `id`, `first_name`, `last_name`, and `email` columns. |
+| 5 | payload | The value's actual data. This is the information that the change event is providing.<br/><br/>It may appear that the JSON representations of the events are much larger than the rows they describe. This is because the JSON representation must include the schema and the payload portions of the message. However, by using the [Avro converter](#reminder), you can significantly decrease the size of the messages that the connector streams to Kafka topics. |
+| 6 | before | An optional field that specifies the state of the row before the event occurred. When the op field is `c` for create, as it is in this example, the `before` field is `null` as this change event is for new content.<br/>{{< note title="Note" >}}Whether or not this field is available is dependent on the [REPLICA IDENTITY](#replica-identity) setting for each table.{{< /note >}} |
+| 7 | after | An optional field that specifies the state of the row after the event occurred. In this example, the `after` field contains the values of the new row's `id`, `first_name`, `last_name`, and `email` columns. |
 | 8 | source | Mandatory field that describes the source metadata for the event. This field contains information that you can use to compare this event with other events, with regard to the origin of the events, the order in which the events occurred, and whether events were part of the same transaction. The source metadata includes:<br/><ul><li>Debezium version</li><li>Connector type and name</li><li>Database and table that contains the new row</li><li>Stringified JSON array of additional offset information. The first value is always the last committed LSN, the second value is always the current LSN. Either value may be null.</li><li>Schema name</li><li>If the event was part of a snapshot</li><li>ID of the transaction in which the operation was performed</li><li>Offset of the operation in the database log</li><li>Timestamp for when the change was made in the database</li></ul> |
 | 9 | op | Mandatory string that describes the type of operation that caused the connector to generate the event. In this example, `c` indicates that the operation created a row. Valid values are: <ul><li> `c` = create <li> `r` = read (applies to only snapshots) <li> `u` = update <li> `d` = delete</ul> |
 | 10 | ts_ms | Optional field that displays the time at which the connector processed the event. The time is based on the system clock in the JVM running the Kafka Connect task.<br/><br/>In the `source` object, `ts_ms` indicates the time that the change was made in the database. By comparing the value for `payload.source.ts_ms` with the value for `payload.ts_ms`, you can determine the lag between the source database update and Debezium. |
 
 ### *update* events
 
-The value of a change event for an update in the sample `customers` table has the same schema as a create event for that table. Likewise, the event value’s payload has the same structure. However, the event value payload contains different values in an update event. Here is an example of a change event value in an event that the connector generates for an update in the `customers` table:
+The value of a change event for an update in the sample `customers` table has the same schema as a create event for that table. Likewise, the event value's payload has the same structure. However, the event value payload contains different values in an update event. The following is an example of a change event value in an event that the connector generates for an update in the `customers` table:
 
 <!-- YB Note removed before image for DEFAULT replica identity -->
 
@@ -1013,7 +1034,7 @@ The value of a change event for an update in the sample `customers` table has th
 
 | Item | Field name | Description |
 | :---- | :------ | :------------ |
-| 1 | before | An optional field that contains values that were in the row before the database commit. In this example, no previous value for any of the columns, is present because the table’s [REPLICA IDENTITY](#replica-identity) setting is, `DEFAULT`. For an update event to contain the previous values of all columns in the row, you would have to change the `customers` table by running `ALTER TABLE customers REPLICA IDENTITY FULL`. |
+| 1 | before | An optional field that contains values that were in the row before the database commit. In this example, no previous value for any of the columns, is present because the table's [REPLICA IDENTITY](#replica-identity) setting is, `DEFAULT`. For an update event to contain the previous values of all columns in the row, you would have to change the `customers` table by running `ALTER TABLE customers REPLICA IDENTITY FULL`. |
 | 2 | after | An optional field that specifies the state of the row after the event occurred. In this example, the `first_name` value is now `Anne Marie`. |
 | 3 | source | Mandatory field that describes the source metadata for the event. The `source` field structure has the same fields as in a create event, but some values are different. The source metadata includes:<br/<br/> <ul><li>Debezium version</li><li>Connector type and name</li><li>Database and table that contains the new row</li><li>Schema name</li><li>If the event was part of a snapshot (always `false` for *update* events)</li><li>ID of the transaction in which the operation was performed</li><li>Offset of the operation in the database log</li><li>Timestamp for when the change was made in the database</li></ul> |
 | 4 | op | Mandatory string that describes the type of operation. In an update event value, the `op` field value is `u`, signifying that this row changed because of an update. |
@@ -1021,13 +1042,13 @@ The value of a change event for an update in the sample `customers` table has th
 
 {{< note title="Note" >}}
 
-Updating the columns for a row’s primary/unique key changes the value of the row’s key. When a key changes, Debezium outputs three events: a `DELETE` event and a [tombstone event]() with the old key for the row, followed by an event with the new key for the row. Details are in the next section.
+Updating the columns for a row's primary/unique key changes the value of the row's key. When a key changes, Debezium outputs three events: a `DELETE` event and a [tombstone event](#reminder) with the old key for the row, followed by an event with the new key for the row. Details are in the next section.
 
 {{< /note >}}
 
 ### Primary key updates
 
-An `UPDATE` operation that changes a row’s primary key field(s) is known as a primary key change. For a primary key change, in place of sending an `UPDATE` event record, the connector sends a `DELETE` event record for the old key and a `CREATE` event record for the new (updated) key.
+An `UPDATE` operation that changes a row's primary key field(s) is known as a primary key change. For a primary key change, in place of sending an `UPDATE` event record, the connector sends a `DELETE` event record for the old key and a `CREATE` event record for the new (updated) key.
 
 ### *delete* events
 
@@ -1064,9 +1085,9 @@ The value in a *delete* change event has the same `schema` portion as create and
 
 | Item | Field name | Description |
 | :---- | :------ | :------------ |
-| 1 | before | Optional field that specifies the state of the row before the event occurred. In a *delete* event value, the `before` field contains the values that were in the row before it was deleted with the database commit.<br/><br/>In this example, the before field contains only the primary key column because the table’s [REPLICA IDENTITY](#replica-identity) setting is `DEFAULT`. |
+| 1 | before | Optional field that specifies the state of the row before the event occurred. In a *delete* event value, the `before` field contains the values that were in the row before it was deleted with the database commit.<br/><br/>In this example, the before field contains only the primary key column because the table's [REPLICA IDENTITY](#replica-identity) setting is `DEFAULT`. |
 | 2 | after | Optional field that specifies the state of the row after the event occurred. In a delete event value, the `after` field is `null`, signifying that the row no longer exists. |
-| 3 | source | Mandatory field that describes the source metadata for the event. In a delete event value, the source field structure is the same as for create and update events for the same table. Many source field values are also the same. In a delete event value, the ts_ms and lsn field values, as well as other values, might have changed. But the source field in a delete event value provides the same metadata:<br/><ul><li>Debezium version</li><li>Connector type and name</li><li>Database and table that contained the deleted row</li><li>Schema name</li><li>If the event was part of a snapshot (always false for delete events)</li><li>ID of the transaction in which the operation was performed</li><li>Offset of the operation in the database log</li><li>Timestamp for when the change was made in the database</li></ul> |
+| 3 | source | Mandatory field that describes the source metadata for the event. In a delete event value, the source field structure is the same as for create and update events for the same table. Many source field values are also the same. In a delete event value, the `ts_ms` and `lsn` field values, as well as other values, might have changed. But the source field in a delete event value provides the same metadata:<br/><ul><li>Debezium version</li><li>Connector type and name</li><li>Database and table that contained the deleted row</li><li>Schema name</li><li>If the event was part of a snapshot (always false for delete events)</li><li>ID of the transaction in which the operation was performed</li><li>Offset of the operation in the database log</li><li>Timestamp for when the change was made in the database</li></ul> |
 | 4 | op | Mandatory string that describes the type of operation. The `op` field value is `d`, signifying that this row was deleted. |
 | 5 | ts_ms | Optional field that displays the time at which the connector processed the event. The time is based on the system clock in the JVM running the Kafka Connect task.<br/><br/>In the `source` object, `ts_ms` indicates the time that the change was made in the database. By comparing the value for `payload.source.ts_ms` with the value for `payload.ts_ms`, you can determine the lag between the source database update and Debezium. |
 
@@ -1110,7 +1131,7 @@ If the default data type conversions do not meet your needs, you can [create a c
 | `TIMETZ`, `TIME WITH TIME ZONE` | `STRING` | `io.debezium.time.ZonedTime` <br/> A string representation of a time value with timezone information, where the timezone is GMT. |
 | `INTERVAL [P]` | `INT64` | `io.debezium.time.MicroDuration` (default) <br/> The approximate number of microseconds for a time interval using the `365.25 / 12.0` formula for days per month average. |
 | `INTERVAL [P]` | `STRING` | `io.debezium.time.Interval` <br/> (when `interval.handling.mode` is `string`) <br/> The string representation of the interval value that follows the pattern <br/> P\<years>Y\<months>M\<days>DT\<hours>H\<minutes>M\<seconds>S. <br/> For example, `P1Y2M3DT4H5M6.78S`. |
-| `BYTEA` | `BYTES` or `STRING` | n/a<br/><br/>Either the raw bytes (the default), a base64-encoded string, or a base64-url-safe-encoded String, or a hex-encoded string, based on the connector’s `binary handling mode` setting.<br/><br/>Debezium only supports Yugabyte `bytea_output` configuration of value `hex`. For more information about PostgreSQL binary data types, see the [YugabyteDB documentation](#reminder). |
+| `BYTEA` | `BYTES` or `STRING` | n/a<br/><br/>Either the raw bytes (the default), a base64-encoded string, or a base64-url-safe-encoded String, or a hex-encoded string, based on the connector's `binary handling mode` setting.<br/><br/>Debezium only supports Yugabyte `bytea_output` configuration of value `hex`. For more information about PostgreSQL binary data types, see the [YugabyteDB documentation](#reminder). |
 | `JSON`, `JSONB` | `STRING` | `io.debezium.data.Json` <br/> Contains the string representation of a JSON document, array, or scalar. |
 | `UUID` | `STRING` | `io.debezium.data.Uuid` <br/> Contains the string representation of a YugabyteDB UUID value. |
 | `INT4RANGE` | `STRING` | Range of integer. |
@@ -1124,15 +1145,16 @@ If the default data type conversions do not meet your needs, you can [create a c
 ### Temporal types
 
 Other than YugabyteDB's `TIMESTAMPTZ` and `TIMETZ` data types, which contain time zone information, how temporal types are mapped depends on the value of the `time.precision.mode` connector configuration property. The following sections describe these mappings:
+
 * `time.precision.mode=adaptive`
 * `time.precision.mode=adaptive_time_microseconds`
 * `time.precision.mode=connect`
 
 #### time.precision.mode=adaptive
 
-When the `time.precision.mode` property is set to `adaptive`, the default, the connector determines the literal type and semantic type based on the column’s data type definition. This ensures that events *exactly* represent the values in the database.
+When the `time.precision.mode` property is set to `adaptive`, the default, the connector determines the literal type and semantic type based on the column's data type definition. This ensures that events *exactly* represent the values in the database.
 
-| YugabyteDB data type | Literal type (schema type) | Semantic type (schame name) and Notes |
+| YugabyteDB data type | Literal type (schema type) | Semantic type (schema name) and Notes |
 | :----- | :----- | :----- |
 | `DATE` | `INT32` | `io.debezium.time.Date`<br/>Represents the number of days since the epoch. |
 | `TIME(1)`, `TIME(2)`, `TIME(3)` | `INT32` | `io.debezium.time.Time`<br/>Represents the number of milliseconds past midnight, and does not include timezone information. |
@@ -1142,9 +1164,9 @@ When the `time.precision.mode` property is set to `adaptive`, the default, the c
 
 #### time.precision.mode=adaptive_time_microseconds
 
-When the `time.precision.mode` configuration property is set to `adaptive_time_microseconds`, the connector determines the literal type and semantic type for temporal types based on the column’s data type definition. This ensures that events *exactly* represent the values in the database, except all `TIME` fields are captured as microseconds.
+When the `time.precision.mode` configuration property is set to `adaptive_time_microseconds`, the connector determines the literal type and semantic type for temporal types based on the column's data type definition. This ensures that events *exactly* represent the values in the database, except all `TIME` fields are captured as microseconds.
 
-| YugabyteDB data type | Literal type (schema type) | Semantic type (schame name) and Notes |
+| YugabyteDB data type | Literal type (schema type) | Semantic type (schema name) and Notes |
 | :----- | :----- | :----- |
 | `DATE` | `INT32` | `io.debezium.time.Date`<br/>Represents the number of days since the epoch. |
 | `TIME([P])` | `INT64` | `io.debezium.time.MicroTime`<br/>Represents the time value in microseconds and does not include timezone information. YugabyteDB allows precision `P` to be in the range 0-6 to store up to microsecond precision. |
@@ -1155,7 +1177,7 @@ When the `time.precision.mode` configuration property is set to `adaptive_time_m
 
 When the `time.precision.mode` configuration property is set to `connect`, the connector uses Kafka Connect logical types. This may be useful when consumers can handle only the built-in Kafka Connect logical types and are unable to handle variable-precision time values. However, since YugabyteDB supports microsecond precision, the events generated by a connector with the connect time precision mode results in a loss of precision when the database column has a fractional second precision value that is greater than 3.
 
-| YugabyteDB data type | Literal type (schema type) | Semantic type (schame name) and Notes |
+| YugabyteDB data type | Literal type (schema type) | Semantic type (schema name) and Notes |
 | :----- | :----- | :----- |
 | `DATE` | `INT32` | `org.apache.kafka.connect.data.Date`<br/>Represents the number of days since the epoch. |
 | `TIME([P])` | `INT64` | `org.apache.kafka.connect.data.Time`<br/>Represents the number of milliseconds since midnight, and does not include timezone information. YugabyteDB allows `P` to be in the range 0-6 to store up to microsecond precision, though this mode results in a loss of precision when `P` is greater than 3. |
@@ -1212,13 +1234,13 @@ When the `hstore.handling.mode` property is set to json (the default), the conne
 
 ### Domain types
 
-YugabyteDB supports user-defined types that are based on other underlying types. When such column types are used, Debezium exposes the column’s representation based on the full type hierarchy.
+YugabyteDB supports user-defined types that are based on other underlying types. When such column types are used, Debezium exposes the column's representation based on the full type hierarchy.
 
 {{< note title="Note" >}}
 
 Capturing changes in columns that use YugabyteDB domain types requires special consideration. When a column is defined to contain a domain type that extends one of the default database types and the domain type defines a custom length or scale, the generated schema inherits that defined length or scale.
 
-When a column is defined to contain a domain type that extends another domain type that defines a custom length or scale, the generated schema does not inherit the defined length or scale because that information is not available in the YugabyteDB driver’s column metadata.
+When a column is defined to contain a domain type that extends another domain type that defines a custom length or scale, the generated schema does not inherit the defined length or scale because that information is not available in the YugabyteDB driver's column metadata.
 
 {{< /note >}}
 
@@ -1277,6 +1299,7 @@ Setting up a YugabyteDB server to run a Debezium connector requires a database u
 Although, by default, superusers have the necessary `REPLICATION` and `LOGIN` roles, as mentioned in [Security](#security), it is best not to provide the Debezium replication user with elevated privileges. Instead, create a Debezium user that has the minimum required privileges.
 
 **Prerequisites:**
+
 * YugabyteDB administrative permissions.
 
 **Procedure:**
@@ -1298,6 +1321,7 @@ There are several options for determining how publications are created. In gener
 Debezium uses include list and exclude list properties to specify how data is inserted in the publication. For more information about the options for enabling Debezium to create publications, see `publication.autocreate.mode`.
 
 For Debezium to create a YugabyteDB publication, it must run as a user that has the following privileges:
+
 * Replication privileges in the database to add the table to a publication.
 * `CREATE` privileges on the database to add publications.
 * `SELECT` privileges on the tables to copy the initial table data. Table owners automatically have `SELECT` permission for the table.
@@ -1305,22 +1329,27 @@ For Debezium to create a YugabyteDB publication, it must run as a user that has 
 To add tables to a publication, the user must be an owner of the table. But because the source table already exists, you need a mechanism to share ownership with the original owner. To enable shared ownership, you create a YugabyteDB replication group, and then add the existing table owner and the replication user to the group.
 
 Procedure
+
 1. Create a replication group.
+
    ```sql
    CREATE ROLE <replication_group>;
    ```
 
 2. Add the original owner of the table to the group.
+
    ```sql
    GRANT REPLICATION_GROUP TO <original_owner>;
    ```
 
 3. Add the Debezium replication user to the group.
+
    ```sql
    GRANT REPLICATION_GROUP TO <replication_user>;
    ```
 
 4. Transfer ownership of the table to `<replication_group>`.
+
    ```sql
    ALTER TABLE <table_name> OWNER TO REPLICATION_GROUP;
    ```
@@ -1332,9 +1361,10 @@ For Debezium to specify the capture configuration, the value of `publication.aut
 To enable Debezium to replicate YugabyteDB data, you must configure the database to permit replication with the host that runs the YugabyteDB connector. To specify the clients that are permitted to replicate with the database, add entries to the YugabyteDB host-based authentication file, `ysql_hba.conf`. For more information about the pg_hba.conf file, see the [YugabyteDB documentation](../../secure/authentication/host-based-authentication#ysql_hbaconf-file)).
 
 Procedure
+
 * Add entries to the `ysql_hba.conf` file to specify the Debezium connector hosts that can replicate with the database host. For example,
 
-```
+```sh
 --ysql_hba_conf_csv="local replication <yourUser> trust, local replication <yourUser> 127.0.0.1/32 trust, host replication <yourUser> ::1/128 trust"
 ```
 
@@ -1346,9 +1376,9 @@ As mentioned in the beginning, YugabyteDB (for all versions > 2024.1.1) supports
 
 Debezium uses replication slots to stream changes from a database. These replication slots maintain the current position in form of a LSN. This helps YugabyteDB keep the WAL available until it is processed by Debezium. A single replication slot can exist only for a single consumer or process - as different consumer might have different state and may need data from different position.
 
-Since a replication slot can only be used by a single connector, it is essential to create a unique replication slot for each Debezium connector. Although when a connector is not active, YugabyteDB may allow other connector to consume the replication slot - which could be dangerous as it may lead to data loss as a slot will emit each change just once [[See More](#reminder)].
+Because a replication slot can only be used by a single connector, it is essential to create a unique replication slot for each Debezium connector. Although when a connector is not active, YugabyteDB may allow other connector to consume the replication slot - which could be dangerous as it may lead to data loss as a slot will emit each change just once [[See More](#reminder)].
 
-In addition to replication slot, Debezium uses publication to stream events when using the `pgoutput`or `yboutput` plugin. Similar to replication slot, publication is at database level and is defined for a set of tables. Thus, you’ll need a unique publication for each connector, unless the connectors work on same set of tables. For more information about the options for enabling Debezium to create publications, see `publication.autocreate.mode`.
+In addition to replication slot, Debezium uses publication to stream events when using the `pgoutput`or `yboutput` plugin. Similar to replication slot, publication is at database level and is defined for a set of tables. Thus, you'll need a unique publication for each connector, unless the connectors work on same set of tables. For more information about the options for enabling Debezium to create publications, see `publication.autocreate.mode`.
 
 See `slot.name` and `publication.name` on how to set a unique replication slot name and publication name for each connector.
 
@@ -1357,16 +1387,18 @@ See `slot.name` and `publication.name` on how to set a unique replication slot n
 To deploy a Debezium YugabyteDB connector, you install the Debezium YugabyteDB connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect.
 
 Prerequisites
+
 * [Zookeeper](https://zookeeper.apache.org/), [Kafka](http://kafka.apache.org/), and [Kafka Connect](https://kafka.apache.org/documentation.html#connect) are installed.
 * YugabyteDB is installed and is [set up to run the Debezium connector](#setting-up-yugabytedb).
 
 Procedure
+
 1. Download the [Debezium YugabyteDB connector plug-in archive](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2024.1.SNAPSHOT.1).
 2. Extract the files into your Kafka Connect environment.
-3. Add the directory with the JAR files to [Kafka Connect’s `plugin.path`](https://kafka.apache.org/documentation/#connectconfigs).
+3. Add the directory with the JAR files to [Kafka Connect's `plugin.path`](https://kafka.apache.org/documentation/#connectconfigs).
 4. Restart your Kafka Connect process to pick up the new JAR files.
 
-If you are working with immutable containers, see [Debezium’s Container images](#reminder) for Zookeeper, Kafka, YugabyteDB and Kafka Connect with the YugabyteDB connector already installed and ready to run. You can also [run Debezium on Kubernetes and OpenShift](https://debezium.io/documentation/reference/2.5/operations/openshift.html).
+If you are working with immutable containers, see [Debezium's Container images](#reminder) for Zookeeper, Kafka, YugabyteDB, and Kafka Connect with the YugabyteDB connector already installed and ready to run. You can also [run Debezium on Kubernetes and OpenShift](https://debezium.io/documentation/reference/2.5/operations/openshift.html).
 
 ### Creating Kafka topics
 
@@ -1399,7 +1431,7 @@ You can choose to produce events for a subset of the schemas and tables in a dat
 
 1. The name of the connector when registered with a Kafka Connect service.
 2. The name of this YugabyteDB connector class.
-3. The addresses of the YugabyteDB tserver nodes. This can take a value of multiple addresses in the format `IP1:PORT1,IP2:PORT2,IP3:PORT3`.
+3. The addresses of the YugabyteDB YB-TServer nodes. This can take a value of multiple addresses in the format `IP1:PORT1,IP2:PORT2,IP3:PORT3`.
 4. The port number of the YugabyteDB server.
 5. The name of the YugabyteDB user that has the [required privileges](#setting-up-yugabytedb).
 6. The password for the YugabyteDB user that has the [required privileges](#setting-up-yugabytedb).
@@ -1410,6 +1442,7 @@ You can choose to produce events for a subset of the schemas and tables in a dat
 See the [complete list of YugabyteDB connector properties](#connector-properties) that can be specified in these configurations.
 
 You can send this configuration with a `POST` command to a running Kafka Connect service. The service records the configuration and starts one connector task that performs the following actions:
+
 * Connects to the YugabyteDB database.
 * Reads the transaction log.
 * Streams change event records to Kafka topics.
@@ -1419,10 +1452,12 @@ You can send this configuration with a `POST` command to a running Kafka Connect
 To run a Debezium YugabyteDB connector, create a connector configuration and add the configuration to your Kafka Connect cluster.
 
 Prerequisites
+
 * [YugabyteDB is configured to support logical replication.](#setting-up-yugabytedb)
 * The YugabyteDB connector is installed.
 
 Procedure
+
 1. Create a configuration for the YugabyteDB connector.
 2. Use the [Kafka Connect REST API](https://kafka.apache.org/documentation/#connect_rest) to add that connector configuration to your Kafka Connect cluster.
 
@@ -1433,6 +1468,7 @@ After the connector starts, it [performs a consistent snapshot](#reminder) of th
 ### Connector properties
 
 The Debezium YugabyteDB connector has many configuration properties that you can use to achieve the right connector behavior for your application. Many properties have default values. Information about the properties is organized as follows:
+
 * [Required configuration properties](#required-configuration-properties)
 * [Advanced configuration properties](#advanced-configuration-properties)
 * [Pass-through configuration properties](#pass-through-configuration-properties)
@@ -1455,15 +1491,15 @@ The following configuration properties are *required* unless a default value is 
 | database.user | No default | Name of the YugabyteDB database user for connecting to the YugabyteDB database server. |
 | database.password | No default | Password to use when connecting to the YugabyteDB database server. |
 | database.dbname | No default | The name of the YugabyteDB database from which to stream the changes. |
-| topic.prefix | No default | Topic prefix that provides a namespace for the particular YugabyteDB database server or cluster in which Debezium is capturing changes. The prefix should be unique across all other connectors, since it is used as a topic name prefix for all Kafka topics that receive records from this connector. Only alphanumeric characters, hyphens, dots and underscores must be used in the database server logical name. {{< warning title="Warning" >}} Do not change the value of this property. If you change the name value, after a restart, instead of continuing to emit events to the original topics, the connector emits subsequent events to topics whose names are based on the new value. {{< /warning >}} |
+| topic.prefix | No default | Topic prefix that provides a namespace for the particular YugabyteDB database server or cluster in which Debezium is capturing changes. The prefix should be unique across all other connectors, as it is used as a topic name prefix for all Kafka topics that receive records from this connector. Only alphanumeric characters, hyphens, dots, and underscores must be used in the database server logical name. {{< warning title="Warning" >}} Do not change the value of this property. If you change the name value, after a restart, instead of continuing to emit events to the original topics, the connector emits subsequent events to topics whose names are based on the new value. {{< /warning >}} |
 | schema.include.list | No default | An optional, comma-separated list of regular expressions that match names of schemas for which you **want** to capture changes. Any schema name not included in `schema.include.list` is excluded from having its changes captured. By default, all non-system schemas have their changes captured.<br/>To match the name of a schema, Debezium applies the regular expression that you specify as an *anchored* regular expression. That is, the specified expression is matched against the entire identifier for the schema; it does not match substrings that might be present in a schema name.<br/>If you include this property in the configuration, do not also set the `schema.exclude.list` property. |
 | schema.exclude.list | No default | An optional, comma-separated list of regular expressions that match names of schemas for which you **do not** want to capture changes. Any schema whose name is not included in `schema.exclude.list` has its changes captured, with the exception of system schemas.<br/>To match the name of a schema, Debezium applies the regular expression that you specify as an *anchored* regular expression. That is, the specified expression is matched against the entire identifier for the schema; it does not match substrings that might be present in a schema name.<br/>If you include this property in the configuration, do not set the `schema.include.list` property. |
 | table.include.list | No default | An optional, comma-separated list of regular expressions that match fully-qualified table identifiers for tables whose changes you want to capture. When this property is set, the connector captures changes only from the specified tables. Each identifier is of the form *schemaName.tableName*. By default, the connector captures changes in every non-system table in each schema whose changes are being captured.<br/>To match the name of a table, Debezium applies the regular expression that you specify as an anchored regular expression. That is, the specified expression is matched against the entire identifier for the table; it does not match substrings that might be present in a table name.<br/>If you include this property in the configuration, do not also set the `table.exclude.list` property. |
 | table.exclude.list | No default | An optional, comma-separated list of regular expressions that match fully-qualified table identifiers for tables whose changes you do not want to capture. Each identifier is of the form *schemaName.tableName*. When this property is set, the connector captures changes from every table that you do not specify.<br/>To match the name of a table, Debezium applies the regular expression that you specify as an *anchored* regular expression. That is, the specified expression is matched against the entire identifier for the table; it does not match substrings that might be present in a table name.<br/>If you include this property in the configuration, do not set the `table.include.list` property. |
 | column.include.list | No default | An optional, comma-separated list of regular expressions that match the fully-qualified names of columns that should be included in change event record values. Fully-qualified names for columns are of the form *schemaName.tableName.columnName*.<br/>To match the name of a column, Debezium applies the regular expression that you specify as an *anchored* regular expression. That is, the expression is used to match the entire name string of the column; it does not match substrings that might be present in a column name.<br/>If you include this property in the configuration, do not also set the `column.exclude.list` property. |
-| column.exclude.list | No default | An optional, comma-separated list of regular expressions that match the fully-qualified names of columns that should be excluded from change event record values. Fully-qualified names for columns are of the form *schemaName.tableName.columnName*.<br/>To match the name of a column, Debezium applies the regular expression that you specify as an *anchored* regular expression. That is, the expression is used to match the entire name string of the column; it does not match substrings that might be present in a column name.<br/>If you include this property in the configuration, do not set the `column.include.list` property.
+| column.exclude.list | No default | An optional, comma-separated list of regular expressions that match the fully-qualified names of columns that should be excluded from change event record values. Fully-qualified names for columns are of the form *schemaName.tableName.columnName*.<br/>To match the name of a column, Debezium applies the regular expression that you specify as an *anchored* regular expression. That is, the expression is used to match the entire name string of the column; it does not match substrings that might be present in a column name.<br/>If you include this property in the configuration, do not set the `column.include.list` property. |
 | skip.messages.without.change | false | Specifies whether to skip publishing messages when there is no change in included columns. This would essentially filter messages if there is no change in columns included as per `column.include.list` or `column.exclude.list` properties.<br/>Note: Only works when REPLICA IDENTITY of the table is set to FULL |
-| time.precision.mode | adaptive | Time, date, and timestamps can be represented with different kinds of precision:<br/><br/>`adaptive` captures the time and timestamp values exactly as in the database using either millisecond, microsecond, or nanosecond precision values based on the database column’s type.<br/><br/>`adaptive_time_microseconds` captures the date, datetime and timestamp values exactly as in the database using either millisecond, microsecond, or nanosecond precision values based on the database column’s type. An exception is `TIME` type fields, which are always captured as microseconds.<br/><br/>`connect` always represents time and timestamp values by using Kafka Connect’s built-in representations for `Time`, `Date`, and `Timestamp`, which use millisecond precision regardless of the database columns' precision. For more information, see [temporal values](#reminder). |
+| time.precision.mode | adaptive | Time, date, and timestamps can be represented with different kinds of precision:<br/><br/>`adaptive` captures the time and timestamp values exactly as in the database using either millisecond, microsecond, or nanosecond precision values based on the database column's type.<br/><br/>`adaptive_time_microseconds` captures the date, datetime and timestamp values exactly as in the database using either millisecond, microsecond, or nanosecond precision values based on the database column's type. An exception is `TIME` type fields, which are always captured as microseconds.<br/><br/>`connect` always represents time and timestamp values by using Kafka Connect built-in representations for `Time`, `Date`, and `Timestamp`, which use millisecond precision regardless of the database columns' precision. For more information, see [temporal values](#reminder). |
 | decimal.handling.mode | precise | Specifies how the connector should handle values for `DECIMAL` and `NUMERIC` columns:<br/><br/>`double` represents values by using double values, which might result in a loss of precision but which is easier to use.<br/><br/>`string` encodes values as formatted strings, which are easy to consume but semantic information about the real type is lost. For more information, see Decimal types. |
 | interval.handling.mode | numeric | Specifies how the connector should handle values for interval columns:<br/><br/>`numeric` represents intervals using approximate number of microseconds.<br/><br/>`string` represents intervals exactly by using the string pattern representation `P<years>Y<months>M<days>DT<hours>H<minutes>M<seconds>S`. For example: `P1Y2M3DT4H5M6.78S`. For more information, see [YugabyteDB basic types](#reminder). |
 | database.sslmode | prefer | Whether to use an encrypted connection to the YugabyteDB server. Options include:<br/><br/>`disable` uses an unencrypted connection.<br/><br/>`allow` attempts to use an unencrypted connection first and, failing that, a secure (encrypted) connection.<br/><br/>`prefer` attempts to use a secure (encrypted) connection first and, failing that, an unencrypted connection.<br/><br/>`require` uses a secure (encrypted) connection, and fails if one cannot be established.<br/><br/>`verify-ca` behaves like require but also verifies the server TLS certificate against the configured Certificate Authority (CA) certificates, or fails if no valid matching CA certificates are found.<br/><br/>`verify-full` behaves like verify-ca but also verifies that the server certificate matches the host to which the connector is trying to connect. For more information, see the [YugabyteDB documentation](https://www.postgresql.org/docs/current/static/libpq-connect.html). |
@@ -1476,9 +1512,9 @@ The following configuration properties are *required* unless a default value is 
 | column.truncate.to.length.chars | n/a | An optional, comma-separated list of regular expressions that match the fully-qualified names of character-based columns. Set this property if you want to truncate the data in a set of columns when it exceeds the number of characters specified by the length in the property name. Set `length` to a positive integer value, for example, `column.truncate.to.20.chars`.<br/><br/>The fully-qualified name of a column observes the following format: *<schemaName>.<tableName>.<columnName>*. To match the name of a column, Debezium applies the regular expression that you specify as an anchored regular expression. That is, the specified expression is matched against the entire name string of the column; the expression does not match substrings that might be present in a column name.<br/><br/>You can specify multiple properties with different lengths in a single configuration. |
 | column.mask.with.length.chars | n/a | An optional, comma-separated list of regular expressions that match the fully-qualified names of character-based columns. Set this property if you want the connector to mask the values for a set of columns, for example, if they contain sensitive data. Set `length` to a positive integer to replace data in the specified columns with the number of asterisk (`*`) characters specified by the length in the property name. Set length to `0` (zero) to replace data in the specified columns with an empty string.<br/><br/>The fully-qualified name of a column observes the following format: schemaName.tableName.columnName. To match the name of a column, Debezium applies the regular expression that you specify as an anchored regular expression. That is, the specified expression is matched against the entire name string of the column; the expression does not match substrings that might be present in a column name.<br/><br/>You can specify multiple properties with different lengths in a single configuration. |
 | column.mask.hash.hashAlgorithm.with.salt.*salt*;<br/>column.mask.hash.v2.hashAlgorithm.with.salt.*salt* | n/a | An optional, comma-separated list of regular expressions that match the fully-qualified names of character-based columns. Fully-qualified names for columns are of the form *<schemaName>.<tableName>.<columnName>*.<br/>To match the name of a column Debezium applies the regular expression that you specify as an anchored regular expression. That is, the specified expression is matched against the entire name string of the column; the expression does not match substrings that might be present in a column name. In the resulting change event record, the values for the specified columns are replaced with pseudonyms.<br/>A pseudonym consists of the hashed value that results from applying the specified hashAlgorithm and salt. Based on the hash function that is used, referential integrity is maintained, while column values are replaced with pseudonyms. Supported hash functions are described in the [MessageDigest](https://docs.oracle.com/javase/7/docs/technotes/guides/security/StandardNames.html#MessageDigest) section of the Java Cryptography Architecture Standard Algorithm Name Documentation.<br/><br/>In the following example, `CzQMA0cB5K` is a randomly selected salt.<br/><br/>```column.mask.hash.SHA-256.with.salt.CzQMA0cB5K = inventory.orders.customerName, inventory.shipment.customerName```<br/>If necessary, the pseudonym is automatically shortened to the length of the column. The connector configuration can include multiple properties that specify different hash algorithms and salts.<br/><br/>Depending on the `hashAlgorithm` used, the salt selected, and the actual data set, the resulting data set might not be completely masked.<br/><br/>Hashing strategy version 2 should be used to ensure fidelity if the value is being hashed in different places or systems. |
-| column.propagate.source.type | n/a | An optional, comma-separated list of regular expressions that match the fully-qualified names of columns for which you want the connector to emit extra parameters that represent column metadata. When this property is set, the connector adds the following fields to the schema of event records:<ul><li><span style="font-family: monospace;">__debezium.source.column.type</span></li><li><span style="font-family: monospace;">__debezium.source.column.length</span></li><li><span style="font-family: monospace;">__debezium.source.column.scale</span></li></ul>These parameters propagate a column’s original type name and length (for variable-width types), respectively.<br/>Enabling the connector to emit this extra data can assist in properly sizing specific numeric or character-based columns in sink databases.<br/>The fully-qualified name of a column observes one of the following formats: *databaseName.tableName.columnName*, or *databaseName.schemaName.tableName.columnName*.<br/>To match the name of a column, Debezium applies the regular expression that you specify as an *anchored* regular expression. That is, the specified expression is matched against the entire name string of the column; the expression does not match substrings that might be present in a column name. |
-| datatype.propagate.source.type | n/a | An optional, comma-separated list of regular expressions that specify the fully-qualified names of data types that are defined for columns in a database. When this property is set, for columns with matching data types, the connector emits event records that include the following extra fields in their schema:<ul><li><span style="font-family: monospace;">__debezium.source.column.type</span></li><li><span style="font-family: monospace;">__debezium.source.column.length</span></li><li><span style="font-family: monospace;">__debezium.source.column.scale</span></li></ul>These parameters propagate a column’s original type name and length (for variable-width types), respectively.<br/>Enabling the connector to emit this extra data can assist in properly sizing specific numeric or character-based columns in sink databases.<br/>The fully-qualified name of a column observes one of the following formats: *databaseName.tableName.typeName*, or *databaseName.schemaName.tableName.typeName*.<br/>To match the name of a data type, Debezium applies the regular expression that you specify as an *anchored* regular expression. That is, the specified expression is matched against the entire name string of the data type; the expression does not match substrings that might be present in a type name.<br/>For the list of YugabyteDB-specific data type names, see the [YugabyteDB data type mappings](#reminder). |
-| message.key.columns | *empty string* | A list of expressions that specify the columns that the connector uses to form custom message keys for change event records that it publishes to the Kafka topics for specified tables.<br/>By default, Debezium uses the primary key column of a table as the message key for records that it emits. In place of the default, or to specify a key for tables that lack a primary key, you can configure custom message keys based on one or more columns.<br/><br/>To establish a custom message key for a table, list the table, followed by the columns to use as the message key. Each list entry takes the following format:<br/><br/>*<fully-qualified_tableName>:<keyColumn>,<keyColumn>*<br/><br/>To base a table key on multiple column names, insert commas between the column names.<br/>Each fully-qualified table name is a regular expression in the following format:<br/><br/>*<schemaName>.<tableName>*<br/><br/>The property can include entries for multiple tables. Use a semicolon to separate table entries in the list.<br/><br/>The following example sets the message key for the tables `inventory.customers` and `purchase.orders`:<br/><br/>`inventory.customers:pk1,pk2;(.*).purchaseorders:pk3,pk4`<br/><br/>For the table `inventory.customer`, the columns `pk1` and `pk2` are specified as the message key. For the `purchaseorders` tables in any schema, the columns `pk3` and `pk4` server as the message key.<br/>There is no limit to the number of columns that you use to create custom message keys. However, it’s best to use the minimum number that are required to specify a unique key.<br/>Note that having this property set and `REPLICA IDENTITY` set to `DEFAULT` on the tables, will cause the tombstone events to not be created properly if the key columns are not part of the primary key of the table.<br/>Setting `REPLICA IDENTITY` to `FULL` is the only solution. |
+| column.propagate.source.type | n/a | An optional, comma-separated list of regular expressions that match the fully-qualified names of columns for which you want the connector to emit extra parameters that represent column metadata. When this property is set, the connector adds the following fields to the schema of event records:<ul><li><span style="font-family: monospace;">__debezium.source.column.type</span></li><li><span style="font-family: monospace;">__debezium.source.column.length</span></li><li><span style="font-family: monospace;">__debezium.source.column.scale</span></li></ul>These parameters propagate a column's original type name and length (for variable-width types), respectively.<br/>Enabling the connector to emit this extra data can assist in properly sizing specific numeric or character-based columns in sink databases.<br/>The fully-qualified name of a column observes one of the following formats: *databaseName.tableName.columnName*, or *databaseName.schemaName.tableName.columnName*.<br/>To match the name of a column, Debezium applies the regular expression that you specify as an *anchored* regular expression. That is, the specified expression is matched against the entire name string of the column; the expression does not match substrings that might be present in a column name. |
+| datatype.propagate.source.type | n/a | An optional, comma-separated list of regular expressions that specify the fully-qualified names of data types that are defined for columns in a database. When this property is set, for columns with matching data types, the connector emits event records that include the following extra fields in their schema:<ul><li><span style="font-family: monospace;">__debezium.source.column.type</span></li><li><span style="font-family: monospace;">__debezium.source.column.length</span></li><li><span style="font-family: monospace;">__debezium.source.column.scale</span></li></ul>These parameters propagate a column's original type name and length (for variable-width types), respectively.<br/>Enabling the connector to emit this extra data can assist in properly sizing specific numeric or character-based columns in sink databases.<br/>The fully-qualified name of a column observes one of the following formats: *databaseName.tableName.typeName*, or *databaseName.schemaName.tableName.typeName*.<br/>To match the name of a data type, Debezium applies the regular expression that you specify as an *anchored* regular expression. That is, the specified expression is matched against the entire name string of the data type; the expression does not match substrings that might be present in a type name.<br/>For the list of YugabyteDB-specific data type names, see the [YugabyteDB data type mappings](#reminder). |
+| message.key.columns | *empty string* | A list of expressions that specify the columns that the connector uses to form custom message keys for change event records that it publishes to the Kafka topics for specified tables.<br/>By default, Debezium uses the primary key column of a table as the message key for records that it emits. In place of the default, or to specify a key for tables that lack a primary key, you can configure custom message keys based on one or more columns.<br/><br/>To establish a custom message key for a table, list the table, followed by the columns to use as the message key. Each list entry takes the following format:<br/><br/>*<fully-qualified_tableName>:<keyColumn>,<keyColumn>*<br/><br/>To base a table key on multiple column names, insert commas between the column names.<br/>Each fully-qualified table name is a regular expression in the following format:<br/><br/>*<schemaName>.<tableName>*<br/><br/>The property can include entries for multiple tables. Use a semicolon to separate table entries in the list.<br/><br/>The following example sets the message key for the tables `inventory.customers` and `purchase.orders`:<br/><br/>`inventory.customers:pk1,pk2;(.*).purchaseorders:pk3,pk4`<br/><br/>For the table `inventory.customer`, the columns `pk1` and `pk2` are specified as the message key. For the `purchaseorders` tables in any schema, the columns `pk3` and `pk4` server as the message key.<br/>There is no limit to the number of columns that you use to create custom message keys. However, it's best to use the minimum number that are required to specify a unique key.<br/>Note that having this property set and `REPLICA IDENTITY` set to `DEFAULT` on the tables, will cause the tombstone events to not be created properly if the key columns are not part of the primary key of the table.<br/>Setting `REPLICA IDENTITY` to `FULL` is the only solution. |
 | publication.autocreate.mode | `all_tables` | Applies only when streaming changes by using the [pgoutput plug-in](https://www.postgresql.org/docs/current/sql-createpublication.html). The setting determines how creation of a [publication](https://www.postgresql.org/docs/current/logical-replication-publication.html) should work. Specify one of the following values:<br/><br/>`all_tables` - If a publication exists, the connector uses it. If a publication does not exist, the connector creates a publication for all tables in the database for which the connector is capturing changes. For the connector to create a publication it must access the database through a database user account that has permission to create publications and perform replications. You grant the required permission by using the following SQL command `CREATE PUBLICATION <publication_name> FOR ALL TABLES;`.<br/><br/>`disabled` - The connector does not attempt to create a publication. A database administrator or the user configured to perform replications must have created the publication before running the connector. If the connector cannot find the publication, the connector throws an exception and stops.<br/><br/>`filtered` - If a publication exists, the connector uses it. If no publication exists, the connector creates a new publication for tables that match the current filter configuration as specified by the `schema.include.list`, `schema.exclude.list`, and `table.include.list`, and `table.exclude.list` connector configuration properties. For example: `CREATE PUBLICATION <publication_name> FOR TABLE <tbl1, tbl2, tbl3>`. If the publication exists, the connector updates the publication for tables that match the current filter configuration. For example: `ALTER PUBLICATION <publication_name> SET TABLE <tbl1, tbl2, tbl3>`. |
 | replica.identity.autoset.values | *empty string* | The setting determines the value for [replica identity](#reminder) at table level.<br/><br/>This option will overwrite the existing value in database. A comma-separated list of regular expressions that match fully-qualified tables and replica identity value to be used in the table.<br/><br/>Each expression must match the pattern `<fully-qualified table name>:<replica identity>`, where the table name could be defined as (`SCHEMA_NAME.TABLE_NAME`), and the replica identity values are:<br/><br/>`DEFAULT` - Records the old values of the columns of the primary key, if any. This is the default for non-system tables.<br/><br/>`FULL` - Records the old values of all columns in the row.<br/><br/>`NOTHING` - Records no information about the old row. This is the default for system tables.<br/><br/>For example,<br/><br/>```schema1.*:FULL,schema2.table2:NOTHING,schema2.table3:DEFAULT```<br/><br/> {{< warning title="Warning" >}} Tables in YugabyteDB will always have the replica identity present at the time of replication slot creation, it cannot be altered at runtime. If it needs to be altered, it will only be reflected on a new slot created after altering the replica identity. {{< /warning >}} |
 | binary.handling.mode | bytes | Specifies how binary (`bytea`) columns should be represented in change events:<br/><br/>`bytes` represents binary data as byte array.<br/><br/>`base64` represents binary data as base64-encoded strings.<br/><br/>`base64-url-safe` represents binary data as base64-url-safe-encoded strings.<br/><br/>`hex` represents binary data as hex-encoded (base16) strings. |
@@ -1488,13 +1524,13 @@ The following configuration properties are *required* unless a default value is 
 
 #### Advanced configuration properties
 
-The following advanced configuration properties have defaults that work in most situations and therefore rarely need to be specified in the connector’s configuration.
+The following advanced configuration properties have defaults that work in most situations and therefore rarely need to be specified in the connector's configuration.
 
 | Property | Default value | Description |
 | :------- | :------------ | :---------- |
 | converters | No default | Enumerates a comma-separated list of the symbolic names of the custom converter instances that the connector can use. For example,<br/><br/>```isbn```<br/><br/>You must set the converters property to enable the connector to use a custom converter.<br/>For each converter that you configure for a connector, you must also add a .type property, which specifies the fully-qualified name of the class that implements the converter interface. The `.type` property uses the following format:<br/>`<converterSymbolicName>.type`<br/>For example,<br/><br/>```isbn.type: io.debezium.test.IsbnConverter```<br/><br/>If you want to further control the behavior of a configured converter, you can add one or more configuration parameters to pass values to the converter. To associate any additional configuration parameter with a converter, prefix the parameter names with the symbolic name of the converter.<br/>For example,<br/><br/>```isbn.schema.name: io.debezium.YugabyteDB.type.Isbn``` |
 | snapshot.mode | `initial` | Specifies the criteria for performing a snapshot when the connector starts:<br/><br/>`initial` - The connector performs a snapshot only when no offsets have been recorded for the logical server name.<br/><br/>`never` - The connector never performs snapshots. When a connector is configured this way, its behavior when it starts is as follows. If there is a previously stored LSN in the Kafka offsets topic, the connector continues streaming changes from that position. If no LSN has been stored, the connector starts streaming changes from the point in time when the YugabyteDB logical replication slot was created on the server. The never snapshot mode is useful only when you know all data of interest is still reflected in the WAL.<br/><br/>`initial_only` - The connector performs an initial snapshot and then stops, without processing any subsequent changes. |
-| snapshot.include.collection.list | All tables included in `table.include.list` | An optional, comma-separated list of regular expressions that match the fully-qualified names (`<schemaName>.<tableName>`) of the tables to include in a snapshot. The specified items must be named in the connector’s `table.include.list` property. This property takes effect only if the connector’s `snapshot.mode` property is set to a value other than `never`.<br/>This property does not affect the behavior of incremental snapshots.<br/>To match the name of a table, Debezium applies the regular expression that you specify as an *anchored* regular expression. That is, the specified expression is matched against the entire name string of the table; it does not match substrings that might be present in a table name. |
+| snapshot.include.collection.list | All tables included in `table.include.list` | An optional, comma-separated list of regular expressions that match the fully-qualified names (`<schemaName>.<tableName>`) of the tables to include in a snapshot. The specified items must be named in the connector's `table.include.list` property. This property takes effect only if the connector's `snapshot.mode` property is set to a value other than `never`.<br/>This property does not affect the behavior of incremental snapshots.<br/>To match the name of a table, Debezium applies the regular expression that you specify as an *anchored* regular expression. That is, the specified expression is matched against the entire name string of the table; it does not match substrings that might be present in a table name. |
 | event.processing.failure.handling.mode | fail | Specifies how the connector should react to exceptions during processing of events:<br/><br/>`fail` propagates the exception, indicates the offset of the problematic event, and causes the connector to stop.<br/><br/>`warn` logs the offset of the problematic event, skips that event, and continues processing.<br/><br/>`skip` skips the problematic event and continues processing. |
 | max.batch.size | 2048 | Positive integer value that specifies the maximum size of each batch of events that the connector processes. |
 | max.queue.size | 8192 | Positive integer value that specifies the maximum number of records that the blocking queue can hold. When Debezium reads events streamed from the database, it places the events in the blocking queue before it writes them to Kafka. The blocking queue can provide backpressure for reading change events from the database in cases where the connector ingests messages faster than it can write them to Kafka, or when Kafka becomes unavailable. Events that are held in the queue are disregarded when the connector periodically records offsets. Always set the value of `max.queue.size` to be larger than the value of `max.batch.size`. |
@@ -1503,7 +1539,7 @@ The following advanced configuration properties have defaults that work in most 
 | include.unknown.datatypes | false | Specifies connector behavior when the connector encounters a field whose data type is unknown. The default behavior is that the connector omits the field from the change event and logs a warning.<br/><br/>Set this property to `true` if you want the change event to contain an opaque binary representation of the field. This lets consumers decode the field. You can control the exact representation by setting the [binary handling mode](#reminder) property.{{< note title="Note" >}} Consumers risk backward compatibility issues when `include.unknown.datatypes` is set to `true`. Not only may the database-specific binary representation change between releases, but if the data type is eventually supported by Debezium, the data type will be sent downstream in a logical type, which would require adjustments by consumers. In general, when encountering unsupported data types, create a feature request so that support can be added. {{< /note >}} |
 | database.initial.statements | No default | A semicolon separated list of SQL statements that the connector executes when it establishes a JDBC connection to the database. To use a semicolon as a character and not as a delimiter, specify two consecutive semicolons, `;;`.<br/><br/>The connector may establish JDBC connections at its own discretion. Consequently, this property is useful for configuration of session parameters only, and not for executing DML statements.<br/><br/>The connector does not execute these statements when it creates a connection for reading the transaction log. |
 | status.update.interval.ms | 10000 | Frequency for sending replication connection status updates to the server, given in milliseconds. The property also controls how frequently the database status is checked to detect a dead connection in case the database was shut down. |
-| schema.refresh.mode | columns_diff | Specify the conditions that trigger a refresh of the in-memory schema for a table.<br/><br/>`columns_diff` is the safest mode. It ensures that the in-memory schema stays in sync with the database table’s schema at all times.<br/><br/>`columns_diff_exclude_unchanged_toast` instructs the connector to refresh the in-memory schema cache if there is a discrepancy with the schema derived from the incoming message, unless unchanged TOASTable data fully accounts for the discrepancy.<br/><br/>This setting can significantly improve connector performance if there are frequently-updated tables that have TOASTed data that are rarely part of updates. However, it is possible for the in-memory schema to become outdated if TOASTable columns are dropped from the table. |
+| schema.refresh.mode | columns_diff | Specify the conditions that trigger a refresh of the in-memory schema for a table.<br/><br/>`columns_diff` is the safest mode. It ensures that the in-memory schema stays in sync with the database table's schema at all times.<br/><br/>`columns_diff_exclude_unchanged_toast` instructs the connector to refresh the in-memory schema cache if there is a discrepancy with the schema derived from the incoming message, unless unchanged TOASTable data fully accounts for the discrepancy.<br/><br/>This setting can significantly improve connector performance if there are frequently-updated tables that have TOASTed data that are rarely part of updates. However, it is possible for the in-memory schema to become outdated if TOASTable columns are dropped from the table. |
 | snapshot.delay.ms | No default | An interval in milliseconds that the connector should wait before performing a snapshot when the connector starts. If you are starting multiple connectors in a cluster, this property is useful for avoiding snapshot interruptions, which might cause re-balancing of connectors. |
 | snapshot.fetch.size | 10240 | During a snapshot, the connector reads table content in batches of rows. This property specifies the maximum number of rows in a batch. |
 | slot.stream.params | No default | Semicolon separated list of parameters to pass to the configured logical decoding plug-in. |
@@ -1511,7 +1547,7 @@ The following advanced configuration properties have defaults that work in most 
 | slot.retry.delay.ms | 10000 (10 seconds) | The number of milliseconds to wait between retry attempts when the connector fails to connect to a replication slot. |
 | unavailable.value.placeholder | __debezium_unavailable_value | Specifies the constant that the connector provides to indicate that the original value is a toasted value that is not provided by the database. If the setting of `unavailable.value.placeholder` starts with the `hex:` prefix it is expected that the rest of the string represents hexadecimally encoded octets. |
 | provide.transaction.metadata | false | Determines whether the connector generates events with transaction boundaries and enriches change event envelopes with transaction metadata. Specify true if you want the connector to do this. For more information, see [Transaction metadata](#transaction-metadata). |
-| flush.lsn.source | true | Determines whether the connector should commit the LSN of the processed records in the source YugabyteDB database so that the WAL logs can be deleted. Specify `false` if you don’t want the connector to do this. Please note that if set to `false` LSN will not be acknowledged by Debezium and as a result WAL logs will not be cleared which might result in disk space issues. User is expected to handle the acknowledgement of LSN outside Debezium. |
+| flush.lsn.source | true | Determines whether the connector should commit the LSN of the processed records in the source YugabyteDB database so that the WAL logs can be deleted. Specify `false` if you don't want the connector to do this. Please note that if set to `false` LSN will not be acknowledged by Debezium and as a result WAL logs will not be cleared which might result in disk space issues. User is expected to handle the acknowledgement of LSN outside Debezium. |
 | retriable.restart.connector.wait.ms | 10000 (10 seconds) | The number of milliseconds to wait before restarting a connector after a retriable error occurs. |
 | skipped.operations | t | A comma-separated list of operation types that will be skipped during streaming. The operations include: `c` for inserts/create, `u` for updates, `d` for deletes, `t` for truncates, and `none` to not skip any operations. By default, truncate operations are skipped. |
 | xmin.fetch.interval.ms | 0 | How often, in milliseconds, the XMIN will be read from the replication slot. The XMIN value provides the lower bounds of where a new replication slot could start from. The default value of `0` disables tracking XMIN tracking. |
@@ -1545,7 +1581,7 @@ The **MBean** is `debezium.postgres:type=connector-metrics,context=snapshot,serv
 
 Snapshot metrics are not exposed unless a snapshot operation is active, or if a snapshot has occurred since the last connector start.
 
-The following table lists the shapshot metrics that are available.
+The following table lists the snapshot metrics that are available.
 
 | Attributes | Type | Description |
 | :--------- | :--- | :---------- |
@@ -1587,7 +1623,7 @@ The following table lists the streaming metrics that are available.
 | `QueueTotalCapacity` | int | The length the queue used to pass events between the streamer and the main Kafka Connect loop. |
 | `QueueRemainingCapacity` | int | The free capacity of the queue used to pass events between the streamer and the main Kafka Connect loop. |
 | `Connected` | boolean | Flag that denotes whether the connector is currently connected to the database server. |
-| `MilliSecondsBehindSource` | long | The number of milliseconds between the last change event’s timestamp and the connector processing it. The values will incoporate any differences between the clocks on the machines where the database server and the connector are running. |
+| `MilliSecondsBehindSource` | long | The number of milliseconds between the last change event's timestamp and the connector processing it. The values will incoporate any differences between the clocks on the machines where the database server and the connector are running. |
 | `NumberOfCommittedTransactions` | long | The number of processed transactions that were committed. |
 | `SourceEventPosition` | Map<String, String> | The coordinates of the last received event. |
 | `LastTransactionId` | string | Transaction identifier of the last processed transaction. |
@@ -1596,7 +1632,7 @@ The following table lists the streaming metrics that are available.
 
 ## Behavior when things go wrong
 
-Debezium is a distributed system that captures all changes in multiple upstream databases; it never misses or loses an event. When the system is operating normally or being managed carefully then Debezium provides *exactly once* delivery of every change event record. If a fault does happen then the system does not lose any events. However, while it is recovering from the fault, it’s possible that the connector might emit some duplicate change events. In these abnormal situations, Debezium, like Kafka, provides *at least once* delivery of change events.
+Debezium is a distributed system that captures all changes in multiple upstream databases; it never misses or loses an event. When the system is operating normally or being managed carefully then Debezium provides *exactly once* delivery of every change event record. If a fault does happen then the system does not lose any events. However, while it is recovering from the fault, it's possible that the connector might emit some duplicate change events. In these abnormal situations, Debezium, like Kafka, provides *at least once* delivery of change events.
 
 The rest of this section describes how Debezium handles various kinds of faults and problems.
 
@@ -1604,7 +1640,7 @@ The rest of this section describes how Debezium handles various kinds of faults 
 
 In the following situations, the connector fails when trying to start, reports an error/exception in the log, and stops running:
 
-* The connector’s configuration is invalid.
+* The connector's configuration is invalid.
 * The connector cannot successfully connect to YugabyteDB by using the specified connection parameters.
 * The connector is restarting from a previously-recorded LSN and YugabyteDB no longer has that history available.
 
@@ -1612,7 +1648,7 @@ In these cases, the error message has details about the problem and possibly a s
 
 ### tserver node becomes unavailable
 
-When the connector is running, the tserver that it is connected to could become unavailable for any number of reasons. If this happens, the connector fails with an error and retries to connect to the YugabyteDB server. Since the connector uses [YugabyteDB Java driver](#reminder), the connection is handled internally and the connector restores the connection to another running node.
+When the connector is running, the YB-TServer that it is connected to could become unavailable for any number of reasons. If this happens, the connector fails with an error and retries to connect to the YugabyteDB server. Because the connector uses [YugabyteDB Java driver](#reminder), the connection is handled internally and the connector restores the connection to another running node.
 
 The YugabyteDB connector externally stores the last processed offset in the form of a YugabyteDB LSN. After a connector restarts and connects to a server instance, the connector communicates with the server to continue streaming from that particular offset. This offset is available as long as the Debezium replication slot remains intact.
 
@@ -1624,13 +1660,13 @@ Never drop a replication slot on the server or you will lose data.
 
 ### Cluster failures
 
-When the connector is running, it is possible that the YugabyteDB server becomes unavailable for any number of reasons. If that happens, the connector fails with and error and initiates retries but since the complete YugabyteDB server is unavailable, all the retries will fail.
+When the connector is running, it is possible that the YugabyteDB server becomes unavailable for any number of reasons. If that happens, the connector fails with and error and initiates retries but as the complete YugabyteDB server is unavailable, all the retries will fail.
 
 When the YugabyteDB server is back up, restart the connector to continue streaming where it left off.
 
 ### Kafka Connect process stops gracefully
 
-Suppose that Kafka Connect is being run in distributed mode and a Kafka Connect process is stopped gracefully. Prior to shutting down that process, Kafka Connect migrates the process’s connector tasks to another Kafka Connect process in that group. The new connector tasks start processing exactly where the prior tasks stopped. There is a short delay in processing while the connector tasks are stopped gracefully and restarted on the new processes.
+Suppose that Kafka Connect is being run in distributed mode and a Kafka Connect process is stopped gracefully. Prior to shutting down that process, Kafka Connect migrates the process's connector tasks to another Kafka Connect process in that group. The new connector tasks start processing exactly where the prior tasks stopped. There is a short delay in processing while the connector tasks are stopped gracefully and restarted on the new processes.
 
 ### Kafka Connect process crashes
 
@@ -1638,7 +1674,7 @@ If the Kafka Connector process stops unexpectedly, any connector tasks it was ru
 
 Because there is a chance that some events might be duplicated during a recovery from failure, consumers should always anticipate some duplicate events. Debezium changes are idempotent, so a sequence of events always results in the same state.
 
-In each change event record, Debezium connectors insert source-specific information about the origin of the event, including the YugabyteDB server’s time of the event, the ID of the server transaction, and the position in the write-ahead log where the transaction changes were written. Consumers can keep track of this information, especially the LSN, to determine whether an event is a duplicate.
+In each change event record, Debezium connectors insert source-specific information about the origin of the event, including the YugabyteDB server's time of the event, the ID of the server transaction, and the position in the write-ahead log where the transaction changes were written. Consumers can keep track of this information, especially the LSN, to determine whether an event is a duplicate.
 
 ### Kafka becomes unavailable
 
@@ -1649,4 +1685,3 @@ As the connector generates change events, the Kafka Connect framework records th
 If the connector is gracefully stopped, the database can continue to be used. Any changes are recorded in the YugabyteDB WAL. When the connector restarts, it resumes streaming changes where it left off. That is, it generates change event records for all database changes that were made while the connector was stopped.
 
 A properly configured Kafka cluster is able to handle massive throughput. Kafka Connect is written according to Kafka best practices, and given enough resources a Kafka Connect connector can also handle very large numbers of database change events. Because of this, after being stopped for a while, when a Debezium connector restarts, it is very likely to catch up with the database changes that were made while it was stopped. How quickly this happens depends on the capabilities and performance of Kafka and the volume of changes being made to the data in YugabyteDB.
-
