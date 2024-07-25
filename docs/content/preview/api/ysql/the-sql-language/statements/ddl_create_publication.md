@@ -49,7 +49,7 @@ Publishing a subset of operations (create, update, delete, truncate) via a Publi
 yugabyte=# CREATE PUBLICATION mypublication FOR TABLE users, departments;
 ```
 
-In this example, the publication `mypublication` will consist of two tables, `users` and `departments`.
+In this example, the publication `mypublication` consists of two tables, `users` and `departments`.
 
 ```sql{.nocopy}
 yugabyte=# select * from pg_publication;
