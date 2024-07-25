@@ -24,7 +24,7 @@ Use the `DROP PUBLICATION` statement to remove a publication from a database.
 
 ## Semantics
 
-Drop a publication named *publication_name*. If `publication_name` doesn't already exists in the specified database, an error will be raised unless the `IF EXISTS` clause is used.
+Drop a publication named *publication_name*. If `publication_name` doesn't exist in the specified database, an error will be raised unless the `IF EXISTS` clause is used.
 
 ### RESTRICT / CASCADE
 
