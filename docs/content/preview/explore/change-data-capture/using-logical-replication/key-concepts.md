@@ -1,9 +1,9 @@
 ---
 title: Key concepts - logical replication
-headerTitle: Key concepts - logical replication
-linkTitle: Key concepts - logical replication
+headerTitle: Key concepts
+linkTitle: Key concepts
 description: Change Data Capture in YugabyteDB.
-headcontent: Change Data Capture using logical replication in YugabyteDB
+headcontent: PostgreSQL logical replication concepts
 menu:
   preview:
     parent: explore-change-data-capture-logical-replication
@@ -11,6 +11,10 @@ menu:
     weight: 10
 type: docs
 ---
+
+The YugabyteDB logical replication feature uses [PostgreSQL Logical Replication](https://www.postgresql.org/docs/11/logical-replication.html), which operates using a publish-subscribe model. Understanding the following key concepts will help you set up and manage a logical replication environment effectively.
+
+## Concepts
 
 ### Replication slot
 
@@ -107,3 +111,7 @@ YugabyteDB supports both the streaming replication protocols used in PostgreSQL 
 YugabyteDB does not support Physical Replication.
 
 {{< /note >}}
+
+## Learn more
+
+[CDC using Logical Replication architecture](../../../../architecture/docdb-replication/cdc-logical-replication/)
