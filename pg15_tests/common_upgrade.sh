@@ -35,7 +35,13 @@ run_and_pushd_pg11() {
 
 upgrade_masters() {
   for i in {1..3}; do
-    yb_ctl restart_node $i --master --master_flags="TEST_online_pg11_to_pg15_upgrade=true"
+    # Set master_join_existing_universe to true to mimic the configuration in YBA.
+    # This flag is used to prohibit sys catalog creation. Setting it to true here tests that the
+    # initdb RPC works with it on. With the flag set to false (the default), the system is more
+    # permissive, so there shouldn't be a significant loss of test coverage by covering the YBA
+    # case, and we avoid adding an entirely new test for this case.
+    yb_ctl restart_node $i --master \
+      --master_flags="TEST_online_pg11_to_pg15_upgrade=true,master_join_existing_universe=true"
   done
 }
 

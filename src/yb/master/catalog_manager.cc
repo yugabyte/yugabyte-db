@@ -1734,6 +1734,13 @@ Result<bool> CatalogManager::StartRunningInitDbIfNeeded(const LeaderEpoch& epoch
     return false;
   }
 
+  if (GetAtomicFlag(&FLAGS_master_join_existing_universe)) {
+    return STATUS(
+        IllegalState,
+        "Master is joining an existing universe but wants to run initdb. "
+        "This should have been done during initial universe creation.");
+  }
+
   LOG(INFO) << "initdb has never been run on this cluster, running it";
   // Empty db_name_to_oid_list for the clean install path
   RETURN_NOT_OK(StartInitDb({}, epoch));
@@ -1743,13 +1750,6 @@ Result<bool> CatalogManager::StartRunningInitDbIfNeeded(const LeaderEpoch& epoch
 Status CatalogManager::StartInitDb(
     const std::vector<std::pair<std::string, YBCPgOid>>& db_name_to_oid_list,
     const LeaderEpoch& epoch) {
-  if (GetAtomicFlag(&FLAGS_master_join_existing_universe)) {
-    return STATUS(
-        IllegalState,
-        "Master is joining an existing universe but wants to run initdb. "
-        "This should have been done during initial universe creation.");
-  }
-
   bool expected = false;
   if (!in_initdb_or_ysql_major_version_upgrade_rollback_.compare_exchange_strong(expected, true)) {
     return STATUS(IllegalState,

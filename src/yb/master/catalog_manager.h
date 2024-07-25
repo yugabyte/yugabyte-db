@@ -1737,6 +1737,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Starts global initdb. The db_name_to_oid_list vector is used to specify OIDs for any existing
   // YSQL databases/namespaces. If db_name_to_oid_list is empty, initdb will choose an OID.
+  //
+  // NOTE: Because this method is called in the YSQL major version upgrade path, it doesn't check
+  // that FLAGS_master_join_existing_universe is false. Callers are expected to make sure that
+  // running initdb is safe before calling this method.
   Status StartInitDb(const std::vector<std::pair<NamespaceName, YBCPgOid>>& db_name_to_oid_list,
                      const LeaderEpoch& epoch) REQUIRES_SHARED(mutex_);
 
