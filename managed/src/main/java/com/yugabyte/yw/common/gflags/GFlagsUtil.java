@@ -369,20 +369,12 @@ public class GFlagsUtil {
     return extra_gflags;
   }
 
-  private static SpecificGFlags.PerProcessFlags processGFlagGroups(
-      SpecificGFlags specificGFlags, String ybdbVersion) {
-    // check if any groups are set in specificGFlags
-    if (specificGFlags == null) {
+  private static List<GFlagGroup> extractGroups(
+      List<GroupName> requestedGroups, String ybdbVersion) {
+    if (ybdbVersion == null || requestedGroups == null || requestedGroups.isEmpty()) {
       return null;
     }
-    if (ybdbVersion == null) {
-      return null;
-    }
-    SpecificGFlags result = specificGFlags;
-    List<GroupName> requestedGroups = specificGFlags.getGflagGroups();
-    if (requestedGroups.isEmpty()) {
-      return null;
-    }
+    List<GFlagGroup> result = new ArrayList<>();
     if (Util.compareYBVersions(
             ybdbVersion, GFLAG_GROUPS_STABLE_VERSION, GFLAG_GROUPS_PREVIEW_VERSION, true)
         < 0) {
@@ -408,57 +400,15 @@ public class GFlagsUtil {
         if (!gFlagGroup.isPresent()) {
           throw new PlatformServiceException(BAD_REQUEST, "Unknown gflag group: " + requestedGroup);
         }
-        result = addGFlagGroup(result, gFlagGroup.get());
+        result.add(gFlagGroup.get());
       }
+      return result;
     } catch (IOException e) {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
           String.format(
               "Failed to fetch GFlag groups for YBDB version %s: %s", ybdbVersion, e.getMessage()));
     }
-
-    return result.getPerProcessFlags();
-  }
-
-  public static SpecificGFlags addGFlagGroup(SpecificGFlags specificGFlags, GFlagGroup gFlagGroup) {
-    SpecificGFlags result = specificGFlags;
-    LOG.info("Adding GFlagGroup {} to SpecificGFlags", gFlagGroup.groupName);
-    GFlagGroup.ServerTypeFlags flags = gFlagGroup.flags;
-    if (flags.masterGFlags != null && !flags.masterGFlags.isEmpty()) {
-      // NOTE: if the same flag is used by multiple groups (like ysql_pg_conf_csv) check
-      // if existing values are not overridden
-      Map<String, String> existingMasterGFlags =
-          result.getPerProcessFlags().value.get(ServerType.MASTER);
-      if (existingMasterGFlags == null) {
-        existingMasterGFlags = new HashMap<>();
-      }
-      existingMasterGFlags.putAll(flags.masterGFlags);
-      result.getPerProcessFlags().value.put(ServerType.MASTER, existingMasterGFlags);
-    }
-    if (flags.tserverGFlags != null && !flags.tserverGFlags.isEmpty()) {
-      Map<String, String> existingTserverGFlags =
-          result.getPerProcessFlags().value.get(ServerType.TSERVER);
-      String requestedGroupYsqlPgConfCsv = flags.tserverGFlags.remove(YSQL_PG_CONF_CSV);
-      if (existingTserverGFlags == null) {
-        existingTserverGFlags = new HashMap<>();
-      }
-      String existingTserverYsqlPgConfCsv = existingTserverGFlags.get(YSQL_PG_CONF_CSV);
-      existingTserverGFlags.putAll(flags.tserverGFlags);
-      if (existingTserverYsqlPgConfCsv != null && requestedGroupYsqlPgConfCsv != null) {
-        String ysqlPgConfCsv =
-            mergeCSVs(requestedGroupYsqlPgConfCsv, existingTserverYsqlPgConfCsv, true);
-        existingTserverGFlags.put(YSQL_PG_CONF_CSV, ysqlPgConfCsv);
-        flags.tserverGFlags.put(YSQL_PG_CONF_CSV, requestedGroupYsqlPgConfCsv);
-      } else {
-        if (requestedGroupYsqlPgConfCsv != null && !requestedGroupYsqlPgConfCsv.isEmpty()) {
-          existingTserverGFlags.put(YSQL_PG_CONF_CSV, requestedGroupYsqlPgConfCsv);
-          flags.tserverGFlags.put(YSQL_PG_CONF_CSV, requestedGroupYsqlPgConfCsv);
-        }
-      }
-      result.getPerProcessFlags().value.put(ServerType.TSERVER, existingTserverGFlags);
-    }
-    LOG.info("Added GFlag Group {} to SpecificGFlags", gFlagGroup.groupName);
-    return result;
   }
 
   /** Return the map of ybc flags which will be passed to the db nodes. */
@@ -1128,35 +1078,40 @@ public class GFlagsUtil {
   }
 
   public static void processGFlagGroups(
-      Map<String, String> userGFlags, UserIntent userIntent, String processType) {
+      Map<String, String> userGFlags,
+      UserIntent userIntent,
+      UniverseTaskBase.ServerType processType) {
     if (processType == null) {
       return;
     }
-    SpecificGFlags.PerProcessFlags gflagGroupsPerProcess =
-        processGFlagGroups(userIntent.specificGFlags, userIntent.ybSoftwareVersion);
-    if (gflagGroupsPerProcess == null) {
+    if (userIntent.specificGFlags == null) {
       return;
     }
-    if (processType.equals(UniverseTaskBase.ServerType.TSERVER.name())) {
-      Map<String, String> groupTserverGFlags = gflagGroupsPerProcess.value.get(ServerType.TSERVER);
-      if (groupTserverGFlags != null) {
-        String groupYsqlPgConfCsv = groupTserverGFlags.remove(YSQL_PG_CONF_CSV);
-        String userYsqlPgConfCsv = userGFlags.remove(YSQL_PG_CONF_CSV);
-        userGFlags.putAll(groupTserverGFlags);
-        if (userYsqlPgConfCsv != null && groupYsqlPgConfCsv != null) {
-          String ysqlPgConfCsv = mergeCSVs(groupYsqlPgConfCsv, userYsqlPgConfCsv, true);
-          userGFlags.put(YSQL_PG_CONF_CSV, ysqlPgConfCsv);
-        } else {
-          if (groupYsqlPgConfCsv != null && !groupYsqlPgConfCsv.isEmpty()) {
-            userGFlags.put(YSQL_PG_CONF_CSV, groupYsqlPgConfCsv);
-          }
-        }
+    List<GFlagGroup> gFlagGroups =
+        extractGroups(userIntent.specificGFlags.getGflagGroups(), userIntent.ybSoftwareVersion);
+    if (gFlagGroups == null) {
+      return;
+    }
+    for (GFlagGroup gFlagGroup : gFlagGroups) {
+      GFlagGroup.ServerTypeFlags flags = gFlagGroup.flags;
+      if (flags == null) {
+        continue;
       }
-    } else {
-      Map<String, String> groupMasterGFlags = gflagGroupsPerProcess.value.get(ServerType.MASTER);
-      if (groupMasterGFlags != null) {
-        userGFlags.putAll(groupMasterGFlags);
+      Map<String, String> groupGFlags =
+          processType == ServerType.MASTER ? flags.masterGFlags : flags.tserverGFlags;
+      if (groupGFlags == null) {
+        continue;
       }
+      groupGFlags.forEach(
+          (k, v) -> {
+            // If user gflags contains that flag we need to merge.
+            if (k.equals(YSQL_PG_CONF_CSV) && userGFlags.containsKey(k)) {
+              // Merging while taking precendence for group
+              userGFlags.put(k, mergeCSVs(v, userGFlags.get(k), true));
+            } else {
+              userGFlags.put(k, v);
+            }
+          });
     }
   }
 
@@ -1241,7 +1196,12 @@ public class GFlagsUtil {
         }
         return getGFlagsForAZ(azUuid, serverType, primary, allClusters);
       }
-      return userIntent.specificGFlags.getGFlags(azUuid, serverType);
+      Map<String, String> azGFlags = userIntent.specificGFlags.getGFlags(azUuid, serverType);
+      if (primary.userIntent.specificGFlags != null
+          && primary.userIntent.specificGFlags.getGflagGroups() != null) {
+        processGFlagGroups(azGFlags, primary.userIntent, serverType);
+      }
+      return azGFlags;
     } else {
       if (cluster.clusterType == UniverseDefinitionTaskParams.ClusterType.ASYNC) {
         return getGFlagsForAZ(azUuid, serverType, primary, allClusters);
@@ -1359,29 +1319,6 @@ public class GFlagsUtil {
     return writer.toString();
   }
 
-  public static String removeCSVs(String csv1, String csv2) {
-    StringWriter writer = new StringWriter();
-    try {
-      CSVFormat csvFormat = CSVFormat.DEFAULT.builder().setRecordSeparator("").build();
-      try (CSVPrinter csvPrinter = new CSVPrinter(writer, csvFormat)) {
-        Set<String> records = new LinkedHashSet<>();
-        CSVParser parser = new CSVParser(new StringReader(csv1), csvFormat);
-        for (CSVRecord record : parser) {
-          removeEntries(record, records);
-        }
-        parser = new CSVParser(new StringReader(csv2), csvFormat);
-        for (CSVRecord record : parser) {
-          removeEntries(record, records);
-        }
-        csvPrinter.printRecord(records);
-        csvPrinter.flush();
-      }
-    } catch (IOException ignored) {
-      // can't really happen
-    }
-    return writer.toString();
-  }
-
   private static void appendEntries(
       CSVRecord record, Set<String> result, Set<String> existingKeys, boolean mergeKeyValues) {
     record
@@ -1399,10 +1336,6 @@ public class GFlagsUtil {
               }
               result.add(entry);
             });
-  }
-
-  private static void removeEntries(CSVRecord record, Set<String> result) {
-    record.toList().forEach(result::remove);
   }
 
   private static Optional<String> getKey(String keyValue) {
@@ -1426,62 +1359,6 @@ public class GFlagsUtil {
       userGFlags.put(
           key, mergeCSVs(userValue, platformGFlags.getOrDefault(key, ""), mergeKeyValues));
     }
-  }
-
-  public static void checkCSVStrings(
-      String groupYsqlPgConfCsv, String newYsqlPgConfCsv, GroupName group) {
-    StringWriter writer = new StringWriter();
-    CSVFormat csvFormat = CSVFormat.DEFAULT.builder().setRecordSeparator("").build();
-
-    try (CSVPrinter csvPrinter = new CSVPrinter(writer, csvFormat)) {
-      Set<String> existingKeys = new HashSet<>();
-      Set<String> records = new LinkedHashSet<>();
-
-      Map<String, String> groupMap = parseCSVStringToMap(groupYsqlPgConfCsv, csvFormat);
-      Map<String, String> newMap = parseCSVStringToMap(newYsqlPgConfCsv, csvFormat);
-
-      // Compare groupMap with newMap
-      for (Map.Entry<String, String> entry : groupMap.entrySet()) {
-        String key = entry.getKey();
-        String value = entry.getValue();
-
-        if (!newMap.containsKey(key)) {
-          throw new PlatformServiceException(
-              BAD_REQUEST,
-              String.format("Key %s from group %s is not present in ysql_pg_conf_csv", key, group));
-        }
-
-        if (!newMap.get(key).equals(value)) {
-          throw new PlatformServiceException(
-              BAD_REQUEST,
-              String.format(
-                  "Value for key %s from group %s does not match in ysql_pg_conf_csv. Have %s found"
-                      + " %s. Disable the group to edit values.",
-                  key, group, value, newMap.get(key)));
-        }
-      }
-    } catch (IOException ignored) {
-      // can't really happen
-    }
-  }
-
-  private static Map<String, String> parseCSVStringToMap(String csv, CSVFormat csvFormat)
-      throws IOException {
-    Map<String, String> map = new HashMap<>();
-    CSVParser parser = new CSVParser(new StringReader(csv), csvFormat);
-
-    for (CSVRecord record : parser) {
-      for (String pair : record) {
-        String[] keyValue = pair.split("=");
-        if (keyValue.length == 2) {
-          map.put(keyValue[0], keyValue[1]);
-        } else {
-          throw new IllegalArgumentException("Invalid key-value pair: " + pair);
-        }
-      }
-    }
-
-    return map;
   }
 
   private static void mergeHostAndPort(

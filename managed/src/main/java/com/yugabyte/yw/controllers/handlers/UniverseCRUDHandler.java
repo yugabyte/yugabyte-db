@@ -1476,14 +1476,14 @@ public class UniverseCRUDHandler {
     readOnlyCluster.userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
     readOnlyCluster.validate(!cloudEnabled, isAuthEnforced, taskParams.nodeDetailsSet);
     if (readOnlyCluster.userIntent.specificGFlags != null) {
-      if (readOnlyCluster.userIntent.specificGFlags.isInheritFromPrimary()) {
-        SpecificGFlags primaryGFlags = primaryCluster.userIntent.specificGFlags;
-        if (primaryGFlags != null) {
+      SpecificGFlags primaryGFlags = primaryCluster.userIntent.specificGFlags;
+      if (primaryGFlags != null) {
+        if (readOnlyCluster.userIntent.specificGFlags.isInheritFromPrimary()) {
           readOnlyCluster.userIntent.specificGFlags.setPerProcessFlags(
               primaryGFlags.getPerProcessFlags());
           readOnlyCluster.userIntent.specificGFlags.setPerAZ(primaryGFlags.getPerAZ());
-          readOnlyCluster.userIntent.specificGFlags.setGflagGroups(primaryGFlags.getGflagGroups());
         }
+        readOnlyCluster.userIntent.specificGFlags.setGflagGroups(primaryGFlags.getGflagGroups());
       }
       List<Cluster> clusters = new ArrayList<>(universe.getUniverseDetails().clusters);
       clusters.add(readOnlyCluster);
