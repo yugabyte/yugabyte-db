@@ -72,11 +72,6 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
   private boolean verifySpecificGFlags(Universe universe) {
     // verify changes to groups here
     // if groups are added, cannot allow changes to those gflags
-    Cluster currentPrimaryCluster = universe.getUniverseDetails().getPrimaryCluster();
-    SpecificGFlags currentSpecificGFlags = new SpecificGFlags();
-    if (currentPrimaryCluster.userIntent.specificGFlags != null) {
-      currentSpecificGFlags = currentPrimaryCluster.userIntent.specificGFlags;
-    }
     Map<UUID, Cluster> newClusters =
         clusters.stream().collect(Collectors.toMap(c -> c.uuid, c -> c));
     boolean hasClustersToUpdate = false;
@@ -123,6 +118,16 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
                   "Cannot delete gFlags through non-restart upgrade option.");
             }
           }
+        }
+        // check if gflag groups have changed with NON Restart. Throw error if so
+        if (newCluster.userIntent.specificGFlags != null
+            && curCluster.userIntent.specificGFlags != null
+            && !Objects.equals(
+                newCluster.userIntent.specificGFlags.getGflagGroups(),
+                curCluster.userIntent.specificGFlags.getGflagGroups())) {
+          throw new PlatformServiceException(
+              Http.Status.BAD_REQUEST,
+              "Gflag groups cannot be changed through non-restart upgrade option.");
         }
       }
     }
