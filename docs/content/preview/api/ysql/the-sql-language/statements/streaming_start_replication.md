@@ -44,6 +44,10 @@ Optional value, in the form of a string constant, associated with the specified 
 
 ## Example
 
+Assume that you have already created a replication slot `test_slot` with output plugin `pgoutput` or `yboutput`.
+
+Start replication from the `test_slot` replication slot starting from LSN `0/2`. We also pass the `publication_names` parameter to the output plugin. `publication_names` is an output plugin parameter that is accepted by both `pgoutput` and `yboutput` to determine the tables to stream the data from.
+
 ```sql
 yugabyte=# START_REPLICATION test_slot LOGICAL 0/2 publication_names 'pub';
 ```

@@ -46,7 +46,7 @@ Create a Replication Slot with name *test_replication_slot* and use the `yboutpu
 yugabyte=# CREATE_REPLICATION_SLOT test_replication_slot LOGICAL yboutput;
 ```
 
-Create a Replication Slot with name test_replication_slot and use the pgoutput plugin.
+Create a Replication Slot with name test_replication_slot and use the `pgoutput` plugin.
 
 ```sql
 yugabyte=# CREATE_REPLICATION_SLOT test_replication_slot LOGICAL pgoutput;
