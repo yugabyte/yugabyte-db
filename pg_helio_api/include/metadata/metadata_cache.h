@@ -15,6 +15,7 @@
 
 extern PGDLLIMPORT char *ApiDataSchemaName;
 extern PGDLLIMPORT char *ApiAdminRole;
+extern PGDLLIMPORT char *ApiReadOnlyRole;
 extern PGDLLIMPORT char *ApiSchemaName;
 extern PGDLLIMPORT char *ApiInternalSchemaName;
 extern PGDLLIMPORT char *ExtensionObjectPrefix;

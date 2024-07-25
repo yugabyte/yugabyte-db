@@ -100,6 +100,7 @@ MemoryContext HelioApiMetadataCacheContext = NULL;
 
 PGDLLEXPORT char *ApiDataSchemaName = "helio_data";
 PGDLLEXPORT char *ApiAdminRole = "helio_admin_role";
+PGDLLEXPORT char *ApiReadOnlyRole = "helio_readonly_role";
 PGDLLEXPORT char *ApiSchemaName = "helio_api";
 PGDLLEXPORT char *ApiInternalSchemaName = "helio_api_internal";
 PGDLLEXPORT char *ExtensionObjectPrefix = "helio";
