@@ -40,6 +40,8 @@ Before installing YugabyteDB or YugabyteDB Anywhere, or upgrading the YugabyteDB
 | YB Controller | 18018 |
 | [Node agent](../../../yugabyte-platform/prepare/server-nodes-software/software-on-prem-manual/#install-node-agent) | 9070 |
 
+For more information on networking in YugabyteDB Anywhere, refer to [Networking](../../../yugabyte-platform/prepare/networking/).
+
 ## Admin web server
 
 Admin web server UI can be viewed at the following addresses:
@@ -59,7 +61,7 @@ For clusters started using [yugabyted](../yugabyted/), the YugabyteDB UI can be 
 
 The following common ports are required for firewall rules:
 
-| Service     | Port
+| Service     | Port |
 | ------- | ------------------------- |
 | SSH    | 22 |
 | HTTP for YugabyteDB Anywhere  | 80 |
@@ -101,7 +103,7 @@ Use the following targets to monitor YB-TServer and YB-Master server metrics:
 
 Use the following YB-TServer targets for the various API metrics:
 
-| API     | Target
+| API     | Target |
 | ------- | ------------------------- |
 | YSQL    | `<yb-tserver-address>:13000` |
 | YCQL    | `<yb-tserver-address>:12000` |
