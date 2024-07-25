@@ -191,6 +191,42 @@ For the most accurate migration assessment, the source database must be actively
     - [Live migration with fall-forward](../../migrate/live-fall-forward/)
     - [Live migration with fall-back](../../migrate/live-fall-back/)
 
+## Visualize the Migration Assessment report
+
+[yugabyted](/preview/reference/configuration/yugabyted/) UI allows users to visualize the Database migrations performed by YugabyteDB Voyager migrations. UI provides details of Migration complexity, SQL objects details from the source DB, YB sharding strategy, conversion issues if any and also allows user to track the percentage completion of data export from the Source DB and data import in to the YugabyteDB cluster.
+
+### Prerequisites
+
+1. Before you begin the Voyager migration, ensure that you have started a local YugabyteDB cluster using the steps described in [Use a local cluster](/preview/quick-start/) section.
+
+1. Voyager should be installed following the steps in the [prepare](../../install-yb-voyager/) section.
+
+### Send Voyager details to local YugabyteDB cluster 
+
+You should set the following ENV variables before beginning the migration
+
+```sh
+export CONTROL_PLANE_TYPE=yugabyted
+export YUGABYTED_DB_CONN_STRING=<ysql-connection-string-to-yugabyted-instance>
+```
+
+Example: postgresql://yugabyte:yugabyte@127.0.0.1:5433
+
+### Assess Migration
+
+Voyager Assess Migration conducts a detailed analysis of the source database by capturing essential metadata and metrics. Yugabyted UI allows you to go over the assessment report which includes recommendations of effective migration strategies, migration complexity and provides an overview on effort involved in Migrating from the Source DB.
+
+
+After following the steps in Generate a Migration Assessment Report, navigate to Migrations tab in yugabyted UI, available at [http://127.0.0.1:15433](http://127.0.0.1:15433) to list of the available migrations.
+
+#### Migrations
+![Migration Landing Page](/images/migrate/ybd-landing-page.png)
+
+#### Migration Assessment UI
+![Migration Assessment Page](/images/migrate/ybd-assessment-page.png)
+
+
+
 ## Learn more
 
 - [Assess migration CLI](../../reference/assess-migration/)
