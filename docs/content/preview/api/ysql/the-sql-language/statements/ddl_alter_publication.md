@@ -67,7 +67,7 @@ Add the `users` and `departments` tables to the publication `my_publication`:
 yugabyte=# ALTER PUBLICATION my_publication ADD TABLE users, departments;
 ```
 
-Drop tables `employees`from the publication `my_publication`.
+Drop the `employees` table from the publication `my_publication`:
 
 ```sql
 yugabyte=# ALTER PUBLICATION my_publication DROP TABLE employees;
