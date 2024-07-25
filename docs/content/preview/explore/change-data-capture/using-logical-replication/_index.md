@@ -22,7 +22,9 @@ YugabyteDB CDC captures changes made to data in the database and streams those c
 
 The YugabyteDB logical replication feature makes use of PostgreSQL concepts like replication slot, publication, replica identity, and so on. Understanding these key concepts is crucial for setting up and managing a logical replication environment effectively.
 
+{{<lead link="./key-concepts">}}
 To know more about the key concepts of YugabyteDB CDC with logical replication, see [Key concepts](./key-concepts)
+{{</lead>}}
 
 ## Guarantees
 
