@@ -65,7 +65,7 @@ yugabyte=# select * from pg_publication;
 yugabyte=# CREATE PUBLICATION puballtables FOR ALL TABLES;
 ```
 
-In this example, the publication `puballtables` will include all the current as well as future tables.
+In this example, the publication `puballtables` includes all the current as well as future tables.
 
 ```sql{.nocopy}
 yugabyte=# select * from pg_publication;
