@@ -28,7 +28,7 @@ The name of the replication slot.
 
 ## Examples
 
-- Drop a replication slot.
+Drop a replication slot.
 
 ```sql
 yugabyte=# DROP_REPLICATION_SLOT test_replication_slot;
