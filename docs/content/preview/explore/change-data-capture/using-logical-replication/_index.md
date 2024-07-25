@@ -55,7 +55,9 @@ CDC in YugabyteDB being based on the PostgreSQL Logical Replication model means:
 Get started with YugabyteDB logical replication.
 
 {{<lead link="./get-started">}}
+
 To learn how get started with the connector, see [Get started](./get-started).
+
 {{</lead>}}
 
 ## Monitoring
