@@ -6,7 +6,7 @@ description: Benchmark YugabyteDB's ability to withstand component failure.
 image: /images/section_icons/explore/high_performance.png
 headcontent: Benchmarking the ability to withstand component failure
 menu:
-  preview:
+  stable:
     identifier: resilience
     parent: benchmark
     weight: 21
