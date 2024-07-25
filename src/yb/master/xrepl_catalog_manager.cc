@@ -1938,10 +1938,12 @@ bool CatalogManager::IsTableEligibleForCDCSDKStream(
         has_pk = false;
         break;
       }
+    }
+
+    if (!has_pk) {
       return false;
     }
 
-  if (!has_pk) {
     // Allow adding user created indexes to CDC stream.
     if (FLAGS_TEST_cdcsdk_add_indexes_to_stream && IsUserIndexUnlocked(*table_info)) {
       return true;
