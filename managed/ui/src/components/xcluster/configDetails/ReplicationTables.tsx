@@ -289,7 +289,7 @@ export function ReplicationTables(props: ReplicationTablesProps) {
             Replication Status
           </TableHeaderColumn>
           <TableHeaderColumn
-            dataField="replicationlag"
+            dataField="replicationLag"
             dataFormat={(_, xClusterTable: XClusterReplicationTable) => {
               if (
                 tableReplicationLagQuery.isLoading ||
