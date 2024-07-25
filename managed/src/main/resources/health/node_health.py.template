@@ -221,9 +221,9 @@ YB_NODE_CONTROLLER_CHECK = MetricDefinition(
     "yb_node_controller_check",
     "YB-Controller server check")
 YB_NODE_CLOCK_DRIFT_CHECK = MetricDefinition(
-    "yb_node_clock_drift_check",
-    "Time Drift betwen nodes within limits"
-)
+    "yb_node_clock_drift_check_ms",
+    "Time Drift betwen nodes within limits",
+    "millisec")
 YB_DDL_ATOMICITY_CHECK = MetricDefinition(
     "yb_ddl_atomicity_check",
     "Status of DDL atomicity check"
@@ -1914,7 +1914,7 @@ def get_clock_drift_ms():
         out = check_output("chronyc tracking", env)
         match = re.search("System time.*: (.*) second", out, re.MULTILINE)
         if match:
-          return int(float(match.group(1))*1000) # Convert seconds to milliseconds
+          return float(match.group(1))*1000 # Convert seconds to milliseconds
     return "Error: Unknown time service"
 
 def chrony_exists():
@@ -2109,8 +2109,9 @@ def main():
             coordinator.add_check(checker, "check_file_descriptors")
         if n.check_clock:
             coordinator.add_check(checker, "check_clock_skew")
-        if n.check_time_drift:
-            coordinator.add_check(checker, "check_yb_node_clock_drift")
+
+    if n.check_time_drift:
+        coordinator.add_check(checker, "check_yb_node_clock_drift")
 
     if n.master_index >= 0:
         coordinator.add_check(checker, "check_uptime_for_process", MASTER)
