@@ -65,7 +65,7 @@ The test utilizes the int column type for YSQL and counter type for YCQL.
 
 ### Set
 
-This scenario uses a table with T with schema `(id int PRIMARY KEY, val int, grp int)`. Concurrently, values are inserted into this table while simultaneously reading the entire table. Once an insert operation succeeds, or when an element is first observed in a read operation (whichever occurs first), all subsequent reads are expected to include that inserted element.
+This test uses a table T with schema `(id int PRIMARY KEY, val int, grp int)`. Concurrently, values are inserted into this table while simultaneously reading the entire table. Once an insert operation succeeds, or when an element is first observed in a read operation (whichever occurs first), all subsequent reads are expected to include that inserted element.
 
 For YCQL, the table also includes a count column, and the workload permits duplicate inserts.
 
@@ -86,7 +86,7 @@ To read more about the long-fork test see [here](https://jepsen-io.github.io/jep
 
 ### Default value
 
-This scenario entails concurrent Data Definition Language (DDL) and Data Manipulation Language (DML)operations, simulating a migration scenario. Here, the user adds a `DEFAULT 0` column, ensuring that it is actually zero and not null when performing inserts and reads.
+This scenario entails concurrent Data Definition Language (DDL) and Data Manipulation Language (DML) operations, simulating a migration scenario. Here, the user adds a `DEFAULT 0` column, ensuring that it is actually zero and not null when performing inserts and reads.
 
 ![Load Phase Results](/images/benchmark/jepsen/jepsen-6-default-value.png)
 
@@ -111,7 +111,7 @@ In addition to a usual integer primary key, the table schema for this test uses 
 
 Unlike other tests, this one uses several identical tables rather than just one. More information about this test is available in the [CMU Quarantine Tech Talks: Black-box Isolation Checking with Elle](https://www.youtube.com/watch?v=OPJ_IcdSqig) (Kyle Kingsbury, Jepsen.io).
 
-These tests utilize geo-partitioning, different row level locking modes and all isolation types currently supported in YugabyteDB.
+These tests utilize different row level locking modes and all isolation types currently supported in YugabyteDB.
 
 ![Load Phase Results](/images/benchmark/jepsen/jepsen-8-append.png)
 
