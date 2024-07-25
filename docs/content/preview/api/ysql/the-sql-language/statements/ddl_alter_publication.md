@@ -73,7 +73,7 @@ Drop the `employees` table from the publication `my_publication`:
 yugabyte=# ALTER PUBLICATION my_publication DROP TABLE employees;
 ```
 
-Set the tables to only `departments` in the publication `my_publication`. The table `users` will be removed from the publication as a result of the command.
+Set the `departments` table to be the only table in the publication `my_publication`. The table `users` will be removed from the publication as a result of the command.
 
 ```sql
 yugabyte=# ALTER PUBLICATION my_publication SET TABLE departments;
