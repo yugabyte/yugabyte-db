@@ -33,6 +33,7 @@ The following steps are necessary to set up YugabyteDB for use with the Yugabyte
     In case CDC is lagging or away for some time, the disk usage may grow and cause YugabyteDB cluster instability. To avoid this scenario, if a stream is inactive for a configured amount of time, the WAL is garbage collected. This is configurable using a [YB-TServer flag](../../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags).
 
 ## Deploying the YugabyteDB gRPC Connector
+
 To stream data change events from YugabyteDB databases, follow these steps to deploy the YugabyteDB gRPC Connector:
 
 * Download the Connector: You can download the connector from the [GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases)
