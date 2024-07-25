@@ -39,7 +39,7 @@ To add a table to a publication, the invoking user must have ownership rights on
 
 ### Limitations
 
-Currently to publish a subset of operations (create, update, delete, truncate) via a Publication is not supported.
+Publishing a subset of operations (create, update, delete, truncate) via a Publication is not currently supported.
 
 ## Examples
 
