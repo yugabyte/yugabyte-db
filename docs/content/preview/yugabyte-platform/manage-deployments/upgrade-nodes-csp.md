@@ -49,6 +49,9 @@ If your universe uses a Linux version managed by YugabyteDB Anywhere, updated im
 
 If your universe uses a custom Linux version and you want to upgrade to a new custom version, you must first add the updated custom Linux version to the universe provider configuration. Refer to [Create cloud provider configuration](../../configure-yugabyte-platform/aws/).
 
+
+Before upgrading the universe, it is recommended to verify that the selected cloud provider image can successfully boot on a standalone virtual machine (VM) with the same instance type as the universe. Create a new VM with the same instance type as the universe and the selected cloud provider image for the boot disk and verify that the VM can boot succesfully.
+
 ## Upgrade Linux version
 
 To apply operating system patch or upgrade, do the following:
