@@ -72,6 +72,17 @@ private = true
 
   {{% /tab %}}
 
+    {{% tab header="Elixir" lang="elixir" %}}
+
+|            | Version | Support Level | Example apps |
+| :--------- | :------ | :------------ | :----------- |
+| **Drivers** | | | |
+| Postgrex Driver | [0.18.0](https://github.com/elixir-ecto/postgrex) | Full | [CRUD](/preview/tutorials/build-apps/elixir/cloud-ysql-elixir/) |
+| **ORMs** | | | |
+| Phoenix with Ecto | [1.7.14](https://www.phoenixframework.org) | Full | [CRUD](/preview/drivers-orms/elixir/phoenix/) |
+
+  {{% /tab %}}
+
   {{% tab header="C" lang="c" %}}
 
 | Driver        | Version | Support Level | Example apps |

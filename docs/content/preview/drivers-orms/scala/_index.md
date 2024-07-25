@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: scala-drivers
     parent: drivers-orms
-    weight: 600
+    weight: 610
 type: indexpage
 showRightNav: true
 ---
