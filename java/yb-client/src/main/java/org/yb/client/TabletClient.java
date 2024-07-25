@@ -496,7 +496,6 @@ public class TabletClient extends ReplayingDecoder<Void> {
   private Exception dispatchCDCErrorOrReturnException(YRpc rpc,
                                                      CdcService.CDCErrorPB error) {
     WireProtocol.AppStatusPB.ErrorCode code = error.getStatus().getCode();
-    LOG.info("Dispatching CDCErrorOrException for rpc {} with error code {}", rpc.toString(), error.getStatus());
     CDCErrorException ex = new CDCErrorException(uuid, error);
     if (error.getCode() == CdcService.CDCErrorPB.Code.TABLET_NOT_RUNNING ||
       error.getCode() == CdcService.CDCErrorPB.Code.LEADER_NOT_READY ||

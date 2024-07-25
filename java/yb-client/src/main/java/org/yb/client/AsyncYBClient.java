@@ -2405,23 +2405,6 @@ public class AsyncYBClient implements AutoCloseable {
       request.setPropagatedTimestamp(lastPropagatedTs);
     }
 
-    // todo: keep cluster alive if it fails
-    if (request.attempt > 5) {
-      if (tablet == null) {
-        LOG.info("Remote tablet is null for request {}", request.toString());
-      } else {
-        LOG.info("Request: {} for RemoteTablet: {}", request.toString(), tablet.getTabletIdAsString());
-
-        TabletClient tClient = clientFor(tablet);
-
-        if (tClient == null) {
-          LOG.info("Tablet client is null for remote tablet: {}", tablet.getTabletIdAsString());
-        } else {
-          LOG.info("Got a tablet client {} for remote tablet: {}", tClient.toString(), tablet.getTabletIdAsString());
-        }
-      }
-    }
-
     if (tablet != null) {
       TabletClient tabletClient = clientFor(tablet);
 
