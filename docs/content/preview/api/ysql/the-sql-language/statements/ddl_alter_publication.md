@@ -61,7 +61,7 @@ To create a publication `my_publication`, use the following command:
 yugabyte=# CREATE PUBLICATION my_publication FOR TABLE employees;
 ```
 
-Add tables `users` and `departments` to the publication `my_publication`.
+Add the `users` and `departments` tables to the publication `my_publication`:
 
 ```sql
 yugabyte=# ALTER PUBLICATION my_publication ADD TABLE users, departments;
