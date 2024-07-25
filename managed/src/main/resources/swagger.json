@@ -3894,7 +3894,7 @@
         },
         "tags" : {
           "items" : {
-            "enum" : [ "PUBLIC", "INTERNAL", "YBM", "BETA", "UIDriven", "FEATURE_FLAG" ],
+            "enum" : [ "PUBLIC", "INTERNAL", "BETA", "FEATURE_FLAG" ],
             "type" : "string"
           },
           "type" : "array"

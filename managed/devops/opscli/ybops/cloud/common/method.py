@@ -854,8 +854,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
             raise YBOpsRecoverableError("Could not connect({}) into node {}:{} using username {}"
                                         .format(host_port_user["connection_type"],
                                                 host_port_user["host"],
-                                                host_port_user["user"],
-                                                host_port_user["port"]))
+                                                host_port_user["port"],
+                                                host_port_user["user"]))
 
     def get_device_names(self, args, host_info=None):
         return self.cloud.get_device_names(args)
@@ -2183,5 +2183,5 @@ class ManageOtelCollector(AbstractInstancesMethod):
             raise YBOpsRecoverableError("Could not connect({}) into node {}:{} using username {}"
                                         .format(host_port_user["connection_type"],
                                                 host_port_user["host"],
-                                                host_port_user["user"],
-                                                host_port_user["port"]))
+                                                host_port_user["port"],
+                                                host_port_user["user"]))

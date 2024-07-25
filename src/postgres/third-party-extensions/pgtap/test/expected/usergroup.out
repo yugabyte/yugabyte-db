@@ -1,0 +1,92 @@
+\unset ECHO
+1..90
+ok 1 - has_user(current user) should pass
+ok 2 - has_user(current user) should have the proper description
+ok 3 - has_user(current user) should have the proper diagnostics
+ok 4 - has_user(current user, desc) should pass
+ok 5 - has_user(current user, desc) should have the proper description
+ok 6 - has_user(current user, desc) should have the proper diagnostics
+ok 7 - has_user(nonexistent user) should fail
+ok 8 - has_user(nonexistent user) should have the proper description
+ok 9 - has_user(nonexistent user) should have the proper diagnostics
+ok 10 - has_user(nonexistent user, desc) should fail
+ok 11 - has_user(nonexistent user, desc) should have the proper description
+ok 12 - has_user(nonexistent user, desc) should have the proper diagnostics
+ok 13 - hasnt_user(current user) should fail
+ok 14 - hasnt_user(current user) should have the proper description
+ok 15 - hasnt_user(current user) should have the proper diagnostics
+ok 16 - hasnt_user(current user, desc) should fail
+ok 17 - hasnt_user(current user, desc) should have the proper description
+ok 18 - hasnt_user(current user, desc) should have the proper diagnostics
+ok 19 - hasnt_user(nonexistent user) should pass
+ok 20 - hasnt_user(nonexistent user) should have the proper description
+ok 21 - hasnt_user(nonexistent user) should have the proper diagnostics
+ok 22 - hasnt_user(nonexistent user, desc) should pass
+ok 23 - hasnt_user(nonexistent user, desc) should have the proper description
+ok 24 - hasnt_user(nonexistent user, desc) should have the proper diagnostics
+ok 25 - is_superuser(nonexistent user, desc) should fail
+ok 26 - is_superuser(nonexistent user, desc) should have the proper description
+ok 27 - is_superuser(nonexistent user, desc) should have the proper diagnostics
+ok 28 - is_superuser(nonexistent user) should fail
+ok 29 - is_superuser(nonexistent user) should have the proper description
+ok 30 - is_superuser(nonexistent user) should have the proper diagnostics
+ok 31 - isnt_superuser(nonexistent user, desc) should fail
+ok 32 - isnt_superuser(nonexistent user, desc) should have the proper description
+ok 33 - isnt_superuser(nonexistent user, desc) should have the proper diagnostics
+ok 34 - isnt_superuser(nonexistent user) should fail
+ok 35 - isnt_superuser(nonexistent user) should have the proper description
+ok 36 - isnt_superuser(nonexistent user) should have the proper diagnostics
+ok 37 - is_superuser( current user ) should pass
+ok 38 - is_superuser( current user ) should have the proper description
+ok 39 - is_superuser( current user ) should have the proper diagnostics
+ok 40 - is_superuser( current user, desc ) should pass
+ok 41 - is_superuser( current user, desc ) should have the proper description
+ok 42 - is_superuser( current user, desc ) should have the proper diagnostics
+ok 43 - has_group(group) should pass
+ok 44 - has_group(group) should have the proper description
+ok 45 - has_group(group) should have the proper diagnostics
+ok 46 - has_group(group, desc) should pass
+ok 47 - has_group(group, desc) should have the proper description
+ok 48 - has_group(group, desc) should have the proper diagnostics
+ok 49 - has_group(nonexistent group) should fail
+ok 50 - has_group(nonexistent group) should have the proper description
+ok 51 - has_group(nonexistent group) should have the proper diagnostics
+ok 52 - has_group(nonexistent group, desc) should fail
+ok 53 - has_group(nonexistent group, desc) should have the proper description
+ok 54 - has_group(nonexistent group, desc) should have the proper diagnostics
+ok 55 - hasnt_group(group) should fail
+ok 56 - hasnt_group(group) should have the proper description
+ok 57 - hasnt_group(group) should have the proper diagnostics
+ok 58 - hasnt_group(group, desc) should fail
+ok 59 - hasnt_group(group, desc) should have the proper description
+ok 60 - hasnt_group(group, desc) should have the proper diagnostics
+ok 61 - hasnt_group(nonexistent group) should pass
+ok 62 - hasnt_group(nonexistent group) should have the proper description
+ok 63 - hasnt_group(nonexistent group) should have the proper diagnostics
+ok 64 - hasnt_group(nonexistent group, desc) should pass
+ok 65 - hasnt_group(nonexistent group, desc) should have the proper description
+ok 66 - hasnt_group(nonexistent group, desc) should have the proper diagnostics
+ok 67 - isnt_member_of(meanies, [current_user], desc) should pass
+ok 68 - isnt_member_of(meanies, [current_user], desc) should have the proper description
+ok 69 - isnt_member_of(meanies, [current_user], desc) should have the proper diagnostics
+ok 70 - isnt_member_of(meanies, [current_user]) should pass
+ok 71 - isnt_member_of(meanies, [current_user]) should have the proper description
+ok 72 - isnt_member_of(meanies, [current_user]) should have the proper diagnostics
+ok 73 - isnt_member_of(meanies, current_user, desc) should pass
+ok 74 - isnt_member_of(meanies, current_user, desc) should have the proper description
+ok 75 - isnt_member_of(meanies, current_user, desc) should have the proper diagnostics
+ok 76 - isnt_member_of(meanies, current_user) should pass
+ok 77 - isnt_member_of(meanies, current_user) should have the proper description
+ok 78 - isnt_member_of(meanies, current_user) should have the proper diagnostics
+ok 79 - is_member_of(meanies, [current_user], desc) should pass
+ok 80 - is_member_of(meanies, [current_user], desc) should have the proper description
+ok 81 - is_member_of(meanies, [current_user], desc) should have the proper diagnostics
+ok 82 - is_member_of(meanies, [current_user]) should pass
+ok 83 - is_member_of(meanies, [current_user]) should have the proper description
+ok 84 - is_member_of(meanies, [current_user]) should have the proper diagnostics
+ok 85 - is_member_of(meanies, current_user, desc) should pass
+ok 86 - is_member_of(meanies, current_user, desc) should have the proper description
+ok 87 - is_member_of(meanies, current_user, desc) should have the proper diagnostics
+ok 88 - is_member_of(meanies, current_user) should pass
+ok 89 - is_member_of(meanies, current_user) should have the proper description
+ok 90 - is_member_of(meanies, current_user) should have the proper diagnostics

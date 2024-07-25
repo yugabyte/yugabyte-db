@@ -103,13 +103,13 @@ static int nested_level = 0;
 static void YbAshInstallHooks(void);
 static int yb_ash_cb_max_entries(void);
 static void YbAshSetQueryId(uint64 query_id);
-static void YbAshResetQueryId(void);
+static void YbAshResetQueryId(uint64 query_id);
 static uint64 yb_ash_utility_query_id(const char *query, int query_len,
 									  int query_location);
 static void YbAshAcquireBufferLock(bool exclusive);
 static void YbAshReleaseBufferLock();
 static bool YbAshNestedQueryIdStackPush(uint64 query_id);
-static uint64 YbAshNestedQueryIdStackPop(void);
+static uint64 YbAshNestedQueryIdStackPop(uint64 query_id);
 
 static void yb_ash_ExecutorStart(QueryDesc *queryDesc, int eflags);
 static void yb_ash_ExecutorRun(QueryDesc *queryDesc,
@@ -238,7 +238,7 @@ YbAshNestedQueryIdStackPush(uint64 query_id)
  * Pop a query id from the stack
  */
 static uint64
-YbAshNestedQueryIdStackPop(void)
+YbAshNestedQueryIdStackPop(uint64 query_id)
 {
 	if (query_id_stack.num_query_ids_not_pushed > 0)
 	{
@@ -246,8 +246,15 @@ YbAshNestedQueryIdStackPop(void)
 		return 0;
 	}
 
-	Assert(query_id_stack.top_index >= 0);
-	return query_id_stack.query_ids[query_id_stack.top_index--];
+	/*
+	 * When an extra ExecutorEnd is called during PortalCleanup,
+	 * we shouldn't pop the incorrect query_id from the stack.
+	 */
+	if (query_id_stack.top_index >= 0 &&
+		query_id_stack.query_ids[query_id_stack.top_index] == query_id)
+		return query_id_stack.query_ids[query_id_stack.top_index--];
+
+	return 0;
 }
 
 /*
@@ -291,14 +298,16 @@ YbAshShmemInit(void)
 static void
 yb_ash_ExecutorStart(QueryDesc *queryDesc, int eflags)
 {
+	uint64 query_id;
+
 	if (yb_enable_ash)
 	{
 		/* Query id can be zero here only if pg_stat_statements is disabled */
-		uint64 query_id = queryDesc->plannedstmt->queryId != 0
-						  ? queryDesc->plannedstmt->queryId
-						  : yb_ash_utility_query_id(queryDesc->sourceText,
-					   								queryDesc->plannedstmt->stmt_len,
-													queryDesc->plannedstmt->stmt_location);
+		query_id = queryDesc->plannedstmt->queryId != 0
+				   ? queryDesc->plannedstmt->queryId
+				   : yb_ash_utility_query_id(queryDesc->sourceText,
+					   						 queryDesc->plannedstmt->stmt_len,
+											 queryDesc->plannedstmt->stmt_location);
 		YbAshSetQueryId(query_id);
 	}
 
@@ -312,7 +321,7 @@ yb_ash_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	PG_CATCH();
 	{
 		if (yb_enable_ash)
-			YbAshResetQueryId();
+			YbAshResetQueryId(query_id);
 
 		PG_RE_THROW();
 	}
@@ -337,7 +346,7 @@ yb_ash_ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, uint64 count,
 		--nested_level;
 
 		if (yb_enable_ash)
-			YbAshResetQueryId();
+			YbAshResetQueryId(queryDesc->plannedstmt->queryId);
 
 		PG_RE_THROW();
 	}
@@ -361,7 +370,7 @@ yb_ash_ExecutorFinish(QueryDesc *queryDesc)
 		--nested_level;
 
 		if (yb_enable_ash)
-			YbAshResetQueryId();
+			YbAshResetQueryId(queryDesc->plannedstmt->queryId);
 
 		PG_RE_THROW();
 	}
@@ -379,12 +388,12 @@ yb_ash_ExecutorEnd(QueryDesc *queryDesc)
 			standard_ExecutorEnd(queryDesc);
 
 		if (yb_enable_ash)
-			YbAshResetQueryId();
+			YbAshResetQueryId(queryDesc->plannedstmt->queryId);
 	}
 	PG_CATCH();
 	{
 		if (yb_enable_ash)
-			YbAshResetQueryId();
+			YbAshResetQueryId(queryDesc->plannedstmt->queryId);
 
 		PG_RE_THROW();
 	}
@@ -398,13 +407,15 @@ yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 					  QueryEnvironment *queryEnv, DestReceiver *dest,
 					  QueryCompletion *qc)
 {
+	uint64 query_id;
+
 	if (yb_enable_ash)
 	{
-		uint64 query_id = pstmt->queryId != 0
-						  ? pstmt->queryId
-						  : yb_ash_utility_query_id(queryString,
-					   								pstmt->stmt_len,
-													pstmt->stmt_location);
+		query_id = pstmt->queryId != 0
+				   ? pstmt->queryId
+				   : yb_ash_utility_query_id(queryString,
+					   						 pstmt->stmt_len,
+											 pstmt->stmt_location);
 		YbAshSetQueryId(query_id);
 	}
 
@@ -424,14 +435,14 @@ yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 		--nested_level;
 
 		if (yb_enable_ash)
-			YbAshResetQueryId();
+			YbAshResetQueryId(query_id);
 	}
 	PG_CATCH();
 	{
 		--nested_level;
 
 		if (yb_enable_ash)
-			YbAshResetQueryId();
+			YbAshResetQueryId(query_id);
 
 		PG_RE_THROW();
 	}
@@ -453,11 +464,11 @@ YbAshSetQueryId(uint64 query_id)
 }
 
 static void
-YbAshResetQueryId(void)
+YbAshResetQueryId(uint64 query_id)
 {
 	if (set_query_id())
 	{
-		uint64 prev_query_id = YbAshNestedQueryIdStackPop();
+		uint64 prev_query_id = YbAshNestedQueryIdStackPop(query_id);
 		if (prev_query_id != 0)
 		{
 			LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);

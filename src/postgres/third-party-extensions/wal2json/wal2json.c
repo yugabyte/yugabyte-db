@@ -34,6 +34,9 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
+/* YB includes. */
+#include "pg_yb_utils.h"
+
 #define WAL2JSON_VERSION				"2.6"
 #define WAL2JSON_VERSION_NUM			206
 
@@ -139,10 +142,10 @@ static void pg_decode_truncate(LogicalDecodingContext *ctx,
 					ReorderBufferChange *change);
 #endif
 
-static void columns_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, bool addcomma, Relation relation);
-static void tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, Bitmapset *bs, bool replident, bool addcomma, Relation relation);
-static void pk_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, Bitmapset *bs, bool addcomma);
-static void identity_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, Bitmapset *bs);
+static void columns_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, bool addcomma, Relation relation, bool *yb_is_omitted);
+static void tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, Bitmapset *bs, bool replident, bool addcomma, Relation relation, bool *yb_is_omitted);
+static void pk_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, Bitmapset *bs, bool addcomma, Relation relation);
+static void identity_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, Bitmapset *bs, bool *yb_is_omitted, Relation relation);
 static bool parse_table_identifier(List *qualified_tables, char separator, List **select_tables);
 static bool string_to_SelectTable(char *rawstring, char separator, List **select_tables);
 static bool split_string_to_list(char *rawstring, char separator, List **sl);
@@ -177,8 +180,8 @@ static void pg_decode_begin_txn_v2(LogicalDecodingContext *ctx,
 					ReorderBufferTXN *txn);
 static void pg_decode_commit_txn_v2(LogicalDecodingContext *ctx,
 					 ReorderBufferTXN *txn, XLogRecPtr commit_lsn);
-static void pg_decode_write_value(LogicalDecodingContext *ctx, Datum value, bool isnull, Oid typid);
-static void pg_decode_write_tuple(LogicalDecodingContext *ctx, Relation relation, HeapTuple tuple, PGOutputJsonKind kind);
+static void pg_decode_write_value(LogicalDecodingContext *ctx, Datum value, bool isnull, Oid typid, bool yb_unchanged_toasted);
+static void pg_decode_write_tuple(LogicalDecodingContext *ctx, Relation relation, HeapTuple tuple, PGOutputJsonKind kind, bool *yb_is_omitted);
 static void pg_decode_write_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn, Relation relation, ReorderBufferChange *change);
 static void pg_decode_change_v2(LogicalDecodingContext *ctx,
 				 ReorderBufferTXN *txn, Relation rel,
@@ -214,6 +217,12 @@ static void update_replication_progress(LogicalDecodingContext *ctx, bool skippe
 static void update_replication_progress(LogicalDecodingContext *ctx);
 #endif
 
+static void
+yb_pgoutput_schema_change(LogicalDecodingContext *ctx, Oid relid);
+
+static void
+yb_support_yb_specific_replica_identity(bool support_yb_specific_replica_identity);
+
 void
 _PG_init(void)
 {
@@ -239,6 +248,12 @@ _PG_output_plugin_init(OutputPluginCallbacks *cb)
 #if PG_VERSION_NUM >= 110000
 	cb->truncate_cb = pg_decode_truncate;
 #endif
+
+	if (IsYugaByteEnabled())
+	{
+		cb->yb_schema_change_cb = yb_pgoutput_schema_change;
+		cb->yb_support_yb_specifc_replica_identity_cb = yb_support_yb_specific_replica_identity;
+	}
 }
 
 /* Initialize this plugin */
@@ -1026,7 +1041,7 @@ pg_decode_commit_txn_v2(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
  * replident: is this tuple a replica identity?
  */
 static void
-tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, Bitmapset *bs, bool replident, bool addcomma, Relation relation)
+tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, Bitmapset *bs, bool replident, bool addcomma, Relation relation, bool *yb_is_omitted)
 {
 	JsonDecodingData	*data;
 	int					natt;
@@ -1106,6 +1121,7 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 		Datum				val;		/* definitely detoasted Datum */
 		char				*outputstr = NULL;
 		bool				isnull;		/* column is null? */
+		bool				yb_send_unchanged_toasted = false;
 
 		/*
 		 * Commit d34a74dd064af959acd9040446925d9d53dff15b introduced
@@ -1125,8 +1141,11 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 			continue;
 
 		/* Replica identity column? */
-		if (bs != NULL && !bms_is_member(attr->attnum - FirstLowInvalidHeapAttributeNumber, bs))
+		if (bs != NULL && !bms_is_member(attr->attnum - YBGetFirstLowInvalidAttributeNumber(relation), bs))
 			continue;
+
+		if (IsYugaByteEnabled())
+			yb_send_unchanged_toasted = yb_is_omitted && yb_is_omitted[natt];
 
 		/* Get Datum from tuple */
 		origval = heap_getattr(tuple, natt + 1, tupdesc, &isnull);
@@ -1146,7 +1165,8 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 		getTypeOutputInfo(typid, &typoutput, &typisvarlena);
 
 		/* XXX Unchanged TOAST Datum does not need to be output */
-		if (!isnull && typisvarlena && VARATT_IS_EXTERNAL_ONDISK(origval))
+		if (yb_send_unchanged_toasted ||
+		   (!isnull && typisvarlena && VARATT_IS_EXTERNAL_ONDISK(origval))) 
 		{
 			elog(DEBUG1, "column \"%s\" has an unchanged TOAST", NameStr(attr->attname));
 			continue;
@@ -1293,7 +1313,7 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 			}
 		}
 
-		if (isnull)
+		if (isnull && !yb_send_unchanged_toasted)
 		{
 			appendStringInfo(&colvalues, "%snull", comma);
 		}
@@ -1441,22 +1461,22 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 
 /* Print columns information */
 static void
-columns_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, bool addcomma, Relation relation)
+columns_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, bool addcomma, Relation relation, bool *yb_is_omitted)
 {
-	tuple_to_stringinfo(ctx, tupdesc, tuple, NULL, false, addcomma, relation);
+	tuple_to_stringinfo(ctx, tupdesc, tuple, NULL, false, addcomma, relation, yb_is_omitted);
 }
 
 /* Print replica identity information */
 static void
-identity_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, Bitmapset *bs)
+identity_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, Bitmapset *bs, bool *yb_is_omitted, Relation relation)
 {
 	/* Last parameter does not matter */
-	tuple_to_stringinfo(ctx, tupdesc, tuple, bs, true, false, NULL);
+	tuple_to_stringinfo(ctx, tupdesc, tuple, bs, true, false, relation, yb_is_omitted);
 }
 
 /* Print primary key information */
 static void
-pk_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, Bitmapset *bs, bool addcomma)
+pk_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple, Bitmapset *bs, bool addcomma, Relation relation)
 {
 	JsonDecodingData	*data;
 	int					natt;
@@ -1497,7 +1517,7 @@ pk_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tuple
 			continue;
 
 		/* Primary key column? */
-		if (bs != NULL && !bms_is_member(attr->attnum - FirstLowInvalidHeapAttributeNumber, bs))
+		if (bs != NULL && !bms_is_member(attr->attnum - YBGetFirstLowInvalidAttributeNumber(relation), bs))
 			continue;
 
 		typid = attr->atttypid;
@@ -1761,7 +1781,8 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 			 * (i) doesn't have a pk and replica identity is not full;
 			 * (ii) replica identity is nothing.
 			 */
-			if (!OidIsValid(relation->rd_replidindex) && relation->rd_rel->relreplident != REPLICA_IDENTITY_FULL)
+			if ((relation->rd_rel->relreplident != YB_REPLICA_IDENTITY_CHANGE) &&
+				(!OidIsValid(relation->rd_replidindex) && relation->rd_rel->relreplident != REPLICA_IDENTITY_FULL))
 			{
 				/* FIXME this sentence is imprecise */
 				elog(WARNING, "table \"%s\" without primary key or replica identity is nothing", NameStr(class_form->relname));
@@ -1784,7 +1805,8 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 			 * (i) doesn't have a pk and replica identity is not full;
 			 * (ii) replica identity is nothing.
 			 */
-			if (!OidIsValid(relation->rd_replidindex) && relation->rd_rel->relreplident != REPLICA_IDENTITY_FULL)
+			if (relation->rd_rel->relreplident != YB_REPLICA_IDENTITY_CHANGE && 
+				!OidIsValid(relation->rd_replidindex) && relation->rd_rel->relreplident != REPLICA_IDENTITY_FULL)
 			{
 				/* FIXME this sentence is imprecise */
 				elog(WARNING, "table \"%s\" without primary key or replica identity is nothing", NameStr(class_form->relname));
@@ -1865,28 +1887,28 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 #endif
 			{
 #if	PG_VERSION_NUM >= 170000
-				columns_to_stringinfo(ctx, tupdesc, change->data.tp.newtuple, true, relation);
-				pk_to_stringinfo(ctx, tupdesc, change->data.tp.newtuple, pkbs, false);
+				columns_to_stringinfo(ctx, tupdesc, change->data.tp.newtuple, true, relation, change->data.tp.newtuple->yb_is_omitted);
+				pk_to_stringinfo(ctx, tupdesc, change->data.tp.newtuple, pkbs, false, relation);
 #else
-				columns_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, true, relation);
-				pk_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, pkbs, false);
+				columns_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, true, relation, change->data.tp.newtuple->yb_is_omitted);
+				pk_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, pkbs, false, relation);
 #endif
 			}
 			else
 			{
 #if	PG_VERSION_NUM >= 170000
-				columns_to_stringinfo(ctx, tupdesc, change->data.tp.newtuple, false, relation);
+				columns_to_stringinfo(ctx, tupdesc, change->data.tp.newtuple, false, relation, change->data.tp.newtuple->yb_is_omitted);
 #else
-				columns_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, false, relation);
+				columns_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, false, relation, change->data.tp.newtuple->yb_is_omitted);
 #endif
 			}
 			break;
 		case REORDER_BUFFER_CHANGE_UPDATE:
 			/* Print the new tuple */
 #if	PG_VERSION_NUM >= 170000
-			columns_to_stringinfo(ctx, tupdesc, change->data.tp.newtuple, true, relation);
+			columns_to_stringinfo(ctx, tupdesc, change->data.tp.newtuple, true, relation, change->data.tp.newtuple->yb_is_omitted);
 #else
-			columns_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, true, relation);
+			columns_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, true, relation, change->data.tp.newtuple->yb_is_omitted);
 #endif
 
 #if	PG_VERSION_NUM >= 100000
@@ -1897,9 +1919,9 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 #endif
 			{
 #if	PG_VERSION_NUM >= 170000
-				pk_to_stringinfo(ctx, tupdesc, change->data.tp.newtuple, pkbs, true);
+				pk_to_stringinfo(ctx, tupdesc, change->data.tp.newtuple, pkbs, true, relation);
 #else
-				pk_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, pkbs, true);
+				pk_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, pkbs, true, relation);
 #endif
 			}
 
@@ -1918,18 +1940,18 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 
 				ribs = RelationGetIndexAttrBitmap(relation, INDEX_ATTR_BITMAP_IDENTITY_KEY);
 #if	PG_VERSION_NUM >= 170000
-				identity_to_stringinfo(ctx, tupdesc, change->data.tp.newtuple, ribs);
+				identity_to_stringinfo(ctx, tupdesc, change->data.tp.newtuple, ribs, change->data.tp.newtuple->yb_is_omitted, relation);
 #else
-				identity_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, ribs);
+				identity_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, ribs, change->data.tp.newtuple->yb_is_omitted, relation);
 #endif
 			}
 			else
 			{
 				elog(DEBUG1, "old tuple is not null");
 #if	PG_VERSION_NUM >= 170000
-				identity_to_stringinfo(ctx, tupdesc, change->data.tp.oldtuple, NULL);
+				identity_to_stringinfo(ctx, tupdesc, change->data.tp.oldtuple, NULL, change->data.tp.oldtuple->yb_is_omitted, relation);
 #else
-				identity_to_stringinfo(ctx, tupdesc, &change->data.tp.oldtuple->tuple, NULL);
+				identity_to_stringinfo(ctx, tupdesc, &change->data.tp.oldtuple->tuple, NULL, change->data.tp.oldtuple->yb_is_omitted, relation);
 #endif
 			}
 			break;
@@ -1942,17 +1964,17 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 #endif
 			{
 #if	PG_VERSION_NUM >= 170000
-				pk_to_stringinfo(ctx, tupdesc, change->data.tp.oldtuple, pkbs, true);
+				pk_to_stringinfo(ctx, tupdesc, change->data.tp.oldtuple, pkbs, true, relation);
 #else
-				pk_to_stringinfo(ctx, tupdesc, &change->data.tp.oldtuple->tuple, pkbs, true);
+				pk_to_stringinfo(ctx, tupdesc, &change->data.tp.oldtuple->tuple, pkbs, true, relation);
 #endif
 			}
 
 			ribs = RelationGetIndexAttrBitmap(relation, INDEX_ATTR_BITMAP_IDENTITY_KEY);
 #if	PG_VERSION_NUM >= 170000
-			identity_to_stringinfo(ctx, tupdesc, change->data.tp.oldtuple, ribs);
+			identity_to_stringinfo(ctx, tupdesc, change->data.tp.oldtuple, ribs, change->data.tp.oldtuple->yb_is_omitted, relation);
 #else
-			identity_to_stringinfo(ctx, tupdesc, &change->data.tp.oldtuple->tuple, ribs);
+			identity_to_stringinfo(ctx, tupdesc, &change->data.tp.oldtuple->tuple, ribs, change->data.tp.oldtuple->yb_is_omitted, relation);
 #endif
 
 			if (change->data.tp.oldtuple == NULL)
@@ -1977,7 +1999,7 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 }
 
 static void
-pg_decode_write_value(LogicalDecodingContext *ctx, Datum value, bool isnull, Oid typid)
+pg_decode_write_value(LogicalDecodingContext *ctx, Datum value, bool isnull, Oid typid, bool yb_unchanged_toasted)
 {
 	JsonDecodingData	*data;
 	Oid					typoutfunc;
@@ -1986,7 +2008,7 @@ pg_decode_write_value(LogicalDecodingContext *ctx, Datum value, bool isnull, Oid
 
 	data = ctx->output_plugin_private;
 
-	if (isnull)
+	if (isnull && !yb_unchanged_toasted)
 	{
 		appendStringInfoString(ctx->out, "null");
 		return;
@@ -1996,9 +2018,9 @@ pg_decode_write_value(LogicalDecodingContext *ctx, Datum value, bool isnull, Oid
 	getTypeOutputInfo(typid, &typoutfunc, &isvarlena);
 
 	/* XXX dead code? check is one level above. */
-	if (isvarlena && VARATT_IS_EXTERNAL_ONDISK(value))
+	if ((yb_unchanged_toasted) || (isvarlena && VARATT_IS_EXTERNAL_ONDISK(value)))
 	{
-		elog(DEBUG1, "unchanged TOAST Datum");
+		elog(WARNING, "unchanged TOAST Datum");
 		return;
 	}
 
@@ -2071,12 +2093,11 @@ pg_decode_write_value(LogicalDecodingContext *ctx, Datum value, bool isnull, Oid
 			escape_json(ctx->out, outstr);
 			break;
 	}
-
 	pfree(outstr);
 }
 
 static void
-pg_decode_write_tuple(LogicalDecodingContext *ctx, Relation relation, HeapTuple tuple, PGOutputJsonKind kind)
+pg_decode_write_tuple(LogicalDecodingContext *ctx, Relation relation, HeapTuple tuple, PGOutputJsonKind kind, bool *yb_is_omitted)
 {
 	JsonDecodingData	*data;
 	TupleDesc			tupdesc;
@@ -2123,6 +2144,7 @@ pg_decode_write_tuple(LogicalDecodingContext *ctx, Relation relation, HeapTuple 
 	for (i = 0; i < tupdesc->natts; i++)
 	{
 		Form_pg_attribute	attr;
+		bool				yb_unchanged_toasted = false;
 
 #if (PG_VERSION_NUM >= 90600 && PG_VERSION_NUM < 90605) || (PG_VERSION_NUM >= 90500 && PG_VERSION_NUM < 90509) || (PG_VERSION_NUM >= 90400 && PG_VERSION_NUM < 90414)
 		attr = tupdesc->attrs[i];
@@ -2134,11 +2156,15 @@ pg_decode_write_tuple(LogicalDecodingContext *ctx, Relation relation, HeapTuple 
 		if (attr->attisdropped || attr->attnum < 0)
 			continue;
 
-		if (bs != NULL && !bms_is_member(attr->attnum - FirstLowInvalidHeapAttributeNumber, bs))
+		if (bs != NULL && !bms_is_member(attr->attnum - YBGetFirstLowInvalidAttributeNumber(relation), bs))
 			continue;
 
+		if (IsYugaByteEnabled())
+			yb_unchanged_toasted = yb_is_omitted && yb_is_omitted[i];
+
 		/* don't send unchanged TOAST Datum */
-		if (!nulls[i] && attr->attlen == -1 && VARATT_IS_EXTERNAL_ONDISK(values[i]))
+		if (yb_unchanged_toasted ||
+		   (!nulls[i] && (attr->attlen == -1 && VARATT_IS_EXTERNAL_ONDISK(values[i])))) 
 			continue;
 
 		if (need_sep)
@@ -2198,7 +2224,7 @@ pg_decode_write_tuple(LogicalDecodingContext *ctx, Relation relation, HeapTuple 
 		if (kind != PGOUTPUTJSON_PK)
 		{
 			appendStringInfoString(ctx->out, ",\"value\":");
-			pg_decode_write_value(ctx, values[i], nulls[i], attr->atttypid);
+			pg_decode_write_value(ctx, values[i], nulls[i], attr->atttypid, yb_unchanged_toasted);
 		}
 
 		/*
@@ -2410,9 +2436,9 @@ pg_decode_write_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn, Relat
 	{
 		appendStringInfoString(ctx->out, ",\"columns\":[");
 #if PG_VERSION_NUM >= 170000
-		pg_decode_write_tuple(ctx, relation, change->data.tp.newtuple, PGOUTPUTJSON_CHANGE);
+		pg_decode_write_tuple(ctx, relation, change->data.tp.newtuple, PGOUTPUTJSON_CHANGE, change->data.tp.newtuple->yb_is_omitted);
 #else
-		pg_decode_write_tuple(ctx, relation, &change->data.tp.newtuple->tuple, PGOUTPUTJSON_CHANGE);
+		pg_decode_write_tuple(ctx, relation, &change->data.tp.newtuple->tuple, PGOUTPUTJSON_CHANGE, change->data.tp.newtuple->yb_is_omitted);
 #endif
 		appendStringInfoChar(ctx->out, ']');
 	}
@@ -2434,9 +2460,9 @@ pg_decode_write_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn, Relat
 	{
 		appendStringInfoString(ctx->out, ",\"identity\":[");
 #if	PG_VERSION_NUM >= 170000
-		pg_decode_write_tuple(ctx, relation, change->data.tp.oldtuple, PGOUTPUTJSON_IDENTITY);
+		pg_decode_write_tuple(ctx, relation, change->data.tp.oldtuple, PGOUTPUTJSON_IDENTITY, change->data.tp.oldtuple->yb_is_omitted);
 #else
-		pg_decode_write_tuple(ctx, relation, &change->data.tp.oldtuple->tuple, PGOUTPUTJSON_IDENTITY);
+		pg_decode_write_tuple(ctx, relation, &change->data.tp.oldtuple->tuple, PGOUTPUTJSON_IDENTITY, change->data.tp.oldtuple->yb_is_omitted);
 #endif
 		appendStringInfoChar(ctx->out, ']');
 	}
@@ -2463,9 +2489,9 @@ pg_decode_write_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn, Relat
 				elog(DEBUG1, "REPLICA IDENTITY: obtain old tuple using new tuple");
 				appendStringInfoString(ctx->out, ",\"identity\":[");
 #if PG_VERSION_NUM >= 170000
-				pg_decode_write_tuple(ctx, relation, change->data.tp.newtuple, PGOUTPUTJSON_IDENTITY);
+				pg_decode_write_tuple(ctx, relation, change->data.tp.newtuple, PGOUTPUTJSON_IDENTITY, change->data.tp.newtuple->yb_is_omitted);
 #else
-				pg_decode_write_tuple(ctx, relation, &change->data.tp.newtuple->tuple, PGOUTPUTJSON_IDENTITY);
+				pg_decode_write_tuple(ctx, relation, &change->data.tp.newtuple->tuple, PGOUTPUTJSON_IDENTITY, change->data.tp.newtuple->yb_is_omitted);
 #endif
 				appendStringInfoChar(ctx->out, ']');
 			}
@@ -2494,14 +2520,14 @@ pg_decode_write_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn, Relat
 		{
 #if PG_VERSION_NUM >= 170000
 			if (change->data.tp.oldtuple != NULL)
-				pg_decode_write_tuple(ctx, relation, change->data.tp.oldtuple, PGOUTPUTJSON_PK);
+				pg_decode_write_tuple(ctx, relation, change->data.tp.oldtuple, PGOUTPUTJSON_PK, change->data.tp.oldtuple->yb_is_omitted);
 			else
-				pg_decode_write_tuple(ctx, relation, change->data.tp.newtuple, PGOUTPUTJSON_PK);
+				pg_decode_write_tuple(ctx, relation, change->data.tp.newtuple, PGOUTPUTJSON_PK, change->data.tp.newtuple->yb_is_omitted);
 #else
 			if (change->data.tp.oldtuple != NULL)
-				pg_decode_write_tuple(ctx, relation, &change->data.tp.oldtuple->tuple, PGOUTPUTJSON_PK);
+				pg_decode_write_tuple(ctx, relation, &change->data.tp.oldtuple->tuple, PGOUTPUTJSON_PK, change->data.tp.oldtuple->yb_is_omitted);
 			else
-				pg_decode_write_tuple(ctx, relation, &change->data.tp.newtuple->tuple, PGOUTPUTJSON_PK);
+				pg_decode_write_tuple(ctx, relation, &change->data.tp.newtuple->tuple, PGOUTPUTJSON_PK, change->data.tp.newtuple->yb_is_omitted);
 #endif
 		}
 		appendStringInfoChar(ctx->out, ']');
@@ -3328,3 +3354,15 @@ update_replication_progress(LogicalDecodingContext *ctx)
 	}
 }
 #endif
+
+static void
+yb_pgoutput_schema_change(LogicalDecodingContext *ctx, Oid relid)
+{
+	/* NOOP. */
+}
+
+static void
+yb_support_yb_specific_replica_identity(bool support_yb_specific_replica_identity)
+{
+	/* NOOP. */
+}

@@ -2035,12 +2035,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // partitions_vtable_cache_refresh_secs seconds.
   void RebuildYQLSystemPartitions();
 
-  // Registers `new_tablet` for the same table as `source_tablet_info` tablet.
+  // Registers `new_tablets` for the same table as `source_tablet_info` tablet.
   // Does not change any other tablets and their partitions.
-  Status RegisterNewTabletForSplit(
-      TabletInfo* source_tablet_info, const TabletInfoPtr& new_tablet, const LeaderEpoch& epoch,
-      TableInfo::WriteLock* table_write_lock, TabletInfo::WriteLock* tablet_write_lock)
-      EXCLUDES(mutex_);
+  Status RegisterNewTabletsForSplit(
+      TabletInfo* source_tablet_info, const std::vector<TabletInfoPtr>& new_tablets,
+      const LeaderEpoch& epoch, TableInfo::WriteLock* table_write_lock,
+      TabletInfo::WriteLock* tablet_write_lock) EXCLUDES(mutex_);
 
   Result<TabletInfoPtr> GetTabletInfoUnlocked(const TabletId& tablet_id)
       REQUIRES_SHARED(mutex_);

@@ -26,9 +26,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.schedule.JobConfig.RuntimeParams;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -37,7 +34,9 @@ import java.util.Set;
 import java.util.UUID;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.yb.client.GetMasterHeartbeatDelaysResponse;
 import org.yb.client.YBClient;
 import org.yb.util.ServerInfo;
@@ -55,6 +54,7 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
 
   @Builder
   @Getter
+  @ToString
   // The fail-over action to be performed as a result of the detection.
   static class Action {
     @Builder.Default ActionType actionType = ActionType.NONE;
@@ -413,7 +413,7 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
   @VisibleForTesting
   Map<String, Long> getFollowerLagMs(String ip, int port) {
     String endpoint = String.format(FOLLOWER_LAG_URL_FORMAT, ip, port);
-    log.info("Getting follower lag for endpoint {} {}", endpoint, nodeUIApiHelper);
+    log.info("Getting follower lag for endpoint {}", endpoint);
     try {
       JsonNode currentNodeMetricsJson = nodeUIApiHelper.getRequest(endpoint);
       JsonNode errors = currentNodeMetricsJson.get("error");
@@ -439,21 +439,6 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
 
   private CustomerTask submitMasterFailoverTask(
       Customer customer, Universe universe, String failedNodeName) {
-    CustomerTask lastTask = CustomerTask.getLastTaskByTargetUuid(universe.getUniverseUUID());
-    if (lastTask != null && lastTask.getCompletionTime() != null) {
-      // Cooldown is calculated from the last task.
-      Duration cooldownPeriod =
-          confGetter.getConfForScope(universe, UniverseConfKeys.autoMasterFailoverCooldown);
-      Instant restrictionEndTime =
-          lastTask
-              .getCompletionTime()
-              .toInstant()
-              .plus(cooldownPeriod.getSeconds(), ChronoUnit.SECONDS);
-      if (restrictionEndTime.isAfter(Instant.now())) {
-        log.info("Universe {} is cooling down", universe.getUniverseUUID());
-        return null;
-      }
-    }
     NodeDetails node = universe.getNode(failedNodeName);
     NodeDetails possibleReplacementCandidate = findReplacementMaster(universe, node);
     if (possibleReplacementCandidate == null) {
@@ -467,6 +452,14 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
         "Found a possible replacement master candidate {} for universe {}",
         possibleReplacementCandidate.getNodeName(),
         universe.getUniverseUUID());
+    Set<String> leaderlessTablets = getLeaderlessTablets(universe.getUniverseUUID());
+    if (CollectionUtils.isNotEmpty(leaderlessTablets)) {
+      log.error(
+          "Leaderless tablets {} found for universe {}",
+          Iterables.limit(leaderlessTablets, 10),
+          universe.getUniverseUUID());
+      return null;
+    }
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.setUniverseUUID(universe.getUniverseUUID());
     taskParams.nodeName = failedNodeName;

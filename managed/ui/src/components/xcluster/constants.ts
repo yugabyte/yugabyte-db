@@ -229,6 +229,8 @@ export const PollingIntervalMs = {
 export const XCLUSTER_METRIC_REFETCH_INTERVAL_MS = PollingIntervalMs.XCLUSTER_METRICS;
 export const XCLUSTER_CONFIG_REFETCH_INTERVAL_MS = PollingIntervalMs.XCLUSTER_CONFIG;
 
+export const XCLUSTER_UNDEFINED_LAG_NUMERIC_REPRESENTATION = -1;
+
 export const XClusterModalName = {
   EDIT_CONFIG: 'editXClusterConfigModal',
   DELETE_CONFIG: 'deleteXClusterConfigModal',
