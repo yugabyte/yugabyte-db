@@ -53,7 +53,9 @@ To alter a publication, the invoking user must own the publication. Adding a tab
 
 ## Examples
 
-Assume that we already have 3 tables created within the database: `users`, `departments` and `employees`. Also, a publication `my_publication` has been created using the following command:
+Assume that you have created the tables `users`, `departments`, and `employees`.
+
+To create a publication `my_publication`, use the following command:
 
 ```sql
 yugabyte=# CREATE PUBLICATION my_publication FOR TABLE employees;
