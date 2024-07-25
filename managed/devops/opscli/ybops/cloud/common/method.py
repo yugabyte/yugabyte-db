@@ -1596,6 +1596,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                             # Example path is /mnt/d0/yb-data/master/wals.
                             path = os.path.join(fs_data_dir, 'yb-data', 'master', state_dir)
                             delete_paths.append(path)
+            self.extra_vars["expected_yb_process_state"] = "stopped"
             if delete_paths:
                 self.extra_vars["delete_paths"] = delete_paths
         # If we are just rotating certs, we don't need to do any configuration changes.

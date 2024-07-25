@@ -21,6 +21,27 @@
     server_gflags: {}
   tags: always
 
+- set_fact:
+    yb_process_name: "yb-{{ yb_process_type }}"
+  tags: always
+
+- block:
+  - name: Get process state for {{ yb_process_name }}
+    shell:
+       # pgrep returns non-zero when the pattern is not found.
+      cmd: "pgrep -fl {{ yb_process_name }} || true"
+    register: yb_process_state
+  - name: Print process state for {{ yb_process_name }}
+    debug:
+      var: yb_process_state
+  - name: Assert process state for {{ yb_process_name }} is {{ expected_yb_process_state }}
+    fail:
+      msg: Expected process state for {{ yb_process_name }} is {{ expected_yb_process_state }}
+    when: (expected_yb_process_state == "running" and yb_process_name not in yb_process_state.stdout) or
+          (expected_yb_process_state == "stopped" and yb_process_name in yb_process_state.stdout)
+  tags: always
+  when: expected_yb_process_state is defined
+
 - name: Deleting files and directories
   file:
     path: "{{ item }}"

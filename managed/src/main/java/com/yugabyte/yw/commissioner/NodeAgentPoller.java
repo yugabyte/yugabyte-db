@@ -58,7 +58,7 @@ import org.apache.commons.lang3.StringUtils;
 @Singleton
 public class NodeAgentPoller {
   public static final String RETENTION_DURATION_PROPERTY = "yb.node_agent.retention_duration";
-  private static final Duration POLLER_INITIAL_DELAY = Duration.ofMinutes(1);
+  private static final Duration POLLER_INITIAL_DELAY = Duration.ofMinutes(5);
   private static final String LIVE_POLLER_POOL_NAME = "node_agent.live_node_poller";
   private static final String DEAD_POLLER_POOL_NAME = "node_agent.dead_node_poller";
   private static final String UPGRADER_POOL_NAME = "node_agent.upgrader";
