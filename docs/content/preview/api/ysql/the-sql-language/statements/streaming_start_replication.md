@@ -38,18 +38,36 @@ The log sequence number from where to start the streaming from.
 
 The name of an option passed to the slot's logical decoding plugin.
 
+The applicable options accepted by the command depends on the output plugin of the replication slot. They can be viewed in the respective documentation of the output plugin itself.
+
+For `pgoutput` and `yboutput`, check the section [53.5.1. Logical Streaming Replication Parameters](https://www.postgresql.org/docs/11/protocol-logical-replication.html) in the PG documentation.
+
+For `wal2json`, refer to the [plugin documentation](https://github.com/eulerto/wal2json/tree/master?tab=readme-ov-file#parameters).
+
 ### *start_replication_option_value*
 
 Optional value, in the form of a string constant, associated with the specified option.
 
 ## Example
 
-Assume that you have already created a replication slot `test_slot` with output plugin `pgoutput` or `yboutput`.
+We need to follow a few steps before we can start streaming from a replication slot. Assume that a table with name `users` already exists in the database.
 
-Start replication from the `test_slot` replication slot starting from LSN `0/2`. We also pass the `publication_names` parameter to the output plugin. `publication_names` is an output plugin parameter that is accepted by both `pgoutput` and `yboutput` to determine the tables to stream the data from.
+Create a publication `mypublication` which includes the table `users`.
 
 ```sql
-yugabyte=# START_REPLICATION test_slot LOGICAL 0/2 publication_names 'pub';
+yugabyte=# CREATE PUBLICATION mypublication FOR TABLE users;
+```
+
+Create a replication slot with name `test_slot` and output plugin `pgoutput`.
+
+```sql
+yugabyte=# CREATE_REPLICATION_SLOT test_slot LOGICAL pgoutput;
+```
+
+Start replication from the `test_slot` replication slot starting from LSN `0/2`. We also pass the `publication_names` parameter with value `mypublication` to the output plugin. `publication_names` is an output plugin parameter that is accepted by both `pgoutput` and `yboutput` to determine the tables to stream the data from.
+
+```sql
+yugabyte=# START_REPLICATION test_slot LOGICAL 0/2 publication_names 'mypublication';
 ```
 
 ## See also
