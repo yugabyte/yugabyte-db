@@ -119,7 +119,7 @@ The Prometheus integration requires the following:
 
     See [Control traffic to your AWS resources using security groups](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html) in the AWS documentation.
 
-Note that VPC requirements apply to all regions in multi-region clusters in AWS. See [VPC network overview](../../cloud-basics/cloud-vpcs/cloud-vpc-intro/).
+  As each region of a cluster deployed in AWS has its own VPC, make sure that all the VPCs are peered and allow inbound access from Prometheus; this also applies regions you add or change after deployment, and to read replicas. For information on VPC networking in YugabyteDB Aeon, see [VPC network overview](../../cloud-basics/cloud-vpcs/cloud-vpc-intro/).
 
 To create an export configuration, do the following:
 
