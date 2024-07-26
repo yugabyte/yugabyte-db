@@ -106,15 +106,18 @@ Prometheus integration is {{<badge/tp>}} and only available for clusters deploye
 
 The Prometheus integration requires the following:
 
-- Prometheus instance deployed in a VPC on AWS.
-- Prometheus instance has the [OLTP Receiver](https://prometheus.io/docs/prometheus/latest/feature_flags/#otlp-receiver) feature flag enabled.
-- An endpoint URL for the Prometheus instance; the DNS for the endpoint must be in a public hosted zone in AWS.
-- YugabyteDB cluster from which they want to export metrics deployed in a VPC on AWS that is peered with the VPC hosting Prometheus. See [Peering connections](../../cloud-basics/cloud-vpcs/cloud-add-peering/).
-- The following Inbound Security Group rules for the cluster VPC:
-  - Allow HTTP inbound traffic on port 80 for HTTP endpoint URL
-  - Allow HTTPS inbound traffic on port 443 for HTTPS endpoint URL.
+- Prometheus instance
+  - deployed in a VPC on AWS
+  - [OLTP Receiver](https://prometheus.io/docs/prometheus/latest/feature_flags/#otlp-receiver) feature flag enabled
+  - publically-accessible endpoint URL; the DNS for the endpoint must be in a public hosted zone in AWS.
+- YugabyteDB cluster from which you want to export metrics
+  - the cluster is [deployed in VPCs](../../cloud-basics/cloud-vpcs/cloud-add-vpc/) on AWS
+  - each region VPC is peered with the VPC hosting Prometheus. See [Peer VPCs](../../cloud-basics/cloud-vpcs/cloud-add-vpc-aws/).
+  - VPCs have the following Inbound Security Group rules:
+    - Allow HTTP inbound traffic on port 80 for Prometheus endpoint URL (HTTP)
+    - Allow HTTPS inbound traffic on port 443 for Prometheus endpoint URL (HTTPS)
 
-  See [Control traffic to your AWS resources using security groups](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html) in the AWS documentation.
+    See [Control traffic to your AWS resources using security groups](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html) in the AWS documentation.
 
 Note that VPC requirements apply to all regions in multi-region clusters in AWS. See [VPC network overview](../../cloud-basics/cloud-vpcs/cloud-vpc-intro/).
 
