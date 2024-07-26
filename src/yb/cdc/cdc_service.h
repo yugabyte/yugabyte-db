@@ -160,6 +160,15 @@ class CDCServiceImpl : public CDCServiceIf {
 
   Result<TabletCheckpoint> TEST_GetTabletInfoFromCache(const TabletStreamInfo& producer_tablet);
 
+  void ProcessEntry(
+      const CDCStateTableEntry& entry,
+      const StreamMetadata& stream_metadata,
+      const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+      TabletIdCDCCheckpointMap& tablet_min_checkpoint_map,
+      StreamIdSet* slot_entries_to_be_deleted = nullptr,
+      const std::unordered_map<NamespaceId, uint64_t>& namespace_to_min_record_id_commit_time =
+      std::unordered_map<NamespaceId, uint64_t>{});
+
   // Update peers in other tablet servers about the latest minimum applied cdc index for a specific
   // tablet.
   void UpdateCdcReplicatedIndex(
@@ -441,9 +450,10 @@ class CDCServiceImpl : public CDCServiceIf {
       StreamIdSet* slot_entries_to_be_deleted);
 
   Result<TabletIdCDCCheckpointMap> PopulateTabletCheckPointInfo(
-      const TabletId& input_tablet_id = "",
-      TabletIdStreamIdSet* tablet_stream_to_be_deleted = nullptr,
-      StreamIdSet* slot_entries_to_be_deleted = nullptr);
+      TabletIdStreamIdSet& tablet_stream_to_be_deleted, StreamIdSet& slot_entries_to_be_deleted);
+
+  Result<TabletCDCCheckpointInfo> PopulateCDCSDKTabletCheckPointInfo(
+      const TabletId& input_tablet_id);
 
   Status SetInitialCheckPoint(
       const OpId& checkpoint, const std::string& tablet_id,
