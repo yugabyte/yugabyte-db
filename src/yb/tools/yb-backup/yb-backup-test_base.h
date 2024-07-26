@@ -52,7 +52,7 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase, public YBBackupTestBas
 
   Status RunBackupCommand(const vector<string>& args);
 
-  void RecreateDatabase(const string& db);
+  void DropPsqlDatabase(const string& db);
 
   Result<client::YBTableName> GetTableName(
       const string& table_name, const string& log_prefix, const string& ns = string());
@@ -72,8 +72,8 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase, public YBBackupTestBas
   Status WaitForTabletPostSplitCompacted(size_t tserver_idx, const TabletId& tablet_id);
   void RestartClusterWithCatalogVersionMode(bool db_catalog_version_mode);
   void DoTestYEDISBackup(helpers::TableOp tableOp);
-  void DoTestYSQLKeyspaceBackup(helpers::TableOp tableOp);
-  void DoTestYSQLMultiSchemaKeyspaceBackup(helpers::TableOp tableOp);
+  void DoTestYSQLKeyspaceBackup();
+  void DoTestYSQLMultiSchemaKeyspaceBackup();
   void DoTestYSQLKeyspaceWithHyphenBackupRestore(
       const string& backup_db, const string& restore_db);
   void DoTestYSQLRestoreBackup(std::optional<bool> db_catalog_version_mode);
