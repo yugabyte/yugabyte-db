@@ -33,7 +33,7 @@ COMMIT;
 
 ### Bank-contention (YSQL)
 
-In addition to UPDATE transactions, there are also INSERT or INSERT/DELETE transactions, all operating under the assumption that the overall `SUM(balance)` must remain consistent. To avoid overcomplicating the scenario in the case of Jepsen, 5 keys designated for UPDATE operations and 5 keys for random INSERTs and DELETEs
+In addition to UPDATE transactions, there are also INSERT or INSERT/DELETE transactions, all operating under the assumption that the overall `SUM(balance)` must remain consistent. To simplify Jepsen's scenario in the case of Jepsen, use 5 keys for UPDATEs and 5 for random INSERTs and DELETEs.
 
 ![Load Phase Results](/images/benchmark/jepsen/jepsen-2-bank-contention.png)
 
@@ -83,7 +83,7 @@ SELECT val FROM T where id = 0;
 
 The long-fork test uses a table T with schema `(key int PRIMARY KEY, key2 int, val int)`, where individual workers execute either single-row inserts or perform multi-row reads. The expectation is that the read results are serializable. This means that for two write operations, W1 and W2, it should not be possible for a read operation R1 to observe write W1 but not W2, while another read operation R2 observes W2 but not W1.
 
-To read more about the long-fork test see [here](https://jepsen-io.github.io/jepsen/jepsen.tests.long-fork.html).
+For more information about the long-fork test, see [Jespen tests documentation](https://jepsen-io.github.io/jepsen/jepsen.tests.long-fork.html).
 
 ![Load Phase Results](/images/benchmark/jepsen/jepsen-5-long-fork.png)
 
@@ -95,7 +95,7 @@ This scenario entails concurrent Data Definition Language (DDL) and Data Manipul
 
 ### Single Key ACID
 
-The test uses a table T with schema `(id int PRIMARY KEY, val int)` with a fixed number of rows, each row having several worker threads assigned to it. Each worker can either read the row, update the row, or perform compare-and-set `UPDATE T SET val = ? WHERE id = ? AND val = ?`, worker groups for different rows are completely independent of each other. Checker makes sure that the resulting operations history is linearizable - i.e. that reads observe previous writes and writes don’t disappear.
+The test uses a table T with schema`(id int PRIMARY KEY, val int)` with a fixed number of rows, each row having several worker threads assigned to it. Each worker can either read the row, update the row, or perform compare-and-set `UPDATE T SET val = ? WHERE id = ? AND val = ?`; worker groups for different rows are completely independent of each other. Checker makes sure that the resulting operations history is linearizable, that is, reads observe previous writes and writes don’t disappear.
 
 ![Load Phase Results](/images/benchmark/jepsen/jepsen-7-single-key-acid.png)
 
@@ -112,9 +112,9 @@ SELECT k1, value FROM T where k2 = ? and k1 = ?;
 
 In addition to a usual integer primary key, the table schema for this test uses a few text columns that hold comma-separated integers. Workers perform small transactions - a mix of concatenated updates like `(UPDATE T SET txt = CONCAT(txt, ',', ?) WHERE id = ?)` and single-row reads. It then verifies the history, looking for various serializable isolation anomalies (these are complex and are abbreviated as G0, G1, and G2; see [Generalized Isolation Level Definitions](http://pmg.csail.mit.edu/papers/icde00.pdf) for a suggested reading).
 
-Unlike other tests, this one uses several identical tables rather than just one. More information about this test is available in the [CMU Quarantine Tech Talks: Black-box Isolation Checking with Elle](https://www.youtube.com/watch?v=OPJ_IcdSqig) (Kyle Kingsbury, Jepsen.io).
+Unlike other tests, this one uses several identical tables rather than just one. For more information about this test, see [CMU Quarantine Tech Talks: Black-box Isolation Checking with Elle](https://www.youtube.com/watch?v=OPJ_IcdSqig) (Kyle Kingsbury, Jepsen.io).
 
-These tests utilize geo-partitioning, different row level locking modes and all isolation types currently supported in YugabyteDB.
+The tests utilize geo-partitioning, different row-level locking modes, and all isolation types currently supported in YugabyteDB.
 
 ![Load Phase Results](/images/benchmark/jepsen/jepsen-8-append.png)
 
