@@ -10,7 +10,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"time"
@@ -34,7 +33,7 @@ func SaveCerts(ctx context.Context, config *Config, cert string, key string, sub
 		return err
 	}
 	certFilepath := filepath.Join(certsDir, NodeAgentCertFile)
-	err = ioutil.WriteFile(
+	err = os.WriteFile(
 		certFilepath,
 		[]byte(cert),
 		0644,
@@ -44,7 +43,7 @@ func SaveCerts(ctx context.Context, config *Config, cert string, key string, sub
 		return err
 	}
 	keyFilepath := filepath.Join(certsDir, NodeAgentKeyFile)
-	err = ioutil.WriteFile(
+	err = os.WriteFile(
 		keyFilepath,
 		[]byte(key),
 		0644,
@@ -183,7 +182,7 @@ func GenerateJWT(ctx context.Context, config *Config) (string, error) {
 
 // PublicKeyFromCert extracts public key from a cert.
 func PublicKeyFromCert(ctx context.Context, certFilepath string) (crypto.PublicKey, error) {
-	bytes, err := ioutil.ReadFile(certFilepath)
+	bytes, err := os.ReadFile(certFilepath)
 	if err != nil {
 		FileLogger().Errorf(ctx, "Error while reading the certificate: %s", err.Error())
 		return nil, err
