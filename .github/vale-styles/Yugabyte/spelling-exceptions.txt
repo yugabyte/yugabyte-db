@@ -109,6 +109,7 @@ chatbots
 ChatOps
 checksummed
 checksumming
+CIDRs
 Citrix
 Citus
 clonable
@@ -689,6 +690,7 @@ syscall
 syscalls
 syslog
 systemd
+tabpane
 tablegroup
 tablegroups
 tablespace

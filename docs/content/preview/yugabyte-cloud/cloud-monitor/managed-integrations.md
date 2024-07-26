@@ -22,6 +22,7 @@ Currently, you can export data to the following tools:
 - [Datadog](https://docs.datadoghq.com/)
 - [Grafana Cloud](https://grafana.com/docs/grafana-cloud/)
 - [Sumo Logic](https://www.sumologic.com)
+- [Prometheus](https://prometheus.io/docs/introduction/overview/) {{<badge/tp>}}
 
 Exporting cluster metrics and logs counts against your data transfer allowance. This may incur additional costs for network transfer, especially for cross-region and internet-based transfers, if usage exceeds your cluster allowance. Refer to [Data transfer costs](../../cloud-admin/cloud-billing-costs/#data-transfer-costs).
 
@@ -94,6 +95,34 @@ To create an export configuration, do the following:
 1. Enter a name for the configuration.
 1. Enter your installation token, access ID, and access key.
 1. Optionally, click **Download** to download the Sumo Logic dashboard template. After you install the [YugabyteDB app](https://help.sumologic.com/docs/get-started/apps-integrations/) (coming soon) in your Sumo Logic account, you can import this JSON format template and use it as a starting point for visualizing your cluster data.
+1. Click **Test Configuration** to make sure your connection is working.
+1. Click **Create Configuration**.
+
+  {{% /tab %}}
+
+  {{% tab header="Prometheus" lang="prometheus" %}}
+
+Prometheus integration is {{<badge/tp>}} and only available for clusters deployed on AWS.
+
+The Prometheus integration requires the following:
+
+- Prometheus instance deployed in a VPC on AWS.
+- Prometheus instance has the [OLTP Receiver](https://prometheus.io/docs/prometheus/latest/feature_flags/#otlp-receiver) feature flag enabled.
+- An endpoint URL for the Prometheus instance; the DNS for the endpoint must be in a public hosted zone in AWS.
+- YugabyteDB cluster from which they want to export metrics deployed in a VPC on AWS that is peered with the VPC hosting Prometheus. See [Peering connections](../../cloud-basics/cloud-vpcs/cloud-add-peering/).
+- The following Inbound Security Group rules for the cluster VPC:
+  - Allow HTTP inbound traffic on port 80 for HTTP endpoint URL
+  - Allow HTTPS inbound traffic on port 443 for HTTPS endpoint URL.
+
+  See [Control traffic to your AWS resources using security groups](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html) in the AWS documentation.
+
+Note that VPC requirements apply to all regions in multi-region clusters in AWS. See [VPC network overview](../../cloud-basics/cloud-vpcs/cloud-vpc-intro/).
+
+To create an export configuration, do the following:
+
+1. On the **Integrations** page, click **Configure** for the Prometheus provider or, if a configuration is already available, **Add Configuration**.
+1. Enter a name for the configuration.
+1. Enter the endpoint URL of the Prometheus instance.
 1. Click **Test Configuration** to make sure your connection is working.
 1. Click **Create Configuration**.
 
