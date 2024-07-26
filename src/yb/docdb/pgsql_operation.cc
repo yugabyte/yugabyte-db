@@ -56,6 +56,7 @@
 #include "yb/rpc/sidecars.h"
 
 #include "yb/util/algorithm_util.h"
+#include "yb/util/debug.h"
 #include "yb/util/enums.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -92,14 +93,12 @@ DEFINE_UNKNOWN_bool(pgsql_consistent_transactional_paging, true,
 DEFINE_test_flag(int32, slowdown_pgsql_aggregate_read_ms, 0,
                  "If set > 0, slows down the response to pgsql aggregate read by this amount.");
 
-// TODO: only enabled for new installs only for now, will enable it for upgrades in 2.22+ release.
-#ifndef NDEBUG
 // Disable packed row by default in debug builds.
-DEFINE_RUNTIME_bool(ysql_enable_packed_row, false,
-#else
-DEFINE_RUNTIME_AUTO_bool(ysql_enable_packed_row, kNewInstallsOnly, false, true,
-#endif
-                    "Whether packed row is enabled for YSQL.");
+// TODO: only enabled for new installs only for now, will enable it for upgrades in 2.22+ release.
+constexpr bool kYsqlEnablePackedRowTargetVal = !yb::kIsDebug;
+DEFINE_RUNTIME_AUTO_bool(ysql_enable_packed_row, kNewInstallsOnly,
+                         !kYsqlEnablePackedRowTargetVal, kYsqlEnablePackedRowTargetVal,
+                         "Whether packed row is enabled for YSQL.");
 
 DEFINE_UNKNOWN_bool(ysql_enable_packed_row_for_colocated_table, true,
                     "Whether to enable packed row for colocated tables.");

@@ -5,6 +5,13 @@
 pghost2=127.0.0.$((ip_start + 1))
 pghost3=127.0.0.$((ip_start + 2))
 
+# TEST_always_return_consensus_info_for_succeeded_rpc=false is needed to upgrade a release build to
+# debug.
+common_pg15_flags="TEST_always_return_consensus_info_for_succeeded_rpc=false"
+# yb_enable_expression_pushdown=false is needed because the expression pushdown rewriter is not yet
+# implemented.
+common_tserver_flags='"ysql_pg_conf_csv=yb_enable_expression_pushdown=false"'
+
 # Downloads, runs, and pushds the directory for pg11.
 # Sets $pg11path to the pg11 directory.
 run_and_pushd_pg11() {
@@ -29,19 +36,13 @@ run_and_pushd_pg11() {
   fi
   pg11path="$prefix/yugabyte-$ybversion_pg11"
   pushd "$pg11path"
-  yb_ctl_destroy_create --rf=3 \
-    --tserver_flags='"ysql_pg_conf_csv=yb_enable_expression_pushdown=false"'
+  yb_ctl_destroy_create --rf=3 --tserver_flags="$common_tserver_flags"
 }
 
 upgrade_masters() {
   for i in {1..3}; do
-    # Set master_join_existing_universe to true to mimic the configuration in YBA.
-    # This flag is used to prohibit sys catalog creation. Setting it to true here tests that the
-    # initdb RPC works with it on. With the flag set to false (the default), the system is more
-    # permissive, so there shouldn't be a significant loss of test coverage by covering the YBA
-    # case, and we avoid adding an entirely new test for this case.
     yb_ctl restart_node $i --master \
-      --master_flags="TEST_online_pg11_to_pg15_upgrade=true,master_join_existing_universe=true"
+      --master_flags="TEST_online_pg11_to_pg15_upgrade=true,master_join_existing_universe=true,$common_pg15_flags"
   done
 }
 
@@ -68,14 +69,15 @@ upgrade_masters_run_initdb() {
 # Assumes node 2 is drained of all traffic before calling.
 ysql_upgrade_using_node_2() {
   # Restart tserver 2 to PG15 for the upgrade, with postgres binaries in binary_upgrade mode
-  yb_ctl restart_node 2 --tserver_flags='TEST_pg_binary_upgrade=true,"ysql_pg_conf_csv=yb_enable_expression_pushdown=false"'
+  yb_ctl restart_node 2 \
+    --tserver_flags="TEST_pg_binary_upgrade=true,$common_tserver_flags,$common_pg15_flags"
 
   echo pg_upgrade starting at $(date +"%r")
   run_pg_upgrade
   echo pg_upgrade finished at $(date +"%r")
 
   # The upgrade is finished. Restart node 2 with postgres binaries *not* in binary upgrade mode
-  yb_ctl restart_node 2 --tserver_flags='"ysql_pg_conf_csv=yb_enable_expression_pushdown=false"'
+  yb_ctl restart_node 2 --tserver_flags="$common_tserver_flags,$common_pg15_flags"
 }
 
 # Run pg_upgrade which calls ysql_dumpall, ysql_dump and pg_restore.
