@@ -33,7 +33,7 @@ COMMIT;
 
 ### Bank-contention (YSQL)
 
-In addition to UPDATE transactions, there are also INSERT or INSERT/DELETE transactions, all operating under the assumption that the overall `SUM(balance)` must remain consistent. To simplify Jepsen's scenario in the case of Jepsen, the test uses 5 keys for UPDATEs and 5 for random INSERTs and DELETEs.
+In addition to UPDATE transactions, there are also INSERT or INSERT/DELETE transactions, all operating under the assumption that the overall `SUM(balance)` must remain consistent. To simplify Jepsen's scenario, the test uses 5 keys for UPDATEs and 5 for random INSERTs and DELETEs.
 
 ![Load Phase Results](/images/benchmark/jepsen/jepsen-2-bank-contention.png)
 
@@ -83,13 +83,13 @@ SELECT val FROM T where id = 0;
 
 The long-fork test uses a table T with schema `(key int PRIMARY KEY, key2 int, val int)`, where individual workers execute either single-row inserts or perform multi-row reads. The expectation is that the read results are serializable. This means that for two write operations, W1 and W2, it should not be possible for a read operation R1 to observe write W1 but not W2, while another read operation R2 observes W2 but not W1.
 
-For more information about the long-fork test, see [Jespen tests documentation](https://jepsen-io.github.io/jepsen/jepsen.tests.long-fork.html).
+For more information, see [Jespen tests documentation](https://jepsen-io.github.io/jepsen/jepsen.tests.long-fork.html).
 
 ![Load Phase Results](/images/benchmark/jepsen/jepsen-5-long-fork.png)
 
 ### Default value
 
-This scenario entails concurrent Data Definition Language (DDL) and Data Manipulation Language (DML) operations, simulating a migration scenario. You typically add a `DEFAULT 0` column, ensuring that it is actually zero and not null when performing inserts and reads.
+This scenario entails concurrent Data Definition Language (DDL) and Data Manipulation Language (DML) operations, simulating a migration scenario. Typically, `DEFAULT 0` column is added to ensure that it is actually zero and not null when performing inserts and reads.
 
 ![Load Phase Results](/images/benchmark/jepsen/jepsen-6-default-value.png)
 
