@@ -12,6 +12,8 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPCreateSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
@@ -37,8 +39,7 @@ import play.mvc.Result;
 
 @Api(
     value = "Extract metadata from remote tarball",
-    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH),
-    hidden = true)
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 @Slf4j
 public class ReleasesExtractMetadataController extends AuthenticatedController {
 
@@ -56,8 +57,9 @@ public class ReleasesExtractMetadataController extends AuthenticatedController {
       value = "helper to extract release metadata from a remote tarball",
       response = YBPSuccess.class,
       nickname = "extractMetadata",
-      notes = "YbaApi Internal extract metadata",
-      hidden = true)
+      notes =
+          "WARNING: This is a preview API that could change: start extracting metadata from a"
+              + " remote tgz url")
   @ApiImplicitParams({
     @ApiImplicitParam(
         name = "Release URL",
@@ -72,6 +74,7 @@ public class ReleasesExtractMetadataController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2024.2.0.0")
   public Result extract_metadata(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     ExtractMetadata em =
@@ -115,14 +118,16 @@ public class ReleasesExtractMetadataController extends AuthenticatedController {
       value = "get the extract release metadata from a remote tarball",
       response = ResponseExtractMetadata.class,
       nickname = "extractMetadata",
-      notes = "YbaApi Internal extract metadata",
-      hidden = true)
+      notes =
+          "WARNING: This is a preview API that could change: Get extract metadata and its"
+              + " progress.")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2024.2.0.0")
   public Result getMetadata(UUID customerUUID, UUID metadataUUID, Http.Request request) {
     ResponseExtractMetadata metadata = metadataMap.get(metadataUUID);
     Customer.getOrBadRequest(customerUUID);
