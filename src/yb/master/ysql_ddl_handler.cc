@@ -198,16 +198,30 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(const string& pb_txn_id,
     }
 
     auto state = verifier_state->state;
+    auto txn_state = is_committed ? TxnState::kCommitted : TxnState::kAborted;
     if (state == YsqlDdlVerificationState::kDdlPostProcessing) {
-      // Verification is already in progress.
-      VLOG(3) << "Transaction " << txn << " is already being verified, ignoring";
-      return Status::OK();
+      // We used to return Status::OK() here on the grounds that the txn is
+      // already being verified and we assumed verifier_state->tables represent
+      // all of the tables involved in txn and they are taken care of by
+      // calling YsqlDdlTxnCompleteCallbackInternal on each of them below.
+      // However, verifier_state->tables may not include all of the tables
+      // involved in txn. It is possible that a table is only added into the
+      // txn after the txn is already in kDdlPostProcessing state. For example,
+      // a txn involves three tables t1, t2, t3. After t1 and t2 are added to txn,
+      // the txn is aborted due to some reason (e.g., conflict). In this case
+      // YsqlDdlTxnCompleteCallbackInternal is only called on t1 and t2 and
+      // the state is set to kDdlPostProcessing before t3 gets added. Later when
+      // t3 gets added, if we return Status::OK() here, then t3 will never be
+      // processed. Therefore we need to call YsqlDdlTxnCompleteCallbackInternal
+      // to process t3. It is fine to reprocess t1 and t2, that will result in a
+      // no-op.
+      SCHECK_EQ(txn_state, verifier_state->txn_state, IllegalState,
+                Format("Mismatch in txn_state for transaction $0", txn));
+    } else {
+      verifier_state->txn_state = txn_state;
+      verifier_state->state = YsqlDdlVerificationState::kDdlPostProcessing;
     }
-
     tables = verifier_state->tables;
-    verifier_state->txn_state =
-        (is_committed) ? TxnState::kCommitted : TxnState::kAborted;
-    verifier_state->state = YsqlDdlVerificationState::kDdlPostProcessing;
   }
 
   bool ddl_verification_success = true;
