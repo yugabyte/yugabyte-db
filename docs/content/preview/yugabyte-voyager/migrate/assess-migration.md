@@ -203,7 +203,6 @@ Before you begin the Voyager migration, do the following:
 
 1. [Install Voyager](../../install-yb-voyager/).
 
-1. Voyager should be installed following the steps in the [prepare](../../install-yb-voyager/) section.
 
 ### Send Voyager details to a local YugabyteDB cluster 
 
