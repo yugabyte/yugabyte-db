@@ -51,8 +51,7 @@ To optimally configure and run a Debezium YugabyteDB connector, it is helpful to
 
 To use the Debezium connector to stream changes from a YugabyteDB database, the connector must operate with specific privileges in the database. Although one way to grant the necessary privileges is to provide the user with `superuser` privileges, doing so potentially exposes your YugabyteDB data to unauthorized access. Rather than granting excessive privileges to the Debezium user, it is best to create a dedicated Debezium replication user to which you grant specific privileges.
 
-For more information about configuring privileges for the Debezium YugabyteDB user, see [Setting up permissions](#setting-up-permissions). <!--For more information about YugabyteDB logical replication security, see the [YugabyteDB documentation](#reminder).-->
-
+For more information about configuring privileges for the Debezium YugabyteDB user, see [Setting up permissions](#setting-up-permissions).
 ### Snapshots
 
 Most YugabyteDB servers are configured to not retain the complete history of the database in the WAL segments. This means that the YugabyteDB connector would be unable to see the entire history of the database by reading only the WAL. Consequently, the first time that the connector starts, it performs an initial consistent snapshot of the database.
@@ -1391,8 +1390,6 @@ Procedure
 2. Extract the files into your Kafka Connect environment.
 3. Add the directory with the JAR files to the [Kafka Connect `plugin.path`](https://kafka.apache.org/documentation/#connectconfigs).
 4. Restart your Kafka Connect process to pick up the new JAR files.
-
-If you are working with immutable containers, see [Debezium Container images](#reminder) for Zookeeper, Kafka, YugabyteDB, and Kafka Connect with the YugabyteDB connector already installed and ready to run. You can also [run Debezium on Kubernetes and OpenShift](https://debezium.io/documentation/reference/2.5/operations/openshift.html).
 
 ### Creating Kafka topics
 
