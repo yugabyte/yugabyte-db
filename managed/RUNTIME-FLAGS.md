@@ -47,6 +47,7 @@
 | "Azure Disk Params blob" | "yb.azure.custom_params.disk" | "PROVIDER" | "Custom JSON of Azure parameters to apply on top of data disk creation." | "String" |
 | "Azure Network Interface Params blob" | "yb.azure.custom_params.network" | "PROVIDER" | "Custom JSON of Azure parameters to apply on top of network interface creation." | "String" |
 | "Ignore VM plan information" | "yb.azure.vm.ignore_plan" | "PROVIDER" | "Skip passing in any plan information when creating virtual machine, even if found." | "Boolean" |
+| "Show Premium V2 storage type" | "yb.azure.show_premiumv2_storage_type" | "PROVIDER" | "Show Premium V2 storage type during create/edit universe flow." | "Boolean" |
 | "Monitored mount roots" | "yb.provider.monitored_mount_roots" | "PROVIDER" | "Mount roots, which we show on the merics dashboard and which we're alerting on." | "String" |
 | "Enable Geo-partitioning" | "yb.universe.geo_partitioning_enabled" | "PROVIDER" | "Enables geo-partitioning for universes created with this provider." | "Boolean" |
 | "Enable YBC" | "ybc.provider.enabled" | "PROVIDER" | "Enable YBC for universes created with this provider" | "Boolean" |

@@ -16,6 +16,7 @@ import {
   StorageType
 } from '../../../utils/dto';
 import { isEphemeralAwsStorageInstance } from '../InstanceTypeField/InstanceTypeFieldHelper';
+import { RuntimeConfigKey } from '../../../../../../helpers/constants';
 
 export const IO1_DEFAULT_DISK_IOPS = 1000;
 export const IO1_MAX_DISK_IOPS = 64000;
@@ -93,14 +94,21 @@ export const getMaxDiskIops = (storageType: StorageType, volumeSize: number) => 
   }
 };
 
-export const getStorageTypeOptions = (providerCode?: CloudType): StorageTypeOption[] => {
+export const getStorageTypeOptions = (providerCode?: CloudType, providerRuntimeConfigs?: any): StorageTypeOption[] => {
+  const showPremiumV2Option = providerRuntimeConfigs?.configEntries?.find(
+    (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.AZURE_PREMIUM_V2_STORAGE_TYPE
+  )?.value === 'true';
+  const filteredAzureStorageTypes = showPremiumV2Option ? AZURE_STORAGE_TYPE_OPTIONS :  AZURE_STORAGE_TYPE_OPTIONS.filter((storageType) => {
+    return storageType.value !== StorageType.PremiumV2_LRS;
+  });
+
   switch (providerCode) {
     case CloudType.aws:
       return AWS_STORAGE_TYPE_OPTIONS;
     case CloudType.gcp:
       return GCP_STORAGE_TYPE_OPTIONS;
     case CloudType.azu:
-      return AZURE_STORAGE_TYPE_OPTIONS;
+      return filteredAzureStorageTypes;
     default:
       return [];
   }
@@ -167,19 +175,19 @@ const getVolumeSize = (instance: InstanceType, providerRuntimeConfigs: any) => {
 
   if (instance.providerCode === CloudType.aws) {
     volumeSize = providerRuntimeConfigs?.configEntries?.find(
-      (c: RunTimeConfigEntry) => c.key === 'yb.aws.default_volume_size_gb'
+      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.AWS_DEFAULT_VOLUME_SIZE
     )?.value;
   } else if (instance.providerCode === CloudType.gcp) {
     volumeSize = providerRuntimeConfigs?.configEntries?.find(
-      (c: RunTimeConfigEntry) => c.key === 'yb.gcp.default_volume_size_gb'
+      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.GCP_DEFAULT_VOLUME_SIZE
     )?.value;
   } else if (instance.providerCode === CloudType.kubernetes) {
     volumeSize = providerRuntimeConfigs?.configEntries?.find(
-      (c: RunTimeConfigEntry) => c.key === 'yb.kubernetes.default_volume_size_gb'
+      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.KUBERNETES_DEFAULT_VOLUME_SIZE
     )?.value;
   } else if (instance.providerCode === CloudType.azu) {
     volumeSize = providerRuntimeConfigs?.configEntries?.find(
-      (c: RunTimeConfigEntry) => c.key === 'yb.azure.default_volume_size_gb'
+      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.AZURE_DEFAULT_VOLUME_SIZE
     )?.value;
   }
   return volumeSize;
@@ -193,15 +201,15 @@ const getStorageType = (instance: InstanceType, providerRuntimeConfigs: any) => 
 
   if (instance.providerCode === CloudType.aws) {
     storageType = providerRuntimeConfigs?.configEntries?.find(
-      (c: RunTimeConfigEntry) => c.key === 'yb.aws.storage.default_storage_type'
+      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.AWS_DEFAULT_STORAGE_TYPE
     )?.value;
   } else if (instance.providerCode === CloudType.gcp) {
     storageType = providerRuntimeConfigs?.configEntries?.find(
-      (c: RunTimeConfigEntry) => c.key === 'yb.gcp.storage.default_storage_type'
+      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.GCP_DEFAULT_STORAGE_TYPE
     )?.value;
   } else if (instance.providerCode === CloudType.azu) {
     storageType = providerRuntimeConfigs?.configEntries?.find(
-      (c: RunTimeConfigEntry) => c.key === 'yb.azure.storage.default_storage_type'
+      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.AZURE_DEFAULT_STORAGE_TYPE
     )?.value;
   }
   return storageType;
