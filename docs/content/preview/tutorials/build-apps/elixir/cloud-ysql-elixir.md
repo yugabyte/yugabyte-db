@@ -149,4 +149,4 @@ end)
 
 ## Learn more
 
-[Watch](https://www.youtube.com/live/_utOXl3eWoA?feature=shared) Chris McCord, the creator of the Phoenix framework, joining YugabyteDB Community Open Hours and demonstrating how to build multi-region applications using Phoenix, Fly.io and YugabyteDB.
+[YugabyteDB Community Open Hours](https://www.youtube.com/live/_utOXl3eWoA?feature=shared) - featuring Chris McCord, the creator of the Phoenix framework, demonstrating how to build multi-region applications using Phoenix, Fly.io, and YugabyteDB.
