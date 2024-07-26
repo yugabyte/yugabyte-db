@@ -22,19 +22,19 @@ type: docs
 
 The following tutorial shows how to implement an Elixir app using the Phoenix framework with the Ecto ORM. The app connects to a YugabyteDB cluster, creates a sample table, populates it with a few records, and changes data transactionally.
 
-The source for the application can be found in the [following repository](https://github.com/YugabyteDB-Samples/yugabytedb-simple-elixir-app/tree/main/phoenix/simple_app).
+The source for the application can be found in the [yugabytedb-simple-elixir-app](https://github.com/YugabyteDB-Samples/yugabytedb-simple-elixir-app/tree/main/phoenix/simple_app) repository.
 
 ## Prerequisites
 
 This tutorial assumes that you have:
 
-- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../../quick-start/).
+- YugabyteDB up and running. Download and install YugabyteDB by following the steps in [Quick start](../../../quick-start/).
 
 - The latest versions of [Elixir, Erlang VM, IEx and Mix](https://elixir-lang.org/docs.html) (tested with Elixir 1.17.1 and Erlang/OTP 26 erts-14.2.5).
 
-## Create Phoenix Project
+## Create Phoenix project
 
-In this section you create a Phoenix project and configure it working with an existing YugabyteDB cluster.
+In this section you create a Phoenix project and configure it to work with an existing YugabyteDB cluster.
 
 First, use the `mix` tool to create a project template and pull all required dependencies:
 
@@ -64,7 +64,7 @@ config :sample_yugabytedb_phoenix_app, SampleYugabytedbPhoenixApp.Repo,
   pool_size: 10
 ```
 
-As YugabyteDB is built on PostgreSQL, you only need to update the configuration settings above. Both Ecto and the underlying Postgrex driver will work with YugabyteDB as they do with vanilla PostgreSQL.
+As YugabyteDB is built on PostgreSQL, you only need to update the `config` settings. Both Ecto and the underlying Postgrex driver will work with YugabyteDB as they do with vanilla PostgreSQL.
 
 Assuming that your YugabyteDB cluster is running locally, do the following:
 
@@ -84,7 +84,7 @@ Assuming that your YugabyteDB cluster is running locally, do the following:
     pool_size: 10
     ```
 
-- Add the `migration_lock: false` setting to the database configuration. Ecto acquires exclusive table locks while running database migrations, but this type of lock is not supported by YugabyteDB yet. Track the [following GitHub ticket](https://github.com/yugabyte/yugabyte-db/issues/5384) to understand details and get updates.
+- Add the `migration_lock: false` setting to the database configuration. Ecto acquires exclusive table locks while running database migrations, but this type of lock is not currently supported by YugabyteDB. Track [GitHub issue 5384](https://github.com/yugabyte/yugabyte-db/issues/5384) to understand details and get updates.
 
     ```elixir
     config :sample_yugabytedb_phoenix_app, SampleYugabytedbPhoenixApp.Repo,
@@ -107,7 +107,7 @@ Generated sample_yugabytedb_phoenix_app app
 The database for SampleYugabytedbPhoenixApp.Repo has already been created
 ```
 
-## Generate Sample Schema
+## Generate sample schema
 
 In this section, you use Phoenix and Ecto to generate a sample database schema for the `Account` entity and to apply database migrations.
 
@@ -169,11 +169,11 @@ yugabyte=# \d
 (3 rows)
 ```
 
-## Persist and Query Data
+## Persist and query data
 
 In this final section, you use Phoenix APIs and the IEx interactive shell to persist and query data in YugabyteDB.
 
-- Start a IEx session in your terminal:
+- Start an IEx session in your terminal:
 
     ```shell
     iex -S mix
@@ -225,10 +225,13 @@ In this final section, you use Phoenix APIs and the IEx interactive shell to per
     ]
     ```
 
-Note, that the `id` of the `Mary Black` account is `101` and not `2`. This happens because sequences in YugabyteDB cache `100` ids by default per connection. It means that records were inserted into the database using different database connections.
+Note that the `id` of the `Mary Black` account is `101` and not `2`. This happens because sequences in YugabyteDB cache `100` IDs per connection by default. This means that records were inserted into the database using different database connections.
 
 ```sql
 yugabyte=# \d account_id_seq
+```
+
+```output
                        Sequence "public.account_id_seq"
   Type  | Start | Minimum |       Maximum       | Increment | Cycles? | Cache
 --------+-------+---------+---------------------+-----------+---------+-------
@@ -236,7 +239,7 @@ yugabyte=# \d account_id_seq
 Owned by: public.account.id
 ```
 
-Refer to the [following blog post](https://www.yugabyte.com/blog/create-database-sequences/) for details on how sequences work in YugabyteDB and how to scale them.
+For details on how sequences work in YugabyteDB and how to scale them, refer to the [Scaling Sequences with Server-Level Caching in YugabyteDB](https://www.yugabyte.com/blog/create-database-sequences/).
 
 Finally, use the `Ecto.Query` interface to query specific data:
 
@@ -257,8 +260,8 @@ Congratulations! You've successfully completed the tutorial.
 
 Now, explore the [final version of the application](https://github.com/YugabyteDB-Samples/yugabytedb-simple-elixir-app/tree/main/phoenix/simple_app) to see how work with YugabyteDB using the same APIs but programmatically.
 
-## Next Steps
+## Next steps
 
 - [Watch](https://www.youtube.com/live/_utOXl3eWoA?feature=shared) Chris McCord, the creator of the Phoenix framework, joining YugabyteDB Community Open Hours and demonstrating how to build multi-region applications using Phoenix, Fly.io and YugabyteDB.
 
-- Create a [sample Elixir app](../../tutorials/build-apps/elixir/cloud-ysql-elixir/) using the Postgrex driver.
+- Create a [sample Elixir app](../../../tutorials/build-apps/elixir/cloud-ysql-elixir/) using the Postgrex driver.

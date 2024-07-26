@@ -3,7 +3,7 @@ title: Elixir drivers and ORMs
 headerTitle: Elixir
 linkTitle: Elixir
 description: Elixir Drivers and ORMs support for YugabyteDB.
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
+image: fa-classic fa-droplet
 menu:
   preview:
     identifier: elixir-drivers
@@ -37,4 +37,4 @@ To develop Elixir applications for YugabyteDB, you need the following:
 
 ## Next step
 
-- [Simple app using Phoenix framework](phoenix/)
+- [Basic application using Phoenix framework](phoenix/)

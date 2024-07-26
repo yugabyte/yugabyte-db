@@ -55,7 +55,7 @@ In addition to the compatible upstream PostgreSQL (YSQL) and Cassandra (YCQL) dr
 
   <li>
     <a href="elixir/" class="orange">
-      <i class="fa-brands fa-node-js"></i>
+      <i class="fa-classic fa-droplet"></i>
       Elixir
     </a>
   </li>
