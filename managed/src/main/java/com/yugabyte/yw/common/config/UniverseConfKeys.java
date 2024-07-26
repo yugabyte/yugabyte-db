@@ -1285,4 +1285,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " proceeding. Turn off in disaster scenarios to force perform actions.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> healthCheckClockSyncServiceRequired =
+      new ConfKeyInfo<>(
+          "yb.health_checks.clock_sync_service_required",
+          ScopeType.UNIVERSE,
+          "Fail the the health check if no clock sync service is found",
+          "Require chrony or ntp(d) to be installed for health check to pass",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

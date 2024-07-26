@@ -769,6 +769,9 @@ public class HealthChecker {
             nodeInfo.setTimeDriftErrThreshold(
                 confGetter.getConfForScope(
                     params.universe, UniverseConfKeys.healthCheckTimeDriftErrThreshold));
+            nodeInfo.setClockSyncServiceRequired(
+                confGetter.getConfForScope(
+                    params.universe, UniverseConfKeys.healthCheckClockSyncServiceRequired));
           }
         }
         if (params.universe.isYbcEnabled()) {
@@ -1148,6 +1151,7 @@ public class HealthChecker {
     private int ybcPort = 18018;
     private UUID universeUuid;
     private boolean otelCollectorEnabled;
+    private boolean clockSyncServiceRequired = true;
     @JsonIgnore @EqualsAndHashCode.Exclude private NodeDetails nodeDetails;
   }
 
