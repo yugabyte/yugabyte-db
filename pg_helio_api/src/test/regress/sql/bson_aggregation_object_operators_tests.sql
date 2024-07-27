@@ -1,4 +1,4 @@
-SET search_path TO helio_api,helio_core;
+SET search_path TO helio_api,helio_core,helio_api_catalog;
 
 SET helio_api.next_collection_id TO 3600;
 SET helio_api.next_collection_index_id TO 3600;
@@ -28,6 +28,11 @@ SELECT * FROM helio_api_catalog.bson_dollar_project('{"a": { "b": {"c": "nested 
 SELECT * FROM helio_api_catalog.bson_dollar_project('{"a": { "$b.01": {"c": "1"} }}', '{"result": { "fieldValue": {"$getField": {"field": { "$literal": "$b.01" }, "input": "$a"}}}}');
 -- nested expression
 SELECT * FROM helio_api_catalog.bson_dollar_project('{"a": { "b": 3 }}', '{"result": { "fieldValue": {"$getField": {"field": "b", "input": { "$getField": "a" }}}}}');
+-- test pipeline
+SELECT helio_api.insert_one('db','getfield','{"_id":"1", "a": null }', NULL);
+SELECT helio_api.insert_one('db','getfield','{"_id":"2", "a": { "b": 1 } }', NULL);
+SELECT helio_api.insert_one('db','getfield','{"_id":"3"}', NULL);
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "getfield", "pipeline": [ { "$project": { "fieldValue": { "$getField": { "field": "b", "input": "$a" }}}}], "cursor": {} }');
 
 -- shorthand expression
 -- input will be $$CURRENT

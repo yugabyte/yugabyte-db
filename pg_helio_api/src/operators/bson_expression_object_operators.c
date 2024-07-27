@@ -47,7 +47,8 @@ static void AppendDocumentForMergeObjects(pgbson *sourceDocument, const
 										  bson_value_t *value,
 										  BsonIntermediatePathNode *tree,
 										  ExpressionResult *parent);
-static bson_value_t GetResultForDollarGetField(bson_value_t field, bson_value_t input);
+static bson_value_t ProcessResultForDollarGetField(bson_value_t field, bson_value_t
+												   input);
 static bool IsAggregationExpressionEvaluatesToNull(
 	AggregationExpressionData *expressionData);
 static AggregationExpressionData * PerformConstantFolding(
@@ -579,10 +580,11 @@ HandlePreParsedDollarGetField(pgbson *doc, void *arguments,
 									  isNullOnEmpty);
 	bson_value_t evaluatedInputArg = inputExpression.value;
 
-	if (evaluatedInputArg.value_type == BSON_TYPE_DOCUMENT)
+	if (evaluatedInputArg.value_type == BSON_TYPE_DOCUMENT || IsExpressionResultNull(
+			&evaluatedInputArg))
 	{
-		bson_value_t result = GetResultForDollarGetField(evaluatedFieldArg,
-														 evaluatedInputArg);
+		bson_value_t result = ProcessResultForDollarGetField(evaluatedFieldArg,
+															 evaluatedInputArg);
 		if (result.value_type != BSON_TYPE_EOD)
 		{
 			ExpressionResultSetValue(expressionResult, &result);
@@ -693,22 +695,11 @@ ParseDollarGetField(const bson_value_t *argument, AggregationExpressionData *dat
 	/* Parse input */
 	ParseAggregationExpressionData(&arguments->input, &input);
 
-
-	/* if input is null, return null */
-	if (input.value_type == BSON_TYPE_NULL || IsAggregationExpressionEvaluatesToNull(
-			&arguments->input))
+	/* if input is a constant document, we can evaluate the result directly */
+	if ((IsAggregationExpressionConstant(&arguments->input) && input.value_type ==
+		 BSON_TYPE_DOCUMENT) || IsAggregationExpressionEvaluatesToNull(&arguments->input))
 	{
-		data->value = (bson_value_t) {
-			.value_type = BSON_TYPE_NULL
-		};
-
-		data->kind = AggregationExpressionKind_Constant;
-	}
-	else if (IsAggregationExpressionConstant(&arguments->input) && input.value_type ==
-			 BSON_TYPE_DOCUMENT)
-	{
-		/* if input is a constant document, we can evaluate the result directly */
-		bson_value_t result = GetResultForDollarGetField(field, input);
+		bson_value_t result = ProcessResultForDollarGetField(field, input);
 		if (result.value_type != BSON_TYPE_EOD)
 		{
 			data->value = result;
@@ -908,9 +899,19 @@ ParseFieldExpressionForDollarGetField(const bson_value_t *field,
 
 
 static bson_value_t
-GetResultForDollarGetField(bson_value_t field, bson_value_t input)
+ProcessResultForDollarGetField(bson_value_t field, bson_value_t input)
 {
 	bson_value_t result = { 0 };
+
+	/* if input is null, return null */
+	if (IsExpressionResultNull(&input))
+	{
+		result = (bson_value_t) {
+			.value_type = BSON_TYPE_NULL
+		};
+		return result;
+	}
+
 	bson_iter_t inputIter;
 	BsonValueInitIterator(&input, &inputIter);
 	while (bson_iter_next(&inputIter))

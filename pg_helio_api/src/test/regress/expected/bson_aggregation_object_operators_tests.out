@@ -1,4 +1,4 @@
-SET search_path TO helio_api,helio_core;
+SET search_path TO helio_api,helio_core,helio_api_catalog;
 SET helio_api.next_collection_id TO 3600;
 SET helio_api.next_collection_index_id TO 3600;
 -- $getField operator
@@ -79,6 +79,34 @@ SELECT * FROM helio_api_catalog.bson_dollar_project('{"a": { "b": 3 }}', '{"resu
 ----------------------------------------------------------
  { "result" : { "fieldValue" : { "$numberInt" : "3" } } }
 (1 row)
+
+-- test pipeline
+SELECT helio_api.insert_one('db','getfield','{"_id":"1", "a": null }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','getfield','{"_id":"2", "a": { "b": 1 } }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','getfield','{"_id":"3"}', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "getfield", "pipeline": [ { "$project": { "fieldValue": { "$getField": { "field": "b", "input": "$a" }}}}], "cursor": {} }');
+                        document                        
+--------------------------------------------------------
+ { "_id" : "1", "fieldValue" : null }
+ { "_id" : "2", "fieldValue" : { "$numberInt" : "1" } }
+ { "_id" : "3" }
+(3 rows)
 
 -- shorthand expression
 -- input will be $$CURRENT
