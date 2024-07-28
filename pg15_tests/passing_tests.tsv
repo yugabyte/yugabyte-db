@@ -1,3 +1,4 @@
+JAVA	org.yb.cdc.ysql.TestArrayTypes
 JAVA	org.yb.pgsql.TestAlterTableWithConcurrentTxn#testDmlTransactionAfterAlterOnCurrentResourceWithCachedMetadata
 JAVA	org.yb.pgsql.TestAlterTableWithConcurrentTxn#testDmlTransactionAfterAlterOnCurrentResourceWithoutCachedMetadata
 JAVA	org.yb.pgsql.TestAlterTableWithConcurrentTxn#testDmlTransactionBeforeAlterOnCurrentResource
@@ -6,6 +7,7 @@ JAVA	org.yb.pgsql.TestBatchCopyFrom
 JAVA	org.yb.pgsql.TestHdr
 JAVA	org.yb.pgsql.TestIndexBackfill#insertsWhileCreatingIndex
 JAVA	org.yb.pgsql.TestJWTAuth
+JAVA	org.yb.pgsql.TestLintPgRegressSchedules
 JAVA	org.yb.pgsql.TestPg15Regress
 JAVA	org.yb.pgsql.TestPgAlterTable
 JAVA	org.yb.pgsql.TestPgAuthorization
@@ -61,6 +63,7 @@ JAVA	org.yb.pgsql.TestPgRegressCursor#testPgRegressCursor
 JAVA	org.yb.pgsql.TestPgRegressDistinctPushdown
 JAVA	org.yb.pgsql.TestPgRegressDml
 JAVA	org.yb.pgsql.TestPgRegressFeatureDatabase
+JAVA	org.yb.pgsql.TestPgRegressFeaturePartition
 JAVA	org.yb.pgsql.TestPgRegressForeignData
 JAVA	org.yb.pgsql.TestPgRegressGin
 JAVA	org.yb.pgsql.TestPgRegressHashInQueries
@@ -73,6 +76,7 @@ JAVA	org.yb.pgsql.TestPgRegressLegacyColocation
 JAVA	org.yb.pgsql.TestPgRegressMatview
 JAVA	org.yb.pgsql.TestPgRegressMisc#testPgRegressMiscIndependent
 JAVA	org.yb.pgsql.TestPgRegressMisc#testPgRegressMiscSerial2
+JAVA	org.yb.pgsql.TestPgRegressMisc#testPgRegressMiscSerial3
 JAVA	org.yb.pgsql.TestPgRegressNonTxnCopy
 JAVA	org.yb.pgsql.TestPgRegressPartitions#yb_partitions_tests
 JAVA	org.yb.pgsql.TestPgRegressPgAuth
@@ -80,7 +84,7 @@ JAVA	org.yb.pgsql.TestPgRegressPgForeignData
 JAVA	org.yb.pgsql.TestPgRegressPgMisc
 JAVA	org.yb.pgsql.TestPgRegressPgSelect
 JAVA	org.yb.pgsql.TestPgRegressPgStatStatements
-JAVA	org.yb.pgsql.TestPgRegressPgTransactions
+JAVA	org.yb.pgsql.TestPgRegressPgTypesString
 JAVA	org.yb.pgsql.TestPgRegressProc
 JAVA	org.yb.pgsql.TestPgRegressProfile
 JAVA	org.yb.pgsql.TestPgRegressPublication
@@ -103,7 +107,6 @@ JAVA	org.yb.pgsql.TestPgRegressTypesGeo
 JAVA	org.yb.pgsql.TestPgRegressTypesMisc
 JAVA	org.yb.pgsql.TestPgRegressTypesString
 JAVA	org.yb.pgsql.TestPgRegressTypesUDT
-JAVA	org.yb.pgsql.TestPgRegressWaitQueues
 JAVA	org.yb.pgsql.TestPgRegressWindow
 JAVA	org.yb.pgsql.TestPgRegressYbExtensionsYbXclusterDdlReplication
 JAVA	org.yb.pgsql.TestPgRegressYbFetchLimits
@@ -431,6 +434,7 @@ pgwrapper_pg_catalog_version-test	PgCatalogVersionTest.FixCatalogVersionTable
 pgwrapper_pg_catalog_version-test	PgCatalogVersionTest.IncrementAllDBCatalogVersions
 pgwrapper_pg_catalog_version-test	PgCatalogVersionTest.InvalidateWholeRelCache
 pgwrapper_pg_catalog_version-test	PgCatalogVersionTest.ResetIsGlobalDdlState
+pgwrapper_pg_catalog_version-test	PgCatalogVersionTest.SqlCrossDBLoadWithDDL
 pgwrapper_pg_ddl_atomicity-test	PgDdlAtomicityColocatedDbTest.*
 pgwrapper_pg_ddl_atomicity-test	PgDdlAtomicityConcurrentDdlTest.*
 pgwrapper_pg_ddl_atomicity-test	PgDdlAtomicityMiniClusterTest.TestTableCacheAfterTxnVerification
@@ -582,6 +586,7 @@ tools_yb-backup-test	YBBackupTest.TestYSQLKeyspaceBackup
 tools_yb-backup-test	YBBackupTest.TestYSQLKeyspaceBackupWithDropTable
 tools_yb-backup-test	YBBackupTest.TestYSQLPgBasedBackup
 tools_yb-backup-test	YBBackupTest.TestYSQLRestoreBackupToGlobalCatalogVersionMode
+tools_yb-backup-test	YBBackupTest.TestYSQLRestoreBackupToNewKeyspace
 tools_yb-backup-test	YBBackupTest.TestYSQLRestoreKeyspaceWithHyphenToSimpleKeyspace
 tserver_clone_operation-test	CloneOperationTest.Hardlink
 xcluster_ddl_replication-test	XClusterDDLReplicationTest.CreateIndex

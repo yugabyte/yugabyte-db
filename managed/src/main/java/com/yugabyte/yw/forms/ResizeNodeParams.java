@@ -268,8 +268,10 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
         return error.get();
       }
       if (nodeDiskChanged) {
-        if (curDeviceInfo.storageType == PublicCloudConstants.StorageType.UltraSSD_LRS) {
-          return "UltraSSD doesn't support resizing without downtime";
+        if (curDeviceInfo.storageType == PublicCloudConstants.StorageType.UltraSSD_LRS
+            || curDeviceInfo.storageType == PublicCloudConstants.StorageType.PremiumV2_LRS) {
+          return String.format(
+              "%s doesn't support resizing without downtime", curDeviceInfo.storageType);
         }
         if (currentUserIntent.providerType == Common.CloudType.azu
             && curDeviceInfo.volumeSize <= AZU_DISK_LIMIT_NO_DOWNTIME

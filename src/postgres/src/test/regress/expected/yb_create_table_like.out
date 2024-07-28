@@ -257,7 +257,7 @@ CREATE TABLE stats_test1 (LIKE liketest1 INCLUDING STATISTICS);
  a      | text |           | not null |         | extended |              |
  b      | text |           |          |         | extended |              |
 Statistics objects:
-    "public"."stats_test1_a_b_stat" (ndistinct, dependencies) ON a, b FROM stats_test1
+    "public.stats_test1_a_b_stat" ON a, b FROM stats_test1
 
 CREATE TABLE stats_test2 (LIKE liketest1 INCLUDING ALL);
 \d+ stats_test2
@@ -273,7 +273,7 @@ Indexes:
 Check constraints:
     "liketest1_a_check" CHECK (length(a) > 2)
 Statistics objects:
-    "public"."stats_test2_a_b_stat" (ndistinct, dependencies) ON a, b FROM stats_test2
+    "public.stats_test2_a_b_stat" ON a, b FROM stats_test2
 
 DROP TABLE neg_stats_test, stats_test1, stats_test2 CASCADE;
 DROP STATISTICS liketest1_stat;
@@ -378,28 +378,32 @@ Indexes:
 
 \c yugabyte
 DROP DATABASE colocation_test;
--- When using LIKE clause on a source table with indexes, the target table has indexes deduplicated.
-CREATE TABLE test_dedupe_idx (hashkey int, asckey text, desckey text);
-CREATE INDEX h1 ON test_dedupe_idx(hashkey);
-CREATE INDEX h2 ON test_dedupe_idx(hashkey);
-CREATE INDEX a1 ON test_dedupe_idx(asckey ASC);
-CREATE INDEX a2 ON test_dedupe_idx(asckey ASC);
-CREATE INDEX d1 ON test_dedupe_idx(desckey DESC);
-CREATE INDEX d2 ON test_dedupe_idx(desckey DESC);
-CREATE TABLE test_dedupe_idx_like (LIKE test_dedupe_idx INCLUDING ALL);
-\d test_dedupe_idx_like
-        Table "public.test_dedupe_idx_like"
+-- When using LIKE clause on a source table with duplicate indexes, the target table has duplicate
+-- indexes as well.
+CREATE TABLE test_dupe_idx (hashkey int, asckey text, desckey text);
+CREATE INDEX h1 ON test_dupe_idx(hashkey);
+CREATE INDEX h2 ON test_dupe_idx(hashkey);
+CREATE INDEX a1 ON test_dupe_idx(asckey ASC);
+CREATE INDEX a2 ON test_dupe_idx(asckey ASC);
+CREATE INDEX d1 ON test_dupe_idx(desckey DESC);
+CREATE INDEX d2 ON test_dupe_idx(desckey DESC);
+CREATE TABLE test_dupe_idx_like (LIKE test_dupe_idx INCLUDING ALL);
+\d test_dupe_idx_like
+         Table "public.test_dupe_idx_like"
  Column  |  Type   | Collation | Nullable | Default
 ---------+---------+-----------+----------+---------
  hashkey | integer |           |          |
  asckey  | text    |           |          |
  desckey | text    |           |          |
 Indexes:
-    "test_dedupe_idx_like_asckey_idx" lsm (asckey ASC)
-    "test_dedupe_idx_like_desckey_idx" lsm (desckey DESC)
-    "test_dedupe_idx_like_hashkey_idx" lsm (hashkey HASH)
+    "test_dupe_idx_like_asckey_idx" lsm (asckey ASC)
+    "test_dupe_idx_like_asckey_idx1" lsm (asckey ASC)
+    "test_dupe_idx_like_desckey_idx" lsm (desckey DESC)
+    "test_dupe_idx_like_desckey_idx1" lsm (desckey DESC)
+    "test_dupe_idx_like_hashkey_idx" lsm (hashkey HASH)
+    "test_dupe_idx_like_hashkey_idx1" lsm (hashkey HASH)
 
-DROP TABLE test_dedupe_idx;
+DROP TABLE test_dupe_idx;
 -- LIKE clause with temp tables.
 -- Test using LIKE clause where the source table is a temp table.
 CREATE TEMP TABLE temptest (k int PRIMARY KEY, v1 text DEFAULT 'hello world', v2 int CHECK (v2 > 0), v3 float UNIQUE);
@@ -418,8 +422,8 @@ NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
  v3     | double precision |           |          |
 Indexes:
     "liketemptest_pkey" PRIMARY KEY, lsm (k ASC)
-    "liketemptest_v3_key" UNIQUE CONSTRAINT, lsm (v3 ASC)
     "liketemptest_v1_idx" lsm (v1 ASC)
+    "liketemptest_v3_key" UNIQUE CONSTRAINT, lsm (v3 ASC)
 Check constraints:
     "temptest_v2_check" CHECK (v2 > 0)
 
@@ -446,8 +450,8 @@ select regexp_replace(pg_read_file(:'desc_output_file'), 'pg_temp_.{32}_\d+', 'p
   v3     | double precision |           |          |                     +
  Indexes:                                                                +
      "liketemptest_pkey" PRIMARY KEY, btree (k ASC)                      +
-     "liketemptest_v3_key" UNIQUE CONSTRAINT, btree (v3 ASC)             +
      "liketemptest_v1_idx" btree (v1 ASC)                                +
+     "liketemptest_v3_key" UNIQUE CONSTRAINT, btree (v3 ASC)             +
  Check constraints:                                                      +
      "temptest_v2_check" CHECK (v2 > 0)                                  +
                                                                          +

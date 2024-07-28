@@ -5,6 +5,7 @@ description: Learn to develop YugabyteDB applications
 image: /images/section_icons/develop/learn.png
 aliases:
   - /develop/learn/
+  - /preview/develop/learn/sql-nosql/
 menu:
   preview:
     identifier: learn

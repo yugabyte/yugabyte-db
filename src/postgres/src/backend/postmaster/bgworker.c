@@ -38,6 +38,7 @@
 
 /* YB includes */
 #include "yb_ash.h"
+#include "yb_query_diagnostics.h"
 
 /*
  * The postmaster's list of registered background workers, in private memory.
@@ -134,6 +135,9 @@ static const struct
 	},
 	{
 		"YbAshMain", YbAshMain
+	},
+	{
+		"YbQueryDiagnosticsMain", YbQueryDiagnosticsMain
 	}
 };
 

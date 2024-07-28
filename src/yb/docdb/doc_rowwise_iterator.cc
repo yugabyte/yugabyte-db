@@ -43,20 +43,13 @@
 #include "yb/util/status_log.h"
 #include "yb/util/strongly_typed_bool.h"
 
-using std::string;
-
 DEFINE_RUNTIME_bool(ysql_use_flat_doc_reader, true,
     "Use DocDBTableReader optimization that relies on having at most 1 subkey for YSQL.");
 
-DEFINE_RUNTIME_PREVIEW_bool(use_fast_backward_scan, false,
-    "Use backward scan optimization to build a row in the reverse order. "
-    "Applicable for YSQL flat doc reader only.");
-
-// TODO(#22556): Remove when fast backward scan will be supported for packed row V2.
-DECLARE_bool(ysql_use_packed_row_v2);
-
 DEFINE_test_flag(int32, fetch_next_delay_ms, 0, "Amount of time to delay inside FetchNext");
 DEFINE_test_flag(string, fetch_next_delay_column, "", "Only delay when schema has specific column");
+
+DECLARE_bool(use_fast_backward_scan);
 
 using namespace std::chrono_literals;
 
@@ -72,7 +65,8 @@ DocRowwiseIterator::DocRowwiseIterator(
     const DocDBStatistics* statistics)
     : DocRowwiseIteratorBase(
           projection, doc_read_context, txn_op_context, doc_db, read_operation_data, pending_op),
-      statistics_(statistics) {
+      statistics_(statistics),
+      deadline_info_(read_operation_data.deadline) {
 }
 
 DocRowwiseIterator::DocRowwiseIterator(
@@ -86,7 +80,8 @@ DocRowwiseIterator::DocRowwiseIterator(
     : DocRowwiseIteratorBase(
           projection, doc_read_context, txn_op_context, doc_db, read_operation_data,
           std::move(pending_op)),
-      statistics_(statistics) {
+      statistics_(statistics),
+      deadline_info_(read_operation_data.deadline) {
 }
 
 DocRowwiseIterator::~DocRowwiseIterator() = default;
@@ -102,9 +97,8 @@ void DocRowwiseIterator::InitIterator(
 
   // Configure usage of fast backward scan. This must be done before creating of the intent
   // aware iterator and when doc_mode_ is already set.
-  // TODO(#22371, #22556): Fast backward scan is supported for flat doc reader and packed row V2.
-  if (FLAGS_use_fast_backward_scan && !is_forward_scan_ &&
-      doc_mode_ == DocMode::kFlat && !FLAGS_ysql_use_packed_row_v2) {
+  // TODO(#22371): Fast backward scan is supported for flat doc reader only.
+  if (FLAGS_use_fast_backward_scan && !is_forward_scan_ && doc_mode_ == DocMode::kFlat) {
     use_fast_backward_scan_ = true;
     VLOG_WITH_FUNC(1) << "Using FAST BACKWARD scan";
   }
@@ -263,6 +257,8 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
 
   bool first_iteration = true;
   for (;;) {
+    RETURN_NOT_OK(deadline_info_.CheckDeadlinePassed());
+
     if (scan_choices_->Finished()) {
       done_ = true;
       return false;
@@ -316,7 +312,7 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
 
     if (doc_reader_ == nullptr) {
       doc_reader_ = std::make_unique<DocDBTableReader>(
-          db_iter_.get(), read_operation_data_.deadline, &projection_, table_type_,
+          db_iter_.get(), deadline_info_, &projection_, table_type_,
           schema_packing_storage(), schema(), use_fast_backward_scan_);
       RETURN_NOT_OK(doc_reader_->UpdateTableTombstoneTime(
           VERIFY_RESULT(GetTableTombstoneTime(row_key))));
@@ -381,7 +377,7 @@ Status DocRowwiseIterator::FillRow(QLTableRowPair out) {
   return FillRow(out.table_row, out.projection);
 }
 
-string DocRowwiseIterator::ToString() const {
+std::string DocRowwiseIterator::ToString() const {
   return "DocRowwiseIterator";
 }
 

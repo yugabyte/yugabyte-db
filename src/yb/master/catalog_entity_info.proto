@@ -213,6 +213,10 @@ message SysTablesEntryPB {
 
   // Time when an admin compaction was last requested. Raw representation of a HybridTime.
   optional fixed64 last_full_compaction_request_time = 41;
+
+  // Set by DDL Replication to link the table to the original table in the source cluster.
+  // Cleared after table creation completes.
+  optional bytes xcluster_source_table_id = 42;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for
@@ -569,6 +573,11 @@ message SysCDCStreamEntryPB {
   map<string, PgReplicaIdentity> replica_identity_map = 9;
 
   optional string cdcsdk_ysql_replication_slot_plugin_name = 10;
+
+  // Dynamic tables are the tables which are created after the creation of the stream.
+  // This field controls if dynamic tables should automatically be added to the CDC stream or not.
+  // If set to true, dynamic table wont get added to the CDC stream.
+  optional bool cdcsdk_disable_dynamic_table_addition = 11;
 }
 
 
@@ -635,13 +644,16 @@ message SysCloneStatePB {
   //     ImportSnapshot (YCQL). Clone tablet RPCs are scheduled for all tablets.
   // CREATING --> RESTORING: All tablets in clone namespace are created and in a running
   // state. Restore snapshot is issued.
-  // RESTORING --> RESTORED: Restore snapshot completed.
+  // RESTORING --> COMPLETE (YCQL): Restore snapshot completed and DB is ready to be accessed.
+  // RESTORING --> RESTORED (YSQL): Restore snapshot completed.
+  // RESTORED --> COMPLETE (YSQL): DB is ready to be accessed.
   enum State {
     CLONE_SCHEMA_STARTED = 1;
     CREATING = 2;
     RESTORING = 3;
     RESTORED = 4;
     ABORTED = 5;
+    COMPLETE = 6;
   }
 
   optional State aggregate_state = 1;
@@ -713,10 +725,8 @@ message SysUniverseReplicationEntryPB {
   // producer table ID -> producer CDC stream ID map.
   map<string, string> table_streams = 6;
 
-  // Namespace-level replication setup.
-  optional bool is_ns_replication = 7 [default = false];
-  optional NamespaceIdentifierPB producer_namespace = 8;
-  optional NamespaceIdentifierPB consumer_namespace = 9;
+  // 7, 8, and 9 were used by Namespace-level replication but never populated in
+  // production so they are valid for reuse.
 
   // Mapping from Producer Table ID to Producer->Consumer schema version mappings
   map<string, SchemaVersionMappingEntryPB> schema_version_mappings = 10;

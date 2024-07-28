@@ -21,9 +21,10 @@ func TestMarshalling(t *testing.T) {
 		{1, `{"status":"Installed"}`, nil},
 		{2, `{"status":"Installing"}`, nil},
 		{3, `{"status":"Upgrading"}`, nil},
-		{4, `{"status":"Soft Cleaned"}`, nil},
-		{5, `{"status":"Uninstalled"}`, nil},
-		{0, "", InvalidStatusError},
+		{5, `{"status":"Soft Cleaned"}`, nil},
+		{6, `{"status":"Uninstalled"}`, nil},
+		{0, `{"status":"NoStatus"}`, nil},
+		{-1, "", InvalidStatusError},
 		{999, "", InvalidStatusError},
 	}
 

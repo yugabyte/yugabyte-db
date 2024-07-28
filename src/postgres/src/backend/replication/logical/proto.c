@@ -429,9 +429,7 @@ logicalrep_write_insert(StringInfo out, TransactionId xid, Relation rel,
 
 	if (IsYugaByteEnabled())
 		elog(DEBUG2, "proto: INSERT newtuple: %s",
-			 YbTupleTableSlotToStringWithIsOmitted(newslot,
-												   RelationGetDescr(rel),
-												   NULL /* yb_is_omitted */));
+			 YbTupleTableSlotToString(newslot));
 
 	pq_sendbyte(out, 'N');		/* new tuple follows */
 	logicalrep_write_tuple(out, rel, newslot, binary, columns,
@@ -495,7 +493,6 @@ logicalrep_write_update(StringInfo out, TransactionId xid, Relation rel,
 		if (IsYugaByteEnabled())
 			elog(DEBUG2, "proto: UPDATE oldtuple: %s",
 				 YbTupleTableSlotToStringWithIsOmitted(oldslot,
-													   RelationGetDescr(rel),
 													   yb_old_is_omitted));
 
 		logicalrep_write_tuple(out, rel, oldslot, binary, columns,
@@ -505,7 +502,6 @@ logicalrep_write_update(StringInfo out, TransactionId xid, Relation rel,
 	if (IsYugaByteEnabled())
 		elog(DEBUG2, "proto: UPDATE newtuple: %s",
 			 YbTupleTableSlotToStringWithIsOmitted(newslot,
-												   RelationGetDescr(rel),
 												   yb_new_is_omitted));
 
 	pq_sendbyte(out, 'N');		/* new tuple follows */
@@ -583,9 +579,7 @@ logicalrep_write_delete(StringInfo out, TransactionId xid, Relation rel,
 
 	if (IsYugaByteEnabled())
 		elog(DEBUG2, "proto: DELETE oldtuple: %s",
-			 YbTupleTableSlotToStringWithIsOmitted(oldslot,
-												   RelationGetDescr(rel),
-												   NULL /* yb_is_omitted */));
+			 YbTupleTableSlotToString(oldslot));
 
 	logicalrep_write_tuple(out, rel, oldslot, binary, columns,
 						   NULL /* yb_is_omitted */);

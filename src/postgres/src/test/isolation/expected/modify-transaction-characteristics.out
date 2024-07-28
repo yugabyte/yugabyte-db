@@ -1,0 +1,708 @@
+Parsed test spec with 2 sessions
+
+starting permutation: s1_begin_rc_method1 s2_begin_sr_method1 s1_switch_to_rr s2_switch_to_rr s1_select s2_select s1_update s2_update s1_commit s2_rollback s2_select
+step s1_begin_rc_method1: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s2_begin_sr_method1: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_switch_to_rr: SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_switch_to_rr: SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_select: SELECT * FROM test;
+k              v
+
+1              2
+step s2_select: SELECT * FROM test;
+k              v
+
+1              2
+step s1_update: UPDATE test SET v=v+1 WHERE k=1;
+step s2_update: UPDATE test SET v=v*2 WHERE k=1; <waiting ...>
+step s1_commit: COMMIT;
+step s2_update: <... completed>
+error in steps s1_commit s2_update: ERROR:  could not serialize access due to concurrent update (query layer retry isn't possible because data was already sent, if this is the read committed isolation (or) the first statement in repeatable read/ serializable isolation transaction, consider increasing the tserver gflag ysql_output_buffer_size)
+step s2_rollback: ROLLBACK;
+step s2_select: SELECT * FROM test;
+k              v
+
+1              3
+
+starting permutation: s1_begin_rc_method2 s2_begin_sr_method2 s1_switch_to_rr s2_switch_to_rr s1_select s2_select s1_update s2_update s1_commit s2_rollback s2_select
+step s1_begin_rc_method2: BEGIN; SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s2_begin_sr_method2: BEGIN; SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_switch_to_rr: SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_switch_to_rr: SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_select: SELECT * FROM test;
+k              v
+
+1              2
+step s2_select: SELECT * FROM test;
+k              v
+
+1              2
+step s1_update: UPDATE test SET v=v+1 WHERE k=1;
+step s2_update: UPDATE test SET v=v*2 WHERE k=1; <waiting ...>
+step s1_commit: COMMIT;
+step s2_update: <... completed>
+error in steps s1_commit s2_update: ERROR:  could not serialize access due to concurrent update (query layer retry isn't possible because data was already sent, if this is the read committed isolation (or) the first statement in repeatable read/ serializable isolation transaction, consider increasing the tserver gflag ysql_output_buffer_size)
+step s2_rollback: ROLLBACK;
+step s2_select: SELECT * FROM test;
+k              v
+
+1              3
+
+starting permutation: s1_begin_rc_method3_part1 s1_method3_part2 s2_begin_sr_method3_part1 s2_method3_part2 s1_switch_to_rr s2_switch_to_rr s1_select s2_select s1_update s2_update s1_commit s2_rollback s2_select
+step s1_begin_rc_method3_part1: SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s1_method3_part2: BEGIN;
+step s2_begin_sr_method3_part1: SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_method3_part2: BEGIN;
+step s1_switch_to_rr: SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_switch_to_rr: SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_select: SELECT * FROM test;
+k              v
+
+1              2
+step s2_select: SELECT * FROM test;
+k              v
+
+1              2
+step s1_update: UPDATE test SET v=v+1 WHERE k=1;
+step s2_update: UPDATE test SET v=v*2 WHERE k=1; <waiting ...>
+step s1_commit: COMMIT;
+step s2_update: <... completed>
+error in steps s1_commit s2_update: ERROR:  could not serialize access due to concurrent update (query layer retry isn't possible because data was already sent, if this is the read committed isolation (or) the first statement in repeatable read/ serializable isolation transaction, consider increasing the tserver gflag ysql_output_buffer_size)
+step s2_rollback: ROLLBACK;
+step s2_select: SELECT * FROM test;
+k              v
+
+1              3
+
+starting permutation: s1_begin_rc_method4 s2_begin_sr_method4 s1_switch_to_rr s2_switch_to_rr s1_select s2_select s1_update s2_update s1_commit s2_rollback s2_select
+step s1_begin_rc_method4: SET default_transaction_isolation='READ COMMITTED'; BEGIN;
+step s2_begin_sr_method4: SET default_transaction_isolation='SERIALIZABLE'; BEGIN;
+step s1_switch_to_rr: SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_switch_to_rr: SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_select: SELECT * FROM test;
+k              v
+
+1              2
+step s2_select: SELECT * FROM test;
+k              v
+
+1              2
+step s1_update: UPDATE test SET v=v+1 WHERE k=1;
+step s2_update: UPDATE test SET v=v*2 WHERE k=1; <waiting ...>
+step s1_commit: COMMIT;
+step s2_update: <... completed>
+error in steps s1_commit s2_update: ERROR:  could not serialize access due to concurrent update (query layer retry isn't possible because data was already sent, if this is the read committed isolation (or) the first statement in repeatable read/ serializable isolation transaction, consider increasing the tserver gflag ysql_output_buffer_size)
+step s2_rollback: ROLLBACK;
+step s2_select: SELECT * FROM test;
+k              v
+
+1              3
+
+starting permutation: s1_begin_rr_method1 s2_begin_sr_method1 s1_switch_to_rc s2_switch_to_rc s1_select s2_select s1_update s2_update s1_commit s2_commit s2_select
+step s1_begin_rr_method1: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_begin_sr_method1: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_switch_to_rc: SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s2_switch_to_rc: SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s1_select: SELECT * FROM test;
+k              v
+
+1              2
+step s2_select: SELECT * FROM test;
+k              v
+
+1              2
+step s1_update: UPDATE test SET v=v+1 WHERE k=1;
+step s2_update: UPDATE test SET v=v*2 WHERE k=1; <waiting ...>
+step s1_commit: COMMIT;
+step s2_update: <... completed>
+step s2_commit: COMMIT;
+step s2_select: SELECT * FROM test;
+k              v
+
+1              6
+
+starting permutation: s1_begin_rr_method2 s2_begin_sr_method2 s1_switch_to_rc s2_switch_to_rc s1_select s2_select s1_update s2_update s1_commit s2_commit s2_select
+step s1_begin_rr_method2: BEGIN; SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_begin_sr_method2: BEGIN; SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_switch_to_rc: SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s2_switch_to_rc: SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s1_select: SELECT * FROM test;
+k              v
+
+1              2
+step s2_select: SELECT * FROM test;
+k              v
+
+1              2
+step s1_update: UPDATE test SET v=v+1 WHERE k=1;
+step s2_update: UPDATE test SET v=v*2 WHERE k=1; <waiting ...>
+step s1_commit: COMMIT;
+step s2_update: <... completed>
+step s2_commit: COMMIT;
+step s2_select: SELECT * FROM test;
+k              v
+
+1              6
+
+starting permutation: s1_begin_rr_method3_part1 s1_method3_part2 s2_begin_sr_method3_part1 s2_method3_part2 s1_switch_to_rc s2_switch_to_rc s1_select s2_select s1_update s2_update s1_commit s2_commit s2_select
+step s1_begin_rr_method3_part1: SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_method3_part2: BEGIN;
+step s2_begin_sr_method3_part1: SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_method3_part2: BEGIN;
+step s1_switch_to_rc: SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s2_switch_to_rc: SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s1_select: SELECT * FROM test;
+k              v
+
+1              2
+step s2_select: SELECT * FROM test;
+k              v
+
+1              2
+step s1_update: UPDATE test SET v=v+1 WHERE k=1;
+step s2_update: UPDATE test SET v=v*2 WHERE k=1; <waiting ...>
+step s1_commit: COMMIT;
+step s2_update: <... completed>
+step s2_commit: COMMIT;
+step s2_select: SELECT * FROM test;
+k              v
+
+1              6
+
+starting permutation: s1_begin_rr_method4 s2_begin_sr_method4 s1_switch_to_rc s2_switch_to_rc s1_select s2_select s1_update s2_update s1_commit s2_commit s2_select
+step s1_begin_rr_method4: SET default_transaction_isolation='REPEATABLE READ'; BEGIN;
+step s2_begin_sr_method4: SET default_transaction_isolation='SERIALIZABLE'; BEGIN;
+step s1_switch_to_rc: SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s2_switch_to_rc: SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s1_select: SELECT * FROM test;
+k              v
+
+1              2
+step s2_select: SELECT * FROM test;
+k              v
+
+1              2
+step s1_update: UPDATE test SET v=v+1 WHERE k=1;
+step s2_update: UPDATE test SET v=v*2 WHERE k=1; <waiting ...>
+step s1_commit: COMMIT;
+step s2_update: <... completed>
+step s2_commit: COMMIT;
+step s2_select: SELECT * FROM test;
+k              v
+
+1              6
+
+starting permutation: s1_begin_rc_method1 s2_begin_rr_method1 s1_switch_to_sr s2_switch_to_sr s1_select s2_select s1_update s2_update s1_commit s2_rollback s2_select
+step s1_begin_rc_method1: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s2_begin_rr_method1: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_switch_to_sr: SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_switch_to_sr: SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_select: SELECT * FROM test;
+k              v
+
+1              2
+step s2_select: SELECT * FROM test;
+k              v
+
+1              2
+step s1_update: UPDATE test SET v=v+1 WHERE k=1; <waiting ...>
+step s2_update: UPDATE test SET v=v*2 WHERE k=1;
+step s1_update: <... completed>
+error in steps s2_update s1_update: ERROR:  deadlock detected (query layer retry isn't possible because data was already sent, if this is the read committed isolation (or) the first statement in repeatable read/ serializable isolation transaction, consider increasing the tserver gflag ysql_output_buffer_size)
+step s1_commit: COMMIT;
+step s2_rollback: ROLLBACK;
+step s2_select: SELECT * FROM test;
+k              v
+
+1              3
+
+starting permutation: s1_begin_rc_method2 s2_begin_rr_method2 s1_switch_to_sr s2_switch_to_sr s1_select s2_select s1_update s2_update s1_commit s2_rollback s2_select
+step s1_begin_rc_method2: BEGIN; SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s2_begin_rr_method2: BEGIN; SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_switch_to_sr: SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_switch_to_sr: SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_select: SELECT * FROM test;
+k              v
+
+1              2
+step s2_select: SELECT * FROM test;
+k              v
+
+1              2
+step s1_update: UPDATE test SET v=v+1 WHERE k=1; <waiting ...>
+step s2_update: UPDATE test SET v=v*2 WHERE k=1;
+step s1_update: <... completed>
+error in steps s2_update s1_update: ERROR:  deadlock detected (query layer retry isn't possible because data was already sent, if this is the read committed isolation (or) the first statement in repeatable read/ serializable isolation transaction, consider increasing the tserver gflag ysql_output_buffer_size)
+step s1_commit: COMMIT;
+step s2_rollback: ROLLBACK;
+step s2_select: SELECT * FROM test;
+k              v
+
+1              3
+
+starting permutation: s1_begin_rc_method3_part1 s1_method3_part2 s2_begin_rr_method3_part1 s2_method3_part2 s1_switch_to_sr s2_switch_to_sr s1_select s2_select s1_update s2_update s1_commit s2_rollback s2_select
+step s1_begin_rc_method3_part1: SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s1_method3_part2: BEGIN;
+step s2_begin_rr_method3_part1: SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_method3_part2: BEGIN;
+step s1_switch_to_sr: SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_switch_to_sr: SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_select: SELECT * FROM test;
+k              v
+
+1              2
+step s2_select: SELECT * FROM test;
+k              v
+
+1              2
+step s1_update: UPDATE test SET v=v+1 WHERE k=1; <waiting ...>
+step s2_update: UPDATE test SET v=v*2 WHERE k=1;
+step s1_update: <... completed>
+error in steps s2_update s1_update: ERROR:  deadlock detected (query layer retry isn't possible because data was already sent, if this is the read committed isolation (or) the first statement in repeatable read/ serializable isolation transaction, consider increasing the tserver gflag ysql_output_buffer_size)
+step s1_commit: COMMIT;
+step s2_rollback: ROLLBACK;
+step s2_select: SELECT * FROM test;
+k              v
+
+1              3
+
+starting permutation: s1_begin_rc_method4 s2_begin_rr_method4 s1_switch_to_sr s2_switch_to_sr s1_select s2_select s1_update s2_update s1_commit s2_rollback s2_select
+step s1_begin_rc_method4: SET default_transaction_isolation='READ COMMITTED'; BEGIN;
+step s2_begin_rr_method4: SET default_transaction_isolation='REPEATABLE READ'; BEGIN;
+step s1_switch_to_sr: SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_switch_to_sr: SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_select: SELECT * FROM test;
+k              v
+
+1              2
+step s2_select: SELECT * FROM test;
+k              v
+
+1              2
+step s1_update: UPDATE test SET v=v+1 WHERE k=1; <waiting ...>
+step s2_update: UPDATE test SET v=v*2 WHERE k=1;
+step s1_update: <... completed>
+error in steps s2_update s1_update: ERROR:  deadlock detected (query layer retry isn't possible because data was already sent, if this is the read committed isolation (or) the first statement in repeatable read/ serializable isolation transaction, consider increasing the tserver gflag ysql_output_buffer_size)
+step s1_commit: COMMIT;
+step s2_rollback: ROLLBACK;
+step s2_select: SELECT * FROM test;
+k              v
+
+1              3
+
+starting permutation: s1_begin_rc_method1 s1_select_1 s1_switch_to_rr s1_rollback
+step s1_begin_rc_method1: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s1_select_1: SELECT 1;
+?column?
+
+1
+step s1_switch_to_rr: SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+ERROR:  SET TRANSACTION ISOLATION LEVEL must be called before any query
+step s1_rollback: ROLLBACK;
+
+starting permutation: s1_begin_rr_method1 s1_select_1 s1_switch_to_rc s1_rollback
+step s1_begin_rr_method1: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_select_1: SELECT 1;
+?column?
+
+1
+step s1_switch_to_rc: SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+ERROR:  SET TRANSACTION ISOLATION LEVEL must be called before any query
+step s1_rollback: ROLLBACK;
+
+starting permutation: s1_begin_sr_method1 s1_select_1 s1_switch_to_rc s1_rollback
+step s1_begin_sr_method1: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_select_1: SELECT 1;
+?column?
+
+1
+step s1_switch_to_rc: SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+ERROR:  SET TRANSACTION ISOLATION LEVEL must be called before any query
+step s1_rollback: ROLLBACK;
+
+starting permutation: s1_begin_rc_method2 s1_select_1 s1_switch_to_rr s1_rollback
+step s1_begin_rc_method2: BEGIN; SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s1_select_1: SELECT 1;
+?column?
+
+1
+step s1_switch_to_rr: SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+ERROR:  SET TRANSACTION ISOLATION LEVEL must be called before any query
+step s1_rollback: ROLLBACK;
+
+starting permutation: s1_begin_rr_method2 s1_select_1 s1_switch_to_rc s1_rollback
+step s1_begin_rr_method2: BEGIN; SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_select_1: SELECT 1;
+?column?
+
+1
+step s1_switch_to_rc: SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+ERROR:  SET TRANSACTION ISOLATION LEVEL must be called before any query
+step s1_rollback: ROLLBACK;
+
+starting permutation: s1_begin_sr_method2 s1_select_1 s1_switch_to_rc s1_rollback
+step s1_begin_sr_method2: BEGIN; SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_select_1: SELECT 1;
+?column?
+
+1
+step s1_switch_to_rc: SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+ERROR:  SET TRANSACTION ISOLATION LEVEL must be called before any query
+step s1_rollback: ROLLBACK;
+
+starting permutation: s1_begin_rc_method3_part1 s1_method3_part2 s1_select_1 s1_switch_to_rr s1_rollback
+step s1_begin_rc_method3_part1: SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s1_method3_part2: BEGIN;
+step s1_select_1: SELECT 1;
+?column?
+
+1
+step s1_switch_to_rr: SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+ERROR:  SET TRANSACTION ISOLATION LEVEL must be called before any query
+step s1_rollback: ROLLBACK;
+
+starting permutation: s1_begin_rr_method3_part1 s1_method3_part2 s1_select_1 s1_switch_to_rc s1_rollback
+step s1_begin_rr_method3_part1: SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_method3_part2: BEGIN;
+step s1_select_1: SELECT 1;
+?column?
+
+1
+step s1_switch_to_rc: SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+ERROR:  SET TRANSACTION ISOLATION LEVEL must be called before any query
+step s1_rollback: ROLLBACK;
+
+starting permutation: s1_begin_sr_method3_part1 s1_method3_part2 s1_select_1 s1_switch_to_rc s1_rollback
+step s1_begin_sr_method3_part1: SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_method3_part2: BEGIN;
+step s1_select_1: SELECT 1;
+?column?
+
+1
+step s1_switch_to_rc: SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+ERROR:  SET TRANSACTION ISOLATION LEVEL must be called before any query
+step s1_rollback: ROLLBACK;
+
+starting permutation: s1_begin_rc_method4 s1_select_1 s1_switch_to_rr s1_rollback
+step s1_begin_rc_method4: SET default_transaction_isolation='READ COMMITTED'; BEGIN;
+step s1_select_1: SELECT 1;
+?column?
+
+1
+step s1_switch_to_rr: SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+ERROR:  SET TRANSACTION ISOLATION LEVEL must be called before any query
+step s1_rollback: ROLLBACK;
+
+starting permutation: s1_begin_rr_method4 s1_select_1 s1_switch_to_rc s1_rollback
+step s1_begin_rr_method4: SET default_transaction_isolation='REPEATABLE READ'; BEGIN;
+step s1_select_1: SELECT 1;
+?column?
+
+1
+step s1_switch_to_rc: SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+ERROR:  SET TRANSACTION ISOLATION LEVEL must be called before any query
+step s1_rollback: ROLLBACK;
+
+starting permutation: s1_begin_sr_method4 s1_select_1 s1_switch_to_rc s1_rollback
+step s1_begin_sr_method4: SET default_transaction_isolation='SERIALIZABLE'; BEGIN;
+step s1_select_1: SELECT 1;
+?column?
+
+1
+step s1_switch_to_rc: SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+ERROR:  SET TRANSACTION ISOLATION LEVEL must be called before any query
+step s1_rollback: ROLLBACK;
+
+starting permutation: s1_begin_rc_method1 s1_savepoint s1_switch_to_rr s1_rollback
+step s1_begin_rc_method1: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s1_savepoint: SAVEPOINT a;
+step s1_switch_to_rr: SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+ERROR:  SET TRANSACTION ISOLATION LEVEL must not be called in a subtransaction
+step s1_rollback: ROLLBACK;
+
+starting permutation: s1_begin_rr_method1 s1_savepoint s1_switch_to_rc s1_rollback
+step s1_begin_rr_method1: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_savepoint: SAVEPOINT a;
+step s1_switch_to_rc: SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+ERROR:  SET TRANSACTION ISOLATION LEVEL must not be called in a subtransaction
+step s1_rollback: ROLLBACK;
+
+starting permutation: s1_begin_sr_method1 s1_savepoint s1_switch_to_rc s1_rollback
+step s1_begin_sr_method1: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_savepoint: SAVEPOINT a;
+step s1_switch_to_rc: SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+ERROR:  SET TRANSACTION ISOLATION LEVEL must not be called in a subtransaction
+step s1_rollback: ROLLBACK;
+
+starting permutation: s1_begin_rc_method2 s1_savepoint s1_switch_to_rr s1_rollback
+step s1_begin_rc_method2: BEGIN; SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s1_savepoint: SAVEPOINT a;
+step s1_switch_to_rr: SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+ERROR:  SET TRANSACTION ISOLATION LEVEL must not be called in a subtransaction
+step s1_rollback: ROLLBACK;
+
+starting permutation: s1_begin_rr_method2 s1_savepoint s1_switch_to_rc s1_rollback
+step s1_begin_rr_method2: BEGIN; SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_savepoint: SAVEPOINT a;
+step s1_switch_to_rc: SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+ERROR:  SET TRANSACTION ISOLATION LEVEL must not be called in a subtransaction
+step s1_rollback: ROLLBACK;
+
+starting permutation: s1_begin_sr_method2 s1_savepoint s1_switch_to_rc s1_rollback
+step s1_begin_sr_method2: BEGIN; SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_savepoint: SAVEPOINT a;
+step s1_switch_to_rc: SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+ERROR:  SET TRANSACTION ISOLATION LEVEL must not be called in a subtransaction
+step s1_rollback: ROLLBACK;
+
+starting permutation: s1_begin_rc_method3_part1 s1_method3_part2 s1_savepoint s1_switch_to_rr s1_rollback
+step s1_begin_rc_method3_part1: SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s1_method3_part2: BEGIN;
+step s1_savepoint: SAVEPOINT a;
+step s1_switch_to_rr: SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+ERROR:  SET TRANSACTION ISOLATION LEVEL must not be called in a subtransaction
+step s1_rollback: ROLLBACK;
+
+starting permutation: s1_begin_rr_method3_part1 s1_method3_part2 s1_savepoint s1_switch_to_rc s1_rollback
+step s1_begin_rr_method3_part1: SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_method3_part2: BEGIN;
+step s1_savepoint: SAVEPOINT a;
+step s1_switch_to_rc: SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+ERROR:  SET TRANSACTION ISOLATION LEVEL must not be called in a subtransaction
+step s1_rollback: ROLLBACK;
+
+starting permutation: s1_begin_sr_method3_part1 s1_method3_part2 s1_savepoint s1_switch_to_rc s1_rollback
+step s1_begin_sr_method3_part1: SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_method3_part2: BEGIN;
+step s1_savepoint: SAVEPOINT a;
+step s1_switch_to_rc: SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+ERROR:  SET TRANSACTION ISOLATION LEVEL must not be called in a subtransaction
+step s1_rollback: ROLLBACK;
+
+starting permutation: s1_begin_rc_method4 s1_savepoint s1_switch_to_rr s1_rollback
+step s1_begin_rc_method4: SET default_transaction_isolation='READ COMMITTED'; BEGIN;
+step s1_savepoint: SAVEPOINT a;
+step s1_switch_to_rr: SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+ERROR:  SET TRANSACTION ISOLATION LEVEL must not be called in a subtransaction
+step s1_rollback: ROLLBACK;
+
+starting permutation: s1_begin_rr_method4 s1_savepoint s1_switch_to_rc s1_rollback
+step s1_begin_rr_method4: SET default_transaction_isolation='REPEATABLE READ'; BEGIN;
+step s1_savepoint: SAVEPOINT a;
+step s1_switch_to_rc: SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+ERROR:  SET TRANSACTION ISOLATION LEVEL must not be called in a subtransaction
+step s1_rollback: ROLLBACK;
+
+starting permutation: s1_begin_sr_method4 s1_savepoint s1_switch_to_rc s1_rollback
+step s1_begin_sr_method4: SET default_transaction_isolation='SERIALIZABLE'; BEGIN;
+step s1_savepoint: SAVEPOINT a;
+step s1_switch_to_rc: SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+ERROR:  SET TRANSACTION ISOLATION LEVEL must not be called in a subtransaction
+step s1_rollback: ROLLBACK;
+
+starting permutation: s2_begin_rc_method1 s2_switch_to_sr s2_read_only s2_deferrable s1_begin_sr_method1 s1_update s2_select s1_commit s2_commit
+step s2_begin_rc_method1: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s2_switch_to_sr: SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_read_only: SET TRANSACTION READ ONLY;
+step s2_deferrable: SET TRANSACTION DEFERRABLE;
+step s1_begin_sr_method1: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_update: UPDATE test SET v=v+1 WHERE k=1;
+step s2_select: SELECT * FROM test;
+k              v
+
+1              2
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s2_begin_rc_method2 s2_switch_to_sr s2_read_only s2_deferrable s1_begin_sr_method1 s1_update s2_select s1_commit s2_commit
+step s2_begin_rc_method2: BEGIN; SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s2_switch_to_sr: SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_read_only: SET TRANSACTION READ ONLY;
+step s2_deferrable: SET TRANSACTION DEFERRABLE;
+step s1_begin_sr_method1: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_update: UPDATE test SET v=v+1 WHERE k=1;
+step s2_select: SELECT * FROM test;
+k              v
+
+1              2
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s2_begin_rc_method3_part1 s2_method3_part2 s2_switch_to_sr s2_read_only s2_deferrable s1_begin_sr_method1 s1_update s2_select s1_commit s2_commit
+step s2_begin_rc_method3_part1: SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s2_method3_part2: BEGIN;
+step s2_switch_to_sr: SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_read_only: SET TRANSACTION READ ONLY;
+step s2_deferrable: SET TRANSACTION DEFERRABLE;
+step s1_begin_sr_method1: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_update: UPDATE test SET v=v+1 WHERE k=1;
+step s2_select: SELECT * FROM test;
+k              v
+
+1              2
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s2_begin_rc_method4 s2_switch_to_sr s2_read_only s2_deferrable s1_begin_sr_method1 s1_update s2_select s1_commit s2_commit
+step s2_begin_rc_method4: SET default_transaction_isolation='READ COMMITTED'; BEGIN;
+step s2_switch_to_sr: SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_read_only: SET TRANSACTION READ ONLY;
+step s2_deferrable: SET TRANSACTION DEFERRABLE;
+step s1_begin_sr_method1: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_update: UPDATE test SET v=v+1 WHERE k=1;
+step s2_select: SELECT * FROM test;
+k              v
+
+1              2
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s2_begin_rr_method1 s2_switch_to_sr s2_read_only s2_deferrable s1_begin_sr_method1 s1_update s2_select s1_commit s2_commit
+step s2_begin_rr_method1: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_switch_to_sr: SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_read_only: SET TRANSACTION READ ONLY;
+step s2_deferrable: SET TRANSACTION DEFERRABLE;
+step s1_begin_sr_method1: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_update: UPDATE test SET v=v+1 WHERE k=1;
+step s2_select: SELECT * FROM test;
+k              v
+
+1              2
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s2_begin_rr_method2 s2_switch_to_sr s2_read_only s2_deferrable s1_begin_sr_method1 s1_update s2_select s1_commit s2_commit
+step s2_begin_rr_method2: BEGIN; SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_switch_to_sr: SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_read_only: SET TRANSACTION READ ONLY;
+step s2_deferrable: SET TRANSACTION DEFERRABLE;
+step s1_begin_sr_method1: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_update: UPDATE test SET v=v+1 WHERE k=1;
+step s2_select: SELECT * FROM test;
+k              v
+
+1              2
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s2_begin_rr_method3_part1 s2_method3_part2 s2_switch_to_sr s2_read_only s2_deferrable s1_begin_sr_method1 s1_update s2_select s1_commit s2_commit
+step s2_begin_rr_method3_part1: SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_method3_part2: BEGIN;
+step s2_switch_to_sr: SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_read_only: SET TRANSACTION READ ONLY;
+step s2_deferrable: SET TRANSACTION DEFERRABLE;
+step s1_begin_sr_method1: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_update: UPDATE test SET v=v+1 WHERE k=1;
+step s2_select: SELECT * FROM test;
+k              v
+
+1              2
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s2_begin_rr_method4 s2_switch_to_sr s2_read_only s2_deferrable s1_begin_sr_method1 s1_update s2_select s1_commit s2_commit
+step s2_begin_rr_method4: SET default_transaction_isolation='REPEATABLE READ'; BEGIN;
+step s2_switch_to_sr: SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_read_only: SET TRANSACTION READ ONLY;
+step s2_deferrable: SET TRANSACTION DEFERRABLE;
+step s1_begin_sr_method1: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_update: UPDATE test SET v=v+1 WHERE k=1;
+step s2_select: SELECT * FROM test;
+k              v
+
+1              2
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s2_begin_sr_method1 s2_switch_to_sr s2_read_only s2_deferrable s1_begin_sr_method1 s1_update s2_select s1_commit s2_commit
+step s2_begin_sr_method1: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_switch_to_sr: SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_read_only: SET TRANSACTION READ ONLY;
+step s2_deferrable: SET TRANSACTION DEFERRABLE;
+step s1_begin_sr_method1: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_update: UPDATE test SET v=v+1 WHERE k=1;
+step s2_select: SELECT * FROM test;
+k              v
+
+1              2
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s2_begin_sr_method2 s2_switch_to_sr s2_read_only s2_deferrable s1_begin_sr_method1 s1_update s2_select s1_commit s2_commit
+step s2_begin_sr_method2: BEGIN; SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_switch_to_sr: SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_read_only: SET TRANSACTION READ ONLY;
+step s2_deferrable: SET TRANSACTION DEFERRABLE;
+step s1_begin_sr_method1: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_update: UPDATE test SET v=v+1 WHERE k=1;
+step s2_select: SELECT * FROM test;
+k              v
+
+1              2
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s2_begin_sr_method3_part1 s2_method3_part2 s2_switch_to_sr s2_read_only s2_deferrable s1_begin_sr_method1 s1_update s2_select s1_commit s2_commit
+step s2_begin_sr_method3_part1: SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_method3_part2: BEGIN;
+step s2_switch_to_sr: SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_read_only: SET TRANSACTION READ ONLY;
+step s2_deferrable: SET TRANSACTION DEFERRABLE;
+step s1_begin_sr_method1: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_update: UPDATE test SET v=v+1 WHERE k=1;
+step s2_select: SELECT * FROM test;
+k              v
+
+1              2
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s2_begin_sr_method4 s2_switch_to_sr s2_read_only s2_deferrable s1_begin_sr_method1 s1_update s2_select s1_commit s2_commit
+step s2_begin_sr_method4: SET default_transaction_isolation='SERIALIZABLE'; BEGIN;
+step s2_switch_to_sr: SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s2_read_only: SET TRANSACTION READ ONLY;
+step s2_deferrable: SET TRANSACTION DEFERRABLE;
+step s1_begin_sr_method1: BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_update: UPDATE test SET v=v+1 WHERE k=1;
+step s2_select: SELECT * FROM test;
+k              v
+
+1              2
+step s1_commit: COMMIT;
+step s2_commit: COMMIT;
+
+starting permutation: s1_begin_rc_method1 s1_switch_to_sr s1_read_only s1_read_write s2_update s1_commit
+step s1_begin_rc_method1: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s1_switch_to_sr: SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+step s1_read_only: SET TRANSACTION READ ONLY;
+step s1_read_write: SET TRANSACTION READ WRITE;
+step s2_update: UPDATE test SET v=v*2 WHERE k=1;
+step s1_commit: COMMIT;
+
+starting permutation: s1_begin_rc_method1 s1_switch_to_rr s1_read_write s1_update s1_read_only s1_select s1_update s1_rollback
+step s1_begin_rc_method1: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s1_switch_to_rr: SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_read_write: SET TRANSACTION READ WRITE;
+step s1_update: UPDATE test SET v=v+1 WHERE k=1;
+step s1_read_only: SET TRANSACTION READ ONLY;
+step s1_select: SELECT * FROM test;
+k              v
+
+1              3
+step s1_update: UPDATE test SET v=v+1 WHERE k=1;
+ERROR:  cannot execute UPDATE in a read-only transaction
+step s1_rollback: ROLLBACK;
+
+starting permutation: s1_begin_rc_method1 s1_switch_to_rr s1_read_write s1_update s1_read_only s1_select s1_read_write s1_rollback
+step s1_begin_rc_method1: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+step s1_switch_to_rr: SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_read_write: SET TRANSACTION READ WRITE;
+step s1_update: UPDATE test SET v=v+1 WHERE k=1;
+step s1_read_only: SET TRANSACTION READ ONLY;
+step s1_select: SELECT * FROM test;
+k              v
+
+1              3
+step s1_read_write: SET TRANSACTION READ WRITE;
+ERROR:  transaction read-write mode must be set before any query
+step s1_rollback: ROLLBACK;

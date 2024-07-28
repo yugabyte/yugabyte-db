@@ -529,10 +529,10 @@ PgDocReadOp::PgDocReadOp(const PgSession::ScopedRefPtr& pg_session,
                          const Sender& sender)
     : PgDocOp(pg_session, table, sender), read_op_(std::move(read_op)) {}
 
-Status PgDocReadOp::ExecuteInit(const PgExecParameters *exec_params) {
-  SCHECK(pgsql_ops_.empty() || !exec_params,
-         IllegalState,
-         "Exec params can't be changed for already created operations");
+Status PgDocReadOp::ExecuteInit(const PgExecParameters* exec_params) {
+  RSTATUS_DCHECK(
+      pgsql_ops_.empty() || !exec_params,
+      IllegalState, "Exec params can't be changed for already created operations");
   RETURN_NOT_OK(PgDocOp::ExecuteInit(exec_params));
 
   read_op_->read_request().set_return_paging_state(true);
@@ -1181,17 +1181,10 @@ Result<bool> PgDocReadOp::PopulateSamplingOps() {
   return true;
 }
 
-Status PgDocReadOp::GetEstimatedRowCount(double *liverows, double *deadrows) {
-  if (liverows != nullptr) {
-    // Return estimated number of live tuples
-    VLOG(1) << "Returning liverows " << sample_rows_;
-    *liverows = sample_rows_;
-  }
-  if (deadrows != nullptr) {
-    // TODO count dead tuples while sampling
-    *deadrows = 0;
-  }
-  return Status::OK();
+Result<EstimatedRowCount> PgDocReadOp::GetEstimatedRowCount() const {
+  VLOG(1) << "Returning liverows " << sample_rows_;
+  // TODO count dead tuples while sampling
+  return EstimatedRowCount{.live = sample_rows_, .dead = 0};
 }
 
 // When postgres requests to scan a specific partition, set the partition parameter accordingly.

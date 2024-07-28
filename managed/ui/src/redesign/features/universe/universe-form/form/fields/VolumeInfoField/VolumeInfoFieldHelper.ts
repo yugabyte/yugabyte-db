@@ -1,25 +1,21 @@
-import { useRef, useState } from 'react';
-import _ from 'lodash';
+import { useState } from 'react';
 import { useUpdateEffect } from 'react-use';
-import { useWatch, useFormContext } from 'react-hook-form';
+import { useWatch } from 'react-hook-form';
 import {
-  PLACEMENTS_FIELD,
-  TOTAL_NODES_FIELD,
-  INSTANCE_TYPE_FIELD,
   DEVICE_INFO_FIELD,
-  PROVIDER_FIELD
+  INSTANCE_TYPE_FIELD,
+  PLACEMENTS_FIELD,
+  PROVIDER_FIELD,
+  TOTAL_NODES_FIELD
 } from '../../../utils/constants';
 import {
   CloudType,
   DeviceInfo,
   InstanceType,
   RunTimeConfigEntry,
-  StorageType,
-  UniverseFormData,
-  UpdateActions
+  StorageType
 } from '../../../utils/dto';
 import { isEphemeralAwsStorageInstance } from '../InstanceTypeField/InstanceTypeFieldHelper';
-import { isNonEmptyArray } from '../../../../../../../utils/ObjectUtils';
 
 export const IO1_DEFAULT_DISK_IOPS = 1000;
 export const IO1_MAX_DISK_IOPS = 64000;
@@ -36,6 +32,13 @@ export const UltraSSD_MIN_DISK_IOPS = 100;
 export const UltraSSD_DISK_IOPS_MAX_PER_GB = 300;
 export const UltraSSD_IOPS_TO_MAX_DISK_THROUGHPUT = 4;
 export const UltraSSD_DISK_THROUGHPUT_CAP = 2500;
+
+export const PremiumV2_LRS_DEFAULT_DISK_IOPS = 3000;
+export const PremiumV2_LRS_DEFAULT_DISK_THROUGHPUT = 125;
+export const PremiumV2_LRS_MIN_DISK_IOPS = 3000;
+export const PremiumV2_LRS_DISK_IOPS_MAX_PER_GB = 500;
+export const PremiumV2_LRS_IOPS_TO_MAX_DISK_THROUGHPUT = 4;
+export const PremiumV2_LRS_DISK_THROUGHPUT_CAP = 2500;
 
 export interface StorageTypeOption {
   value: StorageType;
@@ -62,13 +65,19 @@ export const GCP_STORAGE_TYPE_OPTIONS: StorageTypeOption[] = [
 export const AZURE_STORAGE_TYPE_OPTIONS: StorageTypeOption[] = [
   { value: StorageType.StandardSSD_LRS, label: 'Standard' },
   { value: StorageType.Premium_LRS, label: 'Premium' },
+  { value: StorageType.PremiumV2_LRS, label: 'PremiumV2' },
   { value: StorageType.UltraSSD_LRS, label: 'Ultra' }
 ];
 
 export const getMinDiskIops = (storageType: StorageType, volumeSize: number) => {
-  return storageType === StorageType.UltraSSD_LRS
-    ? Math.max(UltraSSD_MIN_DISK_IOPS, volumeSize)
-    : 0;
+  switch (storageType) {
+    case StorageType.UltraSSD_LRS:
+      return Math.max(UltraSSD_MIN_DISK_IOPS, volumeSize);
+    case StorageType.PremiumV2_LRS:
+      return Math.max(PremiumV2_LRS_MIN_DISK_IOPS, volumeSize);
+    default:
+      return 0;
+  }
 };
 
 export const getMaxDiskIops = (storageType: StorageType, volumeSize: number) => {
@@ -77,6 +86,8 @@ export const getMaxDiskIops = (storageType: StorageType, volumeSize: number) => 
       return IO1_MAX_DISK_IOPS;
     case StorageType.UltraSSD_LRS:
       return volumeSize * UltraSSD_DISK_IOPS_MAX_PER_GB;
+    case StorageType.PremiumV2_LRS:
+      return volumeSize * PremiumV2_LRS_DISK_IOPS_MAX_PER_GB;
     default:
       return GP3_MAX_IOPS;
   }
@@ -102,6 +113,8 @@ export const getIopsByStorageType = (storageType: StorageType) => {
     return GP3_DEFAULT_DISK_IOPS;
   } else if (storageType === StorageType.UltraSSD_LRS) {
     return UltraSSD_DEFAULT_DISK_IOPS;
+  } else if (storageType === StorageType.PremiumV2_LRS) {
+    return PremiumV2_LRS_DEFAULT_DISK_IOPS;
   }
   return null;
 };
@@ -111,6 +124,8 @@ export const getThroughputByStorageType = (storageType: StorageType) => {
     return GP3_DEFAULT_DISK_THROUGHPUT;
   } else if (storageType === StorageType.UltraSSD_LRS) {
     return UltraSSD_DEFAULT_DISK_THROUGHPUT;
+  } else if (storageType === StorageType.PremiumV2_LRS) {
+    return PremiumV2_LRS_DEFAULT_DISK_THROUGHPUT;
   }
   return null;
 };
@@ -134,6 +149,12 @@ export const getThroughputByIops = (
     const maxThroughput = Math.min(
       diskIops / UltraSSD_IOPS_TO_MAX_DISK_THROUGHPUT,
       UltraSSD_DISK_THROUGHPUT_CAP
+    );
+    return Math.max(0, Math.min(maxThroughput, currentThroughput));
+  } else if (storageType === StorageType.PremiumV2_LRS) {
+    const maxThroughput = Math.min(
+      diskIops / PremiumV2_LRS_IOPS_TO_MAX_DISK_THROUGHPUT,
+      PremiumV2_LRS_DISK_THROUGHPUT_CAP
     );
     return Math.max(0, Math.min(maxThroughput, currentThroughput));
   }
@@ -217,8 +238,10 @@ export const useVolumeControls = (isEditMode: boolean, updateOptions: string[]) 
   const [numVolumesDisable, setNumVolumesDisable] = useState(false);
   const [volumeSizeDisable, setVolumeSizeDisable] = useState(false);
   const [userTagsDisable, setUserTagsDisable] = useState(false);
+  const [disableIops, setDisableIops] = useState(false);
+  const [disableThroughput, setDisableThroughput] = useState(false);
+  const [disableStorageType, setDisableStorageType] = useState(false);
   const [minVolumeSize, setMinVolumeSize] = useState(1);
-  const { setValue } = useFormContext<UniverseFormData>();
 
   //watchers
   const provider = useWatch({ name: PROVIDER_FIELD });
@@ -227,28 +250,16 @@ export const useVolumeControls = (isEditMode: boolean, updateOptions: string[]) 
   const instanceType = useWatch({ name: INSTANCE_TYPE_FIELD });
   const deviceInfo = useWatch({ name: DEVICE_INFO_FIELD });
 
-  const initialCombination = useRef({
-    totalNodes: Number(totalNodes),
-    placements,
-    instanceType,
-    deviceInfo
-  });
-
   useUpdateEffect(() => {
     if (isEditMode && provider.code !== CloudType.kubernetes) {
-      if (isNonEmptyArray(updateOptions) && updateOptions.includes(UpdateActions.UPDATE)) {
-      setNumVolumesDisable(true);
-      setVolumeSizeDisable(true);
-      setUserTagsDisable(true);
-      setValue(DEVICE_INFO_FIELD, initialCombination.current.deviceInfo);
-      //  Volume Size Increase,  Other device Info changes (Count, Storage type, provisioned IOPS) , Instance Type Change
-      } else {
-        setNumVolumesDisable(false);
-        setVolumeSizeDisable(false);
-        setUserTagsDisable(false);
-      }
+      setNumVolumesDisable(false);
+      setVolumeSizeDisable(false);
+      setUserTagsDisable(false);
+      setDisableIops(false);
+      setDisableThroughput(false);
+      setDisableStorageType(false);
     }
   }, [totalNodes, placements, instanceType, deviceInfo?.volumeSize]);
 
-  return { numVolumesDisable, volumeSizeDisable, userTagsDisable, minVolumeSize };
+  return { numVolumesDisable, volumeSizeDisable, userTagsDisable, minVolumeSize, disableIops, disableThroughput, disableStorageType };
 };

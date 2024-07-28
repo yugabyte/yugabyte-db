@@ -1355,4 +1355,72 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Interval at which the XCluster Sync Scheduler runs",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Duration> xClusterMetricsSchedulerInterval =
+      new ConfKeyInfo<>(
+          "yb.xcluster.xcluster_metrics_scheduler_interval",
+          ScopeType.GLOBAL,
+          "XCluster Metrics Scheduler Interval",
+          "Interval at which the XCluster Metrics Scheduler runs",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Integer> ybcClientMaxUnavailableRetries =
+      new ConfKeyInfo<>(
+          "ybc.client_settings.max_unavailable_retries",
+          ScopeType.GLOBAL,
+          "Max retries on UNAVAILABLE status",
+          "Max client side retries when server returns UNAVAILABLE status",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Integer> ybcClientWaitEachUnavailableRetryMs =
+      new ConfKeyInfo<>(
+          "ybc.client_settings.wait_each_unavailable_retry_ms",
+          ScopeType.GLOBAL,
+          "Wait( in milliseconds ) between each retries on UNAVAILABLE status",
+          "Wait( in milliseconds ) between client side retries when server returns UNAVAILABLE"
+              + " status",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Integer> ybcClientMaxInboundMsgSize =
+      new ConfKeyInfo<>(
+          "ybc.client_settings.max_inbound_msg_size_bytes",
+          ScopeType.GLOBAL,
+          "Max size of YB-Controller RPC response",
+          "Max size( in bytes ) of YB-Controller RPC response",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Integer> ybcClientDeadlineMs =
+      new ConfKeyInfo<>(
+          "ybc.client_settings.deadline_ms",
+          ScopeType.GLOBAL,
+          "Wait( in milliseconds ) for YB-Controller RPC response",
+          "Wait( in milliseconds ) for YB-Controller RPC response before throwing client-side"
+              + " DEADLINE_EXCEEDED",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Integer> ybcClientKeepAlivePingsMs =
+      new ConfKeyInfo<>(
+          "ybc.client_settings.keep_alive_ping_ms",
+          ScopeType.GLOBAL,
+          "Wait between each KeepAlive ping to YB-Controller server",
+          "Wait( in milliseconds ) between each KeepAlive ping to YB-Controller server",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Integer> ybcClientKeepAlivePingsTimeoutMs =
+      new ConfKeyInfo<>(
+          "ybc.client_settings.keep_alive_ping_timeout_ms",
+          ScopeType.GLOBAL,
+          "Wait( in milliseconds ) for KeepAlive ping response from YB-Controller server",
+          "Wait( in milliseconds ) for KeepAlive ping response from YB-Controller server before"
+              + " throwing UNAVAILABLE",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.BETA));
+  // Also need rbac to be on for this key to have effect.
+  public static final ConfKeyInfo<Boolean> groupMappingRbac =
+      new ConfKeyInfo<>(
+          "yb.security.group_mapping_rbac_support",
+          ScopeType.GLOBAL,
+          "Enable RBAC for Groups",
+          "Map LDAP/OIDC groups to custom roles defined by RBAC.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

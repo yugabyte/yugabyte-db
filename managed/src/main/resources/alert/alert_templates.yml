@@ -958,33 +958,6 @@ templates:
 
         Affected nodes: {{ $labels.affected_node_names }}
 
-  NEW_YSQL_TABLES_ADDED:
-    name: YSQL Tables in DR/Xcluster Config Inconsistent With Primary/Source
-    description: YSQL tables were added or dropped from the primary/source universe database but were not updated on the DR/Xcluster config in YBA.
-    queryTemplate: ((count by (namespace_name, universe_uuid)(count by(namespace_name,
-      table_id, universe_uuid)(rocksdb_current_version_sst_files_size{universe_uuid="__universeUuid__",table_type="PGSQL_TABLE_TYPE"})))
-      - count by(namespace_name, universe_uuid)(count by(namespace_name, universe_uuid,
-      table_id)(async_replication_sent_lag_micros{universe_uuid="__universeUuid__",table_type="PGSQL_TABLE_TYPE"})))
-      {{ query_condition }} {{ query_threshold }}
-    defaultDurationSec: 120
-    createForNewCustomer: true
-    defaultThresholdMap:
-      SEVERE:
-        threshold: 0.0
-    targetType: UNIVERSE
-    defaultThresholdCondition: NOT_EQUAL
-    defaultThresholdUnit: COUNT
-    thresholdReadOnly: true
-    thresholdUnitName: table(s)
-    labels:
-      affected_node_names: >-
-        {{ range $index, $element := query "max by (universe_uuid, node_name)
-        (up{universe_uuid='{{ $labels.universe_uuid }}'})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
-    annotations:
-      summary: >-
-        New ysql tables are added to the source universe '{{ $labels.source_name }}'
-        in db with existing xcluster config but not added to the xcluster replication.
-
   NODE_DOWN:
     name: DB node down
     description: DB node is down for 15 minutes
@@ -1257,6 +1230,31 @@ templates:
       summary: >-
         Last Snapshot task for universe '{{ $labels.source_name }}'
         failed - check PITR Config task result for more details and retry
+
+  XCLUSTER_CONFIG_TABLE_BAD_STATE:
+    name: XCluster Config Table Bad State
+    description: XCluster Config Tables are in bad state
+    queryTemplate: min(last_over_time(ybp_xcluster_table_status{source_universe_uuid
+      = "__universeUuid__"}[5m])) {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 0.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: LESS_THAN
+    defaultThresholdUnit: STATUS
+    thresholdMaxValue: 0.0
+    thresholdReadOnly: true
+    labels:
+      affected_xcluster_configs: >-
+        {{ range $index, $element := query "count by (source_universe_uuid, xcluster_config_name)
+        (last_over_time(ybp_xcluster_table_status{source_universe_uuid='{{ $labels.universe_uuid }}'}[5m])
+        {{ query_condition }} {{ query_threshold }})" }}
+        {{if $index}},{{end}}{{ $element.Labels.xcluster_config_name }}{{ end }}
+    annotations:
+      summary: >-
+        XCluster config tables are in bad state for universe '{{ $labels.source_name }}'
+        Affected XCluster configs: {{ $labels.affected_xcluster_configs }}
 
   PRIVATE_ACCESS_KEY_STATUS:
     name: Private access key permission status

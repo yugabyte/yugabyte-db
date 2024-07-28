@@ -4,7 +4,6 @@
 # Dependency for yb_pg_privileges
 test: yb_pg_test_setup
 
-test: yb_pg_rolenames
 test: yb_pg_roleattributes
 test: yb_pg_privileges
 test: yb_pg_init_privs

@@ -23,7 +23,12 @@ var installCmd = &cobra.Command{
         `,
 	Args: cobra.NoArgs,
 	PreRun: func(cmd *cobra.Command, args []string) {
-		if _, err := os.Stat(common.YbaInstalledMarker()); err == nil {
+		state, err := ybactlstate.Initialize()
+		if err != nil {
+			if _, err := os.Stat(common.YbaInstalledMarker()); err != nil {
+				log.Fatal("YugabyteDB Anywhere already installed, cannot install twice.")
+			}
+		} else if state.CurrentStatus == ybactlstate.InstalledStatus {
 			log.Fatal("YugabyteDB Anywhere already installed, cannot install twice.")
 		}
 		if common.RunFromInstalled() {

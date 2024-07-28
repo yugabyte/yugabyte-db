@@ -98,6 +98,7 @@
 #include "utils/lsyscache.h"
 #include "utils/pg_locale.h"
 #include "utils/rel.h"
+#include "utils/snapshot.h"
 #include "utils/spccache.h"
 #include "utils/syscache.h"
 #include "utils/uuid.h"
@@ -111,6 +112,7 @@
 #include "postmaster/interrupt.h"
 #include "nodes/readfuncs.h"
 #include "yb_ash.h"
+#include "yb_query_diagnostics.h"
 
 #ifdef HAVE_SYS_PRCTL_H
 #include <sys/prctl.h>
@@ -197,6 +199,7 @@ static bool YBCanEnableDBCatalogVersionMode();
 
 bool yb_enable_docdb_tracing = false;
 bool yb_read_from_followers = false;
+bool yb_follower_reads_behavior_before_fixing_20482 = false;
 int32_t yb_follower_read_staleness_ms = 0;
 
 bool
@@ -912,6 +915,9 @@ YBInitPostgresBackend(
 		YBCInstallTxnDdlHook();
 		if (yb_ash_enable_infra)
 			YbAshInit();
+
+		if (YBIsEnabledInPostgresEnvVar() && YBIsQueryDiagnosticsEnabled())
+			YbQueryDiagnosticsInstallHook();
 
 		/*
 		 * For each process, we create one YBC session for PostgreSQL to use
@@ -1678,16 +1684,22 @@ YbHeapTupleToStringWithIsOmitted(HeapTuple tuple, TupleDesc tupleDesc,
 	return buf.data;
 }
 
+const char* YbTupleTableSlotToString(TupleTableSlot *slot)
+{
+	return YbTupleTableSlotToStringWithIsOmitted(slot, NULL);
+}
+
+
 const char *
-YbTupleTableSlotToStringWithIsOmitted(TupleTableSlot *slot, TupleDesc tupleDesc,
-									  bool *is_omitted)
+YbTupleTableSlotToStringWithIsOmitted(TupleTableSlot *slot, bool *is_omitted)
 {
 	bool		shouldFree;
 	HeapTuple	tuple;
 
 	tuple = ExecFetchSlotHeapTuple(slot, false, &shouldFree);
 	Assert(!shouldFree);
-	return YbHeapTupleToStringWithIsOmitted(tuple, tupleDesc, is_omitted);
+	return YbHeapTupleToStringWithIsOmitted(tuple, slot->tts_tupleDescriptor,
+											is_omitted);
 }
 
 const char*
@@ -1744,7 +1756,7 @@ YBResetEnableNonBreakingDDLMode()
 	/*
 	 * Reset yb_make_next_ddl_statement_nonbreaking to avoid its further side
 	 * effect that may not be intended.
-	 * 
+	 *
 	 * Also, reset Connection Manager cache if the value was cached to begin
 	 * with.
 	 */
@@ -2567,6 +2579,10 @@ bool YBEnableTracing() {
 
 bool YBReadFromFollowersEnabled() {
 	return yb_read_from_followers;
+}
+
+bool YBFollowerReadsBehaviorBefore20482() {
+	return yb_follower_reads_behavior_before_fixing_20482;
 }
 
 int32_t YBFollowerReadStalenessMs() {
@@ -3447,7 +3463,7 @@ yb_get_range_split_clause(PG_FUNCTION_ARGS)
 	 *
 	 * For YB backup, if an error is thrown from a PG backend, ysql_dump will
 	 * exit, generate an empty YSQLDUMP file, and block YB backup workflow.
-	 * Currently, we don't have the functionality to adjust options used for 
+	 * Currently, we don't have the functionality to adjust options used for
 	 * ysql_dump on YBA and YBM, so we don't have a way to to turn on/off
 	 * a backup-related feature used in ysql_dump.
 	 * There are known cases which caused decoding of split points to fail in
@@ -4810,17 +4826,35 @@ YbReturningListSubsetOfUpdatedCols(Relation rel, Bitmapset *updatedCols,
 int ysql_conn_mgr_sticky_object_count = 0;
 
 /*
+ * `yb_ysql_conn_mgr_sticky_guc` is used to denote stickiness of a connection
+ * due to the setting of GUC variables that cannot be directly supported
+ * by Connection Manager.
+ */
+bool yb_ysql_conn_mgr_sticky_guc = false;
+
+/*
+ * ```YbIsConnectionMadeStickyUsingGUC()``` returns whether or not the a
+ * connection is made sticky using via specific GUC variables.
+ */
+static bool YbIsConnectionMadeStickyUsingGUC()
+{
+	return yb_ysql_conn_mgr_sticky_guc;
+}
+
+/*
  * ```YbIsStickyConnection(int *change)``` updates the number of objects that requires a sticky
  * connection and returns whether or not the client connection
  * requires stickiness. i.e. if there is any `WITH HOLD CURSOR` or `TEMP TABLE`
  * at the end of the transaction.
+ * 
+ * Also check if any GUC variable is set that requires a sticky connection.
  */
 bool YbIsStickyConnection(int *change)
 {
 	ysql_conn_mgr_sticky_object_count += *change;
 	*change = 0; /* Since it is updated it will be set to 0 */
 	elog(DEBUG5, "Number of sticky objects: %d", ysql_conn_mgr_sticky_object_count);
-	return (ysql_conn_mgr_sticky_object_count > 0);
+	return (ysql_conn_mgr_sticky_object_count > 0) || YbIsConnectionMadeStickyUsingGUC();
 }
 
 void**
@@ -5195,4 +5229,32 @@ YbCalculateTimeDifferenceInMicros(TimestampTz yb_start_time)
 	TimestampDifference(yb_start_time, GetCurrentTimestamp(), &secs,
 						&microsecs);
 	return secs * USECS_PER_SEC + microsecs;
+}
+
+bool YbIsReadCommittedTxn()
+{
+	return IsYBReadCommitted() &&
+		!(YBCPgIsDdlMode() || YBCIsInitDbModeEnvVarSet());
+}
+
+YbReadTimePointHandle YbBuildCurrentReadTimePointHandle()
+{
+	return YbIsReadCommittedTxn()
+		? (YbReadTimePointHandle){
+			.has_value = true, .value = YBCPgGetCurrentReadTimePoint()}
+		: (YbReadTimePointHandle){};
+}
+
+// TODO(#22370): the method will be used to make Const Based Optimizer to be aware of
+// fast backward scan capability.
+bool YbUseFastBackwardScan() {
+  return *(YBCGetGFlags()->ysql_use_fast_backward_scan);
+}
+
+/* Used in YB to check if an attribute is a key column. */
+bool YbIsAttrPrimaryKeyColumn(Relation rel, AttrNumber attnum)
+{
+	Bitmapset *pkey = YBGetTablePrimaryKeyBms(rel);
+	return bms_is_member(attnum -
+		YBGetFirstLowInvalidAttributeNumber(rel), pkey);
 }

@@ -31,32 +31,15 @@
 //
 #include "yb/server/generic_service.h"
 
-#include <ctype.h>
-#include <functional>
-#include <map>
-#include <mutex>
-#include <set>
 #include <string>
-#include <unordered_map>
-#include <unordered_set>
 
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
-#include "yb/util/logging.h"
 
-#include "yb/gutil/atomicops.h"
-#include "yb/gutil/callback_forward.h"
-#include "yb/gutil/dynamic_annotations.h"
-#include "yb/gutil/macros.h"
-#include "yb/gutil/map-util.h"
-#include "yb/gutil/port.h"
-#include "yb/gutil/strings/split.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/server/clock.h"
 #include "yb/server/server_base.h"
 #include "yb/util/flags.h"
-#include "yb/util/metrics_fwd.h"
-#include "yb/util/monotime.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_fwd.h"
@@ -135,6 +118,18 @@ void GenericServiceImpl::GetFlag(const GetFlagRequestPB* req,
   }
   resp->set_value(val);
   rpc.RespondSuccess();
+}
+
+void GenericServiceImpl::ValidateFlagValue(
+    const ValidateFlagValueRequestPB* req, ValidateFlagValueResponsePB* resp, rpc::RpcContext rpc) {
+  auto status = flags_internal::ValidateFlagValue(req->flag_name(), req->flag_value());
+  if (status.ok()) {
+    rpc.RespondSuccess();
+    return;
+  }
+
+  LOG(WARNING) << "Flag validation failed: " << status;
+  rpc.RespondFailure(status);
 }
 
 void GenericServiceImpl::FlushCoverage(const FlushCoverageRequestPB* req,

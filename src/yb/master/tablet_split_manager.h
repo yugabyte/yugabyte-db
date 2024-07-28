@@ -57,7 +57,8 @@ class TabletSplitManager {
       const LeaderEpoch& epoch);
 
   Status ProcessSplitTabletResult(
-      const TableId& split_table_id, const SplitTabletIds& split_tablet_ids);
+      const TableId& split_table_id, const SplitTabletIds& split_tablet_ids,
+      const LeaderEpoch& epoch);
 
   // Table-level checks for splitting that are checked not only as a best-effort
   // filter, but also after acquiring the table/tablet locks in CatalogManager::DoSplit.

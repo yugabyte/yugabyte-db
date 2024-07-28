@@ -49,7 +49,6 @@ typedef struct YbTIDBitmap
 	YbTBMIteratingState iterating PG_USED_FOR_ASSERTS_ONLY;
 								/* yb_tbm_begin_iterate called? */
 	size_t		bytes_consumed;	/* sum of the size of the ybctids */
-	bool		recheck;		/* recheck all entries in this set? */
 	bool		work_mem_exceeded;	/* if bytes_consumed exceeds work_mem */
 } YbTIDBitmap;
 

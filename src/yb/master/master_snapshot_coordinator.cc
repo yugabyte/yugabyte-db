@@ -13,6 +13,7 @@
 
 #include "yb/master/master_snapshot_coordinator.h"
 
+#include <functional>
 #include <unordered_map>
 
 #include <boost/multi_index/composite_key.hpp>
@@ -452,9 +453,17 @@ class MasterSnapshotCoordinator::Impl {
     {
       std::lock_guard lock(mutex_);
       SnapshotState& snapshot = VERIFY_RESULT(FindSnapshot(snapshot_id));
+      auto restoration = FindInProgressRestorationUsingSnapshot(snapshot_id);
+      if (restoration) {
+        return STATUS(
+            InvalidArgument,
+            Format(
+                "Cannot delete snapshot $0, restoration $1 is in progress and using snapshot $0",
+                snapshot_id, restoration->get().restoration_id()),
+            MasterError(MasterErrorPB::INVALID_REQUEST));
+      }
       RETURN_NOT_OK(snapshot.TryStartDelete());
     }
-
     auto synchronizer = std::make_shared<Synchronizer>();
     RETURN_NOT_OK(SubmitDelete(snapshot_id, leader_term, synchronizer));
     return synchronizer->WaitUntil(ToSteady(deadline));
@@ -736,7 +745,7 @@ class MasterSnapshotCoordinator::Impl {
       {
         std::lock_guard lock(mutex_);
         const auto& snapshot = VERIFY_RESULT(FindSnapshot(snapshot_id)).get();
-        if (VERIFY_RESULT(snapshot.AggregatedState()) == master::SysSnapshotEntryPB::COMPLETE) {
+        if (VERIFY_RESULT(snapshot.Complete())) {
           return snapshot.id();
         }
       }
@@ -1265,6 +1274,17 @@ class MasterSnapshotCoordinator::Impl {
     return **it;
   }
 
+  std::optional<std::reference_wrapper<RestorationState>> FindInProgressRestorationUsingSnapshot(
+      const TxnSnapshotId& snapshot_id) REQUIRES(mutex_) {
+    for (auto [it, it_end] = restorations_.get<SnapshotIdTag>().equal_range(snapshot_id);
+         it != it_end; ++it) {
+      if (!(*it)->AllTabletsDone()) {
+        return **it;
+      }
+    }
+    return std::nullopt;
+  }
+
   Result<RestorationState*> GetRestorationPtrOrNull(
       const TxnSnapshotRestorationId& restoration_id) REQUIRES(mutex_) {
     auto restoration_result = FindRestoration(restoration_id);
@@ -1314,7 +1334,7 @@ class MasterSnapshotCoordinator::Impl {
 
   template <typename Operation>
   void ScheduleOperation(const Operation& operation, const TabletInfoPtr& tablet_info,
-                       int64_t leader_term);
+                         int64_t leader_term);
 
   template <typename Operations>
   void ScheduleOperations(const Operations& operations, int64_t leader_term) {
@@ -1961,6 +1981,7 @@ class MasterSnapshotCoordinator::Impl {
     {
       std::lock_guard lock(mutex_);
       SnapshotState& snapshot = VERIFY_RESULT(FindSnapshot(snapshot_id));
+      SCHECK(!snapshot.delete_started(), IllegalState, "The snapshot has started deleting");
       if (!VERIFY_RESULT(snapshot.Complete())) {
         return STATUS(IllegalState, "The snapshot state is not complete", snapshot_id.ToString(),
                       MasterError(MasterErrorPB::SNAPSHOT_IS_NOT_READY));
@@ -2096,6 +2117,7 @@ class MasterSnapshotCoordinator::Impl {
   // mutex to avoid data races, though this is currently unenforced.
   mutable std::mutex mutex_;
   class ScheduleTag;
+  class SnapshotIdTag;
   using Snapshots = boost::multi_index_container<
       std::unique_ptr<SnapshotState>,
       boost::multi_index::indexed_by<
@@ -2132,6 +2154,12 @@ class MasterSnapshotCoordinator::Impl {
               boost::multi_index::const_mem_fun<
                   RestorationState, const SnapshotScheduleId&,
                   &RestorationState::schedule_id>
+    >,
+          boost::multi_index::hashed_non_unique<
+              boost::multi_index::tag<SnapshotIdTag>,
+              boost::multi_index::const_mem_fun<
+                  RestorationState, const TxnSnapshotId&,
+                  &RestorationState::snapshot_id>
           >
       >
   >;

@@ -1102,7 +1102,7 @@ public class XClusterConfig extends Model {
     }
   }
 
-  private void addTableConfig(XClusterTableConfig tableConfig) {
+  public void addTableConfig(XClusterTableConfig tableConfig) {
     if (!this.getTables().add(tableConfig)) {
       log.debug(
           "Table with id {} already exists in xCluster config ({})",

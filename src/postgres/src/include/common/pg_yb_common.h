@@ -162,4 +162,9 @@ extern bool YBIsTestOnlinePg11ToPg15Upgrade();
  */
 Oid YBGetDatabaseOidFromEnv(const char *database_name);
 
+/**
+ * Returns whether the query diagnostics feature is enabled. 
+ */
+extern bool YBIsQueryDiagnosticsEnabled();
+
 #endif /* PG_YB_COMMON_H */

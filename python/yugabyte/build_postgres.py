@@ -781,32 +781,7 @@ class PostgresBuilder(YbBuildToolBase):
                                    in ('third-party-extensions', 'yb-extensions')]
         work_dirs = [
             self.pg_build_root,
-            # self.pg_build_root,
-            # os.path.join(self.pg_build_root, 'contrib'),
-            # YB_TODO: begin: cleanup the below when all extensions in contrib directory work
-            os.path.join(self.pg_build_root, 'contrib/pgcrypto'),
-            os.path.join(self.pg_build_root, 'contrib/uuid-ossp'),
-            os.path.join(self.pg_build_root, 'contrib/file_fdw'),
-            os.path.join(self.pg_build_root, 'contrib/postgres_fdw'),
-            os.path.join(self.pg_build_root, 'contrib/passwordcheck'),
-            os.path.join(self.pg_build_root, 'contrib/fuzzystrmatch'),
-            os.path.join(self.pg_build_root, 'contrib/tablefunc'),
-            os.path.join(self.pg_build_root, 'contrib/spi'),
-            os.path.join(self.pg_build_root, 'contrib/sslinfo'),
-            os.path.join(self.pg_build_root, 'contrib/auto_explain'),
-            os.path.join(self.pg_build_root, 'contrib/hstore'),
-            os.path.join(self.pg_build_root, 'contrib/pg_trgm'),
-            os.path.join(self.pg_build_root, 'contrib/adminpack'),
-            os.path.join(self.pg_build_root, 'contrib/amcheck'),
-            os.path.join(self.pg_build_root, 'contrib/cube'),
-            os.path.join(self.pg_build_root, 'contrib/earthdistance'),
-            os.path.join(self.pg_build_root, 'contrib/intarray'),
-            os.path.join(self.pg_build_root, 'contrib/isn'),
-            os.path.join(self.pg_build_root, 'contrib/pg_stat_statements'),
-            os.path.join(self.pg_build_root, 'contrib/test_decoding'),
-            # wal2json should be moved to third-party-extensions
-            os.path.join(self.pg_build_root, 'contrib/wal2json'),
-            # YB_TODO: end
+            os.path.join(self.pg_build_root, 'contrib'),
         ] + external_extension_dirs
 
         for work_dir in work_dirs:

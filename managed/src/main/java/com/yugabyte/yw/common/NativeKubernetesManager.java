@@ -37,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import javax.annotation.Nullable;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -361,7 +362,7 @@ public class NativeKubernetesManager extends KubernetesManager {
   }
 
   @Override
-  public void performYbcAction(
+  public String performYbcAction(
       Map<String, String> config,
       String namespace,
       String podName,
@@ -379,6 +380,13 @@ public class NativeKubernetesManager extends KubernetesManager {
           .writingError(baos)
           .usingListener(new SimpleListener(data, baos))
           .exec(commandArgs.stream().toArray(String[]::new));
+      try {
+        // Wait for command to complete and get results
+        return data.get(300, TimeUnit.SECONDS);
+      } catch (Exception e) {
+        log.error("Error while executing command: " + e.getMessage());
+        throw new RuntimeException("Error while executing command: " + e.getMessage());
+      }
     }
   }
 
@@ -539,5 +547,12 @@ public class NativeKubernetesManager extends KubernetesManager {
       Map<String, String> config, String resourceType, String resourceName, String namespace) {
     // TODO Auto-generated method stub
     throw new UnsupportedOperationException("Unimplemented method 'resourceExists'");
+  }
+
+  @Override
+  public Map<ServerType, String> getServerTypeGflagsChecksumMap(
+      String namespace, String helmReleaseName, Map<String, String> config) {
+    // TODO Auto-generated method stub
+    throw new UnsupportedOperationException("Unimplemented method 'getServerTypeGflagsChecksum'");
   }
 }

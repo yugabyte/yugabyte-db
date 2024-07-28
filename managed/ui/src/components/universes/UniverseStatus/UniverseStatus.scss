@@ -106,7 +106,9 @@
 }
 
 .status-pending-display-container {
-  display: inline-block;
+  display: flex;
+  align-items: baseline;
+  width: 280px;
   color: colors.$YB_ORANGE;
   float: right;
 

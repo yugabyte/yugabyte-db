@@ -29,6 +29,10 @@ Review limitations and implement suggested workarounds to successfully migrate d
 - [Exporting text type columns with default value](#exporting-text-type-columns-with-default-value)
 - [json_valid() does not exist in PostgreSQL/YugabyteDB](#json-valid-does-not-exist-in-postgresql-yugabytedb)
 - [json_value() does not exist in PostgreSQL/YugabyteDB](#json-value-does-not-exist-in-postgresql-yugabytedb)
+- [Unnecessary DDLs for RANGE COLUMN PARTITIONED tables](#unnecessary-ddls-for-range-column-partitioned-tables)
+- [DOUBLE UNSIGNED and FLOAT UNSIGNED datatypes are not supported](#double-unsigned-and-float-unsigned-datatypes-are-not-supported)
+- [Foreign key referenced column cannot be a subset of a unique/primary key](#foreign-key-referenced-column-cannot-be-a-subset-of-a-unique-primary-key)
+- [Multiple indexes on the same column of a table errors during import](#multiple-indexes-on-the-same-column-of-a-table-errors-during-import)
 
 ### Approaching MAX/MIN double precision values are not imported
 
@@ -580,3 +584,165 @@ Suggested change to the schema is as follows:
 ```sql
 json_extract_path_text(key_value_pair_variable::json,'key');
 ```
+
+---
+
+### Unnecessary DDLs for RANGE COLUMN PARTITIONED tables
+
+**GitHub**: [Issue #511](https://github.com/yugabyte/yb-voyager/issues/511)
+
+**Description**: If you have a schema which contains RANGE COLUMN PARTITIONED tables in MYSQL, some extra indexes are created during migration which are unnecessary and might result in an import error.
+
+**Workaround**: Remove the unnecessary DDLs from `PARTITION_INDEXES_partition.sql` file from the export-dir/schema/partitions sub-directory for the corresponding tables.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE range_columns_partition_test (
+a INT,
+b INT
+)
+PARTITION BY RANGE COLUMNS(a, b) (
+PARTITION p0 VALUES LESS THAN (5, 5),
+PARTITION p1 VALUES LESS THAN (MAXVALUE, MAXVALUE)
+);
+```
+
+An example of the exported unnecessary index is as follows:
+
+```sql
+-- Create indexes on each partition of table range_columns_partition_test
+CREATE INDEX range_columns_partition_test_p1_b ON range_columns_partition_test_p1 (b);
+```
+
+Suggested change is to remove the unnecessary index.
+
+---
+
+### DOUBLE UNSIGNED and FLOAT UNSIGNED datatypes are not supported
+
+**GitHub**: [Issue #1607](https://github.com/yugabyte/yb-voyager/issues/1607)
+
+**Description**: If the schema has a table with a DOUBLE UNSIGNED or FLOAT UNSIGNED column, those datatypes  are not converted by Voyager to a YugabyteDB relevant syntax, and thus get errored during import. These datatypes are deprecated as of [MySQL 8.0.17](https://dev.mysql.com/doc/refman/8.0/en/numeric-type-syntax.html).
+
+**Workaround**: Manually change the exported schema to the closest YugabyteDB supported syntax.
+
+**Example**:
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE test(id int,
+                  n double unsigned,
+                  f float unsigned
+);
+```
+
+An example of the exported table is as follows:
+
+```sql
+CREATE TABLE test (
+        id bigint,
+        n DOUBLE UNSIGNED,
+        f FLOAT UNSIGNED
+);
+```
+
+Suggested change to the schema is as follows:
+
+Change to YugabyteDB compatible syntax closest to the respective datatypes.
+
+```sql
+CREATE TABLE test (
+        id bigint,
+        n DOUBLE PRECISION CHECK (n >= 0),
+        f REAL CHECK (f >= 0)
+);
+```
+
+---
+
+### Foreign key referenced column cannot be a subset of a unique/primary key
+
+**GitHub**: [Issue #1608](https://github.com/yugabyte/yb-voyager/issues/1608)
+
+**Description**: In MySQL, you can reference a column which is part of a unique key or a primary key for a foreign key. This is not allowed in YugabyteDB or PostgreSQL.
+
+**Workaround**: The referenced columns will need to have individual Unique / Primary keys.
+
+**Example**:
+
+An example schema on the source database (allowed in MySQL) is as follows:
+
+```sql
+create table k(id int,id2 int,UNIQUE KEY `uk_k` (`id`,`id2`));
+
+create table h(id int,CONSTRAINT `fk_h` FOREIGN KEY (`id`) REFERENCES `k` (`id`));
+```
+
+An example of the exported schema is as follows:
+
+```sql
+CREATE TABLE h (
+        id bigint
+) ;
+CREATE TABLE k (
+        id bigint,
+        id2 bigint
+) ;
+ALTER TABLE k ADD UNIQUE (id,id2);
+ALTER TABLE h ADD CONSTRAINT fk_h FOREIGN KEY (id) REFERENCES k(id) MATCH SIMPLE ON DELETE NO ACTION ON UPDATE NO ACTION;
+```
+
+Error during import is as follows:
+
+```output
+ERROR:  there is no unique constraint matching given keys for referenced table "k"
+```
+
+Suggested change to the schema is as follows:
+
+Add individual unique/primary keys to the referenced column as follows:
+
+```sql
+ALTER TABLE k ADD UNIQUE (id);
+```
+
+---
+
+### Multiple indexes on the same column of a table errors during import
+
+**GitHub**: [Issue #1609](https://github.com/yugabyte/yb-voyager/issues/1609)
+
+**Description**: Voyager renames the indexes with a set pattern `table_name_column_name` during export. So having multiple indexes on the same column of a table will have the same name and will error out during import.
+
+**Workarounds**:
+
+1. Rename the duplicate index after the schema export.
+1. Drop the duplicate index on the source.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE test(id int, k int);
+CREATE INDEX index1 on test(k);
+CREATE INDEX index2 on test(k);
+```
+
+An example of the exported indexes are as follows:
+
+```sql
+CREATE INDEX test_k ON test (k);
+CREATE INDEX test_k ON test (k);
+```
+
+Suggested changes:
+
+1. Rename one of the indexes (for example, test_k2).
+1. Drop index1 or index2 on the source before exporting.
+
+---

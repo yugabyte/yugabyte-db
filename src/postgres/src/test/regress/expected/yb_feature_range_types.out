@@ -139,9 +139,6 @@ ERROR:  PRIMARY KEY containing column of type 'user_defined_type' not yet suppor
 CREATE DOMAIN feature_r_domain AS INTEGER CHECK (VALUE > 0);
 CREATE TABLE ft_r_tab_domain (feature_col feature_r_domain, PRIMARY KEY(feature_col ASC))
 	SPLIT AT VALUES ((100));
-ERROR:  specified value cannot be cast to type feature_r_domain for column "feature_col"
-DETAIL:  The cast requires a non-immutable conversion.
-HINT:  Try putting the literal value in single quotes.
 --
 -- Object Identifier Types
 CREATE TABLE ft_r_tab_oid (feature_col OID, PRIMARY KEY(feature_col ASC))
@@ -217,5 +214,3 @@ CREATE TABLE ft_r_tab_void (feature_col VOID, PRIMARY KEY(feature_col ASC));
 ERROR:  column "feature_col" has pseudo-type void
 -- TODO(jason): uncomment when issue #1975 is closed.
 -- CREATE TABLE ft_r_tab_unknown (feature_col UNKNOWN);
-CREATE TABLE ft_r_tab_opaque (feature_col OPAQUE, PRIMARY KEY(feature_col ASC));
-ERROR:  column "feature_col" has pseudo-type opaque

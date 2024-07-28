@@ -729,7 +729,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
 
     setupMockMetricQueryHelperResponse();
 
-    Mockito.doNothing().when(mockXClusterSyncScheduler).syncXClusterConfig(any());
+    Mockito.doNothing().when(mockXClusterScheduler).syncXClusterConfig(any());
 
     String getAPIEndpoint = apiEndpoint + "/" + xClusterConfig.getUuid();
 
@@ -1325,7 +1325,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     params.allowBootstrap = false;
     params.tables = Collections.singleton(exampleTableID2);
     params.backupRequestParams =
-        new XClusterConfigCreateFormData.BootstrapParams.BootstarpBackupParams();
+        new XClusterConfigCreateFormData.BootstrapParams.BootstrapBackupParams();
     params.backupRequestParams.storageConfigUUID =
         ModelFactory.createS3StorageConfig(customer, "s3-config").getConfigUUID();
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();

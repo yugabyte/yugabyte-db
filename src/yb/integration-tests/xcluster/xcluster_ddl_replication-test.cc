@@ -17,14 +17,12 @@
 #include "yb/common/common_types.pb.h"
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
-#include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
-#include "yb/tserver/mini_tablet_server.h"
-#include "yb/util/backoff_waiter.h"
-
-DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
 
 DECLARE_bool(enable_xcluster_api_v2);
+DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
+DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
+
 DECLARE_bool(TEST_xcluster_enable_ddl_replication);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_end);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_log_queries);
@@ -41,7 +39,9 @@ class XClusterDDLReplicationTest : public XClusterYsqlTestBase {
     // By default start with no consumer or producer tables.
     std::vector<uint32_t> num_consumer_tablets = {};
     std::vector<uint32_t> num_producer_tablets = {};
-    uint32_t replication_factor = 3;
+    // We only create one pg proxy per cluster, so we need to ensure that the target ddl_queue table
+    // leader is on the that tserver (so that setting xcluster context works properly).
+    uint32_t replication_factor = 1;
     uint32_t num_masters = 1;
     bool ranged_partitioned = false;
   };
@@ -354,6 +354,42 @@ TEST_F(XClusterDDLReplicationTest, ExactlyOnceReplication) {
   for (int i = 0; i < kNumTables; ++i) {
     InsertRowsIntoProducerTableAndVerifyConsumer(producer_table_names[i]);
   }
+}
+
+TEST_F(XClusterDDLReplicationTest, DuplicateTableNames) {
+  // TODO(#23078) Can use pause resume in this test to check different cases, but that requires
+  // skipping schema checks and allowing replication on hidden tables.
+
+  // Disable the background hidden table deletion task, that way the producer table stays hidden.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = -1;
+
+  const int kNumTablets = 3;
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(EnableDDLReplicationExtension());
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  // Create a table on the producer.
+  auto producer_table_name = ASSERT_RESULT(CreateYsqlTable(
+      /*idx=*/1, kNumTablets, &producer_cluster_));
+  InsertRowsIntoProducerTableAndVerifyConsumer(producer_table_name);
+
+  // Drop the table with manual replication, it should move to HIDDEN state.
+  // TODO: remove manual replication restriction once we support DROPs.
+
+  // Delete first on the producer so that the table is hidden.
+  for (Cluster* cluster : {&producer_cluster_, &consumer_cluster_}) {
+    auto conn = ASSERT_RESULT(cluster->Connect());
+    ASSERT_OK(
+        conn.ExecuteFormat("SET yb_xcluster_ddl_replication.enable_manual_ddl_replication=1"));
+    ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", producer_table_name.table_name()));
+  }
+
+  // Create a new table with the same name.
+  auto producer_table_name2 = ASSERT_RESULT(CreateYsqlTable(
+      /*idx=*/1, kNumTablets, &producer_cluster_));
+  // Ensure that replication is correctly set up on this new table.
+  InsertRowsIntoProducerTableAndVerifyConsumer(producer_table_name2);
 }
 
 }  // namespace yb

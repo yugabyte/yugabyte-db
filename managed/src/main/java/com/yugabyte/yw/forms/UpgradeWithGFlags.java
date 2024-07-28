@@ -63,6 +63,11 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
       if (newCluster == null
           || (Objects.equals(
                   newCluster.userIntent.specificGFlags, curCluster.userIntent.specificGFlags)
+              && (newCluster.userIntent.specificGFlags != null
+                  && curCluster.userIntent.specificGFlags != null
+                  && Objects.equals(
+                      newCluster.userIntent.specificGFlags.getGflagGroups(),
+                      curCluster.userIntent.specificGFlags.getGflagGroups()))
               && !skipMatchWithUserIntent)) {
         continue;
       }
@@ -77,11 +82,6 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
       }
       if (newCluster.userIntent.specificGFlags != null) {
         newCluster.userIntent.specificGFlags.validateConsistency();
-        GFlagsUtil.validateGFlagGroupsOnUpgrade(
-            newCluster.userIntent.specificGFlags,
-            currentSpecificGFlags,
-            newCluster.userIntent.ybSoftwareVersion,
-            gFlagsValidation);
       }
       hasClustersToUpdate = true;
       if (upgradeOption == UpgradeOption.NON_RESTART_UPGRADE) {

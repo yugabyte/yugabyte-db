@@ -31,6 +31,7 @@
 #include "yb/master/master_error.h"
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/ts_descriptor.h"
+#include "yb/master/xcluster/xcluster_manager_if.h"
 
 #include "yb/server/monitored_task.h"
 
@@ -974,23 +975,21 @@ void TabletSplitManager::MaybeDoSplitting(
 }
 
 Status TabletSplitManager::ProcessSplitTabletResult(
-    const TableId& split_table_id,
-    const SplitTabletIds& split_tablet_ids) {
+    const TableId& split_table_id, const SplitTabletIds& split_tablet_ids,
+    const LeaderEpoch& epoch) {
   // Since this can get called multiple times from DoSplitTablet (if a tablet split is retried),
   // everything here needs to be idempotent.
   LOG(INFO) << "Processing split tablet result for table " << split_table_id
             << ", split tablet ids: " << split_tablet_ids.ToString();
 
-  // Update the xCluster tablet mapping.
-  Status s =
-      catalog_manager_.UpdateXClusterConsumerOnTabletSplit(split_table_id, split_tablet_ids);
+  Status s = catalog_manager_.GetXClusterManager()->HandleTabletSplit(
+      split_table_id, split_tablet_ids, epoch);
   RETURN_NOT_OK_PREPEND(
       s, Format(
              "Encountered an error while updating the xCluster consumer tablet mapping. "
              "Table id: $0, Split Tablets: $1",
              split_table_id, split_tablet_ids.ToString()));
 
-  // Update the CDCSDK and xCluster producer tablet mapping.
   s = catalog_manager_.UpdateCDCProducerOnTabletSplit(split_table_id, split_tablet_ids);
   RETURN_NOT_OK_PREPEND(
       s, Format(

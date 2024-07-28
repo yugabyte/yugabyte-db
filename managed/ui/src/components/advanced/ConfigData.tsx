@@ -11,14 +11,13 @@ import { ResetConfig } from './ResetConfig';
 import { RunTimeConfigData, RunTimeConfigScope } from '../../redesign/utils/dtos';
 import { getPromiseState } from '../../utils/PromiseUtils';
 import { isNonEmptyArray } from '../../utils/ObjectUtils';
-
 import {
   RbacValidator,
   hasNecessaryPerm
 } from '../../redesign/features/rbac/common/RbacApiPermValidator';
-
 import { ApiPermissionMap } from '../../redesign/features/rbac/ApiAndUserPermMapping';
 import { Action } from '../../redesign/features/rbac';
+import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '../../actions/customers';
 import './AdvancedConfig.scss';
 
 const DEFAULT_RUNTIME_TAG_FILTER = ['PUBLIC'];
@@ -29,34 +28,33 @@ const ConfigScopePriority = {
   PROVIDER: 4
 };
 
-interface GlobalConfigProps {
+interface ConfigDataProps {
+  getRuntimeConfig: (key: string, scope?: string) => void;
   setRuntimeConfig: (key: string, value: string, scope?: string) => void;
   deleteRunTimeConfig: (key: string, scope?: string) => void;
   scope: string;
-  configTagFilter: string[] | undefined;
   universeUUID?: string;
   providerUUID?: string;
   customerUUID?: string;
 }
 
-export const ConfigData: FC<GlobalConfigProps> = ({
+export const ConfigData: FC<ConfigDataProps> = ({
+  getRuntimeConfig,
   setRuntimeConfig,
   deleteRunTimeConfig,
   scope,
-  configTagFilter,
   universeUUID,
   providerUUID,
   customerUUID
 }) => {
   const { t } = useTranslation();
-  const tagFilter = configTagFilter ?? DEFAULT_RUNTIME_TAG_FILTER;
+  const [tagFilter, setTagFilter] = useState<string[]>(DEFAULT_RUNTIME_TAG_FILTER);
   const runtimeConfigs = useSelector((state: any) => state.customer.runtimeConfigs);
   const runtimeConfigsKeyMetadata = useSelector(
     (state: any) => state.customer.runtimeConfigsKeyMetadata
   );
   // Helps in deciding if the logged in user can mutate the config values
   const [searchText, setSearchText] = useState<string>('');
-  const isScopeMutable = runtimeConfigs?.data?.mutableScope;
   const [editConfig, setEditConfig] = useState<boolean>(false);
   const [resetConfig, setResetConfig] = useState<boolean>(false);
   const [showOverridenValues, setShowOverridenValues] = useState<boolean>(false);
@@ -115,7 +113,21 @@ export const ConfigData: FC<GlobalConfigProps> = ({
         });
       setListItems(runtimeConfigItems);
     }
-  }, [scope, universeUUID, providerUUID, customerUUID, runtimeConfigEntries]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [scope, universeUUID, providerUUID, customerUUID, runtimeConfigEntries, tagFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    fetchUiTagFilter();
+  }, [scope]);
+
+  const fetchUiTagFilter = async () => {
+    const uiTagFilterResponse: any = await getRuntimeConfig(
+      'yb.runtime_conf_ui.tag_filter',
+      DEFAULT_RUNTIME_GLOBAL_SCOPE
+    );
+    if (isNonEmptyArray(uiTagFilterResponse?.payload?.data)) {
+      setTagFilter(uiTagFilterResponse?.payload?.data);
+    }
+  };
 
   const openEditConfig = (row: any) => {
     setEditConfig(true);
@@ -282,6 +294,7 @@ export const ConfigData: FC<GlobalConfigProps> = ({
           configData={configData}
           onHide={() => setEditConfig(false)}
           setRuntimeConfig={setRuntimeConfig}
+          fetchUiTagFilter={fetchUiTagFilter}
           scope={scope}
           universeUUID={universeUUID}
           providerUUID={providerUUID}
@@ -293,6 +306,7 @@ export const ConfigData: FC<GlobalConfigProps> = ({
           configData={configData}
           onHide={() => setResetConfig(false)}
           deleteRunTimeConfig={deleteRunTimeConfig}
+          fetchUiTagFilter={fetchUiTagFilter}
           scope={scope}
           universeUUID={universeUUID}
           providerUUID={providerUUID}

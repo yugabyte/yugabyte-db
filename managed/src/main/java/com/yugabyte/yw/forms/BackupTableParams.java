@@ -3,6 +3,7 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.models.Backup.StorageConfigType;
@@ -340,10 +341,12 @@ public class BackupTableParams extends TableManagerParams {
     return new ArrayList<String>();
   }
 
+  @JsonProperty("isFullBackup")
   public boolean isFullBackup() {
     return isFullBackup;
   }
 
+  @JsonProperty("isFullBackup")
   public void setFullBackup(boolean isFullBackup) {
     this.isFullBackup = isFullBackup;
   }

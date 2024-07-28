@@ -753,11 +753,10 @@ Status PgApiImpl::IsDatabaseColocated(const PgOid database_oid, bool *colocated,
 
 Status PgApiImpl::NewCreateDatabase(
     const char* database_name, const PgOid database_oid, const PgOid source_database_oid,
-    const char* source_database_name, const PgOid next_oid, const bool colocated,
-    const int64_t clone_time, PgStatement** handle) {
+    const PgOid next_oid, const bool colocated, YbCloneInfo *yb_clone_info, PgStatement** handle) {
   auto stmt = std::make_unique<PgCreateDatabase>(
-      pg_session_, database_name, database_oid, source_database_oid, source_database_name, next_oid,
-      clone_time, colocated);
+      pg_session_, database_name, database_oid, source_database_oid, next_oid,
+      yb_clone_info, colocated);
   if (pg_txn_manager_->IsDdlMode()) {
     stmt->UseTransaction();
   }
@@ -1615,13 +1614,11 @@ Status PgApiImpl::InitRandomState(
   return Status::OK();
 }
 
-Status PgApiImpl::SampleNextBlock(PgStatement *handle, bool *has_more) {
-  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SAMPLE)) {
-    // Invalid handle.
-    return STATUS(InvalidArgument, "Invalid statement handle");
-  }
-  RETURN_NOT_OK(down_cast<PgSample*>(handle)->SampleNextBlock(has_more));
-  return Status::OK();
+Result<bool> PgApiImpl::SampleNextBlock(PgStatement* handle) {
+  RSTATUS_DCHECK(
+      PgStatement::IsValidStmt(handle, StmtOp::STMT_SAMPLE),
+      InvalidArgument, "Invalid statement handle");
+  return down_cast<PgSample*>(handle)->SampleNextBlock();
 }
 
 Status PgApiImpl::ExecSample(PgStatement *handle) {
@@ -1633,13 +1630,11 @@ Status PgApiImpl::ExecSample(PgStatement *handle) {
   return Status::OK();
 }
 
-Status PgApiImpl::GetEstimatedRowCount(PgStatement *handle, double *liverows, double *deadrows) {
-  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SAMPLE)) {
-    // Invalid handle.
-    return STATUS(InvalidArgument, "Invalid statement handle");
-  }
-  RETURN_NOT_OK(down_cast<PgSample*>(handle)->GetEstimatedRowCount(liverows, deadrows));
-  return Status::OK();
+Result<EstimatedRowCount> PgApiImpl::GetEstimatedRowCount(PgStatement* handle) {
+  RSTATUS_DCHECK(
+      PgStatement::IsValidStmt(handle, StmtOp::STMT_SAMPLE),
+      InvalidArgument, "Invalid statement handle");
+  return down_cast<PgSample*>(handle)->GetEstimatedRowCount();
 }
 
 Status PgApiImpl::DeleteStmtSetIsPersistNeeded(PgStatement *handle, const bool is_persist_needed) {
@@ -1675,11 +1670,9 @@ Status PgApiImpl::ExecTruncateColocated(PgStatement *handle) {
 
 // Select ------------------------------------------------------------------------------------------
 
-Status PgApiImpl::NewSelect(const PgObjectId& table_id,
-                            const PgObjectId& index_id,
-                            const PgPrepareParameters *prepare_params,
-                            bool is_region_local,
-                            PgStatement **handle) {
+Status PgApiImpl::NewSelect(
+    const PgObjectId& table_id, const PgObjectId& index_id,
+    const PgPrepareParameters* prepare_params, bool is_region_local, PgStatement** handle) {
   // Scenarios:
   // - Sequential Scan: PgSelect to read from table_id.
   // - Primary Scan: PgSelect from table_id. YugaByte does not have separate table for primary key.
@@ -1688,18 +1681,22 @@ Status PgApiImpl::NewSelect(const PgObjectId& table_id,
   //     Note that for SysTable, only one request is send for both table_id and index_id.
   *handle = nullptr;
   std::unique_ptr<PgDmlRead> stmt;
-  if (prepare_params && prepare_params->index_only_scan && prepare_params->use_secondary_index) {
-    if (!index_id.IsValid()) {
-      return STATUS(InvalidArgument, "Cannot run query with invalid index ID");
+  PgDml::PrepareParameters dml_prepare_params;
+  if (prepare_params) {
+    dml_prepare_params.querying_colocated_table = prepare_params->querying_colocated_table;
+    dml_prepare_params.index_only_scan = prepare_params->index_only_scan;
+    dml_prepare_params.fetch_ybctids_only = prepare_params->fetch_ybctids_only;
+    if (prepare_params->index_only_scan && prepare_params->use_secondary_index) {
+      RSTATUS_DCHECK(index_id.IsValid(), InvalidArgument, "Cannot run query with invalid index ID");
+      stmt = std::make_unique<PgSelectIndex>(
+          pg_session_, index_id, is_region_local, dml_prepare_params);
     }
-    stmt = std::make_unique<PgSelectIndex>(
-        pg_session_, table_id, index_id, prepare_params, is_region_local);
-  } else {
-    // For IndexScan PgSelect processing will create subquery PgSelectIndex.
-    stmt = std::make_unique<PgSelect>(
-        pg_session_, table_id, index_id, prepare_params, is_region_local);
   }
 
+  if (!stmt) {
+    stmt = std::make_unique<PgSelect>(
+        pg_session_, table_id, is_region_local, dml_prepare_params, index_id);
+  }
   RETURN_NOT_OK(stmt->Prepare());
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -2156,8 +2153,8 @@ Status PgApiImpl::SetEnableTracing(bool tracing) {
   return pg_txn_manager_->SetEnableTracing(tracing);
 }
 
-Status PgApiImpl::EnableFollowerReads(bool enable_follower_reads, int32_t staleness_ms) {
-  return pg_txn_manager_->EnableFollowerReads(enable_follower_reads, staleness_ms);
+Status PgApiImpl::UpdateFollowerReadsConfig(bool enable_follower_reads, int32_t staleness_ms) {
+  return pg_txn_manager_->UpdateFollowerReadsConfig(enable_follower_reads, staleness_ms);
 }
 
 Status PgApiImpl::SetTransactionDeferrable(bool deferrable) {
@@ -2378,20 +2375,20 @@ Result<TableKeyRangesWithHt> PgApiImpl::GetTableKeyRanges(
       max_key_length);
 }
 
-uint64_t PgApiImpl::GetReadTimeSerialNo() {
+uint64_t PgApiImpl::GetReadTimeSerialNo() const {
   return pg_txn_manager_->GetReadTimeSerialNo();
 }
 
-uint64_t PgApiImpl::GetTxnSerialNo() {
+uint64_t PgApiImpl::GetTxnSerialNo() const {
   return pg_txn_manager_->GetTxnSerialNo();
 }
 
-SubTransactionId PgApiImpl::GetActiveSubTransactionId() {
+SubTransactionId PgApiImpl::GetActiveSubTransactionId() const {
   return pg_txn_manager_->GetActiveSubTransactionId();
 }
 
-void PgApiImpl::RestoreSessionParallelData(const YBCPgSessionParallelData* session_data) {
-  pg_txn_manager_->RestoreSessionParallelData(session_data);
+void PgApiImpl::RestoreSessionParallelData(const YBCPgSessionParallelData& data) {
+  pg_txn_manager_->RestoreSessionParallelData(data);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -2485,5 +2482,14 @@ void PgApiImpl::ClearSessionState() {
 }
 
 bool PgApiImpl::IsCronLeader() const { return tserver_shared_object_->IsCronLeader(); }
+
+uint64_t PgApiImpl::GetCurrentReadTimePoint() const {
+  return pg_txn_manager_->GetCurrentReadTimePoint();
+}
+
+Status PgApiImpl::RestoreReadTimePoint(uint64_t read_time_point_handle) {
+  RETURN_NOT_OK(FlushBufferedOperations());
+  return pg_txn_manager_->RestoreReadTimePoint(read_time_point_handle);
+}
 
 } // namespace yb::pggate

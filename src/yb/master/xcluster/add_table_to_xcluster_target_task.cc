@@ -13,7 +13,7 @@
 
 #include "yb/master/xcluster/add_table_to_xcluster_target_task.h"
 
-#include "yb/cdc/xcluster_util.h"
+#include "yb/common/xcluster_util.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/util/is_operation_done_result.h"
@@ -23,7 +23,6 @@
 #include "yb/rpc/messenger.h"
 #include "yb/util/logging.h"
 #include "yb/util/sync_point.h"
-#include "yb/util/trace.h"
 
 DEFINE_test_flag(bool, xcluster_fail_table_create_during_bootstrap, false,
     "Fail the table or index creation during xcluster bootstrap stage.");
@@ -68,7 +67,7 @@ Status AddTableToXClusterTargetTask::FirstStep() {
           ShouldAddTableToReplicationGroup(*universe_, *table_info_, catalog_manager_))) {
     LOG_WITH_PREFIX(INFO) << "Table " << table_info_->ToString()
                           << " does not need to be added to xCluster universe replication";
-    Complete();
+    RETURN_NOT_OK(CleanupAndComplete());
     return Status::OK();
   }
 
@@ -101,8 +100,19 @@ Status AddTableToXClusterTargetTask::FirstStep() {
       VERIFY_RESULT(GetProducerNamespaceId(*universe_, table_info_->namespace_id()));
 
   // We need to keep the client alive until the callback is invoked.
-  remote_client_ = VERIFY_RESULT(GetXClusterRemoteClient(*universe_));
-  return remote_client_->GetXClusterTableCheckpointInfos(
+  remote_client_ = VERIFY_RESULT(GetXClusterRemoteClientHolder(*universe_));
+
+  if (!table_l->pb.xcluster_source_table_id().empty()) {
+    // We know the producer table id. We can directly get the checkpoint info.
+    LOG(INFO) << "Using xCluster source table id " << table_l->pb.xcluster_source_table_id()
+              << " for table " << table_info_->ToString() << " in namespace "
+              << table_info_->namespace_name() << " in universe " << universe_->id();
+    return remote_client_->GetXClusterClient().GetXClusterTableCheckpointInfos(
+        universe_->ReplicationGroupId(), producer_namespace_id,
+        {table_l->pb.xcluster_source_table_id()}, std::move(callback));
+  }
+
+  return remote_client_->GetXClusterClient().GetXClusterTableCheckpointInfos(
       universe_->ReplicationGroupId(), producer_namespace_id, {table_info_->name()},
       {table_info_->pgschema_name()}, std::move(callback));
 }
@@ -158,7 +168,7 @@ Status AddTableToXClusterTargetTask::AddTableToReplicationGroup(
   req.set_replication_group_id(replication_group_id.ToString());
   req.add_producer_table_ids_to_add(producer_table_id);
   req.add_producer_bootstrap_ids_to_add(bootstrap_id);
-  RETURN_NOT_OK(catalog_manager_.AlterUniverseReplication(&req, &resp, nullptr /* rpc */, epoch_));
+  RETURN_NOT_OK(xcluster_manager_.AlterUniverseReplication(&req, &resp, nullptr /* rpc */, epoch_));
 
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
@@ -220,7 +230,7 @@ Status AddTableToXClusterTargetTask::RefreshAndGetXClusterSafeTime() {
   RETURN_NOT_OK(xcluster_manager_.RefreshXClusterSafeTimeMap(epoch_));
   auto initial_safe_time = VERIFY_RESULT(GetXClusterSafeTimeWithoutDdlQueue());
   if (!initial_safe_time) {
-    Complete();
+    RETURN_NOT_OK(CleanupAndComplete());
     return Status::OK();
   }
 
@@ -237,7 +247,7 @@ Status AddTableToXClusterTargetTask::WaitForXClusterSafeTimeCaughtUp() {
   auto ht = VERIFY_RESULT(GetXClusterSafeTimeWithoutDdlQueue());
   if (!ht) {
     // The namespace is no longer part of any xCluster replication.
-    Complete();
+    RETURN_NOT_OK(CleanupAndComplete());
     return Status::OK();
   }
 
@@ -251,6 +261,14 @@ Status AddTableToXClusterTargetTask::WaitForXClusterSafeTimeCaughtUp() {
 
   LOG(INFO) << "Table " << table_info_->ToString()
             << " successfully added to xCluster universe replication";
+
+  RETURN_NOT_OK(CleanupAndComplete());
+  return Status::OK();
+}
+
+Status AddTableToXClusterTargetTask::CleanupAndComplete() {
+  // Ensure that we clean up the xcluster_source_table_id field.
+  RETURN_NOT_OK(xcluster_manager_.ClearXClusterSourceTableId(table_info_, epoch_));
 
   Complete();
   return Status::OK();

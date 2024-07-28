@@ -41,6 +41,7 @@ public class BackupApiFilter {
   private Set<UUID> backupUUIDList;
   private boolean onlyShowDeletedUniverses;
   private boolean onlyShowDeletedConfigs;
+  private boolean showHidden;
 
   public BackupFilter toFilter() {
     BackupFilter.BackupFilterBuilder builder = BackupFilter.builder();
@@ -76,6 +77,9 @@ public class BackupApiFilter {
     }
     if (onlyShowDeletedConfigs) {
       builder.onlyShowDeletedConfigs(onlyShowDeletedConfigs);
+    }
+    if (showHidden) {
+      builder.showHidden(showHidden);
     }
 
     return builder.build();

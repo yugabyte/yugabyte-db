@@ -39,7 +39,7 @@ DEFINE_RUNTIME_AUTO_bool(enable_automatic_tablet_splitting, kExternal, false, tr
     "If false, disables automatic tablet splitting driven from the yb-master side.");
 
 DEFINE_UNKNOWN_bool(log_ysql_catalog_versions, false,
-            "Log YSQL catalog events. For debugging purposes.");
+    "Log YSQL catalog events. For debugging purposes.");
 TAG_FLAG(log_ysql_catalog_versions, hidden);
 
 DEPRECATE_FLAG(bool, disable_hybrid_scan, "11_2022");
@@ -125,7 +125,7 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(
     "Requires yb_enable_replication_commands to be true.");
 
 DEFINE_NON_RUNTIME_bool(TEST_ysql_hide_catalog_version_increment_log, false,
-                        "Hide catalog version increment log messages.");
+    "Hide catalog version increment log messages.");
 TAG_FLAG(TEST_ysql_hide_catalog_version_increment_log, hidden);
 
 // The following flags related to the cloud, region and availability zone that an instance is
@@ -138,11 +138,12 @@ TAG_FLAG(TEST_ysql_hide_catalog_version_increment_log, hidden);
 // These are currently for use in a cloud-based deployment, but could be retrofitted to work for
 // an on-premise deployment as well, with datacenter, cluster and rack levels, for example.
 DEFINE_NON_RUNTIME_string(placement_cloud, "cloud1",
-              "The cloud in which this instance is started.");
+    "The cloud in which this instance is started.");
 DEFINE_NON_RUNTIME_string(placement_region, "datacenter1",
-              "The cloud region in which this instance is started.");
+    "The cloud region in which this instance is started.");
 DEFINE_NON_RUNTIME_string(placement_zone, "rack1",
-              "The cloud availability zone in which this instance is started.");
+    "The cloud availability zone in which this instance is started.");
+
 namespace {
 
 constexpr const auto kMinRpcThrottleThresholdBytes = 16;
@@ -193,6 +194,21 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_ddl_atomicity_infra, kLocalPersisted
 DEFINE_NON_RUNTIME_PREVIEW_bool(enable_pg_cron, false,
     "Enables the pg_cron extension. Jobs will be run on a single tserver node. The node should be "
     "assumed to be selected randomly.");
+
+DEFINE_NON_RUNTIME_string(certs_for_cdc_dir, "",
+    "The parent directory of where all certificates for xCluster source universes will "
+    "be stored, for when the source and target universes use different certificates. "
+    "Place the certificates for each source universe in "
+    "<certs_for_cdc_dir>/<source_cluster_uuid>/*.");
+
+DEFINE_NON_RUNTIME_int32(cdc_read_rpc_timeout_ms, 30 * 1000,
+    "Timeout used for CDC read rpc calls.  Reads normally occur cross-cluster.");
+TAG_FLAG(cdc_read_rpc_timeout_ms, advanced);
+
+// The flag is used both in DocRowwiseIterator and at PG side (needed for Cost Based Optimizer).
+// But it is not tagged with kPg as it would be used both for YSQL and YCQL (refer to GH #22371).
+DEFINE_NON_RUNTIME_PREVIEW_bool(use_fast_backward_scan, false,
+    "Use backward scan optimization to build a row in the reverse order for YSQL.");
 
 namespace yb {
 

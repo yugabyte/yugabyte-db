@@ -118,25 +118,36 @@ public class XClusterTableConfig extends Model {
 
   // Statuses are declared in reverse severity for showing tables in UI with specific order.
   public enum Status {
-    Failed("Failed"),
-    Error("Error"), // Not stored in YBA DB.
-    Warning("Warning"), // Not stored in YBA DB.
-    UnableToFetch("UnableToFetch"), // Not stored in YBA DB.
-    Updating("Updating"),
-    Bootstrapping("Bootstrapping"),
-    Validated("Validated"),
-    Running("Running");
+    Failed("Failed", -1),
+    Error("Error", -2), // Not stored in YBA DB.
+    Warning("Warning", -3), // Not stored in YBA DB.
+    UnableToFetch("UnableToFetch", -4), // Not stored in YBA DB.
+    Updating("Updating", 1),
+    Bootstrapping("Bootstrapping", 2),
+    Validated("Validated", 3),
+    Running("Running", 0),
+    DroppedFromSource("DroppedFromSource", -5), // Not stored in YBA DB.
+    DroppedFromTarget("DroppedFromTarget", -6), // Not stored in YBA DB.
+    ExtraTableOnSource("ExtraTableOnSource", -7), // Not stored in YBA DB.
+    ExtraTableOnTarget("ExtraTableOnTarget", -8), // Not stored in YBA DB.
+    ReplicationError("ReplicationError", -9); // Not stored in YBA DB.
 
     private final String status;
+    private final int code;
 
-    Status(String status) {
+    Status(String status, int code) {
       this.status = status;
+      this.code = code;
     }
 
     @Override
     @DbEnumValue
     public String toString() {
       return this.status;
+    }
+
+    public int getCode() {
+      return this.code;
     }
   }
 
@@ -183,16 +194,6 @@ public class XClusterTableConfig extends Model {
     this.setStatus(Status.Validated);
   }
 
-  public static Optional<XClusterTableConfig> maybeGetByStreamId(String streamId) {
-    XClusterTableConfig xClusterTableConfig =
-        find.query().fetch("tables").where().eq("stream_id", streamId).findOne();
-    if (xClusterTableConfig == null) {
-      log.info("Cannot find an xClusterTableConfig with streamId {}", streamId);
-      return Optional.empty();
-    }
-    return Optional.of(xClusterTableConfig);
-  }
-
   /**
    * Retrieves an XClusterTableConfig object based on the provided tableId.
    *
@@ -202,7 +203,7 @@ public class XClusterTableConfig extends Model {
    */
   public static Optional<XClusterTableConfig> maybeGetByTableId(String tableId) {
     XClusterTableConfig xClusterTableConfig =
-        find.query().fetch("tables").where().eq("table_id", tableId).findOne();
+        find.query().where().eq("table_id", tableId).findOne();
     if (xClusterTableConfig == null) {
       log.info("Cannot find an xClusterTableConfig with tableId {}", tableId);
       return Optional.empty();
