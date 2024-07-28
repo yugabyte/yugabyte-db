@@ -371,11 +371,6 @@ extern void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
  */
 extern TM_Result YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode,
 								LockWaitPolicy wait_policy, EState* estate);
-
-extern bool YBCFetchTuple(Relation relation, ItemPointer ybctid, TupleTableSlot *slot);
-
-extern bool YbFetchTableSlot(Relation relation, ItemPointer tid, TupleTableSlot *slot);
-
 /*
  * Fetch a single row for given ybctid into a heap-tuple.
  * This API is needed for reading data from a catalog (system table).

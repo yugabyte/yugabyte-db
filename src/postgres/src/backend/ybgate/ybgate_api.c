@@ -756,11 +756,6 @@ GetOutFuncName(const int pg_data_type)
 {
 	char *func_name;
 
-	/* YB_TODO(jasonk@yugabyte)
-	 * - Need to visit all datatypes and update this function accordingly.
-	 * - Should this code have been a table that map OID to "typiofunc" instead of a "switch"?
-	 *   Look at yb_type to see if you can add a new entry and fill that entry.
-	 */
 	switch (pg_data_type)
 	{
 		case BOOLOID:
@@ -920,7 +915,7 @@ GetOutFuncName(const int pg_data_type)
 			func_name = "jsonb_out";
 			break;
 		case TXID_SNAPSHOTOID:
-			func_name = "txid_snapshot_out";
+			func_name = "pg_snapshot_out";
 			break;
 		case RECORDOID:
 			func_name = "record_out";
@@ -1172,7 +1167,7 @@ GetOutFuncName(const int pg_data_type)
 			func_name = "jsonb_out";
 			break;
 		case TXID_SNAPSHOTARRAYOID:
-			func_name = "txid_snapshot_out";
+			func_name = "pg_snapshot_out";
 			break;
 		case RECORDARRAYOID:
 			func_name = "record_out";

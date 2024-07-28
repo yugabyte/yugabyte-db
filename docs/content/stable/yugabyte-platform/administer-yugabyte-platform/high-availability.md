@@ -141,7 +141,7 @@ For example, if your metrics retention is 14 days on your active instance, and y
 
 After HA is operational, it is recommended that you enable certificate validation to improve security of communication between the active and any standby instances. Enable certificate validation as follows:
 
-1. Add certificates for the active and all standbys to the active instance [trust store](../../security/enable-encryption-in-transit/#add-certificates-to-your-trust-store).
+1. Add certificates for the active and all standbys to the active instance [trust store](../../security/enable-encryption-in-transit/trust-store/).
 
     - If YBA was set up to use a custom server certificate, locate the corresponding Certificate Authority (CA) certificate.
     - If YBA was set up to use automatically generated self-signed certificates and you installed YBA using YBA Installer, locate the CA certificate at `/opt/yugabyte/data/yba-installer/certs/ca_cert.pem` on both the YBA active and standby instances. (If you configured a custom install root, replace `/opt/yugabyte` with the path you configured.)

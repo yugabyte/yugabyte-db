@@ -19,7 +19,10 @@
 
   {{- if and (.Site.Params.yb.heading_icons) (.Params.image) (not .Params.hideHeadingIcon) -}}
     {{- if in .Params.image "/" -}}
-      {{- $headingImage = true -}}
+      {{ $checkImagePath := printf "public%s" .Params.image }}
+      {{- if fileExists $checkImagePath }}
+        {{- $headingImage = true -}}
+      {{- end -}}
     {{- else -}}
       {{- $headingIcon = true -}}
     {{- end -}}

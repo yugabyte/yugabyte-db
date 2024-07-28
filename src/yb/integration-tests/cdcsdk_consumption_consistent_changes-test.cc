@@ -800,8 +800,8 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestCDCSDKConsistentStreamWithMan
   ASSERT_EQ(tablets.size(), 3);
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
 
-  int num_batches = 50;
-  int inserts_per_batch = 100;
+  int num_batches = 50 / kTimeMultiplier;
+  int inserts_per_batch = 100 / kTimeMultiplier;
 
   std::thread t1(
       [&]() -> void { PerformSingleAndMultiShardInserts(num_batches, inserts_per_batch, 20); });
@@ -3371,6 +3371,33 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestFailureCreatingStreamsOfDiffe
   ASSERT_NOK(CreateConsistentSnapshotStreamWithReplicationSlot(
       "test_slot_2", CDCSDKSnapshotOption::USE_SNAPSHOT, false /*verify_snapshot_name*/,
       kNamespaceName_2));
+}
+
+// Test for https://github.com/yugabyte/yugabyte-db/issues/23096.
+TEST_F(
+    CDCSDKConsumptionConsistentChangesTest, TestPgReplicationSlotsWithReplicationCommandsDisabled) {
+  ASSERT_OK(SetUpWithParams(
+      /*replication_factor=*/3, /*num_masters=*/1, /*colocated=*/false));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = false;
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  // View must work when the commands are disabled.
+  auto slots = ASSERT_RESULT(conn.Fetch("SELECT * FROM pg_replication_slots"));
+  ASSERT_EQ(PQntuples(slots.get()), 0);
+
+  // Enable so that we can create the replication slot. It isn't sufficient to just set the GFlag
+  // value since PG GUC values are passed on from the Tserver at the postmaster creation. So we need
+  // to also set the GUC value directly using the `SET` statement.
+  ASSERT_OK(conn.Execute("SET yb_enable_replication_commands TO true"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = true;
+  ASSERT_RESULT(CreateDBStreamWithReplicationSlot("pg_replication_slots_without_replcmds"));
+
+  // Disable again and ensure that the view returns an empty response.
+  ASSERT_OK(conn.Execute("SET yb_enable_replication_commands TO false"));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = false;
+  slots = ASSERT_RESULT(conn.Fetch("SELECT * FROM pg_replication_slots"));
+  ASSERT_EQ(PQntuples(slots.get()), 0);
 }
 
 }  // namespace cdc

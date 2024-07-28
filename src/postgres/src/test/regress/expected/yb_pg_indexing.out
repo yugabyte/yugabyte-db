@@ -1023,8 +1023,8 @@ drop index idxpart0_pkey;								-- fail
 ERROR:  cannot drop index idxpart0_pkey because constraint idxpart0_pkey on table idxpart0 requires it
 HINT:  You can drop constraint idxpart0_pkey on table idxpart0 instead.
 drop index idxpart1_pkey;								-- fail
-ERROR:  cannot drop index idxpart1_pkey because index idxpart_pkey requires it
-HINT:  You can drop index idxpart_pkey instead.
+ERROR:  cannot drop index idxpart1_pkey because constraint idxpart1_pkey on table idxpart1 requires it
+HINT:  You can drop constraint idxpart1_pkey on table idxpart1 instead.
 alter table idxpart0 drop constraint idxpart0_pkey;		-- fail
 ERROR:  cannot drop inherited constraint "idxpart0_pkey" of relation "idxpart0"
 alter table idxpart1 drop constraint idxpart1_pkey;		-- fail

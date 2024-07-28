@@ -9,9 +9,13 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.Customer;
@@ -22,6 +26,8 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -31,9 +37,9 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.MockitoAnnotations;
 
-@RunWith(MockitoJUnitRunner.class)
+@RunWith(JUnitParamsRunner.class)
 public class KubernetesManagerTest extends FakeDBApplication {
 
   @Mock ShellProcessHandler shellProcessHandler;
@@ -58,6 +64,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
 
   @Before
   public void setUp() {
+    MockitoAnnotations.initMocks(this);
     defaultCustomer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.newProvider(defaultCustomer, Common.CloudType.kubernetes);
     universe = ModelFactory.createUniverse("testUniverse", defaultCustomer.getId());
@@ -187,5 +194,51 @@ public class KubernetesManagerTest extends FakeDBApplication {
             "-l",
             "release=" + "demo-universe"),
         command.getValue());
+  }
+
+  @Test
+  @Parameters({
+    "kubernetes/statefulset_list_without_gflags_checksum.json",
+    "kubernetes/statefulset_list_with_gflags_checksum.json"
+  })
+  public void testGetStatefulSetServerTypeGflagsChecksum(String outputFilePath) throws IOException {
+    String kubectlResponse = TestUtils.readResource(outputFilePath);
+    ShellResponse response = ShellResponse.create(0, kubectlResponse);
+    when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class))).thenReturn(response);
+    Map<ServerType, String> serverTypeChecksumMap =
+        kubernetesManager.getServerTypeGflagsChecksumMap("test-ns", "test-release", configProvider);
+    Mockito.verify(shellProcessHandler, times(1)).run(command.capture(), context.capture());
+    assertEquals(
+        ImmutableList.of(
+            "kubectl",
+            "get",
+            "sts",
+            "--namespace",
+            "test-ns",
+            "-o",
+            "json",
+            "-l",
+            "release=" + "test-release"),
+        command.getValue());
+
+    // Verify checksum entries are as expected
+    ObjectMapper mapper = new ObjectMapper();
+    ArrayNode stsArray = (ArrayNode) mapper.readTree(kubectlResponse).get("items");
+    for (JsonNode sts : stsArray) {
+      JsonNode annotations = sts.get("spec").get("template").get("metadata").get("annotations");
+      String expected =
+          annotations.hasNonNull("checksum/gflags")
+              ? annotations.get("checksum/gflags").asText()
+              : "";
+      if (sts.get("metadata")
+          .get("labels")
+          .get("app.kubernetes.io/name")
+          .asText()
+          .equals("yb-master")) {
+        assertEquals(expected, serverTypeChecksumMap.get(ServerType.MASTER));
+      } else {
+        assertEquals(expected, serverTypeChecksumMap.get(ServerType.TSERVER));
+      }
+    }
   }
 }

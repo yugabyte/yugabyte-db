@@ -51,7 +51,8 @@ class AzureCreateInstancesMethod(CreateInstancesMethod):
     def add_extra_args(self):
         super(AzureCreateInstancesMethod, self).add_extra_args()
         self.parser.add_argument("--volume_type",
-                                 choices=["premium_lrs", "standardssd_lrs", "ultrassd_lrs"],
+                                 choices=["premium_lrs", "standardssd_lrs", "ultrassd_lrs",
+                                          "premiumv2_lrs"],
                                  default="premium_lrs", help="Volume type for Azure instances.")
         self.parser.add_argument("--security_group_id", default=None,
                                  help="Azure comma delimited security group IDs.")

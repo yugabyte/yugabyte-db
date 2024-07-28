@@ -65,6 +65,7 @@ DECLARE_bool(TEST_ash_fetch_wait_states_for_raft_log);
 DECLARE_bool(TEST_ash_fetch_wait_states_for_rocksdb_flush_and_compaction);
 DECLARE_bool(TEST_export_wait_state_names);
 DECLARE_bool(ysql_enable_db_catalog_version_mode);
+DECLARE_int32(ysql_yb_ash_sample_size);
 
 extern int yb_locks_min_txn_age;
 extern int yb_locks_max_transactions;
@@ -1134,6 +1135,7 @@ class PgClient::Impl : public BigDataFetcher {
     req.set_fetch_cql_states(true);
     req.set_ignore_ash_and_perform_calls(true);
     req.set_export_wait_state_code_as_string(FLAGS_TEST_export_wait_state_names);
+    req.set_sample_size(FLAGS_ysql_yb_ash_sample_size);
     tserver::PgActiveSessionHistoryResponsePB resp;
 
     RETURN_NOT_OK(proxy_->ActiveSessionHistory(req, &resp, PrepareController()));

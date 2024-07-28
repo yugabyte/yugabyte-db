@@ -1,11 +1,10 @@
 # This file determines the jobs that we run in this branch on Jenkins.
 # Default architecture is x86_64
 jobs:
-# YB_TODO: tests fail with "stack depth limit exceeded"
-#  - os: alma8
-#    compiler: clang17
-#    build_type: asan
-#    release_artifact: false
+  - os: alma8
+    compiler: clang17
+    build_type: asan
+    release_artifact: false
 
 # YB_TODO: build failure:
 # libpq.so.5.15:                 U __tsan_func_exit

@@ -1767,9 +1767,18 @@ parse_hba_line(TokenizedAuthLine *tok_line, int elevel)
 		}
 	}
 
-	if (parsedline->auth_method == uaYbJWT) {
-		MANDATORY_AUTH_ARG(parsedline->yb_jwt_jwks_path, "jwt_jwks_path",
-						   "jwt");
+	if (parsedline->auth_method == uaYbJWT)
+	{
+		if(!(parsedline->yb_jwt_jwks_url || parsedline->yb_jwt_jwks_path))
+		{
+			ereport(elevel,
+					(errcode(ERRCODE_CONFIG_FILE_ERROR),
+					 errmsg("atleast one of jwt_jwks_url or jwt_jwks_path must be given"),
+					 errcontext("line %d of configuration file \"%s\"",
+								line_num, HbaFileName)));
+			*err_msg = "atleast one of jwt_jwks_url or jwt_jwks_path must be given";
+			return NULL;
+		}
 
 		if (list_length(parsedline->yb_jwt_audiences) < 1)
 		{
@@ -2267,6 +2276,12 @@ parse_hba_auth_opt(char *name, char *val, HbaLine *hbaline,
 		REQUIRE_AUTH_OPTION(uaYbJWT, "jwt_jwks_path", "jwt");
 
 		hbaline->yb_jwt_jwks_path = pstrdup(val);
+	}
+	else if (strcmp(name, "jwt_jwks_url") == 0)
+	{
+		REQUIRE_AUTH_OPTION(uaYbJWT, "jwt_jwks_url", "jwt");
+
+		hbaline->yb_jwt_jwks_url = pstrdup(val);
 	}
 	else if (strcmp(name, "jwt_audiences") == 0)
 	{

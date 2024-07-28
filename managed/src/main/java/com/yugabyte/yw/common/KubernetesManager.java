@@ -22,6 +22,7 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import io.fabric8.kubernetes.api.model.LoadBalancerIngress;
 import io.fabric8.kubernetes.api.model.Namespace;
 import io.fabric8.kubernetes.api.model.Node;
+import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaim;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodCondition;
@@ -45,6 +46,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import lombok.AllArgsConstructor;
@@ -76,6 +78,12 @@ public abstract class KubernetesManager {
   private static final long DEFAULT_HELM_TEMPLATE_TIMEOUT_SECS = 1;
 
   private static final long HELM_UNINSTALL_RETRY = 5;
+
+  protected Function<ObjectMeta, ServerType> serverTypeLabelConverter =
+      (oM) ->
+          oM.getLabels().get("app.kubernetes.io/name").equals("yb-tserver")
+              ? ServerType.TSERVER
+              : ServerType.MASTER;
 
   /* helm interface */
   public void helmInstall(
@@ -790,7 +798,7 @@ public abstract class KubernetesManager {
       String srcFilePath,
       String destFilePath);
 
-  public abstract void performYbcAction(
+  public abstract String performYbcAction(
       Map<String, String> config,
       String namespace,
       String podName,
@@ -861,4 +869,7 @@ public abstract class KubernetesManager {
 
   public abstract boolean resourceExists(
       Map<String, String> config, String resourceType, String resourceName, String namespace);
+
+  public abstract Map<ServerType, String> getServerTypeGflagsChecksumMap(
+      String namespace, String helmReleaseName, Map<String, String> config);
 }

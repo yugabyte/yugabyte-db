@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <functional>
 #include <list>
 #include <memory>
 #include <string>
@@ -31,6 +32,7 @@
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_session.h"
+#include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pg_sys_table_prefetcher.h"
 
 namespace yb::pggate {
@@ -254,7 +256,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   virtual ~PgDocOp() = default;
 
   // Initialize doc operator.
-  virtual Status ExecuteInit(const PgExecParameters *exec_params);
+  virtual Status ExecuteInit(const PgExecParameters* exec_params);
 
   const PgExecParameters& ExecParameters() const;
 
@@ -457,7 +459,7 @@ class PgDocReadOp : public PgDocOp {
   Status ExecuteInit(const PgExecParameters *exec_params) override;
 
   // Row sampler collects number of live and dead rows it sees.
-  Status GetEstimatedRowCount(double *liverows, double *deadrows);
+  Result<EstimatedRowCount> GetEstimatedRowCount() const;
 
   bool IsWrite() const override {
     return false;

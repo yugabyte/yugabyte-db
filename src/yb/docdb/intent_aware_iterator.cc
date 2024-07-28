@@ -173,7 +173,7 @@ IntentAwareIterator::IntentAwareIterator(
       transaction_status_cache_(
           txn_op_context_, read_operation_data.read_time, read_operation_data.deadline) {
   VTRACE(1, __func__);
-  VLOG(4) << "IntentAwareIterator, read_operation_data: " << read_operation_data.ToString()
+  VLOG(2) << "IntentAwareIterator, read_operation_data: " << read_operation_data.ToString()
           << ", txn_op_context: " << txn_op_context_ << ", " << TRACE_BOUNDS
           << ", use_fast_backward_scan: " << use_fast_backward_scan;
 
@@ -819,7 +819,7 @@ void IntentAwareIterator::SeekToSuitableIntent(const rocksdb::KeyValueEntry& ent
                             << intent_upperbound_.ToDebugHexString();
           // We are not calling RevalidateAfterUpperBoundChange here because it is only needed
           // during forward iteration, and is not needed immediately before a seek.
-          // TODO(#22556): It is not clear why SeekToLast for backward direction. It should be
+          // TODO(#22373): It is not clear why SeekToLast for backward direction. It should be
           // investigated in the context of mentioned GH. Also for the details refer to
           // https://phorge.dev.yugabyte.com/D7915.
           entry = &intent_iter_.SeekToLast();

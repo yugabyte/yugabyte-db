@@ -513,7 +513,6 @@ bool yb_transactional_walker(Node *node, void *context)
 		 * expression_tree_walker function and selecting those looking like they
 		 * do suspiciously transactional thing like running a subquery.
 		 */
-		case T_NextValueExpr:
 		case T_RangeTblRef:
 		case T_SubLink:
 		case T_SubPlan:

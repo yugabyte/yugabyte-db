@@ -19,6 +19,7 @@ import static org.yb.AssertionWrappers.assertGreaterThan;
 import static org.yb.AssertionWrappers.assertLessThan;
 import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
+import static org.junit.Assume.*;
 
 import java.io.File;
 import java.sql.Connection;
@@ -1456,6 +1457,12 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Test
   public void testGeoPartitioningRestoringIntoExisting() throws Exception {
+    // The test fails with Connection Manager as it is expected that a new
+    // session would latch onto a new physical connection. Instead, two logical
+    // connections use the same physical connection, leading to unexpected
+    // results as per the expectations of the test.
+    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
+
     if (disableGeoPartitionedTests()) {
       return;
     }
@@ -1488,6 +1495,12 @@ public class TestYbBackup extends BasePgSQLTest {
 
   @Test
   public void testGeoPartitioningRestoringIntoExistingWithTablespaces() throws Exception {
+    // The test fails with Connection Manager as it is expected that a new
+    // session would latch onto a new physical connection. Instead, two logical
+    // connections use the same physical connection, leading to unexpected
+    // results as per the expectations of the test.
+    assumeFalse(BasePgSQLTest.UNIQUE_PHYSICAL_CONNS_NEEDED, isTestRunningWithConnectionManager());
+
     if (disableGeoPartitionedTests()) {
       return;
     }

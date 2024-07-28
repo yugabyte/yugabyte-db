@@ -1132,8 +1132,9 @@ error hint:
  Index Scan using t1_pkey on t1
    Index Cond: (id = $3)
    InitPlan 1 (returns $1)
-     ->  Aggregate
+     ->  Finalize Aggregate
            ->  YB Bitmap Table Scan on t1 v_1
+                 Partial Aggregate: true
                  ->  Bitmap Index Scan on t1_bitmap_index
                        Index Cond: (id < 10)
    InitPlan 3 (returns $3)
@@ -1142,7 +1143,7 @@ error hint:
              ->  Limit
                    ->  Index Only Scan Backward using t1_bitmap_index on t1 v_2
                          Index Cond: ((id IS NOT NULL) AND (id < 10))
-(13 rows)
+(14 rows)
 
 /*+BitmapScan(v_2)*/
 EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
@@ -1164,11 +1165,12 @@ error hint:
                    ->  Index Only Scan Backward using t1_bitmap_index on t1 v_1
                          Index Cond: ((id IS NOT NULL) AND (id < 10))
    InitPlan 3 (returns $3)
-     ->  Aggregate
+     ->  Finalize Aggregate
            ->  YB Bitmap Table Scan on t1 v_2
+                 Partial Aggregate: true
                  ->  Bitmap Index Scan on t1_bitmap_index
                        Index Cond: (id < 10)
-(13 rows)
+(14 rows)
 
 /*+BitmapScan(t1)*/
 EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
@@ -1213,16 +1215,18 @@ error hint:
  Index Scan using t1_pkey on t1
    Index Cond: (id = $3)
    InitPlan 1 (returns $1)
-     ->  Aggregate
+     ->  Finalize Aggregate
            ->  YB Bitmap Table Scan on t1 v_1
+                 Partial Aggregate: true
                  ->  Bitmap Index Scan on t1_bitmap_index
                        Index Cond: (id < 10)
    InitPlan 2 (returns $3)
-     ->  Aggregate
+     ->  Finalize Aggregate
            ->  YB Bitmap Table Scan on t1 v_2
+                 Partial Aggregate: true
                  ->  Bitmap Index Scan on t1_bitmap_index
                        Index Cond: (id < 10)
-(12 rows)
+(14 rows)
 
 /*+BitmapScan(v_1)BitmapScan(t1)*/
 EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
@@ -1238,8 +1242,9 @@ error hint:
 --------------------------------------------------------------------------------
  YB Bitmap Table Scan on t1
    InitPlan 1 (returns $1)
-     ->  Aggregate
+     ->  Finalize Aggregate
            ->  YB Bitmap Table Scan on t1 v_1
+                 Partial Aggregate: true
                  ->  Bitmap Index Scan on t1_bitmap_index
                        Index Cond: (id < 10)
    InitPlan 3 (returns $3)
@@ -1250,7 +1255,7 @@ error hint:
                          Index Cond: ((id IS NOT NULL) AND (id < 10))
    ->  Bitmap Index Scan on t1_pkey
          Index Cond: (id = $3)
-(14 rows)
+(15 rows)
 
 /*+BitmapScan(v_2)BitmapScan(t1)*/
 EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
@@ -1272,13 +1277,14 @@ error hint:
                    ->  Index Only Scan Backward using t1_bitmap_index on t1 v_1
                          Index Cond: ((id IS NOT NULL) AND (id < 10))
    InitPlan 3 (returns $3)
-     ->  Aggregate
+     ->  Finalize Aggregate
            ->  YB Bitmap Table Scan on t1 v_2
+                 Partial Aggregate: true
                  ->  Bitmap Index Scan on t1_bitmap_index
                        Index Cond: (id < 10)
    ->  Bitmap Index Scan on t1_pkey
          Index Cond: (id = $3)
-(14 rows)
+(15 rows)
 
 /*+BitmapScan(v_1)BitmapScan(v_2)BitmapScan(t1)*/
 EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
@@ -1295,18 +1301,20 @@ error hint:
 ----------------------------------------------------------
  YB Bitmap Table Scan on t1
    InitPlan 1 (returns $1)
-     ->  Aggregate
+     ->  Finalize Aggregate
            ->  YB Bitmap Table Scan on t1 v_1
+                 Partial Aggregate: true
                  ->  Bitmap Index Scan on t1_bitmap_index
                        Index Cond: (id < 10)
    InitPlan 2 (returns $3)
-     ->  Aggregate
+     ->  Finalize Aggregate
            ->  YB Bitmap Table Scan on t1 v_2
+                 Partial Aggregate: true
                  ->  Bitmap Index Scan on t1_bitmap_index
                        Index Cond: (id < 10)
    ->  Bitmap Index Scan on t1_pkey
          Index Cond: (id = $3)
-(13 rows)
+(15 rows)
 
 -- YB_COMMENT
 -- Drop the index created for the bitmap tests so that we don't introduce more

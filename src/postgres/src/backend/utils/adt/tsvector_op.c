@@ -2693,7 +2693,8 @@ tsvector_update_trigger(PG_FUNCTION_ARGS, bool config_column)
 					 errmsg("column \"%s\" is not of a character type",
 							trigger->tgargs[i])));
 
-		if (bms_is_member(numattr - FirstLowInvalidHeapAttributeNumber, trigdata->tg_updatedcols))
+		if (bms_is_member(numattr - YBGetFirstLowInvalidAttributeNumber(rel),
+						  trigdata->tg_updatedcols))
 			update_needed = true;
 
 		datum = SPI_getbinval(rettuple, rel->rd_att, numattr, &isnull);

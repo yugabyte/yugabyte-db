@@ -11,19 +11,22 @@
 # https://docs.netlify.com/configure-builds/file-based-configuration/#deploy-contexts
 # all api_keys were generated from btoa(orig_key)
 [context.deploy-preview.environment]
-  HUGO_VERSION = "0.115.4"
+  GO_VERSION = "1.20"
+  HUGO_VERSION = "0.125.6"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
   SEGMENT_API_KEY = "TUxwdnFRYlNlQzl5V0hNdnRBNVQ1TVhUZ0Rpc1ZMZE0="
 
 [context.branch-deploy.environment]
-  HUGO_VERSION = "0.115.4"
+  GO_VERSION = "1.20"
+  HUGO_VERSION = "0.125.6"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
   SEGMENT_API_KEY = "TUxwdnFRYlNlQzl5V0hNdnRBNVQ1TVhUZ0Rpc1ZMZE0="
 
 [context.production.environment]
-  HUGO_VERSION = "0.115.4"
+  GO_VERSION = "1.20"
+  HUGO_VERSION = "0.125.6"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
   SEGMENT_API_KEY = "WFp1RWk3dUVBbjM2NmpncnNnbzBMZUpIVXB1ZVRvTHg="
@@ -404,6 +407,10 @@
   to = "/preview/develop/learn/data-types-ysql/"
 
 [[redirects]]
+  from = "/preview/develop/client-drivers/*"
+  to = "/preview/drivers-orms/:splat"
+
+[[redirects]]
   from = "/preview/explore/cloud-native/"
   to = "/preview/explore/"
 
@@ -740,7 +747,7 @@
 
 [[redirects]]
   from = "/:version/reference/connectors/*"
-  to = "/preview/integrations/apache-kafka/"
+  to = "/preview/explore/change-data-capture/"
 
 # Redirect for troubleshoot
 
@@ -761,18 +768,10 @@
   to = "/preview/tutorials/azure/"
   force = true
 [[redirects]]
-  from = "/v2.16/tutorials/*"
-  to = "/preview/tutorials/azure/"
-  force = true
-[[redirects]]
   from = "/v2.18/tutorials/*"
   to = "/preview/tutorials/azure/"
   force = true
 
-[[redirects]]
-  from = "/v2.16/explore/ysql-language-features/indexes-constraints/*"
-  to = "/v2.16/explore/indexes-constraints/"
-  force = true
 [[redirects]]
   from = "/v2.18/explore/ysql-language-features/indexes-constraints/*"
   to = "/v2.18/explore/indexes-constraints/"
@@ -780,16 +779,6 @@
 [[redirects]]
   from = "/v2.14/explore/ysql-language-features/indexes-constraints/*"
   to = "/v2.14/explore/indexes-constraints/"
-  force = true
-
-[[redirects]]
-  from = "/v2.16/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-script/"
-  to = "/v2.16/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/"
-  force = true
-
-[[redirects]]
-  from = "/v2.16/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/"
-  to = "/v2.16/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/"
   force = true
 
 [[redirects]]
@@ -805,10 +794,6 @@
 [[redirects]]
   from = "/v2.18/reference/configuration/operating-systems/"
   to = "/v2.18/deploy/checklist/"
-  force = true
-[[redirects]]
-  from = "/v2.16/reference/configuration/operating-systems/"
-  to = "/v2.16/deploy/checklist/"
   force = true
 [[redirects]]
   from = "/v2.14/reference/configuration/operating-systems/"
@@ -827,15 +812,11 @@
   to = "/stable/yugabyte-platform/administer-yugabyte-platform/high-availability/"
   force = true
 [[redirects]]
-  from = "/v2.16/yugabyte-platform/manage-deployments/high-availability/"
-  to = "/v2.16/yugabyte-platform/administer-yugabyte-platform/high-availability/"
-  force = true
-[[redirects]]
   from = "/v2.14/yugabyte-platform/administer-yugabyte-platform/high-availability/"
   to = "/v2.14/yugabyte-platform/manage-deployments/high-availability/"
   force = true
 
-# Build an app was in quick-start, now in develop
+# Build an app was in quick-start, then develop, now in tutorials
 
 [[redirects]]
   from = "/preview/develop/build-apps/*"
@@ -972,6 +953,11 @@
 [[redirects]]
   from = "/v2.12/*"
   to = "https://docs-archive.yugabyte.com/v2.12/"
+  force = true
+
+[[redirects]]
+  from = "/v2.16/*"
+  to = "https://docs-archive.yugabyte.com/v2.16/"
   force = true
 
 [[redirects]]
@@ -1377,7 +1363,7 @@
             https://app.clearbit.com
             https://cdn.jsdelivr.net
             https://cdnjs.cloudflare.com
-            https://code.jquery.com/jquery-3.6.0.min.js
+            https://code.jquery.com/jquery-3.7.1.min.js
             https://kit.fontawesome.com/
             https://maxcdn.bootstrapcdn.com
             https://netlify-cdp-loader.netlify.app/

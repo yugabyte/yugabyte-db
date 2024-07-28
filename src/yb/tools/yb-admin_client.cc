@@ -46,7 +46,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/cdc/cdc_service.h"
-#include "yb/cdc/xcluster_util.h"
+#include "yb/common/xcluster_util.h"
 #include "yb/client/client.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
@@ -3848,6 +3848,84 @@ Status ClusterAdminClient::YsqlBackfillReplicationSlotNameToCDCSDKStream(
   return Status::OK();
 }
 
+Status ClusterAdminClient::DisableDynamicTableAdditionOnCDCSDKStream(const std::string& stream_id) {
+  master::DisableDynamicTableAdditionOnCDCSDKStreamRequestPB req;
+  master::DisableDynamicTableAdditionOnCDCSDKStreamResponsePB resp;
+
+  req.set_stream_id(stream_id);
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(
+      master_replication_proxy_->DisableDynamicTableAdditionOnCDCSDKStream(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    cout << "Error disabling dynamic table addition from CDC stream: "
+         << resp.error().status().message() << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  cout << "Successfully disabled dynamic table addition on CDC stream: " << stream_id << "\n";
+
+  return Status::OK();
+}
+
+Status ClusterAdminClient::RemoveUserTableFromCDCSDKStream(
+    const std::string& stream_id, const std::string& table_id) {
+  master::RemoveUserTableFromCDCSDKStreamRequestPB req;
+  master::RemoveUserTableFromCDCSDKStreamResponsePB resp;
+
+  req.set_stream_id(stream_id);
+  req.set_table_id(table_id);
+
+  RpcController rpc;
+  // Set a higher timeout since this RPC verifes that each cdc state table entry for the stream
+  // belongs to one of the tables in the stream metadata.
+  rpc.set_timeout(MonoDelta::FromSeconds(std::max(timeout_.ToSeconds(), 120.0)));
+  RETURN_NOT_OK(master_replication_proxy_->RemoveUserTableFromCDCSDKStream(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    cout << "Error removing user table from CDC stream: " << resp.error().status().message()
+         << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  cout << "Successfully removed user table: " << table_id << " from CDC stream: " << stream_id
+       << "\n";
+
+  return Status::OK();
+}
+
+Status ClusterAdminClient::ValidateAndSyncCDCStateEntriesForCDCSDKStream(
+    const std::string& stream_id) {
+  master::ValidateAndSyncCDCStateEntriesForCDCSDKStreamRequestPB req;
+  master::ValidateAndSyncCDCStateEntriesForCDCSDKStreamResponsePB resp;
+
+  req.set_stream_id(stream_id);
+
+  RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(std::max(timeout_.ToSeconds(), 120.0)));
+  RETURN_NOT_OK(
+      master_replication_proxy_->ValidateAndSyncCDCStateEntriesForCDCSDKStream(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    cout << "Error validating CDC state table entries on CDC stream: "
+         << resp.error().status().message() << endl;
+    return StatusFromPB(resp.error().status());
+  }
+
+  cout << "Successfully validated and synced CDC state table entries on CDC stream: " << stream_id
+       << "\n";
+  if (resp.updated_tablet_entries().size() > 0) {
+    cout << "Updated checkpoint for the stream's cdc state table entries for following tablet_ids: "
+         << AsString(resp.updated_tablet_entries()) << "\n";
+  } else {
+    cout << "No additional entries found in cdc state table that requires update. \n";
+  }
+
+  return Status::OK();
+}
+
 Status ClusterAdminClient::WaitForSetupUniverseReplicationToFinish(
     const string& replication_group_id) {
   master::IsSetupUniverseReplicationDoneRequestPB req;
@@ -4265,46 +4343,6 @@ Status ClusterAdminClient::WaitForReplicationDrain(
   } else {
         cout << "All replications are caught-up." << endl;
   }
-  return Status::OK();
-}
-
-Status ClusterAdminClient::SetupNSUniverseReplication(
-    const std::string& replication_group_id,
-    const std::vector<std::string>& producer_addresses,
-    const TypedNamespaceName& producer_namespace) {
-  switch (producer_namespace.db_type) {
-        case YQL_DATABASE_CQL:
-      break;
-        case YQL_DATABASE_PGSQL:
-      return STATUS(
-          InvalidArgument, "YSQL not currently supported for namespace-level replication setup");
-        default:
-      return STATUS(InvalidArgument, "Unsupported namespace type");
-  }
-
-  master::SetupNSUniverseReplicationRequestPB req;
-  master::SetupNSUniverseReplicationResponsePB resp;
-  req.set_replication_group_id(replication_group_id);
-  req.set_producer_ns_name(producer_namespace.name);
-  req.set_producer_ns_type(producer_namespace.db_type);
-
-  req.mutable_producer_master_addresses()->Reserve(narrow_cast<int>(producer_addresses.size()));
-  for (const auto& addr : producer_addresses) {
-        auto hp = VERIFY_RESULT(HostPort::FromString(addr, master::kMasterDefaultPort));
-        HostPortToPB(hp, req.add_producer_master_addresses());
-  }
-
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
-  RETURN_NOT_OK(master_replication_proxy_->SetupNSUniverseReplication(req, &resp, &rpc));
-
-  if (resp.has_error()) {
-        cout << "Error setting up namespace-level universe replication: "
-             << resp.error().status().message() << endl;
-        return StatusFromPB(resp.error().status());
-  }
-
-  cout << "Namespace-level replication setup successfully" << endl;
   return Status::OK();
 }
 

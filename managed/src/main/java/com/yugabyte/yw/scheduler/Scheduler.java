@@ -231,18 +231,19 @@ public class Scheduler {
           boolean shouldRunTask = isExpectedScheduleTaskTimeExpired || backlogStatus;
           UUID baseBackupUUID = null;
           if (isIncrementalBackupSchedule) {
+            // fetch last successful full backup for the schedule on which incremental
+            // backup can be taken.
             baseBackupUUID = fetchBaseBackupUUIDfromLatestSuccessfulBackup(schedule);
             if (shouldRunTask || baseBackupUUID == null) {
-              // Update incremental backup task cycle while for full backups.
-              long incrementalBackupFrequency =
-                  ScheduleUtil.getIncrementalBackupFrequency(schedule);
-              if (incrementalBackupFrequency != 0L) {
-                schedule.updateNextIncrementScheduleTaskTime(
-                    new Date(new Date().getTime() + incrementalBackupFrequency));
-              }
               // We won't do incremental backups if a full backup is due since
               // full backups take priority but make sure to take an incremental backup
               // either when it's scheduled or to catch up on any backlog.
+              if (baseBackupUUID == null) {
+                // If a scheduled backup is already not in progress and avoid running full backup.
+                if (!verifyScheduledBackupInProgress(schedule)) {
+                  shouldRunTask = true;
+                }
+              }
               baseBackupUUID = null;
               log.debug("Scheduling a full backup for schedule {}", schedule.getScheduleUUID());
             } else if (isExpectedIncrementScheduleTaskTime || incrementBacklogStatus) {
@@ -305,6 +306,13 @@ public class Scheduler {
         ScheduleUtil.fetchLatestSuccessfulBackupForSchedule(
             schedule.getCustomerUUID(), schedule.getScheduleUUID());
     return backup == null ? null : backup.getBaseBackupUUID();
+  }
+
+  private boolean verifyScheduledBackupInProgress(Schedule schedule) {
+    Backup backup =
+        ScheduleUtil.fetchInProgressBackupForSchedule(
+            schedule.getCustomerUUID(), schedule.getScheduleUUID());
+    return backup == null ? false : true;
   }
 
   private void runBackupTask(Schedule schedule, boolean alreadyRunning) {

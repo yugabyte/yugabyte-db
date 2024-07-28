@@ -17,6 +17,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
+import com.nimbusds.oauth2.sdk.util.MapUtils;
 import com.yugabyte.operator.OperatorConfig;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
@@ -231,6 +232,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     public String azCode = null;
     public String pvcName = null;
     public int newPlacementAzMasterCount = 0;
+    public Map<ServerType, String> previousGflagsChecksumMap = new HashMap<>();
+    public boolean usePreviousGflagsChecksum = false;
   }
 
   protected KubernetesCommandExecutor.Params taskParams() {
@@ -675,6 +678,17 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     return defaultValue;
   }
 
+  private void populatePreviousGflagsChecksum() {
+    if (taskParams().usePreviousGflagsChecksum
+        && MapUtils.isEmpty(taskParams().previousGflagsChecksumMap)) {
+      taskParams().previousGflagsChecksumMap =
+          kubernetesManagerFactory
+              .getManager()
+              .getServerTypeGflagsChecksumMap(
+                  taskParams().namespace, taskParams().helmReleaseName, taskParams().config);
+    }
+  }
+
   private String generateHelmOverride() {
     Map<String, Object> overrides = new HashMap<String, Object>();
     Yaml yaml = new Yaml();
@@ -719,6 +733,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     String placementCloud = null;
     String placementRegion = null;
     String placementZone = null;
+    AvailabilityZone azByCode =
+        (taskParams().azCode != null)
+            ? AvailabilityZone.getByCode(provider, taskParams().azCode)
+            : null;
 
     // This is true always now.
     boolean isMultiAz = (taskParams().masterAddresses != null) ? true : false;
@@ -758,7 +776,6 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           if (region.azList.size() != 0) {
             PlacementInfo.PlacementAZ zone = null;
             if (isMultiAz && taskParams().azCode != null) {
-              AvailabilityZone azByCode = AvailabilityZone.getByCode(provider, taskParams().azCode);
               if (azByCode == null) {
                 throw new PlatformServiceException(
                     BAD_REQUEST,
@@ -1098,10 +1115,11 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
 
     UUID placementUuid = cluster.uuid;
+    UUID azUUID = azByCode != null ? azByCode.getUuid() : null;
     Map<String, Object> gflagOverrides = new HashMap<>();
     // Go over master flags.
     Map<String, String> masterGFlags =
-        GFlagsUtil.getBaseGFlags(ServerType.MASTER, cluster, taskUniverseDetails.clusters);
+        GFlagsUtil.getGFlagsForAZ(azUUID, ServerType.MASTER, cluster, taskUniverseDetails.clusters);
     if (placementCloud != null && masterGFlags.get("placement_cloud") == null) {
       masterGFlags.put("placement_cloud", placementCloud);
     }
@@ -1125,7 +1143,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
     // Go over tserver flags.
     Map<String, String> tserverGFlags =
-        GFlagsUtil.getBaseGFlags(ServerType.TSERVER, cluster, taskUniverseDetails.clusters);
+        GFlagsUtil.getGFlagsForAZ(
+            azUUID, ServerType.TSERVER, cluster, taskUniverseDetails.clusters);
     if (!primaryClusterIntent
         .enableYSQL) { // In the UI, we can choose not to show these entries for read replica.
       tserverGFlags.put("enable_ysql", "false");
@@ -1184,6 +1203,24 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
     if (!gflagOverrides.isEmpty()) {
       overrides.put("gflags", gflagOverrides);
+    }
+
+    // Gflags checksum override
+    if (taskParams().usePreviousGflagsChecksum) {
+      if (MapUtils.isEmpty(taskParams().previousGflagsChecksumMap)) {
+        populatePreviousGflagsChecksum();
+      }
+      String masterGflagsChecksum =
+          taskParams().previousGflagsChecksumMap.getOrDefault(ServerType.MASTER, "");
+      String tserverGflagsChecksum =
+          taskParams().previousGflagsChecksumMap.getOrDefault(ServerType.TSERVER, "");
+      Map<String, Object> masterOverrides = new HashMap<>();
+      masterOverrides.put("gflagsChecksum", masterGflagsChecksum);
+      overrides.put("master", masterOverrides);
+
+      Map<String, Object> tserverOverrides = new HashMap<>();
+      tserverOverrides.put("gflagsChecksum", tserverGflagsChecksum);
+      overrides.put("tserver", tserverOverrides);
     }
 
     String kubeDomain =

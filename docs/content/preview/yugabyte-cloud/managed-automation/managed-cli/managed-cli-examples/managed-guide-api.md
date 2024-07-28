@@ -45,7 +45,7 @@ To create your free [sandbox](../../../cloud-basics/create-clusters/create-clust
 
 ### Determine the database version
 
-YugabyteDB Aeon has [three release tracks](../../../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on), Innovation or Preview for Sandbox clusters, and Innovation or Production for dedicated clusters.
+YugabyteDB Aeon has [four release tracks](../../../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on), Early Access, Innovation, or Preview for Sandbox clusters, and Innovation, Production, or Early Access for dedicated clusters.
 
 To get the ID for the Preview track and add it to an environment variable, enter the following commands:
 

@@ -3692,43 +3692,6 @@ YbFetchRowData(YBCPgStatement ybc_stmt, Relation relation, ItemPointer tid,
 }
 
 bool
-YbFetchTableSlot(Relation relation, ItemPointer tid,  TupleTableSlot *slot)
-{
-	bool has_data = false;
-	YBCPgStatement ybc_stmt;
-
-	Assert(slot != NULL);
-	Assert(slot->tts_values != NULL);
-	Assert(slot->tts_isnull != NULL);
-
-	TupleDesc tupdesc = RelationGetDescr(relation);
-	YBCPgSysColumns syscols;
-
-	/* Read data */
-	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
-								  YbGetRelfileNodeId(relation),
-								  NULL /* prepare_params */,
-								  YBCIsRegionLocal(relation),
-								  &ybc_stmt));
-	has_data = YbFetchRowData(ybc_stmt, relation, tid, slot->tts_values, slot->tts_isnull, &syscols);
-
-	/* Write into the given slot */
-	if (has_data)
-	{
-		slot->tts_nvalid = tupdesc->natts;
-		slot->tts_tableOid = RelationGetRelid(relation);
-		slot->tts_flags &= ~TTS_FLAG_EMPTY; /* Not empty */
-		if (syscols.ybctid != NULL)
-		{
-			TABLETUPLE_YBCTID(slot) = PointerGetDatum(syscols.ybctid);
-		}
-	}
-
-	YBCPgDeleteStatement(ybc_stmt);
-	return has_data;
-}
-
-bool
 YbFetchHeapTuple(Relation relation, ItemPointer tid, HeapTuple* tuple)
 {
 	bool has_data = false;

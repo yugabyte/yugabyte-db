@@ -39,7 +39,7 @@ public class TestToastFunction extends TestToastFunctionBase {
   public void testCatalogRefreshMemoryUsage() throws Exception {
     setEnableToastFlag(true);
     List<CacheMemoryContextTracker> contexts = catalogRefreshMemoryUsageTest();
-    contexts.forEach(c -> c.assertMemoryUsageLessThan(6 * MB));
+    contexts.forEach(c -> c.assertMemoryUsageLessThan(7 * MB));
   }
 
   @Test
@@ -53,6 +53,6 @@ public class TestToastFunction extends TestToastFunctionBase {
   public void testBuildRelcacheInitFileMemoryUsage() throws Exception {
     setEnableToastFlag(true);
     CacheMemoryContextTracker cxt = buildRelcacheInitFileMemoryUsage();
-    cxt.assertMemoryUsageLessThan(7 * MB);
+    cxt.assertMemoryUsageLessThan(8 * MB);
   }
 }

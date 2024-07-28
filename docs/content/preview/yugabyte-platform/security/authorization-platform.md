@@ -21,17 +21,17 @@ YugabyteDB uses [role-based access control](../../../secure/authorization/) (RBA
 
 (For information on managing access to your YugabyteDB Anywhere instance, refer to [Manage account users](../../administer-yugabyte-platform/anywhere-rbac/).)
 
-## Enable database authentication
+## Enable database authorization
 
 You enable the YSQL and YCQL endpoints and database authentication when deploying a universe.
 
-On the **Create Universe > Primary Cluster** page, under **Security Configurations**, enable the **Authentication Settings** for the APIs you want to use, as shown in the following illustration.
+On the **Create Universe > Primary Cluster** page, under **Security Configurations > Authentication Settings**, enable the endpoints and authorization for the APIs you want to use, as shown in the following illustration.
 
 ![Enable YSQL and YCQL endpoints](/images/yp/security/enable-endpoints.png)
 
 Enter the password to use for the default database admin superuser (`yugabyte` for YSQL, and `cassandra` for YCQL).
 
-You can also enable and disable the endpoints and authentication after deployment. Navigate to your universe, click **Actions**, and choose **Edit YSQL Configuration** or **Edit YCQL Configuration**.
+You can also enable and disable the endpoints and authorization after deployment. Navigate to your universe, click **Actions**, and choose **Edit YSQL Configuration** or **Edit YCQL Configuration**.
 
 ## Default roles and users
 

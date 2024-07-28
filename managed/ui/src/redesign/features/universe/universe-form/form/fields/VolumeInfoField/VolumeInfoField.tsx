@@ -1,10 +1,17 @@
 import { FC, useEffect, useRef } from 'react';
 import { useQuery } from 'react-query';
+import clsx from 'clsx';
 import { useUpdateEffect } from 'react-use';
 import { useTranslation } from 'react-i18next';
 import { Controller, useFormContext, useWatch } from 'react-hook-form';
 import { Box, Grid, MenuItem, Tooltip, makeStyles } from '@material-ui/core';
-import { YBInput, YBLabel, YBSelect } from '../../../../../../components';
+import {
+  YBHelper,
+  YBHelperVariants,
+  YBInput,
+  YBLabel,
+  YBSelect
+} from '../../../../../../components';
 import { api, QUERY_KEY } from '../../../utils/api';
 import {
   getStorageTypeOptions,
@@ -22,10 +29,11 @@ import {
   MasterPlacementMode,
   StorageType,
   UniverseFormData,
+  UpdateActions,
   VolumeType
 } from '../../../utils/dto';
 import { IsOsPatchingEnabled } from '../../../../../../../components/configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
-
+import { isNonEmptyArray } from '../../../../../../../utils/ObjectUtils';
 import {
   PROVIDER_FIELD,
   DEVICE_INFO_FIELD,
@@ -40,11 +48,7 @@ import WarningIcon from '../../../../../../assets/info-message.svg';
 interface VolumeInfoFieldProps {
   isEditMode: boolean;
   isPrimary: boolean;
-  disableIops: boolean;
-  disableThroughput: boolean;
-  disableStorageType: boolean;
-  disableVolumeSize: boolean;
-  disableNumVolumes: boolean;
+  isViewMode: boolean;
   isDedicatedMasterField?: boolean;
   maxVolumeCount: number;
   updateOptions: string[];
@@ -75,17 +79,17 @@ const useStyles = makeStyles((theme) => ({
   coolDownTooltip: {
     marginLeft: theme.spacing(1),
     alignSelf: 'center'
+  },
+   premiumV2StorageLabelField: {
+    marginTop: theme.spacing(2),
+    alignItems: 'flex-start'
   }
 }));
 
 export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   isEditMode,
   isPrimary,
-  disableIops,
-  disableThroughput,
-  disableStorageType,
-  disableVolumeSize,
-  disableNumVolumes,
+  isViewMode,
   isDedicatedMasterField,
   maxVolumeCount,
   updateOptions,
@@ -97,11 +101,6 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   const { t } = useTranslation();
   const instanceTypeChanged = useRef(false);
   const dataTag = isDedicatedMasterField ? 'Master' : 'TServer';
-  const { numVolumesDisable, volumeSizeDisable, minVolumeSize } = useVolumeControls(
-    isEditMode,
-    updateOptions
-  );
-  const isAwsNodeCoolingDown = diffInHours !== null && diffInHours < AwsCoolDownPeriod;
 
   //watchers
   const fieldValue = isDedicatedMasterField
@@ -113,6 +112,16 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   const cpuArch = useWatch({ name: CPU_ARCHITECTURE_FIELD });
   const masterPlacement = useWatch({ name: MASTER_PLACEMENT_FIELD });
   const provider = useWatch({ name: PROVIDER_FIELD });
+
+  const {
+    numVolumesDisable,
+    volumeSizeDisable,
+    minVolumeSize,
+    disableIops,
+    disableThroughput,
+    disableStorageType
+  } = useVolumeControls(isEditMode, updateOptions);
+  const isAwsNodeCoolingDown = diffInHours !== null && diffInHours < AwsCoolDownPeriod;
 
   //fetch run time configs
   const {
@@ -140,7 +149,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
     if (!instance) return;
     const getProviderRuntimeConfigs = async () => {
       const providerRuntimeConfigsRefetch = await providerConfigsRefetch();
-      let deviceInfo = getDeviceInfoFromInstance(
+      const deviceInfo = getDeviceInfoFromInstance(
         instance,
         providerRuntimeConfigsRefetch.isError
           ? providerRuntimeConfigs
@@ -174,7 +183,8 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   //reset methods
   const resetThroughput = () => {
     const { storageType, throughput, diskIops, volumeSize } = fieldValue;
-    if ([StorageType.IO1, StorageType.GP3, StorageType.UltraSSD_LRS].includes(storageType)) {
+    if ([StorageType.IO1, StorageType.GP3, StorageType.UltraSSD_LRS, StorageType.PremiumV2_LRS]
+        .includes(storageType)) {
       //resetting throughput
       const throughputVal = getThroughputByIops(Number(throughput), diskIops, storageType);
       setValue(UPDATE_FIELD, {
@@ -197,15 +207,22 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   };
 
   const onVolumeSizeChanged = (value: any) => {
-    const { storageType, diskIops } = fieldValue;
     setValue(UPDATE_FIELD, {
       ...fieldValue,
       volumeSize: Number(value)
     });
-    if (storageType === StorageType.UltraSSD_LRS) {
-      onDiskIopsChanged(diskIops);
-    }
   };
+
+  /*
+    When storage type is UltraSSD_LRS, disk IOPS is calculated based on volume size.
+    Hence, when volume size is changed, disk IOPS should be recalculated.
+  */
+  useUpdateEffect(() => {
+    if (fieldValue.storageType === StorageType.UltraSSD_LRS
+        || fieldValue.storageType === StorageType.PremiumV2_LRS) {
+      onDiskIopsChanged(fieldValue.diskIops);
+    }
+  },[fieldValue?.volumeSize]);
 
   const onDiskIopsChanged = (value: any) => {
     const { storageType, volumeSize } = fieldValue;
@@ -236,7 +253,10 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
 
   const renderVolumeInfo = () => {
     const isAWSProvider = provider?.code === CloudType.aws;
-    const isAwsNodeDisabled = isAWSProvider && isAwsNodeCoolingDown;
+    const isSmartResize =
+      isNonEmptyArray(updateOptions) &&
+      (updateOptions.includes(UpdateActions.SMART_RESIZE) ||
+        updateOptions.includes(UpdateActions.SMART_RESIZE_NON_RESTART));
     const fixedVolumeSize =
       [VolumeType.SSD, VolumeType.NVME].includes(volumeType) &&
       fieldValue?.storageType === StorageType.Scratch &&
@@ -268,7 +288,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
                   <YBInput
                     type="number"
                     fullWidth
-                    disabled={fixedNumVolumes || disableNumVolumes || numVolumesDisable}
+                    disabled={fixedNumVolumes || isViewMode || numVolumesDisable}
                     inputProps={{ min: 1, 'data-testid': `VolumeInfoField-${dataTag}-VolumeInput` }}
                     value={convertToString(fieldValue.numVolumes)}
                     onChange={(event) => onNumVolumesChanged(event.target.value)}
@@ -286,13 +306,12 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
                     fullWidth
                     disabled={
                       fixedVolumeSize ||
-                      disableVolumeSize ||
+                      isViewMode ||
                       (provider?.code !== CloudType.kubernetes &&
                         !smartResizePossible &&
                         isEditMode &&
                         !instanceTypeChanged.current) ||
-                      volumeSizeDisable ||
-                      isAwsNodeDisabled
+                      volumeSizeDisable
                     }
                     inputProps={{
                       min: 1,
@@ -310,7 +329,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
                     ? t('universeForm.instanceConfig.k8VolumeSizeUnit')
                     : t('universeForm.instanceConfig.volumeSizeUnit')}
                 </span>
-                {isAwsNodeDisabled && (
+                {isAWSProvider && isAwsNodeCoolingDown && !isSmartResize && (
                   <Box className={classes.coolDownTooltip}>
                     <Tooltip
                       title={t('universeForm.instanceConfig.cooldownHours')}
@@ -330,6 +349,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   };
 
   const renderStorageType = () => {
+    const isPremiumV2Storage = fieldValue.storageType === StorageType.PremiumV2_LRS;
     if (
       [CloudType.gcp, CloudType.azu].includes(provider?.code) ||
       (volumeType === VolumeType.EBS && provider?.code === CloudType.aws)
@@ -341,7 +361,10 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
               <Box display="flex">
                 <YBLabel
                   dataTestId="VolumeInfoField-StorageTypeLabel"
-                  className={classes.storageTypeLabelField}
+                  className={clsx(
+                    classes.storageTypeLabelField,
+                    isPremiumV2Storage && classes.premiumV2StorageLabelField
+                  )}
                 >
                   {provider?.code === CloudType.aws
                     ? t('universeForm.instanceConfig.ebs')
@@ -350,12 +373,19 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
                 <Box flex={1}>
                   <YBSelect
                     className={classes.storageTypeSelectField}
-                    disabled={disableStorageType}
+                    disabled={disableStorageType || isViewMode}
                     value={fieldValue.storageType}
                     inputProps={{
                       min: 1,
                       'data-testid': `VolumeInfoField-${dataTag}-StorageTypeSelect`
                     }}
+                     helperText={
+                      isPremiumV2Storage && (
+                        <YBHelper variant={YBHelperVariants.warning}>
+                          {t('universeForm.instanceConfig.premiumv2Storage')}
+                        </YBHelper>
+                      )
+                    }
                     onChange={(event) =>
                       onStorageTypeChanged((event?.target.value as unknown) as StorageType)
                     }
@@ -378,7 +408,8 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
 
   const renderDiskIops = () => {
     if (
-      ![StorageType.IO1, StorageType.GP3, StorageType.UltraSSD_LRS].includes(fieldValue.storageType)
+      ![StorageType.IO1, StorageType.GP3, StorageType.UltraSSD_LRS, StorageType.PremiumV2_LRS]
+          .includes(fieldValue.storageType)
     )
       return null;
 
@@ -393,7 +424,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
               <YBInput
                 type="number"
                 fullWidth
-                disabled={disableIops}
+                disabled={disableIops || isViewMode}
                 inputProps={{ min: 1, 'data-testid': `VolumeInfoField-${dataTag}-DiskIopsInput` }}
                 value={convertToString(fieldValue.diskIops)}
                 onChange={(event) => onDiskIopsChanged(event.target.value)}
@@ -408,7 +439,8 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   };
 
   const renderThroughput = () => {
-    if (![StorageType.GP3, StorageType.UltraSSD_LRS].includes(fieldValue.storageType)) return null;
+    if (![StorageType.GP3, StorageType.UltraSSD_LRS, StorageType.PremiumV2_LRS]
+        .includes(fieldValue.storageType)) return null;
     return (
       <Grid container spacing={2}>
         <Grid item lg={6}>
@@ -420,7 +452,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
               <YBInput
                 type="number"
                 fullWidth
-                disabled={disableThroughput}
+                disabled={disableThroughput || isViewMode}
                 inputProps={{ min: 1, 'data-testid': `VolumeInfoField-${dataTag}-ThroughputInput` }}
                 value={convertToString(fieldValue.throughput)}
                 onChange={(event) => onThroughputChange(event.target.value)}

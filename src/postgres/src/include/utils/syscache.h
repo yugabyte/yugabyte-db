@@ -125,6 +125,10 @@ enum SysCacheIdentifier
 /* Used in IsYugaByteEnabled() mode only */
 extern void YbSetSysCacheTuple(Relation rel, HeapTuple tup);
 extern void YbPreloadCatalogCache(int cache_id, int idx_cache_id);
+#ifndef NDEBUG
+extern bool YbCheckCatalogCacheIndexNameTable();
+#endif
+extern const char* YbGetCatalogCacheIndexName(int cache_id);
 
 extern void InitCatalogCache(void);
 extern void InitCatalogCachePhase2(void);

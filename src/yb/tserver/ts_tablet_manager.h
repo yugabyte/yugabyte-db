@@ -533,6 +533,10 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   Status StartSubtabletsSplit(
       const tablet::RaftGroupMetadata& source_tablet_meta, SplitTabletsCreationMetaData* tcmetas);
 
+  Status DoApplyCloneTablet(
+      tablet::CloneOperation* operation, log::Log* raft_log,
+      std::optional<consensus::RaftConfigPB> committed_raft_config);
+
   // Creates tablet peer and schedules opening the tablet.
   // See CreateAndRegisterTabletPeer and OpenTablet.
   void CreatePeerAndOpenTablet(

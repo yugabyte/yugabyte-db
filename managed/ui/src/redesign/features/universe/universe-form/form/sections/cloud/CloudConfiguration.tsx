@@ -63,6 +63,7 @@ export const CloudConfiguration = ({ runtimeConfigs }: UniverseFormConfiguration
   const { clusterType, mode, universeConfigureTemplate, isViewMode } = useContext(
     UniverseFormContext
   )[0];
+
   const isPrimary = clusterType === ClusterType.PRIMARY;
   const isEditMode = mode === ClusterModes.EDIT; //Form is in edit mode
   const isEditPrimary = isEditMode && isPrimary; //Editing Primary Cluster
@@ -110,7 +111,11 @@ export const CloudConfiguration = ({ runtimeConfigs }: UniverseFormConfiguration
           <TotalNodesField disabled={isViewMode} />
         </Box>
         <Box mt={2}>
-          <ReplicationFactor disabled={isEditMode} isPrimary={isPrimary} isViewMode={isViewMode} />
+          <ReplicationFactor
+            disabled={isViewMode}
+            isPrimary={isPrimary}
+            isEditMode={isEditMode}
+          />
         </Box>
         {isPrimary && isGeoPartitionEnabled && (
           <Box mt={2} display="flex" flexDirection="column">
