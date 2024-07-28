@@ -33,8 +33,6 @@ import lombok.extern.slf4j.Slf4j;
 @Singleton
 @Slf4j
 public class LocalNodeUniverseManager {
-
-  private static final String YSQL_PASSWORD = "Pass@123";
   @Inject LocalNodeManager localNodeManager;
 
   public ShellResponse runYsqlCommand(

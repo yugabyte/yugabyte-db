@@ -30,7 +30,7 @@ namespace yb::pggate {
 RowMarkType GetRowMarkType(const PgExecParameters* exec_params);
 
 struct Bound {
-  uint64_t value;
+  uint16_t value;
   bool is_inclusive;
 };
 

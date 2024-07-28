@@ -94,6 +94,7 @@ public class CheckLeaderlessTablets extends ServerSubTaskBase {
     }
   }
 
+  // TODO Remove this to use the similar method in UniverseTaskBase.
   private List<String> doGetLeaderlessTablets(YBClient client, int httpPort) {
     HostAndPort leaderMasterHostAndPort = client.getLeaderMasterHostAndPort();
 

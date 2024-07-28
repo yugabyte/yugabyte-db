@@ -106,11 +106,8 @@
 }
 
 .status-pending-display-container {
-  display: flex;
-  align-items: baseline;
-  width: 280px;
+  display: inline-block;
   color: colors.$YB_ORANGE;
-  float: right;
 
   .yb-loader-circle {
     margin: 0;

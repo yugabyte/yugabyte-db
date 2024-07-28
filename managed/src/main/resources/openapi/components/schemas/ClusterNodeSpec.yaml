@@ -11,6 +11,6 @@ allOf:
         description: Used only for a k8s Universe. Required for k8s Universe if instance_type is not specified. Sets custom cpu and memory requests/limits for tserver pods of a cluster.
         $ref: "./K8SNodeResourceSpec.yaml"
       az_node_spec:
-        description: Granular node settings overridden per Availability Zone idetified by AZ uuid.
+        description: Granular node settings overridden per Availability Zone identified by AZ uuid.
         additionalProperties:
           $ref: "./AvailabilityZoneNodeSpec.yaml"

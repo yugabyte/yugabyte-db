@@ -10,11 +10,14 @@ import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterTableConfig;
+import java.util.List;
 import java.util.Set;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.yb.master.MasterDdlOuterClass;
 
 @Slf4j
 public class RestartXClusterConfig extends EditXClusterConfig {
@@ -44,32 +47,42 @@ public class RestartXClusterConfig extends EditXClusterConfig {
         createCheckXUniverseAutoFlag(sourceUniverse, targetUniverse)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.PreflightChecks);
 
-        // Set table type for old xCluster configs.
-        xClusterConfig.updateTableType(taskParams().getTableInfoList());
+        // TODO full DB scoped restart support
+        List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList =
+            taskParams().getTableInfoList();
+        Set<String> tableIds = getTableIds(tableInfoList);
 
-        // Do not skip bootstrapping for the following tables. It will check if it is required.
-        if (taskParams().getBootstrapParams() != null) {
-          xClusterConfig.updateNeedBootstrapForTables(
-              taskParams().getBootstrapParams().tables, true /* needBootstrap */);
+        boolean isRestartWholeConfig;
+        if (xClusterConfig.getType() != ConfigType.Db) {
+          // Set table type for old xCluster configs.
+          xClusterConfig.updateTableType(tableInfoList);
+
+          // Do not skip bootstrapping for the following tables. It will check if it is required.
+          if (taskParams().getBootstrapParams() != null) {
+            xClusterConfig.updateNeedBootstrapForTables(
+                taskParams().getBootstrapParams().tables, true /* needBootstrap */);
+          }
+
+          createXClusterConfigSetStatusTask(
+                  xClusterConfig, XClusterConfig.XClusterConfigStatusType.Updating)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
+
+          // A replication group with no tables in it cannot exist in YBDB. If all the tables
+          // must be removed from the replication group, remove the replication group.
+          isRestartWholeConfig =
+              xClusterConfig.getTableIdsWithReplicationSetup(tableIds, true /* done */).size()
+                  >= xClusterConfig.getTableIdsWithReplicationSetup().size();
+        } else {
+          isRestartWholeConfig =
+              taskParams().getDbs().size() == xClusterConfig.getNamespaces().size();
         }
 
-        createXClusterConfigSetStatusTask(
-                xClusterConfig, XClusterConfig.XClusterConfigStatusType.Updating)
-            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
-
-        Set<String> tableIds = getTableIds(taskParams().getTableInfoList());
-
-        // A replication group with no tables in it cannot exist in YBDB. If all the tables must be
-        // removed from the replication group, remove the replication group.
-        boolean isRestartWholeConfig =
-            xClusterConfig.getTableIdsWithReplicationSetup(tableIds, true /* done */).size()
-                >= xClusterConfig.getTableIdsWithReplicationSetup().size();
         log.info("isRestartWholeConfig is {}", isRestartWholeConfig);
         if (isRestartWholeConfig) {
-          createXClusterConfigSetStatusForTablesTask(
-              xClusterConfig,
-              getTableIds(taskParams().getTableInfoList()),
-              XClusterTableConfig.Status.Updating);
+          if (xClusterConfig.getType() != ConfigType.Db) {
+            createXClusterConfigSetStatusForTablesTask(
+                xClusterConfig, getTableIds(tableInfoList), XClusterTableConfig.Status.Updating);
+          }
 
           // Delete the replication group.
           createDeleteXClusterConfigSubtasks(
@@ -91,19 +104,25 @@ public class RestartXClusterConfig extends EditXClusterConfig {
           createXClusterConfigSetStatusTask(
               xClusterConfig, XClusterConfig.XClusterConfigStatusType.Updating);
 
-          createXClusterConfigSetStatusForTablesTask(
-              xClusterConfig,
-              getTableIds(taskParams().getTableInfoList()),
-              XClusterTableConfig.Status.Updating);
+          if (xClusterConfig.getType() == ConfigType.Db) {
+            addSubtasksToCreateXClusterConfig(
+                xClusterConfig,
+                taskParams().getDbs(),
+                taskParams().getPitrParams(),
+                taskParams().isForceBootstrap());
+          } else {
+            createXClusterConfigSetStatusForTablesTask(
+                xClusterConfig, getTableIds(tableInfoList), XClusterTableConfig.Status.Updating);
 
-          addSubtasksToCreateXClusterConfig(
-              xClusterConfig,
-              taskParams().getTableInfoList(),
-              taskParams().getMainTableIndexTablesMap(),
-              taskParams().getSourceTableIdsWithNoTableOnTargetUniverse(),
-              null,
-              taskParams().getPitrParams(),
-              taskParams().isForceBootstrap());
+            addSubtasksToCreateXClusterConfig(
+                xClusterConfig,
+                tableInfoList,
+                taskParams().getMainTableIndexTablesMap(),
+                taskParams().getSourceTableIdsWithNoTableOnTargetUniverse(),
+                null,
+                taskParams().getPitrParams(),
+                taskParams().isForceBootstrap());
+          }
         } else {
           createXClusterConfigSetStatusForTablesTask(
               xClusterConfig, tableIds, XClusterTableConfig.Status.Updating);
@@ -115,10 +134,7 @@ public class RestartXClusterConfig extends EditXClusterConfig {
               xClusterConfig, tableIds, XClusterTableConfig.Status.Updating);
 
           addSubtasksToAddTablesToXClusterConfig(
-              xClusterConfig,
-              taskParams().getTableInfoList(),
-              taskParams().getMainTableIndexTablesMap(),
-              tableIds);
+              xClusterConfig, tableInfoList, taskParams().getMainTableIndexTablesMap(), tableIds);
         }
 
         createXClusterConfigSetStatusTask(

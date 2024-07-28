@@ -3,7 +3,6 @@ title: Encryption at rest
 linkTitle: Encryption at rest
 description: YugabyteDB Aeon cluster encryption at rest.
 headcontent: Encrypt your YugabyteDB cluster
-badges: ea
 menu:
   preview_yugabyte-cloud:
     identifier: managed-ear

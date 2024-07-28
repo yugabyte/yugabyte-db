@@ -4,6 +4,7 @@ import { Component } from 'react';
 import PropTypes from 'prop-types';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { Link } from 'react-router';
+import { toast } from 'react-toastify';
 import { YBPanelItem } from '../../panels';
 import { timeFormatter, successStringFormatter } from '../../../utils/TableFormatters';
 import {

@@ -8,6 +8,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.api.client.util.Throwables;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Stopwatch;
@@ -416,6 +417,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public static final String DUMP_ENTITIES_URL_SUFFIX = "/dump-entities";
+  public static final String TABLET_REPLICATION_URL_SUFFIX = "/api/v1/tablet-replication";
+  public static final String LEADERLESS_TABLETS_KEY = "leaderless_tablets";
 
   @Inject
   protected UniverseTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -2300,6 +2303,53 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
               return true;
             });
     return waitForCheck.retryWithBackoff(1, 2, 10);
+  }
+
+  /**
+   * Fetch leaderless tablets for the universe.
+   *
+   * @param universeUuid the universe UUID.
+   * @return the set of leaderless tablet UUIDs.
+   */
+  public Set<String> getLeaderlessTablets(UUID universeUuid) {
+    Universe universe = Universe.getOrBadRequest(universeUuid);
+    String masterAddresses = universe.getMasterAddresses();
+    String certificate = universe.getCertificateNodetoNode();
+    try (YBClient client = ybService.getClient(masterAddresses, certificate)) {
+      HostAndPort leaderMasterHostAndPort = client.getLeaderMasterHostAndPort();
+      if (leaderMasterHostAndPort == null) {
+        throw new RuntimeException(
+            "Could not find the master leader address in universe "
+                + taskParams().getUniverseUUID());
+      }
+      int httpPort = universe.getUniverseDetails().communicationPorts.masterHttpPort;
+      HostAndPort hostAndPort = HostAndPort.fromParts(leaderMasterHostAndPort.getHost(), httpPort);
+      String url =
+          String.format("http://%s%s", hostAndPort.toString(), TABLET_REPLICATION_URL_SUFFIX);
+      log.debug("Making url request to endpoint: {}", url);
+      JsonNode response = nodeUIApiHelper.getRequest(url);
+      log.debug("Received {}", response);
+      JsonNode errors = response.get("error");
+      if (errors != null) {
+        throw new RuntimeException("Received error: " + errors.asText());
+      }
+      ArrayNode leaderlessTablets = (ArrayNode) response.get(LEADERLESS_TABLETS_KEY);
+      if (leaderlessTablets == null) {
+        throw new RuntimeException(
+            "Unexpected response, no " + LEADERLESS_TABLETS_KEY + " in it: " + response);
+      }
+      Set<String> result = new HashSet<>();
+      for (JsonNode leaderlessTabletInfo : leaderlessTablets) {
+        result.add(leaderlessTabletInfo.get("tablet_uuid").asText());
+      }
+      return result;
+    } catch (RuntimeException e) {
+      log.error("Error in getting leaderless tablets {}", e.getMessage());
+      throw e;
+    } catch (Exception e) {
+      log.error("Error in getting leaderless tablets {}", e.getMessage());
+      throw new RuntimeException(e);
+    }
   }
 
   /**
@@ -5485,9 +5535,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     createDeleteReplicationTask(xClusterConfig, forceDelete)
         .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
     if (xClusterConfig.getType() == ConfigType.Db) {
-      // TODO: add forceDelete.
-      createDeleteReplicationOnSourceTask(xClusterConfig)
-          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
+      // If it's in the middle of a repair, there's no replication on source.
+      if (!(xClusterConfig.isUsedForDr() && xClusterConfig.getDrConfig().isHalted())) {
+        // TODO: add forceDelete.
+        createDeleteReplicationOnSourceTask(xClusterConfig)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
+      }
     } else {
       // Delete bootstrap IDs created by bootstrap universe subtask.
       createDeleteBootstrapIdsTask(xClusterConfig, xClusterConfig.getTableIds(), forceDelete)

@@ -143,6 +143,15 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         " connections will share the same physical connection in a single threaded test if" +
         " no active transactions are there on the first connection";
 
+  protected static final String CANNOT_GURANTEE_EXPECTED_PHYSICAL_CONN_FOR_CACHE =
+      "Test is designed in a way which requires every logical connection to have a dedicated " +
+      "physical connection. In the test backends are loaded with meta data of the object " +
+      "(tables) on executing DML with the premise (a) when withCachedMetadata is true, then " +
+      "the same backend processes the queries in a session (b) when withCachedMetadata is " +
+      "false, a new backend processes queries for a new connection (session). in both these " +
+      "cases the premise cannot be guaranteed when run with Connection Manager, hence skipping " +
+      "the tests with connection manager";
+
   protected static final String LESSER_PHYSICAL_CONNS =
       "Skipping this test with Ysql Connection Manager as logical connections " +
         "created are lesser than physical connections and the real maximum limit for creating " +

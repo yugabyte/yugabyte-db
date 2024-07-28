@@ -10,7 +10,6 @@ JAVA	org.yb.pgsql.TestJWTAuth
 JAVA	org.yb.pgsql.TestLintPgRegressSchedules
 JAVA	org.yb.pgsql.TestPg15Regress
 JAVA	org.yb.pgsql.TestPgAlterTable
-JAVA	org.yb.pgsql.TestPgAuthorization
 JAVA	org.yb.pgsql.TestPgAutoExplain
 JAVA	org.yb.pgsql.TestPgBackendMemoryContext
 JAVA	org.yb.pgsql.TestPgBatch

@@ -878,7 +878,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Enable Rollback Support",
           "Enable Yugabyte DB Rollback support",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> allowGFlagsOverrideDuringPreFinalize =
       new ConfKeyInfo<>(
           "yb.gflags.allow_during_prefinalize",
@@ -940,7 +940,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Configure YSQL DB API",
           "Allow users to configure YSQL DB API from UI",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> allowConfigureYCQL =
       new ConfKeyInfo<>(
           "yb.configure_db_api.ycql",
@@ -948,7 +948,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Configure YCQL DB API",
           "Allow users to configure YCQL DB API from UI",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Duration> waitForReplicationDrainTimeout =
       new ConfKeyInfo<>(
           "yb.xcluster.transactional.wait_for_replication_drain_timeout",

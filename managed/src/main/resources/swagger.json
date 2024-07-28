@@ -3894,7 +3894,7 @@
         },
         "tags" : {
           "items" : {
-            "enum" : [ "PUBLIC", "INTERNAL", "YBM", "BETA", "UIDriven", "FEATURE_FLAG" ],
+            "enum" : [ "PUBLIC", "INTERNAL", "BETA", "FEATURE_FLAG" ],
             "type" : "string"
           },
           "type" : "array"
@@ -8864,7 +8864,7 @@
     "Permission" : {
       "properties" : {
         "action" : {
-          "enum" : [ "CREATE", "READ", "UPDATE", "DELETE", "PAUSE_RESUME", "BACKUP_RESTORE", "UPDATE_ROLE_BINDINGS", "UPDATE_PROFILE", "SUPER_ADMIN_ACTIONS" ],
+          "enum" : [ "CREATE", "READ", "UPDATE", "DELETE", "PAUSE_RESUME", "BACKUP_RESTORE", "UPDATE_ROLE_BINDINGS", "UPDATE_PROFILE", "SUPER_ADMIN_ACTIONS", "XCLUSTER" ],
           "type" : "string"
         },
         "resourceType" : {
@@ -8890,7 +8890,7 @@
     "PermissionInfo" : {
       "properties" : {
         "action" : {
-          "enum" : [ "CREATE", "READ", "UPDATE", "DELETE", "PAUSE_RESUME", "BACKUP_RESTORE", "UPDATE_ROLE_BINDINGS", "UPDATE_PROFILE", "SUPER_ADMIN_ACTIONS" ],
+          "enum" : [ "CREATE", "READ", "UPDATE", "DELETE", "PAUSE_RESUME", "BACKUP_RESTORE", "UPDATE_ROLE_BINDINGS", "UPDATE_PROFILE", "SUPER_ADMIN_ACTIONS", "XCLUSTER" ],
           "type" : "string"
         },
         "description" : {
@@ -19775,6 +19775,58 @@
         "tags" : [ "Disaster Recovery" ]
       }
     },
+    "/api/v1/customers/{cUUID}/dr_configs/{drUUID}/pause" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "pauseDrConfig",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "drUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "XCluster Replication Edit Form Data",
+          "in" : "body",
+          "name" : "xcluster_replication_edit_form_data",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/XClusterConfigEditFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Pause DR config",
+        "tags" : [ "Disaster Recovery" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/dr_configs/{drUUID}/replace_replica" : {
       "post" : {
         "description" : "",
@@ -19882,6 +19934,58 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Restart disaster recovery config",
+        "tags" : [ "Disaster Recovery" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/dr_configs/{drUUID}/resume" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "resumeDrConfig",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "drUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "XCluster Replication Edit Form Data",
+          "in" : "body",
+          "name" : "xcluster_replication_edit_form_data",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/XClusterConfigEditFormData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Resume DR config",
         "tags" : [ "Disaster Recovery" ]
       }
     },
@@ -29100,7 +29204,8 @@
     },
     "/api/v1/customers/{cUUID}/xcluster_configs/sync" : {
       "post" : {
-        "description" : "Available since YBA version 2.16.0.0.",
+        "deprecated" : true,
+        "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2.23.0.0.</b></p> Sync xcluster config (V2) instead.",
         "operationId" : "syncXClusterConfig",
         "parameters" : [ {
           "format" : "uuid",
@@ -29139,7 +29244,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Sync xcluster config",
+        "summary" : "Sync xcluster config - deprecated",
         "tags" : [ "Asynchronous Replication" ]
       }
     },
@@ -29334,6 +29439,50 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Edit xcluster config",
+        "tags" : [ "Asynchronous Replication" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/xcluster_configs/{xccUUID}/sync" : {
+      "post" : {
+        "description" : "Available since YBA version 2.23.0.0",
+        "operationId" : "syncXClusterConfigV2",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "xccUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Sync xcluster config (V2)",
         "tags" : [ "Asynchronous Replication" ]
       }
     },
@@ -30018,7 +30167,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Get current user/customer uuid auth/api token",
+        "summary" : "Get current user and customer uuid. This will not generate or return the API token, use /api_token API for that.",
         "tags" : [ "Session management" ]
       }
     },

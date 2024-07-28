@@ -465,7 +465,7 @@ export const TableSelect = (props: TableSelectProps) => {
         <YBSmartSearchBar
           searchTokens={searchTokens}
           onSearchTokensChange={handleSearchTokenChange}
-          recognizedModifiers={['database', 'table', 'unreplicatedTable']}
+          recognizedModifiers={['database', 'table', 'sizeBytes', 'unreplicatedTable']}
           placeholder={t('tablesSearchBarPlaceholder')}
         />
         {props.configAction === XClusterConfigAction.MANAGE_TABLE &&
@@ -893,6 +893,7 @@ const isTableMatchedBySearchTokens = (
   const candidate = {
     database: { value: table.keySpace, type: FieldType.STRING },
     table: { value: table.tableName, type: FieldType.STRING },
+    sizeBytes: { value: table.sizeBytes, type: FieldType.NUMBER },
     ...(unreplicatedTableInReplicatedNamespace && {
       unreplicatedTable: {
         value: unreplicatedTableInReplicatedNamespace.has(getTableUuid(table)),

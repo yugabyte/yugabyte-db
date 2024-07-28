@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/url"
 	pb "node-agent/generated/service"
 	"os"
@@ -372,11 +371,15 @@ func ConvertType(from any, to any) error {
 
 // ScanDir scans a directory and invokes the callback for every file/dir.
 func ScanDir(dir string, callback func(os.FileInfo) (bool, error)) error {
-	fInfos, err := ioutil.ReadDir(dir)
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return err
 	}
-	for _, fInfo := range fInfos {
+	for _, entry := range entries {
+		fInfo, err := entry.Info()
+		if err != nil {
+			return err
+		}
 		isContinue, err := callback(fInfo)
 		if err != nil {
 			return err

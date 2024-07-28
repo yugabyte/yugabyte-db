@@ -10,6 +10,7 @@ import api.v2.models.UniverseCreateSpec;
 import api.v2.models.UniverseDeleteSpec;
 import api.v2.models.UniverseEditEncryptionInTransit;
 import api.v2.models.UniverseEditGFlags;
+import api.v2.models.UniverseEditKubernetesOverrides;
 import api.v2.models.UniverseEditSpec;
 import api.v2.models.UniverseRestart;
 import api.v2.models.UniverseRollbackUpgradeReq;
@@ -64,7 +65,7 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   public YBATask editGFlags(
       Request request, UUID cUUID, UUID uniUUID, UniverseEditGFlags universeEditGFlags)
       throws Exception {
-    return universeUpgradeHandler.editGFlags(request, cUUID, uniUUID, universeEditGFlags);
+    return universeUpgradeHandler.editGFlags(cUUID, uniUUID, universeEditGFlags);
   }
 
   @Override
@@ -78,66 +79,72 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   public YBATask startSoftwareUpgrade(
       Request request, UUID cUUID, UUID uniUUID, UniverseSoftwareUpgradeStart uniUpgrade)
       throws Exception {
-    return universeUpgradeHandler.startSoftwareUpgrade(request, cUUID, uniUUID, uniUpgrade);
+    return universeUpgradeHandler.startSoftwareUpgrade(cUUID, uniUUID, uniUpgrade);
   }
 
   @Override
   public YBATask finalizeSoftwareUpgrade(
       Request request, UUID cUUID, UUID uniUUID, UniverseSoftwareUpgradeFinalize finalizeInfo)
       throws Exception {
-    return universeUpgradeHandler.finalizeSoftwareUpgrade(request, cUUID, uniUUID, finalizeInfo);
+    return universeUpgradeHandler.finalizeSoftwareUpgrade(cUUID, uniUUID, finalizeInfo);
   }
 
   @Override
   public UniverseSoftwareUpgradeFinalizeInfo getFinalizeSoftwareUpgradeInfo(
       Request request, UUID cUUID, UUID uniUUID) throws Exception {
-    return universeUpgradeHandler.getSoftwareUpgradeFinalizeInfo(request, cUUID, uniUUID);
+    return universeUpgradeHandler.getSoftwareUpgradeFinalizeInfo(cUUID, uniUUID);
   }
 
   @Override
   public YBATask startThirdPartySoftwareUpgrade(
       Request request, UUID cUUID, UUID uniUUID, UniverseThirdPartySoftwareUpgradeStart uniUpgrade)
       throws Exception {
-    return universeUpgradeHandler.startThirdPartySoftwareUpgrade(
-        request, cUUID, uniUUID, uniUpgrade);
+    return universeUpgradeHandler.startThirdPartySoftwareUpgrade(cUUID, uniUUID, uniUpgrade);
   }
 
   @Override
   public YBATask rollbackSoftwareUpgrade(
       Request request, UUID cUUID, UUID uniUUID, UniverseRollbackUpgradeReq req) throws Exception {
-    return universeUpgradeHandler.rollbackSoftwareUpgrade(request, cUUID, uniUUID, req);
+    return universeUpgradeHandler.rollbackSoftwareUpgrade(cUUID, uniUUID, req);
   }
 
   @Override
   public UniverseSoftwareUpgradePrecheckResp precheckSoftwareUpgrade(
       Request request, UUID cUUID, UUID uniUUID, UniverseSoftwareUpgradePrecheckReq req)
       throws Exception {
-    return universeUpgradeHandler.precheckSoftwareUpgrade(request, cUUID, uniUUID, req);
+    return universeUpgradeHandler.precheckSoftwareUpgrade(cUUID, uniUUID, req);
   }
 
   @Override
   public YBATask restartUniverse(
       Request request, UUID cUUID, UUID uniUUID, UniverseRestart uniUpgrade) throws Exception {
-    return universeUpgradeHandler.restartUniverse(request, cUUID, uniUUID, uniUpgrade);
+    return universeUpgradeHandler.restartUniverse(cUUID, uniUUID, uniUpgrade);
   }
 
   @Override
   public YBATask systemdEnable(
       Request request, UUID cUUID, UUID uniUUID, UniverseSystemdEnableStart systemd)
       throws Exception {
-    return universeUpgradeHandler.systemdEnable(request, cUUID, uniUUID, systemd);
+    return universeUpgradeHandler.systemdEnable(cUUID, uniUUID, systemd);
   }
 
   @Override
   public YBATask encryptionInTransitToggle(
       Request request, UUID cUUID, UUID uniUUID, UniverseEditEncryptionInTransit spec)
       throws Exception {
-    return universeUpgradeHandler.tlsToggle(request, cUUID, uniUUID, spec);
+    return universeUpgradeHandler.tlsToggle(cUUID, uniUUID, spec);
   }
 
   @Override
   public YBATask encryptionInTransitCertRotate(
       Request request, UUID cUUID, UUID uniUUID, UniverseCertRotateSpec spec) throws Exception {
-    return universeUpgradeHandler.certRotate(request, cUUID, uniUUID, spec);
+    return universeUpgradeHandler.certRotate(cUUID, uniUUID, spec);
+  }
+
+  @Override
+  public YBATask editKubernetesOverrides(
+      Request request, UUID cUUID, UUID uniUUID, UniverseEditKubernetesOverrides spec)
+      throws Exception {
+    return universeUpgradeHandler.editKubernetesOverrides(cUUID, uniUUID, spec);
   }
 }

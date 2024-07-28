@@ -13,6 +13,7 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.DrConfigCreateForm;
+import com.yugabyte.yw.forms.DrConfigSetDatabasesForm;
 import com.yugabyte.yw.forms.TableInfoForm;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
@@ -255,6 +256,114 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
 
     // Delete db scoped DR.
     Result deleteResult = deleteDrConfig(UUID.fromString(json.get("resourceUUID").asText()));
+    assertOk(deleteResult);
+    JsonNode deleteJson = Json.parse(contentAsString(deleteResult));
+    TaskInfo deleteTaskInfo =
+        waitForTask(
+            UUID.fromString(deleteJson.get("taskUUID").asText()), sourceUniverse, targetUniverse);
+    assertEquals(TaskInfo.State.Success, deleteTaskInfo.getTaskState());
+    verifyUniverseState(Universe.getOrBadRequest(sourceUniverse.getUniverseUUID()));
+    verifyUniverseState(Universe.getOrBadRequest(targetUniverse.getUniverseUUID()));
+  }
+
+  @Test
+  public void testDrDbScopedUpdate() throws InterruptedException {
+    Universe sourceUniverse = createDRUniverse(DB_SCOPED_MIN_VERSION, "source-universe", true);
+    Universe targetUniverse = createDRUniverse(DB_SCOPED_MIN_VERSION, "target-universe", true);
+
+    // Set up the storage config.
+    CustomerConfig customerConfig =
+        ModelFactory.createNfsStorageConfig(customer, "test_nfs_storage", getBackupBaseDirectory());
+
+    List<String> namespaceNames = Arrays.asList("dbnoncolocated", "dbcolocated");
+    Db db1 = Db.create(namespaceNames.get(0), false);
+    Db db2 = Db.create(namespaceNames.get(1), true);
+    List<Db> dbs = Arrays.asList(db1, db2);
+
+    Table table1 = Table.create("table1", DEFAULT_TABLE_COLUMNS, db1);
+    Table table2 = Table.create("table2", DEFAULT_TABLE_COLUMNS, db2);
+    Table table3 = Table.create("table3", DEFAULT_TABLE_COLUMNS, db2, true /* escapeColocation */);
+    List<Table> tables = Arrays.asList(table1, table2, table3);
+
+    // Create databases on both source + target universe.
+    createTestSet(sourceUniverse, dbs, tables);
+    createTestSet(targetUniverse, dbs, tables);
+
+    // Get the namespace info for the source universe.
+    List<TableInfoForm.NamespaceInfoResp> namespaceInfo =
+        tableHandler.listNamespaces(customer.getUuid(), sourceUniverse.getUniverseUUID(), false);
+
+    DrConfigCreateForm formData = new DrConfigCreateForm();
+    formData.sourceUniverseUUID = sourceUniverse.getUniverseUUID();
+    formData.targetUniverseUUID = targetUniverse.getUniverseUUID();
+    formData.name = "db-scoped-disaster-recovery-1";
+    formData.dbScoped = true;
+    formData.dbs = new HashSet<String>();
+    List<String> createNamespaceNames = Arrays.asList("dbnoncolocated");
+    for (TableInfoForm.NamespaceInfoResp namespace : namespaceInfo) {
+      if (createNamespaceNames.contains(namespace.name)) {
+        formData.dbs.add(namespace.namespaceUUID.toString());
+      }
+    }
+
+    formData.bootstrapParams = new XClusterConfigRestartFormData.RestartBootstrapParams();
+    formData.bootstrapParams.backupRequestParams =
+        new XClusterConfigCreateFormData.BootstrapParams.BootstrapBackupParams();
+    formData.bootstrapParams.backupRequestParams.storageConfigUUID = customerConfig.getConfigUUID();
+
+    Result result = createDrConfig(formData);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    TaskInfo taskInfo =
+        waitForTask(UUID.fromString(json.get("taskUUID").asText()), sourceUniverse, targetUniverse);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    verifyUniverseState(Universe.getOrBadRequest(sourceUniverse.getUniverseUUID()));
+    verifyUniverseState(Universe.getOrBadRequest(targetUniverse.getUniverseUUID()));
+    UUID drConfigUUID = UUID.fromString(json.get("resourceUUID").asText());
+
+    // Insert values into source universe and make sure they are replicated on target.
+    insertRow(sourceUniverse, table1, Map.of("id", "1", "name", "'val1'"));
+    Thread.sleep(5000);
+    int rowCount = getRowCount(targetUniverse, table1);
+    assertEquals(1, rowCount);
+
+    insertRow(sourceUniverse, table2, Map.of("id", "10", "name", "'val10'"));
+    Thread.sleep(5000);
+    rowCount = getRowCount(targetUniverse, table2);
+    assertEquals(0, rowCount);
+
+    List<String> updateNamespaceNames = Arrays.asList("dbcolocated");
+    DrConfigSetDatabasesForm setDatabasesFormData = new DrConfigSetDatabasesForm();
+    setDatabasesFormData.databases = new HashSet<String>();
+    for (TableInfoForm.NamespaceInfoResp namespace : namespaceInfo) {
+      if (updateNamespaceNames.contains(namespace.name)) {
+        setDatabasesFormData.databases.add(namespace.namespaceUUID.toString());
+      }
+    }
+
+    // Only the database 'dbcolocated' will be under replication in the final state.
+    result = setDatabasesDrConfig(drConfigUUID, setDatabasesFormData);
+    assertOk(result);
+    json = Json.parse(contentAsString(result));
+    taskInfo =
+        waitForTask(UUID.fromString(json.get("taskUUID").asText()), sourceUniverse, targetUniverse);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    verifyUniverseState(Universe.getOrBadRequest(sourceUniverse.getUniverseUUID()));
+    verifyUniverseState(Universe.getOrBadRequest(targetUniverse.getUniverseUUID()));
+
+    Thread.sleep(5000);
+    insertRow(sourceUniverse, table1, Map.of("id", "2", "name", "'val2'"));
+    Thread.sleep(5000);
+    rowCount = getRowCount(targetUniverse, table1);
+    assertEquals(1, rowCount);
+
+    insertRow(sourceUniverse, table2, Map.of("id", "12", "name", "'val12'"));
+    Thread.sleep(5000);
+    rowCount = getRowCount(targetUniverse, table2);
+    assertEquals(2, rowCount);
+
+    // Delete db scoped DR.
+    Result deleteResult = deleteDrConfig(drConfigUUID);
     assertOk(deleteResult);
     JsonNode deleteJson = Json.parse(contentAsString(deleteResult));
     TaskInfo deleteTaskInfo =

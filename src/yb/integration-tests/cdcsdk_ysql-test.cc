@@ -8613,19 +8613,6 @@ TEST_F(CDCSDKYsqlTest, TestNonEligibleTableShouldNotGetAddedToConsistentSnapshot
   TestNonEligibleTableShouldNotGetAddedToCDCStream(/* create_consistent_snapshot_stream */ true);
 }
 
-TEST_F(CDCSDKYsqlTest, TestTablesWithEnumArrayColumnShouldNotGetAddedToStream) {
-  ASSERT_OK(SetUpWithParams(1, 1, false, false));
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
-
-  ASSERT_OK(conn.Execute("CREATE TYPE \"enum_type\" AS ENUM('a', 'b', 'c');"));
-  ASSERT_OK(conn.Execute("CREATE TABLE test_table (a int primary key, b \"enum_type\"[])"));
-  auto stream_id = ASSERT_RESULT(CreateDBStream());
-
-  auto stream  = ASSERT_RESULT(GetCDCStream(stream_id));
-  // The table with enum array column will not be added to the stream.
-  ASSERT_EQ(stream.stream().table_id_size(), 0);
-}
-
 void CDCSDKYsqlTest::TestDisableOfDynamicTableAdditionOnCDCStream(
     bool use_consistent_snapshot_stream) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) =
