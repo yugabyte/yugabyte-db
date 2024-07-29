@@ -13,6 +13,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.GFlagDetails;
 import com.yugabyte.yw.common.gflags.GFlagGroup;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.forms.GFlagsValidationFormData;
 import com.yugabyte.yw.forms.GFlagsValidationFormData.GFlagValidationDetails;
@@ -20,8 +21,10 @@ import com.yugabyte.yw.forms.GFlagsValidationFormData.GFlagsValidationRequest;
 import com.yugabyte.yw.forms.GFlagsValidationFormData.GFlagsValidationResponse;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.regex.Matcher;
@@ -100,12 +103,39 @@ public class GFlagsValidationHandler {
         gflagsValidation.extractGFlags(version, ServerType.TSERVER.toString(), false).stream()
             .collect(Collectors.toMap(gflag -> gflag.name, Function.identity()));
 
+    List<String> allowedPreviewMasterFlags = new ArrayList<>();
+    List<String> allowedPreviewTServerFlags = new ArrayList<>();
+    if (gflags.gflagsList.size() > 0) {
+      Optional<GFlagsValidationRequest> allowedPreviewFlagValidationRequest =
+          gflags.gflagsList.stream()
+              .filter(flag -> flag.name.equals(GFlagsUtil.ALLOWED_PREVIEW_FLAGS_CSV))
+              .findFirst();
+      if (allowedPreviewFlagValidationRequest.isPresent()) {
+        if (allowedPreviewFlagValidationRequest.get().masterValue != null) {
+          allowedPreviewMasterFlags =
+              ImmutableList.copyOf(
+                  Arrays.stream(allowedPreviewFlagValidationRequest.get().masterValue.split(","))
+                      .map(String::trim)
+                      .collect(Collectors.toList()));
+        }
+        if (allowedPreviewFlagValidationRequest.get().tserverValue != null) {
+          allowedPreviewTServerFlags =
+              ImmutableList.copyOf(
+                  Arrays.stream(allowedPreviewFlagValidationRequest.get().tserverValue.split(","))
+                      .map(String::trim)
+                      .collect(Collectors.toList()));
+        }
+      }
+    }
+
     List<GFlagsValidationResponse> validationResponseArrayList = new ArrayList<>();
     for (GFlagsValidationRequest gflag : gflags.gflagsList) {
       GFlagsValidationResponse validationResponse = new GFlagsValidationResponse();
       validationResponse.name = gflag.name;
-      validationResponse.masterResponse = checkGflags(gflag, ServerType.MASTER, masterGflagsMap);
-      validationResponse.tserverResponse = checkGflags(gflag, ServerType.TSERVER, tserverGflagsMap);
+      validationResponse.masterResponse =
+          checkGflags(gflag, ServerType.MASTER, masterGflagsMap, allowedPreviewMasterFlags);
+      validationResponse.tserverResponse =
+          checkGflags(gflag, ServerType.TSERVER, tserverGflagsMap, allowedPreviewTServerFlags);
       validationResponseArrayList.add(validationResponse);
     }
     return validationResponseArrayList;
@@ -143,7 +173,10 @@ public class GFlagsValidationHandler {
   }
 
   private GFlagValidationDetails checkGflags(
-      GFlagsValidationRequest gflag, ServerType serverType, Map<String, GFlagDetails> gflags) {
+      GFlagsValidationRequest gflag,
+      ServerType serverType,
+      Map<String, GFlagDetails> gflags,
+      List<String> allowedPreviewFlags) {
     GFlagValidationDetails validationDetails = new GFlagValidationDetails();
     GFlagDetails gflagDetails = gflags.get(gflag.name);
     if (gflagDetails != null) {
@@ -157,6 +190,14 @@ public class GFlagsValidationHandler {
                 .get(gflag.name)
                 .contains(gflagValue)) {
           validationDetails.error = "Given value is not valid";
+        }
+      }
+      if (gflagDetails.tags != null && gflagDetails.tags.contains("preview")) {
+        if (!allowedPreviewFlags.contains(gflag.name)) {
+          validationDetails.error =
+              String.format(
+                  "Given flag '%s' is not allowed to be set unless it is added in '%s' flag",
+                  gflag.name, GFlagsUtil.ALLOWED_PREVIEW_FLAGS_CSV);
         }
       }
     }

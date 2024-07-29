@@ -148,26 +148,12 @@ public class XClusterConfigController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
         resourceLocation =
             @Resource(path = "sourceUniverseUUID", sourceType = SourceType.REQUEST_BODY)),
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
-        resourceLocation =
-            @Resource(path = "targetUniverseUUID", sourceType = SourceType.REQUEST_BODY)),
-    @RequiredPermissionOnResource(
-        requiredPermission =
-            @PermissionAttribute(
-                resourceType = ResourceType.UNIVERSE,
-                action = Action.BACKUP_RESTORE),
-        resourceLocation =
-            @Resource(path = "sourceUniverseUUID", sourceType = SourceType.REQUEST_BODY)),
-    @RequiredPermissionOnResource(
-        requiredPermission =
-            @PermissionAttribute(
-                resourceType = ResourceType.UNIVERSE,
-                action = Action.BACKUP_RESTORE),
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
         resourceLocation =
             @Resource(path = "targetUniverseUUID", sourceType = SourceType.REQUEST_BODY))
   })
@@ -410,7 +396,7 @@ public class XClusterConfigController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
         resourceLocation =
             @Resource(
                 path = "sourceUniverseUUID",
@@ -420,31 +406,7 @@ public class XClusterConfigController extends AuthenticatedController {
                 columnName = "uuid")),
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
-        resourceLocation =
-            @Resource(
-                path = "targetUniverseUUID",
-                sourceType = SourceType.DB,
-                dbClass = XClusterConfig.class,
-                identifier = "xcluster_configs",
-                columnName = "uuid")),
-    @RequiredPermissionOnResource(
-        requiredPermission =
-            @PermissionAttribute(
-                resourceType = ResourceType.UNIVERSE,
-                action = Action.BACKUP_RESTORE),
-        resourceLocation =
-            @Resource(
-                path = "sourceUniverseUUID",
-                sourceType = SourceType.DB,
-                dbClass = XClusterConfig.class,
-                identifier = "xcluster_configs",
-                columnName = "uuid")),
-    @RequiredPermissionOnResource(
-        requiredPermission =
-            @PermissionAttribute(
-                resourceType = ResourceType.UNIVERSE,
-                action = Action.BACKUP_RESTORE),
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
         resourceLocation =
             @Resource(
                 path = "targetUniverseUUID",
@@ -798,7 +760,7 @@ public class XClusterConfigController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
         resourceLocation =
             @Resource(
                 path = "sourceUniverseUUID",
@@ -808,31 +770,7 @@ public class XClusterConfigController extends AuthenticatedController {
                 columnName = "uuid")),
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
-        resourceLocation =
-            @Resource(
-                path = "targetUniverseUUID",
-                sourceType = SourceType.DB,
-                dbClass = XClusterConfig.class,
-                identifier = "xcluster_configs",
-                columnName = "uuid")),
-    @RequiredPermissionOnResource(
-        requiredPermission =
-            @PermissionAttribute(
-                resourceType = ResourceType.UNIVERSE,
-                action = Action.BACKUP_RESTORE),
-        resourceLocation =
-            @Resource(
-                path = "sourceUniverseUUID",
-                sourceType = SourceType.DB,
-                dbClass = XClusterConfig.class,
-                identifier = "xcluster_configs",
-                columnName = "uuid")),
-    @RequiredPermissionOnResource(
-        requiredPermission =
-            @PermissionAttribute(
-                resourceType = ResourceType.UNIVERSE,
-                action = Action.BACKUP_RESTORE),
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
         resourceLocation =
             @Resource(
                 path = "targetUniverseUUID",
@@ -911,6 +849,7 @@ public class XClusterConfigController extends AuthenticatedController {
       boolean dryRun,
       boolean isForceDelete,
       boolean isForceBootstrap) {
+
     // Add index tables.
     Map<String, List<String>> mainTableIndexTablesMap =
         XClusterConfigTaskBase.getMainTableIndexTablesMap(ybService, sourceUniverse, tableIds);
@@ -963,6 +902,32 @@ public class XClusterConfigController extends AuthenticatedController {
         isForceBootstrap);
   }
 
+  static XClusterConfigTaskParams getDbScopedRestartTaskParams(
+      YBClientService ybService,
+      XClusterConfig xClusterConfig,
+      Universe sourceUniverse,
+      Universe targetUniverse,
+      Set<String> dbIds,
+      RestartBootstrapParams restartBootstrapParams,
+      boolean dryRun,
+      boolean isForceDelete,
+      boolean isForceBootstrap) {
+
+    XClusterConfigCreateFormData.BootstrapParams bootstrapParams = null;
+    if (restartBootstrapParams != null) {
+      bootstrapParams = new XClusterConfigCreateFormData.BootstrapParams();
+      bootstrapParams.backupRequestParams = restartBootstrapParams.backupRequestParams;
+      bootstrapParams.tables = new HashSet<>();
+    }
+
+    return new XClusterConfigTaskParams(
+        xClusterConfig,
+        bootstrapParams,
+        CollectionUtils.isEmpty(dbIds) ? xClusterConfig.getDbIds() : dbIds,
+        null,
+        isForceBootstrap);
+  }
+
   /**
    * API that deletes an xCluster replication configuration.
    *
@@ -976,7 +941,7 @@ public class XClusterConfigController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
         resourceLocation =
             @Resource(
                 path = "sourceUniverseUUID",
@@ -986,7 +951,7 @@ public class XClusterConfigController extends AuthenticatedController {
                 columnName = "uuid")),
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
         resourceLocation =
             @Resource(
                 path = "targetUniverseUUID",
@@ -1066,8 +1031,10 @@ public class XClusterConfigController extends AuthenticatedController {
    */
   @ApiOperation(
       nickname = "syncXClusterConfig",
-      notes = "Available since YBA version 2.16.0.0.",
-      value = "Sync xcluster config",
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.23.0.0.</b></p>"
+              + " Sync xcluster config (V2) instead.",
+      value = "Sync xcluster config - deprecated",
       response = YBPTask.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -1076,7 +1043,8 @@ public class XClusterConfigController extends AuthenticatedController {
         resourceLocation =
             @Resource(path = "targetUniverseUUID", sourceType = SourceType.REQUEST_BODY))
   })
-  @YbaApi(visibility = YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.16.0.0")
+  @Deprecated
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.23.0.0")
   public Result sync(UUID customerUUID, UUID targetUniverseUUID, Http.Request request) {
     // Parse and validate request.
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -1118,6 +1086,75 @@ public class XClusterConfigController extends AuthenticatedController {
             Audit.ActionType.SyncXClusterConfig,
             taskUUID);
     return new YBPTask(taskUUID).asResult();
+  }
+
+  /**
+   * API that syncs xCluster replication configuration with platform state.
+   *
+   * @return Result
+   */
+  @ApiOperation(
+      nickname = "syncXClusterConfigV2",
+      notes = "Available since YBA version 2.23.0.0",
+      value = "Sync xcluster config (V2)",
+      response = YBPTask.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "sourceUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "xcluster_configs",
+                columnName = "uuid")),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "targetUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "xcluster_configs",
+                columnName = "uuid"))
+  })
+  @YbaApi(visibility = YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.23.0.0")
+  public Result syncXClusterConfig(UUID customerUUID, UUID xClusterUUID, Http.Request request) {
+    log.info("Received sync XClusterConfig({}) request", xClusterUUID);
+
+    // Parse and validate request.
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    XClusterConfig xClusterConfig =
+        XClusterConfig.getValidConfigOrBadRequest(customer, xClusterUUID);
+    verifyTaskAllowed(xClusterConfig, TaskType.SyncXClusterConfig);
+
+    Universe targetUniverse =
+        Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
+    XClusterConfigSyncFormData syncFormData = new XClusterConfigSyncFormData();
+    syncFormData.targetUniverseUUID = targetUniverse.getUniverseUUID();
+    syncFormData.replicationGroupName = xClusterConfig.getReplicationGroupName();
+    XClusterConfigTaskParams params = new XClusterConfigTaskParams(syncFormData);
+    UUID taskUUID = commissioner.submit(TaskType.SyncXClusterConfig, params);
+    CustomerTask.create(
+        customer,
+        targetUniverse.getUniverseUUID(),
+        taskUUID,
+        TargetType.XClusterConfig,
+        CustomerTask.TaskType.Sync,
+        xClusterConfig.getName());
+
+    log.info("Submitted sync XClusterConfig({}), task {}", xClusterUUID, taskUUID);
+
+    auditService()
+        .createAuditEntry(
+            request,
+            Audit.TargetType.XClusterConfig,
+            xClusterUUID.toString(),
+            Audit.ActionType.SyncXClusterConfig,
+            taskUUID);
+    return new YBPTask(taskUUID, xClusterUUID).asResult();
   }
 
   /**

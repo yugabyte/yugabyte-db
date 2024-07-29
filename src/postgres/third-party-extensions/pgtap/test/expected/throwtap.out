@@ -1,0 +1,99 @@
+\unset ECHO
+1..97
+ok 1 - four-argument form should pass
+ok 2 - four-argument form should have the proper description
+ok 3 - four-argument form should have the proper diagnostics
+ok 4 - three-argument errcode should pass
+ok 5 - three-argument errcode should have the proper description
+ok 6 - three-argument errcode should have the proper diagnostics
+ok 7 - two-argument errcode should pass
+ok 8 - two-argument errcode should have the proper description
+ok 9 - three argument errmsg should pass
+ok 10 - three argument errmsg should have the proper description
+ok 11 - three argument errmsg should have the proper diagnostics
+ok 12 - two-argument errmsg should pass
+ok 13 - two-argument errmsg should have the proper description
+ok 14 - two-argument errmsg should have the proper diagnostics
+ok 15 - single-argument form should pass
+ok 16 - single-argument form should have the proper description
+ok 17 - single-argument form should have the proper diagnostics
+ok 18 - prepared statement & errcode should pass
+ok 19 - prepared statement & errcode should have the proper description
+ok 20 - execute & errcode should pass
+ok 21 - execute & errcode should have the proper description
+ok 22 - invalid errcode should fail
+ok 23 - invalid errcode should have the proper description
+ok 24 - invalid errcode should have the proper diagnostics
+ok 25 - throws_ok(1/0, NULL) should work
+ok 26 - throws_ok diagnostics should fail
+ok 27 - throws_ok diagnostics should have the proper description
+ok 28 - throws_ok diagnostics should have the proper diagnostics
+ok 29 - lives_ok() should work
+ok 30 - lives_ok(prepared) should pass
+ok 31 - lives_ok(prepared) should have the proper description
+ok 32 - lives_ok(execute) should pass
+ok 33 - lives_ok(execute) should have the proper description
+ok 34 - lives_ok failure diagnostics should fail
+ok 35 - lives_ok failure diagnostics should have the proper description
+ok 36 - lives_ok failure diagnostics should have the proper diagnostics
+ok 37 - throws_like(sql, pattern, desc) should pass
+ok 38 - throws_like(sql, pattern, desc) should have the proper description
+ok 39 - throws_like(sql, pattern, desc) should have the proper diagnostics
+ok 40 - throws_like(sql, pattern) should pass
+ok 41 - throws_like(sql, pattern) should have the proper description
+ok 42 - throws_like(sql, pattern) should have the proper diagnostics
+ok 43 - throws_like(sql, pattern, desc) fail should fail
+ok 44 - throws_like(sql, pattern, desc) fail should have the proper description
+ok 45 - throws_like(sql, pattern, desc) fail should have the proper diagnostics
+ok 46 - throws_like(valid sql, pattern, desc) should fail
+ok 47 - throws_like(valid sql, pattern, desc) should have the proper description
+ok 48 - throws_like(valid sql, pattern, desc) should have the proper diagnostics
+ok 49 - throws_ilike(sql, pattern, desc) should pass
+ok 50 - throws_ilike(sql, pattern, desc) should have the proper description
+ok 51 - throws_ilike(sql, pattern, desc) should have the proper diagnostics
+ok 52 - throws_ilike(sql, pattern) should pass
+ok 53 - throws_ilike(sql, pattern) should have the proper description
+ok 54 - throws_ilike(sql, pattern) should have the proper diagnostics
+ok 55 - throws_ilike(sql, pattern, desc) fail should fail
+ok 56 - throws_ilike(sql, pattern, desc) fail should have the proper description
+ok 57 - throws_ilike(sql, pattern, desc) fail should have the proper diagnostics
+ok 58 - throws_ilike(valid sql, pattern, desc) should fail
+ok 59 - throws_ilike(valid sql, pattern, desc) should have the proper description
+ok 60 - throws_ilike(valid sql, pattern, desc) should have the proper diagnostics
+ok 61 - throws_matching(sql, regex, desc) should pass
+ok 62 - throws_matching(sql, regex, desc) should have the proper description
+ok 63 - throws_matching(sql, regex, desc) should have the proper diagnostics
+ok 64 - throws_matching(sql, regex, desc) should pass
+ok 65 - throws_matching(sql, regex, desc) should have the proper description
+ok 66 - throws_matching(sql, regex, desc) should have the proper diagnostics
+ok 67 - throws_matching(sql, regex, desc) should fail
+ok 68 - throws_matching(sql, regex, desc) should have the proper description
+ok 69 - throws_matching(sql, regex, desc) should have the proper diagnostics
+ok 70 - throws_matching(valid sql, regex, desc) should fail
+ok 71 - throws_matching(valid sql, regex, desc) should have the proper description
+ok 72 - throws_matching(valid sql, regex, desc) should have the proper diagnostics
+ok 73 - throws_imatching(sql, regex, desc) should pass
+ok 74 - throws_imatching(sql, regex, desc) should have the proper description
+ok 75 - throws_imatching(sql, regex, desc) should have the proper diagnostics
+ok 76 - throws_imatching(sql, regex, desc) should pass
+ok 77 - throws_imatching(sql, regex, desc) should have the proper description
+ok 78 - throws_imatching(sql, regex, desc) should have the proper diagnostics
+ok 79 - throws_imatching(sql, regex, desc) should fail
+ok 80 - throws_imatching(sql, regex, desc) should have the proper description
+ok 81 - throws_imatching(sql, regex, desc) should have the proper diagnostics
+ok 82 - throws_imatching(valid sql, regex, desc) should fail
+ok 83 - throws_imatching(valid sql, regex, desc) should have the proper description
+ok 84 - throws_imatching(valid sql, regex, desc) should have the proper diagnostics
+ok 85 - Create check_assert function
+ok 86 - throws_ok catches assert should pass
+ok 87 - throws_ok catches assert should have the proper description
+ok 88 - throws_ok catches assert should have the proper diagnostics
+ok 89 - throws_ok does not accept passing assert should fail
+ok 90 - throws_ok does not accept passing assert should have the proper description
+ok 91 - throws_ok does not accept passing assert should have the proper diagnostics
+ok 92 - lives_ok calling check_assert(true) should pass
+ok 93 - lives_ok calling check_assert(true) should have the proper description
+ok 94 - lives_ok calling check_assert(true) should have the proper diagnostics
+ok 95 - lives_ok with check_assert(false) should fail
+ok 96 - lives_ok with check_assert(false) should have the proper description
+ok 97 - lives_ok with check_assert(false) should have the proper diagnostics

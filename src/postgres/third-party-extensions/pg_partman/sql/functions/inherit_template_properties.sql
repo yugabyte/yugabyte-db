@@ -22,6 +22,8 @@ v_template_table        text;
 v_template_tablename    name;
 v_template_tablespace   name;
 v_template_unlogged     char;
+yb_v_child_index_found  boolean := false;
+yb_v_child_index_list   record;
 
 BEGIN
 /*
@@ -100,6 +102,7 @@ IF current_setting('server_version_num')::int >= 100000 THEN
         ORDER BY 1
     LOOP
         v_dupe_found := false;
+        yb_v_child_index_found := false;
 
         IF current_setting('server_version_num')::int >= 110000 THEN
             FOR v_parent_index_list IN 
@@ -137,6 +140,43 @@ IF current_setting('server_version_num')::int >= 100000 THEN
 
         IF v_dupe_found = true THEN
             -- Only used in PG11 and should skip trying to create indexes that already existed on the parent
+            CONTINUE;
+        END IF;
+
+        -- YB: Check for existing index on child table
+        FOR yb_v_child_index_list IN
+            SELECT
+            array_to_string(regexp_matches(pg_get_indexdef(indexrelid), ' USING .*'),',') AS statement
+            , i.indisprimary
+            , ( SELECT array_agg(a.attname ORDER by x.r)
+                FROM pg_catalog.pg_attribute a
+                JOIN ( SELECT k, row_number() over () as r
+                        FROM unnest(i.indkey) k ) as x
+                ON a.attnum = x.k AND a.attrelid = i.indrelid
+            ) AS indkey_names
+            FROM pg_catalog.pg_index i
+            WHERE i.indrelid = ( SELECT oid FROM pg_catalog.pg_class WHERE relname = p_child_tablename AND relnamespace = ( SELECT oid FROM pg_catalog.pg_namespace WHERE nspname = p_child_schema ))
+            AND i.indisvalid
+            ORDER BY 1
+        LOOP
+            IF yb_v_child_index_list.indisprimary = v_index_list.indisprimary THEN
+                IF yb_v_child_index_list.indisprimary THEN
+                    IF yb_v_child_index_list.indkey_names = v_index_list.indkey_names THEN
+                        RAISE DEBUG 'inherit_template_properties: Duplicate primary key found on child table: %', v_index_list.indkey_names;
+                        yb_v_child_index_found := true;
+                        CONTINUE; -- skip creating this index
+                    END IF;
+                END IF;
+            END IF;
+
+            IF yb_v_child_index_list.statement = v_index_list.statement THEN
+                RAISE DEBUG 'inherit_template_properties: Duplicate index found on child table: %', v_index_list.statement;
+                yb_v_child_index_found := true;
+                CONTINUE; -- skip creating this index
+            END IF;
+        END LOOP;
+
+        IF yb_v_child_index_found THEN
             CONTINUE;
         END IF;
 

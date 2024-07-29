@@ -38,6 +38,8 @@
     dest: "{{ yb_bin_dir }}/clock-sync.sh"
     owner: "{{ user_name }}"
     mode: 0755
+  tags:
+    - install-software
 
 - name: Setup | Create directory to land core dumps
   file:

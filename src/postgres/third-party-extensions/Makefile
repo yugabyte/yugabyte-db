@@ -8,6 +8,8 @@ DIRS = \
 	pgvector \
 	postgresql-hll \
 	pg_partman \
+	wal2json \
+	pgtap \
 
 BUILDDIRS = $(DIRS:%=build-%)
 INSTALLDIRS = $(DIRS:%=install-%)

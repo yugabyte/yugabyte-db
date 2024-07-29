@@ -975,3 +975,296 @@ SELECT yb_hash_code(x), y FROM t WHERE yb_hash_code(x) = 2675 AND y IN (5, 6);
 (1 row)
 
 DROP TABLE t;
+-- Issue #18360 (yb_hash_code compared to constant out of the range [0..65535])
+CREATE TABLE tt (i int, j int);
+CREATE INDEX ON tt (i, j);
+INSERT INTO tt VALUES (1, 2);
+-- Negative values
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > -1;
+                   QUERY PLAN
+-------------------------------------------------
+ Index Scan using tt_i_j_idx on tt
+   Index Cond: (yb_hash_code(i) > '-1'::integer)
+(2 rows)
+
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > -1;
+ i | j
+---+---
+ 1 | 2
+(1 row)
+
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >= -2;
+                    QUERY PLAN
+--------------------------------------------------
+ Index Scan using tt_i_j_idx on tt
+   Index Cond: (yb_hash_code(i) >= '-2'::integer)
+(2 rows)
+
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >= -2;
+ i | j
+---+---
+ 1 | 2
+(1 row)
+
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = -3;
+                   QUERY PLAN
+-------------------------------------------------
+ Index Scan using tt_i_j_idx on tt
+   Index Cond: (yb_hash_code(i) = '-3'::integer)
+(2 rows)
+
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = -3;
+ i | j
+---+---
+(0 rows)
+
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) < -4;
+                   QUERY PLAN
+-------------------------------------------------
+ Index Scan using tt_i_j_idx on tt
+   Index Cond: (yb_hash_code(i) < '-4'::integer)
+(2 rows)
+
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) < -4;
+ i | j
+---+---
+(0 rows)
+
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) <= -5;
+                    QUERY PLAN
+--------------------------------------------------
+ Index Scan using tt_i_j_idx on tt
+   Index Cond: (yb_hash_code(i) <= '-5'::integer)
+(2 rows)
+
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) <= -5;
+ i | j
+---+---
+(0 rows)
+
+-- Higher than upper bound values
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > 65536;
+               QUERY PLAN
+-----------------------------------------
+ Index Scan using tt_i_j_idx on tt
+   Index Cond: (yb_hash_code(i) > 65536)
+(2 rows)
+
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > 65536;
+ i | j
+---+---
+(0 rows)
+
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >= 65537;
+                QUERY PLAN
+------------------------------------------
+ Index Scan using tt_i_j_idx on tt
+   Index Cond: (yb_hash_code(i) >= 65537)
+(2 rows)
+
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >= 65537;
+ i | j
+---+---
+(0 rows)
+
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = 65538;
+               QUERY PLAN
+-----------------------------------------
+ Index Scan using tt_i_j_idx on tt
+   Index Cond: (yb_hash_code(i) = 65538)
+(2 rows)
+
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = 65538;
+ i | j
+---+---
+(0 rows)
+
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) < 65539;
+               QUERY PLAN
+-----------------------------------------
+ Index Scan using tt_i_j_idx on tt
+   Index Cond: (yb_hash_code(i) < 65539)
+(2 rows)
+
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) < 65539;
+ i | j
+---+---
+ 1 | 2
+(1 row)
+
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) <= 65540;
+                QUERY PLAN
+------------------------------------------
+ Index Scan using tt_i_j_idx on tt
+   Index Cond: (yb_hash_code(i) <= 65540)
+(2 rows)
+
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) <= 65540;
+ i | j
+---+---
+ 1 | 2
+(1 row)
+
+-- Values other than int4
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > -2147483649;
+                       QUERY PLAN
+---------------------------------------------------------
+ Index Scan using tt_i_j_idx on tt
+   Index Cond: (yb_hash_code(i) > '-2147483649'::bigint)
+(2 rows)
+
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > -2147483649;
+ i | j
+---+---
+ 1 | 2
+(1 row)
+
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >= -2147483650;
+                        QUERY PLAN
+----------------------------------------------------------
+ Index Scan using tt_i_j_idx on tt
+   Index Cond: (yb_hash_code(i) >= '-2147483650'::bigint)
+(2 rows)
+
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >= -2147483650;
+ i | j
+---+---
+ 1 | 2
+(1 row)
+
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = -2147483651;
+                       QUERY PLAN
+---------------------------------------------------------
+ Index Scan using tt_i_j_idx on tt
+   Index Cond: (yb_hash_code(i) = '-2147483651'::bigint)
+(2 rows)
+
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = -2147483651;
+ i | j
+---+---
+(0 rows)
+
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) < -2147483652;
+                       QUERY PLAN
+---------------------------------------------------------
+ Index Scan using tt_i_j_idx on tt
+   Index Cond: (yb_hash_code(i) < '-2147483652'::bigint)
+(2 rows)
+
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) < -2147483652;
+ i | j
+---+---
+(0 rows)
+
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) <= -2147483653;
+                        QUERY PLAN
+----------------------------------------------------------
+ Index Scan using tt_i_j_idx on tt
+   Index Cond: (yb_hash_code(i) <= '-2147483653'::bigint)
+(2 rows)
+
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) <= -2147483653;
+ i | j
+---+---
+(0 rows)
+
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > 9223372036854775808;
+                               QUERY PLAN
+-------------------------------------------------------------------------
+ Seq Scan on tt
+   Filter: ((yb_hash_code(i))::numeric > '9223372036854775808'::numeric)
+(2 rows)
+
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > 9223372036854775808;
+ i | j
+---+---
+(0 rows)
+
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >= 9223372036854775809;
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Seq Scan on tt
+   Filter: ((yb_hash_code(i))::numeric >= '9223372036854775809'::numeric)
+(2 rows)
+
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >= 9223372036854775809;
+ i | j
+---+---
+(0 rows)
+
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = 9223372036854775810;
+                               QUERY PLAN
+-------------------------------------------------------------------------
+ Seq Scan on tt
+   Filter: ((yb_hash_code(i))::numeric = '9223372036854775810'::numeric)
+(2 rows)
+
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = 9223372036854775810;
+ i | j
+---+---
+(0 rows)
+
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) < 9223372036854775811;
+                               QUERY PLAN
+-------------------------------------------------------------------------
+ Seq Scan on tt
+   Filter: ((yb_hash_code(i))::numeric < '9223372036854775811'::numeric)
+(2 rows)
+
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) < 9223372036854775811;
+ i | j
+---+---
+ 1 | 2
+(1 row)
+
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) <= 9223372036854775812;
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Seq Scan on tt
+   Filter: ((yb_hash_code(i))::numeric <= '9223372036854775812'::numeric)
+(2 rows)
+
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) <= 9223372036854775812;
+ i | j
+---+---
+ 1 | 2
+(1 row)
+
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > -0.01;
+                        QUERY PLAN
+-----------------------------------------------------------
+ Seq Scan on tt
+   Filter: ((yb_hash_code(i))::numeric > '-0.01'::numeric)
+(2 rows)
+
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) > -0.01;
+ i | j
+---+---
+ 1 | 2
+(1 row)
+
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >= 123456.78;
+                     QUERY PLAN
+-----------------------------------------------------
+ Seq Scan on tt
+   Filter: ((yb_hash_code(i))::numeric >= 123456.78)
+(2 rows)
+
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) >= 123456.78;
+ i | j
+---+---
+(0 rows)
+
+EXPLAIN (COSTS OFF) /*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = 3.14;
+                  QUERY PLAN
+-----------------------------------------------
+ Seq Scan on tt
+   Filter: ((yb_hash_code(i))::numeric = 3.14)
+(2 rows)
+
+/*+IndexScan(tt)*/ SELECT * FROM tt WHERE yb_hash_code(i) = 3.14;
+ i | j
+---+---
+(0 rows)
+
+DROP TABLE tt;

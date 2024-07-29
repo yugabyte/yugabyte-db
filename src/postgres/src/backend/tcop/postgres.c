@@ -5068,6 +5068,15 @@ yb_perform_retry_on_error(
 		elog(ERROR, "unexpected txn error code: %d", txn_errcode);
 	}
 
+	/*
+	 * If in parallel mode, destroy parallel contexts.
+	 * It is important to do before portal's the resource owners cleanup,
+	 * because they free DSM blocks they own, leaving dangling references
+	 * in the parallel contexts.
+	 */
+	if (IsInParallelMode())
+		YbClearParallelContexts();
+
 	Portal portal = portal_name ? GetPortalByName(portal_name) : NULL;
 	if (portal)
 	{

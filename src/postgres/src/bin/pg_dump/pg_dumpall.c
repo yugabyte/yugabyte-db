@@ -827,7 +827,7 @@ dumpRoles(PGconn *conn)
 	for (i = 0; i < PQntuples(res); i++)
 	{
 		const char *rolename;
-		char	   *frolename;
+		char	   *yb_frolename;
 		Oid			auth_oid;
 
 		auth_oid = atooid(PQgetvalue(res, i, i_oid));
@@ -850,7 +850,7 @@ dumpRoles(PGconn *conn)
 							  auth_oid);
 		}
 
-		frolename = pg_strdup(fmtId(rolename));
+		yb_frolename = pg_strdup(fmtId(rolename));
 		/*
 		 * We dump CREATE ROLE followed by ALTER ROLE to ensure that the role
 		 * will acquire the right properties even if it already exists (ie, it
@@ -871,15 +871,15 @@ dumpRoles(PGconn *conn)
 					"\\endif\n"
 					"\\if :role_exists\n"
 					"    \\echo 'Role %s already exists.'\n"
-					"\\else\n    ", frolename, frolename);
+					"\\else\n    ", yb_frolename, yb_frolename);
 
-			appendPQExpBuffer(buf, "CREATE ROLE %s;\n", frolename);
+			appendPQExpBuffer(buf, "CREATE ROLE %s;\n", yb_frolename);
 
 			if (include_yb_metadata)
 				appendPQExpBufferStr(buf, "\\endif\n");
 		}
 
-		appendPQExpBuffer(buf, "ALTER ROLE %s WITH", frolename);
+		appendPQExpBuffer(buf, "ALTER ROLE %s WITH", yb_frolename);
 
 		if (strcmp(PQgetvalue(res, i, i_rolsuper), "t") == 0)
 			appendPQExpBufferStr(buf, " SUPERUSER");
@@ -935,7 +935,7 @@ dumpRoles(PGconn *conn)
 
 		if (!no_comments && !PQgetisnull(res, i, i_rolcomment))
 		{
-			appendPQExpBuffer(buf, "COMMENT ON ROLE %s IS ", frolename);
+			appendPQExpBuffer(buf, "COMMENT ON ROLE %s IS ", yb_frolename);
 			appendStringLiteralConn(buf, PQgetvalue(res, i, i_rolcomment), conn);
 			appendPQExpBufferStr(buf, ";\n");
 		}
@@ -949,7 +949,7 @@ dumpRoles(PGconn *conn)
 			appendPQExpBufferStr(buf, "\n");
 
 		fprintf(OPF, "%s", buf->data);
-		free(frolename);
+		free(yb_frolename);
 	}
 
 	/*

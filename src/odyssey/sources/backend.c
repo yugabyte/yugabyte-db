@@ -97,7 +97,8 @@ void od_backend_error(od_server_t *server, char *context, char *data,
 
 			if (server->client != NULL &&
 				((od_client_t *)server->client)->type == OD_POOL_CLIENT_EXTERNAL)
-				od_frontend_fatal(server->client, KIWI_CONNECTION_DOES_NOT_EXIST, error.hint);
+					od_frontend_error(server->client, KIWI_CONNECTION_DOES_NOT_EXIST,
+						error.hint, od_io_error(&server->io));
 		}
 	}
 }

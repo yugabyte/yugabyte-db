@@ -24,9 +24,7 @@ export type XClusterTableType = typeof XCLUSTER_SUPPORTED_TABLE_TYPES[number];
 type XClusterTableUiExtraMetadata = {
   // Stores the user facing string in the object for sorting/searching usage.
   statusLabel: string;
-
-  // This can be undefined if unable to fetch metrics for the table.
-  replicationLag?: number;
+  replicationLag: number;
 };
 
 export type XClusterTable = YBTable &

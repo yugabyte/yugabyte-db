@@ -965,7 +965,7 @@ TEST_F(PgDdlAtomicityTxnTest,
   const auto client = ASSERT_RESULT(cluster_->CreateClient());
   ASSERT_OK(VerifySchema(client.get(), "yugabyte", table(), {"a", "b", "c"}));
   ASSERT_OK(cluster_->SetFlagOnMasters(
-      "TEST_ysql_ddl_rollback_failure_percentage", "100"));
+      "TEST_ysql_ddl_rollback_failure_probability", "1.0"));
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN c", table()));
   ASSERT_OK(VerifySchema(client.get(), "yugabyte", table(), {"a", "b"}));
   ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET b = 2 WHERE a = 1", table()));
