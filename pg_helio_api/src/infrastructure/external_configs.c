@@ -23,6 +23,8 @@ bool PEC_FeatureFlagTimeseriesMetricIndexes =
 int PEC_TransactionTimeoutLimitSeconds =
 	DEFAULT_TRANSACTION_TIMEOUT_LIMIT_SECONDS;
 
+bool PEC_FailurePointDisablePipelineOptimization = false;
+
 /*
  * =================================================================================================================
  * Forward static declarations
@@ -38,6 +40,21 @@ static int CompareConfigurationName(const void *name, const void *config);
  * as well as configuration are searched in the list using binary search.
  */
 static const ExtensionExternalConfigInfo ExtensionExternalConfigurations[] = {
+	/* failpoint.disablePipelineOptimization */
+	{
+		.name = "failpoint.disablePipelineOptimization",
+		.description = "Internal feature flag for disabling pipeline optimizations.",
+		.settableProperties = {
+			.isSettableAtStartup = true,
+			.isSettableAtRuntime = false
+		},
+		.values = {
+			.RuntimeValue = (void *) &PEC_FailurePointDisablePipelineOptimization,
+			.DefaultValue.boolValue = false,
+			.valueType = ConfigValueType_Bool
+		}
+	},
+
 	/* featureFlagCollModIndexUnique */
 	{
 		.name = "featureFlagCollModIndexUnique",

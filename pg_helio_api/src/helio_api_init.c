@@ -287,6 +287,9 @@ bool EnableLetSupport = DEFAULT_ENABLE_LET_SUPPORT;
 #define DEFAULT_ENABLE_LOOKUP_LET_SUPPORT false
 bool EnableLookupLetSupport = DEFAULT_ENABLE_LOOKUP_LET_SUPPORT;
 
+#define DEFAULT_ENABLE_LOOKUP_UNWIND_OPTIMIZATION false
+bool EnableLookupUnwindSupport = DEFAULT_ENABLE_LOOKUP_UNWIND_OPTIMIZATION;
+
 #define DEFAULT_IGNORE_LET_ON_QUERY false
 bool IgnoreLetOnQuerySupport = DEFAULT_IGNORE_LET_ON_QUERY;
 
@@ -785,6 +788,13 @@ InitApiConfigurations(char *prefix)
 		gettext_noop(
 			"Determines whether to enable support for the let in commands and $lookup"),
 		NULL, &EnableLookupLetSupport, DEFAULT_ENABLE_LOOKUP_LET_SUPPORT,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		"helio_api.enableLookupUnwindOptimization",
+		gettext_noop(
+			"Determines whether to enable support for the optimizing $unwind with $lookup prefix"),
+		NULL, &EnableLookupUnwindSupport, DEFAULT_ENABLE_LOOKUP_UNWIND_OPTIMIZATION,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(

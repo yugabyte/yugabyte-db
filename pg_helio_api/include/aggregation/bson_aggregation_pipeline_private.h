@@ -100,7 +100,11 @@ RangeTblEntry * MakeSubQueryRte(Query *subQuery, int stageNum, int pipelineDepth
 								const char *prefix, bool includeAllColumns);
 
 bool CanInlineLookupPipeline(const bson_value_t *pipeline,
-							 const StringView *lookupPath);
+							 const StringView *lookupPath,
+							 bool hasLet,
+							 pgbson **inlinedPipeline,
+							 pgbson **nonInlinedPipeline,
+							 bool *pipelineIsValid);
 
 void ParseCursorDocument(bson_iter_t *iterator, QueryData *queryData);
 const char * CreateNamespaceName(text *databaseName,
@@ -146,7 +150,10 @@ Query * HandleCurrentOp(const bson_value_t *existingValue, Query *query,
 						AggregationPipelineBuildContext *context);
 
 bool CanInlineLookupStageLookup(const bson_value_t *lookupStage,
-								const StringView *lookupPath);
+								const StringView *lookupPath,
+								bool hasLet);
+
+bool TryOptimizeUnwindForArrayAgg(Query *query, StringView pathView);
 
 /* vector search related aggregation stages */
 Query * HandleSearch(const bson_value_t *existingValue, Query *query,

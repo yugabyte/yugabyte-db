@@ -543,7 +543,7 @@ EXPlAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Aggregate
    Output: bson_object_agg((COALESCE(bson_array_agg(bson_dollar_add_fields(facetsub_stage_1.document, '{ "newField" : "1", "a.y" : [ "p", "q" ] }'::bson), 'a'::text), '{ "a" : [  ] }'::bson)))
-   CTE facet_base
+   CTE facet_base_0
      ->  Bitmap Heap Scan on helio_data.documents_3500 collection
            Output: collection.document
            Recheck Cond: (collection.shard_key_value = '3500'::bigint)
@@ -552,18 +552,18 @@ EXPlAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
    ->  Append
          ->  Aggregate
                Output: COALESCE(bson_array_agg(bson_dollar_add_fields(facetsub_stage_1.document, '{ "newField" : "1", "a.y" : [ "p", "q" ] }'::bson), 'a'::text), '{ "a" : [  ] }'::bson)
-               ->  CTE Scan on facet_base facetsub_stage_1
+               ->  CTE Scan on facet_base_0 facetsub_stage_1
                      Output: facetsub_stage_1.document
          ->  Aggregate
                Output: COALESCE(bson_array_agg((bson_repath_and_build('d'::text, bsonsum('{ "" : { "$numberInt" : "1" } }'::bson))), 'b'::text), '{ "b" : [  ] }'::bson)
                ->  Aggregate
                      Output: bson_repath_and_build('d'::text, bsonsum('{ "" : { "$numberInt" : "1" } }'::bson))
-                     ->  CTE Scan on facet_base facetsub_stage_2
+                     ->  CTE Scan on facet_base_0 facetsub_stage_2
          ->  Aggregate
                Output: COALESCE(bson_array_agg((bson_dollar_unwind(facetsub_stage_3.document, '$a.b'::text)), 'c'::text), '{ "c" : [  ] }'::bson)
                ->  ProjectSet
                      Output: bson_dollar_unwind(facetsub_stage_3.document, '$a.b'::text)
-                     ->  CTE Scan on facet_base facetsub_stage_3
+                     ->  CTE Scan on facet_base_0 facetsub_stage_3
                            Output: facetsub_stage_3.document
 (24 rows)
 

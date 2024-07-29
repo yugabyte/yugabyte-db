@@ -175,6 +175,7 @@ PG_FUNCTION_INFO_V1(bson_dollar_set);
 PG_FUNCTION_INFO_V1(bson_dollar_unset);
 PG_FUNCTION_INFO_V1(bson_dollar_replace_root);
 PG_FUNCTION_INFO_V1(bson_dollar_merge_documents);
+PG_FUNCTION_INFO_V1(bson_dollar_lookup_expression_eval_merge);
 PG_FUNCTION_INFO_V1(bson_dollar_lookup_extract_filter_expression);
 PG_FUNCTION_INFO_V1(bson_dollar_lookup_extract_filter_array);
 PG_FUNCTION_INFO_V1(bson_dollar_lookup_project);
@@ -235,6 +236,85 @@ bson_dollar_project(PG_FUNCTION_ARGS)
 	{
 		PG_RETURN_POINTER(ProjectDocumentWithState(document, state));
 	}
+}
+
+
+/*
+ * bson_dollar_lookup_expression_eval_merge merges the let spec that is used for lookup against the left
+ * document. This is similar to what a $project does.
+ */
+Datum
+bson_dollar_lookup_expression_eval_merge(PG_FUNCTION_ARGS)
+{
+	pgbson *document = PG_GETARG_PGBSON(0);
+	pgbson *pathSpec = PG_GETARG_PGBSON(1);
+	pgbson *variableSpec = PG_GETARG_MAYBE_NULL_PGBSON(2);
+
+
+	BuildBsonPathTreeContext context = { 0 };
+	context.buildPathTreeFuncs = &DefaultPathTreeFuncs;
+
+	BsonIntermediatePathNode *variableTree = NULL;
+
+	/* First pass, take the parent variable spec and put it into the tree */
+	if (variableSpec == NULL)
+	{
+		variableSpec = PgbsonInitEmpty();
+	}
+
+	/* Here we presume the values are raw values: This is because the "variableSpec" in this case
+	 * comes from 2 sources:
+	 * 1) A top level command let which can only be constant values
+	 * 2) A parent $lookup which should have already evaluated the expressions into the constants.
+	 */
+	context.skipParseAggregationExpressions = true;
+
+	bool hasFields;
+	bson_iter_t specIter;
+	PgbsonInitIterator(variableSpec, &specIter);
+
+	bool forceLeafExpression = true;
+	variableTree = BuildBsonPathTree(&specIter, &context,
+									 forceLeafExpression, &hasFields);
+
+	/* Now add in the variable spec on top */
+	context.skipParseAggregationExpressions = false;
+	PgbsonInitIterator(pathSpec, &specIter);
+	MergeBsonPathTree(variableTree, &specIter, &context, forceLeafExpression,
+					  &hasFields);
+
+	BsonProjectionQueryState queryState = { 0 };
+	queryState.hasExclusion = false;
+	queryState.hasInclusion = true;
+	queryState.root = variableTree;
+	queryState.projectNonMatchingFields = false;
+
+	pgbson *resultDoc = ProjectDocumentWithState(document, &queryState);
+
+	/* Now validate if there's any undefined variables - if so we need to set them to null */
+	PgbsonInitIterator(pathSpec, &specIter);
+	pgbson_writer variableWriter;
+	PgbsonWriterInit(&variableWriter);
+	bool hasVariablesToAdd = false;
+	while (bson_iter_next(&specIter))
+	{
+		bson_iter_t iterUnused;
+		const char *varKey = bson_iter_key(&specIter);
+		if (!PgbsonInitIteratorAtPath(resultDoc, varKey, &iterUnused))
+		{
+			/* variable not found - need to add the original key with null */
+			PgbsonWriterAppendNull(&variableWriter, varKey, -1);
+			hasVariablesToAdd = true;
+		}
+	}
+
+	if (hasVariablesToAdd)
+	{
+		PgbsonWriterConcat(&variableWriter, resultDoc);
+		resultDoc = PgbsonWriterGetPgbson(&variableWriter);
+	}
+
+	PG_RETURN_POINTER(resultDoc);
 }
 
 

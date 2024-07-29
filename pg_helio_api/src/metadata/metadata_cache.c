@@ -599,6 +599,9 @@ typedef struct HelioApiOidCacheData
 	/* OID of the bson_dollar_project function with let */
 	Oid ApiCatalogBsonDollarProjectWithLetFunctionOid;
 
+	/* OID of the bson_dollar_project_expression function */
+	Oid ApiCatalogBsonDollarLookupExpressionEvalMergeOid;
+
 	/* OID of the command_bson_get_value function */
 	Oid ApiCatalogBsonGetValueFunctionId;
 
@@ -2855,6 +2858,17 @@ BsonDollarProjectWithLetFunctionOid(void)
 	return GetOperatorFunctionIdThreeArgs(
 		&Cache.ApiCatalogBsonDollarProjectWithLetFunctionOid,
 		"helio_api_internal", "bson_dollar_project",
+		HelioCoreBsonTypeId(), HelioCoreBsonTypeId(),
+		HelioCoreBsonTypeId());
+}
+
+
+Oid
+BsonDollarLookupExpressionEvalMergeOid(void)
+{
+	return GetOperatorFunctionIdThreeArgs(
+		&Cache.ApiCatalogBsonDollarLookupExpressionEvalMergeOid,
+		"helio_api_internal", "bson_dollar_lookup_expression_eval_merge",
 		HelioCoreBsonTypeId(), HelioCoreBsonTypeId(),
 		HelioCoreBsonTypeId());
 }

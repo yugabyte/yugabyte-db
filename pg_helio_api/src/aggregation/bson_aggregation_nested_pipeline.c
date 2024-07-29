@@ -93,18 +93,72 @@ typedef struct
 	bool hasLookupMatch;
 } LookupArgs;
 
+typedef struct LookupOptimizationArgs
+{
+	/*
+	 * Is the query agnostic
+	 */
+	bool isLookupAgnostic;
+
+	/*
+	 * Whether or not the $lookup is uncorrelated.
+	 */
+	bool isLookupUncorrelated;
+
+	/*
+	 * The segment of the pipeline that can be inlined.
+	 */
+	bson_value_t inlinedLookupPipeline;
+
+	/*
+	 * The segment of the pipeline that cannot be inlined and needs
+	 * to be applied post-join.
+	 */
+	bson_value_t nonInlinedLookupPipeline;
+
+	/*
+	 * Can the join be done on the right query's _id?
+	 */
+	bool isLookupJoinOnRightId;
+
+	/*
+	 * Can the join be done on the left query's _id?
+	 */
+	bool isLookupJoinOnLeftId;
+
+	/*
+	 * Right query's subqueryContext
+	 */
+	AggregationPipelineBuildContext rightQueryContext;
+
+	/*
+	 * The base query on the rightquery.
+	 */
+	Query *rightBaseQuery;
+
+	/*
+	 * Whether or not the query has Let.
+	 * This is true if the lookupArgs has let *or* the parent context
+	 * has a let that is non const.
+	 */
+	bool hasLet;
+} LookupOptimizationArgs;
+
 
 /*
  * The walker state to replace the Let variable in queries.
  */
-typedef struct LookupLetQueryTreeWalkerState
+typedef struct LevelsUpQueryTreeWalkerState
 {
 	/* numLevels up - modified during modify state*/
 	int numLevels;
 
 	/* the let variable in the query */
 	Var *originalVariable;
-} LookupLetQueryTreeWalkerState;
+
+	/* Used by the RTE CTE LevelsUp Walker */
+	const char *cteName;
+} LevelsUpQueryTreeWalkerState;
 
 
 /*
@@ -166,8 +220,8 @@ static bool CanInlineInnerLookupPipeline(LookupArgs *lookupArgs);
 static int ValidateFacet(const bson_value_t *facetValue);
 static Query * BuildFacetUnionAllQuery(int numStages, const bson_value_t *facetValue,
 									   CommonTableExpr *baseCte, QuerySource querySource,
-									   Datum databaseNameDatum, const
-									   bson_value_t *sortSpec, Expr *variableContext);
+									   const bson_value_t *sortSpec,
+									   AggregationPipelineBuildContext *parentContext);
 static Query * AddBsonArrayAggFunction(Query *baseQuery,
 									   AggregationPipelineBuildContext *context,
 									   ParseState *parseState, const char *fieldPath,
@@ -186,6 +240,10 @@ static Query * CreateCteSelectQuery(CommonTableExpr *baseCte, const char *prefix
 									int stageNum, int levelsUp);
 static Query * ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 								 LookupArgs *lookupArgs);
+static Query * ProcessLookupCoreWithLet(Query *query,
+										AggregationPipelineBuildContext *context,
+										LookupArgs *lookupArgs);
+static void ValidatePipelineForShardedLookupWithLet(const bson_value_t *pipeline);
 static Query * ProcessGraphLookupCore(Query *query,
 									  AggregationPipelineBuildContext *context,
 									  GraphLookupArgs *lookupArgs);
@@ -200,8 +258,11 @@ static Query * BuildRecursiveGraphLookupQuery(QuerySource parentSource,
 											  CommonTableExpr *baseCteExpr, int levelsUp);
 static void ValidateUnionWithPipeline(const bson_value_t *pipeline, bool hasCollection);
 
-static void WalkRightQueryForLetAndSetLevelsUp(Query *rightQuery, Var *leftQueryLookupLet,
-											   int leftQueryLevelsUp);
+static void ValidateLetHasNoVariables(pgbson *let);
+static void WalkQueryAndSetLevelsUp(Query *query, Var *varToCheck,
+									int varLevelsUpBase);
+static void WalkQueryAndSetCteLevelsUp(Query *query, const char *cteName,
+									   int varLevelsUpBase);
 
 /*
  * Helper function that creates a UNION ALL Set operation statement
@@ -283,12 +344,6 @@ HandleFacet(const bson_value_t *existingValue, Query *query,
 			AggregationPipelineBuildContext *context)
 {
 	ReportFeatureUsage(FEATURE_STAGE_FACET);
-	if (context->nestedPipelineLevel > 0)
-	{
-		ereport(ERROR, (errmsg(
-							"Unexpected, facet should not be called in a nested pipeline")));
-	}
-
 	if (list_length(query->targetList) > 1)
 	{
 		/* if we have multiple projectors, push to a subquery (Facet needs 1 projector) */
@@ -300,20 +355,20 @@ HandleFacet(const bson_value_t *existingValue, Query *query,
 
 	/* First step, move the current query into a CTE */
 	CommonTableExpr *baseCte = makeNode(CommonTableExpr);
-	baseCte->ctename = "facet_base";
+	baseCte->ctename = psprintf("facet_base_%d", context->nestedPipelineLevel);
 	baseCte->ctequery = (Node *) query;
 
 	/* Second step: Build UNION ALL query */
 	Query *finalQuery = BuildFacetUnionAllQuery(numStages, existingValue, baseCte,
 												query->querySource,
-												context->databaseNameDatum,
 												&context->sortSpec,
-												context->variableSpec);
+												context);
 
 	/* Finally, add bson_object_agg */
 	finalQuery = AddBsonObjectAggFunction(finalQuery, context);
-
 	finalQuery->cteList = list_make1(baseCte);
+	WalkQueryAndSetCteLevelsUp(finalQuery, baseCte->ctename, 0);
+	context->requiresSubQuery = true;
 	return finalQuery;
 }
 
@@ -340,7 +395,14 @@ HandleLookup(const bson_value_t *existingValue, Query *query,
 	ParseLookupStage(existingValue, &lookupArgs);
 
 	/* Now build the base query for the lookup */
-	return ProcessLookupCore(query, context, &lookupArgs);
+	if (EnableLookupLetSupport)
+	{
+		return ProcessLookupCoreWithLet(query, context, &lookupArgs);
+	}
+	else
+	{
+		return ProcessLookupCore(query, context, &lookupArgs);
+	}
 }
 
 
@@ -938,6 +1000,172 @@ HandleUnionWith(const bson_value_t *existingValue, Query *query,
 }
 
 
+typedef struct UnwindWalkerContext
+{
+	StringView pathView;
+
+	bool isQueryValueChanged;
+} UnwindWalkerContext;
+
+static bool
+IsQueryUnsafeForUnwind(Query *query)
+{
+	if (query->hasWindowFuncs || query->hasTargetSRFs ||
+		query->hasRecursive)
+	{
+		return true;
+	}
+
+	return false;
+}
+
+
+static bool
+BsonArrayAggQueryUnwindWalker(Node *node, UnwindWalkerContext *context)
+{
+	if (node == NULL)
+	{
+		return false;
+	}
+
+	if (IsA(node, Query))
+	{
+		Query *query = (Query *) node;
+		if (IsQueryUnsafeForUnwind(query))
+		{
+			/* Set invalid and stop searching */
+			context->isQueryValueChanged = false;
+			return true;
+		}
+
+		return false;
+	}
+	else if (IsA(node, TargetEntry))
+	{
+		TargetEntry *targetEntry = (TargetEntry *) node;
+		if (targetEntry->ressortgroupref != 0)
+		{
+			/* Stop searching on hitting a group/order by */
+			context->isQueryValueChanged = false;
+			return true;
+		}
+
+		if (IsA(targetEntry->expr, FuncExpr))
+		{
+			FuncExpr *funcExpr = (FuncExpr *) targetEntry->expr;
+
+			if (funcExpr->funcid == BsonDollaMergeDocumentsFunctionOid())
+			{
+				if (IsA(lsecond(funcExpr->args), SubLink))
+				{
+					SubLink *subLink = (SubLink *) lsecond(funcExpr->args);
+					if (subLink->subLinkType != EXPR_SUBLINK)
+					{
+						context->isQueryValueChanged = false;
+						return true;
+					}
+
+					return query_tree_walker((Query *) subLink->subselect,
+											 BsonArrayAggQueryUnwindWalker, context,
+											 QTW_DONT_COPY_QUERY |
+											 QTW_EXAMINE_RTES_AFTER |
+											 QTW_EXAMINE_SORTGROUP);
+				}
+			}
+		}
+
+		if (IsA(targetEntry->expr, CoalesceExpr))
+		{
+			CoalesceExpr *coalesce = (CoalesceExpr *) targetEntry->expr;
+			if (list_length(coalesce->args) != 2 ||
+				!IsA(linitial(coalesce->args), Aggref))
+			{
+				return false;
+			}
+
+			Aggref *aggref = (Aggref *) linitial(coalesce->args);
+			if (aggref->aggfnoid != BsonArrayAggregateFunctionOid())
+			{
+				context->isQueryValueChanged = false;
+				return true;
+			}
+
+			TargetEntry *firstEntry = linitial(aggref->args);
+			TargetEntry *secondEntry = lsecond(aggref->args);
+			if (!IsA(secondEntry->expr, Const))
+			{
+				return false;
+			}
+
+			Const *secondConst = (Const *) secondEntry->expr;
+			text *secondText = DatumGetTextPP(secondConst->constvalue);
+			StringView textView = CreateStringViewFromText(secondText);
+			if (StringViewEquals(&textView, &context->pathView))
+			{
+				/* We can rewrite this bson_array_agg as original document
+				 * bson_expr_eval(document, '{ "root": "$$ROOT" }');
+				 */
+				pgbson_writer writer;
+				PgbsonWriterInit(&writer);
+				PgbsonWriterAppendUtf8(&writer, context->pathView.string,
+									   context->pathView.length, "$$ROOT");
+				Const *constValue = MakeBsonConst(PgbsonWriterGetPgbson(&writer));
+				Node *trueConst = MakeBoolValueConst(true);
+				List *expressionGetArgs = list_make3(firstEntry->expr, constValue,
+													 trueConst);
+
+
+				Expr *newExpr = (Expr *) makeFuncExpr(BsonExpressionGetFunctionOid(),
+													  BsonTypeId(),
+													  expressionGetArgs, InvalidOid,
+													  InvalidOid,
+													  COERCE_EXPLICIT_CALL);
+
+				coalesce->args = list_make2(newExpr, lsecond(coalesce->args));
+				context->isQueryValueChanged = true;
+				return true;
+			}
+		}
+	}
+	else if (IsA(node, RangeTblEntry))
+	{
+		RangeTblEntry *entry = (RangeTblEntry *) node;
+		if (entry->rtekind == RTE_SUBQUERY)
+		{
+			return query_tree_walker(entry->subquery, BsonArrayAggQueryUnwindWalker,
+									 context,
+									 QTW_DONT_COPY_QUERY | QTW_EXAMINE_RTES_AFTER |
+									 QTW_EXAMINE_SORTGROUP);
+		}
+
+		return false;
+	}
+
+	return expression_tree_walker(node, BsonArrayAggQueryUnwindWalker, context);
+}
+
+
+/*
+ * Optimize $unwind for cases with ARRAY_AGG
+ */
+bool
+TryOptimizeUnwindForArrayAgg(Query *query, StringView pathView)
+{
+	UnwindWalkerContext walkerContext = { 0 };
+	walkerContext.pathView = pathView;
+
+	if (IsQueryUnsafeForUnwind(query))
+	{
+		return false;
+	}
+
+	query_tree_walker(query, BsonArrayAggQueryUnwindWalker, &walkerContext,
+					  QTW_DONT_COPY_QUERY | QTW_EXAMINE_RTES_AFTER |
+					  QTW_EXAMINE_SORTGROUP);
+	return walkerContext.isQueryValueChanged;
+}
+
+
 /*
  * Validates the facet pipeline definition.
  */
@@ -1008,8 +1236,8 @@ ValidateFacet(const bson_value_t *facetValue)
 static Query *
 BuildFacetUnionAllQuery(int numStages, const bson_value_t *facetValue,
 						CommonTableExpr *baseCte, QuerySource querySource,
-						Datum databaseNameDatum, const bson_value_t *sortSpec,
-						Expr *variableContext)
+						const bson_value_t *sortSpec,
+						AggregationPipelineBuildContext *parentContext)
 {
 	Query *modifiedQuery = NULL;
 
@@ -1035,10 +1263,11 @@ BuildFacetUnionAllQuery(int numStages, const bson_value_t *facetValue,
 
 		/* Mutate the Query to add the aggregation pipeline */
 		AggregationPipelineBuildContext nestedContext = { 0 };
-		nestedContext.nestedPipelineLevel = 1;
-		nestedContext.databaseNameDatum = databaseNameDatum;
+		nestedContext.nestedPipelineLevel = parentContext->nestedPipelineLevel + 1;
+		nestedContext.databaseNameDatum = parentContext->databaseNameDatum;
 		nestedContext.sortSpec = *sortSpec;
-		nestedContext.variableSpec = variableContext;
+		nestedContext.variableSpec = parentContext->variableSpec;
+		nestedContext.mongoCollection = parentContext->mongoCollection;
 
 		modifiedQuery = MutateQueryWithPipeline(baseQuery, &singleElement.bsonValue,
 												&nestedContext);
@@ -1050,13 +1279,6 @@ BuildFacetUnionAllQuery(int numStages, const bson_value_t *facetValue,
 												singleElement.path,
 												singleElement.pathLength,
 												migrateToSubQuery, aggrefPtr);
-
-		/* Track that the CTE is actually N levels up from the inner-most query
-		 * Since we attach the CTE to the query with the obj_agg, we add one more level
-		 * to the CTE levels up.
-		 */
-		RangeTblEntry *origTableEntry = linitial(baseQuery->rtable);
-		origTableEntry->ctelevelsup = nestedContext.numNestedLevels + 1;
 	}
 	else
 	{
@@ -1087,16 +1309,17 @@ BuildFacetUnionAllQuery(int numStages, const bson_value_t *facetValue,
 			 * Since we attach the CTE to the query with the obj_agg, we add one more level
 			 * to the CTE levels up.
 			 */
-			int baseLevelsUp = 2;
 			Query *baseQuery = CreateCteSelectQuery(baseCte, "facetsub", nestedStage,
-													baseLevelsUp);
+													0);
 
 			/* Modify the pipeline */
 			AggregationPipelineBuildContext nestedContext = { 0 };
 			nestedContext.nestedPipelineLevel = 1;
-			nestedContext.databaseNameDatum = databaseNameDatum;
+			nestedContext.databaseNameDatum = parentContext->databaseNameDatum;
 			nestedContext.sortSpec = *sortSpec;
-			nestedContext.variableSpec = variableContext;
+			nestedContext.variableSpec = parentContext->variableSpec;
+			nestedContext.mongoCollection = parentContext->mongoCollection;
+			nestedContext.nestedPipelineLevel = parentContext->nestedPipelineLevel + 1;
 
 			Query *innerQuery = MutateQueryWithPipeline(baseQuery, bson_iter_value(
 															&facetIterator),
@@ -1108,10 +1331,6 @@ BuildFacetUnionAllQuery(int numStages, const bson_value_t *facetValue,
 			innerQuery = AddBsonArrayAggFunction(innerQuery, &nestedContext, parseState,
 												 pathView.string, pathView.length,
 												 migrateToSubQuery, aggrefPtr);
-
-			/* Notify the base table that it got pushed down. */
-			RangeTblEntry *origTableEntry = linitial(baseQuery->rtable);
-			origTableEntry->ctelevelsup = nestedContext.numNestedLevels + baseLevelsUp;
 
 			/* Build the RTE for the output and add it to the SetOperation wrapper */
 			bool includeAllColumns = false;
@@ -1522,21 +1741,7 @@ ParseLookupStage(const bson_value_t *existingValue, LookupArgs *args)
 			/* let's use bson_dollar_project to evalute expression just exclude _id field */
 			if (!IsBsonValueEmptyDocument(value))
 			{
-				pgbson_writer letSpecWriter;
-				PgbsonWriterInit(&letSpecWriter);
-				PgbsonWriterAppendInt32(&letSpecWriter, "_id", 3, 0);
-				bson_iter_t letIter;
-				BsonValueInitIterator(value, &letIter);
-
-				while (bson_iter_next(&letIter))
-				{
-					PgbsonWriterAppendValue(&letSpecWriter,
-											bson_iter_key(&letIter),
-											bson_iter_key_len(&letIter),
-											bson_iter_value(&letIter));
-				}
-
-				args->let = PgbsonWriterGetPgbson(&letSpecWriter);
+				args->let = PgbsonInitFromDocumentBsonValue(value);
 			}
 		}
 		else if (strcmp(key, "localField") == 0)
@@ -1745,40 +1950,10 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 	 */
 	bool canInlineInnerPipeline = CanInlineInnerLookupPipeline(lookupArgs);
 
-	Var *leftQueryLookupLet = NULL;
-
 	if (lookupArgs->let)
 	{
-		/* Add the let evaluation into the left query's targetEntry */
-		TargetEntry *leftExpr = linitial(leftQuery->targetList);
-
-		/* Evaluate the let against the leftExpr */
-		/* Let Expression Evaluation here */
-		Const *letConstValue = MakeBsonConst(lookupArgs->let);
-
-		List *args;
-		Oid funcOid;
-		if (context->variableSpec != NULL)
-		{
-			args = list_make3(leftExpr->expr, letConstValue, context->variableSpec);
-			funcOid = BsonDollarProjectWithLetFunctionOid();
-		}
-		else
-		{
-			args = list_make2(leftExpr->expr, letConstValue);
-			funcOid = BsonDollarProjectFunctionOid();
-		}
-
-		FuncExpr *letEvalFuncExpr = makeFuncExpr(funcOid, BsonTypeId(), args, InvalidOid,
-												 InvalidOid, COERCE_EXPLICIT_CALL);
-		TargetEntry *targetEntry = makeTargetEntry((Expr *) letEvalFuncExpr, list_length(
-													   leftQuery->targetList) + 1,
-												   "?letEvalExpr?", false);
-
-		leftQuery->targetList = lappend(leftQuery->targetList, targetEntry);
-		leftQueryLookupLet = makeVar(leftQueryRteIndex, targetEntry->resno, BsonTypeId(),
-									 -1, InvalidOid, 1);
-		subPipelineContext.variableSpec = (Expr *) leftQueryLookupLet;
+		ereport(ERROR, (errcode(MongoCommandNotSupported),
+						errmsg("Lookup with let not supported yet")));
 	}
 
 	if (!lookupArgs->hasLookupMatch)
@@ -1864,7 +2039,7 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 			rightQuery = MutateQueryWithPipeline(rightQuery, &lookupArgs->pipeline,
 												 &subPipelineContext);
 
-			if (list_length(rightQuery->targetList) > 1)
+			if (list_length(rightQuery->targetList) > 1 || rightQuery->hasAggs)
 			{
 				subPipelineContext.requiresSubQuery = true;
 			}
@@ -1980,15 +2155,6 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 		rightRteCte->ctelevelsup += subPipelineContext.numNestedLevels;
 	}
 
-	/* Make the input a sub-query RTE (The left part of the join) */
-	if (leftQueryLookupLet != NULL)
-	{
-		/* Somewhere in the right query stack is the pointer to the left query. */
-		int leftQueryLevelsUp = 1;
-		WalkRightQueryForLetAndSetLevelsUp(rightQuery, leftQueryLookupLet,
-										   leftQueryLevelsUp);
-	}
-
 	/* Due to citus query_pushdown_planning.JoinTreeContainsSubqueryWalker
 	 * we can't just use SubQueries (however, CTEs work). So move the left
 	 * query is pushed to a CTE which seems to work (Similar to what the GW)
@@ -2093,7 +2259,7 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 												 &lookupArgs->pipeline,
 												 &projectorQueryContext);
 
-		if (list_length(subSelectQuery->targetList) > 1)
+		if (list_length(subSelectQuery->targetList) > 1 || subSelectQuery->hasAggs)
 		{
 			projectorQueryContext.requiresSubQuery = true;
 		}
@@ -2106,11 +2272,6 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 												 lookupArgs->lookupAs.length,
 												 projectorQueryContext.
 												 requiresSubQuery, aggrefPtr);
-
-		if (leftQueryLookupLet != NULL)
-		{
-			WalkRightQueryForLetAndSetLevelsUp(subSelectQuery, leftQueryLookupLet, 1);
-		}
 
 		rightOutput->varlevelsup += projectorQueryContext.numNestedLevels + 1;
 		SubLink *subLink = makeNode(SubLink);
@@ -2140,13 +2301,769 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 
 
 /*
+ * Before applying the lookup query, parses the lookup args & context
+ * and builds an optimization plan including how to join, how to apply the
+ * pipeline and such.
+ * This also handles splitting a lookup pipeline into pushdown and
+ * non-pushdown etc.
+ */
+static void
+OptimizeLookup(LookupArgs *lookupArgs,
+			   Query *leftQuery,
+			   AggregationPipelineBuildContext *leftQueryContext,
+			   LookupOptimizationArgs *optimizationArgs)
+{
+	optimizationArgs->rightQueryContext.nestedPipelineLevel =
+		leftQueryContext->nestedPipelineLevel + 1;
+	optimizationArgs->rightQueryContext.databaseNameDatum =
+		leftQueryContext->databaseNameDatum;
+	optimizationArgs->rightQueryContext.variableSpec = leftQueryContext->variableSpec;
+
+	optimizationArgs->isLookupAgnostic = lookupArgs->from.length == 0;
+	optimizationArgs->isLookupUncorrelated = !lookupArgs->hasLookupMatch;
+
+	if (leftQueryContext->variableSpec != NULL &&
+		!IsA(leftQueryContext->variableSpec, Const))
+	{
+		optimizationArgs->hasLet = true;
+	}
+
+	if (lookupArgs->let)
+	{
+		if (leftQueryContext->variableSpec == NULL)
+		{
+			ValidateLetHasNoVariables(lookupArgs->let);
+		}
+
+		optimizationArgs->hasLet = true;
+	}
+
+	if (optimizationArgs->hasLet)
+	{
+		optimizationArgs->isLookupUncorrelated = false;
+
+		if (optimizationArgs->isLookupAgnostic)
+		{
+			/* TODO Support agnostic queries with lookup with let */
+			ereport(ERROR, (errcode(MongoCommandNotSupported),
+							errmsg(
+								"$lookup with let with agnostic queries not supported yet")));
+		}
+	}
+
+	/* For the right query, generate a base table query for the right collection */
+	pg_uuid_t *collectionUuid = NULL;
+	optimizationArgs->rightBaseQuery = optimizationArgs->isLookupAgnostic ?
+									   GenerateBaseAgnosticQuery(
+		optimizationArgs->rightQueryContext.databaseNameDatum,
+		&optimizationArgs->
+		rightQueryContext) :
+									   GenerateBaseTableQuery(
+		optimizationArgs->rightQueryContext.databaseNameDatum,
+		&lookupArgs->from,
+		collectionUuid,
+		&optimizationArgs->
+		rightQueryContext);
+
+	/* Now let's figure out if we can join on _id */
+	optimizationArgs->isLookupJoinOnRightId =
+		StringViewEquals(&lookupArgs->foreignField, &IdFieldStringView) &&
+		!optimizationArgs->isLookupAgnostic;
+
+	if (optimizationArgs->isLookupJoinOnRightId &&
+		list_length(optimizationArgs->rightBaseQuery->rtable) == 1 &&
+		list_length(optimizationArgs->rightBaseQuery->targetList) == 1 &&
+		optimizationArgs->rightQueryContext.mongoCollection != NULL &&
+		optimizationArgs->rightQueryContext.mongoCollection->shardKey == NULL)
+	{
+		RangeTblEntry *entry = linitial(optimizationArgs->rightBaseQuery->rtable);
+		TargetEntry *firstEntry = linitial(optimizationArgs->rightBaseQuery->targetList);
+		if (entry->rtekind != RTE_RELATION || !IsA(firstEntry->expr, Var))
+		{
+			/* These cases can't do lookup on _id */
+			optimizationArgs->isLookupJoinOnRightId = false;
+		}
+	}
+	else
+	{
+		/* Not a single RTE, or is a sharded collection or a collection that doesn't exist
+		 * Can't do _id optimization.
+		 */
+		optimizationArgs->isLookupJoinOnRightId = false;
+	}
+
+	/* No point in inlining lookup pipeline on agnostic - it Has to be applied */
+	if (lookupArgs->pipeline.value_type == BSON_TYPE_EOD)
+	{
+		optimizationArgs->inlinedLookupPipeline = lookupArgs->pipeline;
+		optimizationArgs->nonInlinedLookupPipeline = (bson_value_t) {
+			0
+		};
+	}
+	else if (IsBsonValueEmptyArray(&lookupArgs->pipeline))
+	{
+		optimizationArgs->inlinedLookupPipeline = lookupArgs->pipeline;
+		optimizationArgs->nonInlinedLookupPipeline = (bson_value_t) {
+			0
+		};
+	}
+	else if (optimizationArgs->isLookupUncorrelated ||
+			 optimizationArgs->isLookupAgnostic)
+	{
+		optimizationArgs->inlinedLookupPipeline = lookupArgs->pipeline;
+		optimizationArgs->nonInlinedLookupPipeline = (bson_value_t) {
+			0
+		};
+	}
+	else if (optimizationArgs->isLookupJoinOnRightId)
+	{
+		/* In the cases where we are joining on _id, we don't want to apply the pipeline here.
+		 * This is because it's better to join on _id (index pushdown) then apply the pipeline on
+		 * the result.
+		 */
+		optimizationArgs->inlinedLookupPipeline = (bson_value_t) {
+			0
+		};
+		optimizationArgs->nonInlinedLookupPipeline = lookupArgs->pipeline;
+	}
+	else
+	{
+		StringView localFieldValue = lookupArgs->localField;
+
+		StringView prefix = StringViewFindPrefix(&localFieldValue, '.');
+		if (prefix.length != 0)
+		{
+			localFieldValue = prefix;
+		}
+
+		bool isPipelineValid = false;
+		pgbson *inlinedPipeline = NULL;
+		pgbson *nonInlinedPipeline = NULL;
+		bool canInlinePipelineCore =
+			CanInlineLookupPipeline(&lookupArgs->pipeline, &localFieldValue,
+									optimizationArgs->hasLet,
+									&inlinedPipeline, &nonInlinedPipeline,
+									&isPipelineValid);
+		if (!isPipelineValid)
+		{
+			/* Invalid pipeline - just make it inlined to trigger the error */
+			optimizationArgs->inlinedLookupPipeline = lookupArgs->pipeline;
+			optimizationArgs->nonInlinedLookupPipeline = (bson_value_t) {
+				0
+			};
+		}
+		else if (canInlinePipelineCore)
+		{
+			/* The full pipeline can be inlined */
+			optimizationArgs->inlinedLookupPipeline = lookupArgs->pipeline;
+			optimizationArgs->nonInlinedLookupPipeline = (bson_value_t) {
+				0
+			};
+		}
+		else
+		{
+			pgbsonelement pipelineElement = { 0 };
+			if (!IsPgbsonEmptyDocument(inlinedPipeline))
+			{
+				PgbsonToSinglePgbsonElement(inlinedPipeline, &pipelineElement);
+				if (!IsBsonValueEmptyArray(&pipelineElement.bsonValue))
+				{
+					optimizationArgs->inlinedLookupPipeline = pipelineElement.bsonValue;
+				}
+			}
+
+			if (!IsPgbsonEmptyDocument(nonInlinedPipeline))
+			{
+				PgbsonToSinglePgbsonElement(nonInlinedPipeline, &pipelineElement);
+				if (!IsBsonValueEmptyArray(&pipelineElement.bsonValue))
+				{
+					optimizationArgs->nonInlinedLookupPipeline =
+						pipelineElement.bsonValue;
+				}
+			}
+		}
+	}
+
+	optimizationArgs->isLookupJoinOnLeftId = false;
+	if (optimizationArgs->isLookupJoinOnRightId &&
+		StringViewEquals(&lookupArgs->localField, &IdFieldStringView) &&
+		list_length(leftQuery->rtable) == 1 &&
+		list_length(leftQuery->targetList) == 1 &&
+		leftQueryContext->mongoCollection != NULL &&
+		leftQueryContext->mongoCollection->shardKey == NULL)
+	{
+		RangeTblEntry *entry = linitial(leftQuery->rtable);
+		TargetEntry *firstEntry = linitial(leftQuery->targetList);
+		if (entry->rtekind == RTE_RELATION && IsA(firstEntry->expr, Var))
+		{
+			/* These cases can't do lookup on _id on the left */
+			optimizationArgs->isLookupJoinOnLeftId = true;
+		}
+	}
+
+	/* Last check - nested $lookup with let not supported on sharded (citus limit) */
+	if (optimizationArgs->hasLet &&
+		leftQueryContext->mongoCollection != NULL &&
+		leftQueryContext->mongoCollection->shardKey != NULL &&
+		lookupArgs->pipeline.value_type != BSON_TYPE_EOD)
+	{
+		ValidatePipelineForShardedLookupWithLet(&lookupArgs->pipeline);
+	}
+}
+
+
+/*
+ * Core JOIN building logic for $lookup. See comments within on logic
+ * of each step within.
+ */
+static Query *
+ProcessLookupCoreWithLet(Query *query, AggregationPipelineBuildContext *context,
+						 LookupArgs *lookupArgs)
+{
+	if (list_length(query->targetList) > 1)
+	{
+		/* if we have multiple projectors, push to a subquery (Lookup needs 1 projector) */
+		/* TODO: Can we do away with this */
+		query = MigrateQueryToSubQuery(query, context);
+	}
+
+	/* The left query is just the base query */
+	Query *leftQuery = query;
+
+	LookupOptimizationArgs optimizationArgs = { 0 };
+	OptimizeLookup(lookupArgs, leftQuery, context, &optimizationArgs);
+
+	/* Generate the lookup query */
+	/* Start with a fresh query */
+	Query *lookupQuery = makeNode(Query);
+	lookupQuery->commandType = CMD_SELECT;
+	lookupQuery->querySource = query->querySource;
+	lookupQuery->canSetTag = true;
+	lookupQuery->jointree = makeNode(FromExpr);
+
+	/* Mark that we're adding a nesting level */
+	context->numNestedLevels++;
+
+	const Index leftQueryRteIndex = 1;
+	const Index rightQueryRteIndex = 2;
+	const Index joinQueryRteIndex = 3;
+
+	Query *rightQuery = optimizationArgs.rightBaseQuery;
+
+	/* Create a parse_state for this session */
+	ParseState *parseState = make_parsestate(NULL);
+	parseState->p_expr_kind = EXPR_KIND_SELECT_TARGET;
+	parseState->p_next_resno = 1;
+
+	/* Process the right query where possible */
+	if (optimizationArgs.inlinedLookupPipeline.value_type != BSON_TYPE_EOD)
+	{
+		/* If lookup is purely a pipeline (uncorrelated subquery) then
+		 * modify the pipeline. */
+		rightQuery = MutateQueryWithPipeline(rightQuery,
+											 &optimizationArgs.inlinedLookupPipeline,
+											 &optimizationArgs.rightQueryContext);
+	}
+
+	if (list_length(rightQuery->targetList) > 1 ||
+		optimizationArgs.rightQueryContext.requiresSubQueryAfterProject ||
+		optimizationArgs.rightQueryContext.requiresSubQuery)
+	{
+		rightQuery = MigrateQueryToSubQuery(rightQuery,
+											&optimizationArgs.rightQueryContext);
+	}
+
+	/* Check if the pipeline can be pushed to the inner query (right collection)
+	 * If it can, then it's inlined. If not, we apply the pipeline post-join.
+	 */
+	if (lookupArgs->hasLookupMatch)
+	{
+		/* We can apply the optimization on this based on object_id if and only if
+		 * The right table is pointing directly to an actual table (not a view)
+		 * and we're an unsharded collection - or a view that just does a "filter"
+		 * match.
+		 */
+		if (optimizationArgs.isLookupJoinOnRightId)
+		{
+			PG_USED_FOR_ASSERTS_ONLY RangeTblEntry *entry = linitial(rightQuery->rtable);
+			PG_USED_FOR_ASSERTS_ONLY TargetEntry *firstEntry = linitial(
+				rightQuery->targetList);
+
+			/* Add the document object_id projector as well, if there is no projection on the document && it's a base table
+			 * in the case of projections we can't be sure something like { "_id": "abc" } has been added
+			 */
+			Assert(entry->rtekind == RTE_RELATION && IsA(firstEntry->expr, Var));
+
+			/* Add the object_id targetEntry */
+			Var *objectIdVar = makeVar(1, MONGO_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER,
+									   BsonTypeId(), -1, InvalidOid, 0);
+			TargetEntry *objectEntry = makeTargetEntry((Expr *) objectIdVar,
+													   list_length(
+														   rightQuery->targetList) +
+													   1, "objectId", false);
+			rightQuery->targetList = lappend(rightQuery->targetList, objectEntry);
+		}
+
+		CommonTableExpr *rightTableExpr = makeNode(CommonTableExpr);
+		rightTableExpr->ctename = "lookup_right_query";
+		rightTableExpr->ctequery = (Node *) rightQuery;
+
+		rightQuery = CreateCteSelectQuery(rightTableExpr, "lookup_right_query",
+										  context->nestedPipelineLevel, 0);
+
+		/* It's a join on a field, first add a TargetEntry for left for bson_dollar_lookup_extract_filter_expression */
+		TargetEntry *currentEntry = linitial(leftQuery->targetList);
+
+		/* The extract query right arg is a simple bson of the form { "remoteField": "localField" } */
+		pgbson_writer filterWriter;
+		PgbsonWriterInit(&filterWriter);
+		PgbsonWriterAppendUtf8(&filterWriter, lookupArgs->foreignField.string,
+							   lookupArgs->foreignField.length,
+							   lookupArgs->localField.string);
+		pgbson *filterBson = PgbsonWriterGetPgbson(&filterWriter);
+
+		/* Create the bson_dollar_lookup_extract_filter_expression(document, 'filter') */
+		List *extractFilterArgs = list_make2(currentEntry->expr, MakeBsonConst(
+												 filterBson));
+
+		Expr *projectorFunc;
+		if (optimizationArgs.isLookupJoinOnLeftId)
+		{
+			/* If we can join on the left _id, then just use object_id */
+			projectorFunc = (Expr *) makeVar(1,
+											 MONGO_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER,
+											 BsonTypeId(), -1, InvalidOid, 0);
+		}
+		else if (optimizationArgs.isLookupJoinOnRightId)
+		{
+			projectorFunc = (Expr *) makeFuncExpr(
+				BsonLookupExtractFilterArrayFunctionOid(), get_array_type(BsonTypeId()),
+				extractFilterArgs,
+				InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+		}
+		else
+		{
+			Oid extractFunctionOid =
+				HelioApiInternalBsonLookupExtractFilterExpressionFunctionOid();
+
+			projectorFunc = (Expr *) makeFuncExpr(
+				extractFunctionOid, BsonTypeId(),
+				extractFilterArgs,
+				InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+		}
+
+		AttrNumber newProjectorAttrNum = list_length(leftQuery->targetList) + 1;
+		TargetEntry *extractFilterProjector = makeTargetEntry((Expr *) projectorFunc,
+															  newProjectorAttrNum,
+															  "lookup_filter", false);
+		leftQuery->targetList = lappend(leftQuery->targetList, extractFilterProjector);
+
+		/* now on the right query, add a filter referencing this projector */
+		List *rightQuals = NIL;
+		if (rightQuery->jointree->quals != NULL)
+		{
+			rightQuals = make_ands_implicit((Expr *) rightQuery->jointree->quals);
+		}
+
+		/* add the WHERE bson_dollar_in(t2.document, t1.match) */
+		TargetEntry *currentRightEntry = linitial(rightQuery->targetList);
+		Var *rightVar = (Var *) currentRightEntry->expr;
+		int matchLevelsUp = 1;
+		Node *inClause;
+		if (optimizationArgs.isLookupJoinOnLeftId)
+		{
+			/* Do a direct equality against object_id */
+			Assert(list_length(rightQuery->targetList) == 2);
+			TargetEntry *rightObjectIdEntry = (TargetEntry *) lsecond(
+				rightQuery->targetList);
+			rightQuery->targetList = list_make1(currentRightEntry);
+
+			Var *matchVar = makeVar(leftQueryRteIndex, newProjectorAttrNum,
+									BsonTypeId(), -1,
+									InvalidOid, matchLevelsUp);
+			inClause = (Node *) make_opclause(BsonEqualOperatorId(), BOOLOID, false,
+											  copyObject(
+												  rightObjectIdEntry->expr),
+											  (Expr *) matchVar, InvalidOid,
+											  InvalidOid);
+		}
+		else if (optimizationArgs.isLookupJoinOnRightId)
+		{
+			Assert(list_length(rightQuery->targetList) == 2);
+			TargetEntry *rightObjectIdEntry = (TargetEntry *) lsecond(
+				rightQuery->targetList);
+			rightQuery->targetList = list_make1(currentRightEntry);
+
+			ScalarArrayOpExpr *inOperator = makeNode(ScalarArrayOpExpr);
+			inOperator->useOr = true;
+			inOperator->opno = BsonEqualOperatorId();
+			Var *matchVar = makeVar(leftQueryRteIndex, newProjectorAttrNum,
+									get_array_type(BsonTypeId()), -1,
+									InvalidOid, matchLevelsUp);
+			List *inArgs = list_make2(copyObject(rightObjectIdEntry->expr), matchVar);
+			inOperator->args = inArgs;
+			inClause = (Node *) inOperator;
+		}
+		else
+		{
+			Var *matchVar = makeVar(leftQueryRteIndex, newProjectorAttrNum, BsonTypeId(),
+									-1,
+									InvalidOid, matchLevelsUp);
+			Const *textConst = MakeTextConst(lookupArgs->foreignField.string,
+											 lookupArgs->foreignField.length);
+			List *inArgs = list_make3(copyObject(rightVar), matchVar, textConst);
+			inClause = (Node *) makeFuncExpr(BsonDollarLookupJoinFilterFunctionOid(),
+											 BOOLOID, inArgs,
+											 InvalidOid, InvalidOid,
+											 COERCE_EXPLICIT_CALL);
+		}
+
+		if (rightQuals == NIL)
+		{
+			rightQuery->jointree->quals = inClause;
+		}
+		else
+		{
+			rightQuals = lappend(rightQuals, inClause);
+			rightQuery->jointree->quals = (Node *) make_ands_explicit(rightQuals);
+		}
+
+		/* Add the bson_array_agg function */
+		bool requiresSubQuery = false;
+		Aggref **aggrefPtr = NULL;
+		rightQuery = AddBsonArrayAggFunction(rightQuery,
+											 &optimizationArgs.rightQueryContext,
+											 parseState,
+											 lookupArgs->lookupAs.string,
+											 lookupArgs->lookupAs.length,
+											 requiresSubQuery, aggrefPtr);
+
+		rightQuery->cteList = list_make1(rightTableExpr);
+	}
+	else
+	{
+		/* If lookup is purely a pipeline (uncorrelated subquery) then
+		 * modify the pipeline. */
+		Aggref **aggrefptr = NULL;
+		bool migrateToSubQuery = false;
+		rightQuery = AddBsonArrayAggFunction(rightQuery,
+											 &optimizationArgs.rightQueryContext,
+											 parseState,
+											 lookupArgs->lookupAs.string,
+											 lookupArgs->lookupAs.length,
+											 migrateToSubQuery,
+											 aggrefptr);
+	}
+
+	/* Due to citus query_pushdown_planning.JoinTreeContainsSubqueryWalker
+	 * we can't just use SubQueries (however, CTEs work). So move the left
+	 * query is pushed to a CTE which seems to work (Similar to what the GW)
+	 * does.
+	 */
+	StringInfo cteStr = makeStringInfo();
+	appendStringInfo(cteStr, "lookupLeftCte_%d", context->nestedPipelineLevel);
+	CommonTableExpr *cteExpr = makeNode(CommonTableExpr);
+	cteExpr->ctename = cteStr->data;
+	cteExpr->ctequery = (Node *) leftQuery;
+	lookupQuery->cteList = lappend(lookupQuery->cteList, cteExpr);
+
+	int stageNum = 1;
+	RangeTblEntry *leftTree = CreateCteRte(cteExpr, "lookup", stageNum, 0);
+
+	/* The "from collection" becomes another RTE */
+	bool includeAllColumns = true;
+	RangeTblEntry *rightTree = MakeSubQueryRte(rightQuery, 1,
+											   context->nestedPipelineLevel,
+											   "lookupRight", includeAllColumns);
+
+	/* Mark the Right RTE as a lateral join*/
+	rightTree->lateral = true;
+
+	/* Build the JOIN RTE joining the left and right RTEs */
+	List *outputVars = NIL;
+	List *outputColNames = NIL;
+	List *leftJoinCols = NIL;
+	List *rightJoinCols = NIL;
+	MakeBsonJoinVarsFromQuery(leftQueryRteIndex, leftQuery, &outputVars, &outputColNames,
+							  &leftJoinCols);
+	MakeBsonJoinVarsFromQuery(rightQueryRteIndex, rightQuery, &outputVars,
+							  &outputColNames, &rightJoinCols);
+	RangeTblEntry *joinRte = MakeLookupJoinRte(outputVars, outputColNames, leftJoinCols,
+											   rightJoinCols);
+
+
+	lookupQuery->rtable = list_make3(leftTree, rightTree, joinRte);
+
+	/* Now specify the "From" as a join */
+	/* The query has a single 'FROM' which is a Join */
+	JoinExpr *joinExpr = makeNode(JoinExpr);
+	joinExpr->jointype = joinRte->jointype;
+	joinExpr->rtindex = joinQueryRteIndex;
+
+	/* Create RangeTblRef's to point to the left & right RTEs */
+	RangeTblRef *leftRef = makeNode(RangeTblRef);
+	leftRef->rtindex = leftQueryRteIndex;
+	RangeTblRef *rightRef = makeNode(RangeTblRef);
+	rightRef->rtindex = rightQueryRteIndex;
+	joinExpr->larg = (Node *) leftRef;
+	joinExpr->rarg = (Node *) rightRef;
+
+	/* Join ON TRUE */
+	joinExpr->quals = (Node *) makeConst(BOOLOID, -1, InvalidOid, 1, BoolGetDatum(true),
+										 false, true);
+
+	lookupQuery->jointree->fromlist = list_make1(joinExpr);
+
+	/* Now add the lookup projector */
+	/* The lookup projector is an addFields on the left doc */
+	/* And the rightArg will be an addFieldsSpec already under a bson_array_agg(value, 'asField') */
+	Expr *leftOutput = (Expr *) makeVar(leftRef->rtindex, (AttrNumber) 1, BsonTypeId(),
+										-1,
+										InvalidOid, 0);
+	Expr *rightOutput = (Expr *) makeVar(rightRef->rtindex, (AttrNumber) 1, BsonTypeId(),
+										 -1,
+										 InvalidOid, 0);
+
+	TargetEntry *leftTargetEntry = makeTargetEntry(leftOutput, 1, "left", false);
+	TargetEntry *rightTargetEntry = makeTargetEntry(rightOutput, 2, "right", false);
+	lookupQuery->targetList = list_make2(leftTargetEntry, rightTargetEntry);
+
+	/* handle the post non-inlined query */
+
+	/* If there's a pipeline, run it here as a subquery only if we
+	 * couldn't inline it in the top level query.
+	 * We do it here since it's easier to deal with the pipeline
+	 * post join (fewer queries to think about and manage).
+	 */
+	if (optimizationArgs.nonInlinedLookupPipeline.value_type != BSON_TYPE_EOD)
+	{
+		resetStringInfo(cteStr);
+		appendStringInfo(cteStr, "lookup_join_cte_%d", context->nestedPipelineLevel);
+		CommonTableExpr *lookupCte = makeNode(CommonTableExpr);
+		lookupCte->ctename = cteStr->data;
+		lookupCte->ctequery = (Node *) lookupQuery;
+
+		/* Before creating the CTE - add the $let */
+		if (lookupArgs->let)
+		{
+			/* Evaluate the let against the leftExpr */
+			/* Let Expression Evaluation here */
+			Const *letConstValue = MakeBsonConst(lookupArgs->let);
+
+			List *args;
+			Oid funcOid;
+			if (IsClusterVersionAtleastThis(1, 20, 0))
+			{
+				Expr *sourceVariableSpec = context->variableSpec;
+				if (sourceVariableSpec == NULL)
+				{
+					sourceVariableSpec = (Expr *) MakeBsonConst(PgbsonInitEmpty());
+				}
+
+				args = list_make3(leftOutput, letConstValue, sourceVariableSpec);
+				funcOid = BsonDollarLookupExpressionEvalMergeOid();
+			}
+			else
+			{
+				pgbson_writer letSpecWriter;
+				PgbsonWriterInit(&letSpecWriter);
+				PgbsonWriterAppendInt32(&letSpecWriter, "_id", 3, 0);
+
+				bson_iter_t letIter;
+				PgbsonInitIterator(lookupArgs->let, &letIter);
+				while (bson_iter_next(&letIter))
+				{
+					PgbsonWriterAppendValue(&letSpecWriter,
+											bson_iter_key(&letIter),
+											bson_iter_key_len(&letIter),
+											bson_iter_value(&letIter));
+				}
+
+				letConstValue->constvalue = PointerGetDatum(PgbsonWriterGetPgbson(
+																&letSpecWriter));
+				if (context->variableSpec != NULL)
+				{
+					args = list_make3(leftOutput, letConstValue, context->variableSpec);
+					funcOid = BsonDollarProjectWithLetFunctionOid();
+				}
+				else
+				{
+					args = list_make2(leftOutput, letConstValue);
+					funcOid = BsonDollarProjectFunctionOid();
+				}
+			}
+
+			Expr *letExpr = (Expr *) makeFuncExpr(funcOid, BsonTypeId(), args, InvalidOid,
+												  InvalidOid, COERCE_EXPLICIT_CALL);
+			TargetEntry *lookupLetEntry = makeTargetEntry(letExpr, 3, "let", false);
+			lookupQuery->targetList = lappend(lookupQuery->targetList, lookupLetEntry);
+		}
+
+		Query *cteLookupQuery = CreateCteSelectQuery(lookupCte, "lookup_non_inlined", 1,
+													 0);
+		cteLookupQuery->cteList = list_make1(lookupCte);
+
+		TargetEntry *firstEntry = linitial(cteLookupQuery->targetList);
+		TargetEntry *secondEntry = lsecond(cteLookupQuery->targetList);
+		Var *secondVar = (Var *) copyObject(secondEntry->expr);
+		secondVar->varlevelsup = INT_MAX;
+		secondVar->location = context->nestedPipelineLevel;
+
+		Expr *letExpr = NULL;
+		Var *letVar = NULL;
+		if (lookupArgs->let)
+		{
+			letExpr = copyObject(lthird_node(TargetEntry,
+											 cteLookupQuery->targetList)->expr);
+			letVar = (Var *) letExpr;
+			letVar->varlevelsup = INT_MAX;
+			letVar->location = context->nestedPipelineLevel;
+		}
+		else
+		{
+			letExpr = context->variableSpec;
+		}
+
+		/*
+		 * We need to do the apply the lookup pipeline. Before proceeding
+		 * if we have a "let" then project the evaluated let here.
+		 */
+		List *unwindArgs = list_make2(secondVar,
+									  MakeTextConst(lookupArgs->lookupAs.string,
+													lookupArgs->lookupAs.length));
+		FuncExpr *funcExpr = makeFuncExpr(BsonLookupUnwindFunctionOid(), BsonTypeId(),
+										  unwindArgs, InvalidOid, InvalidOid,
+										  COERCE_EXPLICIT_CALL);
+		funcExpr->funcretset = true;
+		Query *subSelectQuery = CreateFunctionSelectorQuery(funcExpr,
+															"lookup_subpipeline",
+															context->
+															nestedPipelineLevel,
+															query->querySource);
+
+		AggregationPipelineBuildContext projectorQueryContext = { 0 };
+		projectorQueryContext.nestedPipelineLevel = context->nestedPipelineLevel + 1;
+		projectorQueryContext.databaseNameDatum =
+			optimizationArgs.rightQueryContext.databaseNameDatum;
+		projectorQueryContext.mongoCollection =
+			optimizationArgs.rightQueryContext.mongoCollection;
+		projectorQueryContext.variableSpec = letExpr;
+
+		subSelectQuery = MutateQueryWithPipeline(subSelectQuery,
+												 &optimizationArgs.
+												 nonInlinedLookupPipeline,
+												 &projectorQueryContext);
+
+		if (list_length(subSelectQuery->targetList) > 1)
+		{
+			projectorQueryContext.requiresSubQuery = true;
+		}
+
+		/* Readd the aggregate */
+		Aggref **aggrefPtr = NULL;
+		subSelectQuery = AddBsonArrayAggFunction(subSelectQuery,
+												 &projectorQueryContext, parseState,
+												 lookupArgs->lookupAs.string,
+												 lookupArgs->lookupAs.length,
+												 projectorQueryContext.
+												 requiresSubQuery, aggrefPtr);
+
+		/* Fix up levelsup for the subselect query */
+		WalkQueryAndSetLevelsUp(subSelectQuery, secondVar, 1);
+
+		if (letVar)
+		{
+			WalkQueryAndSetLevelsUp(subSelectQuery, letVar, 1);
+		}
+
+		SubLink *subLink = makeNode(SubLink);
+		subLink->subLinkType = EXPR_SUBLINK;
+		subLink->subLinkId = 0;
+		subLink->subselect = (Node *) subSelectQuery;
+
+		secondEntry->expr = (Expr *) subLink;
+		cteLookupQuery->hasSubLinks = true;
+		lookupQuery = cteLookupQuery;
+		leftOutput = firstEntry->expr;
+		rightOutput = secondEntry->expr;
+	}
+
+	List *addFieldArgs = list_make2(leftOutput, rightOutput);
+	FuncExpr *addFields = makeFuncExpr(GetMergeDocumentsFunctionOid(), BsonTypeId(),
+									   addFieldArgs, InvalidOid, InvalidOid,
+									   COERCE_EXPLICIT_CALL);
+
+	TargetEntry *topTargetEntry = makeTargetEntry((Expr *) addFields, 1, "document",
+												  false);
+
+	lookupQuery->targetList = list_make1(topTargetEntry);
+
+	pfree(parseState);
+
+	/* TODO: is this needed? */
+	context->requiresSubQuery = true;
+	return lookupQuery;
+}
+
+
+/*
+ * Validate that for Sharded collections, we track that lookup wtih Let
+ * Doesn't have nested lookup due to citus limitations.
+ */
+static void
+ValidatePipelineForShardedLookupWithLet(const bson_value_t *pipeline)
+{
+	if (pipeline->value_type != BSON_TYPE_ARRAY)
+	{
+		return;
+	}
+
+	bson_iter_t pipelineIter;
+	BsonValueInitIterator(pipeline, &pipelineIter);
+	while (bson_iter_next(&pipelineIter))
+	{
+		if (!BSON_ITER_HOLDS_DOCUMENT(&pipelineIter))
+		{
+			return;
+		}
+
+		pgbsonelement element = { 0 };
+		if (!TryGetBsonValueToPgbsonElement(bson_iter_value(&pipelineIter), &element))
+		{
+			return;
+		}
+
+		if (strcmp(element.path, "$lookup") == 0)
+		{
+			ereport(ERROR, (errcode(MongoCommandNotSupported),
+							errmsg(
+								"Nested lookup with let on sharded collections not supported yet")));
+		}
+
+		if (strcmp(element.path, "$facet") == 0)
+		{
+			ereport(ERROR, (errcode(MongoCommandNotSupported),
+							errmsg(
+								"Nested facet with let on sharded collections not supported yet")));
+		}
+	}
+}
+
+
+/*
  * Helper for a nested $lookup stage on whether it can be inlined for a $lookup.
  * This is valid as long as the lookupAs does not intersect with the local field.
  */
 bool
 CanInlineLookupStageLookup(const bson_value_t *lookupStage,
-						   const StringView *lookupPath)
+						   const StringView *lookupPath,
+						   bool hasLet)
 {
+	if (hasLet)
+	{
+		return false;
+	}
+
 	/* A lookup can be inlined if */
 	LookupArgs nestedLookupArgs;
 	memset(&nestedLookupArgs, 0, sizeof(LookupArgs));
@@ -2200,7 +3117,14 @@ CanInlineInnerLookupPipeline(LookupArgs *lookupArgs)
 		localFieldValue = prefix;
 	}
 
-	return CanInlineLookupPipeline(&lookupArgs->pipeline, &localFieldValue);
+	bool isPipelineValid = false;
+	pgbson *inlinedPipeline = NULL;
+	pgbson *nonInlinedPipeline = NULL;
+	return CanInlineLookupPipeline(&lookupArgs->pipeline, &localFieldValue,
+								   lookupArgs->let != NULL,
+								   &inlinedPipeline, &nonInlinedPipeline,
+								   &isPipelineValid) &&
+		   isPipelineValid;
 }
 
 
@@ -2781,6 +3705,7 @@ GenerateBaseCaseQuery(AggregationPipelineBuildContext *parentContext,
 	AggregationPipelineBuildContext subPipelineContext = { 0 };
 	subPipelineContext.nestedPipelineLevel = parentContext->nestedPipelineLevel + 2;
 	subPipelineContext.databaseNameDatum = parentContext->databaseNameDatum;
+	subPipelineContext.variableSpec = parentContext->variableSpec;
 	pg_uuid_t *collectionUuid = NULL;
 	Query *baseCaseQuery = GenerateBaseTableQuery(parentContext->databaseNameDatum,
 												  &args->fromCollection, collectionUuid,
@@ -3027,6 +3952,7 @@ BuildRecursiveGraphLookupQuery(QuerySource parentSource, GraphLookupArgs *args,
 	AggregationPipelineBuildContext subPipelineContext = { 0 };
 	subPipelineContext.nestedPipelineLevel = parentContext->nestedPipelineLevel + 1;
 	subPipelineContext.databaseNameDatum = parentContext->databaseNameDatum;
+	subPipelineContext.variableSpec = parentContext->variableSpec;
 
 	/* First build the recursive CTE object */
 	CommonTableExpr *graphCteExpr = makeNode(CommonTableExpr);
@@ -3225,7 +4151,7 @@ BuildRecursiveGraphLookupQuery(QuerySource parentSource, GraphLookupArgs *args,
 
 
 static Node *
-LookupReplaceLetVariableInQueries(Node *node, LookupLetQueryTreeWalkerState *state)
+ReplaceVariablesWithLevelsUpMutator(Node *node, LevelsUpQueryTreeWalkerState *state)
 {
 	CHECK_FOR_INTERRUPTS();
 
@@ -3238,34 +4164,126 @@ LookupReplaceLetVariableInQueries(Node *node, LookupLetQueryTreeWalkerState *sta
 	{
 		state->numLevels++;
 		Query *result = query_tree_mutator((Query *) node,
-										   LookupReplaceLetVariableInQueries,
+										   ReplaceVariablesWithLevelsUpMutator,
 										   state, QTW_EXAMINE_RTES_BEFORE |
-										   QTW_DONT_COPY_QUERY);
+										   QTW_DONT_COPY_QUERY | QTW_EXAMINE_SORTGROUP);
 		state->numLevels--;
 		return (Node *) result;
 	}
-	else if (IsA(node, Var) && (Var *) node == state->originalVariable)
+	else if (IsA(node, Var))
 	{
 		Var *originalVar = (Var *) node;
-		Var *copyVar = copyObject(originalVar);
-		copyVar->varlevelsup = state->numLevels;
-		return (Node *) copyVar;
+		if (originalVar->varlevelsup >= INT_MAX)
+		{
+			originalVar->varlevelsup = INT_MAX;
+		}
+
+		if (equal(node, state->originalVariable))
+		{
+			Var *copyVar = copyObject(originalVar);
+			copyVar->varlevelsup = state->numLevels;
+			return (Node *) copyVar;
+		}
 	}
 
-	return expression_tree_mutator(node, LookupReplaceLetVariableInQueries, state);
+	return expression_tree_mutator(node, ReplaceVariablesWithLevelsUpMutator, state);
 }
 
 
 static void
-WalkRightQueryForLetAndSetLevelsUp(Query *rightQuery, Var *leftQueryLookupLet, int
-								   leftQueryLevelsUp)
+WalkQueryAndSetLevelsUp(Query *rightQuery, Var *varToCheck,
+						int varLevelsUpBase)
 {
-	LookupLetQueryTreeWalkerState state = { 0 };
-	state.numLevels = leftQueryLevelsUp;
-	state.originalVariable = leftQueryLookupLet;
+	LevelsUpQueryTreeWalkerState state = { 0 };
+	state.numLevels = varLevelsUpBase;
+	state.originalVariable = varToCheck;
 
 	query_tree_mutator((Query *) rightQuery,
-					   LookupReplaceLetVariableInQueries, &state,
+					   ReplaceVariablesWithLevelsUpMutator, &state,
 					   QTW_EXAMINE_RTES_BEFORE |
-					   QTW_DONT_COPY_QUERY);
+					   QTW_DONT_COPY_QUERY |
+					   QTW_EXAMINE_SORTGROUP);
+}
+
+
+static bool
+RangeTblEntryLevelsUpWalker(Node *expr, LevelsUpQueryTreeWalkerState *walkerState)
+{
+	if (expr == NULL)
+	{
+		return false;
+	}
+
+	if (IsA(expr, Query))
+	{
+		walkerState->numLevels++;
+		query_tree_walker((Query *) expr,
+						  RangeTblEntryLevelsUpWalker, walkerState,
+						  QTW_EXAMINE_RTES_BEFORE |
+						  QTW_DONT_COPY_QUERY);
+		walkerState->numLevels--;
+		return false;
+	}
+	else if (IsA(expr, RangeTblEntry))
+	{
+		RangeTblEntry *tblEntry = (RangeTblEntry *) expr;
+		if (tblEntry->rtekind == RTE_CTE && strcmp(tblEntry->ctename,
+												   walkerState->cteName) == 0)
+		{
+			tblEntry->ctelevelsup = walkerState->numLevels;
+		}
+
+		return false;
+	}
+
+	return expression_tree_walker(expr, RangeTblEntryLevelsUpWalker, walkerState);
+}
+
+
+static void
+WalkQueryAndSetCteLevelsUp(Query *rightQuery, const char *cteName,
+						   int varLevelsUpBase)
+{
+	LevelsUpQueryTreeWalkerState state = { 0 };
+	state.numLevels = varLevelsUpBase;
+	state.cteName = cteName;
+
+	query_tree_walker((Query *) rightQuery,
+					  RangeTblEntryLevelsUpWalker, &state,
+					  QTW_EXAMINE_RTES_BEFORE |
+					  QTW_DONT_COPY_QUERY);
+}
+
+
+static void
+ValidateLetHasNoVariables(pgbson *let)
+{
+	StringView variablePrefix =
+	{
+		.length = 2,
+		.string = "$$"
+	};
+
+	bson_iter_t letIter;
+	PgbsonInitIterator(let, &letIter);
+	while (bson_iter_next(&letIter))
+	{
+		/* TODO: Use full variable validation. */
+		if (BSON_ITER_HOLDS_UTF8(&letIter))
+		{
+			StringView charView = { 0 };
+			charView.string = bson_iter_utf8(&letIter, &charView.length);
+
+			if (StringViewStartsWithStringView(&charView, &variablePrefix))
+			{
+				ereport(ERROR, (errcode(MongoLocation17276),
+								errmsg("Use of undefined variable: %s",
+									   CreateStringFromStringView(&charView))));
+			}
+		}
+	}
+
+	bson_value_t varsValue = ConvertPgbsonToBsonValue(let);
+	ExpressionVariableContext *nullContext = NULL;
+	ParseVariableSpec(&varsValue, nullContext);
 }

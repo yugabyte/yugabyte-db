@@ -304,6 +304,7 @@ Oid BsonLastNOnSortedAggregateFunctionOid(void);
 Oid BsonAddToSetAggregateFunctionOid(void);
 Oid PostgresAnyValueFunctionOid(void);
 Oid BsonLookupExtractFilterExpressionFunctionOid(void);
+Oid BsonDollarLookupExpressionEvalMergeOid(void);
 Oid HelioApiInternalBsonLookupExtractFilterExpressionFunctionOid(void);
 Oid BsonDollarLookupJoinFilterFunctionOid(void);
 Oid BsonLookupExtractFilterArrayFunctionOid(void);

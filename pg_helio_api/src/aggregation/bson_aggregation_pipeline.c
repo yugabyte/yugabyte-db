@@ -53,6 +53,7 @@
 #include "utils/feature_counter.h"
 #include "utils/version_utils.h"
 #include "customscan/helio_custom_scan.h"
+#include "aggregation/bson_query.h"
 
 #include "aggregation/bson_aggregation_pipeline_private.h"
 #include "vector/vector_common.h"
@@ -67,6 +68,7 @@ extern bool EnableLetSupport;
 extern bool IgnoreLetOnQuerySupport;
 extern bool EnableGroupMergeObjectsSupport;
 extern bool EnableCursorsOnAggregationQueryRewrite;
+extern bool EnableLookupUnwindSupport;
 
 /*
  * The mutation function that modifies a given query with a pipeline stage's value.
@@ -84,7 +86,7 @@ typedef bool (*RequiresPersistentCursorFunc)(const bson_value_t *existingValue);
  * Whether or not the stage can be inlined for a lookup stage
  */
 typedef bool (*CanInlineLookupStage)(const bson_value_t *stageValue, const
-									 StringView *lookupPath);
+									 StringView *lookupPath, bool hasLet);
 
 
 /*
@@ -179,13 +181,15 @@ static bool RequiresPersistentCursorLimit(const bson_value_t *pipelineValue);
 static bool RequiresPersistentCursorSkip(const bson_value_t *pipelineValue);
 
 static bool CanInlineLookupStageProjection(const bson_value_t *stageValue, const
-										   StringView *lookupPath);
+										   StringView *lookupPath, bool hasLet);
 static bool CanInlineLookupStageUnset(const bson_value_t *stageValue, const
-									  StringView *lookupPath);
+									  StringView *lookupPath, bool hasLet);
 static bool CanInlineLookupStageUnwind(const bson_value_t *stageValue, const
-									   StringView *lookupPath);
+									   StringView *lookupPath, bool hasLet);
 static bool CanInlineLookupStageTrue(const bson_value_t *stageValue, const
-									 StringView *lookupPath);
+									 StringView *lookupPath, bool hasLet);
+static bool CanInlineLookupStageMatch(const bson_value_t *stageValue, const
+									  StringView *lookupPath, bool hasLet);
 
 static bool CheckFuncExprBsonDollarProjectGeonear(const FuncExpr *funcExpr);
 
@@ -442,7 +446,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.requiresPersistentCursor = &RequiresPersistentCursorFalse,
 
 		/* can always be inlined since it doesn't change the projector */
-		.canInlineLookupStageFunc = &CanInlineLookupStageTrue,
+		.canInlineLookupStageFunc = &CanInlineLookupStageMatch,
 
 		/* Match does not change the output format */
 		.preservesStableSortOrder = true,
@@ -1865,15 +1869,33 @@ ParseGetMore(text *databaseName, pgbson *getMoreSpec, QueryData *queryData)
  */
 bool
 CanInlineLookupPipeline(const bson_value_t *pipeline,
-						const StringView *lookupPath)
+						const StringView *lookupPath,
+						bool hasLet,
+						pgbson **inlinedPipeline,
+						pgbson **nonInlinedPipeline,
+						bool *pipelineIsValid)
 {
 	bson_iter_t pipelineIter;
 	BsonValueInitIterator(pipeline, &pipelineIter);
 
+	bool canInline = true;
+	pgbson_writer inlineWriter;
+	pgbson_writer nonInlineWriter;
+
+	PgbsonWriterInit(&inlineWriter);
+	PgbsonWriterInit(&nonInlineWriter);
+
+	pgbson_array_writer inlineArrayWriter;
+	pgbson_array_writer nonInlineArrayWriter;
+
+	PgbsonWriterStartArray(&inlineWriter, "", 0, &inlineArrayWriter);
+	PgbsonWriterStartArray(&nonInlineWriter, "", 0, &nonInlineArrayWriter);
 	while (bson_iter_next(&pipelineIter))
 	{
 		if (!BSON_ITER_HOLDS_DOCUMENT(&pipelineIter))
 		{
+			canInline = false;
+			*pipelineIsValid = false;
 			continue;
 		}
 
@@ -1881,6 +1903,8 @@ CanInlineLookupPipeline(const bson_value_t *pipeline,
 		pgbsonelement stageElement;
 		if (!TryGetBsonValueToPgbsonElement(stageValue, &stageElement))
 		{
+			canInline = false;
+			*pipelineIsValid = false;
 			continue;
 		}
 
@@ -1892,6 +1916,15 @@ CanInlineLookupPipeline(const bson_value_t *pipeline,
 			CompareStageByStageName);
 		if (definition == NULL)
 		{
+			canInline = false;
+			*pipelineIsValid = false;
+			continue;
+		}
+
+		/* Prior stage can't be inlined */
+		if (!canInline)
+		{
+			PgbsonArrayWriterWriteValue(&nonInlineArrayWriter, stageValue);
 			continue;
 		}
 
@@ -1900,16 +1933,29 @@ CanInlineLookupPipeline(const bson_value_t *pipeline,
 		 */
 		if (definition->canInlineLookupStageFunc == NULL)
 		{
-			return false;
+			canInline = false;
+			PgbsonArrayWriterWriteValue(&nonInlineArrayWriter, stageValue);
+			continue;
 		}
 
-		if (!definition->canInlineLookupStageFunc(&stageElement.bsonValue, lookupPath))
+		if (!definition->canInlineLookupStageFunc(&stageElement.bsonValue, lookupPath,
+												  hasLet))
 		{
-			return false;
+			canInline = false;
+			PgbsonArrayWriterWriteValue(&nonInlineArrayWriter, stageValue);
+			continue;
 		}
+
+		PgbsonArrayWriterWriteValue(&inlineArrayWriter, stageValue);
 	}
 
-	return true;
+	PgbsonWriterEndArray(&inlineWriter, &inlineArrayWriter);
+	PgbsonWriterEndArray(&nonInlineWriter, &nonInlineArrayWriter);
+
+	*pipelineIsValid = true;
+	*inlinedPipeline = PgbsonWriterGetPgbson(&inlineWriter);
+	*nonInlinedPipeline = PgbsonWriterGetPgbson(&nonInlineWriter);
+	return canInline;
 }
 
 
@@ -2545,6 +2591,15 @@ HandleUnwind(const bson_value_t *existingValue, Query *query,
 						errmsg("FieldPath field names may not start with '$'.")));
 	}
 
+	/* Optimization - if $unwind doesn't have options
+	 * try to see if you can find a BSON_ARRAY_AGG above with the same path
+	 */
+	if (EnableLookupUnwindSupport && !hasOptions &&
+		TryOptimizeUnwindForArrayAgg(query, StringViewSubstring(&pathView, 1)))
+	{
+		/* Query got inlined */
+		return query;
+	}
 
 	FuncExpr *resultExpr;
 
@@ -4700,9 +4755,79 @@ IsDefaultJoinTree(Node *node)
  * Default helper for a stage that can always be inlined for a $lookup such as $match
  */
 static bool
-CanInlineLookupStageTrue(const bson_value_t *stageValue, const StringView *lookupPath)
+CanInlineLookupStageTrue(const bson_value_t *stageValue, const StringView *lookupPath,
+						 bool hasLet)
 {
 	return true;
+}
+
+
+static bool
+QueryDocumentHasExpr(bson_iter_t *queryIter)
+{
+	check_stack_depth();
+	while (bson_iter_next(queryIter))
+	{
+		const char *key = bson_iter_key(queryIter);
+		if (strcmp(key, "$expr") == 0)
+		{
+			return true;
+		}
+
+		if (strcmp(key, "$and") == 0 || strcmp(key, "$or") == 0)
+		{
+			if (!BSON_ITER_HOLDS_ARRAY(queryIter))
+			{
+				continue;
+			}
+
+			bson_iter_t andOrIter;
+			if (bson_iter_recurse(queryIter, &andOrIter))
+			{
+				while (bson_iter_next(&andOrIter))
+				{
+					if (!BSON_ITER_HOLDS_DOCUMENT(&andOrIter))
+					{
+						continue;
+					}
+
+					bson_iter_t andElementIter;
+					if (bson_iter_recurse(&andOrIter, &andElementIter) &&
+						QueryDocumentHasExpr(&andElementIter))
+					{
+						return true;
+					}
+				}
+			}
+		}
+	}
+
+	return false;
+}
+
+
+/*
+ * Checks if $match can be inlined for $lookup
+ */
+static bool
+CanInlineLookupStageMatch(const bson_value_t *stageValue, const
+						  StringView *lookupPath, bool hasLet)
+{
+	if (!hasLet)
+	{
+		/* Without let $match can always be inlined */
+		return true;
+	}
+
+	if (stageValue->value_type != BSON_TYPE_DOCUMENT)
+	{
+		return false;
+	}
+
+	/* With let $match can be inlined if there's no $expr */
+	bson_iter_t queryIter;
+	BsonValueInitIterator(stageValue, &queryIter);
+	return !QueryDocumentHasExpr(&queryIter);
 }
 
 
@@ -4714,9 +4839,14 @@ CanInlineLookupStageTrue(const bson_value_t *stageValue, const StringView *looku
  */
 static bool
 CanInlineLookupStageProjection(const bson_value_t *stageValue, const
-							   StringView *lookupPath)
+							   StringView *lookupPath, bool hasLet)
 {
 	if (stageValue->value_type != BSON_TYPE_DOCUMENT)
+	{
+		return false;
+	}
+
+	if (hasLet)
 	{
 		return false;
 	}
@@ -4742,7 +4872,8 @@ CanInlineLookupStageProjection(const bson_value_t *stageValue, const
  * Helper for an unset stage on whether it can be inlined for a $lookup.
  */
 static bool
-CanInlineLookupStageUnset(const bson_value_t *stageValue, const StringView *lookupPath)
+CanInlineLookupStageUnset(const bson_value_t *stageValue, const StringView *lookupPath,
+						  bool hasLet)
 {
 	/* An unset can be pushed up if */
 	if (stageValue->value_type == BSON_TYPE_UTF8)
@@ -4786,7 +4917,8 @@ CanInlineLookupStageUnset(const bson_value_t *stageValue, const StringView *look
  * Helper for an unwind stage on whether it can be inlined for a $lookup.
  */
 static bool
-CanInlineLookupStageUnwind(const bson_value_t *stageValue, const StringView *lookupPath)
+CanInlineLookupStageUnwind(const bson_value_t *stageValue, const StringView *lookupPath,
+						   bool hasLet)
 {
 	/* An unwind can be pushed up if */
 	if (stageValue->value_type == BSON_TYPE_UTF8)
