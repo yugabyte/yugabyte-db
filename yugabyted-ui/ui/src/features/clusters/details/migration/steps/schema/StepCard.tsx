@@ -1,5 +1,5 @@
 import React, { FC } from "react";
-import { Box, LinearProgress, makeStyles, Paper, Typography, useTheme } from "@material-ui/core";
+import { Box, makeStyles, Paper, Typography, useTheme } from "@material-ui/core";
 import TodoIcon from "@app/assets/todo.svg";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import { useTranslation } from "react-i18next";
@@ -43,13 +43,16 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
+type StepCardStatus = "TODO" | "IN_PROGRESS" | "DONE";
+
 interface StepCardProps {
   title: string;
   showTooltip?: boolean;
   isDone?: boolean;
   isLoading?: boolean;
   accordion?: boolean;
-  children?: (isDone: boolean) => React.ReactNode;
+  renderChips?: () => React.ReactNode;
+  children?: (state: StepCardStatus) => React.ReactNode;
 }
 
 export const StepCard: FC<StepCardProps> = ({
@@ -58,21 +61,27 @@ export const StepCard: FC<StepCardProps> = ({
   isDone = false,
   isLoading = false,
   accordion = false,
+  renderChips,
   children,
 }) => {
   const classes = useStyles();
   const theme = useTheme();
   const { t } = useTranslation();
 
-  const totalObjects = 25;
-  const completedObjects = 12;
-  const progress = Math.round((completedObjects / totalObjects) * 100);
+  const getStepCardStatus = (isDone: boolean, isLoading: boolean) => {
+    if (isLoading) {
+      return "IN_PROGRESS";
+    }
+    return isDone ? "DONE" : "TODO";
+  };
 
-  const content = children?.(isDone);
+  const content = children?.(getStepCardStatus(isDone, isLoading));
 
   return (
     <Accordionify
       accordion={accordion}
+      renderChips={renderChips}
+      defaultExpanded={isLoading}
       titleComponent={
         <Box display="flex" alignItems="center" gridGap={theme.spacing(3)}>
           {!isDone && !isLoading && (
@@ -105,26 +114,7 @@ export const StepCard: FC<StepCardProps> = ({
         </Box>
       }
     >
-      {isLoading && (
-        <Box ml={7} mt={2}>
-          <LinearProgress
-            classes={{
-              root: classes.progressbar,
-              colorPrimary: classes.barBg,
-              bar: classes.bar,
-            }}
-            variant="determinate"
-            value={progress}
-          />
-          <Box ml="auto" mt={1} width="fit-content">
-            <Typography variant="body2">
-              {completedObjects}/{totalObjects} objects completed
-            </Typography>
-          </Box>
-        </Box>
-      )}
-
-      {!isLoading && !showTooltip && content && (
+      {content && (
         <Box ml={7} mt={2}>
           {content}
         </Box>
@@ -136,19 +126,27 @@ export const StepCard: FC<StepCardProps> = ({
 interface AccordionifyProps {
   accordion?: boolean;
   titleComponent: React.ReactNode;
+  renderChips?: () => React.ReactNode;
   children: React.ReactNode;
+  defaultExpanded?: boolean;
 }
 
 export const Accordionify: FC<AccordionifyProps> = ({
   titleComponent,
   accordion = false,
+  renderChips,
   children,
+  defaultExpanded,
 }) => {
   const classes = useStyles();
 
   if (accordion) {
     return (
-      <YBAccordion titleContent={titleComponent}>
+      <YBAccordion
+        titleContent={titleComponent}
+        renderChips={renderChips}
+        defaultExpanded={defaultExpanded}
+      >
         <Box width="100%" mt={-3}>
           {children}
         </Box>

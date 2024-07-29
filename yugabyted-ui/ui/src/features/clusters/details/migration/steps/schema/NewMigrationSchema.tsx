@@ -26,6 +26,16 @@ const useStyles = makeStyles((theme) => ({
     borderRadius: theme.shape.borderRadius,
     boxShadow: theme.shadows[2],
   },
+  progressbar: {
+    height: "8px",
+    borderRadius: "5px",
+  },
+  bar: {
+    borderRadius: "5px",
+  },
+  barBg: {
+    backgroundColor: theme.palette.grey[200],
+  },
 }));
 
 const exportSchemaPrereqs: React.ReactNode[] = [
@@ -94,6 +104,10 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
   const isErrorMigrationSchemaTasks = false;
   const isFetchingAPI = false;
 
+  const totalObjects = 25;
+  const completedObjects = 12;
+  const progress = Math.round((completedObjects / totalObjects) * 100);
+
   return (
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="start">
@@ -117,55 +131,121 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
         <>
           <Box display="flex" flexDirection="column" gridGap={theme.spacing(2)}>
             <StepCard title={t("clusterDetail.voyager.migrateSchema.schemaExportSourceDB")}>
-              {(isDone) =>
-                !isDone ? (
-                  <>
-                    <Prereqs items={exportSchemaPrereqs} />
-                    <StepDetails
-                      heading={t("clusterDetail.voyager.migrateSchema.schemaExport")}
-                      message={t("clusterDetail.voyager.migrateSchema.schemaExportDesc")}
-                      docsText={t("clusterDetail.voyager.migrateSchema.schemaExportLearn")}
-                      docsLink="https://docs.yugabyte.com/preview/yugabyte-voyager/migrate/migrate-steps/#export-schema"
-                    />
-                  </>
-                ) : null
-              }
+              {(status) => {
+                if (status === "TODO") {
+                  return (
+                    <>
+                      <Prereqs items={exportSchemaPrereqs} />
+                      <StepDetails
+                        heading={t("clusterDetail.voyager.migrateSchema.schemaExport")}
+                        message={t("clusterDetail.voyager.migrateSchema.schemaExportDesc")}
+                        docsText={t("clusterDetail.voyager.migrateSchema.schemaExportLearn")}
+                        docsLink="https://docs.yugabyte.com/preview/yugabyte-voyager/migrate/migrate-steps/#export-schema"
+                      />
+                    </>
+                  );
+                }
+
+                if (status === "IN_PROGRESS") {
+                  return (
+                    <>
+                      <LinearProgress
+                        classes={{
+                          root: classes.progressbar,
+                          colorPrimary: classes.barBg,
+                          bar: classes.bar,
+                        }}
+                        variant="determinate"
+                        value={progress}
+                      />
+                      <Box ml="auto" mt={1} width="fit-content">
+                        <Typography variant="body2">
+                          {completedObjects}/{totalObjects} objects completed
+                        </Typography>
+                      </Box>
+                    </>
+                  );
+                }
+
+                return null;
+              }}
             </StepCard>
             <StepCard title={t("clusterDetail.voyager.migrateSchema.schemaAnalysis")} isDone>
-              {(isDone) =>
-                !isDone ? (
-                  <>
+              {(status) => {
+                if (status === "TODO") {
+                  return (
                     <StepDetails
                       heading={t("clusterDetail.voyager.migrateSchema.schemaAnalysis")}
                       message={t("clusterDetail.voyager.migrateSchema.schemaAnalysisDesc")}
                       docsText={t("clusterDetail.voyager.migrateSchema.schemaAnalysisLearn")}
                       docsLink="https://docs.yugabyte.com/preview/yugabyte-voyager/migrate/migrate-steps/#analyze-schema"
                     />
-                  </>
-                ) : (
-                  <div>
-                    <SchemaAnalysis />
+                  );
+                }
 
-                  </div>
-                )
-              }
+                if (status === "IN_PROGRESS") {
+                  return (
+                    <>
+                      <LinearProgress
+                        classes={{
+                          root: classes.progressbar,
+                          colorPrimary: classes.barBg,
+                          bar: classes.bar,
+                        }}
+                        variant="determinate"
+                        value={progress}
+                      />
+                      <Box ml="auto" mt={1} width="fit-content">
+                        <Typography variant="body2">
+                          {completedObjects}/{totalObjects} objects completed
+                        </Typography>
+                      </Box>
+                    </>
+                  );
+                }
+
+                return <SchemaAnalysis />;
+              }}
             </StepCard>
-            <StepCard
-              title={t("clusterDetail.voyager.migrateSchema.schemaImportTargetDB")}
-            >
-              {(isDone) =>
-                !isDone ? (
-                  <>
-                    <Prereqs items={importSchemaPrereqs} />
-                    <StepDetails
-                      heading={t("clusterDetail.voyager.migrateSchema.schemaImport")}
-                      message={t("clusterDetail.voyager.migrateSchema.schemaImportDesc")}
-                      docsText={t("clusterDetail.voyager.migrateSchema.schemaImportLearn")}
-                      docsLink="https://docs.yugabyte.com/preview/yugabyte-voyager/migrate/migrate-steps/#import-schema"
-                    />
-                  </>
-                ) : null
-              }
+            <StepCard title={t("clusterDetail.voyager.migrateSchema.schemaImportTargetDB")}>
+              {(status) => {
+                if (status === "TODO") {
+                  return (
+                    <>
+                      <Prereqs items={importSchemaPrereqs} />
+                      <StepDetails
+                        heading={t("clusterDetail.voyager.migrateSchema.schemaImport")}
+                        message={t("clusterDetail.voyager.migrateSchema.schemaImportDesc")}
+                        docsText={t("clusterDetail.voyager.migrateSchema.schemaImportLearn")}
+                        docsLink="https://docs.yugabyte.com/preview/yugabyte-voyager/migrate/migrate-steps/#import-schema"
+                      />
+                    </>
+                  );
+                }
+
+                if (status === "IN_PROGRESS") {
+                  return (
+                    <>
+                      <LinearProgress
+                        classes={{
+                          root: classes.progressbar,
+                          colorPrimary: classes.barBg,
+                          bar: classes.bar,
+                        }}
+                        variant="determinate"
+                        value={progress}
+                      />
+                      <Box ml="auto" mt={1} width="fit-content">
+                        <Typography variant="body2">
+                          {completedObjects}/{totalObjects} objects completed
+                        </Typography>
+                      </Box>
+                    </>
+                  );
+                }
+
+                return null;
+              }}
             </StepCard>
           </Box>
         </>
