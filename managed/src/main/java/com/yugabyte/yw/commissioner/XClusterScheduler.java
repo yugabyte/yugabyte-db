@@ -13,6 +13,7 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.table.TableInfoUtil;
+import com.yugabyte.yw.controllers.handlers.UniverseTableHandler;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.Universe;
@@ -47,6 +48,7 @@ public class XClusterScheduler {
   private final YBClientService ybClientService;
   private final XClusterUniverseService xClusterUniverseService;
   private final MetricService metricService;
+  private final UniverseTableHandler tableHandler;
 
   @Inject
   public XClusterScheduler(
@@ -54,12 +56,14 @@ public class XClusterScheduler {
       RuntimeConfGetter confGetter,
       YBClientService ybClientService,
       XClusterUniverseService xClusterUniverseService,
-      MetricService metricService) {
+      MetricService metricService,
+      UniverseTableHandler tableHandler) {
     this.platformScheduler = platformScheduler;
     this.confGetter = confGetter;
     this.ybClientService = ybClientService;
     this.xClusterUniverseService = xClusterUniverseService;
     this.metricService = metricService;
+    this.tableHandler = tableHandler;
   }
 
   private Duration getSyncSchedulerInterval() {
@@ -343,7 +347,7 @@ public class XClusterScheduler {
     }
 
     XClusterConfigTaskBase.setReplicationStatus(
-        xClusterUniverseService, ybClientService, xClusterConfig);
+        xClusterUniverseService, ybClientService, tableHandler, xClusterConfig);
     Set<XClusterTableConfig> xClusterTableConfigs = xClusterConfig.getTableDetails();
     xClusterTableConfigs.forEach(
         tableConfig -> {

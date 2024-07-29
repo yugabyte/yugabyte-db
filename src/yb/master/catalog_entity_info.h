@@ -87,6 +87,10 @@ struct ExternalTableSnapshotData {
   PartitionToIdMap new_tablets_map;
   // Mapping: Old tablet ID -> New tablet ID.
   std::optional<ImportSnapshotMetaResponsePB::TableMetaPB> table_meta = std::nullopt;
+  // The correct schema version of the new table used for cloning colocated tables. Colocated
+  // tables' schemas and schema versions are added to the target tablet's superblock when applying
+  // the clone_op.
+  std::optional<int> new_table_schema_version = std::nullopt;
 };
 typedef std::unordered_map<TableId, ExternalTableSnapshotData> ExternalTableSnapshotDataMap;
 

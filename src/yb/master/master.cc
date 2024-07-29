@@ -224,7 +224,7 @@ Status Master::Init() {
   return Status::OK();
 }
 
-Status Master::InitAutoFlags(rpc::Messenger* messenger) {
+Status Master::InitFlags(rpc::Messenger* messenger) {
   // Will we be in shell mode if we dont have a sys catalog yet?
   bool is_shell_mode_if_new =
       FLAGS_master_join_existing_universe || !opts().AreMasterAddressesProvided();
@@ -236,11 +236,15 @@ Status Master::InitAutoFlags(rpc::Messenger* messenger) {
       } /* has_sys_catalog_func */,
       is_shell_mode_if_new));
 
-  return RpcAndWebServerBase::InitAutoFlags(messenger);
+  return RpcAndWebServerBase::InitFlags(messenger);
 }
 
 Result<std::unordered_set<std::string>> Master::GetAvailableAutoFlagsForServer() const {
   return auto_flags_manager_->GetAvailableAutoFlagsForServer();
+}
+
+Result<std::unordered_set<std::string>> Master::GetFlagsForServer() const {
+  return yb::GetFlagNamesFromXmlFile("master_flags.xml");
 }
 
 Status Master::InitAutoFlagsFromMasterLeader(const HostPort& leader_address) {
