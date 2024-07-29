@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-The [Azure Event Hubs](https://learn.microsoft.com/en-us/azure/event-hubs/event-hubs-about) data streaming service is [Apache Kafka](https://kafka.apache.org/intro) compatible, enabling existing workloads to easily be moved to Azure. With the [Debezium Connector for YugabyteDB](../../../explore/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb), we can stream changes from a YugabyteDB cluster to a Kafka topic using [Kafka Connect](https://docs.confluent.io/platform/current/connect/index.html#:~:text=Kafka%20Connect%20is%20a%20tool,in%20and%20out%20of%20Kafka.).
+The [Azure Event Hubs](https://learn.microsoft.com/en-us/azure/event-hubs/event-hubs-about) data streaming service is [Apache Kafka](https://kafka.apache.org/intro) compatible, enabling existing workloads to easily be moved to Azure. With the [YugabyteDB Debezium connector](../../../explore/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb), we can stream changes from a YugabyteDB cluster to a Kafka topic using [Kafka Connect](https://docs.confluent.io/platform/current/connect/index.html#:~:text=Kafka%20Connect%20is%20a%20tool,in%20and%20out%20of%20Kafka.).
 
 In this tutorial, we'll examine how the [YugabyteDB CDC](../../../explore/change-data-capture/using-yugabytedb-grpc-replication/cdc-overview/) can be used with Azure Event Hubs to stream real-time data for downstream processing.
 
@@ -35,7 +35,7 @@ This application runs a Node.js process to insert order records to a YugabyteDB 
 - An Azure Cloud account with permissions to create services
 - [Download Apache Kafka](https://kafka.apache.org/downloads) version 2.12-3.2.0
 - [Download YugabyteDB](https://download.yugabyte.com/#/) version 2.16.8.0
-- [Download Debezium Connector for YugabyteDB](https://github.com/yugabyte/debezium-connector-yugabytedb/tree/v1.9.5.y.15) version 1.9.5.y.15
+- [Download YugabyteDB Debezium connector](https://github.com/yugabyte/debezium-connector-yugabytedb/tree/v1.9.5.y.15) version 1.9.5.y.15
 - [Node.js](https://github.com/nodejs/release#release-schedule) version 18
 
 ## Get started with YugabyteDB
@@ -175,7 +175,7 @@ A Kafka Connect configuration file is required to provide information about the 
    cp /path/to/event-hubs.config  /path/to/kafka_2.12-3.2.0/bin
    ```
 
-1. Copy the Debezium Connector for YugabyteDB to the Kafka _libs_ directory.
+1. Copy the YugabyteDB Debezium connector to the Kafka _libs_ directory.
 
     ```sh
     cp /path/to/debezium-connector-yugabytedb-1.9.5.y.15.jar /path/to/kafka_2.12-3.2.0/libs

@@ -10,7 +10,7 @@ menu:
   preview:
     parent: explore-change-data-capture-grpc-replication
     identifier: cdc-get-started
-    weight: 30
+    weight: 10
 type: docs
 ---
 

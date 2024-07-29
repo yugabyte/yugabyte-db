@@ -13,13 +13,13 @@ menu:
   preview:
     parent: explore-change-data-capture-grpc-replication
     identifier: debezium-connector-yugabytedb
-    weight: 20
+    weight: 50
 type: docs
 rightNav:
   hideH4: true
 ---
 
-The YugabyteDB gRPC Connector is based on the Debezium Connector, and captures row-level changes in a YugabyteDB database's schemas.
+The YugabyteDB gRPC Connector is based on the Debezium Connector, and captures row-level changes in a YugabyteDB database's schemas using the YugabyteDB gRPC replication protocol.
 
 ## YugabyteDB gRPC Connector compatibility
 
@@ -1099,7 +1099,7 @@ The following three transformers are available: YBExtractNewRecordState, Extract
 
 Transformer type: `io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState`
 
-Unlike the Debezium Connector for PostgreSQL, the YugabyteDB gRPC Connector only sends the `after` image of the "set of columns" that are modified. PostgreSQL sends the complete `after` image of the row which has changed. So by default if the column was not changed, it is not a part of the payload that is sent and the default value is set to `null`.
+Unlike the Debezium connector for PostgreSQL, the YugabyteDB gRPC Connector only sends the `after` image of the "set of columns" that are modified. PostgreSQL sends the complete `after` image of the row which has changed. So by default if the column was not changed, it is not a part of the payload that is sent and the default value is set to `null`.
 
 To differentiate between the case where a column is set to `null` and the case in which it's not modified, the YugabyteDB gRPC Connector changes the value type to a struct. In this structure, an unchanged column is `{'value': null}`, whereas the column changed to a null value is `{'value': null, 'set': true}`.
 
@@ -1125,7 +1125,7 @@ The transformation defines the following configurations:
 * `field.name` - The name of the field which should be used as the topic name. If `null` or empty, the entire key or value is used (and assumed to be a string). By default is `null`.
 * `skip.missing.or.null` - In case the source of the new topic name is `null` or missing, should a record be silently passed without transformation. By default, is `false`.
 
-Here is an example of this transformation configuration:
+The following is an example of this transformation configuration:
 
 ```properties
 ...
@@ -1170,7 +1170,7 @@ For usage example, refer to YugabyteDB CDC Consistent Streaming Pipeline in the 
 
 ### Transaction boundaries
 
-The connector publishes metadata that can be used to distinguish transaction boundaries for a downstream application to implement atomicity. Once the configuration property `provide.transaction.metadata` is enabled, the connector will also publish events indicating the beginning and end of the transaction. For more information, see [Transaction metadata](#transaction-metadata).
+The connector publishes metadata that can be used to distinguish transaction boundaries for a downstream application to implement atomicity. After the configuration property `provide.transaction.metadata` is enabled, the connector will also publish events indicating the beginning and end of the transaction. For more information, see [Transaction metadata](#transaction-metadata).
 
 ### Prerequisites
 

@@ -26,9 +26,9 @@ In databases, change data capture (CDC) is a set of software design patterns use
 
 YugabyteDB supports the following methods for reading change events.
 
-## PostgreSQL Logical Replication Protocol (Recommended)
+## PostgreSQL Replication Protocol
 
-This method uses the PostgreSQL replication protocol, ensuring compatibility with PostgreSQL CDC systems. Logical replication operates through a publish-subscribe model. It replicates data objects and their changes based on the replication identity.
+This method uses the [PostgreSQL replication protocol](using-logical-replication/key-concepts/#replication-protocols), ensuring compatibility with PostgreSQL CDC systems. Logical replication operates through a publish-subscribe model. It replicates data objects and their changes based on the replication identity.
 
 It works as follows:
 
@@ -39,7 +39,7 @@ It works as follows:
 This is the recommended approach for most CDC applications due to its compatibility with PostgreSQL.
 
 {{<lead link="./using-logical-replication/">}}
-To learn about YugabyteDB Logical Replication, see [Using YugabyteDB logical replication](./using-logical-replication).
+To learn about CDC in YugabyteDB using the PostgreSQL Replication Protocol, see [CDC using PostgreSQL Replication Protocol](./using-logical-replication).
 {{</lead>}}
 
 ## YugabyteDB gRPC Replication Protocol
@@ -53,5 +53,5 @@ It works as follows:
 1. The connector captures change events using YugabyteDB's native gRPC replication and directly publishes them to a Kafka topic.
 
 {{<lead link="./using-yugabytedb-grpc-replication/">}}
-To learn about gRPC Replication, see [Using YugabyteDB gRPC replication](./using-yugabytedb-grpc-replication/).
+To learn about CDC in YugabyteDB using the gRPC Replication Protocol, see [CDC using gRPC Replication Protocol](./using-yugabytedb-grpc-replication/).
 {{</lead>}}

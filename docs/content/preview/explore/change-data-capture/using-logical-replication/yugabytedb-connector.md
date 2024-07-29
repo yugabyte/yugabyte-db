@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-The Debezium YugabyteDB connector captures row-level changes in the schemas of a YugabyteDB database.
+The YugabyteDB Connector is based on the Debezium Connector, and captures row-level changes in the schemas of a YugabyteDB database using the PostgreSQL replication protocol.
 
 The first time it connects to a YugabyteDB server, the connector takes a consistent snapshot of all schemas. After that snapshot is complete, the connector continuously captures row-level changes that insert, update, and delete database content, and that were committed to a YugabyteDB database. The connector generates data change event records and streams them to Kafka topics. For each table, the default behavior is that the connector streams all generated events to a separate Kafka topic for that table. Applications and services consume data change event records from that topic.
 
@@ -26,7 +26,7 @@ The YugabyteDB connector contains two main parts that work together to read and 
   <!-- YB specific -->
   * `yboutput` is the plugin packaged with YugabyteDB. It is maintained by Yugabyte and is always present with the distribution.
 
-  * `pgoutput` is the standard logical decoding output plugin in PostgreSQL 10+. It is maintained by the PostgreSQL community, and used by PostgreSQL itself for logical replication. YugabyteDB bundles this plugin with the standard distribution so it is always present and no additional libraries need to be installed. The Debezium YugabyteDB connector interprets the raw replication event stream directly into change events.
+  * `pgoutput` is the standard logical decoding output plugin in PostgreSQL 10+. It is maintained by the PostgreSQL community, and used by PostgreSQL itself for logical replication. YugabyteDB bundles this plugin with the standard distribution so it is always present and no additional libraries need to be installed. The YugabyteDB connector interprets the raw replication event stream directly into change events.
 
 <!-- YB note driver part -->
 * Java code (the actual Kafka Connect connector) that reads the changes produced by the chosen logical decoding output plugin. It uses the [streaming replication protocol](https://www.postgresql.org/docs/11/protocol-replication.html), by means of the YugabyteDB JDBC driver.
@@ -45,13 +45,14 @@ Debezium supports databases with UTF-8 character encoding only. With a single-by
 
 ## How the connector works
 
-To optimally configure and run a Debezium YugabyteDB connector, it is helpful to understand how the connector performs snapshots, streams change events, determines Kafka topic names, and uses metadata.
+To optimally configure and run a Debezium connector, it is helpful to understand how the connector performs snapshots, streams change events, determines Kafka topic names, and uses metadata.
 
 ### Security
 
 To use the Debezium connector to stream changes from a YugabyteDB database, the connector must operate with specific privileges in the database. Although one way to grant the necessary privileges is to provide the user with `superuser` privileges, doing so potentially exposes your YugabyteDB data to unauthorized access. Rather than granting excessive privileges to the Debezium user, it is best to create a dedicated Debezium replication user to which you grant specific privileges.
 
-For more information about configuring privileges for the Debezium YugabyteDB user, see [Setting up permissions](#setting-up-permissions).
+For more information about configuring privileges for the Debezium replication user, see [Setting up permissions](#setting-up-permissions).
+
 ### Snapshots
 
 Most YugabyteDB servers are configured to not retain the complete history of the database in the WAL segments. This means that the YugabyteDB connector would be unable to see the entire history of the database by reading only the WAL. Consequently, the first time that the connector starts, it performs an initial consistent snapshot of the database.
@@ -82,7 +83,7 @@ The YugabyteDB connector typically spends the vast majority of its time streamin
 
 Whenever the server commits a transaction, a separate server process invokes a callback function from the [logical decoding plugin](../key-concepts/#output-plugin). This function processes the changes from the transaction, converts them to a specific format and writes them on an output stream, which can then be consumed by clients.
 
-The Debezium YugabyteDB connector acts as a YugabyteDB client. When the connector receives changes it transforms the events into Debezium create, update, or delete events that include the LSN of the event. The YugabyteDB connector forwards these change events in records to the Kafka Connect framework, which is running in the same process. The Kafka Connect process asynchronously writes the change event records in the same order in which they were generated to the appropriate Kafka topic.
+The YugabyteDB connector acts as a YugabyteDB client. When the connector receives changes it transforms the events into Debezium create, update, or delete events that include the LSN of the event. The YugabyteDB connector forwards these change events in records to the Kafka Connect framework, which is running in the same process. The Kafka Connect process asynchronously writes the change event records in the same order in which they were generated to the appropriate Kafka topic.
 
 Periodically, Kafka Connect records the most recent offset in another Kafka topic. The offset indicates source-specific position information that Debezium includes with each event. For the YugabyteDB connector, the LSN recorded in each change event is the offset.
 
@@ -92,7 +93,7 @@ When Kafka Connect gracefully shuts down, it stops the connectors, flushes all e
 
 As of YugabyteDB v2024.1.1 and later, YugabyteDB supports the [yboutput plugin](../key-concepts/#output-plugin), a native output plugin for logical decoding.
 
-Additionally, YugabyteDB also supports the PostgreSQL `pgoutput` plugin natively. This means that the Debezium YugabyteDB connector can work with an existing setup configured using `pgoutput`.
+Additionally, YugabyteDB also supports the PostgreSQL `pgoutput` plugin natively. This means that the YugabyteDB connector can work with an existing setup configured using `pgoutput`.
 
 ### Topic names
 
@@ -203,7 +204,7 @@ Following is an example of a message:
 
 ## Data change events
 
-The Debezium YugabyteDB connector generates a data change event for each row-level `INSERT`, `UPDATE`, and `DELETE` operation. Each event contains a key and a value. The structure of the key and the value depends on the table that was changed.
+The YugabyteDB connector generates a data change event for each row-level `INSERT`, `UPDATE`, and `DELETE` operation. Each event contains a key and a value. The structure of the key and the value depends on the table that was changed.
 
 Debezium and Kafka Connect are designed around _continuous streams of event messages_. However, the structure of these events may change over time, which can be difficult for consumers to handle. To address this, each event contains the schema for its content or, if you are using a schema registry, a schema ID that a consumer can use to obtain the schema from the registry. This makes each event self-contained.
 
@@ -1096,7 +1097,7 @@ When a row is deleted, the _delete_ event value still works with log compaction,
 
 ## Data type mappings
 
-The Debezium YugabyteDB connector represents changes to rows with events that are structured like the table in which the row exists. The event contains a field for each column value. How that value is represented in the event depends on the YugabyteDB data type of the column. The following sections describe how the connector maps YugabyteDB data types to a literal type and a semantic type in event fields.
+The YugabyteDB connector represents changes to rows with events that are structured like the table in which the row exists. The event contains a field for each column value. How that value is represented in the event depends on the YugabyteDB data type of the column. The following sections describe how the connector maps YugabyteDB data types to a literal type and a semantic type in event fields.
 
 * `literal` type describes how the value is literally represented using Kafka Connect schema types: `INT8`, `INT16`, `INT32`, `INT64`, `FLOAT32`, `FLOAT64`, `BOOLEAN`, `STRING`, `BYTES`, `ARRAY`, `MAP`, and `STRUCT`.
 * `semantic` type describes how the Kafka Connect schema captures the meaning of the field using the name of the Kafka Connect schema for the field.
@@ -1363,7 +1364,7 @@ Procedure
 
 ### Supported YugabyteDB topologies
 
-As mentioned in the beginning, YugabyteDB (for all versions > 2024.1.1) supports logical replication slots. The Debezium YugabyteDB connector can communicate with the server by connecting to any node using the [YugabyteDB Java driver](../../../../reference/drivers/java/yugabyte-jdbc-reference). Should any node fail, the connector receives an error and restarts. Upon restart, the connector connects to any available node and continues streaming from that node.
+As mentioned in the beginning, YugabyteDB (for all versions > 2024.1.1) supports logical replication slots. The YugabyteDB connector can communicate with the server by connecting to any node using the [YugabyteDB Java driver](../../../../reference/drivers/java/yugabyte-jdbc-reference). Should any node fail, the connector receives an error and restarts. Upon restart, the connector connects to any available node and continues streaming from that node.
 
 ### Setting up multiple connectors for same database server
 
@@ -1377,16 +1378,16 @@ See `slot.name` and `publication.name` on how to set a unique replication slot n
 
 ## Deployment
 
-To deploy a Debezium YugabyteDB connector, you install the Debezium YugabyteDB connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect.
+To deploy the connector, you install the connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect.
 
-Prerequisites
+**Prerequisites**
 
 * [Zookeeper](https://zookeeper.apache.org/), [Kafka](http://kafka.apache.org/), and [Kafka Connect](https://kafka.apache.org/documentation.html#connect) are installed.
 * YugabyteDB is installed and is [set up to run the Debezium connector](#setting-up-yugabytedb).
 
-Procedure
+**Procedure**
 
-1. Download the [Debezium YugabyteDB connector plugin archive](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2024.1.SNAPSHOT.1).
+1. Download the [YugabyteDB connector plugin archive](https://github.com/yugabyte/debezium/releases/tag/dz.2.5.2.yb.2024.1.SNAPSHOT.1).
 2. Extract the files into your Kafka Connect environment.
 3. Add the directory with the JAR files to the [Kafka Connect `plugin.path`](https://kafka.apache.org/documentation/#connectconfigs).
 4. Restart your Kafka Connect process to pick up the new JAR files.
@@ -1400,7 +1401,7 @@ If [auto creation of topics](https://debezium.io/documentation/reference/2.5/con
 
 ### Connector configuration example
 
-Following is an example of the configuration for a YugabyteDB connector that connects to a YugabyteDB server on port `5433` at `192.168.99.100`, whose topic prefix is `fulfillment`. Typically, you configure the Debezium YugabyteDB connector in a JSON file by setting the configuration properties available for the connector.
+Following is an example of the configuration for a YugabyteDB connector that connects to a YugabyteDB server on port `5433` at `192.168.99.100`, whose topic prefix is `fulfillment`. Typically, you configure the YugabyteDB connector in a JSON file by setting the configuration properties available for the connector.
 
 You can choose to produce events for a subset of the schemas and tables in a database. Optionally, you can ignore, mask, or truncate columns that contain sensitive data, are larger than a specified size, or that you do not need.
 
@@ -1440,14 +1441,14 @@ You can send this configuration with a `POST` command to a running Kafka Connect
 
 ### Adding connector configuration
 
-To run a Debezium YugabyteDB connector, create a connector configuration and add the configuration to your Kafka Connect cluster.
+To run a the connector, create a connector configuration and add the configuration to your Kafka Connect cluster.
 
-Prerequisites
+**Prerequisites**
 
 * [YugabyteDB is configured to support logical replication.](#setting-up-yugabytedb)
 * The YugabyteDB connector is installed.
 
-Procedure
+**Procedure**
 
 1. Create a configuration for the YugabyteDB connector.
 2. Use the [Kafka Connect REST API](https://kafka.apache.org/documentation/#connect_rest) to add that connector configuration to your Kafka Connect cluster.
@@ -1458,7 +1459,7 @@ After the connector starts, it performs a consistent snapshot of the YugabyteDB 
 
 ### Connector properties
 
-The Debezium YugabyteDB connector has many configuration properties that you can use to achieve the right connector behavior for your application. Many properties have default values. Information about the properties is organized as follows:
+The connector has many configuration properties that you can use to achieve the right connector behavior for your application. Many properties have default values. Information about the properties is organized as follows:
 
 * [Required configuration properties](#required-configuration-properties)
 * [Advanced configuration properties](#advanced-configuration-properties)
@@ -1559,7 +1560,7 @@ Be sure to consult the [Kafka documentation](https://kafka.apache.org/documentat
 
 ## Monitoring
 
-The Debezium YugabyteDB connector provides two metrics in addition to the built-in support for JMX metrics that Zookeeper, Kafka, and Kafka Connect provide:
+The YugabyteDB connector provides two metrics in addition to the built-in support for JMX metrics that Zookeeper, Kafka, and Kafka Connect provide:
 
 * [Snapshot metrics](#snapshot-metrics) provide information about connector operation while performing a snapshot.
 * [Streaming metrics](#streaming-metrics) provide information about connector operation when the connector is capturing changes and streaming change event records.

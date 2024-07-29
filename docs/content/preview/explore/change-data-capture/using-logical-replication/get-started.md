@@ -2,7 +2,7 @@
 title: Get started with CDC logical replication in YugabyteDB
 headerTitle: Get started
 linkTitle: Get started
-description: Get started with Change Data Capture  in YugabyteDB.
+description: Get started with Change Data Capture in YugabyteDB.
 headcontent: Start using CDC with logical replication
 menu:
   preview:
@@ -15,7 +15,7 @@ type: docs
 To get started streaming data change events from a YugabyteDB database using a replication slot, you can use either of the following client options:
 
 - [`pg_recvlogical`](#get-started-with-pg_recvlogical)
-- [Debezium YugabyteDB connector](#get-started-with-yugabytedb-connector)
+- [YugabyteDB connector](#get-started-with-yugabytedb-connector)
 
 {{< note title="Note" >}}
 
@@ -284,7 +284,7 @@ After starting YugabyteDB, use ysqlsh to create your database:
 
 #### Start Kafka Connect
 
-After starting YugabyteDB, you start the Kafka Connect service. This service exposes a REST API to manage the Debezium YugabyteDB connector.
+After starting YugabyteDB, you start the Kafka Connect service. This service exposes a REST API to manage the YugabyteDB connector.
 
 1. Open a new terminal, and use it to start the Kafka Connect service in a container.
 
@@ -331,7 +331,7 @@ After starting the Debezium and YugabyteDB service, you are ready to deploy the 
 
 #### Register a connector to monitor `yugabyte` database
 
-By registering the Debezium YugabyteDB connector, the connector will start monitoring the YugabyteDB database's table `products`. When a row in the table changes, Debezium generates a change event.
+By registering the YugabyteDB connector, the connector will start monitoring the YugabyteDB database's table `products`. When a row in the table changes, Debezium generates a change event.
 
 {{< note title="Note" >}}
 
@@ -339,7 +339,7 @@ In a production environment, you would typically either use the Kafka tools to m
 
 {{< /note >}}
 
-1. Review the configuration of the Debezium YugabyteDB connector that you will register. Before registering the connector, you should be familiar with its configuration. In the next step, you will register the following connector:
+1. Review the configuration of the YugabyteDB connector that you will register. Before registering the connector, you should be familiar with its configuration. In the next step, you will register the following connector:
 
     ```json
     {
@@ -369,9 +369,9 @@ In a production environment, you would typically either use the Kafka tools to m
     - `plugin.name` - [Plugin](../overview/#output-plugin) to be used for replication.
     - `slot.name` - Name of the [replication slot](../overview/#replication-slot).
 
-    For more information, see [YugabyteDB connector configuration properties](../yugabtyedb-connector/#connector-properties).
+    For more information, see [YugabyteDB connector configuration properties](../yugabytedb-connector/#connector-properties).
 
-1. Open a new terminal and use the `curl` command to register the Debezium YugabyteDB connector.
+1. Open a new terminal and use the `curl` command to register the YugabyteDB connector.
 
     This command uses the Kafka Connect service API to submit a `POST` request against the `/connectors` resource with a `JSON` document that describes the new connector (called `ybconnector`).
 
@@ -425,7 +425,7 @@ Kafka Connect reports some "errors". However, you can safely ignore these warnin
 
 ### View change events
 
-After deploying the Debezium YugabyteDB connector, it starts monitoring the `yugabyte` database for data change events.
+After deploying the YugabyteDB connector, it starts monitoring the `yugabyte` database for data change events.
 
 For this tutorial, you will explore the `dbserver1.public.products` topic.
 
@@ -461,7 +461,7 @@ This utility keeps watching the topic, so any new events will automatically appe
 
 #### Update the database and view the update event
 
-Now that you have seen how the Debezium YugabyteDB connector captured the create events in the `yugabyte` database, change one of the records and see how the connector captures it.
+Now that you have seen how the YugabyteDB connector captured the create events in the `yugabyte` database, change one of the records and see how the connector captures it.
 
 By completing this procedure, you will learn how to find details about what changed in a database commit, and how you can compare change events to determine when the change occurred in relation to other changes.
 
@@ -486,7 +486,7 @@ By completing this procedure, you will learn how to find details about what chan
 
 1. Switch to the terminal running `watch-topic` to see a new event.
 
-    By changing a record in the `products` table, the Debezium YugabyteDB connector generated a new event.
+    By changing a record in the `products` table, the YugabyteDB connector generated a new event.
 
     The details for the payload of the *update* event will look similar to the following (formatted for readability):
 
@@ -523,7 +523,7 @@ Note that the fields which were not updated are coming out as `null`. This is be
     delete from products where id = 22;
     ```
 
-1. Switch to the terminal running `watch-topic` to see two new events. By deleting a row in the `products` table, the Debezium YugabyteDB connector generated 2 new events.
+1. Switch to the terminal running `watch-topic` to see two new events. By deleting a row in the `products` table, the YugabyteDB connector generated 2 new events.
 
     The details for the payload of the first event will look similar to the following (formatted for readability):
 
@@ -571,7 +571,7 @@ Note that the fields which were not updated are coming out as `null`. This is be
     }
     ```
 
-The second event will have a *key* but the *value* will be `null`; that is a [tombstone event](../yugabtyedb-connector/#tombstone-events) generated by the Debezium YugabyteDB connector.
+The second event will have a *key* but the *value* will be `null`; that is a [tombstone event](../yugabytedb-connector/#tombstone-events) generated by the YugabyteDB connector.
 
 ### Clean up
 

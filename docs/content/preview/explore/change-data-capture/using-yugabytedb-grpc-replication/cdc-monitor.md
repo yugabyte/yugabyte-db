@@ -10,7 +10,7 @@ menu:
   preview:
     parent: explore-change-data-capture-grpc-replication
     identifier: cdc-monitor
-    weight: 60
+    weight: 20
 type: docs
 ---
 

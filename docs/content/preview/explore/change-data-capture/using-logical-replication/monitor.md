@@ -84,4 +84,4 @@ Provide information about CDC service in YugabyteDB.
 
 <!-- TODO (Siddharth): Fix link to connector metrics section -->
 
-Refer to [Monitoring](../yugabtyedb-connector/#monitoring) for information on YugabyteDB connector metrics.
+Refer to [Monitoring](../yugabytedb-connector/#monitoring) for information on YugabyteDB connector metrics.
