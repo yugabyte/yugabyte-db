@@ -285,6 +285,7 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("ysql_analyze_dump_metrics", "true");
+    flagMap.put("ysql_enable_packed_row_for_colocated_table", "true");
     return flagMap;
   }
 

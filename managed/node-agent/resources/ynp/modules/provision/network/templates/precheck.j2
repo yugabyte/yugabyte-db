@@ -23,8 +23,10 @@ check_port() {
     (echo > /dev/tcp/$ip/$port) >/dev/null 2>&1
     if [ $? -eq 0 ]; then
         echo "Port $port is open on $ip"
+        add_result "Port $port Check" "PASS" "Port $port is open on $ip"
     else
         echo "Port $port is closed or filtered on $ip"
+        add_result "Port $port Check" "FAIL" "Port $port is closed or filtered on $ip"
     fi
 }
 
@@ -39,6 +41,8 @@ for port in "${ports[@]}"; do
     # Check if the port is open
     check_port "$vm_ip" "$port"
 
-    # Stop the server
-    kill $server_pid
+    # Stop the server if the PID exists
+    if ps -p $server_pid > /dev/null; then
+        kill $server_pid
+    fi
 done

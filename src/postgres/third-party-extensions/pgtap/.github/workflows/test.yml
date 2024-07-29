@@ -1,0 +1,74 @@
+name: ✅ Test
+on:
+  push:
+    branches: ['*']
+  pull_request:
+  schedule:
+    - cron:  '0 14 3 * *' # Monthly at 2pm on the third
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - { version: 17,  upgrade_to: "",  update_from: 0.99.0 }
+          - { version: 16,  upgrade_to: 17,  update_from: 0.99.0 }
+          - { version: 15,  upgrade_to: 16,  update_from: 0.99.0 }
+          - { version: 14,  upgrade_to: 15,  update_from: 0.99.0 }
+          - { version: 13,  upgrade_to: 14,  update_from: 0.99.0 }
+          - { version: 12,  upgrade_to: 13,  update_from: 0.99.0 }
+          - { version: 11,  upgrade_to: 12,  update_from: 0.99.0 } # Versions prior to 0.99.0 don't support Postgres 11
+          - { version: 10,  upgrade_to: 11,  update_from: 0.95.0 }
+          - { version: 9.6, upgrade_to: 10,  update_from: 0.95.0 }
+          - { version: 9.5, upgrade_to: 9.6, update_from: 0.95.0 }
+          - { version: 9.4, upgrade_to: 9.5, update_from: 0.95.0 }
+          - { version: 9.3, upgrade_to: 9.4, update_from: 0.95.0 }
+          - { version: 9.2, upgrade_to: 9.3, update_from: "" }     # updatecheck is not supported prior to 9.3
+          - { version: 9.1, upgrade_to: 9.2, update_from: "" }     # updatecheck is not supported prior to 9.3
+          # Also test pg_upgrade across many versions
+          - { version: 9.2,  upgrade_to: 17, update_from: "", suffix: –17 }
+          - { version: 9.4,  upgrade_to: 17, update_from: "", suffix: –17 }
+    name: 🐘 PostgreSQL ${{ matrix.version }}${{ matrix.suffix }}
+    runs-on: ubuntu-latest
+    container: pgxn/pgxn-tools
+    env:
+      PGUSER: postgres
+      UPDATE_FROM:  "${{ matrix.update_from }}"
+    steps:
+      - run: pg-start ${{ matrix.version }}
+      - uses: actions/checkout@v4
+
+      # Basic regression test.
+      - run: pg-build-test
+
+      # Test update.
+      - run: 'if [ -d "$UPDATE_FROM" ]; then make uninstall clean updatecheck; fi'
+
+      # Test all, install, test, test-serial, and test-parallel, both from clean
+      # repo and repeated with existing build, with and without PARALLEL_CONN=1.
+      - run: make uninstall clean all
+      - run: make all
+      - run: make uninstall clean install
+      - run: make install
+      - run: psql -Ec 'CREATE EXTENSION pgtap'
+      - run: make uninstall clean test
+      - run: make test
+      - run: make uninstall clean test PARALLEL_CONN=1
+      - run: make test PARALLEL_CONN=1
+      - run: make uninstall clean test-serial
+      - run: make test-serial
+      - run: make uninstall clean test-serial PARALLEL_CONN=1
+      - run: make test-serial PARALLEL_CONN=1
+      - run: make uninstall clean test-parallel
+      - run: make test-parallel
+      - run: make uninstall clean test-parallel PARALLEL_CONN=1
+      - run: make test-parallel PARALLEL_CONN=1
+
+      # Test upgrade last, since the new version's client will be preferred.
+      - if: ${{ matrix.upgrade_to != '' }}
+        name: Upgrade to ${{ matrix.upgrade_to }}
+        # Based on https://gist.github.com/petere/6023944
+        # See also https://askubuntu.com/a/104912 for --force options
+        run: |
+          make install
+          sudo apt.postgresql.org.sh -i -v "${{ matrix.upgrade_to }}"
+          sudo -u postgres test/test_MVU.sh -s 55432 55433 "${{ matrix.version }}" "${{ matrix.upgrade_to }}"

@@ -44,6 +44,7 @@
 #include "yb/server/skewed_clock.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/curl_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/jwt_util.h"
 #include "yb/util/result.h"
@@ -116,6 +117,7 @@ DEFINE_NON_RUNTIME_bool(
     "Fill postgres' caches with system items only");
 
 DECLARE_bool(TEST_ash_debug_aux);
+DECLARE_bool(TEST_generate_ybrowid_sequentially);
 
 DECLARE_bool(use_fast_backward_scan);
 
@@ -198,7 +200,8 @@ inline std::optional<Bound> MakeBound(YBCPgBoundType type, uint64_t value) {
   if (type == YB_YQL_BOUND_INVALID) {
     return std::nullopt;
   }
-  return Bound{.value = value, .is_inclusive = (type == YB_YQL_BOUND_VALID_INCLUSIVE)};
+  return Bound{.value = narrow_cast<uint16_t>(value),
+               .is_inclusive = (type == YB_YQL_BOUND_VALID_INCLUSIVE)};
 }
 
 Status InitPgGateImpl(const YBCPgTypeEntity* data_type_table,
@@ -398,6 +401,38 @@ std::string HumanReadableTableType(yb::TableType table_type) {
   FATAL_INVALID_ENUM_VALUE(yb::TableType, table_type);
 }
 
+const YBCPgTypeEntity* GetTypeEntity(
+    int pg_type_oid, int attr_num, YBCPgOid table_oid, YBCTypeEntityProvider type_entity_provider) {
+
+  // TODO(23239): Optimize the lookup of type entities for dynamic types.
+  return pg_type_oid == kPgInvalidOid ? (*type_entity_provider)(attr_num, table_oid)
+                                      : pgapi->FindTypeEntity(pg_type_oid);
+}
+
+Status YBCGetTableKeyRangesImpl(
+    const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
+    uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length,
+    YBCGetTableKeyRangesCallback callback, void* callback_param) {
+  auto encoded_table_range_slices = VERIFY_RESULT(pgapi->GetTableKeyRanges(
+      table_id, lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes, is_forward,
+      max_key_length));
+  for (size_t i = 0; i < encoded_table_range_slices.size(); ++i) {
+    auto encoded_tablet_ranges = encoded_table_range_slices[i].AsSlice();
+    while (!encoded_tablet_ranges.empty()) {
+      // Consume null-flag
+      RETURN_NOT_OK(encoded_tablet_ranges.consume_byte(0));
+      // Read key from buffer.
+      const auto key_size = PgWire::ReadNumber<uint64_t>(&encoded_tablet_ranges);
+      Slice key(encoded_tablet_ranges.cdata(), key_size);
+      encoded_tablet_ranges.remove_prefix(key_size);
+
+      callback(callback_param, key.cdata(), key.size());
+    }
+  }
+
+  return Status::OK();
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -499,21 +534,27 @@ YBCStatus YBCValidateJWT(const char *token, const YBCPgJwtAuthOptions *options) 
   return ToYBCStatus(STATUS(InvalidArgument, "Identity match failed"));
 }
 
-bool YBCGetCurrentPgSessionParallelData(YBCPgSessionParallelData* session_data) {
-  if (pgapi) {
-    session_data->session_id = pgapi->GetSessionId();
-    session_data->txn_serial_no = pgapi->GetTxnSerialNo();
-    session_data->read_time_serial_no = pgapi->GetReadTimeSerialNo();
-    session_data->active_sub_transaction_id = pgapi->GetActiveSubTransactionId();
-    return true;
+YBCStatus YBCFetchFromUrl(const char *url, char **buf) {
+  const std::string url_value(DCHECK_NOTNULL(url));
+  EasyCurl curl;
+  faststring buf_ret;
+  auto status = curl.FetchURL(url_value, &buf_ret);
+  if (!status.ok()) {
+    return ToYBCStatus(status);
   }
-  return false;
+
+  *DCHECK_NOTNULL(buf) = static_cast<char*>(YBCPAlloc(buf_ret.size()+1));
+  snprintf(*buf, buf_ret.size()+1, "%s", buf_ret.ToString().c_str());
+  return YBCStatusOK();
 }
 
-void YBCRestorePgSessionParallelData(const YBCPgSessionParallelData* session_data) {
+void YBCDumpCurrentPgSessionState(YBCPgSessionState* session_data) {
+  pgapi->DumpSessionState(session_data);
+}
+
+void YBCRestorePgSessionState(const YBCPgSessionState* session_data) {
   CHECK_NOTNULL(pgapi);
-  DCHECK_EQ(pgapi->GetSessionId(), session_data->session_id);
-  pgapi->RestoreSessionParallelData(*session_data);
+  pgapi->RestoreSessionState(*session_data);
 }
 
 YBCStatus YBCPgInitSession(const char* database_name, YBCPgExecStatsState* session_stats) {
@@ -1291,8 +1332,8 @@ YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle, YBCPgExpr lhs, int n_a
 
 YBCStatus YBCPgDmlBindHashCodes(
   YBCPgStatement handle,
-  YBCPgBoundType start_type, uint64_t start_value,
-  YBCPgBoundType end_type, uint64_t end_value) {
+  YBCPgBoundType start_type, int start_value,
+  YBCPgBoundType end_type, int end_value) {
   return ToYBCStatus(pgapi->DmlBindHashCode(
       handle, MakeBound(start_type, start_value), MakeBound(end_type, end_value)));
 }
@@ -1374,7 +1415,7 @@ YBCStatus YBCPgInitRandomState(YBCPgStatement handle, double rstate_w, uint64_t 
 }
 
 YBCStatus YBCPgSampleNextBlock(YBCPgStatement handle, bool *has_more) {
-  return ToYBCStatus(pgapi->SampleNextBlock(handle, has_more));
+  return ExtractValueFromResult(pgapi->SampleNextBlock(handle), has_more);
 }
 
 YBCStatus YBCPgExecSample(YBCPgStatement handle) {
@@ -1382,7 +1423,12 @@ YBCStatus YBCPgExecSample(YBCPgStatement handle) {
 }
 
 YBCStatus YBCPgGetEstimatedRowCount(YBCPgStatement handle, double *liverows, double *deadrows) {
-  return ToYBCStatus(pgapi->GetEstimatedRowCount(handle, liverows, deadrows));
+  return ExtractValueFromResult(
+      pgapi->GetEstimatedRowCount(handle),
+      [liverows, deadrows](const auto& count) {
+        *liverows = count.live;
+        *deadrows = count.dead;
+      });
 }
 
 // INSERT Operations -------------------------------------------------------------------------------
@@ -1485,10 +1531,13 @@ YBCStatus YBCPgNewSelect(const YBCPgOid database_oid,
                          const YBCPgPrepareParameters *prepare_params,
                          bool is_region_local,
                          YBCPgStatement *handle) {
-  const PgObjectId table_id(database_oid, table_relfilenode_oid);
-  const PgObjectId index_id(database_oid,
-                            prepare_params ? prepare_params->index_relfilenode_oid : kInvalidOid);
-  return ToYBCStatus(pgapi->NewSelect(table_id, index_id, prepare_params, is_region_local, handle));
+  const auto index_oid = prepare_params && prepare_params->use_secondary_index
+      ? prepare_params->index_relfilenode_oid
+      : kInvalidOid;
+  const auto index_id =
+      index_oid == kInvalidOid ? PgObjectId{} : PgObjectId{database_oid, index_oid};
+  return ToYBCStatus(pgapi->NewSelect(
+      {database_oid, table_relfilenode_oid}, index_id, prepare_params, is_region_local, handle));
 }
 
 YBCStatus YBCPgSetForwardScan(YBCPgStatement handle, bool is_forward_scan) {
@@ -1700,6 +1749,10 @@ double YBCGetTransactionPriority() {
 
 TxnPriorityRequirement YBCGetTransactionPriorityType() {
   return pgapi->GetTransactionPriorityType();
+}
+
+YBCStatus YBCPgEnsureReadPoint() {
+  return ToYBCStatus(pgapi->EnsureReadPoint());
 }
 
 YBCStatus YBCPgRestartReadPoint() {
@@ -1926,6 +1979,8 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
           &FLAGS_ysql_enable_db_catalog_version_mode,
       .TEST_ysql_hide_catalog_version_increment_log =
           &FLAGS_TEST_ysql_hide_catalog_version_increment_log,
+      .TEST_generate_ybrowid_sequentially =
+          &FLAGS_TEST_generate_ybrowid_sequentially,
       .ysql_use_fast_backward_scan = &FLAGS_use_fast_backward_scan,
   };
   // clang-format on
@@ -2102,40 +2157,11 @@ YBCStatus YBCGetTableKeyRanges(
     YBCPgOid database_oid, YBCPgOid table_relfilenode_oid, const char* lower_bound_key,
     size_t lower_bound_key_size, const char* upper_bound_key, size_t upper_bound_key_size,
     uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length,
-    uint64_t* current_tserver_ht,
-    void callback(void* callback_param, const char* key, size_t key_size), void* callback_param) {
-  auto res = pgapi->GetTableKeyRanges(
+    YBCGetTableKeyRangesCallback callback, void* callback_param) {
+  return ToYBCStatus(YBCGetTableKeyRangesImpl(
       PgObjectId(database_oid, table_relfilenode_oid), Slice(lower_bound_key, lower_bound_key_size),
       Slice(upper_bound_key, upper_bound_key_size), max_num_ranges, range_size_bytes, is_forward,
-      max_key_length);
-  if (!res.ok()) {
-    return ToYBCStatus(res.status());
-  }
-
-  auto& encoded_table_range_slices = res->encoded_range_end_keys;
-
-  if (current_tserver_ht) {
-    *current_tserver_ht = res->current_ht.ToUint64();
-  }
-
-  for (size_t i = 0; i < encoded_table_range_slices.size(); ++i) {
-    Slice encoded_tablet_ranges = encoded_table_range_slices[i].AsSlice();
-    while (!encoded_tablet_ranges.empty()) {
-      // Consume null-flag
-      const auto s = encoded_tablet_ranges.consume_byte(0);
-      if (!s.ok()) {
-        return ToYBCStatus(s);
-      }
-      // Read key from buffer.
-      const auto key_size = PgWire::ReadNumber<uint64_t>(&encoded_tablet_ranges);
-      Slice key(encoded_tablet_ranges.cdata(), key_size);
-      encoded_tablet_ranges.remove_prefix(key_size);
-
-      callback(callback_param, key.cdata(), key.size());
-    }
-  }
-
-  return YBCStatusOK();
+      max_key_length, callback, callback_param));
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -2399,7 +2425,9 @@ YBCPgRowMessageAction GetRowMessageAction(yb::cdc::RowMessage row_message_pb) {
 }
 
 YBCStatus YBCPgGetCDCConsistentChanges(
-    const char *stream_id, YBCPgChangeRecordBatch **record_batch) {
+    const char* stream_id,
+    YBCPgChangeRecordBatch** record_batch,
+    YBCTypeEntityProvider type_entity_provider) {
   const auto result = pgapi->GetConsistentChangesForCDC(std::string(stream_id));
   if (!result.ok()) {
     return ToYBCStatus(result.status());
@@ -2458,6 +2486,10 @@ YBCStatus YBCPgGetCDCConsistentChanges(
       old_tuple_idx++;
     }
 
+    const auto table_oid = row_message_pb.has_table_id()
+                               ? PgObjectId(row_message_pb.table_id()).object_oid
+                               : kPgInvalidOid;
+
     auto col_count = narrow_cast<int>(col_name_idx_map.size());
     YBCPgDatumMessage *cols = nullptr;
     if (col_count > 0) {
@@ -2475,8 +2507,10 @@ YBCStatus YBCPgGetCDCConsistentChanges(
         if (!before_op_is_omitted) {
           const auto old_datum_pb =
               &row_message_pb.old_tuple(static_cast<int>(col_idxs.second.first));
-          const auto *type_entity =
-              pgapi->FindTypeEntity(static_cast<int>(old_datum_pb->column_type()));
+          DCHECK(table_oid != kPgInvalidOid);
+          const auto* type_entity = GetTypeEntity(
+              static_cast<int>(old_datum_pb->column_type()), old_datum_pb->col_attr_num(),
+              table_oid, type_entity_provider);
           auto s = PBToDatum(
               type_entity, type_attrs, old_datum_pb->pg_ql_value(), &before_op_datum,
               &before_op_is_null);
@@ -2492,8 +2526,10 @@ YBCStatus YBCPgGetCDCConsistentChanges(
         if (!after_op_is_omitted) {
           const auto new_datum_pb =
               &row_message_pb.new_tuple(static_cast<int>(col_idxs.second.second));
-          const auto *type_entity =
-              pgapi->FindTypeEntity(static_cast<int>(new_datum_pb->column_type()));
+          DCHECK(table_oid != kPgInvalidOid);
+          const auto* type_entity = GetTypeEntity(
+              static_cast<int>(new_datum_pb->column_type()), new_datum_pb->col_attr_num(),
+              table_oid, type_entity_provider);
           auto s = PBToDatum(
               type_entity, type_attrs, new_datum_pb->pg_ql_value(), &after_op_datum,
               &after_op_is_null);
@@ -2513,12 +2549,6 @@ YBCStatus YBCPgGetCDCConsistentChanges(
       }
     }
 
-    // Only present for DML records.
-    YBCPgOid table_oid = kPgInvalidOid;
-    if (row_message_pb.has_table_id()) {
-      auto table_id = PgObjectId(row_message_pb.table_id());
-      table_oid = table_id.object_oid;
-    }
 
     new (&resp_rows[row_idx]) YBCPgRowMessage{
         .col_count = col_count,

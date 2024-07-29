@@ -465,10 +465,14 @@ Status ReadQuery::DoPickReadTime(server::Clock* clock) {
       read_time_.global_limit = read_time_.read;
     }
   } else {
-    HybridTime current_safe_time = HybridTime::kMin;
+    HybridTime current_safe_time = VERIFY_RESULT(abstract_tablet_->SafeTime(
+      require_lease_, HybridTime::kMin, context_.GetClientDeadline()));
+    // Read query is allowed to ignore ambiguity window for writes that
+    // occur after this moment.
+    if (current_safe_time < read_time_.local_limit) {
+      read_time_.local_limit = current_safe_time;
+    }
     if (IsPgsqlFollowerReadAtAFollower()) {
-      current_safe_time = VERIFY_RESULT(abstract_tablet_->SafeTime(
-          require_lease_, HybridTime::kMin, context_.GetClientDeadline()));
       if (GetAtomicFlag(&FLAGS_ysql_follower_reads_avoid_waiting_for_safe_time) &&
           current_safe_time < read_time_.read) {
         // We are given a read time. However, for Follower reads, it may be better

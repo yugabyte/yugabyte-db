@@ -1,5 +1,5 @@
 import { FC } from 'react';
-import _ from 'lodash';
+import { get, cloneDeep } from 'lodash';
 import { toast } from 'react-toastify';
 import { useForm } from 'react-hook-form';
 import { useMutation } from 'react-query';
@@ -15,6 +15,9 @@ import {
 import { api } from '../../universe-form/utils/api';
 import { EditGflagPayload, UpgradeOptions } from '../edit-gflags/GflagHelper';
 import { isPGEnabledFromIntent } from '../../universe-form/utils/helpers';
+import { RBAC_ERR_MSG_NO_PERM } from '../../../rbac/common/validator/ValidatorUtils';
+import { hasNecessaryPerm } from '../../../rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../rbac/ApiAndUserPermMapping';
 import { Universe } from '../../universe-form/utils/dto';
 import { DEFAULT_SLEEP_INTERVAL_IN_MS } from '../../universe-form/utils/constants';
 import { GFLAG_GROUPS } from '../../../../helpers/constants';
@@ -93,11 +96,10 @@ export const EditPGCompatibilityModal: FC<PGCompatibilityModalProps> = ({
   const classes = useStyles();
   const { universeDetails, universeUUID } = universeData;
   const { nodePrefix } = universeDetails;
-  let primaryCluster = _.cloneDeep(getPrimaryCluster(universeDetails));
-  const universeName = _.get(primaryCluster, 'userIntent.universeName');
+  let primaryCluster = cloneDeep(getPrimaryCluster(universeDetails));
+  const universeName = get(primaryCluster, 'userIntent.universeName');
   const isPGEnabled = primaryCluster ? isPGEnabledFromIntent(primaryCluster?.userIntent) : false;
 
-  console.log(universeDetails);
   const { control, handleSubmit, watch } = useForm<PGFormValues>({
     defaultValues: {
       enablePGCompatibitilty: isPGEnabled ? true : false
@@ -110,7 +112,6 @@ export const EditPGCompatibilityModal: FC<PGCompatibilityModalProps> = ({
     },
     {
       onSuccess: () => {
-        toast.success('Upgrade Gflags in progress');
         onClose();
       },
       onError: (error) => {
@@ -127,12 +128,12 @@ export const EditPGCompatibilityModal: FC<PGCompatibilityModalProps> = ({
       const payload: EditGflagPayload = {
         nodePrefix,
         universeUUID,
-        sleepAfterMasterRestartMillis: _.get(
+        sleepAfterMasterRestartMillis: get(
           universeDetails,
           'sleepAfterMasterRestartMillis',
           DEFAULT_SLEEP_INTERVAL_IN_MS
         ),
-        sleepAfterTServerRestartMillis: _.get(
+        sleepAfterTServerRestartMillis: get(
           universeDetails,
           'sleepAfterTServerRestartMillis',
           DEFAULT_SLEEP_INTERVAL_IN_MS
@@ -143,15 +144,11 @@ export const EditPGCompatibilityModal: FC<PGCompatibilityModalProps> = ({
         clusters: []
       };
       if (primaryCluster && primaryCluster.userIntent?.specificGFlags) {
-        const primaryGflagGroups = primaryCluster.userIntent.specificGFlags?.gflagGroups || [];
         primaryCluster.userIntent.specificGFlags = {
           ...primaryCluster.userIntent.specificGFlags,
-          gflagGroups: [
-            ...primaryGflagGroups,
-            ...(formValues.enablePGCompatibitilty
-              ? [GFLAG_GROUPS.ENHANCED_POSTGRES_COMPATIBILITY]
-              : [])
-          ]
+          gflagGroups: formValues.enablePGCompatibitilty
+            ? [GFLAG_GROUPS.ENHANCED_POSTGRES_COMPATIBILITY]
+            : []
         };
         payload.clusters.push(primaryCluster);
       }
@@ -163,6 +160,11 @@ export const EditPGCompatibilityModal: FC<PGCompatibilityModalProps> = ({
     } catch (e) {
       console.error(createErrorMessage(e));
     }
+  });
+
+  const canEditGFlags = hasNecessaryPerm({
+    onResource: universeUUID,
+    ...ApiPermissionMap.UPGRADE_UNIVERSE_GFLAGS
   });
 
   return (
@@ -177,6 +179,12 @@ export const EditPGCompatibilityModal: FC<PGCompatibilityModalProps> = ({
       overrideWidth={'600px'}
       submitTestId="EditPGCompatibilityModal-Submit"
       cancelTestId="EditPGCompatibilityModal-Cancel"
+      buttonProps={{
+        primary: {
+          disabled: !canEditGFlags
+        }
+      }}
+      submitButtonTooltip={!canEditGFlags ? RBAC_ERR_MSG_NO_PERM : ''}
     >
       <Box
         display="flex"

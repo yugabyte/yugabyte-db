@@ -1,0 +1,169 @@
+\unset ECHO
+ok 1 - starting up
+ok 2 - starting up some more
+# Subtest: whatever."test ident"()
+    ok 1 - setup
+    ok 2 - Should be nothing in the test table
+    ok 3 - setup more
+    ok 4 - ident
+    ok 5 - ident 2
+    ok 6 - teardown
+    ok 7 - teardown more
+    1..7
+ok 3 - whatever."test ident"
+# Subtest: whatever.testdividebyzero()
+    ok 1 - setup
+    ok 2 - Should be nothing in the test table
+    ok 3 - setup more
+    # Test died: 22012: division by zero
+    #         CONTEXT:
+    #             SQL function "testdividebyzero" during startup
+    #             PL/pgSQL function _runner(text[],text[],text[],text[],text[]) line 62 at FOR over EXECUTE statement
+    #             SQL function "runtests" statement 1
+    #             SQL function "runtests" statement 1
+not ok 4 - whatever.testdividebyzero
+# Failed test 4: "whatever.testdividebyzero"
+# Subtest: whatever.testplpgsql()
+    ok 1 - setup
+    ok 2 - Should be nothing in the test table
+    ok 3 - setup more
+    ok 4 - plpgsql simple
+    ok 5 - plpgsql simple 2
+    ok 6 - Should be a 1 in the test table
+    ok 7 - teardown
+    ok 8 - teardown more
+    1..8
+ok 5 - whatever.testplpgsql
+# Subtest: whatever.testplpgsqldie()
+    ok 1 - setup
+    ok 2 - Should be nothing in the test table
+    ok 3 - setup more
+    # Test died: P0001: This test should die, but not halt execution.
+    # Note that in some cases we get what appears to be a duplicate context message, but that is due to Postgres itself.
+    #         DETAIL:     DETAIL
+    #         CONTEXT:
+    #             SQL statement "SELECT __die();"
+    #             PL/pgSQL function whatever.testplpgsqldie() line 34 at EXECUTE statement
+    #             PL/pgSQL function _runner(text[],text[],text[],text[],text[]) line 62 at FOR over EXECUTE statement
+    #             SQL function "runtests" statement 1
+    #             SQL function "runtests" statement 1
+not ok 6 - whatever.testplpgsqldie
+# Failed test 6: "whatever.testplpgsqldie"
+# Subtest: whatever.testthis()
+    ok 1 - setup
+    ok 2 - Should be nothing in the test table
+    ok 3 - setup more
+    ok 4 - simple pass
+    ok 5 - another simple pass
+    ok 6 - teardown
+    ok 7 - teardown more
+    1..7
+ok 7 - whatever.testthis
+# Subtest: whatever.testy()
+    ok 1 - setup
+    ok 2 - Should be nothing in the test table
+    ok 3 - setup more
+    not ok 4 - this test intentionally fails
+    # Failed test 4: "this test intentionally fails"
+    ok 5 - teardown
+    ok 6 - teardown more
+    1..6
+    # Looks like you failed 1 test of 6
+not ok 8 - whatever.testy
+# Failed test 8: "whatever.testy"
+# Subtest: whatever.testz()
+    ok 1 - setup
+    ok 2 - Should be nothing in the test table
+    ok 3 - setup more
+    ok 4 - Late test should find nothing in the test table
+    ok 5 - teardown
+    ok 6 - teardown more
+    1..6
+ok 9 - whatever.testz
+ok 10 - shutting down
+ok 11 - shutting down more
+1..11
+# Looks like you failed 3 tests of 11
+ok 1 - starting up
+ok 2 - starting up some more
+# Subtest: whatever."test ident"()
+    ok 1 - setup
+    ok 2 - Should be nothing in the test table
+    ok 3 - setup more
+    ok 4 - ident
+    ok 5 - ident 2
+    ok 6 - teardown
+    ok 7 - teardown more
+    1..7
+ok 3 - whatever."test ident"
+# Subtest: whatever.testdividebyzero()
+    ok 1 - setup
+    ok 2 - Should be nothing in the test table
+    ok 3 - setup more
+    # Test died: 22012: division by zero
+    #         CONTEXT:
+    #             SQL function "testdividebyzero" during startup
+    #             PL/pgSQL function _runner(text[],text[],text[],text[],text[]) line 62 at FOR over EXECUTE statement
+    #             SQL function "runtests" statement 1
+not ok 4 - whatever.testdividebyzero
+# Failed test 4: "whatever.testdividebyzero"
+# Subtest: whatever.testplpgsql()
+    ok 1 - setup
+    ok 2 - Should be nothing in the test table
+    ok 3 - setup more
+    ok 4 - plpgsql simple
+    ok 5 - plpgsql simple 2
+    ok 6 - Should be a 1 in the test table
+    ok 7 - teardown
+    ok 8 - teardown more
+    1..8
+ok 5 - whatever.testplpgsql
+# Subtest: whatever.testplpgsqldie()
+    ok 1 - setup
+    ok 2 - Should be nothing in the test table
+    ok 3 - setup more
+    # Test died: P0001: This test should die, but not halt execution.
+    # Note that in some cases we get what appears to be a duplicate context message, but that is due to Postgres itself.
+    #         DETAIL:     DETAIL
+    #         CONTEXT:
+    #             SQL statement "SELECT __die();"
+    #             PL/pgSQL function whatever.testplpgsqldie() line 34 at EXECUTE statement
+    #             PL/pgSQL function _runner(text[],text[],text[],text[],text[]) line 62 at FOR over EXECUTE statement
+    #             SQL function "runtests" statement 1
+not ok 6 - whatever.testplpgsqldie
+# Failed test 6: "whatever.testplpgsqldie"
+# Subtest: whatever.testthis()
+    ok 1 - setup
+    ok 2 - Should be nothing in the test table
+    ok 3 - setup more
+    ok 4 - simple pass
+    ok 5 - another simple pass
+    ok 6 - teardown
+    ok 7 - teardown more
+    1..7
+ok 7 - whatever.testthis
+# Subtest: whatever.testy()
+    ok 1 - setup
+    ok 2 - Should be nothing in the test table
+    ok 3 - setup more
+    not ok 4 - this test intentionally fails
+    # Failed test 4: "this test intentionally fails"
+    ok 5 - teardown
+    ok 6 - teardown more
+    1..6
+    # Looks like you failed 1 test of 6
+not ok 8 - whatever.testy
+# Failed test 8: "whatever.testy"
+# Subtest: whatever.testz()
+    ok 1 - setup
+    ok 2 - Should be nothing in the test table
+    ok 3 - setup more
+    ok 4 - Late test should find nothing in the test table
+    ok 5 - teardown
+    ok 6 - teardown more
+    1..6
+ok 9 - whatever.testz
+ok 10 - shutting down
+ok 11 - shutting down more
+1..11
+# Looks like you failed 3 tests of 11

@@ -8,6 +8,9 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.models.GroupMappingInfo;
+import com.yugabyte.yw.models.Principal;
+import com.yugabyte.yw.models.Principal.PrincipalType;
 import com.yugabyte.yw.models.Users;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -23,6 +26,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Transient;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
@@ -50,9 +54,16 @@ public class RoleBinding extends Model {
   private UUID uuid;
 
   @ManyToOne
+  @JoinColumn(name = "principal_uuid", referencedColumnName = "uuid")
+  private Principal principal;
+
   @ApiModelProperty(value = "User")
-  @JoinColumn(name = "user_uuid", referencedColumnName = "uuid")
+  @Transient
   private Users user;
+
+  @ApiModelProperty(value = "GroupInfo")
+  @Transient
+  private GroupMappingInfo groupInfo;
 
   /**
    * This shows whether the role binding is system generated or user generated. System generated
@@ -99,19 +110,56 @@ public class RoleBinding extends Model {
 
   public static RoleBinding create(
       Users user, RoleBindingType roleBindingType, Role role, ResourceGroup resourceGroup) {
+
+    Principal principal = Principal.find.byId(user.getUuid());
     RoleBinding roleBinding =
         new RoleBinding(
-            UUID.randomUUID(), user, roleBindingType, role, new Date(), new Date(), resourceGroup);
+            UUID.randomUUID(),
+            principal,
+            user,
+            null,
+            roleBindingType,
+            role,
+            new Date(),
+            new Date(),
+            resourceGroup);
+    roleBinding.save();
+    return roleBinding;
+  }
+
+  public static RoleBinding create(
+      GroupMappingInfo info,
+      RoleBindingType roleBindingType,
+      Role role,
+      ResourceGroup resourceGroup) {
+
+    Principal principal = Principal.find.byId(info.getGroupUUID());
+    RoleBinding roleBinding =
+        new RoleBinding(
+            UUID.randomUUID(),
+            principal,
+            null,
+            info,
+            roleBindingType,
+            role,
+            new Date(),
+            new Date(),
+            resourceGroup);
     roleBinding.save();
     return roleBinding;
   }
 
   public static RoleBinding get(UUID roleBindingUUID) {
-    return find.query().where().eq("uuid", roleBindingUUID).findOne();
+    RoleBinding rb = find.query().where().eq("uuid", roleBindingUUID).findOne();
+    populatePrincipalInfo(rb);
+    return rb;
   }
 
   public static List<RoleBinding> fetchRoleBindingsForUser(UUID userUUID) {
-    return find.query().where().eq("user_uuid", userUUID).findList();
+    Users user = Users.getOrBadRequest(userUUID);
+    List<RoleBinding> list = find.query().where().eq("principal_uuid", userUUID).findList();
+    list.forEach(rb -> rb.setUser(user));
+    return list;
   }
 
   public static RoleBinding getOrBadRequest(UUID roleBindingUUID) {
@@ -124,24 +172,54 @@ public class RoleBinding extends Model {
   }
 
   public static List<RoleBinding> getAll() {
-    return find.query().findList();
+    List<RoleBinding> list = find.query().findList();
+    list.forEach(rb -> populatePrincipalInfo(rb));
+    return list;
   }
 
-  public static List<RoleBinding> getAll(UUID userUUID) {
-    return find.query().where().eq("user_uuid", userUUID).findList();
+  public static List<RoleBinding> getAll(UUID principalUUID) {
+    Principal principal = Principal.getOrBadRequest(principalUUID);
+    List<RoleBinding> list = find.query().where().eq("principal_uuid", principalUUID).findList();
+    if (principal.getType().equals(PrincipalType.USER)) {
+      Users user = Users.getOrBadRequest(principalUUID);
+      list.forEach(rb -> rb.setUser(user));
+    } else {
+      GroupMappingInfo info = GroupMappingInfo.getOrBadRequest(principalUUID);
+      list.forEach(rb -> rb.setGroupInfo(info));
+    }
+    return list;
   }
 
   public static List<RoleBinding> getAllWithRole(UUID roleUUID) {
-    return find.query().where().eq("role_uuid", roleUUID).findList();
+    List<RoleBinding> rbList = find.query().where().eq("role_uuid", roleUUID).findList();
+    rbList.forEach(rb -> populatePrincipalInfo(rb));
+    return rbList;
   }
 
   public static boolean checkUserHasRole(UUID userUUID, UUID roleUUID) {
-    return find.query().where().eq("user_uuid", userUUID).eq("role_uuid", roleUUID).exists();
+    return find.query().where().eq("principal_uuid", userUUID).eq("role_uuid", roleUUID).exists();
   }
 
   public void edit(Role role, ResourceGroup resourceGroup) {
     this.role = role;
     this.resourceGroup = resourceGroup;
     this.update();
+  }
+
+  /**
+   * If the role binding belongs to a user, we populate the user field else the groupInfo field.
+   *
+   * @param rb
+   */
+  private static void populatePrincipalInfo(RoleBinding rb) {
+    if (rb == null) {
+      return;
+    }
+    Principal principal = Principal.getOrBadRequest(rb.getPrincipal().getUuid());
+    if (principal.getType().equals(PrincipalType.USER)) {
+      rb.setUser(Users.getOrBadRequest(principal.getUserUUID()));
+    } else {
+      rb.setGroupInfo(GroupMappingInfo.getOrBadRequest(principal.getGroupUUID()));
+    }
   }
 }

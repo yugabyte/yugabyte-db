@@ -168,7 +168,7 @@ Status AddTableToXClusterTargetTask::AddTableToReplicationGroup(
   req.set_replication_group_id(replication_group_id.ToString());
   req.add_producer_table_ids_to_add(producer_table_id);
   req.add_producer_bootstrap_ids_to_add(bootstrap_id);
-  RETURN_NOT_OK(catalog_manager_.AlterUniverseReplication(&req, &resp, nullptr /* rpc */, epoch_));
+  RETURN_NOT_OK(xcluster_manager_.AlterUniverseReplication(&req, &resp, nullptr /* rpc */, epoch_));
 
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
@@ -268,8 +268,7 @@ Status AddTableToXClusterTargetTask::WaitForXClusterSafeTimeCaughtUp() {
 
 Status AddTableToXClusterTargetTask::CleanupAndComplete() {
   // Ensure that we clean up the xcluster_source_table_id field.
-  RETURN_NOT_OK(
-      catalog_manager_.GetXClusterManager()->ClearXClusterSourceTableId(table_info_, epoch_));
+  RETURN_NOT_OK(xcluster_manager_.ClearXClusterSourceTableId(table_info_, epoch_));
 
   Complete();
   return Status::OK();

@@ -471,3 +471,25 @@ ALTER TABLE test_identity ADD COLUMN id2 int GENERATED ALWAYS AS IDENTITY;
 INSERT INTO test_identity VALUES (4, 4); -- should fail
 INSERT INTO test_identity OVERRIDING SYSTEM VALUE VALUES (4, 4);
 SELECT * FROM test_identity;
+
+--
+-- Test ALTER TABLE ... DROP COLUMN on a primary key column.
+--
+-- basic test
+CREATE TABLE test_drop_pk_column (id int PRIMARY KEY, v int);
+INSERT INTO test_drop_pk_column VALUES (1, 1), (2, 2), (3, 3);
+ALTER TABLE test_drop_pk_column DROP COLUMN id;
+\d test_drop_pk_column;
+INSERT INTO test_drop_pk_column VALUES (1);
+SELECT * FROM test_drop_pk_column ORDER BY v;
+-- test composite PK
+CREATE TABLE test_drop_pk_column_composite (id int, v int, t int, PRIMARY KEY (id HASH, v ASC));
+INSERT INTO test_drop_pk_column_composite VALUES (1, 1, 1), (2, 2, 2), (3, 3, 3);
+ALTER TABLE test_drop_pk_column_composite DROP COLUMN id;
+\d test_drop_pk_column_composite;
+INSERT INTO test_drop_pk_column_composite VALUES (1, 1);
+SELECT * FROM test_drop_pk_column_composite ORDER BY v;
+-- test partitioned table
+CREATE TABLE test_drop_pk_column_part (id int PRIMARY KEY, v int) PARTITION BY RANGE (id);
+CREATE TABLE test_drop_pk_column_part1 PARTITION OF test_drop_pk_column_part FOR VALUES FROM (1) TO (10);
+ALTER TABLE test_drop_pk_column_part DROP COLUMN id; -- should fail.

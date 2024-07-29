@@ -168,6 +168,54 @@ paths:
           $ref: '#/components/responses/ApiError'
         '500':
           $ref: '#/components/responses/ApiError'
+  /assessment_source_db_details:
+    get:
+      summary: Get the Source Database SQL object details
+      description: Get the Source Database SQL object details
+      operationId: GetAssessmentSourceDBInfo
+      tags:
+        - voyager-info
+      parameters:
+        - name: uuid
+          in: query
+          description: uuid of the voyager migration task
+          required: true
+          style: form
+          explode: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          $ref: '#/components/responses/AssessmentSourceDbResponse'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '500':
+          $ref: '#/components/responses/ApiError'
+  /assessment_target_recommendation_details:
+    get:
+      summary: Get the Target Database recommendation details
+      description: Get the Target Database recommendation details
+      operationId: GetAssessmentTargetRecommendationInfo
+      tags:
+        - voyager-info
+      parameters:
+        - name: uuid
+          in: query
+          description: uuid of the voyager migration task
+          required: true
+          style: form
+          explode: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          $ref: '#/components/responses/AssessmentTargetRecommendationResponse'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '500':
+          $ref: '#/components/responses/ApiError'
   /live_queries:
     get:
       summary: Get the live queries in a cluster
@@ -831,12 +879,16 @@ components:
       properties:
         table_size:
           type: integer
+          format: int64
         table_row_count:
           type: integer
+          format: int64
         total_table_size:
           type: integer
+          format: int64
         total_index_size:
           type: integer
+          format: int64
     TargetClusterSpec:
       title: Target cluster size recommendations
       description: schema for target cluster cpu, memory
@@ -844,14 +896,19 @@ components:
       properties:
         num_nodes:
           type: integer
+          format: int64
         vcpu_per_node:
           type: integer
+          format: int64
         memory_per_node:
           type: integer
+          format: int64
         connections_per_node:
           type: integer
+          format: int64
         inserts_per_node:
           type: integer
+          format: int64
     TargetSchemaRecommendations:
       title: Target YugabyteDB cluster schema recommendations
       description: Target YugabyteDB cluster schema recommendations
@@ -859,12 +916,16 @@ components:
       properties:
         no_of_colocated_tables:
           type: integer
+          format: int64
         total_size_colocated_tables:
           type: integer
+          format: int64
         no_of_sharded_tables:
           type: integer
+          format: int64
         total_size_sharded_tables:
           type: integer
+          format: int64
     TargetClusterRecommendationDetails:
       title: Target YugabyteDB cluster size and schema recommendations
       description: Recommendations for the Target YugabyteDB cluster
@@ -881,6 +942,8 @@ components:
       description: count for automatic and manual refactoring
       type: object
       properties:
+        sql_object_type:
+          type: string
         manual:
           type: integer
         automatic:
@@ -890,16 +953,10 @@ components:
       description: Refectoring recommendations for migrating SQL objects
       type: object
       properties:
-        sql_type:
-          $ref: '#/components/schemas/RefactoringCount'
-        table:
-          $ref: '#/components/schemas/RefactoringCount'
-        view:
-          $ref: '#/components/schemas/RefactoringCount'
-        function:
-          $ref: '#/components/schemas/RefactoringCount'
-        triggers:
-          $ref: '#/components/schemas/RefactoringCount'
+        refactor_details:
+          type: array
+          items:
+            $ref: '#/components/schemas/RefactoringCount'
     UnsupportedSqlInfo:
       title: Unsupported SQL Info
       description: Unsupported SQL Info
@@ -936,6 +993,77 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/UnsupportedSqlInfo'
+    SqlObjectCount:
+      title: Count of specific Sql Object type in the source DB
+      description: Count of specific Sql Object type in the source DB
+      type: object
+      properties:
+        sql_type:
+          type: string
+        count:
+          type: integer
+    SqlObjectMetadata:
+      title: metadata of specific Sql Object type in the source DB
+      description: size, count, iops details of tables and indexes
+      type: object
+      properties:
+        object_name:
+          type: string
+        sql_type:
+          type: string
+        row_count:
+          type: integer
+          format: int64
+        size:
+          type: integer
+          format: int64
+        iops:
+          type: integer
+          format: int64
+    AssessmentSourceDbObject:
+      title: Details about Source DB's SQL Objects
+      description: Details about Source DB's SQL Objects
+      type: object
+      properties:
+        sql_objects_count:
+          type: array
+          items:
+            $ref: '#/components/schemas/SqlObjectCount'
+        sql_objects_metadata:
+          type: array
+          items:
+            $ref: '#/components/schemas/SqlObjectMetadata'
+    TargetRecommendationItem:
+      title: Target recommendation table metadata information
+      description: Target recommendation table metadata information
+      type: object
+      properties:
+        table_name:
+          type: string
+        disk_size:
+          type: integer
+          format: int64
+        schema_recommendation:
+          type: string
+    AssessmentTargetRecommendationObject:
+      title: Details about Target table recommendations
+      description: Details about Target table recommendations
+      type: object
+      properties:
+        num_of_colocated_tables:
+          type: integer
+        total_size_colocated_tables:
+          type: integer
+          format: int64
+        num_of_sharded_table:
+          type: integer
+        total_size_sharded_tables:
+          type: integer
+          format: int64
+        recommendation_details:
+          type: array
+          items:
+            $ref: '#/components/schemas/TargetRecommendationItem'
     LiveQueryResponseYSQLQueryItem:
       title: Live Query Response YSQL Query Item
       description: Schema for Live Query Response YSQL Query Item
@@ -1978,6 +2106,26 @@ components:
             properties:
               data:
                 $ref: '#/components/schemas/MigrationAssessmentReport'
+    AssessmentSourceDbResponse:
+      description: Response for migration assessment source db metadata page
+      content:
+        application/json:
+          schema:
+            title: API for Source DB SQL objects metadata page
+            type: object
+            properties:
+              data:
+                $ref: '#/components/schemas/AssessmentSourceDbObject'
+    AssessmentTargetRecommendationResponse:
+      description: Response for migration assessment target recommendation page
+      content:
+        application/json:
+          schema:
+            title: API for Target Schema recommendations page
+            type: object
+            properties:
+              data:
+                $ref: '#/components/schemas/AssessmentTargetRecommendationObject'
     LiveQueryResponse:
       description: Live Queries of a Cluster
       content:

@@ -18,7 +18,7 @@ YugabyteDB Anywhere (YBA) needs to be able to access nodes that will be used to 
 
 ![YugabyteDB Anywhere network and ports](/images/yb-platform/prepare/yba-networking.png)
 
-The following ports need to be open. (The default port numbers can be customized.)
+The following ports need to be open.
 
 | From | To | Requirements |
 | :--- | :--- | :--- |

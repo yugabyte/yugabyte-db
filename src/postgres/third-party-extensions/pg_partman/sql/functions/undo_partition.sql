@@ -62,6 +62,16 @@ v_trig_name                     text;
 v_undo_count                    int := 0;
 
 BEGIN
+/* YB: As part of undo_partition, all data of child partitions is moved out to the
+target table and after that the child table is detached from the parent table.
+This is done in an iterative manner looping through each child.
+
+The whole undo operation is executed in a transaction and while doing the
+DMLs (deleting data from child tables) and DDLs (detaching child tables), the trasaction
+is expired or aborted.
+TODO(#3109): check if works fine after transactional DDL support.
+*/
+RAISE EXCEPTION 'undo_partition not supported yet in YB';
 /*
  * For native, moves data to new, target table since data cannot be moved to parent.
  *      Leaves old parent table as is and does not change name of new table.

@@ -4612,6 +4612,43 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     assertEquals(2, addedMasters.get());
   }
 
+  @Test
+  public void testConfigureIncreaseRF6nodes() {
+    Customer customer = ModelFactory.testCustomer("Test Customer");
+    Provider provider = ModelFactory.newProvider(customer, CloudType.aws);
+
+    Universe existing = createFromConfig(provider, "Existing", "r1-az1-6-3");
+    Region region = getOrCreate(provider, "r1");
+    AvailabilityZone az1 = AvailabilityZone.getByCode(provider, "az1");
+
+    AvailabilityZone az2 = AvailabilityZone.createOrThrow(region, "az2", "az2", "subnet-az2");
+
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.setUniverseUUID(existing.getUniverseUUID());
+    params.currentClusterType = ClusterType.PRIMARY;
+    params.clusters = existing.getUniverseDetails().clusters;
+    params.getPrimaryCluster().userIntent.numNodes = 7;
+    params.getPrimaryCluster().userIntent.replicationFactor = 7;
+    params.nodeDetailsSet = new HashSet<>(existing.getUniverseDetails().nodeDetailsSet);
+
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getId(), params.getPrimaryCluster().uuid, EDIT);
+
+    List<NodeDetails> addedNodes =
+        params.nodeDetailsSet.stream()
+            .filter(n -> n.state == NodeState.ToBeAdded)
+            .collect(Collectors.toList());
+
+    assertEquals(1, addedNodes.size());
+
+    assertEquals(7, params.nodeDetailsSet.size());
+    assertEquals(az2.getUuid(), addedNodes.get(0).azUuid);
+    assertEquals(
+        1, params.getPrimaryCluster().placementInfo.findByAZUUID(az2.getUuid()).replicationFactor);
+    assertEquals(
+        6, params.getPrimaryCluster().placementInfo.findByAZUUID(az1.getUuid()).replicationFactor);
+  }
+
   private void markNodeInstancesAsOccupied(Map<UUID, Integer> azUuidToNumNodes) {
     Map<UUID, Integer> counts = new HashMap<>(azUuidToNumNodes);
     for (NodeInstance nodeInstance : NodeInstance.getAll()) {

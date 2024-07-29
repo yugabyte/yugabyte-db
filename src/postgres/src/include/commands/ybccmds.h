@@ -143,7 +143,8 @@ extern void YBCUpdatePublicationTableList(const char *stream_id,
 extern void YBCDestroyVirtualWalForCDC();
 
 extern void YBCGetCDCConsistentChanges(const char *stream_id,
-									   YBCPgChangeRecordBatch **record_batch);
+									   YBCPgChangeRecordBatch **record_batch,
+									   YBCTypeEntityProvider type_entity_provider);
 
 extern void YBCUpdateAndPersistLSN(const char *stream_id,
 								   XLogRecPtr restart_lsn_hint,

@@ -870,8 +870,6 @@ public class NodeManager extends DevopsBase {
         allowOverrideAll,
         confGetter,
         taskParam);
-    GFlagsUtil.processGFlagGroups(
-        gflags, getUserIntentFromParams(taskParam), taskParam.getProperty("processType"));
   }
 
   private List<String> getConfigureSubCommand(AnsibleConfigureServers.Params taskParam) {

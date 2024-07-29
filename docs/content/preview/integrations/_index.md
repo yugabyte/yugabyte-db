@@ -97,7 +97,7 @@ Version refers to the latest tested version of the integration.
 | Tool        | Version      | Support | Tutorial |
 | :---------- | :----------- | :------ | :------- |
 | Dataedo     | 23.1.1       | Partial | [Dataedo](dataedo/) |
-| Datahub     | 0.10.4      | Partial | [Datahub](datahub/) |
+| Datahub     | 0.10.4       | Partial | [Datahub](datahub/) |
 | DQ Analyzer | 11.1.1       | Partial | [Ataccama DQ Analyzer](ataccama/) |
 | Metacat     | 1.3.0-rc.105 | Partial | [Metacat](metacat/) |
 
@@ -116,11 +116,11 @@ Version refers to the latest tested version of the integration.
 
 ### Hardware, Software, and Data Management platforms
 
-| Tool    | Tutorial |
-| :------ | :------- |
+| Tool        | Tutorial |
+| :------     | :------- |
 | Nutanix AHV | [Nutanix AHV](nutanix-ahv/) |
-| Commvault | [Commvault](commvault/)
-| Delphix | [Delphix](delphix/)
+| Commvault   | [Commvault](commvault/) |
+| Delphix     | [Delphix](delphix/) |
 
 ### Other
 

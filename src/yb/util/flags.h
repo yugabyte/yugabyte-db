@@ -191,6 +191,8 @@ class FlagValidatorSink : public google::LogSink {
 
 FlagValidatorSink& GetFlagValidatorSink();
 
+Result<std::unordered_set<std::string>> GetFlagNamesFromXmlFile(const std::string& flag_file_name);
+
 // Log error message to the error log and the flag validator sink, which will ensure it is sent
 // back to the user. Also masks any sensitive values.
 #define LOG_FLAG_VALIDATION_ERROR(flag_name, value) \

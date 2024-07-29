@@ -19,6 +19,7 @@ import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
+import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
@@ -153,6 +154,15 @@ public interface UniverseDefinitionTaskParamsMapper {
   @Mapping(target = "addOnClusters", ignore = true)
   @Mapping(target = "nonPrimaryClusters", ignore = true)
   public CertsRotateParams toCertsRotateParams(UniverseDefinitionTaskParams source);
+
+  @Mapping(target = "existingLBs", ignore = true)
+  @Mapping(target = "primaryCluster", ignore = true)
+  @Mapping(target = "TServers", ignore = true)
+  @Mapping(target = "readOnlyClusters", ignore = true)
+  @Mapping(target = "addOnClusters", ignore = true)
+  @Mapping(target = "nonPrimaryClusters", ignore = true)
+  public KubernetesOverridesUpgradeParams toKubernetesOverridesUpgradeParams(
+      UniverseDefinitionTaskParams source);
 
   @Mapping(target = "spec", source = ".")
   UniverseCreateSpec toV2UniverseCreateSpec(UniverseDefinitionTaskParams v1UniverseTaskParams);

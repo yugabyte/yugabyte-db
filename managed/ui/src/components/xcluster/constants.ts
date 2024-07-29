@@ -42,7 +42,7 @@ export const XClusterTableStatus = {
   //            Used to mark tables which are dropped on the source universe.
   DROPPED: 'Dropped',
   EXTRA_TABLE_ON_SOURCE: 'ExtraTableOnSource',
-  EXTRA_TABLE_ON_TARGET: 'DroppedFromSource',
+  EXTRA_TABLE_ON_TARGET: 'ExtraTableOnTarget',
   DROPPED_FROM_SOURCE: 'DroppedFromSource',
   DROPPED_FROM_TARGET: 'DroppedFromTarget',
   REPLICATION_ERROR: 'ReplicationError'
@@ -228,6 +228,8 @@ export const PollingIntervalMs = {
 
 export const XCLUSTER_METRIC_REFETCH_INTERVAL_MS = PollingIntervalMs.XCLUSTER_METRICS;
 export const XCLUSTER_CONFIG_REFETCH_INTERVAL_MS = PollingIntervalMs.XCLUSTER_CONFIG;
+
+export const XCLUSTER_UNDEFINED_LAG_NUMERIC_REPRESENTATION = -1;
 
 export const XClusterModalName = {
   EDIT_CONFIG: 'editXClusterConfigModal',

@@ -3,9 +3,10 @@ if [ "$SUDO_ACCESS" = "true" ]; then
 
     # Check the exit status of the command
     if [ $? -eq 0 ]; then
+        add_result "Clock Synchronization" "PASS" "System clock synchronized"
         echo "System clock synchronized"
     else
+        add_result "Clock Synchronization" "FAIL" "chronyc makestep command failed"
         echo "Error: chronyc makestep command failed"
-        exit 1
     fi
 fi

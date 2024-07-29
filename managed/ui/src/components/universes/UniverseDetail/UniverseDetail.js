@@ -61,6 +61,7 @@ import { DBRollbackModal } from '../../../redesign/features/universe/universe-ac
 import { ReplicationSlotTable } from '../../../redesign/features/universe/universe-tabs/replication-slots/ReplicationSlotTable';
 import { AuditLog } from '../../../redesign/features/universe/universe-tabs/db-audit-logs/AuditLog';
 import { UniverseState, getUniverseStatus, SoftwareUpgradeState } from '../helpers/universeHelpers';
+import { TaskDetailBanner } from '../../../redesign/features/tasks/components/TaskDetailBanner';
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { DrPanel } from '../../xcluster/disasterRecovery/DrPanel';
@@ -75,7 +76,7 @@ import { RuntimeConfigKey, UNIVERSE_TASKS } from '../../../redesign/helpers/cons
 import { isActionFrozen } from '../../../redesign/helpers/utils';
 import {
   getCurrentVersion,
-  isVerionPGSupported
+  isVersionPGSupported
 } from '../../../redesign/features/universe/universe-form/utils/helpers';
 
 //icons
@@ -302,7 +303,6 @@ class UniverseDetail extends Component {
       accessKeys,
       graph
     } = this.props;
-
     const { showAlert, alertType, alertMessage } = this.state;
     const universePaused = universe?.currentUniverse?.data?.universeDetails?.universePaused;
     const updateInProgress = universe?.currentUniverse?.data?.universeDetails?.updateInProgress;
@@ -504,7 +504,7 @@ class UniverseDetail extends Component {
     const isDeleteUniverseDisabled =
       isActionFrozen(allowedTasks, UNIVERSE_TASKS.DELETE_UNIVERSE) || isK8ActionsDisabled;
 
-    const isPGCompatibilitySupported = isVerionPGSupported(
+    const isPGCompatibilitySupported = isVersionPGSupported(
       getCurrentVersion(currentUniverse.data.universeDetails)
     );
 
@@ -1123,11 +1123,18 @@ class UniverseDetail extends Component {
                     <RbacValidator
                       accessRequiredOn={{
                         onResource: uuid,
-                        ...ApiPermissionMap.GET_UNIVERSES_BY_ID
+                        ...ApiPermissionMap.UPGRADE_UNIVERSE_GFLAGS
                       }}
                       isControl
                     >
-                      <YBMenuItem onClick={showPGCompatibilityModal}>
+                      <YBMenuItem
+                        disabled={isEditGFlagsDisabled}
+                        onClick={showPGCompatibilityModal}
+                        availability={getFeatureState(
+                          currentCustomer.data.features,
+                          'universes.details.overview.editGFlags'
+                        )}
+                      >
                         <YBLabelWithIcon icon="fa fa-retweet fa-fw">
                           Edit Postgres Compatibility
                         </YBLabelWithIcon>
@@ -1138,11 +1145,18 @@ class UniverseDetail extends Component {
                     <RbacValidator
                       accessRequiredOn={{
                         onResource: uuid,
-                        ...ApiPermissionMap.GET_UNIVERSES_BY_ID
+                        ...ApiPermissionMap.UNIVERSE_CONFIGURE_YSQL
                       }}
                       isControl
                     >
-                      <YBMenuItem disabled={isYSQLConfigDisabled} onClick={showEnableYSQLModal}>
+                      <YBMenuItem
+                        disabled={isYSQLConfigDisabled}
+                        onClick={showEnableYSQLModal}
+                        availability={getFeatureState(
+                          currentCustomer.data.features,
+                          'universes.details.overview.editUniverse'
+                        )}
+                      >
                         <YBLabelWithIcon icon="fa fa-database fa-fw">
                           Edit YSQL Configuration
                         </YBLabelWithIcon>
@@ -1153,11 +1167,18 @@ class UniverseDetail extends Component {
                     <RbacValidator
                       accessRequiredOn={{
                         onResource: uuid,
-                        ...ApiPermissionMap.GET_UNIVERSES_BY_ID
+                        ...ApiPermissionMap.UNIVERSE_CONFIGURE_YCQL
                       }}
                       isControl
                     >
-                      <YBMenuItem disabled={isYCQLConfigDisabled} onClick={showEnableYCQLModal}>
+                      <YBMenuItem
+                        disabled={isYCQLConfigDisabled}
+                        onClick={showEnableYCQLModal}
+                        availability={getFeatureState(
+                          currentCustomer.data.features,
+                          'universes.details.overview.editUniverse'
+                        )}
+                      >
                         <YBLabelWithIcon icon="fa fa-database fa-fw">
                           Edit YCQL Configuration
                         </YBLabelWithIcon>
@@ -1421,6 +1442,7 @@ class UniverseDetail extends Component {
             shouldDisplayTaskButton={true}
           />
         </div>
+        <TaskDetailBanner taskUUID={currentUniverse.data.universeDetails.updatingTaskUUID} universeUUID={currentUniverse.data.universeUUID}/>
         <RollingUpgradeFormContainer
           modalVisible={
             showModal &&
@@ -1566,7 +1588,12 @@ class UniverseDetail extends Component {
             id={'universe-tab-panel'}
             className={'universe-detail'}
           >
-            {[...tabElements, <div title={actionMenuButtons} />]}
+            {
+              [
+                ...tabElements,
+                <div title={actionMenuButtons} />
+              ]
+            }
           </YBTabsWithLinksPanel>
         </Measure>
       </Grid>

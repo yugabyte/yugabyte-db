@@ -26,6 +26,7 @@
 #include <inttypes.h>
 
 #include "access/xact.h"
+#include "catalog/yb_type.h"
 #include "commands/ybccmds.h"
 #include "pg_yb_utils.h"
 #include "replication/slot.h"
@@ -240,6 +241,26 @@ InitVirtualWal(List *publication_names)
 	list_free(tables);
 }
 
+static const YBCPgTypeEntity *
+GetDynamicTypeEntity(int attr_num, Oid relid)
+{
+	bool is_in_txn = IsTransactionOrTransactionBlock();
+	if (!is_in_txn)
+		StartTransactionCommand();
+
+	Relation rel = RelationIdGetRelation(relid);
+	if (!RelationIsValid(rel))
+		elog(ERROR, "Could not open relation with OID %u", relid);
+	Oid type_oid = GetTypeId(attr_num, RelationGetDescr(rel));
+	RelationClose(rel);
+	const YBCPgTypeEntity* type_entity = YbDataTypeFromOidMod(attr_num, type_oid);
+
+	if (!is_in_txn)
+		AbortCurrentTransaction();
+
+	return type_entity;
+}
+
 YBCPgVirtualWalRecord *
 YBCReadRecord(XLogReaderState *state, XLogRecPtr RecPtr,
 			  List *publication_names, char **errormsg)
@@ -293,7 +314,7 @@ YBCReadRecord(XLogReaderState *state, XLogRecPtr RecPtr,
 		}
 
 		YBCGetCDCConsistentChanges(MyReplicationSlot->data.yb_stream_id,
-								   &cached_records);
+								   &cached_records, &GetDynamicTypeEntity);
 
 		cached_records_last_sent_row_idx = 0;
 		YbWalSndTotalTimeInYBDecodeMicros = 0;

@@ -89,7 +89,7 @@ class InstallNodeAgent(BaseYnpModule):
             })
         provider['regions'] = regions
         return provider
-    
+
     def _generate_instance_type_payload(self, context):
         time_stamp = int(time.time())
         instance_data = {
@@ -104,7 +104,7 @@ class InstallNodeAgent(BaseYnpModule):
                 'volumeDetailsList': []
             }
         }
-        mount_points = context.get('instance_type_mount_points').split(',')
+        mount_points = context.get('instance_type_mount_points').strip("[]").replace("'", "").split(", ")
         for mp in mount_points:
             volume_detail = {
                 'volumeSizeGB': context.get('instance_type_volume_size'),
@@ -130,7 +130,7 @@ class InstallNodeAgent(BaseYnpModule):
         }
 
         return node_add_payload
-    
+
     def _get_provider(self, context):
         provider_url = self._get_provider_url(context)
         yba_url = context.get('url')
@@ -167,7 +167,7 @@ class InstallNodeAgent(BaseYnpModule):
             logging.error(f"Request error: {req_err}")
         except ValueError as json_err:
             logging.error(f"Error parsing JSON response: {json_err}")
-    
+
     def render_templates(self, context):
         node_agent_enabled = False
         yba_url = context.get('url')
@@ -219,7 +219,7 @@ class InstallNodeAgent(BaseYnpModule):
         except requests.exceptions.RequestException as req_err:
             logging.error(f"Request error: {req_err}")
 
-        
+
         add_node_payload = self._generate_add_node_payload(context)
         add_node_payload_file = os.path.join(context.get('tmp_directory'), 'add_node_to_provider.json')
         with open(add_node_payload_file, 'w') as f:

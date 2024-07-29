@@ -161,7 +161,7 @@ DECLARE_uint64(prevent_split_for_ttl_tables_for_seconds);
 DECLARE_bool(sort_automatic_tablet_splitting_candidates);
 DECLARE_int32(intents_flush_max_delay_ms);
 DECLARE_int32(index_block_restart_interval);
-DECLARE_bool(TEST_error_after_creating_single_split_tablet);
+DECLARE_bool(TEST_error_after_registering_split_tablets);
 DECLARE_bool(TEST_pause_before_send_hinted_election);
 DECLARE_bool(TEST_skip_election_when_fail_detected);
 DECLARE_int32(scheduled_full_compaction_frequency_hours);
@@ -3255,7 +3255,7 @@ class TabletSplitSingleServerITestWithPartition :
 TEST_P(TabletSplitSingleServerITestWithPartition, TestSplitEncodedKeyAfterBreakInTheMiddleOfSplit) {
   // Make catalog manager to do only Upsert in order to emulate master error/crash behaviour in the
   // middle of split. Restart is required to be sure the flags change is seen at the master's side.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_error_after_creating_single_split_tablet) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_error_after_registering_split_tablets) = true;
   ASSERT_OK(cluster_->RestartSync());
   SetNumTablets(1);
 
@@ -3285,7 +3285,7 @@ TEST_P(TabletSplitSingleServerITestWithPartition, TestSplitEncodedKeyAfterBreakI
   ASSERT_NOK(status) << "Corresponding split is expected to fail!";
 
   // Reset flag to emulate partitions re-calculation.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_error_after_creating_single_split_tablet) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_error_after_registering_split_tablets) = false;
   ASSERT_OK(cluster_->RestartSync());
 
   // Split should pass without any error.

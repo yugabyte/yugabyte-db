@@ -285,7 +285,9 @@ yb-admin \
 Splits the specified hash-sharded tablet and computes the split point as the middle of tablet's sharding range.
 
 ```sh
-split_tablet -master_addresses <master-addresses> <tablet_id_to_split>
+yb-admin \
+    -master_addresses <master-addresses> \
+    split_tablet -master_addresses <master-addresses> <tablet_id_to_split>
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.

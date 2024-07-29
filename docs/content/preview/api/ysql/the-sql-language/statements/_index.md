@@ -27,6 +27,7 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [`ALTER FOREIGN TABLE`](ddl_alter_foreign_table) | Change foreign table definition |
 | [`ALTER INDEX`](ddl_alter_index) | Change index definition |
 | [`ALTER MATERIALIZED VIEW`](ddl_alter_matview) | Change materialized view definition |
+| [`ALTER PUBLICATION`](ddl_alter_publication) | Change publication definition |
 | [`ALTER SEQUENCE`](ddl_alter_sequence) | Change sequence definition |
 | [`ALTER SERVER`](ddl_alter_server) | Change foreign server definition |
 | [`ALTER SCHEMA`](ddl_alter_schema) | Change schema definition |
@@ -45,6 +46,7 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [`CREATE OPERATOR`](ddl_create_operator) | Create an operator |
 | [`CREATE OPERATOR CLASS`](ddl_create_operator_class) | Create an operator class |
 | [`CREATE PROCEDURE`](ddl_create_procedure) | Create a procedure |
+| [`CREATE PUBLICATION`](ddl_create_publication) | Create a publication |
 | [`CREATE RULE`](ddl_create_rule) | Create a rule |
 | [`CREATE SCHEMA`](ddl_create_schema) | Create a schema (namespace) |
 | [`CREATE SEQUENCE`](ddl_create_sequence) | Create a sequence generator |
@@ -69,6 +71,7 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [`DROP OPERATOR`](ddl_drop_operator) | Delete an operator |
 | [`DROP OPERATOR CLASS`](ddl_drop_operator_class) | Delete an operator class |
 | [`DROP PROCEDURE`](ddl_drop_procedure) | Delete a procedure |
+| [`DROP PUBLICATION`](ddl_drop_publication) | Delete a publication |
 | [`DROP RULE`](ddl_drop_rule) | Delete a rule |
 | [`DROP SCHEMA`](ddl_drop_schema) | Delete a schema from the system |
 | [`DROP SEQUENCE`](ddl_drop_sequence) | Delete a sequence generator |
@@ -152,6 +155,14 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [`EXECUTE`](perf_execute) | Execute a prepared statement |
 | [`EXPLAIN`](perf_explain) | Explain an execution plan for a statement |
 | [`PREPARE`](perf_prepare) | Prepare a statement |
+
+## Streaming replication protocol statements
+
+| Statement | Description |
+| :-------- | :---------- |
+| [`CREATE_REPLICATION_SLOT`](streaming_create_repl_slot) | Create a replication slot |
+| [`DROP_REPLICATION_SLOT`](streaming_drop_repl_slot) | Drop a replication slot |
+| [`START_REPLICATION`](streaming_start_replication) | Start streaming from a replication slot |
 
 ## Other statements
 
