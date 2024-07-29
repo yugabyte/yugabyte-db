@@ -38,7 +38,7 @@ const RETRIEVE_ANALYZE_SCHEMA_PAYLOAD string = "SELECT payload " +
 const RETRIEVE_MIGRATE_SCHEMA_PHASES_INFO string = "SELECT migration_UUID, " +
     "migration_phase, MAX(invocation_sequence) AS invocation_sequence " +
     "FROM ybvoyager_visualizer.ybvoyager_visualizer_metadata " +
-    "WHERE migration_uuid=$1 AND migration_phase IN (0,1,3) " +
+    "WHERE migration_uuid=$1 AND migration_phase IN (2,3,5) " +
     "GROUP BY migration_uuid, migration_phase;"
 
 const RETRIEVE_DATA_MIGRATION_METRICS string = "SELECT * FROM " +
@@ -49,6 +49,10 @@ const RETRIEVE_DATA_MIGRATION_METRICS string = "SELECT * FROM " +
 const RETRIEVE_ASSESSMENT_REPORT string = "SELECT payload " +
     "FROM ybvoyager_visualizer.ybvoyager_visualizer_metadata " +
     "WHERE migration_UUID=$1 AND migration_phase=1 AND status='COMPLETED'"
+
+const RETRIEVE_IMPORT_SCHEMA_STATUS string = "SELECT status " +
+    "FROM ybvoyager_visualizer.ybvoyager_visualizer_metadata " +
+    "WHERE migration_UUID=$1 AND migration_phase=$2 AND invocation_sequence=$3"
 
 type VoyagerMigrationsQueryFuture struct {
     Migrations []models.VoyagerMigrationDetails
@@ -239,10 +243,10 @@ func getVoyagerMigrationsQueryFuture(log logger.Logger, conn *pgxpool.Pool,
             }
 
             rowStruct.Status = "In Progress"
-            if allVoygaerMigration.migrationPhase == 4 &&
+            if allVoygaerMigration.migrationPhase == 6 &&
                 allVoygaerMigration.invocationSeq >= 2 {
                 rowStruct.Status = "Complete"
-                rowStruct.MigrationPhase = 5
+                rowStruct.MigrationPhase = 6
             }
 
             rand.Seed(time.Now().UnixNano())
@@ -375,6 +379,12 @@ func determineStatusOfMigrateSchmeaPhases(log logger.Logger, conn *pgxpool.Pool,
     for _, phaseInfo := range *schemaPhaseInfoList {
         switch phaseInfo.migrationPhase {
         case 2:
+            if phaseInfo.invocationSeq%2 == 0 {
+                migrateSchemaTaskInfo.ExportSchema = "complete"
+            } else {
+                migrateSchemaTaskInfo.ExportSchema = "in-progress"
+            }
+        case 3:
             if phaseInfo.invocationSeq >= 2 {
                 var invocationSqToBeUsed int
                 if phaseInfo.invocationSeq%2 == 0 {
@@ -399,8 +409,13 @@ func determineStatusOfMigrateSchmeaPhases(log logger.Logger, conn *pgxpool.Pool,
             } else {
                 migrateSchemaTaskInfo.ExportSchema = "in-progress"
             }
-        case 3:
-            if phaseInfo.invocationSeq%2 == 0 {
+        case 5:
+            future := make(chan string)
+            go fetchSchemaImportStatus(log, conn, phaseInfo.migrationUuid,
+                phaseInfo.migrationPhase, phaseInfo.invocationSeq, future)
+            importSchemaStatus := <- future
+
+            if importSchemaStatus == "COMPLETED" {
                 migrateSchemaTaskInfo.ImportSchema = "complete"
                 migrateSchemaTaskInfo.OverallStatus = "complete"
             } else {
@@ -413,6 +428,25 @@ func determineStatusOfMigrateSchmeaPhases(log logger.Logger, conn *pgxpool.Pool,
         }
     }
 }
+
+func fetchSchemaImportStatus(log logger.Logger, conn *pgxpool.Pool, migrationUuid string,
+    migrationPhase int, invocationSq int, future chan string) {
+        log.Infof(fmt.Sprintf("[%s] Executing Query: [%s]", LOGGER_FILE_NAME,
+            RETRIEVE_IMPORT_SCHEMA_STATUS))
+        var schemaImportStatus string
+        row := conn.QueryRow(context.Background(), RETRIEVE_IMPORT_SCHEMA_STATUS, migrationUuid,
+                                migrationPhase, invocationSq)
+        err := row.Scan(&schemaImportStatus)
+        log.Infof(fmt.Sprintf("schema import status: [%s]", schemaImportStatus))
+        if err != nil {
+            log.Errorf(fmt.Sprintf("[%s] Error while scaning results for query: [%s]",
+                LOGGER_FILE_NAME, "RETRIEVE_ALL_VOYAGER_MIGRATIONS_SQL"))
+            log.Errorf(err.Error())
+            future <- "none"
+            return
+        }
+        future <- schemaImportStatus
+    }
 
 func fetchMigrateSchemaUIDetailsByUUID(log logger.Logger, conn *pgxpool.Pool, migrationUuid string,
     migrationPhase int, invocationSq int, future chan MigrateSchemaUIDetailFuture) {
