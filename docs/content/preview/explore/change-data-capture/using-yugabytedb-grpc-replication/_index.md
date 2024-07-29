@@ -19,7 +19,7 @@ showRightNav: true
 
 YugabyteDB CDC captures changes made to data in the database and streams those changes to external processes, applications, or other databases. CDC allows you to track and propagate changes in a YugabyteDB database to downstream consumers based on its Write-Ahead Log (WAL). YugabyteDB CDC uses Debezium to capture row-level changes resulting from INSERT, UPDATE, and DELETE operations in the upstream database, and publishes them as events to Kafka using Kafka Connect-compatible connectors.
 
-![What is CDC](/images/explore/cdc-overview-what.png)
+![What is CDC](/images/explore/cdc-overview-work.png)
 
 <!--
 {{<lead link="./cdc-overview">}}

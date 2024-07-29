@@ -53,7 +53,7 @@ The connector is backward compatible with previous releases of YugabyteDB unless
 * Initial Snapshot: Upon its first connection to a YugabyteDB cluster, the connector takes a consistent snapshot of the configured tables.
 * Continuous Streaming: After the snapshot, it continuously captures row-level changes (insertions, updates, and deletions) from the database. It then generates data change event records and streams them to Kafka topics.
 
-![What is CDC](/images/explore/cdc-overview-what.png)
+![What is CDC](/images/explore/cdc-overview-work.png)
 
 ## Kafka integration
 
