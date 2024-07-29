@@ -50,6 +50,7 @@
 /* YB includes */
 #include "common/pg_yb_common.h"
 #include "yb_ash.h"
+#include "yb_query_diagnostics.h"
 
 /* GUCs */
 int			shared_memory_type = DEFAULT_SHARED_MEMORY_TYPE;
@@ -159,6 +160,9 @@ CreateSharedMemoryAndSemaphores(int port)
 
 		if (YBIsEnabledInPostgresEnvVar() && yb_ash_enable_infra)
 			size = add_size(size, YbAshShmemSize());
+
+		if (YBIsEnabledInPostgresEnvVar() && YBIsQueryDiagnosticsEnabled())
+			size = add_size(size, YbQueryDiagnosticsShmemSize());
 
 		/* freeze the addin request size and include it */
 		addin_request_allowed = false;
@@ -276,6 +280,9 @@ CreateSharedMemoryAndSemaphores(int port)
 
 	if (YBIsEnabledInPostgresEnvVar() && yb_ash_enable_infra)
 		YbAshShmemInit();
+
+	if (YBIsEnabledInPostgresEnvVar() && YBIsQueryDiagnosticsEnabled())
+		YbQueryDiagnosticsShmemInit();
 
 #ifdef EXEC_BACKEND
 

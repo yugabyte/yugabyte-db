@@ -4768,6 +4768,15 @@ yb_perform_retry_on_error(
 		elog(ERROR, "unexpected txn error code: %d", txn_errcode);
 	}
 
+	/*
+	 * If in parallel mode, destroy parallel contexts.
+	 * It is important to do before portal's the resource owners cleanup,
+	 * because they free DSM blocks they own, leaving dangling references
+	 * in the parallel contexts.
+	 */
+	if (IsInParallelMode())
+		YbClearParallelContexts();
+
 	Portal portal = portal_name ? GetPortalByName(portal_name) : NULL;
 	if (portal)
 	{
@@ -5514,7 +5523,33 @@ PostgresMain(int argc, char *argv[],
 		if (ConfigReloadPending)
 		{
 			ConfigReloadPending = false;
-			ProcessConfigFile(PGC_SIGHUP);
+			/*
+			 * YB: Reloading postgres config file on a control connection can 
+			 * have some repercussion, therefore adopting most safest option;
+			 * destroy the control connection which leads to failure of client
+			 * authentication and let client keep trying agin untill a new 
+			 * control connection is formed for authentication with updated 
+			 * config file.
+			 * Control connection is identified if a connection receives a
+			 * Auth Passthrough Request ('A') packet.
+			*/
+
+			if (firstchar == 'A') /* Auth Passthrough Request */
+			{
+				/* Make sure auth pass through packet is sent by connection manager only */
+				if (!YbIsClientYsqlConnMgr())
+					ereport(FATAL,
+						(errcode(ERRCODE_PROTOCOL_VIOLATION),
+						 errmsg("invalid frontend message type %d", firstchar)));
+
+				ereport(FATAL,
+						(errcode(ERRCODE_PROTOCOL_VIOLATION),
+						 errmsg("Reloading config on control connection is not supported")));
+			}
+			else
+			{
+				ProcessConfigFile(PGC_SIGHUP);
+			}
 		}
 
 		/*

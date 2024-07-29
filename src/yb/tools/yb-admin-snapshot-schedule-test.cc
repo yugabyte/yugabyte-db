@@ -267,7 +267,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
       master::SysCloneStatePB::State_Parse(
           std::string(VERIFY_RESULT(GetMemberAsStr(entries[0], "aggregate_state"))), &state);
       return state == master::SysCloneStatePB::ABORTED ||
-             state == master::SysCloneStatePB::RESTORED;
+             state == master::SysCloneStatePB::COMPLETE;
     }, timeout, "Wait for clone to complete"));
     return Status::OK();
   }
@@ -3209,11 +3209,14 @@ class YbAdminSnapshotScheduleUpgradeTestWithYsql : public YbAdminSnapshotSchedul
   std::vector<std::string> ExtraMasterFlags() override {
     // To speed up tests.
     std::string build_type;
-    if (DEBUG_MODE) {
-      build_type = "debug";
-    } else {
-      build_type = "release";
-    }
+#if defined ADDRESS_SANITIZER || defined THREAD_SANITIZER
+    // In the version of YugabyteDB where the old sys catalog snapshot was generated, the debug
+    // build had a column representation now used only in ASAN and TSAN builds. See
+    // src/yb/common/column_id.h file history for details.
+    build_type = "debug";
+#else
+    build_type = "release";
+#endif
     std::string old_sys_catalog_snapshot_full_path =
         old_sys_catalog_snapshot_path + old_sys_catalog_snapshot_name + "_" + build_type;
     return { "--snapshot_coordinator_cleanup_delay_ms=1000",
@@ -4111,12 +4114,6 @@ class YbAdminRestoreDuringSplit : public YbAdminRestoreAfterSplitTest {
 // Restore to a time just before split key is fetched by the master.
 TEST_F(YbAdminRestoreDuringSplit, RestoreBeforeGetSplitKey) {
   SetDelayFlag("TEST_pause_tserver_get_split_key", /* set on master */ false);
-  ASSERT_OK(RunTest(1 /* expected num tablets after restore */));
-}
-
-// Restore to a time after one of the child tablets is registered by the master.
-TEST_F(YbAdminRestoreDuringSplit, RestoreAfterOneChildRegistered) {
-  SetDelayFlag("TEST_pause_split_child_registration", /* set on master */ true);
   ASSERT_OK(RunTest(1 /* expected num tablets after restore */));
 }
 

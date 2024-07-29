@@ -793,7 +793,7 @@ void BackfillTable::LaunchBackfillOrAbort() {
 Status BackfillTable::LaunchComputeSafeTimeForRead() {
   RSTATUS_DCHECK(!timestamp_chosen(), IllegalState, "Backfill timestamp already set");
 
-  if (master_->catalog_manager_impl()->IsTableXClusterConsumer(indexed_table_->id())) {
+  if (master_->xcluster_manager()->IsTableReplicationConsumer(indexed_table_->id())) {
     auto res = master_->xcluster_manager()->GetXClusterSafeTime(indexed_table_->namespace_id());
     if (res.ok()) {
       SCHECK(!res->is_special(), InvalidArgument, "Invalid xCluster safe time for namespace ",

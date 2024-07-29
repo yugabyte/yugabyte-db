@@ -65,6 +65,15 @@ main {
     > pre,
     .highlight {
       margin: 20px 0;
+	  position: relative;
+	  display: flex;
+	  flex-direction: column;
+	  min-width: 0;
+	  word-wrap: break-word;
+      background-color: #fff;
+	  background-clip: border-box;
+	  border: 1px solid rgba(0, 0, 0, .125);
+	  border-radius: .25rem;
     }
 
     li > p + pre,
@@ -90,6 +99,7 @@ main {
       background: transparent !important;
       padding: 0 !important;
       margin: 0;
+      border: 0;
       position: relative !important;
       overflow-y: auto;
       overflow-x: visible;
@@ -117,11 +127,11 @@ main {
         overflow: auto;
         scrollbar-width: thin;
 
-        &:only-child {
+        &:nth-child(2):last-child {
           padding: 11px 15px;
         }
 
-        &:not(:only-child) {
+        &:not(:last-child) {
           > span > span {
             padding-right: 40px;
           }
@@ -140,7 +150,6 @@ main {
 
       .highlight {
         margin-bottom: 20px !important;
-
         > pre {
           margin-top: 1rem;
           margin-bottom: 1rem;
@@ -232,6 +241,7 @@ main {
     pre.can-be-copied {
       width: calc(100% + 20px);
       padding-right: 20px !important;
+      border: 0;
       max-width: none;
       min-height: 85px;
 
@@ -250,6 +260,10 @@ main {
         top: 6px;
         z-index: 0;
         border-radius: 5px;
+      }
+
+      .click-to-copy {
+        display: none;
       }
 
       button.copy {

@@ -30,7 +30,7 @@ namespace yb::pggate {
 RowMarkType GetRowMarkType(const PgExecParameters* exec_params);
 
 struct Bound {
-  uint64_t value;
+  uint16_t value;
   bool is_inclusive;
 };
 
@@ -49,6 +49,11 @@ class PgWaitEventWatcher {
   const uint32_t prev_wait_event_;
 
   DISALLOW_COPY_AND_ASSIGN(PgWaitEventWatcher);
+};
+
+struct EstimatedRowCount {
+  double live;
+  double dead;
 };
 
 } // namespace yb::pggate

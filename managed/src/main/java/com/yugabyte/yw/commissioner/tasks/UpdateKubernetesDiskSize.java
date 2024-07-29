@@ -59,6 +59,9 @@ public class UpdateKubernetesDiskSize extends EditKubernetesUniverse {
 
       // String softwareVersion = userIntent.ybSoftwareVersion;
       // primary and readonly clusters disk resize
+      boolean usePreviousGflagsChecksum =
+          KubernetesUtil.isNonRestartGflagsUpgradeSupported(
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
       for (UniverseDefinitionTaskParams.Cluster cluster : taskParams().clusters) {
         Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
         boolean isReadOnlyCluster =
@@ -84,7 +87,8 @@ public class UpdateKubernetesDiskSize extends EditKubernetesUniverse {
             isReadOnlyCluster,
             taskParams().useNewHelmNamingStyle,
             universe.isYbcEnabled(),
-            universe.getUniverseDetails().getYbcSoftwareVersion());
+            universe.getUniverseDetails().getYbcSoftwareVersion(),
+            usePreviousGflagsChecksum);
 
         // persist the changes to the universe
         createPersistResizeNodeTask(cluster.userIntent, cluster.uuid);

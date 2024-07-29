@@ -7,6 +7,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.yugabyte.yw.common.AppInit;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.helpers.schedule.JobConfig;
 import com.yugabyte.yw.models.helpers.schedule.JobConfig.JobConfigWrapper;
@@ -30,6 +31,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
@@ -131,6 +133,17 @@ public class JobSchedule extends Model {
 
   public static List<UUID> getNextEnabled(Duration window) {
     Date nextTime = Date.from(Instant.now().plus(window.getSeconds(), ChronoUnit.SECONDS));
+    if (AppInit.isH2Db()) {
+      return DB
+          .createQuery(JobSchedule.class)
+          .where()
+          .le("nextStartTime", nextTime)
+          .findList()
+          .stream()
+          .filter(s -> !s.getScheduleConfig().isDisabled())
+          .map(JobSchedule::getUuid)
+          .collect(Collectors.toList());
+    }
     return DB.createQuery(JobSchedule.class)
         .where()
         .le("nextStartTime", nextTime)
@@ -143,6 +156,11 @@ public class JobSchedule extends Model {
   }
 
   public static List<JobSchedule> getAll(Class<? extends JobConfig> jobConfigClass) {
+    if (AppInit.isH2Db()) {
+      return DB.createQuery(JobSchedule.class).findList().stream()
+          .filter(s -> s.getJobConfig().getClass() == jobConfigClass)
+          .collect(Collectors.toList());
+    }
     return DB.createQuery(JobSchedule.class)
         .where()
         .eq("job_config::jsonb->>'classname'", jobConfigClass.getName())

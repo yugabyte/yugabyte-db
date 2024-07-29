@@ -9,19 +9,21 @@ main {
       margin: 20px 0;
       max-width: 828px;
 
-      > table{
+      > table {
         margin: 0 !important;
         border: none;
         box-shadow: none;
-    @media(max-width:900px){
-      min-width:650px;
-    }
-        tbody{
+        display: table;
+
+        @media (max-width:900px) {
+          min-width:650px;
+        }
+
+        tbody {
           border-bottom:0;
 
-          tr:last-child{
-            //background: red;
-            td{
+          tr:last-child {
+            td {
               border-bottom:0px;
             }
           }
@@ -38,6 +40,24 @@ main {
         width: 5px;
       }
     }
+
+    .table > :not(caption) > * > *,
+    .td-table:not(.td-initial) > :not(caption) > * > *,
+    .td-content table:not(.td-initial) > :not(caption) > * > *,
+    .td-box table:not(.td-initial) > :not(caption) > * > *{
+      padding: 12.75px 15px;
+    }
+
+    .table-striped > tbody > tr:nth-of-type(odd) > *,
+    .td-table:not(.td-initial) > tbody > tr:nth-of-type(odd) > *,
+    .td-content table:not(.td-initial) > tbody > tr:nth-of-type(odd) > *,
+    .td-box table:not(.td-initial) > tbody > tr:nth-of-type(odd) > * {
+      --bs-table-bg-type: #fbfcfd;
+      color: #25323d;
+      background-color: transparent;
+      border-width: 0;
+    }
+
 
     table {
       box-shadow: 0 0 0 1px #e9eef2;
@@ -70,7 +90,8 @@ main {
       }
 
       &.sno-last {
-        tr th:last-child, tr td:last-child {
+        tr th:last-child,
+        tr td:last-child {
           width: 1%;
         }
       }
@@ -97,6 +118,46 @@ main {
         }
       }
 
+      &.sortable tr {
+        th {
+          position: relative;
+
+          &.empty-th .sort-btn {
+            display: none;
+          }
+
+          .sort-btn {
+            font-size: 0;
+            width: 5px;
+            height: 20px;
+            display: inline-block;
+            vertical-align: middle;
+            text-align: center;
+            cursor: pointer;
+            position: absolute;
+
+            &::after {
+              color: #97a5b0;
+              display: inline-block;
+              font-size: 14px;
+              width: 0;
+              height: 0;
+              background-size: contain;
+              border-radius: 4px;
+              margin-top: 0;
+              margin-left: 5px;
+              transition: all 300ms linear;
+              content: "\f0d7";
+              font-family: "Font Awesome 6 Pro";
+            }
+
+            &.sorted::after {
+              content: "\f0d8";
+            }
+          }
+        }
+      }
+
       tr {
         &:not(:last-child) {
           border-color: #e9eef2;
@@ -108,7 +169,7 @@ main {
           border-width: 0;
           font-family: 'Inter';
           font-style: normal;
-          color: #4e5f6d;
+          color: #4e5f6d!important;
           text-transform: uppercase;
           font-weight: 600;
           font-size: 12px;
@@ -124,14 +185,12 @@ main {
           font-size: 14px;
           line-height: 26px;
           color: #4e5f6d;
-          padding: 11.5px 16px;
+          padding: 11.5px 16px!important;
         }
       }
     }
   }
 }
-
-
 
 @media (min-width: 1024px) {
   main {

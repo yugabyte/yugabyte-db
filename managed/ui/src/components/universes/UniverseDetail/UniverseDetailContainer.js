@@ -138,6 +138,9 @@ const mapDispatchToProps = (dispatch) => {
     showEnableYCQLModal: () => {
       dispatch(openDialog('enableYCQLModal'));
     },
+    showPGCompatibilityModal: () => {
+      dispatch(openDialog('enablePGCompatibility'));
+    },
 
     updateBackupState: (universeUUID, flag) => {
       dispatch(updateBackupState(universeUUID, flag)).then((response) => {

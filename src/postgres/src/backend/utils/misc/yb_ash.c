@@ -103,13 +103,13 @@ static int nested_level = 0;
 static void YbAshInstallHooks(void);
 static int yb_ash_cb_max_entries(void);
 static void YbAshSetQueryId(uint64 query_id);
-static void YbAshResetQueryId(void);
+static void YbAshResetQueryId(uint64 query_id);
 static uint64 yb_ash_utility_query_id(const char *query, int query_len,
 									  int query_location);
 static void YbAshAcquireBufferLock(bool exclusive);
 static void YbAshReleaseBufferLock();
 static bool YbAshNestedQueryIdStackPush(uint64 query_id);
-static uint64 YbAshNestedQueryIdStackPop(void);
+static uint64 YbAshNestedQueryIdStackPop(uint64 query_id);
 
 static void yb_ash_ExecutorStart(QueryDesc *queryDesc, int eflags);
 static void yb_ash_ExecutorRun(QueryDesc *queryDesc,
@@ -123,8 +123,10 @@ static void yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 								  char *completionTag);
 
 static const unsigned char *get_yql_endpoint_tserver_uuid();
-static void copy_pgproc_sample_fields(PGPROC *proc);
-static void copy_non_pgproc_sample_fields(float8 sample_weight, TimestampTz sample_time);
+static void YbAshMaybeReplaceSample(PGPROC *proc, int num_procs, TimestampTz sample_time,
+									int samples_considered);
+static void copy_pgproc_sample_fields(PGPROC *proc, int index);
+static void copy_non_pgproc_sample_fields(TimestampTz sample_time, int index);
 static void YbAshIncrementCircularBufferIndex(void);
 static YBCAshSample *YbAshGetNextCircularBufferSlot(void);
 
@@ -235,7 +237,7 @@ YbAshNestedQueryIdStackPush(uint64 query_id)
  * Pop a query id from the stack
  */
 static uint64
-YbAshNestedQueryIdStackPop(void)
+YbAshNestedQueryIdStackPop(uint64 query_id)
 {
 	if (query_id_stack.num_query_ids_not_pushed > 0)
 	{
@@ -243,8 +245,15 @@ YbAshNestedQueryIdStackPop(void)
 		return 0;
 	}
 
-	Assert(query_id_stack.top_index >= 0);
-	return query_id_stack.query_ids[query_id_stack.top_index--];
+	/*
+	 * When an extra ExecutorEnd is called during PortalCleanup,
+	 * we shouldn't pop the incorrect query_id from the stack.
+	 */
+	if (query_id_stack.top_index >= 0 &&
+		query_id_stack.query_ids[query_id_stack.top_index] == query_id)
+		return query_id_stack.query_ids[query_id_stack.top_index--];
+
+	return 0;
 }
 
 /*
@@ -290,14 +299,16 @@ YbAshShmemInit(void)
 static void
 yb_ash_ExecutorStart(QueryDesc *queryDesc, int eflags)
 {
+	uint64 query_id;
+
 	if (yb_enable_ash)
 	{
 		/* Query id can be zero here only if pg_stat_statements is disabled */
-		uint64 query_id = queryDesc->plannedstmt->queryId != 0
-						  ? queryDesc->plannedstmt->queryId
-						  : yb_ash_utility_query_id(queryDesc->sourceText,
-					   								queryDesc->plannedstmt->stmt_len,
-													queryDesc->plannedstmt->stmt_location);
+		query_id = queryDesc->plannedstmt->queryId != 0
+				   ? queryDesc->plannedstmt->queryId
+				   : yb_ash_utility_query_id(queryDesc->sourceText,
+					   						 queryDesc->plannedstmt->stmt_len,
+											 queryDesc->plannedstmt->stmt_location);
 		YbAshSetQueryId(query_id);
 	}
 
@@ -311,7 +322,7 @@ yb_ash_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	PG_CATCH();
 	{
 		if (yb_enable_ash)
-			YbAshResetQueryId();
+			YbAshResetQueryId(query_id);
 
 		PG_RE_THROW();
 	}
@@ -336,7 +347,7 @@ yb_ash_ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, uint64 count,
 		--nested_level;
 
 		if (yb_enable_ash)
-			YbAshResetQueryId();
+			YbAshResetQueryId(queryDesc->plannedstmt->queryId);
 
 		PG_RE_THROW();
 	}
@@ -360,7 +371,7 @@ yb_ash_ExecutorFinish(QueryDesc *queryDesc)
 		--nested_level;
 
 		if (yb_enable_ash)
-			YbAshResetQueryId();
+			YbAshResetQueryId(queryDesc->plannedstmt->queryId);
 
 		PG_RE_THROW();
 	}
@@ -378,12 +389,12 @@ yb_ash_ExecutorEnd(QueryDesc *queryDesc)
 			standard_ExecutorEnd(queryDesc);
 
 		if (yb_enable_ash)
-			YbAshResetQueryId();
+			YbAshResetQueryId(queryDesc->plannedstmt->queryId);
 	}
 	PG_CATCH();
 	{
 		if (yb_enable_ash)
-			YbAshResetQueryId();
+			YbAshResetQueryId(queryDesc->plannedstmt->queryId);
 
 		PG_RE_THROW();
 	}
@@ -396,13 +407,15 @@ yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 					  QueryEnvironment *queryEnv, DestReceiver *dest,
 					  char *completionTag)
 {
+	uint64 query_id;
+
 	if (yb_enable_ash)
 	{
-		uint64 query_id = pstmt->queryId != 0
-						  ? pstmt->queryId
-						  : yb_ash_utility_query_id(queryString,
-					   								pstmt->stmt_len,
-													pstmt->stmt_location);
+		query_id = pstmt->queryId != 0
+				   ? pstmt->queryId
+				   : yb_ash_utility_query_id(queryString,
+					   						 pstmt->stmt_len,
+											 pstmt->stmt_location);
 		YbAshSetQueryId(query_id);
 	}
 
@@ -420,14 +433,14 @@ yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 		--nested_level;
 
 		if (yb_enable_ash)
-			YbAshResetQueryId();
+			YbAshResetQueryId(query_id);
 	}
 	PG_CATCH();
 	{
 		--nested_level;
 
 		if (yb_enable_ash)
-			YbAshResetQueryId();
+			YbAshResetQueryId(query_id);
 
 		PG_RE_THROW();
 	}
@@ -449,11 +462,11 @@ YbAshSetQueryId(uint64 query_id)
 }
 
 static void
-YbAshResetQueryId(void)
+YbAshResetQueryId(uint64 query_id)
 {
 	if (set_query_id())
 	{
-		uint64 prev_query_id = YbAshNestedQueryIdStackPop();
+		uint64 prev_query_id = YbAshNestedQueryIdStackPop(query_id);
 		if (prev_query_id != 0)
 		{
 			LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
@@ -668,34 +681,52 @@ YbAshIncrementCircularBufferIndex(void)
 		yb_ash->index = 0;
 }
 
-/*
- * Returns true if another sample should be stored in the circular buffer.
- */
-bool
-YbAshStoreSample(PGPROC *proc, int num_procs, TimestampTz sample_time,
-				 int *samples_stored)
+static void
+YbAshMaybeReplaceSample(PGPROC *proc, int num_procs, TimestampTz sample_time,
+						int samples_considered)
 {
+	int			random_index;
+	int			replace_index;
+
+	random_index = YBCGetRandomUniformInt(1, samples_considered);
+
+	if (random_index > yb_ash_sample_size)
+		return;
+
 	/*
-	 * If there are less samples available than the sample size, the sample
-	 * weight must be 1.
+	 * -1 because yb_ash->index points to where the next sample should
+	 * be stored.
 	 */
-	float8 sample_weight = Max(num_procs, yb_ash_sample_size) * 1.0 / yb_ash_sample_size;
+	replace_index = yb_ash->index - (yb_ash_sample_size - random_index) - 1;
 
-	copy_pgproc_sample_fields(proc);
-	copy_non_pgproc_sample_fields(sample_weight, sample_time);
+	if (replace_index < 0)
+		replace_index += yb_ash->max_entries;
 
+	YbAshStoreSample(proc, num_procs, sample_time, replace_index);
+}
+
+void
+YbAshMaybeIncludeSample(PGPROC *proc, int num_procs, TimestampTz sample_time,
+						int *samples_considered)
+{
+	if (++(*samples_considered) <= yb_ash_sample_size)
+		YbAshStoreSample(proc, num_procs, sample_time, yb_ash->index);
+	else
+		YbAshMaybeReplaceSample(proc, num_procs, sample_time, *samples_considered);
+}
+
+void
+YbAshStoreSample(PGPROC *proc, int num_procs, TimestampTz sample_time, int index)
+{
+	copy_pgproc_sample_fields(proc, index);
+	copy_non_pgproc_sample_fields(sample_time, index);
 	YbAshIncrementCircularBufferIndex();
-
-	if (++(*samples_stored) == yb_ash_sample_size)
-		return false;
-
-	return true;
 }
 
 static void
-copy_pgproc_sample_fields(PGPROC *proc)
+copy_pgproc_sample_fields(PGPROC *proc, int index)
 {
-	YBCAshSample *cb_sample = &yb_ash->circular_buffer[yb_ash->index];
+	YBCAshSample *cb_sample = &yb_ash->circular_buffer[index];
 
 	LWLockAcquire(&proc->yb_ash_metadata_lock, LW_SHARED);
 	memcpy(&cb_sample->metadata, &proc->yb_ash_metadata, sizeof(YBCAshMetadata));
@@ -704,10 +735,11 @@ copy_pgproc_sample_fields(PGPROC *proc)
 	cb_sample->encoded_wait_event_code = proc->wait_event_info;
 }
 
+/* We don't fill the sample weight here. Check YbAshFillSampleWeight */
 static void
-copy_non_pgproc_sample_fields(float8 sample_weight, TimestampTz sample_time)
+copy_non_pgproc_sample_fields(TimestampTz sample_time, int index)
 {
-	YBCAshSample *cb_sample = &yb_ash->circular_buffer[yb_ash->index];
+	YBCAshSample *cb_sample = &yb_ash->circular_buffer[index];
 
 	/* yql_endpoint_tserver_uuid is constant for all PG samples */
 	if (get_yql_endpoint_tserver_uuid())
@@ -719,8 +751,32 @@ copy_non_pgproc_sample_fields(float8 sample_weight, TimestampTz sample_time)
 	cb_sample->rpc_request_id = 0;
 	/* TODO(asaha): Add aux info to circular buffer once it's available */
 	cb_sample->aux_info[0] = '\0';
-	cb_sample->sample_weight = sample_weight;
 	cb_sample->sample_time = sample_time;
+}
+
+/*
+ * While inserting samples into the circular buffer, we don't know the actual
+ * number of samples considered. So after inserting all the samples, we go back
+ * and update the sample weight
+ */
+void
+YbAshFillSampleWeight(int samples_considered)
+{
+	int			samples_inserted;
+	float		sample_weight;
+	int			index;
+
+	samples_inserted = Min(samples_considered, yb_ash_sample_size);
+	sample_weight = Max(samples_considered, yb_ash_sample_size) * 1.0 / yb_ash_sample_size;
+	index = yb_ash->index - 1;
+
+	while (samples_inserted--)
+	{
+		if (index < 0)
+			index += yb_ash->max_entries;
+
+		yb_ash->circular_buffer[index--].sample_weight = sample_weight;
+	}
 }
 
 /*

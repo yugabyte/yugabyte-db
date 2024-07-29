@@ -453,17 +453,6 @@ message WaitForReplicationDrainResponsePB {
   repeated UndrainedStreamInfoPB undrained_stream_info = 2;
 }
 
-message SetupNSUniverseReplicationRequestPB {
-  optional string replication_group_id = 1;
-  repeated HostPortPB producer_master_addresses = 2;
-  optional string producer_ns_name = 3;
-  optional YQLDatabase producer_ns_type = 4;
-}
-
-message SetupNSUniverseReplicationResponsePB {
-  optional MasterErrorPB error = 1;
-}
-
 message UpdateConsumerOnProducerMetadataRequestPB {
   optional string replication_group_id = 1;
   optional string stream_id = 2;
@@ -614,7 +603,9 @@ message GetXClusterStreamsRequestPB {
     required string table_name = 1;
     required string pg_schema_name = 2;
   }
-  repeated TableInfo table_infos = 3; // If empty, return all tables.
+  // Only one of the following fields should be set. If both are empty, return all tables.
+  repeated TableInfo table_infos = 3;
+  repeated bytes source_table_ids = 4;
 }
 
 message GetXClusterStreamsResponsePB {
@@ -829,8 +820,6 @@ service MasterReplication {
       returns (IsSetupNamespaceReplicationWithBootstrapDoneResponsePB);
   rpc IsSetupUniverseReplicationDone(IsSetupUniverseReplicationDoneRequestPB)
       returns (IsSetupUniverseReplicationDoneResponsePB);
-  rpc SetupNSUniverseReplication(SetupNSUniverseReplicationRequestPB)
-      returns (SetupNSUniverseReplicationResponsePB);
   rpc ChangeXClusterRole(ChangeXClusterRoleRequestPB)
       returns (ChangeXClusterRoleResponsePB);
 

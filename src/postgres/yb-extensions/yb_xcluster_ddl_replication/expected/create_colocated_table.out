@@ -16,9 +16,9 @@ SET yb_xcluster_ddl_replication.replication_role = BIDIRECTIONAL;
 -- Verify that non-colocated table is captured.
 CREATE TABLE non_coloc_foo(i int PRIMARY KEY) WITH (COLOCATION = false);
 SELECT yb_data FROM yb_xcluster_ddl_replication.ddl_queue ORDER BY start_time;
-                                                                                  yb_data
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- {"user": "yugabyte", "query": "CREATE TABLE non_coloc_foo(i int PRIMARY KEY) WITH (COLOCATION = false);", "schema": "public", "version": 1, "command_tag": "CREATE TABLE"}
+                                                                                                                     yb_data
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"user": "yugabyte", "query": "CREATE TABLE non_coloc_foo(i int PRIMARY KEY) WITH (COLOCATION = false);", "schema": "public", "version": 1, "command_tag": "CREATE TABLE", "new_rel_map": [{"rel_name": "non_coloc_foo", "relfile_oid": 16414}]}
 (1 row)
 
 SELECT * FROM yb_xcluster_ddl_replication.replicated_ddls ORDER BY start_time;

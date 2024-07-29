@@ -25,6 +25,8 @@ extern "C" {
 
 typedef void (*YBCAshAcquireBufferLock)(bool);
 typedef YBCAshSample* (*YBCAshGetNextCircularBufferSlot)();
+typedef const YBCPgTypeEntity* (*YBCTypeEntityProvider)(int, YBCPgOid);
+typedef void (*YBCGetTableKeyRangesCallback)(void*, const char*, size_t);
 
 typedef void * SliceVector;
 typedef const void * ConstSliceVector;
@@ -41,9 +43,9 @@ void YBCInterruptPgGate();
 
 //--------------------------------------------------------------------------------------------------
 // Environment and Session.
-bool YBCGetCurrentPgSessionParallelData(YBCPgSessionParallelData* session_data);
+void YBCDumpCurrentPgSessionState(YBCPgSessionState* session_data);
 
-void YBCRestorePgSessionParallelData(const YBCPgSessionParallelData* session_data);
+void YBCRestorePgSessionState(const YBCPgSessionState* session_data);
 
 // Initialize a session to process statements that come from the same client connection.
 YBCStatus YBCPgInitSession(const char* database_name, YBCPgExecStatsState* session_stats);
@@ -113,6 +115,7 @@ YBCStatus YBCGetHeapConsumption(YbTcmallocStats *desc);
 
 // Validate the JWT based on the options including the identity matching based on the identity map.
 YBCStatus YBCValidateJWT(const char *token, const YBCPgJwtAuthOptions *options);
+YBCStatus YBCFetchFromUrl(const char *url, char **buf);
 
 // Is this node acting as the pg_cron leader?
 bool YBCIsCronLeader();
@@ -503,8 +506,8 @@ YBCStatus YBCPgDmlBindRow(
 YBCStatus YBCPgDmlGetColumnInfo(YBCPgStatement handle, int attr_num, YBCPgColumnInfo* info);
 
 YBCStatus YBCPgDmlBindHashCodes(YBCPgStatement handle,
-                                YBCPgBoundType start_type, uint64_t start_value,
-                                YBCPgBoundType end_type, uint64_t end_value);
+                                YBCPgBoundType start_type, int start_value,
+                                YBCPgBoundType end_type, int end_value);
 
 // For parallel scan only, limit fetch to specified range of ybctids
 YBCStatus YBCPgDmlBindRange(YBCPgStatement handle,
@@ -667,6 +670,7 @@ YBCStatus YBCPgBeginTransaction(int64_t start_time);
 YBCStatus YBCPgRecreateTransaction();
 YBCStatus YBCPgRestartTransaction();
 YBCStatus YBCPgResetTransactionReadPoint();
+YBCStatus YBCPgEnsureReadPoint();
 YBCStatus YBCPgRestartReadPoint();
 bool YBCIsRestartReadPointRequested();
 YBCStatus YBCPgCommitPlainTransaction();
@@ -677,7 +681,7 @@ YBCStatus YBCPgSetTransactionDeferrable(bool deferrable);
 YBCStatus YBCPgSetInTxnBlock(bool in_txn_blk);
 YBCStatus YBCPgSetReadOnlyStmt(bool read_only_stmt);
 YBCStatus YBCPgSetEnableTracing(bool tracing);
-YBCStatus YBCPgEnableFollowerReads(bool enable_follower_reads, int32_t staleness_ms);
+YBCStatus YBCPgUpdateFollowerReadsConfig(bool enable_follower_reads, int32_t staleness_ms);
 YBCStatus YBCPgEnterSeparateDdlTxnMode();
 bool YBCPgHasWriteOperationsInDdlTxnMode();
 YBCStatus YBCPgExitSeparateDdlTxnMode(YBCPgOid db_oid, bool is_silent_altering);
@@ -843,8 +847,7 @@ YBCStatus YBCGetTableKeyRanges(
     YBCPgOid database_oid, YBCPgOid table_relfilenode_oid, const char* lower_bound_key,
     size_t lower_bound_key_size, const char* upper_bound_key, size_t upper_bound_key_size,
     uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length,
-    uint64_t* current_tserver_ht,
-    void callback(void* callback_param, const char* key, size_t key_size), void* callback_param);
+    YBCGetTableKeyRangesCallback callback, void* callback_param);
 
 //--------------------------------------------------------------------------------------------------
 // Replication Slots.
@@ -876,7 +879,8 @@ YBCStatus YBCPgUpdatePublicationTableList(
 YBCStatus YBCPgDestroyVirtualWalForCDC();
 
 YBCStatus YBCPgGetCDCConsistentChanges(const char *stream_id,
-                                       YBCPgChangeRecordBatch **record_batch);
+                                       YBCPgChangeRecordBatch **record_batch,
+                                       YBCTypeEntityProvider type_entity_provider);
 
 YBCStatus YBCPgUpdateAndPersistLSN(
     const char* stream_id, YBCPgXLogRecPtr restart_lsn_hint, YBCPgXLogRecPtr confirmed_flush,
@@ -893,6 +897,9 @@ void YBCStoreTServerAshSamples(
     uint64_t sample_time);
 
 YBCStatus YBCLocalTablets(YBCPgTabletsDescriptor** tablets, size_t* count);
+
+uint64_t YBCPgGetCurrentReadTimePoint();
+YBCStatus YBCRestoreReadTimePoint(uint64_t read_time_point_handle);
 
 #ifdef __cplusplus
 }  // extern "C"

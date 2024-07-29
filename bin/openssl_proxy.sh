@@ -103,7 +103,12 @@ generate_node_certs() {
 
     [ YugabyteDB_Node ]
     organizationName = Yugabyte
-    commonName = '"$hostname" > "$temp_certs_path"/node.conf
+    commonName = '"$hostname"'
+
+    [ req_ext ]
+    subjectAltName = @alt_names
+    [alt_names]
+    IP.1 = '"$hostname"'' > "$temp_certs_path"/node.conf
 
 
     openssl genrsa -out "$temp_certs_path"/node."$hostname".key
@@ -122,7 +127,9 @@ generate_node_certs() {
                 -outdir "$temp_certs_path" \
                 -in "$temp_certs_path"/node.csr \
                 -days 730 \
-                -batch
+                -batch \
+                -extfile "$temp_certs_path"/node.conf \
+                -extensions req_ext
 
     cp "$temp_certs_path"/ca.crt \
         "$temp_certs_path"/node."$hostname".key \

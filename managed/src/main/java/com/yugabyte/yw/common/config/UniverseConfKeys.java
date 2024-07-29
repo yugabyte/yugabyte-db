@@ -878,7 +878,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Enable Rollback Support",
           "Enable Yugabyte DB Rollback support",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> allowGFlagsOverrideDuringPreFinalize =
       new ConfKeyInfo<>(
           "yb.gflags.allow_during_prefinalize",
@@ -940,7 +940,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Configure YSQL DB API",
           "Allow users to configure YSQL DB API from UI",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> allowConfigureYCQL =
       new ConfKeyInfo<>(
           "yb.configure_db_api.ycql",
@@ -948,7 +948,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Configure YCQL DB API",
           "Allow users to configure YCQL DB API from UI",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Duration> waitForReplicationDrainTimeout =
       new ConfKeyInfo<>(
           "yb.xcluster.transactional.wait_for_replication_drain_timeout",
@@ -1222,6 +1222,30 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ScopeType.UNIVERSE,
           "CPU usage alert aggregation interval",
           "CPU usage alert aggregation interval in seconds.",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> healthCheckTimeDrift =
+      new ConfKeyInfo<>(
+          "yb.health_checks.check_clock_time_drift",
+          ScopeType.UNIVERSE,
+          "Enable health checks for time drift between nodes",
+          "Enable health checks for time drift between nodes.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> healthCheckTimeDriftWrnThreshold =
+      new ConfKeyInfo<>(
+          "yb.health_checks.time_drift_wrn_threshold_ms",
+          ScopeType.UNIVERSE,
+          "Time drift threshold for warning health check",
+          "Threshold to raise a warning when time drift exceeds this amount",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> healthCheckTimeDriftErrThreshold =
+      new ConfKeyInfo<>(
+          "yb.health_checks.time_drift_err_threshold_ms",
+          ScopeType.UNIVERSE,
+          "Time drift threshold for error health check",
+          "Threshold to raise a error when time drift exceeds this amount",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

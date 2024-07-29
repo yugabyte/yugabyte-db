@@ -66,6 +66,10 @@ public class ReleaseLocalFile extends Model {
     return find.query().where().eq("isUpload", false).findList();
   }
 
+  public static List<ReleaseLocalFile> getUploadedFiles() {
+    return find.query().where().eq("isUpload", true).findList();
+  }
+
   public boolean delete() {
     File file = new File(this.localFilePath);
     // Best effort delete the file

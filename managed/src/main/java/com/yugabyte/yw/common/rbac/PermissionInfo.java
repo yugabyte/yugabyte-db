@@ -89,7 +89,8 @@ public class PermissionInfo {
     BACKUP_RESTORE,
     UPDATE_ROLE_BINDINGS,
     UPDATE_PROFILE,
-    SUPER_ADMIN_ACTIONS
+    SUPER_ADMIN_ACTIONS,
+    XCLUSTER
   }
 
   @JsonProperty("resourceType")

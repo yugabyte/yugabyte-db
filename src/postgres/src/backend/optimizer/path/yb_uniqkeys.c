@@ -375,6 +375,13 @@ yb_calculate_distinct_prefixlen(IndexOptInfo *index, List *index_clauses)
 			return -1;
 
 		/*
+		 * Return -1 when an include column is referenced.
+		 * Because include columns of an index are not sorted.
+		 */
+		if (ordpos > index->nkeycolumns)
+			return -1;
+
+		/*
 		 * Do not include constants in the prefix since shorter prefixes are
 		 * more efficient. This is only useful for trailing constants since
 		 * variable, constant, variable still has a prefix length of 3.

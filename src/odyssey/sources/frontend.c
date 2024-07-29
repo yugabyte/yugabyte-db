@@ -1909,14 +1909,6 @@ static void od_frontend_cleanup(od_client_t *client, char *context,
 	if (od_frontend_status_is_err(status)) {
 		od_error_logger_store_err(l, status);
 
-		if (yb_is_route_invalid(client->route)) {
-			if (client->type == OD_POOL_CLIENT_EXTERNAL)
-				od_frontend_fatal(
-					client, KIWI_CONNECTION_FAILURE,
-					"Database might have been dropped by another user");
-			return;
-		}
-
 		if (route->extra_logging_enabled &&
 		    !od_route_is_dynamic(route)) {
 			od_error_logger_store_err(route->err_logger, status);

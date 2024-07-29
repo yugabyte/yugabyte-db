@@ -48,8 +48,7 @@ SUBDIRS = \
 		tsm_system_rows \
 		tsm_system_time \
 		unaccent	\
-		vacuumlo	\
-		wal2json
+		vacuumlo
 
 ifeq ($(with_openssl),yes)
 SUBDIRS += sslinfo

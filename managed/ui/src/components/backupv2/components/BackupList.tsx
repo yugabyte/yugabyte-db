@@ -52,6 +52,8 @@ import {
 } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { Action, Resource } from '../../../redesign/features/rbac';
+import { TaskDetailSimpleComp } from '../../../redesign/features/tasks/components/TaskDetailSimpleComp';
+import './BackupList.scss';
 
 import './BackupList.scss';
 
@@ -386,6 +388,15 @@ export const BackupList: FC<BackupListOptions> = ({
     return { ...b, backupUUID: b.commonBackupInfo.backupUUID };
   });
 
+  const isBackupNotSucceeded = (state: Backup_States) => [
+    Backup_States.IN_PROGRESS,
+    Backup_States.STOPPING,
+    Backup_States.FAILED,
+    Backup_States.FAILED_TO_DELETE,
+    Backup_States.SKIPPED,
+    Backup_States.STOPPED
+  ].includes(state);
+
   if (!isFilterApplied() && backups?.length === 0) {
     return allowTakingBackup ? (
       <>
@@ -657,16 +668,24 @@ export const BackupList: FC<BackupListOptions> = ({
                 row.fullChainSizeInBytes || row.commonBackupInfo.totalBackupSizeInBytes
               );
             }}
-            width="20%"
+            width="10%"
           >
             Size
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="lastBackupState"
-            dataFormat={(lastBackupState) => {
-              return <StatusBadge statusType={lastBackupState} />;
+            dataFormat={(lastBackupState, row: IBackup) => {
+
+              return <div onClick={e => e.stopPropagation()} className='backup-status'>
+                <StatusBadge statusType={lastBackupState} />
+                {
+                  isBackupNotSucceeded(row.commonBackupInfo.state) && (
+                    <TaskDetailSimpleComp taskUUID={row.commonBackupInfo.taskUUID} />
+                  )
+                }
+              </div>;
             }}
-            width="15%"
+            width="25%"
           >
             Last Status
           </TableHeaderColumn>

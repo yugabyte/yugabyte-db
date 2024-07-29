@@ -1096,5 +1096,32 @@ class AsyncClonePgSchema : public RetrySpecificTSRpcTask {
   ClonePgSchemaCallbackType callback_;
 };
 
+class AsyncEnableDbConns : public RetrySpecificTSRpcTask {
+ public:
+  using EnableDbConnsCallbackType = std::function<Status(Status)>;
+  AsyncEnableDbConns(
+      Master* master, ThreadPool* callback_pool, const std::string& permanent_uuid,
+      const std::string& target_db_name, EnableDbConnsCallbackType callback);
+
+  server::MonitoredTaskType type() const override {
+    return server::MonitoredTaskType::kEnableDbConns;
+  }
+
+  std::string type_name() const override { return "Enable DB connections"; }
+
+  std::string description() const override;
+
+ protected:
+  void HandleResponse(int attempt) override;
+  bool SendRequest(int attempt) override;
+  // Not associated with a tablet.
+  TabletId tablet_id() const override { return TabletId(); }
+
+ private:
+  std::string target_db_name_;
+  tserver::EnableDbConnsResponsePB resp_;
+  EnableDbConnsCallbackType callback_;
+};
+
 } // namespace master
 } // namespace yb

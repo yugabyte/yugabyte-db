@@ -14,7 +14,8 @@ import {
   XClusterConfigType,
   XClusterTableEligibility,
   XClusterTableStatus,
-  TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD
+  TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD,
+  XCLUSTER_UNDEFINED_LAG_NUMERIC_REPRESENTATION
 } from './constants';
 import {
   alertConfigQueryKey,
@@ -40,7 +41,13 @@ import {
   XClusterTable
 } from './XClusterTypes';
 import { XClusterConfig, XClusterTableDetails } from './dtos';
-import { MetricTrace, TableType, Universe, YBTable } from '../../redesign/helpers/dtos';
+import {
+  MetricTrace,
+  TableType,
+  Universe,
+  UniverseNamespace,
+  YBTable
+} from '../../redesign/helpers/dtos';
 import {
   AlertTemplate,
   AlertThresholdCondition,
@@ -536,8 +543,8 @@ export const isTableToggleable = (
   (xClusterConfigAction === XClusterConfigAction.MANAGE_TABLE &&
     table.eligibilityDetails.status === XClusterTableEligibility.ELIGIBLE_IN_CURRENT_CONFIG);
 
-export const shouldAutoIncludeIndexTables = (xClusterConfig: XClusterConfig) =>
-  xClusterConfig.type === XClusterConfigType.TXN || xClusterConfig.tableType !== 'YSQL';
+export const shouldAutoIncludeIndexTables = (xClusterConfig: XClusterConfig | undefined) =>
+  xClusterConfig ? xClusterConfig.type === XClusterConfigType.TXN : true;
 
 export const getIsTransactionalAtomicityEnabled = (
   sourceUniverse: Universe,
@@ -561,6 +568,28 @@ export const getIsTransactionalAtomicityEnabled = (
     !participantsHaveLinkedXClusterConfig
   );
 };
+
+/**
+ * Returns a string identifier for a given namespace using fields provided from the
+ * `GET /customers/{customerUuid}/universes/{universeUuid}/namespaces` endpoint.
+ */
+export const getNamespaceIdentifier = (namespaceName: string, tableType: string) =>
+  `${namespaceName}-${tableType}`;
+
+/**
+ * Returns a map keyed by `<namespaceName>-<namespaceTableType>`.
+ */
+export const getNamespaceIdentifierToNamespaceUuidMap = (
+  namespaces: UniverseNamespace[]
+): { [namespaceName: string]: string } =>
+  // It is important to add tableType to the key because it is possible
+  // to have a YSQL namespace and a YCQL namespace with the same name.
+  Object.fromEntries(
+    namespaces.map((namespace) => [
+      getNamespaceIdentifier(namespace.name, namespace.tableType),
+      namespace.namespaceUUID
+    ])
+  );
 
 /**
  * Returns array of XClusterReplicationTable or array of XClusterTable by augmenting YBTable with XClusterTableDetails.
@@ -595,7 +624,10 @@ export const augmentTablesWithXClusterDetails = <TIncludeDroppedTables extends b
   const tables = xClusterConfigTables.reduce((tables: XClusterReplicationTable[], table) => {
     const { tableId, ...xClusterTableDetails } = table;
     const sourceUniverseTableDetails = tableIdToSourceUniverseTableDetails.get(tableId);
-    const replicationLag = tableIdToReplicationLag.get(tableId);
+    // We use -1 to indicate 'not reported'/undefined lag. This is because it is easier to work with
+    // when sorting or filtering by replication lag.
+    const replicationLag =
+      tableIdToReplicationLag.get(tableId) ?? XCLUSTER_UNDEFINED_LAG_NUMERIC_REPRESENTATION;
     if (sourceUniverseTableDetails) {
       const tableStatus =
         xClusterTableDetails.status === XClusterTableStatus.RUNNING &&

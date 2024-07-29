@@ -45,6 +45,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.yb.cdc.CdcConsumer;
 import org.yb.cdc.CdcConsumer.StreamEntryPB;
+import org.yb.client.CDCStreamInfo;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.GetReplicationStatusResponse;
 import org.yb.client.GetXClusterSafeTimeResponse;
@@ -472,7 +473,14 @@ public class XClusterUniverseService {
    * @return A set of strings representing the CDC stream IDs in the universe.
    * @throws RuntimeException if there is an error listing the CDC streams.
    */
-  public Set<String> getAllCDCStreamsInUniverse(
+  public Set<String> getAllCDCStreamIdsInUniverse(
+      YBClientService ybClientService, Universe universe) {
+    return getAllCDCStreamInfoInUniverse(ybClientService, universe).stream()
+        .map(CDCStreamInfo::getStreamId)
+        .collect(Collectors.toSet());
+  }
+
+  public Set<CDCStreamInfo> getAllCDCStreamInfoInUniverse(
       YBClientService ybClientService, Universe universe) {
     try (YBClient client =
         ybClientService.getClient(
@@ -484,9 +492,7 @@ public class XClusterUniverseService {
                 "Error listing cdc streams for universe %s. Error: %s",
                 universe.getName(), cdcStreamsResponse.errorMessage()));
       }
-      return cdcStreamsResponse.getStreams().stream()
-          .map(cdcStream -> cdcStream.getStreamId())
-          .collect(Collectors.toSet());
+      return cdcStreamsResponse.getStreams().stream().collect(Collectors.toSet());
     } catch (Exception e) {
       log.error("XClusterUniverseService.getCDCStreams hit error : {}", e.getMessage());
       throw new RuntimeException(e);

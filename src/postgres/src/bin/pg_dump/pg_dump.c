@@ -1096,6 +1096,7 @@ help(const char *progname)
 	printf(_("  --no-tablegroup-creations    do not dump tablegroup creations\n"));
 	printf(_("  --no-unlogged-table-data     do not dump unlogged table data\n"));
 	printf(_("  --quote-all-identifiers      quote all identifiers, even if not key words\n"));
+	printf(_("  --read-time=TIMEPOINT        dump data/schema as of provided TIMEPOINT. Takes linux timestamp in microseconds\n"));
 	printf(_("  --section=SECTION            dump named section (pre-data, data, or post-data)\n"));
 	printf(_("  --serializable-deferrable    wait until the dump can run without anomalies\n"));
 	printf(_("  --no-serializable-deferrable disable serializable-deferrable mode\n"
@@ -15255,7 +15256,7 @@ dumpACL(Archive *fout, CatalogId objCatId, DumpId objDumpId,
 	if (sql->len > 0)
 	{
 		PQExpBuffer tag = createPQExpBuffer();
-		PQExpBuffer use_roles_sql;
+		PQExpBuffer yb_use_roles_sql;
 
 		if (subname)
 			appendPQExpBuffer(tag, "COLUMN %s.%s", name, subname);
@@ -15264,8 +15265,8 @@ dumpACL(Archive *fout, CatalogId objCatId, DumpId objDumpId,
 
 		if (dopt->include_yb_metadata)
 		{
-			use_roles_sql = createPQExpBuffer();
-			appendPQExpBuffer(use_roles_sql, "\\if :use_roles\n%s\\endif\n", sql->data);
+			yb_use_roles_sql = createPQExpBuffer();
+			appendPQExpBuffer(yb_use_roles_sql, "\\if :use_roles\n%s\\endif\n", sql->data);
 		}
 
 		ArchiveEntry(fout, nilCatalogId, createDumpId(),
@@ -15273,11 +15274,11 @@ dumpACL(Archive *fout, CatalogId objCatId, DumpId objDumpId,
 					 NULL,
 					 owner ? owner : "",
 					 false, "ACL", SECTION_NONE,
-					 dopt->include_yb_metadata ? use_roles_sql->data : sql->data,
+					 dopt->include_yb_metadata ? yb_use_roles_sql->data : sql->data,
 					 "", NULL, &(objDumpId), 1,
 					 NULL, NULL);
 		if (dopt->include_yb_metadata)
-			destroyPQExpBuffer(use_roles_sql);
+			destroyPQExpBuffer(yb_use_roles_sql);
 
 		destroyPQExpBuffer(tag);
 	}

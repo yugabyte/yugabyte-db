@@ -685,7 +685,6 @@ class ApiService {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/tasks_list`;
     return axios
       .get<any>(requestUrl, { params: { uUUID: universeUuid } })
-      .then((response) => response.data);
   };
 
   getAlerts = (

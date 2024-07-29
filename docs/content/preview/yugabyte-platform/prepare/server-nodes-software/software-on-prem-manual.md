@@ -4,6 +4,8 @@ headerTitle: Provisioning on-premises nodes
 linkTitle: Provision nodes
 description: Software requirements for on-premises provider nodes.
 headContent: How to meet the software prerequisites with fully manual provisioning
+aliases:
+    - /preview/yugabyteplatform/prepare/server-nodes-software/software-on-premmanual/
 menu:
   preview_yugabyte-platform:
     identifier: software-on-prem-3-manual
@@ -238,7 +240,7 @@ Physical nodes (or cloud instances) are installed with a standard AlmaLinux 8 se
 
 ## Install Prometheus Node Exporter
 
-Download the 1.3.1 version of the Prometheus Node Exporter, as follows:
+Download the Prometheus Node Exporter, as follows:
 
 ```sh
 wget https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.0.linux-amd64.tar.gz

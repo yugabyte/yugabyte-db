@@ -76,7 +76,6 @@ public class EditXClusterConfig extends CreateXClusterConfig {
           sourceCertificate.ifPresent(
               cert ->
                   createTransferXClusterCertsCopyTasks(
-                      xClusterConfig,
                       targetUniverse.getNodes(),
                       xClusterConfig.getNewReplicationGroupName(
                           xClusterConfig.getSourceUniverseUUID(), editFormData.name),
@@ -278,7 +277,7 @@ public class EditXClusterConfig extends CreateXClusterConfig {
                 tableIdsNeedBootstrap.addAll(getTableIds(tablesInfo));
               } else {
                 groupByNamespaceName(requestedTableInfoList).get(namespaceName).stream()
-                    .map(tableInfo -> getTableId(tableInfo))
+                    .map(XClusterConfigTaskBase::getTableId)
                     .forEach(tableIdsNeedBootstrap::add);
               }
             }
@@ -366,6 +365,7 @@ public class EditXClusterConfig extends CreateXClusterConfig {
             xClusterConfig,
             taskParams().getBootstrapParams(),
             dbToTablesInfoMapNeedBootstrap,
+            null /* sourceDbIds */,
             true /* isReplicationConfigCreated */,
             taskParams().getPitrParams());
 
@@ -387,14 +387,13 @@ public class EditXClusterConfig extends CreateXClusterConfig {
   protected void addSubtasksToAddDatabasesToXClusterConfig(
       XClusterConfig xClusterConfig, Set<String> databases) {
 
-    for (String dbId : databases) {
-      if (!xClusterConfig.getDbIds().contains(dbId)) {
-        xClusterConfig.addNamespaces(Set.of(dbId));
-      }
-      xClusterConfig.updateStatusForNamespace(dbId, XClusterNamespaceConfig.Status.Updating);
-      createXClusterAddNamespaceToOutboundReplicationGroupTask(xClusterConfig, dbId);
-      createAddNamespaceToXClusterReplicationTask(xClusterConfig, dbId);
-    }
+    addSubtasksForTablesNeedBootstrap(
+        xClusterConfig,
+        taskParams().getBootstrapParams(),
+        null,
+        databases,
+        true /* isReplicationConfigCreated */,
+        taskParams().getPitrParams());
 
     if (xClusterConfig.isUsedForDr()) {
       createSetDrStatesTask(

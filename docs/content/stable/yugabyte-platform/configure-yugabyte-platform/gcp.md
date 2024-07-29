@@ -108,7 +108,7 @@ Enter a Provider name. The Provider name is an internal tag used for organizing 
 
 ### Cloud Info
 
-If your YBA instance is not running inside GCP, you need to supply YBA with credentials to the desired GCP project by uploading a configuration file. To do this, set **Credential Type** to **Upload Service Account config** and proceed to upload the JSON file that you obtained when you created your service account, as described in [Cloud permissions](../../prepare/cloud-permissions/cloud-permissions-nodes/).
+If your YBA instance is not running inside GCP, you need to supply YBA with credentials to the desired GCP project by uploading a configuration file. To do this, set **Credential Type** to **Upload Service Account config** and proceed to upload the JSON file that you obtained when you created your service account, as described in [Cloud permissions](../../prepare/cloud-permissions/cloud-permissions-nodes-gcp/).
 
 If your YBA instance is running inside GCP, the preferred method for authentication to the GCP APIs is to add a service account role to the GCP instance running YBA and then configure YBA to use the instance's service account. To do this, set **Credential Type** to **Use service account from this YBA host's instance**.
 

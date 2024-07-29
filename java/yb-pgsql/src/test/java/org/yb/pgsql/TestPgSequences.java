@@ -982,4 +982,67 @@ public class TestPgSequences extends BasePgSQLTest {
       assertEquals(Long.MAX_VALUE, rs.getLong("nextval"));
     }
   }
+
+  /**
+   * Create use and drop a sequence, verifying that generated numbers are sequential, hence
+   * confirming there is no interference with concurrent activities in the cluster.
+   */
+  private class TestSequenceIsolation extends Thread {
+    private static final String SEQ_NAME = "myseq1";
+    private static final int NEXT_COUNT = 997;
+
+    private String dbName;
+    private volatile boolean success = false;
+
+    public TestSequenceIsolation(String dbName) {
+      this.dbName = dbName;
+    }
+
+    @Override
+    public void run() {
+      try (Connection conn = getConnectionBuilder().withDatabase(dbName).connect();
+           Statement stmt = conn.createStatement()) {
+        stmt.execute(String.format("CREATE SEQUENCE %s CACHE 100", SEQ_NAME));
+        for (int i = 1; i <= NEXT_COUNT; i++) {
+          ResultSet rs = stmt.executeQuery(String.format("SELECT nextval('%s')", SEQ_NAME));
+          assertTrue(rs.next());
+          assertEquals(i, rs.getInt(1));
+          assertFalse(rs.next());
+        }
+        stmt.execute(String.format("DROP SEQUENCE %s", SEQ_NAME));
+        success = true;
+      } catch (Exception ex) {
+        LOG.error(String.format("Failed sequence isolation test for database %s: ", dbName), ex);
+      }
+    }
+
+    public boolean isSucceeded() throws InterruptedException {
+      join();
+      return success;
+    }
+
+  }
+
+  /**
+   * Test that sequences in different databases can be used independently from each other.
+   * @throws Exception
+   */
+  @Test
+  public void testMultiDbIsolation() throws Exception {
+    final int DB_COUNT = 3;
+    try (Statement stmt = connection.createStatement()) {
+      for (int i = 1; i <= DB_COUNT; i++) {
+        stmt.execute(String.format("CREATE DATABASE mydb%d", i));
+      }
+    }
+    ArrayList<TestSequenceIsolation> workers = new ArrayList<TestSequenceIsolation>(DB_COUNT);
+    for (int i = 1; i <= DB_COUNT; i++) {
+      TestSequenceIsolation worker = new TestSequenceIsolation(String.format("mydb%d", i));
+      worker.start();
+      workers.add(worker);
+    }
+    for (TestSequenceIsolation worker : workers) {
+      assertTrue(worker.isSucceeded());
+    }
+  }
 }

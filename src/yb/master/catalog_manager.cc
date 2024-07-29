@@ -460,20 +460,16 @@ DEFINE_test_flag(int32, slowdown_alter_table_rpcs_ms, 0,
 DEFINE_test_flag(bool, reject_delete_not_serving_tablet_rpc, false,
                  "Whether to reject DeleteNotServingTablet RPC.");
 
-DEFINE_test_flag(double, crash_after_creating_single_split_tablet, 0.0,
-                 "Crash inside CatalogManager::RegisterNewTabletForSplit after calling Upsert.");
+DEFINE_test_flag(double, crash_after_registering_split_tablets, 0.0,
+    "Crash inside CatalogManager::RegisterNewTabletsForSplit after calling Upsert.");
 
-DEFINE_test_flag(bool, error_after_creating_single_split_tablet, false,
-                 "Return an error inside CatalogManager::RegisterNewTabletForSplit "
-                 "after calling Upsert.");
+DEFINE_test_flag(bool, error_after_registering_split_tablets, false,
+    "Return an error inside CatalogManager::RegisterNewTabletsForSplit "
+    "after calling Upsert.");
 
 DEFINE_RUNTIME_bool(enable_delete_truncate_xcluster_replicated_table, false,
             "When set, enables deleting/truncating YCQL tables currently in xCluster replication. "
             "For YSQL tables, deletion is always allowed and TRUNCATE is always disallowed.");
-
-DEFINE_RUNTIME_bool(xcluster_wait_on_ddl_alter, true,
-    "When xCluster replication sends a DDL change, wait for the user to enter a "
-    "compatible/matching entry.  Note: Can also set at runtime to resume after stall.");
 
 DEFINE_test_flag(bool, sequential_colocation_ids, false,
                  "When set, colocation IDs will be assigned sequentially (starting from 20001) "
@@ -501,9 +497,6 @@ DEFINE_RUNTIME_bool(batch_ysql_system_tables_metadata, true,
     "Whether change metadata operation and SysCatalogTable upserts for ysql system tables during a "
     "create database is performed one by one or batched together");
 
-DEFINE_test_flag(bool, pause_split_child_registration,
-                 false, "Pause split after registering one child");
-
 DEFINE_test_flag(bool, keep_docdb_table_on_ysql_drop_table, false,
                  "When enabled does not delete tables from the docdb layer, resulting in YSQL "
                  "tables only being dropped in the postgres layer.");
@@ -514,14 +507,6 @@ DEFINE_RUNTIME_int32(max_concurrent_delete_replica_rpcs_per_ts, 50,
 DEFINE_RUNTIME_bool(
     enable_truncate_cdcsdk_table, false,
     "When set, enables truncating tables currently part of a CDCSDK Stream");
-
-DEFINE_RUNTIME_AUTO_bool(enable_tablet_split_of_xcluster_replicated_tables, kExternal, false, true,
-    "When set, it enables automatic tablet splitting for tables that are part of an "
-    "xCluster replication setup");
-
-DEFINE_RUNTIME_bool(enable_tablet_split_of_xcluster_bootstrapping_tables, false,
-    "When set, it enables automatic tablet splitting for tables that are part of an "
-    "xCluster replication setup and are currently being bootstrapped for xCluster.");
 
 DEFINE_RUNTIME_bool(enable_tablet_split_of_cdcsdk_streamed_tables, false,
     "When set, it enables automatic tablet splitting for tables that are part of a "
@@ -1504,7 +1489,7 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   RETURN_NOT_OK(LoadUniverseReplicationBootstrap());
 
   RETURN_NOT_OK(xcluster_manager_->RunLoaders(hidden_tablets_));
-  RETURN_NOT_OK(clone_state_manager_->ClearAndRunLoaders());
+  RETURN_NOT_OK(clone_state_manager_->ClearAndRunLoaders(state->epoch));
 
   return Status::OK();
 }
@@ -2221,7 +2206,7 @@ bool CatalogManager::StartShutdown() {
 
   refresh_ysql_tablespace_info_task_.StartShutdown();
 
-  cdc_parent_tablet_deletion_task_.StartShutdown();
+  xrepl_parent_tablet_deletion_task_.StartShutdown();
 
   refresh_ysql_pg_catalog_versions_task_.StartShutdown();
 
@@ -2236,7 +2221,7 @@ void CatalogManager::CompleteShutdown() {
   snapshot_coordinator_.Shutdown();
   refresh_yql_partitions_task_.CompleteShutdown();
   refresh_ysql_tablespace_info_task_.CompleteShutdown();
-  cdc_parent_tablet_deletion_task_.CompleteShutdown();
+  xrepl_parent_tablet_deletion_task_.CompleteShutdown();
   refresh_ysql_pg_catalog_versions_task_.CompleteShutdown();
   xcluster_manager_->Shutdown();
 
@@ -3068,15 +3053,14 @@ Status CatalogManager::DoSplitTablet(
     }
 
     // Add new split children to the sys catalog.
-    for (auto& new_tablet : new_tablets) {
-      RETURN_NOT_OK(RegisterNewTabletForSplit(
-          source_tablet_info.get(), new_tablet, epoch, &source_table_lock, &source_tablet_lock));
-    }
+    RETURN_NOT_OK(RegisterNewTabletsForSplit(
+        source_tablet_info.get(), new_tablets, epoch, &source_table_lock, &source_tablet_lock));
+
     source_tablet_lock.Commit();
     source_table_lock.Commit();
   }
-  // At this point, the tablets exist in the table but not in the tablet map. Callers should retry
-  // if the tablets are not found in the tablet map.
+  // At this point, the tablets exist in the table but not in the tablet map. Users that need these
+  // tablets should retry until the tablets are inserted into the tablet map.
 
   MAYBE_FAULT(FLAGS_TEST_fault_crash_after_registering_split_children);
 
@@ -3098,8 +3082,7 @@ Status CatalogManager::DoSplitTablet(
     .children = { child_tablet_ids_sorted[0], child_tablet_ids_sorted[1] }
   };
   RETURN_NOT_OK(tablet_split_manager_.ProcessSplitTabletResult(
-      source_tablet_info->table()->id(),
-      split_tablet_ids));
+      source_tablet_info->table()->id(), split_tablet_ids, epoch));
 
   // TODO(tsplit): what if source tablet will be deleted before or during TS leader is processing
   // split? Add unit-test.
@@ -3213,24 +3196,8 @@ Status CatalogManager::XReplValidateSplitCandidateTable(const TableId& table_id)
 }
 
 Status CatalogManager::XReplValidateSplitCandidateTableUnlocked(const TableId& table_id) const {
-  // Check if this table is part of a cdc stream.
-  if (PREDICT_TRUE(!FLAGS_enable_tablet_split_of_xcluster_replicated_tables) &&
-      IsTablePartOfXClusterUnlocked(table_id)) {
-    return STATUS_FORMAT(
-        NotSupported,
-        "Tablet splitting is not supported for tables that are a part of"
-        " a CDC stream, table_id: $0",
-        table_id);
-  }
-  // Check if the table is in the bootstrapping phase of xCluster.
-  if (PREDICT_TRUE(!FLAGS_enable_tablet_split_of_xcluster_bootstrapping_tables) &&
-      xcluster_manager_->DoesTableHaveAnyBootstrappingStream(table_id)) {
-    return STATUS_FORMAT(
-        NotSupported,
-        "Tablet splitting is not supported for tables that are a part of"
-        " a bootstrapping CDC stream, table_id: $0",
-        table_id);
-  }
+  RETURN_NOT_OK(xcluster_manager_->ValidateSplitCandidateTable(table_id));
+
   // Check if this table is part of a cdcsdk stream.
   if (!FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables && IsTablePartOfCDCSDK(table_id)) {
     return STATUS_FORMAT(
@@ -3769,8 +3736,9 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     SharedLock lock(mutex_);
     // Fail rewrites on tables that are part of CDC or XCluster replication, except for
     // TRUNCATEs on CDC tables when FLAGS_enable_truncate_cdcsdk_table is enabled.
-    if (IsTablePartOfXClusterUnlocked(table_id) || (IsTablePartOfCDCSDK(table_id) &&
-        (!orig_req->is_truncate() || !FLAGS_enable_truncate_cdcsdk_table))) {
+    if (xcluster_manager_->IsTableReplicated(table_id) ||
+        (IsTablePartOfCDCSDK(table_id) &&
+         (!orig_req->is_truncate() || !FLAGS_enable_truncate_cdcsdk_table))) {
       return STATUS(
           NotSupported,
           "cannot rewrite a table that is a part of CDC or XCluster replication."
@@ -3980,7 +3948,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   TabletInfoPtr colocated_tablet = nullptr;
 
   {
-    LockGuard lock(mutex_);
+    UniqueLock lock(mutex_);
     auto ns_lock = ns->LockForRead();
     TRACE("Acquired catalog manager lock");
 
@@ -4149,6 +4117,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         auto tablet = tablegroup ?
             tablegroup->tablet() :
             colocated_db_tablets_map_[ns->id()];
+        lock.unlock();
         RSTATUS_DCHECK(
             tablet->colocated(), InternalError,
             Format("Colocation group tablet $0 should be marked as colocated",
@@ -4185,6 +4154,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
             tablet->mutable_metadata()->mutable_dirty()->pb.table_id());
 
         if (tablegroup) {
+          lock.lock();
           RETURN_NOT_OK(tablegroup->AddChildTable(table->id(), colocation_id));
         }
       }
@@ -4217,6 +4187,11 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         set_contains_create_table_op(true);
       schedule_ysql_txn_verifier = true;
     }
+  }
+
+  if (!req.xcluster_source_table_id().empty()) {
+    table->mutable_metadata()->mutable_dirty()->pb.set_xcluster_source_table_id(
+        req.xcluster_source_table_id());
   }
 
   if (PREDICT_FALSE(FLAGS_TEST_simulate_slow_table_create_secs > 0) &&
@@ -5777,7 +5752,8 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
   }
 
   SCHECK_EC_FORMAT(
-      FLAGS_enable_delete_truncate_xcluster_replicated_table || !IsTablePartOfXCluster(table_id),
+      FLAGS_enable_delete_truncate_xcluster_replicated_table ||
+          !xcluster_manager_->IsTableReplicated(table_id),
       NotSupported, MasterError(MasterErrorPB::INVALID_REQUEST),
       "Cannot truncate table $0 that is in xCluster replication", table_id);
 
@@ -6277,7 +6253,8 @@ Status CatalogManager::DeleteTable(
   }
 
   // For now, only disable dropping YCQL tables under xCluster replication.
-  bool result = table->GetTableType() == YQL_TABLE_TYPE && IsTablePartOfXCluster(table->id());
+  bool result =
+      table->GetTableType() == YQL_TABLE_TYPE && xcluster_manager_->IsTableReplicated(table->id());
   if (!FLAGS_enable_delete_truncate_xcluster_replicated_table && result) {
     return STATUS(NotSupported,
                   "Cannot delete a table in replication.",
@@ -7285,11 +7262,9 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     SchemaToPB(new_schema, table_pb.mutable_schema());
   }
 
-  if (GetAtomicFlag(&FLAGS_xcluster_wait_on_ddl_alter) && IsTableXClusterConsumer(table->id())) {
-    // If we're waiting for a Schema because we saw the a replication source with a change,
-    // ensure this alter is compatible with what we're expecting.
-    RETURN_NOT_OK(ValidateNewSchemaWithCdc(*table, new_schema));
-  }
+  // If we're waiting for a Schema because we saw the a replication source with a change,
+  // ensure this alter is compatible with what we're expecting.
+  RETURN_NOT_OK(xcluster_manager_->ValidateNewSchema(*table, new_schema));
 
   // Only increment the version number if it is a schema change (AddTable change goes through a
   // different path and it's not processed here).
@@ -7422,54 +7397,54 @@ Status CatalogManager::IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
   return Status::OK();
 }
 
-Status CatalogManager::RegisterNewTabletForSplit(
-    TabletInfo* source_tablet_info, const TabletInfoPtr& new_tablet, const LeaderEpoch& epoch,
-    TableInfo::WriteLock* table_write_lock, TabletInfo::WriteLock* tablet_write_lock) {
+Status CatalogManager::RegisterNewTabletsForSplit(
+    TabletInfo* source_tablet_info, const std::vector<TabletInfoPtr>& new_tablets,
+    const LeaderEpoch& epoch, TableInfo::WriteLock* table_write_lock,
+    TabletInfo::WriteLock* parent_write_lock) {
   const auto tablet_lock = source_tablet_info->LockForRead();
 
   auto table = source_tablet_info->table();
   const auto& source_tablet_meta = tablet_lock->pb;
-
-  auto& new_tablet_meta = new_tablet->mutable_metadata()->mutable_dirty()->pb;
-  new_tablet_meta.mutable_committed_consensus_state()->CopyFrom(
-      source_tablet_meta.committed_consensus_state());
   const auto new_split_depth = source_tablet_meta.split_depth() + 1;
-  new_tablet_meta.set_split_depth(new_split_depth);
-  new_tablet_meta.set_split_parent_tablet_id(source_tablet_info->tablet_id());
-  // TODO(tsplit): consider and handle failure scenarios, for example:
-  // - Crash or leader failover before sending out the split tasks.
-  // - Long enough partition while trying to send out the splits so that they timeout and
-  //   not get executed.
+  for (auto& new_tablet : new_tablets) {
+    auto& new_tablet_meta = new_tablet->mutable_metadata()->mutable_dirty()->pb;
+    new_tablet_meta.mutable_committed_consensus_state()->CopyFrom(
+        source_tablet_meta.committed_consensus_state());
+    new_tablet_meta.set_split_depth(new_split_depth);
+    new_tablet_meta.set_split_parent_tablet_id(source_tablet_info->tablet_id());
+
+    parent_write_lock->mutable_data()->pb.add_split_tablet_ids(new_tablet->id());
+  }
+
   int new_partition_list_version;
   auto& table_pb = table_write_lock->mutable_data()->pb;
   new_partition_list_version = table_pb.partition_list_version() + 1;
   table_pb.set_partition_list_version(new_partition_list_version);
 
-  tablet_write_lock->mutable_data()->pb.add_split_tablet_ids(new_tablet->id());
-  RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table, new_tablet, source_tablet_info));
+  RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table, new_tablets, source_tablet_info));
 
-  TEST_PAUSE_IF_FLAG(TEST_pause_split_child_registration);
-  MAYBE_FAULT(FLAGS_TEST_crash_after_creating_single_split_tablet);
-  if (PREDICT_FALSE(FLAGS_TEST_error_after_creating_single_split_tablet)) {
+  MAYBE_FAULT(FLAGS_TEST_crash_after_registering_split_tablets);
+  if (PREDICT_FALSE(FLAGS_TEST_error_after_registering_split_tablets)) {
     return STATUS(IllegalState, "TEST: error happened while registering a new tablet.");
   }
+
   // This has to be done while the table lock is held since TableInfo::partitions_ must be updated
   // at the same time as the partition list version.
-  RETURN_NOT_OK(table->AddTablet(new_tablet));
+  RETURN_NOT_OK(table->AddTablets(new_tablets));
   // TODO: We use this pattern in other places, but what if concurrent thread accesses not yet
   // committed TabletInfo from the `table` ?
-  new_tablet->mutable_metadata()->CommitMutation();
-
-  const PartitionPB& partition = new_tablet->metadata().state().pb.partition();
-  LOG(INFO) << "Registered new tablet " << new_tablet->tablet_id() << " (partition_key_start: "
-            << Slice(partition.partition_key_start()).ToDebugString(/* max_length = */ 64)
-            << ", partition_key_end: "
-            << Slice(partition.partition_key_end()).ToDebugString(/* max_length = */ 64)
-            << ", split_depth: " << new_split_depth << ") to split the tablet "
-            << source_tablet_info->tablet_id() << " (" << AsString(source_tablet_meta.partition())
-            << ") for table " << table->ToString()
-            << ", new partition_list_version: " << new_partition_list_version;
-
+  for (auto& new_tablet : new_tablets) {
+    const PartitionPB& partition = new_tablet->metadata().state().pb.partition();
+    LOG(INFO) << "Registered new tablet " << new_tablet->tablet_id() << " (partition_key_start: "
+              << Slice(partition.partition_key_start()).ToDebugString(/* max_length = */ 64)
+              << ", partition_key_end: "
+              << Slice(partition.partition_key_end()).ToDebugString(/* max_length = */ 64)
+              << ", split_depth: " << new_split_depth << ") to split the tablet "
+              << source_tablet_info->tablet_id() << " (" << AsString(source_tablet_meta.partition())
+              << ") for table " << table->ToString()
+              << ", new partition_list_version: " << new_partition_list_version;
+    new_tablet->mutable_metadata()->CommitMutation();
+  }
   return Status::OK();
 }
 
@@ -8708,7 +8683,7 @@ Status CatalogManager::CheckIfDatabaseHasReplication(const scoped_refptr<Namespa
     if (ltm->namespace_id() != database->id() || ltm->started_deleting()) {
       continue;
     }
-    if (IsTablePartOfXClusterUnlocked(table->id())) {
+    if (xcluster_manager_->IsTableReplicated(table->id())) {
       LOG(ERROR) << "Error deleting database: " << database->id() << ", table: " << table->id()
                  << " is under replication"
                  << ". Cannot delete a database that contains tables under replication.";
@@ -9910,7 +9885,7 @@ Status CatalogManager::EnableBgTasks() {
   RETURN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
       [this]() { RebuildYQLSystemPartitions(); }));
 
-  cdc_parent_tablet_deletion_task_.Bind(&master_->messenger()->scheduler());
+  xrepl_parent_tablet_deletion_task_.Bind(&master_->messenger()->scheduler());
 
   return Status::OK();
 }
@@ -10597,13 +10572,7 @@ Status CatalogManager::HandleTabletSchemaVersionReport(
   // Clean up any DDL verification state that is waiting for this Alter to complete.
   RemoveDdlTransactionState(table->id(), table->EraseDdlTxnsWaitingForSchemaVersion(version));
 
-  // With Replication Enabled, verify that we've finished applying the New Schema.
-  // This may need to be refactored when we support Replication + Active Index Backfill in #7613.
-  if (IsTableXClusterConsumer(table->id())) {
-    // If we're waiting for a Schema because we saw the a replication source with a change,
-    // resume replication now that the alter is complete.
-    RETURN_NOT_OK(ResumeXClusterConsumerAfterNewSchema(*table, version));
-  }
+  RETURN_NOT_OK(xcluster_manager_->HandleTabletSchemaVersionReport(*table, version, epoch));
 
   return MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(this, table, version, epoch);
 }
@@ -12922,6 +12891,23 @@ CatalogManager::GetStatefulServicesStatus() const {
   }
 
   return result;
+}
+
+Status CatalogManager::GetTableGroupAndColocationInfo(
+    const TableId& table_id, TablegroupId& out_tablegroup_id, bool& out_colocated_database) {
+  SharedLock lock(mutex_);
+  const auto* tablegroup = tablegroup_manager_->FindByTable(table_id);
+  SCHECK_FORMAT(tablegroup, NotFound, "No tablegroup found for table: $0", table_id);
+
+  out_tablegroup_id = tablegroup->id();
+
+  auto ns = FindPtrOrNull(namespace_ids_map_, tablegroup->database_id());
+  SCHECK(
+      ns, NotFound,
+      Format("Could not find namespace by namespace id $0", tablegroup->database_id()));
+  out_colocated_database = ns->colocated();
+
+  return Status::OK();
 }
 
 }  // namespace master

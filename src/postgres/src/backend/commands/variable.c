@@ -490,7 +490,7 @@ check_transaction_read_only(bool *newval, void **extra, GucSource source)
 	if (*newval == false && XactReadOnly && IsTransactionState() && !InitializingParallelWorker)
 	{
 		/* Can't go to r/w mode inside a r/o transaction */
-		if (IsSubTransaction())
+		if (IsSubTransaction() && !YbHasOnlyInternalRcSubTransactions())
 		{
 			GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
 			GUC_check_errmsg("cannot set transaction read-write mode inside a read-only transaction");
@@ -576,8 +576,22 @@ check_XactIsoLevel(char **newval, void **extra, GucSource source)
 			GUC_check_errmsg("SET TRANSACTION ISOLATION LEVEL must be called before any query");
 			return false;
 		}
+
 		/* We ignore a subtransaction setting it to the existing value. */
-		if (IsSubTransaction())
+		/*
+		 * YB: For READ COMMITTED isolation in YB, IsSubTransaction() is true even if SET TRANSACTION
+		 * ISOLATION LEVEL is called before any other query because of the fact that every statement
+		 * starts a new sub transaction in YSQL's READ COMMITTED isolation level. Each statement is
+		 * executed after registering an internal savepoint so that if the statement faces serialization
+		 * or read restart errors, the statement can be retried after cleaning up any work it has done
+		 * (the cleanup is done by rolling back to the internal savepoint). But we still need to block
+		 * SET TRANSACTION ISOLATION LEVEL if a non-internal subtransaction has been started by a user
+		 * savepoint.
+		 *
+		 * To acheive this, we don't error out if there are only sub transactions which have
+		 * ybIsInternalRcSubTransaction=true.
+		 */
+		if (IsSubTransaction() && !YbHasOnlyInternalRcSubTransactions())
 		{
 			GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
 			GUC_check_errmsg("SET TRANSACTION ISOLATION LEVEL must not be called in a subtransaction");
@@ -678,18 +692,97 @@ bool is_staleness_acceptable(int32_t staleness_ms) {
 
 bool
 check_follower_reads(bool *newval, void **extra, GucSource source) {
-	if (*newval == false) {
-		return true;
+	if (YBFollowerReadsBehaviorBefore20482())
+	{
+		if (*newval == false) {
+			return true;
+		}
+		return is_staleness_acceptable(yb_follower_read_staleness_ms);
 	}
-	return is_staleness_acceptable(yb_follower_read_staleness_ms);
+
+	if (IsTransactionState())
+	{
+		if (FirstSnapshotSet)
+		{
+			GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
+			GUC_check_errmsg("SET yb_read_from_followers must be called before any query");
+			return false;
+		}
+		if (IsSubTransaction() && !YbHasOnlyInternalRcSubTransactions())
+		{
+			GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
+			GUC_check_errmsg("SET yb_read_from_followers must not be called in a subtransaction");
+			return false;
+		}
+		/* Can't enable follower reads while recovery is still active */
+		if (RecoveryInProgress())
+		{
+			GUC_check_errcode(ERRCODE_FEATURE_NOT_SUPPORTED);
+			GUC_check_errmsg("cannot set yb_read_from_followers during recovery");
+			return false;
+		}
+	}
+	return true;
+}
+
+void
+assign_follower_reads(bool newval, void *extra)
+{
+	if (YBFollowerReadsBehaviorBefore20482())
+	{
+		return;
+	}
+
+	yb_read_from_followers = newval;
+	if (YBTransactionsEnabled())
+	{
+		HandleYBStatus(YBCPgUpdateFollowerReadsConfig(
+			YBReadFromFollowersEnabled(), YBFollowerReadStalenessMs()));
+	}
 }
 
 bool
 check_follower_read_staleness_ms(int32_t *newval, void **extra, GucSource source) {
-	if (!YBReadFromFollowersEnabled()) {
-		return true;
+	if (YBFollowerReadsBehaviorBefore20482())
+	{
+		if (!YBReadFromFollowersEnabled()) {
+			return true;
+		}
+		return is_staleness_acceptable(*newval);
+	}
+	if (YBTransactionsEnabled())
+	{
+		if (FirstSnapshotSet)
+		{
+			GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
+			GUC_check_errmsg("SET yb_follower_read_staleness_ms must be called before any query");
+			return false;
+		}
+		if (IsSubTransaction() && !YbHasOnlyInternalRcSubTransactions())
+		{
+			GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
+			GUC_check_errmsg("SET yb_follower_read_staleness_ms must not be called in a subtransaction");
+			return false;
+		}
+		/* Can't change follower read staleness while recovery is still active */
+		if (RecoveryInProgress())
+		{
+			GUC_check_errcode(ERRCODE_FEATURE_NOT_SUPPORTED);
+			GUC_check_errmsg("cannot set yb_follower_read_staleness_ms during recovery");
+			return false;
+		}
 	}
 	return is_staleness_acceptable(*newval);
+}
+
+void assign_follower_read_staleness_ms(int32_t newval, void *extra)
+{
+	yb_follower_read_staleness_ms = newval;
+	if (YBTransactionsEnabled() && !YBFollowerReadsBehaviorBefore20482())
+	{
+		HandleYBStatus(YBCPgUpdateFollowerReadsConfig(
+			YBReadFromFollowersEnabled(), YBFollowerReadStalenessMs()));
+	}
 }
 
 /*
@@ -699,7 +792,7 @@ check_follower_read_staleness_ms(int32_t *newval, void **extra, GucSource source
 bool
 check_transaction_deferrable(bool *newval, void **extra, GucSource source)
 {
-	if (IsSubTransaction())
+	if (IsSubTransaction() && !YbHasOnlyInternalRcSubTransactions())
 	{
 		GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
 		GUC_check_errmsg("SET TRANSACTION [NOT] DEFERRABLE cannot be called within a subtransaction");

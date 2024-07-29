@@ -8511,7 +8511,7 @@ TEST_F(CDCSDKYsqlTest, TestGetChangesResponseSize) {
   ASSERT_TRUE(seen_resp_greater_than_limit);
 }
 
-void CDCSDKYsqlTest::TestNonUserTableShouldNotGetAddedToCDCStream(
+void CDCSDKYsqlTest::TestNonEligibleTableShouldNotGetAddedToCDCStream(
     bool create_consistent_snapshot_stream) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) =
       create_consistent_snapshot_stream;
@@ -8533,7 +8533,7 @@ void CDCSDKYsqlTest::TestNonUserTableShouldNotGetAddedToCDCStream(
       test_client()->GetTablets(table1, 0, &table1_tablets, /* partition_list_version=*/nullptr));
   ASSERT_EQ(table1_tablets.size(), 3);
 
-  // Create non-user tables like index, mat views BEFORE the stream has been created
+  // Create non-eligible tables like index, mat views BEFORE the stream has been created
   ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx1 ON $0(a ASC)", tableName1));
   ASSERT_OK(
       conn.ExecuteFormat("CREATE MATERIALIZED VIEW $0_mv1 AS SELECT COUNT(*) FROM $0", tableName1));
@@ -8543,7 +8543,7 @@ void CDCSDKYsqlTest::TestNonUserTableShouldNotGetAddedToCDCStream(
           ? ASSERT_RESULT(CreateConsistentSnapshotStream())
           : ASSERT_RESULT(CreateDBStream());
 
-  // // Create non-user tables AFTER the stream has been created
+  // // Create non-eligible tables AFTER the stream has been created
   ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx2 ON $0(b ASC)", tableName1));
   ASSERT_OK(
       conn.ExecuteFormat("CREATE MATERIALIZED VIEW $0_mv2 AS SELECT COUNT(*) FROM $0", tableName1));
@@ -8603,25 +8603,12 @@ void CDCSDKYsqlTest::TestNonUserTableShouldNotGetAddedToCDCStream(
   ASSERT_EQ(expected_tablets, actual_tablets);
 }
 
-TEST_F(CDCSDKYsqlTest, TestNonUserTableShouldNotGetAddedToNonConsistentSnapshotCDCStream) {
-  TestNonUserTableShouldNotGetAddedToCDCStream(/* create_consistent_snapshot_stream */ false);
+TEST_F(CDCSDKYsqlTest, TestNonEligibleTableShouldNotGetAddedToNonConsistentSnapshotCDCStream) {
+  TestNonEligibleTableShouldNotGetAddedToCDCStream(/* create_consistent_snapshot_stream */ false);
 }
 
-TEST_F(CDCSDKYsqlTest, TestNonUserTableShouldNotGetAddedToConsistentSnapshotCDCStream) {
-  TestNonUserTableShouldNotGetAddedToCDCStream(/* create_consistent_snapshot_stream */ true);
-}
-
-TEST_F(CDCSDKYsqlTest, TestTablesWithEnumArrayColumnShouldNotGetAddedToStream) {
-  ASSERT_OK(SetUpWithParams(1, 1, false, false));
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
-
-  ASSERT_OK(conn.Execute("CREATE TYPE \"enum_type\" AS ENUM('a', 'b', 'c');"));
-  ASSERT_OK(conn.Execute("CREATE TABLE test_table (a int primary key, b \"enum_type\"[])"));
-  auto stream_id = ASSERT_RESULT(CreateDBStream());
-
-  auto stream  = ASSERT_RESULT(GetCDCStream(stream_id));
-  // The table with enum array column will not be added to the stream.
-  ASSERT_EQ(stream.stream().table_id_size(), 0);
+TEST_F(CDCSDKYsqlTest, TestNonEligibleTableShouldNotGetAddedToConsistentSnapshotCDCStream) {
+  TestNonEligibleTableShouldNotGetAddedToCDCStream(/* create_consistent_snapshot_stream */ true);
 }
 
 void CDCSDKYsqlTest::TestDisableOfDynamicTableAdditionOnCDCStream(
@@ -8977,6 +8964,326 @@ TEST_F(
     CDCSDKYsqlTest,
     TestValidationAndSyncOfCDCStateEntriesAfterUserTableRemovalOnConsistentSnapshotStream) {
   TestValidationAndSyncOfCDCStateEntriesAfterUserTableRemoval(
+      /* use_consistent_snapshot_stream */ true);
+}
+
+// This test performs the following:
+// 1. Create a table t1
+// 2. Create a CDC stream
+// 3. Create an index i1 on t1 - since test flag to add index is enabled, i1 should get added to CDC
+// stream.
+// 4. Confirm t1 & i1 are part of CDC stream metadata and cdc state table.
+// 5. Restart master -> i1 will be marked for removal and bg thread will actually remove it from CDC
+// stream metadata and update the checkpoint for state entries to max.
+// 6. Verify i1 no longer exists in stream metadata and state entries have been deleted.
+// 7. Create a table t2
+// 8. Verify it gets added to stream metadata and cdc state table.
+void CDCSDKYsqlTest::TestNonEligibleTableRemovalFromCDCStream(bool use_consistent_snapshot_stream) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) =
+      use_consistent_snapshot_stream;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_add_indexes_to_stream) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replica_identity) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_cleanup_of_non_eligible_tables_from_stream) = true;
+  // Setup cluster.
+  ASSERT_OK(SetUpWithParams(
+      1, 1, false /* colocated */, false /* cdc_populate_safepoint_record */,
+      true /* set_pgsql_proxy_bind_address */));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  const auto tableName1 = "test_table_1";
+  const auto tableName2 = "test_table_2";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0(key int PRIMARY KEY, a int, b int) SPLIT INTO 3 TABLETS;", tableName1));
+  auto table1 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, tableName1));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table1_tablets;
+
+  // Wait for a second for the table to be created and the tablets to be RUNNING
+  // Only after this will the tablets of this table get entries in cdc_state table
+  SleepFor(MonoDelta::FromSeconds(1 * kTimeMultiplier));
+  ASSERT_OK(
+      test_client()->GetTablets(table1, 0, &table1_tablets, /* partition_list_version=*/nullptr));
+  ASSERT_EQ(table1_tablets.size(), 3);
+
+  xrepl::StreamId stream_id1 = use_consistent_snapshot_stream
+                                   ? ASSERT_RESULT(CreateConsistentSnapshotStream())
+                                   : ASSERT_RESULT(CreateDBStream(CDCCheckpointType::EXPLICIT));
+  xrepl::StreamId stream_id2 = use_consistent_snapshot_stream
+                                   ? ASSERT_RESULT(CreateConsistentSnapshotStream())
+                                   : ASSERT_RESULT(CreateDBStream(CDCCheckpointType::EXPLICIT));
+
+  const vector<string> index_list_suffix = {"_0", "_1", "_2", "_3"};
+  const int kNumIndexes = 4;
+  vector<YBTableName> indexes(kNumIndexes);
+  int i = 0;
+  vector<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> idx_tablets(kNumIndexes);
+
+  while (i < kNumIndexes) {
+    // Create an index AFTER the stream has been created
+    ASSERT_OK(
+        conn.ExecuteFormat("CREATE INDEX $0_idx$1 ON $0(b ASC)", tableName1, index_list_suffix[i]));
+    indexes[i] = ASSERT_RESULT(GetTable(
+        &test_cluster_, kNamespaceName, Format("$0_idx$1", tableName1, index_list_suffix[i])));
+    // Wait for the bg thread to complete finding out new tables added in the namespace and add
+    // them to CDC stream if relevant.
+    SleepFor(MonoDelta::FromSeconds(5 * kTimeMultiplier));
+    ASSERT_OK(test_client()->GetTablets(
+        indexes[i], 0, &idx_tablets[i], /* partition_list_version=*/nullptr));
+    ASSERT_EQ(idx_tablets[i].size(), 1);
+    i++;
+  }
+
+  // Verify CDC stream metadata contains both table1 and the index table.
+  std::unordered_set<TableId> expected_tables = {table1.table_id()};
+  for (const auto& idx : indexes) {
+    expected_tables.insert(idx.table_id());
+  }
+
+  VerifyTablesInStreamMetadata(
+      stream_id1, expected_tables,
+      "Waiting for GetDBStreamInfo after creating an index after stream creation");
+  VerifyTablesInStreamMetadata(
+      stream_id2, expected_tables,
+      "Waiting for GetDBStreamInfo after creating an index after stream creation");
+
+  // Verify cdc state table contains entries from both table1 & index table.
+  std::unordered_set<TabletId> expected_tablets;
+  for (const auto& tablet : table1_tablets) {
+    expected_tablets.insert(tablet.tablet_id());
+  }
+  for (const auto& tablets : idx_tablets) {
+    for (const auto& tablet : tablets) {
+      expected_tablets.insert(tablet.tablet_id());
+    }
+  }
+
+  CheckTabletsInCDCStateTable(expected_tablets, test_client(), stream_id1);
+  CheckTabletsInCDCStateTable(expected_tablets, test_client(), stream_id2);
+  LOG(INFO) << "Stream contains the user table as well as indexes";
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_add_indexes_to_stream) = false;
+  // Non-eligible tables like the index will be removed from stream on a master restart.
+  auto leader_master = ASSERT_RESULT(test_cluster_.mini_cluster_->GetLeaderMiniMaster());
+  ASSERT_OK(leader_master->Restart());
+  LOG(INFO) << "Master Restarted";
+
+  // wait for the bg thread to remove the index from stream metadata and update the checkpoint for
+  // corresponding state table entries to max.
+  SleepFor(MonoDelta::FromSeconds(3 * kTimeMultiplier));
+
+  // Stream metadata should no longer contain the index.
+  expected_tables.clear();
+  expected_tables.insert(table1.table_id());
+  VerifyTablesInStreamMetadata(
+      stream_id1, expected_tables,
+      "Waiting for GetDBStreamInfo after non-user table removal from CDC stream.");
+  VerifyTablesInStreamMetadata(
+      stream_id2, expected_tables,
+      "Waiting for GetDBStreamInfo after non-user table removal from CDC stream.");
+
+  // Since checkpoint will be set to max for index's tablet entries, wait for
+  // UpdatePeersAndMetrics to delete those entries.
+  SleepFor(MonoDelta::FromSeconds(5 * kTimeMultiplier));
+
+  // Verify tablets of table_1 are removed from cdc_state table.
+  expected_tablets.clear();
+  for (const auto& tablet : table1_tablets) {
+    expected_tablets.insert(tablet.tablet_id());
+  }
+
+  CheckTabletsInCDCStateTable(expected_tablets, test_client(), stream_id1);
+  CheckTabletsInCDCStateTable(expected_tablets, test_client(), stream_id2);
+  LOG(INFO) << "Stream, after master restart, only contains the user table.";
+
+  // Create a dynamic table and create non eligible tables on this dynamic table.
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0(key int PRIMARY KEY, a int, b int) SPLIT INTO 3 TABLETS;", tableName2));
+  auto table2 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, tableName2));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table2_tablets;
+
+  // Wait for a second for the table to be created and the tablets to be RUNNING
+  // Only after this will the tablets of this table get entries in cdc_state table
+  SleepFor(MonoDelta::FromSeconds(1 * kTimeMultiplier));
+  ASSERT_OK(
+      test_client()->GetTablets(table2, 0, &table2_tablets, /* partition_list_version=*/nullptr));
+  ASSERT_EQ(table2_tablets.size(), 3);
+
+  expected_tables.insert(table2.table_id());
+
+  VerifyTablesInStreamMetadata(
+      stream_id1, expected_tables,
+      "Waiting for GetDBStreamInfo after creating a new user table post master restart.");
+  VerifyTablesInStreamMetadata(
+      stream_id2, expected_tables,
+      "Waiting for GetDBStreamInfo after creating a new user table post master restart.");
+
+  for (const auto& tablet : table2_tablets) {
+    expected_tablets.insert(tablet.tablet_id());
+  }
+
+  CheckTabletsInCDCStateTable(expected_tablets, test_client(), stream_id1);
+  CheckTabletsInCDCStateTable(expected_tablets, test_client(), stream_id2);
+  LOG(INFO) << "Stream contains both the user tables.";
+}
+
+TEST_F(CDCSDKYsqlTest, TestNonEligibleTableRemovalFromNonConsistentSnapshotCDCStream) {
+  TestNonEligibleTableRemovalFromCDCStream(/* use_consistent_snapshot_stream */ false);
+}
+
+TEST_F(CDCSDKYsqlTest, TestNonEligibleTableRemovalFromConsistentSnapshotCDCStream) {
+  TestNonEligibleTableRemovalFromCDCStream(/* use_consistent_snapshot_stream */ true);
+}
+
+// This test performs the following:
+// 1. Create a table t1
+// 2. Create a CDC stream
+// 3. Create an index i1 on t1 - since test flag to add index is enabled, i1 should get added to CDC
+// stream.
+// 4. Confirm t1 & i1 are part of CDC stream metadata and cdc state table.
+// 5. Split one tablet each of index i1 and table t1.
+// 6. Verify none of the children tablets of i1 are added to cdc state table.
+// 7. Verify both children tablets of table t1 have been added to cdc state table.
+void CDCSDKYsqlTest::TestChildTabletsOfNonEligibleTableDoNotGetAddedToCDCStream(
+    bool use_consistent_snapshot_stream) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) =
+      use_consistent_snapshot_stream;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_add_indexes_to_stream) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_cleanup_of_non_eligible_tables_from_stream) = true;
+  // Setup cluster.
+  ASSERT_OK(SetUpWithParams(
+      1, 1, false /* colocated */, false /* cdc_populate_safepoint_record */,
+      true /* set_pgsql_proxy_bind_address */));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  const auto tableName1 = "test_table_1";
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0(key int PRIMARY KEY, a int, b int) SPLIT INTO 3 TABLETS;", tableName1));
+  auto table1 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, tableName1));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table1_tablets;
+
+  // Wait for a second for the table to be created and the tablets to be RUNNING
+  // Only after this will the tablets of this table get entries in cdc_state table
+  SleepFor(MonoDelta::FromSeconds(1 * kTimeMultiplier));
+  ASSERT_OK(
+      test_client()->GetTablets(table1, 0, &table1_tablets, /* partition_list_version=*/nullptr));
+  ASSERT_EQ(table1_tablets.size(), 3);
+
+  int num_inserts = 10;
+  for (int i = 0; i < num_inserts; i++) {
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1, $2)", tableName1, i, i + 1));
+  }
+
+  xrepl::StreamId stream_id1 = use_consistent_snapshot_stream
+                                   ? ASSERT_RESULT(CreateConsistentSnapshotStream())
+                                   : ASSERT_RESULT(CreateDBStream(CDCCheckpointType::EXPLICIT));
+
+  // Create an index AFTER the stream has been created
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0_idx1 ON $0(b ASC)", tableName1));
+  auto idx1 =
+      ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, Format("$0_idx1", tableName1)));
+  // Wait for the bg thread to complete finding out new tables added in the namespace and add
+  // them to CDC stream if relevant.
+  SleepFor(MonoDelta::FromSeconds(5 * kTimeMultiplier));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> idx1_tablets;
+  ASSERT_OK(test_client()->GetTablets(idx1, 0, &idx1_tablets, /* partition_list_version=*/nullptr));
+  ASSERT_EQ(idx1_tablets.size(), 1);
+
+  // Verify CDC stream metadata contains both table1 and the index table.
+  std::unordered_set<TableId> expected_tables = {table1.table_id(), idx1.table_id()};
+
+  VerifyTablesInStreamMetadata(
+      stream_id1, expected_tables,
+      "Waiting for GetDBStreamInfo after creating an index creation after stream creation");
+
+  // Verify cdc state table contains entries from both table1 & index table.
+  std::unordered_set<TabletId> expected_tablets;
+  for (const auto& tablet : table1_tablets) {
+    expected_tablets.insert(tablet.tablet_id());
+  }
+  for (const auto& tablet : idx1_tablets) {
+    expected_tablets.insert(tablet.tablet_id());
+  }
+
+  CheckTabletsInCDCStateTable(expected_tablets, test_client(), stream_id1);
+  LOG(INFO) << "Stream contains the user table as well as index";
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_add_indexes_to_stream) = false;
+
+  ASSERT_OK(WaitForFlushTables(
+      {idx1.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  // Split the index's tablet.
+  WaitUntilSplitIsSuccesful(idx1_tablets.Get(0).tablet_id(), idx1, 2);
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> idx1_tablets_after_split;
+  ASSERT_OK(test_client()->GetTablets(
+      idx1, 0, &idx1_tablets_after_split, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(idx1_tablets_after_split.size(), 2);
+
+  ASSERT_OK(WaitForFlushTables(
+      {table1.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  // Split the table1's tablet.
+  WaitUntilSplitIsSuccesful(table1_tablets.Get(0).tablet_id(), table1, 4);
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> table1_tablets_after_split;
+  ASSERT_OK(test_client()->GetTablets(
+      table1, 0, &table1_tablets_after_split, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(table1_tablets_after_split.size(), 4);
+
+  // wait for sometime so that tablet split codepath has completed adding new cdc state entries.
+  SleepFor(MonoDelta::FromSeconds(3 * kTimeMultiplier));
+
+  std::unordered_set<TabletId> new_expected_tablets_in_state_table;
+  for (const auto& tablet : table1_tablets_after_split) {
+    new_expected_tablets_in_state_table.insert(tablet.tablet_id());
+  }
+
+  std::unordered_set<TabletId> tablets_not_expected_in_state_table;
+  for (const auto& tablet : idx1_tablets_after_split) {
+    tablets_not_expected_in_state_table.insert(tablet.tablet_id());
+  }
+
+  CDCStateTable cdc_state_table(test_client());
+  bool seen_unexpected_tablets = false;
+  Status s;
+  auto table_range =
+      ASSERT_RESULT(cdc_state_table.GetTableRange(CDCStateTableEntrySelector().IncludeAll(), &s));
+  for (auto row_result : table_range) {
+    ASSERT_OK(row_result);
+    auto& row = *row_result;
+
+    if (row.key.stream_id == stream_id1) {
+      LOG(INFO) << "Read cdc_state table with tablet_id: " << row.key.tablet_id
+                << " stream_id: " << row.key.stream_id;
+      if (new_expected_tablets_in_state_table.contains(row.key.tablet_id)) {
+        new_expected_tablets_in_state_table.erase(row.key.tablet_id);
+      }
+
+      if (tablets_not_expected_in_state_table.contains(row.key.tablet_id)) {
+        seen_unexpected_tablets = true;
+        break;
+      }
+    }
+  }
+
+  bool seen_all_expected_tablets = new_expected_tablets_in_state_table.size() == 0 ? true : false;
+  ASSERT_FALSE(seen_unexpected_tablets);
+  ASSERT_TRUE(seen_all_expected_tablets);
+  LOG(INFO) << "CDC State table does not contain the children tablets of index's split tablet";
+}
+
+TEST_F(
+    CDCSDKYsqlTest, TestChildTabletsOfNonEligibleTableDoNotGetAddedToNonConsistentSnapshotStream) {
+  TestChildTabletsOfNonEligibleTableDoNotGetAddedToCDCStream(
+      /* use_consistent_snapshot_stream */ false);
+}
+
+TEST_F(CDCSDKYsqlTest, TestChildTabletsOfNonEligibleTableDoNotGetAddedToConsistentSnapshotStream) {
+  TestChildTabletsOfNonEligibleTableDoNotGetAddedToCDCStream(
       /* use_consistent_snapshot_stream */ true);
 }
 

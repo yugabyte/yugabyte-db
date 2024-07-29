@@ -81,7 +81,7 @@ declare module '@material-ui/core/styles/createPalette' {
     };
   }
 
-  // extend standard palette with chart colors
+  // extend standard palette with chart colors and shadows
   interface Palette {
     chart: ChartColors;
     orange: PaletteColor;
@@ -91,7 +91,7 @@ declare module '@material-ui/core/styles/createPalette' {
   interface PaletteOptions {
     chart?: ChartColors;
     orange: PaletteColor;
-    ybacolors: YBAColors;
+    ybacolors: typeof colors.ybacolors;
   }
 
   // extend standard palette with color tones
@@ -125,6 +125,7 @@ declare module '@material-ui/core/styles/shape' {
   interface Shape {
     shadowThick: string;
     shadowLight: string;
+    ybaShadows: typeof colors.ybaShadows;
   }
 }
 

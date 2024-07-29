@@ -96,9 +96,7 @@ using std::vector;
 
 constexpr uint32_t kUpdateIntervalMs = 15 * 1000;
 
-DEFINE_NON_RUNTIME_int32(cdc_read_rpc_timeout_ms, 30 * 1000,
-    "Timeout used for CDC read rpc calls.  Reads normally occur cross-cluster.");
-TAG_FLAG(cdc_read_rpc_timeout_ms, advanced);
+DECLARE_int32(cdc_read_rpc_timeout_ms);
 
 DEFINE_NON_RUNTIME_int32(cdc_write_rpc_timeout_ms, 30 * 1000,
     "Timeout used for CDC write rpc calls.  Writes normally occur intra-cluster.");
@@ -108,12 +106,6 @@ DEPRECATE_FLAG(int32, cdc_ybclient_reactor_threads, "09_2023");
 
 DEFINE_RUNTIME_int32(cdc_state_checkpoint_update_interval_ms, kUpdateIntervalMs,
     "Rate at which CDC state's checkpoint is updated.");
-
-DEFINE_NON_RUNTIME_string(certs_for_cdc_dir, "",
-    "The parent directory of where all certificates for xCluster producer universes will "
-    "be stored, for when the producer and consumer clusters use different certificates. "
-    "Place the certificates for each producer cluster in "
-    "<certs_for_cdc_dir>/<producer_cluster_id>/*.");
 
 DEFINE_RUNTIME_int32(update_min_cdc_indices_interval_secs, 60,
     "How often to read cdc_state table to get the minimum applied index for each tablet "
@@ -184,6 +176,9 @@ DEFINE_test_flag(bool, cdc_force_destroy_virtual_wal_failure, false,
 DEFINE_RUNTIME_PREVIEW_bool(enable_cdcsdk_setting_get_changes_response_byte_limit, false,
     "When enabled, we'll consider the proto field getchanges_resp_max_size_bytes in "
     "GetChangesRequestPB to limit the size of GetChanges response.");
+DEFINE_test_flag(bool, cdcsdk_skip_stream_active_check, false,
+                 "When enabled, GetChanges will skip checking if stream is active as well as skip "
+                 "updating the active time.");
 
 DECLARE_bool(enable_log_retention_by_op_idx);
 
@@ -1553,10 +1548,13 @@ void CDCServiceImpl::GetChanges(
     RPC_STATUS_RETURN_ERROR(
         CheckTabletNotOfInterest(producer_tablet), resp->mutable_error(),
         CDCErrorPB::INTERNAL_ERROR, context);
-    RPC_STATUS_RETURN_ERROR(
-        CheckStreamActive(producer_tablet), resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR,
-        context);
-    impl_->UpdateActiveTime(producer_tablet);
+
+    if (!FLAGS_TEST_cdcsdk_skip_stream_active_check) {
+      RPC_STATUS_RETURN_ERROR(
+          CheckStreamActive(producer_tablet), resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR,
+          context);
+      impl_->UpdateActiveTime(producer_tablet);
+    }
 
     if (IsCDCSDKSnapshotDone(*req)) {
       // Remove 'kCDCSDKSnapshotKey' from the colocated snapshot row, to indicate that the snapshot
@@ -4421,6 +4419,25 @@ Result<tablet::TabletPeerPtr> CDCServiceImpl::GetServingTablet(const TabletId& t
   return context_->GetServingTablet(tablet_id);
 }
 
+bool IsStreamInactiveError(Status status) {
+  if (!status.ok() && status.IsInternalError() &&
+      status.message().ToBuffer().find("expired for Tablet") != std::string::npos) {
+    return true;
+  }
+
+  return false;
+}
+
+bool IsIntentGCError(Status status) {
+  if (!status.ok() && status.IsInternalError() &&
+      status.message().ToBuffer().find("CDCSDK Trying to fetch already GCed intents") !=
+          std::string::npos) {
+    return true;
+  }
+
+  return false;
+}
+
 void CDCServiceImpl::InitVirtualWALForCDC(
     const InitVirtualWALForCDCRequestPB* req, InitVirtualWALForCDCResponsePB* resp,
     rpc::RpcContext context) {
@@ -4528,6 +4545,11 @@ void CDCServiceImpl::GetConsistentChanges(
         Format("GetConsistentChanges failed for stream_id: $0 with error: $1", stream_id, s);
     if (!s.IsTryAgain()) {
       LOG(WARNING) << msg;
+      // Propogate the error to the client only when the stream has expired or the intents have been
+      // garbage collected.
+      if (IsStreamInactiveError(s) || IsIntentGCError(s)) {
+        RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+      }
     } else {
       YB_LOG_EVERY_N_SECS(WARNING, 300) << msg;
     }

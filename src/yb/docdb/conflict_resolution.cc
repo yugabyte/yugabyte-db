@@ -408,6 +408,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
       return true;
     }
     RETURN_NOT_OK(OnConflictingTransactionsFound());
+    DEBUG_ONLY_TEST_SYNC_POINT("ConflictResolver::OnConflictingTransactionsFound");
     return false;
   }
 

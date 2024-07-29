@@ -5750,6 +5750,7 @@ RelationCacheInitializePhase3(void)
 		YbPrefetchRequiredData(preload_rel_cache);
 
 		Assert(YBCIsSysTablePrefetchingStarted());
+		Assert(YbCheckCatalogCacheIndexNameTable());
 	}
 
 	/*

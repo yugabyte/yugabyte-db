@@ -38,6 +38,8 @@
     dest: "{{ yb_bin_dir }}/clock-sync.sh"
     owner: "{{ user_name }}"
     mode: 0755
+  tags:
+    - install-software
 
 - name: Setup | Create directory to land core dumps
   file:
@@ -282,7 +284,9 @@
       state: present
       mode: 0644
 
-  tags: systemd_upgrade
+  tags: 
+  - systemd_upgrade
+  - install-software
   when: (systemd_option and not ((ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7')
         or (ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2')))
 
