@@ -265,7 +265,7 @@ For example, you would use the following command to create a multi-zone Yugabyte
 : Specify the fault tolerance for the cluster. This flag can accept one of the following values: zone, region, cloud. For example, when the flag is set to zone (`--fault_tolerance=zone`), yugabyted applies zone fault tolerance to the cluster, placing the nodes in three different zones, if available.
 
 --constraint_value *data-placement-constraint-value*
-: Specify the data placement and preferred region(s) for the YugabyteDB cluster. This is an optional flag. The flag takes comma-separated values in the format `cloud.region.zone:priority`. The priority is an integer and is optional, and determines the preferred region(s) in order of preference. You must specify the same number of data placement values as the replication factor (RF).
+: Specify the data placement and preferred region(s) for the YugabyteDB cluster. This is an optional flag. The flag takes comma-separated values in the format `cloud.region.zone:priority`. The priority is an integer and is optional, and determines the preferred region(s) in order of preference. You must specify the same number of data placement values as the [replication factor](../../../architecture/key-concepts/#replication-factor-rf).
 
 --rf *replication-factor*
 : Specify the replication factor for the cluster. This is an optional flag which takes a value of `3` or `5`.
@@ -375,7 +375,7 @@ For example, get the YugabyteDB universe configuration:
 
 ### configure_read_replica
 
-Use the `yugabyted configure_read_replica` command to configure, modify, or delete a read replica cluster.
+Use the `yugabyted configure_read_replica` command to configure, modify, or delete a [read replica cluster](../../../architecture/key-concepts/#read-replica-cluster).
 
 #### Syntax
 
@@ -410,7 +410,7 @@ For example, to create a new read replica cluster, execute the following command
 : The base directory for the yugabyted server.
 
 --rf *read-replica-replication-factor*
-: Replication factor (RF) for the read replica cluster.
+: Replication factor for the read replica cluster.
 
 --data_placement_constraint *read-replica-constraint-value*
 : Data placement constraint value for the read replica cluster. This is an optional flag. The flag takes comma-separated values in the format `cloud.region.zone:num_of_replicas`.
@@ -421,14 +421,14 @@ Use the sub-command `yugabyted configure_read_replica modify` to modify an exist
 
 For example, modify a read replica cluster using the following commands.
 
-Modify the RF of the existing read replica cluster:
+Change the replication factor of the existing read replica cluster:
 
 ```sh
 ./bin/yugabyted configure_read_replica modify --rf=2
 
 ```
 
-Modify the RF and also specify the replication constraint:
+Change the replication factor and also specify the placement constraint:
 
 ```sh
 ./bin/yugabyted configure_read_replica modify --rf=2 --data_placement_constraint=cloud1.region1.zone1,cloud2.region2.zone2
@@ -444,7 +444,7 @@ Modify the RF and also specify the replication constraint:
 : The base directory for the yugabyted server.
 
 --rf *read-replica-replication-factor*
-: RF for the read replica cluster.
+: Replication factor for the read replica cluster.
 
 --data_placement_constraint *read-replica-constraint-value*
 : Data placement constraint value for the read replica cluster. This is an optional flag. The flag takes comma-separated values in the format cloud.region.zone.
@@ -1342,7 +1342,7 @@ After starting the yugabyted processes on all the nodes, configure the data plac
 
 The preceding command automatically determines the data placement constraint based on the `--cloud_location` of each node in the cluster. If there are three or more zones available in the cluster, the `configure` command configures the cluster to survive at least one availability zone failure. Otherwise, it outputs a warning message.
 
-The RF of the cluster defaults to 3.
+The replication factor of the cluster defaults to 3.
 
 You can set the data placement constraint manually and specify preferred regions using the `--constraint_value` flag, which takes the comma-separated value of `cloud.region.zone:priority`. For example:
 
@@ -1354,7 +1354,7 @@ You can set the data placement constraint manually and specify preferred regions
 
 This indicates that us-east is the preferred region, with a fallback option to us-central.
 
-You can set the RF of the cluster manually using the `--rf` flag. For example:
+You can set the replication factor of the cluster manually using the `--rf` flag. For example:
 
 ```sh
 ./bin/yugabyted configure data_placement --fault_tolerance=zone \
@@ -1455,7 +1455,7 @@ After starting the yugabyted processes on all nodes, configure the data placemen
 
 The preceding command automatically determines the data placement constraint based on the `--cloud_location` of each node in the cluster. If there are three or more regions available in the cluster, the `configure` command configures the cluster to survive at least one availability region failure. Otherwise, it outputs a warning message.
 
-The RF of the cluster defaults to 3.
+The replication factor of the cluster defaults to 3.
 
 You can set the data placement constraint manually and specify preferred regions using the `--constraint_value` flag, which takes the comma-separated value of `cloud.region.zone:priority`. For example:
 
@@ -1467,7 +1467,7 @@ You can set the data placement constraint manually and specify preferred regions
 
 This indicates that us-east is the preferred region, with a fallback option to us-central.
 
-You can set the RF of the cluster manually using the `--rf` flag. For example:
+You can set the replication factor of the cluster manually using the `--rf` flag. For example:
 
 ```sh
 ./bin/yugabyted configure data_placement \
@@ -1516,9 +1516,9 @@ docker run -d --name yugabytedb-node3 --net yb-network \
 
 ### Create and manage read replica clusters
 
-To create a read-read cluster, you first create a YugabyteDB cluster; this example assumes a 3-node cluster is deployed. Refer to [Create a local multi-node cluster](#create-a-local-multi-node-cluster).
+To create a read replica cluster, you first create a YugabyteDB cluster; this example assumes a 3-node cluster is deployed. Refer to [Create a local multi-node cluster](#create-a-local-multi-node-cluster).
 
-You add read replica nodes using the `--join` and `--read_replica` flags.
+You add read replica nodes to the primary cluster using the `--join` and `--read_replica` flags.
 
 #### Create a read replica cluster
 
@@ -1682,9 +1682,9 @@ When specifying the `--data_placement_constraint` flag, you must provide the fol
 
     The number of replicas in any cloud location should be less than or equal to the number of read replica nodes deployed in that cloud location.
 
-The RF of the cluster defaults to the number of different cloud locations containing read replica nodes; that is, one replica in each cloud location.
+The replication factor of the read replica cluster defaults to the number of different cloud locations containing read replica nodes; that is, one replica in each cloud location.
 
-You can set the RF manually using the `--rf` flag. For example:
+You can set the replication factor manually using the `--rf` flag. For example:
 
 ```sh
 ./bin/yugabyted configure_read_replica new \
@@ -1696,10 +1696,10 @@ When specifying the `--rf` flag:
 
 - If the `--data_placement_constraint` flag is provided
   - All rules for using the `--data_placement_constraint` flag apply.
-  - RF should be equal the number of replicas specified using the `--data_placement_constraint` flag.
+  - Replication factor should be equal the number of replicas specified using the `--data_placement_constraint` flag.
 - If the `--data_placement_constraint` flag is not provided:
-  - RF should be less than or equal to total read replica nodes deployed.
-  - RF should be greater than or equal to number of cloud locations that have a read replica node; that is, there should be at least one replica in each cloud location.
+  - Replication factor should be less than or equal to total read replica nodes deployed.
+  - Replication factor should be greater than or equal to number of cloud locations that have a read replica node; that is, there should be at least one replica in each cloud location.
 
 #### Modifying a configured read replica cluster
 
