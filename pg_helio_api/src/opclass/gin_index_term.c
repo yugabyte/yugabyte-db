@@ -312,7 +312,7 @@ TruncateNestedEntry(pgbson_element_writer *elementWriter, const
 			/* See details about size constant in SerializeTermToWriter() */
 			int32_t fixedTermLimit = 17;
 			int32_t softLimit = sizeBudgetForElementWriter - fixedTermLimit;
-			int32_t dataSize = 5;
+			int32_t dataSize = currentLength;
 
 
 			bson_iter_t documentIterator;
@@ -341,7 +341,7 @@ TruncateNestedEntry(pgbson_element_writer *elementWriter, const
 			/* See details about size constant in SerializeTermToWriter() */
 			int32_t fixedTermSize = 21;
 			int32_t loweredSizeLimit = sizeBudgetForElementWriter - fixedTermSize;
-			int32_t dataSize = 5;
+			int32_t dataSize = currentLength;
 
 			bson_iter_t arrayIterator;
 			pgbson_array_writer arrayWriter;
