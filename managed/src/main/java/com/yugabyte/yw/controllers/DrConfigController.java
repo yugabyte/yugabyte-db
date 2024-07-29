@@ -1187,7 +1187,7 @@ public class DrConfigController extends AuthenticatedController {
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drUUID);
 
     for (XClusterConfig xClusterConfig : drConfig.getXClusterConfigs()) {
-      XClusterConfigTaskBase.setReplicationStatus(
+      XClusterConfigTaskBase.updateReplicationDetailsFromDB(
           this.xClusterUniverseService, this.ybService, this.tableHandler, xClusterConfig);
     }
 
