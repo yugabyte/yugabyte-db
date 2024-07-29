@@ -258,9 +258,8 @@ ConditionVariableCancelSleep(void)
  *
  * Do nothing if nothing is pending; this allows this function to be called
  * during transaction abort to clean up any unfinished CV sleep.
- */
-/* YB_TODO(neil) Need to rewrite function ConditionVariableCancelSleepForProc) to call
- * ConditionVariableCancelSleep()
+ *
+ * TODO(#23274): Rewrite / delete ConditionVariableCancelSleepForProc
  */
 void
 ConditionVariableCancelSleepForProc(volatile PGPROC *proc)

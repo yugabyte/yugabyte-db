@@ -1683,16 +1683,22 @@ YbHeapTupleToStringWithIsOmitted(HeapTuple tuple, TupleDesc tupleDesc,
 	return buf.data;
 }
 
+const char* YbTupleTableSlotToString(TupleTableSlot *slot)
+{
+	return YbTupleTableSlotToStringWithIsOmitted(slot, NULL);
+}
+
+
 const char *
-YbTupleTableSlotToStringWithIsOmitted(TupleTableSlot *slot, TupleDesc tupleDesc,
-									  bool *is_omitted)
+YbTupleTableSlotToStringWithIsOmitted(TupleTableSlot *slot, bool *is_omitted)
 {
 	bool		shouldFree;
 	HeapTuple	tuple;
 
 	tuple = ExecFetchSlotHeapTuple(slot, false, &shouldFree);
 	Assert(!shouldFree);
-	return YbHeapTupleToStringWithIsOmitted(tuple, tupleDesc, is_omitted);
+	return YbHeapTupleToStringWithIsOmitted(tuple, slot->tts_tupleDescriptor,
+											is_omitted);
 }
 
 const char*

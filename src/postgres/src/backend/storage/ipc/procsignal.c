@@ -105,11 +105,6 @@ static ProcSignalSlot *MyProcSignalSlot = NULL;
 static bool CheckProcSignal(ProcSignalReason reason);
 static void ResetProcSignalBarrierBits(uint32 flags);
 
-#ifdef YB_TODO
-/* Yb makes this public */
-static void CleanupProcSignalState(int status, Datum arg);
-#endif
-
 /*
  * ProcSignalShmemSize
  *		Compute space needed for ProcSignal's shared memory
@@ -209,11 +204,11 @@ ProcSignalInit(int pss_idx)
 	on_shmem_exit(CleanupProcSignalState, Int32GetDatum(pss_idx));
 }
 
-/* CleanupProcSignalState
- * 		Remove current process from ProcSignalSlots
+/* CleanupProcSignalStateInternal
+ * 		Remove the given process from ProcSignalSlots
  */
 static void
-CleanupProcSignalStateInternal(PGPROC *proc, int procSignalSlotIndex, volatile ProcSignalSlot *slot)
+CleanupProcSignalStateInternal(PGPROC *proc, int pss_idx, ProcSignalSlot *slot)
 {
 	/* sanity check */
 	if (slot->pss_pid != proc->pid)
@@ -223,9 +218,16 @@ CleanupProcSignalStateInternal(PGPROC *proc, int procSignalSlotIndex, volatile P
 		 * infinite loop trying to exit
 		 */
 		elog(LOG, "process %d releasing ProcSignal slot %d, but it contains %d",
-			 proc->pid, procSignalSlotIndex, (int) slot->pss_pid);
+			 proc->pid, pss_idx, (int) slot->pss_pid);
 		return;					/* XXX better to zero the slot anyway? */
 	}
+
+	/*
+	 * Make this slot look like it's absorbed all possible barriers, so that
+	 * no barrier waits block on it.
+	 */
+	pg_atomic_write_u64(&slot->pss_barrierGeneration, PG_UINT64_MAX);
+	ConditionVariableBroadcast(&slot->pss_barrierCV);
 
 	slot->pss_pid = 0;
 }
@@ -252,33 +254,9 @@ CleanupProcSignalState(int status, Datum arg)
 	 */
 	MyProcSignalSlot = NULL;
 
-	/* sanity check */
-	if (slot->pss_pid != MyProcPid)
-	{
-		/*
-		 * don't ERROR here. We're exiting anyway, and don't want to get into
-		 * infinite loop trying to exit
-		 */
-		elog(LOG, "process %d releasing ProcSignal slot %d, but it contains %d",
-			 MyProcPid, pss_idx, (int) slot->pss_pid);
-		return;					/* XXX better to zero the slot anyway? */
-	}
-
-	/*
-	 * Make this slot look like it's absorbed all possible barriers, so that
-	 * no barrier waits block on it.
-	 */
-	pg_atomic_write_u64(&slot->pss_barrierGeneration, PG_UINT64_MAX);
-	ConditionVariableBroadcast(&slot->pss_barrierCV);
-
-	slot->pss_pid = 0;
+	CleanupProcSignalStateInternal(MyProc, pss_idx, slot);
 }
 
-
-/* YB_TODO(neil)
- * - Fixed CleanupProcSignalStateForProc().
- * - Delete CleanupProcSignalStateInternal(). It's no longer correct.
- */
 /*
  * CleanupProcSignalStateForProc
  *		Remove the given process from ProcSignalSlots
@@ -289,14 +267,12 @@ CleanupProcSignalState(int status, Datum arg)
 void
 CleanupProcSignalStateForProc(PGPROC *proc)
 {
-#ifdef YB_TODO
 	int			pss_idx = proc->backendId;
-	volatile ProcSignalSlot *slot;
+	ProcSignalSlot *slot;
 
-	slot = &ProcSignalSlots[pss_idx - 1];
+	slot = &ProcSignal->psh_slot[pss_idx - 1];
 
-	CleanupProcSignalStateInternal(proc, proc->backendId, slot);
-#endif
+	CleanupProcSignalStateInternal(proc, pss_idx, slot);
 }
 
 /*

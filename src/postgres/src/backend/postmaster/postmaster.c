@@ -78,10 +78,6 @@
 #include <limits.h>
 #include "yb_query_diagnostics.h"
 
-#ifdef HAVE_SYS_PRCTL_H
-#include <sys/prctl.h>
-#endif
-
 #ifdef HAVE_SYS_SELECT_H
 #include <sys/select.h>
 #endif
@@ -1072,9 +1068,9 @@ PostmasterMain(int argc, char *argv[])
 	if (!YBIsEnabledInPostgresEnvVar())
 		ApplyLauncherRegister();
 
-	/* Register the query diagnostics background worker */	
+	/* Register the query diagnostics background worker */
 	if (YBIsEnabledInPostgresEnvVar() && YBIsQueryDiagnosticsEnabled())
-		YbQueryDiagnosticsBgWorkerRegister(); 
+		YbQueryDiagnosticsBgWorkerRegister();
 
 	/* Register ASH collector */
 	if (YBIsEnabledInPostgresEnvVar() && yb_ash_enable_infra)
@@ -3642,10 +3638,10 @@ CleanupKilledProcess(PGPROC *proc)
 	{
 		/* These come from ShutdownAuxiliaryProcess */
 		ConditionVariableCancelSleepForProc(proc);
-#ifdef YB_TODO
-		/* YB_TODO Rewrite this funtion first, and then reactivate this call */
-		pgstat_report_wait_end_for_proc(proc);
-#endif
+		/*
+		 * We don't need to call pgstat_report_wait_end because it refers only
+		 * to a static variable, not a member of the PGPROC struct.
+		 */
 	}
 	else
 	{
@@ -4565,16 +4561,6 @@ BackendStartup(Port *port)
 	pid = fork_process();
 	if (pid == 0)				/* child */
 	{
-#ifdef HAVE_SYS_PRCTL_H
-		/*
-		 * In YB, all backends are stateless and upon PG master termination, all
-		 * backend processes should also terminate regardless what state they are
-		 * in. No clean-up procedure is needed in the backends.
-		 */
-		if (YBIsEnabledInPostgresEnvVar())
-			prctl(PR_SET_PDEATHSIG, SIGKILL);
-#endif
-
 		free(bn);
 
 		/* Detangle from postmaster */
@@ -4856,7 +4842,7 @@ BackendInitialize(Port *port)
 	if (YBIsEnabledInPostgresEnvVar() && am_walsender)
 	{
 		char		remote_ps_data[NI_MAXHOST];
-	
+
 		if (remote_port[0] == '\0')
 			snprintf(remote_ps_data, sizeof(remote_ps_data), "%s", remote_host);
 		else

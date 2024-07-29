@@ -737,47 +737,6 @@ extern void pgstat_end_function_usage(PgStat_FunctionCallUsage *fcu,
 extern PgStat_StatFuncEntry *pgstat_fetch_stat_funcentry(Oid funcid);
 extern PgStat_BackendFunctionEntry *find_funcstat_entry(Oid func_id);
 
-#ifdef YB_TODO
-/* These functions are no longer used in Pg15 */
-/* ----------
- * pgstat_report_wait_end_for_proc(PGPROC *proc) -
- *
- *	Called to report end of a wait for a specific process.
- *
- * NB: this *must* be able to survive being called before MyProc has been
- * initialized.
- * ----------
- */
-static inline void
-pgstat_report_wait_end_for_proc(volatile PGPROC *proc)
-{
-	if (!pgstat_track_activities || !proc)
-		return;
-
-	/*
-	 * Since this is a four-byte field which is always read and written as
-	 * four-bytes, updates are atomic.
-	 */
-	proc->wait_event_info = 0;
-}
-
-
-/* ----------
- * pgstat_report_wait_end() -
- *
- *	Called to report end of a wait.
- *
- * NB: this *must* be able to survive being called before MyProc has been
- * initialized.
- * ----------
- */
-static inline void
-pgstat_report_wait_end(void)
-{
-	return pgstat_report_wait_end_for_proc(MyProc);
-}
-#endif
-
 /*
  * Functions in pgstat_relation.c
  */
