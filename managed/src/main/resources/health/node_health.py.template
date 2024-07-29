@@ -1733,8 +1733,9 @@ class NodeChecker():
         pid_list.append(root_pid)
         if process_name == TSERVER:
             postgre_pid = self.get_process_pid_by_name(POSTMASTER)
-            pid_list.remove(postgre_pid)
-            pid_list = [p for p in pid_list if p not in self._get_subprocess_pids(postgre_pid)]
+            if postgre_pid is not None:
+                pid_list.remove(postgre_pid)
+                pid_list = [p for p in pid_list if p not in self._get_subprocess_pids(postgre_pid)]
         total_stat = self._get_empty_proc_results()
         prev_process_map = {}
         if process_name in self.prev_process_results.keys():
