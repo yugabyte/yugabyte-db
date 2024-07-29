@@ -121,8 +121,10 @@ func NewRPCServer(
 		select {
 		case <-server.done:
 			return
+		default:
+			close(server.done)
 		}
-		close(server.done)
+
 	}()
 	// Start RPC server.
 	go func() {
@@ -132,8 +134,9 @@ func NewRPCServer(
 		select {
 		case <-server.done:
 			return
+		default:
+			close(server.done)
 		}
-		close(server.done)
 	}()
 	// Start the root listener.
 	go func() {
@@ -143,8 +146,9 @@ func NewRPCServer(
 		select {
 		case <-server.done:
 			return
+		default:
+			close(server.done)
 		}
-		close(server.done)
 	}()
 	return server, nil
 }

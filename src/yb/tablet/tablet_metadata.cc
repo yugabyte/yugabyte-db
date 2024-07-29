@@ -935,6 +935,10 @@ RaftGroupMetadata::RaftGroupMetadata(
   CHECK_GT(data.table_info->schema().num_key_columns(), 0);
   kv_store_.tables.emplace(primary_table_id_, data.table_info);
   kv_store_.UpdateColocationMap(data.table_info);
+  for (const auto& colocated_table : data.colocated_tables_infos) {
+    kv_store_.tables.emplace(colocated_table->table_id, colocated_table);
+    kv_store_.UpdateColocationMap(colocated_table);
+  }
   if (FLAGS_TEST_invalidate_last_change_metadata_op) {
     last_applied_change_metadata_op_id_ = OpId::Invalid();
   } else {

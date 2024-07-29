@@ -30,6 +30,8 @@
 // under the License.
 //
 
+#include <fstream>
+#include <regex>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -37,6 +39,7 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/once.h"
 #include "yb/gutil/strings/split.h"
+#include "yb/util/env_util.h"
 #include "yb/util/flags/flag_tags.h"
 
 #if YB_GPERFTOOLS_TCMALLOC
@@ -895,6 +898,28 @@ bool RecordFlagForDelayedValidation(const std::string& flag_name) {
   }
   FlagsWithDelayedValidation().emplace_back(flag_name);
   return true;
+}
+
+// Read the flags xml file and return the list of flag names.
+Result<std::unordered_set<std::string>> GetFlagNamesFromXmlFile(const std::string& flag_file_name) {
+  std::unordered_set<std::string> flag_names;
+
+  string build_path = yb::env_util::GetRootDir("bin");
+
+  auto full_path = JoinPathSegments(build_path, flag_file_name);
+  std::ifstream xml_file(full_path, std::ios_base::in);
+  SCHECK(xml_file, IOError, Format("Could not open XML file $0: $1", full_path, strerror(errno)));
+
+  static std::regex re(R"#(<name>(.*?)</name>)#");
+  std::string line;
+  while (std::getline(xml_file, line)) {
+    std::smatch match;
+    if (std::regex_search(line, match, re)) {
+      flag_names.insert(match.str(1));
+    }
+  }
+
+  return flag_names;
 }
 
 } // namespace yb

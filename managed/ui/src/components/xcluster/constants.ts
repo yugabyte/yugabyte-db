@@ -42,7 +42,7 @@ export const XClusterTableStatus = {
   //            Used to mark tables which are dropped on the source universe.
   DROPPED: 'Dropped',
   EXTRA_TABLE_ON_SOURCE: 'ExtraTableOnSource',
-  EXTRA_TABLE_ON_TARGET: 'DroppedFromSource',
+  EXTRA_TABLE_ON_TARGET: 'ExtraTableOnTarget',
   DROPPED_FROM_SOURCE: 'DroppedFromSource',
   DROPPED_FROM_TARGET: 'DroppedFromTarget',
   REPLICATION_ERROR: 'ReplicationError'

@@ -293,7 +293,7 @@ Status RpcServerBase::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   return Status::OK();
 }
 
-Status RpcServerBase::InitAutoFlags(rpc::Messenger* messenger) { return Status::OK(); }
+Status RpcServerBase::InitFlags(rpc::Messenger* messenger) { return Status::OK(); }
 
 Status RpcServerBase::Init() {
   CHECK(!initialized_);
@@ -327,7 +327,7 @@ Status RpcServerBase::Init() {
     messenger_->TEST_SetOutboundIpBase(VERIFY_RESULT(HostToAddress(host_ports[0].host())));
   }
 
-  RETURN_NOT_OK(InitAutoFlags(messenger_.get()));
+  RETURN_NOT_OK(InitFlags(messenger_.get()));
 
   RETURN_NOT_OK(rpc_server_->Init(messenger_.get()));
   RETURN_NOT_OK(rpc_server_->Bind());
@@ -547,16 +547,20 @@ Status RpcAndWebServerBase::Init() {
   return Status::OK();
 }
 
-Status RpcAndWebServerBase::InitAutoFlags(rpc::Messenger* messenger) {
-  auto process_auto_flags_result = GetAvailableAutoFlagsForServer();
-  if (!process_auto_flags_result) {
-    LOG(WARNING) << "Unable to get the AutoFlags for this process: "
-                 << process_auto_flags_result.status();
-  } else {
-    web_server_->SetAutoFlags(std::move(*process_auto_flags_result));
+Status RpcAndWebServerBase::InitFlags(rpc::Messenger* messenger) {
+  {
+    auto process_flags =
+        VERIFY_RESULT_PREPEND(GetFlagsForServer(), "Unable to get the flags for this process");
+    web_server_->SetFlags(std::move(process_flags));
   }
 
-  return RpcServerBase::InitAutoFlags(messenger);
+  {
+    auto process_auto_flags = VERIFY_RESULT_PREPEND(
+        GetAvailableAutoFlagsForServer(), "Unable to get the AutoFlags for this process");
+    web_server_->SetAutoFlags(std::move(process_auto_flags));
+  }
+
+  return RpcServerBase::InitFlags(messenger);
 }
 
 void RpcAndWebServerBase::GetStatusPB(ServerStatusPB* status) const {

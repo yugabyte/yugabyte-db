@@ -88,6 +88,11 @@ public class TableInfoForm {
       }
       return false;
     }
+
+    @JsonIgnore
+    public String getTableId() {
+      return tableID;
+    }
   }
 
   @ApiModel(description = "Namespace information response")

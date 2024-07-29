@@ -1975,8 +1975,9 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
               SysTablesEntryPB_State_Name(table->old_pb().state()));
       }
       // Make sure the table's tablets can be deleted.
-      RETURN_NOT_OK_PREPEND(CheckIfForbiddenToDeleteTabletOf(table),
-                            Format("Cannot repartition table $0", table->id()));
+      RETURN_NOT_OK_PREPEND(
+          CheckIfForbiddenToDeleteTabletOf(table),
+          Format("Cannot repartition table $0", table->id()));
 
       // Create and mark new tablets for creation.
 
@@ -2027,6 +2028,11 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
       old_tablet->mutable_metadata()->StartMutation();
       old_tablet->mutable_metadata()->mutable_dirty()->set_state(
           SysTabletsEntryPB::DELETED, deletion_msg);
+      if (table->colocated()) {
+        // Remove the table_id from the old colocated tablet. This avoids reloading the deleted
+        // tablet in memory in case of master failover.
+        old_tablet->mutable_metadata()->mutable_dirty()->pb.set_table_id("");
+      }
     }
     VLOG_WITH_FUNC(3) << "Prepared deletion of " << old_tablets.size() << " old tablets for table "
                       << table->id();
@@ -2331,9 +2337,13 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
     return STATUS(InternalError, msg, MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
   }
 
+  std::optional<int> schema_version;
+
   // Don't do schema validation/column updates on the parent colocated table.
   // However, still do the validation for regular colocated tables.
-  if (!is_parent_colocated_table) {
+  // For clone, only the parent colocated table must go through the repartition path.
+  if (is_clone || !is_parent_colocated_table) {
+    // Schema validation and repartitioning checks. TODO: Refactor this code path.
     Schema persisted_schema;
     size_t new_num_tablets = 0;
     {
@@ -2399,6 +2409,12 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       }
     }
 
+    if (is_clone && table->IsColocatedUserTable()) {
+      // For colocated tables that are not the parent table, update their info to point to the newly
+      // recreated parent tablet.
+      RETURN_NOT_OK(UpdateColocatedUserTableInfoForClone(table, table_data, epoch));
+    }
+
     // Table schema update depending on different conditions.
     bool notify_ts_for_schema_change = false;
 
@@ -2460,7 +2476,6 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
     // found in the snapshotInfo if the latter is greater. This is because it is guaranteed that the
     // schema version found in snapshotInfo is the maximum schema version that can be found in the
     // snapshot at backup creation time.
-    std::optional<int> schema_version;
     if (is_clone) {
       // The Source table should be found as we are cloning from it.
       TRACE("Looking up source table");
@@ -2521,7 +2536,7 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
   IdPairPB* const table_ids = table_data->table_meta->mutable_table_ids();
   table_ids->set_new_id(table_data->new_table_id);
   table_ids->set_old_id(table_data->old_table_id);
-
+  table_data->new_table_schema_version = schema_version;
   // Recursively collect ids for used user-defined types.
   unordered_set<UDTypeId> type_ids;
   for (size_t i = 0; i < schema.num_columns(); ++i) {
@@ -2542,6 +2557,36 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
     udt_ids->set_old_id(udt_id);
   }
 
+  return Status::OK();
+}
+
+Status CatalogManager::UpdateColocatedUserTableInfoForClone(
+    scoped_refptr<TableInfo> table, ExternalTableSnapshotData* table_data,
+    const LeaderEpoch& epoch) {
+  RSTATUS_DCHECK(
+      table->IsColocatedUserTable(), InvalidArgument,
+      Format("table: $0 is not a colocated user table", table->id()));
+  // Remove old colocated tablet from TableInfo.
+  auto old_tablet = VERIFY_RESULT(table->GetTablets())[0];
+  auto old_colocated_tablet_lock = old_tablet->LockForWrite();
+  RETURN_NOT_OK(table->RemoveTablet(old_tablet->tablet_id()));
+  // Add new colocated tablet to TableInfo.
+  TableInfoPtr parent_table =
+      VERIFY_RESULT(FindTableById(VERIFY_RESULT(GetParentTableIdForColocatedTable(table))));
+  auto tablets = VERIFY_RESULT(parent_table->GetTablets());
+
+  RSTATUS_DCHECK(
+      tablets.size() == 1, NotFound,
+      Format("Wrong number of parent tablet of colocated database:$1", tablets.size()));
+  auto new_tablet_lock = tablets[0]->LockForWrite();
+  RETURN_NOT_OK(table->AddTablet(tablets[0]));
+  VLOG(1) << Format(
+      "Modifying the parent tablet of the colocated table: $0. The new Tablet is: $1",
+      table_data->new_table_id, VERIFY_RESULT(table->GetTablets())[0]->tablet_id());
+  tablets[0]->AddTableId(table_data->new_table_id);
+
+  new_tablet_lock.Commit();
+  old_colocated_tablet_lock.Commit();
   return Status::OK();
 }
 

@@ -86,7 +86,7 @@ class Master : public tserver::DbServerBase {
   explicit Master(const MasterOptions& opts);
   virtual ~Master();
 
-  virtual Status InitAutoFlags(rpc::Messenger* messenger) override;
+  virtual Status InitFlags(rpc::Messenger* messenger) override;
   Status InitAutoFlagsFromMasterLeader(const HostPort& leader_address);
   Status Init() override;
   Status Start() override;
@@ -226,6 +226,8 @@ class Master : public tserver::DbServerBase {
   Status SetupMessengerBuilder(rpc::MessengerBuilder* builder) override;
 
   Result<std::unordered_set<std::string>> GetAvailableAutoFlagsForServer() const override;
+
+  Result<std::unordered_set<std::string>> GetFlagsForServer() const override;
 
  private:
   friend class MasterTest;
