@@ -377,6 +377,8 @@ For example, get the YugabyteDB universe configuration:
 
 Use the `yugabyted configure_read_replica` command to configure, modify, or delete a [read replica cluster](../../../architecture/key-concepts/#read-replica-cluster).
 
+Before configuring a read replica, you should have a primary cluster deployed, along with the read replica nodes.
+
 #### Syntax
 
 ```text
@@ -1777,7 +1779,7 @@ To set up xCluster replication, you first need to deploy two (source and target)
 
 To set up xCluster replication between two secure clusters, do the following:
 
-1. Checkpoint the xCluster replication from source cluster.
+1. Checkpoint the xCluster replication from the source cluster.
 
     Run the `yugabyted xcluster checkpoint` command from any source cluster node, with the `--replication_id` and `--databases` flags. For `--replication_id`, provide a string to uniquely identify this replication. The `--databases` flag takes a comma-separated list of databases to be replicated.
 
@@ -1787,7 +1789,7 @@ To set up xCluster replication between two secure clusters, do the following:
         --databases=<list_of_databases>
     ```
 
-1. Complete the [bootstrapping](#bootstrapping-for-xcluster) for the databases.
+1. [Bootstrap](#bootstrap-databases-for-xcluster) the databases that you included in the replication.
 
 1. If the root certificates for the source and target clusters are different, (for example, the node certificates for target and source nodes were not created on the same machine), copy the `ca.crt` for the source cluster to all target nodes, and vice-versa. If the root certificate for both source and target clusters is the same, you can skip this step.
 
@@ -1805,7 +1807,7 @@ To set up xCluster replication between two secure clusters, do the following:
         --target_address=<IP-of-any-target-node>
     ```
 
-    If any of the databases to be replicated has data, complete the bootstrapping (directions present in the output of `yugabyted xcluster checkpoint`) and add the `--bootstrap_done` flag in the command. For example:
+    If any of the databases to be replicated has data, complete the bootstrapping (directions are provided in the output of `yugabyted xcluster checkpoint`) and add the `--bootstrap_done` flag in the command. For example:
 
     ```sh
     ./bin/yugabyted xcluster set_up \
@@ -1832,7 +1834,7 @@ To set up xCluster replication between two clusters, do the following:
         --databases=<list_of_databases>
     ```
 
-1. Complete the [bootstrapping](#bootstrapping-for-xcluster) for the databases.
+1. [Bootstrap](#bootstrap-databases-for-xcluster) the databases that you included in the replication.
 
 1. Set up the xCluster replication between the clusters by running the `yugabyted xcluster set_up` command from any of the source cluster nodes.
 
@@ -1844,7 +1846,7 @@ To set up xCluster replication between two clusters, do the following:
         --target_address=<IP-of-any-target-node>
     ```
 
-    If any of the databases to be replicated has data, complete the bootstrapping (directions present in the output of `yugabyted xcluster checkpoint`) and add the `--bootstrap_done` flag in the command. For example:
+    If any of the databases to be replicated has data, complete the bootstrapping (directions are provided in the output of `yugabyted xcluster checkpoint`) and add the `--bootstrap_done` flag in the command. For example:
 
     ```sh
     ./bin/yugabyted xcluster set_up \
@@ -1859,12 +1861,12 @@ To set up xCluster replication between two clusters, do the following:
 
 {{< /tabpane >}}
 
-#### Bootstrapping for xCluster
+#### Bootstrap databases for xCluster
 
-After running `yugabyted xcluster checkpoint`, you must bootstrap the databases before you can set up the xCluster replication.
+After running `yugabyted xcluster checkpoint`, you must bootstrap the databases before you can set up the xCluster replication. Bootstrapping is the process of preparing the databases on the target cluster for replication, and involves the following:
 
 - For databases that don't have any data, apply the same database and schema to the target cluster.
-- For databases that do have data, you need to perform a backup and restore. The commands to do this are provided in the output of the `yugabyted xcluster checkpoint` command.
+- For databases that do have data, you need to back up the databases on the source, and restore to the target. The commands to do this are provided in the output of the `yugabyted xcluster checkpoint` command.
 
 If the cluster was started using the `--backup_daemon` flag, you need to download and extract the [YB Controller release](https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/ybc/2.1.0.0-b9/ybc-2.1.0.0-b9-linux-x86_64.tar.gz) to the yugabyte-{{< yb-version version="preview" >}} folder.
 
