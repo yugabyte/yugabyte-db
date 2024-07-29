@@ -41,7 +41,7 @@ To stream data change events from YugabyteDB databases, follow these steps to de
 - Configure the Connector: Modify the connector configuration to suit your specific requirements.
 - Start the Connector: Add the connector's configuration to Kafka Connect and start the connector.
 
-For more details on connector configuration and deployment steps, refer to the [YugabyteDB gRPC Connector documentation]((../debezium-connector-yugabytedb/)).
+For more details on connector configuration and deployment steps, refer to the [YugabyteDB gRPC Connector documentation](../debezium-connector-yugabytedb/).
 
 ## Serialization
 

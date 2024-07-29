@@ -366,8 +366,8 @@ In a production environment, you would typically either use the Kafka tools to m
     - `database.hostname` - The database host, which is the IP of the machine running YugabyteDB. If YugabyteDB were running on a normal network, you would specify the IP address or resolvable host name for this value.
     - `topic.prefix` - A unique topic prefix. This name will be used as the prefix for all Kafka topics.
     - `table.include.list` - Only changes in the table `products` of the schema `public` will be detected.
-    - `plugin.name` - [Plugin](../overview/#output-plugin) to be used for replication.
-    - `slot.name` - Name of the [replication slot](../overview/#replication-slot).
+    - `plugin.name` - [Plugin](../key-concepts/#output-plugin) to be used for replication.
+    - `slot.name` - Name of the [replication slot](../key-concepts/#replication-slot).
 
     For more information, see [YugabyteDB connector configuration properties](../yugabytedb-connector/#connector-properties).
 
@@ -513,7 +513,7 @@ By completing this procedure, you will learn how to find details about what chan
     }
     ```
 
-Note that the fields which were not updated are coming out as `null`. This is because the [REPLICA IDENTITY](../overview/#replica-identity) of the table is `CHANGE` by default, where you only send the values of the updated columns in the change event.
+Note that the fields which were not updated are coming out as `null`. This is because the [REPLICA IDENTITY](../key-concepts/#replica-identity) of the table is `CHANGE` by default, where you only send the values of the updated columns in the change event.
 
 #### Delete a row and view the delete event
 
