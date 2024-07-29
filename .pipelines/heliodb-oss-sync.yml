@@ -1,3 +1,38 @@
+trigger:
+  branches:
+    include:
+      - "*"
+  batch: true
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  system.debug: 'true'
+  tempBranchName: 'temp-branch-for-sync-pipeline'
+  branchName: $[replace(variables['Build.SourceBranch'], 'refs/heads/', '')]
+
 steps:
+- checkout: self
+  persistCredentials: true
 - script: |
-    echo "Hello world"
+    set -euo pipefail
+
+    git remote add azure-devops https://$(System.AccessToken)@$(INTERNAL_REPO_URL)
+    git fetch azure-devops
+
+    git checkout -b $(tempBranchName)
+
+    echo "Pushing Branch $(branchName) ..."
+
+    if ! git show-ref --verify --quiet refs/remotes/azure-devops/$(branchName); then
+      # If the branch does not exist in the remote, create it
+      git push -u azure-devops $(tempBranchName):$(branchName)
+    elif [ "$(branchName)" == "main" ]; then
+      # If the branch is main, push it without force
+      git push azure-devops $(tempBranchName):$(branchName)
+    else
+      # Otherwise, force push the branch
+      git push -f azure-devops $(tempBranchName):$(branchName)
+    fi
+  displayName: 'Push to Azure DevOps'
