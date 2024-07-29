@@ -109,6 +109,10 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
   const completedObjects = 12;
   const progress = Math.round((completedObjects / totalObjects) * 100);
 
+  const totalObjects = 25;
+  const completedObjects = 12;
+  const progress = Math.round((completedObjects / totalObjects) * 100);
+
   return (
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="start">
