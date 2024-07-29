@@ -36,8 +36,6 @@ It works as follows:
 1. Deploy the YugabyteDB Connector in your preferred Kafka Connect environment.
 1. The connector uses replication slots to capture change events and publishes them directly to a Kafka topic.
 
-This is the recommended approach for most CDC applications due to its compatibility with PostgreSQL.
-
 {{<lead link="./using-logical-replication/">}}
 To learn about CDC in YugabyteDB using the PostgreSQL Replication Protocol, see [CDC using PostgreSQL Replication Protocol](./using-logical-replication).
 {{</lead>}}
