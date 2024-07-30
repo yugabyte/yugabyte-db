@@ -7,6 +7,9 @@ cascade:
   unversioned: true
 description: YugabyteDB Voyager is a powerful open-source data migration engine that helps you migrate your database to YugabyteDB quickly and securely.
 type: indexpage
+aliases:
+  - /preview/voyager/
+  - /preview/tools/voyager/
 menu:
   preview_yugabyte-voyager:
     identifier: yugabyte-voyager

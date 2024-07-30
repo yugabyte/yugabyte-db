@@ -13,6 +13,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import java.util.ArrayList;
 import java.util.List;
@@ -206,6 +207,11 @@ public class CloudRegionHelper {
           vnet = queryHelper.getVnetOrFail(region);
         }
         region.setVnetName(vnet);
+        if (metadata.networkRGOverride != null || metadata.resourceGroupOverride != null) {
+          AzureRegionCloudInfo regionCloudInfo = CloudInfoInterface.get(region);
+          regionCloudInfo.setAzuNetworkRGOverride(metadata.networkRGOverride);
+          regionCloudInfo.setAzuRGOverride(metadata.resourceGroupOverride);
+        }
         region.update();
         if (zoneNets == null || zoneNets.size() == 0) {
           zoneInfo = queryHelper.getZones(region.getUuid(), vnet);
