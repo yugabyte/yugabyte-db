@@ -1,0 +1,4 @@
+* @microsoft/heliodb-contributors
+
+/.pipelines/heliodb-oss-sync.yml @gledis69 @mtuncer
+/.pipelines/heliodb-internal-compatibility.yml @gledis69 @mtuncer
