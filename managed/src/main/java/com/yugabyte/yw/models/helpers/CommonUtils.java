@@ -760,26 +760,50 @@ public class CommonUtils {
   public static NodeDetails getARandomLiveTServer(Universe universe) {
     UniverseDefinitionTaskParams.Cluster primaryCluster =
         universe.getUniverseDetails().getPrimaryCluster();
-    List<NodeDetails> tserverLiveNodes =
-        universe.getUniverseDetails().getNodesInCluster(primaryCluster.uuid).stream()
-            .filter(nodeDetails -> nodeDetails.isTserver)
-            .filter(nodeDetails -> nodeDetails.state == NodeState.Live)
-            .collect(Collectors.toList());
-    if (tserverLiveNodes.isEmpty()) {
+    NodeDetails randomLiveTServer =
+        getARandomLiveTServer(universe.getUniverseDetails().getNodesInCluster(primaryCluster.uuid));
+    if (randomLiveTServer == null) {
       throw new IllegalStateException(
           "No live TServers found for Universe UUID: " + universe.getUniverseUUID());
     }
-    return tserverLiveNodes.get(new Random().nextInt(tserverLiveNodes.size()));
+    return randomLiveTServer;
   }
 
   public static NodeDetails getServerToRunYsqlQuery(Universe universe) {
     // Prefer the master leader since that will result in a faster query.
-    // If the leader does not have a tserver process though, select any random tserver.
-    NodeDetails nodeToUse = universe.getMasterLeaderNode();
-    if (nodeToUse == null || !nodeToUse.isTserver) {
-      nodeToUse = getARandomLiveTServer(universe);
+    // If the master leader is not a tserver - prefer tserver in the same region.
+    // If no tserver in the same region either - use random live tserver.
+    NodeDetails masterLeader = universe.getMasterLeaderNode();
+    if (masterLeader != null) {
+      if (masterLeader.isTserver) {
+        // If master leader is a TServer - use that.
+        return masterLeader;
+      }
+      UniverseDefinitionTaskParams.Cluster primaryCluster =
+          universe.getUniverseDetails().getPrimaryCluster();
+      List<NodeDetails> sameRegionNodes =
+          universe.getUniverseDetails().getNodesInCluster(primaryCluster.uuid).stream()
+              .filter(n -> n.getRegion().equals(masterLeader.getRegion()))
+              .toList();
+      NodeDetails sameRegionTServer = getARandomLiveTServer(sameRegionNodes);
+      if (sameRegionTServer != null) {
+        // Live TServer present in master leader region - use that.
+        return sameRegionTServer;
+      }
     }
-    return nodeToUse;
+    return getARandomLiveTServer(universe);
+  }
+
+  private static NodeDetails getARandomLiveTServer(Collection<NodeDetails> nodes) {
+    List<NodeDetails> tserverLiveNodes =
+        nodes.stream()
+            .filter(nodeDetails -> nodeDetails.isTserver)
+            .filter(nodeDetails -> nodeDetails.state == NodeState.Live)
+            .collect(Collectors.toList());
+    if (tserverLiveNodes.isEmpty()) {
+      return null;
+    }
+    return tserverLiveNodes.get(new Random().nextInt(tserverLiveNodes.size()));
   }
 
   public static String logTableName(String tableName) {
