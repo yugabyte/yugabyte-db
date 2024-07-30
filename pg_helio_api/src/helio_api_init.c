@@ -263,6 +263,9 @@ bool EnableSchemaValidation =
 #define DEFAULT_MAX_SCHEMA_VALIDATOR_SIZE 10 * 1024
 int MaxSchemaValidatorSize = DEFAULT_MAX_SCHEMA_VALIDATOR_SIZE;
 
+#define DEFAULT_ENABLE_MULTI_INDEX_RUM_JOIN false
+bool EnableMultiIndexRumJoin = DEFAULT_ENABLE_MULTI_INDEX_RUM_JOIN;
+
 #define DEFAULT_ENABLE_BG_WORKER false
 bool EnableBackgroundWorker = DEFAULT_ENABLE_BG_WORKER;
 
@@ -746,6 +749,17 @@ InitApiConfigurations(char *prefix)
 		NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
+		"helio_api.enableMultiIndexRumJoin",
+		gettext_noop(
+			"Whether or not to add the cursors on aggregation style queries."),
+		NULL,
+		&EnableMultiIndexRumJoin,
+		DEFAULT_ENABLE_MULTI_INDEX_RUM_JOIN,
+		PGC_USERSET,
+		0,
+		NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
 		"helio_api.enableHelioBackgroundWorker",
 		gettext_noop("Enable Helio Background worker."),
 		NULL, &EnableBackgroundWorker, DEFAULT_ENABLE_BG_WORKER,
@@ -832,6 +846,7 @@ InstallHelioApiPostgresHooks(void)
 
 	RegisterScanNodes();
 	RegisterQueryScanNodes();
+	RegisterRumJoinScanNodes();
 }
 
 

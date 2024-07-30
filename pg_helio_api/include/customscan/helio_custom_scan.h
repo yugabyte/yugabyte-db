@@ -22,5 +22,14 @@ Query * ReplaceCursorParamValues(Query *query, ParamListInfo boundParams);
 
 void ValidateCursorCustomScanPlan(Plan *plan);
 
-List * GetBaseRelationExprs(Relation tableRel, Index relIdIndex);
+void UpdatePathsWithOptimizedExtensionCustomPlans(PlannerInfo *root, RelOptInfo *rel,
+												  RangeTblEntry *rte);
+
+Path * CreateRumJoinScanPathForBitmapAnd(PlannerInfo *root, RelOptInfo *rel,
+										 RangeTblEntry *rte, BitmapHeapPath *heapPath);
+
+
+bool IsRumJoinScanPath(Path *path);
+
+PathTarget * BuildBaseRelPathTarget(Relation tableRel, Index relIdIndex);
 #endif

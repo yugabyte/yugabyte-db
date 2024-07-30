@@ -13,5 +13,6 @@
 
 void RegisterScanNodes(void);
 void RegisterQueryScanNodes(void);
+void RegisterRumJoinScanNodes(void);
 
 #endif

@@ -170,7 +170,6 @@ static TupleTableSlot * SkipWithUserContinuation(ExtensionScanState *state,
 												 bool *shouldContinue);
 static bool ExtensionScanNextRecheck(ScanState *state, TupleTableSlot *slot);
 static void PostProcessSlot(ExtensionScanState *extensionScanState, TupleTableSlot *slot);
-static PathTarget * BuildBaseRelPathTarget(Relation tableRel, Index relIdIndex);
 
 static void CopyNodeInputContinuation(ExtensibleNode *target_node, const
 									  ExtensibleNode *source_node);
@@ -348,6 +347,108 @@ UpdatePathsToForceRumIndexScanToBitmapHeapScan(PlannerInfo *root, RelOptInfo *re
 			}
 		}
 	}
+}
+
+
+/*
+ * Adds optimized paths based on custom scan plans.
+ * Currently, this walks the paths and if there's a BitmapAnd with all subpaths that are
+ * RUM indexes, then adds a RumCustomJoinScan if the feature is enabled.
+ */
+void
+UpdatePathsWithOptimizedExtensionCustomPlans(PlannerInfo *root, RelOptInfo *rel,
+											 RangeTblEntry *rte)
+{
+	ListCell *cell, *innerCell;
+	foreach(cell, rel->pathlist)
+	{
+		Path *inputPath = lfirst(cell);
+		if (IsA(inputPath, BitmapHeapPath))
+		{
+			BitmapHeapPath *bitmapPath = (BitmapHeapPath *) inputPath;
+			if (IsA(bitmapPath->bitmapqual, BitmapAndPath))
+			{
+				/* Now check if all of the inner paths of the bitmapAnd are RUM index scan paths */
+				BitmapAndPath *andPath = (BitmapAndPath *) bitmapPath->bitmapqual;
+				bool isAllRumIndexScans = true;
+				foreach(innerCell, andPath->bitmapquals)
+				{
+					Path *andQual = lfirst(innerCell);
+					if (!IsA(andQual, IndexPath))
+					{
+						isAllRumIndexScans = false;
+						break;
+					}
+
+					IndexPath *andPath = (IndexPath *) andQual;
+					if (andPath->indexinfo->relam != RumIndexAmId())
+					{
+						isAllRumIndexScans = false;
+						break;
+					}
+				}
+
+				if (isAllRumIndexScans)
+				{
+					Path *customPath = CreateRumJoinScanPathForBitmapAnd(root, rel, rte,
+																		 bitmapPath);
+					lfirst(cell) = customPath;
+				}
+			}
+		}
+	}
+}
+
+
+/*
+ * Builds a PathTarget that is valid for a base table Relation.
+ */
+PathTarget *
+BuildBaseRelPathTarget(Relation tableRel, Index relIdIndex)
+{
+	PathTarget *pathTarget = makeNode(PathTarget);
+	pathTarget->cost.per_tuple = 0;
+	pathTarget->cost.startup = 0;
+	pathTarget->has_volatile_expr = VOLATILITY_UNKNOWN;
+	pathTarget->sortgrouprefs = 0;
+
+	/* make the inner path project the base projection */
+	ParseState *pstate = make_parsestate(NULL);
+
+	/*
+	 * Follow the logic for SELECT * - see parse_target.c
+	 * We construct a ParseNameItem, and expand the rels into
+	 * vars. This is passed to the inner path so we don't apply
+	 * projections in the inner path.
+	 * From it we construct a pathTarget as if we're applying a
+	 * SELECT * and
+	 */
+	ParseNamespaceItem *item = addRangeTableEntryForRelation(pstate,
+															 tableRel,
+															 AccessShareLock,
+															 NULL,
+															 false,
+															 false);
+	List *tlist = expandNSItemAttrs_compat(pstate, item, 0, 0);
+
+	/* Now set the actual vars into the PathTarget */
+	List *exprs = NIL;
+	ListCell *targetEntryCell;
+	foreach(targetEntryCell, tlist)
+	{
+		TargetEntry *entry = (TargetEntry *) lfirst(targetEntryCell);
+		if (IsA(entry->expr, Var))
+		{
+			Var *var = (Var *) entry->expr;
+			var->varno = relIdIndex;
+		}
+
+		exprs = lappend(exprs, entry->expr);
+	}
+
+	pathTarget->exprs = exprs;
+	pathTarget->width = get_rel_data_width(tableRel, NULL);
+	return pathTarget;
 }
 
 
@@ -557,7 +658,8 @@ UpdatePathsWithExtensionCustomPlans(PlannerInfo *root, RelOptInfo *rel,
 
 		if (inputPath->pathtype != T_BitmapHeapScan &&
 			inputPath->pathtype != T_TidScan &&
-			inputPath->pathtype != T_TidRangeScan)
+			inputPath->pathtype != T_TidRangeScan &&
+			!IsRumJoinScanPath(inputPath))
 		{
 			/* For now just break if it's not a seq scan or bitmap scan */
 			elog(INFO, "Skipping unsupported path type %d", inputPath->pathtype);
@@ -588,7 +690,6 @@ UpdatePathsWithExtensionCustomPlans(PlannerInfo *root, RelOptInfo *rel,
 		path->parallel_safe = false;
 
 		/* move the 'projection' from the path to the custom path. */
-		path->pathtarget = inputPath->pathtarget;
 
 		/* Extract the base rel for the query */
 		Relation tableRel = RelationIdGetRelation(rte->relid);
@@ -597,6 +698,7 @@ UpdatePathsWithExtensionCustomPlans(PlannerInfo *root, RelOptInfo *rel,
 		const char *tableName = pstrdup(NameStr(tableRel->rd_rel->relname));
 
 		/* Point the nested scan's projection to the base table's projection */
+		path->pathtarget = inputPath->pathtarget;
 		inputPath->pathtarget = BuildBaseRelPathTarget(tableRel, rel->relid);
 
 		/* Ensure you close the rel */
@@ -1373,58 +1475,6 @@ SkipWithUserContinuation(ExtensionScanState *state, bool *shouldContinue)
 			return slot;
 		}
 	}
-}
-
-
-/*
- * Builds a PathTarget that is valid for a base table Relation.
- */
-static PathTarget *
-BuildBaseRelPathTarget(Relation tableRel, Index relIdIndex)
-{
-	PathTarget *pathTarget = makeNode(PathTarget);
-	pathTarget->cost.per_tuple = 0;
-	pathTarget->cost.startup = 0;
-	pathTarget->has_volatile_expr = VOLATILITY_UNKNOWN;
-	pathTarget->sortgrouprefs = 0;
-
-	/* make the inner path project the base projection */
-	ParseState *pstate = make_parsestate(NULL);
-
-	/*
-	 * Follow the logic for SELECT * - see parse_target.c
-	 * We construct a ParseNameItem, and expand the rels into
-	 * vars. This is passed to the inner path so we don't apply
-	 * projections in the inner path.
-	 * From it we construct a pathTarget as if we're applying a
-	 * SELECT * and
-	 */
-	ParseNamespaceItem *item = addRangeTableEntryForRelation(pstate,
-															 tableRel,
-															 AccessShareLock,
-															 NULL,
-															 false,
-															 false);
-	List *tlist = expandNSItemAttrs_compat(pstate, item, 0, 0);
-
-	/* Now set the actual vars into the PathTarget */
-	List *exprs = NIL;
-	ListCell *targetEntryCell;
-	foreach(targetEntryCell, tlist)
-	{
-		TargetEntry *entry = (TargetEntry *) lfirst(targetEntryCell);
-		if (IsA(entry->expr, Var))
-		{
-			Var *var = (Var *) entry->expr;
-			var->varno = relIdIndex;
-		}
-
-		exprs = lappend(exprs, entry->expr);
-	}
-
-	pathTarget->exprs = exprs;
-	pathTarget->width = get_rel_data_width(tableRel, NULL);
-	return pathTarget;
 }
 
 

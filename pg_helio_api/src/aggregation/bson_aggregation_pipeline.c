@@ -52,7 +52,6 @@
 #include "commands/defrem.h"
 #include "utils/feature_counter.h"
 #include "utils/version_utils.h"
-#include "customscan/helio_custom_scan.h"
 #include "aggregation/bson_query.h"
 
 #include "aggregation/bson_aggregation_pipeline_private.h"

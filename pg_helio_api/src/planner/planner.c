@@ -515,6 +515,9 @@ ExtensionRelPathlistHookCore(PlannerInfo *root, RelOptInfo *rel, Index rti,
 		}
 	}
 
+	/* Now before modifying any paths, walk to check for raw path optimizations */
+	UpdatePathsWithOptimizedExtensionCustomPlans(root, rel, rte);
+
 	/*
 	 * Update any paths with custom scans as appropriate.
 	 */
