@@ -14,7 +14,7 @@ type: docs
 
 To get started streaming data change events from a YugabyteDB database using a replication slot, you can use either of the following client options:
 
-- [`pg_recvlogical`](#get-started-with-pg_recvlogical)
+- [pg_recvlogical](#get-started-with-pg_recvlogical)
 - [YugabyteDB connector](#get-started-with-yugabytedb-connector)
 
 {{< note title="Note" >}}
@@ -25,9 +25,9 @@ CDC via logical replication is supported in YugabyteDB starting from version 202
 
 ## Get started with pg_recvlogical
 
-`pg_recvlogical` is a command-line tool provided by PostgreSQL for interacting with the logical replication feature. It is specifically used to receive changes from the database using logical replication slots.
+pg_recvlogical is a command-line tool provided by PostgreSQL for interacting with the logical replication feature. It is specifically used to receive changes from the database using logical replication slots.
 
-YugabyteDB provides the `pg_recvlogical` binary in the `<yugabyte-db-dir>/postgres/bin/` directory, which is inherited and based on `PostgreSQL-11.2`. Although PostgreSQL also offers a `pg_recvlogical` binary, users are strongly advised to use the YugabyteDB version to avoid compatibility issues due to `PostgreSQL` version.
+YugabyteDB provides the pg_recvlogical binary in the `<yugabyte-db-dir>/postgres/bin/` directory, which is inherited and based on PostgreSQL 11.2. Although PostgreSQL also offers a pg_recvlogical binary, you are strongly advised to use the YugabyteDB version to avoid compatibility issues.
 
 ### Set up pg_recvlogical
 
@@ -78,9 +78,9 @@ Expected output after running the command that indicates successful creation of 
 
 #### Configure and start pg_recvlogical
 
-The `pg_recvlogical` binary can be found under `<yugabyte-db-dir>/postgres/bin/`. We'll use the same replication slot created in the previous section with `pg_recvlogical`.
+The pg_recvlogical binary can be found under `<yugabyte-db-dir>/postgres/bin/`.
 
-Open a new shell and start `pg_recvlogical` to connect to the `yugabyte` database with the superuser `yugabyte` and replicate changes using the following command:
+Open a new shell and start pg_recvlogical to connect to the `yugabyte` database with the superuser `yugabyte` and replicate changes using the replication slot you created as follows:
 
 ```sh
 ./pg_recvlogical -d yugabyte \
@@ -93,11 +93,11 @@ Open a new shell and start `pg_recvlogical` to connect to the `yugabyte` databas
 
 Any changes that get replicated are printed to stdout.
 
-For more `pg_recvlogical` configurations, refer to the PostgreSQL [pg_recvlogical](https://www.postgresql.org/docs/11/app-pgrecvlogical.html) documentation.
+For more pg_recvlogical configurations, refer to the PostgreSQL [pg_recvlogical](https://www.postgresql.org/docs/11/app-pgrecvlogical.html) documentation.
 
 #### Verify Replication
 
-Return to the shell where `ysqlsh` is running. Perform DMLs on `employees` table.
+Return to the shell where ysqlsh is running. Perform DMLs on the `employees` table.
 
 ```sql
 BEGIN;
@@ -122,7 +122,7 @@ COMMIT 2
 
 #### Add tables (Dynamic table addition)
 
-You can add a new table to the `yugabyte` database and any DMLs performed on the new table would also be replicated to `pg_recvlogical`.
+You can add a new table to the `yugabyte` database and any DMLs performed on the new table would also be replicated to pg_recvlogical.
 
 1. In the `yugabyte` database, create a new table `projects`:
 
@@ -165,7 +165,7 @@ In this tutorial you will start the Debezium services, run a YugabyteDB instance
 
 ### Start the services
 
-Using Debezium requires three separate services: [Zookeeper](http://zookeeper.apache.org/), [Kafka](), and the Debezium connector service.
+Using Debezium requires three separate services: [Zookeeper](http://zookeeper.apache.org/), [Kafka](https://kafka.apache.org), and the Debezium connector service.
 
 In this tutorial, you will set up a single instance of each service using Docker and the Debezium container images.
 
