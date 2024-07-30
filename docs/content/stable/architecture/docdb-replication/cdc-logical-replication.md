@@ -5,10 +5,8 @@ linkTitle: CDC using Logical Replication
 description: Learn how YugabyteDB supports asynchronous replication of data changes (inserts, updates, and deletes) to external databases or applications.
 headContent: Asynchronous replication of data changes (inserts, updates, and deletes) to external databases or applications
 badges: ea
-aliases:
-  - /preview/explore/logical-replication/
 menu:
-  preview:
+  stable:
     parent: architecture-docdb-replication
     identifier: architecture-docdb-replication-cdc-logical-replication
     weight: 500

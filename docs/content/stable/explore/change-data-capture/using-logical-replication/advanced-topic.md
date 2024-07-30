@@ -4,7 +4,7 @@ headerTitle: Advanced topics
 linkTitle: Advanced topics
 description: Advanced topics for Change Data Capture in YugabyteDB.
 menu:
-  preview:
+  stable:
     parent: explore-change-data-capture-logical-replication
     identifier: advanced-topics
     weight: 50

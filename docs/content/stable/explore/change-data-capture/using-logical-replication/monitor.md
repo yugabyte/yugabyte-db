@@ -4,7 +4,7 @@ headerTitle: Monitor
 linkTitle: Monitor
 description: Monitor Change Data Capture in YugabyteDB.
 menu:
-  preview:
+  stable:
     parent: explore-change-data-capture-logical-replication
     identifier: monitor
     weight: 30

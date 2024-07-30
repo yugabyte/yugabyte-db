@@ -7,7 +7,7 @@ headcontent: Capture changes made to data in the database
 cascade:
   earlyAccess: /preview/releases/versioning/#feature-maturity
 menu:
-  preview:
+  stable:
     identifier: explore-change-data-capture-logical-replication
     parent: explore-change-data-capture
     weight: 240

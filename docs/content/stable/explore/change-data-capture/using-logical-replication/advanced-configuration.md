@@ -5,7 +5,7 @@ linkTitle: Advanced configuration
 description: Advanced Configurations for Logical Replication.
 headcontent: Tune your CDC configuration
 menu:
-  preview:
+  stable:
     parent: explore-change-data-capture-logical-replication
     identifier: advanced-configurations
     weight: 40

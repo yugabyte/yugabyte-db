@@ -5,7 +5,7 @@ linkTitle: Get started
 description: Get started with Change Data Capture in YugabyteDB.
 headcontent: Start using CDC with logical replication
 menu:
-  preview:
+  stable:
     parent: explore-change-data-capture-logical-replication
     identifier: get-started
     weight: 20
