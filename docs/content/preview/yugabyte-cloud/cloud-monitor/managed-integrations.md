@@ -108,18 +108,19 @@ The Prometheus integration requires the following:
 
 - Prometheus instance
   - deployed in a VPC on AWS
-  - [OLTP Receiver](https://prometheus.io/docs/prometheus/latest/feature_flags/#otlp-receiver) feature flag enabled
-  - publically-accessible endpoint URL; the DNS for the endpoint must be in a public hosted zone in AWS.
-- YugabyteDB cluster from which you want to export metrics
-  - the cluster is [deployed in VPCs](../../cloud-basics/cloud-vpcs/cloud-add-vpc/) on AWS
-  - each region VPC is peered with the VPC hosting Prometheus. See [Peer VPCs](../../cloud-basics/cloud-vpcs/cloud-add-vpc-aws/).
-  - VPCs have the following Inbound Security Group rules:
+  - [OLTP Receiver](https://prometheus.io/docs/prometheus/latest/querying/api/#otlp-receiver) feature flag enabled
+  - publically-accessible endpoint URL that resolves to the private IP of the Prometheus instance; the DNS for the endpoint must be in a public hosted zone in AWS.
+  - VPC hosting the Prometheus instance has the following Inbound Security Group rules:
     - Allow HTTP inbound traffic on port 80 for Prometheus endpoint URL (HTTP)
     - Allow HTTPS inbound traffic on port 443 for Prometheus endpoint URL (HTTPS)
 
     See [Control traffic to your AWS resources using security groups](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html) in the AWS documentation.
 
-  As each region of a cluster deployed in AWS has its own VPC, make sure that all the VPCs are peered and allow inbound access from Prometheus; this also applies regions you add or change after deployment, and to read replicas. For information on VPC networking in YugabyteDB Aeon, see [VPC network overview](../../cloud-basics/cloud-vpcs/cloud-vpc-intro/).
+- YugabyteDB Aeon cluster from which you want to export metrics
+  - the cluster is [deployed in VPCs](../../cloud-basics/cloud-vpcs/cloud-add-vpc/) on AWS
+  - each region VPC is peered with the VPC hosting Prometheus. See [Peer VPCs](../../cloud-basics/cloud-vpcs/cloud-add-vpc-aws/).
+
+  As each region of a cluster deployed in AWS has its own VPC, make sure that all the VPCs are peered and allow inbound access from Prometheus; this also applies to regions you add or change after deployment, and to read replicas. For information on VPC networking in YugabyteDB Aeon, see [VPC network overview](../../cloud-basics/cloud-vpcs/cloud-vpc-intro/).
 
 To create an export configuration, do the following:
 
