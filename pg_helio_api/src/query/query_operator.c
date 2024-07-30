@@ -1052,6 +1052,89 @@ CreateQualsFromQueryDocIterator(bson_iter_t *queryDocIterator,
 
 
 /*
+ * if $ref and $id exist in the queryDocIterator, it needs to be treated as childPath,
+ * and the quals need to be created for the childPath.
+ * else should be treated as a regular queryDocIterator.
+ */
+static Expr *
+CreateQualsForDBRef(bson_iter_t *refIterator,
+					BsonQueryOperatorContext *context,
+					const char *path)
+{
+	bson_value_t idValue = { 0 };
+	bson_value_t dbValue = { 0 };
+	bson_value_t refValue = *bson_iter_value(refIterator);
+
+	List *quals = NIL;
+	bool hasUnknownKey = false;
+	while (bson_iter_next(refIterator))
+	{
+		const char *key = bson_iter_key(refIterator);
+		if (strcmp(key, "$id") == 0)
+		{
+			idValue = *bson_iter_value(refIterator);
+		}
+		else if (strcmp(key, "$db") == 0)
+		{
+			dbValue = *bson_iter_value(refIterator);
+		}
+		else
+		{
+			hasUnknownKey = true;
+			break;
+		}
+	}
+
+	/*todo support optional fields */
+	if (hasUnknownKey)
+	{
+		ereport(ERROR, (errcode(MongoBadValue),
+						errmsg(
+							"unknown key for DBRef, only $ref, $id and $db are allowed")));
+	}
+
+	const MongoQueryOperator *eqOperator = GetMongoQueryOperatorByQueryOperatorType(
+		QUERY_OPERATOR_EQ, context->inputType);
+
+	/* <path> : <value>, convert to = expression  */
+	StringInfo pathBuffer = makeStringInfo();
+	appendStringInfo(pathBuffer, "%s.$ref", path);
+	Expr *refExpr = CreateFuncExprForQueryOperator(context, pathBuffer->data,
+												   eqOperator, &refValue);
+	quals = lappend(quals, refExpr);
+
+	resetStringInfo(pathBuffer);
+	appendStringInfo(pathBuffer, "%s.$id", path);
+	Expr *idExpr = CreateFuncExprForQueryOperator(context, pathBuffer->data,
+												  eqOperator, &idValue);
+	quals = lappend(quals, idExpr);
+
+	resetStringInfo(pathBuffer);
+	appendStringInfo(pathBuffer, "%s.$db", path);
+	Expr *dbExpr;
+	if (dbValue.value_type != BSON_TYPE_EOD)
+	{
+		dbExpr = CreateFuncExprForQueryOperator(context, pathBuffer->data,
+												eqOperator, &dbValue);
+	}
+	else
+	{
+		/* to align with Atlas behavior */
+		const MongoQueryOperator *existOperator =
+			GetMongoQueryOperatorByQueryOperatorType(
+				QUERY_OPERATOR_EXISTS, context->inputType);
+		dbValue.value_type = BSON_TYPE_BOOL;
+		dbValue.value.v_bool = false;
+		dbExpr = CreateFuncExprForQueryOperator(context, pathBuffer->data,
+												existOperator, &dbValue);
+	}
+	quals = lappend(quals, dbExpr);
+	pfree(pathBuffer->data);
+	return make_ands_explicit(quals);
+}
+
+
+/*
  * Core implementation of CreateQualsFromQueryDocIterator.
  */
 static List *
@@ -2044,6 +2127,16 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 				bson_value_copy(bson_iter_value(operatorDocIterator), *options);
 
 				return NULL;
+			}
+
+			if (strcmp(mongoOperatorName, "$ref") == 0)
+			{
+				bson_iter_t refIterator = *operatorDocIterator;
+				if (bson_iter_next(&refIterator) && strcmp(bson_iter_key(&refIterator),
+														   "$id") == 0)
+				{
+					return CreateQualsForDBRef(operatorDocIterator, context, path);
+				}
 			}
 
 			ereport(ERROR, (errcode(MongoBadValue), errmsg(
