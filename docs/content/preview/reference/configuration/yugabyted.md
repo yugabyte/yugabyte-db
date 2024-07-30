@@ -94,6 +94,8 @@ Use the `yugabyted backup` command to take a backup of a YugabyteDB database int
 
 Note that the yugabyted node must be started with `--backup_daemon=true` to initialize the backup/restore agent.
 
+If the cluster was started using the `--backup_daemon` flag, you also need to download and extract the [YB Controller release](https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/ybc/2.1.0.0-b9/ybc-2.1.0.0-b9-linux-x86_64.tar.gz) to the yugabyte-{{< yb-version version="preview" >}} folder.
+
 #### Syntax
 
 ```text
@@ -321,7 +323,7 @@ To disable encryption at rest for a YugabyteDB cluster which has encryption at r
 : The base directory for the yugabyted server.
 
 --log_dir *log-directory*
-: : The log directory for the yugabyted server.
+: The log directory for the yugabyted server.
 
 #### point_in_time_recovery
 
@@ -625,6 +627,8 @@ Use the `yugabyted restore` command to restore a database in the YugabyteDB clus
 
 Note that the yugabyted node must be started with `--backup_daemon=true` to initialize the backup/restore agent.
 
+If the cluster was started using the `--backup_daemon` flag, you also need to download and extract the [YB Controller release](https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/ybc/2.1.0.0-b9/ybc-2.1.0.0-b9-linux-x86_64.tar.gz) to the yugabyte-{{< yb-version version="preview" >}} folder.
+
 #### Syntax
 
 ```text
@@ -689,6 +693,8 @@ Determine the status of a restore task:
 Use the `yugabyted start` command to start a one-node YugabyteDB cluster for running [YSQL](../../../api/ysql) and [YCQL](../../../api/ycql) workloads in your local environment.
 
 Note that to use encryption in transit, OpenSSL must be installed on the nodes.
+
+Note that the yugabyted node must be started with `--backup_daemon=true` to initialize the backup/restore agent. You also need to download and extract the [YB Controller release](https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/ybc/2.1.0.0-b9/ybc-2.1.0.0-b9-linux-x86_64.tar.gz) to the yugabyte-{{< yb-version version="preview" >}} folder.
 
 #### Syntax
 
@@ -767,7 +773,8 @@ For on-premises deployments, consider racks as zones to treat them as fault doma
 : Use this flag to start a read replica node.
 
 --backup_daemon *backup-daemon-process*
-: Enable or disable the backup daemon with yugabyted start. Default : `false`
+: Enable or disable the backup daemon with yugabyted start. Default: `false`
+: If you start a cluster using the `--backup_daemon` flag, you also need to download and extract the [YB Controller release](https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/ybc/2.1.0.0-b9/ybc-2.1.0.0-b9-linux-x86_64.tar.gz) to the yugabyte-{{< yb-version version="preview" >}} folder.
 
 --enable_pg_parity_tech_preview *PostgreSQL-compatibilty*
 : Enable Enhanced Postgres Compatibility Mode. Default: `false`
@@ -1771,7 +1778,7 @@ To disable encryption at rest in a multi-zone or multi-region cluster with this 
 
 Use the following steps to set up [xCluster replication](../../../architecture/docdb-replication/async-replication/) between two YugabyteDB clusters.
 
-To set up xCluster replication, you first need to deploy two (source and target) clusters. Refer to [Create a multi-zone cluster](#create-a-multi-zone-cluster). Add the `--backup_daemon` flag
+To set up xCluster replication, you first need to deploy two (source and target) clusters. Refer to [Create a multi-zone cluster](#create-a-multi-zone-cluster). Add the `--backup_daemon` flag.
 
 {{< tabpane text=true >}}
 
@@ -1868,8 +1875,6 @@ After running `yugabyted xcluster checkpoint`, you must bootstrap the databases 
 - For databases that don't have any data, apply the same database and schema to the target cluster.
 - For databases that do have data, you need to back up the databases on the source, and restore to the target. The commands to do this are provided in the output of the `yugabyted xcluster checkpoint` command.
 
-If the cluster was started using the `--backup_daemon` flag, you need to download and extract the [YB Controller release](https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/ybc/2.1.0.0-b9/ybc-2.1.0.0-b9-linux-x86_64.tar.gz) to the yugabyte-{{< yb-version version="preview" >}} folder.
-
 If the cluster was not started using the `--backup_daemon` flag, you must manually complete the backup and restore using [distributed snapshots](../../../manage/backup-restore/snapshot-ysql/).
 
 After setting up the replication between the clusters, you can display the replication status using the `yugabyted xcluster status` command:
@@ -1930,7 +1935,7 @@ Upgrading an existing YugabyteDB cluster that was deployed using yugabyted inclu
     ./bin/yugabyted finalize_upgrade --base_dir <path_to_base_dir>
     ```
 
-    * Use `--upgrade_ysql_timeout` flag to specify custom [YSQL upgrade timeout](../../../manage/upgrade-deployment/#2-upgrade-the-ysql-system-catalog). Default value is 60000 ms.
+    Use the `--upgrade_ysql_timeout` flag to specify custom [YSQL upgrade timeout](../../../manage/upgrade-deployment/#2-upgrade-the-ysql-system-catalog). Default value is 60000 ms.
 
     ```sh
     ./bin/yugabyted finalize_upgrade --base_dir <path_to_base_dir> --upgrade_ysql_timeout 10000
