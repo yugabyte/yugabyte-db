@@ -63,8 +63,7 @@ DEFINE_RUNTIME_PG_FLAG(bool, yb_ddl_rollback_enabled, true,
     "If true, upon failure of a YSQL DDL transaction that affects the DocDB syscatalog, the "
     "YB-Master will rollback the changes made to the DocDB syscatalog.");
 
-// YB_TODO: Make this flag work with the ysql major version upgrade.
-DEFINE_NON_RUNTIME_bool(ysql_enable_db_catalog_version_mode, false,
+DEFINE_NON_RUNTIME_bool(ysql_enable_db_catalog_version_mode, true,
     "Enable the per database catalog version mode, a DDL statement that only "
     "affects the current database will only increment catalog version for "
     "the current database.");
