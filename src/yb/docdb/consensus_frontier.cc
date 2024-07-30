@@ -343,6 +343,20 @@ void ConsensusFrontier::ResetSchemaVersion() {
   cotable_schema_versions_.clear();
 }
 
+bool ConsensusFrontier::UpdateCoTableId(const Uuid& cotable_id, const Uuid& new_cotable_id) {
+  if (cotable_id == new_cotable_id) {
+    return false;
+  }
+  auto it = cotable_schema_versions_.find(cotable_id);
+  if (it == cotable_schema_versions_.end()) {
+    return false;
+  }
+  auto schema_version = it->second;
+  cotable_schema_versions_.erase(it);
+  cotable_schema_versions_[new_cotable_id] = schema_version;
+  return true;
+}
+
 void ConsensusFrontier::MakeExternalSchemaVersionsAtMost(
     std::unordered_map<Uuid, SchemaVersion, UuidHash>* min_schema_versions) const {
   if (primary_schema_version_) {
