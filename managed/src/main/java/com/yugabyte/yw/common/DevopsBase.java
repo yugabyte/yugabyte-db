@@ -11,6 +11,7 @@
 package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -25,6 +26,8 @@ import play.libs.Json;
 
 @Slf4j
 public abstract class DevopsBase {
+  private static final List<String> REGION_LEVEL_ALLOWED_OVERRIDES =
+      ImmutableList.of("AZURE_NETWORK_RG", "AZURE_RG");
   public static final String YBCLOUD_SCRIPT = "bin/ybcloud.sh";
   public static final String PY_WRAPPER = "bin/py_wrapper";
 
@@ -83,6 +86,10 @@ public abstract class DevopsBase {
       try {
         Map<String, String> envConfig = CloudInfoInterface.fetchEnvVars(region.getProvider());
         extraVars.putAll(envConfig);
+        // In case region has overrides - put values over provider values.
+        Map<String, String> regionEnvConfig = CloudInfoInterface.fetchEnvVars(region);
+        regionEnvConfig.keySet().retainAll(REGION_LEVEL_ALLOWED_OVERRIDES);
+        extraVars.putAll(regionEnvConfig);
       } catch (Exception e) {
         throw new RuntimeException("Failed to retrieve env variables for the provider!", e);
       }

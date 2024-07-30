@@ -470,7 +470,7 @@ class PgApiImpl {
   Status DmlBindColumnCondIsNotNull(PgStatement *handle, int attr_num);
   Status DmlBindRow(YBCPgStatement handle, uint64_t ybctid, YBCBindColumn* columns, int count);
 
-  Status DmlBindHashCode(
+  void DmlBindHashCode(
       PgStatement* handle, const std::optional<Bound>& start, const std::optional<Bound>& end);
 
   Status DmlBindRange(YBCPgStatement handle,

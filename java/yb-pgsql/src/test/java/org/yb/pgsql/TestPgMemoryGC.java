@@ -10,6 +10,7 @@ import org.yb.util.YBTestRunnerNonSanOrAArch64Mac;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.Collections;
 import java.util.Map;
@@ -90,7 +91,9 @@ public class TestPgMemoryGC extends BasePgSQLTest {
     try (Statement stmt = connection.createStatement()) {
       stmt.execute("SET work_mem='1GB'");
 
-      final int pgPid = getPgBackendPid(connection);
+      ResultSet rs = stmt.executeQuery("SELECT pg_backend_pid()");
+      rs.next();
+      final int pgPid = rs.getInt("pg_backend_pid");
       final long rssBefore = getRssForPid(pgPid);
 
       /*

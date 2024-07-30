@@ -23,6 +23,7 @@
 
 #include <limits.h>
 #include <math.h>
+#include <stdint.h>
 #include <string.h>
 #include "postgres.h"
 
@@ -1215,9 +1216,9 @@ static int64 YbDatumGetInt64(Datum value, Oid value_typid)
 	switch (value_typid)
 	{
 		case INT2OID:
-			return (int64) DatumGetInt16(value);
+			return DatumGetInt16(value);
 		case INT4OID:
-			return (int64) DatumGetInt32(value);
+			return DatumGetInt32(value);
 		case INT8OID:
 			return DatumGetInt64(value);
 		default:
@@ -2248,8 +2249,14 @@ YbPredetermineNeedsRecheck(Relation relation,
 
 typedef struct {
 	YBCPgBoundType type;
-	int64 value;
+	int64_t value;
 } YbBound;
+
+static inline bool
+YbBoundEqual(const YbBound *lhs, const YbBound *rhs)
+{
+	return lhs->type == rhs->type && lhs->value == rhs->value;
+}
 
 typedef struct {
 	YbBound start;
@@ -2257,13 +2264,13 @@ typedef struct {
 } YbRange;
 
 static inline bool
-YbBoundValid(const YbBound* bound)
+YbBoundValid(const YbBound *bound)
 {
 	return bound->type != YB_YQL_BOUND_INVALID;
 }
 
 static inline bool
-YbBoundInclusive(const YbBound* bound)
+YbBoundInclusive(const YbBound *bound)
 {
 	return bound->type == YB_YQL_BOUND_VALID_INCLUSIVE;
 }
@@ -2278,23 +2285,16 @@ YbIsValidRange(const YbBound *start, const YbBound *end)
 	        YbBoundInclusive(end));
 }
 
-#define YB_HASH_CODE_MAX 65535
-
 static bool
 YbApplyStartBound(YbRange *range, const YbBound *start)
 {
+	Assert(YbIsValidRange(&range->start, &range->end));
 	Assert(YbBoundValid(start));
 
-	if (start->value < 0)
-		return true;
-	if (start->value > YB_HASH_CODE_MAX)
+	if (!YbIsValidRange(start, &range->end))
 		return false;
 
-	if (YbBoundValid(&range->end) && !YbIsValidRange(start, &range->end))
-		return false;
-
-	if (!YbBoundValid(&range->start) ||
-	    (range->start.value < start->value) ||
+	if ((range->start.value < start->value) ||
 	    (range->start.value == start->value && !YbBoundInclusive(start)))
 	{
 		range->start = *start;
@@ -2305,18 +2305,13 @@ YbApplyStartBound(YbRange *range, const YbBound *start)
 static bool
 YbApplyEndBound(YbRange *range, const YbBound *end)
 {
+	Assert(YbIsValidRange(&range->start, &range->end));
 	Assert(YbBoundValid(end));
 
-	if (end->value < 0)
-		return false;
-	if (end->value > YB_HASH_CODE_MAX)
-		return true;
-
-	if (YbBoundValid(&range->start) && !YbIsValidRange(&range->start, end))
+	if (!YbIsValidRange(&range->start, end))
 		return false;
 
-	if (!YbBoundValid(&range->end) ||
-	    (range->end.value > end->value) ||
+	if ((range->end.value > end->value) ||
 	    (range->end.value == end->value && !YbBoundInclusive(end)))
 	{
 		range->end = *end;
@@ -2324,11 +2319,23 @@ YbApplyEndBound(YbRange *range, const YbBound *end)
 	return true;
 }
 
+static inline uint16_t
+YbBoundUint16Value(const YbBound *bound)
+{
+	Assert(bound->type == YB_YQL_BOUND_INVALID ||
+		   (bound->value >= 0 && bound->value <= UINT16_MAX));
+	return bound->value;
+}
+
 static bool
 YbBindHashKeys(YbScanDesc ybScan)
 {
-	ListCell   *lc;
-	YbRange		range = {0};
+	static const YbBound YB_MIN_HASH_BOUND =
+		{.type = YB_YQL_BOUND_VALID_INCLUSIVE, .value = 0};
+	static const YbBound YB_MAX_HASH_BOUND =
+		{.type = YB_YQL_BOUND_VALID_INCLUSIVE, .value = UINT16_MAX};
+	YbRange range = {.start = YB_MIN_HASH_BOUND, .end = YB_MAX_HASH_BOUND};
+	ListCell *lc;
 
 	foreach(lc, ybScan->hash_code_keys)
 	{
@@ -2341,9 +2348,9 @@ YbBindHashKeys(YbScanDesc ybScan)
 		switch (key->sk_strategy)
 		{
 			case BTEqualStrategyNumber:
-					bound.type = YB_YQL_BOUND_VALID_INCLUSIVE;
-					if (!YbApplyStartBound(&range, &bound) ||
-						!YbApplyEndBound(&range, &bound))
+				bound.type = YB_YQL_BOUND_VALID_INCLUSIVE;
+				if (!YbApplyStartBound(&range, &bound) ||
+					!YbApplyEndBound(&range, &bound))
 						return false;
 				break;
 
@@ -2368,11 +2375,15 @@ YbBindHashKeys(YbScanDesc ybScan)
 		}
 	}
 
+	if (YbBoundEqual(&range.start, &YB_MIN_HASH_BOUND))
+		range.start = (YbBound){};
+	if (YbBoundEqual(&range.end, &YB_MAX_HASH_BOUND))
+		range.end = (YbBound){};
 	if (YbBoundValid(&range.start) || YbBoundValid(&range.end))
-		HandleYBStatus(YBCPgDmlBindHashCodes(
+		YBCPgDmlBindHashCodes(
 			ybScan->handle,
-			range.start.type, range.start.value,
-			range.end.type, range.end.value));
+			range.start.type, YbBoundUint16Value(&range.start),
+			range.end.type, YbBoundUint16Value(&range.end));
 
 	return true;
 }
