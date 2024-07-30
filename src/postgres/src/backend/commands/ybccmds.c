@@ -776,10 +776,19 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 		recordDependencyOn(&myself, &tablegroup, DEPENDENCY_NORMAL);
 	}
 
+	OptSplit *split_options = stmt->split_options;
 	bool is_sys_catalog_table = YbIsSysCatalogTabletRelationByIds(relationId,
 																  namespaceId,
 																  schema_name);
 	const bool is_tablegroup = OidIsValid(tablegroupId);
+	/*
+	 * Generate ybrowid ASC sequentially if the flag is on unless a SPLIT INTO
+	 * option is provided, in which case the author likely intended a HASH
+	 * partitioned table.
+	 */
+	const bool can_generate_ybrowid_sequentially =
+		(*YBCGetGFlags()->TEST_generate_ybrowid_sequentially &&
+		 !(split_options && split_options->split_type == NUM_TABLETS));
 	/*
 	 * The hidden ybrowid column is added when there is no primary key.  This
 	 * column is HASH or ASC sorted depending on certain criteria.
@@ -788,7 +797,7 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 	if (primary_key)
 		ybrowid_mode = PG_YBROWID_MODE_NONE;
 	else if (is_colocated_via_database || is_tablegroup ||
-			 is_sys_catalog_table)
+			 is_sys_catalog_table || can_generate_ybrowid_sequentially)
 		ybrowid_mode = PG_YBROWID_MODE_RANGE;
 	else
 		ybrowid_mode = PG_YBROWID_MODE_HASH;
@@ -816,7 +825,6 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 						  is_tablegroup);
 
 	/* Handle SPLIT statement, if present */
-	OptSplit *split_options = stmt->split_options;
 	if (split_options)
 	{
 		if (is_colocated_via_database)
@@ -2022,9 +2030,10 @@ YBCDestroyVirtualWalForCDC()
 
 void
 YBCGetCDCConsistentChanges(const char *stream_id,
-						   YBCPgChangeRecordBatch **record_batch)
+						   YBCPgChangeRecordBatch **record_batch,
+						   YBCTypeEntityProvider type_entity_provider)
 {
-	HandleYBStatus(YBCPgGetCDCConsistentChanges(stream_id, record_batch));
+	HandleYBStatus(YBCPgGetCDCConsistentChanges(stream_id, record_batch, type_entity_provider));
 }
 
 void

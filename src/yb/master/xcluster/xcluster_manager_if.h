@@ -86,6 +86,13 @@ class XClusterManagerIf {
       const TableId& consumer_table_id, const SplitTabletIds& split_tablet_ids,
       const LeaderEpoch& epoch) = 0;
 
+  virtual void RemoveTableConsumerStream(
+      const TableId& table_id, const xcluster::ReplicationGroupId& replication_group_id) = 0;
+
+  virtual Status AlterUniverseReplication(
+      const AlterUniverseReplicationRequestPB* req, AlterUniverseReplicationResponsePB* resp,
+      rpc::RpcContext* rpc, const LeaderEpoch& epoch) = 0;
+
  protected:
   virtual ~XClusterManagerIf() = default;
 };

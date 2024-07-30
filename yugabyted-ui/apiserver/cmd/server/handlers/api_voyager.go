@@ -799,6 +799,7 @@ func getMigrationAssessmentReportFuture(log logger.Logger, migrationUuid string,
 
         sqlMetadataList := []models.SqlObjectMetadata{}
         var sqlMetadata1 models.SqlObjectMetadata
+        sqlMetadata1.ObjectName = "gemoteric_shape"
         sqlMetadata1.SqlType = "Table"
         sqlMetadata1.RowCount = 1000000
         sqlMetadata1.Iops = 1000

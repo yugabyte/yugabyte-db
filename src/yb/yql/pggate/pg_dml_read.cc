@@ -849,13 +849,13 @@ bool PgDmlRead::IsAllPrimaryKeysBound() const {
   return true;
 }
 
-Status PgDmlRead::BindHashCode(const std::optional<Bound>& start, const std::optional<Bound>& end) {
+void PgDmlRead::BindHashCode(const std::optional<Bound>& start, const std::optional<Bound>& end) {
   if (secondary_index_query_) {
-    return secondary_index_query_->BindHashCode(start, end);
+    secondary_index_query_->BindHashCode(start, end);
+    return;
   }
   ApplyBound(read_req_.get(), start, true /* is_lower */);
   ApplyBound(read_req_.get(), end, false /* is_lower */);
-  return Status::OK();
 }
 
 Status PgDmlRead::BindRange(

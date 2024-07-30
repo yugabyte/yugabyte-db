@@ -882,6 +882,8 @@ const constructDefaultFormValues = (
     vnet: region.details.cloudInfo.azu.vnet,
     securityGroupId: region.details.cloudInfo.azu.securityGroupId,
     ybImage: region.details.cloudInfo.azu.ybImage ?? '',
+    azuNetworkRGOverride: region.details.cloudInfo.azu.azuNetworkRGOverride ?? '',
+    azuRGOverride: region.details.cloudInfo.azu.azuRGOverride ?? '',
     zones: region.zones
   })),
   sshKeypairManagement: getLatestAccessKey(providerConfig.allAccessKeys)?.keyInfo.managementState,
@@ -978,6 +980,12 @@ const constructProviderPayload = async (
                 }),
                 ...(regionFormValues.ybImage && {
                   ybImage: regionFormValues.ybImage
+                }),
+                ...(regionFormValues.azuNetworkRGOverride && {
+                  azuNetworkRGOverride: regionFormValues.azuNetworkRGOverride
+                }),
+                ...(regionFormValues.azuRGOverride && {
+                  azuRGOverride: regionFormValues.azuRGOverride
                 })
               }
             }

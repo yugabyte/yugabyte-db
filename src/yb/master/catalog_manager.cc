@@ -460,12 +460,12 @@ DEFINE_test_flag(int32, slowdown_alter_table_rpcs_ms, 0,
 DEFINE_test_flag(bool, reject_delete_not_serving_tablet_rpc, false,
                  "Whether to reject DeleteNotServingTablet RPC.");
 
-DEFINE_test_flag(double, crash_after_creating_single_split_tablet, 0.0,
-                 "Crash inside CatalogManager::RegisterNewTabletForSplit after calling Upsert.");
+DEFINE_test_flag(double, crash_after_registering_split_tablets, 0.0,
+    "Crash inside CatalogManager::RegisterNewTabletsForSplit after calling Upsert.");
 
-DEFINE_test_flag(bool, error_after_creating_single_split_tablet, false,
-                 "Return an error inside CatalogManager::RegisterNewTabletForSplit "
-                 "after calling Upsert.");
+DEFINE_test_flag(bool, error_after_registering_split_tablets, false,
+    "Return an error inside CatalogManager::RegisterNewTabletsForSplit "
+    "after calling Upsert.");
 
 DEFINE_RUNTIME_bool(enable_delete_truncate_xcluster_replicated_table, false,
             "When set, enables deleting/truncating YCQL tables currently in xCluster replication. "
@@ -496,9 +496,6 @@ DECLARE_string(tmp_dir);
 DEFINE_RUNTIME_bool(batch_ysql_system_tables_metadata, true,
     "Whether change metadata operation and SysCatalogTable upserts for ysql system tables during a "
     "create database is performed one by one or batched together");
-
-DEFINE_test_flag(bool, pause_split_child_registration,
-                 false, "Pause split after registering one child");
 
 DEFINE_test_flag(bool, keep_docdb_table_on_ysql_drop_table, false,
                  "When enabled does not delete tables from the docdb layer, resulting in YSQL "
@@ -3056,15 +3053,14 @@ Status CatalogManager::DoSplitTablet(
     }
 
     // Add new split children to the sys catalog.
-    for (auto& new_tablet : new_tablets) {
-      RETURN_NOT_OK(RegisterNewTabletForSplit(
-          source_tablet_info.get(), new_tablet, epoch, &source_table_lock, &source_tablet_lock));
-    }
+    RETURN_NOT_OK(RegisterNewTabletsForSplit(
+        source_tablet_info.get(), new_tablets, epoch, &source_table_lock, &source_tablet_lock));
+
     source_tablet_lock.Commit();
     source_table_lock.Commit();
   }
-  // At this point, the tablets exist in the table but not in the tablet map. Callers should retry
-  // if the tablets are not found in the tablet map.
+  // At this point, the tablets exist in the table but not in the tablet map. Users that need these
+  // tablets should retry until the tablets are inserted into the tablet map.
 
   MAYBE_FAULT(FLAGS_TEST_fault_crash_after_registering_split_children);
 
@@ -4158,6 +4154,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
             tablet->mutable_metadata()->mutable_dirty()->pb.table_id());
 
         if (tablegroup) {
+          lock.lock();
           RETURN_NOT_OK(tablegroup->AddChildTable(table->id(), colocation_id));
         }
       }
@@ -7400,54 +7397,54 @@ Status CatalogManager::IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
   return Status::OK();
 }
 
-Status CatalogManager::RegisterNewTabletForSplit(
-    TabletInfo* source_tablet_info, const TabletInfoPtr& new_tablet, const LeaderEpoch& epoch,
-    TableInfo::WriteLock* table_write_lock, TabletInfo::WriteLock* tablet_write_lock) {
+Status CatalogManager::RegisterNewTabletsForSplit(
+    TabletInfo* source_tablet_info, const std::vector<TabletInfoPtr>& new_tablets,
+    const LeaderEpoch& epoch, TableInfo::WriteLock* table_write_lock,
+    TabletInfo::WriteLock* parent_write_lock) {
   const auto tablet_lock = source_tablet_info->LockForRead();
 
   auto table = source_tablet_info->table();
   const auto& source_tablet_meta = tablet_lock->pb;
-
-  auto& new_tablet_meta = new_tablet->mutable_metadata()->mutable_dirty()->pb;
-  new_tablet_meta.mutable_committed_consensus_state()->CopyFrom(
-      source_tablet_meta.committed_consensus_state());
   const auto new_split_depth = source_tablet_meta.split_depth() + 1;
-  new_tablet_meta.set_split_depth(new_split_depth);
-  new_tablet_meta.set_split_parent_tablet_id(source_tablet_info->tablet_id());
-  // TODO(tsplit): consider and handle failure scenarios, for example:
-  // - Crash or leader failover before sending out the split tasks.
-  // - Long enough partition while trying to send out the splits so that they timeout and
-  //   not get executed.
+  for (auto& new_tablet : new_tablets) {
+    auto& new_tablet_meta = new_tablet->mutable_metadata()->mutable_dirty()->pb;
+    new_tablet_meta.mutable_committed_consensus_state()->CopyFrom(
+        source_tablet_meta.committed_consensus_state());
+    new_tablet_meta.set_split_depth(new_split_depth);
+    new_tablet_meta.set_split_parent_tablet_id(source_tablet_info->tablet_id());
+
+    parent_write_lock->mutable_data()->pb.add_split_tablet_ids(new_tablet->id());
+  }
+
   int new_partition_list_version;
   auto& table_pb = table_write_lock->mutable_data()->pb;
   new_partition_list_version = table_pb.partition_list_version() + 1;
   table_pb.set_partition_list_version(new_partition_list_version);
 
-  tablet_write_lock->mutable_data()->pb.add_split_tablet_ids(new_tablet->id());
-  RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table, new_tablet, source_tablet_info));
+  RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table, new_tablets, source_tablet_info));
 
-  TEST_PAUSE_IF_FLAG(TEST_pause_split_child_registration);
-  MAYBE_FAULT(FLAGS_TEST_crash_after_creating_single_split_tablet);
-  if (PREDICT_FALSE(FLAGS_TEST_error_after_creating_single_split_tablet)) {
+  MAYBE_FAULT(FLAGS_TEST_crash_after_registering_split_tablets);
+  if (PREDICT_FALSE(FLAGS_TEST_error_after_registering_split_tablets)) {
     return STATUS(IllegalState, "TEST: error happened while registering a new tablet.");
   }
+
   // This has to be done while the table lock is held since TableInfo::partitions_ must be updated
   // at the same time as the partition list version.
-  RETURN_NOT_OK(table->AddTablet(new_tablet));
-
-  const PartitionPB& partition = new_tablet->metadata().state().pb.partition();
-  LOG(INFO) << "Registered new tablet " << new_tablet->tablet_id() << " (partition_key_start: "
-            << Slice(partition.partition_key_start()).ToDebugString(/* max_length = */ 64)
-            << ", partition_key_end: "
-            << Slice(partition.partition_key_end()).ToDebugString(/* max_length = */ 64)
-            << ", split_depth: " << new_split_depth << ") to split the tablet "
-            << source_tablet_info->tablet_id() << " (" << AsString(source_tablet_meta.partition())
-            << ") for table " << table->ToString()
-            << ", new partition_list_version: " << new_partition_list_version;
-
+  RETURN_NOT_OK(table->AddTablets(new_tablets));
   // TODO: We use this pattern in other places, but what if concurrent thread accesses not yet
   // committed TabletInfo from the `table` ?
-  new_tablet->mutable_metadata()->CommitMutation();
+  for (auto& new_tablet : new_tablets) {
+    const PartitionPB& partition = new_tablet->metadata().state().pb.partition();
+    LOG(INFO) << "Registered new tablet " << new_tablet->tablet_id() << " (partition_key_start: "
+              << Slice(partition.partition_key_start()).ToDebugString(/* max_length = */ 64)
+              << ", partition_key_end: "
+              << Slice(partition.partition_key_end()).ToDebugString(/* max_length = */ 64)
+              << ", split_depth: " << new_split_depth << ") to split the tablet "
+              << source_tablet_info->tablet_id() << " (" << AsString(source_tablet_meta.partition())
+              << ") for table " << table->ToString()
+              << ", new partition_list_version: " << new_partition_list_version;
+    new_tablet->mutable_metadata()->CommitMutation();
+  }
   return Status::OK();
 }
 
@@ -7589,9 +7586,10 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
   resp->set_colocated(table->colocated());
 
   if (table->IsColocatedUserTable()) {
-    auto* tablegroup = tablegroup_manager_->FindByTable(table->id());
-    if (tablegroup) {
-      resp->set_tablegroup_id(tablegroup->id());
+    // Set the tablegroup_id for colocated user tables only after Colocation is GA.
+    if (IsTablegroupParentTableId(table->LockForRead()->pb.parent_table_id())) {
+      resp->set_tablegroup_id(
+          GetTablegroupIdFromParentTableId(table->LockForRead()->pb.parent_table_id()));
     }
   }
 
@@ -12894,6 +12892,23 @@ CatalogManager::GetStatefulServicesStatus() const {
   }
 
   return result;
+}
+
+Status CatalogManager::GetTableGroupAndColocationInfo(
+    const TableId& table_id, TablegroupId& out_tablegroup_id, bool& out_colocated_database) {
+  SharedLock lock(mutex_);
+  const auto* tablegroup = tablegroup_manager_->FindByTable(table_id);
+  SCHECK_FORMAT(tablegroup, NotFound, "No tablegroup found for table: $0", table_id);
+
+  out_tablegroup_id = tablegroup->id();
+
+  auto ns = FindPtrOrNull(namespace_ids_map_, tablegroup->database_id());
+  SCHECK(
+      ns, NotFound,
+      Format("Could not find namespace by namespace id $0", tablegroup->database_id()));
+  out_colocated_database = ns->colocated();
+
+  return Status::OK();
 }
 
 }  // namespace master

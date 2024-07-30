@@ -359,10 +359,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
     connected_database_ = "";
   }
 
-  // Generate a new random and unique rowid. It is a v4 UUID.
-  std::string GenerateNewRowid() {
-    return GenerateObjectId(true /* binary_id */);
-  }
+  std::string GenerateNewYbrowid();
 
   void InvalidateAllTablesCache();
 
@@ -409,7 +406,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   Result<bool> CheckIfPitrActive();
 
-  Result<TableKeyRangesWithHt> GetTableKeyRanges(
+  Result<TableKeyRanges> GetTableKeyRanges(
       const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
       uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length);
 

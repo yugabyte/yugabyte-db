@@ -62,6 +62,9 @@ GenericRateLimiter::GenericRateLimiter(int64_t rate_bytes_per_sec,
       fairness_(fairness > 100 ? 100 : fairness),
       rnd_((uint32_t)time(nullptr)),
       leader_(nullptr) {
+  CHECK_GT(refill_bytes_per_period_, 0)
+      << "rate_bytes_per_sec * refill_period_us should be > 1000000";
+
   for (size_t q = 0; q < yb::kElementsInIOPriority; ++q) {
     total_requests_[q] = 0;
     total_bytes_through_[q] = 0;
@@ -108,6 +111,15 @@ void GenericRateLimiter::SetBytesPerSecond(int64_t bytes_per_second) {
 }
 
 void GenericRateLimiter::Request(int64_t bytes, const yb::IOPriority priority) {
+  while (bytes > 0) {
+    int64_t bytes_to_request = std::min(GetSingleBurstBytes(), bytes);
+    assert(bytes_to_request > 0);
+    RequestInternal(bytes_to_request, priority);
+    bytes -= bytes_to_request;
+  }
+}
+
+void GenericRateLimiter::RequestInternal(int64_t bytes, const yb::IOPriority priority) {
   assert(bytes <= refill_bytes_per_period_.load(std::memory_order_relaxed));
 
   const auto pri = yb::to_underlying(priority);

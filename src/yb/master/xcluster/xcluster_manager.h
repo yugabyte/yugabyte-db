@@ -101,6 +101,31 @@ class XClusterManager : public XClusterManagerIf,
 
   Status RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch) override;
 
+  Status SetupUniverseReplication(
+      const SetupUniverseReplicationRequestPB* req, SetupUniverseReplicationResponsePB* resp,
+      rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+
+  Status IsSetupUniverseReplicationDone(
+      const IsSetupUniverseReplicationDoneRequestPB* req,
+      IsSetupUniverseReplicationDoneResponsePB* resp, rpc::RpcContext* rpc);
+
+  Status SetupNamespaceReplicationWithBootstrap(
+      const SetupNamespaceReplicationWithBootstrapRequestPB* req,
+      SetupNamespaceReplicationWithBootstrapResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+
+  Status IsSetupNamespaceReplicationWithBootstrapDone(
+      const IsSetupNamespaceReplicationWithBootstrapDoneRequestPB* req,
+      IsSetupNamespaceReplicationWithBootstrapDoneResponsePB* resp, rpc::RpcContext* rpc);
+
+  Status AlterUniverseReplication(
+      const AlterUniverseReplicationRequestPB* req, AlterUniverseReplicationResponsePB* resp,
+      rpc::RpcContext* rpc, const LeaderEpoch& epoch) override;
+
+  Status DeleteUniverseReplication(
+      const DeleteUniverseReplicationRequestPB* req, DeleteUniverseReplicationResponsePB* resp,
+      rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+
   // OutboundReplicationGroup RPCs.
   Status XClusterCreateOutboundReplicationGroup(
       const XClusterCreateOutboundReplicationGroupRequestPB* req,
@@ -198,7 +223,7 @@ class XClusterManager : public XClusterManagerIf,
       const xrepl::StreamId& stream_id);
 
   void RemoveTableConsumerStream(
-      const TableId& table_id, const xcluster::ReplicationGroupId& replication_group_id);
+      const TableId& table_id, const xcluster::ReplicationGroupId& replication_group_id) override;
 
   void RemoveTableConsumerStreams(
       const xcluster::ReplicationGroupId& replication_group_id,

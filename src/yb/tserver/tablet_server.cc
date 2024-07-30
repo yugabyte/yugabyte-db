@@ -522,10 +522,10 @@ Status TabletServer::Init() {
   return Status::OK();
 }
 
-Status TabletServer::InitAutoFlags(rpc::Messenger* messenger) {
+Status TabletServer::InitFlags(rpc::Messenger* messenger) {
   RETURN_NOT_OK(auto_flags_manager_->Init(messenger, *opts_.GetMasterAddresses()));
 
-  return RpcAndWebServerBase::InitAutoFlags(messenger);
+  return RpcAndWebServerBase::InitFlags(messenger);
 }
 
 Result<std::unordered_set<std::string>> TabletServer::GetAvailableAutoFlagsForServer() const {
@@ -534,6 +534,10 @@ Result<std::unordered_set<std::string>> TabletServer::GetAvailableAutoFlagsForSe
 
 uint32_t TabletServer::GetAutoFlagConfigVersion() const {
   return auto_flags_manager_->GetConfigVersion();
+}
+
+Result<std::unordered_set<std::string>> TabletServer::GetFlagsForServer() const {
+  return yb::GetFlagNamesFromXmlFile("tserver_flags.xml");
 }
 
 void TabletServer::HandleMasterHeartbeatResponse(

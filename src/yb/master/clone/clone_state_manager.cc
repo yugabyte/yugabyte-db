@@ -15,6 +15,7 @@
 
 #include <mutex>
 
+#include "yb/common/colocated_util.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids_types.h"
@@ -28,6 +29,7 @@
 
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/catalog_manager_util.h"
 #include "yb/master/clone/clone_state_entity.h"
 #include "yb/master/clone/external_functions.h"
 #include "yb/master/master_backup.pb.h"
@@ -313,7 +315,9 @@ Status CloneStateManager::StartTabletsCloning(
           snapshot_schedule_id, HybridTime(clone_state->LockForRead()->pb.restore_time()),
           deadline));
   auto source_snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot_info.id()));
-
+  VLOG(2) << Format(
+      "The generated SnapshotInfoPB as of time: $0, snapshot_info: $1 ",
+      HybridTime(clone_state->LockForRead()->pb.restore_time()), snapshot_info);
   // Import snapshot info.
   NamespaceMap namespace_map;
   UDTypeMap type_map;
@@ -464,14 +468,29 @@ Status CloneStateManager::UpdateCloneStateWithSnapshotInfo(
   clone_state->SetSourceSnapshotId(source_snapshot_id);
   clone_state->SetTargetSnapshotId(target_snapshot_id);
 
-  // Add data for each tablet in this table.
+  // In case of colocated database, create the vector of colocated tables' schemas to send along the
+  // clone tablet request of the parent tablet
+  std::vector<CloneStateInfo::ColocatedTableData> colocated_tables_data;
   for (const auto& [_, table_snapshot_data] : table_snapshot_data) {
+    if (!table_snapshot_data.table_entry_pb.colocated() ||
+        IsColocationParentTableId(table_snapshot_data.new_table_id)) {
+      continue;
+    }
+    colocated_tables_data.push_back(CloneStateInfo::ColocatedTableData{
+        .new_table_id = table_snapshot_data.new_table_id,
+        .table_entry_pb = table_snapshot_data.table_entry_pb,
+        .new_schema_version = *(table_snapshot_data.new_table_schema_version)});
+  }
+
+  for (const auto& [_, table_snapshot_data] : table_snapshot_data) {
+    // Add colocated tables' schemas for the parent tablet only.
     for (auto& tablet : table_snapshot_data.table_meta->tablets_ids()) {
-      auto tablet_data = CloneStateInfo::TabletData {
+      clone_state->AddTabletData(CloneStateInfo::TabletData{
           .source_tablet_id = tablet.old_id(),
-          .target_tablet_id = tablet.new_id()
-      };
-      clone_state->AddTabletData(std::move(tablet_data));
+          .target_tablet_id = tablet.new_id(),
+          .colocated_tables_data = IsColocationParentTableId(table_snapshot_data.new_table_id)
+                                       ? colocated_tables_data
+                                       : std::vector<CloneStateInfo::ColocatedTableData>()});
     }
   }
   return Status::OK();
@@ -519,6 +538,13 @@ Status CloneStateManager::ScheduleCloneOps(
     }
     *req.mutable_target_schema() = target_table_lock->pb.schema();
     *req.mutable_target_partition_schema() = target_table_lock->pb.partition_schema();
+    for (const auto& colocated_table_data : tablet_data.colocated_tables_data) {
+      CatalogManagerUtil::FillTableInfoPB(
+          colocated_table_data.new_table_id, colocated_table_data.table_entry_pb.name(),
+          TableType::PGSQL_TABLE_TYPE, colocated_table_data.table_entry_pb.schema(),
+          /* schema_version */ colocated_table_data.new_schema_version,
+          colocated_table_data.table_entry_pb.partition_schema(), req.add_colocated_tables());
+    }
     RETURN_NOT_OK(external_funcs_->ScheduleCloneTabletCall(
         source_tablet, clone_state->Epoch(), std::move(req)));
   }

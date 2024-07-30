@@ -932,7 +932,8 @@ class RocksDBPatcher::Impl {
     return helper.Apply(options_, imm_cf_options_);
   }
 
-  Status ModifyFlushedFrontier(const ConsensusFrontier& frontier) {
+  Status ModifyFlushedFrontier(
+      const ConsensusFrontier& frontier, const CotableIdsMap& cotable_ids_map) {
     RocksDBPatcherHelper helper(&version_set_);
 
     docdb::ConsensusFrontier final_frontier = frontier;
@@ -952,7 +953,8 @@ class RocksDBPatcher::Impl {
     helper.Edit().ModifyFlushedFrontier(
         final_frontier.Clone(), rocksdb::FrontierModificationMode::kForce);
 
-    helper.IterateFiles([&helper, &frontier](int level, rocksdb::FileMetaData fmd) {
+    helper.IterateFiles([&helper, &frontier, &cotable_ids_map](
+        int level, rocksdb::FileMetaData fmd) {
       bool modified = false;
       for (auto* user_frontier : {&fmd.smallest.user_frontier, &fmd.largest.user_frontier}) {
         if (!*user_frontier) {
@@ -966,6 +968,11 @@ class RocksDBPatcher::Impl {
         if (frontier.history_cutoff_valid()) {
           consensus_frontier.set_history_cutoff_information(frontier.history_cutoff());
           modified = true;
+        }
+        for (const auto& [table_id, new_table_id] : cotable_ids_map) {
+          if (consensus_frontier.UpdateCoTableId(table_id, new_table_id)) {
+            modified = true;
+          }
         }
       }
       if (modified) {
@@ -1043,8 +1050,9 @@ Status RocksDBPatcher::SetHybridTimeFilter(std::optional<uint32_t> db_oid, Hybri
   return impl_->SetHybridTimeFilter(db_oid, value);
 }
 
-Status RocksDBPatcher::ModifyFlushedFrontier(const ConsensusFrontier& frontier) {
-  return impl_->ModifyFlushedFrontier(frontier);
+Status RocksDBPatcher::ModifyFlushedFrontier(
+    const ConsensusFrontier& frontier, const CotableIdsMap& cotable_ids_map) {
+  return impl_->ModifyFlushedFrontier(frontier, cotable_ids_map);
 }
 
 Status RocksDBPatcher::UpdateFileSizes() {

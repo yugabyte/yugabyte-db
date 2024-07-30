@@ -46,12 +46,7 @@ public class TestPgRegressIndex extends BasePgRegressTest {
   }
 
   @Test
-  public void testPgRegressIndex() throws Exception {
-    runPgRegressTest("yb_index_serial_schedule");
-  }
-
-  @Test
-  public void testPgRegressIndex2() throws Exception {
-    runPgRegressTest("yb_index_serial2_schedule");
+  public void schedule() throws Exception {
+    runPgRegressTest("yb_index_schedule");
   }
 }

@@ -103,6 +103,10 @@
       font-size: 12px;
       line-height: 15px;
     }
+    .backup-status {
+      display: flex;
+      align-items: center;
+    }
   }
 
   #backup-actions-dropdown {

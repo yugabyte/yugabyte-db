@@ -876,6 +876,18 @@ public class CustomerTask extends Model {
     }
   }
 
+  public static Optional<CustomerTask> maybeGetLastTaskByTargetUuidTaskType(
+      UUID targetUUID, TaskType taskType) {
+    return find.query()
+        .where()
+        .eq("target_uuid", targetUUID)
+        .eq("type", taskType)
+        .isNotNull("completion_time")
+        .orderBy("completion_time desc")
+        .setMaxRows(1)
+        .findOneOrEmpty();
+  }
+
   @JsonIgnore
   public String getNotificationTargetName() {
     if (getType().equals(TaskType.Create) && getTargetType().equals(TargetType.Backup)) {

@@ -186,6 +186,8 @@ ARCHIVED_PATHS_IN_BUILD_DIR = [
     'share',
     'test_certs',
     'auto_flags.json',
+    'master_flags.xml',
+    'tserver_flags.xml',
     'version_metadata.json',
     'linuxbrew_path.txt',
     'thirdparty_path.txt',

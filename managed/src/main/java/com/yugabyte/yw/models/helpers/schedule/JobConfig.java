@@ -51,11 +51,16 @@ public interface JobConfig extends Serializable {
    * Calculate the next start time based for the job schedule.
    *
    * @param jobSchedule the current job schedule.
+   * @param restart restart from the current time if true.
    * @return the next execution time.
    */
   @JsonIgnore
-  default Date createNextStartTime(JobSchedule jobSchedule) {
+  default Date createNextStartTime(JobSchedule jobSchedule, boolean restart) {
     ScheduleConfig scheduleConfig = jobSchedule.getScheduleConfig();
+    if (restart) {
+      return Date.from(
+          Instant.now().plus(scheduleConfig.getInterval().getSeconds(), ChronoUnit.SECONDS));
+    }
     Date lastTime = null;
     if (scheduleConfig.getType() == ScheduleType.FIXED_RATE) {
       lastTime = jobSchedule.getLastStartTime();

@@ -61,6 +61,7 @@ import { DBRollbackModal } from '../../../redesign/features/universe/universe-ac
 import { ReplicationSlotTable } from '../../../redesign/features/universe/universe-tabs/replication-slots/ReplicationSlotTable';
 import { AuditLog } from '../../../redesign/features/universe/universe-tabs/db-audit-logs/AuditLog';
 import { UniverseState, getUniverseStatus, SoftwareUpgradeState } from '../helpers/universeHelpers';
+import { TaskDetailBanner } from '../../../redesign/features/tasks/components/TaskDetailBanner';
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { DrPanel } from '../../xcluster/disasterRecovery/DrPanel';
@@ -302,7 +303,6 @@ class UniverseDetail extends Component {
       accessKeys,
       graph
     } = this.props;
-
     const { showAlert, alertType, alertMessage } = this.state;
     const universePaused = universe?.currentUniverse?.data?.universeDetails?.universePaused;
     const updateInProgress = universe?.currentUniverse?.data?.universeDetails?.updateInProgress;
@@ -1442,6 +1442,7 @@ class UniverseDetail extends Component {
             shouldDisplayTaskButton={true}
           />
         </div>
+        <TaskDetailBanner taskUUID={currentUniverse.data.universeDetails.updatingTaskUUID} universeUUID={currentUniverse.data.universeUUID}/>
         <RollingUpgradeFormContainer
           modalVisible={
             showModal &&
@@ -1587,7 +1588,12 @@ class UniverseDetail extends Component {
             id={'universe-tab-panel'}
             className={'universe-detail'}
           >
-            {[...tabElements, <div title={actionMenuButtons} />]}
+            {
+              [
+                ...tabElements,
+                <div title={actionMenuButtons} />
+              ]
+            }
           </YBTabsWithLinksPanel>
         </Measure>
       </Grid>

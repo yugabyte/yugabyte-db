@@ -33,7 +33,7 @@ func withCorrelationID(srvCtx context.Context) context.Context {
 	if corrId == "" {
 		corrId = util.NewUUID().String()
 	}
-	return util.WithCorrelationID(srvCtx, util.NewUUID().String())
+	return util.WithCorrelationID(srvCtx, corrId)
 }
 
 // UnaryPanicHandler returns the ServerOption to handle panic occurred in the

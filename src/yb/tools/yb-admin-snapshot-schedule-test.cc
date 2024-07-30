@@ -4117,12 +4117,6 @@ TEST_F(YbAdminRestoreDuringSplit, RestoreBeforeGetSplitKey) {
   ASSERT_OK(RunTest(1 /* expected num tablets after restore */));
 }
 
-// Restore to a time after one of the child tablets is registered by the master.
-TEST_F(YbAdminRestoreDuringSplit, RestoreAfterOneChildRegistered) {
-  SetDelayFlag("TEST_pause_split_child_registration", /* set on master */ true);
-  ASSERT_OK(RunTest(1 /* expected num tablets after restore */));
-}
-
 // Restore to a time after both the child tablets are registered by the master but
 // before the SPLIT_OP is applied.
 TEST_F(YbAdminRestoreDuringSplit, RestoreBeforeSplitOpIsApplied) {

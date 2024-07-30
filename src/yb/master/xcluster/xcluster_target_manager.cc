@@ -18,16 +18,20 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
+
+#include "yb/master/xcluster_consumer_registry_service.h"
 #include "yb/master/xcluster/add_table_to_xcluster_target_task.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
+#include "yb/master/xcluster/xcluster_bootstrap_helper.h"
 #include "yb/master/xcluster/xcluster_replication_group.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
-
 #include "yb/master/xcluster/xcluster_status.h"
-#include "yb/master/xcluster_consumer_registry_service.h"
-#include "yb/util/jsonwriter.h"
+#include "yb/master/xcluster/xcluster_universe_replication_alter_helper.h"
+#include "yb/master/xcluster/xcluster_universe_replication_setup_helper.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/is_operation_done_result.h"
+#include "yb/util/jsonwriter.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 
@@ -235,7 +239,7 @@ Status XClusterTargetManager::WaitForSetupUniverseReplicationToFinish(
   return Wait(
       [&]() -> Result<bool> {
         auto is_operation_done =
-            VERIFY_RESULT(IsSetupUniverseReplicationDone(replication_group_id, catalog_manager_));
+            VERIFY_RESULT(IsSetupUniverseReplicationDone(replication_group_id));
 
         if (is_operation_done.done()) {
           RETURN_NOT_OK(is_operation_done.status());
@@ -1097,6 +1101,84 @@ Status XClusterTargetManager::ProcessPendingSchemaChanges(const LeaderEpoch& epo
       cl.Commit();
     }
   }
+
+  return Status::OK();
+}
+
+Status XClusterTargetManager::SetupUniverseReplication(
+    const SetupUniverseReplicationRequestPB* req, SetupUniverseReplicationResponsePB* resp,
+    const LeaderEpoch& epoch) {
+  return SetupUniverseReplicationHelper::Setup(master_, catalog_manager_, req, resp, epoch);
+}
+
+Result<IsOperationDoneResult> XClusterTargetManager::IsSetupUniverseReplicationDone(
+    const xcluster::ReplicationGroupId& replication_group_id) {
+  return master::IsSetupUniverseReplicationDone(replication_group_id, catalog_manager_);
+}
+
+Status XClusterTargetManager::SetupNamespaceReplicationWithBootstrap(
+    const SetupNamespaceReplicationWithBootstrapRequestPB* req,
+    SetupNamespaceReplicationWithBootstrapResponsePB* resp, const LeaderEpoch& epoch) {
+  return SetupUniverseReplicationWithBootstrapHelper::SetupWithBootstrap(
+      master_, catalog_manager_, req, resp, epoch);
+}
+
+Result<IsSetupNamespaceReplicationWithBootstrapDoneResponsePB>
+XClusterTargetManager::IsSetupNamespaceReplicationWithBootstrapDone(
+    const xcluster::ReplicationGroupId& replication_group_id) {
+  auto bootstrap_info = catalog_manager_.GetUniverseReplicationBootstrap(replication_group_id);
+  SCHECK(
+      bootstrap_info != nullptr, NotFound,
+      Format("Could not find universe replication bootstrap $0", replication_group_id));
+
+  IsSetupNamespaceReplicationWithBootstrapDoneResponsePB resp;
+
+  // Terminal states are DONE or some failure state.
+  auto l = bootstrap_info->LockForRead();
+  resp.set_state(l->state());
+
+  if (l->is_done()) {
+    resp.set_done(true);
+    StatusToPB(Status::OK(), resp.mutable_bootstrap_error());
+  } else if (l->is_deleted_or_failed()) {
+    resp.set_done(true);
+
+    if (!bootstrap_info->GetReplicationBootstrapErrorStatus().ok()) {
+      StatusToPB(
+          bootstrap_info->GetReplicationBootstrapErrorStatus(), resp.mutable_bootstrap_error());
+    } else {
+      LOG(WARNING) << "Did not find setup universe replication bootstrap error status.";
+      StatusToPB(STATUS(InternalError, "unknown error"), resp.mutable_bootstrap_error());
+    }
+
+    // Add failed bootstrap to GC now that we've responded to the user.
+    catalog_manager_.MarkReplicationBootstrapForCleanup(bootstrap_info->ReplicationGroupId());
+  } else {
+    // Not done yet.
+    resp.set_done(false);
+  }
+
+  return resp;
+}
+
+Status XClusterTargetManager::AlterUniverseReplication(
+    const AlterUniverseReplicationRequestPB* req, AlterUniverseReplicationResponsePB* resp,
+    const LeaderEpoch& epoch) {
+  return AlterUniverseReplicationHelper::Alter(master_, catalog_manager_, req, resp, epoch);
+}
+
+Status XClusterTargetManager::DeleteUniverseReplication(
+    const xcluster::ReplicationGroupId& replication_group_id, bool ignore_errors,
+    bool skip_producer_stream_deletion, DeleteUniverseReplicationResponsePB* resp,
+    const LeaderEpoch& epoch) {
+  auto ri = catalog_manager_.GetUniverseReplication(replication_group_id);
+  SCHECK(ri != nullptr, NotFound, "Universe replication $0 does not exist", replication_group_id);
+
+  RETURN_NOT_OK(master::DeleteUniverseReplication(
+      *ri, ignore_errors, skip_producer_stream_deletion, resp, catalog_manager_, epoch));
+
+  // Run the safe time task as it may need to perform cleanups of it own
+  CreateXClusterSafeTimeTableAndStartService();
 
   return Status::OK();
 }

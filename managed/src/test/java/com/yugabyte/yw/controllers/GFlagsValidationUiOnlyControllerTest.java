@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.AssertHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.gflags.GFlagDetails;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import java.io.IOException;
@@ -234,6 +235,89 @@ public class GFlagsValidationUiOnlyControllerTest extends FakeDBApplication {
         Json.newObject().put("exist", true).put("error", "Given string is not a int32 type"));
     expectedFlag2Json.set("TSERVER", Json.newObject().put("exist", true));
     expectedJson.add(expectedFlag2Json);
+    assertEquals(true, json.equals(expectedJson));
+  }
+
+  @Test
+  public void testPreviewGFlagsError() throws IOException {
+    // Mock gflags
+    GFlagDetails flag1 = new GFlagDetails();
+    flag1.name = GFlagsUtil.ALLOWED_PREVIEW_FLAGS_CSV;
+    flag1.type = "string";
+    GFlagDetails flag2 = new GFlagDetails();
+    flag2.name = "flag_1";
+    flag2.type = "int32";
+    flag2.tags = "preview";
+    GFlagDetails flag3 = new GFlagDetails();
+    flag3.name = "flag_2";
+    flag3.type = "int32";
+    flag3.tags = "preview";
+    GFlagDetails flag4 = new GFlagDetails();
+    flag4.name = "flag_3";
+    flag4.type = "int32";
+    flag4.tags = "preview";
+    when(mockGFlagsValidation.extractGFlags(any(), any(), anyBoolean()))
+        .thenReturn(Arrays.asList(flag1, flag2, flag3, flag4));
+    // Set GFlags
+    ObjectNode body = Json.newObject();
+    ArrayNode gflags = Json.newArray();
+    ObjectNode f1 = Json.newObject();
+    f1.put("Name", GFlagsUtil.ALLOWED_PREVIEW_FLAGS_CSV);
+    f1.put("MASTER", "flag_1, flag_2");
+    ObjectNode f2 = Json.newObject();
+    f2.put("Name", "flag_2");
+    f2.put("MASTER", "150");
+    ObjectNode f3 = Json.newObject();
+    f3.put("Name", "flag_3");
+    f3.put("MASTER", "150");
+    gflags.addAll(Arrays.asList(f1, f2, f3));
+    body.set("gflags", gflags);
+    String url = "/api/v1/metadata" + "/version/1.1.1.1-b11" + "/validate_gflags";
+    Result result = doRequestWithAuthTokenAndBody("POST", url, defaultUser.createAuthToken(), body);
+    AssertHelper.assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+
+    ArrayNode expectedJson = Json.newObject().arrayNode();
+
+    ObjectNode expectedFlag1Json = Json.newObject();
+    expectedFlag1Json.put("Name", GFlagsUtil.ALLOWED_PREVIEW_FLAGS_CSV);
+    expectedFlag1Json.set("MASTER", Json.newObject().put("exist", true));
+    expectedFlag1Json.set("TSERVER", Json.newObject().put("exist", true));
+    expectedJson.add(expectedFlag1Json);
+
+    ObjectNode expectedFlag2Json = Json.newObject();
+    expectedFlag2Json.put("Name", "flag_2");
+    expectedFlag2Json.set("MASTER", Json.newObject().put("exist", true));
+    expectedFlag2Json.set(
+        "TSERVER",
+        Json.newObject()
+            .put("exist", true)
+            .put(
+                "error",
+                "Given flag 'flag_2' is not allowed to be set unless it is added in"
+                    + " 'allowed_preview_flags_csv' flag"));
+    expectedJson.add(expectedFlag2Json);
+
+    ObjectNode expectedFlag3Json = Json.newObject();
+    expectedFlag3Json.put("Name", "flag_3");
+    expectedFlag3Json.set(
+        "MASTER",
+        Json.newObject()
+            .put("exist", true)
+            .put(
+                "error",
+                "Given flag 'flag_3' is not allowed to be set unless it is added in"
+                    + " 'allowed_preview_flags_csv' flag"));
+    expectedFlag3Json.set(
+        "TSERVER",
+        Json.newObject()
+            .put("exist", true)
+            .put(
+                "error",
+                "Given flag 'flag_3' is not allowed to be set unless it is added in"
+                    + " 'allowed_preview_flags_csv' flag"));
+    expectedJson.add(expectedFlag3Json);
+
     assertEquals(true, json.equals(expectedJson));
   }
 

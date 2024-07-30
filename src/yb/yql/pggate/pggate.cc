@@ -473,7 +473,7 @@ Result<dockv::KeyBytes> PgApiImpl::TupleIdBuilder::Build(
     }
     if (attr->attr_num == to_underlying(PgSystemAttrNum::kYBRowId)) {
       SCHECK(new_row_id_holder.empty(), Corruption, "Multiple kYBRowId attribute detected");
-      new_row_id_holder = session->GenerateNewRowid();
+      new_row_id_holder = session->GenerateNewYbrowid();
       expr_pb->mutable_value()->ref_binary_value(new_row_id_holder);
     } else {
       const auto& collation_info = attr->collation_info;
@@ -499,6 +499,7 @@ Result<dockv::KeyBytes> PgApiImpl::TupleIdBuilder::Build(
     doc_key_.set_hash(VERIFY_RESULT(
         target_desc->partition_schema().PgsqlHashColumnCompoundValue(hashed_values)));
   }
+  VLOG(5) << "Built ybctid: " << doc_key_.ToString();
   return doc_key_.Encode();
 }
 
@@ -553,10 +554,6 @@ const YBCPgTypeEntity *PgApiImpl::FindTypeEntity(int type_oid) {
 }
 
 //--------------------------------------------------------------------------------------------------
-
-uint64_t PgApiImpl::GetSessionId() {
-  return pg_client_.SessionID();
-}
 
 Status PgApiImpl::InitSession(const string& database_name, YBCPgExecStatsState* session_stats) {
   CHECK(!pg_session_);
@@ -1412,9 +1409,9 @@ Status PgApiImpl::DmlAddRowLowerBound(YBCPgStatement handle,
                                                         is_inclusive);
 }
 
-Status PgApiImpl::DmlBindHashCode(
+void PgApiImpl::DmlBindHashCode(
   PgStatement* handle, const std::optional<Bound>& start, const std::optional<Bound>& end) {
-  return down_cast<PgDmlRead*>(handle)->BindHashCode(start, end);
+  down_cast<PgDmlRead*>(handle)->BindHashCode(start, end);
 }
 
 Status PgApiImpl::DmlBindRange(YBCPgStatement handle,
@@ -2121,6 +2118,10 @@ Status PgApiImpl::ResetTransactionReadPoint() {
   return pg_txn_manager_->ResetTransactionReadPoint();
 }
 
+Status PgApiImpl::EnsureReadPoint() {
+  return pg_txn_manager_->EnsureReadPoint();
+}
+
 Status PgApiImpl::RestartReadPoint() {
   return pg_txn_manager_->RestartReadPoint();
 }
@@ -2367,7 +2368,7 @@ Result<bool> PgApiImpl::IsObjectPartOfXRepl(const PgObjectId& table_id) {
   return pg_session_->IsObjectPartOfXRepl(table_id);
 }
 
-Result<TableKeyRangesWithHt> PgApiImpl::GetTableKeyRanges(
+Result<TableKeyRanges> PgApiImpl::GetTableKeyRanges(
     const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
     uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length) {
   return pg_session_->GetTableKeyRanges(
@@ -2375,20 +2376,14 @@ Result<TableKeyRangesWithHt> PgApiImpl::GetTableKeyRanges(
       max_key_length);
 }
 
-uint64_t PgApiImpl::GetReadTimeSerialNo() const {
-  return pg_txn_manager_->GetReadTimeSerialNo();
+void PgApiImpl::DumpSessionState(YBCPgSessionState* session_data) {
+  session_data->session_id = GetSessionID();
+  pg_txn_manager_->DumpSessionState(session_data);
 }
 
-uint64_t PgApiImpl::GetTxnSerialNo() const {
-  return pg_txn_manager_->GetTxnSerialNo();
-}
-
-SubTransactionId PgApiImpl::GetActiveSubTransactionId() const {
-  return pg_txn_manager_->GetActiveSubTransactionId();
-}
-
-void PgApiImpl::RestoreSessionParallelData(const YBCPgSessionParallelData& data) {
-  pg_txn_manager_->RestoreSessionParallelData(data);
+void PgApiImpl::RestoreSessionState(const YBCPgSessionState& session_data) {
+  DCHECK_EQ(GetSessionID(), session_data.session_id);
+  pg_txn_manager_->RestoreSessionState(session_data);
 }
 
 //--------------------------------------------------------------------------------------------------

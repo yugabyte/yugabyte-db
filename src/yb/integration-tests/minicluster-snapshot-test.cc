@@ -372,8 +372,7 @@ TEST_F(MasterSnapshotTest, FailSysCatalogWriteWithStaleTable) {
   messenger->Shutdown();
 }
 
-class PostgresMiniClusterTest : public pgwrapper::PgMiniTestBase,
-                                public ::testing::WithParamInterface<master::YsqlColocationConfig> {
+class PostgresMiniClusterTest : public pgwrapper::PgMiniTestBase {
  public:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_poll_interval_ms) = 250;
@@ -408,7 +407,9 @@ class PostgresMiniClusterTest : public pgwrapper::PgMiniTestBase,
   }
 };
 
-class MasterExportSnapshotTest : public PostgresMiniClusterTest {
+class MasterExportSnapshotTest
+    : public PostgresMiniClusterTest,
+      public ::testing::WithParamInterface<master::YsqlColocationConfig> {
  public:
   void SetUp() override {
     PostgresMiniClusterTest::SetUp();
@@ -422,6 +423,7 @@ class MasterExportSnapshotTest : public PostgresMiniClusterTest {
         ASSERT_RESULT(client::YBClientBuilder()
                           .add_master_server_addr(cluster_->mini_master()->bound_rpc_addr_str())
                           .Build());
+    ASSERT_OK(CreateDatabaseWithSnapshotSchedule(GetParam()));
   }
 
   Status CreateDatabaseWithSnapshotSchedule(
@@ -458,7 +460,6 @@ INSTANTIATE_TEST_CASE_P(
 // 5. Generate snapshotInfo from schedule using the time t.
 // 6. Assert the output of 5 and 3 are the same (after removing PITR related fields from 3).
 TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTime) {
-  ASSERT_OK(CreateDatabaseWithSnapshotSchedule(GetParam()));
   auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
   // 1.
   LOG(INFO) << Format("Create tables t1,t2");
@@ -502,7 +503,6 @@ TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTime) {
 // Test that export_snapshot_from_schedule as of time doesn't include hidden tables in
 // SnapshotInfoPB.
 TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTimeWithHiddenTables) {
-  ASSERT_OK(CreateDatabaseWithSnapshotSchedule(GetParam()));
   auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
   // 1. Create table t1, then delete it to mark it as hidden and then recreate table t1.
   LOG(INFO) << Format("Create tables t1");
@@ -551,10 +551,10 @@ class PgCloneTest : public PostgresMiniClusterTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_db_clone) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_mini_cluster_pg_host_port) = pg_host_port().ToString();
     ASSERT_OK(CreateProxies());
-    ASSERT_OK(CreateSourceDbAndSnapshotSchedule());
+    ASSERT_OK(CreateSourceDbAndSnapshotSchedule(ColocateDatabase()));
   }
 
-  Status CreateProxies() {
+  virtual Status CreateProxies() {
     messenger_ = VERIFY_RESULT(rpc::MessengerBuilder("test-msgr").set_num_reactors(1).Build());
     proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
     master_admin_proxy_ = std::make_unique<MasterAdminProxy>(
@@ -564,9 +564,8 @@ class PgCloneTest : public PostgresMiniClusterTest {
     return Status::OK();
   }
 
-  Status CreateSourceDbAndSnapshotSchedule() {
-    auto conn = VERIFY_RESULT(Connect());
-    RETURN_NOT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kSourceNamespaceName));
+  Status CreateSourceDbAndSnapshotSchedule(master::YsqlColocationConfig colocated) {
+    RETURN_NOT_OK(CreateDatabase(kSourceNamespaceName, colocated));
     source_conn_ = std::make_unique<pgwrapper::PGConn>(
         VERIFY_RESULT(ConnectToDB(kSourceNamespaceName)));
     SnapshotScheduleId schedule_id = VERIFY_RESULT(CreateSnapshotSchedule(
@@ -605,6 +604,10 @@ class PgCloneTest : public PostgresMiniClusterTest {
     return Status::OK();
   }
 
+  virtual master::YsqlColocationConfig ColocateDatabase() {
+    return master::YsqlColocationConfig::kNotColocated;
+  }
+
   std::unique_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
   std::shared_ptr<MasterAdminProxy> master_admin_proxy_;
@@ -617,9 +620,22 @@ class PgCloneTest : public PostgresMiniClusterTest {
   const MonoDelta kTimeout = MonoDelta::FromSeconds(30);
 };
 
+class PgCloneTestWithColocatedDBParam
+    : public PgCloneTest,
+      public ::testing::WithParamInterface<master::YsqlColocationConfig> {
+  void SetUp() override { PgCloneTest::SetUp(); }
+
+  master::YsqlColocationConfig ColocateDatabase() override { return GetParam(); }
+};
+
+INSTANTIATE_TEST_CASE_P(
+    Colocation, PgCloneTestWithColocatedDBParam,
+    ::testing::Values(
+        master::YsqlColocationConfig::kNotColocated, master::YsqlColocationConfig::kDBColocated));
+
 // This test is disabled in sanitizers as ysql_dump fails in ASAN builds due to memory leaks
 // inherited from pg_dump.
-TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(CloneYsqlSyntax)) {
+TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneYsqlSyntax)) {
   // Basic clone test for PG using the YSQL TEMPLATE syntax.
   // Writes some data before time t and some data after t, and verifies that the cloning as of t
   // creates a clone with only the first set of rows, and cloning after t creates a clone with both
@@ -660,7 +676,7 @@ TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(CloneYsqlSyntax)) {
   ASSERT_VECTORS_EQ(rows, kRows);
 }
 
-TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(CloneWithAlterTableSchema)) {
+TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneWithAlterTableSchema)) {
   // Clone to a time before a schema change happened.
   // Writes some data before time t and alter the table schema after t and add some data according
   // to the new schema. Verifies that the cloning as of t creates a clone with the correct schema
@@ -700,7 +716,7 @@ TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(AbortMessage)) {
 
 // The test is disabled in Sanitizers as ysql_dump fails in ASAN builds due to memory leaks
 // inherited from pg_dump.
-TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(CloneAfterDropTable)) {
+TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneAfterDropTable)) {
   // Clone to a time before a drop table and check that the table exists with correct data.
   // 1. Create a table and load some data.
   // 2. Mark time t.
@@ -849,6 +865,64 @@ TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(PreventConnectionsUntilCloneSu
   ASSERT_STR_CONTAINS(
       result.status().message().ToBuffer(),
       Format("database \"$0\" is not currently accepting connections", kTargetNamespaceName1));
+}
+
+class PgCloneColocationTest : public PgCloneTest {
+  virtual void OverrideMiniClusterOptions(MiniClusterOptions* options) override {
+    options->num_masters = 3;
+    options->num_tablet_servers = 3;
+  }
+
+  virtual Status CreateProxies() override {
+    messenger_ = VERIFY_RESULT(rpc::MessengerBuilder("test-msgr").set_num_reactors(1).Build());
+    proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
+    master_admin_proxy_ = std::make_unique<MasterAdminProxy>(
+        proxy_cache_.get(), VERIFY_RESULT(mini_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+    master_backup_proxy_ = std::make_shared<MasterBackupProxy>(
+        proxy_cache_.get(), VERIFY_RESULT(mini_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+    return Status::OK();
+  }
+
+  virtual master::YsqlColocationConfig ColocateDatabase() override {
+    return master::YsqlColocationConfig::kDBColocated;
+  }
+};
+
+// Verify that after a successful clone, the target database is readable even after performing
+// master leader failover. This is a sanity check on the persisted tables and tablet sys catalog
+// entities in case of cloning a colocated database.
+TEST_F(
+    PgCloneColocationTest, YB_DISABLE_TEST_IN_SANITIZERS(ReadClonedDatabaseAfterMasterFailover)) {
+  const std::tuple<int32_t, int32_t> kRowT1 = {1, 10};
+  const std::tuple<int32_t, int32_t, int32_t> kRowT2 = {2, 20, 200};
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "INSERT INTO t1 VALUES ($0, $1)", std::get<0>(kRowT1), std::get<1>(kRowT1)));
+  ASSERT_OK(source_conn_->ExecuteFormat("CREATE TABLE t2 ( k int, v1 int, v2 int)"));
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "INSERT INTO t2 VALUES ($0, $1, $2)", std::get<0>(kRowT2), std::get<1>(kRowT2),
+      std::get<2>(kRowT2)));
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName));
+  // Verify t1 can be read from the cloned database.
+  auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+  auto rows = ASSERT_RESULT((target_conn.FetchRows<int32_t, int32_t>("SELECT * FROM t1")));
+  ASSERT_EQ(rows.size(), 1);
+  ASSERT_EQ(rows[0], kRowT1);
+  // Perform a master leader failover.
+  LOG(INFO) << Format(
+      "Stepping down master leader with permanent UUID: $0",
+      ASSERT_RESULT(mini_cluster()->GetLeaderMiniMaster())->permanent_uuid());
+  auto new_master_leader = ASSERT_RESULT(mini_cluster()->StepDownMasterLeader());
+  LOG(INFO) << Format("The new master leader permanent UUID: $0", new_master_leader);
+  // Verify both tables t1 and t2 can be read from the cloned database.
+  target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+  rows = ASSERT_RESULT((target_conn.FetchRows<int32_t, int32_t>("SELECT * FROM t1")));
+  ASSERT_EQ(rows.size(), 1);
+  ASSERT_EQ(rows[0], kRowT1);
+  auto rows_t2 =
+      ASSERT_RESULT((target_conn.FetchRows<int32_t, int32_t, int32_t>("SELECT * FROM t2")));
+  ASSERT_EQ(rows_t2.size(), 1);
+  ASSERT_EQ(rows_t2[0], kRowT2);
 }
 
 }  // namespace master

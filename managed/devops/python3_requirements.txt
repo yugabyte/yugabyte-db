@@ -22,7 +22,7 @@ ansible==2.9.27
 ansible-vault==2.1.0
 azure-common==1.1.28
 azure-identity==1.6.1
-azure-mgmt-compute==23.1.0
+azure-mgmt-compute==27.1.0
 azure-mgmt-privatedns==1.0.0
 azure-mgmt-network==19.3.0
 azure-mgmt-resource==19.0.0

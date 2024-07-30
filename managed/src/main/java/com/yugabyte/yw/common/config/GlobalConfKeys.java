@@ -80,7 +80,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Use OAUTH",
           "Hidden because this key has dedicated UI",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> ybSecurityType =
       new ConfKeyInfo<>(
           "yb.security.type",
@@ -88,7 +88,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "YB Security Type",
           "Hidden because this key has dedicated UI",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> displayJWTToken =
       new ConfKeyInfo<>(
           "yb.security.showJWTInfoOnLogin",
@@ -96,7 +96,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Display JWT Token on Login Screen",
           "Display JWT Token on Login Screen",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> ybClientID =
       new ConfKeyInfo<>(
           "yb.security.clientID",
@@ -104,7 +104,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "YB Client ID",
           "Hidden because this key has dedicated UI",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> ybSecuritySecret =
       new ConfKeyInfo<>(
           "yb.security.secret",
@@ -112,7 +112,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "YB Security Secret",
           "Hidden because this key has dedicated UI",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> discoveryURI =
       new ConfKeyInfo<>(
           "yb.security.discoveryURI",
@@ -120,7 +120,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Discovery URI",
           "Hidden because this key has dedicated UI",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> oidcProviderMetadata =
       new ConfKeyInfo<>(
           "yb.security.oidcProviderMetadata",
@@ -128,7 +128,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Provider Metadata from discoveryURI",
           "Hidden because this key has dedicated UI",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> oidcScope =
       new ConfKeyInfo<>(
           "yb.security.oidcScope",
@@ -136,7 +136,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "OIDC Scope",
           "Hidden because this key has dedicated UI",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> oidcEmailAttribute =
       new ConfKeyInfo<>(
           "yb.security.oidcEmailAttribute",
@@ -144,7 +144,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "OIDC Email Attribute",
           "Hidden because this key has dedicated UI",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> ssh2Enabled =
       new ConfKeyInfo<>(
           "yb.security.ssh2_enabled",
@@ -485,7 +485,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Use LDAP",
           "Hidden because this key has dedicated UI",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static ConfKeyInfo<String> ldapUrl =
       new ConfKeyInfo<>(
           "yb.security.ldap.ldap_url",
@@ -493,7 +493,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "LDAP URL",
           "Hidden because this key has dedicated UI",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static ConfKeyInfo<String> ldapPort =
       new ConfKeyInfo<>(
           "yb.security.ldap.ldap_port",
@@ -501,7 +501,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "LDAP Port",
           "Hidden because this key has dedicated UI",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static ConfKeyInfo<String> ldapBaseDn =
       new ConfKeyInfo<>(
           "yb.security.ldap.ldap_basedn",
@@ -509,7 +509,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "LDAP Base DN",
           "Hidden because this key has dedicated UI",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static ConfKeyInfo<String> ldapDnPrefix =
       new ConfKeyInfo<>(
           "yb.security.ldap.ldap_dn_prefix",
@@ -517,7 +517,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "LDAP DN Prefix",
           "Hidden because this key has dedicated UI",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static ConfKeyInfo<String> ldapCustomerUUID =
       new ConfKeyInfo<>(
           "yb.security.ldap.ldap_customeruuid",
@@ -525,7 +525,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "LDAP Customer UUID",
           "Hidden because this key has dedicated UI",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static ConfKeyInfo<String> ldapServiceAccountDistinguishedName =
       new ConfKeyInfo<>(
           "yb.security.ldap.ldap_service_account_distinguished_name",
@@ -533,7 +533,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "LDAP Service Account Username",
           "Hidden because this key has dedicated UI",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static ConfKeyInfo<String> ldapServiceAccountPassword =
       new ConfKeyInfo<>(
           "yb.security.ldap.ldap_service_account_password",
@@ -541,7 +541,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "LDAP Service Account Password",
           "Hidden because this key has dedicated UI",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static ConfKeyInfo<Boolean> enableLdap =
       new ConfKeyInfo<>(
           "yb.security.ldap.enable_ldaps",
@@ -549,7 +549,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable LDAPS",
           "TODO - Leave this for feature owners to fill in",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static ConfKeyInfo<Boolean> enableLdapStartTls =
       new ConfKeyInfo<>(
           "yb.security.ldap.enable_ldap_start_tls",
@@ -557,7 +557,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable LDAPS start TLS",
           "Hidden because this key has dedicated UI",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static ConfKeyInfo<Boolean> ldapUseSearchAndBind =
       new ConfKeyInfo<>(
           "yb.security.ldap.use_search_and_bind",
@@ -565,7 +565,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Use Search and Bind",
           "Hidden because this key has dedicated UI",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static ConfKeyInfo<String> ldapSearchAttribute =
       new ConfKeyInfo<>(
           "yb.security.ldap.ldap_search_attribute",
@@ -573,7 +573,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "LDAP Search Attribute",
           "Hidden because this key has dedicated UI",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static ConfKeyInfo<String> ldapGroupSearchFilter =
       new ConfKeyInfo<>(
           "yb.security.ldap.ldap_group_search_filter",
@@ -581,7 +581,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "LDAP Group Search Filter Query",
           "Hidden because this key has dedicated UI",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static ConfKeyInfo<SearchScope> ldapGroupSearchScope =
       new ConfKeyInfo<>(
           "yb.security.ldap.ldap_group_search_scope",
@@ -589,7 +589,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "LDAP group search scope in case of filter query",
           "Hidden because this key has dedicated UI",
           ConfDataType.LdapSearchScopeEnum,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static ConfKeyInfo<String> ldapGroupSearchBaseDn =
       new ConfKeyInfo<>(
           "yb.security.ldap.ldap_group_search_base_dn",
@@ -597,7 +597,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "LDAP group search base DN in case of filter query",
           "Hidden because this key has dedicated UI",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static ConfKeyInfo<String> ldapGroupMemberOfAttribute =
       new ConfKeyInfo<>(
           "yb.security.ldap.ldap_group_member_of_attribute",
@@ -605,7 +605,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "memberOf attribute in user LDAP entry to be used for group memberships",
           "Hidden because this key has dedicated UI",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static ConfKeyInfo<Boolean> ldapGroupUseQuery =
       new ConfKeyInfo<>(
           "yb.security.ldap.ldap_group_use_query",
@@ -614,7 +614,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + "for establishing LDAP group membership",
           "Hidden because this key has dedicated UI",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static ConfKeyInfo<Boolean> ldapGroupUseRoleMapping =
       new ConfKeyInfo<>(
           "yb.security.ldap.ldap_group_use_role_mapping",
@@ -622,7 +622,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Whether to use ldap group to role mapping",
           "Hidden because this key has dedicated UI",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static ConfKeyInfo<Role> ldapDefaultRole =
       new ConfKeyInfo<>(
           "yb.security.ldap.ldap_default_role",
@@ -630,7 +630,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "LDAP Default Role",
           "Which role to use in case role cannot be discerned via LDAP",
           ConfDataType.UserRoleEnum,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static ConfKeyInfo<TlsProtocol> ldapTlsProtocol =
       new ConfKeyInfo<>(
           "yb.security.ldap.ldap_tls_protocol",
@@ -638,7 +638,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Which TLS protocol to use for StartTLS or LDAPS",
           "Hidden because this key has dedicated UI",
           ConfDataType.LdapTlsProtocol,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static ConfKeyInfo<Boolean> ldapsEnforceCertVerification =
       new ConfKeyInfo<>(
           "yb.security.ldap.enforce_server_cert_verification",
@@ -1271,7 +1271,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "OIDC default role",
           "Which role to use incase group memberships are not found",
           ConfDataType.UserRoleEnum,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> enableReleasesRedesign =
       new ConfKeyInfo<>(
           "yb.releases.use_redesign",
@@ -1311,7 +1311,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "LDAP Search Filter",
           "Hidden because this key has dedicated UI",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<String> oidcRefreshTokenEndpoint =
       new ConfKeyInfo<>(
           "yb.security.oidcRefreshTokenEndpoint",
@@ -1319,7 +1319,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Endpoint for fetching the access token",
           "YBA will fetch the access token using the refresh token if specified from the endpoint",
           ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.UIDriven));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Duration> oidcRefreshTokenInterval =
       new ConfKeyInfo<>(
           "yb.security.oidcRefreshTokenInterval",
@@ -1414,4 +1414,21 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " throwing UNAVAILABLE",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.BETA));
+  // Also need rbac to be on for this key to have effect.
+  public static final ConfKeyInfo<Boolean> groupMappingRbac =
+      new ConfKeyInfo<>(
+          "yb.security.group_mapping_rbac_support",
+          ScopeType.GLOBAL,
+          "Enable RBAC for Groups",
+          "Map LDAP/OIDC groups to custom roles defined by RBAC.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> autoMasterFailoverPollerInterval =
+      new ConfKeyInfo<>(
+          "yb.auto_master_failover.poller_interval",
+          ScopeType.GLOBAL,
+          "Universe Poller Interval for Master Failover",
+          "Poller interval for universes to schedule master failover",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

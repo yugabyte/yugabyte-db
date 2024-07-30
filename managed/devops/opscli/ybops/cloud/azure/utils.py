@@ -50,8 +50,10 @@ NETWORK_PROVIDER_BASE_PATH = "/subscriptions/{}/resourceGroups/{}/providers/Micr
 SUBNET_ID_FORMAT_STRING = NETWORK_PROVIDER_BASE_PATH + "/virtualNetworks/{}/subnets/{}"
 NSG_ID_FORMAT_STRING = NETWORK_PROVIDER_BASE_PATH + "/networkSecurityGroups/{}"
 ULTRASSD_LRS = "ultrassd_lrs"
+PREMIUMV2_LRS = "premiumv2_lrs"
 VNET_ID_FORMAT_STRING = NETWORK_PROVIDER_BASE_PATH + "/virtualNetworks/{}"
 AZURE_SKU_FORMAT = {"premium_lrs": "Premium_LRS",
+                    "premiumv2_lrs": "PremiumV2_LRS",
                     "standardssd_lrs": "StandardSSD_LRS",
                     ULTRASSD_LRS: "UltraSSD_LRS"}
 YUGABYTE_VNET_PREFIX = "yugabyte-vnet-{}"
@@ -429,7 +431,7 @@ class AzureCloudAdmin():
         if tags:
             disk_params["tags"] = tags
 
-        if vol_type == ULTRASSD_LRS:
+        if vol_type == ULTRASSD_LRS or vol_type == PREMIUMV2_LRS:
             if disk_iops is not None:
                 disk_params['disk_iops_read_write'] = disk_iops
             if disk_throughput is not None:

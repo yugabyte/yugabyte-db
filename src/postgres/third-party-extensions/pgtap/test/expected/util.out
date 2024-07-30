@@ -1,0 +1,16 @@
+\unset ECHO
+1..14
+ok 1 - pg_type(int) should work
+ok 2 - pg_type(numeric) should work
+ok 3 - pg_type(text) should work
+ok 4 - pg_version() should return text
+ok 5 - pg_version() should return same as "server_version" setting
+ok 6 - pg_version() should work
+ok 7 - pg_version_num() should return same as "server_version_num" setting
+ok 8 - pg_version_num() should return integer
+ok 9 - pg_version_num() should be correct
+ok 10 - os_name() should output something like an OS name
+ok 11 - findfincs() should return distinct values
+ok 12 - pgtap_version() should work
+ok 13 - collect_tap(text[]) should simply collect tap
+ok 14 - variadic collect_tap() should simply collect tap

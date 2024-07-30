@@ -1,0 +1,134 @@
+\unset ECHO
+1..132
+ok 1 - has_rule(schema, table, rule, desc) should pass
+ok 2 - has_rule(schema, table, rule, desc) should have the proper description
+ok 3 - has_rule(schema, table, rule, desc) should have the proper diagnostics
+ok 4 - has_rule(schema, table, rule) should pass
+ok 5 - has_rule(schema, table, rule) should have the proper description
+ok 6 - has_rule(schema, table, rule) should have the proper diagnostics
+ok 7 - has_rule(schema, table, rule, desc) fail should fail
+ok 8 - has_rule(schema, table, rule, desc) fail should have the proper description
+ok 9 - has_rule(schema, table, rule, desc) fail should have the proper diagnostics
+ok 10 - has_rule(table, rule, desc) should pass
+ok 11 - has_rule(table, rule, desc) should have the proper description
+ok 12 - has_rule(table, rule, desc) should have the proper diagnostics
+ok 13 - has_rule(table, rule) should pass
+ok 14 - has_rule(table, rule) should have the proper description
+ok 15 - has_rule(table, rule) should have the proper diagnostics
+ok 16 - has_rule(table, rule, desc) fail should fail
+ok 17 - has_rule(table, rule, desc) fail should have the proper description
+ok 18 - has_rule(table, rule, desc) fail should have the proper diagnostics
+ok 19 - hasnt_rule(schema, table, rule, desc) should fail
+ok 20 - hasnt_rule(schema, table, rule, desc) should have the proper description
+ok 21 - hasnt_rule(schema, table, rule, desc) should have the proper diagnostics
+ok 22 - hasnt_rule(schema, table, rule) should fail
+ok 23 - hasnt_rule(schema, table, rule) should have the proper description
+ok 24 - hasnt_rule(schema, table, rule) should have the proper diagnostics
+ok 25 - hasnt_rule(schema, table, rule, desc) fail should pass
+ok 26 - hasnt_rule(schema, table, rule, desc) fail should have the proper description
+ok 27 - hasnt_rule(schema, table, rule, desc) fail should have the proper diagnostics
+ok 28 - hasnt_rule(table, rule, desc) should fail
+ok 29 - hasnt_rule(table, rule, desc) should have the proper description
+ok 30 - hasnt_rule(table, rule, desc) should have the proper diagnostics
+ok 31 - hasnt_rule(table, rule) should fail
+ok 32 - hasnt_rule(table, rule) should have the proper description
+ok 33 - hasnt_rule(table, rule) should have the proper diagnostics
+ok 34 - hasnt_rule(table, rule, desc) fail should pass
+ok 35 - hasnt_rule(table, rule, desc) fail should have the proper description
+ok 36 - hasnt_rule(table, rule, desc) fail should have the proper diagnostics
+ok 37 - rule_is_instead(schema, table, rule, desc) should pass
+ok 38 - rule_is_instead(schema, table, rule, desc) should have the proper description
+ok 39 - rule_is_instead(schema, table, rule, desc) should have the proper diagnostics
+ok 40 - rule_is_instead(schema, table, rule) should pass
+ok 41 - rule_is_instead(schema, table, rule) should have the proper description
+ok 42 - rule_is_instead(schema, table, rule) should have the proper diagnostics
+ok 43 - rule_is_instead(schema, table, nothing rule, desc) should fail
+ok 44 - rule_is_instead(schema, table, nothing rule, desc) should have the proper description
+ok 45 - rule_is_instead(schema, table, nothing rule, desc) should have the proper diagnostics
+ok 46 - rule_is_instead(schema, table, also rule, desc) should fail
+ok 47 - rule_is_instead(schema, table, also rule, desc) should have the proper description
+ok 48 - rule_is_instead(schema, table, also rule, desc) should have the proper diagnostics
+ok 49 - rule_is_instead(table, rule, desc) should pass
+ok 50 - rule_is_instead(table, rule, desc) should have the proper description
+ok 51 - rule_is_instead(table, rule, desc) should have the proper diagnostics
+ok 52 - rule_is_instead(table, rule) should pass
+ok 53 - rule_is_instead(table, rule) should have the proper description
+ok 54 - rule_is_instead(table, rule) should have the proper diagnostics
+ok 55 - rule_is_instead(table, nothing rule, desc) should fail
+ok 56 - rule_is_instead(table, nothing rule, desc) should have the proper description
+ok 57 - rule_is_instead(table, nothing rule, desc) should have the proper diagnostics
+ok 58 - rule_is_instead(table, also rule, desc) should fail
+ok 59 - rule_is_instead(table, also rule, desc) should have the proper description
+ok 60 - rule_is_instead(table, also rule, desc) should have the proper diagnostics
+ok 61 - rule_is_instead(schema, table, non-existent rule, desc) should fail
+ok 62 - rule_is_instead(schema, table, non-existent rule, desc) should have the proper description
+ok 63 - rule_is_instead(schema, table, non-existent rule, desc) should have the proper diagnostics
+ok 64 - rule_is_instead(table, non-existent rule, desc) should fail
+ok 65 - rule_is_instead(table, non-existent rule, desc) should have the proper description
+ok 66 - rule_is_instead(table, non-existent rule, desc) should have the proper diagnostics
+ok 67 - rule_is_on(schema, table, rule, insert, desc) should pass
+ok 68 - rule_is_on(schema, table, rule, insert, desc) should have the proper description
+ok 69 - rule_is_on(schema, table, rule, insert, desc) should have the proper diagnostics
+ok 70 - rule_is_on(schema, table, rule, update, desc) should pass
+ok 71 - rule_is_on(schema, table, rule, update, desc) should have the proper description
+ok 72 - rule_is_on(schema, table, rule, update, desc) should have the proper diagnostics
+ok 73 - rule_is_on(schema, table, rule, insert, desc) should pass
+ok 74 - rule_is_on(schema, table, rule, insert, desc) should have the proper description
+ok 75 - rule_is_on(schema, table, rule, insert, desc) should have the proper diagnostics
+ok 76 - rule_is_on(schema, table, rule, delete, desc) should pass
+ok 77 - rule_is_on(schema, table, rule, delete, desc) should have the proper description
+ok 78 - rule_is_on(schema, table, rule, delete, desc) should have the proper diagnostics
+ok 79 - rule_is_on(schema, table, dupe rule, insert, desc) should pass
+ok 80 - rule_is_on(schema, table, dupe rule, insert, desc) should have the proper description
+ok 81 - rule_is_on(schema, table, dupe rule, insert, desc) should have the proper diagnostics
+ok 82 - rule_is_on(schema, table, rule, INSERT, desc) should pass
+ok 83 - rule_is_on(schema, table, rule, INSERT, desc) should have the proper description
+ok 84 - rule_is_on(schema, table, rule, INSERT, desc) should have the proper diagnostics
+ok 85 - rule_is_on(schema, table, rule, i, desc) should pass
+ok 86 - rule_is_on(schema, table, rule, i, desc) should have the proper description
+ok 87 - rule_is_on(schema, table, rule, i, desc) should have the proper diagnostics
+ok 88 - rule_is_on(schema, table, rule, indigo, desc) should pass
+ok 89 - rule_is_on(schema, table, rule, indigo, desc) should have the proper description
+ok 90 - rule_is_on(schema, table, rule, indigo, desc) should have the proper diagnostics
+ok 91 - rule_is_on(schema, table, rule, i, desc) should pass
+ok 92 - rule_is_on(schema, table, rule, i, desc) should have the proper description
+ok 93 - rule_is_on(schema, table, rule, i, desc) should have the proper diagnostics
+ok 94 - rule_is_on(schema, table, rule, u, desc) fail should fail
+ok 95 - rule_is_on(schema, table, rule, u, desc) fail should have the proper description
+ok 96 - rule_is_on(schema, table, rule, u, desc) fail should have the proper diagnostics
+ok 97 - rule_is_on(schema, table, invalid rule, u, desc) should fail
+ok 98 - rule_is_on(schema, table, invalid rule, u, desc) should have the proper description
+ok 99 - rule_is_on(schema, table, invalid rule, u, desc) should have the proper diagnostics
+ok 100 - rule_is_on(table, rule, insert, desc) should pass
+ok 101 - rule_is_on(table, rule, insert, desc) should have the proper description
+ok 102 - rule_is_on(table, rule, insert, desc) should have the proper diagnostics
+ok 103 - rule_is_on(table, rule, update, desc) should pass
+ok 104 - rule_is_on(table, rule, update, desc) should have the proper description
+ok 105 - rule_is_on(table, rule, update, desc) should have the proper diagnostics
+ok 106 - rule_is_on(table, rule, insert, desc) should pass
+ok 107 - rule_is_on(table, rule, insert, desc) should have the proper description
+ok 108 - rule_is_on(table, rule, insert, desc) should have the proper diagnostics
+ok 109 - rule_is_on(table, rule, delete, desc) should pass
+ok 110 - rule_is_on(table, rule, delete, desc) should have the proper description
+ok 111 - rule_is_on(table, rule, delete, desc) should have the proper diagnostics
+ok 112 - rule_is_on(table, dupe rule, insert, desc) should pass
+ok 113 - rule_is_on(table, dupe rule, insert, desc) should have the proper description
+ok 114 - rule_is_on(table, dupe rule, insert, desc) should have the proper diagnostics
+ok 115 - rule_is_on(table, rule, INSERT, desc) should pass
+ok 116 - rule_is_on(table, rule, INSERT, desc) should have the proper description
+ok 117 - rule_is_on(table, rule, INSERT, desc) should have the proper diagnostics
+ok 118 - rule_is_on(table, rule, i, desc) should pass
+ok 119 - rule_is_on(table, rule, i, desc) should have the proper description
+ok 120 - rule_is_on(table, rule, i, desc) should have the proper diagnostics
+ok 121 - rule_is_on(table, rule, indigo, desc) should pass
+ok 122 - rule_is_on(table, rule, indigo, desc) should have the proper description
+ok 123 - rule_is_on(table, rule, indigo, desc) should have the proper diagnostics
+ok 124 - rule_is_on(table, rule, i, desc) should pass
+ok 125 - rule_is_on(table, rule, i, desc) should have the proper description
+ok 126 - rule_is_on(table, rule, i, desc) should have the proper diagnostics
+ok 127 - rule_is_on(table, rule, u, desc) fail should fail
+ok 128 - rule_is_on(table, rule, u, desc) fail should have the proper description
+ok 129 - rule_is_on(table, rule, u, desc) fail should have the proper diagnostics
+ok 130 - rule_is_on(table, invalid rule, u, desc) should fail
+ok 131 - rule_is_on(table, invalid rule, u, desc) should have the proper description
+ok 132 - rule_is_on(table, invalid rule, u, desc) should have the proper diagnostics
