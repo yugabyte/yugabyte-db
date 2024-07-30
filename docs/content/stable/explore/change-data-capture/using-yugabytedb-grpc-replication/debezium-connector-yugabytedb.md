@@ -15,7 +15,7 @@ rightNav:
 
 The YugabyteDB gRPC Connector is based on the Debezium Connector, and captures row-level changes in a YugabyteDB database's schemas using the YugabyteDB gRPC replication protocol.
 
-## YugabyteDB gRPC Connector compatibility
+## Connector compatibility
 
 The connector is compatible with the following versions of YugabyteDB.
 
@@ -26,10 +26,10 @@ The connector is compatible with the following versions of YugabyteDB.
 | 2.18.2 | 1.9.5.y.33.2 |
 | 2.20 | 1.9.5.y.220.2 |
 
-### Compatibility
+In addition, the connector supports the following:
 
-* Kafka Connect: The connector supports version 2.x and later.
-* YugabyteDB: The connector supports version 2.14 and later.
+* Kafka Connect v2.x and later.
+* YugabyteDB v2.14 and later.
 
 {{< note title="Note" >}}
 
