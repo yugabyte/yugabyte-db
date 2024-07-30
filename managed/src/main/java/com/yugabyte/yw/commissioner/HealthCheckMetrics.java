@@ -14,6 +14,7 @@ import static com.yugabyte.yw.common.metrics.MetricService.DEFAULT_METRIC_EXPIRY
 import static com.yugabyte.yw.models.helpers.CommonUtils.nowPlusWithoutMillis;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HealthCheck.Details;
@@ -25,6 +26,7 @@ import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import java.time.temporal.ChronoUnit;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -46,6 +48,7 @@ public class HealthCheckMetrics {
   private static final String CORE_FILES_CHECK = "Core files";
   static final String OPENED_FILE_DESCRIPTORS_CHECK = "Opened file descriptors";
   static final String CLOCK_SYNC_CHECK = "Clock synchronization";
+  static final String DDL_ATOMICITY_CHECK = "DDL atomicity";
   private static final String NODE_TO_NODE_CA_CERT_CHECK = "Node To Node CA Cert Expiry Days";
   private static final String NODE_TO_NODE_CERT_CHECK = "Node To Node Cert Expiry Days";
   private static final String CLIENT_TO_NODE_CA_CERT_CHECK = "Client To Node CA Cert Expiry Days";
@@ -56,6 +59,11 @@ public class HealthCheckMetrics {
   private static final String YB_CONTROLLER_CHECK = "YB-Controller server check";
 
   public static final String CUSTOM_NODE_METRICS_COLLECTION_METRIC = "yb_node_custom_node_metrics";
+  public static final String DDL_ATOMICITY_CHECK_METRIC = "yb_ddl_atomicity_check";
+  public static final Set<String> UNIVERSE_WIDE_CHECK_METRICS =
+      ImmutableSet.of(DDL_ATOMICITY_CHECK_METRIC);
+  public static final Set<String> SKIP_CLEANUP_METRICS =
+      ImmutableSet.of(DDL_ATOMICITY_CHECK_METRIC);
 
   public static final List<PlatformMetrics> HEALTH_CHECK_METRICS_WITHOUT_STATUS =
       ImmutableList.<PlatformMetrics>builder()
@@ -170,10 +178,13 @@ public class HealthCheckMetrics {
                       .setSourceUuid(universe.getUniverseUUID())
                       .setLabels(
                           MetricLabelsBuilder.create().appendSource(universe).getMetricLabels())
-                      .setKeyLabel(KnownAlertLabels.NODE_NAME, nodeData.getNodeName())
-                      .setLabel(KnownAlertLabels.NODE_ADDRESS, nodeData.getNode())
-                      .setLabel(KnownAlertLabels.NODE_IDENTIFIER, nodeData.getNodeIdentifier())
                       .setValue(value.getValue());
+              if (!UNIVERSE_WIDE_CHECK_METRICS.contains(metric.getName())) {
+                result
+                    .setKeyLabel(KnownAlertLabels.NODE_NAME, nodeData.getNodeName())
+                    .setLabel(KnownAlertLabels.NODE_ADDRESS, nodeData.getNode())
+                    .setLabel(KnownAlertLabels.NODE_IDENTIFIER, nodeData.getNodeIdentifier());
+              }
               if (CollectionUtils.isNotEmpty(value.getLabels())) {
                 value
                     .getLabels()

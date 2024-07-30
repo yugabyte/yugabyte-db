@@ -12,10 +12,7 @@ import static org.hamcrest.Matchers.nullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.spy;
@@ -24,6 +21,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.AssertHelper;
@@ -62,10 +60,7 @@ import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.Model;
 import jakarta.mail.MessagingException;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
@@ -140,6 +135,9 @@ public class HealthCheckerTest extends FakeDBApplication {
     when(mockConfGetter.getConfForScope(
             any(Universe.class), eq(UniverseConfKeys.nodeCheckTimeoutSec)))
         .thenReturn(1);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.ddlAtomicityIntervalSec)))
+        .thenReturn(3600);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.backwardCompatibleDate))).thenReturn(false);
     doAnswer(
             i -> {
@@ -243,11 +241,11 @@ public class HealthCheckerTest extends FakeDBApplication {
   private void verifyNodeUniverseManager(int uploads, int commands) {
     verify(mockNodeUniverseManager, times(uploads))
         .uploadFileToNode(any(), any(), any(), any(), any(), any());
-    verify(mockNodeUniverseManager, times(commands)).runCommand(any(), any(), anyString(), any());
+    verify(mockNodeUniverseManager, times(commands)).runCommand(any(), any(), anyList(), any());
   }
 
   private void verifyK8sHealthManager() {
-    ArgumentCaptor<String> command = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<List<String>> command = ArgumentCaptor.forClass(List.class);
     verify(mockNodeUniverseManager, times(1)).runCommand(any(), any(), command.capture(), any());
     // TODO assert
   }
@@ -325,7 +323,7 @@ public class HealthCheckerTest extends FakeDBApplication {
     ShellResponse dummyShellResponseFail = ShellResponse.create(1, "Should error");
     doAnswer(i -> dummyShellResponseFail)
         .when(mockNodeUniverseManager)
-        .runCommand(any(), any(), anyString(), any());
+        .runCommand(any(), any(), anyList(), any());
 
     testSingleUniverse(u, null, true, 2);
   }
@@ -605,7 +603,7 @@ public class HealthCheckerTest extends FakeDBApplication {
   public void testCheckSingleUniverse_ScriptFailure() {
     ShellResponse dummyShellResponseFail = ShellResponse.create(1, "Should error");
 
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyString(), any()))
+    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
         .thenReturn(dummyShellResponseFail);
     Universe u = setupUniverse("univ1");
     setupAlertingData(null, false, false);
@@ -641,11 +639,12 @@ public class HealthCheckerTest extends FakeDBApplication {
 
     healthChecker.checkSingleUniverse(
         new HealthChecker.CheckSingleUniverseParams(u, defaultCustomer, true, false, false, null));
-    ArgumentCaptor<String> expectedCommand = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<List<String>> expectedCommand = ArgumentCaptor.forClass(List.class);
     verify(mockNodeUniverseManager, times(4))
         .runCommand(any(), any(), expectedCommand.capture(), any());
 
-    assertThat(expectedCommand.getValue(), equalTo("/home/yugabyte/bin/node_health.py"));
+    assertThat(
+        expectedCommand.getValue(), equalTo(ImmutableList.of("/home/yugabyte/bin/node_health.py")));
   }
 
   @Test
@@ -691,7 +690,7 @@ public class HealthCheckerTest extends FakeDBApplication {
   }
 
   private void mockGoodHealthResponse() {
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyString(), any()))
+    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
         .thenAnswer(
             i -> {
               NodeDetails nodeDetails = i.getArgument(0);
@@ -710,7 +709,7 @@ public class HealthCheckerTest extends FakeDBApplication {
   }
 
   private void mockBadHealthResponse() {
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyString(), any()))
+    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
         .thenAnswer(
             i -> {
               NodeDetails nodeDetails = i.getArgument(0);
@@ -786,7 +785,7 @@ public class HealthCheckerTest extends FakeDBApplication {
         .thenReturn(EmailFixtures.createSmtpData());
     setupAlertingData(YB_ALERT_TEST_EMAIL, false, false);
 
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyString(), any()))
+    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
         .thenReturn(ShellResponse.create(9, StringUtils.EMPTY));
     healthChecker.checkSingleUniverse(
         new HealthChecker.CheckSingleUniverseParams(
