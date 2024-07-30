@@ -37,11 +37,13 @@ CDC in YugabyteDB being based on the PostgreSQL Logical Replication model means:
 
 #### Guarantees
 
+CDC in YugabyteDB provides the following guarantees.
+
 | GUARANTEE | DESCRIPTION |
 | :----- | :----- |
-| Per-slot ordered delivery guarantee | Changes from transactions from all the tables that are part of the replication slot’s publication are received in the order they were committed. This also implies ordered delivery across all the tablets that are part of the publication’s table list. |
+| Per-slot ordered delivery guarantee | Changes from transactions from all the tables that are part of the replication slot's publication are received in the order they were committed. This also implies ordered delivery across all the tablets that are part of the publication's table list. |
 | At least once delivery | Changes from transactions are streamed at least once. Changes from transactions may be streamed again in case of restart after failure. For example, this can happen in the case of a Kafka Connect node failure. If the Kafka Connect node pushes the records to Kafka and crashes before committing the offset, it will again get the same set of records upon restart. |
-| No gaps in change stream | Receiving changes that are part of a transaction with commit time *t* implies that you have already received changes from all transactions with commit time lower than *t*. Thus, receiving any change for a row with commit timestamp *t*,  implies that you have received all older changes for that row. |
+| No gaps in change stream | Receiving changes that are part of a transaction with commit time *t* implies that you have already received changes from all transactions with commit time lower than *t*. Thus, receiving any change for a row with commit timestamp *t* implies that you have received all older changes for that row. |
 
 ## Key concepts
 
