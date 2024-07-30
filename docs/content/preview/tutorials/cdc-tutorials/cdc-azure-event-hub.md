@@ -25,7 +25,7 @@ The following table describes the components.
 | Component | Description |
 | :--- | :--- |
 | YugabyteDB Anywhere | Yugabyte self-managed DBaaS for deploying YugabyteDB at scale that includes YugabyteDB's self-managed, stateless CDC functionality with support for Confluent Kafka Connect. A pull-based model is used to report changes from the database Write-Ahead-Log (WAL). For more information on CDC, refer to [Change Data Capture](../../../explore/change-data-capture/). |
-| [Debezium connector](../../../explore/change-data-capture/debezium-connector-yugabytedb/) | Pulls data from YugabyteDB, publishes it to Kafka, and runs in a Microsoft Azure Virtual Machine. |
+| [Debezium connector](../../../explore/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/) | Pulls data from YugabyteDB, publishes it to Kafka, and runs in a Microsoft Azure Virtual Machine. |
 | [Azure Event Hubs](https://learn.microsoft.com/en-us/azure/event-hubs/event-hubs-about) | Azure big data streaming platform and event ingestion service.
 | [Azure Synapse Pipelines](https://learn.microsoft.com/en-us/azure/data-factory/concepts-pipelines-activities?) | Pipelines and activities in Azure Data Factory and Azure Synapse Analytics required to construct end-to-end data-driven workflows to move and process your data. |
 | [ADLS Gen2](https://learn.microsoft.com/en-us/azure/storage/blobs/data-lake-storage-introduction) | Storage account |
@@ -36,7 +36,7 @@ The following table describes how the data flows through each of these component
 | Step | Component | Operation |
 | --- | --- | --- |
 | 1 | Debezium YugabyteDB Kafka Connect | Stream the changed data sets requested from the source YugabyteDB Anywhere YSQL Tables. |
-| 2 | Azure Event Hubs | Stream messages from Kafka to different targets.
+| 2 | Azure Event Hubs | Stream messages from Kafka to different targets. |
 | 3 | Azure Synapse Analytics Pipeline| Used to schedule data-driven workflows that can ingest data from Azure Event Hubs to an Azure Data Lake Storage (ADLS) Gen 2 account. |
 | 4 | ADLS (Azure Data Lake Services) Gen2 | CDC data from the Azure Event Hub is saved to ADLS Gen2 in Parquet format. |
 | 5 | Azure Synapse workspace | Azure SQL Pools and Spark Pools can be used to analyze the CDC data from Yugabyte in near real time. |
@@ -52,7 +52,7 @@ To get started, you'll need the following:
 
 ## Get Started
 
-Use the following steps to move YugabyteDB CDC data into Azure Synapse Analytics using the YugabyteDB Debezium Connector that streams data into Azure Event Hubs. This data can be stored as Avro/JSON/Parquet in Azure Data Lake Storage Gen2 and then accessed via SQL Pools or Spark Pools in the Synapse workspace.
+Use the following steps to move YugabyteDB CDC data into Azure Synapse Analytics using the YugabyteDB Debezium connector that streams data into Azure Event Hubs. This data can be stored as Avro/JSON/Parquet in Azure Data Lake Storage Gen2 and then accessed via SQL Pools or Spark Pools in the Synapse workspace.
 
 ### Step 1: Create an Event Hubs namespace and Event Hubs
 
@@ -66,7 +66,7 @@ Now that you have created Event Hubs in Azure, you need to create a YugabyteDB C
 
 1. [Download Apache Kafka](https://downloads.apache.org/kafka/).
 
-1. Configure your event hub to connect and receive data from the Debezium Connector for Yugabyte. You can create an Azure Event Hub configuration file that will be saved locally on the machine, for example you can save the configuration file as `eventhub.config` in the Kafka `bin` directory. For more details on creating your configuration file, refer to the sample available in the [Kafka Connect for Event Hubs](https://learn.microsoft.com/en-us/azure/event-hubs/event-hubs-kafka-connect-tutorial#configure-kafka-connect-for-event-hubs) documentation.
+1. Configure your event hub to connect and receive data from the  YugabyteDB Debezium connector. You can create an Azure Event Hub configuration file that will be saved locally on the machine, for example you can save the configuration file as `eventhub.config` in the Kafka `bin` directory. For more details on creating your configuration file, refer to the sample available in the [Kafka Connect for Event Hubs](https://learn.microsoft.com/en-us/azure/event-hubs/event-hubs-kafka-connect-tutorial#configure-kafka-connect-for-event-hubs) documentation.
 
 1. Download the [Debezium connector jar file](https://github.com/yugabyte/debezium-connector-yugabytedb/releases/download/v1.9.5.y.19/debezium-connector-yugabytedb-1.9.5.y.19.jar) from the Yugabyte GitHub repository. Save this jar file in your Kafka `libs` folder (for example, `/home/azureuser/kafka_2.12-3.2.0/libs`).
 

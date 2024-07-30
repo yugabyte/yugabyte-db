@@ -1396,7 +1396,7 @@
         },
         "target" : {
           "description" : "Target",
-          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "CustomCACertificate", "Alert", "AlertTemplateSettings", "AlertTemplateVariables", "AlertChannel", "AlertChannelTemplates", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "DrConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "TelemetryProvider", "TroubleshootingPlatform", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense", "PerformanceRecommendation", "PerformanceAdvisorSettings", "PerformanceAdvisorRun", "Role", "RoleBinding", "OIDCGroupMapping" ],
+          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "CustomCACertificate", "Alert", "AlertTemplateSettings", "AlertTemplateVariables", "AlertChannel", "AlertChannelTemplates", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "DrConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "TelemetryProvider", "TroubleshootingPlatform", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense", "PerformanceRecommendation", "PerformanceAdvisorSettings", "PerformanceAdvisorRun", "Role", "RoleBinding", "OIDCGroupMapping", "GroupMapping" ],
           "example" : "User",
           "readOnly" : true,
           "type" : "string"
@@ -1873,6 +1873,12 @@
     },
     "AzureRegionCloudInfo" : {
       "properties" : {
+        "azuNetworkRGOverride" : {
+          "type" : "string"
+        },
+        "azuRGOverride" : {
+          "type" : "string"
+        },
         "securityGroupId" : {
           "type" : "string"
         },
@@ -2835,7 +2841,7 @@
         "type" : "object"
       } ]
     },
-    "BootstarpBackupParams" : {
+    "BootstrapBackupParams" : {
       "description" : "Backup parameters for bootstrapping",
       "properties" : {
         "parallelism" : {
@@ -2860,7 +2866,7 @@
           "type" : "boolean"
         },
         "backupRequestParams" : {
-          "$ref" : "#/definitions/BootstarpBackupParams",
+          "$ref" : "#/definitions/BootstrapBackupParams",
           "description" : "Parameters used to do Backup/restore"
         },
         "tables" : {
@@ -3894,7 +3900,7 @@
         },
         "tags" : {
           "items" : {
-            "enum" : [ "PUBLIC", "INTERNAL", "YBM", "BETA", "UIDriven", "FEATURE_FLAG" ],
+            "enum" : [ "PUBLIC", "INTERNAL", "BETA", "FEATURE_FLAG" ],
             "type" : "string"
           },
           "type" : "array"
@@ -4801,7 +4807,7 @@
         },
         "storageType" : {
           "description" : "Storage type used for this instance",
-          "enum" : [ "IO1", "GP2", "GP3", "Scratch", "Persistent", "StandardSSD_LRS", "Premium_LRS", "UltraSSD_LRS", "Local" ],
+          "enum" : [ "IO1", "GP2", "GP3", "Scratch", "Persistent", "StandardSSD_LRS", "Premium_LRS", "PremiumV2_LRS", "UltraSSD_LRS", "Local" ],
           "type" : "string"
         },
         "throughput" : {
@@ -5851,6 +5857,31 @@
         }
       },
       "required" : [ "clusters", "creatingUser", "kubernetesUpgradeSupported", "masterGFlags", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "tserverGFlags", "upgradeOption" ],
+      "type" : "object"
+    },
+    "GroupMappingInfo" : {
+      "properties" : {
+        "customerUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "groupUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "identifier" : {
+          "type" : "string"
+        },
+        "roleUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "type" : {
+          "enum" : [ "LDAP", "OIDC" ],
+          "type" : "string"
+        }
+      },
+      "required" : [ "customerUUID", "groupUUID", "identifier", "roleUUID", "type" ],
       "type" : "object"
     },
     "HTTP Auth information" : {
@@ -8839,7 +8870,7 @@
     "Permission" : {
       "properties" : {
         "action" : {
-          "enum" : [ "CREATE", "READ", "UPDATE", "DELETE", "PAUSE_RESUME", "BACKUP_RESTORE", "UPDATE_ROLE_BINDINGS", "UPDATE_PROFILE", "SUPER_ADMIN_ACTIONS" ],
+          "enum" : [ "CREATE", "READ", "UPDATE", "DELETE", "PAUSE_RESUME", "BACKUP_RESTORE", "UPDATE_ROLE_BINDINGS", "UPDATE_PROFILE", "SUPER_ADMIN_ACTIONS", "XCLUSTER" ],
           "type" : "string"
         },
         "resourceType" : {
@@ -8865,7 +8896,7 @@
     "PermissionInfo" : {
       "properties" : {
         "action" : {
-          "enum" : [ "CREATE", "READ", "UPDATE", "DELETE", "PAUSE_RESUME", "BACKUP_RESTORE", "UPDATE_ROLE_BINDINGS", "UPDATE_PROFILE", "SUPER_ADMIN_ACTIONS" ],
+          "enum" : [ "CREATE", "READ", "UPDATE", "DELETE", "PAUSE_RESUME", "BACKUP_RESTORE", "UPDATE_ROLE_BINDINGS", "UPDATE_PROFILE", "SUPER_ADMIN_ACTIONS", "XCLUSTER" ],
           "type" : "string"
         },
         "description" : {
@@ -9158,6 +9189,28 @@
           "type" : "string"
         }
       },
+      "type" : "object"
+    },
+    "Principal" : {
+      "properties" : {
+        "groupUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "type" : {
+          "enum" : [ "USER", "LDAP_GROUP", "OIDC_GROUP" ],
+          "type" : "string"
+        },
+        "userUUID" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "uuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [ "groupUUID", "type", "userUUID", "uuid" ],
       "type" : "object"
     },
     "Provider" : {
@@ -10180,7 +10233,7 @@
       "description" : "Bootstrap parameters for restarting",
       "properties" : {
         "backupRequestParams" : {
-          "$ref" : "#/definitions/BootstarpBackupParams",
+          "$ref" : "#/definitions/BootstrapBackupParams",
           "description" : "Parameters used to do Backup/restore"
         }
       },
@@ -11096,6 +11149,13 @@
           "format" : "date-time",
           "type" : "string"
         },
+        "groupInfo" : {
+          "$ref" : "#/definitions/GroupMappingInfo",
+          "description" : "GroupInfo"
+        },
+        "principal" : {
+          "$ref" : "#/definitions/Principal"
+        },
         "resourceGroup" : {
           "$ref" : "#/definitions/ResourceGroup",
           "description" : "Details of the resource group"
@@ -11126,6 +11186,7 @@
           "type" : "string"
         }
       },
+      "required" : [ "principal" ],
       "type" : "object"
     },
     "RoleBindingFormData" : {
@@ -11166,7 +11227,7 @@
       "type" : "object"
     },
     "RoleResourceDefinition" : {
-      "description" : "Role and resource group definition.",
+      "description" : "Defines the association of Role to Resource Groups.",
       "properties" : {
         "resourceGroup" : {
           "$ref" : "#/definitions/ResourceGroup",
@@ -15991,6 +16052,10 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "sourceTableInfo" : {
+          "$ref" : "#/definitions/TableInfoResp",
+          "description" : "tableInfo from source universe"
+        },
         "status" : {
           "description" : "Status",
           "enum" : [ "Validated", "Running", "Updating", "Warning", "Error", "Bootstrapping", "Failed", "UnableToFetch" ],
@@ -16005,6 +16070,10 @@
           "description" : "Table ID",
           "example" : "000033df000030008000000000004005",
           "type" : "string"
+        },
+        "targetTableInfo" : {
+          "$ref" : "#/definitions/TableInfoResp",
+          "description" : "tableInfo from target universe"
         }
       },
       "type" : "object"
@@ -18209,7 +18278,7 @@
           "required" : true,
           "type" : "string"
         }, {
-          "default" : "null",
+          "default" : -1,
           "format" : "int64",
           "in" : "query",
           "name" : "apiTokenVersion",
@@ -19720,6 +19789,50 @@
         "tags" : [ "Disaster Recovery" ]
       }
     },
+    "/api/v1/customers/{cUUID}/dr_configs/{drUUID}/pause" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "pauseDrConfig",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "drUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Pause DR config",
+        "tags" : [ "Disaster Recovery" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/dr_configs/{drUUID}/replace_replica" : {
       "post" : {
         "description" : "",
@@ -19827,6 +19940,50 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Restart disaster recovery config",
+        "tags" : [ "Disaster Recovery" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/dr_configs/{drUUID}/resume" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "resumeDrConfig",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "drUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Resume DR config",
         "tags" : [ "Disaster Recovery" ]
       }
     },
@@ -29045,7 +29202,8 @@
     },
     "/api/v1/customers/{cUUID}/xcluster_configs/sync" : {
       "post" : {
-        "description" : "Available since YBA version 2.16.0.0.",
+        "deprecated" : true,
+        "description" : "<b style=\"color:#ff0000\">Deprecated since YBA version 2.23.0.0.</b></p> Sync xcluster config (V2) instead.",
         "operationId" : "syncXClusterConfig",
         "parameters" : [ {
           "format" : "uuid",
@@ -29084,7 +29242,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Sync xcluster config",
+        "summary" : "Sync xcluster config - deprecated",
         "tags" : [ "Asynchronous Replication" ]
       }
     },
@@ -29279,6 +29437,50 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Edit xcluster config",
+        "tags" : [ "Asynchronous Replication" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/xcluster_configs/{xccUUID}/sync" : {
+      "post" : {
+        "description" : "Available since YBA version 2.23.0.0",
+        "operationId" : "syncXClusterConfigV2",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "xccUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Sync xcluster config (V2)",
         "tags" : [ "Asynchronous Replication" ]
       }
     },
@@ -29654,7 +29856,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "enum" : [ "IO1", "GP2", "GP3", "Scratch", "Persistent", "StandardSSD_LRS", "Premium_LRS", "UltraSSD_LRS", "Local" ],
+                "enum" : [ "IO1", "GP2", "GP3", "Scratch", "Persistent", "StandardSSD_LRS", "Premium_LRS", "PremiumV2_LRS", "UltraSSD_LRS", "Local" ],
                 "type" : "string"
               },
               "type" : "array"
@@ -29666,7 +29868,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "enum" : [ "IO1", "GP2", "GP3", "Scratch", "Persistent", "StandardSSD_LRS", "Premium_LRS", "UltraSSD_LRS", "Local" ],
+                "enum" : [ "IO1", "GP2", "GP3", "Scratch", "Persistent", "StandardSSD_LRS", "Premium_LRS", "PremiumV2_LRS", "UltraSSD_LRS", "Local" ],
                 "type" : "string"
               },
               "type" : "array"
@@ -29690,7 +29892,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "enum" : [ "IO1", "GP2", "GP3", "Scratch", "Persistent", "StandardSSD_LRS", "Premium_LRS", "UltraSSD_LRS", "Local" ],
+                "enum" : [ "IO1", "GP2", "GP3", "Scratch", "Persistent", "StandardSSD_LRS", "Premium_LRS", "PremiumV2_LRS", "UltraSSD_LRS", "Local" ],
                 "type" : "string"
               },
               "type" : "array"
@@ -29702,7 +29904,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "enum" : [ "IO1", "GP2", "GP3", "Scratch", "Persistent", "StandardSSD_LRS", "Premium_LRS", "UltraSSD_LRS", "Local" ],
+                "enum" : [ "IO1", "GP2", "GP3", "Scratch", "Persistent", "StandardSSD_LRS", "Premium_LRS", "PremiumV2_LRS", "UltraSSD_LRS", "Local" ],
                 "type" : "string"
               },
               "type" : "array"
@@ -29726,7 +29928,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "enum" : [ "IO1", "GP2", "GP3", "Scratch", "Persistent", "StandardSSD_LRS", "Premium_LRS", "UltraSSD_LRS", "Local" ],
+                "enum" : [ "IO1", "GP2", "GP3", "Scratch", "Persistent", "StandardSSD_LRS", "Premium_LRS", "PremiumV2_LRS", "UltraSSD_LRS", "Local" ],
                 "type" : "string"
               },
               "type" : "array"
@@ -29738,7 +29940,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "enum" : [ "IO1", "GP2", "GP3", "Scratch", "Persistent", "StandardSSD_LRS", "Premium_LRS", "UltraSSD_LRS", "Local" ],
+                "enum" : [ "IO1", "GP2", "GP3", "Scratch", "Persistent", "StandardSSD_LRS", "Premium_LRS", "PremiumV2_LRS", "UltraSSD_LRS", "Local" ],
                 "type" : "string"
               },
               "type" : "array"
@@ -29963,7 +30165,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Get current user/customer uuid auth/api token",
+        "summary" : "Get current user and customer uuid. This will not generate or return the API token, use /api_token API for that.",
         "tags" : [ "Session management" ]
       }
     },

@@ -820,7 +820,6 @@ public class PlacementInfoUtil {
   static void setPerAZRF(PlacementInfo placementInfo, int rf, UUID defaultRegionUUID) {
     LOG.info("Setting per AZ replication factor. Default region {}", defaultRegionUUID);
     List<PlacementAZ> sortedAZs = getAZsSortedByNumNodes(placementInfo);
-    int numNodesInUniverse = sortedAZs.stream().map(az -> az.numNodesInAZ).reduce(0, Integer::sum);
 
     // Reset per-AZ RF to 0
     placementInfo.azStream().forEach(az -> az.replicationFactor = 0);
@@ -882,16 +881,21 @@ public class PlacementInfoUtil {
       LOG.debug("Special case when RF=3 and number of zones= 2, using 1-1 distribution");
       return;
     }
+
+    sortedAZPlacements.removeIf(
+        az -> az.getSecond().replicationFactor >= az.getSecond().numNodesInAZ);
     // Set per-AZ RF according to node distribution across AZs.
     // We already have one replica in each region. Now placing other.
     int i = 0;
-    while ((placedReplicas < rf) && (i < numNodesInUniverse)) {
-      Pair<UUID, PlacementAZ> az = sortedAZPlacements.get(i % sortedAZs.size());
-      if (az.getSecond().replicationFactor < az.getSecond().numNodesInAZ) {
-        az.getSecond().replicationFactor++;
-        placedReplicas++;
+    while ((placedReplicas < rf) && sortedAZPlacements.size() > 0) {
+      Pair<UUID, PlacementAZ> az = sortedAZPlacements.get(i % sortedAZPlacements.size());
+      az.getSecond().replicationFactor++;
+      placedReplicas++;
+      if (az.getSecond().replicationFactor == az.getSecond().numNodesInAZ) {
+        sortedAZPlacements.remove(az);
+      } else {
+        i++;
       }
-      i++;
     }
 
     if (placedReplicas < rf) {

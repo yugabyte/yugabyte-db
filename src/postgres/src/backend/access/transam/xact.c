@@ -1947,7 +1947,8 @@ YBInitializeTransaction(void)
 
 		HandleYBStatus(
 			YBCPgSetTransactionIsolationLevel(YBGetEffectivePggateIsolationLevel()));
-		HandleYBStatus(YBCPgEnableFollowerReads(YBReadFromFollowersEnabled(), YBFollowerReadStalenessMs()));
+		HandleYBStatus(YBCPgUpdateFollowerReadsConfig(
+			YBReadFromFollowersEnabled(), YBFollowerReadStalenessMs()));
 		HandleYBStatus(YBCPgSetTransactionReadOnly(XactReadOnly));
 		HandleYBStatus(YBCPgSetEnableTracing(YBEnableTracing()));
 		HandleYBStatus(YBCPgSetTransactionDeferrable(XactDeferrable));
@@ -6314,6 +6315,22 @@ void YbClearCurrentTransactionId()
 {
 	CurrentTransactionState->transactionId = InvalidTransactionId;
 	MyPgXact->xid = InvalidTransactionId;
+}
+
+/*
+ * YbClearParallelContexts
+ * Clean up parallel contexts as a part of transparent query restart.
+ */
+void
+YbClearParallelContexts()
+{
+	TransactionState s = CurrentTransactionState;
+	Assert(IsInParallelMode());
+	if (s->subTransactionId == InvalidSubTransactionId)
+		AtEOXact_Parallel(false);
+	else
+		AtEOSubXact_Parallel(false, s->subTransactionId);
+	ExitParallelMode();
 }
 
 /*

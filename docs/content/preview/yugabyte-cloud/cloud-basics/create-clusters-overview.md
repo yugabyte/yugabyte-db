@@ -167,8 +167,9 @@ Refer to [Scaling clusters](../../cloud-clusters/configure-clusters/).
 
 By default, clusters are created using a stable release, taken from the [stable release series](../../../releases/versioning/#release-versioning-convention-for-stable-releases) of YugabyteDB. You can choose to deploy your dedicated cluster using the following tracks:
 
-- Innovation - Updated more frequently, providing quicker access to new features.
 - Production - Has less frequent updates, using select stable builds that have been tested longer in YugabyteDB Aeon.
+- Innovation - Updated more frequently, providing quicker access to new features.
+- Early Access - Updated more frequently, providing access to the most recent stable YugabyteDB release.
 
 If you need a feature from the [preview release series](../../../releases/versioning/#release-versioning-convention-for-preview-releases) of YugabyteDB, contact {{% support-cloud %}} before you create your cluster. (Preview is also available for Sandbox clusters.)
 

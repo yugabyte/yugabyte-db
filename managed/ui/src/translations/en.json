@@ -38,7 +38,8 @@
       "startDate": "Start Date",
       "endDate": "End Date",
       "dot": ".",
-      "and": "and"
+      "and": "and",
+      "learnMore": "Learn more"
     },
     "imgAltText": {
       "infoIcon": "Information Icon"
@@ -201,6 +202,15 @@
           "finalizingTooltip": "Finalizing v{{version}}",
           "upgradingTooltip": "Upgrading to v{{version}}"
         }
+      },
+      "pgCompatibility": {
+        "modalTitle": "Edit Enhanced Postgres Compatibility",
+        "toggleLabel": "Enhanced Postgres Compatibility",
+        "subText": "Configure YSQL for maximum Postgres compatibility by enabling early access features.",
+        "enableWarning": "<strong>Note!</strong> Enabling enhanced Postgres compatibility requires a <strong>rolling restart</strong> of <strong>{{universeName}}</strong>. The universe will remain online and available throughout.",
+        "disableWarning1": "<strong>Note!</strong> Disabling enhanced Postgres compatibility:",
+        "disableWarning2": "Requires a <strong>rolling restart</strong> of <strong>{{universeName}}</strong>. The universe will remain online and available throughout.",
+        "disableWarning3": "May impact performance."
       }
     },
     "commonErrors": {
@@ -260,7 +270,11 @@
         "yqlServerHttpPort": "YCQL HTTP Port",
         "yqlServerRpcPort": "YCQL RPC Port",
         "ysqlServerHttpPort": "YSQL HTTP Port",
-        "ysqlServerRpcPort": "YSQL RPC Port"
+        "ysqlServerRpcPort": "YSQL RPC Port",
+        "enhancePGCompatibility": "Enhanced Postgres Compatibility",
+        "earlyAccess": "Early Access",
+        "pgSubText": "Configure YSQL for maximum Postgres compatibility by enabling<br /> early access features. <1>Learn more</1>",
+        "pgTooltip": "Access to enhanced Postgres compatible features is only available for database version 2024.2 or later. <1>Learn more</1>"
       },
       "cloudConfig": {
         "addZoneButton": "Add Zone",
@@ -381,7 +395,8 @@
         "flagsModifiedModalBody1": "The Gflags has been modified in another tab/browser/device.",
         "flagsModifiedModalBody2": "If you don't want to lose modified flags, please reload the page.",
         "flagsModifiedModalLine1": "Do you want to reload ?",
-        "flagsModifiedModalLine2": "Note that current changes will be lost."
+        "flagsModifiedModalLine2": "Note that current changes will be lost.",
+        "pgGroupWarning": "You can't change this flag because it was set using the Enhanced Postgres Compatibility option"
       },
       "helmOverrides": {
         "addK8sOverrides": "Add Kubernetes Overrides",
@@ -401,6 +416,7 @@
         "dedicatedNodesHelper": "Place tserver and master processes on separate nodes.",
         "ebs": "EBS Type",
         "ephemeralStorage": "! Selected instance type is with ephemeral storage, If you will pause this universe your data will get lost.",
+        "premiumv2Storage": "! Selected storage type is only available in select regions. Your creation will fail if you choose incorrect region.",
         "instanceType": "Instance Type",
         "k8NumCores": "Number of Cores",
         "k8Memory": "Memory (Gib)",
@@ -809,7 +825,9 @@
               "label": "Metrics",
               "metricsUnavailableDuringFailover": "Metrics are unavailable during failover."
             },
-            "tables": { "label": "Tables" }
+            "tables": {
+              "label": "Tables"
+            }
           },
           "status": {
             "Initializing": "Initializing",
@@ -1932,6 +1950,75 @@
       "editKubernetesModal": {
         "modalTitle": "Edit Kubernetes",
         "helperText": "YugabyteDB Anywhere will use this URL to retrieve the installation file during deployment and upgrades."
+      }
+    },
+    "taskDetails": {
+      "header": {
+        "title": "Operation Details"
+      },
+      "taskNotfound": "Task not found!",
+      "actions": {
+        "retry": "Retry",
+        "abort": "Abort",
+        "diffs": {
+          "Update": "View Universe Changes",
+          "SoftwareUpgrade": "View Software Upgrade Changes",
+          "GFlagsUpgrade": "View GFlags Changes"
+        },
+        "messages": {
+          "abortConfirmTitle": "Abort Running Task ?",
+          "abortConfirmMsg": "Do you really want to abort this task?",
+          "retryConfirmTitle": "Retry Task ?",
+          "retryConfirmMsg": "Do you really want to retry this task?",
+          "taskAbortSuccess": "Task aborted successfully",
+          "taskAbortFailed": "Task abort failed",
+          "taskRetrySuccess": "Task retry success",
+          "taskRetryFailed": "Task retry failed"
+        }
+      },
+      "info": {
+        "task": "Task",
+        "type": "Type",
+        "target": "Target",
+        "status": "Status",
+        "startTime": "Start Time",
+        "endTime": "End time",
+        "startVersion": "Start Version",
+        "targetVersion": "Target Version"
+      },
+      "progress": {
+        "title": "Progress",
+        "complete": "{{progress}}% Completed",
+        "expand": "Expand",
+        "showLog": "YugaWare Log"
+      },
+      "banner": {
+        "viewDetails": "View Details",
+        "taskProgress": "{{percent}}%",
+        "opNotAvailable": "Some operations are not available while the current operation is in progress"
+      },
+      "simple": {
+        "viewDetails": "View Details"
+      },
+      "diffModal": {
+        "title": "Universe Changes",
+        "expandAll": "Expand All",
+        "diffDetailsNotFound": "Unable to find diff details",
+        "alerts": {
+          "inProgress": "This operation intends to modify the following {{count}} value(s). ",
+          "failed": "<b>Changes haven't been fully implemented</b> due to the failure of the task."
+        },
+        "titles": {
+          "Update": "Universe Changes",
+          "SoftwareUpgrade": "Software Upgrade Changes",
+          "GFlagsUpgrade": " GFlags Upgrade Changes"
+        },
+        "universeDiff": {
+          "region": "Region",
+          "availabilityZone": "Availability Zone",
+          "nodes": "nodes",
+          "preferred": "preferred"
+        }
       }
     },
     "ha": {

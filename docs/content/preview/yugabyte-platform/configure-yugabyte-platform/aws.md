@@ -72,9 +72,11 @@ To create an AWS provider:
 
 1. Enter the provider details. Refer to [Provider settings](#provider-settings).
 
-1. Click **Create Provider Configuration** when you are done and wait for the configuration to complete.
+1. Click **Validate and Save Configuration** when you are done and wait for the configuration to validate and complete.
 
-This process includes configuring a network, subnetworks in all available regions, firewall rules, VPC peering for network connectivity, and a custom SSH key pair for YBA-to-YugabyteDB connectivity.
+    If you want to save your progress, you can skip validation by choosing the **Ignore and save provider configuration anyway** option, which saves the provider configuration without validating. Note that you may not be able to create universes using an incomplete or unvalidated provider.
+
+The create provider process includes configuring a network, subnetworks in all available regions, firewall rules, VPC peering for network connectivity, and a custom SSH key pair for YBA-to-YugabyteDB connectivity.
 
 ### View and edit providers
 
@@ -101,7 +103,7 @@ Enter a Provider name. The Provider name is an internal tag used for organizing 
 
 **Credential Type**. YBA requires the ability to create VMs in AWS. To do this, you can do one of the following:
 
-- **Specify Access ID and Secret Key** - Create an AWS Service Account with the required permissions (refer to [Cloud permissions](../../prepare/cloud-permissions/cloud-permissions-nodes/)), and provide your AWS Access Key ID and Secret Access Key.
+- **Specify Access ID and Secret Key** - Create an AWS Service Account with the required permissions (refer to [Cloud permissions](../../prepare/cloud-permissions/cloud-permissions-nodes-aws/)), and provide your AWS Access Key ID and Secret Access Key.
 - **Use IAM Role from this YBA host's instance** - Provision the YBA VM instance with an IAM role that has sufficient permissions by attaching an [IAM role](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html) to the YBA VM in the **EC2** tab. This option is only available if YBA is installed on AWS.
 
 **Use AWS Route 53 DNS Server**. Choose whether to use the cloud DNS Server / load balancer for universes deployed using this provider. Generally, SQL clients should prefer to use [smart client drivers](../../../drivers-orms/smart-drivers/) to connect to cluster nodes, rather than load balancers. However, in some cases (for example, if no smart driver is available in the language), you may use a DNS Server or load-balancer. The DNS Server acts as a load-balancer that routes clients to various nodes in the database universe. YBA integrates with [Amazon Route53](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/Welcome.html) to provide managed Canonical Name (CNAME) entries for your YugabyteDB universes, and automatically updates the DNS entry as nodes get created, removed, or undergo maintenance.

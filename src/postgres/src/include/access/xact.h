@@ -481,4 +481,5 @@ extern void YBClearDdlHandles(void);
 */
 extern void YbClearCurrentTransactionId(void);
 extern bool YbHasOnlyInternalRcSubTransactions(void);
+extern void YbClearParallelContexts(void);
 #endif							/* XACT_H */

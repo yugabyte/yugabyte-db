@@ -160,17 +160,22 @@ public class EditDrConfig extends CreateXClusterConfig {
 
     createXClusterConfigSetStatusTask(newXClusterConfig, XClusterConfigStatusType.Updating);
 
-    createXClusterConfigSetStatusForTablesTask(
-        newXClusterConfig,
-        getTableIds(taskParams().getTableInfoList()),
-        XClusterTableConfig.Status.Updating);
+    if (newXClusterConfig.getType() == XClusterConfig.ConfigType.Db) {
+      addSubtasksToCreateXClusterConfig(
+          newXClusterConfig, taskParams().getDbs(), taskParams().getPitrParams());
+    } else {
+      createXClusterConfigSetStatusForTablesTask(
+          newXClusterConfig,
+          getTableIds(taskParams().getTableInfoList()),
+          XClusterTableConfig.Status.Updating);
 
-    addSubtasksToCreateXClusterConfig(
-        newXClusterConfig,
-        taskParams().getTableInfoList(),
-        taskParams().getMainTableIndexTablesMap(),
-        taskParams().getSourceTableIdsWithNoTableOnTargetUniverse(),
-        taskParams().getPitrParams());
+      addSubtasksToCreateXClusterConfig(
+          newXClusterConfig,
+          taskParams().getTableInfoList(),
+          taskParams().getMainTableIndexTablesMap(),
+          taskParams().getSourceTableIdsWithNoTableOnTargetUniverse(),
+          taskParams().getPitrParams());
+    }
 
     createXClusterConfigSetStatusTask(newXClusterConfig, XClusterConfigStatusType.Running)
         .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);

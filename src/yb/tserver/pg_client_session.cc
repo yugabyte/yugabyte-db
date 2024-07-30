@@ -1915,13 +1915,6 @@ void PgClientSession::GetTableKeyRanges(
 
   auto session = EnsureSession(PgClientSessionKind::kPlain, context.GetClientDeadline());
   auto shared_context = std::make_shared<rpc::RpcContext>(std::move(context));
-  const auto read_time_serial_no = req.read_time_serial_no();
-  // TODO: Remove read time management from GetTableKeyRanges function.
-  UsedReadTimeApplier used_read_time_applier;
-  if (read_time_serial_no_ != read_time_serial_no) {
-    used_read_time_applier = ResetReadPoint(PgClientSessionKind::kPlain);
-    read_time_serial_no_ = read_time_serial_no;
-  }
   GetTableKeyRanges(
       session, *table, req.lower_bound_key(), req.upper_bound_key(), req.max_num_ranges(),
       req.range_size_bytes(), req.is_forward(), req.max_key_length(), &shared_context->sidecars(),
@@ -1931,15 +1924,14 @@ void PgClientSession::GetTableKeyRanges(
           StatusToPB(status, resp->mutable_status());
         }
         shared_context->RespondSuccess();
-      }, std::move(used_read_time_applier));
+      });
 }
 
 void PgClientSession::GetTableKeyRanges(
     client::YBSessionPtr session, const std::shared_ptr<client::YBTable>& table,
     Slice lower_bound_key, Slice upper_bound_key, uint64_t max_num_ranges,
     uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length, rpc::Sidecars* sidecars,
-    PgsqlPagingStatePB* paging_state, std::function<void(Status)> callback,
-    UsedReadTimeApplier&& used_read_time_applier) {
+    PgsqlPagingStatePB* paging_state, std::function<void(Status)> callback) {
   // TODO(get_table_key_ranges): consider using separate GetTabletKeyRanges RPC to tablet leader
   // instead of passing through YBSession.
   auto psql_read = client::YBPgsqlReadOp::NewSelect(table, sidecars);
@@ -1981,25 +1973,11 @@ void PgClientSession::GetTableKeyRanges(
   session->Apply(psql_read);
   session->FlushAsync([this, session, psql_read, callback = std::move(callback), table,
                        lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes,
-                       is_forward, max_key_length, sidecars,
-                       used_read_time_applier = std::move(used_read_time_applier)](
-                           client::FlushStatus* flush_status) {
-    {
-      // TODO: Remove read time management from GetTableKeyRanges function.
-      ReadTimeData used_read_time;
-      auto used_read_time_guard = ScopeExit([&used_read_time_applier, &used_read_time] {
-        if (used_read_time_applier)
-          used_read_time_applier(std::move(used_read_time));
-      });
-      const auto status = CombineErrorsToStatus(flush_status->errors, flush_status->status);
-      if (!status.ok()) {
-        callback(status);
-        return;
-      }
-
-      if (used_read_time_applier) {
-        used_read_time = {psql_read->used_read_time(), psql_read->used_tablet()};
-      }
+                       is_forward, max_key_length, sidecars](client::FlushStatus* flush_status) {
+    const auto status = CombineErrorsToStatus(flush_status->errors, flush_status->status);
+    if (!status.ok()) {
+      callback(status);
+      return;
     }
 
     auto* resp = psql_read->mutable_response();
@@ -2009,8 +1987,7 @@ void PgClientSession::GetTableKeyRanges(
     }
     GetTableKeyRanges(
         session, table, lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes,
-        is_forward, max_key_length, sidecars, resp->release_paging_state(), std::move(callback),
-        UsedReadTimeApplier());
+        is_forward, max_key_length, sidecars, resp->release_paging_state(), std::move(callback));
   });
 }
 

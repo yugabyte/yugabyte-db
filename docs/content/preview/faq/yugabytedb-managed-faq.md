@@ -106,7 +106,7 @@ A YugabyteDB Aeon account is limited to a single Sandbox cluster; you can add as
 | [Connections](../../yugabyte-cloud/cloud-basics/create-clusters-overview/#sizing) | Up to 15 simultaneous connections | 15 per vCPU per node |
 | [Scaling](../../yugabyte-cloud/cloud-clusters/configure-clusters/) | None | Horizontal and Vertical |
 | [Backups](../../yugabyte-cloud/cloud-clusters/backup-clusters/) | None | Scheduled and on-demand |
-| [YugabyteDB version](#what-version-of-yugabytedb-does-my-cluster-run-on) | Innovation<br>Preview | Production<br>Innovation |
+| [YugabyteDB version](#what-version-of-yugabytedb-does-my-cluster-run-on) | Innovation<br>Preview<br>Early Access | Production<br>Innovation<br>Early Access |
 | Price | Free | [Pay-as-you-go and subscription](#how-is-yugabytedb-aeon-priced)<br>[Free trial available](../../yugabyte-cloud/managed-freetrial/) |
 | Support | Slack Community | Enterprise Support |
 
@@ -132,7 +132,7 @@ During a [maintenance window](../../yugabyte-cloud/cloud-clusters/cloud-maintena
 
 #### Cluster (YugabyteDB) version upgrade
 
-To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte upgrades your cluster database to the [latest version](#what-version-of-yugabytedb-does-my-cluster-run-on). The database is upgraded to the latest release in the [release track](#what-version-of-yugabytedb-does-my-cluster-run-on) that was selected when the cluster was created (Innovation or Production for dedicated clusters, or Innovation or Preview for Sandbox clusters). Sandbox clusters are always in the preview track.
+To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte upgrades your cluster database to the [latest version](#what-version-of-yugabytedb-does-my-cluster-run-on). The database is upgraded to the latest release in the [release track](#what-version-of-yugabytedb-does-my-cluster-run-on) that was selected when the cluster was created.
 
 Yugabyte only upgrades clusters during scheduled maintenance windows. Yugabyte notifies you in advance of any upcoming upgrade via email.
 
@@ -146,12 +146,13 @@ For more information, refer to [Maintenance windows](../../yugabyte-cloud/cloud-
 
 Dedicated clusters are provisioned with a **stable** release, from a YugabyteDB [stable release](/preview/releases/versioning/#release-versioning-convention-for-stable-releases) series. When creating a dedicated cluster, you can choose one of the following tracks:
 
-- Innovation, which has more frequent updates for faster access to new features.
-- Production, which has a slower update cadence and features only select stable release builds.
+- Production - Has less frequent updates, using select stable builds that have been tested longer in YugabyteDB Aeon.
+- Innovation - Updated more frequently, providing quicker access to new features.
+- Early Access - Updated more frequently, providing access to the most recent stable YugabyteDB release.
 
-In addition to the Innovation track, Sandbox clusters can be provisioned with a **preview** release, from the YugabyteDB [preview release](/preview/releases/versioning/#release-versioning-convention-for-preview-releases) series.
+In addition to the Innovation and Early Access tracks, Sandbox clusters can be provisioned with a **preview** release, from the YugabyteDB [preview release](/preview/releases/versioning/#release-versioning-convention-for-preview-releases) series.
 
-Once a cluster is created, it is upgraded with releases from the track that was assigned at creation (that is, either Innovation or Production for dedicated clusters, or Innovation or Preview for Sandbox clusters).
+Once a cluster is created, it is upgraded with releases from the track that was assigned at creation.
 
 To view the database version running on a particular cluster, navigate to the **Clusters** page; the database version is displayed next to the cluster name; hover over the version to see the release track.
 
@@ -227,18 +228,6 @@ When you connect using Cloud Shell with the YSQL API, the shell window also inco
 Connect to your YugabyteDB cluster using the YugabyteDB [ysqlsh](../../admin/ysqlsh/) and [ycqlsh](../../admin/ycqlsh/) client shells installed on your computer.
 
 Before you can connect using a client shell, you need to add your computer to the cluster IP allow list. Refer to [Assign IP Allow Lists](../../yugabyte-cloud/cloud-secure-clusters/add-connections/).
-
-You must be running the latest versions of the client shells (Yugabyte Client 2.6 or later), which you can download using the following command on Linux or macOS:
-
-```sh
-$ curl -sSL https://downloads.yugabyte.com/get_clients.sh | bash
-```
-
-Windows client shells require Docker:
-
-```sh
-docker run -it yugabytedb/yugabyte-client ysqlsh -h <hostname> -p <port>
-```
 
   {{% /tab %}}
 

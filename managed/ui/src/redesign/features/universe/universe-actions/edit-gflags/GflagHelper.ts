@@ -1,3 +1,4 @@
+import { isEmpty } from 'lodash';
 import {
   getPrimaryCluster,
   getAsyncCluster,
@@ -31,6 +32,14 @@ export interface EditGflagPayload {
   ybSoftwareVersion: string;
 }
 
+export interface GFlagGroupObject {
+  group_name: string;
+  flags: {
+    MASTER: Record<string, string>;
+    TSERVER: Record<string, string>;
+  };
+}
+
 export const transformToEditFlagsForm = (universeData: Universe) => {
   const { universeDetails } = universeData;
   const editGflagsFormData: Partial<EditGflagsFormValues> = {
@@ -58,4 +67,16 @@ export const transformToEditFlagsForm = (universeData: Universe) => {
     }
   }
   return editGflagsFormData;
+};
+
+export const getFlagsByGroupName = (
+  gFlagGroupsArray: GFlagGroupObject[] | undefined,
+  groupName: string
+) => {
+  if (!gFlagGroupsArray) return {};
+  const currentGroup = gFlagGroupsArray.find((gf) => gf.group_name === groupName);
+  let gFlagList = {};
+  if (currentGroup?.flags?.MASTER) gFlagList = { ...gFlagList, ...currentGroup.flags.MASTER };
+  if (currentGroup?.flags?.TSERVER) gFlagList = { ...gFlagList, ...currentGroup.flags.TSERVER };
+  return gFlagList;
 };

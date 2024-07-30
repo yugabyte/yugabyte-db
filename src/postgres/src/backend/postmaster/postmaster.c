@@ -76,6 +76,7 @@
 #include <sys/param.h>
 #include <netdb.h>
 #include <limits.h>
+#include "yb_query_diagnostics.h"
 
 #ifdef HAVE_SYS_PRCTL_H
 #include <sys/prctl.h>
@@ -1037,6 +1038,10 @@ PostmasterMain(int argc, char *argv[])
 	 */
 	if (!YBIsEnabledInPostgresEnvVar())
 		ApplyLauncherRegister();
+
+	/* Register the query diagnostics background worker */	
+	if (YBIsEnabledInPostgresEnvVar() && YBIsQueryDiagnosticsEnabled())
+		YbQueryDiagnosticsBgWorkerRegister(); 
 
 	/* Register ASH collector */
 	if (YBIsEnabledInPostgresEnvVar() && yb_ash_enable_infra)

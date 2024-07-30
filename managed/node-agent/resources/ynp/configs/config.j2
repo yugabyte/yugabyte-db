@@ -32,6 +32,7 @@ nproc_limit = 12000
 vm_swappiness = 0
 kernel_core_pattern = {{ ynp.yb_home_dir }}/cores/core_%%p_%%t_%%E
 vm_max_map_count = 262144
+mount_points = {{ yba.instance_type.mount_points | join(' ') }}
 
 [ConfigureOs.limits]
 core = unlimited

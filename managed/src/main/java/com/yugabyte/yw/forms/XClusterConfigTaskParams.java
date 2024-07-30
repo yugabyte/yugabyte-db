@@ -85,6 +85,16 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
     this.pitrParams = pitrParams;
   }
 
+  public XClusterConfigTaskParams(
+      XClusterConfig xClusterConfig,
+      XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
+      Set<String> dbs,
+      @Nullable DrConfigCreateForm.PitrParams pitrParams,
+      boolean isForceBootstrap) {
+    this(xClusterConfig, bootstrapParams, dbs, pitrParams);
+    this.isForceBootstrap = isForceBootstrap;
+  }
+
   /** It is used in the edit method. */
   public XClusterConfigTaskParams(
       XClusterConfig xClusterConfig,
@@ -114,6 +124,7 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
 
   public XClusterConfigTaskParams(
       XClusterConfig xClusterConfig,
+      XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
       XClusterConfigEditFormData editFormData,
       Set<String> databaseIdsToAdd,
       Set<String> databaseIdsToRemove) {

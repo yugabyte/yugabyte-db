@@ -176,6 +176,9 @@ DEFINE_test_flag(bool, cdc_force_destroy_virtual_wal_failure, false,
 DEFINE_RUNTIME_PREVIEW_bool(enable_cdcsdk_setting_get_changes_response_byte_limit, false,
     "When enabled, we'll consider the proto field getchanges_resp_max_size_bytes in "
     "GetChangesRequestPB to limit the size of GetChanges response.");
+DEFINE_test_flag(bool, cdcsdk_skip_stream_active_check, false,
+                 "When enabled, GetChanges will skip checking if stream is active as well as skip "
+                 "updating the active time.");
 
 DECLARE_bool(enable_log_retention_by_op_idx);
 
@@ -1545,10 +1548,13 @@ void CDCServiceImpl::GetChanges(
     RPC_STATUS_RETURN_ERROR(
         CheckTabletNotOfInterest(producer_tablet), resp->mutable_error(),
         CDCErrorPB::INTERNAL_ERROR, context);
-    RPC_STATUS_RETURN_ERROR(
-        CheckStreamActive(producer_tablet), resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR,
-        context);
-    impl_->UpdateActiveTime(producer_tablet);
+
+    if (!FLAGS_TEST_cdcsdk_skip_stream_active_check) {
+      RPC_STATUS_RETURN_ERROR(
+          CheckStreamActive(producer_tablet), resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR,
+          context);
+      impl_->UpdateActiveTime(producer_tablet);
+    }
 
     if (IsCDCSDKSnapshotDone(*req)) {
       // Remove 'kCDCSDKSnapshotKey' from the colocated snapshot row, to indicate that the snapshot
@@ -4413,6 +4419,25 @@ Result<tablet::TabletPeerPtr> CDCServiceImpl::GetServingTablet(const TabletId& t
   return context_->GetServingTablet(tablet_id);
 }
 
+bool IsStreamInactiveError(Status status) {
+  if (!status.ok() && status.IsInternalError() &&
+      status.message().ToBuffer().find("expired for Tablet") != std::string::npos) {
+    return true;
+  }
+
+  return false;
+}
+
+bool IsIntentGCError(Status status) {
+  if (!status.ok() && status.IsInternalError() &&
+      status.message().ToBuffer().find("CDCSDK Trying to fetch already GCed intents") !=
+          std::string::npos) {
+    return true;
+  }
+
+  return false;
+}
+
 void CDCServiceImpl::InitVirtualWALForCDC(
     const InitVirtualWALForCDCRequestPB* req, InitVirtualWALForCDCResponsePB* resp,
     rpc::RpcContext context) {
@@ -4520,6 +4545,11 @@ void CDCServiceImpl::GetConsistentChanges(
         Format("GetConsistentChanges failed for stream_id: $0 with error: $1", stream_id, s);
     if (!s.IsTryAgain()) {
       LOG(WARNING) << msg;
+      // Propogate the error to the client only when the stream has expired or the intents have been
+      // garbage collected.
+      if (IsStreamInactiveError(s) || IsIntentGCError(s)) {
+        RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+      }
     } else {
       YB_LOG_EVERY_N_SECS(WARNING, 300) << msg;
     }

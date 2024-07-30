@@ -3,6 +3,8 @@ title: yugabyted reference
 headerTitle: yugabyted
 linkTitle: yugabyted
 description: Use yugabyted to deploy YugabyteDB clusters.
+aliases:
+  - /preview/deploy/docker/
 menu:
   preview:
     identifier: yugabyted

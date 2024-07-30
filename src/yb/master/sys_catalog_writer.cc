@@ -133,8 +133,8 @@ Status SysCatalogWriter::InsertPgsqlTableRow(const Schema& source_schema,
   pgsql_write->set_table_id(target_table_id);
   pgsql_write->set_schema_version(target_schema_version);
 
-  // Postgres sys catalog table is non-partitioned. So there should be no hash column.
-  DCHECK_EQ(source_schema.num_hash_key_columns(), 0);
+  RSTATUS_DCHECK_EQ(source_schema.num_hash_key_columns(), 0, InternalError, "Postgres sys catalog "
+                    "table is non-partitioned, so there should be no hash columns.");
   for (size_t i = 0; i < source_schema.num_range_key_columns(); i++) {
     const auto& value = source_row.GetValue(source_schema.column_id(i));
     if (value) {

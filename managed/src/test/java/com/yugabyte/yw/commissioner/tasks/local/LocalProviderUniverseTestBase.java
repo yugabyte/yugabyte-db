@@ -13,12 +13,15 @@ import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.base.Stopwatch;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
+import com.yugabyte.yw.commissioner.AutoMasterFailoverScheduler;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.LocalNodeManager;
@@ -54,6 +57,7 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
@@ -67,6 +71,7 @@ import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.LocalCloudInfo;
+import com.yugabyte.yw.scheduler.JobScheduler;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -77,6 +82,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.text.SimpleDateFormat;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -128,9 +134,9 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
 
   private static final String DEFAULT_BASE_DIR = "/tmp/local";
   protected static String YBC_VERSION;
-  public static String DB_VERSION = "2.20.1.3-b3";
+  public static String DB_VERSION = "2.20.5.0-b72";
   private static final String DOWNLOAD_URL =
-      "https://downloads.yugabyte.com/releases/2.20.1.3/" + "yugabyte-2.20.1.3-b3-%s-%s.tar.gz";
+      "https://downloads.yugabyte.com/releases/2.20.5.0/" + "yugabyte-2.20.5.0-b72-%s-%s.tar.gz";
   private static final String YBC_BASE_S3_URL = "https://downloads.yugabyte.com/ybc/";
   private static final String YBC_BIN_ENV_KEY = "YBC_PATH";
   private static final boolean KEEP_FAILED_UNIVERSE = true;
@@ -202,6 +208,8 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
   protected Commissioner commissioner;
   protected SettableRuntimeConfigFactory settableRuntimeConfigFactory;
   protected RuntimeConfService runtimeConfService;
+  protected JobScheduler jobScheduler;
+  protected AutoMasterFailoverScheduler autoMasterFailoverScheduler;
 
   @BeforeClass
   public static void setUpEnv() {
@@ -404,6 +412,8 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     commissioner = app.injector().instanceOf(Commissioner.class);
     settableRuntimeConfigFactory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
     runtimeConfService = app.injector().instanceOf(RuntimeConfService.class);
+    jobScheduler = app.injector().instanceOf(JobScheduler.class);
+    autoMasterFailoverScheduler = app.injector().instanceOf(AutoMasterFailoverScheduler.class);
   }
 
   @Before
@@ -562,8 +572,14 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
 
   protected UniverseDefinitionTaskParams.UserIntent getDefaultUserIntent(
       String univName, boolean disableTls) {
+    return getDefaultUserIntent(univName, disableTls, 3, 3);
+  }
+
+  protected UniverseDefinitionTaskParams.UserIntent getDefaultUserIntent(
+      String univName, boolean disableTls, int rf, int numNodes) {
     UniverseDefinitionTaskParams.UserIntent userIntent =
-        ApiUtils.getTestUserIntent(region, provider, instanceType, 3);
+        ApiUtils.getTestUserIntent(region, provider, instanceType, numNodes);
+    userIntent.replicationFactor = rf;
     userIntent.universeName = "test-universe";
     if (univName != null) {
       userIntent.universeName = univName;
@@ -1035,5 +1051,50 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
 
   protected String getBackupBaseDirectory() {
     return String.format("%s/%s/%s", baseDir, subDir, testName);
+  }
+
+  protected void killProcessesOnNode(UUID universeUuid, String nodeName)
+      throws IOException, InterruptedException {
+    Universe universe = Universe.getOrBadRequest(universeUuid);
+    NodeDetails node = universe.getNode(nodeName);
+    if (node.isTserver) {
+      localNodeManager.killProcess(nodeName, ServerType.TSERVER);
+    }
+    if (node.isMaster) {
+      localNodeManager.killProcess(nodeName, ServerType.MASTER);
+    }
+  }
+
+  protected void startProcessesOnNode(
+      UUID universeUuid, NodeDetails node, UniverseTaskBase.ServerType serverType)
+      throws IOException, InterruptedException {
+    localNodeManager.startProcess(universeUuid, node.getNodeName(), serverType);
+  }
+
+  protected boolean isMasterProcessRunning(String nodeName) {
+    return localNodeManager.isProcessRunning(nodeName, ServerType.MASTER);
+  }
+
+  // This method waits for the next task to complete.
+  protected TaskInfo waitForNextTask(UUID universeUuid, UUID lastTaskUuid, Duration timeout)
+      throws InterruptedException {
+    Stopwatch stopwatch = Stopwatch.createStarted();
+    do {
+      Universe universe = Universe.getOrBadRequest(universeUuid);
+      UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+      if (details.placementModificationTaskUuid != null
+          && !lastTaskUuid.equals(details.placementModificationTaskUuid)) {
+        // A new task has already started, wait for it to complete.
+        TaskInfo taskInfo = TaskInfo.getOrBadRequest(details.placementModificationTaskUuid);
+        return CommissionerBaseTest.waitForTask(taskInfo.getTaskUUID());
+      }
+      CustomerTask customerTask = CustomerTask.getLastTaskByTargetUuid(universeUuid);
+      if (!lastTaskUuid.equals(customerTask.getTaskUUID())) {
+        // Last task has already completed.
+        return TaskInfo.getOrBadRequest(customerTask.getTaskUUID());
+      }
+      Thread.sleep(1000);
+    } while (stopwatch.elapsed().compareTo(timeout) < 0);
+    throw new RuntimeException("Timed-out waiting for next task to start");
   }
 }

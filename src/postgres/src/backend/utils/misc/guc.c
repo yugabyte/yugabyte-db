@@ -98,6 +98,7 @@
 #include "utils/xml.h"
 #include "pg_yb_utils.h"
 #include "yb_ash.h"
+#include "yb_query_diagnostics.h"
 
 #ifndef PG_KRB_SRVTAB
 #define PG_KRB_SRVTAB ""
@@ -2092,7 +2093,23 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&yb_read_from_followers,
 		false,
-		check_follower_reads, NULL, NULL
+		check_follower_reads, assign_follower_reads, NULL
+	},
+
+	{
+		{"yb_follower_reads_behavior_before_fixing_20482", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Controls whether ysql follower reads that is enabled "
+						 "inside a transaction block should take effect in the same "
+						 "transaction or not. Prior to fixing #20482 the behavior was that "
+						 "the change does not affect the current transaction but only "
+						 "affects subsequent transactions. The flag is intended to be used if "
+						 "there is a customer who relies on the old behavior."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_follower_reads_behavior_before_fixing_20482,
+		false,
+		NULL, NULL, NULL
 	},
 
 	{
@@ -4010,7 +4027,7 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&yb_follower_read_staleness_ms,
 		30000, 0, INT_MAX,
-		check_follower_read_staleness_ms, NULL, NULL
+		check_follower_read_staleness_ms, assign_follower_read_staleness_ms, NULL
 	},
 
 	{
@@ -4152,6 +4169,17 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&yb_parallel_range_size,
 		1024 * 1024, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_query_diagnostics_bg_worker_interval_ms", PGC_POSTMASTER, STATS_MONITORING,
+			gettext_noop("Time (in milliseconds) for which the query diagnostic's background worker sleeps"),
+			NULL,
+			GUC_UNIT_MS
+		},
+		&yb_query_diagnostics_bg_worker_interval_ms,
+		1000, 1, INT_MAX,
 		NULL, NULL, NULL
 	},
 

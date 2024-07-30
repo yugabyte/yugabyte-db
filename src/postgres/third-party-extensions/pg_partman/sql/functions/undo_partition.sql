@@ -62,18 +62,30 @@ v_trig_name                     text;
 v_undo_count                    int := 0;
 
 BEGIN
+/* YB: As part of undo_partition, all data of child partitions is moved out to the
+target table and after that the child table is detached from the parent table.
+This is done in an iterative manner looping through each child.
+
+The whole undo operation is executed in a transaction and while doing the
+DMLs (deleting data from child tables) and DDLs (detaching child tables), the trasaction
+is expired or aborted.
+TODO(#3109): check if works fine after transactional DDL support.
+*/
+RAISE EXCEPTION 'undo_partition not supported yet in YB';
 /*
  * For native, moves data to new, target table since data cannot be moved to parent.
  *      Leaves old parent table as is and does not change name of new table.
  * For trigger-based, moves data to parent
  */
 
+/* YB: advisory lock not supported
 v_adv_lock := pg_try_advisory_xact_lock(hashtext('pg_partman undo_partition_native'));
 IF v_adv_lock = 'false' THEN
     RAISE NOTICE 'undo_partition_native already running.';
     partitions_undone = -1;
     RETURN;
 END IF;
+*/
 
 IF p_parent_table = p_target_table THEN
     RAISE EXCEPTION 'Target table cannot be the same as the parent table';
@@ -213,7 +225,9 @@ IF v_partition_type != 'native' THEN
             WHILE v_lock_iter <= 5 LOOP
                 v_lock_iter := v_lock_iter + 1;
                 BEGIN
+                    /* YB: ACCESS EXCLUSIVE not supported yet
                     EXECUTE format('LOCK TABLE ONLY %I.%I IN ACCESS EXCLUSIVE MODE NOWAIT', v_parent_schema, v_parent_tablename);
+                    */
                     v_lock_obtained := TRUE;
                 EXCEPTION
                     WHEN lock_not_available THEN
@@ -293,7 +307,9 @@ LOOP
             WHILE v_lock_iter <= 5 LOOP
                 v_lock_iter := v_lock_iter + 1;
                 BEGIN
+                    /* YB: ACCESS EXCLUSIVE not supported yet
                     EXECUTE format('LOCK TABLE ONLY %I.%I IN ACCESS EXCLUSIVE MODE NOWAIT', v_parent_schema, v_child_table);
+                    */
                     v_lock_obtained := TRUE;
                 EXCEPTION
                     WHEN lock_not_available THEN

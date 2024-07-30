@@ -8,7 +8,8 @@ import {
   FETCH_CUSTOMER_TASKS_FAILURE,
   RESET_CUSTOMER_TASKS,
   FETCH_FAILED_TASK_DETAIL,
-  FETCH_FAILED_TASK_DETAIL_RESPONSE
+  FETCH_FAILED_TASK_DETAIL_RESPONSE,
+  PATCH_TASKS_FOR_CUSTOMER
 } from '../actions/tasks';
 import moment from 'moment';
 
@@ -61,6 +62,14 @@ export default function (state = INITIAL_STATE, action) {
       return setPromiseResponse(state, 'failedTasks', action);
     case RESET_CUSTOMER_TASKS:
       return { ...state, customerTaskList: [] };
+    case PATCH_TASKS_FOR_CUSTOMER:
+      return {
+        ...state,
+        customerTaskList: state.customerTaskList
+        .filter((task) => task.targetUUID !== action.payload.universeUUID)
+        .concat(action.payload.tasks)
+        .sort((a, b) => moment(b.createTime).isBefore(a.createTime) ? -1 : 1)
+      };
     default:
       return state;
   }

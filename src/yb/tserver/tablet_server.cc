@@ -231,6 +231,10 @@ DEFINE_RUNTIME_uint32(ysql_min_new_version_ignored_count, 10,
     "Minimum consecutive number of times that a tserver is allowed to ignore an older catalog "
     "version that is retrieved from a tserver-master heartbeat response.");
 
+DEFINE_test_flag(bool, enable_object_locking_for_table_locks, false,
+                 "The test flag enables a mechanism using which a tserver could serve an object "
+                 "lock request by acquiring corresponding locks at the local TSLocalLockManager.");
+
 DECLARE_bool(enable_pg_cron);
 
 DEFINE_test_flag(bool, enable_pg_client_mock, false, "Enable mocking of PgClient service in tests");
@@ -332,6 +336,9 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
     ysql_db_catalog_version_index_used_ =
       std::make_unique<std::array<bool, TServerSharedData::kMaxNumDbCatalogVersions>>();
     ysql_db_catalog_version_index_used_->fill(false);
+  }
+  if (PREDICT_FALSE(FLAGS_TEST_enable_object_locking_for_table_locks)) {
+    ts_local_lock_maganer_ = std::make_unique<tablet::TSLocalLockManager>();
   }
   LOG(INFO) << "yb::tserver::TabletServer created at " << this;
   LOG(INFO) << "yb::tserver::TSTabletManager created at " << tablet_manager_.get();
@@ -522,10 +529,10 @@ Status TabletServer::Init() {
   return Status::OK();
 }
 
-Status TabletServer::InitAutoFlags(rpc::Messenger* messenger) {
+Status TabletServer::InitFlags(rpc::Messenger* messenger) {
   RETURN_NOT_OK(auto_flags_manager_->Init(messenger, *opts_.GetMasterAddresses()));
 
-  return RpcAndWebServerBase::InitAutoFlags(messenger);
+  return RpcAndWebServerBase::InitFlags(messenger);
 }
 
 Result<std::unordered_set<std::string>> TabletServer::GetAvailableAutoFlagsForServer() const {
@@ -534,6 +541,10 @@ Result<std::unordered_set<std::string>> TabletServer::GetAvailableAutoFlagsForSe
 
 uint32_t TabletServer::GetAutoFlagConfigVersion() const {
   return auto_flags_manager_->GetConfigVersion();
+}
+
+Result<std::unordered_set<std::string>> TabletServer::GetFlagsForServer() const {
+  return yb::GetFlagNamesFromXmlFile("tserver_flags.xml");
 }
 
 void TabletServer::HandleMasterHeartbeatResponse(

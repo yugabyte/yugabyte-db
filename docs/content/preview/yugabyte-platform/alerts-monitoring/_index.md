@@ -61,4 +61,10 @@ Use the Live Queries and Slow Queries dashboards to monitor and display current 
     href="prometheus-custom/"
     icon="/images/section_icons/introduction/benefits.png">}}
 
+  {{<index/item
+    title="CDC Observability"
+    body="Use CDC to capture and emit database change events."
+    href="cdc-observability/"
+    icon="fa-regular fa-arrows-spin">}}
+
 {{</index/block>}}

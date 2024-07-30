@@ -30,7 +30,6 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/read_operation_data.h"
-#include "yb/docdb/shared_lock_manager_fwd.h"
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_ttl_util.h"

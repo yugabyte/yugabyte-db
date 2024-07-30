@@ -127,6 +127,7 @@ public interface UserIntentMapper {
     @ValueMapping(target = "PERSISTENT", source = "Persistent"),
     @ValueMapping(target = "STANDARDSSD_LRS", source = "StandardSSD_LRS"),
     @ValueMapping(target = "PREMIUM_LRS", source = "Premium_LRS"),
+    @ValueMapping(target = "PREMIUMV2_LRS", source = "PremiumV2_LRS"),
     @ValueMapping(target = "ULTRASSD_LRS", source = "UltraSSD_LRS"),
     @ValueMapping(target = "LOCAL", source = "Local"),
   })

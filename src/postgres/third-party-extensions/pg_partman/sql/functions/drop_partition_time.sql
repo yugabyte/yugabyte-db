@@ -41,11 +41,13 @@ BEGIN
  * Options to move table to different schema, drop only indexes or actually drop the table from the database.
  */
 
+/* YB: advisory lock not supported
 v_adv_lock := pg_try_advisory_xact_lock(hashtext('pg_partman drop_partition_time'));
 IF v_adv_lock = 'false' THEN
     RAISE NOTICE 'drop_partition_time already running.';
     RETURN 0;
 END IF;
+*/
 
 -- Allow override of configuration options
 IF p_retention IS NULL THEN
@@ -138,6 +140,11 @@ IF p_keep_index IS NOT NULL THEN
     v_retention_keep_index = p_keep_index;
 END IF;
 IF p_retention_schema IS NOT NULL THEN
+    /* YB: Early exiting if p_retention_schema is not NULL.
+    Transactional DDL is not supported yet, hence the detach
+    call we not be rolled back.
+    */
+    RAISE EXCEPTION 'Setting retention schema is not supported';
     v_retention_schema = p_retention_schema;
 END IF;
 

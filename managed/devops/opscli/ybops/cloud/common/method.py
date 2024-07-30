@@ -854,8 +854,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
             raise YBOpsRecoverableError("Could not connect({}) into node {}:{} using username {}"
                                         .format(host_port_user["connection_type"],
                                                 host_port_user["host"],
-                                                host_port_user["user"],
-                                                host_port_user["port"]))
+                                                host_port_user["port"],
+                                                host_port_user["user"]))
 
     def get_device_names(self, args, host_info=None):
         return self.cloud.get_device_names(args)
@@ -1607,6 +1607,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                             # Example path is /mnt/d0/yb-data/master/wals.
                             path = os.path.join(fs_data_dir, 'yb-data', 'master', state_dir)
                             delete_paths.append(path)
+            self.extra_vars["expected_yb_process_state"] = "stopped"
             if delete_paths:
                 self.extra_vars["delete_paths"] = delete_paths
         # If we are just rotating certs, we don't need to do any configuration changes.
@@ -2183,5 +2184,5 @@ class ManageOtelCollector(AbstractInstancesMethod):
             raise YBOpsRecoverableError("Could not connect({}) into node {}:{} using username {}"
                                         .format(host_port_user["connection_type"],
                                                 host_port_user["host"],
-                                                host_port_user["user"],
-                                                host_port_user["port"]))
+                                                host_port_user["port"],
+                                                host_port_user["user"]))

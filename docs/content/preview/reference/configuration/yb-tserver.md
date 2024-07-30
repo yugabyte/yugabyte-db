@@ -855,6 +855,14 @@ Default: `-1` (disables logging statement durations)
 
 Specifies the lowest YSQL message level to log.
 
+##### --ysql_output_buffer_size
+
+Size of YSQL layer output buffer, in bytes. YSQL buffers query responses in this output buffer until either a buffer flush is requested by the client or the buffer overflows.
+
+As long as no data has been flushed from the buffer, the database can retry queries on retryable errors. For example, you can increase the size of the buffer so that YSQL can retry [read restart errors](../../../architecture/transactions/read-restart-error).
+
+Default: `262144` (256kB, type: int32)
+
 ### YCQL
 
 The following flags support the use of the [YCQL API](../../../api/ycql/):
@@ -1287,6 +1295,38 @@ Default: `14400000` (4 hours)
 Number of tables to be added to the stream ID per run of the background thread which adds newly created tables to the active streams on its namespace.
 
 Default: `2`
+
+The following set of flags are only relevant for CDC using the PostgreSQL replication protocol. To learn about CDC using the PostgreSQL replication protocol, see [CDC using logical replication](../../../architecture/docdb-replication/cdc-logical-replication).
+
+##### --ysql_yb_default_replica_identity
+
+The default replica identity to be assigned to user defined tables at the time of creation. The flag is case sensitive and can take only one of the four possible values, `FULL`, `DEFAULT`,`'NOTHING` and `CHANGE`.
+
+Default: `CHANGE`
+
+##### --cdcsdk_enable_dynamic_table_support
+
+Tables created after the creation of a replication slot are referred as Dynamic tables. This preview flag can be used to switch the dynamic addition of tables to the publication ON or OFF.
+
+Default: `false`
+
+##### --cdcsdk_publication_list_refresh_interval_secs
+
+Interval in seconds at which the table list in the publication will be refreshed.
+
+Default: `3600`
+
+##### --cdcsdk_max_consistent_records
+
+Controls the maximum number of records sent from Virtual WAL (VWAL) to walsender in consistent order.
+
+Default: `500`
+
+##### --cdcsdk_vwal_getchanges_resp_max_size_bytes
+
+Max size (in bytes) of changes sent from CDC Service to [Virtual WAL](../../../architecture/docdb-replication/cdc-logical-replication)(VWAL) for a particular tablet.
+
+Default: `1 MB`
 
 ## File expiration based on TTL flags
 

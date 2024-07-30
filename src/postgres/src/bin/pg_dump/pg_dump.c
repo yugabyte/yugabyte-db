@@ -15256,7 +15256,7 @@ dumpACL(Archive *fout, CatalogId objCatId, DumpId objDumpId,
 	if (sql->len > 0)
 	{
 		PQExpBuffer tag = createPQExpBuffer();
-		PQExpBuffer use_roles_sql;
+		PQExpBuffer yb_use_roles_sql;
 
 		if (subname)
 			appendPQExpBuffer(tag, "COLUMN %s.%s", name, subname);
@@ -15265,8 +15265,8 @@ dumpACL(Archive *fout, CatalogId objCatId, DumpId objDumpId,
 
 		if (dopt->include_yb_metadata)
 		{
-			use_roles_sql = createPQExpBuffer();
-			appendPQExpBuffer(use_roles_sql, "\\if :use_roles\n%s\\endif\n", sql->data);
+			yb_use_roles_sql = createPQExpBuffer();
+			appendPQExpBuffer(yb_use_roles_sql, "\\if :use_roles\n%s\\endif\n", sql->data);
 		}
 
 		ArchiveEntry(fout, nilCatalogId, createDumpId(),
@@ -15274,11 +15274,11 @@ dumpACL(Archive *fout, CatalogId objCatId, DumpId objDumpId,
 					 NULL,
 					 owner ? owner : "",
 					 false, "ACL", SECTION_NONE,
-					 dopt->include_yb_metadata ? use_roles_sql->data : sql->data,
+					 dopt->include_yb_metadata ? yb_use_roles_sql->data : sql->data,
 					 "", NULL, &(objDumpId), 1,
 					 NULL, NULL);
 		if (dopt->include_yb_metadata)
-			destroyPQExpBuffer(use_roles_sql);
+			destroyPQExpBuffer(yb_use_roles_sql);
 
 		destroyPQExpBuffer(tag);
 	}

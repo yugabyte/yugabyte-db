@@ -32,11 +32,13 @@ v_total                     bigint := 0;
 
 BEGIN
 
+/* YB: advisory lock not supported
 v_adv_lock := pg_try_advisory_xact_lock(hashtext('pg_partman undo_partition_proc'), hashtext(p_parent_table));
 IF v_adv_lock = 'false' THEN
     RAISE NOTICE 'Partman undo_partition_proc already running for given parent table: %.', p_parent_table;
     RETURN;
 END IF;
+*/
 
 SELECT partition_type
 INTO v_partition_type

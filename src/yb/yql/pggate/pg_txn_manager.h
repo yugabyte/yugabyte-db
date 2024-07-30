@@ -58,6 +58,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status RecreateTransaction();
   Status RestartTransaction();
   Status ResetTransactionReadPoint();
+  Status EnsureReadPoint();
   Status RestartReadPoint();
   bool IsRestartReadPointRequested();
   void SetActiveSubTransactionId(SubTransactionId id);
@@ -67,7 +68,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   PgIsolationLevel GetPgIsolationLevel();
   Status SetReadOnly(bool read_only);
   Status SetEnableTracing(bool tracing);
-  Status EnableFollowerReads(bool enable_follower_reads, int32_t staleness);
+  Status UpdateFollowerReadsConfig(bool enable_follower_reads, int32_t staleness);
   Status SetDeferrable(bool deferrable);
   Status EnterSeparateDdlTxnMode();
   Status ExitSeparateDdlTxnModeWithAbort();
@@ -87,13 +88,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   double GetTransactionPriority() const;
   TxnPriorityRequirement GetTransactionPriorityType() const;
 
-  [[nodiscard]] uint64_t GetReadTimeSerialNo() const { return serial_no_.read_time(); }
-  [[nodiscard]] uint64_t GetTxnSerialNo() const { return serial_no_.txn(); }
-  [[nodiscard]] SubTransactionId GetActiveSubTransactionId() const {
-      return active_sub_transaction_id_;
-  }
-
-  void RestoreSessionParallelData(const YBCPgSessionParallelData& data);
+  void DumpSessionState(YBCPgSessionState* session_data);
+  void RestoreSessionState(const YBCPgSessionState& session_data);
 
   [[nodiscard]] uint64_t GetCurrentReadTimePoint() const;
   Status RestoreReadTimePoint(uint64_t read_time_point_handle);

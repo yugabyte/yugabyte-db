@@ -57,7 +57,13 @@ import {
   UniverseNamespace,
   YBTable
 } from '../../../../redesign/helpers/dtos';
-import { XClusterTable, XClusterTableType } from '../../XClusterTypes';
+import {
+  IndexTableRestartReplicationCandidate,
+  MainTableRestartReplicationCandidate,
+  TableRestartReplicationCandidate,
+  XClusterTable,
+  XClusterTableType
+} from '../../XClusterTypes';
 import { XClusterConfig } from '../../dtos';
 import { NodeAggregation, SplitType } from '../../../metrics/dtos';
 
@@ -70,9 +76,9 @@ interface NamespaceItem {
   sizeBytes: number;
 
   // Stores the xCluster tables which match the current search tokens
-  xClusterTables: XClusterTable[];
+  xClusterTables: MainTableRestartReplicationCandidate[];
   // Stores all xCluster tables in the namespace
-  allXClusterTables: XClusterTable[];
+  allXClusterTables: MainTableRestartReplicationCandidate[];
 }
 
 interface SelectionOptions {
@@ -205,7 +211,10 @@ export const ConfigTableSelect = ({
     );
   }
 
-  const toggleTableGroup = (isSelected: boolean, xClusterTables: XClusterTable[]) => {
+  const toggleTableGroup = (
+    isSelected: boolean,
+    xClusterTables: TableRestartReplicationCandidate[]
+  ) => {
     if (isSelected) {
       const currentSelectedTableUuids = new Set(selectedTableUuids);
 
@@ -225,12 +234,18 @@ export const ConfigTableSelect = ({
     }
   };
 
-  const handleTableGroupToggle = (isSelected: boolean, xClusterTables: XClusterTable[]) => {
+  const handleTableGroupToggle = (
+    isSelected: boolean,
+    xClusterTables: TableRestartReplicationCandidate[]
+  ) => {
     toggleTableGroup(isSelected, xClusterTables);
     return true;
   };
 
-  const handleTableToggle = (xClusterTable: XClusterTable, isSelected: boolean) => {
+  const handleTableToggle = (
+    xClusterTable: TableRestartReplicationCandidate,
+    isSelected: boolean
+  ) => {
     toggleTableGroup(isSelected, [xClusterTable]);
   };
 
@@ -256,9 +271,12 @@ export const ConfigTableSelect = ({
   };
 
   const handleNamespaceGroupToggle = (isSelected: boolean, namespaceItems: NamespaceItem[]) => {
-    const selectedTables = namespaceItems.reduce((table: XClusterTable[], namespaceItem) => {
-      return table.concat(namespaceItem.allXClusterTables);
-    }, []);
+    const selectedTables = namespaceItems.reduce(
+      (table: TableRestartReplicationCandidate[], namespaceItem) => {
+        return table.concat(namespaceItem.allXClusterTables);
+      },
+      []
+    );
 
     toggleNamespaceGroup(isSelected, namespaceItems);
     toggleTableGroup(isSelected, selectedTables);
@@ -319,7 +337,7 @@ export const ConfigTableSelect = ({
         <YBSmartSearchBar
           searchTokens={searchTokens}
           onSearchTokensChange={handleSearchTokenChange}
-          recognizedModifiers={['database', 'table']}
+          recognizedModifiers={['database', 'table', 'sizeBytes', 'status']}
           placeholder={t('tablesSearchBarPlaceholder')}
         />
       </Box>
@@ -336,10 +354,10 @@ export const ConfigTableSelect = ({
           expandComponent={(row: NamespaceItem) => (
             <ExpandedConfigTableSelect
               tables={row.xClusterTables}
-              selectedTableUUIDs={selectedTableUuids}
+              selectedTableUuids={selectedTableUuids}
               tableType={configTableType}
               handleTableSelect={handleTableToggle}
-              handleAllTableSelect={handleTableGroupToggle}
+              handleTableGroupSelect={handleTableGroupToggle}
             />
           )}
           expandColumnOptions={{
@@ -444,38 +462,65 @@ function getSelectionOptionsFromTables(
   const namespaceIdentifierToNamespaceUuid = getNamespaceIdentifierToNamespaceUuidMap(
     sourceUniverseNamespaces
   );
-  xClusterConfigTables.forEach((xClusterTable) => {
-    const namespaceName = xClusterTable.keySpace;
-    const namespaceUuid =
-      namespaceIdentifierToNamespaceUuid[
-        getNamespaceIdentifier(namespaceName, xClusterTable.tableType)
-      ];
-    const isTableMatchedBySearchTokens = checkIsTableMatchedBySearchTokens(
-      xClusterTable,
-      searchTokens
-    );
-    if (isTableMatchedBySearchTokens) {
-      searchMatchingNamespaceUuids.add(namespaceUuid);
-      searchMatchingTableUuids.add(getTableUuid(xClusterTable));
-    }
+  const tableUuidToConfigTable = Object.fromEntries(
+    xClusterConfigTables.map((table) => [getTableUuid(table), table])
+  );
 
-    const namespaceDetails = namespaceUuidToNamespaceDetails.get(namespaceUuid);
-    if (namespaceDetails !== undefined) {
-      // Selecting/deselecting a namespace will select/deselect all tables under that namespace regardless if
-      // those tables match the current filter.
-      namespaceDetails.allXClusterTables.push(xClusterTable);
-      namespaceDetails.sizeBytes += xClusterTable.sizeBytes;
-      if (isTableMatchedBySearchTokens) {
-        namespaceDetails.xClusterTables.push(xClusterTable);
-      }
-    } else {
-      namespaceUuidToNamespaceDetails.set(namespaceUuid, {
-        uuid: namespaceUuid,
-        name: namespaceName,
-        sizeBytes: xClusterTable.sizeBytes,
-        xClusterTables: isTableMatchedBySearchTokens ? [xClusterTable] : [],
-        allXClusterTables: [xClusterTable]
+  xClusterConfigTables.forEach((xClusterTable) => {
+    // Filter out index tables because we will add them as a field under the main table.
+    if (!xClusterTable.isIndexTable) {
+      // Add associated index tables if the current source table is a main table.
+      const indexTables = [] as IndexTableRestartReplicationCandidate[];
+      let indexTableTotalSize = 0;
+      xClusterTable.indexTableIDs?.forEach((indexTableUuid) => {
+        const indexTable = tableUuidToConfigTable[indexTableUuid];
+        if (indexTable) {
+          indexTables.push(indexTable);
+          indexTableTotalSize += indexTable.sizeBytes;
+        }
       });
+
+      const mainTableRestartReplicationCandidate: MainTableRestartReplicationCandidate = {
+        ...xClusterTable,
+        indexTables
+      };
+
+      const namespaceName = xClusterTable.keySpace;
+      const namespaceUuid =
+        namespaceIdentifierToNamespaceUuid[
+          getNamespaceIdentifier(namespaceName, xClusterTable.tableType)
+        ];
+      const isTableMatchedBySearchTokens =
+        checkIsTableMatchedBySearchTokens(xClusterTable, searchTokens) ||
+        mainTableRestartReplicationCandidate.indexTables?.some(
+          (indexTableRestartReplicationCandidate) =>
+            checkIsTableMatchedBySearchTokens(indexTableRestartReplicationCandidate, searchTokens)
+        );
+      if (isTableMatchedBySearchTokens) {
+        searchMatchingNamespaceUuids.add(namespaceUuid);
+        searchMatchingTableUuids.add(getTableUuid(xClusterTable));
+      }
+
+      const namespaceDetails = namespaceUuidToNamespaceDetails.get(namespaceUuid);
+      if (namespaceDetails !== undefined) {
+        // Selecting/deselecting a namespace will select/deselect all tables under that namespace regardless if
+        // those tables match the current filter.
+        namespaceDetails.allXClusterTables.push(mainTableRestartReplicationCandidate);
+        namespaceDetails.sizeBytes += xClusterTable.sizeBytes + indexTableTotalSize;
+        if (isTableMatchedBySearchTokens) {
+          namespaceDetails.xClusterTables.push(mainTableRestartReplicationCandidate);
+        }
+      } else {
+        namespaceUuidToNamespaceDetails.set(namespaceUuid, {
+          uuid: namespaceUuid,
+          name: namespaceName,
+          sizeBytes: xClusterTable.sizeBytes + indexTableTotalSize,
+          xClusterTables: isTableMatchedBySearchTokens
+            ? [mainTableRestartReplicationCandidate]
+            : [],
+          allXClusterTables: [mainTableRestartReplicationCandidate]
+        });
+      }
     }
   });
   const namespaces = Array.from(namespaceUuidToNamespaceDetails, ([_, namespaceDetails]) => ({
@@ -492,12 +537,14 @@ function getSelectionOptionsFromTables(
 /**
  * Fields to do substring search on if search token modifier is not specified.
  */
-const SUBSTRING_SEARCH_FIELDS = ['table', 'database'];
+const SUBSTRING_SEARCH_FIELDS = ['table', 'database', 'status'];
 
 const checkIsTableMatchedBySearchTokens = (table: XClusterTable, searchTokens: SearchToken[]) => {
   const candidate = {
     database: { value: table.keySpace, type: FieldType.STRING },
-    table: { value: table.tableName, type: FieldType.STRING }
+    table: { value: table.tableName, type: FieldType.STRING },
+    sizeBytes: { value: table.sizeBytes, type: FieldType.NUMBER },
+    status: { value: table.statusLabel, type: FieldType.STRING }
   };
   return searchTokens.every((searchToken) =>
     isMatchedBySearchToken(candidate, searchToken, SUBSTRING_SEARCH_FIELDS)

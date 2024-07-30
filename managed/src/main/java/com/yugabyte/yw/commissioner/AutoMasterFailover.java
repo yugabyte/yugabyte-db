@@ -11,17 +11,12 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
-import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.AllowedTasks;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckFollowerLag;
-import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
-import com.yugabyte.yw.common.NodeUIApiHelper;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.nodeui.MetricGroup;
-import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -31,21 +26,17 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.schedule.JobConfig.RuntimeParams;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.yb.client.GetMasterHeartbeatDelaysResponse;
 import org.yb.client.YBClient;
 import org.yb.util.ServerInfo;
@@ -53,20 +44,17 @@ import play.libs.Json;
 
 @Singleton
 @Slf4j
-public class AutoMasterFailover {
-  private final RuntimeConfGetter confGetter;
-  private final YBClientService ybClientService;
-  private final ApiHelper apiHelper;
-  private final Commissioner commissioner;
+// Extend UniverseDefinitionTaskBase to access the methods.
+public class AutoMasterFailover extends UniverseDefinitionTaskBase {
+
   private final CustomerTaskManager customerTaskManager;
 
   private static final String FOLLOWER_LAG_URL_FORMAT =
       "http://%s:%d/metrics?metrics=follower_lag_ms";
 
-  private static final String TABLET_SERVERS_URL_FORMAT = "http://%s:%d/api/v1/tablet-servers";
-
   @Builder
   @Getter
+  @ToString
   // The fail-over action to be performed as a result of the detection.
   static class Action {
     @Builder.Default ActionType actionType = ActionType.NONE;
@@ -82,17 +70,15 @@ public class AutoMasterFailover {
   }
 
   @Inject
-  public AutoMasterFailover(
-      RuntimeConfGetter confGetter,
-      YBClientService ybClientService,
-      NodeUIApiHelper apiHelper,
-      Commissioner commissioner,
-      CustomerTaskManager customerTaskManager) {
-    this.confGetter = confGetter;
-    this.ybClientService = ybClientService;
-    this.apiHelper = apiHelper;
-    this.commissioner = commissioner;
+  protected AutoMasterFailover(
+      BaseTaskDependencies baseTaskDependencies, CustomerTaskManager customerTaskManager) {
+    super(baseTaskDependencies);
     this.customerTaskManager = customerTaskManager;
+  }
+
+  @Override
+  public void run() {
+    throw new UnsupportedOperationException();
   }
 
   /**
@@ -177,7 +163,7 @@ public class AutoMasterFailover {
       log.info(
           "Waiting for master failover task to complete for universe {}",
           universe.getUniverseUUID());
-      commissioner.waitForTask(customerTask.getTaskUUID());
+      getCommissioner().waitForTask(customerTask.getTaskUUID());
       return TaskInfo.maybeGet(customerTask.getTaskUUID());
     } finally {
       log.info("Master failover check completed for universe {}", universe.getUniverseUUID());
@@ -194,8 +180,7 @@ public class AutoMasterFailover {
     // Before performing any advanced checks, ensure that the YBA view of masters is the same as the
     // of the db to be conservative.
     try (YBClient ybClient =
-        ybClientService.getClient(
-            universe.getMasterAddresses(), universe.getCertificateNodetoNode())) {
+        ybService.getClient(universe.getMasterAddresses(), universe.getCertificateNodetoNode())) {
       checkClusterConsistency(universe, ybClient);
       Set<String> failedMasters = getFailedMastersForUniverse(universe, ybClient);
       log.info("Failed masters for universe {}: {}", universe.getUniverseUUID(), failedMasters);
@@ -349,12 +334,15 @@ public class AutoMasterFailover {
           universe.getUniverseUUID());
       return Action.builder().actionType(ActionType.NONE).build();
     }
-    boolean allNodesLive = universe.getNodes().stream().allMatch(n -> n.state == NodeState.Live);
-    if (!allNodesLive) {
-      log.info(
-          "Skipping master failover for universe {} because not all nodes are live",
-          universe.getUniverseUUID());
-      return Action.builder().actionType(ActionType.NONE).build();
+    if (universeDetails.placementModificationTaskUuid == null) {
+      // Skip this check for retries.
+      boolean allNodesLive = universe.getNodes().stream().allMatch(n -> n.state == NodeState.Live);
+      if (!allNodesLive) {
+        log.info(
+            "Skipping master failover for universe {} because not all nodes are live",
+            universe.getUniverseUUID());
+        return Action.builder().actionType(ActionType.NONE).build();
+      }
     }
     AllowedTasks allowedTasks =
         UniverseTaskBase.getAllowedTasksOnFailure(universeDetails.placementModificationTaskUuid);
@@ -363,6 +351,7 @@ public class AutoMasterFailover {
           universe.getNodes().stream().anyMatch(n -> n.autoSyncMasterAddrs);
       if (autoSyncMasterAddrs) {
         // Always sync even if another master may have failed.
+        // TODO we may want to run this earlier if at least one is up.
         return areAllTabletServersAlive(universe)
             ? Action.builder()
                 .actionType(ActionType.SUBMIT)
@@ -424,9 +413,9 @@ public class AutoMasterFailover {
   @VisibleForTesting
   Map<String, Long> getFollowerLagMs(String ip, int port) {
     String endpoint = String.format(FOLLOWER_LAG_URL_FORMAT, ip, port);
-    log.info("Getting follower lag for endpoint {} {}", endpoint, apiHelper);
+    log.info("Getting follower lag for endpoint {}", endpoint);
     try {
-      JsonNode currentNodeMetricsJson = apiHelper.getRequest(endpoint);
+      JsonNode currentNodeMetricsJson = nodeUIApiHelper.getRequest(endpoint);
       JsonNode errors = currentNodeMetricsJson.get("error");
       if (errors != null) {
         String errMsg =
@@ -450,26 +439,8 @@ public class AutoMasterFailover {
 
   private CustomerTask submitMasterFailoverTask(
       Customer customer, Universe universe, String failedNodeName) {
-    CustomerTask lastTask = CustomerTask.getLastTaskByTargetUuid(universe.getUniverseUUID());
-    if (lastTask != null && lastTask.getCompletionTime() != null) {
-      // Cooldown is calculated from the last task.
-      Duration cooldownPeriod =
-          confGetter.getConfForScope(universe, UniverseConfKeys.autoMasterFailoverCooldown);
-      Instant restrictionEndTime =
-          lastTask
-              .getCompletionTime()
-              .toInstant()
-              .plus(cooldownPeriod.getSeconds(), ChronoUnit.SECONDS);
-      if (restrictionEndTime.isAfter(Instant.now())) {
-        log.info("Universe {} is cooling down", universe.getUniverseUUID());
-        return null;
-      }
-    }
-
-    NodeTaskParams taskParams = new NodeTaskParams();
     NodeDetails node = universe.getNode(failedNodeName);
-    NodeDetails possibleReplacementCandidate =
-        UniverseDefinitionTaskBase.findReplacementMaster(universe, node);
+    NodeDetails possibleReplacementCandidate = findReplacementMaster(universe, node);
     if (possibleReplacementCandidate == null) {
       log.error(
           "No replacement master found for node {} in universe {}",
@@ -481,6 +452,15 @@ public class AutoMasterFailover {
         "Found a possible replacement master candidate {} for universe {}",
         possibleReplacementCandidate.getNodeName(),
         universe.getUniverseUUID());
+    Set<String> leaderlessTablets = getLeaderlessTablets(universe.getUniverseUUID());
+    if (CollectionUtils.isNotEmpty(leaderlessTablets)) {
+      log.error(
+          "Leaderless tablets {} found for universe {}",
+          Iterables.limit(leaderlessTablets, 10),
+          universe.getUniverseUUID());
+      return null;
+    }
+    NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.setUniverseUUID(universe.getUniverseUUID());
     taskParams.nodeName = failedNodeName;
     taskParams.expectedUniverseVersion = universe.getVersion();
@@ -489,7 +469,7 @@ public class AutoMasterFailover {
     taskParams.clusters = universe.getUniverseDetails().clusters;
     taskParams.rootCA = universe.getUniverseDetails().rootCA;
     // Submit the task to initiate master failover.
-    UUID taskUUID = commissioner.submit(TaskType.MasterFailover, taskParams);
+    UUID taskUUID = getCommissioner().submit(TaskType.MasterFailover, taskParams);
     log.info(
         "Submitted master failover for universe {} node {}, task uuid = {}.",
         universe.getUniverseUUID(),
@@ -510,7 +490,7 @@ public class AutoMasterFailover {
     taskParams.expectedUniverseVersion = universe.getVersion();
     taskParams.clusters = universe.getUniverseDetails().clusters;
     taskParams.rootCA = universe.getUniverseDetails().rootCA;
-    UUID taskUUID = commissioner.submit(TaskType.SyncMasterAddresses, taskParams);
+    UUID taskUUID = getCommissioner().submit(TaskType.SyncMasterAddresses, taskParams);
     log.info(
         "Submitted sync master addresses task {} for universe {}",
         taskUUID,
@@ -560,63 +540,7 @@ public class AutoMasterFailover {
   }
 
   private boolean areAllTabletServersAlive(Universe universe) {
-    String masterLeaderIp = universe.getMasterLeaderHostText();
-    if (StringUtils.isEmpty(masterLeaderIp)) {
-      log.error("Cannot find a master leader in universe {}", universe.getUniverseUUID());
-      return false;
-    }
-    int masterHttpPort = universe.getUniverseDetails().communicationPorts.masterHttpPort;
-    String endpoint = String.format(TABLET_SERVERS_URL_FORMAT, masterLeaderIp, masterHttpPort);
-    log.info("Getting tablet servers from endpoint {} {}", endpoint, apiHelper);
-    try {
-      JsonNode tabletServerResponse = apiHelper.getRequest(endpoint);
-      JsonNode errors = tabletServerResponse.get("error");
-      if (errors != null) {
-        log.error(
-            "Error tablet servers from endpoint {} for universe {} - {}",
-            endpoint,
-            universe.getUniverseUUID(),
-            errors);
-        return false;
-      }
-      Set<NodeDetails> allTservers = new HashSet<>(universe.getTServers());
-      Iterator<Entry<String, JsonNode>> clusterIter = tabletServerResponse.fields();
-      while (clusterIter.hasNext()) {
-        Entry<String, JsonNode> clusterEntry = clusterIter.next();
-        Iterator<Entry<String, JsonNode>> serverIter = clusterEntry.getValue().fields();
-        while (serverIter.hasNext()) {
-          Entry<String, JsonNode> serverInfo = serverIter.next();
-          String ipPort = serverInfo.getKey();
-          if (StringUtils.isEmpty(ipPort)) {
-            continue;
-          }
-          String serverIp = ipPort.split(":")[0];
-          NodeDetails nodeDetails = universe.getNodeByAnyIP(serverIp);
-          if (nodeDetails == null) {
-            log.warn(
-                "Unknown node with IP {} in universe {}", serverIp, universe.getUniverseUUID());
-            continue;
-          }
-          JsonNode statusNode = serverInfo.getValue().get("status");
-          if (statusNode == null || statusNode.isNull()) {
-            continue;
-          }
-          if ("ALIVE".equalsIgnoreCase(statusNode.asText())) {
-            allTservers.remove(nodeDetails);
-          }
-        }
-      }
-      if (allTservers.isEmpty()) {
-        log.debug("All the tservers are alive in universe {}", universe.getUniverseUUID());
-        return true;
-      }
-    } catch (Exception e) {
-      log.error(
-          "Error in getting live tservers from endpoint {} for universe {} - {}",
-          endpoint,
-          universe.getUniverseUUID(),
-          e.getMessage());
-    }
-    return false;
+    Set<NodeDetails> liveTserverNodes = getLiveTserverNodes(universe);
+    return liveTserverNodes.containsAll(universe.getTServers());
   }
 }

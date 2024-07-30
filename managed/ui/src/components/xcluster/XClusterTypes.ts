@@ -18,20 +18,26 @@ import { XClusterTableDetails } from './dtos';
  */
 export type XClusterTableType = typeof XCLUSTER_SUPPORTED_TABLE_TYPES[number];
 
+/**
+ * Extra metadata to be merged into xCluster table details for use in YBA UI.
+ */
+type XClusterTableUiExtraMetadata = {
+  // Stores the user facing string in the object for sorting/searching usage.
+  statusLabel: string;
+  replicationLag: number;
+};
+
 export type XClusterTable = YBTable &
-  Omit<XClusterTableDetails, 'tableId'> & {
-    replicationLag?: number;
-    statusLabel: string; // Stores the user facing string in the object for sorting/searching usage.
-  };
+  Omit<XClusterTableDetails, 'tableId'> &
+  XClusterTableUiExtraMetadata;
 /**
  * A table which is in the replication config but dropped from the database.
  */
-export type XClusterDroppedTable = Omit<XClusterTableDetails, 'tableId'> & {
-  tableUUID: string;
-  status: typeof XClusterTableStatus.DROPPED;
-  statusLabel: string; // Stores the user facing string in the object for sorting/searching usage.
-  replicationLag?: number;
-};
+export type XClusterDroppedTable = Omit<XClusterTableDetails, 'tableId'> &
+  XClusterTableUiExtraMetadata & {
+    tableUUID: string;
+    status: typeof XClusterTableStatus.DROPPED;
+  };
 export type XClusterReplicationTable = XClusterTable | XClusterDroppedTable;
 
 //------------------------------------------------------------------------------------
@@ -57,7 +63,6 @@ export interface IndexTableReplicationCandidate extends YBTable {
   eligibilityDetails: EligibilityDetails;
   isUnreplicatedTableInReplicatedNamespace: boolean;
 }
-
 /**
  * YBTable with with additional metadata for table selection and an array of index tables.
  */
@@ -67,10 +72,17 @@ export interface MainTableReplicationCandidate extends YBTable {
 
   indexTables?: IndexTableReplicationCandidate[];
 }
-
 export type TableReplicationCandidate =
   | MainTableReplicationCandidate
   | IndexTableReplicationCandidate;
+
+export type IndexTableRestartReplicationCandidate = XClusterTable;
+export interface MainTableRestartReplicationCandidate extends XClusterTable {
+  indexTables?: IndexTableRestartReplicationCandidate[];
+}
+export type TableRestartReplicationCandidate =
+  | MainTableRestartReplicationCandidate
+  | IndexTableRestartReplicationCandidate;
 
 /**
  * Holds list of tables for a namespace and provides extra metadata.

@@ -1,7 +1,9 @@
 import { FC } from 'react';
 import { useTranslation } from 'react-i18next';
+import _ from 'lodash';
 import pluralize from 'pluralize';
 import { Box, Theme, Typography, makeStyles } from '@material-ui/core';
+import { InstanceTags } from './InstanceTags';
 import { YBModal } from '../../../../components';
 import { Cluster, MasterPlacementMode, UniverseDetails } from '../utils/dto';
 import { getAsyncCluster, getDiffClusterData, getPrimaryCluster } from '../utils/helpers';
@@ -111,6 +113,15 @@ export const PlacementModal: FC<PlacementModalProps> = ({
             </Box>
           ))}
         </Box>
+        {!_.isEqual(diffClusterData.oldInstanceTags, diffClusterData.newInstanceTags) && (
+          <Box mt={2}>
+            {isNew ? (
+              <>{<InstanceTags tags={diffClusterData.newInstanceTags!} />}</>
+            ) : (
+              <>{<InstanceTags tags={diffClusterData.oldInstanceTags!} />}</>
+            )}
+          </Box>
+        )}
       </Box>
     );
   };

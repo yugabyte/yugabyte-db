@@ -556,7 +556,6 @@ TEST_F(MasterTestXRepl, YB_DISABLE_TEST_IN_TSAN(TestCDCStreamCreationWithOldReco
   CreateCDCStreamRequestPB req;
   CreateCDCStreamResponsePB resp;
   req.set_namespace_id(ns_id);
-  req.set_cdcsdk_ysql_replication_slot_name(kPgReplicationSlotName);
   AddKeyValueToCreateCDCStreamRequestOption(&req, cdc::kIdType, cdc::kNamespaceId);
   AddKeyValueToCreateCDCStreamRequestOption(
       &req, cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK));
@@ -574,7 +573,8 @@ TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceInvalidDuplicationSlotNam
   auto ns_id = create_namespace_resp.id();
 
   for (auto i = 0; i < num_tables; ++i) {
-    ASSERT_OK(CreatePgsqlTable(ns_id, Format("cdc_table_$0", i), kTableIds[i], kTableSchema));
+    ASSERT_OK(
+        CreatePgsqlTable(ns_id, Format("cdc_table_$0", i), kTableIds[i], kTableSchemaWithTypeOids));
   }
 
   ASSERT_RESULT(
@@ -644,7 +644,8 @@ TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceLimitReached) {
   auto ns_id = create_namespace_resp.id();
 
   for (auto i = 0; i < num_tables; ++i) {
-    ASSERT_OK(CreatePgsqlTable(ns_id, Format("cdc_table_$0", i), kTableIds[i], kTableSchema));
+    ASSERT_OK(
+        CreatePgsqlTable(ns_id, Format("cdc_table_$0", i), kTableIds[i], kTableSchemaWithTypeOids));
   }
 
   ASSERT_RESULT(
@@ -791,7 +792,8 @@ TEST_F(MasterTestXRepl, TestCreateDropCDCStreamWithReplicationSlotName) {
   ASSERT_OK(CreatePgsqlNamespace(kNamespaceName, kPgsqlNamespaceId, &create_namespace_resp));
   auto ns_id = create_namespace_resp.id();
   for (auto i = 0; i < num_tables; ++i) {
-    ASSERT_OK(CreatePgsqlTable(ns_id, Format("cdc_table_$0", i), kTableIds[i], kTableSchema));
+    ASSERT_OK(
+        CreatePgsqlTable(ns_id, Format("cdc_table_$0", i), kTableIds[i], kTableSchemaWithTypeOids));
   }
 
   // Create and Delete CDC stream with replication slot name in quick succession.
@@ -845,9 +847,9 @@ TEST_F(MasterTestXRepl, TestListCDCStreamsCDCSDKWithReplicationSlot) {
   auto ns_id2 = create_namespace_resp.id();
 
   // 2 tables in cdc_namespace and 1 table in cdc_namespace2
-  ASSERT_OK(CreatePgsqlTable(ns_id, "cdc_table_1", kTableIds[0], kTableSchema));
-  ASSERT_OK(CreatePgsqlTable(ns_id, "cdc_table_2", kTableIds[1], kTableSchema));
-  ASSERT_OK(CreatePgsqlTable(ns_id2, "cdc_table_3", kTableIds[2], kTableSchema));
+  ASSERT_OK(CreatePgsqlTable(ns_id, "cdc_table_1", kTableIds[0], kTableSchemaWithTypeOids));
+  ASSERT_OK(CreatePgsqlTable(ns_id, "cdc_table_2", kTableIds[1], kTableSchemaWithTypeOids));
+  ASSERT_OK(CreatePgsqlTable(ns_id2, "cdc_table_3", kTableIds[2], kTableSchemaWithTypeOids));
 
   auto stream_id = ASSERT_RESULT(
       CreateCDCStreamForNamespace(ns_id, kPgReplicationSlotName, kPgReplicationSlotPgOutput));
@@ -1134,7 +1136,8 @@ TEST_F(MasterTestXRepl, DropNamespaceWithLiveCDCStream) {
   auto ns_id = create_namespace_resp.id();
 
   for (auto i = 0; i < num_tables; ++i) {
-    ASSERT_OK(CreatePgsqlTable(ns_id, Format("cdc_table_$0", i), kTableIds[i], kTableSchema));
+    ASSERT_OK(
+        CreatePgsqlTable(ns_id, Format("cdc_table_$0", i), kTableIds[i], kTableSchemaWithTypeOids));
   }
   ASSERT_RESULT(
       CreateCDCStreamForNamespace(ns_id, kPgReplicationSlotName, kPgReplicationSlotPgOutput));

@@ -4,7 +4,7 @@ import { useFormContext, useWatch } from 'react-hook-form';
 import { useQuery } from 'react-query';
 import { useUpdateEffect } from 'react-use';
 import { Box, Grid, MenuItem, makeStyles } from '@material-ui/core';
-import { YBLabel, YBSelect } from '../../../../../../components';
+import { YBLabel, YBSelect} from '../../../../../../components';
 import { UniverseFormContext } from '../../../UniverseFormContainer';
 import { api, QUERY_KEY } from '../../../utils/api';
 import {

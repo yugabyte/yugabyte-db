@@ -13,9 +13,9 @@ menu:
 type: docs
 ---
 
-Debezium is an open-source distributed platform used to capture the changes in a database.
+Debezium is an open-source distributed platform used to capture the changes in a database. The [YugabyteDB gRPC Connector](../../../explore/change-data-capture/using-yugabytedb-grpc-replication/) is based on the Debezium Connector, and captures row-level changes in a YugabyteDB database's schemas.
 
-## Get the Debezium connector for YugabyteDB
+## Get the YugabyteDB gRPC Connector
 
 Using Docker, you can get the connector from Quay:
 
@@ -154,7 +154,7 @@ Do the following:
     }'
     ```
 
-For a list of all the configuration options provided with the Debezium YugabyteDB connector, see [Connector configuration properties](../../../explore/change-data-capture/debezium-connector-yugabytedb/#connector-configuration-properties).
+For a list of all the configuration options provided with the YugabyteDB gRPC Connector, see [Connector configuration properties](../../../explore/change-data-capture/using-yugabytedb-grpc-replication/debezium-connector-yugabytedb/#connector-configuration-properties).
 
 {{< tip title="TRUNCATE tables when CDC is enabled" >}}
 

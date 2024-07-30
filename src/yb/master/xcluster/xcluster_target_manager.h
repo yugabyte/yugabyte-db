@@ -18,6 +18,7 @@
 
 #include "yb/master/xcluster/master_xcluster_types.h"
 #include "yb/master/xcluster/xcluster_catalog_entity.h"
+#include "yb/util/is_operation_done_result.h"
 #include "yb/util/status_fwd.h"
 
 namespace yb::master {
@@ -165,6 +166,30 @@ class XClusterTargetManager {
   Status ResumeStreamsAfterNewSchema(
       const TableInfo& table_info, SchemaVersion consumer_schema_version, const LeaderEpoch& epoch)
       EXCLUDES(table_stream_ids_map_mutex_);
+
+  Status SetupUniverseReplication(
+      const SetupUniverseReplicationRequestPB* req, SetupUniverseReplicationResponsePB* resp,
+      const LeaderEpoch& epoch);
+
+  Result<IsOperationDoneResult> IsSetupUniverseReplicationDone(
+      const xcluster::ReplicationGroupId& replication_group_id);
+
+  Status SetupNamespaceReplicationWithBootstrap(
+      const SetupNamespaceReplicationWithBootstrapRequestPB* req,
+      SetupNamespaceReplicationWithBootstrapResponsePB* resp, const LeaderEpoch& epoch);
+
+  Result<IsSetupNamespaceReplicationWithBootstrapDoneResponsePB>
+  IsSetupNamespaceReplicationWithBootstrapDone(
+      const xcluster::ReplicationGroupId& replication_group_id);
+
+  Status AlterUniverseReplication(
+      const AlterUniverseReplicationRequestPB* req, AlterUniverseReplicationResponsePB* resp,
+      const LeaderEpoch& epoch);
+
+  Status DeleteUniverseReplication(
+      const xcluster::ReplicationGroupId& replication_group_id, bool ignore_errors,
+      bool skip_producer_stream_deletion, DeleteUniverseReplicationResponsePB* resp,
+      const LeaderEpoch& epoch);
 
  private:
   // Gets the replication group status for the given replication group id. Does not populate the

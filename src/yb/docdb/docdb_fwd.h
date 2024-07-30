@@ -22,6 +22,7 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/math_util.h"
+#include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb::docdb {
@@ -38,7 +39,9 @@ class HistoryRetentionPolicy;
 class IntentAwareIterator;
 class IntentAwareIteratorIf;
 class IntentIterator;
+class LockBatch;
 class ManualHistoryRetentionPolicy;
+class ObjectLockManager;
 class PgsqlWriteOperation;
 class QLWriteOperation;
 class RedisWriteOperation;
@@ -58,13 +61,23 @@ struct FetchedEntry;
 struct HistoryRetentionDirective;
 struct IntentKeyValueForCDC;
 struct KeyBounds;
+template <typename T>
 struct LockBatchEntry;
 struct ReadOperationData;
 
 using DocKeyHash = uint16_t;
-using LockBatchEntries = std::vector<LockBatchEntry>;
 using DocReadContextPtr = std::shared_ptr<DocReadContext>;
+template <typename T>
+using LockBatchEntries = std::vector<LockBatchEntry<T>>;
+// Lock state stores the number of locks acquired for each intent type.
+// The count for each intent type resides in sequential bits (block) in lock state.
+// For example the count of locks on a particular intent type could be received as:
+// (lock_state >> (to_underlying(intent_type) * kIntentTypeBits)) & kFirstIntentTypeMask.
+// Refer shared_lock_manager.cc for further details.
+using LockState = uint64_t;
+using ObjectLockPrefix = std::pair<uint64_t, dockv::KeyEntryType>;
 using ScanChoicesPtr = std::unique_ptr<ScanChoices>;
+using SessionIDHostPair = std::pair<const uint64_t, const std::string>;
 
 using IndexRequests = std::vector<std::pair<const qlexpr::IndexInfo*, QLWriteRequestPB>>;
 

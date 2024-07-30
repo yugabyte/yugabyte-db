@@ -30,6 +30,8 @@
 // under the License.
 //
 
+#include <fstream>
+#include <regex>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -37,6 +39,7 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/once.h"
 #include "yb/gutil/strings/split.h"
+#include "yb/util/env_util.h"
 #include "yb/util/flags/flag_tags.h"
 
 #if YB_GPERFTOOLS_TCMALLOC
@@ -272,6 +275,11 @@ string GetStaticProgramName() {
   return program_name;
 }
 
+// Forward declarations.
+namespace flags_internal {
+Status ValidateFlagValue(const CommandLineFlagInfo& flag_info, const std::string& value);
+}  // namespace flags_internal
+
 namespace {
 
 void AppendXMLTag(const char* tag, const string& txt, string* r) {
@@ -368,7 +376,7 @@ Status ValidateFlagsRequiringDelayedValidation() {
   for (const auto& flag_name : FlagsWithDelayedValidation()) {
     auto flag_info = google::GetCommandLineFlagInfoOrDie(flag_name.c_str());
     // Flag was already set without any validation. Check if the current value is valid.
-    RETURN_NOT_OK(flags_internal::ValidateFlagValue(flag_name, flag_info.current_value));
+    RETURN_NOT_OK(flags_internal::ValidateFlagValue(flag_info, flag_info.current_value));
   }
   FlagsWithDelayedValidation().clear();
 
@@ -435,35 +443,61 @@ void InvokeAllCallbacks(const std::vector<google::CommandLineFlagInfo>& flag_inf
   }
 }
 
-bool ValidateAllPreviewFlags(string* err_msg, const string& allowed_flags_csv) {
-  std::unordered_set<string> allowed_flags = strings::Split(allowed_flags_csv, ",");
+// If this is a preview flag and is being overridden to a non default value, then only allow it if
+// it is in allowed_preview_flags.
+// Returns true if this is not a preview flag, or if the new_value is the default.
+// 'err_msg' is set any time false is returned.
+bool IsPreviewFlagUpdateAllowed(
+    const CommandLineFlagInfo& flag_info, const unordered_set<FlagTag>& tags,
+    const std::string& new_value, const std::string& allowed_preview_flags, std::string* err_msg) {
+  if (!ContainsKey(tags, FlagTag::kPreview) || new_value == flag_info.default_value) {
+    return true;
+  }
+
+  const std::unordered_set<string> allowed_flags = strings::Split(allowed_preview_flags, ",");
+
+  if (!ContainsKey(allowed_flags, flag_info.name)) {
+    (*err_msg) = Format(
+        "Flag '$0' protects a feature that is currently in preview. In order for it to be "
+        "modified, you must acknowledge the risks by adding '$0' to the flag "
+        "'allowed_preview_flags_csv'",
+        flag_info.name);
+    return false;
+  }
+
+  return true;
+}
+
+// Makes sure that all preview flags which have been overridden are part of the list.
+// Allows non-existant flags, so that the allow list can be set in preparation for a yb upgrade.
+// Returns false and sets err_msg if the check fails.
+// We cannot set this as a validator for FLAGS_allowed_preview_flags_csv since gflags does not allow
+// calling 'GetAllFlags' from within a flag validator function.
+bool ValidateAllowedPreviewFlagsCsv(std::string* err_msg, const string& allowed_flags_csv) {
   std::vector<google::CommandLineFlagInfo> flag_infos;
   google::GetAllFlags(&flag_infos);
 
   for (const auto& flag : flag_infos) {
     unordered_set<FlagTag> tags;
     GetFlagTags(flag.name, &tags);
-
-    if (ContainsKey(tags, FlagTag::kPreview) && (flag.current_value != flag.default_value)) {
-      if (!ContainsKey(allowed_flags, flag.name)) {
-        (*err_msg) = Format(
-            "Flag '$0' protects a feature that is currently in preview. In order for it to be "
-            "modified, '$0' must be set in flag 'allowed_preview_flags_csv'",
-            flag.name);
-        return false;
-      }
+    if (!IsPreviewFlagUpdateAllowed(flag, tags, flag.current_value, allowed_flags_csv, err_msg)) {
+      return false;
     }
   }
 
   return true;
 }
 
-bool IsPreviewFlagAllowed(const CommandLineFlagInfo& flag_info, const string& new_value) {
-  if (new_value != flag_info.default_value) {
-    std::unordered_set<string> allowed_flags = strings::Split(FLAGS_allowed_preview_flags_csv, ",");
-    return ContainsKey(allowed_flags, flag_info.name);
+// Runs special validations for flag 'allowed_preview_flags_csv', and preview flags.
+bool IsFlagUpdateAllowed(
+    const CommandLineFlagInfo& flag_info, const unordered_set<FlagTag>& tags,
+    const std::string& new_value, std::string* err_msg) {
+  if (flag_info.name == "allowed_preview_flags_csv") {
+    return ValidateAllowedPreviewFlagsCsv(err_msg, new_value);
   }
-  return true;
+
+  return IsPreviewFlagUpdateAllowed(
+      flag_info, tags, new_value, FLAGS_allowed_preview_flags_csv, err_msg);
 }
 
 // Validates that the requested updates to vmodule can be made.
@@ -583,9 +617,8 @@ void ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
     // Run validation that were previously ignored due to DELAY_FLAG_VALIDATION_ON_STARTUP.
     CHECK_OK(ValidateFlagsRequiringDelayedValidation());
 
-    // Ensure all preview flags overridden are in allow list before invoking any callbacks.
     string err_msg;
-    if (!ValidateAllPreviewFlags(&err_msg, FLAGS_allowed_preview_flags_csv)) {
+    if (!ValidateAllowedPreviewFlagsCsv(&err_msg, FLAGS_allowed_preview_flags_csv)) {
       LOG(FATAL) << err_msg;
       return;
     }
@@ -729,27 +762,43 @@ std::string GetMaskedValueIfSensitive(const std::string& flag_name, const std::s
   return GetMaskedValueIfSensitive(tags, value);
 }
 
-Status ValidateFlagValue(const std::string& flag_name, const std::string& value) {
+Status ValidateFlagValue(const CommandLineFlagInfo& flag_info, const std::string& value) {
+  unordered_set<FlagTag> tags;
+  GetFlagTags(flag_info.name, &tags);
+  std::string output_msg;
+  // Preview flags require extra validations.
+  if (!IsFlagUpdateAllowed(flag_info, tags, value, &output_msg)) {
+    return STATUS_FORMAT(InvalidArgument, output_msg);
+  }
+
   // Clear previous errors if any.
   GetFlagValidatorSink().GetMessagesAndClear();
 
   std::string error_msg;
-  if (google::ValidateCommandLineOption(flag_name.c_str(), value.c_str(), &error_msg)) {
+  if (google::ValidateCommandLineOption(flag_info.name.c_str(), value.c_str(), &error_msg)) {
     return Status::OK();
   }
 
   auto validation_msgs = GetFlagValidatorSink().GetMessagesAndClear();
 
-  // error_msg originates from gflags, which may contain the value. Therefore, if it is sensitive,
-  // mask it.
+  // error_msg originates from gflags, which may contain the value. Therefore, if it is
+  // sensitive, mask it.
   // Ex: ERROR: failed validation of new value '1000' for flag 'ysql_conn_mgr_port'
-  if (!value.empty() && IsFlagSensitive(flag_name)) {
+  if (!value.empty() && IsFlagSensitive(flag_info.name)) {
     boost::replace_all(error_msg, Format("'$0'", value), Format("'$0'", kMaskedFlagValue));
   }
 
   return STATUS_FORMAT(
       InvalidArgument, "$0 : $1", error_msg,
       validation_msgs.empty() ? "Bad value" : JoinStrings(validation_msgs, ";"));
+}
+
+Status ValidateFlagValue(const std::string& flag_name, const std::string& value) {
+  CommandLineFlagInfo flag_info;
+  SCHECK_FORMAT(
+      google::GetCommandLineFlagInfo(flag_name.c_str(), &flag_info), NotFound,
+      "Flag '$0' does not exist", flag_name);
+  return ValidateFlagValue(flag_info, value);
 }
 
 SetFlagResult SetFlag(
@@ -775,20 +824,8 @@ SetFlagResult SetFlag(
     }
   }
 
-  // Only allowed preview flags can be changed.
-  if (flag_name == "allowed_preview_flags_csv") {
-    string err_msg;
-    if (!ValidateAllPreviewFlags(&err_msg, new_value)) {
-      *output_msg = err_msg;
-      return SetFlagResult::BAD_VALUE;
-    }
-  } else if (ContainsKey(tags, FlagTag::kPreview)) {
-    if (!IsPreviewFlagAllowed(flag_info, new_value)) {
-      *output_msg =
-          "Cannot modify Preview flag unless you acknowledge the risks by adding it to flag "
-          "'allowed_preview_flags_csv'";
-      return SetFlagResult::BAD_VALUE;
-    }
+  if (!IsFlagUpdateAllowed(flag_info, tags, new_value, output_msg)) {
+    return SetFlagResult::BAD_VALUE;
   }
 
   // Clear previous errors if any.
@@ -861,6 +898,28 @@ bool RecordFlagForDelayedValidation(const std::string& flag_name) {
   }
   FlagsWithDelayedValidation().emplace_back(flag_name);
   return true;
+}
+
+// Read the flags xml file and return the list of flag names.
+Result<std::unordered_set<std::string>> GetFlagNamesFromXmlFile(const std::string& flag_file_name) {
+  std::unordered_set<std::string> flag_names;
+
+  string build_path = yb::env_util::GetRootDir("bin");
+
+  auto full_path = JoinPathSegments(build_path, flag_file_name);
+  std::ifstream xml_file(full_path, std::ios_base::in);
+  SCHECK(xml_file, IOError, Format("Could not open XML file $0: $1", full_path, strerror(errno)));
+
+  static std::regex re(R"#(<name>(.*?)</name>)#");
+  std::string line;
+  while (std::getline(xml_file, line)) {
+    std::smatch match;
+    if (std::regex_search(line, match, re)) {
+      flag_names.insert(match.str(1));
+    }
+  }
+
+  return flag_names;
 }
 
 } // namespace yb

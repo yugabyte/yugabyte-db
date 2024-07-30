@@ -692,18 +692,97 @@ bool is_staleness_acceptable(int32_t staleness_ms) {
 
 bool
 check_follower_reads(bool *newval, void **extra, GucSource source) {
-	if (*newval == false) {
-		return true;
+	if (YBFollowerReadsBehaviorBefore20482())
+	{
+		if (*newval == false) {
+			return true;
+		}
+		return is_staleness_acceptable(yb_follower_read_staleness_ms);
 	}
-	return is_staleness_acceptable(yb_follower_read_staleness_ms);
+
+	if (IsTransactionState())
+	{
+		if (FirstSnapshotSet)
+		{
+			GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
+			GUC_check_errmsg("SET yb_read_from_followers must be called before any query");
+			return false;
+		}
+		if (IsSubTransaction() && !YbHasOnlyInternalRcSubTransactions())
+		{
+			GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
+			GUC_check_errmsg("SET yb_read_from_followers must not be called in a subtransaction");
+			return false;
+		}
+		/* Can't enable follower reads while recovery is still active */
+		if (RecoveryInProgress())
+		{
+			GUC_check_errcode(ERRCODE_FEATURE_NOT_SUPPORTED);
+			GUC_check_errmsg("cannot set yb_read_from_followers during recovery");
+			return false;
+		}
+	}
+	return true;
+}
+
+void
+assign_follower_reads(bool newval, void *extra)
+{
+	if (YBFollowerReadsBehaviorBefore20482())
+	{
+		return;
+	}
+
+	yb_read_from_followers = newval;
+	if (YBTransactionsEnabled())
+	{
+		HandleYBStatus(YBCPgUpdateFollowerReadsConfig(
+			YBReadFromFollowersEnabled(), YBFollowerReadStalenessMs()));
+	}
 }
 
 bool
 check_follower_read_staleness_ms(int32_t *newval, void **extra, GucSource source) {
-	if (!YBReadFromFollowersEnabled()) {
-		return true;
+	if (YBFollowerReadsBehaviorBefore20482())
+	{
+		if (!YBReadFromFollowersEnabled()) {
+			return true;
+		}
+		return is_staleness_acceptable(*newval);
+	}
+	if (YBTransactionsEnabled())
+	{
+		if (FirstSnapshotSet)
+		{
+			GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
+			GUC_check_errmsg("SET yb_follower_read_staleness_ms must be called before any query");
+			return false;
+		}
+		if (IsSubTransaction() && !YbHasOnlyInternalRcSubTransactions())
+		{
+			GUC_check_errcode(ERRCODE_ACTIVE_SQL_TRANSACTION);
+			GUC_check_errmsg("SET yb_follower_read_staleness_ms must not be called in a subtransaction");
+			return false;
+		}
+		/* Can't change follower read staleness while recovery is still active */
+		if (RecoveryInProgress())
+		{
+			GUC_check_errcode(ERRCODE_FEATURE_NOT_SUPPORTED);
+			GUC_check_errmsg("cannot set yb_follower_read_staleness_ms during recovery");
+			return false;
+		}
 	}
 	return is_staleness_acceptable(*newval);
+}
+
+void assign_follower_read_staleness_ms(int32_t newval, void *extra)
+{
+	yb_follower_read_staleness_ms = newval;
+	if (YBTransactionsEnabled() && !YBFollowerReadsBehaviorBefore20482())
+	{
+		HandleYBStatus(YBCPgUpdateFollowerReadsConfig(
+			YBReadFromFollowersEnabled(), YBFollowerReadStalenessMs()));
+	}
 }
 
 /*

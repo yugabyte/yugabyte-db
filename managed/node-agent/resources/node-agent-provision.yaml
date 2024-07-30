@@ -31,4 +31,5 @@ yba:
     cores: cores
     memory_size: size
     volume_size: size
-    mount_points: /data # Comma separated values.
+    mount_points:
+    - /mnt/d1

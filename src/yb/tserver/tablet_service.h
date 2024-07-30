@@ -215,6 +215,12 @@ void ClearUniverseUuid(const ClearUniverseUuidRequestPB* req,
       const ClearAllMetaCachesOnServerRequestPB* req, ClearAllMetaCachesOnServerResponsePB* resp,
       rpc::RpcContext context) override;
 
+  Result<AcquireObjectLockResponsePB> AcquireObjectLocks(
+      const AcquireObjectLockRequestPB& req, CoarseTimePoint deadline) override;
+
+  Result<ReleaseObjectLockResponsePB> ReleaseObjectLocks(
+      const ReleaseObjectLockRequestPB& req, CoarseTimePoint deadline) override;
+
   void Shutdown() override;
 
  private:

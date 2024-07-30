@@ -144,7 +144,13 @@ alter table atacc1 drop constraint if exists checkb3;
 delete from atacc1 where b = 5;
 
 -- test rename
-alter table atacc1 rename b to e;
+alter table atacc1 rename b to d; -- should fail: d already exists
+alter table atacc1 rename b to f;
+alter table atacc1 rename column f to e;
+
+alter table if exists doesnt_exist_tab rename b to f;
+alter table if exists doesnt_exist_tab rename column f to e;
+
 select * from atacc1;
 
 -- try dropping all columns
@@ -499,7 +505,7 @@ ALTER TABLE demo DROP CONSTRAINT demoi;
 INSERT INTO demo VALUES (1);
 SELECT * FROM demo;
 
--- Test that an attemp to drop primary key column with sequence generator
+-- Test dropping a primary key column with sequence generator
 -- does not delete the associated sequence.
 CREATE TABLE tbl_serial_primary_key (k serial PRIMARY KEY, v text);
 ALTER TABLE tbl_serial_primary_key DROP COLUMN k;

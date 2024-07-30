@@ -115,6 +115,7 @@ extern bool IsYugaByteEnabled();
 
 extern bool yb_enable_docdb_tracing;
 extern bool yb_read_from_followers;
+extern bool yb_follower_reads_behavior_before_fixing_20482;
 extern int32_t yb_follower_read_staleness_ms;
 
 /*
@@ -738,6 +739,7 @@ extern void YBFlushBufferedOperations();
 bool YBEnableTracing();
 bool YBReadFromFollowersEnabled();
 int32_t YBFollowerReadStalenessMs();
+bool YBFollowerReadsBehaviorBefore20482();
 
 /*
  * Allocates YBCPgYBTupleIdDescriptor with nattrs arguments by using palloc.
@@ -1151,5 +1153,9 @@ extern Oid YbGetSQLIncrementCatalogVersionsFunctionOid();
 extern bool YbIsReadCommittedTxn();
 
 extern YbReadTimePointHandle YbBuildCurrentReadTimePointHandle();
+
+extern bool YbUseFastBackwardScan();
+
+bool YbIsAttrPrimaryKeyColumn(Relation rel, AttrNumber attnum);
 
 #endif /* PG_YB_UTILS_H */

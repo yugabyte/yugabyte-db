@@ -35,11 +35,11 @@ platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"')
 if [[ "$platform_id" == "platform:el8" ]]; then
     # Check SELinux status
     SELINUX_STATUS=$(sestatus | grep 'SELinux status' | awk '{print $3}')
-    if [ "$SELINUX_STATUS" == "enabled" ]; then
+    if [[ "$SELINUX_STATUS" == "enabled" ]]; then
         # Configuring the correct SELinux context
-        current_context=$(ls -Zd {{ yb_home_dir }} | awk '{print $3}')
-        if [ "$current_context" != "ssh_home_t" ]; then
-            chcon -R -t ssh_home_t {{ yb_home_dir }}
+        current_context=$(ls -Zd "{{ yb_home_dir }}" | awk '{print $1}' | cut -d: -f3)
+        if [[ "$current_context" != "ssh_home_t" ]]; then
+            chcon -R -t ssh_home_t "{{ yb_home_dir }}"
             echo "SELinux context for {{ yb_home_dir }} changed to ssh_home_t"
         else
             echo "SELinux context for {{ yb_home_dir }} is already set to ssh_home_t"
@@ -78,3 +78,6 @@ if [ -z {{ public_key_filepath }} ]; then
         exit 1
     fi
 fi
+
+# Ensure the permissions for yb_home_dir are 711
+chmod -R 711 "{{ yb_home_dir }}"

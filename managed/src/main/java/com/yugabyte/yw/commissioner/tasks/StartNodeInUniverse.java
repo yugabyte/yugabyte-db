@@ -144,7 +144,7 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
               taskParams().nodeName, NodeStatus.builder().masterState(MasterState.ToStart).build());
         }
         createStartMasterOnNodeTasks(
-            universe, currentNode, null, false /* stoppable */, false /* ignore stop error */);
+            universe, currentNode, null, false /* stoppable */, false /* ignoreStopError */);
       }
 
       if (startTserver) {

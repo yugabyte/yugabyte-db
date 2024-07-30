@@ -156,7 +156,7 @@ DEFINE_UNKNOWN_int32(tablet_start_warn_threshold_ms, 500,
              "a warning with a trace.");
 TAG_FLAG(tablet_start_warn_threshold_ms, hidden);
 
-DEFINE_UNKNOWN_int32(cleanup_split_tablets_interval_sec, 60,
+DEFINE_NON_RUNTIME_int32(cleanup_split_tablets_interval_sec, 60,
              "Interval at which tablet manager tries to cleanup split tablets which are no longer "
              "needed. Setting this to 0 disables cleanup of split tablets.");
 
@@ -1327,8 +1327,9 @@ Status TSTabletManager::DoApplyCloneTablet(
   cmeta->set_clone_source_info(request->clone_request_seq_no(), source_tablet_id);
   RETURN_NOT_OK(cmeta->Flush());
 
+  auto log_prefix = consensus::MakeTabletLogPrefix(target_tablet_id, server_->permanent_uuid());
   auto target_table = std::make_shared<tablet::TableInfo>(
-      consensus::MakeTabletLogPrefix(target_tablet_id, server_->permanent_uuid()),
+      log_prefix,
       tablet::Primary(source_table->primary()),
       target_table_id,
       target_namespace_name,
@@ -1342,22 +1343,29 @@ Status TSTabletManager::DoApplyCloneTablet(
       target_partition_schema,
       target_pg_table_id,
       tablet::SkipTableTombstoneCheck(target_skip_table_tombstone_check));
+  std::vector<tablet::TableInfoPtr> colocated_tables_infos;
 
+  for (const auto& colocated_table : ToRepeatedPtrField(request->colocated_tables())) {
+    VLOG(3) << Format(
+        "Adding table $0 to the tablet: $1", colocated_table.table_id(), target_tablet_id);
+    colocated_tables_infos.push_back(VERIFY_RESULT(
+        tablet::TableInfo::LoadFromPB(log_prefix, target_table_id, colocated_table)));
+  }
   // Setup raft group metadata. If we crash between here and when we set the tablet data state to
   // TABLET_DATA_READY, the tablet will be deleted on the next bootstrap.
-  tablet::RaftGroupMetadataData target_meta_data {
-    .fs_manager = fs_manager_,
-    .table_info = target_table,
-    .raft_group_id = target_tablet_id,
-    .partition = *source_meta.partition(),
-    .tablet_data_state = TABLET_DATA_INIT_STARTED,
-    .colocated = source_meta.colocated(),
-    .snapshot_schedules = {},
-    .hosted_services = {},
+  tablet::RaftGroupMetadataData target_meta_data{
+      .fs_manager = fs_manager_,
+      .table_info = target_table,
+      .raft_group_id = target_tablet_id,
+      .partition = *source_meta.partition(),
+      .tablet_data_state = TABLET_DATA_INIT_STARTED,
+      .colocated = source_meta.colocated(),
+      .snapshot_schedules = {},
+      .hosted_services = {},
+      .colocated_tables_infos = colocated_tables_infos,
   };
-  auto target_meta = VERIFY_RESULT(RaftGroupMetadata::CreateNew(
-      target_meta_data, data_root_dir, wal_root_dir));
-
+  auto target_meta =
+      VERIFY_RESULT(RaftGroupMetadata::CreateNew(target_meta_data, data_root_dir, wal_root_dir));
   // Create target parent table directory if required.
   auto target_parent_table_dir = DirName(target_meta->snapshots_dir());
   RETURN_NOT_OK_PREPEND(

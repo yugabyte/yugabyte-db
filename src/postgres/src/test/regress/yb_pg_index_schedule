@@ -1,0 +1,3 @@
+# src/test/regress/yb_pg_index_schedule
+# This schedule is for ported tests only.
+test: yb_pg_indexing

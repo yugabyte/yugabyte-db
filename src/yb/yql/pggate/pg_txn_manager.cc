@@ -45,6 +45,14 @@ DEFINE_NON_RUNTIME_bool(ysql_rc_force_pick_read_time_on_pg_client, false,
                         " pick one.");
 TAG_FLAG(ysql_rc_force_pick_read_time_on_pg_client, advanced);
 
+DEFINE_RUNTIME_PG_FLAG(bool, yb_follower_reads_behavior_before_fixing_20482, false,
+    "Controls whether ysql follower reads that is enabled inside a transaction block "
+    "should take effect in the same transaction or not. Prior to fixing #20482 the "
+    "behavior was that the change does not affect the current transaction but only "
+    "affects subsequent transactions. The flag is intended to be used if there is "
+    "a customer who relies on the old behavior.");
+TAG_FLAG(ysql_yb_follower_reads_behavior_before_fixing_20482, advanced);
+
 // A macro for logging the function name and the state of the current transaction.
 // This macro is not enclosed in do { ... } while (true) because we want to be able to write
 // additional information into the same log message.
@@ -245,7 +253,8 @@ Status PgTxnManager::SetEnableTracing(bool tracing) {
   return Status::OK();
 }
 
-Status PgTxnManager::EnableFollowerReads(bool enable_follower_reads, int32_t session_staleness) {
+Status PgTxnManager::UpdateFollowerReadsConfig(
+    bool enable_follower_reads, int32_t session_staleness) {
   VLOG_TXN_STATE(2) << (enable_follower_reads ? "Enabling follower reads "
                                               : "Disabling follower reads ")
                     << " with staleness " << session_staleness << " ms";
@@ -255,7 +264,7 @@ Status PgTxnManager::EnableFollowerReads(bool enable_follower_reads, int32_t ses
 }
 
 Status PgTxnManager::UpdateReadTimeForFollowerReadsIfRequired() {
-  if (enable_follower_reads_ && read_only_ && !read_time_for_follower_reads_) {
+  if (enable_follower_reads_ && read_only_) {
     constexpr uint64_t kMargin = 2;
     RSTATUS_DCHECK(
         follower_read_staleness_ms_ * 1000 > kMargin * GetAtomicFlag(&FLAGS_max_clock_skew_usec),
@@ -267,10 +276,11 @@ Status PgTxnManager::UpdateReadTimeForFollowerReadsIfRequired() {
                       << follower_read_staleness_ms_ << " to "
                       << read_time_for_follower_reads_;
   } else {
-    VLOG(2) << " Not updating read-time " << yb::ToString(pg_isolation_level_)
-            << read_time_for_follower_reads_
-            << (enable_follower_reads_ ? " Follower reads allowed." : " Follower reads DISallowed.")
-            << (read_only_ ? " Is read-only" : " Is NOT read-only");
+    read_time_for_follower_reads_ = HybridTime();
+    VLOG_TXN_STATE(2) << "Resetting read-time."
+                      << (enable_follower_reads_ ? " Follower reads allowed."
+                                                 : " Follower reads DISallowed.")
+                      << (read_only_ ? " Is read-only" : " Is NOT read-only");
   }
   return Status::OK();
 }
@@ -391,6 +401,12 @@ Status PgTxnManager::ResetTransactionReadPoint() {
                                           : tserver::ReadTimeManipulation::NONE;
   read_time_for_follower_reads_ = HybridTime();
   RETURN_NOT_OK(UpdateReadTimeForFollowerReadsIfRequired());
+  return Status::OK();
+}
+
+Status PgTxnManager::EnsureReadPoint() {
+  DCHECK(read_time_manipulation_ != tserver::ReadTimeManipulation::RESTART);
+  read_time_manipulation_ = tserver::ReadTimeManipulation::ENSURE_READ_TIME_IS_SET;
   return Status::OK();
 }
 
@@ -612,10 +628,17 @@ void PgTxnManager::IncTxnSerialNo() {
   active_sub_transaction_id_ = kMinSubTransactionId;
 }
 
-void PgTxnManager::RestoreSessionParallelData(const YBCPgSessionParallelData& data) {
+void PgTxnManager::DumpSessionState(YBCPgSessionState* session_data) {
+  session_data->txn_serial_no = serial_no_.txn();
+  session_data->read_time_serial_no = serial_no_.read_time();
+  session_data->active_sub_transaction_id = active_sub_transaction_id_;
+}
+
+void PgTxnManager::RestoreSessionState(const YBCPgSessionState& session_data) {
+  read_time_manipulation_ = tserver::ReadTimeManipulation::ENSURE_READ_TIME_IS_SET;
   serial_no_ =
-      SerialNo(data.txn_serial_no, data.read_time_serial_no);
-  active_sub_transaction_id_ = data.active_sub_transaction_id;
+      SerialNo(session_data.txn_serial_no, session_data.read_time_serial_no);
+  active_sub_transaction_id_ = session_data.active_sub_transaction_id;
   VLOG_TXN_STATE(2);
 }
 

@@ -11,6 +11,7 @@ import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonValue;
+import com.yugabyte.yw.forms.TableInfoForm.TableInfoResp;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import io.ebean.Finder;
@@ -116,6 +117,14 @@ public class XClusterTableConfig extends Model {
           "Validated, Running, Updating, Warning, Error, Bootstrapping, Failed, UnableToFetch")
   private Status status;
 
+  @Transient
+  @ApiModelProperty(value = "tableInfo from source universe", required = false)
+  private TableInfoResp sourceTableInfo;
+
+  @Transient
+  @ApiModelProperty(value = "tableInfo from target universe", required = false)
+  private TableInfoResp targetTableInfo;
+
   // Statuses are declared in reverse severity for showing tables in UI with specific order.
   public enum Status {
     Failed("Failed", -1),
@@ -179,8 +188,6 @@ public class XClusterTableConfig extends Model {
     }
   }
 
-  @Getter
-  @Setter
   @Transient
   @ApiModelProperty(value = "Short human readable replication status error messages")
   private Set<ReplicationStatusError> replicationStatusErrors = new HashSet<>();
