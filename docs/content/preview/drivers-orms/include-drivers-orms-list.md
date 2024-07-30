@@ -72,7 +72,7 @@ private = true
 
   {{% /tab %}}
 
-    {{% tab header="Elixir" lang="elixir" %}}
+  {{% tab header="Elixir" lang="elixir" %}}
 
 |            | Version | Support Level | Example apps |
 | :--------- | :------ | :------------ | :----------- |
