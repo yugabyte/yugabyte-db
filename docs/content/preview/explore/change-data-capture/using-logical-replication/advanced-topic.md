@@ -78,7 +78,7 @@ This is illustrated in the following example. The client used for the example is
 
 ## Adding tables to publication
 
-Addition of tables to the streaming list after slot creation is currently a preview feature. To enable dynamic table addition, set the [cdcsdk_enable_dynamic_table_support](../../../../reference/configuration/yb-tserver/#cdcsdk_enable_dynamic_table_support) flag to true.
+Addition of tables to the streaming list after slot creation is currently a preview feature. To enable dynamic table addition, set the [cdcsdk_enable_dynamic_table_support](../../../../reference/configuration/yb-tserver/#cdcsdk-enable-dynamic-table-support) flag to true.
 
 The Publication's tables list can change in two ways. The first way is by adding a table to the publication by performing an alter publication.
 

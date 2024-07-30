@@ -23,17 +23,19 @@ YugabyteDB CDC captures changes made to data in the database and streams those c
 
 #### Resilience
 
-1. Following a failure of the application or server or n/w, the replication can continue from any of the available server nodes.
+YugabyteDB CDC with PostgreSQL Logical Replication provides resilience as follows:
 
-2. Replication continues from the transaction immediately after the transaction that was last acknowledged by the application. There will be no transaction that will be missed by the application.
+1. Following a failure of the application, server, or network, the replication can continue from any of the available server nodes.
+
+2. Replication continues from the transaction immediately after the transaction that was last acknowledged by the application. No transactions are missed by the application.
 
 #### Security
 
-CDC in YugabyteDB being based on the PostgreSQL Logical Replication model means:
+Because YugabyteDB is using the PostgreSQL Logical Replication model, the following applies:
 
-1. CDC user persona will be a 'PG Replication client'.
+- The CDC user persona will be a PostgreSQL replication client.
 
-2. A standard replication connection is used for consumption, and all the server-side configurations of authentication, authorizations, SSL modes, and connection load balancing can be leveraged automatically.
+- A standard replication connection is used for consumption, and all the server-side configurations for authentication, authorizations, SSL modes, and connection load balancing can be leveraged automatically.
 
 #### Guarantees
 

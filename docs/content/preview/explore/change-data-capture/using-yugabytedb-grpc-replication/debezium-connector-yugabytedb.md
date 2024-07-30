@@ -1209,7 +1209,7 @@ In case one of the tablet servers crashes, the replicas on other YB-TServer node
 
 ### YugabyteDB server failures
 
-In case of YugabyteDB server failures, the YugabyteDB gRPC Connector will try for a configurable (using a [flag](../../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags)) amount of time for the availability of the YB-TServer and will stop if the cluster cannot start. When the cluster is restarted, the connector can be run again and it will start processing the changes with the committed checkpoint.
+In case of YugabyteDB server failures, the YugabyteDB gRPC Connector will try for a configurable amount of time for the availability of the YB-TServer and will stop if the cluster cannot start. When the cluster is restarted, the connector can be run again and it will start processing the changes with the committed checkpoint.
 
 ### Connector unable to find table association with stream ID
 
