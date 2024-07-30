@@ -181,7 +181,10 @@ public class Audit extends Model {
     RoleBinding,
 
     @EnumValue("Group Mapping")
-    GroupMapping
+    GroupMapping,
+
+    @EnumValue("JobSchedule")
+    JobSchedule
   }
 
   public enum ActionType {

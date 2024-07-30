@@ -24,12 +24,12 @@ import com.yugabyte.yw.models.JobSchedule;
 import com.yugabyte.yw.models.helpers.schedule.JobConfig;
 import com.yugabyte.yw.models.helpers.schedule.ScheduleConfig;
 import com.yugabyte.yw.models.helpers.schedule.ScheduleConfig.ScheduleType;
-import java.time.Duration;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import lombok.Getter;
 import lombok.Setter;
@@ -112,8 +112,7 @@ public class JobSchedulerTest extends FakeDBApplication {
 
   @Test
   public void testJobScheduleSubmit() {
-    ScheduleConfig scheduleConfig =
-        ScheduleConfig.builder().interval(Duration.ofSeconds(5)).build();
+    ScheduleConfig scheduleConfig = ScheduleConfig.builder().intervalSecs(5).build();
     JobSchedule jobSchedule1 = createJobSchedule(scheduleConfig, new TestJobConfig());
     Set<Class<? extends JobConfig>> submittedJobConfigClasses = new HashSet<>();
     submittedJobConfigClasses.add(TestJobConfig.class);
@@ -121,8 +120,8 @@ public class JobSchedulerTest extends FakeDBApplication {
     UUID uuid = jobScheduler.submitSchedule(jobSchedule1);
     JobSchedule dbJobSchedule = JobSchedule.getOrBadRequest(uuid);
     assertEquals(
-        jobSchedule1.getScheduleConfig().getInterval(),
-        dbJobSchedule.getScheduleConfig().getInterval());
+        jobSchedule1.getScheduleConfig().getIntervalSecs(),
+        dbJobSchedule.getScheduleConfig().getIntervalSecs());
     assertEquals(jobSchedule1.getJobConfig().getClass(), dbJobSchedule.getJobConfig().getClass());
     jobScheduler.submitSchedule(createJobSchedule(scheduleConfig, new DummyTestJobConfig()));
     List<JobSchedule> jobSchedules = JobSchedule.getAll();
@@ -139,8 +138,7 @@ public class JobSchedulerTest extends FakeDBApplication {
 
   @Test
   public void testJobScheduleDelete() {
-    ScheduleConfig scheduleConfig =
-        ScheduleConfig.builder().interval(Duration.ofSeconds(5)).build();
+    ScheduleConfig scheduleConfig = ScheduleConfig.builder().intervalSecs(5).build();
     UUID jobScheduleUuid1 =
         jobScheduler.submitSchedule(createJobSchedule(scheduleConfig, new TestJobConfig()));
     UUID jobScheduleUuid2 =
@@ -161,10 +159,7 @@ public class JobSchedulerTest extends FakeDBApplication {
   @Test
   public void testJobInstanceSuccessExecution() throws Exception {
     ScheduleConfig scheduleConfig =
-        ScheduleConfig.builder()
-            .type(ScheduleType.FIXED_DELAY)
-            .interval(Duration.ofMillis(1))
-            .build();
+        ScheduleConfig.builder().type(ScheduleType.FIXED_DELAY).intervalSecs(1).build();
     JobSchedule jobSchedule = createJobSchedule(scheduleConfig, new TestJobConfig());
     UUID uuid = jobScheduler.submitSchedule(jobSchedule);
     JobSchedule dbJobSchedule = JobSchedule.getOrBadRequest(uuid);
@@ -177,6 +172,7 @@ public class JobSchedulerTest extends FakeDBApplication {
     assertEquals(dbJobSchedule.getNextStartTime(), jobInstance.getStartTime());
     CompletableFuture<?> future = jobScheduler.executeJobInstance(jobInstance);
     assertNotNull(future);
+    future.get(10, TimeUnit.SECONDS);
     // Fetch the latest.
     dbJobSchedule = JobSchedule.getOrBadRequest(uuid);
     jobInstance = JobInstance.getOrBadRequest(jobInstance.getUuid());
@@ -191,10 +187,7 @@ public class JobSchedulerTest extends FakeDBApplication {
   @Test
   public void testJobInstanceFailedExecution() throws Exception {
     ScheduleConfig scheduleConfig =
-        ScheduleConfig.builder()
-            .type(ScheduleType.FIXED_DELAY)
-            .interval(Duration.ofMillis(1))
-            .build();
+        ScheduleConfig.builder().type(ScheduleType.FIXED_DELAY).intervalSecs(1).build();
     TestJobConfig jobConfig = new TestJobConfig();
     jobConfig.setFail(true);
     JobSchedule jobSchedule = createJobSchedule(scheduleConfig, jobConfig);
@@ -216,10 +209,7 @@ public class JobSchedulerTest extends FakeDBApplication {
   @Test
   public void testJobInstanceSkippedExecution() throws Exception {
     ScheduleConfig scheduleConfig =
-        ScheduleConfig.builder()
-            .type(ScheduleType.FIXED_DELAY)
-            .interval(Duration.ofMillis(1))
-            .build();
+        ScheduleConfig.builder().type(ScheduleType.FIXED_DELAY).intervalSecs(1).build();
     TestJobConfig jobConfig = new TestJobConfig();
     jobConfig.setSkip(true);
     JobSchedule jobSchedule = createJobSchedule(scheduleConfig, jobConfig);

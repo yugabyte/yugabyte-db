@@ -83,7 +83,7 @@ public class MetaMasterController extends Controller {
   }
 
   @ApiOperation(
-      notes = "Available since YBA version 2024.2.0",
+      notes = "YbaApi Internal. Available since YBA version 2024.2.0",
       value = "Get the state of master load balancing ops",
       response = MasterLBStateResponse.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2024.2.0")
