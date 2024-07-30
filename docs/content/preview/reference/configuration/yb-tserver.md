@@ -1296,7 +1296,7 @@ Number of tables to be added to the stream ID per run of the background thread w
 
 Default: `2`
 
-Following set of flags are only relevant for CDC using logical replication. To learn about CDC using logical replication, see [Change data capture (CDC) using logical replication](../../../architecture/docdb-replication/cdc-logical-replication).
+The following set of flags are only relevant for CDC using the PostgreSQL replication protocol. To learn about CDC using the PostgreSQL replication protocol, see [CDC using logical replication](../../../architecture/docdb-replication/cdc-logical-replication).
 
 ##### --ysql_yb_default_replica_identity
 
