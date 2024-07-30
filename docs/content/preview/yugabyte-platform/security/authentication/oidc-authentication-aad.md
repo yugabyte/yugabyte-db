@@ -16,13 +16,11 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="../oidc-authentication-aad/" class="nav-link active">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       Azure AD
     </a>
   </li>
   <li >
     <a href="../oidc-authentication-jumpcloud/" class="nav-link">
-      <i class="fa-sharp fa-regular fa-cloud"></i>
       JumpCloud
     </a>
   </li>
@@ -132,7 +130,7 @@ To register an application, do the following:
 1. Set the redirect URI. This is where the IdP redirects after authentication. The URI is in the following form:
 
     ```sh
-    https://<YBA_IP_Address>/api/v1/callback?client_name=OidcClient 
+    https://<YBA_IP_Address>/api/v1/callback?client_name=OidcClient
     ```
 
 1. Click **Register**.

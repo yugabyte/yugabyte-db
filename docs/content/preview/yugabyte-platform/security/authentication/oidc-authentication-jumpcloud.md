@@ -16,13 +16,11 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="../oidc-authentication-aad/" class="nav-link">
-      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       Azure AD
     </a>
   </li>
   <li >
     <a href="../oidc-authentication-jumpcloud/" class="nav-link active">
-      <i class="fa-sharp fa-regular fa-cloud"></i>
       JumpCloud
     </a>
   </li>
@@ -116,14 +114,14 @@ For information on configuring flags in YugabyteDB Anywhere, refer to [Edit conf
 The `ysql_hba_conf_csv` flag must be set to support using JWTs for authentication. The parameters to include in the configuration file record are as follows:
 
 - `jwt_map` - the user-name map used to translate claim values to database roles. Optional if you aren't using the default Subject claim values.
-- `jwt_issuers` - the first part of the discovery URL (`https://oauth.id.jumpcloud.com/.well-known/openid-configuration`)
+- `jwt_issuers` - the first part of the discovery URL (`https://oauth.id.jumpcloud.com/`)
 - `jwt_audiences` - the audience or target app for the token, which in this case is the client ID of the application you registered.
 - `jwt_matching_claim_key` - the email attribute you set (for example, `preferred_username`). Optional if you aren't using the default Subject claim values.
 - `jwt_jwks_path` - The JSON Web Key Set (JWKS) is a set of keys containing the public keys used to verify any JWT. These can be uploaded as entries in a single file. When configuring the flag in YugabyteDB Anywhere, click **Add JSON web key set (JWKS)** to upload the JWKS.
 
 The following illustration shows an example of setting the `ysql_hba_conf_csv` flag in YugabyteDB Anywhere:
 
-![Configuring ysql_hba_conf_csv flag for OIDC](/images/yp/security/oidc-azure-hbaconf.png)
+![Configuring ysql_hba_conf_csv flag for OIDC](/images/yp/security/oidc-jumpcloud-hbaconf.png)
 
 The following shows an example `ysql_hba_conf_csv` flag configuration for OIDC:
 
@@ -139,7 +137,7 @@ This flag is used to add translation regex rules that map token claim values to 
 
 The following illustration shows an example flag configuration:
 
-![Configuring ysql_ident_conf_csv flag for OIDC](/images/yp/security/oidc-azure-identconf.png)
+![Configuring ysql_ident_conf_csv flag for OIDC](/images/yp/security/oidc-jumpcloud-identconf.png)
 
 The following are examples of possible rules:
 
@@ -152,7 +150,7 @@ The following are examples of possible rules:
 - Map multiple users
 
   ```sh
-  map2 /^(.*)@devadmincloudyugabyte\.onmicrosoft\.com$ \1
+  map2 /^(.*)@devyugabyte\.com$ \1
   ```
 
 - Map Roles <-> Users
