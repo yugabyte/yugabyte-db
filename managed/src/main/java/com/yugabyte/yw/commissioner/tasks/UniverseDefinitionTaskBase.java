@@ -3030,7 +3030,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     } else {
       throw new IllegalArgumentException("Unknown server type " + serverType);
     }
-    // Command is run in shell.
+    // Command is run in shell. Make it return 0 even if pgrep returns non-zero on pattern mismatch.
     List<String> command =
         ImmutableList.<String>builder()
             .add("pgrep")
@@ -3038,6 +3038,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             .add("yugabyte")
             .add(processName)
             .add("2>/dev/null")
+            .add("||")
+            .add("true")
             .build();
     log.debug("Creating task to run command {}", command);
     BiConsumer<NodeDetails, ShellResponse> consumer =

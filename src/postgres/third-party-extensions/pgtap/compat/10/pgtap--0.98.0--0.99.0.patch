@@ -1,0 +1,19 @@
+--- sql/pgtap--0.98.0--0.99.0.sql
++++ sql/pgtap--0.98.0--0.99.0.sql
+@@ -134,6 +134,7 @@
+     );
+ $$ LANGUAGE sql;
+ 
++DROP VIEW tap_funky;
+ CREATE OR REPLACE VIEW tap_funky
+  AS SELECT p.oid         AS oid,
+            n.nspname     AS schema,
+@@ -144,7 +144,7 @@ CREATE OR REPLACE VIEW tap_funky
+              || p.prorettype::regtype AS returns,
+            p.prolang     AS langoid,
+            p.proisstrict AS is_strict,
+-           p.prokind     AS kind,
++           CASE proisagg WHEN true THEN 'a' WHEN false THEN 'f' END AS kind,
+            p.prosecdef   AS is_definer,
+            p.proretset   AS returns_set,
+            p.provolatile::char AS volatility,

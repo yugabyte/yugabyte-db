@@ -118,7 +118,7 @@ class RpcServerBase {
                 const scoped_refptr<Clock>& clock = nullptr);
   virtual ~RpcServerBase();
 
-  virtual Status InitAutoFlags(rpc::Messenger* messenger);
+  virtual Status InitFlags(rpc::Messenger* messenger);
   virtual Status Init();
   virtual Status Start();
 
@@ -215,7 +215,7 @@ class RpcAndWebServerBase : public RpcServerBase {
                               const std::string caption, const std::string url);
 
   Status Init() override;
-  Status InitAutoFlags(rpc::Messenger* messenger) override;
+  Status InitFlags(rpc::Messenger* messenger) override;
   Status Start() override;
   void Shutdown() override;
 
@@ -223,8 +223,13 @@ class RpcAndWebServerBase : public RpcServerBase {
   std::unique_ptr<Webserver> web_server_;
 
  protected:
-  // Returns all the AutoFlags associated with this process both promoted, and non-promoted ones.
+  // Returns all the AutoFlags associated with this process.
   virtual Result<std::unordered_set<std::string>> GetAvailableAutoFlagsForServer() const {
+    return std::unordered_set<std::string>();
+  }
+
+  // Returns all the flags associated with this process.
+  virtual Result<std::unordered_set<std::string>> GetFlagsForServer() const {
     return std::unordered_set<std::string>();
   }
 

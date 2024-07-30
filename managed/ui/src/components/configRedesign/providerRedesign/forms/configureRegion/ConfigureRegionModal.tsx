@@ -40,6 +40,7 @@ import { IsOsPatchingEnabled } from '../../components/linuxVersionCatalog/LinuxV
 import { ImageBundle, ImageBundleType } from '../../../../../redesign/features/universe/universe-form/utils/dto';
 import { CloudType } from '../../../../../redesign/helpers/dtos';
 import { keys, values } from 'lodash';
+import { RG_REGEX } from "../../../../config/constants";
 
 interface ConfigureRegionModalProps extends YBModalProps {
   configuredRegions: CloudVendorRegionField[];
@@ -74,6 +75,8 @@ export interface ConfigureRegionFormValues {
   sharedSubnet?: string;
   vnet?: string;
   ybImage?: string;
+  azuNetworkRGOverride?: string;
+  azuRGOverride?: string;
   imageBundles?: ImageBundle[];
 }
 export type CloudVendorRegionField = Omit<ConfigureRegionFormValues, 'regionData' | 'zones'> & {
@@ -134,7 +137,9 @@ export const ConfigureRegionModal = ({
           ? 'Marketplace Image URN/Shared Gallery Image ID (Optional)'
           : 'Custom Machine Image ID (Optional)',
     sharedSubnet: 'Shared Subnet',
-    instanceTemplate: 'Instance Template (Optional)'
+    instanceTemplate: 'Instance Template (Optional)',
+    azuNetworkRGOverride: 'Network Resource Group (Optional)',
+    azuRGOverride: 'Resource Group (Optional)'
   };
   const shouldExposeField: Record<keyof ConfigureRegionFormValues, boolean> = {
     fieldId: false,
@@ -145,7 +150,9 @@ export const ConfigureRegionModal = ({
     vnet: providerCode !== ProviderCode.GCP && vpcSetupType === VPCSetupType.EXISTING,
     ybImage: !osPatchingEnabled && (providerCode !== ProviderCode.AWS || ybImageType === YBImageType.CUSTOM_AMI),
     zones: providerCode !== ProviderCode.GCP,
-    imageBundles: false
+    imageBundles: false,
+    azuNetworkRGOverride: providerCode === ProviderCode.AZU,
+    azuRGOverride: providerCode === ProviderCode.AZU
   };
   const validationSchema = object().shape({
     regionData: object().required(`${fieldLabel.region} is required.`),
@@ -174,6 +181,18 @@ export const ConfigureRegionModal = ({
           subnet: string().required('Zone subnet is required.')
         })
       )
+    }),
+    azuNetworkRGOverride: string().when([], {
+      is: () => shouldExposeField.azuNetworkRGOverride && providerCode === ProviderCode.AZU,
+      then: string().matches(
+          RG_REGEX,
+          "Resource group names can only include alphanumeric, underscore, parentheses, hyphen, period (except at end)"),
+    }),
+    azuRGOverride: string().when([], {
+      is: () => shouldExposeField.azuRGOverride && providerCode === ProviderCode.AZU,
+      then: string().matches(
+          RG_REGEX,
+          "Resource group names can only include alphanumeric, underscore, parentheses, hyphen, period (except at end)"),
     })
   });
   const formMethods = useForm<ConfigureRegionFormValues>({
@@ -416,6 +435,30 @@ export const ConfigureRegionModal = ({
                     fullWidth
                   />
                 </div>
+              )}
+              {shouldExposeField.azuNetworkRGOverride && (
+                  <div className={classes.formField}>
+                    <div>{fieldLabel.azuNetworkRGOverride}</div>
+                    <YBInputField
+                        control={formMethods.control}
+                        name="azuNetworkRGOverride"
+                        placeholder="Enter..."
+                        disabled={isRegionFieldDisabled}
+                        fullWidth
+                    />
+                  </div>
+              )}
+              {shouldExposeField.azuRGOverride && (
+                  <div className={classes.formField}>
+                    <div>{fieldLabel.azuRGOverride}</div>
+                    <YBInputField
+                        control={formMethods.control}
+                        name="azuRGOverride"
+                        placeholder="Enter..."
+                        disabled={isRegionFieldDisabled}
+                        fullWidth
+                    />
+                  </div>
               )}
               {shouldExposeField.zones && (
                 <div>

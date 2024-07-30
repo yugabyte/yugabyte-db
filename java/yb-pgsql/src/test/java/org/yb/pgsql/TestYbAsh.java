@@ -81,14 +81,16 @@ public class TestYbAsh extends BasePgSQLTest {
   /**
    * The circular buffer should be empty if the cluster is idle. The query to check
    * that the circular buffer is empty might get sampled and put in the buffer, so
-   * we exclude those samples.
+   * we exclude those samples. We also exlude constant query_ids which can mean that
+   * these are background tasks, or query_id before the actual query_id is set.
    */
   @Test
   public void testEmptyCircularBuffer() throws Exception {
     setAshConfigAndRestartCluster(ASH_SAMPLING_INTERVAL, ASH_SAMPLE_SIZE);
     try (Statement statement = connection.createStatement()) {
       String query = "SELECT COUNT(*) FROM " + ASH_VIEW + " JOIN pg_stat_statements "
-          + "ON query_id = queryid WHERE query NOT LIKE '%" + ASH_VIEW + "%'";
+          + "ON query_id = queryid WHERE query NOT LIKE '%" + ASH_VIEW + "%' AND query_id < 0 "
+          + "AND query_id > 6";
       assertOneRow(statement, query, 0);
       Thread.sleep(2 * ASH_SAMPLING_INTERVAL);
       assertOneRow(statement, query, 0);

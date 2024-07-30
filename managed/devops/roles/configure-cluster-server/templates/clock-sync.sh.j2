@@ -1,5 +1,7 @@
 #!/bin/bash
 
+SCRIPT_NAME=$(basename "$0")
+
 ################### Config ###################
 is_acceptable_clock_skew_wait_enabled="{{ is_acceptable_clock_skew_wait_enabled | default(true) }}"  # Whether check clock skew
 acceptable_clock_skew_sec="{{ acceptable_clock_skew_sec | default(0.5) }}"  # In seconds
@@ -16,7 +18,17 @@ command_exists() {
 }
 
 check_clock_sync_chrony() {
-  local skew=$(chronyc tracking | awk '/System time/ {print $4}')
+  # if chrond is restarted, tracking will return all 0's
+  chrony_tracking="$(chronyc tracking)"
+  if [[ $? -ne 0 ]]; then 
+    echo "`chronyc tracking` failed to execute"
+    return 1
+  fi
+  if [[ $(echo "${chrony_tracking}" | awk '/Reference ID/ {print $4}') == "00000000" ]]; then
+    echo "chrony is not initialized"
+    return 1
+  fi
+  local skew=$(echo "${chrony_tracking}" | awk '/System time/ {print $4}')
   
   if awk 'BEGIN{exit !('"$skew"' < '"$acceptable_clock_skew_sec"')}'; then
     echo "Clock skew is within acceptable limits: $skew ms"
@@ -52,8 +64,8 @@ while true; do
     res=$?
   # User has a custom way for clock sync.
   else
-    echo "Chrony and NTPd are not available. Returning success, assuming the user has a custom way for clock sync."
-    exit 0
+    echo "Chrony and NTPd are not available, but required."
+    exit 1
   fi
   ((iter++))
   if [ $res -eq 0 ]; then

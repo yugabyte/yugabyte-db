@@ -505,9 +505,10 @@ YBCStatus YBCPgDmlBindRow(
 
 YBCStatus YBCPgDmlGetColumnInfo(YBCPgStatement handle, int attr_num, YBCPgColumnInfo* info);
 
-YBCStatus YBCPgDmlBindHashCodes(YBCPgStatement handle,
-                                YBCPgBoundType start_type, int start_value,
-                                YBCPgBoundType end_type, int end_value);
+YBCStatus YBCPgDmlBindHashCodes(
+    YBCPgStatement handle,
+    YBCPgBoundType start_type, uint16_t start_value,
+    YBCPgBoundType end_type, uint16_t end_value);
 
 // For parallel scan only, limit fetch to specified range of ybctids
 YBCStatus YBCPgDmlBindRange(YBCPgStatement handle,

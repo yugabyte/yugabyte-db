@@ -98,6 +98,10 @@ class Webserver : public WebCallbackRegistry {
 
   bool ContainsAutoFlag(const std::string& flag) const;
 
+  void SetFlags(std::unordered_set<std::string>&& flags);
+
+  bool ContainsFlag(const std::string& flag) const;
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;

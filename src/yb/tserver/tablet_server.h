@@ -123,7 +123,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // complete by calling WaitInited().
   Status Init() override;
 
-  virtual Status InitAutoFlags(rpc::Messenger* messenger) override;
+  virtual Status InitFlags(rpc::Messenger* messenger) override;
 
   virtual bool ShouldExportLocalCalls() override {
     return true;
@@ -396,6 +396,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Status SetupMessengerBuilder(rpc::MessengerBuilder* builder) override;
 
   Result<std::unordered_set<std::string>> GetAvailableAutoFlagsForServer() const override;
+
+  Result<std::unordered_set<std::string>> GetFlagsForServer() const override;
 
   void SetCronLeaderLease(MonoTime cron_leader_lease_end);
 
