@@ -264,4 +264,4 @@ Now, explore the [final version of the application](https://github.com/YugabyteD
 
 - [Watch](https://www.youtube.com/live/_utOXl3eWoA?feature=shared) Chris McCord, the creator of the Phoenix framework, joining YugabyteDB Community Open Hours and demonstrating how to build multi-region applications using Phoenix, Fly.io and YugabyteDB.
 
-- Create a [sample Elixir app](../../../tutorials/build-apps/elixir/cloud-ysql-elixir/) using the Postgrex driver.
+- Create a [sample Elixir app](/preview/tutorials/build-apps/elixir/cloud-ysql-elixir/) using the Postgrex driver.

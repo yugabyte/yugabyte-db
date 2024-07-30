@@ -19,10 +19,10 @@ The following projects can be used to implement Elixir applications using the Yu
 
 | Project | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version |
 | ------- | ------------------------ | ------------------------ | ---------------------|
-| Postgrex Driver | [Documentation](../../tutorials/build-apps/elixir/cloud-ysql-elixir/) | [v0.18.0](https://github.com/elixir-ecto/postgrex) | |
+| Postgrex Driver | [Documentation](/preview/tutorials/build-apps/elixir/cloud-ysql-elixir/) | [v0.18.0](https://github.com/elixir-ecto/postgrex) | |
 | Phoenix Framework | [Documentation](phoenix/) | [1.7.14](https://www.phoenixframework.org) | |
 
-Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations by referring to a [sample Elixir app using Postgrex](../../tutorials/build-apps/elixir/cloud-ysql-elixir/) or building an app using [Phoenix framework](phoenix/).
+Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations by referring to a [sample Elixir app using Postgrex](/preview/tutorials/build-apps/elixir/cloud-ysql-elixir/) or building an app using [Phoenix framework](phoenix/).
 
 ## Prerequisites
 
