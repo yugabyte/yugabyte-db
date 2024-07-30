@@ -13,6 +13,7 @@ import com.yugabyte.yw.models.Universe;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.inject.Inject;
@@ -96,11 +97,16 @@ public class CheckLeaderlessTablets extends ServerSubTaskBase {
 
   // TODO Remove this to use the similar method in UniverseTaskBase.
   private List<String> doGetLeaderlessTablets(YBClient client, int httpPort) {
+    return doGetLeaderlessTablets(taskParams().getUniverseUUID(), client, apiHelper, httpPort);
+  }
+
+  public static List<String> doGetLeaderlessTablets(
+      UUID universeUUID, YBClient client, ApiHelper apiHelper, int httpPort) {
     HostAndPort leaderMasterHostAndPort = client.getLeaderMasterHostAndPort();
 
     if (leaderMasterHostAndPort == null) {
       throw new RuntimeException(
-          "Could not find the master leader address in universe " + taskParams().getUniverseUUID());
+          "Could not find the master leader address in universe " + universeUUID);
     }
     HostAndPort hostAndPort = HostAndPort.fromParts(leaderMasterHostAndPort.getHost(), httpPort);
     String url = String.format("http://%s%s", hostAndPort.toString(), URL_SUFFIX);

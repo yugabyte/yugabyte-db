@@ -493,7 +493,8 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
         defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.tserverGFlags);
 
     initMockUpgrade()
-        .precheckTasks(getPrecheckTasks(true))
+        // Because only RR doesn't infer CheckNodesAreSafeToTakeDown.
+        .precheckTasks(getPrecheckTasks(false))
         .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
         .task(TaskType.AnsibleConfigureServers)
         .applyToCluster(clusterId)
@@ -583,7 +584,8 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
               .tserverGFlags);
 
       initMockUpgrade()
-          .precheckTasks(getPrecheckTasks(true))
+          // Because only RR doesn't infer CheckNodesAreSafeToTakeDown.
+          .precheckTasks(getPrecheckTasks(false))
           .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
           .task(TaskType.AnsibleConfigureServers)
           .applyToCluster(clusterId)

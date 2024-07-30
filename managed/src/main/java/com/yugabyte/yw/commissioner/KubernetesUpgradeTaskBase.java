@@ -21,8 +21,6 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -74,20 +72,8 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
               .filter(n -> n.state != NodeDetails.NodeState.Live)
               .findFirst();
       if (nonLive.isEmpty()) {
-        List<MastersAndTservers> split = new ArrayList<>();
-        nodesToBeRestarted.mastersList.stream()
-            .forEach(
-                n ->
-                    split.add(
-                        new MastersAndTservers(
-                            Collections.singletonList(n), Collections.emptyList())));
-        nodesToBeRestarted.tserversList.stream()
-            .forEach(
-                n ->
-                    split.add(
-                        new MastersAndTservers(
-                            Collections.emptyList(), Collections.singletonList(n))));
-        createCheckNodesAreSafeToTakeDownTask(split, getTargetSoftwareVersion());
+        List<MastersAndTservers> split = nodesToBeRestarted.splitToSingle();
+        createCheckNodesAreSafeToTakeDownTask(split, getTargetSoftwareVersion(), false);
       }
     }
   }

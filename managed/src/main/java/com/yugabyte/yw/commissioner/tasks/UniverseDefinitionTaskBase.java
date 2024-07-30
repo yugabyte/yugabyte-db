@@ -2806,7 +2806,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     if (!skipCheckNodesAreSafeToTakeDown) {
       createCheckNodesAreSafeToTakeDownTask(
           Collections.singletonList(UpgradeTaskBase.MastersAndTservers.from(node, processTypes)),
-          targetSoftwareVersion);
+          targetSoftwareVersion,
+          false);
     }
   }
 
@@ -2953,7 +2954,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   protected void createCheckNodesAreSafeToTakeDownTask(
-      List<UpgradeTaskBase.MastersAndTservers> mastersAndTservers, String targetSoftwareVersion) {
+      List<UpgradeTaskBase.MastersAndTservers> mastersAndTservers,
+      String targetSoftwareVersion,
+      boolean fallbackToSingleSplits) {
     if (CollectionUtils.isEmpty(mastersAndTservers)) {
       return;
     }
@@ -2964,6 +2967,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.setUniverseUUID(taskParams().getUniverseUUID());
       params.targetSoftwareVersion = targetSoftwareVersion;
       params.nodesToCheck = mastersAndTservers;
+      params.fallbackToSingleSplits = fallbackToSingleSplits;
 
       CheckNodesAreSafeToTakeDown checkNodesAreSafeToTakeDown =
           createTask(CheckNodesAreSafeToTakeDown.class);

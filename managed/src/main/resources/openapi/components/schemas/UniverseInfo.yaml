@@ -116,6 +116,9 @@ properties:
     x-yba-api-visibility: internal
   x_cluster_info:
     $ref: "./XClusterInfo.yaml"
+  roll_max_batch_size:
+    $ref: "./RollMaxBatchSize.yaml"
+    x-yba-api-visibility: internal
   clusters:
     type: array
     items:

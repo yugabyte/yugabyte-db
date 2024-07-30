@@ -1011,7 +1011,7 @@ public class UniverseCRUDHandler {
             + ":"
             + universe.getName());
 
-    return UniverseResp.create(universe, taskUUID, runtimeConfigFactory.globalRuntimeConf());
+    return UniverseResp.create(universe, taskUUID, confGetter);
   }
 
   /**
@@ -1223,16 +1223,12 @@ public class UniverseCRUDHandler {
   }
 
   public List<UniverseResp> list(Customer customer) {
-    return UniverseResp.create(
-        customer, customer.getUniverses(), runtimeConfigFactory.globalRuntimeConf());
+    return UniverseResp.create(customer, customer.getUniverses(), confGetter);
   }
 
   public List<UniverseResp> findByName(Customer customer, String name) {
     return Universe.maybeGetUniverseByName(customer.getId(), name)
-        .map(
-            value ->
-                Collections.singletonList(
-                    UniverseResp.create(value, null, runtimeConfigFactory.globalRuntimeConf())))
+        .map(value -> Collections.singletonList(UniverseResp.create(value, null, confGetter)))
         .orElseGet(Collections::emptyList);
   }
 
