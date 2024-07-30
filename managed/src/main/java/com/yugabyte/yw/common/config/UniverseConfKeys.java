@@ -1168,12 +1168,21 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Automated master failover detection interval for a universe in background process",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Duration> autoMasterFailoverTaskInterval =
+  public static final ConfKeyInfo<Duration> autoMasterFailoverTaskDelay =
       new ConfKeyInfo<>(
-          "yb.auto_master_failover.task_interval",
+          "yb.auto_master_failover.failover_task_delay",
           ScopeType.UNIVERSE,
-          "Automated Master Failover Task Interval",
-          "Automated master failover task submission interval for a universe in background process",
+          "Automated Master Failover Task Delay",
+          "Automated master failover task submission delay for a universe in background process",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> autoSyncMasterAddrsTaskDelay =
+      new ConfKeyInfo<>(
+          "yb.auto_master_failover.sync_master_addrs_task_delay",
+          ScopeType.UNIVERSE,
+          "Automated Sync Master Addresses Task Delay",
+          "Automated sync master addresses task submission delay for a universe in background"
+              + " process",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> nodeAgentNodeActionUseJavaClient =

@@ -310,11 +310,13 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
                   failedMasters.add(node.getNodeName());
                 }
               } else {
-                log.error(
-                    "Failing master {} in universe {} as it is not alive",
-                    ipAddress,
-                    universe.getUniverseUUID());
-                failedMasters.add(node.getNodeName());
+                // Cannot decide at this time, wait for heartbeat delay to catch it.
+                String errMsg =
+                    String.format(
+                        "Follower lag for master %s in universe %s cannot be fetched",
+                        ipAddress, universe.getUniverseUUID());
+                log.error(errMsg);
+                throw new RuntimeException(errMsg);
               }
             });
     return failedMasters;
@@ -350,14 +352,19 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
       boolean autoSyncMasterAddrs =
           universe.getNodes().stream().anyMatch(n -> n.autoSyncMasterAddrs);
       if (autoSyncMasterAddrs) {
+        log.info("Sync master addresses is pending for universe {}", universe.getUniverseUUID());
         // Always sync even if another master may have failed.
         // TODO we may want to run this earlier if at least one is up.
-        return areAllTabletServersAlive(universe)
-            ? Action.builder()
-                .actionType(ActionType.SUBMIT)
-                .taskType(TaskType.SyncMasterAddresses)
-                .build()
-            : Action.builder().actionType(ActionType.NONE).build();
+        if (areAllTabletServersAlive(universe)) {
+          return Action.builder()
+              .actionType(ActionType.SUBMIT)
+              .taskType(TaskType.SyncMasterAddresses)
+              .build();
+        }
+        log.warn(
+            "Sync master addresses is skipped as some tservers not alive for universe {}",
+            universe.getUniverseUUID());
+        return Action.builder().actionType(ActionType.NONE).build();
       }
       String failedNodeName = validateAndGetFailedNodeName(customer, universe);
       return failedNodeName == null

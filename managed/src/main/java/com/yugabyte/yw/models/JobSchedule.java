@@ -9,10 +9,14 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.common.AppInit;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.models.filters.JobScheduleFilter;
 import com.yugabyte.yw.models.helpers.schedule.JobConfig;
 import com.yugabyte.yw.models.helpers.schedule.JobConfig.JobConfigWrapper;
 import com.yugabyte.yw.models.helpers.schedule.ScheduleConfig;
+import com.yugabyte.yw.models.paging.PagedQuery;
+import com.yugabyte.yw.models.paging.PagedQuery.SortByIF;
 import io.ebean.DB;
+import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
@@ -35,6 +39,7 @@ import java.util.stream.Collectors;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
+import org.apache.commons.lang3.StringUtils;
 
 /** Schedule for a generic job. */
 @Getter
@@ -99,6 +104,35 @@ public class JobSchedule extends Model {
     INACTIVE
   }
 
+  public enum SortBy implements PagedQuery.SortByIF {
+    uuid("uuid"),
+    name("name"),
+    enabled("enabled"),
+    state("state"),
+    type("type"),
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+    nextStartTime("nextStartTime"),
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+    createdAt("updatedAt"),
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+    updatedAt("updatedAt");
+
+    private final String sortField;
+
+    SortBy(String sortField) {
+      this.sortField = sortField;
+    }
+
+    public String getSortField() {
+      return sortField;
+    }
+
+    @Override
+    public SortByIF getOrderField() {
+      return SortBy.uuid;
+    }
+  }
+
   @PreUpdate
   public void preUpdate() throws IOException {
     setUpdatedAt(new Date());
@@ -118,8 +152,13 @@ public class JobSchedule extends Model {
   public static JobSchedule getOrBadRequest(UUID uuid) {
     return JobSchedule.maybeGet(uuid)
         .orElseThrow(
-            () ->
-                new PlatformServiceException(BAD_REQUEST, "Cannot find node job schedule " + uuid));
+            () -> new PlatformServiceException(BAD_REQUEST, "Cannot find job schedule " + uuid));
+  }
+
+  public static JobSchedule getOrBadRequest(UUID customerUuid, UUID uuid) {
+    return JobSchedule.maybeGet(customerUuid, uuid)
+        .orElseThrow(
+            () -> new PlatformServiceException(BAD_REQUEST, "Cannot find job schedule " + uuid));
   }
 
   public static Optional<JobSchedule> maybeGet(UUID uuid) {
@@ -129,6 +168,11 @@ public class JobSchedule extends Model {
   public static Optional<JobSchedule> maybeGet(UUID customerUuid, String name) {
     return Optional.ofNullable(
         finder.query().where().eq("customerUuid", customerUuid).eq("name", name).findOne());
+  }
+
+  public static Optional<JobSchedule> maybeGet(UUID customerUuid, UUID uuid) {
+    return Optional.ofNullable(
+        finder.query().where().eq("customerUuid", customerUuid).idEq(uuid).findOne());
   }
 
   public static List<UUID> getNextEnabled(Duration window) {
@@ -167,7 +211,33 @@ public class JobSchedule extends Model {
         .findList();
   }
 
-  public void updateScheduleConfig(ScheduleConfig scheduleConfig) {
+  public static ExpressionList<JobSchedule> createQuery(
+      UUID customerUuid, JobScheduleFilter filter) {
+    ExpressionList<JobSchedule> query =
+        DB.createQuery(JobSchedule.class).where().eq("customerUuid", customerUuid);
+    if (StringUtils.isNotBlank(filter.getNameRegex())) {
+      query.like("name", "%" + filter.getNameRegex() + "%");
+    }
+    if (StringUtils.isNotBlank(filter.getConfigClass())) {
+      query.like("job_config::jsonb->>'classname'", "%" + filter.getConfigClass());
+    }
+    if (filter.getType() != null) {
+      query.eq("schedule_config::jsonb->>'type'", filter.getType());
+    }
+    if (filter.isEnabledOnly()) {
+      query.eq("schedule_config::jsonb->>'disabled'", "false");
+    }
+    if (filter.getNextStartWindowSecs() > 0) {
+      Instant now = Instant.now();
+      query.ge("nextStartTime", Date.from(now));
+      query.le(
+          "nextStartTime",
+          Date.from(now.plus(filter.getNextStartWindowSecs(), ChronoUnit.SECONDS)));
+    }
+    return query;
+  }
+
+  public JobSchedule updateScheduleConfig(ScheduleConfig scheduleConfig) {
     if (db().update(JobSchedule.class)
             .set("scheduleConfig", scheduleConfig)
             .set("updatedAt", new Date())
@@ -177,5 +247,6 @@ public class JobSchedule extends Model {
         > 0) {
       refresh();
     }
+    return this;
   }
 }
