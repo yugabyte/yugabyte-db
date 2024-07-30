@@ -35,7 +35,7 @@ To do this:
 
 1. Open the `lib/simple_app.ex` file.
 
-2. Set the following configuration parameter constants:
+1. Set the following configuration parameter constants:
 
     - **hostname** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Aeon, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
     - **port** - the port number for the driver to use (the default YugabyteDB YSQL port is 5433).
@@ -43,7 +43,7 @@ To do this:
     - **username** and **password** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte` and `yugabyte`). For YugabyteDB Aeon, use the credentials in the credentials file you downloaded.
     - **ssl: \[cacertfile:...\]** - the full path to the YugabyteDB Aeon cluster CA certificate. For local clusters, skip or remove this parameter.
 
-3. Save the file.
+1. Save the file.
 
 ## Build and run the application
 
@@ -149,4 +149,4 @@ end)
 
 ## Learn more
 
-[Watch](https://www.youtube.com/live/_utOXl3eWoA?feature=shared) Chris McCord, the creator of the Phoenix framework, joining YugabyteDB Community Open Hours and demonstrating how to build multi-region applications using Phoenix, Fly.io and YugabyteDB.
+[YugabyteDB Community Open Hours](https://www.youtube.com/live/_utOXl3eWoA?feature=shared) - featuring Chris McCord, the creator of the Phoenix framework, demonstrating how to build multi-region applications using Phoenix, Fly.io, and YugabyteDB.
