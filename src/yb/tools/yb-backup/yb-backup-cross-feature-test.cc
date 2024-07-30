@@ -1677,10 +1677,10 @@ TEST_P(
       tserver::FlushTabletsRequestPB::COMPACT));
 
   ASSERT_OK(RunBackupCommand(
-      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", backup_db_name),
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", restore_db_name),
        "restore"}));
 
-  SetDbName(backup_db_name);
+  SetDbName(restore_db_name);
 
   ASSERT_NO_FATALS(
       InsertRows(Format("INSERT INTO $0 VALUES (9,9,9), (10,10,10), (11,11,11)", table_name), 3));

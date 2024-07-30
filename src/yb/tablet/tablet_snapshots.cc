@@ -218,6 +218,10 @@ Env& TabletSnapshots::env() {
   return *metadata().fs_manager()->env();
 }
 
+FsManager* TabletSnapshots::fs_manager() {
+  return metadata().fs_manager();
+}
+
 Status TabletSnapshots::CleanupSnapshotDir(const std::string& dir) {
   auto& env = this->env();
   if (!env.FileExists(dir)) {
@@ -348,21 +352,55 @@ Result<TabletRestorePatch> TabletSnapshots::GenerateRestoreWriteBatch(
   }
 }
 
+// Get the map of snapshot cotable ids to the current cotable ids.
+// The restored flushed frontiers can have cotable ids that are different from current cotable ids.
+// This map is used to update the cotable ids in the restored flushed frontiers.
+Result<docdb::CotableIdsMap> TabletSnapshots::GetCotableIdsMap(const std::string& snapshot_dir) {
+  docdb::CotableIdsMap cotable_ids_map;
+  if (snapshot_dir.empty() || !metadata().colocated()) {
+    return cotable_ids_map;
+  }
+  auto snapshot_metadata_file = TabletMetadataFile(snapshot_dir);
+  if (!env().FileExists(snapshot_metadata_file)) {
+    return cotable_ids_map;
+  }
+  auto snapshot_metadata =
+      VERIFY_RESULT(RaftGroupMetadata::LoadFromPath(fs_manager(), snapshot_metadata_file));
+  for (const auto& snapshot_table_info : snapshot_metadata->GetColocatedTableInfos()) {
+    auto current_table_info = metadata().GetTableInfo(
+        snapshot_table_info->schema().colocation_id());
+    if (!current_table_info.ok()) {
+      if (!current_table_info.status().IsNotFound()) {
+        return current_table_info.status();
+      }
+      LOG_WITH_PREFIX(WARNING) << "Table " << snapshot_table_info->table_id
+                                << " not found: " << current_table_info.status();
+    } else if ((*current_table_info)->cotable_id != snapshot_table_info->cotable_id) {
+      cotable_ids_map[snapshot_table_info->cotable_id] = (*current_table_info)->cotable_id;
+    }
+  }
+  if (!cotable_ids_map.empty()) {
+    LOG_WITH_PREFIX(INFO) << "Cotable ids map: " << yb::ToString(cotable_ids_map);
+  }
+  return cotable_ids_map;
+}
+
 Status TabletSnapshots::RestoreCheckpoint(
-    const std::string& dir, HybridTime restore_at, const RestoreMetadata& restore_metadata,
+    const std::string& snapshot_dir, HybridTime restore_at, const RestoreMetadata& restore_metadata,
     const docdb::ConsensusFrontier& frontier, bool is_pitr_restore, const OpId& op_id) {
   LongOperationTracker long_operation_tracker("Restore checkpoint", 5s);
 
   // The following two lines can't just be changed to RETURN_NOT_OK(PauseReadWriteOperations()):
   // op_pause has to stay in scope until the end of the function.
-  auto op_pauses = StartShutdownRocksDBs(DisableFlushOnShutdown(!dir.empty()), AbortOps::kTrue);
+  auto op_pauses = StartShutdownRocksDBs(
+      DisableFlushOnShutdown(!snapshot_dir.empty()), AbortOps::kTrue);
 
   std::lock_guard lock(create_checkpoint_lock());
 
   const string db_dir = regular_db().GetName();
   const std::string intents_db_dir = has_intents_db() ? intents_db().GetName() : std::string();
 
-  if (dir.empty()) {
+  if (snapshot_dir.empty()) {
     // Just change rocksdb hybrid time limit, because it should be in retention interval.
     // TODO(pitr) apply transactions and reset intents.
     CompleteShutdownRocksDBs(op_pauses);
@@ -372,7 +410,7 @@ Status TabletSnapshots::RestoreCheckpoint(
     RETURN_NOT_OK(DeleteRocksDBs(CompleteShutdownRocksDBs(op_pauses)));
 
     auto s = CopyDirectory(
-        &rocksdb_env(), dir, db_dir, UseHardLinks::kTrue, CreateIfMissing::kTrue);
+        &rocksdb_env(), snapshot_dir, db_dir, UseHardLinks::kTrue, CreateIfMissing::kTrue);
     if (PREDICT_FALSE(!s.ok())) {
       LOG_WITH_PREFIX(WARNING) << "Copy checkpoint files status: " << s;
       return STATUS(IllegalState, "Unable to copy checkpoint files", s.ToString());
@@ -389,7 +427,8 @@ Status TabletSnapshots::RestoreCheckpoint(
     docdb::RocksDBPatcher patcher(db_dir, rocksdb_options);
 
     RETURN_NOT_OK(patcher.Load());
-    RETURN_NOT_OK(patcher.ModifyFlushedFrontier(frontier));
+    RETURN_NOT_OK(patcher.ModifyFlushedFrontier(
+        frontier, VERIFY_RESULT(GetCotableIdsMap(snapshot_dir))));
     if (restore_at) {
       RETURN_NOT_OK(patcher.SetHybridTimeFilter(std::nullopt, restore_at));
     }
@@ -421,14 +460,14 @@ Status TabletSnapshots::RestoreCheckpoint(
     need_flush = true;
   }
 
-  if (!dir.empty()) {
-    auto tablet_metadata_file = TabletMetadataFile(dir);
+  if (!snapshot_dir.empty()) {
+    auto snapshot_metadata_file = TabletMetadataFile(snapshot_dir);
     // Old snapshots could lack tablet metadata, so just do nothing in this case.
-    if (env().FileExists(tablet_metadata_file)) {
-      LOG_WITH_PREFIX(INFO) << "Merging metadata with restored: " << tablet_metadata_file
+    if (env().FileExists(snapshot_metadata_file)) {
+      LOG_WITH_PREFIX(INFO) << "Merging metadata with restored: " << snapshot_metadata_file
                             << " , force overwrite of schema packing " << !is_pitr_restore;
       RETURN_NOT_OK(tablet().metadata()->MergeWithRestored(
-          tablet_metadata_file,
+          snapshot_metadata_file,
           is_pitr_restore ? dockv::OverwriteSchemaPacking::kFalse
               : dockv::OverwriteSchemaPacking::kTrue));
       need_flush = true;
@@ -448,7 +487,7 @@ Status TabletSnapshots::RestoreCheckpoint(
     return s;
   }
 
-  LOG_WITH_PREFIX(INFO) << "Checkpoint restored from " << dir;
+  LOG_WITH_PREFIX(INFO) << "Checkpoint restored from " << snapshot_dir;
   LOG_WITH_PREFIX(INFO) << "Re-enabling compactions";
   s = tablet().EnableCompactions(&op_pauses.blocking_rocksdb_shutdown_start);
   if (!s.ok()) {
