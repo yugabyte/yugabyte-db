@@ -17,6 +17,7 @@
 
 #include "yb/tserver/tablet_peer_lookup.h"
 #include "yb/tserver/tablet_server_interface.h"
+#include "yb/tserver/ts_local_lock_manager.h"
 
 namespace yb {
 namespace master {
@@ -32,6 +33,7 @@ class MasterTabletServer : public tserver::TabletServerIf,
   MasterTabletServer(Master* master, scoped_refptr<MetricEntity> metric_entity);
   tserver::TSTabletManager* tablet_manager() override;
   tserver::TabletPeerLookupIf* tablet_peer_lookup() override;
+  tablet::TSLocalLockManager* ts_local_lock_maganer() override { return nullptr; }
 
   server::Clock* Clock() override;
   const scoped_refptr<MetricEntity>& MetricEnt() const override;

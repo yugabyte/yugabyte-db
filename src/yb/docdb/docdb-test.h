@@ -19,6 +19,7 @@
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/doc_reader.h"
 #include "yb/docdb/doc_reader_redis.h"
+#include "yb/docdb/shared_lock_manager.h"
 
 #include "yb/dockv/doc_key.h"
 
@@ -526,6 +527,20 @@ class DocDBTestQl : public DocDBTest {
   void TestTableTombstone(T id);
   template<typename T>
   void TestTableTombstoneCompaction(T id);
+};
+
+class DocDBTableLocksConflictMatrixTest : public DocDBTest {
+ public:
+  void GetSubDoc(
+      const KeyBytes& subdoc_key, SubDocument* result, bool* found_result,
+      const TransactionOperationContext& txn_op_context = TransactionOperationContext(),
+      const ReadHybridTime& read_time = ReadHybridTime::Max()) override {
+    LOG_WITH_FUNC(FATAL) << "Not implemented";
+  }
+
+  static Result<bool> ObjectLocksConflict(
+      const std::vector<std::pair<KeyEntryType, dockv::IntentTypeSet>>& lhs,
+      const std::vector<std::pair<KeyEntryType, dockv::IntentTypeSet>>& rhs);
 };
 
 class DocDBTestRedis : public DocDBTest {

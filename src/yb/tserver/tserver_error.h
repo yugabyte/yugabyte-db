@@ -17,11 +17,15 @@
 
 #include "yb/tserver/tserver_types.pb.h"
 
+#include "yb/common/wire_protocol.h"
+#include "yb/consensus/consensus_error.h"
+
+#include "yb/tserver/tserver_fwd.h"
+
 #include "yb/util/monotime.h"
 #include "yb/util/status_ec.h"
 
-namespace yb {
-namespace tserver {
+namespace yb::tserver {
 
 struct TabletServerErrorTag : IntegralErrorTag<TabletServerErrorPB::Code> {
   // This category id is part of the wire protocol and should not be changed once released.
@@ -65,5 +69,8 @@ struct TabletServerDelayTag : IntegralBackedErrorTag<MonoDeltaTraits> {
 
 typedef StatusErrorCodeImpl<TabletServerDelayTag> TabletServerDelay;
 
-} // namespace tserver
-} // namespace yb
+void SetupError(TabletServerErrorPB* error, const Status& s);
+
+void SetupError(LWTabletServerErrorPB* error, const Status& s);
+
+} // namespace yb::tserver

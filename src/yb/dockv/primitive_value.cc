@@ -329,6 +329,9 @@ std::string PrimitiveValue::ValueToString() const {
     case KeyEntryType::kSSForward: FALLTHROUGH_INTENDED; \
     case KeyEntryType::kSSReverse: FALLTHROUGH_INTENDED; \
     case KeyEntryType::kTrue: FALLTHROUGH_INTENDED; \
+    case KeyEntryType::kObject: FALLTHROUGH_INTENDED; \
+    case KeyEntryType::kWeakObjectLock: FALLTHROUGH_INTENDED; \
+    case KeyEntryType::kStrongObjectLock: FALLTHROUGH_INTENDED; \
     case KeyEntryType::kTrueDescending:
 
 #define IGNORE_SPECIAL_KEY_ENTRY_TYPES \
@@ -2729,6 +2732,12 @@ std::string KeyEntryValue::ToString(AutoDecodeKeys auto_decode_keys) const {
       return Format("ObsoleteIntents($0)", uint16_val_);
     case KeyEntryType::kObsoleteIntentType:
       return Format("Intent($0)", uint16_val_);
+    case KeyEntryType::kObject:
+      return "Object";
+    case KeyEntryType::kWeakObjectLock:
+      return "kWeakObjectLock";
+    case KeyEntryType::kStrongObjectLock:
+      return "kStrongObjectLock";
     case KeyEntryType::kMergeFlags: FALLTHROUGH_INTENDED;
     case KeyEntryType::kBitSet: FALLTHROUGH_INTENDED;
     case KeyEntryType::kGroupEnd: FALLTHROUGH_INTENDED;
