@@ -166,7 +166,7 @@ The consistent database state on which the snapshot query is to be executed is s
 SET LOCAL yb_read_time TO '<consistent_point commit time> ht';
 ```
 
-This command should first be executed on the connection (session). The SELECT statement corresponding to the snapshot query should then be executed as part of the same transaction. The HybridTime value to use in the `SET LOCAL yb_read_time` command is the value of the `snapshot_name` field that is returned by the [CREATE REPLICATION SLOT](../../../../api/ysql/the-sql-language/statements/#create-replication-slot) command.
+This command should first be executed on the connection (session). The SELECT statement corresponding to the snapshot query should then be executed as part of the same transaction. The HybridTime value to use in the `SET LOCAL yb_read_time` command is the value of the `snapshot_name` field that is returned by the [CREATE REPLICATION SLOT](../../../../api/ysql/the-sql-language/statements/#streaming-replication-protocol-statements) command.
 
 You can also obtain this value by executing the following query:
 
