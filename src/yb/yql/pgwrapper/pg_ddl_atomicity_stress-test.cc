@@ -366,5 +366,50 @@ TEST_F(PgDdlAtomicityColocatedStressTest, TestFailDdlVerification) {
   ASSERT_OK(StressTestWithFlag("TEST_ysql_ddl_verification_failure_probability"));
 }
 
+/*
+ * Tests on Partitioned Tables.
+*/
+class PgDdlAtomicityPartitionedTablesStressTest : public PgDdlAtomicityStressTest {
+  virtual int NumIterations() override {
+    // Fewer iterations are sufficient for partitioned table tests because each DDL statement
+    // internally invokes (num_partitions + 1) DDLs.
+    return 3;
+  }
+  virtual Status SetupTables() override;
+};
+
+Status PgDdlAtomicityPartitionedTablesStressTest::SetupTables() {
+  auto conn = VERIFY_RESULT(Connect());
+  RETURN_NOT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT, num real) "
+      " PARTITION BY RANGE(key)", kTable));
+  RETURN_NOT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0_$1 PARTITION OF $0 FOR VALUES FROM ($1) TO ($2)",
+      kTable, 1, NumIterations()));
+  // Create a default partition.
+  RETURN_NOT_OK(conn.ExecuteFormat("CREATE TABLE $0_default PARTITION OF $0 DEFAULT", kTable));
+  return Status::OK();
+}
+
+TEST_F(PgDdlAtomicityPartitionedTablesStressTest, BasicTest) {
+  ASSERT_OK(StressTestWithFlag(""));
+}
+
+TEST_F(PgDdlAtomicityPartitionedTablesStressTest, TestTxnVerificationFailure) {
+  ASSERT_OK(StressTestWithFlag("TEST_ysql_ddl_transaction_verification_failure_probability"));
+}
+
+TEST_F(PgDdlAtomicityPartitionedTablesStressTest, TestFailCatalogWrites) {
+  ASSERT_OK(StressTestWithFlag(
+      "TEST_ysql_fail_probability_of_catalog_writes_by_ddl_verification"));
+}
+
+TEST_F(PgDdlAtomicityPartitionedTablesStressTest, TestFailDdlRollback) {
+  ASSERT_OK(StressTestWithFlag("TEST_ysql_ddl_rollback_failure_probability"));
+}
+
+TEST_F(PgDdlAtomicityPartitionedTablesStressTest, TestFailDdlVerification) {
+  ASSERT_OK(StressTestWithFlag("TEST_ysql_ddl_verification_failure_probability"));
+}
+
 } // namespace pgwrapper
 } // namespace yb

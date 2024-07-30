@@ -636,6 +636,10 @@ Status CatalogManager::BackfillMetadataForXRepl(
   {
     SharedLock lock(mutex_);
     auto l = table->LockForRead();
+    if (table->IsSequencesSystemTable()) {
+      // Postgres doesn't know about the sequences_data table so it has neither an OID or PG schema
+      return Status::OK();
+    }
     if (table->GetTableType() == PGSQL_TABLE_TYPE) {
       if (!table->has_pg_type_oid()) {
         LOG_WITH_FUNC(INFO) << "backfilling pg_type_oid for table " << table_id;

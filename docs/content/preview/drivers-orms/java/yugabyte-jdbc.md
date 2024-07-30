@@ -8,6 +8,7 @@ aliases:
   - /preview/develop/client-drivers/java/
   - /preview/develop/build-apps/java/
   - /preview/quick-start/build-apps/java/
+  - /preview/integrations/jdbc-drivers/
 menu:
   preview:
     identifier: yugabyte-jdbc-driver

@@ -1873,6 +1873,12 @@
     },
     "AzureRegionCloudInfo" : {
       "properties" : {
+        "azuNetworkRGOverride" : {
+          "type" : "string"
+        },
+        "azuRGOverride" : {
+          "type" : "string"
+        },
         "securityGroupId" : {
           "type" : "string"
         },
@@ -19803,14 +19809,6 @@
           "in" : "query",
           "name" : "request",
           "required" : false
-        }, {
-          "description" : "XCluster Replication Edit Form Data",
-          "in" : "body",
-          "name" : "xcluster_replication_edit_form_data",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/XClusterConfigEditFormData"
-          }
         } ],
         "responses" : {
           "200" : {
@@ -19965,14 +19963,6 @@
           "in" : "query",
           "name" : "request",
           "required" : false
-        }, {
-          "description" : "XCluster Replication Edit Form Data",
-          "in" : "body",
-          "name" : "xcluster_replication_edit_form_data",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/XClusterConfigEditFormData"
-          }
         } ],
         "responses" : {
           "200" : {
