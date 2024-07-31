@@ -690,7 +690,7 @@ Use the `yugabyted start` command to start a one-node YugabyteDB cluster for run
 
 To use encryption in transit, OpenSSL must be installed on the nodes.
 
-If you want to use backup and restore, start the node must with `--backup_daemon=true` to initialize the backup and restore agent. You also need to download and extract the [YB Controller release](https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/ybc/2.1.0.0-b9/ybc-2.1.0.0-b9-linux-x86_64.tar.gz) to the yugabyte-{{< yb-version version="preview" >}} folder.
+If you want to use backup and restore, start the node with `--backup_daemon=true` to initialize the backup and restore agent. You also need to download and extract the [YB Controller release](https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/ybc/2.1.0.0-b9/ybc-2.1.0.0-b9-linux-x86_64.tar.gz) to the yugabyte-{{< yb-version version="preview" >}} folder.
 
 #### Syntax
 
@@ -1872,6 +1872,8 @@ After running `yugabyted xcluster checkpoint`, you must bootstrap the databases 
 - For databases that do have data, you need to back up the databases on the source, and restore to the target. The commands to do this are provided in the output of the `yugabyted xcluster checkpoint` command.
 
 If the cluster was not started using the `--backup_daemon` flag, you must manually complete the backup and restore using [distributed snapshots](../../../manage/backup-restore/snapshot-ysql/).
+
+#### Monitor and delete xCluster replication
 
 After setting up the replication between the clusters, you can display the replication status using the `yugabyted xcluster status` command:
 
