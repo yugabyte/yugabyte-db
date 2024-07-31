@@ -6,17 +6,21 @@ import static com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest.waitForTas
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.LocalNodeManager;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagGroup;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
+import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
@@ -104,6 +108,55 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     compareGFlags(universe);
     verifyYSQL(universe);
     verifyPayload();
+  }
+
+  @Test
+  public void testResizeWithRR() throws InterruptedException {
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.specificGFlags.setGflagGroups(
+        Collections.singletonList(GFlagGroup.GroupName.ENHANCED_POSTGRES_COMPATIBILITY));
+    Universe universe = createUniverse(userIntent);
+    UniverseDefinitionTaskParams.UserIntent rrIntent = getDefaultUserIntent();
+    rrIntent.numNodes = 1;
+    rrIntent.replicationFactor = 1;
+    rrIntent.specificGFlags =
+        SpecificGFlags.construct(
+            Collections.singletonMap("max_log_size", "1805"),
+            Collections.singletonMap("log_max_seconds_to_retain", "86333"));
+    addReadReplica(universe, rrIntent);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    UniverseDefinitionTaskParams.Cluster rrCluster =
+        universe.getUniverseDetails().getReadOnlyClusters().get(0);
+    NodeDetails primary =
+        universe.getNodesByCluster(universe.getUniverseDetails().getPrimaryCluster().uuid).get(0);
+    NodeDetails rrNode = universe.getNodesByCluster(rrCluster.uuid).get(0);
+
+    assertTrue(
+        getVarz(primary, universe, UniverseTaskBase.ServerType.TSERVER)
+            .containsKey("yb_enable_read_committed_isolation"));
+    assertTrue(
+        getVarz(rrNode, universe, UniverseTaskBase.ServerType.TSERVER)
+            .containsKey("yb_enable_read_committed_isolation"));
+
+    ResizeNodeParams resizeParams =
+        getUpgradeParams(
+            universe, UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, ResizeNodeParams.class);
+    resizeParams.clusters = Collections.singletonList(rrCluster);
+    rrCluster.userIntent.instanceType = instanceType2.getInstanceTypeCode();
+    GFlagsUtil.removeGFlag(
+        rrCluster.userIntent, "log_max_seconds_to_retain", UniverseTaskBase.ServerType.TSERVER);
+
+    TaskInfo taskInfo =
+        waitForTask(
+            upgradeUniverseHandler.resizeNode(
+                resizeParams, customer, Universe.getOrBadRequest(universe.getUniverseUUID())),
+            1000);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    Map<String, String> newValues =
+        getDiskFlags(rrNode, universe, UniverseTaskBase.ServerType.TSERVER);
+    assertTrue(newValues.containsKey("yb_enable_read_committed_isolation"));
+    assertFalse(newValues.containsKey("log_max_seconds_to_retain"));
   }
 
   @Test

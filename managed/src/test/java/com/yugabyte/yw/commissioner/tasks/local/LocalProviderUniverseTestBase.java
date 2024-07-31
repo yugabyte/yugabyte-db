@@ -128,9 +128,13 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
 
   private static final String DEFAULT_BASE_DIR = "/tmp/testing";
   protected static String YBC_VERSION;
-  public static String DB_VERSION = "2.20.1.3-b3";
+  public static String DB_VERSION = "2024.1.0.0-b129";
   private static final String DOWNLOAD_URL =
-      "https://downloads.yugabyte.com/releases/2.20.1.3/" + "yugabyte-2.20.1.3-b3-%s-%s.tar.gz";
+      "https://downloads.yugabyte.com/releases/2024.1.0.0/"
+          + "yugabyte-"
+          + DB_VERSION
+          + "-%s-%s.tar.gz";
+
   private static final String YBC_BASE_S3_URL = "https://downloads.yugabyte.com/ybc/";
   private static final String YBC_BIN_ENV_KEY = "YBC_PATH";
   private static final boolean KEEP_FAILED_UNIVERSE = true;
