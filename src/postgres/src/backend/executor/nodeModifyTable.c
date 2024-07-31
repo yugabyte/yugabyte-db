@@ -72,12 +72,14 @@
 
 /*  YB includes. */
 #include "access/sysattr.h"
+#include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_depend.h"
 #include "catalog/pg_shdepend.h"
 #include "catalog/yb_catalog_version.h"
 #include "executor/ybcModifyTable.h"
+#include "executor/ybOptimizeModifyTable.h"
 #include "parser/parsetree.h"
 #include "pg_yb_utils.h"
 #include "optimizer/ybcplan.h"
@@ -1140,84 +1142,6 @@ ldelete:;
 	return NULL;
 }
 
-/* ----------------------------------------------------------------
- * YBEqualDatums
- *
- * Function compares values of lhs and rhs datums with respect to value type and collation.
- *
- * Returns true in case value of lhs and rhs datums match.
- * ----------------------------------------------------------------
- */
-static bool
-YBEqualDatums(Datum lhs, Datum rhs, Oid atttypid, Oid collation)
-{
-	TypeCacheEntry *typentry = lookup_type_cache(atttypid, TYPECACHE_CMP_PROC_FINFO);
-	if (!OidIsValid(typentry->cmp_proc_finfo.fn_oid))
-		ereport(ERROR,
-		        (errcode(ERRCODE_UNDEFINED_FUNCTION),
-		         errmsg("could not identify a comparison function for type %s",
-		                format_type_be(typentry->type_id))));
-
-	FunctionCallInfoData locfcinfo;
-	InitFunctionCallInfoData(locfcinfo, &typentry->cmp_proc_finfo, 2, collation, NULL, NULL);
-	locfcinfo.arg[0] = lhs;
-	locfcinfo.arg[1] = rhs;
-	locfcinfo.argnull[0] = false;
-	locfcinfo.argnull[1] = false;
-	return DatumGetInt32(FunctionCallInvoke(&locfcinfo)) == 0;
-}
-
-/* ----------------------------------------------------------------
- * YBBuildExtraUpdatedCols
- *
- * Function compares attribute value in oldtuple and newtuple for attributes which are not in the
- * updatedCols set. Returns set of changed attributes or NULL.
- * ----------------------------------------------------------------
- */
-static Bitmapset*
-YBBuildExtraUpdatedCols(Relation rel,
-                        HeapTuple oldtuple,
-                        HeapTuple newtuple,
-                        Bitmapset *updatedCols)
-{
-	if (bms_is_member(InvalidAttrNumber, updatedCols))
-		/* No extra work required in case the whore row is changed */
-		return NULL;
-
-	Bitmapset *result = NULL;
-	AttrNumber firstLowInvalidAttributeNumber = YBGetFirstLowInvalidAttributeNumber(rel);
-	TupleDesc tupleDesc = RelationGetDescr(rel);
-	for (int idx = 0; idx < tupleDesc->natts; ++idx)
-	{
-		FormData_pg_attribute *att_desc = TupleDescAttr(tupleDesc, idx);
-
-		AttrNumber attnum = att_desc->attnum;
-
-		/* Skip virtual (system) and dropped columns */
-		if (!IsRealYBColumn(rel, attnum))
-			continue;
-
-		int bms_idx = attnum - firstLowInvalidAttributeNumber;
-		if (bms_is_member(bms_idx, updatedCols))
-			continue;
-
-		bool old_is_null = false;
-		bool new_is_null = false;
-		Datum old_value = heap_getattr(oldtuple, attnum, tupleDesc, &old_is_null);
-		Datum new_value = heap_getattr(newtuple, attnum, tupleDesc, &new_is_null);
-		if (old_is_null != new_is_null ||
-		    (!new_is_null && !YBEqualDatums(old_value,
-		                                    new_value,
-		                                    att_desc->atttypid,
-		                                    att_desc->attcollation)))
-		{
-			result = bms_add_member(result, bms_idx);
-		}
-	}
-	return result;
-}
-
-
 /*
  * ExecCrossPartitionUpdate --- Move an updated tuple to another partition.
  *
@@ -1547,22 +1471,46 @@ ExecUpdate(ModifyTableState *mtstate,
 
 		bool row_found = false;
 
-		Bitmapset *actualUpdatedCols = rte->updatedCols;
-		Bitmapset *extraUpdatedCols = NULL;
-		if (beforeRowUpdateTriggerFired)
+		/*
+		 * A bitmapset of columns that have been marked as being updated at
+		 * planning time. This set needs to be updated below if either:
+		 * - The update optimization comparing new and old values to identify
+		 *   actually modified columns is enabled.
+		 * - Before row triggers were fired.
+		 */
+		Bitmapset *cols_marked_for_update = bms_copy(rte->updatedCols);
+
+		ModifyTable *plan = (ModifyTable *) mtstate->ps.plan;
+		YbCopySkippableEntities(&estate->yb_skip_entities,
+								plan->yb_skip_entities);
+
+		/*
+		 * If an update is a "single row transaction", then we have already
+		 * confirmed at planning time that it has no secondary indexes or
+		 * triggers or foreign key constraints. Such an update does not
+		 * benefit from optimizations that skip constraint checking or index
+		 * updates.
+		 * While it may seem that a single row, distributed transaction can be
+		 * transformed into a single row, non-distributed transaction, this is
+		 * not the case. It is likely that the row to be updated has been read
+		 * from the storage layer already, thus violating the non-distributed
+		 * transaction semantics.
+		 */
+		if (!estate->yb_es_is_single_row_modify_txn)
 		{
-			/* trigger might have changed tuple */
-			extraUpdatedCols = YBBuildExtraUpdatedCols(
-				resultRelationDesc, oldtuple, tuple, rte->updatedCols);
-			if (extraUpdatedCols)
-			{
-				extraUpdatedCols = bms_add_members(extraUpdatedCols, rte->updatedCols);
-				actualUpdatedCols = extraUpdatedCols;
-			}
+			YbComputeModifiedColumnsAndSkippableEntities(
+				plan, estate, oldtuple, tuple, &cols_marked_for_update,
+				beforeRowUpdateTriggerFired);
 		}
 
-		Bitmapset *primary_key_bms = YBGetTablePrimaryKeyBms(resultRelationDesc);
-		bool is_pk_updated = bms_overlap(primary_key_bms, actualUpdatedCols);
+		/*
+		 * Irrespective of whether the optimization is enabled or not, we have
+		 * to check if the primary key is updated. It could be that the columns
+		 * making up the primary key are not a part of the target list but are
+		 * updated by a before row trigger.
+		 */
+		bool is_pk_updated = YbIsPrimaryKeyUpdated(resultRelationDesc,
+												   cols_marked_for_update);
 
 		/*
 		 * TODO(alex): It probably makes more sense to pass a
@@ -1570,7 +1518,6 @@ ExecUpdate(ModifyTableState *mtstate,
 		 *             that it can have tuple materialized already.
 		 */
 
-		ModifyTable *plan = (ModifyTable *) mtstate->ps.plan;
 		if (is_pk_updated)
 		{
 			slot->tts_tuple->t_ybctid = YBCGetYBTupleIdFromSlot(planSlot);
@@ -1588,11 +1535,10 @@ ExecUpdate(ModifyTableState *mtstate,
 										 mtstate->yb_fetch_target_tuple,
 										 estate->yb_es_is_single_row_modify_txn
 										 		? YB_SINGLE_SHARD_TRANSACTION : YB_TRANSACTIONAL,
-										 actualUpdatedCols,
+										 cols_marked_for_update,
 										 canSetTag);
 		}
 
-		bms_free(extraUpdatedCols);
 		if (!row_found)
 		{
 			/*
@@ -1610,14 +1556,13 @@ ExecUpdate(ModifyTableState *mtstate,
 			mtstate->yb_fetch_target_tuple)
 		{
 			Datum	ybctid = YBCGetYBTupleIdFromSlot(planSlot);
-			List *no_update_index_list = ((ModifyTable *)mtstate->ps.plan)->no_update_index_list;
 
 			/* Delete index entries of the old tuple */
-			ExecDeleteIndexTuplesOptimized(ybctid, oldtuple, estate, no_update_index_list);
+			ExecDeleteIndexTuplesOptimized(ybctid, oldtuple, estate);
 
 			/* Insert new index entries for tuple */
 			recheckIndexes = ExecInsertIndexTuplesOptimized(
-			    slot, tuple, estate, false, NULL, NIL, no_update_index_list);
+				slot, tuple, estate, false, NULL, NIL);
 		}
 	}
 	else
@@ -1833,6 +1778,9 @@ lreplace:;
 							mtstate->mt_oc_transition_capture :
 							mtstate->mt_transition_capture);
 	}
+
+	YbClearSkippableEntities(&estate->yb_skip_entities);
+
 	list_free(recheckIndexes);
 
 	/*
@@ -2519,6 +2467,32 @@ tupconv_map_for_subplan(ModifyTableState *mtstate, int whichplan)
 	}
 }
 
+/*
+ * A tuple of a result relation has the "wholerow" junk attribute set at
+ * planning time if attributes other than the tuple's YBCTID need to be read at
+ * the time of execution. Examples of this include UPDATEs and DELETEs on
+ * relations that have secondary indexes -- the columns referenced by the index
+ * need to be read in order to update or delete them.
+ * Another example is when "update optimizations" are enabled. The optimizations
+ * may read the values of multiple attributes to decide whether or not to update
+ * them.
+ * "wholerow" junk attribute is not applicable to INSERTs as all the information
+ * needed for inserting the tuple is supplied in the query.
+ */
+static bool
+YBCHasWholeRowJunkAttr(ResultRelInfo *resultRelInfo, CmdType operation)
+{
+	if (operation == CMD_UPDATE && YbIsUpdateOptimizationEnabled())
+		return true;
+
+	if (operation == CMD_UPDATE || operation == CMD_DELETE)
+		return YBCRelInfoHasSecondaryIndices(resultRelInfo) ||
+			   YBRelHasOldRowTriggers(resultRelInfo->ri_RelationDesc,
+									  operation);
+
+	return false;
+}
+
 /* ----------------------------------------------------------------
  *	   ExecModifyTable
  *
@@ -2697,9 +2671,7 @@ ExecModifyTable(PlanState *pstate)
 				 *    trigger execution.
 				 */
 				if (IsYBRelation(resultRelInfo->ri_RelationDesc) &&
-					(YBCRelInfoHasSecondaryIndices(resultRelInfo) ||
-					YBRelHasOldRowTriggers(resultRelInfo->ri_RelationDesc,
-					                       operation)))
+					YBCHasWholeRowJunkAttr(resultRelInfo, operation))
 				{
 					resno = ExecFindJunkAttribute(junkfilter, "wholerow");
 					datum = ExecGetJunkAttribute(slot, resno, &isNull);

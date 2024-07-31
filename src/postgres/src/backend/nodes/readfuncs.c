@@ -1609,7 +1609,8 @@ _readModifyTable(void)
 	READ_NODE_FIELD(ybPushdownTlist);
 	READ_NODE_FIELD(ybReturningColumns);
 	READ_NODE_FIELD(ybColumnRefs);
-	READ_NODE_FIELD(no_update_index_list);
+	READ_NODE_FIELD(yb_skip_entities);
+	READ_NODE_FIELD(yb_update_affected_entities);
 	READ_BOOL_FIELD(no_row_trigger);
 
 	READ_DONE();
@@ -2681,6 +2682,25 @@ _readYbExprColrefDesc(void)
 	READ_DONE();
 }
 
+static YbSkippableEntities *
+_readYbSkippableEntities(void)
+{
+	READ_LOCALS(YbSkippableEntities);
+
+	READ_NODE_FIELD(index_list);
+	READ_NODE_FIELD(referencing_fkey_list);
+	READ_NODE_FIELD(referenced_fkey_list);
+
+	READ_DONE();
+}
+
+static YbUpdateAffectedEntities *
+_readYbUpdateAffectedEntities(void)
+{
+	/* TODO(kramanathan): Define serializability for YbUpdateAffectedEntities */
+	return NULL;
+}
+
 /*
  * parseNodeString
  *
@@ -2950,6 +2970,10 @@ parseNodeString(void)
 		return_value = _readPartitionRangeDatum();
 	else if (MATCH("YBEXPRCOLREFDESC", 16))
 		return_value = _readYbExprColrefDesc();
+	else if (MATCH("YBSKIPPABLEENTITIES", 19))
+		return_value = _readYbSkippableEntities();
+	else if (MATCH("YBUPDATEAFFECTEDENTITIES", 24))
+		return_value = _readYbUpdateAffectedEntities();
 	else
 	{
 		elog(ERROR, "badly formatted node string \"%.32s\"...", token);
