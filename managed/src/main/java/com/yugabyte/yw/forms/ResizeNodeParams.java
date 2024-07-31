@@ -51,7 +51,8 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
           Common.CloudType.gcp,
           Common.CloudType.aws,
           Common.CloudType.kubernetes,
-          Common.CloudType.azu);
+          Common.CloudType.azu,
+          Common.CloudType.local);
 
   private boolean forceResizeNode;
 
