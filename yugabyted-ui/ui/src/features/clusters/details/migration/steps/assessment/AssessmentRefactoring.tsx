@@ -14,7 +14,7 @@ import {
   YAxis,
 } from "recharts";
 import type { NameType, ValueType } from "recharts/types/component/DefaultTooltipContent";
-import type { RecommendedRefactoringGraph, UnsupportedSqlInfo } from "@app/api/src";
+import type { RefactoringCount, UnsupportedSqlInfo } from "@app/api/src";
 import { MigrationAssessmentRefactoringTable } from "./AssessmentRefactoringTable";
 
 const useStyles = makeStyles((theme) => ({
@@ -43,7 +43,7 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 interface MigrationAssessmentRefactoringProps {
-  sqlObjects: RecommendedRefactoringGraph | undefined;
+  sqlObjects: RefactoringCount[] | undefined;
   unsupportedDataTypes: UnsupportedSqlInfo[] | undefined;
   unsupportedFeatures: UnsupportedSqlInfo[] | undefined;
   unsupportedFunctions: UnsupportedSqlInfo[] | undefined;
