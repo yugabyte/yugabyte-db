@@ -41,6 +41,12 @@ typedef struct
 	bool isStreamableCursor;
 
 	/*
+	 * Whether or not the query can be done as a tailable
+	 * query.
+	 */
+	bool isTailableCursor;
+
+	/*
 	 * Whether or not it's a single batch query.
 	 */
 	bool isSingleBatch;

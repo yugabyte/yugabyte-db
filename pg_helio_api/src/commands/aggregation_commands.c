@@ -43,7 +43,12 @@ typedef enum CursorKind
 	/*
 	 * The cursor is a persisted cursor.
 	 */
-	CursorKind_Persisted = 2
+	CursorKind_Persisted = 2,
+
+	/*
+	 * The cursor is a tailable cursor.
+	 */
+	CursorKind_Tailable = 3
 } CursorKind;
 
 
@@ -119,7 +124,8 @@ static void ParseGetMoreSpec(text *databaseName, pgbson *getMoreSpec, pgbson *cu
 
 static pgbson * BuildStreamingContinuationDocument(HTAB *cursorMap, pgbson *querySpec,
 												   int64_t cursorId, QueryKind queryKind,
-												   int numIterations);
+												   int numIterations, bool
+												   isTailableCursor);
 
 static pgbson * BuildPersistedContinuationDocument(const char *cursorName, int64_t
 												   cursorId, QueryKind queryKind,
@@ -353,6 +359,7 @@ command_cursor_get_more(PG_FUNCTION_ARGS)
 			HTAB *cursorMap = CreateCursorHashSet();
 			BuildContinuationMap(cursorSpec, cursorMap);
 
+
 			int numIterations = 0;
 			queryFullyDrained = DrainStreamingQuery(cursorMap, query,
 													getMoreInfo.queryData.batchSize,
@@ -363,7 +370,31 @@ command_cursor_get_more(PG_FUNCTION_ARGS)
 																 getMoreInfo.querySpec,
 																 getMoreInfo.cursorId,
 																 getMoreInfo.queryKind,
-																 numIterations);
+																 numIterations, false);
+			hash_destroy(cursorMap);
+			break;
+		}
+
+		case CursorKind_Tailable:
+		{
+			Query *query;
+			bool generateCursorParams = true;
+			QueryData queryData = { 0 };
+			query = GenerateAggregationQuery(PointerGetDatum(database),
+											 getMoreInfo.querySpec, &queryData,
+											 generateCursorParams);
+			HTAB *cursorMap = CreateTailableCursorHashSet();
+			BuildTailableCursorContinuationMap(cursorSpec, cursorMap);
+			int numIterations = 0;
+			DrainTailableQuery(cursorMap, query,
+							   getMoreInfo.queryData.batchSize,
+							   &numIterations,
+							   accumulatedSize, &arrayWriter);
+			continuationDoc = BuildStreamingContinuationDocument(cursorMap,
+																 getMoreInfo.querySpec,
+																 getMoreInfo.cursorId,
+																 getMoreInfo.queryKind,
+																 numIterations, true);
 			hash_destroy(cursorMap);
 			break;
 		}
@@ -476,10 +507,23 @@ HandleFirstPageRequest(PG_FUNCTION_ARGS,
 		queryFullyDrained = true;
 		continuationDoc = NULL;
 	}
+	else if (queryData->isTailableCursor)
+	{
+		HTAB *tailableCursorMap = CreateTailableCursorHashSet();
+		DrainTailableQuery(tailableCursorMap, query, queryData->batchSize,
+						   &numIterations, accumulatedSize,
+						   &arrayWriter);
+		continuationDoc = BuildStreamingContinuationDocument(tailableCursorMap,
+															 querySpec,
+															 cursorId, queryKind,
+															 numIterations, true);
+		hash_destroy(tailableCursorMap);
+	}
 	else if (queryData->isStreamableCursor)
 	{
 		Assert(queryData->cursorStateParamNumber == 1);
 		HTAB *cursorMap = CreateCursorHashSet();
+
 		queryFullyDrained = DrainStreamingQuery(cursorMap, query, queryData->batchSize,
 												&numIterations, accumulatedSize,
 												&arrayWriter);
@@ -488,7 +532,7 @@ HandleFirstPageRequest(PG_FUNCTION_ARGS,
 		continuationDoc = queryFullyDrained ? NULL :
 						  BuildStreamingContinuationDocument(cursorMap, querySpec,
 															 cursorId, queryKind,
-															 numIterations);
+															 numIterations, false);
 		hash_destroy(cursorMap);
 	}
 	else
@@ -521,7 +565,8 @@ HandleFirstPageRequest(PG_FUNCTION_ARGS,
  */
 static pgbson *
 BuildStreamingContinuationDocument(HTAB *cursorMap, pgbson *querySpec, int64_t cursorId,
-								   QueryKind queryKind, int numIterations)
+								   QueryKind queryKind, int numIterations, bool
+								   isTailableCursor)
 {
 	pgbson_writer writer;
 	PgbsonWriterInit(&writer);
@@ -529,11 +574,27 @@ BuildStreamingContinuationDocument(HTAB *cursorMap, pgbson *querySpec, int64_t c
 	PgbsonWriterAppendInt32(&writer, "qk", 2, (int) queryKind);
 
 	/* Add the original query spec so that getMore can reuse it */
-	PgbsonWriterAppendDocument(&writer, "qc", 2, querySpec);
+	if (isTailableCursor)
+	{
+		/* For tailable cursor, save the query with "qt" to differentiate from streaming query. */
+		PgbsonWriterAppendDocument(&writer, "qt", 2, querySpec);
+	}
+	else
+	{
+		/* For streaming cursor, save the query with "qc" key. */
+		PgbsonWriterAppendDocument(&writer, "qc", 2, querySpec);
+	}
 
 	PgbsonWriterAppendInt64(&writer, "qi", 2, cursorId);
 
-	SerializeContinuationsToWriter(&writer, cursorMap);
+	if (isTailableCursor)
+	{
+		SerializeTailableContinuationsToWriter(&writer, cursorMap);
+	}
+	else
+	{
+		SerializeContinuationsToWriter(&writer, cursorMap);
+	}
 
 	/* In the response add the number of iterations (used in tests) */
 	PgbsonWriterAppendInt32(&writer, "numIters", 8, numIterations);
@@ -592,6 +653,17 @@ ParseCursorInputSpec(pgbson *cursorSpec, QueryGetMoreInfo *getMoreInfo)
 						getMoreInfo->querySpec = PgbsonInitFromDocumentBsonValue(
 							bson_iter_value(&cursorSpecIter));
 						getMoreInfo->cursorKind = CursorKind_Streaming;
+						break;
+					}
+
+					/* Query tailable */
+					case 't':
+					{
+						/* This is the query command */
+						Assert(pathKey[2] == '\0');
+						getMoreInfo->querySpec = PgbsonInitFromDocumentBsonValue(
+							bson_iter_value(&cursorSpecIter));
+						getMoreInfo->cursorKind = CursorKind_Tailable;
 						break;
 					}
 

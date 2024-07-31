@@ -72,6 +72,7 @@ _DEFINE_MONGO_ERROR(GraphContainsCycle, 5);
 _DEFINE_MONGO_ERROR(FailedToParse, 9);
 _DEFINE_MONGO_ERROR(TypeMismatch, 14);
 _DEFINE_MONGO_ERROR(Overflow, 15);
+_DEFINE_MONGO_ERROR(IllegalOperation, 20);
 _DEFINE_MONGO_ERROR(AlreadyInitialized, 23);
 _DEFINE_MONGO_ERROR(NamespaceNotFound, 26);
 _DEFINE_MONGO_ERROR(IndexNotFound, 27);

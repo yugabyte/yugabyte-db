@@ -312,6 +312,7 @@ Oid BsonLookupUnwindFunctionOid(void);
 Oid BsonDistinctUnwindFunctionOid(void);
 Oid BsonDistinctAggregateFunctionOid(void);
 Oid RowGetBsonFunctionOid(void);
+Oid ApiChangeStreamAggregationFunctionOid(void);
 Oid ApiCollStatsAggregationFunctionOid(void);
 Oid ApiIndexStatsAggregationFunctionOid(void);
 Oid BsonCurrentOpAggregationFunctionId(void);

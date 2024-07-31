@@ -35,6 +35,7 @@ RewriteListCollectionsQueryForDistribution_HookType rewrite_list_collections_que
 TryGetShardNameForUnshardedCollection_HookType
 	try_get_shard_name_for_unsharded_collection_hook = NULL;
 GetDistributedApplicationName_HookType get_distributed_application_name_hook = NULL;
+IsChangeStreamEnabledAndCompatible is_changestream_enabled_and_compatible_hook = NULL;
 IsNtoReturnSupported_HookType is_n_to_return_supported_hook = NULL;
 
 /*
@@ -239,6 +240,21 @@ GetDistributedApplicationName(void)
 	}
 
 	return NULL;
+}
+
+
+/*
+ * Checks if Change Stream feature is available and
+ * compatible with the current server version.
+ */
+bool
+IsChangeStreamFeatureAvailableAndCompatible(void)
+{
+	if (is_changestream_enabled_and_compatible_hook != NULL)
+	{
+		return is_changestream_enabled_and_compatible_hook();
+	}
+	return false;
 }
 
 

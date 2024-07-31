@@ -82,6 +82,9 @@ typedef struct
 	 * The variable spec expression that preceds it.
 	 */
 	Expr *variableSpec;
+
+	/* Whether or not the query requires a tailable cursor */
+	bool requiresTailableCursor;
 } AggregationPipelineBuildContext;
 
 
@@ -148,6 +151,8 @@ Query * HandleIndexStats(const bson_value_t *existingValue, Query *query,
 						 AggregationPipelineBuildContext *context);
 Query * HandleCurrentOp(const bson_value_t *existingValue, Query *query,
 						AggregationPipelineBuildContext *context);
+Query * HandleChangeStream(const bson_value_t *existingValue, Query *query,
+						   AggregationPipelineBuildContext *context);
 
 bool CanInlineLookupStageLookup(const bson_value_t *lookupStage,
 								const StringView *lookupPath,

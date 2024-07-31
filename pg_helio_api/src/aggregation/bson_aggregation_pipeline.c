@@ -55,6 +55,7 @@
 #include "aggregation/bson_query.h"
 
 #include "aggregation/bson_aggregation_pipeline_private.h"
+#include "api_hooks.h"
 #include "vector/vector_common.h"
 #include "aggregation/bson_project.h"
 #include "operators/bson_expression_bucket_operator.h"
@@ -75,6 +76,12 @@ extern bool EnableLookupUnwindSupport;
 typedef Query *(*MutateQueryForStageFunc)(const bson_value_t *existingValue,
 										  Query *query,
 										  AggregationPipelineBuildContext *context);
+
+/*
+ * This function checks the compatibility of stages in the pipeline.
+ */
+typedef void (*PipelineStagesPreCheckFunc)(const bson_value_t *existingValue,
+										   const AggregationPipelineBuildContext *context);
 
 /*
  * Whether or not the stage requires persistence on the cursor.
@@ -117,6 +124,9 @@ typedef struct
 	 */
 	bool isProjectTransform;
 
+	/* Check whether given pipeline stages are compatible. */
+	PipelineStagesPreCheckFunc pipelineCheckFunc;
+
 	/* Whether or not the stage is an output stage. $merge and $out are output stages */
 	bool isOutputStage;
 } AggregationStageDefinition;
@@ -127,6 +137,10 @@ static void AddCursorFunctionsToQuery(Query *query, Query *baseQuery,
 									  QueryData *queryData,
 									  AggregationPipelineBuildContext *context,
 									  bool addCursorAsConst);
+static void AddQualifierForTailableQuery(Query *query, Query *baseQuery,
+										 QueryData *queryData,
+										 AggregationPipelineBuildContext *
+										 context);
 static void SetBatchSize(const char *fieldName, const bson_value_t *value,
 						 QueryData *queryData);
 
@@ -187,12 +201,28 @@ static bool CanInlineLookupStageUnwind(const bson_value_t *stageValue, const
 									   StringView *lookupPath, bool hasLet);
 static bool CanInlineLookupStageTrue(const bson_value_t *stageValue, const
 									 StringView *lookupPath, bool hasLet);
+static void PreCheckChangeStreamPipelineStages(const bson_value_t *pipelineValue,
+											   const AggregationPipelineBuildContext *
+											   context);
 static bool CanInlineLookupStageMatch(const bson_value_t *stageValue, const
 									  StringView *lookupPath, bool hasLet);
 
 static bool CheckFuncExprBsonDollarProjectGeonear(const FuncExpr *funcExpr);
 
 static void ValidateQueryTreeForMatchStage(const Query *query);
+
+#define COMPATIBLE_CHANGE_STREAM_STAGES_COUNT 8
+const char *CompatibleChangeStreamPipelineStages[COMPATIBLE_CHANGE_STREAM_STAGES_COUNT] =
+{
+	"$match",
+	"$project",
+	"$addFields",
+	"$replaceRoot",
+	"$replaceWith",
+	"$set",
+	"$unset",
+	"$redact"
+};
 
 /* Stages and their definitions sorted by name.
  * Please keep this list sorted.
@@ -210,6 +240,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$addFields",
@@ -220,6 +251,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$bucket",
@@ -230,6 +262,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$bucketAuto",
@@ -240,16 +273,18 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$changeStream",
-		.mutateFunc = NULL,
-		.requiresPersistentCursor = &RequiresPersistentCursorTrue,
+		.mutateFunc = &HandleChangeStream,
+		.requiresPersistentCursor = &RequiresPersistentCursorFalse,
 		.canInlineLookupStageFunc = NULL,
 		.preservesStableSortOrder = false,
 		.canHandleAgnosticQueries = true,
 		.isProjectTransform = false,
 		.isOutputStage = false,
+		.pipelineCheckFunc = PreCheckChangeStreamPipelineStages,
 	},
 	{
 		.stage = "$collStats",
@@ -260,6 +295,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$count",
@@ -274,6 +310,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$currentOp",
@@ -289,6 +326,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = true,
 		.isProjectTransform = false,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$densify",
@@ -299,6 +337,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$documents",
@@ -309,6 +348,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = true,
 		.isProjectTransform = false,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$facet",
@@ -323,6 +363,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$fill",
@@ -333,6 +374,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$geoNear",
@@ -343,6 +385,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$graphLookup",
@@ -353,6 +396,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$group",
@@ -368,6 +412,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$indexStats",
@@ -378,6 +423,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$inverseMatch",
@@ -392,6 +438,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$limit",
@@ -406,6 +453,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$listLocalSessions",
@@ -416,6 +464,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = true,
 		.isProjectTransform = false,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$listSessions",
@@ -426,6 +475,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$lookup",
@@ -438,6 +488,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$match",
@@ -452,6 +503,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$merge",
@@ -462,6 +514,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = true,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$out",
@@ -472,6 +525,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = true,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$project",
@@ -484,6 +538,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$redact",
@@ -494,6 +549,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$replaceRoot",
@@ -506,6 +562,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$replaceWith",
@@ -518,6 +575,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$sample",
@@ -532,6 +590,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$search",
@@ -544,6 +603,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$searchMeta",
@@ -554,6 +614,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$set",
@@ -564,6 +625,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$setWindowFields",
@@ -574,6 +636,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$skip",
@@ -588,6 +651,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$sort",
@@ -602,6 +666,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$sortByCount",
@@ -612,6 +677,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$unionWith",
@@ -622,6 +688,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$unset",
@@ -632,6 +699,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = true,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	},
 	{
 		.stage = "$unwind",
@@ -654,6 +722,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 		.canHandleAgnosticQueries = false,
 		.isProjectTransform = false,
 		.isOutputStage = false,
+		.pipelineCheckFunc = NULL,
 	}
 };
 
@@ -688,6 +757,40 @@ CreateDocumentVar(void)
 	/* not lives in a subquery */
 	Index varlevelsup = 0;
 	return makeVar(varno, MONGO_DATA_TABLE_DOCUMENT_VAR_ATTR_NUMBER,
+				   BsonTypeId(), MONGO_DATA_TABLE_DOCUMENT_VAR_TYPMOD,
+				   MONGO_DATA_TABLE_DOCUMENT_VAR_COLLATION, varlevelsup);
+}
+
+
+/*
+ * Creates a Var in the query representing the 'document' column of a helio_data table.
+ */
+inline static Var *
+CreateChangeStreamDocumentVar(void)
+{
+	/* the only Var in the Query context (if any) */
+	Index varno = 1;
+
+	/* not lives in a subquery */
+	Index varlevelsup = 0;
+	return makeVar(varno, MONGO_CHANGE_STREAM_TABLE_DOCUMENT_VAR_ATTR_NUMBER,
+				   BsonTypeId(), MONGO_DATA_TABLE_DOCUMENT_VAR_TYPMOD,
+				   MONGO_DATA_TABLE_DOCUMENT_VAR_COLLATION, varlevelsup);
+}
+
+
+/*
+ * Creates a Var in the query representing the 'document' column of a helio_data table.
+ */
+inline static Var *
+CreateChangeStreamContinuationtVar(void)
+{
+	/* the only Var in the Query context (if any) */
+	Index varno = 1;
+
+	/* not lives in a subquery */
+	Index varlevelsup = 0;
+	return makeVar(varno, MONGO_CHANGE_STREAM_TABLE_CONTINUATION_VAR_ATTR_NUMBER,
 				   BsonTypeId(), MONGO_DATA_TABLE_DOCUMENT_VAR_TYPMOD,
 				   MONGO_DATA_TABLE_DOCUMENT_VAR_COLLATION, varlevelsup);
 }
@@ -1026,6 +1129,10 @@ MutateQueryWithPipeline(Query *query, const bson_value_t *pipelineValue,
 							errhint("Unrecognized pipeline stage name: %s",
 									stageElement.path)));
 		}
+		if (definition->pipelineCheckFunc != NULL)
+		{
+			definition->pipelineCheckFunc(pipelineValue, context);
+		}
 
 		if (definition->mutateFunc == NULL)
 		{
@@ -1073,6 +1180,14 @@ MutateQueryWithPipeline(Query *query, const bson_value_t *pipelineValue,
 			}
 			else
 			{
+				if (context->requiresTailableCursor)
+				{
+					ereport(ERROR, (errcode(MongoCommandNotSupported),
+									errmsg(
+										"Cannot use tailable cursor with stage %s",
+										stageElement.path)));
+				}
+
 				/* Not a project, so push to a subquery */
 				query = MigrateQueryToSubQuery(query, context);
 			}
@@ -1098,7 +1213,6 @@ MutateQueryWithPipeline(Query *query, const bson_value_t *pipelineValue,
 		query->limitCount = (Node *) makeConst(INT8OID, -1, InvalidOid, sizeof(int64_t),
 											   Int64GetDatum(0), false, true);
 	}
-
 	return query;
 }
 
@@ -1240,14 +1354,29 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 
 	query = MutateQueryWithPipeline(query, &pipelineValue, &context);
 
-	queryData->isStreamableCursor = !context.requiresPersistentCursor &&
-									!isCollectionAgnosticQuery;
+	if (context.requiresTailableCursor)
+	{
+		queryData->isTailableCursor = true;
+
+		/*
+		 * change stream is the only stage that requires a tailable cursor.
+		 * Since change stream manages the continuation handling by itself,
+		 * there is no need to add cursor params to the query.
+		 */
+		addCursorParams = false;
+	}
+	else
+	{
+		queryData->isStreamableCursor = !context.requiresPersistentCursor &&
+										!isCollectionAgnosticQuery;
+	}
 
 	/* CMD_MERGE is case when pipeline has output stage ($merge or $out) result will be always single batch. */
 	if (query->commandType == CMD_MERGE)
 	{
 		queryData->isSingleBatch = true;
 	}
+
 	queryData->namespaceName = context.namespaceName;
 
 	/* This is validated *after* the pipeline parsing happens */
@@ -1269,6 +1398,11 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 		bool addCursorAsConst = true;
 		AddCursorFunctionsToQuery(query, baseQuery, queryData, &context,
 								  addCursorAsConst);
+	}
+	else if (queryData->isTailableCursor)
+	{
+		AddQualifierForTailableQuery(query, baseQuery, queryData,
+									 &context);
 	}
 
 	return query;
@@ -2307,6 +2441,210 @@ HandleMatch(const bson_value_t *existingValue, Query *query,
 	}
 
 	query->jointree->quals = (Node *) make_ands_explicit(quals);
+	return query;
+}
+
+
+/*
+ * Builds a change stream aggregation query in the form of
+ * SELECT document, continuation FROM changestream_aggregation(args);
+ */
+static Query *
+BuildChangeStreamFunctionQuery(Oid queryFunctionOid, List *queryArgs, bool isMultiRow)
+{
+	Query *query = makeNode(Query);
+	query->commandType = CMD_SELECT;
+	query->querySource = QSRC_ORIGINAL;
+	query->canSetTag = true;
+
+	List *colNames = list_make2(makeString("document"), makeString("continuation"));
+	RangeTblEntry *rte = makeNode(RangeTblEntry);
+	rte->rtekind = RTE_FUNCTION;
+	rte->relid = InvalidOid;
+
+	rte->eref = makeAlias("collection", colNames);
+	rte->lateral = false;
+	rte->inFromCl = true;
+	rte->functions = NIL;
+	rte->inh = false;
+#if PG_VERSION_NUM >= 160000
+	rte->perminfoindex = 0;
+#else
+	rte->requiredPerms = ACL_SELECT;
+#endif
+	rte->rellockmode = AccessShareLock;
+	rte->coltypes = list_make2_oid(BsonTypeId(), BsonTypeId());
+	rte->coltypmods = list_make2_int(-1, -1);
+	rte->colcollations = list_make2_oid(InvalidOid, InvalidOid);
+	rte->ctename = NULL;
+	rte->ctelevelsup = 0;
+
+
+	Param *param = makeNode(Param);
+	param->paramid = 1;
+	param->paramkind = PARAM_EXTERN;
+	param->paramtype = BsonTypeId();
+	param->paramtypmod = -1;
+
+	queryArgs = lappend(queryArgs, param);
+
+	/* Now create the rtfunc*/
+	FuncExpr *rangeFunc = makeFuncExpr(queryFunctionOid, RECORDOID, queryArgs,
+									   InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+	if (isMultiRow)
+	{
+		rangeFunc->funcretset = true;
+	}
+
+	RangeTblFunction *rangeTableFunction = makeNode(RangeTblFunction);
+	rangeTableFunction->funccolcount = 2;
+	rangeTableFunction->funccolnames = colNames;
+	rangeTableFunction->funccoltypes = list_make2_oid(BsonTypeId(), BsonTypeId());
+	rangeTableFunction->funccoltypmods = list_make2_int(-1, -1);
+	rangeTableFunction->funccolcollations = list_make2_oid(InvalidOid, InvalidOid);
+	rangeTableFunction->funcparams = NULL;
+	rangeTableFunction->funcexpr = (Node *) rangeFunc;
+
+	/* Add the RTFunc to the RTE */
+	rte->functions = list_make1(rangeTableFunction);
+
+	query->rtable = list_make1(rte);
+
+	RangeTblRef *rtr = makeNode(RangeTblRef);
+	rtr->rtindex = 1;
+	query->jointree = makeFromExpr(list_make1(rtr), NULL);
+
+	Var *documentEntry = makeVar(1, 1, BsonTypeId(), -1, InvalidOid, 0);
+	Var *continuationEntry = makeVar(1, 2, BsonTypeId(), -1, InvalidOid, 0);
+	TargetEntry *documentTargetEntry = makeTargetEntry((Expr *) documentEntry, 1,
+													   "document",
+													   false);
+	TargetEntry *continuationTargetEntry = makeTargetEntry((Expr *) continuationEntry, 2,
+														   "continuation",
+														   false);
+	query->targetList = list_make2(documentTargetEntry, continuationTargetEntry);
+	return query;
+}
+
+
+/*
+ * Checks if the given string is in the given array of strings.
+ */
+static bool
+StringArrayContains(const char *array[], size_t arraySize, const char *value)
+{
+	for (size_t i = 0; i < arraySize; i++)
+	{
+		if (strcmp(array[i], value) == 0)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+
+/*
+ * Pre-checks the $changeStream pipeline stages to ensure that only supported stages are added to
+ * the $changestream pipeline, also ensures that $changeStream is the first stage in the pipeline.
+ * This function is called before the pipeline is mutated. It also checks if the feature is enabled.
+ */
+static void
+PreCheckChangeStreamPipelineStages(const bson_value_t *pipelineValue,
+								   const AggregationPipelineBuildContext *context)
+{
+	bson_iter_t pipelineIterator;
+	BsonValueInitIterator(pipelineValue, &pipelineIterator);
+	int stageNum = 0;
+	while (bson_iter_next(&pipelineIterator))
+	{
+		bson_iter_t documentIterator;
+
+		/* Any errors here will be handled in MutateQueryWithPipeline*/
+		if (!BSON_ITER_HOLDS_DOCUMENT(&pipelineIterator) ||
+			!bson_iter_recurse(&pipelineIterator, &documentIterator))
+		{
+			continue;
+		}
+
+		/* Any errors here will be handled in MutateQueryWithPipeline*/
+		pgbsonelement stageElement;
+		if (!TryGetSinglePgbsonElementFromBsonIterator(&documentIterator, &stageElement))
+		{
+			continue;
+		}
+
+		const char *stageName = stageElement.path;
+
+		/* The first change should be $changeStream. */
+		if (stageNum == 0 && strcmp(stageName, "$changeStream") == 0)
+		{
+			continue;
+		}
+
+		/* Check the next stages to be one of the allowed stages. */
+		else if (!StringArrayContains(CompatibleChangeStreamPipelineStages,
+									  COMPATIBLE_CHANGE_STREAM_STAGES_COUNT,
+									  stageName))
+		{
+			ereport(ERROR, (errcode(MongoIllegalOperation),
+							errmsg(
+								"Stage %s is not permitted in a $changeStream pipeline",
+								stageName)));
+		}
+		stageNum++;
+	}
+}
+
+
+/*
+ * Modifies the query to handle the $changeStream stage.
+ * It forma a query that calls the $changeStream function.
+ * SELECT document, continuation
+ * FROM changestream_aggregation(args);
+ */
+Query *
+HandleChangeStream(const bson_value_t *existingValue, Query *query,
+				   AggregationPipelineBuildContext *context)
+{
+	ReportFeatureUsage(FEATURE_STAGE_CHANGE_STREAM);
+
+	/* Check if change stream feature is available enabled by GUC. */
+	if (!IsClusterVersionAtleastThis(1, 20, 0) ||
+		!IsChangeStreamFeatureAvailableAndCompatible())
+	{
+		ereport(ERROR, (errcode(MongoCommandNotSupported),
+						errmsg(
+							"Stage $changeStream is not supported yet in native pipeline"),
+						errhint(
+							"Stage $changeStream is not supported yet in native pipeline")));
+	}
+
+	EnsureTopLevelFieldValueType("$changeStream", existingValue, BSON_TYPE_DOCUMENT);
+
+	/*Check the first stage and make sure it is $changestream. */
+	if (context->stageNum != 0)
+	{
+		ereport(ERROR, (errcode(MongoLocation40602),
+						errmsg(
+							"$changeStream is only valid as the first stage in the pipeline.")));
+	}
+
+	Const *databaseConst = makeConst(TEXTOID, -1, InvalidOid, -1,
+									 context->databaseNameDatum, false, false);
+	Const *collectionConst = MakeTextConst(context->collectionNameView.string,
+										   context->collectionNameView.length);
+
+	pgbson *bson = PgbsonInitFromDocumentBsonValue(existingValue);
+
+	List *changeStreamArgs =
+		list_make3(databaseConst, collectionConst, MakeBsonConst(bson));
+
+	query = BuildChangeStreamFunctionQuery(ApiChangeStreamAggregationFunctionOid(),
+										   changeStreamArgs, true);
+
+	/* $changeStream pipeline requires a tailable cursor. */
+	context->requiresTailableCursor = true;
 	return query;
 }
 
@@ -4577,6 +4915,75 @@ AddCursorFunctionsToQuery(Query *query, Query *baseQuery,
 											"continuation", resjunk);
 
 	query->targetList = lappend(query->targetList, newEntry);
+}
+
+
+/*
+ * This function adds the continuation condition to the query for change stream,
+ * to make sure the continuation token is always returned to the caller event if
+ * the change document doesn't match the $match condition in the aggregation pipeline.
+ * An example query after the modification here will be:
+ * SELECT document, continuation
+ *  FROM change_stream_aggregation(<args>)
+ *  WHERE
+ *   document IS NULL // This condition is added to make sure the continuation token is always returned
+ *                    // even if the change document doesn't match the $match condition in the aggregation pipeline.
+ *      OR
+ *   <other qualifiers>
+ */
+static void
+AddQualifierForTailableQuery(Query *query, Query *baseQuery,
+							 QueryData *queryData,
+							 AggregationPipelineBuildContext *context)
+{
+	if (!queryData->isTailableCursor)
+	{
+		return;
+	}
+
+	/* Make sure that continuation is still projected after all mutations. */
+	TargetEntry *entry = llast(query->targetList);
+	if (entry->resname == NULL || strcmp(entry->resname, "continuation") != 0)
+	{
+		ereport(ERROR, (errcode(MongoInvalidOptions),
+						errmsg(
+							"The last target entry in the query must be the document")));
+	}
+
+	/*
+	 * If there are some WHERE clause qualifiers, in a change stream query, then prepend
+	 * the condition document IS NULL OR <other qualifiers> to the WHERE clause.
+	 * This is needed becuase, when document IS NULL, change stream aggregation still
+	 * needs to provide the continuation doc for the tailable cursor to continue the
+	 * change stream query next time. So any other qualifiers should be ORed with this
+	 * NULL check so that they don't filter out the document IS NULL condition.
+	 *
+	 *   Before transformation:
+	 *      SELECT doc, continuation FROM change_stream_aggregation(<params>)
+	 *           WHERE bson_dollor_match(doc) //doc.full_document.operationtype == "insert"
+	 *
+	 *   After transformation:
+	 *      SELECT doc, continuation FROM change_stream_aggregation(<params>)
+	 *           (document IS NULL) OR
+	 *           (WHERE bson_dollor_match(doc) //doc.full_document.operationtype == "insert")
+	 */
+	if (query->jointree->quals != NULL)
+	{
+		Var *documentVar = CreateChangeStreamDocumentVar();
+		NullTest *nullTest = makeNode(NullTest);
+		nullTest->argisrow = false;
+		nullTest->nulltesttype = IS_NULL;
+		nullTest->arg = (Expr *) documentVar;
+
+		/* Create the new OR clause including cursorQual */
+		List *qualifierList = list_make1(query->jointree->quals);
+
+		/* Prepend the document == NULL condition first before any other qualifiers. */
+		qualifierList = lcons(nullTest, qualifierList);
+
+		/* Add the new OR clause to the query */
+		query->jointree->quals = (Node *) make_orclause(qualifierList);
+	}
 }
 
 

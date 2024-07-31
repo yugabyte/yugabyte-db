@@ -25,6 +25,11 @@
 typedef bool (*IsMetadataCoordinator_HookType)(void);
 extern IsMetadataCoordinator_HookType is_metadata_coordinator_hook;
 
+/*
+ * Returns true if the Change Stream feature is enabled.
+ */
+typedef bool (*IsChangeStreamEnabledAndCompatible)(void);
+extern IsChangeStreamEnabledAndCompatible is_changestream_enabled_and_compatible_hook;
 
 /*
  * Runs a command on the MetadataCoordinator if the current node is not a

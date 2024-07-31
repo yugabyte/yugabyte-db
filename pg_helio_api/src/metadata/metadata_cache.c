@@ -707,6 +707,9 @@ typedef struct HelioApiOidCacheData
 	/* OID of the bson_expression_map with let arguments function */
 	Oid ApiCatalogBsonExpressionMapWithLetFunctionOid;
 
+	/*Oid of the change_stream_aggregation function*/
+	Oid ApiCatalogChangeStreamFunctionId;
+
 	/* OID of the pg_catalog.random() function */
 	Oid PgRandomFunctionOid;
 
@@ -2636,6 +2639,29 @@ ApiCollStatsAggregationFunctionOid(void)
 	}
 
 	return Cache.CollStatsAggregationFunctionOid;
+}
+
+
+/*
+ * ApiChangeStreamAggregationFunctionOid returns the OID of the change_stream_aggregation function.
+ */
+Oid
+ApiChangeStreamAggregationFunctionOid(void)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (Cache.ApiCatalogChangeStreamFunctionId == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString(ApiInternalSchemaName),
+											makeString("change_stream_aggregation"));
+		Oid paramOids[4] = { TEXTOID, TEXTOID, BsonTypeId(), BsonTypeId() };
+		bool missingOK = false;
+
+		Cache.ApiCatalogChangeStreamFunctionId =
+			LookupFuncName(functionNameList, 4, paramOids, missingOK);
+	}
+
+	return Cache.ApiCatalogChangeStreamFunctionId;
 }
 
 

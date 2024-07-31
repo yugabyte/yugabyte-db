@@ -119,4 +119,10 @@ const char * GetDistributedApplicationName(void);
  * This checks whether the current server version supports ntoreturn spec.
  */
 bool IsNtoReturnSupported(void);
+
+
+/*
+ * Returns if the change stream feature is enabled.
+ */
+bool IsChangeStreamFeatureAvailableAndCompatible(void);
 #endif
