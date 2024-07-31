@@ -81,6 +81,19 @@ typedef enum Decimal128MathOperation
 	Decimal128MathOperation_Pow = 13,
 	Decimal128MathOperation_Round = 14,
 	Decimal128MathOperation_Trunc = 15,
+	Decimal128MathOperation_Sin = 16,
+	Decimal128MathOperation_Cos = 17,
+	Decimal128MathOperation_Tan = 18,
+	Decimal128MathOperation_Sinh = 19,
+	Decimal128MathOperation_Cosh = 20,
+	Decimal128MathOperation_Tanh = 21,
+	Decimal128MathOperation_Asin = 22,
+	Decimal128MathOperation_Acos = 23,
+	Decimal128MathOperation_Atan = 24,
+	Decimal128MathOperation_Atan2 = 25,
+	Decimal128MathOperation_Asinh = 26,
+	Decimal128MathOperation_Acosh = 27,
+	Decimal128MathOperation_Atanh = 28,
 } Decimal128MathOperation;
 
 typedef unsigned int _IDEC_flags;
@@ -836,6 +849,123 @@ TruncDecimal128Number(const bson_value_t *number, int64_t precision, bson_value_
 }
 
 
+/* Finds the cosine of a decimal128 number and sets it to the result value.*/
+Decimal128Result
+AcosDecimal128Number(const bson_value_t *number, bson_value_t *result)
+{
+	return Decimal128MathematicalOperation1Operand(number, result,
+												   Decimal128MathOperation_Acos);
+}
+
+
+/* Finds the hyperbolic cosine of a decimal128 number and sets it to the result value.*/
+Decimal128Result
+AcoshDecimal128Number(const bson_value_t *number, bson_value_t *result)
+{
+	return Decimal128MathematicalOperation1Operand(number, result,
+												   Decimal128MathOperation_Acosh);
+}
+
+
+/* Finds the cosine of a decimal128 number and sets it to the result value.*/
+Decimal128Result
+AsinDecimal128Number(const bson_value_t *number, bson_value_t *result)
+{
+	return Decimal128MathematicalOperation1Operand(number, result,
+												   Decimal128MathOperation_Asin);
+}
+
+
+/* Finds the hyperbolic cosine of a decimal128 number and sets it to the result value.*/
+Decimal128Result
+AsinhDecimal128Number(const bson_value_t *number, bson_value_t *result)
+{
+	return Decimal128MathematicalOperation1Operand(number, result,
+												   Decimal128MathOperation_Asinh);
+}
+
+
+/* Finds the cosine of a decimal128 number and sets it to the result value.*/
+Decimal128Result
+AtanDecimal128Number(const bson_value_t *number, bson_value_t *result)
+{
+	return Decimal128MathematicalOperation1Operand(number, result,
+												   Decimal128MathOperation_Atan);
+}
+
+
+/* Finds the hyperbolic cosine of a decimal128 number and sets it to the result value.*/
+Decimal128Result
+Atan2Decimal128Numbers(const bson_value_t *x, const bson_value_t *y, bson_value_t *result)
+{
+	return Decimal128MathematicalOperation2Operands(x, y, result,
+													Decimal128MathOperation_Atan2);
+}
+
+
+/* Finds the cosine of a decimal128 number and sets it to the result value.*/
+Decimal128Result
+AtanhDecimal128Number(const bson_value_t *number, bson_value_t *result)
+{
+	return Decimal128MathematicalOperation1Operand(number, result,
+												   Decimal128MathOperation_Atanh);
+}
+
+
+/* Finds the cosine of a decimal128 number and sets it to the result value.*/
+Decimal128Result
+CosDecimal128Number(const bson_value_t *number, bson_value_t *result)
+{
+	return Decimal128MathematicalOperation1Operand(number, result,
+												   Decimal128MathOperation_Cos);
+}
+
+
+/* Finds the hyperbolic cosine of a decimal128 number and sets it to the result value.*/
+Decimal128Result
+CoshDecimal128Number(const bson_value_t *number, bson_value_t *result)
+{
+	return Decimal128MathematicalOperation1Operand(number, result,
+												   Decimal128MathOperation_Cosh);
+}
+
+
+/* Finds the sine of a decimal128 number and sets it to the result value.*/
+Decimal128Result
+SinDecimal128Number(const bson_value_t *number, bson_value_t *result)
+{
+	return Decimal128MathematicalOperation1Operand(number, result,
+												   Decimal128MathOperation_Sin);
+}
+
+
+/* Finds the hyperbolic sine of a decimal128 number and sets it to the result value*/
+Decimal128Result
+SinhDecimal128Number(const bson_value_t *number, bson_value_t *result)
+{
+	return Decimal128MathematicalOperation1Operand(number, result,
+												   Decimal128MathOperation_Sinh);
+}
+
+
+/* Finds the tangent of a decimal128 number and sets it to the result value.*/
+Decimal128Result
+TanDecimal128Number(const bson_value_t *number, bson_value_t *result)
+{
+	return Decimal128MathematicalOperation1Operand(number, result,
+												   Decimal128MathOperation_Tan);
+}
+
+
+/* Finds the hyperbolic tangent of a decimal128 number and sets it to the result value.*/
+Decimal128Result
+TanhDecimal128Number(const bson_value_t *number, bson_value_t *result)
+{
+	return Decimal128MathematicalOperation1Operand(number, result,
+												   Decimal128MathOperation_Tanh);
+}
+
+
 /* Helper function that rounds or truncates a number to the specified precision and
  * sets it to the result value. If the precision will cause a number greater than 35 digits,
  * we will round it to 35 as that's the maximum digits that can be represented in a decimal128
@@ -996,6 +1126,13 @@ Decimal128MathematicalOperation2Operands(const bson_value_t *x, const bson_value
 			break;
 		}
 
+		case Decimal128MathOperation_Atan2:
+		{
+			zBid = bid128_atan2(xBid, yBid, Decimal128RoundingMode_NearestEven,
+								&exceptionFlag);
+			break;
+		}
+
 		default:
 		{
 			ereport(ERROR, (errmsg("Unknown math operator with 2 operands: %d",
@@ -1074,6 +1211,91 @@ Decimal128MathematicalOperation1Operand(const bson_value_t *value, bson_value_t 
 		{
 			resultBid = bid128_log(valueBid, Decimal128RoundingMode_NearestEven,
 								   &exceptionFlag);
+			break;
+		}
+
+		case Decimal128MathOperation_Sin:
+		{
+			resultBid = bid128_sin(valueBid, Decimal128RoundingMode_NearestEven,
+								   &exceptionFlag);
+			break;
+		}
+
+		case Decimal128MathOperation_Cos:
+		{
+			resultBid = bid128_cos(valueBid, Decimal128RoundingMode_NearestEven,
+								   &exceptionFlag);
+			break;
+		}
+
+		case Decimal128MathOperation_Tan:
+		{
+			resultBid = bid128_tan(valueBid, Decimal128RoundingMode_NearestEven,
+								   &exceptionFlag);
+			break;
+		}
+
+		case Decimal128MathOperation_Sinh:
+		{
+			resultBid = bid128_sinh(valueBid, Decimal128RoundingMode_NearestEven,
+									&exceptionFlag);
+			break;
+		}
+
+		case Decimal128MathOperation_Cosh:
+		{
+			resultBid = bid128_cosh(valueBid, Decimal128RoundingMode_NearestEven,
+									&exceptionFlag);
+			break;
+		}
+
+		case Decimal128MathOperation_Tanh:
+		{
+			resultBid = bid128_tanh(valueBid, Decimal128RoundingMode_NearestEven,
+									&exceptionFlag);
+			break;
+		}
+
+		case Decimal128MathOperation_Asin:
+		{
+			resultBid = bid128_asin(valueBid, Decimal128RoundingMode_NearestEven,
+									&exceptionFlag);
+			break;
+		}
+
+		case Decimal128MathOperation_Acos:
+		{
+			resultBid = bid128_acos(valueBid, Decimal128RoundingMode_NearestEven,
+									&exceptionFlag);
+			break;
+		}
+
+		case Decimal128MathOperation_Atan:
+		{
+			resultBid = bid128_atan(valueBid, Decimal128RoundingMode_NearestEven,
+									&exceptionFlag);
+			break;
+		}
+
+		case Decimal128MathOperation_Asinh:
+		{
+			resultBid = bid128_asinh(valueBid, Decimal128RoundingMode_NearestEven,
+									 &exceptionFlag);
+			break;
+		}
+
+		case Decimal128MathOperation_Acosh:
+		{
+			resultBid = bid128_acosh(valueBid, Decimal128RoundingMode_NearestEven,
+									 &exceptionFlag);
+			break;
+		}
+
+
+		case Decimal128MathOperation_Atanh:
+		{
+			resultBid = bid128_atanh(valueBid, Decimal128RoundingMode_NearestEven,
+									 &exceptionFlag);
 			break;
 		}
 

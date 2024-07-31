@@ -110,4 +110,18 @@ Decimal128Result RoundDecimal128Number(const bson_value_t *number, int64_t preci
 									   bson_value_t *result);
 Decimal128Result TruncDecimal128Number(const bson_value_t *number, int64_t precision,
 									   bson_value_t *result);
+Decimal128Result SinDecimal128Number(const bson_value_t *value, bson_value_t *result);
+Decimal128Result CosDecimal128Number(const bson_value_t *value, bson_value_t *result);
+Decimal128Result TanDecimal128Number(const bson_value_t *value, bson_value_t *result);
+Decimal128Result SinhDecimal128Number(const bson_value_t *value, bson_value_t *result);
+Decimal128Result CoshDecimal128Number(const bson_value_t *value, bson_value_t *result);
+Decimal128Result TanhDecimal128Number(const bson_value_t *value, bson_value_t *result);
+Decimal128Result AsinDecimal128Number(const bson_value_t *value, bson_value_t *result);
+Decimal128Result AcosDecimal128Number(const bson_value_t *value, bson_value_t *result);
+Decimal128Result AtanDecimal128Number(const bson_value_t *value, bson_value_t *result);
+Decimal128Result Atan2Decimal128Numbers(const bson_value_t *x, const bson_value_t *y,
+										bson_value_t *result);
+Decimal128Result AsinhDecimal128Number(const bson_value_t *value, bson_value_t *result);
+Decimal128Result AcoshDecimal128Number(const bson_value_t *value, bson_value_t *result);
+Decimal128Result AtanhDecimal128Number(const bson_value_t *value, bson_value_t *result);
 #endif
