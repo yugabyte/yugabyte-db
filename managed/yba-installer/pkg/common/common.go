@@ -28,12 +28,6 @@ import (
 // all services.
 func Install(version string) {
 	log.Info("Starting Common install")
-	// Hidden file written on first install (.installCompleted) at the end of the install,
-	// if the file already exists then it means that an installation has already taken place,
-	// and that future installs are prohibited.
-	if _, err := os.Stat(YbaInstalledMarker()); err == nil {
-		log.Fatal("Install of YBA already completed, cannot perform reinstall without clean.")
-	}
 
 	// Change into the dir we are in so that we can specify paths relative to ourselves
 	// TODO(minor): probably not a good idea in the long run
