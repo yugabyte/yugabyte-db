@@ -445,6 +445,7 @@ Patroni
 performant
 PgBouncer
 pgLoader
+pg_cron
 Phabricator
 phaser
 phasers
