@@ -494,7 +494,7 @@ Status QLWriteOperation::ReadColumns(const DocOperationApplyData& data,
   // Generate hashed / primary key depending on if static / non-static columns are referenced in
   // the if-condition.
   RETURN_NOT_OK(InitializeKeys(
-      !static_projection->columns.empty(), !non_static_projection->columns.empty()));
+      !request_.column_refs().static_ids().empty(), !non_static_projection->columns.empty()));
 
   // Scan docdb for the static and non-static columns of the row using the hashed / primary key.
   if (hashed_doc_key_) {
