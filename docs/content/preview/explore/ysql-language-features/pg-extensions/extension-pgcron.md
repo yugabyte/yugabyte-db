@@ -22,15 +22,13 @@ If the pg_cron leader node fails, another node is automatically elected as the n
 
 pg_cron in YugabyteDB is {{<badge/tp>}}. Before you can use the feature, you must enable it by setting the `enable_pg_cron` flag. To do this, add `enable_pg_cron` to the `allowed_preview_flags_csv` flag and set the `enable_pg_cron` flag to true on all YB-Masters and YB-TServers.
 
-The pg_cron extension is installed on only one database, which stores the extension data. The default cron database is `yugabyte`. You can change it by setting the `ysql_cron_database_name` flag on all YB-TServers.
+The pg_cron extension is installed on only one database, which stores the extension data. The default cron database is `yugabyte`. You can change it by setting the `ysql_cron_database_name` flag on all YB-TServers. You can create the database after setting the flag.
 
 For example, to create a single-node [yugabyted](../../../../reference/configuration/yugabyted/) cluster with pg_cron on database 'db1', use the following command:
 
 ```sh
 ./bin/yugabyted start --master_flags "allowed_preview_flags_csv={enable_pg_cron},enable_pg_cron=true" --tserver_flags "allowed_preview_flags_csv={enable_pg_cron},enable_pg_cron=true,ysql_cron_database_name=db1" --ui false
 ```
-
-You can create the database after setting the flag.
 
 To change the database after the extension is created, you must first drop the extension and then change the flag value.
 
