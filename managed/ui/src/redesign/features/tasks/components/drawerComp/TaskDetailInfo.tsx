@@ -89,7 +89,7 @@ export const TaskDetailInfo: FC<TaskDrawerCompProps> = ({ currentTask }) => {
       label: t('status'),
       value: (
         <StatusBadge
-          customLabel={currentTask.status}
+          customLabel={t(currentTask.status)}
           statusType={getBadgeType(currentTask.status)}
         />
       )

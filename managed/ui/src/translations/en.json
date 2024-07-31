@@ -1995,9 +1995,9 @@
           "abortConfirmMsg": "Do you really want to abort this task?",
           "retryConfirmTitle": "Retry Task ?",
           "retryConfirmMsg": "Do you really want to retry this task?",
-          "taskAbortSuccess": "Task aborted successfully",
+          "taskAbortSuccess": "Task abort started",
           "taskAbortFailed": "Task abort failed",
-          "taskRetrySuccess": "Task retry success",
+          "taskRetrySuccess": "Task retry started",
           "taskRetryFailed": "Task retry failed"
         }
       },
@@ -2009,7 +2009,10 @@
         "startTime": "Start Time",
         "endTime": "End time",
         "startVersion": "Start Version",
-        "targetVersion": "Target Version"
+        "targetVersion": "Target Version",
+        "Failure": "Failed",
+        "Success": "Completed",
+        "Running": "In Progress"
       },
       "progress": {
         "title": "Progress",
