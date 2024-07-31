@@ -63,17 +63,18 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
       return [];
     }
 
-    return Object.entries(sqlObjects)
-      .filter(([_, value]) => (value?.automatic ?? 0) + (value?.manual ?? 0) > 0)
-      .map(([key, value]) => {
+    return sqlObjects
+      .filter(({ automatic, manual }) => (automatic ?? 0) + (manual ?? 0) > 0)
+      .map(({ sql_object_type, automatic, manual }) => {
         return {
-          objectType: key
-            .replace(/^_+|_+$/g, "")
-            .trim()
-            .toUpperCase()
-            .replaceAll("_", " "),
-          automaticDDLImport: value?.automatic ?? 0,
-          manualRefactoring: value?.manual ?? 0,
+          objectType:
+            sql_object_type
+              ?.replace(/^_+|_+$/g, "")
+              .trim()
+              .toUpperCase()
+              .replaceAll("_", " ") || "",
+          automaticDDLImport: automatic ?? 0,
+          manualRefactoring: manual ?? 0,
         };
       });
   }, [sqlObjects]);
