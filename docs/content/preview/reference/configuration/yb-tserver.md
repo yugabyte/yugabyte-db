@@ -844,6 +844,14 @@ Default: `-1` (disables logging statement durations)
 
 Specifies the lowest YSQL message level to log.
 
+##### --ysql_cron_database_name
+
+Specifies the database where pg_cron is to be installed.
+
+The [pg_cron extension](../../../explore/ysql-language-features/pg-extensions/extension-pgcron/) is installed on only one database (by default, `yugabyte`).
+
+To change the database after the extension is created, you must first drop the extension and then change the flag value.
+
 ### YCQL
 
 The following flags support the use of the [YCQL API](../../../api/ycql/):
