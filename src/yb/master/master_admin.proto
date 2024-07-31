@@ -177,6 +177,29 @@ message DdlLogResponsePB {
   repeated DdlLogEntryPB entries = 2;
 }
 
+message StartYsqlMajorVersionUpgradeInitdbRequestPB {
+}
+
+message StartYsqlMajorVersionUpgradeInitdbResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message IsYsqlMajorVersionUpgradeInitdbDoneRequestPB {
+}
+
+message IsYsqlMajorVersionUpgradeInitdbDoneResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bool done = 2;
+  optional MasterErrorPB initdb_error = 3;
+}
+
+message RollbackYsqlMajorVersionUpgradeRequestPB {
+}
+
+message RollbackYsqlMajorVersionUpgradeResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 message CheckIfPitrActiveRequestPB {}
 
 message CheckIfPitrActiveResponsePB {
@@ -267,6 +290,13 @@ service MasterAdmin {
       returns (GetMasterHeartbeatDelaysResponsePB);
 
   rpc DdlLog(DdlLogRequestPB) returns (DdlLogResponsePB);
+
+  rpc StartYsqlMajorVersionUpgradeInitdb(StartYsqlMajorVersionUpgradeInitdbRequestPB)
+      returns (StartYsqlMajorVersionUpgradeInitdbResponsePB);
+  rpc IsYsqlMajorVersionUpgradeInitdbDone(IsYsqlMajorVersionUpgradeInitdbDoneRequestPB)
+      returns (IsYsqlMajorVersionUpgradeInitdbDoneResponsePB);
+  rpc RollbackYsqlMajorVersionUpgrade(RollbackYsqlMajorVersionUpgradeRequestPB)
+      returns (RollbackYsqlMajorVersionUpgradeResponsePB);
 
   rpc CheckIfPitrActive(CheckIfPitrActiveRequestPB)
       returns (CheckIfPitrActiveResponsePB);
