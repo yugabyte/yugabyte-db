@@ -55,12 +55,17 @@ int is_valid_graph_name(const char *graph_name)
  * @param label_type label type defined in label_commands.h
  * @return int
  */
-int is_valid_label(char *label_name, char label_type)
+int is_valid_label_name(char *label_name, char label_type)
 {
     int len = strlen(label_name);
 
     if (len < MIN_LABEL_NAME_LEN || len > MAX_LABEL_NAME_LEN)
     {
+        ereport(WARNING,
+                (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                 errmsg("label name length not in range (%d <= length <= %d) length = %d",
+                        MIN_LABEL_NAME_LEN, MAX_LABEL_NAME_LEN, len)));
+
         return 0;
     }
 

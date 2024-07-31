@@ -129,3 +129,20 @@ CREATE FUNCTION ag_catalog.graph_exists(graph_name name)
     RETURNS agtype
     LANGUAGE c
     AS 'MODULE_PATHNAME', 'age_graph_exists';
+
+CREATE FUNCTION ag_catalog.age_is_valid_label_name(agtype)
+    RETURNS boolean
+    LANGUAGE c
+    IMMUTABLE
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE OR REPLACE FUNCTION ag_catalog.create_vlabel(graph_name cstring, label_name cstring)
+    RETURNS void
+    LANGUAGE c
+    AS 'MODULE_PATHNAME';
+
+CREATE OR REPLACE FUNCTION ag_catalog.create_elabel(graph_name cstring, label_name cstring)
+    RETURNS void
+    LANGUAGE c
+    AS 'MODULE_PATHNAME';

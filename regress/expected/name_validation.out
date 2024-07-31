@@ -233,8 +233,10 @@ NOTICE:  graph "graph123" has been created
 -- length
 -- invalid
 SELECT create_vlabel('graph123', '');
+WARNING:  label name length not in range (1 <= length <= 63) length = 0
 ERROR:  label name is invalid
 SELECT create_elabel('graph123', '');
+WARNING:  label name length not in range (1 <= length <= 63) length = 0
 ERROR:  label name is invalid
 -- valid
 SELECT create_vlabel('graph123', 'labelx');
@@ -396,9 +398,57 @@ SELECT * from cypher('graph123', $$ return is_valid_label_name('label2') $$) as 
  true
 (1 row)
 
+-- issue 1986: label name validation of long names.
+-- Label names are relation names which are restricted to NAMEDATALEN-1 in size.
+-- However, we can't validate PG type Names due to namein() truncating anything
+-- over NAMEDATALEN-1. To allow the label names to be checked over NAMEDATELEN-1
+-- we changed the input type from PG's Name to cstring. These checks are to
+-- verify that these can now be caught.
+--
+-- should return false and a warning.
+SELECT * from cypher('graph123', $$ return is_valid_label_name('label01234567890123456789012345678901234567890123456789012345678') $$) as (result agtype);
+WARNING:  label name length not in range (1 <= length <= 63) length = 64
+ result 
+--------
+ false
+(1 row)
+
+-- should be successful
+SELECT * from cypher('graph123', $$ return is_valid_label_name('label0123456789012345678901234567890123456789012345678901234567') $$) as (result agtype);
+ result 
+--------
+ true
+(1 row)
+
+--
+-- now check vlabel creation, should fail
+SELECT create_vlabel('graph123', 'vlabel01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678');
+WARNING:  label name length not in range (1 <= length <= 63) length = 95
+ERROR:  label name is invalid
+-- should be successful
+SELECT create_vlabel('graph123', 'vlabel012345678901234567890123456789012345678901234567890123456');
+NOTICE:  VLabel "vlabel012345678901234567890123456789012345678901234567890123456" has been created
+ create_vlabel 
+---------------
+ 
+(1 row)
+
+--
+-- now check elabel creation, should fail
+SELECT create_elabel('graph123', 'elabel0123456789012345678901234567890123456789012345678901234567');
+WARNING:  label name length not in range (1 <= length <= 63) length = 64
+ERROR:  label name is invalid
+-- should be okay
+SELECT create_elabel('graph123', 'elabel012345678901234567890123456789012345678901234567890123456');
+NOTICE:  ELabel "elabel012345678901234567890123456789012345678901234567890123456" has been created
+ create_elabel 
+---------------
+ 
+(1 row)
+
 -- clean up
 SELECT drop_graph('graph123', true);
-NOTICE:  drop cascades to 18 other objects
+NOTICE:  drop cascades to 20 other objects
 DETAIL:  drop cascades to table graph123._ag_label_vertex
 drop cascades to table graph123._ag_label_edge
 drop cascades to table graph123.labelx
@@ -417,6 +467,8 @@ drop cascades to table graph123.mylabel
 drop cascades to table graph123."A"
 drop cascades to table graph123.mylabel2
 drop cascades to table graph123."C"
+drop cascades to table graph123.vlabel012345678901234567890123456789012345678901234567890123456
+drop cascades to table graph123.elabel012345678901234567890123456789012345678901234567890123456
 NOTICE:  graph "graph123" has been dropped
  drop_graph 
 ------------

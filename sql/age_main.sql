@@ -100,12 +100,12 @@ CREATE FUNCTION ag_catalog.drop_graph(graph_name name, cascade boolean = false)
     LANGUAGE c
     AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION ag_catalog.create_vlabel(graph_name name, label_name name)
+CREATE FUNCTION ag_catalog.create_vlabel(graph_name cstring, label_name cstring)
     RETURNS void
     LANGUAGE c
     AS 'MODULE_PATHNAME';
 
-CREATE FUNCTION ag_catalog.create_elabel(graph_name name, label_name name)
+CREATE FUNCTION ag_catalog.create_elabel(graph_name cstring, label_name cstring)
     RETURNS void
     LANGUAGE c
     AS 'MODULE_PATHNAME';

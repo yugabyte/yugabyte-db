@@ -130,7 +130,7 @@ Datum age_is_valid_label_name(PG_FUNCTION_ARGS)
     label_name = pnstrdup(agtv_value->val.string.val,
                           agtv_value->val.string.len);
 
-    is_valid = is_valid_label(label_name, 0);
+    is_valid = is_valid_label_name(label_name, 0);
     pfree(label_name);
 
     if (is_valid)
@@ -155,17 +155,11 @@ PG_FUNCTION_INFO_V1(create_vlabel);
 
 Datum create_vlabel(PG_FUNCTION_ARGS)
 {
-    char *graph;
-    Name graph_name;
-    char *graph_name_str;
+    char *graph_name;
     Oid graph_oid;
     List *parent;
-
     RangeVar *rv;
-
-    char *label;
-    Name label_name;
-    char *label_name_str;
+    char *label_name;
 
     /* checking if user has not provided the graph name */
     if (PG_ARGISNULL(0))
@@ -181,42 +175,49 @@ Datum create_vlabel(PG_FUNCTION_ARGS)
                 errmsg("label name must not be NULL")));
     }
 
-    graph_name = PG_GETARG_NAME(0);
-    label_name = PG_GETARG_NAME(1);
+    graph_name = PG_GETARG_CSTRING(0);
+    label_name = PG_GETARG_CSTRING(1);
 
-    graph_name_str = NameStr(*graph_name);
-    label_name_str = NameStr(*label_name);
-
-    /* Check if graph does not exist */
-    if (!graph_exists(graph_name_str))
+    /* validate the graph and label names */
+    if (is_valid_graph_name(graph_name) == 0)
     {
-        ereport(ERROR,
-                (errcode(ERRCODE_UNDEFINED_SCHEMA),
-                        errmsg("graph \"%s\" does not exist.", graph_name_str)));
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                errmsg("graph name is invalid")));
     }
 
-    graph_oid = get_graph_oid(graph_name_str);
+    if (is_valid_label_name(label_name, 0) == 0)
+    {
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                errmsg("label name is invalid")));
+    }
 
-    /* Check if label with the input name already exists */
-    if (label_exists(label_name_str, graph_oid))
+    /* Check if graph does not exist */
+    if (!graph_exists(graph_name))
     {
         ereport(ERROR,
                 (errcode(ERRCODE_UNDEFINED_SCHEMA),
-                        errmsg("label \"%s\" already exists", label_name_str)));
+                        errmsg("graph \"%s\" does not exist.", graph_name)));
+    }
+
+    graph_oid = get_graph_oid(graph_name);
+
+    /* Check if label with the input name already exists */
+    if (label_exists(label_name, graph_oid))
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_UNDEFINED_SCHEMA),
+                        errmsg("label \"%s\" already exists", label_name)));
     }
 
     /* Create the default label tables */
-    graph = graph_name->data;
-    label = label_name->data;
-
-    rv = get_label_range_var(graph, graph_oid, AG_DEFAULT_LABEL_VERTEX);
+    rv = get_label_range_var(graph_name, graph_oid, AG_DEFAULT_LABEL_VERTEX);
 
     parent = list_make1(rv);
 
-    create_label(graph, label, LABEL_TYPE_VERTEX, parent);
+    create_label(graph_name, label_name, LABEL_TYPE_VERTEX, parent);
 
     ereport(NOTICE,
-            (errmsg("VLabel \"%s\" has been created", NameStr(*label_name))));
+            (errmsg("VLabel \"%s\" has been created", label_name)));
 
     PG_RETURN_VOID();
 }
@@ -235,17 +236,11 @@ PG_FUNCTION_INFO_V1(create_elabel);
 
 Datum create_elabel(PG_FUNCTION_ARGS)
 {
-    char *graph;
-    Name graph_name;
-    char *graph_name_str;
+    char *graph_name;
     Oid graph_oid;
     List *parent;
-
     RangeVar *rv;
-
-    char *label;
-    Name label_name;
-    char *label_name_str;
+    char *label_name;
 
     /* checking if user has not provided the graph name */
     if (PG_ARGISNULL(0))
@@ -261,41 +256,48 @@ Datum create_elabel(PG_FUNCTION_ARGS)
                 errmsg("label name must not be NULL")));
     }
 
-    graph_name = PG_GETARG_NAME(0);
-    label_name = PG_GETARG_NAME(1);
+    graph_name = PG_GETARG_CSTRING(0);
+    label_name = PG_GETARG_CSTRING(1);
 
-    graph_name_str = NameStr(*graph_name);
-    label_name_str = NameStr(*label_name);
-
-    /* Check if graph does not exist */
-    if (!graph_exists(graph_name_str))
+    /* validate the graph and label names */
+    if (is_valid_graph_name(graph_name) == 0)
     {
-        ereport(ERROR,
-                (errcode(ERRCODE_UNDEFINED_SCHEMA),
-                 errmsg("graph \"%s\" does not exist.", graph_name_str)));
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                errmsg("graph name is invalid")));
     }
 
-    graph_oid = get_graph_oid(graph_name_str);
+    if (is_valid_label_name(label_name, 0) == 0)
+    {
+        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                errmsg("label name is invalid")));
+    }
 
-    /* Check if label with the input name already exists */
-    if (label_exists(label_name_str, graph_oid))
+    /* Check if graph does not exist */
+    if (!graph_exists(graph_name))
     {
         ereport(ERROR,
                 (errcode(ERRCODE_UNDEFINED_SCHEMA),
-                        errmsg("label \"%s\" already exists", label_name_str)));
+                 errmsg("graph \"%s\" does not exist.", graph_name)));
+    }
+
+    graph_oid = get_graph_oid(graph_name);
+
+    /* Check if label with the input name already exists */
+    if (label_exists(label_name, graph_oid))
+    {
+        ereport(ERROR,
+                (errcode(ERRCODE_UNDEFINED_SCHEMA),
+                        errmsg("label \"%s\" already exists", label_name)));
     }
 
     /* Create the default label tables */
-    graph = graph_name->data;
-    label = label_name->data;
-
-    rv = get_label_range_var(graph, graph_oid, AG_DEFAULT_LABEL_EDGE);
+    rv = get_label_range_var(graph_name, graph_oid, AG_DEFAULT_LABEL_EDGE);
 
     parent = list_make1(rv);
-    create_label(graph, label, LABEL_TYPE_EDGE, parent);
+    create_label(graph_name, label_name, LABEL_TYPE_EDGE, parent);
 
     ereport(NOTICE,
-            (errmsg("ELabel \"%s\" has been created", NameStr(*label_name))));
+            (errmsg("ELabel \"%s\" has been created", label_name)));
 
     PG_RETURN_VOID();
 }
@@ -318,7 +320,7 @@ void create_label(char *graph_name, char *label_name, char label_type,
     int32 label_id;
     Oid relation_id;
 
-    if (!is_valid_label(label_name, label_type))
+    if (!is_valid_label_name(label_name, label_type))
     {
         ereport(ERROR, (errcode(ERRCODE_UNDEFINED_SCHEMA),
                         errmsg("label name is invalid")));

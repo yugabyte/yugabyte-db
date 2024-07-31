@@ -153,6 +153,28 @@ SELECT * from cypher('graph123', $$ return is_valid_label_name('2label') $$) as 
 SELECT * from cypher('graph123', $$ return is_valid_label_name('label1') $$) as (result agtype);
 SELECT * from cypher('graph123', $$ return is_valid_label_name('label2') $$) as (result agtype);
 
+-- issue 1986: label name validation of long names.
+-- Label names are relation names which are restricted to NAMEDATALEN-1 in size.
+-- However, we can't validate PG type Names due to namein() truncating anything
+-- over NAMEDATALEN-1. To allow the label names to be checked over NAMEDATELEN-1
+-- we changed the input type from PG's Name to cstring. These checks are to
+-- verify that these can now be caught.
+--
+-- should return false and a warning.
+SELECT * from cypher('graph123', $$ return is_valid_label_name('label01234567890123456789012345678901234567890123456789012345678') $$) as (result agtype);
+-- should be successful
+SELECT * from cypher('graph123', $$ return is_valid_label_name('label0123456789012345678901234567890123456789012345678901234567') $$) as (result agtype);
+--
+-- now check vlabel creation, should fail
+SELECT create_vlabel('graph123', 'vlabel01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678');
+-- should be successful
+SELECT create_vlabel('graph123', 'vlabel012345678901234567890123456789012345678901234567890123456');
+--
+-- now check elabel creation, should fail
+SELECT create_elabel('graph123', 'elabel0123456789012345678901234567890123456789012345678901234567');
+-- should be okay
+SELECT create_elabel('graph123', 'elabel012345678901234567890123456789012345678901234567890123456');
+
 -- clean up
 SELECT drop_graph('graph123', true);
 
