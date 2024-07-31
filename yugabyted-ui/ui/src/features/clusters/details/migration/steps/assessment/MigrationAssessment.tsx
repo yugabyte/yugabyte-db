@@ -129,7 +129,7 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
           />
 
           <MigrationAssessmentRefactoring
-            sqlObjects={newMigrationAPI?.recommended_refactoring}
+            sqlObjects={newMigrationAPI?.recommended_refactoring?.refactor_details}
             unsupportedDataTypes={newMigrationAPI?.unsupported_data_types}
             unsupportedFeatures={newMigrationAPI?.unsupported_features}
             unsupportedFunctions={newMigrationAPI?.unsupported_functions}
