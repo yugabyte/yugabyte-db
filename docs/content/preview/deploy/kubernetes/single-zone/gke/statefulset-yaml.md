@@ -35,7 +35,6 @@ type: docs
   </li>
 </ul>
 
-
 ## Prerequisites
 
 Before starting deployment, perform the following:
@@ -64,10 +63,16 @@ Before starting deployment, perform the following:
 
 ## Create a GKE cluster
 
-Create a Kubernetes cluster by running the following command.
+Create a Kubernetes cluster using the following command:
 
 ```sh
 gcloud container clusters create yugabyte
+```
+
+Note that as this command creates public kubernetes clusters, you can't change this configuration later. If you want to run YugabyteDB in a private kubernetes cluster, run the following command instead:
+
+```sh
+gcloud container clusters create yugabyte --enable-private-nodes
 ```
 
 ## Create a YugabyteDB cluster
