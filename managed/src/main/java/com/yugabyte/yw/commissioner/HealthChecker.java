@@ -10,15 +10,7 @@
 
 package com.yugabyte.yw.commissioner;
 
-import static com.yugabyte.yw.commissioner.HealthCheckMetrics.CLOCK_SYNC_CHECK;
-import static com.yugabyte.yw.commissioner.HealthCheckMetrics.CUSTOM_NODE_METRICS_COLLECTION_METRIC;
-import static com.yugabyte.yw.commissioner.HealthCheckMetrics.HEALTH_CHECK_METRICS;
-import static com.yugabyte.yw.commissioner.HealthCheckMetrics.HEALTH_CHECK_METRICS_WITHOUT_STATUS;
-import static com.yugabyte.yw.commissioner.HealthCheckMetrics.NODE_EXPORTER_CHECK;
-import static com.yugabyte.yw.commissioner.HealthCheckMetrics.OPENED_FILE_DESCRIPTORS_CHECK;
-import static com.yugabyte.yw.commissioner.HealthCheckMetrics.UPTIME_CHECK;
-import static com.yugabyte.yw.commissioner.HealthCheckMetrics.getCountMetricByCheckName;
-import static com.yugabyte.yw.commissioner.HealthCheckMetrics.getNodeMetrics;
+import static com.yugabyte.yw.commissioner.HealthCheckMetrics.*;
 import static com.yugabyte.yw.common.metrics.MetricService.STATUS_OK;
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 import static play.mvc.Http.Status.BAD_REQUEST;
@@ -33,14 +25,7 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
-import com.yugabyte.yw.common.EmailHelper;
-import com.yugabyte.yw.common.FileHelperService;
-import com.yugabyte.yw.common.NodeUniverseManager;
-import com.yugabyte.yw.common.PlatformExecutorFactory;
-import com.yugabyte.yw.common.PlatformScheduler;
-import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.ShellProcessContext;
-import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.alerts.MaintenanceService;
 import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -78,6 +63,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -127,6 +114,9 @@ public class HealthChecker {
   private static final String MAX_NUM_THREADS_NODE_CHECK_KEY =
       "yb.health.max_num_parallel_node_checks";
 
+  private static final String DDL_ATOMICITY_CHECK_RELEASE = "2.18.4.0-b23";
+  private static final String DDL_ATOMICITY_CHECK_PREVIEW_RELEASE = "2.19.1.0-b301";
+
   private final Environment environment;
 
   private final Config config;
@@ -159,6 +149,7 @@ public class HealthChecker {
 
   // We upload health check script to the node only when NodeInfo is updates
   private final Map<Pair<UUID, String>, NodeInfo> uploadedNodeInfo = new ConcurrentHashMap<>();
+  private final Map<UUID, Instant> ddlAtomicityCheckTimestamp = new ConcurrentHashMap<>();
 
   private final Set<String> healthScriptMetrics =
       Collections.newSetFromMap(new ConcurrentHashMap<>());
@@ -246,22 +237,19 @@ public class HealthChecker {
   // The interval at which the checker will run.
   // Can be overridden per customer.
   private long healthCheckIntervalMs() {
-    Long interval = config.getLong("yb.health.check_interval_ms");
-    return interval == null ? 0 : interval;
+    return config.getLong("yb.health.check_interval_ms");
   }
 
   // The interval at which check result will be stored to DB
   // Can be overridden per customer.
   private long healthCheckStoreIntervalMs() {
-    Long interval = config.getLong("yb.health.store_interval_ms");
-    return interval == null ? 0 : interval;
+    return config.getLong("yb.health.store_interval_ms");
   }
 
   // The interval at which to send a status update of all the current universes.
   // Can be overridden per customer.
   private long statusUpdateIntervalMs() {
-    Long interval = config.getLong("yb.health.status_interval_ms");
-    return interval == null ? 0 : interval;
+    return config.getLong("yb.health.status_interval_ms");
   }
 
   /**
@@ -331,7 +319,12 @@ public class HealthChecker {
         }
         if (shouldCollectNodeMetrics
             || checkName.equals(OPENED_FILE_DESCRIPTORS_CHECK)
-            || checkName.equals(CLOCK_SYNC_CHECK)) {
+            || checkName.equals(CLOCK_SYNC_CHECK)
+            || checkName.equals(DDL_ATOMICITY_CHECK)) {
+          if (checkName.equals(DDL_ATOMICITY_CHECK)) {
+            ddlAtomicityCheckTimestamp.put(
+                u.getUniverseUUID(), report.getTimestampIso().toInstant());
+          }
           // Used FD count metric is always collected through health check as it's not
           // calculated properly from inside the collect_metrics service - it gets service limit
           // instead of user limit for file descriptors
@@ -344,11 +337,14 @@ public class HealthChecker {
       }
 
       healthScriptMetrics.addAll(
-          metrics.stream().map(Metric::getName).collect(Collectors.toList()));
+          metrics.stream()
+              .map(Metric::getName)
+              .filter(n -> !SKIP_CLEANUP_METRICS.contains(n))
+              .toList());
       metrics.addAll(
           platformMetrics.entrySet().stream()
               .map(e -> buildMetricTemplate(e.getKey(), u).setValue(e.getValue().doubleValue()))
-              .collect(Collectors.toList()));
+              .toList());
       // Clean all health check metrics for universe before saving current values
       // just in case list of nodes changed between runs.
       MetricFilter toClean =
@@ -526,7 +522,7 @@ public class HealthChecker {
     List<Pair<UUID, String>> universeNodeInfos =
         uploadedNodeInfo.keySet().stream()
             .filter(key -> key.getFirst().equals(universeUUID))
-            .collect(Collectors.toList());
+            .toList();
     universeNodeInfos.forEach(uploadedNodeInfo::remove);
   }
 
@@ -536,7 +532,7 @@ public class HealthChecker {
     List<Pair<UUID, String>> universeNodeInfos =
         uploadedNodeInfo.keySet().stream()
             .filter(key -> key.getFirst().equals(universeUUID))
-            .collect(Collectors.toList());
+            .toList();
     universeNodeInfos.forEach(uploadedNodeInfo::remove);
   }
 
@@ -613,7 +609,7 @@ public class HealthChecker {
 
   private String getAlertDestinations(Universe u, Customer c) {
     List<String> destinations = emailHelper.getDestinations(c.getUuid());
-    if (destinations.size() == 0) {
+    if (destinations.isEmpty()) {
       return null;
     }
 
@@ -683,9 +679,7 @@ public class HealthChecker {
       }
       providerCode = provider.getCode();
       List<NodeDetails> activeNodes =
-          details.getNodesInCluster(cluster.uuid).stream()
-              .filter(NodeDetails::isActive)
-              .collect(Collectors.toList());
+          details.getNodesInCluster(cluster.uuid).stream().filter(NodeDetails::isActive).toList();
       for (NodeDetails nd : activeNodes) {
         if (nd.cloudInfo.private_ip == null) {
           log.warn(
@@ -697,9 +691,7 @@ public class HealthChecker {
         }
       }
       List<NodeDetails> sortedDetails =
-          activeNodes.stream()
-              .sorted(Comparator.comparing(NodeDetails::getNodeName))
-              .collect(Collectors.toList());
+          activeNodes.stream().sorted(Comparator.comparing(NodeDetails::getNodeName)).toList();
       Set<UUID> nodeUuids =
           sortedDetails.stream()
               .map(NodeDetails::getNodeUuid)
@@ -802,7 +794,7 @@ public class HealthChecker {
       return;
     }
 
-    List<NodeData> nodeReports = checkNodes(params.universe, nodeMetadata);
+    List<NodeData> nodeReports = checkNodes(params, nodeMetadata);
 
     Details fullReport =
         new Details()
@@ -832,9 +824,7 @@ public class HealthChecker {
         durationMs);
     if (healthCheckReport.getHasError()) {
       List<NodeData> failedChecks =
-          healthCheckReport.getData().stream()
-              .filter(NodeData::getHasError)
-              .collect(Collectors.toList());
+          healthCheckReport.getData().stream().filter(NodeData::getHasError).toList();
       log.warn(
           "Following checks failed for universe {}:\n{}",
           params.universe.getName(),
@@ -863,20 +853,58 @@ public class HealthChecker {
         buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, params.universe));
   }
 
-  private List<NodeData> checkNodes(Universe universe, List<NodeInfo> nodes) {
+  private List<NodeData> checkNodes(CheckSingleUniverseParams params, List<NodeInfo> nodes) {
     // Check if it should log the output of the command.
+    Universe universe = params.universe;
     boolean shouldLogOutput =
         confGetter.getConfForScope(universe, UniverseConfKeys.healthLogOutput);
     int nodeCheckTimeoutSec =
         confGetter.getConfForScope(universe, UniverseConfKeys.nodeCheckTimeoutSec);
+    int ddlAtomicityIntervalSec =
+        confGetter.getConfForScope(universe, UniverseConfKeys.ddlAtomicityIntervalSec);
 
+    Instant lastDdlAtomicityCheckTimestamp =
+        ddlAtomicityCheckTimestamp.get(universe.getUniverseUUID());
+    String nodeToRunDdlTAtomicityCheck = null;
+    String masterLeaderUrl = null;
+    String ybDbRelease =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    boolean ddlAtomicityCheckSupported =
+        CommonUtils.isReleaseBetween(DDL_ATOMICITY_CHECK_RELEASE, "2.19.0.0-b0", ybDbRelease)
+            || CommonUtils.isReleaseEqualOrAfter(DDL_ATOMICITY_CHECK_PREVIEW_RELEASE, ybDbRelease);
+    if (ddlAtomicityCheckSupported
+        && !params.onlyMetrics
+        && (lastDdlAtomicityCheckTimestamp == null
+            || lastDdlAtomicityCheckTimestamp
+                .plus(ddlAtomicityIntervalSec, ChronoUnit.SECONDS)
+                .isBefore(Instant.now()))) {
+      // We should schedule DDL atomicity check.
+      NodeDetails masterLeader = universe.getMasterLeaderNode();
+      if (masterLeader != null) {
+        NodeDetails nodeToRun = CommonUtils.getServerToRunYsqlQuery(universe);
+        boolean httpsEnabledUI =
+            universe.getConfig().getOrDefault(Universe.HTTPS_ENABLED_UI, "false").equals("true");
+        masterLeaderUrl =
+            (httpsEnabledUI ? "https" : "http")
+                + "://"
+                + masterLeader.cloudInfo.private_ip
+                + ":"
+                + masterLeader.masterHttpPort;
+        nodeToRunDdlTAtomicityCheck = nodeToRun.getNodeName();
+      }
+    }
     Map<String, CompletableFuture<Details>> nodeChecks = new HashMap<>();
     for (NodeInfo nodeInfo : nodes) {
+      NodeCheckContext context =
+          new NodeCheckContext().setLogOutput(shouldLogOutput).setTimeoutSec(nodeCheckTimeoutSec);
+      if (nodeInfo.getNodeName().equals(nodeToRunDdlTAtomicityCheck)) {
+        context.setDdlAtomicityCheck(true);
+        context.setMasterLeaderUrl(masterLeaderUrl);
+      }
       nodeChecks.put(
           nodeInfo.getNodeName(),
           CompletableFuture.supplyAsync(
-              () -> checkNode(universe, nodeInfo, shouldLogOutput, nodeCheckTimeoutSec),
-              nodeExecutor));
+              () -> checkNode(universe, nodeInfo, context), nodeExecutor));
     }
 
     List<NodeData> result = new ArrayList<>();
@@ -926,14 +954,14 @@ public class HealthChecker {
   }
 
   private Details checkNode(
-      Universe universe, NodeInfo nodeInfo, boolean logOutput, int timeoutSec) {
+      Universe universe, NodeInfo nodeInfo, NodeCheckContext nodeCheckContext) {
     Pair<UUID, String> nodeKey = new Pair<>(universe.getUniverseUUID(), nodeInfo.getNodeName());
     NodeInfo uploadedInfo = uploadedNodeInfo.get(nodeKey);
     ShellProcessContext context =
         ShellProcessContext.builder()
-            .logCmdOutput(logOutput)
+            .logCmdOutput(nodeCheckContext.isLogOutput())
             .traceLogging(true)
-            .timeoutSecs(timeoutSec)
+            .timeoutSecs(nodeCheckContext.getTimeoutSec())
             .build();
     if (uploadedInfo == null && !nodeInfo.isK8s()) {
       // Only upload it once for new node, as it only depends on yb home dir.
@@ -972,9 +1000,15 @@ public class HealthChecker {
     }
     uploadedNodeInfo.put(nodeKey, nodeInfo);
 
+    List<String> commandToRun = new ArrayList<>();
+    commandToRun.add(scriptPath);
+    if (nodeCheckContext.ddlAtomicityCheck) {
+      commandToRun.add("--ddl_atomicity_check=true");
+      commandToRun.add("--master_leader_url=" + nodeCheckContext.getMasterLeaderUrl());
+    }
     ShellResponse response =
         nodeUniverseManager
-            .runCommand(nodeInfo.getNodeDetails(), universe, scriptPath, context)
+            .runCommand(nodeInfo.getNodeDetails(), universe, commandToRun, context)
             .processErrors();
 
     return Json.fromJson(Json.parse(response.extractRunCommandOutput()), Details.class);
@@ -1033,8 +1067,7 @@ public class HealthChecker {
   private MetricFilter metricSourceKeysFilterWithHealthScriptMetrics(
       Customer customer, Universe universe, List<PlatformMetrics> metrics) {
     Set<String> allMetricNames = new HashSet<>(healthScriptMetrics);
-    allMetricNames.addAll(
-        metrics.stream().map(PlatformMetrics::getMetricName).collect(Collectors.toList()));
+    allMetricNames.addAll(metrics.stream().map(PlatformMetrics::getMetricName).toList());
     List<MetricSourceKey> metricSourceKeys =
         allMetricNames.stream()
             .map(
@@ -1044,7 +1077,7 @@ public class HealthChecker {
                         .name(metricName)
                         .sourceUuid(universe.getUniverseUUID())
                         .build())
-            .collect(Collectors.toList());
+            .toList();
     return MetricFilter.builder().sourceKeys(metricSourceKeys).build();
   }
 
@@ -1110,11 +1143,18 @@ public class HealthChecker {
     @JsonIgnore @EqualsAndHashCode.Exclude private NodeDetails nodeDetails;
   }
 
+  @Data
+  @Accessors(chain = true)
+  private static class NodeCheckContext {
+    private boolean logOutput;
+    private int timeoutSec;
+    private boolean ddlAtomicityCheck;
+    private String masterLeaderUrl;
+  }
+
   private Details removeMetricOnlyChecks(Details details) {
     List<NodeData> nodeReports =
-        details.getData().stream()
-            .filter(data -> !data.getMetricsOnly())
-            .collect(Collectors.toList());
+        details.getData().stream().filter(data -> !data.getMetricsOnly()).toList();
     return new Details()
         .setTimestampIso(details.getTimestampIso())
         .setYbVersion(details.getYbVersion())

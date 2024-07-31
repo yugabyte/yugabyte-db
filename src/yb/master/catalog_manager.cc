@@ -3274,6 +3274,26 @@ Status CatalogManager::DdlLog(
   return sys_catalog_->FetchDdlLog(resp->mutable_entries());
 }
 
+Status CatalogManager::StartYsqlMajorVersionUpgradeInitdb(
+    const StartYsqlMajorVersionUpgradeInitdbRequestPB* req,
+    StartYsqlMajorVersionUpgradeInitdbResponsePB* resp,
+    rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  return STATUS(NotSupported, "Ysql major version upgrade is not supported");
+}
+
+Status CatalogManager::IsYsqlMajorVersionUpgradeInitdbDone(
+    const IsYsqlMajorVersionUpgradeInitdbDoneRequestPB* req,
+    IsYsqlMajorVersionUpgradeInitdbDoneResponsePB* resp, rpc::RpcContext* rpc) {
+  return STATUS(NotSupported, "Ysql major version upgrade is not supported");
+}
+
+Status CatalogManager::RollbackYsqlMajorVersionUpgrade(
+    const RollbackYsqlMajorVersionUpgradeRequestPB* req,
+    RollbackYsqlMajorVersionUpgradeResponsePB* resp,
+    rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  return STATUS(NotSupported, "Ysql major version upgrade is not supported");
+}
+
 namespace {
 
 Status ValidateCreateTableSchema(const Schema& schema, CreateTableResponsePB* resp) {

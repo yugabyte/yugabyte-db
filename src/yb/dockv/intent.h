@@ -32,10 +32,10 @@ class RefCntPrefix;
 
 namespace dockv {
 
-// We may write intents with empty groups to intents_db, but when interacting with SharedLockManager
-// or WaitQueue, we expect no kGroupEnd markers in keys. This method normalizes the passed in key to
-// the format expected by conflict resolution. Returns an error if the provided key begins with a
-// kGroupEnd marker.
+// We may write intents with empty groups to intents_db, but when interacting with WaitQueue or
+// SharedLockManager, we expect no kGroupEnd markers in keys. This method normalizes the passed
+// in key to the format expected by conflict resolution. Returns an error if the provided key begins
+// with a kGroupEnd marker.
 Status RemoveGroupEndSuffix(RefCntPrefix* key);
 
 // "Intent types" are used for single-tablet operations and cross-shard transactions. For example,

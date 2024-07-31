@@ -273,6 +273,8 @@ constexpr bool kRejectWritesWhenDiskFullDefault = true;
 DEFINE_RUNTIME_bool(reject_writes_when_disk_full, kRejectWritesWhenDiskFullDefault,
     "Reject incoming writes to the tablet if we are running out of disk space.");
 
+DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+
 METRIC_DEFINE_gauge_uint64(server, ts_split_op_added, "Split OPs Added to Leader",
     yb::MetricUnit::kOperations, "Number of split operations added to the leader's Raft log.");
 
@@ -3335,6 +3337,40 @@ void TabletServiceImpl::ClearAllMetaCachesOnServer(
     rpc::RpcContext context) {
   server_->ClearAllMetaCachesOnServer();
   context.RespondSuccess();
+}
+
+Result<AcquireObjectLockResponsePB> TabletServiceImpl::AcquireObjectLocks(
+      const AcquireObjectLockRequestPB& req, CoarseTimePoint deadline) {
+  if (!PREDICT_FALSE(FLAGS_TEST_enable_object_locking_for_table_locks)) {
+    return STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled");
+  }
+  TRACE("Start AcquireObjectLocks");
+  VLOG(2) << "Received AcquireObjectLocks RPC: " << req.DebugString();
+
+  auto* ts_local_lock_maganer = server_->ts_local_lock_maganer();
+  if (!ts_local_lock_maganer) {
+    return STATUS(IllegalState, "TSLocalLockManager not found...");
+  }
+  AcquireObjectLockResponsePB resp;
+  RETURN_NOT_OK(ts_local_lock_maganer->AcquireObjectLocks(req, deadline));
+  return resp;
+}
+
+Result<ReleaseObjectLockResponsePB> TabletServiceImpl::ReleaseObjectLocks(
+    const ReleaseObjectLockRequestPB& req, CoarseTimePoint deadline) {
+  if (!PREDICT_FALSE(FLAGS_TEST_enable_object_locking_for_table_locks)) {
+    return STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled");
+  }
+  TRACE("Start ReleaseObjectLocks");
+  VLOG(2) << "Received ReleaseObjectLocks RPC: " << req.DebugString();
+
+  auto* ts_local_lock_maganer = server_->ts_local_lock_maganer();
+  if (!ts_local_lock_maganer) {
+    return STATUS(IllegalState, "TSLocalLockManager not found...");
+  }
+  ReleaseObjectLockResponsePB resp;
+  RETURN_NOT_OK(ts_local_lock_maganer->ReleaseObjectLocks(req));
+  return resp;
 }
 
 void TabletServiceAdminImpl::TestRetry(

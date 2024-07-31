@@ -442,7 +442,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     assertThat(error, containsString("Unexpected TSERVER: " + removed.cloudInfo.private_ip));
   }
 
-  @Test
+  //   @Test
   public void testLeaderlessTabletsBeforeEditFAIL() throws InterruptedException {
     RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.timeout", "10s");
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();

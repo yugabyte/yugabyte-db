@@ -18,7 +18,6 @@
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/kv_debug.h"
-#include "yb/docdb/shared_lock_manager_fwd.h"
 
 #include "yb/rocksdb/db.h"
 

@@ -1098,6 +1098,21 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status DdlLog(
       const DdlLogRequestPB* req, DdlLogResponsePB* resp, rpc::RpcContext* rpc);
 
+  // Not implemented.
+  Status StartYsqlMajorVersionUpgradeInitdb(const StartYsqlMajorVersionUpgradeInitdbRequestPB* req,
+                                            StartYsqlMajorVersionUpgradeInitdbResponsePB* resp,
+                                            rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+
+  // Not implemented.
+  Status IsYsqlMajorVersionUpgradeInitdbDone(
+      const IsYsqlMajorVersionUpgradeInitdbDoneRequestPB* req,
+      IsYsqlMajorVersionUpgradeInitdbDoneResponsePB* resp, rpc::RpcContext* rpc);
+
+  // Not implemented.
+  Status RollbackYsqlMajorVersionUpgrade(const RollbackYsqlMajorVersionUpgradeRequestPB* req,
+                                         RollbackYsqlMajorVersionUpgradeResponsePB* resp,
+                                         rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+
   // Test wrapper around protected DoSplitTablet method.
   Status TEST_SplitTablet(
       const TabletInfoPtr& source_tablet_info,

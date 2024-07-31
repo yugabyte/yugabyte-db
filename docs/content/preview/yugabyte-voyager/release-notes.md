@@ -93,7 +93,7 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 - Improved UX of `yb-voyager get data-migration-report` for large set of tables by adding pagination.
 
-- The YugabyteDB debezium connector version is upgraded to v1.9.5.y.33.2 to leverage support for precise decimal type handling with YugabyteDB versions 2.20.1.1 and later.
+- The YugabyteDB Debezium connector version is upgraded to v1.9.5.y.33.2 to leverage support for precise decimal type handling with YugabyteDB versions 2.20.1.1 and later.
 
 - Enhanced [export data status](../reference/data-migration/export-data/#export-data-status) command to report number of rows exported for each table in case of offline migration.
 

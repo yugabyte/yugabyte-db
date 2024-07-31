@@ -120,8 +120,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   private ResourceDefinition rd1;
   private ResourceDefinition rd2;
 
-  Permission permission1 = new Permission(ResourceType.UNIVERSE, Action.BACKUP_RESTORE);
-  Permission permission2 = new Permission(ResourceType.UNIVERSE, Action.UPDATE);
+  Permission permission1 = new Permission(ResourceType.UNIVERSE, Action.XCLUSTER);
 
   @Before
   public void setUp() {
@@ -133,7 +132,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
             "FakeRole1",
             "testDescription",
             RoleType.Custom,
-            new HashSet<>(Arrays.asList(permission1, permission2)));
+            new HashSet<>(Arrays.asList(permission1)));
     rd1 =
         ResourceDefinition.builder()
             .resourceType(ResourceType.OTHER)

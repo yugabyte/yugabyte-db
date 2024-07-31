@@ -13,12 +13,64 @@
 
 #include "yb/docdb/docdb-test.h"
 
+#include "yb/common/transaction.h"
+
 #include "yb/dockv/reader_projection.h"
 
 #include "yb/util/minmax.h"
 
 namespace yb {
 namespace docdb {
+
+namespace {
+
+std::set<std::pair<TableLockType, TableLockType>> MakeTableLockConflicts() {
+  // Populate the table lock conflict matrix by inserting lock type pairs that conflict.
+  // For {a, b} in the below 'min_conflicts_with', 'a' conflicts with all lock types >= 'b', with
+  // the exception of 'SHARE' (it doesn't conflict with self), which is explicitly removed later.
+  static const std::unordered_map<TableLockType, TableLockType> min_conflicts_with = {
+    {ACCESS_SHARE, ACCESS_EXCLUSIVE},
+    {ROW_SHARE, EXCLUSIVE},
+    {ROW_EXCLUSIVE, SHARE},
+    {SHARE_UPDATE_EXCLUSIVE, SHARE_UPDATE_EXCLUSIVE},
+    {SHARE, ROW_EXCLUSIVE},
+    {SHARE_ROW_EXCLUSIVE, ROW_EXCLUSIVE},
+    {EXCLUSIVE, ROW_SHARE},
+    {ACCESS_EXCLUSIVE, ACCESS_SHARE}
+  };
+
+  static std::set<std::pair<TableLockType, TableLockType>> conflicts;
+  for (auto l1 = TableLockType_MIN + 1; l1 <= TableLockType_MAX; l1++) {
+    auto it = min_conflicts_with.find(TableLockType(l1));
+    CHECK(it != min_conflicts_with.end());
+    for (auto l2 = it->second; l2 <= TableLockType_MAX; l2 = static_cast<TableLockType>(l2 + 1)) {
+      conflicts.insert({TableLockType(l1), TableLockType(l2)});
+    }
+  }
+  conflicts.erase({SHARE, SHARE});
+  return conflicts;
+}
+
+} // namespace
+
+Result<bool> DocDBTableLocksConflictMatrixTest::ObjectLocksConflict(
+    const std::vector<std::pair<KeyEntryType, dockv::IntentTypeSet>>& lhs,
+    const std::vector<std::pair<KeyEntryType, dockv::IntentTypeSet>>& rhs) {
+  for (const auto& [lhs_type, lhs_intents] : lhs) {
+    bool found_entry_with_type = false;
+    for (const auto& [rhs_type, rhs_intents] : rhs) {
+      if (lhs_type != rhs_type) {
+        continue;
+      }
+      SCHECK(!found_entry_with_type, IllegalState, "Found $0 more than once in $1", rhs_type, rhs);
+      found_entry_with_type = true;
+      if (IntentTypeSetsConflict(lhs_intents, rhs_intents)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 
 // This test confirms that we return the appropriate value for doc_found in the case that the last
 // projection we look at is not present. Previously we had a bug where we would set doc_found to
@@ -238,6 +290,28 @@ TEST_F(DocDBTestQl, ColocatedTableTombstoneCompaction) {
 TEST_F(DocDBTestQl, YsqlSystemTableTombstoneCompaction) {
   TestTableTombstoneCompaction<const Uuid&>(
       ASSERT_RESULT(Uuid::FromString("66666666-7777-8888-9999-000000000000")));
+}
+
+// YB associates a list of <KeyEntryType, IntentTypeSet> to each table lock type such that
+// the table lock conflict matrix of postgres is achieved. The below test asserts the same.
+//
+// Pg conflict matrix - https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-TABLES
+TEST_F(DocDBTableLocksConflictMatrixTest, TableConflictMatrix) {
+  const std::set<std::pair<TableLockType, TableLockType>> conflicts = MakeTableLockConflicts();
+
+  for (auto l1 = TableLockType_MIN + 1; l1 <= TableLockType_MAX; l1++) {
+    auto lock1 = TableLockType(l1);
+    const auto& entries1 = GetEntriesForLockType(lock1);
+    for (auto l2 = l1; l2 <= TableLockType_MAX; l2++) {
+      auto lock2 = TableLockType(l2);
+      const auto& entries2 = GetEntriesForLockType(lock2);
+      auto has_conflict = ASSERT_RESULT(ObjectLocksConflict(entries1, entries2));
+      ASSERT_EQ(has_conflict, conflicts.find({lock1, lock2}) != conflicts.end())
+          << Format("Expected $0 to $1have conflicted with $2", TableLockType_Name(lock1),
+                    has_conflict ? "" : "not ", TableLockType_Name(lock2));
+      ASSERT_EQ(has_conflict, ASSERT_RESULT(ObjectLocksConflict(entries2, entries1)));
+    }
+  }
 }
 
 class DocDBTestBoundaryValues: public DocDBTestWrapper {
