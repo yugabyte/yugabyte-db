@@ -120,14 +120,31 @@ GetWorkerBsonsFromAllWorkers(const char *query, Datum *paramValues,
 					}
 
 					text *resultText = DatumGetTextP(resultDatum);
-					elog(WARNING, "%s call to worker failed %s", commandName,
-						 text_to_cstring(resultText));
-					ereport(ERROR, (errcode(MongoInternalError),
-									errmsg("%s on worker failed with an unexpected error",
-										   commandName),
-									errhint(
-										"%s on worker failed with an unexpected error",
-										commandName)));
+					const char *workerError = text_to_cstring(resultText);
+
+					StringView errorView = CreateStringViewFromString(workerError);
+					StringView connectivityView = CreateStringViewFromString(
+						"failed to connect to");
+					if (StringViewStartsWithStringView(&errorView, &connectivityView))
+					{
+						ereport(ERROR, (errcode(ERRCODE_CONNECTION_FAILURE),
+										errmsg(
+											"%s on worker failed with connectivity errors",
+											commandName),
+										errhint(
+											"%s on worker failed with an unexpected error: %s",
+											commandName, workerError)));
+					}
+					else
+					{
+						ereport(ERROR, (errcode(MongoInternalError),
+										errmsg(
+											"%s on worker failed with an unexpected error",
+											commandName),
+										errhint(
+											"%s on worker failed with an unexpected error: %s",
+											commandName, workerError)));
+					}
 				}
 			}
 		}

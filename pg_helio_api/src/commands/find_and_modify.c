@@ -358,7 +358,8 @@ ParseFindAndModifyMessage(pgbson *message)
 			const char *notImplementedOption = NotImplementedOptions[i];
 			if (strcmp(key, notImplementedOption) == 0)
 			{
-				ereport(ERROR, (errmsg("findAndModify.%s is not implemented yet",
+				ereport(ERROR, (errcode(MongoCommandNotSupported),
+								errmsg("findAndModify.%s is not implemented yet",
 									   notImplementedOption)));
 			}
 		}
