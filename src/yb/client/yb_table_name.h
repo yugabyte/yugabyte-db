@@ -72,8 +72,10 @@ class YBTableName {
     set_namespace_name(namespace_name);
     set_table_id(table_id);
     set_table_name(table_name);
-    set_pgschema_name(pgschema_name);
     set_relation_type(relation_type);
+    if (!pgschema_name.empty()) {
+      set_pgschema_name(pgschema_name);
+    }
   }
 
   // Simple table name (no namespace provided at the moment of construction).
