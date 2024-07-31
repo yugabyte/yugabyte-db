@@ -84,7 +84,7 @@ YbSeqNext(YbSeqScanState *node)
 			 * For aggregate pushdown, we read just the aggregates from DocDB
 			 * and pass that up to the aggregate node (agg pushdown wouldn't be
 			 * enabled if we needed to read more than that).  Set up a dummy
-			 * scan slot to hold that as many attributes as there are pushed
+			 * scan slot to hold as many attributes as there are pushed
 			 * aggregates.
 			 */
 			TupleDesc tupdesc =

@@ -13,6 +13,38 @@ type: docs
 
 What follows are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
+## v1.7.2 - July 4, 2024
+
+### New features
+
+- Support for [Oracle Assess Migration Assessment](../migrate/assess-migration/) using assess-migration command.
+
+### Enhancements
+
+- In all migration workflows, indexes and triggers will now be imported to the target YugabyteDB by default in  `import-schema` step , as opposed to `import-schema --post-snapshot-import true`. This is because experiments have shown that pre-creating indexes and then importing data is faster, than importing data and then backfilling the indexes.
+
+- Modified and enhanced the call-home diagnostic functionality. More details are collected such as, source database size, migration type (offline/live), assessment report details (unsupported features/datatypes, source index/table statistics, and so on). Furthermore, call-home diagnostic details are also sent in bulk data import and live migration workflows.
+
+- More details are being sent to [yugabyted](../../reference/configuration/yugabyted/) control plane from voyager. For example, source database size details (such as total database size, total index size, total table size, total table row count), assessment report target recommendations (total colocated size, total sharded size), analyze-schema issues, and so on.
+
+- Enhanced the cluster sizing recommendation logic in assessment report:
+
+  - Minimum recommendation for node cores is now 4.
+  - Improved recommendation logic based on experiments.
+
+- Optimized execution time of [get data-migration-report](../reference/data-migration/import-data/#get-data-migration-report) by 90% for large databases.
+
+### Bug fixes
+
+- Fixed a bug where `import-schema --continue-on-error true` could miss listing certain failed statements in `failed.sql`.
+
+## v1.7.1 - May 28, 2024
+
+### Bug Fixes
+
+- Fixed a bug where [export data](../reference/data-migration/export-data/) command ([live migration](../migrate/live-migrate/)) from Oracle source fails with a "table already exists" error, when stopped and re-run (resuming CDC phase of export-data).
+- Fixed a known issue in the dockerised version of yb-voyager where commands [get data-migration-report](../reference/data-migration/import-data/#get-data-migration-report) and [end migration](../reference/end-migration/) did not work if you had previously passed ssl-cert/ssl-key/ssl-root-cert in [export data](../reference/data-migration/export-data/) or [import data](../reference/data-migration/import-data/) or [import data to source replica](../reference/data-migration/import-data/#import-data-to-source-replica) commands.
+
 ## v1.7 - May 16, 2024
 
 ### New features
@@ -61,7 +93,7 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 - Improved UX of `yb-voyager get data-migration-report` for large set of tables by adding pagination.
 
-- The YugabyteDB debezium connector version is upgraded to v1.9.5.y.33.2 to leverage support for precise decimal type handling with YugabyteDB versions 2.20.1.1 and later.
+- The YugabyteDB Debezium connector version is upgraded to v1.9.5.y.33.2 to leverage support for precise decimal type handling with YugabyteDB versions 2.20.1.1 and later.
 
 - Enhanced [export data status](../reference/data-migration/export-data/#export-data-status) command to report number of rows exported for each table in case of offline migration.
 

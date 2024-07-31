@@ -125,7 +125,7 @@ You need to configure HashiCorp Vault in order to use it with YugabyteDB Anywher
 
     - `period` — If specified, the token can be infinitely renewed.
 
-    YBA automatically tries to renew the token every 12 hours after it has passed 70% of its expiry window; as a result, you should set the TTL or period to be greater than 12 hours.
+    YugabyteDB Anywhere automatically tries to renew the token every 12 hours after it has passed 70% of its expiry window; as a result, you should set the TTL or period to be greater than 12 hours.
 
     For more information, refer to [Tokens](https://developer.hashicorp.com/vault/tutorials/tokens/tokens) in the Hashicorp documentation.
 
@@ -204,6 +204,8 @@ You can modify an existing KMS configuration as follows:
 
 ## Delete a KMS configuration
 
-To delete a KMS configuration, click its corresponding **Actions > Delete Configuration**.
+{{<note title="Note">}}
+You can only delete a KMS configuration if it is not in use by any universes.
+{{</note>}}
 
-Note that a saved KMS configuration can only be deleted if it is not in use by any existing universes.
+To delete a KMS configuration, click its corresponding **Actions > Delete Configuration**.

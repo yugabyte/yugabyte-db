@@ -34,8 +34,7 @@
 #include "yb/util/status_fwd.h"
 #include "yb/util/strongly_typed_bool.h"
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 class IntentAwareIterator;
 
@@ -73,10 +72,10 @@ Result<std::optional<dockv::SubDocument>> TEST_GetSubDocument(
 
 class PackedRowData;
 
-struct DocDBTableReaderData {
+struct DocDBTableReaderData final {
   // Owned by caller.
   IntentAwareIterator* iter;
-  DeadlineInfo deadline_info;
+  DeadlineInfo& deadline_info;
   const dockv::ReaderProjection* projection;
   const TableType table_type;
   const dockv::SchemaPackingStorage& schema_packing_storage;
@@ -87,13 +86,18 @@ struct DocDBTableReaderData {
   EncodedDocHybridTime table_tombstone_time{EncodedDocHybridTime::kMin};
   dockv::Expiration table_expiration;
 
+ private:
+  const bool use_fast_backward_scan;
+
   DocDBTableReaderData(
-      IntentAwareIterator* iter_, CoarseTimePoint deadline,
+      IntentAwareIterator* iter_, DeadlineInfo& deadline,
       const dockv::ReaderProjection* projection_,
       TableType table_type_,
       std::reference_wrapper<const dockv::SchemaPackingStorage> schema_packing_storage_,
-      std::reference_wrapper<const Schema> schema);
+      std::reference_wrapper<const Schema> schema, bool use_fast_backward_scan_ = false);
   ~DocDBTableReaderData();
+
+  friend class DocDBTableReader;
 };
 
 // This class reads SubDocument instances for a given table. The caller should initialize with
@@ -144,12 +148,7 @@ class DocDBTableReader {
   // at that row.
   Status InitForKey(Slice sub_doc_key);
 
-  template <class Res>
-  Result<DocReaderResult> DoGetFlat(
-      KeyBuffer* root_doc_key, const FetchedEntry& fetched_entry, Res* result);
-
   DocDBTableReaderData data_;
 };
 
-}  // namespace docdb
-}  // namespace yb
+}  // namespace yb::docdb

@@ -2,7 +2,7 @@
 title: VPC network
 headerTitle: VPC network
 linkTitle: VPC network
-description: Configure VPC networking in YugabyteDB Managed.
+description: Configure VPC networking in YugabyteDB Aeon.
 image: /images/section_icons/secure/tls-encryption/connect-to-cluster.png
 headcontent: Set up VPC networking so that your clusters can communicate privately with applications
 aliases:
@@ -16,16 +16,16 @@ menu:
 type: indexpage
 ---
 
-A Virtual Private Cloud (VPC) network allows applications running on instances on the same cloud provider as your YugabyteDB Managed clusters to communicate with those clusters without traversing the public internet; all traffic stays in the cloud provider's network.
+A Virtual Private Cloud (VPC) network allows applications running on instances on the same cloud provider as your YugabyteDB Aeon clusters to communicate with those clusters without traversing the public internet; all traffic stays in the cloud provider's network.
 
 Use VPC networks to lower network latencies, make your application and database infrastructure more secure, and reduce network data transfer costs.
 
-In YugabyteDB Managed, a VPC network consists of the following components:
+In YugabyteDB Aeon, a VPC network consists of the following components:
 
 | Component | Description |
 | :--- | :--- |
 | [VPC](cloud-add-vpc/) | A VPC reserves a block of IP addresses on the cloud provider.<br />You deploy your cluster in a VPC. |
-| [Peering connection](cloud-add-peering/) | Links the cluster VPC to an application VPC on the same cloud provider.<br />AWS and GCP only.<br />A peering connection is created for a VPC.<br />You need to add the IP address of your peered application VPC to the cluster [IP allow list](../../cloud-secure-clusters/add-connections/).<br/>Required for smart load balancing features of [YugabyteDB smart drivers](../../../drivers-orms/smart-drivers/#using-smart-drivers-with-yugabytedb-managed). |
+| [Peering connection](cloud-add-peering/) | Links the cluster VPC to an application VPC on the same cloud provider.<br />AWS and GCP only.<br />A peering connection is created for a VPC.<br />You need to add the IP address of your peered application VPC to the cluster [IP allow list](../../cloud-secure-clusters/add-connections/).<br/>Required for smart load balancing features of [YugabyteDB smart drivers](../../../drivers-orms/smart-drivers/#using-smart-drivers-with-yugabytedb-aeon). |
 | [Private service endpoint](cloud-add-endpoint/) | Links the cluster endpoint to an application VPC endpoint, using the cloud provider's private linking service.<br />AWS and Azure only.<br />A private service endpoint (PSE) is added to a cluster; the cluster must be deployed in a VPC.<br/>No need to add the IP address of your application to the cluster IP allow list. |
 
 Typically, you would either have a VPC network with peering, or use PSEs.

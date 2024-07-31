@@ -10,7 +10,6 @@ import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
-import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import java.time.Duration;
@@ -30,11 +29,6 @@ public class CreateOutboundReplicationGroup extends XClusterConfigTaskBase {
   protected CreateOutboundReplicationGroup(
       BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
     super(baseTaskDependencies, xClusterUniverseService);
-  }
-
-  @Override
-  protected XClusterConfigTaskParams taskParams() {
-    return (XClusterConfigTaskParams) taskParams;
   }
 
   @Override
@@ -59,7 +53,7 @@ public class CreateOutboundReplicationGroup extends XClusterConfigTaskBase {
 
       XClusterCreateOutboundReplicationGroupResponse createResponse =
           client.xClusterCreateOutboundReplicationGroup(
-              xClusterConfig.getName(), taskParams().getDbs());
+              xClusterConfig.getReplicationGroupName(), taskParams().getDbs());
 
       if (createResponse.hasError()) {
         throw new RuntimeException(
@@ -71,7 +65,7 @@ public class CreateOutboundReplicationGroup extends XClusterConfigTaskBase {
       validateCheckpointingCompleted(client, sourceUniverse, xClusterConfig);
 
       log.debug(
-          "Checkpointing for xClusterConfig {} completed for source db ids:",
+          "Checkpointing for xClusterConfig {} completed for source db ids: {}",
           xClusterConfig.getUuid(),
           taskParams().getDbs());
     } catch (Exception e) {
@@ -81,7 +75,7 @@ public class CreateOutboundReplicationGroup extends XClusterConfigTaskBase {
   }
 
   protected void validateCheckpointingCompleted(
-      YBClient client, Universe sourceUniverse, XClusterConfig xClusterConfig) throws Exception {
+      YBClient client, Universe sourceUniverse, XClusterConfig xClusterConfig) {
     Duration xclusterWaitTimeout =
         this.confGetter.getConfForScope(sourceUniverse, UniverseConfKeys.xclusterSetupAlterTimeout);
     for (String dbId : taskParams().getDbs()) {
@@ -98,7 +92,8 @@ public class CreateOutboundReplicationGroup extends XClusterConfigTaskBase {
 
                 try {
                   completionResponse =
-                      client.isXClusterBootstrapRequired(xClusterConfig.getName(), dbId);
+                      client.isXClusterBootstrapRequired(
+                          xClusterConfig.getReplicationGroupName(), dbId);
                 } catch (Exception e) {
                   log.error(
                       "IsXClusterBootstrapRequired rpc for xClusterConfig: {}, db: {}, hit error:"
@@ -119,8 +114,8 @@ public class CreateOutboundReplicationGroup extends XClusterConfigTaskBase {
                   return false;
                 }
                 log.debug(
-                    "Checkpointing status is complete: {}, for universe: {}, xClusterConfig: {},"
-                        + " dbId: {}",
+                    "CreateOutboundReplicationGroup, checkpointing status is complete: {}, for"
+                        + " universe: {}, xClusterConfig: {}, dbId: {}",
                     !completionResponse.isNotReady(),
                     sourceUniverse.getUniverseUUID(),
                     xClusterConfig.getName(),

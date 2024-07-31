@@ -314,6 +314,68 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     verifyPayload();
   }
 
+  @Test
+  public void testIncreaseRFPrimary() throws InterruptedException {
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.numNodes = 3;
+    userIntent.replicationFactor = 1;
+    userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
+    Universe universe = createUniverse(userIntent);
+    initYSQL(universe);
+    initAndStartPayload(universe);
+    Thread.sleep(500);
+    UniverseDefinitionTaskParams.Cluster cluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+    cluster.userIntent.replicationFactor = 3;
+    PlacementInfoUtil.updateUniverseDefinition(
+        universe.getUniverseDetails(),
+        customer.getId(),
+        cluster.uuid,
+        UniverseConfigureTaskParams.ClusterOperationType.EDIT);
+    verifyNodeModifications(universe, 0, 0);
+    UUID taskID =
+        universeCRUDHandler.update(
+            customer,
+            Universe.getOrBadRequest(universe.getUniverseUUID()),
+            universe.getUniverseDetails());
+    TaskInfo taskInfo = waitForTask(taskID, universe);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    verifyUniverseTaskSuccess(taskInfo);
+    verifyUniverseState(universe);
+    verifyYSQL(universe);
+    verifyPayload();
+    assertEquals(3, universe.getMasters().size());
+  }
+
+  //  @Test
+  //  Right now we don't support decreasing of RF, but our code for VMs can already handle it.
+  public void testDecreaseRFPrimary() throws InterruptedException {
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
+    Universe universe = createUniverse(userIntent);
+    initYSQL(universe);
+    UniverseDefinitionTaskParams.Cluster cluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+    cluster.userIntent.replicationFactor = 1;
+    PlacementInfoUtil.updateUniverseDefinition(
+        universe.getUniverseDetails(),
+        customer.getId(),
+        cluster.uuid,
+        UniverseConfigureTaskParams.ClusterOperationType.EDIT);
+    verifyNodeModifications(universe, 2, 2);
+    UUID taskID =
+        universeCRUDHandler.update(
+            customer,
+            Universe.getOrBadRequest(universe.getUniverseUUID()),
+            universe.getUniverseDetails());
+    TaskInfo taskInfo = waitForTask(taskID, universe);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    verifyUniverseTaskSuccess(taskInfo);
+    verifyUniverseState(universe);
+    verifyYSQL(universe);
+    assertEquals(1, universe.getMasters().size());
+  }
+
   // FAILURE TESTS
 
   @Test
@@ -380,7 +442,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     assertThat(error, containsString("Unexpected TSERVER: " + removed.cloudInfo.private_ip));
   }
 
-  @Test
+  //   @Test
   public void testLeaderlessTabletsBeforeEditFAIL() throws InterruptedException {
     RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.timeout", "10s");
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();

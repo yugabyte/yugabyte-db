@@ -82,7 +82,7 @@ using strings::Substitute;
 ReplicaState::ReplicaState(
     ConsensusOptions options, string peer_uuid, std::unique_ptr<ConsensusMetadata> cmeta,
     ConsensusContext* consensus_context, SafeOpIdWaiter* safe_op_id_waiter,
-    RetryableRequestsManager* retryable_requests_manager,
+    RetryableRequests* retryable_requests,
     std::function<void(const OpIds&)> applied_ops_tracker)
     : options_(std::move(options)),
       peer_uuid_(std::move(peer_uuid)),
@@ -91,8 +91,8 @@ ReplicaState::ReplicaState(
       safe_op_id_waiter_(safe_op_id_waiter),
       applied_ops_tracker_(std::move(applied_ops_tracker)) {
   CHECK(cmeta_) << "ConsensusMeta passed as NULL";
-  if (retryable_requests_manager) {
-    retryable_requests_manager_ = std::move(*retryable_requests_manager);
+  if (retryable_requests) {
+    retryable_requests_ = std::move(*retryable_requests);
   }
 
   CHECK(IsAcceptableAtomicImpl(leader_state_cache_));
@@ -493,12 +493,9 @@ Status ReplicaState::SetCurrentTermUnlocked(int64_t new_term) {
   }
   cmeta_->set_current_term(new_term);
   cmeta_->clear_voted_for();
-  // OK to flush before clearing the leader, because the leader UUID is not part of
-  // ConsensusMetadataPB.
-  RETURN_NOT_OK(cmeta_->Flush());
   ClearLeaderUnlocked();
   last_received_op_id_current_leader_ = yb::OpId();
-  return Status::OK();
+  return cmeta_->Flush();
 }
 
 const int64_t ReplicaState::GetCurrentTermUnlocked() const {
@@ -716,8 +713,7 @@ Status ReplicaState::AddPendingOperation(const ConsensusRoundPtr& round, Operati
   } else if (op_type == WRITE_OP) {
     // Leader registers an operation with RetryableRequests even before assigning an op id.
     if (mode == OperationMode::kFollower) {
-      auto result = retryable_requests_manager_.retryable_requests().Register(
-          round, tablet::IsLeaderSide::kFalse);
+      auto result = retryable_requests_.Register(round, tablet::IsLeaderSide::kFalse);
       const auto error_msg = "Cannot register retryable request on follower";
       if (!result.ok()) {
         // This can happen if retryable requests have been cleaned up on leader before the follower,
@@ -725,10 +721,8 @@ Status ReplicaState::AddPendingOperation(const ConsensusRoundPtr& round, Operati
         // Just run cleanup in this case and retry.
         VLOG_WITH_PREFIX(1) << error_msg << ": " << result.status()
                             << ". Cleaning retryable requests";
-        auto min_op_id ATTRIBUTE_UNUSED =
-            retryable_requests_manager_.retryable_requests().CleanExpiredReplicatedAndGetMinOpId();
-        result = retryable_requests_manager_.retryable_requests().Register(
-            round, tablet::IsLeaderSide::kFalse);
+        auto min_op_id ATTRIBUTE_UNUSED = retryable_requests_.CleanExpiredReplicatedAndGetMinOpId();
+        result = retryable_requests_.Register(round, tablet::IsLeaderSide::kFalse);
       }
       if (!result.ok()) {
         return result.status()
@@ -1033,16 +1027,12 @@ const yb::OpId& ReplicaState::GetCommittedOpIdUnlocked() const {
 }
 
 RestartSafeCoarseMonoClock& ReplicaState::Clock() {
-  return retryable_requests_manager_.retryable_requests().Clock();
+  return retryable_requests_.Clock();
 }
 
 RetryableRequestsCounts ReplicaState::TEST_CountRetryableRequests() {
   auto lock = LockForRead();
-  return retryable_requests_manager_.retryable_requests().TEST_Counts();
-}
-
-bool ReplicaState::TEST_HasRetryableRequestsOnDisk() const {
-  return retryable_requests_manager_.has_file_on_disk();
+  return retryable_requests_.TEST_Counts();
 }
 
 bool ReplicaState::AreCommittedAndCurrentTermsSameUnlocked() const {
@@ -1197,36 +1187,28 @@ void ReplicaState::UpdateOldLeaderLeaseExpirationOnNonLeaderUnlocked(
   }
 }
 
-Status ReplicaState::FlushRetryableRequests() {
-  std::unique_ptr<RetryableRequests> retryable_requests_copy;
-  {
-    auto lock = LockForRead();
-    if(state_ != ReplicaState::kRunning) {
-      return STATUS_FORMAT(IllegalState, "Replica is in $0 state", state_);
-    }
-    retryable_requests_copy = retryable_requests_manager_.TakeSnapshotOfRetryableRequests();
-    if (!retryable_requests_copy) {
-      // No new data to flush.
-      return Status::OK();
-    }
+Result<std::unique_ptr<RetryableRequests>> ReplicaState::TakeSnapshotOfRetryableRequests() {
+  auto lock = LockForRead();
+  if (state_ != ReplicaState::kRunning) {
+    return STATUS_FORMAT(IllegalState, "Replica is in $0 state", state_);
   }
-  auto max_replicated_op_id = retryable_requests_copy->GetMaxReplicatedOpId();
-  RETURN_NOT_OK(retryable_requests_manager_.SaveToDisk(std::move(retryable_requests_copy)));
-  {
-    UniqueLock unique_lock;
-    RETURN_NOT_OK(LockForUpdate(&unique_lock));
-    retryable_requests_manager_.retryable_requests().SetLastFlushedOpId(max_replicated_op_id);
+  if (!retryable_requests_.HasUnflushedData()) {
+    return nullptr;
   }
-  return Status::OK();
-}
+  return std::make_unique<RetryableRequests>(retryable_requests_);
 
-Status ReplicaState::CopyRetryableRequestsTo(const std::string &dest_path) {
-  return retryable_requests_manager_.CopyTo(dest_path);
 }
 
 OpId ReplicaState::GetLastFlushedOpIdInRetryableRequests() {
   auto lock = LockForRead();
-  return retryable_requests_manager_.retryable_requests().GetLastFlushedOpId();
+  return retryable_requests_.GetLastFlushedOpId();
+}
+
+Status ReplicaState::SetLastFlushedOpIdInRetryableRequests(const OpId& op_id) {
+  UniqueLock unique_lock;
+  RETURN_NOT_OK(LockForUpdate(&unique_lock));
+  retryable_requests_.SetLastFlushedOpId(op_id);
+  return Status::OK();
 }
 
 template <class Policy>
@@ -1461,8 +1443,7 @@ uint64_t ReplicaState::OnDiskSize() const {
 Result<bool> ReplicaState::RegisterRetryableRequest(
     const ConsensusRoundPtr& round, tablet::IsLeaderSide is_leader_side) {
   CHECK(is_leader_side);
-  return retryable_requests_manager_.retryable_requests().Register(
-      round, tablet::IsLeaderSide::kTrue);
+  return retryable_requests_.Register(round, tablet::IsLeaderSide::kTrue);
 }
 
 OpId ReplicaState::MinRetryableRequestOpId() {
@@ -1471,7 +1452,7 @@ OpId ReplicaState::MinRetryableRequestOpId() {
   if (!status.ok()) {
     return OpId::Min(); // return minimal op id, that prevents log from cleaning
   }
-  return retryable_requests_manager_.retryable_requests().CleanExpiredReplicatedAndGetMinOpId();
+  return retryable_requests_.CleanExpiredReplicatedAndGetMinOpId();
 }
 
 void ReplicaState::NotifyReplicationFinishedUnlocked(
@@ -1479,8 +1460,7 @@ void ReplicaState::NotifyReplicationFinishedUnlocked(
     OpIds* applied_op_ids) {
   round->NotifyReplicationFinished(status, leader_term, applied_op_ids);
 
-  retryable_requests_manager_.retryable_requests().ReplicationFinished(
-      *round->replicate_msg(), status, leader_term);
+  retryable_requests_.ReplicationFinished(*round->replicate_msg(), status, leader_term);
 }
 
 consensus::LeaderState ReplicaState::RefreshLeaderStateCacheUnlocked(CoarseTimePoint* now) const {

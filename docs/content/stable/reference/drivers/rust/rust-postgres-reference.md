@@ -110,7 +110,7 @@ To create a multi-zone cluster, do the following:
 
     ```sh
     ./bin/yugabyted start --advertise_address=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node1 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1 \
         --cloud_location=aws.us-east-1.us-east-1a \
         --fault_tolerance=zone
     ```
@@ -120,7 +120,7 @@ To create a multi-zone cluster, do the following:
     ```sh
     ./bin/yugabyted start --advertise_address=127.0.0.2 \
         --join=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node2 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node2 \
         --cloud_location=aws.us-east-1.us-east-1a \
         --fault_tolerance=zone
     ```
@@ -128,7 +128,7 @@ To create a multi-zone cluster, do the following:
     ```sh
     ./bin/yugabyted start --advertise_address=127.0.0.3 \
         --join=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node3 \
+        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3 \
         --cloud_location=aws.us-east-1.us-east-1b \
         --fault_tolerance=zone
     ```
@@ -320,9 +320,9 @@ In this case the first two nodes should have 15 connections each, and the third 
 After you're done experimenting, run the following command to destroy the local cluster:
 
 ```sh
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node1
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node2
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node3
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node2
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3
 ```
 
 ## Configure SSL/TLS
@@ -345,7 +345,7 @@ The rust-postgres driver supports the following SSL modes.
 
 Currently, the rust-postgres driver and YugabyteDB Rust smart driver do not support verify-full or verify-ca SSL modes.
 
-YugabyteDB Managed requires SSL/TLS, and connections using SSL mode `disable` will fail.
+YugabyteDB Aeon requires SSL/TLS, and connections using SSL mode `disable` will fail.
 
 The following is an example connection URL for connecting to a YugabyteDB cluster with SSL encryption enabled:
 
@@ -353,7 +353,7 @@ The following is an example connection URL for connecting to a YugabyteDB cluste
 "postgresql://127.0.0.1:5434/yugabyte?user=yugabyte&password=yugabyte&load_balance=true&sslmode=require"
 ```
 
-If you created a cluster on [YugabyteDB Managed](/preview/yugabyte-cloud/), use the cluster credentials and download the [SSL Root certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
+If you created a cluster on [YugabyteDB Aeon](../../../../yugabyte-cloud/), use the cluster credentials and download the [SSL Root certificate](../../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
 The following is an example application for connecting to a YugabyteDB cluster with SSL enabled:
 

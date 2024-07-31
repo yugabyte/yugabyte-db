@@ -237,7 +237,7 @@ class MasterPathHandlers {
       bool is_styled = false, bool is_on_nav_bar = false, const std::string icon = "") {
     server->RegisterPathHandler(
         path, alias, std::bind(f, this, std::placeholders::_1, std::placeholders::_2), is_styled,
-        is_on_nav_bar);
+        is_on_nav_bar, icon);
   }
 
   template <class F>
@@ -305,9 +305,11 @@ class MasterPathHandlers {
   void HandlePrettyLB(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleLoadBalancer(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleGetMetaCacheJson(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
+  void HandleStatefulServices(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
+  void HandleStatefulServicesJson(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
 
   // Calcuates number of leaders/followers per table.
-  void CalculateTabletMap(TabletCountMap* tablet_map);
+  Status CalculateTabletMap(TabletCountMap* tablet_map);
 
   // Calculate tserver tree for ALL tables if max_table_count == -1.
   // Otherwise, do not perform calculation if number of tables is less than max_table_count.
@@ -316,9 +318,9 @@ class MasterPathHandlers {
       const TServerTree& tserver_tree, const std::vector<std::shared_ptr<TSDescriptor>>& descs,
       const std::vector<TableInfoPtr>& tables, std::stringstream* output);
   TableType GetTableType(const TableInfo& table);
-  std::vector<TabletInfoPtr> GetNonSystemTablets();
+  Result<std::vector<TabletInfoPtr>> GetNonSystemTablets();
 
-  std::vector<std::pair<TabletInfoPtr, std::string>> GetLeaderlessTablets();
+  Result<std::vector<std::pair<TabletInfoPtr, std::string>>> GetLeaderlessTablets();
 
   Result<std::vector<std::pair<TabletInfoPtr, std::vector<std::string>>>>
       GetUnderReplicatedTablets();

@@ -1,0 +1,5 @@
+.gitignore export-ignore
+.gitattributes export-ignore
+tocgen export-ignore
+.release.mmd export-ignore
+.github export-ignore

@@ -21,29 +21,26 @@ Let's see how YugabyteDB is resilient during planned maintenance, continuing wit
 Consider a setup where YugabyteDB is deployed in a single region (us-east-1) across 3 zones, with leaders and followers distributed across the 3 zones (a,b,c) with 6 nodes 1-6.
 
 <!-- begin: nav tabs -->
-{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
+{{<nav/tabs list="local,anywhere" active="local"/>}}
 
 {{<nav/panels>}}
 {{<nav/panel name="local" active="true">}}
 <!-- local cluster setup instructions -->
-{{<collapse title="Set up a local cluster">}}
 {{<setup/local
   numnodes="6"
   rf="3"
   locations="aws.us-east.us-east-1a,aws.us-east.us-east-1a,aws.us-east.us-east-1b,aws.us-east.us-east-1b,aws.us-east.us-east-1c,aws.us-east.us-east-1c"
   fault-domain="zone">}}
-{{</collapse>}}
 {{</nav/panel>}}
 
 {{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}
-{{<nav/panel name="cloud">}} {{<setup/cloud>}} {{</nav/panel>}}
 {{</nav/panels>}}
 <!-- end: nav tabs -->
 
 The application typically connects to all the nodes in the cluster as shown in the following illustration.
 
 {{<note>}}
-In all the following illustrations, the solid circles are tablet leaders and the dotted circles are followers.
+All illustrations adhere to the legend outlined in [Legend for illustrations](../../../contribute/docs/docs-layout#legend-for-illustrations)
 {{</note>}}
 
 ![Single region, 3 zones, 6 nodes](/images/explore/fault-tolerance/node-upgrades-setup.png)
@@ -53,7 +50,7 @@ In all the following illustrations, the solid circles are tablet leaders and the
 When upgrading a node or performing maintenance, the first step is to take it offline.
 
 <!-- begin nav tabs -->
-{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
+{{<nav/tabs list="local,anywhere" active="local"/>}}
 
 {{<nav/panels>}}
 {{<nav/panel name="local" active="true">}}
@@ -61,19 +58,13 @@ When upgrading a node or performing maintenance, the first step is to take it of
 {{<collapse title="Take a node offline locally">}}
 To take a node offline locally, you can just stop the node.
 
-```bash
-./bin/yugabyted stop --base_dir=/tmp/ybd4
-```
+{{%cluster/cmd op="stop" nodes="4"%}}
 
 {{</collapse>}}
 {{</nav/panel>}}
 
 {{<nav/panel name="anywhere">}}
-{{<note>}} To stop a node in YB Anywhere, see [YBA - Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes). {{</note>}}
-{{</nav/panel>}}
-
-{{<nav/panel name="cloud">}}
-{{<note>}} Reach out [YugabyteDB support](https://support.yugabyte.com) to stop a node in [YB Managed](../../../yugabyte-cloud/) for an upgrade. {{</note>}}
+{{<note>}} To stop a node in YugabyteDB Anywhere, see [Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes). {{</note>}}
 {{</nav/panel>}}
 
 {{</nav/panels>}}
@@ -103,7 +94,7 @@ At this point, you can perform your maintenance, add new software, or upgrade th
 After completing the upgrade and the required maintenance, you restart the node.
 
 <!-- begin nav tabs -->
-{{<nav/tabs list="local,anywhere,cloud" active="local"/>}}
+{{<nav/tabs list="local,anywhere" active="local"/>}}
 
 {{<nav/panels>}}
 {{<nav/panel name="local" active="true">}}
@@ -111,19 +102,13 @@ After completing the upgrade and the required maintenance, you restart the node.
 
 To simulate bringing back a node online locally, you can just start the stopped node.
 
-```bash
-./bin/yugabyted start --base_dir=/tmp/ybd4
-```
+{{%cluster/cmd op="stop" nodes="4"%}}
 
 {{</collapse>}}
 {{</nav/panel>}}
 
 {{<nav/panel name="anywhere">}}
-{{<note>}} To restart a node in YB Anywhere, see [YBA - Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes). {{</note>}}
-{{</nav/panel>}}
-
-{{<nav/panel name="cloud">}}
-{{<note>}} Reach out [YugabyteDB support](https://support.yugabyte.com) to restart a node in [YB Managed](../../../yugabyte-cloud/).  {{</note>}}
+{{<note>}} To restart a node in YugabyteDB Anywhere, see [Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes). {{</note>}}
 {{</nav/panel>}}
 
 {{</nav/panels>}}

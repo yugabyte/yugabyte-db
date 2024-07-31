@@ -357,7 +357,8 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
               currentLiveMasters.add(node);
               getOrCreateExecutionContext().addMasterNode(node);
             }
-            createMasterAddressUpdateTask(universe, currentLiveMasters, allLiveTservers);
+            createMasterAddressUpdateTask(
+                universe, currentLiveMasters, allLiveTservers, false /* ignore error */);
           });
       if (!mastersToStop.isEmpty()) {
         createStopServerTasks(
@@ -428,8 +429,8 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
     removeFromLeaderBlackListIfAvailable(tservers, SubTaskGroupType.UpdatingGFlags);
     TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleConfigureServers");
     for (NodeDetails nodeDetails : tservers) {
-      stopProcessesOnNode(
-          nodeDetails,
+      stopProcessesOnNodes(
+          Collections.singletonList(nodeDetails),
           EnumSet.of(ServerType.TSERVER),
           false /* remove master from quorum */,
           false /* deconfigure */,

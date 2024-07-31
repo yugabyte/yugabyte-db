@@ -50,7 +50,7 @@ class CloneStateManager {
       rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
 
-  Status ClearAndRunLoaders();
+  Status ClearAndRunLoaders(const LeaderEpoch& epoch);
 
  private:
   explicit CloneStateManager(
@@ -60,12 +60,18 @@ class CloneStateManager {
     const NamespaceIdentifierPB& source_namespace,
     const HybridTime& read_time,
     const std::string& target_namespace_name,
+    const std::string& pg_source_owner,
+    const std::string& pg_target_owner,
     CoarseTimePoint deadline,
     const LeaderEpoch& epoch);
 
   Result<CloneStateInfoPtr> CreateCloneState(
-      uint32_t seq_no, const NamespaceId& source_namespace_id,
-      const std::string& target_namespace_name, const HybridTime& restore_time);
+      const LeaderEpoch& epoch,
+      uint32_t seq_no,
+      const NamespaceId& source_namespace_id,
+      YQLDatabase database_type,
+      const std::string& target_namespace_name,
+      const HybridTime& restore_time);
 
   Status UpdateCloneStateWithSnapshotInfo(
       const CloneStateInfoPtr& clone_state,
@@ -75,29 +81,37 @@ class CloneStateManager {
 
   // Create PG schema objects of the clone database.
   Status ClonePgSchemaObjects(
-      CloneStateInfoPtr clone_state, const std::string& source_db_name,
-      const std::string& target_db_name, const SnapshotScheduleId& snapshot_schedule_id,
-      const LeaderEpoch& epoch);
+      CloneStateInfoPtr clone_state,
+      const std::string& source_db_name,
+      const std::string& target_db_name,
+      const std::string& pg_source_owner,
+      const std::string& pg_target_owner,
+      const SnapshotScheduleId& snapshot_schedule_id);
 
   // Starts snapshot related operations for clone (mainly generate snapshotInfoPB as of
   // restore_time and then import it and create a new snapshot for target_namespace). Then it
   // schedules async clone tasks for every tablet. The function is the whole clone process in case
   // of YCQL and the second part of the clone process in case of YSQL.
   Status StartTabletsCloning(
-      CloneStateInfoPtr clone_state, const SnapshotScheduleId& snapshot_schedule_id,
+      CloneStateInfoPtr clone_state,
+      const SnapshotScheduleId& snapshot_schedule_id,
       const std::string& target_namespace_name,
-      CoarseTimePoint deadline, const LeaderEpoch& epoch);
+      CoarseTimePoint deadline);
 
-  Status LoadCloneState(const std::string& id, const SysCloneStatePB& metadata);
+  Status LoadCloneState(
+      const LeaderEpoch& epoch, const std::string& id, const SysCloneStatePB& metadata);
 
   Status ScheduleCloneOps(
-      const CloneStateInfoPtr& clone_state, const LeaderEpoch& epoch,
+      const CloneStateInfoPtr& clone_state,
       const std::unordered_set<TabletId>& not_snapshotted_tablets);
 
   AsyncClonePgSchema::ClonePgSchemaCallbackType MakeDoneClonePgSchemaCallback(
-      CloneStateInfoPtr clone_state, const SnapshotScheduleId& snapshot_schedule_id,
+      CloneStateInfoPtr clone_state,
+      const SnapshotScheduleId& snapshot_schedule_id,
       const std::string& target_namespace_name,
-      CoarseTimePoint deadline, const LeaderEpoch& epoch);
+      CoarseTimePoint deadline);
+
+  Status EnableDbConnections(const CloneStateInfoPtr& clone_state);
 
   Status HandleCreatingState(const CloneStateInfoPtr& clone_state);
   Status HandleRestoringState(const CloneStateInfoPtr& clone_state);
@@ -105,6 +119,9 @@ class CloneStateManager {
 
   // Mark state as aborting and set a descriptive message for debugging purposes.
   Status MarkCloneAborted(const CloneStateInfoPtr& clone_state, const std::string& abort_reason);
+  // The loading code uses this overload to abort a clone after a master leader change.
+  Status MarkCloneAborted(
+      const CloneStateInfoPtr& clone_state, const std::string& abort_reason, int64_t leader_term);
 
   std::mutex mutex_;
 

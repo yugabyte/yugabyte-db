@@ -69,10 +69,7 @@ struct PerformResult {
   }
 };
 
-struct TableKeyRangesWithHt {
-  boost::container::small_vector<RefCntSlice, 2> encoded_range_end_keys;
-  HybridTime current_ht;
-};
+using TableKeyRanges = boost::container::small_vector<RefCntSlice, 2>;
 
 struct PerformData;
 
@@ -131,7 +128,8 @@ class PgClient {
   uint64_t SessionID() const;
 
   Result<PgTableDescPtr> OpenTable(
-      const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time);
+      const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time,
+      master::IncludeInactive include_inactive = master::IncludeInactive::kFalse);
 
   Result<client::VersionedTablePartitionList> GetTablePartitionList(const PgObjectId& table_id);
 
@@ -217,10 +215,9 @@ class PgClient {
 
   Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
 
-  Result<TableKeyRangesWithHt> GetTableKeyRanges(
+  Result<TableKeyRanges> GetTableKeyRanges(
       const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
-      uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length,
-      uint64_t read_time_serial_no);
+      uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length);
 
   Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo(
       bool size_only, uint32_t db_oid);

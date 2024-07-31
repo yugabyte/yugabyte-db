@@ -33,6 +33,7 @@
 #include "yb/master/master_service_base-internal.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
+#include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/yql_partitions_vtable.h"
 
 #include "yb/util/debug/trace_event.h"
@@ -193,7 +194,7 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
       std::vector<RetryingTSRpcTaskWithTablePtr>* rpcs);
 
   void UpdateTabletReplicasAfterConfigChange(
-      const scoped_refptr<TabletInfo>& tablet,
+      const TabletInfoPtr& tablet,
       const std::string& sender_uuid,
       const ConsensusStatePB& consensus_state,
       const ReportedTabletPB& report);
@@ -202,7 +203,7 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
       TSDescriptor* ts_desc,
       const ConsensusStatePB* consensus_state,
       const ReportedTabletPB& report,
-      const scoped_refptr<TabletInfo>& tablet);
+      const TabletInfoPtr& tablet);
 
   void CreateNewReplicaForLocalMemory(
       TSDescriptor* ts_desc,
@@ -212,7 +213,7 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
       TabletReplica* new_replica);
 
   bool ReplicaMapDiffersFromConsensusState(
-      const scoped_refptr<TabletInfo>& tablet, const ConsensusStatePB& cstate);
+      const TabletInfoPtr& tablet, const ConsensusStatePB& cstate);
 
   void ProcessTabletMetadata(
       const std::string& ts_uuid,
@@ -431,7 +432,7 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
     }
 
     for (const auto& consumer_replication_state : req->xcluster_consumer_replication_status()) {
-      catalog_manager_->StoreXClusterConsumerReplicationStatus(
+      catalog_manager_->GetXClusterManager()->StoreConsumerReplicationStatus(
           consumer_replication_state);
     }
 
@@ -770,7 +771,7 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReportBatch(
   // Second Pass.
   // Process each tablet. The list is sorted by ID. This may not be in the order that the tablets
   // appear in 'full_report', but that has no bearing on correctness.
-  std::vector<TabletInfo*> mutated_tablets; // refcount protected by ReportedTablet::info
+  std::vector<TabletInfoPtr> mutated_tablets;
   std::unordered_map<TableId, std::set<TabletId>> new_running_tablets;
   for (auto it = begin; it != end; ++it) {
     const auto& tablet_id = it->tablet_id;
@@ -882,7 +883,7 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReportBatch(
         // If the tablet was mutated, add it to the tablets to be re-persisted.
         //
         // Done here and not on a per-mutation basis to avoid duplicate entries.
-        mutated_tablets.push_back(tablet.get());
+        mutated_tablets.push_back(tablet);
         if (!tablet_was_running && tablet_lock->is_running()) {
           new_running_tablets[table->id()].insert(tablet->id());
         }
@@ -915,8 +916,8 @@ Status MasterHeartbeatServiceImpl::ProcessTabletReportBatch(
 
   // Filter the mutated tablets to find which tablets were modified. Need to actually commit the
   // state of the tablets before updating the system.partitions table, so get this first.
-  std::vector<TabletInfoPtr> yql_partitions_mutated_tablets =
-      catalog_manager_->GetYqlPartitionsVtable().FilterRelevantTablets(mutated_tablets);
+  std::vector<TabletInfoPtr> yql_partitions_mutated_tablets = VERIFY_RESULT(
+      catalog_manager_->GetYqlPartitionsVtable().FilterRelevantTablets(mutated_tablets));
 
   // Publish the in-memory tablet mutations and release the locks.
   for (auto& l : tablet_write_locks) {
@@ -1126,7 +1127,7 @@ bool MasterHeartbeatServiceImpl::ProcessCommittedConsensusState(
   }
 
   if (FLAGS_use_create_table_leader_hint && !cstate.has_leader_uuid()) {
-    catalog_manager_->StartElectionIfReady(cstate, epoch, tablet.get());
+    catalog_manager_->StartElectionIfReady(cstate, epoch, tablet);
   }
 
   // 7. Send an AlterSchema RPC if the tablet has an old schema version.
@@ -1224,7 +1225,7 @@ bool MasterHeartbeatServiceImpl::ProcessCommittedConsensusState(
 }
 
 void MasterHeartbeatServiceImpl::UpdateTabletReplicasAfterConfigChange(
-    const scoped_refptr<TabletInfo>& tablet,
+    const TabletInfoPtr& tablet,
     const std::string& sender_uuid,
     const ConsensusStatePB& consensus_state,
     const ReportedTabletPB& report) {
@@ -1306,7 +1307,7 @@ void MasterHeartbeatServiceImpl::UpdateTabletReplicaInLocalMemory(
     TSDescriptor* ts_desc,
     const ConsensusStatePB* consensus_state,
     const ReportedTabletPB& report,
-    const scoped_refptr<TabletInfo>& tablet) {
+    const TabletInfoPtr& tablet) {
   TabletReplica replica;
   CreateNewReplicaForLocalMemory(ts_desc, consensus_state, report, report.state(), &replica);
   catalog_manager_->UpdateTabletReplicaLocations(tablet, replica);
@@ -1343,7 +1344,7 @@ void MasterHeartbeatServiceImpl::CreateNewReplicaForLocalMemory(
 }
 
 bool MasterHeartbeatServiceImpl::ReplicaMapDiffersFromConsensusState(
-    const scoped_refptr<TabletInfo>& tablet, const ConsensusStatePB& cstate) {
+    const TabletInfoPtr& tablet, const ConsensusStatePB& cstate) {
   auto locs = tablet->GetReplicaLocations();
   if (locs->size() != implicit_cast<size_t>(cstate.config().peers_size())) {
     return true;

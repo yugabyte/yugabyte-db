@@ -8,6 +8,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.common.encryption.HashBuilder;
@@ -17,6 +18,7 @@ import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.Encrypted;
 import io.ebean.annotation.EnumValue;
+import io.ebean.annotation.Transactional;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
@@ -34,7 +36,6 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -158,7 +159,9 @@ public class Users extends Model {
       accessMode = READ_ONLY)
   private Date authTokenIssueDate;
 
-  @JsonIgnore private String apiToken;
+  @ApiModelProperty(value = "Hash of API Token")
+  @JsonIgnore
+  private String apiToken;
 
   @JsonIgnore private Long apiTokenVersion = 0L;
 
@@ -170,6 +173,7 @@ public class Users extends Model {
   private Role role;
 
   @ApiModelProperty(value = "True if the user is the primary user")
+  @JsonProperty("isPrimary")
   private boolean isPrimary;
 
   @ApiModelProperty(value = "User Type")
@@ -219,6 +223,10 @@ public class Users extends Model {
 
   public static List<Users> getAll(UUID customerUUID) {
     return find.query().where().eq("customer_uuid", customerUUID).findList();
+  }
+
+  public static List<Users> getAll() {
+    return find.query().where().findList();
   }
 
   public Users() {
@@ -312,6 +320,28 @@ public class Users extends Model {
     return;
   }
 
+  /** Wrapper around save to make sure principal entity is created. */
+  @Transactional
+  @Override
+  public void save() {
+    super.save();
+    Principal principal = Principal.get(this.uuid);
+    if (principal == null) {
+      log.info("Adding Principal entry for user with email: " + this.email);
+      new Principal(this).save();
+    }
+  }
+
+  /** Wrapper around delete to make sure principal entity is deleted. */
+  @Transactional
+  @Override
+  public boolean delete() {
+    log.info("Deleting Principal entry for user with email: " + this.email);
+    Principal principal = Principal.getOrBadRequest(this.uuid);
+    principal.delete();
+    return super.delete();
+  }
+
   /**
    * Validate if the email and password combination is valid, we use this to authenticate the Users.
    *
@@ -374,39 +404,25 @@ public class Users extends Model {
    * @return apiToken
    */
   public String upsertApiToken() {
-    return upsertApiToken(null);
+    return upsertApiToken(apiTokenVersion);
   }
 
   public String upsertApiToken(Long version) {
     UUID uuidToLock = uuid != null ? uuid : NULL_UUID;
     usersLock.acquireLock(uuidToLock);
     try {
-      if (version != null && apiTokenVersion != null && !version.equals(apiTokenVersion)) {
+      if (version != null
+          && version != -1
+          && apiTokenVersion != null
+          && !version.equals(apiTokenVersion)) {
         throw new PlatformServiceException(BAD_REQUEST, "API token version has changed");
       }
-      apiToken = UUID.randomUUID().toString();
+      String apiTokenUnhashed = UUID.randomUUID().toString();
+      apiToken = Users.hasher.hash(apiTokenUnhashed);
+
       apiTokenVersion = apiTokenVersion == null ? 1L : apiTokenVersion + 1;
       save();
-      return apiToken;
-    } finally {
-      usersLock.releaseLock(uuidToLock);
-    }
-  }
-
-  /**
-   * Get current apiToken or create a new one if not exists.
-   *
-   * @return apiToken
-   */
-  @JsonIgnore
-  public String getOrCreateApiToken() {
-    UUID uuidToLock = uuid != null ? uuid : NULL_UUID;
-    usersLock.acquireLock(uuidToLock);
-    try {
-      if (StringUtils.isEmpty(apiToken)) {
-        return upsertApiToken();
-      }
-      return apiToken;
+      return apiTokenUnhashed;
     } finally {
       usersLock.releaseLock(uuidToLock);
     }
@@ -459,7 +475,13 @@ public class Users extends Model {
     }
 
     try {
-      return find.query().where().eq("apiToken", apiToken).findOne();
+      List<Users> usersList = find.query().where().isNotNull("apiToken").findList();
+      for (Users user : usersList) {
+        if (Users.hasher.isValid(apiToken, user.getApiToken())) {
+          return user;
+        }
+      }
+      return null;
     } catch (Exception e) {
       return null;
     }

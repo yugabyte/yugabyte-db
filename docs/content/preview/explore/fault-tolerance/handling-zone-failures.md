@@ -24,9 +24,7 @@ Consider a setup where YugabyteDB is deployed across three zones in a single reg
 {{<nav/panels>}}
 {{<nav/panel name="local" active="true">}}
 <!-- local cluster setup instructions -->
-{{<collapse title="Setup a local cluster">}}
 {{<setup/local numnodes="3" rf="3" locations="aws.us-east.us-east-1a,aws.us-central.us-east-1b,aws.us-west.us-west-1c">}}
-{{</collapse>}}
 {{</nav/panel>}}
 
 {{<nav/panel name="anywhere">}} {{<setup/anywhere>}} {{</nav/panel>}}
@@ -55,11 +53,11 @@ To simulate the failure of the 2nd zone locally, you can just stop the second no
 {{</nav/panel>}}
 
 {{<nav/panel name="anywhere">}}
-{{<note>}} To stop a node in YB Anywhere, see [Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes) {{</note>}}
+{{<note>}} To stop a node in YugabyteDB Anywhere, see [Manage nodes](../../../yugabyte-platform/manage-deployments/remove-nodes/#start-and-stop-node-processes) {{</note>}}
 {{</nav/panel>}}
 
 {{<nav/panel name="cloud">}}
-{{<note>}} Please reach out [YugabyteDB support](https://support.yugabyte.com) to stop a node in YB Managed {{</note>}}
+{{<note>}} Reach out [YugabyteDB support](https://support.yugabyte.com) to stop a node in YugabyteDB Aeon {{</note>}}
 {{</nav/panel>}}
 
 {{</nav/panels>}}

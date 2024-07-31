@@ -106,7 +106,7 @@ conn, err := pgx.Connect(context.Background(), url)
 
 #### Use SSL
 
-For a YugabyteDB Managed cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below at the client side. SSL/TLS is enabled by default for client-side authentication. Refer to [Configure SSL/TLS](../../../reference/drivers/go/pgx-reference/#configure-ssl-tls) for the default and supported modes.
+For a YugabyteDB Aeon cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below at the client side. SSL/TLS is enabled by default for client-side authentication. Refer to [Configure SSL/TLS](../../../reference/drivers/go/pgx-reference/#configure-ssl-tls) for the default and supported modes.
 
 ```sh
 $ export PGSSLMODE=verify-ca
@@ -207,10 +207,10 @@ func main() {
 }
 ```
 
-The **const** values are set to the defaults for a local installation of YugabyteDB. If you are using YugabyteDB Managed, replace the **const** values in the file as follows:
+The **const** values are set to the defaults for a local installation of YugabyteDB. If you are using YugabyteDB Aeon, replace the **const** values in the file as follows:
 
 - **host** - The host address of your cluster. The host address is displayed on the cluster **Settings** tab.
-- **user** - Your YugabyteDB database username. In YugabyteDB Managed, the default user is **admin**.
+- **user** - Your YugabyteDB database username. In YugabyteDB Aeon, the default user is **admin**.
 - **password** - Your YugabyteDB database password.
 - **dbname** - The name of the YugabyteDB database. The default name is **yugabyte**.
 - **port** is set to 5433, which is the default port for the YSQL API.

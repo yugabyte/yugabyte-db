@@ -4,9 +4,9 @@ headerTitle: Change data capture (CDC)
 linkTitle: Change data capture
 description: CDC or Change data capture is a process to capture changes made to data in the database.
 headcontent: Capture changes made to data in the database
-image: /images/section_icons/index/develop.png
+image: fa-light fa-rotate
 cascade:
-  earlyAccess: /preview/releases/versioning/#feature-availability
+  earlyAccess: /preview/releases/versioning/#feature-maturity
 menu:
   stable:
     identifier: explore-change-data-capture
@@ -14,33 +14,42 @@ menu:
     weight: 280
 type: indexpage
 ---
+In databases, change data capture (CDC) is a set of software design patterns used to determine and track the data that has changed so that action can be taken using the changed data. CDC is beneficial in a number of scenarios:
 
-For tutorials on streaming data to Kafka environments, including Amazon MSK, Azure Event Hubs, and Confluent Cloud, see [Kafka environments](/preview/tutorials/cdc-tutorials/).
+- **Microservice-oriented architectures**: Some microservices require a stream of changes to the data, and using CDC in YugabyteDB can provide consumable data changes to CDC subscribers.
 
-{{<index/block>}}
+- **Asynchronous replication to remote systems**: Remote systems may subscribe to a stream of data changes and then transform and consume the changes. Maintaining separate database instances for transactional and reporting purposes can be used to manage workload performance.
 
-  {{<index/item
-    title="Overview"
-    body="Introduction to CDC in YugabyteDB."
-    href="cdc-overview/"
-    icon="/images/section_icons/architecture/concepts.png">}}
+- **Multiple data center strategies**: Maintaining multiple data centers enables enterprises to provide high availability (HA).
 
-  {{<index/item
-    title="Debezium connector"
-    body="Open-source distributed platform for capturing changes in a database."
-    href="debezium-connector-yugabytedb/"
-    icon="/images/section_icons/develop/ecosystem/debezium.png">}}
+- **Compliance and auditing**: Auditing and compliance requirements can require you to use CDC to maintain records of data changes.
 
-  {{<index/item
-    title="Get started"
-    body="Get set up for using CDC in YugabyteDB."
-    href="cdc-get-started/"
-    icon="/images/section_icons/index/quick_start.png">}}
+YugabyteDB supports the following methods for reading change events.
 
-  {{<index/item
-    title="Monitor"
-    body="Monitor deployed CDC connectors."
-    href="cdc-monitor/"
-    icon="/images/section_icons/explore/monitoring.png">}}
+## PostgreSQL Replication Protocol
 
-{{</index/block>}}
+This method uses the [PostgreSQL replication protocol](using-logical-replication/key-concepts/#replication-protocols), ensuring compatibility with PostgreSQL CDC systems. Logical replication operates through a publish-subscribe model. It replicates data objects and their changes based on the replication identity.
+
+It works as follows:
+
+1. Create Publications in the YugabyteDB cluster similar to PostgreSQL.
+1. Deploy the YugabyteDB Connector in your preferred Kafka Connect environment.
+1. The connector uses replication slots to capture change events and publishes them directly to a Kafka topic.
+
+{{<lead link="./using-logical-replication/">}}
+To learn about CDC in YugabyteDB using the PostgreSQL Replication Protocol, see [CDC using PostgreSQL Replication Protocol](./using-logical-replication).
+{{</lead>}}
+
+## YugabyteDB gRPC Replication Protocol
+
+This method involves setting up a change stream in YugabyteDB that uses the native gRPC replication protocol to publish change events.
+
+It works as follows:
+
+1. Establish a change stream in the YugabyteDB cluster using the yb_admin CLI commands.
+1. Deploy the YugabyteDB gRPC Connector in your preferred Kafka Connect environment.
+1. The connector captures change events using YugabyteDB's native gRPC replication and directly publishes them to a Kafka topic.
+
+{{<lead link="./using-yugabytedb-grpc-replication/">}}
+To learn about CDC in YugabyteDB using the gRPC Replication Protocol, see [CDC using gRPC Replication Protocol](./using-yugabytedb-grpc-replication/).
+{{</lead>}}

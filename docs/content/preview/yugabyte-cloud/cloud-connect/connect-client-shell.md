@@ -1,8 +1,8 @@
 ---
 title: Connect via client shells
 linkTitle: Client shell
-description: Connect to YugabyteDB Managed clusters from your desktop using a client shell
-headcontent: Connect to YugabyteDB Managed databases from your desktop
+description: Connect to YugabyteDB Aeon clusters from your desktop using a client shell
+headcontent: Connect to YugabyteDB Aeon databases from your desktop
 menu:
   preview_yugabyte-cloud:
     identifier: connect-client-shell
@@ -17,7 +17,7 @@ When connecting via a Yugabyte client shell, ensure you are running the latest v
 
 ## Prerequisites
 
-Before you can connect a desktop client to a YugabyteDB Managed cluster, you need to do the following:
+Before you can connect a desktop client to a YugabyteDB Aeon cluster, you need to do the following:
 
 - Configure network access
 - Download the cluster certificate
@@ -26,15 +26,15 @@ Before you can connect a desktop client to a YugabyteDB Managed cluster, you nee
 
 Before you can connect using a shell or other client, you need to add your computer to the cluster IP allow list.
 
-By default, clusters deployed in a VPC do not expose any publicly-accessible IP addresses. To add public IP addresses, enable [Public Access](../../../yugabyte-cloud/cloud-secure-clusters/add-connections/#enabling-public-access) on the cluster **Settings > Network Access** tab. Alternatively, use the [Cloud shell](../connect-cloud-shell/) instead.
+By default, clusters deployed in a VPC do not expose any publicly-accessible IP addresses. To add public IP addresses, enable [Public Access](../../cloud-secure-clusters/add-connections/#enabling-public-access) on the cluster **Settings > Network Access** tab. Alternatively, use the [Cloud shell](../connect-cloud-shell/) instead.
 
 For more information, refer to [IP allow list](../../cloud-secure-clusters/add-connections).
 
 ### Cluster certificate
 
-YugabyteDB Managed clusters have TLS/SSL (encryption in-transit) enabled. You need to download the cluster certificate to your computer.
+YugabyteDB Aeon clusters have TLS/SSL (encryption in-transit) enabled. You need to download the cluster certificate to your computer.
 
-For information on SSL in YugabyteDB Managed, refer to [Encryption in transit](../../cloud-secure-clusters/cloud-authentication/).
+For information on SSL in YugabyteDB Aeon, refer to [Encryption in transit](../../cloud-secure-clusters/cloud-authentication/).
 
 ## Connect using a client shell
 
@@ -42,13 +42,13 @@ Use the ysqlsh and ycqlsh shells to connect to and interact with YuagbyteDB usin
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
-    <a href="#ysqlsh" class="nav-link active" id="ysqlsh-tab" data-toggle="tab" role="tab" aria-controls="ysqlsh" aria-selected="true">
+    <a href="#ysqlsh" class="nav-link active" id="ysqlsh-tab" data-bs-toggle="tab" role="tab" aria-controls="ysqlsh" aria-selected="true">
       <i class="icon-postgres" aria-hidden="true"></i>
       ysqlsh
     </a>
   </li>
   <li>
-    <a href="#ycqlsh" class="nav-link" id="ycqlsh-tab" data-toggle="tab" role="tab" aria-controls="ycqlsh" aria-selected="false">
+    <a href="#ycqlsh" class="nav-link" id="ycqlsh-tab" data-bs-toggle="tab" role="tab" aria-controls="ycqlsh" aria-selected="false">
       <i class="icon-cassandra" aria-hidden="true"></i>
       ycqlsh
     </a>
@@ -87,7 +87,7 @@ For information on using other SSL modes, refer to [SSL modes in YSQL](../../clo
 
 ## Connect using third party clients
 
-Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can use third-party clients to connect to your YugabyteDB clusters in YugabyteDB Managed.
+Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can use third-party clients to connect to your YugabyteDB clusters in YugabyteDB Aeon.
 
 To connect, follow the client's configuration steps for PostgreSQL or Cassandra, and use the following values:
 

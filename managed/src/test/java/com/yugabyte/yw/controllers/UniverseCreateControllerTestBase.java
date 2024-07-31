@@ -966,16 +966,17 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
         null,
         null
       },
+      {Common.CloudType.azu, "c3.xlarge", StorageType.Premium_LRS, 1, 100, null, null, null, null},
       {
         Common.CloudType.azu,
         "c3.xlarge",
-        PublicCloudConstants.StorageType.Premium_LRS,
+        PublicCloudConstants.StorageType.PremiumV2_LRS,
         1,
         100,
         null,
         null,
         null,
-        null
+        "Disk IOPS is mandatory for PremiumV2_LRS storage"
       },
       {
         Common.CloudType.azu,
@@ -1205,7 +1206,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
       {
         Common.CloudType.azu,
         "c3.xlarge",
-        PublicCloudConstants.StorageType.Premium_LRS,
+        PublicCloudConstants.StorageType.PremiumV2_LRS,
         1,
         null,
         null,

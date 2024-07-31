@@ -25,6 +25,7 @@
 #include "access/relscan.h"
 #include "executor/executor.h"
 #include "executor/nodeYbBitmapTablescan.h"
+#include "nodes/nodeFuncs.h"
 #include "utils/rel.h"
 #include "utils/tqual.h"
 
@@ -46,7 +47,6 @@ YbBitmapTableNext(YbBitmapTableScanState *node)
 	YbTBMIterateResult *ybtbmres;
 	HeapScanDesc scandesc;
 	ExprContext *econtext;
-	MemoryContext oldcontext;
 	YbScanDesc ybScan;
 
 	/*
@@ -74,8 +74,26 @@ YbBitmapTableNext(YbBitmapTableScanState *node)
 		node->initialized = true;
 		node->work_mem_exceeded = ybtbm->work_mem_exceeded;
 		node->average_ybctid_bytes = yb_tbm_get_average_bytes(ybtbm);
-		node->recheck_required |= ybtbm->recheck;
 		node->skipped_tuples = 0;
+		node->recheck_required =
+			YbGetBitmapScanRecheckRequired(outerPlanState(node));
+
+		if (node->aggrefs)
+		{
+			/*
+			 * For aggregate pushdown, we read just the aggregates from DocDB
+			 * and pass that up to the aggregate node (agg pushdown wouldn't be
+			 * enabled if we needed to read more than that).  Set up a dummy
+			 * scan slot to hold as many attributes as there are pushed
+			 * aggregates.
+			 */
+			TupleDesc tupdesc = CreateTemplateTupleDesc(
+				list_length(node->aggrefs), false /* hasoid */);
+			ExecInitScanTupleSlot(node->ss.ps.state, &node->ss, tupdesc);
+
+			/* Refresh the local pointer. */
+			slot = node->ss.ss_ScanTupleSlot;
+		}
 	}
 
 	if (!node->ss.ss_currentScanDesc)
@@ -131,11 +149,8 @@ YbBitmapTableNext(YbBitmapTableScanState *node)
 		/* We have yb_fetch_row_limit rows fetched, get them one by one */
 		while (true)
 		{
-			/* capture all fetch allocations in the short-lived context */
-			oldcontext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
 			ybFetchNext(ybScan->handle, slot,
 						RelationGetRelid(node->ss.ss_currentRelation));
-			MemoryContextSwitchTo(oldcontext);
 
 			if (ybtbmres)
 				++ybtbmres->index;
@@ -230,22 +245,34 @@ CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate)
 	YbScanDesc		ybScan;
 	PushdownExprs  *yb_pushdown;
 	HeapScanDesc	scandesc;
-	YbBitmapTableScan *plan = (YbBitmapTableScan *) scanstate->ss.ps.plan;
+
+	/* Make a copy so it can be modified */
+	YbBitmapTableScan plan = *(YbBitmapTableScan *) scanstate->ss.ps.plan;
+
+	/*
+	 * If we don't need the local quals, remove them. ybcSetupTargets will
+	 * add their required columns to the target if they exist.
+	 */
+	if (!scanstate->work_mem_exceeded)
+		plan.fallback_local_quals = NULL;
+	if (!scanstate->recheck_local_quals)
+		plan.recheck_local_quals = NULL;
 
 	yb_pushdown = YbInstantiatePushdownParams(
-			scanstate->work_mem_exceeded ? &plan->fallback_pushdown
-										 : &plan->rel_pushdown,
+			scanstate->work_mem_exceeded ? &plan.fallback_pushdown
+										 : &plan.rel_pushdown,
 			scanstate->ss.ps.state);
+
 
 	ybScan = ybcBeginScan(scanstate->ss.ss_currentRelation,
 						  NULL /* index */,
 						  false /* xs_want_itup */,
 						  0 /* nkeys */,
 						  NULL /* keys */,
-						  (Scan *) plan /* pg_scan_plan */,
+						  (Scan *) &plan /* pg_scan_plan */,
 						  yb_pushdown /* rel_pushdown */,
 						  NULL /* idx_pushdown */,
-						  NULL /* aggrefs */,
+						  scanstate->aggrefs /* aggrefs */,
 						  0 /* distinct_prefixlen */,
 						  &scanstate->ss.ps.state->yb_exec_params,
 						  true /* is_internal_scan */,
@@ -265,7 +292,7 @@ CreateYbBitmapTableScanDesc(YbBitmapTableScanState *scanstate)
 	if (scanstate->recheck_required && !scanstate->work_mem_exceeded)
 	{
 		PushdownExprs *recheck_pushdown = YbInstantiatePushdownParams(
-			&plan->recheck_pushdown,
+			&plan.recheck_pushdown,
 			scanstate->ss.ps.state);
 		if (recheck_pushdown)
 		{
@@ -462,6 +489,11 @@ ExecInitYbBitmapTableScan(YbBitmapTableScan *node, EState *estate, int eflags)
 		ExecInitQual(node->fallback_local_quals, (PlanState *) scanstate);
 
 	scanstate->ss.ss_currentRelation = currentRelation;
+
+	/*
+	 * We can already tell if we need to recheck index qual conditions.
+	 */
+	scanstate->recheck_required = YbGetBitmapScanRecheckRequired(outerPlanState(scanstate));
 
 	/*
 	 * all done.

@@ -63,6 +63,8 @@
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
 
+#include "yb/rpc/rpc_context.h"
+
 #include "yb/yql/pggate/pggate_flags.h"
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
@@ -79,6 +81,7 @@ DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(ysql_yb_enable_replica_identity);
+DECLARE_bool(TEST_enable_pg_client_mock);
 
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
@@ -119,6 +122,7 @@ DECLARE_uint64(pg_client_heartbeat_interval_ms);
 
 DECLARE_bool(ysql_yb_ash_enable_infra);
 DECLARE_bool(ysql_yb_enable_ash);
+DECLARE_int32(ysql_yb_ash_sample_size);
 
 METRIC_DECLARE_entity(tablet);
 METRIC_DECLARE_gauge_uint64(aborted_transactions_pending_cleanup);
@@ -243,87 +247,205 @@ TEST_F(PgMiniTest, FollowerReads) {
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT)"));
   ASSERT_OK(conn.Execute("INSERT INTO t (key, value) VALUES (1, 'old')"));
 
-  ASSERT_OK(conn.Execute("SET yb_debug_log_docdb_requests = true"));
-  ASSERT_OK(conn.Execute("SET yb_read_from_followers = true"));
+  ASSERT_OK(conn.Execute("SET yb_debug_log_docdb_requests = false"));
 
-  // Try to set a value < 2 * max_clock_skew (500ms) should fail.
-  ASSERT_NOK(conn.Execute(Format("SET yb_follower_read_staleness_ms = $0", 400)));
-  ASSERT_NOK(conn.Execute(Format("SET yb_follower_read_staleness_ms = $0", 999)));
-  // Setting a value > 2 * max_clock_skew should work.
-  ASSERT_OK(conn.Execute(Format("SET yb_follower_read_staleness_ms = $0", 1001)));
+  for (bool expect_old_behavior_before_20482 : {false, true}) {
+    ASSERT_OK(conn.ExecuteFormat("SET yb_read_from_followers = true"));
+    // Try to set a value < 2 * max_clock_skew (500ms) should fail.
+    ASSERT_NOK(conn.Execute(Format("SET yb_follower_read_staleness_ms = $0", 400)));
+    ASSERT_NOK(conn.Execute(Format("SET yb_follower_read_staleness_ms = $0", 999)));
+    // Setting a value > 2 * max_clock_skew should work.
+    ASSERT_OK(conn.Execute(Format("SET yb_follower_read_staleness_ms = $0", 1001)));
+
+    ASSERT_OK(conn.ExecuteFormat("SET yb_read_from_followers = false"));
+    if (expect_old_behavior_before_20482) {
+      ASSERT_OK(conn.ExecuteFormat("SET yb_follower_reads_behavior_before_fixing_20482 = true"));
+      // The old behavior was to check the limits only when follower reads are enabled.
+      ASSERT_OK(conn.Execute(Format("SET yb_follower_read_staleness_ms = $0", 999)));
+      // However, the limits are checked when follower reads is enabled.
+      ASSERT_NOK(conn.ExecuteFormat("SET yb_read_from_followers = true"));
+      ASSERT_OK(conn.ExecuteFormat("SET yb_follower_reads_behavior_before_fixing_20482 = false"));
+    } else {
+      // The new behavior is to check the limits whenever the staleness is updated.
+      ASSERT_NOK(conn.Execute(Format("SET yb_follower_read_staleness_ms = $0", 999)));
+    }
+  }
 
   // Setting staleness to what we require for the test.
   // Sleep and then perform an update, such that follower reads should see the old value.
   // But current reads will see the new/updated value.
   constexpr int32_t kStalenessMs = 4000;
+  LOG(INFO) << "Sleeping for " << kStalenessMs << " ms";
   SleepFor(MonoDelta::FromMilliseconds(kStalenessMs));
   ASSERT_OK(conn.Execute("UPDATE t SET value = 'NEW' WHERE key = 1"));
   auto kUpdateTime = MonoTime::Now();
   ASSERT_OK(conn.Execute(Format("SET yb_follower_read_staleness_ms = $0", kStalenessMs)));
+  ASSERT_OK(conn.ExecuteFormat("SET yb_read_from_followers = true"));
   ASSERT_OK(
         conn.Execute("CREATE FUNCTION func() RETURNS text AS"
                      " $$ SELECT value FROM t WHERE key = 1 $$ LANGUAGE SQL"));
 
   // Follower reads will not be enabled unless a transaction block is marked read-only.
-  {
-    ASSERT_OK(conn.Execute("BEGIN TRANSACTION"));
+  for (bool read_only : {true, false}) {
+    ASSERT_OK(conn.Execute(yb::Format("BEGIN TRANSACTION $0", read_only ? "READ ONLY" : "")));
     auto value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
-    ASSERT_EQ(value, "NEW");
+    ASSERT_EQ(value, read_only ? "old" : "NEW");
     // Test with function
     value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT func()"));
-    ASSERT_EQ(value, "NEW");
+    ASSERT_EQ(value, read_only ? "old" : "NEW");
     // Test with join
     value = ASSERT_RESULT(conn.FetchRow<std::string>(
         "SELECT phrase FROM t, t2 WHERE t.value = t2.word"));
-    ASSERT_EQ(value, "NEW is fine");
+    ASSERT_EQ(value, read_only ? "old is gold" : "NEW is fine");
     ASSERT_OK(conn.Execute("COMMIT"));
   }
 
-  // Follower reads will be enabled for transaction block(s) marked read-only.
-  {
-    ASSERT_OK(conn.Execute("BEGIN TRANSACTION READ ONLY"));
-    auto value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
-    ASSERT_EQ(value, "old");
-    // Test with function
-    value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT func()"));
-    ASSERT_EQ(value, "old");
-    // Test with join
-    value = ASSERT_RESULT(conn.FetchRow<std::string>(
-        "SELECT phrase FROM t, t2 WHERE t.value = t2.word"));
-    ASSERT_EQ(value, "old is gold");
-    ASSERT_OK(conn.Execute("COMMIT"));
-  }
-
+  ASSERT_OK(conn.Execute("SET yb_read_from_followers = true"));
   // Follower reads will not be enabled unless the session or statement is marked read-only.
-  {
+  for (bool read_only : {true, false}) {
+    ASSERT_OK(conn.Execute(yb::Format("SET default_transaction_read_only = $0", read_only)));
     auto value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
-    ASSERT_EQ(value, "NEW");
+    ASSERT_EQ(value, read_only ? "old" : "NEW");
     // Test with function
     value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT func()"));
-    ASSERT_EQ(value, "NEW");
+    ASSERT_EQ(value, read_only ? "old" : "NEW");
     // Test with join
     value = ASSERT_RESULT(conn.FetchRow<std::string>(
         "SELECT phrase FROM t, t2 WHERE t.value = t2.word"));
-    ASSERT_EQ(value, "NEW is fine");
+    ASSERT_EQ(value, read_only ? "old is gold" : "NEW is fine");
   }
 
-  // Follower reads will be enabled since the session is marked read-only.
-  {
-    ASSERT_OK(conn.Execute("SET default_transaction_read_only = true"));
-    auto value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
-    ASSERT_EQ(value, "old");
-    // Test with function
-    value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT func()"));
-    ASSERT_EQ(value, "old");
-    // Test with join
-    value = ASSERT_RESULT(conn.FetchRow<std::string>(
-        "SELECT phrase FROM t, t2 WHERE t.value = t2.word"));
-    ASSERT_EQ(value, "old is gold");
-  }
+  const std::vector<std::string> kIsolationLevels{
+      "SERIALIZABLE", "REPEATABLE READ", "READ COMMITTED", "READ UNCOMMITTED"};
+  for (bool expect_old_behavior_before_20482 : {false, true}) {
+    ASSERT_OK(conn.ExecuteFormat(
+        "SET yb_follower_reads_behavior_before_fixing_20482 = $0",
+        expect_old_behavior_before_20482));
+    for (const auto& isolation_level : kIsolationLevels) {
+      for (bool in_subtransaction : {true, false}) {
+        ASSERT_OK(conn.Execute("SET yb_read_from_followers = false"));
+
+        LOG(INFO) << "Isolation level " << isolation_level << " in_subtransaction "
+                  << in_subtransaction;
+        ASSERT_OK(
+            conn.Execute(yb::Format("BEGIN TRANSACTION ISOLATION LEVEL $0", isolation_level)));
+        ASSERT_OK(conn.Execute("SAVEPOINT a"));
+        ASSERT_OK(conn.Execute("SET transaction_read_only = true"));
+        if (!in_subtransaction) {
+          ASSERT_OK(conn.Execute("RELEASE SAVEPOINT a"));
+          ASSERT_OK(conn.Execute("SET yb_read_from_followers = true"));
+          auto value =
+              ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
+          ASSERT_EQ(value, expect_old_behavior_before_20482 ? "NEW" : "old");
+        } else {
+          // We don't allow changing follower read settings in a sub-transaction.
+          auto s = conn.Execute("SET yb_read_from_followers = true");
+          ASSERT_EQ(s.ok(), expect_old_behavior_before_20482);
+          if (!expect_old_behavior_before_20482) {
+            ASSERT_TRUE(
+                s.ToString(false, false)
+                    .find("ERROR:  SET yb_read_from_followers must not be called in a "
+                          "subtransaction") != std::string::npos);
+          }
+        }
+        ASSERT_OK(conn.Execute("COMMIT"));
+      }  // in_subtransaction
+
+      // Test the ability to SET follower reads within a txn. with and without LOCAL being
+      // specified.
+      for (bool local : {true, false}) {
+        LOG(INFO) << "Isolation level " << isolation_level << " local " << local;
+        ASSERT_OK(conn.Execute("SET yb_read_from_followers = false"));
+
+        ASSERT_OK(conn.Execute(Format("SET yb_follower_read_staleness_ms = $0", kStalenessMs)));
+        ASSERT_OK(conn.Execute(
+            yb::Format("BEGIN TRANSACTION READ ONLY ISOLATION LEVEL $0", isolation_level)));
+
+        ASSERT_OK(
+            conn.Execute(yb::Format("SET $0 yb_read_from_followers = true", local ? "LOCAL" : "")));
+        ASSERT_OK(conn.Execute(Format(
+            "SET $0 yb_follower_read_staleness_ms = $1", (local ? "LOCAL" : ""),
+            kStalenessMs + 1)));
+        auto value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
+        ASSERT_EQ(value, expect_old_behavior_before_20482 ? "NEW" : "old");
+        ASSERT_OK(conn.Execute("COMMIT"));
+
+        value = ASSERT_RESULT(conn.FetchRow<std::string>("SHOW yb_read_from_followers"));
+        ASSERT_EQ(value, local ? "off" : "on");
+        value = ASSERT_RESULT(conn.FetchRow<std::string>("SHOW yb_follower_read_staleness_ms"));
+        ASSERT_EQ(value, yb::ToString(local ? kStalenessMs : kStalenessMs + 1));
+
+        // If the setting was updated using `local` then it should not have any effect outside the
+        // transaction block. However, if `local` is not used, the setting should reflect
+        // the changes even after the txn block is committed.
+        ASSERT_OK(conn.Execute(
+            yb::Format("BEGIN TRANSACTION READ ONLY ISOLATION LEVEL $0", isolation_level)));
+        value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
+        ASSERT_EQ(value, local ? "NEW" : "old");
+        ASSERT_OK(conn.Execute("COMMIT"));
+      }  // local
+
+      // Test that we are able to disable the follower read settings within a txn.
+      ASSERT_OK(conn.Execute("SET yb_read_from_followers = false"));
+      ASSERT_OK(conn.Execute(
+          yb::Format("BEGIN TRANSACTION READ ONLY ISOLATION LEVEL $0", isolation_level)));
+      ASSERT_OK(conn.Execute("SET local yb_read_from_followers = true"));
+      ASSERT_OK(conn.Execute("SET local yb_read_from_followers = false"));
+      auto value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
+      ASSERT_EQ(value, "NEW");
+      ASSERT_OK(conn.Execute("COMMIT"));
+
+      // Test the ability to SET yb_follower_read_staless_ms within a txn.
+      constexpr int32_t kShortStalenessMs = 1001;
+      auto kWaitUntil = kUpdateTime + MonoDelta::FromMilliseconds(2 * kShortStalenessMs);
+      LOG(INFO) << "Last update was done at " << kUpdateTime.ToString() << " waiting until "
+                << kWaitUntil.ToString();
+      SleepUntil(kWaitUntil);
+      LOG(INFO) << "Done waiting";
+      ASSERT_GE(MonoTime::Now(), kWaitUntil);
+
+      for (bool short_staleness : {true, false}) {
+        LOG(INFO) << "Isolation level " << isolation_level << " short_staleness "
+                  << short_staleness;
+        ASSERT_OK(conn.Execute("SET yb_read_from_followers = false"));
+        ASSERT_OK(conn.Execute(Format("SET yb_follower_read_staleness_ms = $0", kStalenessMs)));
+
+        LOG(INFO) << "Isolation level " << isolation_level;
+        ASSERT_OK(conn.Execute(
+            yb::Format("BEGIN TRANSACTION READ ONLY ISOLATION LEVEL $0", isolation_level)));
+        ASSERT_OK(conn.Execute("SET LOCAL yb_read_from_followers = true"));
+        auto staleness_ms = short_staleness ? kShortStalenessMs : kStalenessMs;
+        ASSERT_OK(conn.Execute(Format("SET yb_follower_read_staleness_ms = $0", staleness_ms)));
+        auto value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
+        ASSERT_EQ(value, (short_staleness || expect_old_behavior_before_20482) ? "NEW" : "old");
+        ASSERT_OK(conn.Execute("COMMIT"));
+      }  // short_staleness
+
+      // Test joins/functions with follower reads inside a txn block.
+      ASSERT_OK(conn.Execute("SET yb_read_from_followers = false"));
+      ASSERT_OK(conn.Execute(
+          yb::Format("BEGIN TRANSACTION READ ONLY ISOLATION LEVEL $0", isolation_level)));
+      ASSERT_OK(conn.Execute("SET yb_read_from_followers = true"));
+      value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
+      ASSERT_EQ(value, expect_old_behavior_before_20482 ? "NEW" : "old");
+      // Test with function
+      value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT func()"));
+      ASSERT_EQ(value, expect_old_behavior_before_20482 ? "NEW" : "old");
+      // Test with join
+      value = ASSERT_RESULT(
+          conn.FetchRow<std::string>("SELECT phrase FROM t, t2 WHERE t.value = t2.word"));
+      ASSERT_EQ(value, expect_old_behavior_before_20482 ? "NEW is fine" : "old is gold");
+      auto s = conn.Execute("SET yb_read_from_followers = false");
+      ASSERT_EQ(s.ok(), expect_old_behavior_before_20482);
+      ASSERT_OK(conn.Execute("ABORT"));
+    }  // isolation_level
+  }    // expect_old_behavior_before_20482
 
   // After sufficient time has passed, even "follower reads" should see the newer value.
   {
-    SleepFor(kUpdateTime + MonoDelta::FromMilliseconds(kStalenessMs) - MonoTime::Now());
+    const auto kWaitUntil = kUpdateTime + MonoDelta::FromMilliseconds(kStalenessMs);
+    LOG(INFO) << "Sleeping until we are past " << kWaitUntil.ToString();
+    SleepUntil(kWaitUntil);
 
     ASSERT_OK(conn.Execute("SET default_transaction_read_only = false"));
     auto value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
@@ -452,18 +574,19 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(Ash), PgMiniAshTest) {
   req.set_fetch_tserver_states(true);
   req.set_fetch_flush_and_compaction_states(true);
   req.set_fetch_cql_states(true);
+  req.set_sample_size(FLAGS_ysql_yb_ash_sample_size);
   tserver::PgActiveSessionHistoryResponsePB resp;
   rpc::RpcController controller;
   std::unordered_map<std::string, size_t> method_counts;
   int calls_without_aux_info_details = 0;
   for (int i = 0; i < kNumCalls; ++i) {
     ASSERT_OK(pg_proxy->ActiveSessionHistory(req, &resp, &controller));
-    VLOG(1) << "Call " << i << " got " << yb::ToString(resp);
+    VLOG(0) << "Call " << i << " got " << yb::ToString(resp);
     controller.Reset();
     SleepFor(10ms);
     int idx = 0;
     for (auto& entry : resp.tserver_wait_states().wait_states()) {
-      VLOG(2) << "Entry " << ++idx << " : " << yb::ToString(entry);
+      VLOG(0) << "Entry " << ++idx << " : " << yb::ToString(entry);
       if (entry.has_aux_info() && entry.aux_info().has_method()) {
         ++method_counts[entry.aux_info().method()];
       } else {
@@ -2230,6 +2353,58 @@ TEST_F_EX(PgMiniTest, DISABLED_ReadsDuringRBS, PgMiniStreamCompressionTest) {
   }
 
   thread_holder.Stop();
+}
+
+Status MockAbortFailure(
+    const yb::tserver::PgFinishTransactionRequestPB* req,
+    yb::tserver::PgFinishTransactionResponsePB* resp, yb::rpc::RpcContext* context) {
+  LOG(INFO) << "FinishTransaction called for session: " << req->session_id();
+
+  if (req->session_id() == 1) {
+    context->CloseConnection();
+    // The return status should not matter here.
+    return Status::OK();
+  } else if (req->session_id() == 2) {
+    return STATUS(NetworkError, "Mocking network failure on FinishTransaction");
+  }
+
+  return Status::OK();
+}
+
+class PgRecursiveAbortTest : public PgMiniTestSingleNode {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_pg_client_mock) = true;
+    PgMiniTest::SetUp();
+  }
+
+  template <class F>
+  tserver::PgClientServiceMockImpl::Handle MockFinishTransaction(const F& mock) {
+    auto* client = cluster_->mini_tablet_server(0)->server()->TEST_GetPgClientServiceMock();
+    return client->MockFinishTransaction(mock);
+  }
+};
+
+TEST_F(PgRecursiveAbortTest, AbortOnTserverFailure) {
+  PGConn conn1 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn1.Execute("CREATE TABLE t1 (k INT)"));
+
+  // Validate that "connection refused" from tserver during a transaction does not produce a PANIC.
+  ASSERT_OK(conn1.StartTransaction(SNAPSHOT_ISOLATION));
+  // Run a command to ensure that the transaction is created in the backend.
+  ASSERT_OK(conn1.Execute("INSERT INTO t1 VALUES (1)"));
+  auto handle = MockFinishTransaction(MockAbortFailure);
+  auto status = conn1.Execute("CREATE TABLE t2 (k INT)");
+  ASSERT_TRUE(status.IsNetworkError());
+  ASSERT_EQ(conn1.ConnStatus(), CONNECTION_BAD);
+
+  // Validate that aborting a transaction does not produce a PANIC.
+  PGConn conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn2.StartTransaction(SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn2.Execute("INSERT INTO t1 VALUES (1)"));
+  status = conn2.Execute("ABORT");
+  ASSERT_TRUE(status.IsNetworkError());
+  ASSERT_EQ(conn1.ConnStatus(), CONNECTION_BAD);
 }
 
 } // namespace yb::pgwrapper

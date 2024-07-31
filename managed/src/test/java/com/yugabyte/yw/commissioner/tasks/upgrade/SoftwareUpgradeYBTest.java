@@ -2,9 +2,6 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
-import static com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType.DownloadingSoftware;
-import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.MASTER;
-import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.TSERVER;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -23,10 +20,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
-import com.yugabyte.yw.commissioner.UserTaskDetails;
-import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.MockUpgrade;
+import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -37,6 +33,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
+import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
@@ -49,10 +46,8 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -78,68 +73,6 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
   @Rule public MockitoRule rule = MockitoJUnit.rule();
 
   @InjectMocks private SoftwareUpgrade softwareUpgrade;
-
-  private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_MASTER =
-      ImmutableList.of(
-          TaskType.SetNodeState,
-          TaskType.CheckNodesAreSafeToTakeDown,
-          TaskType.RunHooks,
-          TaskType.AnsibleClusterServerCtl,
-          TaskType.AnsibleConfigureServers,
-          TaskType.AnsibleClusterServerCtl,
-          TaskType.WaitForServer,
-          TaskType.WaitForServerReady,
-          TaskType.WaitForEncryptionKeyInMemory,
-          TaskType.CheckFollowerLag,
-          TaskType.RunHooks,
-          TaskType.SetNodeState,
-          TaskType.WaitStartingFromTime);
-
-  private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_TSERVER =
-      ImmutableList.of(
-          TaskType.SetNodeState,
-          TaskType.CheckUnderReplicatedTablets,
-          TaskType.CheckNodesAreSafeToTakeDown,
-          TaskType.RunHooks,
-          TaskType.ModifyBlackList,
-          TaskType.WaitForLeaderBlacklistCompletion,
-          TaskType.AnsibleClusterServerCtl,
-          TaskType.AnsibleConfigureServers,
-          TaskType.AnsibleClusterServerCtl,
-          TaskType.WaitForServer,
-          TaskType.WaitForServerReady,
-          TaskType.WaitForEncryptionKeyInMemory,
-          TaskType.ModifyBlackList,
-          TaskType.CheckFollowerLag,
-          TaskType.RunHooks,
-          TaskType.SetNodeState,
-          TaskType.WaitStartingFromTime);
-
-  private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_INACTIVE_ROLE =
-      ImmutableList.of(
-          TaskType.SetNodeState,
-          TaskType.RunHooks,
-          TaskType.AnsibleClusterServerCtl,
-          TaskType.AnsibleConfigureServers,
-          TaskType.RunHooks,
-          TaskType.SetNodeState,
-          TaskType.WaitStartingFromTime);
-
-  private static final List<TaskType> NON_ROLLING_UPGRADE_TASK_SEQUENCE_ACTIVE_ROLE =
-      ImmutableList.of(
-          TaskType.SetNodeState,
-          TaskType.AnsibleClusterServerCtl,
-          TaskType.AnsibleConfigureServers,
-          TaskType.AnsibleClusterServerCtl,
-          TaskType.WaitForServer,
-          TaskType.SetNodeState);
-
-  private static final List<TaskType> NON_ROLLING_UPGRADE_TASK_SEQUENCE_INACTIVE_ROLE =
-      ImmutableList.of(
-          TaskType.SetNodeState,
-          TaskType.AnsibleClusterServerCtl,
-          TaskType.AnsibleConfigureServers,
-          TaskType.SetNodeState);
 
   @Override
   @Before
@@ -178,127 +111,6 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
 
   private TaskInfo submitTask(SoftwareUpgradeParams requestParams, int expectedVersion) {
     return submitTask(requestParams, TaskType.SoftwareUpgradeYB, commissioner, expectedVersion);
-  }
-
-  private int assertCommonTasks(
-      Map<Integer, List<TaskInfo>> subTasksByPosition,
-      int startPosition,
-      UpgradeType type,
-      boolean isAutoFinalize,
-      boolean isFinalStep) {
-    int position = startPosition;
-    List<TaskType> commonNodeTasks = new ArrayList<>();
-
-    if (type.name().equals("ROLLING_UPGRADE_TSERVER_ONLY") && !isFinalStep) {
-      commonNodeTasks.add(TaskType.ModifyBlackList);
-    }
-    if (isFinalStep) {
-      commonNodeTasks.addAll(
-          ImmutableList.of(
-              TaskType.CheckSoftwareVersion,
-              TaskType.StoreAutoFlagConfigVersion,
-              TaskType.PromoteAutoFlags,
-              TaskType.UpdateSoftwareVersion,
-              TaskType.UpdateUniverseState));
-
-      if (isAutoFinalize) {
-        commonNodeTasks.addAll(
-            ImmutableList.of(
-                TaskType.RunYsqlUpgrade, TaskType.PromoteAutoFlags, TaskType.UpdateUniverseState));
-      }
-      commonNodeTasks.addAll(ImmutableList.of(TaskType.RunHooks, TaskType.UniverseUpdateSucceeded));
-    }
-    for (TaskType commonNodeTask : commonNodeTasks) {
-      assertTaskType(subTasksByPosition.get(position), commonNodeTask);
-      position++;
-    }
-    return position;
-  }
-
-  private int assertSequence(
-      Map<Integer, List<TaskInfo>> subTasksByPosition,
-      ServerType serverType,
-      int startPosition,
-      boolean isRollingUpgrade,
-      boolean activeRole) {
-    int position = startPosition;
-    if (isRollingUpgrade) {
-      List<TaskType> taskSequence =
-          serverType == MASTER
-              ? (activeRole
-                  ? ROLLING_UPGRADE_TASK_SEQUENCE_MASTER
-                  : ROLLING_UPGRADE_TASK_SEQUENCE_INACTIVE_ROLE)
-              : ROLLING_UPGRADE_TASK_SEQUENCE_TSERVER;
-      List<Integer> nodeOrder = getRollingUpgradeNodeOrder(serverType, activeRole);
-      for (int nodeIdx : nodeOrder) {
-        String nodeName = String.format("host-n%d", nodeIdx);
-        for (TaskType type : taskSequence) {
-          List<TaskInfo> tasks = subTasksByPosition.get(position);
-          TaskType taskType = tasks.get(0).getTaskType();
-          UserTaskDetails.SubTaskGroupType subTaskGroupType = tasks.get(0).getSubTaskGroupType();
-          // Leader blacklisting adds a ModifyBlackList task at position 0
-          int numTasksToAssert = position == 0 ? 2 : 1;
-          assertEquals(numTasksToAssert, tasks.size());
-          assertEquals("at position " + position, type, taskType);
-          if (!NON_NODE_TASKS.contains(taskType)) {
-            Map<String, Object> assertValues =
-                new HashMap<>(ImmutableMap.of("nodeName", nodeName, "nodeCount", 1));
-
-            if (taskType.equals(TaskType.AnsibleConfigureServers)) {
-              String version = "2.21.0.0-b2";
-              String taskSubType =
-                  subTaskGroupType.equals(DownloadingSoftware) ? "Download" : "Install";
-              assertValues.putAll(
-                  ImmutableMap.of(
-                      "ybSoftwareVersion", version,
-                      "processType", serverType.toString(),
-                      "taskSubType", taskSubType));
-            }
-            assertNodeSubTask(tasks, assertValues);
-          }
-          position++;
-        }
-      }
-    } else {
-      List<TaskType> taskSequence =
-          activeRole
-              ? NON_ROLLING_UPGRADE_TASK_SEQUENCE_ACTIVE_ROLE
-              : NON_ROLLING_UPGRADE_TASK_SEQUENCE_INACTIVE_ROLE;
-      for (TaskType type : taskSequence) {
-        List<TaskInfo> tasks = subTasksByPosition.get(position);
-        TaskType taskType = assertTaskType(tasks, type);
-
-        if (NON_NODE_TASKS.contains(taskType)) {
-          assertEquals(1, tasks.size());
-        } else {
-          List<String> nodes = null;
-          // We have 3 nodes as active masters, 2 as inactive masters and 5 tasks/nodes
-          // for Tserver.
-          if (serverType == MASTER) {
-            if (activeRole) {
-              nodes = ImmutableList.of("host-n1", "host-n2", "host-n3");
-            } else {
-              nodes = ImmutableList.of("host-n4", "host-n5");
-            }
-          } else {
-            nodes = ImmutableList.of("host-n1", "host-n2", "host-n3", "host-n4", "host-n5");
-          }
-
-          Map<String, Object> assertValues =
-              new HashMap<>(ImmutableMap.of("nodeNames", nodes, "nodeCount", nodes.size()));
-          if (taskType.equals(TaskType.AnsibleConfigureServers)) {
-            String version = "2.21.0.0-b2";
-            assertValues.putAll(
-                ImmutableMap.of(
-                    "ybSoftwareVersion", version, "processType", serverType.toString()));
-          }
-          assertEquals(nodes.size(), tasks.size());
-          assertNodeSubTask(tasks, assertValues);
-        }
-        position++;
-      }
-    }
-    return position;
   }
 
   @Test
@@ -341,34 +153,33 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     verify(mockNodeManager, times(71)).nodeCommand(any(), any());
     verify(mockNodeUniverseManager, times(10)).runCommand(any(), any(), anyList(), any());
 
-    List<TaskInfo> subTasks = taskInfo.getSubTasks();
-    Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+    MockUpgrade mockUpgrade = initMockUpgrade();
+    mockUpgrade
+        .precheckTasks(getPrecheckTasks(true))
+        .addTasks(TaskType.UpdateUniverseState)
+        .addSimultaneousTasks(TaskType.AnsibleConfigureServers, defaultUniverse.getMasters().size())
+        .addSimultaneousTasks(
+            TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
+        .addTasks(TaskType.XClusterInfoPersist)
+        .addSimultaneousTasks(
+            TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
+        .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
+        .withContext(
+            UpgradeTaskBase.UpgradeContext.builder()
+                .reconfigureMaster(false)
+                .runBeforeStopping(false)
+                .processInactiveMaster(true)
+                .targetSoftwareVersion("2.21.0.0-b2")
+                .build())
+        .task(TaskType.AnsibleConfigureServers)
+        .applyRound()
+        .addSimultaneousTasks(TaskType.CheckSoftwareVersion, defaultUniverse.getTServers().size())
+        .addTasks(TaskType.StoreAutoFlagConfigVersion)
+        .addTasks(TaskType.PromoteAutoFlags)
+        .addTasks(TaskType.UpdateSoftwareVersion)
+        .addTasks(TaskType.UpdateUniverseState)
+        .verifyTasks(taskInfo.getSubTasks());
 
-    int position = 0;
-    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckNodesAreSafeToTakeDown);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckUpgrade);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckLocale);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckGlibc);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
-    // XCluster gflag set up.
-    assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.XClusterInfoPersist);
-
-    List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);
-    assertTaskType(downloadTasks, TaskType.AnsibleConfigureServers);
-    assertEquals(5, downloadTasks.size());
-    position = assertSequence(subTasksByPosition, MASTER, position, true, false);
-    position = assertSequence(subTasksByPosition, MASTER, position, true, true);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
-    position =
-        assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false, false);
-    position = assertSequence(subTasksByPosition, TSERVER, position, true, true);
-    assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false, true);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
@@ -409,34 +220,36 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     verify(mockNodeManager, times(71)).nodeCommand(any(), any());
     verify(mockNodeUniverseManager, times(10)).runCommand(any(), any(), anyList(), any());
 
-    List<TaskInfo> subTasks = taskInfo.getSubTasks();
-    Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+    MockUpgrade mockUpgrade = initMockUpgrade();
+    mockUpgrade
+        .precheckTasks(getPrecheckTasks(true))
+        .addTasks(TaskType.UpdateUniverseState)
+        .addSimultaneousTasks(TaskType.AnsibleConfigureServers, defaultUniverse.getMasters().size())
+        .addSimultaneousTasks(
+            TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
+        .addTasks(TaskType.XClusterInfoPersist)
+        .addSimultaneousTasks(
+            TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
+        .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
+        .withContext(
+            UpgradeTaskBase.UpgradeContext.builder()
+                .reconfigureMaster(false)
+                .runBeforeStopping(false)
+                .processInactiveMaster(true)
+                .targetSoftwareVersion("2.21.0.0-b2")
+                .build())
+        .task(TaskType.AnsibleConfigureServers)
+        .applyRound()
+        .addSimultaneousTasks(TaskType.CheckSoftwareVersion, defaultUniverse.getTServers().size())
+        .addTasks(TaskType.StoreAutoFlagConfigVersion)
+        .addTasks(TaskType.PromoteAutoFlags)
+        .addTasks(TaskType.UpdateSoftwareVersion)
+        .addTasks(TaskType.UpdateUniverseState)
+        .addTasks(TaskType.RunYsqlUpgrade)
+        .addTasks(TaskType.PromoteAutoFlags)
+        .addTasks(TaskType.UpdateUniverseState)
+        .verifyTasks(taskInfo.getSubTasks());
 
-    int position = 0;
-    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckNodesAreSafeToTakeDown);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckUpgrade);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckLocale);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckGlibc);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
-    // XCluster gflag set up.
-    assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.XClusterInfoPersist);
-
-    List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);
-    assertTaskType(downloadTasks, TaskType.AnsibleConfigureServers);
-    assertEquals(5, downloadTasks.size());
-    position = assertSequence(subTasksByPosition, MASTER, position, true, false);
-    position = assertSequence(subTasksByPosition, MASTER, position, true, true);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
-    position =
-        assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false, false);
-    position = assertSequence(subTasksByPosition, TSERVER, position, true, true);
-    assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true, true);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
@@ -488,34 +301,33 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     verify(mockNodeManager, times(95)).nodeCommand(any(), any());
     verify(mockNodeUniverseManager, times(16)).runCommand(any(), any(), anyList(), any());
 
-    List<TaskInfo> subTasks = taskInfo.getSubTasks();
-    Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+    MockUpgrade mockUpgrade = initMockUpgrade();
+    mockUpgrade
+        .precheckTasks(getPrecheckTasks(true))
+        .addTasks(TaskType.UpdateUniverseState)
+        .addSimultaneousTasks(TaskType.AnsibleConfigureServers, defaultUniverse.getMasters().size())
+        .addSimultaneousTasks(
+            TaskType.AnsibleConfigureServers, defaultUniverse.getTServersInPrimaryCluster().size())
+        .addTasks(TaskType.XClusterInfoPersist)
+        .addSimultaneousTasks(
+            TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
+        .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
+        .withContext(
+            UpgradeTaskBase.UpgradeContext.builder()
+                .reconfigureMaster(false)
+                .runBeforeStopping(false)
+                .processInactiveMaster(true)
+                .targetSoftwareVersion("2.21.0.0-b2")
+                .build())
+        .task(TaskType.AnsibleConfigureServers)
+        .applyRound()
+        .addSimultaneousTasks(TaskType.CheckSoftwareVersion, defaultUniverse.getTServers().size())
+        .addTasks(TaskType.StoreAutoFlagConfigVersion)
+        .addTasks(TaskType.PromoteAutoFlags)
+        .addTasks(TaskType.UpdateSoftwareVersion)
+        .addTasks(TaskType.UpdateUniverseState)
+        .verifyTasks(taskInfo.getSubTasks());
 
-    int position = 0;
-    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckNodesAreSafeToTakeDown);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckUpgrade);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckLocale);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckGlibc);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
-    // XCluster gflag set up.
-    assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.XClusterInfoPersist);
-
-    List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);
-    assertTaskType(downloadTasks, TaskType.AnsibleConfigureServers);
-    assertEquals(8, downloadTasks.size());
-    position = assertSequence(subTasksByPosition, MASTER, position, true, false);
-    position = assertSequence(subTasksByPosition, MASTER, position, true, true);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
-    position =
-        assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false, false);
-    position = assertSequence(subTasksByPosition, TSERVER, position, true, true);
-    assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false, true);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
@@ -544,29 +356,33 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     verify(mockNodeManager, times(51)).nodeCommand(any(), commandParams.capture());
     verify(mockNodeUniverseManager, times(10)).runCommand(any(), any(), anyList(), any());
 
-    List<TaskInfo> subTasks = taskInfo.getSubTasks();
-    Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    int position = 0;
-    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckUpgrade);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckLocale);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckGlibc);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
-    // XCluster gflag set up.
-    assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.XClusterInfoPersist);
+    MockUpgrade mockUpgrade = initMockUpgrade();
+    mockUpgrade
+        .precheckTasks(getPrecheckTasks(false))
+        .addTasks(TaskType.UpdateUniverseState)
+        .addSimultaneousTasks(TaskType.AnsibleConfigureServers, defaultUniverse.getMasters().size())
+        .addSimultaneousTasks(
+            TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
+        .addTasks(TaskType.XClusterInfoPersist)
+        .addSimultaneousTasks(
+            TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
+        .upgradeRound(UpgradeOption.NON_ROLLING_UPGRADE)
+        .withContext(
+            UpgradeTaskBase.UpgradeContext.builder()
+                .reconfigureMaster(false)
+                .runBeforeStopping(false)
+                .processInactiveMaster(true)
+                .targetSoftwareVersion("2.21.0.0-b2")
+                .build())
+        .task(TaskType.AnsibleConfigureServers)
+        .applyRound()
+        .addSimultaneousTasks(TaskType.CheckSoftwareVersion, defaultUniverse.getTServers().size())
+        .addTasks(TaskType.StoreAutoFlagConfigVersion)
+        .addTasks(TaskType.PromoteAutoFlags)
+        .addTasks(TaskType.UpdateSoftwareVersion)
+        .addTasks(TaskType.UpdateUniverseState)
+        .verifyTasks(taskInfo.getSubTasks());
 
-    List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);
-    assertTaskType(downloadTasks, TaskType.AnsibleConfigureServers);
-    assertEquals(5, downloadTasks.size());
-    position = assertSequence(subTasksByPosition, MASTER, position, false, false);
-    position = assertSequence(subTasksByPosition, MASTER, position, false, true);
-    position = assertSequence(subTasksByPosition, TSERVER, position, false, true);
-    assertCommonTasks(subTasksByPosition, position, UpgradeType.FULL_UPGRADE, false, true);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
@@ -574,20 +390,6 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     assertEquals(
         "2.21.0.0-b1",
         defaultUniverse.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion());
-  }
-
-  protected List<Integer> getRollingUpgradeNodeOrder(ServerType serverType, boolean activeRole) {
-    return serverType == MASTER
-        ?
-        // We need to check that the master leader is upgraded last.
-        (activeRole ? Arrays.asList(1, 3, 2) : Arrays.asList(4, 5))
-        :
-        // We need to check that isAffinitized zone node is upgraded getFirst().
-        defaultUniverse.getUniverseDetails().getReadOnlyClusters().isEmpty()
-            ? Arrays.asList(3, 1, 2, 4, 5)
-            :
-            // Primary cluster getFirst(), then read replica.
-            Arrays.asList(3, 1, 2, 4, 5, 8, 6, 7);
   }
 
   @Test
@@ -710,12 +512,12 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
             .map(t -> t.getTaskParams().get("nodeName").asText())
             .collect(Collectors.toSet());
 
-    Set<String> expectedMasters =
+    Set<String> masterNames =
         defaultUniverse.getMasters().stream()
             .filter(n -> !mastersOriginallyUpdated.contains(n.cloudInfo.private_ip))
             .map(n -> n.nodeName)
             .collect(Collectors.toSet());
-    Set<String> expectedTservers =
+    Set<String> tserverNames =
         defaultUniverse.getTServers().stream()
             .filter(
                 n ->
@@ -724,16 +526,65 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
             .map(n -> n.nodeName)
             .collect(Collectors.toSet());
 
+    Set<String> expectedMasters = new HashSet<>(masterNames);
     // We do process inactive masters, so for each tserver we also process masters
-    expectedMasters.addAll(expectedTservers);
+    // (but not for "onlyMasterUpdated" node)
+    expectedMasters.addAll(tserverNames);
+    expectedMasters.remove(onlyMasterUpdated.getNodeName());
 
     assertEquals("Upgraded masters", expectedMasters, configuredMasters);
-    assertEquals("Upgraded tservers", expectedTservers, configuredTservers);
+    assertEquals("Upgraded tservers", tserverNames, configuredTservers);
+
+    MockUpgrade mockUpgrade = initMockUpgrade();
+    mockUpgrade
+        .precheckTasks(
+            TaskType.CheckUpgrade, TaskType.CheckMemory, TaskType.CheckLocale, TaskType.CheckGlibc)
+        .addTasks(TaskType.UpdateUniverseState)
+        .addSimultaneousTasks(TaskType.AnsibleConfigureServers, defaultUniverse.getMasters().size())
+        .addSimultaneousTasks(
+            TaskType.AnsibleConfigureServers, defaultUniverse.getTServers().size())
+        .addTasks(TaskType.XClusterInfoPersist)
+        .addSimultaneousTasks(TaskType.AnsibleConfigureServers, tserverNames.size())
+        .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE)
+        .withContext(
+            UpgradeTaskBase.UpgradeContext.builder()
+                .reconfigureMaster(false)
+                .runBeforeStopping(false)
+                .processInactiveMaster(true)
+                .targetSoftwareVersion("2.21.0.0-b2")
+                .build())
+        .task(TaskType.AnsibleConfigureServers)
+        .applyToNodes(masterNames, tserverNames)
+        .addSimultaneousTasks(TaskType.CheckSoftwareVersion, defaultUniverse.getTServers().size())
+        .addTasks(TaskType.StoreAutoFlagConfigVersion)
+        .addTasks(TaskType.PromoteAutoFlags)
+        .addTasks(TaskType.UpdateSoftwareVersion)
+        .addTasks(TaskType.UpdateUniverseState)
+        .verifyTasks(taskInfo.getSubTasks());
     assertTrue(defaultUniverse.getUniverseDetails().isSoftwareRollbackAllowed);
     assertEquals(
         "2.21.0.0-b1",
         defaultUniverse.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion());
     assertEquals(
         SoftwareUpgradeState.Ready, defaultUniverse.getUniverseDetails().softwareUpgradeState);
+  }
+
+  private MockUpgrade initMockUpgrade() {
+    return initMockUpgrade(SoftwareUpgrade.class);
+  }
+
+  @Override
+  protected TaskType[] getPrecheckTasks(boolean hasRollingRestarts) {
+    List<TaskType> lst =
+        new ArrayList<>(
+            Arrays.asList(
+                TaskType.CheckUpgrade,
+                TaskType.CheckMemory,
+                TaskType.CheckLocale,
+                TaskType.CheckGlibc));
+    if (hasRollingRestarts) {
+      lst.add(0, TaskType.CheckNodesAreSafeToTakeDown);
+    }
+    return lst.toArray(new TaskType[0]);
   }
 }

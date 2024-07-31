@@ -285,7 +285,9 @@ yb-admin \
 Splits the specified hash-sharded tablet and computes the split point as the middle of tablet's sharding range.
 
 ```sh
-split_tablet -master_addresses <master-addresses> <tablet_id_to_split>
+yb-admin \
+    -master_addresses <master-addresses> \
+    split_tablet -master_addresses <master-addresses> <tablet_id_to_split>
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
@@ -1733,13 +1735,13 @@ To create a change data capture (CDC) DB stream which also supports sending the 
 ```sh
 yb-admin \
     -master_addresses <master-addresses> \
-    create_change_data_stream ysql.<namespace_name> IMPLICIT ALL
+    create_change_data_stream ysql.<namespace_name> EXPLICIT <before_image_mode>
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *namespace_name*: The namespace on which the DB stream ID is to be created.
-* `IMPLICIT`: Checkpointing type on the server.
-* `ALL`: Record type indicating to the server that the stream should send the before image too.
+* `EXPLICIT`: Checkpointing type on the server.
+* *before_image_mode*: Record type indicating the stream should include the before image.
 
 A successful operation of the above command returns a message with a DB stream ID:
 

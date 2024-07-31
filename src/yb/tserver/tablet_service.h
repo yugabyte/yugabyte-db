@@ -215,6 +215,12 @@ void ClearUniverseUuid(const ClearUniverseUuidRequestPB* req,
       const ClearAllMetaCachesOnServerRequestPB* req, ClearAllMetaCachesOnServerResponsePB* resp,
       rpc::RpcContext context) override;
 
+  Result<AcquireObjectLockResponsePB> AcquireObjectLocks(
+      const AcquireObjectLockRequestPB& req, CoarseTimePoint deadline) override;
+
+  Result<ReleaseObjectLockResponsePB> ReleaseObjectLocks(
+      const ReleaseObjectLockRequestPB& req, CoarseTimePoint deadline) override;
+
   void Shutdown() override;
 
  private:
@@ -322,6 +328,10 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
       const ClonePgSchemaRequestPB* req, ClonePgSchemaResponsePB* resp,
       rpc::RpcContext context) override;
 
+  void EnableDbConns(
+      const EnableDbConnsRequestPB* req, EnableDbConnsResponsePB* resp,
+      rpc::RpcContext context) override;
+
   void TestRetry(
       const TestRetryRequestPB* req, TestRetryResponsePB* resp, rpc::RpcContext context) override;
 
@@ -331,7 +341,12 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
   Status DoCreateTablet(
       const CreateTabletRequestPB* req, CreateTabletResponsePB* resp, const MonoDelta& timeout);
 
+  Result<HostPort> GetLocalPgHostPort();
+
   Status DoClonePgSchema(const ClonePgSchemaRequestPB* req, ClonePgSchemaResponsePB* resp);
+
+  Status DoEnableDbConns(
+      const EnableDbConnsRequestPB* req, EnableDbConnsResponsePB* resp);
 
   Status SetupCDCSDKRetention(
       const tablet::ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,

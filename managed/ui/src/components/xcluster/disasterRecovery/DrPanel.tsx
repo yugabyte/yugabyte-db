@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQueries, useQuery, useQueryClient, UseQueryResult } from 'react-query';
+import { useQuery, useQueryClient } from 'react-query';
 import { Box, makeStyles, Typography, useTheme } from '@material-ui/core';
 import { DropdownButton, MenuItem } from 'react-bootstrap';
 import { useInterval } from 'react-use';
@@ -14,8 +14,7 @@ import { EnableDrPrompt } from './EnableDrPrompt';
 import {
   PollingIntervalMs,
   TRANSITORY_XCLUSTER_CONFIG_STATUSES,
-  XClusterConfigAction,
-  XClusterConfigType
+  XClusterConfigAction
 } from '../constants';
 import { YBButton } from '../../../redesign/components';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
@@ -23,8 +22,7 @@ import {
   api,
   drConfigQueryKey,
   metricQueryKey,
-  universeQueryKey,
-  xClusterQueryKey
+  universeQueryKey
 } from '../../../redesign/helpers/api';
 import { getEnabledConfigActions, getXClusterConfigUuids } from '../ReplicationUtils';
 import { getEnabledDrConfigActions, getXClusterConfig } from './utils';
@@ -44,10 +42,8 @@ import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPer
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { getUniverseStatus, UniverseState } from '../../universes/helpers/universeHelpers';
 import { EditConfigModal } from './editConfig/EditConfigModal';
-
-import { TableType } from '../../../redesign/helpers/dtos';
-import { fetchXClusterConfig } from '../../../actions/xClusterReplication';
-import { XClusterConfig } from '../dtos';
+import { UNIVERSE_TASKS } from '../../../redesign/helpers/constants';
+import { isActionFrozen } from '../../../redesign/helpers/utils';
 
 interface DrPanelProps {
   currentUniverseUuid: string;
@@ -152,12 +148,12 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
   const { primaryUniverseUuid: sourceUniverseUuid, drReplicaUniverseUuid: targetUniverseUuid } =
     drConfigQuery.data ?? {};
   // For DR, the currentUniverseUuid is not guaranteed to be the sourceUniverseUuid.
-  const participantUniveresUuid =
+  const participantUniverseUuid =
     currentUniverseUuid !== targetUniverseUuid ? targetUniverseUuid : sourceUniverseUuid;
   const participantUniverseQuery = useQuery(
-    universeQueryKey.detail(participantUniveresUuid),
-    () => api.fetchUniverse(participantUniveresUuid),
-    { enabled: !!participantUniveresUuid }
+    universeQueryKey.detail(participantUniverseUuid),
+    () => api.fetchUniverse(participantUniverseUuid),
+    { enabled: !!participantUniverseUuid }
   );
 
   const [sourceUniverse, targetUniverse] =
@@ -186,12 +182,15 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
       queryClient.invalidateQueries(drConfigQueryKey.detail(drConfigUuid));
     }
   }, PollingIntervalMs.DR_CONFIG_STATE_TRANSITIONS);
+  useInterval(() => {
+    queryClient.invalidateQueries(drConfigQueryKey.detail(drConfigUuid));
+  }, PollingIntervalMs.DR_CONFIG);
 
   if (currentUniverseQuery.isError || participantUniverseQuery.isError) {
     return (
       <YBErrorIndicator
         customErrorMessage={t('error.failToFetchUniverse', {
-          universeUuid: currentUniverseQuery.isError ? currentUniverseUuid : participantUniveresUuid
+          universeUuid: currentUniverseQuery.isError ? currentUniverseUuid : participantUniverseUuid
         })}
       />
     );
@@ -213,10 +212,11 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
   }
 
   const allowedTasks = currentUniverseQuery.data?.allowedTasks;
+  const isConfigureActionFrozen = isActionFrozen(allowedTasks, UNIVERSE_TASKS.CONFIGURE_DR);
   // DR config uses a txn xCluster config to implement the replication.
   // When setting up txn xCluster config, no other xCluster config can exist
   // on source and target.
-  const isDrCreationDisabled = universeXClusterConfigUUIDs.length > 0;
+  const isDrCreationDisabled = universeXClusterConfigUUIDs.length > 0 || isConfigureActionFrozen;
   const drConfig = drConfigQuery.data;
   const openCreateConfigModal = () => setIsCreateConfigModalOpen(true);
   const closeCreateConfigModal = () => setIsCreateConfigModalOpen(false);
@@ -233,7 +233,6 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
         {isCreateConfigModalOpen && (
           <CreateConfigModal
             sourceUniverseUuid={currentUniverseUuid}
-            allowedTasks={allowedTasks}
             modalProps={{ open: isCreateConfigModalOpen, onClose: closeCreateConfigModal }}
           />
         )}
@@ -546,7 +545,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
         )}
         {isEditTablesModalOpen && (
           <EditTablesModal
-            xClusterConfig={xClusterConfig}
+            xClusterConfigUuid={xClusterConfig.uuid}
             isDrInterface={true}
             drConfigUuid={drConfig.uuid}
             storageConfigUuid={drConfig.bootstrapParams?.backupRequestParams?.storageConfigUUID}
@@ -566,7 +565,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
             drConfig={drConfig}
             isVisible={isRestartConfigModalOpen}
             onHide={closeRestartConfigModal}
-            xClusterConfig={xClusterConfig}
+            xClusterConfigUuid={xClusterConfig.uuid}
           />
         )}
         {isDbSyncModalOpen && (

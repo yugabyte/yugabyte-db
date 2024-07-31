@@ -7,7 +7,6 @@ import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
 import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
 import com.yugabyte.yw.common.XClusterUniverseService;
-import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.Universe;
@@ -45,12 +44,11 @@ public class FailoverDrConfig extends EditDrConfig {
   public void run() {
     log.info("Running {}", getName());
 
-    DrConfig drConfig = getDrConfigFromTaskParams();
     Optional<XClusterConfig> currentXClusterConfigOptional =
         Optional.ofNullable(taskParams().getOldXClusterConfig());
     // For failover, handling failure in the middle of task execution is not yet supported, thus
     // the dr config should always have the current xCluster config object.
-    if (!currentXClusterConfigOptional.isPresent()) {
+    if (currentXClusterConfigOptional.isEmpty()) {
       throw new IllegalStateException(
           "The old xCluster config does not exist and cannot do a failover");
     }
@@ -108,7 +106,7 @@ public class FailoverDrConfig extends EditDrConfig {
                           targetUniverse.getUniverseUUID(),
                           failoverXClusterConfig.getTableTypeAsCommonType(),
                           namespace.getName());
-                  if (!pitrConfigOptional.isPresent()) {
+                  if (pitrConfigOptional.isEmpty()) {
                     throw new IllegalStateException(
                         String.format(
                             "No PITR config for database %s.%s found on universe %s",
@@ -165,14 +163,12 @@ public class FailoverDrConfig extends EditDrConfig {
       }
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
-      if (currentXClusterConfigOptional.isPresent()) {
-        // Load the xCluster from the DB again because it might be deleted.
-        Optional<XClusterConfig> xClusterConfigOptional =
-            XClusterConfig.maybeGet(currentXClusterConfigOptional.get().getUuid());
-        if (xClusterConfigOptional.isPresent()
-            && !isInMustDeleteStatus(xClusterConfigOptional.get())) {
-          xClusterConfigOptional.get().updateStatus(XClusterConfigStatusType.DeletionFailed);
-        }
+      // Load the xCluster from the DB again because it might be deleted.
+      Optional<XClusterConfig> xClusterConfigOptional =
+          XClusterConfig.maybeGet(currentXClusterConfigOptional.get().getUuid());
+      if (xClusterConfigOptional.isPresent()
+          && !isInMustDeleteStatus(xClusterConfigOptional.get())) {
+        xClusterConfigOptional.get().updateStatus(XClusterConfigStatusType.DeletionFailed);
       }
       // Set xCluster config status to failed.
       if (!failoverXClusterConfig.getStatus().equals(XClusterConfigStatusType.Initialized)) {

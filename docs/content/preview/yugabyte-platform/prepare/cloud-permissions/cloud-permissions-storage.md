@@ -12,34 +12,34 @@ menu:
 type: docs
 ---
 
-When backing up to and/or restoring from external cloud storage, generally speaking, both YubayteDB Anywhere (YBA) and database nodes require permissions to write to and read from the external storage.
+When backing up to and/or restoring from external cloud storage, generally speaking, both YugabyteDB Anywhere (YBA) and database nodes require permissions to write to and read from the external storage.
 
 When backing up to an NFS storage target, only database nodes need access to the NFS storage.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
-    <a href="#onprem" class="nav-link active" id="onprem-tab" data-toggle="tab"
+    <a href="#onprem" class="nav-link active" id="onprem-tab" data-bs-toggle="tab"
       role="tab" aria-controls="onprem" aria-selected="true">
       <i class="fa-solid fa-building"></i>
       On-premises
     </a>
   </li>
   <li>
-    <a href="#aws" class="nav-link" id="aws-tab" data-toggle="tab"
+    <a href="#aws" class="nav-link" id="aws-tab" data-bs-toggle="tab"
       role="tab" aria-controls="aws" aria-selected="false">
       <i class="fa-brands fa-aws"></i>
       AWS
     </a>
   </li>
   <li>
-    <a href="#gcp" class="nav-link" id="gcp-tab" data-toggle="tab"
+    <a href="#gcp" class="nav-link" id="gcp-tab" data-bs-toggle="tab"
       role="tab" aria-controls="gcp" aria-selected="false">
       <i class="fa-brands fa-google"></i>
       GCP
     </a>
   </li>
   <li>
-    <a href="#azure" class="nav-link" id="azure-tab" data-toggle="tab"
+    <a href="#azure" class="nav-link" id="azure-tab" data-bs-toggle="tab"
       role="tab" aria-controls="azure" aria-selected="false">
       <i class="fa-brands fa-microsoft"></i>
       Azure

@@ -1,6 +1,6 @@
 ---
 title: ACID Transactions in YSQL
-headerTitle: Transactions
+headerTitle: Transactions in YSQL
 linkTitle: Transactions
 description: Learn how to use Transactions in YSQL on YugabyteDB.
 menu:
@@ -72,7 +72,7 @@ YugabyteDB supports three kinds of isolation levels to support different applica
 | Level | Description |
 | :---- | :---------- |
 | [Repeatable&nbsp;Read (Snapshot)](../../../../explore/transactions/isolation-levels/#snapshot-isolation) | Only the data that is committed before the transaction began is visible to the transaction. Effectively, the transaction sees the snapshot of the database as of the start of the transaction. {{<note>}}Applications using this isolation level should be designed to [retry](../transactions-retries-ysql#client-side-retry) on serialization failures.{{</note>}} |
-| [Read Committed](../../../../explore/transactions/isolation-levels/#read-committed-isolation) {{<badge/ea>}} | Each statement of the transaction sees the latest data committed by any concurrent transaction just before the execution of the statement. If another transaction has modified a row related to the current transaction, the current transaction waits for the other transaction to commit or rollback its changes. {{<note>}} The server internally waits and retries on conflicts, so applications [need not retry](../transactions-retries-ysql#automatic-retries) on serialization failures.{{</note>}} |
+| [Read Committed](../../../../explore/transactions/isolation-levels/#read-committed-isolation){{<badge/ea>}} | Each statement of the transaction sees the latest data committed by any concurrent transaction just before the execution of the statement. If another transaction has modified a row related to the current transaction, the current transaction waits for the other transaction to commit or rollback its changes. {{<note>}} The server internally waits and retries on conflicts, so applications [need not retry](../transactions-retries-ysql#automatic-retries) on serialization failures.{{</note>}} |
 | [Serializable](../../../../explore/transactions/isolation-levels/#serializable-isolation) | This is the strictest isolation level and has the effect of all transactions being executed in a serial manner, one after the other rather than in parallel. {{<note>}} Applications using this isolation level should be designed to [retry](../transactions-retries-ysql/#client-side-retry) on serialization failures.{{</note>}} |
 
 {{<tip title="Examples">}}
@@ -140,7 +140,7 @@ For an example application and try it out yourself, see [Designing a Retry Mecha
 
 ## Tuning for high performance
 
-All applications need to be tuned to get the best performance. YugabyteDB supports various constructs and [multiple settings](../transactions-performance-ysql/#session-level-settings) that can be adopted and tuned to your needs. Adopting the correct constructs in the right scenarios can immensely improve the performance of your application. Some examples are:
+All applications need to be tuned to get the best performance. YugabyteDB supports various constructs and [multiple settings](../transactions-performance-ysql/) that can be adopted and tuned to your needs. Adopting the correct constructs in the right scenarios can immensely improve the performance of your application. Some examples are:
 
 - Convert a multi-statement transaction affecting a single row into a [fast-path](../transactions-performance-ysql/#fast-single-row-transactions) transaction.
 - [Avoid long waits](../transactions-performance-ysql/#avoid-long-waits) with the right timeouts.
@@ -148,13 +148,13 @@ All applications need to be tuned to get the best performance. YugabyteDB suppor
 - [Uninterrupted long scans](../transactions-performance-ysql/#large-scans-and-batch-jobs)
 - [Minimize round trips](../transactions-performance-ysql/#stored-procedures-minimize-round-trips) with stored procedures.
 
-{{<tip>}}
+{{<lead link="../transactions-performance-ysql/">}}
 For more examples and details on how to tune your application's performance, see [Performance tuning](../transactions-performance-ysql/).
-{{</tip>}}
+{{</lead>}}
 
 ## Observability
 
-YugabyteDB exports a lot of [observable metrics](../../../../explore/observability/) so that you can see what is going on in your cluster. These metrics can be exported to [Prometheus](../../../../explore/observability/prometheus-integration/macos/) and visualized in [Grafana](../../../../explore/observability/grafana-dashboard/grafana/). Many of these metrics are also displayed as charts in YugabyteDB Anywhere and YugabyteDB Managed. The following are key transaction-related metrics.
+YugabyteDB exports a lot of [observable metrics](../../../../explore/observability/) so that you can see what is going on in your cluster. These metrics can be exported to [Prometheus](../../../../explore/observability/prometheus-integration/) and visualized in [Grafana](../../../../explore/observability/grafana-dashboard/grafana/). Many of these metrics are also displayed as charts in YugabyteDB Anywhere and YugabyteDB Aeon. The following are key transaction-related metrics.
 
 ##### transactions_running
 

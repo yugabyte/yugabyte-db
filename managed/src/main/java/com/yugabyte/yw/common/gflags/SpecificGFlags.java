@@ -8,6 +8,9 @@ import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.TSE
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.common.gflags.GFlagGroup.GroupName;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
@@ -43,6 +46,12 @@ public class SpecificGFlags {
 
   @ApiModelProperty(value = "Overrides for gflags per availability zone")
   private Map<UUID, PerProcessFlags> perAZ = new HashMap<>();
+
+  @ApiModelProperty(
+      value = "YbaApi Internal. GFlag groups to be applied",
+      example = "[\"ENHANCED_POSTGRES_COMPATIBILITY\"]")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2024.1.1.0")
+  private List<GroupName> gflagGroups = new ArrayList<>();
 
   public Map<String, String> getGFlags(@Nullable UUID azUuid, UniverseTaskBase.ServerType process) {
     Map<String, String> result = new HashMap<>();

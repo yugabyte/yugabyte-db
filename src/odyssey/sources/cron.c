@@ -80,7 +80,7 @@ static int od_cron_stat_cb(od_route_t *route, od_stat_t *current,
 			route->client_pool.count_active;
 		instance->yb_stats[index].queued_clients =
 			route->client_pool.count_queue;
-		instance->yb_stats[index].idle_or_pending_clients =
+		instance->yb_stats[index].waiting_clients =
 			route->client_pool.count_pending;
 		instance->yb_stats[index].active_servers =
 			route->server_pool.count_active;

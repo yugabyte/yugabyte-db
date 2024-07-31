@@ -176,7 +176,8 @@ void TestCallHomeFlag(const std::string& webserver_dir, ServerType* server) {
 
 template <class ServerType, class CallHomeType>
 void TestGFlagsCallHome(ServerType* server) {
-  ASSERT_OK(SET_FLAG(ysql_pg_conf_csv, R"(flagA="String with quotes")"));
+  const auto kValueWithQuotes = R"("flagA=""String with quotes""")";
+  ASSERT_OK(SET_FLAG(ysql_pg_conf_csv, kValueWithQuotes));
   std::string json;
   CallHomeType call_home(server);
   json = call_home.BuildJson();
@@ -189,7 +190,7 @@ void TestGFlagsCallHome(ServerType* server) {
 
   std::string flags;
   ASSERT_OK(reader.ExtractString(reader.root(), "gflags", &flags));
-  ASSERT_TRUE(flags.find(R"(flagA="String with quotes")") != std::string::npos);
+  ASSERT_STR_CONTAINS(flags, kValueWithQuotes);
 
   call_home.Shutdown();
 }

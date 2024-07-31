@@ -23,7 +23,7 @@ class IsOperationDoneResult;
 class SysCatalogTable;
 
 namespace client {
-class XClusterRemoteClient;
+class XClusterRemoteClientHolder;
 }  // namespace client
 
 namespace master {
@@ -31,12 +31,10 @@ namespace master {
 // TODO: #19714 Create XClusterReplicationGroup, a wrapper over UniverseReplicationInfo, that will
 // manage the ReplicationGroup and its ProducerEntryPB in ClusterConfigInfo.
 
-// Check if the local AutoFlags config is compatible with the source universe and returns the source
-// universe AutoFlags config version if they are compatible.
-// If they are not compatible, returns a bad status.
-// If the source universe is running an older version which does not support AutoFlags compatiblity
-// check, returns an invalid AutoFlags config version.
-Result<uint32> GetAutoFlagConfigVersionIfCompatible(
+// Returns nullopt when source universe does not support AutoFlags compatibility check.
+// Returns a pair with a bool which indicates if the configs are compatible and the source universe
+// AutoFlags config version.
+Result<std::optional<std::pair<bool, uint32>>> ValidateAutoFlagsConfig(
     UniverseReplicationInfo& replication_info, const AutoFlagsConfigPB& local_config);
 
 // Reruns the AutoFlags compatiblity validation when source universe AutoFlags config version has
@@ -72,7 +70,7 @@ Result<NamespaceId> GetProducerNamespaceId(
 bool IncludesConsumerNamespace(
     UniverseReplicationInfo& universe, const NamespaceId& consumer_namespace_id);
 
-Result<std::shared_ptr<client::XClusterRemoteClient>> GetXClusterRemoteClient(
+Result<std::shared_ptr<client::XClusterRemoteClientHolder>> GetXClusterRemoteClientHolder(
     UniverseReplicationInfo& universe);
 
 // Returns (false, Status::OK()) if the universe setup is still in progress.
@@ -94,9 +92,13 @@ Status RemoveNamespaceFromReplicationGroup(
     scoped_refptr<UniverseReplicationInfo> universe, const NamespaceId& producer_namespace_id,
     CatalogManager& catalog_manager, const LeaderEpoch& epoch);
 
-Status ValidateTableListForDbScopedReplication(
-    UniverseReplicationInfo& universe, const std::vector<NamespaceId>& namespace_ids,
-    const std::set<TableId>& replicated_table_ids, const CatalogManager& catalog_manager);
+// Returns true if the namespace is part of the DB Scoped replication group.
+bool HasNamespace(UniverseReplicationInfo& universe, const NamespaceId& consumer_namespace_id);
+
+Status DeleteUniverseReplication(
+    UniverseReplicationInfo& universe, bool ignore_errors, bool skip_producer_stream_deletion,
+    DeleteUniverseReplicationResponsePB* resp, CatalogManager& catalog_manager,
+    const LeaderEpoch& epoch);
 
 }  // namespace master
 }  // namespace yb

@@ -1,8 +1,8 @@
 ---
-title: View slow queries in YugabyteDB Managed
+title: View slow queries in YugabyteDB Aeon
 headerTitle: View slow queries
 linkTitle: Slow queries
-description: View slow running queries that have run on your YugabyteDB Managed cluster.
+description: View slow running queries that have run on your YugabyteDB Aeon cluster.
 headcontent: View slow running queries that have run on your cluster
 menu:
   preview_yugabyte-cloud:
@@ -18,7 +18,7 @@ Evaluate the performance of slow queries that have run on your cluster using the
 - Evaluate query execution times over time.
 - Discover potential queries for [tuning](../../../explore/query-1-performance/).
 
-{{< youtube id="hXphqRCQImQ" title="Monitor and optimize queries in YugabyteDB Managed" >}}
+{{< youtube id="hXphqRCQImQ" title="Monitor and optimize queries in YugabyteDB Aeon" >}}
 
 Slow queries are not available for YCQL.
 

@@ -56,6 +56,10 @@ class GenericServiceImpl : public GenericServiceIf {
                GetFlagResponsePB* resp,
                rpc::RpcContext rpc) override;
 
+  void ValidateFlagValue(
+      const ValidateFlagValueRequestPB* req, ValidateFlagValueResponsePB* resp,
+      rpc::RpcContext rpc) override;
+
   void GetAutoFlagsConfigVersion(
       const GetAutoFlagsConfigVersionRequestPB* req,
       GetAutoFlagsConfigVersionResponsePB* resp,

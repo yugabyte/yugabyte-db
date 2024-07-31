@@ -42,7 +42,7 @@ For each node, perform the following:
 - [Set up time synchronization](#set-up-time-synchronization)
 - [Open incoming TCP ports](#open-incoming-tcp-ip-ports)
 - [Manually pre-provision the node](#pre-provision-nodes-manually)
-- [Install Prometheus node exporter](#install-prometheus-node-exporter)
+- [Install Prometheus Node Exporter](#install-prometheus-node-exporter)
 - [Install backup utilities](#install-backup-utilities)
 - [Set crontab permissions](#set-crontab-permissions)
 - [Install systemd-related database service unit files (optional)](#install-systemd-related-database-service-unit-files)
@@ -75,7 +75,7 @@ Database servers need incoming TCP/IP access enabled to the following ports, for
 | TCP | 9042 | YCQL client |
 | TCP | 9090 | Prometheus server |
 | TCP | 9100 | YB tablet server RPC |
-| TCP | 9300 | Prometheus node exporter |
+| TCP | 9300 | Prometheus Node Exporter |
 | TCP | 12000 | YCQL HTTP (for DB statistics gathering) |
 | TCP | 13000 | YSQL HTTP (for DB statistics gathering) |
 | TCP | 18018 | YB Controller |
@@ -167,7 +167,7 @@ Physical nodes (or cloud instances) are installed with a standard CentOS 7 serve
 
     For airgapped environments, make sure your Yum repository mirror contains these packages.
 
-1. If running on a virtual machine, execute the following to tune kernel settings:
+1. Execute the following to tune kernel settings:
 
     1. Configure the parameter `vm.swappiness` as follows:
 
@@ -219,9 +219,9 @@ Physical nodes (or cloud instances) are installed with a standard CentOS 7 serve
       sudo chmod 755 /data
       ```
 
-## Install Prometheus node exporter
+## Install Prometheus Node Exporter
 
-Download the 1.3.1 version of the Prometheus node exporter, as follows:
+Download the Prometheus Node Exporter, as follows:
 
 ```sh
 wget https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.0.linux-amd64.tar.gz
@@ -726,13 +726,13 @@ To install the YugabyteDB node agent manually, as the `yugabyte` user, do the fo
 1. Run the following command to download the node agent's `.tgz` file which installs and starts the interactive configuration:
 
    ```sh
-   ./installer.sh -c install -u https://<yba_address>:9000 -t <api_token>
+   ./installer.sh -c install -u https://<yba_address> -t <api_token>
    ```
 
    For example, if you run the following:
 
    ```sh
-   ./installer.sh  -c install -u http://10.98.0.42:9000 -t 301fc382-cf06-4a1b-b5ef-0c8c45273aef
+   ./installer.sh  -c install -u https://10.98.0.42 -t 301fc382-cf06-4a1b-b5ef-0c8c45273aef
    ```
 
    You should get output similar to the following:
@@ -858,13 +858,13 @@ To reconfigure a node for use in a different provider, do the following:
 1. Run the `configure` command to start the interactive configuration. This also registers the node agent with YBA.
 
     ```sh
-    node-agent node configure -t <api_token> -u https://<yba_address>:9000
+    node-agent node configure -t <api_token> -u https://<yba_address>
     ```
 
     For example, if you run the following:
 
     ```sh
-    node-agent node configure -t 1ba391bc-b522-4c18-813e-71a0e76b060a -u http://10.98.0.42:9000
+    node-agent node configure -t 1ba391bc-b522-4c18-813e-71a0e76b060a -u https://10.98.0.42:9000
     ```
 
     ```output

@@ -2,7 +2,7 @@
 title: ybm CLI vpc resource
 headerTitle: ybm vpc
 linkTitle: vpc
-description: YugabyteDB Managed CLI reference VPC resource.
+description: YugabyteDB Aeon CLI reference VPC resource.
 headcontent: Manage account VPCs
 menu:
   preview_yugabyte-cloud:

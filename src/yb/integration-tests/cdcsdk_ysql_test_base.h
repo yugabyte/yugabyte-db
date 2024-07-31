@@ -109,12 +109,19 @@ DECLARE_uint32(cdcsdk_retention_barrier_no_revision_interval_secs);
 DECLARE_bool(TEST_cdcsdk_skip_processing_dynamic_table_addition);
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 DECLARE_uint32(cdcsdk_max_consistent_records);
-DECLARE_bool(ysql_TEST_enable_replication_slot_consumption);
+DECLARE_bool(ysql_yb_enable_replication_slot_consumption);
 DECLARE_bool(TEST_cdc_sdk_fail_setting_retention_barrier);
 DECLARE_uint64(cdcsdk_publication_list_refresh_interval_secs);
 DECLARE_bool(TEST_cdcsdk_use_microseconds_refresh_interval);
 DECLARE_uint64(TEST_cdcsdk_publication_list_refresh_interval_micros);
-
+DECLARE_bool(cdcsdk_enable_dynamic_table_support);
+DECLARE_bool(enable_cdcsdk_setting_get_changes_response_byte_limit);
+DECLARE_uint64(cdcsdk_vwal_getchanges_resp_max_size_bytes);
+DECLARE_bool(cdcsdk_enable_dynamic_tables_disable_option);
+DECLARE_bool(TEST_cdcsdk_skip_updating_cdc_state_entries_on_table_removal);
+DECLARE_bool(TEST_cdcsdk_add_indexes_to_stream);
+DECLARE_bool(cdcsdk_enable_cleanup_of_non_eligible_tables_from_stream);
+DECLARE_bool(TEST_cdcsdk_skip_stream_active_check);
 namespace yb {
 
 using client::YBClient;
@@ -169,6 +176,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     HybridTime record_id_commit_time = HybridTime::kInvalid;
     HybridTime last_pub_refresh_time = HybridTime::kInvalid;
     std::string pub_refresh_times = "";
+    std::string last_decided_pub_refresh_time = "";
   };
 
   struct GetAllPendingChangesResponse {
@@ -472,6 +480,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const bool need_schema_info = false);
 
   Result<GetChangesResponsePB> GetChangesFromCDC(
+      const GetChangesRequestPB& change_req, bool should_retry = true);
+
+  Result<GetChangesResponsePB> GetChangesFromCDC(
       const xrepl::StreamId& stream_id,
       const TabletId& tablet_id,
       const CDCSDKCheckpointPB* cp = nullptr,
@@ -772,6 +783,29 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       std::unordered_set<std::string>* record_table_id);
 
   std::string GetPubRefreshTimesString(vector<uint64_t> pub_refresh_times);
+
+  void TestNonEligibleTableShouldNotGetAddedToCDCStream(bool create_consistent_snapshot_stream);
+
+  Status ExecuteYBAdminCommand(
+      const std::string& command_name, const std::vector<string>& command_args);
+
+  Status DisableDynamicTableAdditionOnCDCSDKStream(const xrepl::StreamId& stream_id);
+
+  void TestDisableOfDynamicTableAdditionOnCDCStream(bool use_consistent_snapshot_stream);
+
+  Status RemoveUserTableFromCDCSDKStream(const xrepl::StreamId& stream_id, const TableId& table_id);
+
+  void TestUserTableRemovalFromCDCStream(bool use_consistent_snapshot_stream);
+
+  Status ValidateAndSyncCDCStateEntriesForCDCSDKStream(const xrepl::StreamId& stream_id);
+
+  void TestValidationAndSyncOfCDCStateEntriesAfterUserTableRemoval(
+      bool use_consistent_snapshot_stream);
+
+  void TestNonEligibleTableRemovalFromCDCStream(bool use_consistent_snapshot_stream);
+
+  void TestChildTabletsOfNonEligibleTableDoNotGetAddedToCDCStream(
+      bool use_consistent_snapshot_stream);
 };
 
 }  // namespace cdc

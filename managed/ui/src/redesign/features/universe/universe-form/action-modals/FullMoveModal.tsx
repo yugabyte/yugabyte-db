@@ -1,7 +1,9 @@
 import { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import pluralize from 'pluralize';
+import _ from 'lodash';
 import { Box, Theme, Typography, makeStyles } from '@material-ui/core';
+import { InstanceTags } from './InstanceTags';
 import { YBModal } from '../../../../components';
 import { getAsyncCluster, getPrimaryCluster } from '../utils/helpers';
 import { Cluster, MasterPlacementMode, UniverseDetails } from '../utils/dto';
@@ -43,6 +45,8 @@ export const FullMoveModal: FC<FMModalProps> = ({
   const classes = useStyles();
   const oldCluster = isPrimary ? getPrimaryCluster(oldConfigData) : getAsyncCluster(oldConfigData);
   const newCluster = isPrimary ? getPrimaryCluster(newConfigData) : getAsyncCluster(newConfigData);
+  const oldInstanceTags = oldCluster?.userIntent?.instanceTags;
+  const newInstanceTags = newCluster?.userIntent?.instanceTags;
 
   const renderConfig = (cluster: Cluster, isNew: boolean) => {
     const { placementInfo, userIntent } = cluster;
@@ -92,6 +96,15 @@ export const FullMoveModal: FC<FMModalProps> = ({
             </Box>
           ))}
         </Box>
+        {!_.isEqual(oldInstanceTags, newInstanceTags) && (
+          <Box mt={2}>
+            {isNew ? (
+              <>{<InstanceTags tags={newInstanceTags!} />}</>
+            ) : (
+              <>{<InstanceTags tags={oldInstanceTags!} />}</>
+            )}
+          </Box>
+        )}
       </Box>
     );
   };

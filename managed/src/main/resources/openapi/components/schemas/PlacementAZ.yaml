@@ -1,4 +1,5 @@
-title: YBA Placement Availability Zone within Placement Region
+title: PlacementAZ
+description: YBA Placement Availability Zone within Placement Region. Part of PlacementRegion.
 type: object
 properties:
   uuid:

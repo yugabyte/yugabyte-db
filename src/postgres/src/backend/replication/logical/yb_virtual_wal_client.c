@@ -26,6 +26,7 @@
 #include <inttypes.h>
 
 #include "access/xact.h"
+#include "catalog/yb_type.h"
 #include "commands/ybccmds.h"
 #include "pg_yb_utils.h"
 #include "replication/slot.h"
@@ -198,17 +199,66 @@ InitVirtualWal(List *publication_names)
 	List		*tables;
 	Oid			*table_oids;
 
+	elog(DEBUG2,
+		 "Setting yb_read_time to last_pub_refresh_time for "
+		 "InitVirtualWal: %" PRIu64,
+		 MyReplicationSlot->data.yb_last_pub_refresh_time);
 	YBCUpdateYbReadTimeAndInvalidateRelcache(
 		MyReplicationSlot->data.yb_last_pub_refresh_time);
 
 	tables = YBCGetTables(publication_names);
-	table_oids = YBCGetTableOids(tables);	
+	table_oids = YBCGetTableOids(tables);
+
+	/* 
+	 * Throw an error if the plugin being used is pgoutput and there exist a
+	 * table in publication with YB specific replica identity (CHANGE).
+	 */
+	if (strcmp(MyReplicationSlot->data.plugin.data, PG_OUTPUT_PLUGIN) == 0)
+	{
+		for (int i = 0; i < list_length(tables); i++)
+		{
+			YBCPgReplicaIdentityDescriptor *value =
+				hash_search(MyReplicationSlot->data.yb_replica_identities,
+							&table_oids[i], HASH_FIND, NULL);
+			Assert(value);
+			if (value->identity_type == YBC_YB_REPLICA_IDENTITY_CHANGE)
+				ereport(ERROR,
+						(errmsg("Replica identity CHANGE is not supported for output "
+						"plugin pgoutput. Consider using output plugin yboutput instead.")));
+		}		
+	}
 
 	YBCInitVirtualWalForCDC(MyReplicationSlot->data.yb_stream_id, table_oids,
 							list_length(tables));
 
+	elog(DEBUG2,
+		 "Setting yb_read_time to initial_record_commit_time for %" PRIu64,
+		 MyReplicationSlot->data.yb_initial_record_commit_time_ht);
+	YBCUpdateYbReadTimeAndInvalidateRelcache(
+		MyReplicationSlot->data.yb_initial_record_commit_time_ht);
+
 	pfree(table_oids);
 	list_free(tables);
+}
+
+static const YBCPgTypeEntity *
+GetDynamicTypeEntity(int attr_num, Oid relid)
+{
+	bool is_in_txn = IsTransactionOrTransactionBlock();
+	if (!is_in_txn)
+		StartTransactionCommand();
+
+	Relation rel = RelationIdGetRelation(relid);
+	if (!RelationIsValid(rel))
+		elog(ERROR, "Could not open relation with OID %u", relid);
+	Oid type_oid = GetTypeId(attr_num, RelationGetDescr(rel));
+	RelationClose(rel);
+	const YBCPgTypeEntity* type_entity = YbDataTypeFromOidMod(attr_num, type_oid);
+
+	if (!is_in_txn)
+		AbortCurrentTransaction();
+
+	return type_entity;
 }
 
 YBCPgVirtualWalRecord *
@@ -242,6 +292,9 @@ YBCReadRecord(XLogReaderState *state, XLogRecPtr RecPtr,
 
 			Assert(yb_read_time < publication_refresh_time);
 
+			elog(DEBUG2,
+				 "Setting yb_read_time to new pub_refresh_time: %" PRIu64,
+				 publication_refresh_time);
 			YBCUpdateYbReadTimeAndInvalidateRelcache(publication_refresh_time);
 
 			/* Get tables in publication and call UpdatePublicationTableList. */
@@ -261,7 +314,7 @@ YBCReadRecord(XLogReaderState *state, XLogRecPtr RecPtr,
 		}
 
 		YBCGetCDCConsistentChanges(MyReplicationSlot->data.yb_stream_id,
-								   &cached_records);
+								   &cached_records, &GetDynamicTypeEntity);
 
 		cached_records_last_sent_row_idx = 0;
 		YbWalSndTotalTimeInYBDecodeMicros = 0;
@@ -534,7 +587,7 @@ CleanupAckedTransactions(XLogRecPtr confirmed_flush)
 /*
  * Get the table Oids for the list of tables provided as arguments. It is the
  * responsibility of the caller to free the array of Oid values returned from
- * this function. 
+ * this function.
  */
 static Oid *
 YBCGetTableOids(List *tables)
@@ -546,11 +599,11 @@ YBCGetTableOids(List *tables)
 	size_t table_idx = 0;
 	foreach (lc, tables)
 		table_oids[table_idx++] = lfirst_oid(lc);
-	
+
 	return table_oids;
 }
 
-static void 
+static void
 YBCRefreshReplicaIdentities()
 {
 	YBCReplicationSlotDescriptor 	*yb_replication_slot;
@@ -565,6 +618,16 @@ YBCRefreshReplicaIdentities()
 	{
 		YBCPgReplicaIdentityDescriptor *desc =
 			&yb_replication_slot->replica_identities[replica_identity_idx];
+
+		/* 
+		 * Throw an error if the plugin being used is pgoutput and there exist a
+		 * table with YB specific replica identity (CHANGE).
+		 */
+		if (strcmp(MyReplicationSlot->data.plugin.data, PG_OUTPUT_PLUGIN) == 0 
+			&& desc->identity_type == YBC_YB_REPLICA_IDENTITY_CHANGE)
+			ereport(ERROR,
+						(errmsg("Replica identity CHANGE is not supported for output "
+						"plugin pgoutput. Consider using output plugin yboutput instead.")));
 
 		YBCPgReplicaIdentityDescriptor *value =
 			hash_search(MyReplicationSlot->data.yb_replica_identities,

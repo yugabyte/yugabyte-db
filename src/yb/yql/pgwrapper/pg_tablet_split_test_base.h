@@ -79,7 +79,7 @@ class PgTabletSplitTestBase : public PgMiniTestBase {
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 };
 
-PartitionKeyTabletMap GetTabletsByPartitionKey(const master::TableInfoPtr& table);
+Result<PartitionKeyTabletMap> GetTabletsByPartitionKey(const master::TableInfoPtr& table);
 
 } // namespace pgwrapper
 } // namespace yb

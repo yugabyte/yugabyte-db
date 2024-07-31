@@ -3,7 +3,6 @@ package com.yugabyte.yw.models.configs.validators;
 import static com.yugabyte.yw.common.Util.addJsonPathToLeafNodes;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import com.azure.core.management.exception.ManagementException;
 import com.azure.resourcemanager.AzureResourceManager;
 import com.azure.resourcemanager.compute.models.VirtualMachineImage;
 import com.azure.resourcemanager.marketplaceordering.MarketplaceOrderingManager;
@@ -62,43 +61,48 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
     AzureCloudInfo cloudInfo = CloudInfoInterface.get(provider);
     JsonNode cloudInfoJson = processedJson.get("details").get("cloudInfo").get("azu");
 
-    String TENANT_ERROR = String.format("Tenant '%s' not found.", cloudInfo.azuTenantId);
+    String TENANT_ERROR = "Invalid tenant id provided.";
     String CLIENT_ERROR =
         String.format("Application with identifier '%s' was not found", cloudInfo.azuClientId);
     String SECRET_ERROR = "Invalid client secret provided.";
+    String SUBSCRIPTION_ERROR = "subscriptionnotfound";
 
     // Try building the API Client to validate
     // Client ID, Client Secret, Subscription ID & Tenant ID
-    AZUResourceGroupApiClient client = new AZUResourceGroupApiClient(cloudInfo);
-    AzureResourceManager azure = client.getResourceManager(cloudInfo, 0);
     try {
       // try to list RGs to verify creds
+      AZUResourceGroupApiClient client = new AZUResourceGroupApiClient(cloudInfo);
+      AzureResourceManager azure = client.getResourceManager(cloudInfo, 0);
       for (ResourceGroup rg : azure.resourceGroups().list()) {
         String rgName = rg.name();
       }
     } catch (Exception e) {
-      String error = e.getMessage();
+      String error = e.getMessage().toLowerCase();
       String clientJsonPath = cloudInfoJson.get("azuClientId").get("jsonPath").asText();
       // secret can be null in case of managed identity so create path from client jsonPath
       String secretJsonPath = clientJsonPath.replace("azuClientId", "azuClientSecret");
+      String subIdJsonPath = cloudInfoJson.get("azuSubscriptionId").get("jsonPath").asText();
 
-      if (error.contains(TENANT_ERROR)) {
+      if (error.contains("tenant id")) {
         String tenantJsonPath = cloudInfoJson.get("azuTenantId").get("jsonPath").asText();
         validationErrorsMap.put(
             tenantJsonPath,
             TENANT_ERROR
                 + " Check to make sure you have the correct tenant ID."
                 + " This may happen if there are no active subscriptions for the tenant.");
-      }
-      if (error.contains(CLIENT_ERROR)) {
+      } else if (error.contains(CLIENT_ERROR.toLowerCase())) {
         validationErrorsMap.put(
             clientJsonPath,
             CLIENT_ERROR
                 + ".This can happen if the application has not been installed by the administrator"
                 + " of the tenant or consented to by any user in the tenant.");
-      }
-      if (error.contains(SECRET_ERROR)) {
+      } else if (error.contains(SECRET_ERROR.toLowerCase())) {
         validationErrorsMap.put(secretJsonPath, SECRET_ERROR);
+      } else if (error.contains(SUBSCRIPTION_ERROR)) {
+        validationErrorsMap.put(subIdJsonPath, "Subscription ID not found!");
+      } else {
+        // to make sure error doesn't go unescaped.
+        throw e;
       }
     }
 
@@ -106,6 +110,9 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
     if (!validationErrorsMap.isEmpty()) {
       throwMultipleProviderValidatorError(validationErrorsMap, providerJson);
     }
+
+    AZUResourceGroupApiClient client = new AZUResourceGroupApiClient(cloudInfo);
+    AzureResourceManager azure = client.getResourceManager(cloudInfo, 3);
 
     String resourceGroup = cloudInfo.getAzuRG();
     String subscriptionID = cloudInfo.getAzuSubscriptionId();
@@ -215,11 +222,9 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
                 String planID = vmImage.plan().name();
                 AgreementTerms terms =
                     manager.marketplaceAgreements().getAgreement(publisher, offer, planID);
-              } catch (ManagementException e) {
+              } catch (Exception e) {
                 String err = String.format("Need to accept the terms for the image %s", image);
                 validationErrorsMap.put(imageJsonPath, err);
-              } catch (Exception e) {
-                throw e;
               }
             }
           } catch (Exception e) {
@@ -289,6 +294,7 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
       AzureCloudInfo info,
       ArrayNode regionArrayJson,
       SetMultimap<String, String> validationErrorsMap) {
+    String baseResourceGroup = resourceGroup;
     try {
       if (subscriptionID.equals(info.azuNetworkSubscriptionId)) {
         AzureCloudInfo cloudinfo =
@@ -299,25 +305,62 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
       int regionIndex = 0;
 
       for (Region region : provider.getRegions()) {
+        resourceGroup = baseResourceGroup;
         AzureRegionCloudInfo regionInfo = region.getDetails().cloudInfo.azu;
         JsonNode regionJson = regionArrayJson.get(regionIndex++);
         JsonNode cloudInfoJson = regionJson.get("details").get("cloudInfo").get("azu");
         String securityGroup = regionInfo.getSecurityGroupId();
+
+        if (regionInfo.getAzuRGOverride() != null) {
+          resourceGroup = regionInfo.getAzuRGOverride();
+          AzureCloudInfo.AzureCloudInfoBuilder cloudInfoBuilder =
+              info.toBuilder().azuRG(resourceGroup);
+          AZUResourceGroupApiClient client =
+              new AZUResourceGroupApiClient(cloudInfoBuilder.build());
+          azure = client.getAzureResourceManager();
+
+          if (!azure.resourceGroups().contain(resourceGroup)) {
+            String resourceGroupOverrideJsonPath =
+                regionJson.get("azuRGOverride").get("jsonPath").asText();
+            String err =
+                String.format(
+                    "Resource group %s not found in Subscription %s",
+                    resourceGroupOverrideJsonPath, subscriptionID);
+            validationErrorsMap.put(resourceGroupOverrideJsonPath, err);
+          }
+        }
+
+        if (regionInfo.getAzuNetworkRGOverride() != null) {
+          resourceGroup = regionInfo.getAzuNetworkRGOverride();
+          AzureCloudInfo.AzureCloudInfoBuilder cloudInfoBuilder =
+              info.toBuilder().azuRG(resourceGroup);
+          AZUResourceGroupApiClient client =
+              new AZUResourceGroupApiClient(cloudInfoBuilder.build());
+          azure = client.getAzureResourceManager();
+
+          if (!azure.resourceGroups().contain(resourceGroup)) {
+            String networkGroupOverrideJsonPath =
+                regionJson.get("azuNetworkRGOverride").get("jsonPath").asText();
+            String err =
+                String.format(
+                    "Resource group %s not found in Subscription %s",
+                    resourceGroup, subscriptionID);
+            validationErrorsMap.put(networkGroupOverrideJsonPath, err);
+          }
+        }
 
         // verify security group exists
         if (securityGroup != null) {
           try {
             NetworkSecurityGroup azureNetworkSecurityGroup =
                 azure.networkSecurityGroups().getByResourceGroup(resourceGroup, securityGroup);
-          } catch (ManagementException e) {
+          } catch (Exception e) {
             String sgJsonPath = cloudInfoJson.get("securityGroupId").get("jsonPath").asText();
             String err =
                 String.format(
                     "Security Group: %s not found in Resource Group: %s!",
                     securityGroup, resourceGroup);
             validationErrorsMap.put(sgJsonPath, err);
-          } catch (Exception e) {
-            throw e;
           }
         }
 
@@ -340,13 +383,11 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
               validationErrorsMap.put(subnetJsonPath, err);
             }
           }
-        } catch (ManagementException e) {
+        } catch (Exception e) {
           String err =
               String.format(
                   "Virtual Network: %s not found in Resource Group: %s", vnet, resourceGroup);
           validationErrorsMap.put(vnetJsonPath, err);
-        } catch (Exception e) {
-          throw e;
         }
       }
     } catch (Exception e) {
@@ -377,11 +418,9 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
       SetMultimap<String, String> validationErrorsMap) {
     try {
       azure.genericResources().manager().subscriptionClient().getSubscriptions().get(subID);
-    } catch (ManagementException e) {
+    } catch (Exception e) {
       validationErrorsMap.put(errKey, "Subscription ID not found!");
       throwMultipleProviderValidatorError(validationErrorsMap, providerJson);
-    } catch (Exception e) {
-      throw e;
     }
   }
 
@@ -396,15 +435,13 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
       try {
         PrivateDnsZone zone =
             azure.privateDnsZones().getByResourceGroup(resourceGroup, privateDnsZone);
-      } catch (ManagementException e) {
+      } catch (Exception e) {
         String dnsZoneJsonPath = cloudInfoJson.get("azuHostedZoneId").get("jsonPath").asText();
         String err =
             String.format(
                 "Private DNS Zone: %s not found in Resource Group: %s",
                 privateDnsZone, resourceGroup);
         validationErrorsMap.put(dnsZoneJsonPath, err);
-      } catch (Exception e) {
-        throw e;
       }
     }
   }

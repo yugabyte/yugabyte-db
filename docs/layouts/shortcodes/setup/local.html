@@ -12,6 +12,11 @@
 {{- $status := default "yes" (.Get "status") }}
 {{- $locations := default "aws.us-east-2.us-east-2a,aws.us-east-2.us-east-2b,aws.us-east-2.us-east-2c" (.Get "locations") -}}
 {{- $locations = split (replace (replace $locations "\n" "") " " "") "," -}}
+{{- $collapse := default "Set up a local cluster" (.Get "collapse") -}}
+
+{{- if ne $collapse "no" -}}
+<details> <summary>{{$collapse}}</summary>
+{{- end -}}
 
 {{- $offset := 2 -}}
 {{- if and (eq 1 (len $ips)) (eq 0 (len (index $ips 0)))  -}}
@@ -111,3 +116,6 @@
 {{- end -}}
 
 {{ markdownify $data }}
+{{- if ne $collapse "no" -}}
+</details>
+{{- end -}}

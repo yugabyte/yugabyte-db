@@ -81,6 +81,9 @@ $$
        -- Fix the migration checksum
        UPDATE schema_version SET checksum = 828796405 WHERE version = '342' AND checksum = 1950473975;
 
+      -- Fix the migration checksum
+       UPDATE schema_version SET checksum = -1546684527 WHERE version = '223' AND checksum = 105101608;
+
        -- Fix next migration here
     END IF;
   END;

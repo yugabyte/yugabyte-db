@@ -13,9 +13,12 @@
 
 #include "yb/docdb/doc_reader.h"
 
+#include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
+#include "yb/common/column_id.h"
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/ql_type.h"
@@ -27,7 +30,6 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/read_operation_data.h"
-#include "yb/docdb/shared_lock_manager_fwd.h"
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_ttl_util.h"
@@ -163,7 +165,7 @@ class PackedRowContext : public dockv::PackedRowDecoderFactory {
 template <class ResultType>
 class GetHelper;
 
-template <class ResultType>
+template <class ResultType, bool kFastBackward>
 class FlatGetHelper;
 
 template <class T>
@@ -179,18 +181,18 @@ struct GetId<GetHelper<std::nullptr_t>> {
   static constexpr size_t kValue = 1;
 };
 
-template <>
-struct GetId<FlatGetHelper<std::nullptr_t>> {
+template <bool kFastBackward>
+struct GetId<FlatGetHelper<std::nullptr_t, kFastBackward>> {
   static constexpr size_t kValue = 2;
 };
 
-template <>
-struct GetId<FlatGetHelper<qlexpr::QLTableRow*>> {
+template <bool kFastBackward>
+struct GetId<FlatGetHelper<qlexpr::QLTableRow*, kFastBackward>> {
   static constexpr size_t kValue = 3;
 };
 
-template <>
-struct GetId<FlatGetHelper<dockv::PgTableRow*>> {
+template <bool kFastBackward>
+struct GetId<FlatGetHelper<dockv::PgTableRow*, kFastBackward>> {
   static constexpr size_t kValue = 4;
 };
 
@@ -259,8 +261,9 @@ Result<std::optional<SubDocument>> TEST_GetSubDocument(
 
   dockv::SchemaPackingStorage schema_packing_storage(TableType::YQL_TABLE_TYPE);
   const Schema schema;
+  auto deadline_info = DeadlineInfo(read_operation_data.deadline);
   DocDBTableReader doc_reader(
-      iter.get(), read_operation_data.deadline, projection, TableType::YQL_TABLE_TYPE,
+      iter.get(), deadline_info, projection, TableType::YQL_TABLE_TYPE,
       schema_packing_storage, schema);
   RETURN_NOT_OK(doc_reader.UpdateTableTombstoneTime(VERIFY_RESULT(GetTableTombstoneTime(
       sub_doc_key, doc_db, txn_op_context, read_operation_data))));
@@ -277,8 +280,10 @@ class PackedRowData {
  public:
   PackedRowData(
       DocDBTableReaderData* data,
-      std::reference_wrapper<const dockv::SchemaPackingStorage> schema_packing_storage)
-      : data_(*DCHECK_NOTNULL(data)), schema_packing_storage_(schema_packing_storage) {
+      std::reference_wrapper<const dockv::SchemaPackingStorage> schema_packing_storage,
+      std::unique_ptr<dockv::PackedRowColumnUpdateTracker> column_update_tracker)
+      : data_(*DCHECK_NOTNULL(data)), schema_packing_storage_(schema_packing_storage),
+        column_update_tracker_(std::move(column_update_tracker)) {
   }
 
   Result<ValueControlFields> ObtainControlFields(
@@ -307,6 +312,27 @@ class PackedRowData {
     return *DCHECK_NOTNULL(doc_ht_);
   }
 
+  void PrepareScan() {
+    if (column_update_tracker_) {
+      column_update_tracker_->Reset();
+    }
+  }
+
+  bool HasUpdates() const {
+    return column_update_tracker_ && column_update_tracker_->HasUpdates();
+  }
+
+  std::optional<bool> HasUpdatesAfter(const EncodedDocHybridTime& ht_time) const {
+    if (!column_update_tracker_) {
+      return std::nullopt;
+    }
+    return column_update_tracker_->HasUpdatesAfter(ht_time);
+  }
+
+  void TrackColumnUpdate(ColumnId column_id, const EncodedDocHybridTime& column_time) {
+    DCHECK_NOTNULL(column_update_tracker_.get())->TrackColumn(column_id, column_time);
+  }
+
   Status Decode(
       dockv::PackedRowVersion version, Slice value, const LazyDocHybridTime* doc_ht,
       const ValueControlFields& control_fields, PackedRowContext* context) {
@@ -323,18 +349,28 @@ class PackedRowData {
         value.starts_with(schema_packing_version_.AsSlice())) {
       value.remove_prefix(schema_packing_version_.size());
     } else {
-      RETURN_NOT_OK(UpdateSchemaPacking(version, &value, context));
+      RETURN_NOT_OK(UpdateSchemaPacking(version, &value));
     }
     auto& decoder = decoders_[id];
-    if (!decoder.Valid()) {
-      decoder.Init(version_, *data_.projection, *schema_packing_, context, data_.schema);
+
+    if (column_update_tracker_) {
+      column_update_tracker_->TrackRow(&doc_ht_->encoded());
     }
 
-    return decoder.Apply(value, context->Context());
+    if (!decoder.Valid()) {
+      decoder.Init(version_, *data_.projection, *schema_packing_,
+                   *context, data_.schema, column_update_tracker_.get());
+    }
+
+    // There may already be some updates for the packed row, let's take them into account.
+    if (!HasUpdates()) {
+      return decoder.Apply(value, context->Context());
+    } else {
+      return decoder.Apply(value, context->Context(), column_update_tracker_->GetRowScope());
+    }
   }
 
-  Status UpdateSchemaPacking(
-      dockv::PackedRowVersion version, Slice* value, PackedRowContext* factory) {
+  Status UpdateSchemaPacking(dockv::PackedRowVersion version, Slice* value) {
     const auto* start = value->cdata();
     version_ = version;
     value->consume_byte();
@@ -358,20 +394,24 @@ class PackedRowData {
 
   const LazyDocHybridTime* doc_ht_;
   ValueControlFields control_fields_;
+
+  std::unique_ptr<dockv::PackedRowColumnUpdateTracker> column_update_tracker_;
 };
 
 DocDBTableReaderData::DocDBTableReaderData(
-    IntentAwareIterator* iter_, CoarseTimePoint deadline,
+    IntentAwareIterator* iter_, DeadlineInfo& deadline_info_,
     const dockv::ReaderProjection* projection_,
     TableType table_type_,
     std::reference_wrapper<const dockv::SchemaPackingStorage> schema_packing_storage_,
-    std::reference_wrapper<const Schema> schema_)
+    std::reference_wrapper<const Schema> schema_,
+    bool use_fast_backward_scan_)
     : iter(iter_),
-      deadline_info(deadline),
+      deadline_info(deadline_info_),
       projection(projection_),
       table_type(table_type_),
       schema_packing_storage(schema_packing_storage_),
-      schema(schema_) {
+      schema(schema_),
+      use_fast_backward_scan(use_fast_backward_scan_) {
 }
 
 DocDBTableReaderData::~DocDBTableReaderData() = default;
@@ -401,6 +441,7 @@ void DocDBTableReader::SetTableTtl(const Schema& table_schema) {
 Status DocDBTableReader::UpdateTableTombstoneTime(DocHybridTime doc_ht) {
   if (doc_ht.is_valid()) {
     data_.table_tombstone_time.Assign(doc_ht);
+    VLOG_WITH_FUNC(4) << "Setting table_tombstone_time to " << data_.table_tombstone_time;
   }
   return Status::OK();
 }
@@ -672,7 +713,6 @@ class NullPtrRowConverter {
   Status Decode(const QLValuePB& value, DataType = DataType::NULL_VALUE_TYPE) {
     return Status::OK();
   }
-
 };
 
 inline auto MakeConverter(std::nullptr_t row, size_t column_index, ColumnId) {
@@ -719,29 +759,62 @@ Status DecodeRowValue(Slice row_value, std::nullptr_t) {
   return Status::OK();
 }
 
+template <bool kFastBackward>
+void Move(IntentAwareIterator* iter) {
+  if constexpr (kFastBackward) {
+    iter->Prev();
+  } else {
+    iter->Next();
+  }
+}
+
 // Implements main logic in the reader.
 // Used keep scan state and avoid passing it between methods.
 // It is less performant than FlatGetHelper, but handles the general case of nested documents.
 // Not used for YSQL if FLAGS_ysql_use_flat_doc_reader is true.
-template <bool is_flat_doc, bool ysql, bool check_exists_only>
+template <bool kIsFlatDoc, bool ysql, bool check_exists_only, bool kFastBackward = false>
 class GetHelperBase : public PackedRowContext {
  public:
-  static constexpr bool kIsFlatDoc = is_flat_doc;
   static constexpr bool kYsql = ysql;
   static constexpr bool kCheckExistOnly = check_exists_only;
+
+  // TODO(#22371): fast backward scan is supported for the flat doc reader only as of now.
+  static_assert(!kFastBackward || kIsFlatDoc,
+                "Fast backward scan supported for flat doc reader only");
 
   GetHelperBase(DocDBTableReaderData* data, KeyBuffer* root_doc_key)
       : data_(*DCHECK_NOTNULL(data)),
         root_doc_key_buffer_(root_doc_key),
-        root_doc_key_(AdjustRootDocKey(root_doc_key)),
-        upperbound_scope_(root_doc_key->AsSlice(), data_.iter) {
-    if (!data->packed_row) {
-      data->packed_row.reset(new PackedRowData(data, data->schema_packing_storage));
+        root_doc_key_(kFastBackward ? root_doc_key->AsSlice() : AdjustRootDocKey(root_doc_key)),
+        bound_scope_(root_doc_key->AsSlice(), data_.iter) {
+    if constexpr (kFastBackward) {
+      // The iterator should be pointing to the oldest update of the last column, hence current
+      // column should be adjusted to point to the last column from the projection.
+      column_index_ = make_signed(data_.projection->num_value_columns()) - 1;
+      current_column_ = &data_.projection->value_column(column_index_);
+    }
+
+    if (!data_.packed_row) {
+      std::unique_ptr<dockv::PackedRowColumnUpdateTracker> column_update_tracker;
+      if constexpr (kFastBackward) {
+        column_update_tracker = std::make_unique<dockv::PackedRowColumnUpdateTracker>();
+        VLOG_WITH_FUNC(4) << "Init packed row data for fast backward";
+      }
+      data_.packed_row.reset(new PackedRowData(
+          &data_, data_.schema_packing_storage, std::move(column_update_tracker)));
+    }
+
+    // As of now PrepareScan is required for fast backward scan only.
+    if constexpr (kFastBackward) {
+      data_.packed_row->PrepareScan();
     }
   }
 
   virtual ~GetHelperBase() {
-    root_doc_key_buffer_->PopBack();
+    // Reverting the possible change made by AdjustRootDocKey.
+    if constexpr (!kFastBackward) {
+      root_doc_key_buffer_->PopBack();
+    }
   }
 
   const dockv::ReaderProjection& projection() const {
@@ -754,18 +827,19 @@ class GetHelperBase : public PackedRowContext {
   virtual Status ProcessEntry(
       Slice subkeys, Slice value_slice, const EncodedDocHybridTime& write_time) = 0;
   virtual Status InitRowValue(
-      Slice row_value, LazyDocHybridTime* root_write_time,
+      Slice row_value, const LazyDocHybridTime* root_write_time,
       const ValueControlFields& control_fields) = 0;
 
   Result<DocReaderResult> DoRun(
       const FetchedEntry& prefetched_key, LazyDocHybridTime* root_write_time) {
+    DVLOG_WITH_PREFIX_AND_FUNC(4) << "Prefetched key: " << prefetched_key;
     auto& fetched_key = VERIFY_RESULT_REF(Prepare(prefetched_key, root_write_time));
 
-    if (kCheckExistOnly) {
+    if constexpr (kCheckExistOnly) {
       if (found_) {
         return FoundResult(/* iter_valid= */ true);
       }
-      auto iter_valid = VERIFY_RESULT(Scan(&fetched_key));
+      auto iter_valid = VERIFY_RESULT(Scan(&fetched_key, root_write_time));
       return found_ ? FoundResult(iter_valid) : DocReaderResult::kNotFound;
     }
 
@@ -774,7 +848,7 @@ class GetHelperBase : public PackedRowContext {
       cannot_scan_columns_ = true;
     }
 
-    auto iter_valid = VERIFY_RESULT(Scan(&fetched_key));
+    auto iter_valid = VERIFY_RESULT(Scan(&fetched_key, root_write_time));
 
     if (found_ ||
         CheckForRootValue()) { // Could only happen in tests.
@@ -787,7 +861,7 @@ class GetHelperBase : public PackedRowContext {
   // Scans DocDB for entries related to root_doc_key_.
   // Iterator should already point to the first such entry.
   // Changes nearly all internal state fields.
-  Result<bool> Scan(const FetchedEntry* fetched_key) {
+  Result<bool> Scan(const FetchedEntry* fetched_key, LazyDocHybridTime* root_write_time) {
     DCHECK_ONLY_NOTNULL(fetched_key);
     if (!*fetched_key) {
       RETURN_NOT_OK(data_.deadline_info.CheckDeadlinePassed());
@@ -796,7 +870,7 @@ class GetHelperBase : public PackedRowContext {
     for (;;) {
       RETURN_NOT_OK(data_.deadline_info.CheckDeadlinePassed());
 
-      if (!VERIFY_RESULT(HandleRecord(*fetched_key))) {
+      if (!VERIFY_RESULT(HandleRecord(*fetched_key, root_write_time))) {
         return true;
       }
 
@@ -814,14 +888,76 @@ class GetHelperBase : public PackedRowContext {
     return false;
   }
 
-  Result<bool> HandleRecord(const FetchedEntry& key_result) {
+  Result<bool> HandleRootRecord(
+      const FetchedEntry& key_result, LazyDocHybridTime* root_write_time) {
+    // It is used only for the fast backward scan path, and it was validated for that type of scan.
+    DCHECK(kFastBackward);
+
+    // We should have met either a full packed row or a row tombstone.
+    // It is expected to have exactly one full packed row.
+    DCHECK(IsRootRecord(key_result.key));
+
+    // Skip too old root records.
+    if (key_result.write_time < root_write_time->encoded()) {
+      Move<kFastBackward>(data_.iter);
+      return true; // Continue scanning.
+    }
+
+    // Specific handling for deleted/tombstoned row is required.
+    if (dockv::DecodeValueEntryType(key_result.value) == ValueEntryType::kTombstone) {
+      // We should consider the delete only if it is more recent than any row update write time.
+      auto has_row_update = data_.packed_row->HasUpdatesAfter(key_result.write_time);
+      if (has_row_update.value_or(true)) {
+        // Delete record is too old, just skip it.
+        Move<kFastBackward>(data_.iter);
+        return true; // Continue scanning.
+      }
+
+      // This is a more recent delete, need to be taken it into account.
+      found_ = false;
+    }
+
+    RETURN_NOT_OK(DoHandleRootRecord(key_result, root_write_time));
+    return true; // Continue scanning.
+  }
+
+  Status DoHandleRootRecord(const FetchedEntry& key_result, LazyDocHybridTime* root_write_time) {
+    DCHECK(IsRootRecord(key_result.key));
+
+    root_write_time->Assign(key_result.write_time);
+
+    auto value = key_result.value;
+    auto control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value));
+
+    RETURN_NOT_OK(InitRowValue(value, root_write_time, control_fields));
+
+    DVLOG_WITH_PREFIX_AND_FUNC(4)
+        << "Root write time: " << root_write_time->ToString() << ", control fields: "
+        << control_fields.ToString();
+
+    Move<kFastBackward>(data_.iter);
+
+    return Status::OK();
+  }
+
+  Result<bool> HandleRecord(const FetchedEntry& key_result, LazyDocHybridTime* root_write_time) {
     DVLOG_WITH_PREFIX_AND_FUNC(4)
         << "key: " << dockv::SubDocKey::DebugSliceToString(key_result.key) << ", write time: "
         << key_result.write_time.ToString() << ", value: "
         << key_result.value.ToDebugHexString();
     DCHECK(key_result.key.starts_with(root_doc_key_));
-    auto subkeys = key_result.key.WithoutPrefix(root_doc_key_.size());
 
+    // With the fast backward scan, the full packed row may be not the first record met during
+    // reading the current document as the iteration is happening in the reversed order and
+    // starts from the lastest record to the first record (e.g., from the oldest update of the
+    // latest column to the newest update of the first column or full packed row).
+    if constexpr (kFastBackward) {
+      if (IsRootRecord(key_result.key)) {
+        return HandleRootRecord(key_result, root_write_time);
+      }
+    }
+
+    auto subkeys = key_result.key.WithoutPrefix(root_doc_key_.size());
     return DoHandleRecord(key_result, subkeys);
   }
 
@@ -832,22 +968,30 @@ class GetHelperBase : public PackedRowContext {
       int compare_result = subkeys.compare_prefix(projection_column_encoded_key_prefix);
       DVLOG_WITH_PREFIX_AND_FUNC(4)
           << "Subkeys: " << subkeys.ToDebugHexString()
+          << ", encoded column: " << projection_column_encoded_key_prefix.ToDebugHexString()
           << ", column: " << current_column_->subkey
           << ", compare_result: " << compare_result;
-      if (compare_result < 0) {
+
+      // Check if iterator is not yet reached current projection column. In this case iterator's
+      // position should be adjusted to point to the current projection column.
+      std::conditional_t<kFastBackward, std::greater<int>, std::less<int>> need_seek_column;
+      if (need_seek_column(compare_result, 0)) {
         SeekProjectionColumn();
         return true;
       }
 
-      if (compare_result > 0) {
-        if (!VERIFY_RESULT(NextColumn())) {
+      // Check if iterator is already past the current projection column, in this case current
+      // projection column should be adjusted.
+      std::conditional_t<kFastBackward, std::less<int>, std::greater<int>> need_next_column;
+      if (need_next_column(compare_result, 0)) {
+        if (!NextColumn()) {
           return false;
         }
 
         return DoHandleRecord(key_result, subkeys);
       }
 
-      if (kIsFlatDoc) {
+      if constexpr (kIsFlatDoc) {
         SCHECK_EQ(
             subkeys.size(), projection_column_encoded_key_prefix.size(), IllegalState,
             "FlatGetHelper supports at most 1 subkey");
@@ -858,7 +1002,19 @@ class GetHelperBase : public PackedRowContext {
     if (kCheckExistOnly && found_) {
       return false;
     }
-    data_.iter->SeekPastSubKey(key_result.key);
+
+    if constexpr (!kFastBackward) {
+      data_.iter->SeekPastSubKey(key_result.key);
+    } else {
+      data_.packed_row->TrackColumnUpdate(current_column_->id, key_result.write_time);
+
+      // It is required to scan through all entries for the given SubDocKey, hence using Prev().
+      // TODO(#22373): It might be too expensive to use Prev only. The better strategy is to try
+      // Prev for several times and if the cursor is still on the current SubDockey, then use the
+      // standard approach for SubDocKey: Seek to the very first record and do forward read to
+      // build the SubDocKey value.
+      data_.iter->Prev();
+    }
     return true;
   }
 
@@ -868,11 +1024,15 @@ class GetHelperBase : public PackedRowContext {
     DVLOG_WITH_PREFIX_AND_FUNC(4)
         << "Seek next column: "
         << dockv::SubDocKey::DebugSliceToString(*root_key_entry_);
-    data_.iter->SeekForward(root_key_entry_->AsSlice());
+    if constexpr (!kFastBackward) {
+      data_.iter->SeekForward(root_key_entry_->AsSlice());
+    } else {
+      data_.iter->SeekBackward(*root_key_entry_);
+    }
     root_key_entry_->Truncate(root_doc_key_.size());
   }
 
-  Result<bool> NextColumn() {
+  bool NextColumnForward() {
     ++column_index_;
     if (column_index_ == make_signed(data_.projection->num_value_columns())) {
       return false;
@@ -885,6 +1045,31 @@ class GetHelperBase : public PackedRowContext {
     return true;
   }
 
+  bool NextColumnBackward() {
+    if (column_index_ == kLivenessColumnIndex) {
+      return false;
+    }
+    --column_index_;
+    if (column_index_ == kLivenessColumnIndex) {
+      current_column_ = &ProjectedLivenessColumn();
+    } else {
+      --current_column_;
+    }
+    return true;
+  }
+
+  inline bool NextColumn() {
+    if constexpr (kFastBackward) {
+      return NextColumnBackward();
+    } else {
+      return NextColumnForward();
+    }
+  }
+
+  inline bool IsRootRecord(Slice key) const {
+    return root_doc_key_.size() == key.size();
+  }
+
   Result<const FetchedEntry&> Prepare(
       const FetchedEntry& key_result, LazyDocHybridTime* root_write_time) {
     DVLOG_WITH_PREFIX_AND_FUNC(4) << "Pos: " << data_.iter->DebugPosToString()
@@ -895,23 +1080,17 @@ class GetHelperBase : public PackedRowContext {
     DCHECK(key_result.key.starts_with(root_doc_key_));
 
     root_write_time->Assign(data_.table_tombstone_time);
-    if (root_doc_key_.size() != key_result.key.size() ||
+    if (!IsRootRecord(key_result.key) ||
         key_result.write_time < root_write_time->encoded()) {
+      DVLOG_WITH_PREFIX_AND_FUNC(4) << "Init row with no value";
       RETURN_NOT_OK(InitRowValue(Slice(), root_write_time, ValueControlFields()));
       return key_result;
     }
 
-    root_write_time->Assign(key_result.write_time);
-
-    auto value = key_result.value;
-    auto control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value));
-
-    RETURN_NOT_OK(InitRowValue(value, root_write_time, control_fields));
-
-    DVLOG_WITH_PREFIX_AND_FUNC(4)
-        << "Write time: " << root_write_time->ToString() << ", control fields: "
-        << control_fields.ToString();
-    data_.iter->Next();
+    // We should reach this point at least for the full packed row record and tombstone record if
+    // their write time is more recent than table's tombstone time (which seems applicable for
+    // the colocation case only).
+    RETURN_NOT_OK(DoHandleRootRecord(key_result, root_write_time));
     return data_.iter->Fetch();
   }
 
@@ -966,7 +1145,7 @@ class GetHelperBase : public PackedRowContext {
   // Whether we found row related value or not.
   bool found_ = false;
 
-  IntentAwareIteratorUpperboundScope upperbound_scope_;
+  IntentAwareIteratorBoundScope<kFastBackward> bound_scope_;
 };
 
 template <class ResultType, class Value>
@@ -980,14 +1159,14 @@ Status SkipPackedColumn(GetHelper<ResultType>* helper, size_t index,
   return helper->DecodePackedColumn(missing_value, &helper->projection().columns[index]);
 }
 
-template <class ResultType, class Value>
+template <class ResultType, bool kFastBackward, class Value>
 Status DecodePackedColumn(
-    FlatGetHelper<ResultType>* helper, size_t index, Value value) {
+    FlatGetHelper<ResultType, kFastBackward>* helper, size_t index, Value value) {
   return DecodePackedColumn(helper->result(), index, value, helper->projection());
 }
 
-template <class ResultType>
-Status SkipPackedColumn(FlatGetHelper<ResultType>* helper, size_t index,
+template <class ResultType, bool kFastBackward>
+Status SkipPackedColumn(FlatGetHelper<ResultType, kFastBackward>* helper, size_t index,
     const QLValuePB& missing_value) {
   return docdb::DecodePackedColumn(helper->result(), index, missing_value, helper->projection());
 }
@@ -999,8 +1178,9 @@ Status SkipPackedColumn(dockv::PgTableRow* row, size_t index, const QLValuePB& m
 template <bool kLast, class ContextType>
 UnsafeStatus DecodePackedColumnV1(
     dockv::PackedColumnDecoderDataV1* data, size_t projection_index,
+    const dockv::PackedColumnDecoderArgsUnion& decoder_args,
     const dockv::PackedColumnDecoderEntry* chain) {
-  auto column_value = data->decoder.FetchValue(chain->data);
+  auto column_value = data->decoder.FetchValue(decoder_args.packed_index);
   auto status = column_value.FixValue();
   if (PREDICT_FALSE(!status.ok())) {
     return status.UnsafeRelease();
@@ -1010,18 +1190,19 @@ UnsafeStatus DecodePackedColumnV1(
   if (PREDICT_FALSE(!status.ok())) {
     return status.UnsafeRelease();
   }
-  return dockv::CallNextDecoderV1<kLast>(
-      data, projection_index, chain);
+  return dockv::CallNextDecoderV1<kLast>(data, projection_index, chain);
 }
 
 template <bool kLast, bool kCheckNull, size_t kSize, class ContextType>
 UnsafeStatus DecodePackedColumnV2(
-    const uint8_t* header, const uint8_t* body, void* context, size_t projection_index,
+    dockv::PackedColumnDecoderDataV2* data, const uint8_t* body, size_t projection_index,
+    const dockv::PackedColumnDecoderArgsUnion& decoder_args,
     const dockv::PackedColumnDecoderEntry* chain) {
   Status status;
-  if (kCheckNull && PREDICT_FALSE(dockv::PackedRowDecoderV2::IsNull(header, chain->data))) {
+  if (kCheckNull &&
+      PREDICT_FALSE(dockv::PackedRowDecoderV2::IsNull(data->header, decoder_args.packed_index))) {
     status = DecodePackedColumn(
-        static_cast<ContextType*>(context), projection_index, dockv::PackedValueV2::Null());
+        static_cast<ContextType*>(data->context), projection_index, dockv::PackedValueV2::Null());
   } else {
     Slice column_value_slice;
     if (kSize) {
@@ -1033,13 +1214,13 @@ UnsafeStatus DecodePackedColumnV2(
     dockv::PackedValueV2 column_value(column_value_slice);
     body = column_value->end();
     status = DecodePackedColumn(
-        static_cast<ContextType*>(context), projection_index, column_value);
+        static_cast<ContextType*>(data->context), projection_index, column_value);
   }
   if (PREDICT_FALSE(!status.ok())) {
     return status.UnsafeRelease();
   }
   return dockv::CallNextDecoderV2<kCheckNull, kLast>(
-      header, body, context, projection_index, chain);
+      data, body, projection_index, chain);
 }
 
 template <dockv::PackedRowVersion kVersion, bool kLast, class ContextType>
@@ -1049,10 +1230,8 @@ template <bool kLast, class ContextType>
 struct MakeColumnDecoderEntry<dockv::PackedRowVersion::kV1, kLast, ContextType> {
   static dockv::PackedColumnDecoderEntry Apply(DataType data_type, ssize_t packed_index) {
     return dockv::PackedColumnDecoderEntry {
-      .decoder = dockv::PackedColumnDecoderUnion {
-        .v1 = &DecodePackedColumnV1<kLast, ContextType>,
-      },
-      .data = make_unsigned(packed_index),
+      .decoder = { .v1 = &DecodePackedColumnV1<kLast, ContextType> },
+      .decoder_args = { .packed_index = make_unsigned(packed_index) }
     };
   }
 };
@@ -1087,15 +1266,15 @@ template <bool kLast, class ContextType>
 struct MakeColumnDecoderEntry<dockv::PackedRowVersion::kV2, kLast, ContextType> {
   static dockv::PackedColumnDecoderEntry Apply(DataType data_type, ssize_t packed_index) {
     return dockv::PackedColumnDecoderEntry {
-      .decoder = dockv::PackedColumnDecoderUnion {
-        .v2 = dockv::PackedColumnDecodersV2 {
+      .decoder = {
+        .v2 = {
           .with_nulls = dockv::VisitDataType(
             data_type, MakePackedRowDecoderV2Visitor<true, kLast, ContextType>()),
           .no_nulls = dockv::VisitDataType(
             data_type, MakePackedRowDecoderV2Visitor<false, kLast, ContextType>()),
         },
       },
-      .data = make_unsigned(packed_index),
+      .decoder_args = { .packed_index = make_unsigned(packed_index) }
     };
   }
 };
@@ -1118,10 +1297,11 @@ struct MakeColumnDecoderEntry<dockv::PackedRowVersion::kV2, kLast, dockv::PgTabl
 template <bool kLast, class ContextType>
 UnsafeStatus MissingColumnDecoderV1(
     dockv::PackedColumnDecoderDataV1* data, size_t projection_index,
+    const dockv::PackedColumnDecoderArgsUnion& decoder_args,
     const dockv::PackedColumnDecoderEntry* chain) {
   auto* helper = static_cast<ContextType*>(data->context);
   // Fill in missing value (if any) for skipped columns.
-  const QLValuePB* missing_value = DCHECK_NOTNULL(bit_cast<const QLValuePB*>(chain->data));
+  const QLValuePB* missing_value = DCHECK_NOTNULL(decoder_args.missing_value);
   auto status = SkipPackedColumn(helper, projection_index, *missing_value);
   if (PREDICT_FALSE(!status.ok())) {
     return status.UnsafeRelease();
@@ -1131,16 +1311,17 @@ UnsafeStatus MissingColumnDecoderV1(
 
 template <bool kCheckNull, bool kLast, class ContextType>
 UnsafeStatus MissingColumnDecoderV2(
-    const uint8_t* header, const uint8_t* body, void* context, size_t projection_index,
+    dockv::PackedColumnDecoderDataV2* data, const uint8_t* body, size_t projection_index,
+    const dockv::PackedColumnDecoderArgsUnion& decoder_args,
     const dockv::PackedColumnDecoderEntry* chain) {
-  auto* helper = static_cast<ContextType*>(context);
+  auto* helper = static_cast<ContextType*>(data->context);
   // Fill in missing value (if any) for skipped columns.
-  const QLValuePB* missing_value = DCHECK_NOTNULL(bit_cast<const QLValuePB*>(chain->data));
+  const QLValuePB* missing_value = DCHECK_NOTNULL(decoder_args.missing_value);
   auto status = SkipPackedColumn(helper, projection_index, *missing_value);
   if (PREDICT_FALSE(!status.ok())) {
     return status.UnsafeRelease();
   }
-  return CallNextDecoderV2<kCheckNull, kLast>(header, body, context, projection_index, chain);
+  return CallNextDecoderV2<kCheckNull, kLast>(data, body, projection_index, chain);
 }
 
 template <class HelperType>
@@ -1148,8 +1329,8 @@ struct HelperToContext {
   using Type = HelperType;
 };
 
-template <>
-struct HelperToContext<FlatGetHelper<dockv::PgTableRow*>> {
+template <bool kFastBackward>
+struct HelperToContext<FlatGetHelper<dockv::PgTableRow*, kFastBackward>> {
   using Type = dockv::PgTableRow;
 };
 
@@ -1173,20 +1354,18 @@ dockv::PackedColumnDecoderEntry GetColumnDecoder3(
   switch (kVersion) {
     case dockv::PackedRowVersion::kV1:
       return dockv::PackedColumnDecoderEntry {
-        .decoder = dockv::PackedColumnDecoderUnion {
-          .v1 = MissingColumnDecoderV1<kLast, ContextType>,
-        },
-        .data = yb::bit_cast<size_t>(missing_value),
+        .decoder = { .v1 = MissingColumnDecoderV1<kLast, ContextType> },
+        .decoder_args = { .missing_value = missing_value }
       };
     case dockv::PackedRowVersion::kV2:
       return dockv::PackedColumnDecoderEntry {
-        .decoder = dockv::PackedColumnDecoderUnion {
-          .v2 = dockv::PackedColumnDecodersV2 {
+        .decoder = {
+          .v2 = {
             .with_nulls = MissingColumnDecoderV2<true, kLast, ContextType>,
             .no_nulls = MissingColumnDecoderV2<false, kLast, ContextType>,
           },
         },
-        .data = yb::bit_cast<size_t>(missing_value),
+        .decoder_args = { .missing_value = missing_value }
       };
   }
 }
@@ -1205,7 +1384,8 @@ dockv::PackedColumnDecoderEntry GetColumnDecoder2(bool last, Args&&... args) {
 // we don't need to decode actual value.
 template <class ResultType>
 using BaseOfGetHelper = GetHelperBase<
-        /* is_flat_doc= */ false, /* ysql= */ false, CheckExistOnly<ResultType>>;
+        /* is_flat_doc= */ false, /* ysql= */ false,
+        CheckExistOnly<ResultType>, /* fast_backward= */ false>;
 
 template <class ResultType>
 class GetHelper : public BaseOfGetHelper<ResultType> {
@@ -1320,13 +1500,13 @@ class GetHelper : public BaseOfGetHelper<ResultType> {
   }
 
   dockv::PackedColumnDecoderEntry GetColumnDecoderV1(
-      size_t projection_index, ssize_t packed_index, bool last) override {
+      size_t projection_index, ssize_t packed_index, bool last) const override {
     return GetColumnDecoder2<dockv::PackedRowVersion::kV1, GetHelper>(
         last, data_.schema, *data_.projection, projection_index, packed_index);
   }
 
   dockv::PackedColumnDecoderEntry GetColumnDecoderV2(
-      size_t projection_index, ssize_t packed_index, bool last) override {
+      size_t projection_index, ssize_t packed_index, bool last) const override {
     return GetColumnDecoder2<dockv::PackedRowVersion::kV2, GetHelper>(
         last, data_.schema, *data_.projection, projection_index, packed_index);
   }
@@ -1387,7 +1567,7 @@ class GetHelper : public BaseOfGetHelper<ResultType> {
   }
 
   Status InitRowValue(
-      Slice row_value, LazyDocHybridTime* root_write_time,
+      Slice row_value, const LazyDocHybridTime* root_write_time,
       const ValueControlFields& control_fields) override {
     auto value_type = dockv::DecodeValueEntryType(row_value);
     auto packed_row_version = dockv::GetPackedRowVersion(value_type);
@@ -1506,22 +1686,21 @@ class GetHelper : public BaseOfGetHelper<ResultType> {
   bool has_root_value_ = false;
 };
 
-template <class ResultType>
+template <class ResultType, bool kFastBackward>
 using BaseOfFlatGetHelper = GetHelperBase<
-        /* is_flat_doc= */ true, /* ysql= */ true, CheckExistOnly<ResultType>>;
+        /* is_flat_doc= */ true, /* ysql= */ true, CheckExistOnly<ResultType>, kFastBackward>;
 
 // It is more performant than GetHelper, but can't handle the general case of
 // nested documents that is possible in YCQL.
 // Used for YSQL if FLAGS_ysql_use_flat_doc_reader is true.
-template <class ResultType>
-class FlatGetHelper : public BaseOfFlatGetHelper<ResultType> {
+template <class ResultType, bool kFastBackward>
+class FlatGetHelper : public BaseOfFlatGetHelper<ResultType, kFastBackward> {
  public:
-  using Base = BaseOfFlatGetHelper<ResultType>;
+  using Base = BaseOfFlatGetHelper<ResultType, kFastBackward>;
 
   FlatGetHelper(
       DocDBTableReaderData* data, KeyBuffer* root_doc_key, ResultType result)
       : Base(data, root_doc_key), result_(result) {
-    row_expiration_ = data->table_expiration;
     root_key_entry_ = &row_key_;
   }
 
@@ -1539,7 +1718,7 @@ class FlatGetHelper : public BaseOfFlatGetHelper<ResultType> {
   Status ProcessEntry(
       Slice /* subkeys */, Slice value_slice, const EncodedDocHybridTime& write_time) override {
     if (row_write_time_.encoded() >= write_time) {
-      DVLOG_WITH_PREFIX_AND_FUNC(4) << "write_time: " << write_time.ToString();
+      DVLOG_WITH_PREFIX_AND_FUNC(4) << "Skipped, write_time: " << write_time.ToString();
       return Status::OK();
     }
 
@@ -1567,27 +1746,28 @@ class FlatGetHelper : public BaseOfFlatGetHelper<ResultType> {
   void* Context() override;
 
   dockv::PackedColumnDecoderEntry GetColumnDecoderV1(
-      size_t projection_index, ssize_t packed_index, bool last) override {
+      size_t projection_index, ssize_t packed_index, bool last) const override {
     return GetColumnDecoder2<dockv::PackedRowVersion::kV1, FlatGetHelper>(
         last, data_.schema, *data_.projection, projection_index, packed_index);
   }
 
   dockv::PackedColumnDecoderEntry GetColumnDecoderV2(
-      size_t projection_index, ssize_t packed_index, bool last) override {
+      size_t projection_index, ssize_t packed_index, bool last) const override {
     return GetColumnDecoder2<dockv::PackedRowVersion::kV2, FlatGetHelper>(
         last, data_.schema, *data_.projection, projection_index, packed_index);
   }
 
   Status InitRowValue(
-      Slice row_value, LazyDocHybridTime* root_write_time,
+      Slice row_value, const LazyDocHybridTime* root_write_time,
       const ValueControlFields& control_fields) override {
     DCHECK_ONLY_NOTNULL(data_.projection);
     auto packed_row_version = dockv::GetPackedRowVersion(row_value);
     if (!packed_row_version) {
+      VLOG_WITH_FUNC(4) << "Not a packed row: " << row_value.ToDebugHexString();
       return SetNullOrMissingResult(*data_.projection, result_, data_.schema);
     }
     found_ = true;
-    if (Base::kCheckExistOnly) {
+    if constexpr (Base::kCheckExistOnly) {
       return Status::OK();
     }
     return data_.packed_row->Decode(
@@ -1613,7 +1793,6 @@ class FlatGetHelper : public BaseOfFlatGetHelper<ResultType> {
 
   dockv::KeyBytes row_key_;
   LazyDocHybridTime row_write_time_;
-  Expiration row_expiration_;
 };
 
 template <class Helper>
@@ -1621,13 +1800,28 @@ Helper* GetContext(Helper* helper) {
   return helper;
 }
 
-dockv::PgTableRow* GetContext(FlatGetHelper<dockv::PgTableRow*>* helper) {
+template<bool kFastBackward>
+dockv::PgTableRow* GetContext(FlatGetHelper<dockv::PgTableRow*, kFastBackward>* helper) {
   return helper->result();
 }
 
-template <class ResultType>
-void* FlatGetHelper<ResultType>::Context() {
+template <class ResultType, bool kFastBackward>
+void* FlatGetHelper<ResultType, kFastBackward>::Context() {
   return GetContext(this);
+}
+
+template <typename Res, bool kFastBackward = false>
+Result<DocReaderResult> DoGetFlat(
+    DocDBTableReaderData* data, KeyBuffer* root_doc_key,
+    const FetchedEntry& fetched_entry, Res* result) {
+  DCHECK_ONLY_NOTNULL(data);
+  if (result == nullptr || !data->projection->has_value_columns()) {
+    FlatGetHelper<std::nullptr_t, kFastBackward> helper(data, root_doc_key, nullptr);
+    return helper.Run(fetched_entry);
+  }
+
+  FlatGetHelper<Res*, kFastBackward> helper(data, root_doc_key, result);
+  return helper.Run(fetched_entry);
 }
 
 } // namespace
@@ -1661,21 +1855,9 @@ Result<DocReaderResult> DocDBTableReader::Get(
   return helper.Run(new_fetched_entry);
 }
 
-template <class Res>
-Result<DocReaderResult> DocDBTableReader::DoGetFlat(
-    KeyBuffer* root_doc_key, const FetchedEntry& fetched_entry, Res* result) {
-  if (result == nullptr || !data_.projection->has_value_columns()) {
-    FlatGetHelper<std::nullptr_t> helper(&data_, root_doc_key, nullptr);
-    return helper.Run(fetched_entry);
-  }
-
-  FlatGetHelper<Res*> helper(&data_, root_doc_key, result);
-  return helper.Run(fetched_entry);
-}
-
 Result<DocReaderResult> DocDBTableReader::GetFlat(
     KeyBuffer* root_doc_key, const FetchedEntry& fetched_entry, qlexpr::QLTableRow* result) {
-  return DoGetFlat(root_doc_key, fetched_entry, result);
+  return DoGetFlat(&data_, root_doc_key, fetched_entry, result);
 }
 
 Result<DocReaderResult> DocDBTableReader::GetFlat(
@@ -1683,7 +1865,12 @@ Result<DocReaderResult> DocDBTableReader::GetFlat(
   if (result) {
     DCHECK_EQ(result->projection(), *data_.projection);
   }
-  return DoGetFlat(root_doc_key, fetched_entry, result);
+  if (!data_.use_fast_backward_scan) {
+    return DoGetFlat(&data_, root_doc_key, fetched_entry, result);
+  }
+
+  return DoGetFlat<dockv::PgTableRow, /* kFastBackward = */ true>(
+      &data_, root_doc_key, fetched_entry, result);
 }
 
 }  // namespace yb::docdb

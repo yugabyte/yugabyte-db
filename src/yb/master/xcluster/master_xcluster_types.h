@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include "yb/cdc/xcluster_types.h"
 #include "yb/cdc/xrepl_types.h"
 #include "yb/common/schema.h"
 

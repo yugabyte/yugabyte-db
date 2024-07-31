@@ -16,6 +16,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -33,7 +34,7 @@ import com.yugabyte.yba.v2.client.api.UniverseApi;
 import com.yugabyte.yba.v2.client.models.ClusterGFlags;
 import com.yugabyte.yba.v2.client.models.UniverseEditGFlags;
 import com.yugabyte.yba.v2.client.models.UniverseEditGFlags.UpgradeOptionEnum;
-import com.yugabyte.yba.v2.client.models.YBPTask;
+import com.yugabyte.yba.v2.client.models.YBATask;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
@@ -52,6 +53,7 @@ import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.controllers.UniverseControllerTestBase;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
@@ -69,6 +71,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
@@ -105,12 +108,14 @@ public class UniverseApiControllerEditGFlagsTest extends UniverseControllerTestB
   private final String TMP_CERTS_PATH = "/tmp/" + getClass().getSimpleName() + "/certs";
 
   @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
+  @Mock GFlagsValidation mockGFlagsValidation;
 
   @Override
   protected Application provideApplication() {
     mockCommissioner = mock(Commissioner.class);
     mockAutoFlagUtil = mock(AutoFlagUtil.class);
     mockXClusterUniverseService = mock(XClusterUniverseService.class);
+    mockGFlagsValidation = mock(GFlagsValidation.class);
     ReleaseManager mockReleaseManager = mock(ReleaseManager.class);
 
     mockConfig = mock(Config.class);
@@ -142,6 +147,7 @@ public class UniverseApiControllerEditGFlagsTest extends UniverseControllerTestB
         .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager))
         .overrides(bind(AutoFlagUtil.class).toInstance(mockAutoFlagUtil))
         .overrides(bind(XClusterUniverseService.class).toInstance(mockXClusterUniverseService))
+        .overrides(bind(GFlagsValidation.class).toInstance(mockGFlagsValidation))
         .overrides(bind(HealthChecker.class).toInstance(mock(HealthChecker.class)))
         .overrides(
             bind(CustomWsClientFactory.class).toProvider(CustomWsClientFactoryProvider.class))
@@ -161,6 +167,12 @@ public class UniverseApiControllerEditGFlagsTest extends UniverseControllerTestB
     k8sUniverse = ModelFactory.createUniverse("k8s", customer.getId(), Common.CloudType.kubernetes);
     when(mockConfig.hasPath(any())).thenReturn(true);
     when(mockRuntimeConfigFactory.forUniverse(any())).thenReturn(mockConfig);
+    try {
+      when(mockGFlagsValidation.getGFlagDetails(anyString(), anyString(), anyString()))
+          .thenReturn(Optional.empty());
+    } catch (IOException e) {
+      fail("Failed to mock gflags validation");
+    }
 
     v2ApiClient = Configuration.getDefaultApiClient();
     String basePath = String.format("http://localhost:%d/api/v2", port);
@@ -176,7 +188,7 @@ public class UniverseApiControllerEditGFlagsTest extends UniverseControllerTestB
 
   private void runGFlagsUpgrade(UUID universeUUID, UniverseEditGFlags gflags) throws ApiException {
     UniverseApi api = new UniverseApi();
-    YBPTask upgradeTask = api.editGFlags(customer.getUuid(), universeUUID, gflags);
+    YBATask upgradeTask = api.editGFlags(customer.getUuid(), universeUUID, gflags);
   }
 
   private void verifyNoActions() {
@@ -353,7 +365,7 @@ public class UniverseApiControllerEditGFlagsTest extends UniverseControllerTestB
     UniverseEditGFlags universeGFlags =
         new UniverseEditGFlags().putUniverseGflagsItem(primaryCluserUuid, primaryClusterGFlags);
     UniverseApi api = new UniverseApi();
-    YBPTask upgradeTask = api.editGFlags(customer.getUuid(), universeUUID, universeGFlags);
+    YBATask upgradeTask = api.editGFlags(customer.getUuid(), universeUUID, universeGFlags);
 
     assertEquals(fakeTaskUUID, upgradeTask.getTaskUuid());
 
@@ -413,7 +425,7 @@ public class UniverseApiControllerEditGFlagsTest extends UniverseControllerTestB
                     .master(Map.of("master-flag", " 123 "))
                     .tserver(Map.of("tserver-flag", " 456 ")));
     UniverseApi api = new UniverseApi();
-    YBPTask upgradeTask = api.editGFlags(customer.getUuid(), universe.getUniverseUUID(), gflags);
+    YBATask upgradeTask = api.editGFlags(customer.getUuid(), universe.getUniverseUUID(), gflags);
     assertEquals(fakeTaskUUID, upgradeTask.getTaskUuid());
 
     ArgumentCaptor<GFlagsUpgradeParams> argCaptor =
@@ -466,7 +478,7 @@ public class UniverseApiControllerEditGFlagsTest extends UniverseControllerTestB
         new UniverseEditGFlags().putUniverseGflagsItem(primaryCluserUuid, primaryClusterGFlags);
     universeGFlags.upgradeOption(UpgradeOptionEnum.NON_ROLLING);
     UniverseApi api = new UniverseApi();
-    YBPTask upgradeTask = api.editGFlags(customer.getUuid(), universeUUID, universeGFlags);
+    YBATask upgradeTask = api.editGFlags(customer.getUuid(), universeUUID, universeGFlags);
 
     assertEquals(fakeTaskUUID, upgradeTask.getTaskUuid());
 
@@ -524,7 +536,7 @@ public class UniverseApiControllerEditGFlagsTest extends UniverseControllerTestB
                     .master(Map.of("master-flag", "123"))
                     .tserver(Map.of("tserver-flag", "456")));
     UniverseApi api = new UniverseApi();
-    YBPTask upgradeTask = api.editGFlags(customer.getUuid(), universe.getUniverseUUID(), gflags);
+    YBATask upgradeTask = api.editGFlags(customer.getUuid(), universe.getUniverseUUID(), gflags);
     assertEquals(fakeTaskUUID, upgradeTask.getTaskUuid());
 
     ArgumentCaptor<GFlagsUpgradeParams> argCaptor =

@@ -144,19 +144,6 @@ DEFINE_RUNTIME_uint64(import_snapshot_max_concurrent_create_table_requests, 20,
     "Maximum number of create table requests to the master that can be outstanding "
     "during the import snapshot metadata phase of restore.");
 
-DEFINE_RUNTIME_int32(inflight_splits_completion_timeout_secs, 600,
-    "Total time to wait for all inflight splits to complete during Restore.");
-TAG_FLAG(inflight_splits_completion_timeout_secs, advanced);
-
-DEFINE_RUNTIME_int32(pitr_max_restore_duration_secs, 600,
-    "Maximum amount of time to complete a PITR restore.");
-TAG_FLAG(pitr_max_restore_duration_secs, advanced);
-
-DEFINE_RUNTIME_int32(pitr_split_disable_check_freq_ms, 500,
-    "Delay before retrying to see if inflight tablet split operations have completed "
-    "after which PITR restore can be performed.");
-TAG_FLAG(pitr_split_disable_check_freq_ms, advanced);
-
 DEFINE_RUNTIME_bool(enable_fast_pitr, true,
     "Whether fast restore of sys catalog on the master is enabled.");
 
@@ -281,7 +268,7 @@ Status CatalogManager::CreateNonTransactionAwareSnapshot(
     snapshot_id = GenerateIdUnlocked(SysRowEntryType::SNAPSHOT);
   }
 
-  vector<scoped_refptr<TabletInfo>> all_tablets;
+  vector<TabletInfoPtr> all_tablets;
 
   // Create in memory snapshot data descriptor.
   scoped_refptr<SnapshotInfo> snapshot(new SnapshotInfo(snapshot_id));
@@ -322,7 +309,7 @@ Status CatalogManager::CreateNonTransactionAwareSnapshot(
   }
 
   // Send CreateSnapshot requests to all TServers (one tablet - one request).
-  for (const scoped_refptr<TabletInfo>& tablet : all_tablets) {
+  for (const TabletInfoPtr& tablet : all_tablets) {
     TRACE("Locking tablet");
     auto l = tablet->LockForRead();
 
@@ -411,7 +398,7 @@ Status CatalogManager::AddTableAndTabletEntriesToPB(
     const vector<TableDescription>& tables,
     google::protobuf::RepeatedPtrField<SysRowEntry>* out,
     google::protobuf::RepeatedPtrField<SysSnapshotEntryPB::TabletSnapshotPB>* tablet_snapshot_info,
-    vector<scoped_refptr<TabletInfo>>* all_tablets) {
+    vector<TabletInfoPtr>* all_tablets) {
   unordered_set<TabletId> added_tablets;
   for (const TableDescription& table : tables) {
     // Add table entry.
@@ -419,7 +406,7 @@ Status CatalogManager::AddTableAndTabletEntriesToPB(
     AddInfoEntryToPB(table.table_info.get(), out);
 
     // Add tablet entries.
-    for (const scoped_refptr<TabletInfo>& tablet : table.tablet_infos) {
+    for (const TabletInfoPtr& tablet : table.tablet_infos) {
       // For colocated tables there could be duplicate tablets, so insert them only once.
       if (added_tablets.insert(tablet->id()).second) {
         TRACE("Locking tablet");
@@ -786,7 +773,7 @@ Status CatalogManager::RestoreEntry(
     }
     case SysRowEntryType::TABLET: { // Restore TABLETS.
       TRACE("Looking up tablet");
-      scoped_refptr<TabletInfo> tablet = FindPtrOrNull(*tablet_map_, entry.id());
+      TabletInfoPtr tablet = FindPtrOrNull(*tablet_map_, entry.id());
       if (tablet == nullptr) {
         // Restore Tablet.
         // TODO: implement
@@ -890,7 +877,7 @@ Status CatalogManager::DeleteNonTransactionAwareSnapshot(
   for (const SysRowEntry& entry : snapshot_pb.entries()) {
     if (entry.type() == SysRowEntryType::TABLET) {
       TRACE("Looking up tablet");
-      scoped_refptr<TabletInfo> tablet = FindPtrOrNull(*tablet_map_, entry.id());
+      TabletInfoPtr tablet = FindPtrOrNull(*tablet_map_, entry.id());
       if (tablet == nullptr) {
         LOG(WARNING) << "Deleting tablet not found " << entry.id();
       } else {
@@ -1374,11 +1361,12 @@ Result<SnapshotInfoPB> CatalogManager::GetSnapshotInfoForBackup(const TxnSnapsho
 }
 
 Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>>
-    CatalogManager::GenerateSnapshotInfoFromSchedule(
+CatalogManager::GenerateSnapshotInfoFromScheduleForClone(
     const SnapshotScheduleId& snapshot_schedule_id, HybridTime read_time,
     CoarseTimePoint deadline) {
   LOG(INFO) << Format(
-      "Servicing GenerateSnapshotInfoFromSchedule for snapshot_schedule_id: $0 and read_time: $1",
+      "Servicing GenerateSnapshotInfoFromScheduleForClone for snapshot_schedule_id: $0 and "
+      "read_time: $1",
       snapshot_schedule_id, read_time);
 
   // Find or create a snapshot that covers read_time.
@@ -1406,6 +1394,11 @@ Result<std::pair<SnapshotInfoPB, std::unordered_set<TabletId>>>
     }
   }
   snapshot_info.clear_backup_entries();
+  // Clear the schedule related fields from snapshot_info, this is required so that the restore is
+  // not considered a PITR restore. This mainly implies overwriting any current schema packings with
+  // the old schema packings from the snapshot at the restore side.
+  snapshot_info.mutable_entry()->clear_schedule_id();
+  snapshot_info.mutable_entry()->clear_previous_snapshot_hybrid_time();
 
   // Set backup_entries based on what entries were running in the sys catalog as of read_time.
   *snapshot_info.mutable_backup_entries() = VERIFY_RESULT(
@@ -1496,8 +1489,7 @@ Result<RepeatedPtrField<BackupRowEntryPB>> CatalogManager::GetBackupEntriesAsOfT
         return Status::OK();
       }));
 
-  // Pass 3: Get all the SysTabletsEntry that are in a running state as of read_time and belongs to
-  // the running tables from pass 2.
+  // Pass 3: Get all active (not split) tablets that belong to the tables from pass 2.
   docdb::DocRowwiseIterator tablets_iter = docdb::DocRowwiseIterator(
       projection, doc_read_cntxt, TransactionOperationContext(), doc_db,
       docdb::ReadOperationData::FromSingleReadTime(read_time), db_pending_op);
@@ -1505,10 +1497,7 @@ Result<RepeatedPtrField<BackupRowEntryPB>> CatalogManager::GetBackupEntriesAsOfT
       &tablets_iter, doc_read_cntxt.schema(), SysRowEntryType::TABLET,
       [&tables_to_tablets](const Slice& id, const Slice& data) -> Status {
         auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<SysTabletsEntryPB>(data));
-        // TODO(Yamen): handle tablet splitting cases by either keeping the parent or the children
-        // according to their state.
-        if (tables_to_tablets.contains(pb.table_id()) && pb.state() == SysTabletsEntryPB::RUNNING &&
-            pb.hide_hybrid_time() == 0) {
+        if (tables_to_tablets.contains(pb.table_id()) && pb.split_tablet_ids_size() == 0) {
           VLOG_WITH_FUNC(1) << "Found SysTabletsEntryPB: " << pb.ShortDebugString();
           tables_to_tablets[pb.table_id()].tablets_entries.push_back(
               std::make_pair(id.ToBuffer(), pb));
@@ -1961,8 +1950,8 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
 
   // Change TableInfo to point to the new tablets.
   string deletion_msg;
-  vector<scoped_refptr<TabletInfo>> new_tablets;
-  vector<scoped_refptr<TabletInfo>> old_tablets;
+  vector<TabletInfoPtr> new_tablets;
+  vector<TabletInfoPtr> old_tablets;
   {
     // Acquire the TableInfo pb write lock. Although it is not required for some of the individual
     // steps, we want to hold it through so that we guarantee the state does not change during the
@@ -1986,8 +1975,9 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
               SysTablesEntryPB_State_Name(table->old_pb().state()));
       }
       // Make sure the table's tablets can be deleted.
-      RETURN_NOT_OK_PREPEND(CheckIfForbiddenToDeleteTabletOf(table),
-                            Format("Cannot repartition table $0", table->id()));
+      RETURN_NOT_OK_PREPEND(
+          CheckIfForbiddenToDeleteTabletOf(table),
+          Format("Cannot repartition table $0", table->id()));
 
       // Create and mark new tablets for creation.
 
@@ -2027,7 +2017,7 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
     ScopedInfoCommitter<TabletInfo> unlocker_new(&new_tablets);
 
     // Mark old tablets for deletion.
-    old_tablets = table->GetTablets(IncludeInactive::kTrue);
+    old_tablets = VERIFY_RESULT(table->GetTablets(IncludeInactive::kTrue));
     // Sort so that locking can be done in a deterministic order.
     std::sort(old_tablets.begin(), old_tablets.end(), [](const auto& lhs, const auto& rhs) {
       return lhs->tablet_id() < rhs->tablet_id();
@@ -2038,6 +2028,11 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
       old_tablet->mutable_metadata()->StartMutation();
       old_tablet->mutable_metadata()->mutable_dirty()->set_state(
           SysTabletsEntryPB::DELETED, deletion_msg);
+      if (table->colocated()) {
+        // Remove the table_id from the old colocated tablet. This avoids reloading the deleted
+        // tablet in memory in case of master failover.
+        old_tablet->mutable_metadata()->mutable_dirty()->pb.set_table_id("");
+      }
     }
     VLOG_WITH_FUNC(3) << "Prepared deletion of " << old_tablets.size() << " old tablets for table "
                       << table->id();
@@ -2052,10 +2047,10 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
     table_pb.set_partition_list_version(table_pb.partition_list_version() + 1);
 
     // Remove old tablets from TableInfo.
-    table->RemoveTablets(old_tablets);
+    VERIFY_RESULT(table->RemoveTablets(old_tablets));
     // Add new tablets to TableInfo. This must be done after removing tablets because
     // TableInfo::partitions_ has key PartitionKey, which old and new tablets may conflict on.
-    table->AddTablets(new_tablets);
+    RETURN_NOT_OK(table->AddTablets(new_tablets));
     // Since we have added a new set of tablets move the table back to a PREPARING state. It will
     // get marked to RUNNING once all the new tablets have been created.
     table_pb.set_state(SysTablesEntryPB::PREPARING);
@@ -2077,7 +2072,7 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
 
   // Finally, now that everything is committed, send the delete tablet requests.
   for (auto& old_tablet : old_tablets) {
-    DeleteTabletReplicas(old_tablet.get(), deletion_msg, HideOnly::kFalse, KeepData::kFalse, epoch);
+    DeleteTabletReplicas(old_tablet, deletion_msg, HideOnly::kFalse, KeepData::kFalse, epoch);
   }
   VLOG_WITH_FUNC(2) << "Sent delete tablet requests for " << old_tablets.size() << " old tablets"
                     << " of table " << table->id();
@@ -2342,9 +2337,13 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
     return STATUS(InternalError, msg, MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
   }
 
+  std::optional<int> schema_version;
+
   // Don't do schema validation/column updates on the parent colocated table.
   // However, still do the validation for regular colocated tables.
-  if (!is_parent_colocated_table) {
+  // For clone, only the parent colocated table must go through the repartition path.
+  if (is_clone || !is_parent_colocated_table) {
+    // Schema validation and repartitioning checks. TODO: Refactor this code path.
     Schema persisted_schema;
     size_t new_num_tablets = 0;
     {
@@ -2410,6 +2409,12 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       }
     }
 
+    if (is_clone && table->IsColocatedUserTable()) {
+      // For colocated tables that are not the parent table, update their info to point to the newly
+      // recreated parent tablet.
+      RETURN_NOT_OK(UpdateColocatedUserTableInfoForClone(table, table_data, epoch));
+    }
+
     // Table schema update depending on different conditions.
     bool notify_ts_for_schema_change = false;
 
@@ -2463,10 +2468,30 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       notify_ts_for_schema_change = true;
     }
 
-    // Bump up the schema version to the version of the snapshot if it is less.
-    if (meta.version() > table->LockForRead()->pb.version()) {
+    // Bump up the current schema version of the target table as follows:
+    // 1- Clone case: bump it to current schema version of source table + 1. This ensures that the
+    // current schema version is greater than all schema versions that might exist in the snapshot
+    // used for clone.
+    // 2- Restoring a backup case: bump the schema version to the schema version of SysTableEntryPB
+    // found in the snapshotInfo if the latter is greater. This is because it is guaranteed that the
+    // schema version found in snapshotInfo is the maximum schema version that can be found in the
+    // snapshot at backup creation time.
+    if (is_clone) {
+      // The Source table should be found as we are cloning from it.
+      TRACE("Looking up source table");
+      scoped_refptr<TableInfo> source_table =
+          VERIFY_RESULT(FindTableById(table_data->old_table_id));
+      auto source_table_lock = source_table->LockForRead();
+      schema_version = source_table_lock->pb.version() + 1;
+    } else if (meta.version() > table->LockForRead()->pb.version()) {
+      schema_version = meta.version();
+    }
+
+    if (schema_version) {
+      VLOG_WITH_FUNC(1) << Format(
+          "Bump up schema version of table $0 to: $1", table_data->new_table_id, schema_version);
       auto l = table->LockForWrite();
-      l.mutable_data()->pb.set_version(meta.version());
+      l.mutable_data()->pb.set_version(schema_version.value());
       RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table));
       l.Commit();
       notify_ts_for_schema_change = true;
@@ -2493,10 +2518,10 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
   {
     TRACE("Locking table");
     auto table_lock = table->LockForRead();
-    new_tablets = table->GetTablets();
+    new_tablets = VERIFY_RESULT(table->GetTablets());
   }
 
-  for (const scoped_refptr<TabletInfo>& tablet : new_tablets) {
+  for (const TabletInfoPtr& tablet : new_tablets) {
     auto tablet_lock = tablet->LockForRead();
     const PartitionPB& partition_pb = tablet->metadata().state().pb.partition();
     const ExternalTableSnapshotData::PartitionKeys key(
@@ -2511,7 +2536,7 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
   IdPairPB* const table_ids = table_data->table_meta->mutable_table_ids();
   table_ids->set_new_id(table_data->new_table_id);
   table_ids->set_old_id(table_data->old_table_id);
-
+  table_data->new_table_schema_version = schema_version;
   // Recursively collect ids for used user-defined types.
   unordered_set<UDTypeId> type_ids;
   for (size_t i = 0; i < schema.num_columns(); ++i) {
@@ -2532,6 +2557,36 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
     udt_ids->set_old_id(udt_id);
   }
 
+  return Status::OK();
+}
+
+Status CatalogManager::UpdateColocatedUserTableInfoForClone(
+    scoped_refptr<TableInfo> table, ExternalTableSnapshotData* table_data,
+    const LeaderEpoch& epoch) {
+  RSTATUS_DCHECK(
+      table->IsColocatedUserTable(), InvalidArgument,
+      Format("table: $0 is not a colocated user table", table->id()));
+  // Remove old colocated tablet from TableInfo.
+  auto old_tablet = VERIFY_RESULT(table->GetTablets())[0];
+  auto old_colocated_tablet_lock = old_tablet->LockForWrite();
+  RETURN_NOT_OK(table->RemoveTablet(old_tablet->tablet_id()));
+  // Add new colocated tablet to TableInfo.
+  TableInfoPtr parent_table =
+      VERIFY_RESULT(FindTableById(VERIFY_RESULT(GetParentTableIdForColocatedTable(table))));
+  auto tablets = VERIFY_RESULT(parent_table->GetTablets());
+
+  RSTATUS_DCHECK(
+      tablets.size() == 1, NotFound,
+      Format("Wrong number of parent tablet of colocated database:$1", tablets.size()));
+  auto new_tablet_lock = tablets[0]->LockForWrite();
+  RETURN_NOT_OK(table->AddTablet(tablets[0]));
+  VLOG(1) << Format(
+      "Modifying the parent tablet of the colocated table: $0. The new Tablet is: $1",
+      table_data->new_table_id, VERIFY_RESULT(table->GetTablets())[0]->tablet_id());
+  tablets[0]->AddTableId(table_data->new_table_id);
+
+  new_tablet_lock.Commit();
+  old_colocated_tablet_lock.Commit();
   return Status::OK();
 }
 
@@ -2604,9 +2659,7 @@ Status CatalogManager::ImportTabletEntry(const SysRowEntry& entry,
   if (table_data.new_table_id == table_data.old_table_id) {
     TRACE("Looking up tablet");
     SharedLock lock(mutex_);
-    scoped_refptr<TabletInfo> tablet = FindPtrOrNull(*tablet_map_, entry.id());
-
-    if (tablet != nullptr) {
+    if (tablet_map_->contains(entry.id())) {
       IdPairPB* const pair = table_data.table_meta->add_tablets_ids();
       pair->set_old_id(entry.id());
       pair->set_new_id(entry.id());
@@ -2655,10 +2708,10 @@ Result<std::map<std::string, KeyRange>> CatalogManager::GetTableKeyRanges(const 
   auto lock = table->LockForRead();
   RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(lock));
 
-  auto tablets = table->GetTablets();
+  auto tablets = VERIFY_RESULT(table->GetTablets());
 
   std::map<std::string, KeyRange> result;
-  for (const scoped_refptr<TabletInfo>& tablet : tablets) {
+  for (const auto& tablet : tablets) {
     auto tablet_lock = tablet->LockForRead();
     const auto& partition = tablet_lock->pb.partition();
     result[tablet->tablet_id()].start_key = partition.partition_key_start();
@@ -3017,8 +3070,12 @@ void CatalogManager::CleanupHiddenTables(
       // tablet's metadata first.
       RemoveHiddenColocatedTableFromTablet(table, schedule_min_restore_time, epoch);
     }
-    if (table->IsHiddenButNotDeleting() && table->AreAllTabletsDeleted()) {
-      expired_tables.push_back(std::move(table));
+
+    if (table->IsHiddenButNotDeleting()) {
+      auto tablets_deleted_result = table->AreAllTabletsDeleted();
+      if (tablets_deleted_result.ok() && *tablets_deleted_result) {
+        expired_tables.push_back(std::move(table));
+      }
     }
   }
   // Sort the expired tables so we acquire write locks in id order. This is the required lock
@@ -3360,28 +3417,7 @@ Status CatalogManager::RestoreSnapshotSchedule(
   HybridTime ht = HybridTime(req->restore_ht());
   auto deadline = rpc->GetClientDeadline();
 
-  const auto disable_duration_ms = MonoDelta::FromMilliseconds(1000 *
-      (FLAGS_inflight_splits_completion_timeout_secs + FLAGS_pitr_max_restore_duration_secs));
-  const auto wait_inflight_splitting_until = CoarseMonoClock::Now() +
-      MonoDelta::FromMilliseconds(1000 * FLAGS_inflight_splits_completion_timeout_secs);
-
-  // Disable splitting and then wait for all pending splits to complete before starting restoration.
-  DisableTabletSplittingInternal(disable_duration_ms, kPitrFeatureName);
-
-  bool inflight_splits_finished = false;
-  while (CoarseMonoClock::Now() < std::min(wait_inflight_splitting_until, deadline)) {
-    // Wait for existing split operations to complete.
-    if (IsTabletSplittingCompleteInternal(true /* wait_for_parent_deletion */, deadline)) {
-      inflight_splits_finished = true;
-      break;
-    }
-    SleepFor(MonoDelta::FromMilliseconds(FLAGS_pitr_split_disable_check_freq_ms));
-  }
-
-  if (!inflight_splits_finished) {
-    ReenableTabletSplitting(kPitrFeatureName);
-    return STATUS(TimedOut, "Timed out waiting for inflight tablet splitting to complete.");
-  }
+  RETURN_NOT_OK(tablet_split_manager_.PrepareForPitr(deadline));
 
   return snapshot_coordinator_.RestoreSnapshotSchedule(id, ht, resp, epoch.leader_term, deadline);
 }
@@ -3537,10 +3573,6 @@ Result<RemoteTabletServer *> CatalogManager::GetLeaderTServer(
 
 Result<bool> CatalogManager::IsTableUndergoingPitrRestore(const TableInfo& table_info) {
   return snapshot_coordinator_.IsTableUndergoingPitrRestore(table_info);
-}
-
-Result<bool> CatalogManager::IsTablePartOfSomeSnapshotSchedule(const TableInfo& table_info) {
-  return snapshot_coordinator_.IsTableCoveredBySomeSnapshotSchedule(table_info);
 }
 
 bool CatalogManager::IsPitrActive() {

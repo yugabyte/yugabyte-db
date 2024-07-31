@@ -85,3 +85,13 @@ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_smal
 EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT v FROM t_large WHERE v > '';
 EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT v FROM t_medium WHERE v > '';
 EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT v FROM t_small WHERE v > '';
+
+--
+-- #22648: Avoid duplicate rows for index-scans where the table request does not fit into 1 response
+--
+create table test_correct(a int, b int, c text);
+insert into test_correct select i, i, repeat('1234567890', 100) from generate_series(1, 20) i;
+create index on test_correct(a asc);
+set yb_fetch_size_limit = '1kB';
+explain (analyze, costs off, timing off, summary off) select * from test_correct where a < 20 and b % 5 = 0;
+select a, b, substring(c, 0, 10) from test_correct where a < 20 and b % 5 = 0 order by a;

@@ -153,6 +153,8 @@ namespace master {
 Master::Master(const MasterOptions& opts)
     : DbServerBase("Master", opts, "yb.master", server::CreateMemTrackerForServer()),
       state_(kStopped),
+      metric_entity_cluster_(
+          METRIC_ENTITY_cluster.Instantiate(metric_registry_.get(), "yb.cluster")),
       ts_manager_(new TSManager()),
       catalog_manager_(new CatalogManager(this)),
       auto_flags_manager_(
@@ -166,8 +168,6 @@ Master::Master(const MasterOptions& opts)
       init_future_(init_status_.get_future()),
       opts_(opts),
       maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
-      metric_entity_cluster_(
-          METRIC_ENTITY_cluster.Instantiate(metric_registry_.get(), "yb.cluster")),
       master_tablet_server_(new MasterTabletServer(this, metric_entity())) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       GetAtomicFlag(&FLAGS_inbound_rpc_memory_limit), mem_tracker()));
@@ -224,7 +224,7 @@ Status Master::Init() {
   return Status::OK();
 }
 
-Status Master::InitAutoFlags(rpc::Messenger* messenger) {
+Status Master::InitFlags(rpc::Messenger* messenger) {
   // Will we be in shell mode if we dont have a sys catalog yet?
   bool is_shell_mode_if_new =
       FLAGS_master_join_existing_universe || !opts().AreMasterAddressesProvided();
@@ -236,11 +236,15 @@ Status Master::InitAutoFlags(rpc::Messenger* messenger) {
       } /* has_sys_catalog_func */,
       is_shell_mode_if_new));
 
-  return RpcAndWebServerBase::InitAutoFlags(messenger);
+  return RpcAndWebServerBase::InitFlags(messenger);
 }
 
 Result<std::unordered_set<std::string>> Master::GetAvailableAutoFlagsForServer() const {
   return auto_flags_manager_->GetAvailableAutoFlagsForServer();
+}
+
+Result<std::unordered_set<std::string>> Master::GetFlagsForServer() const {
+  return yb::GetFlagNamesFromXmlFile("master_flags.xml");
 }
 
 Status Master::InitAutoFlagsFromMasterLeader(const HostPort& leader_address) {
@@ -601,6 +605,10 @@ XClusterManager* Master::xcluster_manager_impl() const {
 
 SysCatalogTable& Master::sys_catalog() const {
   return *catalog_manager_->sys_catalog();
+}
+
+TabletSplitManager& Master::tablet_split_manager() const {
+  return *catalog_manager_->tablet_split_manager();
 }
 
 PermissionsManager& Master::permissions_manager() {

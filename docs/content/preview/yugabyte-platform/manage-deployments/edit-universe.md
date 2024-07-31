@@ -40,11 +40,11 @@ YugabyteDB Anywhere performs these modifications through the [YB-Masters](../../
 
 Note that you can't change the replication factor of a universe.
 
-To change the number of nodes of universes created with an on-premises cloud provider and secured with third-party certificates obtained from external certification authorities, follow the instructions in [Expand the universe](../../security/enable-encryption-in-transit#expand-the-universe).
+To change the number of nodes of universes created with an on-premises cloud provider and secured with third-party certificates obtained from external certification authorities, you must first add the certificates to the nodes you will add to the universe. Refer to [Add certificates](../../security/enable-encryption-in-transit/add-certificate-ca/). Ensure that the certificates are signed by the same external CA and have the same root certificate. In addition, ensure that you copy the certificates to the same locations that you originally used when creating the universe.
 
 ### Smart resize
 
-For universes that use Google Cloud Provider (GCP), Amazon Web Services (AWS), or Microsoft Azure, YBA allows you to change the VM images and increase the volume size without moving the data from the old nodes to the new nodes. This is known as smart resize and is subject to the following:
+For universes that use Google Cloud Provider (GCP), Amazon Web Services (AWS), or Microsoft Azure, YugabyteDB Anywhere allows you to change the VM images and increase the volume size without moving the data from the old nodes to the new nodes. This is known as smart resize and is subject to the following:
 
 - For Azure universes, you can't increase the volume size for ultra SSDs.
 
@@ -54,9 +54,9 @@ For universes that use Google Cloud Provider (GCP), Amazon Web Services (AWS), o
 
 - You can't do a smart resize if you change any options on the **Edit Universe** page other than the **Instance Type** and the size portion of the **Volume Info** field.
 
-If you change the **Instance Type** or both the **Instance Type** and the **Volume Info** size and then click **Save**, YBA gives you the option to either do a full migration of the universe and its data to new nodes, or do a smart resize, as per the following illustrations:
+If you change the **Instance Type** or both the **Instance Type** and the **Volume Info** size and then click **Save**, YugabyteDB Anywhere gives you the option to either do a full migration of the universe and its data to new nodes, or do a smart resize, as per the following illustrations:
 
   ![Full or smart resize1](/images/ee/edit-univ-1.png)
   ![Full or smart resize2](/images/ee/edit-univ-2.png)
 
-If you change only the **Volume Info** size and click **Save**, YBA automatically performs a smart resize.
+If you change only the **Volume Info** size and click **Save**, YugabyteDB Anywhere automatically performs a smart resize.

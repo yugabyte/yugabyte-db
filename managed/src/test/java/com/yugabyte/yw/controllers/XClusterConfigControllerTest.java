@@ -74,6 +74,7 @@ import java.util.UUID;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.Mockito;
 import org.yb.CommonTypes;
 import org.yb.Schema;
 import org.yb.cdc.CdcConsumer.ConsumerRegistryPB;
@@ -119,8 +120,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   private ResourceDefinition rd1;
   private ResourceDefinition rd2;
 
-  Permission permission1 = new Permission(ResourceType.UNIVERSE, Action.BACKUP_RESTORE);
-  Permission permission2 = new Permission(ResourceType.UNIVERSE, Action.UPDATE);
+  Permission permission1 = new Permission(ResourceType.UNIVERSE, Action.XCLUSTER);
 
   @Before
   public void setUp() {
@@ -132,7 +132,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
             "FakeRole1",
             "testDescription",
             RoleType.Custom,
-            new HashSet<>(Arrays.asList(permission1, permission2)));
+            new HashSet<>(Arrays.asList(permission1)));
     rd1 =
         ResourceDefinition.builder()
             .resourceType(ResourceType.OTHER)
@@ -728,6 +728,8 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
 
     setupMockMetricQueryHelperResponse();
 
+    Mockito.doNothing().when(mockXClusterScheduler).syncXClusterConfig(any());
+
     String getAPIEndpoint = apiEndpoint + "/" + xClusterConfig.getUuid();
 
     Result result = doRequestWithAuthToken("GET", getAPIEndpoint, user.createAuthToken());
@@ -1322,7 +1324,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     params.allowBootstrap = false;
     params.tables = Collections.singleton(exampleTableID2);
     params.backupRequestParams =
-        new XClusterConfigCreateFormData.BootstrapParams.BootstarpBackupParams();
+        new XClusterConfigCreateFormData.BootstrapParams.BootstrapBackupParams();
     params.backupRequestParams.storageConfigUUID =
         ModelFactory.createS3StorageConfig(customer, "s3-config").getConfigUUID();
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();

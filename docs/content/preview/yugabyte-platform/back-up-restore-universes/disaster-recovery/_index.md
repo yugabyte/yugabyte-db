@@ -5,7 +5,7 @@ linkTitle: Disaster recovery
 description: Enable deployment using transactional (active-standby) replication between universes
 headContent: Fail over to a replica universe in case of unplanned outages
 cascade:
-  earlyAccess: /preview/releases/versioning/#feature-availability
+  earlyAccess: /preview/releases/versioning/#feature-maturity
 menu:
   preview_yugabyte-platform:
     parent: back-up-restore-universes
@@ -27,6 +27,10 @@ Data from the DR primary is replicated asynchronously to the DR replica (which i
 The recovery time objective (RTO) for failover or switchover is very low, and determined by how long it takes applications to switch their connections from one universe to another. Applications should be designed in such a way that the switch happens as quickly as possible.
 
 DR further allows for the role of each universe to switch during planned switchover and unplanned failover scenarios.
+
+{{<lead link="https://www.yugabyte.com/blog/yugabytedb-xcluster-for-postgresql-dr-in-azure/">}}
+Blog: [Using YugabyteDB xCluster DR for PostgreSQL Disaster Recovery in Azure](https://www.yugabyte.com/blog/yugabytedb-xcluster-for-postgresql-dr-in-azure/)<br>Video: [Disaster Recovery With xCluster DR and Two Cloud Regions](https://www.youtube.com/watch?v=q6Yq4xlj-wk)
+{{</lead>}}
 
 ![Disaster recovery](/images/yb-platform/disaster-recovery/disaster-recovery.png)
 
@@ -60,7 +64,7 @@ DR further allows for the role of each universe to switch during planned switcho
 
 ## Limitations
 
-- Currently, replication of DDL (SQL-level changes such as creating or dropping tables or indexes) is not supported. To make these changes requires first performing the DDL operation (for example, creating a table), and then adding the new object to replication in YBA. Refer to [Manage tables and indexes](./disaster-recovery-tables/).
+- Currently, replication of DDL (SQL-level changes such as creating or dropping tables or indexes) is not supported. To make these changes requires first performing the DDL operation (for example, creating a table), and then adding the new object to replication in YugabyteDB Anywhere. Refer to [Manage tables and indexes](./disaster-recovery-tables/).
 
 - DR setup (and other operations that require making a full copy from DR primary to DR replica, such as adding tables with data to replication, resuming replication after an extended network outage, and so on) may fail with the error `database "<database_name>" is being accessed by other users`.
 

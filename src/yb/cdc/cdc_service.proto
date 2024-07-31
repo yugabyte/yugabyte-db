@@ -330,6 +330,11 @@ message GetChangesRequestPB {
   optional CDCSDKRequestSource cdcsdk_request_source = 14 [default = DEBEZIUM];
 
   optional int64 raft_config_opid_index = 15;
+
+  // Used only in CDCSDK streams. If the field is set, use its value to
+  // limit the size of GetChanges response. Otherwise consider the value
+  // of the gflag 'cdc_stream_records_threshold_size_bytes'
+  optional uint64 getchanges_resp_max_size_bytes = 16;
 }
 
 message KeyValuePairPB {

@@ -161,7 +161,7 @@ DECLARE_uint64(prevent_split_for_ttl_tables_for_seconds);
 DECLARE_bool(sort_automatic_tablet_splitting_candidates);
 DECLARE_int32(intents_flush_max_delay_ms);
 DECLARE_int32(index_block_restart_interval);
-DECLARE_bool(TEST_error_after_creating_single_split_tablet);
+DECLARE_bool(TEST_error_after_registering_split_tablets);
 DECLARE_bool(TEST_pause_before_send_hinted_election);
 DECLARE_bool(TEST_skip_election_when_fail_detected);
 DECLARE_int32(scheduled_full_compaction_frequency_hours);
@@ -552,7 +552,7 @@ TEST_F(TabletSplitITest, SplitSystemTable) {
           YQL_DATABASE_CQL, "system_schema", "tables")};
 
   for (const auto& systable : systables) {
-    for (const auto& tablet : systable->GetTablets()) {
+    for (const auto& tablet : ASSERT_RESULT(systable->GetTablets())) {
       LOG(INFO) << "Splitting : " << systable->name() << " Tablet :" << tablet->id();
       auto s = catalog_mgr->TEST_SplitTablet(tablet, true /* is_manual_split */);
       LOG(INFO) << s.ToString();
@@ -1626,7 +1626,7 @@ TEST_F(AutomaticTabletSplitITest, LimitNumberOfOutstandingTabletSplitsPerTserver
   // Check that non-running child tablets count against the per-tserver split limit, and so only
   // one split is triggered.
   SleepForBgTaskIters(4);
-  ASSERT_EQ(table_info->GetTablets().size(), 3);
+  ASSERT_EQ(table_info->TabletCount(), 3);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_tablet_split_probability) = 0.0;
 
   ASSERT_OK(WaitForTabletSplitCompletion(3));
@@ -1702,7 +1702,7 @@ TEST_F(AutomaticTabletSplitITest, SizeRatio) {
   auto catalog_mgr = ASSERT_RESULT(catalog_manager());
   std::unordered_map<TabletServerId, std::vector<int>> ts_to_table_indexes;
   for (int i = 0; i < kNumTables; ++i) {
-    auto tablets = catalog_mgr->GetTableInfo(table_handles[i]->id())->GetTablets();
+    auto tablets = ASSERT_RESULT(catalog_mgr->GetTableInfo(table_handles[i]->id())->GetTablets());
     auto replica_map = tablets[0]->GetReplicaLocations();
     ts_to_table_indexes[replica_map->begin()->first].push_back(i);
   }
@@ -2559,7 +2559,7 @@ void TabletSplitSingleServerITest::TestRetryableWrite() {
   if (GetAtomicFlag(&FLAGS_enable_flush_retryable_requests)) {
     // Wait retryable requests flushed to disk.
     ASSERT_OK(WaitFor([&] {
-      return peer->TEST_HasRetryableRequestsOnDisk();
+      return peer->TEST_HasBootstrapStateOnDisk();
     }, 10s, "retryable requests flushed to disk"));
   }
 
@@ -3255,7 +3255,7 @@ class TabletSplitSingleServerITestWithPartition :
 TEST_P(TabletSplitSingleServerITestWithPartition, TestSplitEncodedKeyAfterBreakInTheMiddleOfSplit) {
   // Make catalog manager to do only Upsert in order to emulate master error/crash behaviour in the
   // middle of split. Restart is required to be sure the flags change is seen at the master's side.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_error_after_creating_single_split_tablet) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_error_after_registering_split_tablets) = true;
   ASSERT_OK(cluster_->RestartSync());
   SetNumTablets(1);
 
@@ -3285,7 +3285,7 @@ TEST_P(TabletSplitSingleServerITestWithPartition, TestSplitEncodedKeyAfterBreakI
   ASSERT_NOK(status) << "Corresponding split is expected to fail!";
 
   // Reset flag to emulate partitions re-calculation.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_error_after_creating_single_split_tablet) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_error_after_registering_split_tablets) = false;
   ASSERT_OK(cluster_->RestartSync());
 
   // Split should pass without any error.

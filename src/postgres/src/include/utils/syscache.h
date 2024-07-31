@@ -110,9 +110,10 @@ enum SysCacheIdentifier
 	TYPEOID,
 	USERMAPPINGOID,
 	USERMAPPINGUSERSERVER,
-	YBTABLEGROUPOID
+	YBTABLEGROUPOID,
+	YBCONSTRAINTRELIDTYPIDNAME
 
-#define SysCacheSize (YBTABLEGROUPOID + 1)
+#define SysCacheSize (YBCONSTRAINTRELIDTYPIDNAME + 1)
 };
 
 /* Used in IsYugaByteEnabled() mode only */
@@ -122,6 +123,10 @@ extern void YbInitPinnedCacheIfNeeded(bool shared_only);
 extern void YbResetPinnedCache();
 extern bool YbIsObjectPinned(Oid classId, Oid objectId, bool shared_dependency);
 extern void YbPinObjectIfNeeded(Oid classId, Oid objectId, bool shared_dependency);
+#ifndef NDEBUG
+extern bool YbCheckCatalogCacheIndexNameTable();
+#endif
+extern const char* YbGetCatalogCacheIndexName(int cache_id);
 
 extern void InitCatalogCache(void);
 extern void InitCatalogCachePhase2(void);

@@ -75,11 +75,16 @@
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
+DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_bool(enable_db_clone);
 DECLARE_bool(master_auto_run_initdb);
 DECLARE_int32(pgsql_proxy_webserver_port);
+DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_string(ysql_hba_conf_csv);
+DECLARE_bool(TEST_fail_clone_pg_schema);
+DECLARE_bool(TEST_fail_clone_tablets);
 DECLARE_string(TEST_mini_cluster_pg_host_port);
+DECLARE_bool(TEST_skip_deleting_split_tablets);
 
 namespace yb {
 namespace master {
@@ -367,9 +372,13 @@ TEST_F(MasterSnapshotTest, FailSysCatalogWriteWithStaleTable) {
   messenger->Shutdown();
 }
 
-class PostgresMiniClusterTest : public pgwrapper::PgMiniTestBase,
-                                public ::testing::WithParamInterface<master::YsqlColocationConfig> {
+class PostgresMiniClusterTest : public pgwrapper::PgMiniTestBase {
  public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_snapshot_coordinator_poll_interval_ms) = 250;
+    pgwrapper::PgMiniTestBase::SetUp();
+  }
+
   MiniCluster* mini_cluster() { return cluster_.get(); }
 
   Status CreateDatabase(
@@ -398,7 +407,9 @@ class PostgresMiniClusterTest : public pgwrapper::PgMiniTestBase,
   }
 };
 
-class MasterExportSnapshotTest : public PostgresMiniClusterTest {
+class MasterExportSnapshotTest
+    : public PostgresMiniClusterTest,
+      public ::testing::WithParamInterface<master::YsqlColocationConfig> {
  public:
   void SetUp() override {
     PostgresMiniClusterTest::SetUp();
@@ -412,6 +423,7 @@ class MasterExportSnapshotTest : public PostgresMiniClusterTest {
         ASSERT_RESULT(client::YBClientBuilder()
                           .add_master_server_addr(cluster_->mini_master()->bound_rpc_addr_str())
                           .Build());
+    ASSERT_OK(CreateDatabaseWithSnapshotSchedule(GetParam()));
   }
 
   Status CreateDatabaseWithSnapshotSchedule(
@@ -446,9 +458,8 @@ INSTANTIATE_TEST_CASE_P(
 // export_snapshot command (not the new command) to serve as ground truth.
 // 4. Create more tables.
 // 5. Generate snapshotInfo from schedule using the time t.
-// 6. Assert the output of 5 and 3 are the same.
+// 6. Assert the output of 5 and 3 are the same (after removing PITR related fields from 3).
 TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTime) {
-  ASSERT_OK(CreateDatabaseWithSnapshotSchedule(GetParam()));
   auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
   // 1.
   LOG(INFO) << Format("Create tables t1,t2");
@@ -471,9 +482,16 @@ TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTime) {
       "Exporting snapshot from snapshot schedule: $0, Hybrid time = $1", schedule_id, time);
   auto deadline = CoarseMonoClock::Now() + timeout;
   auto [snapshot_info_as_of_time, not_snapshotted_tablets] = ASSERT_RESULT(
-      mini_cluster()->mini_master()->catalog_manager_impl().GenerateSnapshotInfoFromSchedule(
-          schedule_id, HybridTime::FromMicros(static_cast<uint64>(time.ToInt64())), deadline));
+      mini_cluster()
+          ->mini_master()
+          ->catalog_manager_impl()
+          .GenerateSnapshotInfoFromScheduleForClone(
+              schedule_id, HybridTime::FromMicros(static_cast<uint64>(time.ToInt64())), deadline));
   // 6.
+  // Clear PITR related fields from ground_truth as these fields are cleared when generating
+  // snapshotInfo as of time.
+  ground_truth.mutable_entry()->clear_schedule_id();
+  ground_truth.mutable_entry()->clear_previous_snapshot_hybrid_time();
   LOG(INFO) << Format("SnapshotInfoPB ground_truth: $0", ground_truth.ShortDebugString());
   LOG(INFO) << Format(
       "SnapshotInfoPB as of time=$0 :$1", time, snapshot_info_as_of_time.ShortDebugString());
@@ -485,7 +503,6 @@ TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTime) {
 // Test that export_snapshot_from_schedule as of time doesn't include hidden tables in
 // SnapshotInfoPB.
 TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTimeWithHiddenTables) {
-  ASSERT_OK(CreateDatabaseWithSnapshotSchedule(GetParam()));
   auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
   // 1. Create table t1, then delete it to mark it as hidden and then recreate table t1.
   LOG(INFO) << Format("Create tables t1");
@@ -510,9 +527,14 @@ TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTimeWithHiddenTables) {
       "Exporting snapshot from snapshot schedule: $0, Hybrid time = $1", schedule_id, time);
   auto deadline = CoarseMonoClock::Now() + timeout;
   auto [snapshot_info_as_of_time, not_snapshotted_tablets] = ASSERT_RESULT(
-      mini_cluster()->mini_master()->catalog_manager_impl().GenerateSnapshotInfoFromSchedule(
-          schedule_id, HybridTime::FromMicros(static_cast<uint64>(time.ToInt64())), deadline));
-  // 6. Assert the output of 5 and 3 are the same.
+      mini_cluster()
+          ->mini_master()
+          ->catalog_manager_impl()
+          .GenerateSnapshotInfoFromScheduleForClone(
+              schedule_id, HybridTime::FromMicros(static_cast<uint64>(time.ToInt64())), deadline));
+  // 6. Assert the output of 5 and 3 are the same (after removing PITR related fields from 3).
+  ground_truth.mutable_entry()->clear_schedule_id();
+  ground_truth.mutable_entry()->clear_previous_snapshot_hybrid_time();
   LOG(INFO) << Format("SnapshotInfoPB ground_truth: $0", ground_truth.ShortDebugString());
   LOG(INFO) << Format(
       "SnapshotInfoPB as of time=$0 :$1", time, snapshot_info_as_of_time.ShortDebugString());
@@ -524,50 +546,34 @@ TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTimeWithHiddenTables) {
 class PgCloneTest : public PostgresMiniClusterTest {
  protected:
   void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
     PostgresMiniClusterTest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_db_clone) = true;
-    ASSERT_OK(CreateMasterBackupProxy());
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_mini_cluster_pg_host_port) = pg_host_port().ToString();
+    ASSERT_OK(CreateProxies());
+    ASSERT_OK(CreateSourceDbAndSnapshotSchedule(ColocateDatabase()));
   }
 
-  Status CloneAndWait(const master::CloneNamespaceRequestPB& clone_req) {
-    rpc::RpcController controller;
-    controller.set_timeout(120s);
-    master::CloneNamespaceResponsePB clone_resp;
-    RETURN_NOT_OK(master_backup_proxy_->CloneNamespace(clone_req, &clone_resp, &controller));
-    if (clone_resp.has_error()) {
-      return StatusFromPB(clone_resp.error().status());
-    }
-
-    // Wait until clone is done.
-    master::ListClonesRequestPB done_req;
-    master::ListClonesResponsePB done_resp;
-    done_req.set_seq_no(clone_resp.seq_no());
-    done_req.set_source_namespace_id(clone_resp.source_namespace_id());
-    RETURN_NOT_OK(WaitFor(
-        [&]() -> Result<bool> {
-          controller.Reset();
-          RETURN_NOT_OK(master_backup_proxy_->ListClones(done_req, &done_resp, &controller));
-          if (done_resp.has_error()) {
-            return StatusFromPB(clone_resp.error().status());
-          }
-          RSTATUS_DCHECK(
-              done_resp.entries_size() == 1, IllegalState,
-              Format("Expected 1 clone entry, got $0", done_resp.entries_size()));
-          auto state = done_resp.entries(0).aggregate_state();
-          return state == master::SysCloneStatePB::RESTORED ||
-                 state == master::SysCloneStatePB::ABORTED;
-        },
-        120s, "Wait for clone to finish"));
-
-    return Status::OK();
-  }
-
-  Status CreateMasterBackupProxy() {
+  virtual Status CreateProxies() {
     messenger_ = VERIFY_RESULT(rpc::MessengerBuilder("test-msgr").set_num_reactors(1).Build());
     proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
+    master_admin_proxy_ = std::make_unique<MasterAdminProxy>(
+        proxy_cache_.get(), mini_cluster()->mini_master()->bound_rpc_addr());
     master_backup_proxy_ = std::make_shared<MasterBackupProxy>(
         proxy_cache_.get(), mini_cluster()->mini_master()->bound_rpc_addr());
     return Status::OK();
+  }
+
+  Status CreateSourceDbAndSnapshotSchedule(master::YsqlColocationConfig colocated) {
+    RETURN_NOT_OK(CreateDatabase(kSourceNamespaceName, colocated));
+    source_conn_ = std::make_unique<pgwrapper::PGConn>(
+        VERIFY_RESULT(ConnectToDB(kSourceNamespaceName)));
+    SnapshotScheduleId schedule_id = VERIFY_RESULT(CreateSnapshotSchedule(
+        master_backup_proxy_.get(), YQL_DATABASE_PGSQL, kSourceNamespaceName, kInterval, kRetention,
+        kTimeout));
+    RETURN_NOT_OK(WaitScheduleSnapshot(master_backup_proxy_.get(), schedule_id, kTimeout));
+    RETURN_NOT_OK(source_conn_->Execute("CREATE TABLE t1 (key INT PRIMARY KEY, value INT)"));
+     return Status::OK();
   }
 
   void DoTearDown() override {
@@ -575,11 +581,38 @@ class PgCloneTest : public PostgresMiniClusterTest {
     PostgresMiniClusterTest::DoTearDown();
   }
 
-  std::shared_ptr<master::MasterBackupProxy> master_backup_proxy() { return master_backup_proxy_; }
+  Result<TableInfoPtr> GetTable(const std::string& table_name, const std::string& db_name) {
+    auto leader_master = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
+    for (const auto& table : leader_master->catalog_manager_impl().GetTables(GetTablesMode::kAll)) {
+      if (table->name() == table_name && table->namespace_name() == db_name) {
+        return table;
+      }
+    }
+    return STATUS_FORMAT(NotFound, "Table $0 not found", table_name);
+  }
+
+  Status SplitTablet(const TabletId& tablet_id) {
+    SplitTabletRequestPB req;
+    SplitTabletResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(30s);
+    req.set_tablet_id(tablet_id);
+    RETURN_NOT_OK(master_admin_proxy_->SplitTablet(req, &resp, &controller));
+    SCHECK_FORMAT(
+        !resp.has_error(), InternalError, "SplitTablet RPC failed. Error: $0",
+        resp.error().ShortDebugString());
+    return Status::OK();
+  }
+
+  virtual master::YsqlColocationConfig ColocateDatabase() {
+    return master::YsqlColocationConfig::kNotColocated;
+  }
 
   std::unique_ptr<rpc::Messenger> messenger_;
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
+  std::shared_ptr<MasterAdminProxy> master_admin_proxy_;
   std::shared_ptr<MasterBackupProxy> master_backup_proxy_;
+  std::unique_ptr<pgwrapper::PGConn> source_conn_;
 
   const std::string kSourceNamespaceName = "testdb";
   const std::string kTargetNamespaceName1 = "testdb_clone1";
@@ -587,49 +620,49 @@ class PgCloneTest : public PostgresMiniClusterTest {
   const MonoDelta kTimeout = MonoDelta::FromSeconds(30);
 };
 
-TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(Clone)) {
-  // Basic clone test for PG.
+class PgCloneTestWithColocatedDBParam
+    : public PgCloneTest,
+      public ::testing::WithParamInterface<master::YsqlColocationConfig> {
+  void SetUp() override { PgCloneTest::SetUp(); }
+
+  master::YsqlColocationConfig ColocateDatabase() override { return GetParam(); }
+};
+
+INSTANTIATE_TEST_CASE_P(
+    Colocation, PgCloneTestWithColocatedDBParam,
+    ::testing::Values(
+        master::YsqlColocationConfig::kNotColocated, master::YsqlColocationConfig::kDBColocated));
+
+// This test is disabled in sanitizers as ysql_dump fails in ASAN builds due to memory leaks
+// inherited from pg_dump.
+TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneYsqlSyntax)) {
+  // Basic clone test for PG using the YSQL TEMPLATE syntax.
   // Writes some data before time t and some data after t, and verifies that the cloning as of t
   // creates a clone with only the first set of rows, and cloning after t creates a clone with both
   // sets of rows.
-  auto conn = ASSERT_RESULT(Connect());
-  const std::vector<std::tuple<int32_t, int32_t>> kRows = {{1, 10}, {2, 20}};
-  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kSourceNamespaceName));
-  // Create a snapshot schedule.
-  SnapshotScheduleId schedule_id = ASSERT_RESULT(CreateSnapshotSchedule(
-      master_backup_proxy().get(), YQL_DATABASE_PGSQL, kSourceNamespaceName, kInterval, kRetention,
-      kTimeout));
-  ASSERT_OK(WaitScheduleSnapshot(master_backup_proxy().get(), schedule_id, kTimeout));
 
   // Write a row.
-  auto source_conn = ASSERT_RESULT(ConnectToDB(kSourceNamespaceName));
-  ASSERT_OK(source_conn.Execute("CREATE TABLE t1 (key INT PRIMARY KEY, value INT)"));
-  ASSERT_OK(source_conn.ExecuteFormat("INSERT INTO t1 VALUES ($0, $1)",
-            std::get<0>(kRows[0]), std::get<1>(kRows[0])));
+  const std::vector<std::tuple<int32_t, int32_t>> kRows = {{1, 10}, {2, 20}};
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "INSERT INTO t1 VALUES ($0, $1)", std::get<0>(kRows[0]), std::get<1>(kRows[0])));
 
   // Write a second row after recording the hybrid time.
-  auto ht1 = HybridTime::FromMicros(static_cast<uint64>(ASSERT_RESULT(GetCurrentTime()).ToInt64()));
-  ASSERT_OK(source_conn.ExecuteFormat(
+  auto ht = HybridTime::FromMicros(static_cast<uint64>(ASSERT_RESULT(GetCurrentTime()).ToInt64()));
+  ASSERT_OK(source_conn_->ExecuteFormat(
       "INSERT INTO t1 VALUES ($0, $1)", std::get<0>(kRows[1]), std::get<1>(kRows[1])));
-  auto ht2 = HybridTime::FromMicros(static_cast<uint64>(ASSERT_RESULT(GetCurrentTime()).ToInt64()));
 
-  CloneNamespaceRequestPB req;
-  NamespaceIdentifierPB source_namespace;
-  source_namespace.set_name(kSourceNamespaceName);
-  source_namespace.set_database_type(YQLDatabase::YQL_DATABASE_PGSQL);
-  *req.mutable_source_namespace() = source_namespace;
-  req.set_restore_ht(ht1.ToUint64());
-  req.set_target_namespace_name(kTargetNamespaceName1);
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_mini_cluster_pg_host_port) = pg_host_port().ToString();
+  // Perform the first clone operation to ht.
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName,
+      ht.GetPhysicalValueMicros()));
 
-  ASSERT_OK(CloneAndWait(req));
-
-  req.set_restore_ht(ht2.ToUint64());
-  req.set_target_namespace_name(kTargetNamespaceName2);
-  ASSERT_OK(CloneAndWait(req));
+  // Perform the second clone operation to clone the source DB using the current timestamp (AS OF is
+  // not specified)
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName2, kSourceNamespaceName));
 
   // Verify source rows are unchanged.
-  auto rows = ASSERT_RESULT((source_conn.FetchRows<int32_t, int32_t>("SELECT * FROM t1")));
+  auto rows = ASSERT_RESULT((source_conn_->FetchRows<int32_t, int32_t>("SELECT * FROM t1")));
   ASSERT_VECTORS_EQ(rows, kRows);
 
   // Verify first clone only has the first row.
@@ -643,57 +676,253 @@ TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(Clone)) {
   ASSERT_VECTORS_EQ(rows, kRows);
 }
 
-// The test is disabled in Sanitizers as ysql_dump fails in ASAN builds due to memory leaks
-// inherited from pg_dump.
-TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(CloneYsqlSyntax)) {
-  // Basic clone test for PG using the YSQL TEMPLATE syntax.
-  // Writes some data before time t and some data after t, and verifies that the cloning as of t
-  // creates a clone with only the first set of rows, and cloning after t creates a clone with both
-  // sets of rows.
-  auto conn = ASSERT_RESULT(Connect());
-  const std::vector<std::tuple<int32_t, int32_t>> kRows = {{1, 10}, {2, 20}};
-  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kSourceNamespaceName));
-
-  // Create a snapshot schedule.
-  SnapshotScheduleId schedule_id = ASSERT_RESULT(CreateSnapshotSchedule(
-      master_backup_proxy().get(), YQL_DATABASE_PGSQL, kSourceNamespaceName, kInterval, kRetention,
-      kTimeout));
-  ASSERT_OK(WaitScheduleSnapshot(master_backup_proxy().get(), schedule_id, kTimeout));
-
-  // Write a row.
-  auto source_conn = ASSERT_RESULT(ConnectToDB(kSourceNamespaceName));
-  ASSERT_OK(source_conn.Execute("CREATE TABLE t1 (key INT PRIMARY KEY, value INT)"));
-  ASSERT_OK(source_conn.ExecuteFormat(
-      "INSERT INTO t1 VALUES ($0, $1)", std::get<0>(kRows[0]), std::get<1>(kRows[0])));
+TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneWithAlterTableSchema)) {
+  // Clone to a time before a schema change happened.
+  // Writes some data before time t and alter the table schema after t and add some data according
+  // to the new schema. Verifies that the cloning as of t creates a clone with the correct schema
+  // and only the first row.
+  const std::tuple<int32_t, int32_t> kRow = {1, 10};
+  const std::tuple<int32_t, int32_t, int32_t> kRowNewSchema = {2, 20, 200};
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "INSERT INTO t1 VALUES ($0, $1)", std::get<0>(kRow), std::get<1>(kRow)));
 
   // Write a second row after recording the hybrid time.
-  auto ht1 = HybridTime::FromMicros(static_cast<uint64>(ASSERT_RESULT(GetCurrentTime()).ToInt64()));
-  ASSERT_OK(source_conn.ExecuteFormat(
-      "INSERT INTO t1 VALUES ($0, $1)", std::get<0>(kRows[1]), std::get<1>(kRows[1])));
-  // Perform the first clone operation to ht1
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_mini_cluster_pg_host_port) = pg_host_port().ToString();
-  ASSERT_OK(source_conn.ExecuteFormat(
+  auto ht = HybridTime::FromMicros(static_cast<uint64>(ASSERT_RESULT(GetCurrentTime()).ToInt64()));
+
+  ASSERT_OK(source_conn_->ExecuteFormat("ALTER TABLE t1 ADD COLUMN c1 INT"));
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "INSERT INTO t1 VALUES ($0, $1, $2)", std::get<0>(kRowNewSchema), std::get<1>(kRowNewSchema),
+      std::get<2>(kRowNewSchema)));
+
+  ASSERT_OK(source_conn_->ExecuteFormat(
       "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName,
-      ht1.GetPhysicalValueMicros()));
+      ht.GetPhysicalValueMicros()));
 
-  // Perform the second clone operation to clone the source DB using the current timestamp (AS OF is
-  // not specified)
-  ASSERT_OK(source_conn.ExecuteFormat(
-      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName2, kSourceNamespaceName));
+  // Verify clone only has the first row.
+  auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+  auto rows = ASSERT_RESULT((target_conn.FetchRows<int32_t, int32_t>("SELECT * FROM t1")));
+  ASSERT_EQ(rows.size(), 1);
+  ASSERT_EQ(rows[0], kRow);
+}
 
-  // Verify source rows are unchanged.
-  auto rows = ASSERT_RESULT((source_conn.FetchRows<int32_t, int32_t>("SELECT * FROM t1")));
-  ASSERT_VECTORS_EQ(rows, kRows);
+TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(AbortMessage)) {
+  // Assert that we propagate the error message from the clone operation to the user.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_clone_pg_schema) = true;
+  auto status = source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.message().ToBuffer(), "fail_clone_pg_schema");
+}
 
-  // Verify first clone only has the first row.
-  auto target_conn1 = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
-  auto row = ASSERT_RESULT((target_conn1.FetchRow<int32_t, int32_t>("SELECT * FROM t1")));
+// The test is disabled in Sanitizers as ysql_dump fails in ASAN builds due to memory leaks
+// inherited from pg_dump.
+TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneAfterDropTable)) {
+  // Clone to a time before a drop table and check that the table exists with correct data.
+  // 1. Create a table and load some data.
+  // 2. Mark time t.
+  // 3. Drop table.
+  // 4. Clone the database as of time t.
+  // 5. Check the table exists in the clone with the correct data.
+  const std::vector<std::tuple<int32_t, int32_t>> kRows = {{1, 10}};
+
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "INSERT INTO t1 VALUES ($0, $1)", std::get<0>(kRows[0]), std::get<1>(kRows[0])));
+
+  auto clone_to_time = ASSERT_RESULT(GetCurrentTime()).ToInt64();
+  // Drop table t1
+  ASSERT_OK(source_conn_->ExecuteFormat("DROP TABLE t1"));
+
+  // Perform the clone operation to ht
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName,
+      clone_to_time));
+
+  // Verify table t1 exists in the clone database and rows are as of ht1.
+  auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+  auto row = ASSERT_RESULT((target_conn.FetchRow<int32_t, int32_t>("SELECT * FROM t1")));
   ASSERT_EQ(row, kRows[0]);
+}
 
-  // Verify second clone has both rows.
-  auto target_conn2 = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName2));
-  rows = ASSERT_RESULT((target_conn2.FetchRows<int32_t, int32_t>("SELECT * FROM t1")));
-  ASSERT_VECTORS_EQ(rows, kRows);
+TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(TabletSplitting)) {
+  const int kNumRows = 1000;
+
+  // Test that we are able to clone to:
+  // 1. Before the split occurs on the master (when the children are upserted into the sys catalog).
+  // 2. After the split occurs on the master server but before the parent is hidden.
+  // 3. After the split parent is hidden.
+  auto clone_and_validate = [&]
+      (const std::string& target_namespace, int64_t timestamp, int expected_num_tablets) -> Status {
+    RETURN_NOT_OK(source_conn_->ExecuteFormat(
+        "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", target_namespace, kSourceNamespaceName,
+        timestamp));
+    auto target_conn = VERIFY_RESULT(ConnectToDB(target_namespace));
+    auto rows = VERIFY_RESULT((target_conn.FetchRows<int32_t, int32_t>("SELECT * FROM t1")));
+    SCHECK_EQ(rows.size(), kNumRows, IllegalState, "Number of rows mismatch");
+    auto table = VERIFY_RESULT(GetTable("t1", target_namespace));
+    SCHECK_EQ(
+        VERIFY_RESULT(table->GetTablets()).size(), expected_num_tablets, IllegalState,
+        "Number of tablets mismatch");
+    return Status::OK();
+  };
+
+  // Do not clean up split tablets for now.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
+
+  // Write enough data for a middle key so tablet splitting succeeds.
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "INSERT INTO t1 VALUES (generate_series(1, $0), generate_series(1, $0))", kNumRows));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  TableInfoPtr source_table = ASSERT_RESULT(GetTable("t1", kSourceNamespaceName));
+  auto tablets = ASSERT_RESULT(source_table->GetTablets());
+  ASSERT_EQ(tablets.size(), 3);
+  auto before_split_timestamp = ASSERT_RESULT(GetCurrentTime()).ToInt64();
+
+  auto split_tablet_id = tablets[0]->tablet_id();
+  ASSERT_OK(SplitTablet(split_tablet_id));
+
+  // Wait for the split to complete on master.
+  // The parent should still be running because we have cleanup is still disabled.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(source_table->GetTablets(IncludeInactive::kTrue)).size() == 5;
+  }, 30s, "Wait for master split."));
+  auto after_master_split_timestamp = ASSERT_RESULT(GetCurrentTime()).ToInt64();
+
+  // We should have 3 tablets before the master side split, and 4 after.
+  ASSERT_OK(clone_and_validate(kTargetNamespaceName1, before_split_timestamp, 3));
+  ASSERT_OK(clone_and_validate(kTargetNamespaceName2, after_master_split_timestamp, 4));
+
+  // Enable cleanup of split parents and wait for the split parent to be deleted.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = false;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto tablets = VERIFY_RESULT(source_table->GetTablets(IncludeInactive::kTrue));
+    for (auto& tablet : tablets) {
+      if (tablet->id() == split_tablet_id) {
+        return tablet->LockForRead()->is_hidden();
+      }
+    }
+    return STATUS_FORMAT(NotFound, "Split parent tablet $0 not found", split_tablet_id);
+  }, 30s, "Wait for split parent to be hidden."));
+  auto parent_hidden_timestamp = ASSERT_RESULT(GetCurrentTime()).ToInt64();
+
+  // Clone to after the split parent was hidden. We should have 4 child tablets.
+  ASSERT_OK(clone_and_validate("testdb_clone3", parent_hidden_timestamp, 4));
+}
+
+TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(TabletSplittingWithIndex)) {
+  // Test that we can clone after splitting an index.
+  // Write enough data for a middle key so tablet splitting succeeds.
+  const int kNumRows = 1000;
+  ASSERT_OK(source_conn_->Execute("CREATE INDEX i1 ON t1(value)"));
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "INSERT INTO t1 VALUES (generate_series(1, $0), generate_series(1, $0))", kNumRows));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  // Split an index tablet.
+  TableInfoPtr source_index = ASSERT_RESULT(GetTable("i1", kSourceNamespaceName));
+  auto tablets = ASSERT_RESULT(source_index->GetTablets());
+  ASSERT_EQ(tablets.size(), 3);
+  auto split_tablet_id = tablets[0]->tablet_id();
+  ASSERT_OK(SplitTablet(split_tablet_id));
+
+  // Wait for split to complete.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return VERIFY_RESULT(source_index->GetTablets()).size() == 4;
+  }, 30s, "Wait for split to complete."));
+
+  // Clone.
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName));
+  ASSERT_RESULT(GetTable("i1", kTargetNamespaceName1));
+}
+
+TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(UserIsSet)) {
+  // Test that the user is set to the user running the clone operation.
+  ASSERT_OK(source_conn_->Execute("CREATE ROLE test_user WITH LOGIN PASSWORD 'test'"));
+  ASSERT_OK(source_conn_->Execute("ALTER ROLE test_user SUPERUSER"));
+  ASSERT_OK(source_conn_->Execute("SET ROLE test_user"));
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName));
+
+  auto owner_query = Format(
+      "SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname = '$0'",
+      kTargetNamespaceName1);
+  auto owner = ASSERT_RESULT(source_conn_->FetchRows<std::string>(owner_query));
+  ASSERT_EQ(owner.size(), 1);
+  ASSERT_EQ(owner[0], "test_user");
+}
+
+TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(PreventConnectionsUntilCloneSuccessful)) {
+  // Test that we prevent connections to the target DB until the clone operation is successful.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_clone_tablets) = true;
+  auto status = source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName);
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.message().ToBuffer(), "fail_clone_tablets");
+
+  auto result = ConnectToDB(kTargetNamespaceName1, 3 /* connection timeout */);
+  ASSERT_NOK(result);
+  ASSERT_STR_CONTAINS(
+      result.status().message().ToBuffer(),
+      Format("database \"$0\" is not currently accepting connections", kTargetNamespaceName1));
+}
+
+class PgCloneColocationTest : public PgCloneTest {
+  virtual void OverrideMiniClusterOptions(MiniClusterOptions* options) override {
+    options->num_masters = 3;
+    options->num_tablet_servers = 3;
+  }
+
+  virtual Status CreateProxies() override {
+    messenger_ = VERIFY_RESULT(rpc::MessengerBuilder("test-msgr").set_num_reactors(1).Build());
+    proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
+    master_admin_proxy_ = std::make_unique<MasterAdminProxy>(
+        proxy_cache_.get(), VERIFY_RESULT(mini_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+    master_backup_proxy_ = std::make_shared<MasterBackupProxy>(
+        proxy_cache_.get(), VERIFY_RESULT(mini_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+    return Status::OK();
+  }
+
+  virtual master::YsqlColocationConfig ColocateDatabase() override {
+    return master::YsqlColocationConfig::kDBColocated;
+  }
+};
+
+// Verify that after a successful clone, the target database is readable even after performing
+// master leader failover. This is a sanity check on the persisted tables and tablet sys catalog
+// entities in case of cloning a colocated database.
+TEST_F(
+    PgCloneColocationTest, YB_DISABLE_TEST_IN_SANITIZERS(ReadClonedDatabaseAfterMasterFailover)) {
+  const std::tuple<int32_t, int32_t> kRowT1 = {1, 10};
+  const std::tuple<int32_t, int32_t, int32_t> kRowT2 = {2, 20, 200};
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "INSERT INTO t1 VALUES ($0, $1)", std::get<0>(kRowT1), std::get<1>(kRowT1)));
+  ASSERT_OK(source_conn_->ExecuteFormat("CREATE TABLE t2 ( k int, v1 int, v2 int)"));
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "INSERT INTO t2 VALUES ($0, $1, $2)", std::get<0>(kRowT2), std::get<1>(kRowT2),
+      std::get<2>(kRowT2)));
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName));
+  // Verify t1 can be read from the cloned database.
+  auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+  auto rows = ASSERT_RESULT((target_conn.FetchRows<int32_t, int32_t>("SELECT * FROM t1")));
+  ASSERT_EQ(rows.size(), 1);
+  ASSERT_EQ(rows[0], kRowT1);
+  // Perform a master leader failover.
+  LOG(INFO) << Format(
+      "Stepping down master leader with permanent UUID: $0",
+      ASSERT_RESULT(mini_cluster()->GetLeaderMiniMaster())->permanent_uuid());
+  auto new_master_leader = ASSERT_RESULT(mini_cluster()->StepDownMasterLeader());
+  LOG(INFO) << Format("The new master leader permanent UUID: $0", new_master_leader);
+  // Verify both tables t1 and t2 can be read from the cloned database.
+  target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+  rows = ASSERT_RESULT((target_conn.FetchRows<int32_t, int32_t>("SELECT * FROM t1")));
+  ASSERT_EQ(rows.size(), 1);
+  ASSERT_EQ(rows[0], kRowT1);
+  auto rows_t2 =
+      ASSERT_RESULT((target_conn.FetchRows<int32_t, int32_t, int32_t>("SELECT * FROM t2")));
+  ASSERT_EQ(rows_t2.size(), 1);
+  ASSERT_EQ(rows_t2[0], kRowT2);
 }
 
 }  // namespace master

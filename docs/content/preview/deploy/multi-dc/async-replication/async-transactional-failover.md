@@ -79,14 +79,14 @@ If there are multiple databases in the same cluster, do PITR on all the database
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
-    <a href="#local" class="nav-link active" id="local-tab" data-toggle="tab"
+    <a href="#local" class="nav-link active" id="local-tab" data-bs-toggle="tab"
       role="tab" aria-controls="local" aria-selected="true">
       <img src="/icons/database.svg" alt="Server Icon">
       Local
     </a>
   </li>
   <li>
-    <a href="#anywhere" class="nav-link" id="anywhere-tab" data-toggle="tab"
+    <a href="#anywhere" class="nav-link" id="anywhere-tab" data-bs-toggle="tab"
       role="tab" aria-controls="anywhere" aria-selected="false">
       <img src="/icons/server.svg" alt="Server Icon">
       YugabyteDB Anywhere
@@ -104,7 +104,7 @@ To do a PITR on a database:
     ./bin/yb-admin \
         -master_addresses <standby_master_addresses> \
         -certs_dir_name <cert_dir> \
-        list_snapshot_schedules 
+        list_snapshot_schedules
     ```
 
     Expect output similar to the following:
@@ -205,11 +205,11 @@ To do a PITR on a database:
 
 1. Select the **Date and Time** option and enter the safe time you obtained.
 
-    By default, YBA shows the time in local time, whereas yb-admin returns the time in UTC. Therefore, you need to convert the xCluster Safe time to local time when entering the date and time.
+    By default, YugabyteDB Anywhere shows the time in local time, whereas yb-admin returns the time in UTC. Therefore, you need to convert the xCluster Safe time to local time when entering the date and time.
 
-    Alternatively, you can configure YBA to use UTC time (always) by changing the Preferred Timezone to UTC in the **User > Profile** settings.
+    Alternatively, you can configure YugabyteDB Anywhere to use UTC time (always) by changing the Preferred Timezone to UTC in the **User > Profile** settings.
 
-    Note that YBA only supports minute-level granularity.
+    Note that YugabyteDB Anywhere only supports minute-level granularity.
 
 1. Click **Recover**.
 
@@ -262,14 +262,14 @@ If universe A is brought back, to bring A into sync with B and set up replicatio
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
-    <a href="#localreverse" class="nav-link active" id="local-tab" data-toggle="tab"
+    <a href="#localreverse" class="nav-link active" id="local-tab" data-bs-toggle="tab"
       role="tab" aria-controls="local" aria-selected="true">
       <img src="/icons/database.svg" alt="Server Icon">
       Local
     </a>
   </li>
   <li>
-    <a href="#anywherereverse" class="nav-link" id="anywhere-tab" data-toggle="tab"
+    <a href="#anywherereverse" class="nav-link" id="anywhere-tab" data-bs-toggle="tab"
       role="tab" aria-controls="anywhere" aria-selected="false">
       <img src="/icons/server.svg" alt="Server Icon">
       YugabyteDB Anywhere

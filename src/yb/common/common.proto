@@ -639,6 +639,8 @@ message DatumMessagePB {
     // The Walsender does the conversion from QLValuePB to the PG datum.
     QLValuePB pg_ql_value = 15;
   }
+  // This is applicable only for YSQL table columns.
+  optional int32 col_attr_num = 16;
 }
 
 message PgDatumPB {
@@ -675,6 +677,8 @@ message AshMetadataPB {
   optional uint64 query_id = 5;
   // PgClient session id. This will be 0 for YCQL.
   optional uint64 session_id = 6;
+  // PG database OID. This will be 0 for YCQL.
+  optional uint32 database_id = 8;
 }
 
 // Some optional/additional fields that is collected in addition to the wait

@@ -29,7 +29,7 @@ This deployment provides the following advantages:
   <li>
     <a href="../synchronous-replication-cloud/" class="nav-link">
       <img src="/icons/cloud.svg" alt="Cloud Icon">
-      YugabyteDB Managed
+      YugabyteDB Aeon
     </a>
   </li>
   <li>
@@ -46,7 +46,7 @@ Before you can [create a multi-region universe in YugabyteDB Anywhere](../../../
 
 ## Start a workload
 
-Follow the [setup instructions](../../#set-up-yb-workload-simulator) to install the YB Workload Simulator application, connect it, and then [start a workload](../../#start-a-read-and-write-workload). 
+Follow the [setup instructions](../../#set-up-yb-workload-simulator) to install the YB Workload Simulator application, connect it, and then [start a workload](../../#start-a-read-and-write-workload).
 
 To verify that the application is running correctly, navigate to the application UI at <http://localhost:8080/> to view the universe network diagram, as well as latency and throughput charts for the running workload.
 
@@ -66,10 +66,9 @@ You can use YugabyteDB Anywhere to view per-node statistics for the universe, as
 
    <!-- ![Performance charts for 3 nodes](/images/ce/transactions_anywhere_chart.png) -->
 
-
 ## Tune latencies
 
-Latency in a multi-region universe depends on the distance and network packet transfer times between the nodes of the universe as well as between the universe and the client. Because the [tablet leader](../../../architecture/core-functions/write-path/#preparation-of-the-operation-for-replication-by-tablet-leader) replicates write operations across a majority of tablet peers before sending a response to the client, all writes involve cross-region communication between tablet peers.
+Latency in a multi-region universe depends on the distance and network packet transfer times between the nodes of the universe as well as between the universe and the client. Because the [tablet leader](../../../architecture/key-concepts/#tablet-leader) [replicates write operations](../../../architecture/docdb-replication/raft/#replication-of-the-write-operation) across a majority of tablet peers before sending a response to the client, all writes involve cross-region communication between tablet peers.
 
 For best performance and lower data transfer costs, you want to minimize transfers between providers and between provider regions. You do this by placing your universe as close to your applications as possible, as follows:
 
@@ -81,7 +80,7 @@ For best performance and lower data transfer costs, you want to minimize transfe
 
 YugabyteDB offers tunable global reads that allow read requests to trade off some consistency for lower read latency. By default, read requests in a YugabyteDB universe are handled by the leader of the Raft group associated with the target tablet to ensure strong consistency. If you are willing to sacrifice some consistency in favor of lower latency, you can choose to read from a tablet follower that is closer to the client rather than from the leader. YugabyteDB also allows you to specify the maximum staleness of data when reading from tablet followers.
 
-For more information, see [Follower reads examples](../../ysql-language-features/going-beyond-sql/follower-reads-ysql/).
+For more information, see [Follower reads examples](../../going-beyond-sql/follower-reads-ysql/).
 
 ### Preferred region
 

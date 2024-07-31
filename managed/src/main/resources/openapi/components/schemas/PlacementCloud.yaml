@@ -1,4 +1,5 @@
-title: YBA Placement Cloud
+title: PlacementCloud
+description: YBA Placement Cloud. Part of ClusterPlacementSpec.
 type: object
 properties:
   uuid:

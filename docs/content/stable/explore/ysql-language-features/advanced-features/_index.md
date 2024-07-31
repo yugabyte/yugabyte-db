@@ -11,76 +11,49 @@ menu:
     weight: 320
 type: indexpage
 ---
-<div class="row">
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="cursor/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Cursors</div>
-      </div>
-      <div class="body">
-          Use YSQL cursors to process a result set query.
-      </div>
-    </a>
-  </div>
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="partitions/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Table Partitioning</div>
-      </div>
-      <div class="body">
-          Use YSQL to partition tables in YugabyteDB.
-      </div>
-    </a>
-  </div>
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="views/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Views</div>
-      </div>
-      <div class="body">
-          Create views, modify and manage them in YSQL.
-      </div>
-    </a>
-  </div>
+   {{<index/item
+    title="Cursors"
+    body="Use YSQL cursors to process a result set query."
+    href="cursor/"
+    icon="/images/section_icons/develop/learn.png" aria-hidden="true">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="savepoints/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Savepoints</div>
-      </div>
-      <div class="body">
-          Use Savepoints to roll back and restore current state of a transaction seamlessly.
-      </div>
-    </a>
-  </div>
+   {{<index/item
+    title="Table Partitioning"
+    body="Use YSQL to partition tables in YugabyteDB."
+    href="partitions/"
+    icon="/images/section_icons/develop/learn.png" aria-hidden="true">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="collations/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Collations</div>
-      </div>
-      <div class="body">
-          Use Collations in YSQL to learn sorting and comparing data in a database.
-      </div>
-    </a>
-  </div>
+   {{<index/item
+    title="Views"
+    body="Create views, modify and manage them in YSQL."
+    href="views/"
+    icon="/images/section_icons/develop/learn.png" aria-hidden="true">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="foreign-data-wrappers/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/learn.png" aria-hidden="true"/>
-        <div class="title">Foreign data wrappers</div>
-      </div>
-      <div class="body">
-          Use foreign data wrappers to access and interact with an external data source.
-      </div>
-    </a>
-  </div>
-</div>
+   {{<index/item
+    title="Savepoints"
+    body="Use Savepoints to roll back and restore current state of a transaction seamlessly."
+    href="savepoints/"
+    icon="/images/section_icons/develop/learn.png" aria-hidden="true">}}
+
+   {{<index/item
+    title="Collations"
+    body="Use Collations in YSQL to learn sorting and comparing data in a database."
+    href="collations/"
+    icon="/images/section_icons/develop/learn.png" aria-hidden="true">}}
+
+   {{<index/item
+    title="Foreign data wrappers"
+    body="Use foreign data wrappers to access and interact with an external data source."
+    href="foreign-data-wrappers/"
+    icon="/images/section_icons/develop/learn.png" aria-hidden="true">}}
+
+   {{<index/item
+    title="Triggers"
+    body="Use triggers when performing data manipulation and definition."
+    href="triggers/"
+    icon="/images/section_icons/develop/learn.png" aria-hidden="true">}}
+
+{{</index/block>}}

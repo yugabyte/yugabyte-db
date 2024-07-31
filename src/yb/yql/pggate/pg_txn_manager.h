@@ -58,6 +58,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status RecreateTransaction();
   Status RestartTransaction();
   Status ResetTransactionReadPoint();
+  Status EnsureReadPoint();
   Status RestartReadPoint();
   bool IsRestartReadPointRequested();
   void SetActiveSubTransactionId(SubTransactionId id);
@@ -67,12 +68,14 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   PgIsolationLevel GetPgIsolationLevel();
   Status SetReadOnly(bool read_only);
   Status SetEnableTracing(bool tracing);
-  Status EnableFollowerReads(bool enable_follower_reads, int32_t staleness);
+  Status UpdateFollowerReadsConfig(bool enable_follower_reads, int32_t staleness);
   Status SetDeferrable(bool deferrable);
   Status EnterSeparateDdlTxnMode();
   Status ExitSeparateDdlTxnModeWithAbort();
   Status ExitSeparateDdlTxnModeWithCommit(uint32_t db_oid, bool is_silent_altering);
   void SetDdlHasSyscatalogChanges();
+  Status SetInTxnBlock(bool in_txn_blk);
+  Status SetReadOnlyStmt(bool read_only_stmt);
 
   bool IsTxnInProgress() const { return txn_in_progress_; }
   IsolationLevel GetIsolationLevel() const { return isolation_level_; }
@@ -85,15 +88,37 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   double GetTransactionPriority() const;
   TxnPriorityRequirement GetTransactionPriorityType() const;
 
-  uint64_t GetReadTimeSerialNo() { return read_time_serial_no_; }
-  uint64_t GetTxnSerialNo() { return txn_serial_no_; }
-  SubTransactionId GetActiveSubTransactionId() { return active_sub_transaction_id_; }
-  void RestoreSessionParallelData(const YBCPgSessionParallelData* session_data);
+  void DumpSessionState(YBCPgSessionState* session_data);
+  void RestoreSessionState(const YBCPgSessionState& session_data);
+
+  [[nodiscard]] uint64_t GetCurrentReadTimePoint() const;
+  Status RestoreReadTimePoint(uint64_t read_time_point_handle);
 
  private:
   struct DdlCommitInfo {
     uint32_t db_oid;
     bool is_silent_altering;
+  };
+
+  class SerialNo {
+   public:
+    SerialNo();
+    SerialNo(uint64_t txn_serial_no, uint64_t read_time_serial_no);
+    void IncTxn();
+    void IncReadTime();
+    Status RestoreReadTime(uint64_t read_time_serial_no);
+    [[nodiscard]] uint64_t txn() const { return txn_; }
+    [[nodiscard]] uint64_t read_time() const { return read_time_; }
+
+   private:
+    uint64_t txn_;
+    uint64_t read_time_;
+    // Txn may have multiple valid read time values (i.e. multiple read times inside
+    // same transaction). The [min_read_time_, max_read_time_] segment describes the set of
+    // valid values for read_time_ for current txn_. The RestoreReadTime method checks that
+    // read_time_serial_no has a valid value in context of current txn_.
+    uint64_t min_read_time_;
+    uint64_t max_read_time_;
   };
 
   YB_STRONGLY_TYPED_BOOL(NeedsHigherPriorityTxn);
@@ -121,12 +146,13 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   bool txn_in_progress_ = false;
   IsolationLevel isolation_level_ = IsolationLevel::NON_TRANSACTIONAL;
-  uint64_t txn_serial_no_ = 0;
-  uint64_t read_time_serial_no_ = 0;
+  SerialNo serial_no_;
   SubTransactionId active_sub_transaction_id_ = kMinSubTransactionId;
   bool need_restart_ = false;
   bool need_defer_read_point_ = false;
   tserver::ReadTimeManipulation read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
+  bool in_txn_blk_ = false;
+  bool read_only_stmt_ = false;
 
   // Postgres transaction characteristics.
   PgIsolationLevel pg_isolation_level_ = PgIsolationLevel::REPEATABLE_READ;

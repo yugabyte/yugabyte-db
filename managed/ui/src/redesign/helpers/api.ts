@@ -114,6 +114,7 @@ export const runtimeConfigQueryKey = {
   ALL: ['runtimeConfig'],
   globalScope: () => [...runtimeConfigQueryKey.ALL, 'global'],
   customerScope: (customerUuid: string) => [...runtimeConfigQueryKey.ALL, 'customer', customerUuid],
+  universeScope: (universeUuid: string) => [...runtimeConfigQueryKey.ALL, 'universe', universeUuid],
   providerScope: (providerUuid: string) => [...runtimeConfigQueryKey.ALL, 'provider', providerUuid]
 };
 
@@ -684,7 +685,6 @@ class ApiService {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/tasks_list`;
     return axios
       .get<any>(requestUrl, { params: { uUUID: universeUuid } })
-      .then((response) => response.data);
   };
 
   getAlerts = (

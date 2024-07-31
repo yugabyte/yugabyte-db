@@ -1,10 +1,17 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.models;
 
+import static org.yb.CommonTypes.ReplicationErrorPb.REPLICATION_AUTO_FLAG_CONFIG_VERSION_MISMATCH;
+import static org.yb.CommonTypes.ReplicationErrorPb.REPLICATION_MISSING_OP_ID;
+import static org.yb.CommonTypes.ReplicationErrorPb.REPLICATION_MISSING_TABLE;
+import static org.yb.CommonTypes.ReplicationErrorPb.REPLICATION_SCHEMA_MISMATCH;
+
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonValue;
+import com.yugabyte.yw.forms.TableInfoForm.TableInfoResp;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import io.ebean.Finder;
@@ -18,9 +25,13 @@ import jakarta.persistence.Id;
 import jakarta.persistence.IdClass;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Transient;
 import java.io.Serializable;
+import java.util.Arrays;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
@@ -106,21 +117,36 @@ public class XClusterTableConfig extends Model {
           "Validated, Running, Updating, Warning, Error, Bootstrapping, Failed, UnableToFetch")
   private Status status;
 
+  @Transient
+  @ApiModelProperty(value = "tableInfo from source universe", required = false)
+  private TableInfoResp sourceTableInfo;
+
+  @Transient
+  @ApiModelProperty(value = "tableInfo from target universe", required = false)
+  private TableInfoResp targetTableInfo;
+
   // Statuses are declared in reverse severity for showing tables in UI with specific order.
   public enum Status {
-    Failed("Failed"),
-    Error("Error"), // Not stored in YBA DB.
-    Warning("Warning"), // Not stored in YBA DB.
-    UnableToFetch("UnableToFetch"), // Not stored in YBA DB.
-    Updating("Updating"),
-    Bootstrapping("Bootstrapping"),
-    Validated("Validated"),
-    Running("Running");
+    Failed("Failed", -1),
+    Error("Error", -2), // Not stored in YBA DB.
+    Warning("Warning", -3), // Not stored in YBA DB.
+    UnableToFetch("UnableToFetch", -4), // Not stored in YBA DB.
+    Updating("Updating", 1),
+    Bootstrapping("Bootstrapping", 2),
+    Validated("Validated", 3),
+    Running("Running", 0),
+    DroppedFromSource("DroppedFromSource", -5), // Not stored in YBA DB.
+    DroppedFromTarget("DroppedFromTarget", -6), // Not stored in YBA DB.
+    ExtraTableOnSource("ExtraTableOnSource", -7), // Not stored in YBA DB.
+    ExtraTableOnTarget("ExtraTableOnTarget", -8), // Not stored in YBA DB.
+    ReplicationError("ReplicationError", -9); // Not stored in YBA DB.
 
     private final String status;
+    private final int code;
 
-    Status(String status) {
+    Status(String status, int code) {
       this.status = status;
+      this.code = code;
     }
 
     @Override
@@ -128,7 +154,43 @@ public class XClusterTableConfig extends Model {
     public String toString() {
       return this.status;
     }
+
+    public int getCode() {
+      return this.code;
+    }
   }
+
+  // TODO move API response attributes out of the DB model
+  public enum ReplicationStatusError {
+    MISSING_OP(REPLICATION_MISSING_OP_ID, "Missing op ID"),
+    SCHEMA_MISMATCH(REPLICATION_SCHEMA_MISMATCH, "Schema mismatch"),
+    MISSING_TABLE(REPLICATION_MISSING_TABLE, "Missing table"),
+    AUTO_FLAG_CONFIG_MISMATCH(
+        REPLICATION_AUTO_FLAG_CONFIG_VERSION_MISMATCH, "Auto flag config mismatch");
+
+    private final org.yb.CommonTypes.ReplicationErrorPb errorCode;
+    private final String message;
+
+    ReplicationStatusError(org.yb.CommonTypes.ReplicationErrorPb errorCode, String message) {
+      this.errorCode = errorCode;
+      this.message = message;
+    }
+
+    @JsonValue
+    @Override
+    public String toString() {
+      return message;
+    }
+
+    public static ReplicationStatusError fromErrorCode(
+        org.yb.CommonTypes.ReplicationErrorPb errorCode) {
+      return Arrays.stream(values()).filter(e -> e.errorCode == errorCode).findFirst().orElse(null);
+    }
+  }
+
+  @Transient
+  @ApiModelProperty(value = "Short human readable replication status error messages")
+  private Set<ReplicationStatusError> replicationStatusErrors = new HashSet<>();
 
   public XClusterTableConfig(XClusterConfig config, String tableId) {
     this.setConfig(config);
@@ -139,11 +201,18 @@ public class XClusterTableConfig extends Model {
     this.setStatus(Status.Validated);
   }
 
-  public static Optional<XClusterTableConfig> maybeGetByStreamId(String streamId) {
+  /**
+   * Retrieves an XClusterTableConfig object based on the provided tableId.
+   *
+   * @param tableId The unique identifier of the table.
+   * @return An Optional containing the XClusterTableConfig object if found, or an empty Optional if
+   *     not found.
+   */
+  public static Optional<XClusterTableConfig> maybeGetByTableId(String tableId) {
     XClusterTableConfig xClusterTableConfig =
-        find.query().fetch("tables").where().eq("stream_id", streamId).findOne();
+        find.query().where().eq("table_id", tableId).findOne();
     if (xClusterTableConfig == null) {
-      log.info("Cannot find an xClusterTableConfig with streamId {}", streamId);
+      log.info("Cannot find an xClusterTableConfig with tableId {}", tableId);
       return Optional.empty();
     }
     return Optional.of(xClusterTableConfig);

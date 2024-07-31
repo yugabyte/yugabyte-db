@@ -4103,3 +4103,23 @@ select * from sample where a = x'80000000'::int;
 (0 rows)
 
 drop table sample;
+-- GHI 22832 possible fetch of a dropped column
+create table t1(k1 int, k2 int, v0 int, v1 int, v2 int, primary key ((k1, k2) hash));
+alter table t1 drop column v0;
+create index on t1(k1, k2, v1);
+-- prevents "all_ordinary_keys_bound"
+set yb_pushdown_is_not_null to false;
+-- inequality prevents PK usage, IN sets a scan key flag that makes v1 wanted for rechecks
+explain (costs off) select v2 from t1 where k1 = 1 and k2 > 0 and v1 IN (1, 2);
+                                QUERY PLAN
+---------------------------------------------------------------------------
+ Index Scan using t1_k1_k2_v1_idx on t1
+   Index Cond: ((k1 = 1) AND (k2 > 0) AND (v1 = ANY ('{1,2}'::integer[])))
+(2 rows)
+
+select v2 from t1 where k1 = 1 and k2 > 0 and v1 IN (1, 2);
+ v2
+----
+(0 rows)
+
+drop table t1;

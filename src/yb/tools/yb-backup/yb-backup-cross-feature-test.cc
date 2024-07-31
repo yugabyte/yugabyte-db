@@ -1497,12 +1497,8 @@ TEST_F_EX(
 TEST_F_EX(
     YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestReplicaIdentityAfterRestore),
     YBBackupTestOneTablet) {
-  ASSERT_OK(
-      cluster_->SetFlagOnTServers("allowed_preview_flags_csv", "ysql_yb_enable_replica_identity"));
   ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_enable_replica_identity", "true"));
 
-  ASSERT_OK(
-      cluster_->SetFlagOnMasters("allowed_preview_flags_csv", "ysql_yb_enable_replica_identity"));
   ASSERT_OK(cluster_->SetFlagOnMasters("ysql_yb_enable_replica_identity", "true"));
 
   const string table_name = "mytbl";
@@ -1854,10 +1850,10 @@ TEST_P(
       tserver::FlushTabletsRequestPB::COMPACT));
 
   ASSERT_OK(RunBackupCommand(
-      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", backup_db_name),
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", restore_db_name),
        "restore"}));
 
-  SetDbName(backup_db_name);
+  SetDbName(restore_db_name);
 
   ASSERT_NO_FATALS(
       InsertRows(Format("INSERT INTO $0 VALUES (9,9,9), (10,10,10), (11,11,11)", table_name), 3));
@@ -1921,6 +1917,11 @@ class YBDdlAtomicityBackupTest : public YBBackupTestBase, public pgwrapper::PgDd
 };
 
 Status YBDdlAtomicityBackupTest::RunDdlAtomicityTest(pgwrapper::DdlErrorInjection inject_error) {
+  // Start Yb Controllers for backup/restore.
+  if (UseYbController()) {
+    CHECK_OK(cluster_->StartYbControllerServers());
+  }
+
   // Setup required tables.
   auto conn = VERIFY_RESULT(Connect());
   const int num_rows = 5;
@@ -2265,6 +2266,49 @@ TEST_P(YBBackupTestWithTableRewrite,
         (1 row)
       )#"
   ));
+}
+
+TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestBackupWithFailedLegacyRewrite)) {
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_enable_alter_table_rewrite", "false"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("enable_transactional_ddl_gc", "false"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_ddl_rollback_enabled", "false"));
+
+  const auto table_name = "t1";
+  // Create the table.
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (a int, b int)", table_name)));
+  // Insert some data.
+  ASSERT_NO_FATALS(InsertRows(Format(
+      "INSERT INTO $0 (a, b) VALUES (generate_series(1, 5), generate_series(1, 5))", table_name),
+      5));
+  // Create an index.
+  ASSERT_NO_FATALS(CreateIndex(Format("CREATE INDEX idx1 ON $0 (b DESC)", table_name)));
+  // Perform a failed ADD PKEY operation.
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("SET yb_test_fail_next_ddl = true;"
+             "ALTER TABLE $0 ADD PRIMARY KEY (a ASC)", table_name), "SET"));
+  // Verify the original table and the orphaned table exist.
+  ASSERT_EQ(ASSERT_RESULT(client_->ListTables(table_name)).size(), 2);
+
+  // Verify backup/restore works correctly.
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte_new", "restore"}));
+
+  SetDbName("yugabyte_new");
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("SELECT * FROM $0 ORDER BY a", table_name),
+      R"#(
+         a | b
+        ---+---
+         1 | 1
+         2 | 2
+         3 | 3
+         4 | 4
+         5 | 5
+        (5 rows)
+      )#"));
 }
 }  // namespace tools
 }  // namespace yb

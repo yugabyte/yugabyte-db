@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -22,7 +23,12 @@ var installCmd = &cobra.Command{
         `,
 	Args: cobra.NoArgs,
 	PreRun: func(cmd *cobra.Command, args []string) {
-		if _, err := os.Stat(common.YbaInstalledMarker()); err == nil {
+		state, err := ybactlstate.Initialize()
+		if err != nil {
+			if _, err := os.Stat(common.YbaInstalledMarker()); err != nil {
+				log.Fatal("YugabyteDB Anywhere already installed, cannot install twice.")
+			}
+		} else if state.CurrentStatus == ybactlstate.InstalledStatus {
 			log.Fatal("YugabyteDB Anywhere already installed, cannot install twice.")
 		}
 		if common.RunFromInstalled() {
@@ -72,7 +78,9 @@ var installCmd = &cobra.Command{
 			log.Fatal("failed to write state: " + err.Error())
 		}
 
-		common.Install(ybaCtl.Version())
+		if err := common.Install(ybaCtl.Version()); err != nil {
+			log.Fatal(fmt.Sprintf("error installing new ybactl %s: %s", ybaCtl.Version(), err.Error()))
+		}
 
 		for _, name := range serviceOrder {
 			log.Info("About to install component " + name)
@@ -88,7 +96,9 @@ var installCmd = &cobra.Command{
 		if err := ybactlstate.StoreState(state); err != nil {
 			log.Fatal("after full install, failed to update state: " + err.Error())
 		}
-		common.WaitForYBAReady(ybaCtl.Version())
+		if err := common.WaitForYBAReady(ybaCtl.Version()); err != nil {
+			log.Fatal(err.Error())
+		}
 
 		var statuses []common.Status
 		for _, name := range serviceOrder {

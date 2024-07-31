@@ -5,7 +5,7 @@ linkTitle: Disaster recovery
 description: Enable deployment using transactional (active-standby) replication between universes
 headContent: Fail over to a replica universe in case of unplanned outages
 cascade:
-  earlyAccess: /preview/releases/versioning/#feature-availability
+  earlyAccess: /preview/releases/versioning/#feature-maturity
 menu:
   stable_yugabyte-platform:
     parent: back-up-restore-universes
@@ -27,6 +27,10 @@ Data from the DR primary is replicated asynchronously to the DR replica (which i
 The recovery time objective (RTO) for failover or switchover is very low, and determined by how long it takes applications to switch their connections from one universe to another. Applications should be designed in such a way that the switch happens as quickly as possible.
 
 DR further allows for the role of each universe to switch during planned switchover and unplanned failover scenarios.
+
+{{<lead link="https://www.yugabyte.com/blog/yugabytedb-xcluster-for-postgresql-dr-in-azure/">}}
+Blog: [Using YugabyteDB xCluster DR for PostgreSQL Disaster Recovery in Azure](https://www.yugabyte.com/blog/yugabytedb-xcluster-for-postgresql-dr-in-azure/)<br>Video: [Disaster Recovery With xCluster DR and Two Cloud Regions](https://www.youtube.com/watch?v=q6Yq4xlj-wk)
+{{</lead>}}
 
 ![Disaster recovery](/images/yb-platform/disaster-recovery/disaster-recovery.png)
 

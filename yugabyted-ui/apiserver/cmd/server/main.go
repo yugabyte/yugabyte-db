@@ -202,10 +202,10 @@ func main() {
     // Middleware to redirect all non-api calls to index.html, to allow direct navigation to
     // UI pages by URL path. Need to add to this list when creating new paths in the UI.
     e.Use(middleware.Rewrite(map[string]string{
-        "^/alerts*": "/",
-        "^/databases*": "/",
-        "^/debug*": "/",
-        "^/migrations*": "/",
+        "^/alerts*":      "/",
+        "^/databases*":   "/",
+        "^/debug*":       "/",
+        "^/migrations*":  "/",
         "^/performance*": "/",
     }))
 
@@ -256,6 +256,15 @@ func main() {
 
     // Get Voyager assement info
     e.GET("/api/migration_assesment", c.GetVoyagerAssesmentDetails)
+
+    // Get Voyager assessment report
+    e.GET("/api/migration_assessment_v2", c.GetVoyagerAssessmentReport)
+
+    // Get assessment source db details
+    e.GET("/api/assessment_source_db_details", c.GetAssessmentSourceDBDetails)
+
+    // Get assessment target recommendations details
+    e.GET("/api/assessment_target_recommendations", c.GetTargetRecommendations)
 
     // Get Migrate schema task details
     e.GET("/api/migrate_schema", c.GetMigrateSchemaInfo)

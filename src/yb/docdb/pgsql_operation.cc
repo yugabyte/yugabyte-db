@@ -101,7 +101,7 @@ DEFINE_RUNTIME_AUTO_bool(ysql_enable_packed_row, kNewInstallsOnly, false, true,
 #endif
                     "Whether packed row is enabled for YSQL.");
 
-DEFINE_UNKNOWN_bool(ysql_enable_packed_row_for_colocated_table, true,
+DEFINE_RUNTIME_bool(ysql_enable_packed_row_for_colocated_table, false,
                     "Whether to enable packed row for colocated tables.");
 
 DEFINE_UNKNOWN_uint64(
@@ -1936,9 +1936,10 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
   auto projection = CreateProjection(doc_read_context.schema(), request_);
   dockv::PgTableRow row(projection);
   std::optional<FilteringIterator> iter;
-  size_t row_count = 0;
+  size_t found_rows = 0;
   size_t fetched_rows = 0;
   size_t filtered_rows = 0;
+  size_t not_found_rows = 0;
   for (const auto& batch_argument : batch_args) {
     if (!iter) {
       // It can be the case like when there is a tablet split that we still want
@@ -1958,6 +1959,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
     switch (VERIFY_RESULT(
         iter->FetchTuple(batch_argument.ybctid().value().binary_value(), &row))) {
       case FetchResult::NotFound:
+        ++not_found_rows;
         // rebuild iterator on next iteration
         iter = std::nullopt;
         break;
@@ -1965,7 +1967,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
         ++filtered_rows;
         break;
       case FetchResult::Found:
-        ++row_count;
+        ++found_rows;
         if (request_.is_aggregate()) {
           RETURN_NOT_OK(EvalAggregate(row));
         } else {
@@ -1978,7 +1980,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
     }
 
     if (result_buffer->size() >= response_size_limit) {
-      VLOG(1) << "Stopped iterator after " << row_count << " rows fetched (out of "
+      VLOG(1) << "Stopped iterator after " << found_rows << " rows fetched (out of "
               << request_.batch_arguments_size() << " matches). Response buffer size: "
               << result_buffer->size() << ", response size limit: " << response_size_limit;
       break;
@@ -1986,19 +1988,19 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
   }
 
   // Output aggregate values accumulated while looping over rows
-  if (request_.is_aggregate() && row_count > 0) {
+  if (request_.is_aggregate() && found_rows > 0) {
     RETURN_NOT_OK(PopulateAggregate(result_buffer));
     ++fetched_rows;
   }
 
   // Set status for this batch.
   if (result_buffer->size() >= response_size_limit)
-    response_.set_batch_arg_count(row_count);
+    response_.set_batch_arg_count(found_rows + filtered_rows + not_found_rows);
   else
     // Mark all rows were processed even in case some of the ybctids were not found.
     response_.set_batch_arg_count(request_.batch_arguments_size());
 
-  scanned_table_rows_ += filtered_rows + row_count;
+  scanned_table_rows_ += filtered_rows + found_rows;
   return fetched_rows;
 }
 

@@ -38,8 +38,7 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/lexical_cast.hpp>
 
-#include "yb/cdc/cdc_service.h"
-
+#include "yb/common/xcluster_util.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/json_util.h"
@@ -1946,6 +1945,50 @@ Status ysql_backfill_change_data_stream_with_replication_slot_action(
   return Status::OK();
 }
 
+const auto disable_dynamic_table_addition_on_change_data_stream_args = "<stream_id>";
+Status disable_dynamic_table_addition_on_change_data_stream_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  const string stream_id = args[0];
+  string msg = Format("Failed to disable dynamic table addition on CDC stream $0", stream_id);
+
+  RETURN_NOT_OK_PREPEND(client->DisableDynamicTableAdditionOnCDCSDKStream(stream_id), msg);
+  return Status::OK();
+}
+
+const auto remove_user_table_from_change_data_stream_args = "<stream_id> <table_id>";
+Status remove_user_table_from_change_data_stream_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 2) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  const string stream_id = args[0];
+  const string table_id = args[1];
+  string msg = Format("Failed to remove table $0 from CDC stream $1", table_id, stream_id);
+
+  RETURN_NOT_OK_PREPEND(client->RemoveUserTableFromCDCSDKStream(stream_id, table_id), msg);
+  return Status::OK();
+}
+
+const auto validate_and_sync_cdc_state_table_entries_on_change_data_stream_args = "<stream_id>";
+Status validate_and_sync_cdc_state_table_entries_on_change_data_stream_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  const string stream_id = args[0];
+  string msg =
+      Format("Failed to validate and sync cdc state table entries for CDC stream $0", stream_id);
+
+  RETURN_NOT_OK_PREPEND(client->ValidateAndSyncCDCStateEntriesForCDCSDKStream(stream_id), msg);
+  return Status::OK();
+}
+
 const auto setup_universe_replication_args =
     "<producer_universe_uuid> <producer_master_addresses> "
     "<comma_separated_list_of_table_ids> [<comma_separated_list_of_producer_bootstrap_ids>] "
@@ -2170,57 +2213,6 @@ Status wait_for_replication_drain_action(
   }
 
   return client->WaitForReplicationDrain(stream_ids, target_time);
-}
-
-const auto setup_namespace_universe_replication_args =
-    "<producer_universe_uuid> <producer_master_addresses> <namespace> [bootstrap] [transactional]";
-Status setup_namespace_universe_replication_action(
-    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  RETURN_NOT_OK(CheckArgumentsCount(args.size(), 3, 5));
-  const string replication_group_id = args[0];
-  vector<string> producer_addresses;
-  boost::split(producer_addresses, args[1], boost::is_any_of(","));
-  TypedNamespaceName producer_namespace = VERIFY_RESULT(ParseNamespaceName(args[2]));
-
-  bool bootstrap = false;
-  bool transactional = false;
-  if (args.size() > 3) {
-    switch (args.size()) {
-      case 4:
-        if (IsEqCaseInsensitive(args[3], "bootstrap")) {
-          bootstrap = true;
-        } else if (IsEqCaseInsensitive(args[3], "transactional")) {
-          transactional = true;
-        }
-        break;
-      case 5: {
-        if (IsEqCaseInsensitive(args[3], "bootstrap") &&
-            IsEqCaseInsensitive(args[4], "transactional")) {
-          transactional = true;
-          bootstrap = true;
-        } else {
-          return ClusterAdminCli::kInvalidArguments;
-        }
-        break;
-      }
-      default:
-        return ClusterAdminCli::kInvalidArguments;
-    }
-  }
-
-  if (bootstrap) {
-    RETURN_NOT_OK_PREPEND(
-        client->SetupNamespaceReplicationWithBootstrap(
-            replication_group_id, producer_addresses, producer_namespace, transactional),
-        Format("Unable to setup replication from universe $0", replication_group_id));
-  } else {
-    RETURN_NOT_OK_PREPEND(
-        client->SetupNSUniverseReplication(
-            replication_group_id, producer_addresses, producer_namespace),
-        Format("Unable to setup namespace replication from universe $0", replication_group_id));
-  }
-
-  return Status::OK();
 }
 
 const auto get_replication_status_args = "[<producer_universe_uuid>]";
@@ -2557,13 +2549,76 @@ Status get_xcluster_outbound_replication_group_info_action(
   std::cout << "Outbound Replication Group: " << replication_group_id << std::endl;
 
   for (const auto& [namespace_id, table_info] : group_info) {
-    std::cout << std::endl << "NamespaceId: " << namespace_id << std::endl;
+    std::cout << std::endl << "Namespace ID: " << namespace_id << std::endl;
     auto* namespace_info = FindOrNull(namespace_map, namespace_id);
     std::cout << "Namespace name: " << (namespace_info ? namespace_info->id.name() : "<N/A>")
-              << std::endl;
+              << std::endl
+              << "Table Id\t\tStream Id" << std::endl;
     for (const auto& [table_id, stream_id] : table_info) {
-      std::cout << "\tTable: " << table_id << ", Stream: " << stream_id << std::endl;
+      std::cout << table_id << "\t\t" << stream_id << std::endl;
     }
+  }
+
+  return Status::OK();
+}
+
+const auto list_universe_replications_args = "[namespace_id]";
+Status list_universe_replications_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() > 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  NamespaceId namespace_id;
+  if (args.size() > 0) {
+    namespace_id = args[0];
+  }
+
+  auto group_ids = VERIFY_RESULT(client->XClusterClient().GetUniverseReplications(namespace_id));
+
+  std::cout << group_ids.size() << " Universe Replication Groups found"
+            << (namespace_id.empty() ? "" : Format(" for namespace $0", namespace_id)) << ": "
+            << std::endl
+            << yb::AsString(group_ids) << std::endl;
+
+  return Status::OK();
+}
+
+const auto get_universe_replication_info_args = "<replication_group_id>";
+Status get_universe_replication_info_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  const auto replication_group_id = xcluster::ReplicationGroupId(args[0]);
+  const auto group_info =
+      VERIFY_RESULT(client->XClusterClient().GetUniverseReplicationInfo(replication_group_id));
+
+  const auto& namespace_map = VERIFY_RESULT_REF(client->GetNamespaceMap());
+
+  std::cout << "Replication Group Id: " << replication_group_id << std::endl;
+  std::cout << "Source master addresses: " << group_info.source_master_addrs << std::endl;
+  std::cout << "Type: " << xcluster::ShortReplicationType(group_info.replication_type) << std::endl;
+
+  if (group_info.replication_type == XClusterReplicationType::XCLUSTER_YSQL_DB_SCOPED) {
+    std::cout << std::endl
+              << "DB Scoped info(s):" << std::endl
+              << "Namespace name\t\tTarget Namespace ID\t\tSource Namespace ID" << std::endl;
+    for (const auto& [target_namespace_id, source_namespace_id] :
+         group_info.db_scope_namespace_id_map) {
+      auto* namespace_info = FindOrNull(namespace_map, target_namespace_id);
+      std::cout << (namespace_info ? namespace_info->id.name() : "<N/A>") << "\t\t"
+                << target_namespace_id << "\t\t" << source_namespace_id << std::endl;
+    }
+  }
+
+  std::cout << std::endl
+            << "Tables:" << std::endl
+            << "Target Table ID\t\tSource Table ID\t\tStreamId" << std::endl;
+  for (const auto& tables : group_info.table_infos) {
+    std::cout << tables.target_table_id << "\t\t" << tables.source_table_id << "\t\t"
+              << tables.stream_id << std::endl;
   }
 
   return Status::OK();
@@ -2669,6 +2724,9 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(list_change_data_streams);
   REGISTER_COMMAND(get_change_data_stream_info);
   REGISTER_COMMAND(ysql_backfill_change_data_stream_with_replication_slot);
+  REGISTER_COMMAND(disable_dynamic_table_addition_on_change_data_stream);
+  REGISTER_COMMAND(remove_user_table_from_change_data_stream);
+  REGISTER_COMMAND(validate_and_sync_cdc_state_table_entries_on_change_data_stream);
   // xCluster Source commands
   REGISTER_COMMAND(bootstrap_cdc_producer);
   REGISTER_COMMAND(list_cdc_streams);
@@ -2679,10 +2737,11 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(setup_universe_replication);
   REGISTER_COMMAND(delete_universe_replication);
   REGISTER_COMMAND(alter_universe_replication);
-  REGISTER_COMMAND(setup_namespace_universe_replication);
   REGISTER_COMMAND(set_universe_replication_enabled);
   REGISTER_COMMAND(get_replication_status);
   REGISTER_COMMAND(get_xcluster_safe_time);
+  REGISTER_COMMAND(list_universe_replications);
+  REGISTER_COMMAND(get_universe_replication_info);
   // xCluster common commands
   REGISTER_COMMAND(change_xcluster_role);
 

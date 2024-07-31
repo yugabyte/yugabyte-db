@@ -126,6 +126,9 @@
 #include "catalog/pg_policy.h"
 #include "catalog/pg_rewrite.h"
 #include "catalog/pg_statistic_ext.h"
+#include "catalog/pg_shdepend.h"
+#include "catalog/pg_shdepend_d.h"
+#include "catalog/pg_yb_tablegroup_d.h"
 #include "commands/dbcommands.h"
 #include "commands/view.h"
 #include "commands/ybccmds.h"
@@ -429,7 +432,8 @@ static ObjectAddress ATExecSetStorage(Relation rel, const char *colName,
 				 Node *newValue, LOCKMODE lockmode);
 static void ATPrepDropColumn(List **wqueue, Relation rel, bool recurse, bool recursing,
 				 AlterTableCmd *cmd, LOCKMODE lockmode);
-static ObjectAddress ATExecDropColumn(List **wqueue, Relation rel, const char *colName,
+static ObjectAddress ATExecDropColumn(List **wqueue, AlteredTableInfo *yb_tab, Relation rel,
+				 const char *colName,
 				 DropBehavior behavior,
 				 bool recurse, bool recursing,
 				 bool missing_ok, LOCKMODE lockmode);
@@ -524,7 +528,8 @@ static void CreateInheritance(Relation child_rel, Relation parent_rel);
 static void RemoveInheritance(Relation child_rel, Relation parent_rel);
 static ObjectAddress ATExecAttachPartition(List **wqueue, Relation rel,
 					  PartitionCmd *cmd);
-static void AttachPartitionEnsureIndexes(Relation rel, Relation attachrel);
+static void AttachPartitionEnsureIndexes(Relation rel, Relation attachrel,
+										 List **yb_wqueue);
 static void QueuePartitionConstraintValidation(List **wqueue, Relation scanrel,
 								   List *partConstraint,
 								   bool validate_default);
@@ -3394,9 +3399,12 @@ RenameConstraint(RenameStmt *stmt)
 /*
  * Execute ALTER TABLE/INDEX/SEQUENCE/VIEW/MATERIALIZED VIEW/FOREIGN TABLE
  * RENAME
+ * When yb_is_internal_clone_rename is true we don't need to do a YB rename,
+ * as this rename is a part of a table clone operation, and the relation
+ * will be dropped after the clone operation is done anyway.
  */
 ObjectAddress
-RenameRelation(RenameStmt *stmt)
+RenameRelation(RenameStmt *stmt, bool yb_is_internal_clone_rename)
 {
 	Oid           relid;
 	ObjectAddress address;
@@ -3431,7 +3439,8 @@ RenameRelation(RenameStmt *stmt)
 	needs_yb_rename = IsYBRelation(rel) &&
 					  !(rel->rd_rel->relkind == RELKIND_INDEX &&
 						rel->rd_index->indisprimary) &&
-					  rel->rd_rel->relkind != RELKIND_PARTITIONED_INDEX;
+					  rel->rd_rel->relkind != RELKIND_PARTITIONED_INDEX
+					  && !yb_is_internal_clone_rename;
 	RelationClose(rel);
 
 	/* Do the work */
@@ -4577,12 +4586,12 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation *mutable_rel,
 			address = ATExecSetStorage(rel, cmd->name, cmd->def, lockmode);
 			break;
 		case AT_DropColumn:		/* DROP COLUMN */
-			address = ATExecDropColumn(wqueue, rel, cmd->name,
+			address = ATExecDropColumn(wqueue, tab, rel, cmd->name,
 									   cmd->behavior, false, false,
 									   cmd->missing_ok, lockmode);
 			break;
 		case AT_DropColumnRecurse:	/* DROP COLUMN with recursion */
-			address = ATExecDropColumn(wqueue, rel, cmd->name,
+			address = ATExecDropColumn(wqueue, tab, rel, cmd->name,
 									   cmd->behavior, true, false,
 									   cmd->missing_ok, lockmode);
 			break;
@@ -7313,7 +7322,8 @@ ATPrepDropColumn(List **wqueue, Relation rel, bool recurse, bool recursing,
  * Return value is the address of the dropped column.
  */
 static ObjectAddress
-ATExecDropColumn(List **wqueue, Relation rel, const char *colName,
+ATExecDropColumn(List **wqueue, AlteredTableInfo *yb_tab, Relation rel,
+				 const char *colName,
 				 DropBehavior behavior,
 				 bool recurse, bool recursing,
 				 bool missing_ok, LOCKMODE lockmode)
@@ -7355,20 +7365,19 @@ ATExecDropColumn(List **wqueue, Relation rel, const char *colName,
 	attnum = targetatt->attnum;
 
 	/*
-	 * In YB, a table cannot drop key columns.
-	 * This check makes sure a consistent state after attempting to drop
-	 * key columns by preventing dropping key columns on postgres side.
+	 * In YB, dropping a key column requires a table rewrite.
 	 */
-	if (IsYBRelation(rel))
+	if (IsYBRelation(rel) && YbIsAttrPrimaryKeyColumn(rel, attnum))
 	{
-		Bitmapset  *pkey   = YBGetTablePrimaryKeyBms(rel);
-
-		/* Can't drop primary-key columns */
-		if (bms_is_member(attnum - YBGetFirstLowInvalidAttributeNumber(rel), pkey))
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("cannot drop key column \"%s\"",
-							colName)));
+		/*
+		 * In YB, the ADD/DROP primary key operation involves a table
+		 * rewrite. So if this is partitioned table, we need to add
+		 * its children to the work queue as well.
+		 */
+		if ((rel)->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
+			YbATSetPKRewriteChildPartitions(wqueue,
+				yb_tab, false /* skip_copy_split_options */);
+		yb_tab->rewrite |= YB_AT_REWRITE_ALTER_PRIMARY_KEY;
 	}
 
 	/* Can't drop a system attribute, except OID */
@@ -7455,7 +7464,7 @@ ATExecDropColumn(List **wqueue, Relation rel, const char *colName,
 				if (childatt->attinhcount == 1 && !childatt->attislocal)
 				{
 					/* Time to delete this child column, too */
-					ATExecDropColumn(wqueue, childrel, colName,
+					ATExecDropColumn(wqueue, yb_tab, childrel, colName,
 									 behavior, true, true,
 									 false, lockmode);
 				}
@@ -7500,7 +7509,12 @@ ATExecDropColumn(List **wqueue, Relation rel, const char *colName,
 	object.objectId = RelationGetRelid(rel);
 	object.objectSubId = attnum;
 
-	performDeletion(&object, behavior, 0);
+	/*
+	 * YB: Skip YB drop on the column, as that will be handled separately by
+	 * the ALTER TABLE flow.
+	 */
+	performDeletion(&object, behavior,
+		IsYugaByteEnabled() ? YB_SKIP_YB_DROP_COLUMN : 0);
 
 	/*
 	 * If we dropped the OID column, must adjust pg_class.relhasoids and tell
@@ -12555,11 +12569,6 @@ ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace)
 		return;
 	}
 
-	if (YbGetTableProperties(rel)->is_colocated)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("cannot move colocated table to a different tablespace")));
-
 	if (IsYBRelation(rel)) {
 		Datum *options;
 		int num_options;
@@ -12633,6 +12642,17 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 	Oid			orig_tablespaceoid;
 	Oid			new_tablespaceoid;
 	List	   *role_oids = roleSpecsToIds(stmt->roles);
+	Form_pg_class yb_rd_rel;
+	Relation	yb_index_rel;
+	Relation	yb_table_rel;
+	Relation	yb_pg_class;
+	Oid			yb_table_oid = InvalidOid;
+	Oid			yb_colocated_with_tablegroup_oid = InvalidOid;
+	Oid			yb_orig_tablegroup_oid = InvalidOid;
+	Oid			yb_new_tablegroup_oid = InvalidOid;
+	char	   *yb_orig_tablegroup_name;
+	char	   *yb_new_tablegroup_name;
+	bool		yb_cascade = stmt->yb_cascade;
 
 	/* Ensure we were not asked to move something we can't */
 	if (stmt->objtype != OBJECT_TABLE && stmt->objtype != OBJECT_INDEX &&
@@ -12644,6 +12664,63 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 	/* Get the orig and new tablespace OIDs */
 	orig_tablespaceoid = get_tablespace_oid(stmt->orig_tablespacename, false);
 	new_tablespaceoid = get_tablespace_oid(stmt->new_tablespacename, false);
+	yb_orig_tablegroup_name = get_implicit_tablegroup_name(orig_tablespaceoid);
+	yb_new_tablegroup_name = get_implicit_tablegroup_name(new_tablespaceoid);
+	yb_orig_tablegroup_oid = get_tablegroup_oid(yb_orig_tablegroup_name, true);
+	yb_new_tablegroup_oid = get_tablegroup_oid(yb_new_tablegroup_name, true);
+
+	/*
+	 * The new tablespace must not have any colocated relations present in
+	 * it. As we don't support decolocation of colocated tablets.
+	 */
+	if (MyDatabaseColocated && OidIsValid(yb_new_tablegroup_oid) &&
+		OidIsValid(yb_orig_tablegroup_oid))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("cannot move colocated relations to tablespace %s,"
+						" as it contains existing colocated relation",
+						stmt->new_tablespacename)));
+
+	/*
+	 * If CASCADE is not specified and the original tablespace contains
+	 * colocated tables then we don't support moving it unless cascade is
+	 * specified.
+	 */
+	if (!yb_cascade && OidIsValid(yb_orig_tablegroup_oid))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("cannot move colocated relations present in"
+						" tablespace %s", stmt->orig_tablespacename),
+				 errhint("Use ALTER ... CASCADE to move colcated relations.")));
+
+	/*
+	 * If a relation name is passed with the ALTER TABLE ALL ... COLOCATED WITH
+	 * ... SET TABLESPACE ... CASCADE command then we get the relation being
+	 * passed.
+	 */
+	if (stmt->yb_relation != NULL)
+	{
+		yb_table_oid = RangeVarGetRelid(stmt->yb_relation, NoLock, false);
+		yb_table_rel = RelationIdGetRelation(yb_table_oid);
+		yb_colocated_with_tablegroup_oid =
+			YbGetTableProperties(yb_table_rel)->tablegroup_oid;
+		RelationClose(yb_table_rel);
+	}
+
+	if (OidIsValid(yb_table_oid) && !MyDatabaseColocated)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("this command is not supported in a non-colocated"
+						" database"),
+				 errdetail("Use ALTER ... SET TABLESPACE to move non-colocated"
+						   " relations.")));
+
+	if (OidIsValid(yb_table_oid) &&
+		!(OidIsValid(yb_colocated_with_tablegroup_oid)))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("the specified relation is non-colocated"
+						" which can't be moved using this command")));
 
 	/* Can't move shared relations in to or out of pg_global */
 	/* This is also checked by ATExecSetTableSpace, but nice to stop earlier */
@@ -12714,15 +12791,73 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 			relForm->relnamespace == PG_TOAST_NAMESPACE)
 			continue;
 
-		/* Only move the object type requested */
-		if ((stmt->objtype == OBJECT_TABLE &&
-			 relForm->relkind != RELKIND_RELATION &&
-			 relForm->relkind != RELKIND_PARTITIONED_TABLE) ||
-			(stmt->objtype == OBJECT_INDEX &&
-			 relForm->relkind != RELKIND_INDEX &&
-			 relForm->relkind != RELKIND_PARTITIONED_INDEX) ||
-			(stmt->objtype == OBJECT_MATVIEW &&
-			 relForm->relkind != RELKIND_MATVIEW))
+		if (OidIsValid(yb_colocated_with_tablegroup_oid) &&
+			!ybIsTablegroupDependent(relOid, yb_colocated_with_tablegroup_oid))
+			continue;
+
+		/*
+		 * In YB, a primary key index is an intrinsic part of its base table.
+		 * For a primary key index, we only need to update the
+		 * new_tablespaceoid field in pg_class.
+		 */
+		if (relForm->relkind == RELKIND_INDEX ||
+			relForm->relkind == RELKIND_PARTITIONED_INDEX)
+		{
+			yb_index_rel = RelationIdGetRelation(relOid);
+			bool isPrimaryIndex = (yb_index_rel != NULL &&
+								   yb_index_rel->rd_index->indisprimary);
+
+			RelationClose(yb_index_rel);
+
+			if (isPrimaryIndex)
+			{
+				/*
+				 * We move the primary key indexes along with the tables that
+				 * they are associated with when using the following commands
+				 * ALTER TABLE/INDEX/MATERIALIZED VIEW ... SET TABLESPACE ...
+				 */
+				if (yb_cascade || (!yb_cascade && stmt->objtype == OBJECT_TABLE))
+				{
+					yb_pg_class = heap_open(RelationRelationId,
+											RowExclusiveLock);
+
+					tuple = SearchSysCacheCopy1(RELOID,
+												ObjectIdGetDatum(relOid));
+					if (!HeapTupleIsValid(tuple))
+						elog(ERROR, "cache lookup failed for relation %u",
+							 relOid);
+					yb_rd_rel = (Form_pg_class) GETSTRUCT(tuple);
+
+					/* Update the pg_class row */
+					yb_rd_rel->reltablespace = new_tablespaceoid;
+					CatalogTupleUpdate(yb_pg_class, &tuple->t_self, tuple);
+
+					InvokeObjectPostAlterHook(RelationRelationId, relOid, 0);
+
+					heap_freetuple(tuple);
+
+					heap_close(yb_pg_class, RowExclusiveLock);
+
+					/* Update the pg_shdepend entries. */
+					changeDependencyOnTablespace(RelationRelationId, relOid,
+												 new_tablespaceoid);
+				}
+				continue;
+			}
+		}
+
+		/*
+		 * If CASCADE is not specified, only move the object type requested.
+		 */
+		if (!yb_cascade &&
+			((stmt->objtype == OBJECT_TABLE &&
+			  relForm->relkind != RELKIND_RELATION &&
+			  relForm->relkind != RELKIND_PARTITIONED_TABLE) ||
+			 (stmt->objtype == OBJECT_INDEX &&
+			  relForm->relkind != RELKIND_INDEX &&
+			  relForm->relkind != RELKIND_PARTITIONED_INDEX) ||
+			 (stmt->objtype == OBJECT_MATVIEW &&
+			  relForm->relkind != RELKIND_MATVIEW)))
 			continue;
 
 		/* Check if we are only moving objects owned by certain roles */
@@ -12750,6 +12885,10 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 		else
 			LockRelationOid(relOid, AccessExclusiveLock);
 
+		/* Update the pg_shdepend tables */
+		changeDependencyOnTablespace(RelationRelationId, relOid,
+									 new_tablespaceoid);
+
 		/* Add to our list of objects to move */
 		relations = lappend_oid(relations, relOid);
 	}
@@ -12758,11 +12897,14 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 	heap_close(rel, AccessShareLock);
 
 	if (relations == NIL)
+	{
 		ereport(NOTICE,
 				(errcode(ERRCODE_NO_DATA_FOUND),
 				 errmsg("no matching relations in tablespace \"%s\" found",
 						orig_tablespaceoid == InvalidOid ? "(database default)" :
 						get_tablespace_name(orig_tablespaceoid))));
+		return new_tablespaceoid;
+	}
 
 	/* Everything is locked, loop through and move all of the relations. */
 	foreach(l, relations)
@@ -12779,6 +12921,28 @@ AlterTableMoveAll(AlterTableMoveAllStmt *stmt)
 		/* OID is set by AlterTableInternal */
 		AlterTableInternal(lfirst_oid(l), cmds, false);
 		EventTriggerAlterTableEnd();
+	}
+
+	/*
+	 * Update the dependencies present in pg_shdepend for tablegroup to
+	 * tablespace dependencies if CASCADE command is used in a colocated
+	 * database.
+	 */
+	if (yb_cascade && OidIsValid(new_tablespaceoid) &&
+		OidIsValid(orig_tablespaceoid) && MyDatabaseColocated &&
+		!OidIsValid(yb_new_tablegroup_oid) &&
+		OidIsValid(yb_orig_tablegroup_oid))
+	{
+		changeDependencyOnTablespace(YbTablegroupRelationId,
+									 yb_orig_tablegroup_oid, new_tablespaceoid);
+		/* Update entry in pg_yb_tablegroup */
+		ybAlterTablespaceForTablegroup(yb_orig_tablegroup_name,
+									   new_tablespaceoid);
+
+		ObjectAddress objAddress = RenameTablegroup(yb_orig_tablegroup_name,
+													yb_new_tablegroup_name);
+		/* Update pg_shdepend values with the new Tablespace. */
+		UnlockRelationOid(objAddress.objectId, RowExclusiveLock);
 	}
 
 	return new_tablespaceoid;
@@ -15809,7 +15973,7 @@ ATExecAttachPartition(List **wqueue, Relation rel, PartitionCmd *cmd)
 	StorePartitionBound(attachrel, rel, cmd->bound);
 
 	/* Ensure there exists a correct set of indexes in the partition. */
-	AttachPartitionEnsureIndexes(rel, attachrel);
+	AttachPartitionEnsureIndexes(rel, attachrel, wqueue);
 
 	/* and triggers */
 	CloneRowTriggersToPartition(rel, attachrel);
@@ -15941,7 +16105,7 @@ ATExecAttachPartition(List **wqueue, Relation rel, PartitionCmd *cmd)
  * partitioned table.
  */
 static void
-AttachPartitionEnsureIndexes(Relation rel, Relation attachrel)
+AttachPartitionEnsureIndexes(Relation rel, Relation attachrel, List **yb_wqueue)
 {
 	List	   *idxes;
 	List	   *attachRelIdxs;
@@ -16065,6 +16229,27 @@ AttachPartitionEnsureIndexes(Relation rel, Relation attachrel)
 										   idxRel, attmap,
 										   RelationGetDescr(rel)->natts,
 										   &constraintOid);
+			/*
+			 * YB Note: If a matching pk index is not found for the child
+			 * partition, then we must rewrite the child partition (and all
+			 * of its children).
+			 */
+			if (IsYBRelation(idxRel) && idxRel->rd_index->indisprimary)
+			{
+				MemoryContextSwitchTo(oldcxt);
+				AlteredTableInfo *tab;
+				tab = ATGetQueueEntry(yb_wqueue, attachrel);
+				tab->rewrite = YB_AT_REWRITE_ALTER_PRIMARY_KEY;
+				YbGetTableProperties(attachrel);
+				/* Don't copy split options if we are creating a range key. */
+				bool skip_copy_split_options = YbATIsRangePk(stmt,
+					attachrel->yb_table_properties->is_colocated,
+					OidIsValid(
+						attachrel->yb_table_properties->tablegroup_oid));
+				YbATSetPKRewriteChildPartitions(yb_wqueue, tab,
+					skip_copy_split_options);
+				MemoryContextSwitchTo(cxt);
+			}
 			DefineIndex(RelationGetRelid(attachrel), stmt, InvalidOid,
 						RelationGetRelid(idxRel),
 						constraintOid,
@@ -18289,7 +18474,7 @@ YbATCopyIndexes(Relation old_rel, Oid new_relid, AttrNumber *new2old_attmap,
 		rename_stmt->relation = makeRangeVar(
 			pstrdup(namespace_name), pstrdup(idx_orig_name), -1 /* location */);
 		rename_stmt->newname = pstrdup(idx_temp_old_name);
-		RenameRelation(rename_stmt);
+		RenameRelation(rename_stmt, true /* yb_is_internal_clone_rename */);
 		CommandCounterIncrement();
 
 		/* Create a new index taking up the freed name. */
@@ -18713,7 +18898,7 @@ YbATCloneRelationSetPrimaryKey(Relation old_rel, IndexStmt *stmt,
 	 */
 	rename_stmt =
 		YbATGetRenameStmt(namespace_name, orig_table_name, temp_old_table_name);
-	RenameRelation(rename_stmt);
+	RenameRelation(rename_stmt, true /* yb_is_internal_clone_rename */);
 
 	/* Make caches changes visible. */
 	CommandCounterIncrement();
@@ -18927,7 +19112,7 @@ YbATCloneRelationSetColumnType(Relation old_rel,
 	 */
 	rename_stmt =
 		YbATGetRenameStmt(namespace_name, orig_table_name, temp_old_table_name);
-	RenameRelation(rename_stmt);
+	RenameRelation(rename_stmt, true /* yb_is_internal_clone_rename */);
 
 	/* Make caches changes visible. */
 	CommandCounterIncrement();

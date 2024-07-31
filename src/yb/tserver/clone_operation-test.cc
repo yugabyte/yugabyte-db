@@ -41,6 +41,9 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/tsan_util.h"
 
+DECLARE_bool(TEST_expect_clone_apply_failure);
+DECLARE_bool(TEST_fail_apply_clone_op);
+
 namespace yb {
 namespace tserver {
 
@@ -143,6 +146,7 @@ class CloneOperationTest : public TabletServerTestBase {
   const TxnSnapshotId kTargetSnapshotId = TxnSnapshotId::GenerateRandom();
   const string kTargetTableId = "target_table_id";
   const string kTargetTabletId = "target_tablet_id";
+  const uint32_t kSeqNo = 1;
 };
 
 TEST_F(CloneOperationTest, Hardlink) {
@@ -157,9 +161,8 @@ TEST_F(CloneOperationTest, Hardlink) {
 
   ASSERT_OK(CreateSnapshot(kSourceSnapshotId));
 
-  const uint32_t clone_request_seq_no = 100;
-  ASSERT_OK(Clone(clone_request_seq_no));
-  ASSERT_EQ(source_tablet->tablet_metadata()->LastAttemptedCloneSeqNo(), clone_request_seq_no);
+  ASSERT_OK(Clone(kSeqNo));
+  ASSERT_EQ(source_tablet->tablet_metadata()->LastAttemptedCloneSeqNo(), kSeqNo);
 
   auto target_tablet = ASSERT_RESULT(
       mini_server_->server()->tablet_manager()->GetTablet(kTargetTabletId));
@@ -196,7 +199,7 @@ TEST_F(CloneOperationTest, CloneAndRestore) {
 
   ASSERT_OK(CreateSnapshot(kSourceSnapshotId));
 
-  ASSERT_OK(Clone(100 /* clone_request_seq_no */));
+  ASSERT_OK(Clone(kSeqNo));
   auto target_tablet = ASSERT_RESULT(
       mini_server_->server()->tablet_manager()->GetTablet(kTargetTabletId));
 
@@ -214,6 +217,25 @@ TEST_F(CloneOperationTest, CloneAndRestore) {
   }, 5s * kTimeMultiplier, "Wait for tablets to have a leader."));
   VerifyRows(schema_, { KeyValue(1, 11), KeyValue(2, 22) }, source_tablet);
   VerifyRows(schema_, { KeyValue(1, 11) }, target_tablet);
+}
+
+TEST_F(CloneOperationTest, FailedCloneAppliesSuccessfully) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_expect_clone_apply_failure) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_apply_clone_op) = true;
+
+  auto source_tablet = ASSERT_RESULT(
+      mini_server_->server()->tablet_manager()->GetTablet(kTabletId));
+
+  ASSERT_OK(WriteSingleRow(1, 11, "key1"));
+  ASSERT_OK(CreateSnapshot(kSourceSnapshotId));
+
+  // Clone op should still succeed, but the target tablet should not be created.
+  ASSERT_OK(Clone(kSeqNo));
+  ASSERT_NOK(mini_server_->server()->tablet_manager()->GetTablet(kTargetTabletId));
+
+  // The source tablet should still be able to apply more ops.
+  ASSERT_OK(WriteSingleRow(2, 22, "key2"));
+  VerifyRows(schema_, { KeyValue(1, 11), KeyValue(2, 22) }, source_tablet);
 }
 
 class CloneOperationMultiDriveTest : public CloneOperationTest {

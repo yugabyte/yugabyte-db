@@ -101,13 +101,6 @@ public class CertsRotateParams extends UpgradeTaskParams {
           "RootCA and ClientRootCA cannot be different when rootAndClientRootCASame is true.");
     }
 
-    if (rootAndClientRootCASame && !userIntent.enableClientToNodeEncrypt) {
-      throw new PlatformServiceException(
-          Status.BAD_REQUEST,
-          "'Client to Node' encryption should be enabled before setting "
-              + "rootAndClientRootCASame as true.");
-    }
-
     boolean isRootCARequired =
         EncryptionInTransitUtil.isRootCARequired(
             userIntent.enableNodeToNodeEncrypt,

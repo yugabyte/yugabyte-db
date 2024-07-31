@@ -1,5 +1,5 @@
-title: Encryption In Transit Specification
-description: Specification of node-to-node and client-to-node TLS encryption
+title: EncryptionInTransitSpec
+description: Specification of node-to-node and client-to-node TLS encryption. Part of UniverseSpec.
 type: object
 properties:
   enable_node_to_node_encrypt:

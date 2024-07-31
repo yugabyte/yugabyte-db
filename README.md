@@ -55,28 +55,28 @@ YugabyteDB supports many languages and client drivers, including Java, Go, NodeJ
 
 # What's being worked on?
 
-> This section was last updated in **May, 2023**.
+> This section was last updated in **July, 2024**.
 
 ## Current roadmap
 
-Here is a list of some of the key features being worked on for the upcoming releases (the YugabyteDB [**v2.17 preview release**](https://www.yugabyte.com/blog/yugabytedb-217-updates/) has been released in **Jan, 2023**, and the [**v2.16 stable release**](https://www.yugabyte.com/blog/yugabytedb-216/) was released in **Jan 2023**).
+Here is a list of some of the key features being worked on for the upcoming releases. The YugabyteDB [**v2024.1 release**](https://docs.yugabyte.com/preview/releases/ybdb-releases/) has been released in **June, 2024**.
 
-| Feature                                         | Status    | Release Target | Progress        |  Comments     |
-| ----------------------------------------------- | --------- | -------------- | --------------- | ------------- |
-| [Automatic tablet splitting enabled by default](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/docdb-automatic-tablet-splitting.md) | PROGRESS  | v2.18 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1004) |Enables changing the number of tablets (which are splits of data) at runtime.|
-|[Upgrade to PostgreSQL v15](https://github.com/yugabyte/yugabyte-db/issues/9797)| PROGRESS| v2.21 |[Track](https://github.com/yugabyte/yugabyte-db/issues/9797)| For latest features, new PostgreSQL extensions, performance, and community fixes
-|Database live migration using YugabyteDB Voyager| PROGRESS| | [Track](https://github.com/yugabyte/yb-voyager/issues/50)|Database live migration using YugabyteDB Voyager| 
-| Support wait-on-conflict concurrency control | PROGRESS  | v2.19  | [Track](https://github.com/yugabyte/yugabyte-db/issues/5680) | Support wait-on-conflict concurrency control |
-| Support for transactions in async [xCluster replication](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/multi-region-xcluster-async-replication.md) | PROGRESS  |  v2.19  | [Track](https://github.com/yugabyte/yugabyte-db/issues/10976) | Apply transactions atomically on target cluster. |
-| YSQL-table statistics and cost based optimizer(CBO) | PROGRESS  |  v2.21 | [Track](https://github.com/yugabyte/yugabyte-db/issues/5242) | Improve YSQL query performance |
-| [YSQL-Feature support - ALTER TABLE](https://github.com/yugabyte/yugabyte-db/issues/1124) | PROGRESS | v2.21 | [Track](https://github.com/yugabyte/yugabyte-db/issues/1124) | Support for various `ALTER TABLE` variants |
-| Support for GiST indexes | PLANNING  |    | [Track](https://github.com/yugabyte/yugabyte-db/issues/1337) |Support for GiST (Generalized Search Tree) based index|
-| Connection Management | PROGRESS  |    | [Track](https://github.com/yugabyte/yugabyte-db/issues/17599) |Server side connection management|
+| Feature                                         | Status    |  Progress        |  Comments     |
+| ----------------------------------------------- | --------- |  --------------- | ------------- |
+|[Upgrade to PostgreSQL v15](https://github.com/yugabyte/yugabyte-db/issues/9797)| PROGRESS| [Track](https://github.com/yugabyte/yugabyte-db/issues/9797)| For latest features, new PostgreSQL extensions, performance, and community fixes
+|[Support PostgreSQL Publication/Replication slot API in CDC](https://github.com/yugabyte/yugabyte-db/issues/18724) | PROGRESS|  [Track](https://github.com/yugabyte/yugabyte-db/issues/18724)| PostgreSQL has a huge community that needs a PG-compatible API to set up and consume database changes.
+|[Bitmap scan support](https://github.com/yugabyte/yugabyte-db/issues/22653)| PROGRESS| [Track](https://github.com/yugabyte/yugabyte-db/issues/22653)| Bitmap Scan support for using Index Scans, remote filter and enhance Cost Model.
+| YSQL-table statistics and cost based optimizer(CBO) | PROGRESS  |   [Track](https://github.com/yugabyte/yugabyte-db/issues/5242) | Improve YSQL query performance |
+|[YSQL parallel query execution](https://github.com/yugabyte/yugabyte-db/issues/17984)|PROGRESS | [Track](https://github.com/yugabyte/yugabyte-db/issues/17984)| Devise query plans that can leverage multiple CPUs in order to answer queries faster.
+| [YSQL-Feature support - ALTER TABLE](https://github.com/yugabyte/yugabyte-db/issues/1124) | PROGRESS |  [Track](https://github.com/yugabyte/yugabyte-db/issues/1124) | Support for various `ALTER TABLE` variants |
+| Connection Management | PROGRESS  |  [Track](https://github.com/yugabyte/yugabyte-db/issues/17599) |Server side connection management|
 
 ## Recently released features
 
 | Feature                                         | Status    | Release Target | Docs / Enhancements |  Comments     |
 | ----------------------------------------------- | --------- | -------------- | ------------------- | ------------- |
+| Support for transactions in async [xCluster replication](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/multi-region-xcluster-async-replication.md) |  ✅ *DONE*  |  v2.19  | [Docs](https://docs.yugabyte.com/preview/develop/build-global-apps/active-active-single-master/#transactional-consistency) | Preserve and guarantee transactional atomicity and global ordering when propagating change data from one universe to another |
+| Support wait-on-conflict concurrency control |  ✅ *DONE*  | v2.19  |  | Support wait-on-conflict concurrency control |
 |[Faster Bulk-Data Loading in YugabyteDB](https://github.com/yugabyte/yugabyte-db/issues/11765)|  ✅ *DONE*| v2.15 |[Track](https://github.com/yugabyte/yugabyte-db/issues/11765)| Faster Bulk-Data Loading in YugabyteDB|
 |[Change Data Capture](https://github.com/yugabyte/yugabyte-db/issues/9019)|  ✅ *DONE*| v2.13 ||Change data capture (CDC) allows multiple downstream apps and services to consume the continuous and never-ending stream(s) of changes to Yugabyte databases|
 |[Support for materalized views](https://github.com/yugabyte/yugabyte-db/issues/10102) |  ✅ *DONE*| v2.13 |[Docs](https://docs.yugabyte.com/preview/explore/ysql-language-features/advanced-features/views/#materialized-views)|A materialized view is a pre-computed data set derived from a query specification and stored for later use|

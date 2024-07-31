@@ -294,6 +294,47 @@ public abstract class AbstractTaskBase implements ITask {
     return doWithModifyingTimeout((prevDelay) -> delayMs, totalDelayMs, funct);
   }
 
+  /**
+   * This function is used to retry a function with a delay between retries. The delay is
+   * modifiable. The function will be retried on exceptions until the total delay has passed or the
+   * function returns.
+   *
+   * @param delayFunct Function to calculate the delay between retries
+   * @param totalDelayMs Total delay to wait before giving up
+   * @param funct Function to retry; must abide by the Runnable interface
+   * @throws RuntimeException If the function does not return before the total delay
+   */
+  protected void doWithModifyingTimeout(
+      Function<Long, Long> delayFunct, long totalDelayMs, Runnable funct) throws RuntimeException {
+    long currentDelayMs = 0;
+    long startTime = System.currentTimeMillis();
+    while (System.currentTimeMillis() < startTime + totalDelayMs - currentDelayMs) {
+      try {
+        funct.run();
+        return;
+      } catch (Exception e) {
+        log.warn("Will retry; Error while running the function: {}", e.getMessage());
+      }
+      currentDelayMs = delayFunct.apply(currentDelayMs);
+      log.debug(
+          "Waiting for {} ms between retry, total delay remaining {} ms",
+          currentDelayMs,
+          (startTime + totalDelayMs - System.currentTimeMillis()));
+      waitFor(Duration.ofMillis(currentDelayMs));
+    }
+    // Retry for the last time and then throw the exception that funct raised.
+    try {
+      funct.run();
+    } catch (Exception e) {
+      log.error("Retry timed out; Error while running the function: {}", e.getMessage());
+      throw new RuntimeException(e);
+    }
+  }
+
+  protected void doWithConstTimeout(long delayMs, long totalDelayMs, Runnable funct) {
+    doWithModifyingTimeout((prevDelay) -> delayMs, totalDelayMs, funct);
+  }
+
   protected UUID getUserTaskUUID() {
     return userTaskUUID;
   }

@@ -31,7 +31,7 @@ YugabyteDB Anywhere allows you to create a universe in one geographic region acr
 
 ## Prerequisites
 
-Before you start creating a universe, ensure that you performed steps described in [Create Kubernetes provider configuration](../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes/).
+Before you start creating a universe, ensure that you performed steps described in [Create Kubernetes provider configuration](../../configure-yugabyte-platform/kubernetes/).
 
 Note that the provider example used in this document has a cluster-level admin access.
 
@@ -55,10 +55,13 @@ Complete the rest of the **Cloud Configuration** section as follows:
 
 ### Instance Configuration
 
-Complete the **Instance Configuration** section as follows:
+Complete the **Instance Configuration** section {{<badge/ea>}} for **TServer** and **Master** as follows:
 
-- **Instance Type** - select the CPU and memory combination, as per needs to allocate the YB-TServer nodes. The default is small. You can override this setting when you configure the Kubernetes cloud provider (see [Configuring the region and zones](/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#configure-region-and-zones)).
-- **Volume Info** - specify the number of volumes multiplied by size. The default is 1 x 100GB.
+- **Number of Cores** - specify the total number of processing cores or CPUs assigned to the TServer and Master.
+- **Memory(GiB)** - specify the memory allocation of the TServer and Master.
+- **Volume Info** - specify the number of volumes multiplied by size for the TServer and Master. The default is 1 x 100GB.
+
+  ![Kubernetes Overrides](/images/yb-platform/instance-config-k8s.png)
 
 ### Security Configurations
 
@@ -68,9 +71,8 @@ Complete the **Security Configurations** section as follows:
 - **Enable YSQL Auth** - specify whether or not to enable the YSQL password authentication.
 - **Enable YCQL** - specify whether or not to enable the YCQL API endpoint for running Cassandra-compatible workloads. This setting is enabled by default.
 - **Enable YCQL Auth** - specify whether or not to enable the YCQL password authentication.
-- **Enable YEDIS** - specify whether or not to enable the YEDIS API endpoint for running Redis-compatible workloads. This setting is disabled by default.
-- **Enable Node-to-Node TLS** - specify whether or not to enable encryption-in-transit for communication between the database servers. This setting is enabled by default.
-- **Enable Client-to-Node TLS** - specify whether or not to enable encryption-in-transit for communication between clients and the database servers. This setting is enabled by default.
+- **Enable Node-to-Node TLS** - specify whether or not to enable encryption in transit for communication between the database servers. This setting is enabled by default.
+- **Enable Client-to-Node TLS** - specify whether or not to enable encryption in transit for communication between clients and the database servers. This setting is enabled by default.
 - **Root Certificate** - select an existing security certificate or create a new one.
 - **Enable Encryption at Rest** - specify whether or not to enable encryption for data stored on the tablet servers. This setting is disabled by default.
 
@@ -78,7 +80,7 @@ Complete the **Security Configurations** section as follows:
 
 Complete the **Advanced** section as follows:
 
-- In the **DB Version** field, specify the YugabyteDB version. The default is either the same as the YugabyteDB Anywhere version or the latest YugabyteDB version available for YugabyteDB Anywhere.
+- In the **DB Version** field, specify the YugabyteDB version. The default is either the same as the YugabyteDB Anywhere version or the latest YugabyteDB version available for YugabyteDB Anywhere. If the version you want to add is not listed, you can add it to YugabyteDB Anywhere. Refer to [Manage YugabyteDB releases](../../manage-deployments/ybdb-releases/).
 - Use the **Enable IPV6** field to specify whether or not you want to use IPV6 networking for connections between database servers. This setting is disabled by default.
 - Use the **Enable Public Network Access** field to specify whether or not to assign a load balancer or nodeport for connecting to the database endpoints over the internet. This setting is disabled by default.
 
@@ -134,12 +136,12 @@ Optionally, use the **Helm Overrides** section, as follows:
       iam.gke.io/gke-metadata-server-enabled: "true"
     ```
 
-    If you don't provide namespace names for each zone/region during [provider creation](../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes/), add the names using the following steps:
+    If you don't provide namespace names for each zone/region during [provider creation](../../configure-yugabyte-platform/kubernetes/), add the names using the following steps:
 
     1. Add the Kubernetes service account to the namespaces where the pods are created.
     1. Follow the steps in [Upgrade universes for GKE service account-based IAM](../../manage-deployments/edit-helm-overrides/#upgrade-universes-for-gke-service-account-based-iam) to add the annotated Kubernetes service account to pods.
 
-    To enable the GKE service account service at the provider level, refer to [Overrides](../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#overrides).
+    To enable the GKE service account service at the provider level, refer to [Overrides](../../configure-yugabyte-platform/kubernetes/#overrides).
 
 - Select **Force Apply** if you want to override any previous overrides.
 
@@ -211,8 +213,6 @@ Note that this requires all the zone deployments to be in the same namespace.
        universe-name: yb-k8s
      ports:
      # Modify the ports if using non-standard ports.
-     - name: tcp-yedis-port
-       port: 6379
      - name: tcp-yql-port
        port: 9042
      - name: tcp-ysql-port

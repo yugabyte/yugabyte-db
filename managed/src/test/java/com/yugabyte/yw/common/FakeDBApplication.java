@@ -11,6 +11,7 @@ import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
+import com.yugabyte.yw.commissioner.XClusterScheduler;
 import com.yugabyte.yw.commissioner.YbcUpgrade;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
@@ -28,6 +29,7 @@ import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.JsonFieldsValidator;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.scheduler.Scheduler;
 import java.util.HashMap;
 import java.util.Map;
@@ -51,6 +53,8 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public ApiHelper mockApiHelper = mock(ApiHelper.class);
   public ShellKubernetesManager mockKubernetesManager = mock(ShellKubernetesManager.class);
   public EncryptionAtRestManager mockEARManager = mock(EncryptionAtRestManager.class);
+  public TelemetryProviderService mockTelemetryProviderService =
+      spy(TelemetryProviderService.class);
   public SetUniverseKey mockSetUniverseKey = mock(SetUniverseKey.class);
   public CallbackController mockCallbackController = mock(CallbackController.class);
   public PlayCacheSessionStore mockSessionStore = mock(PlayCacheSessionStore.class);
@@ -92,6 +96,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public GetTableSchemaResponse mockSchemaResponse = mock(GetTableSchemaResponse.class);
   public AutoFlagUtil mockAutoFlagUtil = mock(AutoFlagUtil.class);
   public ReleasesUtils mockReleasesUtils = mock(ReleasesUtils.class);
+  public XClusterScheduler mockXClusterScheduler = mock(XClusterScheduler.class);
 
   public MetricService metricService;
   public AlertService alertService;
@@ -124,6 +129,8 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(
                     bind(LdapUniverseSyncHandler.class).toInstance(mockLdapUniverseSyncHandler))
                 .overrides(bind(EncryptionAtRestManager.class).toInstance(mockEARManager))
+                .overrides(
+                    bind(TelemetryProviderService.class).toInstance(mockTelemetryProviderService))
                 .overrides(bind(SetUniverseKey.class).toInstance(mockSetUniverseKey))
                 .overrides(bind(ShellKubernetesManager.class).toInstance(mockKubernetesManager))
                 .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
@@ -166,6 +173,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(
                     bind(PrometheusConfigManager.class).toInstance(mockPrometheusConfigManager)))
         .overrides(bind(FileHelperService.class).toInstance(mockFileHelperService))
+        .overrides(bind(XClusterScheduler.class).toInstance(mockXClusterScheduler))
         .build();
   }
 

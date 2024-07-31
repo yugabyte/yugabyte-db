@@ -107,7 +107,10 @@ DEFINE_UNKNOWN_uint64(rocksdb_compaction_size_threshold_bytes, 2ULL * 1024 * 102
              "Threshold beyond which compaction is considered large.");
 DEFINE_UNKNOWN_uint64(rocksdb_max_file_size_for_compaction, 0,
              "Maximal allowed file size to participate in RocksDB compaction. 0 - unlimited.");
-DEFINE_UNKNOWN_int32(rocksdb_max_write_buffer_number, 2,
+
+// Use big enough default value for rocksdb_max_write_buffer_number, so behavior defined by
+// db_max_flushing_bytes will be actual default.
+DEFINE_NON_RUNTIME_int32(rocksdb_max_write_buffer_number, 100500,
              "Maximum number of write buffers that are built up in memory.");
 DECLARE_int64(db_block_size_bytes);
 
@@ -125,6 +128,11 @@ DEFINE_UNKNOWN_int64(db_write_buffer_size, -1,
 
 DEFINE_UNKNOWN_int32(memstore_size_mb, 128,
              "Max size (in mb) of the memstore, before needing to flush.");
+
+// Use a value slightly less than 2 default mem store sizes.
+DEFINE_NON_RUNTIME_uint64(db_max_flushing_bytes, 250_MB,
+    "The limit for the number of bytes in immutable mem tables. "
+    "After reaching this limit new writes are blocked. 0 - unlimited.");
 
 DEFINE_UNKNOWN_bool(use_docdb_aware_bloom_filter, true,
             "Whether to use the DocDbAwareFilterPolicy for both bloom storage and seeks.");
@@ -212,12 +220,12 @@ namespace docdb {
 
 namespace {
 
-bool CompressionTypeValidator(const char* flagname, const std::string& flag_compression_type) {
+bool CompressionTypeValidator(const char* flag_name, const std::string& flag_compression_type) {
   auto res = yb::GetConfiguredCompressionType(flag_compression_type);
   if (!res.ok()) {
     // Below we CHECK_RESULT on the same value returned here, and validating the result here ensures
     // that CHECK_RESULT will never fail once the process is running.
-    LOG(ERROR) << res.status().ToString();
+    LOG_FLAG_VALIDATION_ERROR(flag_name, flag_compression_type) << res.status().ToString();
     return false;
   }
   return true;
@@ -227,7 +235,7 @@ bool KeyValueEncodingFormatValidator(const char* flag_name, const std::string& f
   auto res = yb::docdb::GetConfiguredKeyValueEncodingFormat(flag_value);
   bool ok = res.ok();
   if (!ok) {
-    LOG(ERROR) << flag_name << ": " << res.status();
+    LOG_FLAG_VALIDATION_ERROR(flag_name, flag_value) << res.status();
   }
   return ok;
 }
@@ -306,13 +314,14 @@ unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     const ReadOperationData& read_operation_data,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter,
     const Slice* iterate_upper_bound,
+    const FastBackwardScan use_fast_backward_scan,
     const DocDBStatistics* statistics) {
   // TODO(dtxn) do we need separate options for intents db?
   rocksdb::ReadOptions read_opts = PrepareReadOptions(doc_db.regular, bloom_filter_mode,
       user_key_for_filter, query_id, std::move(file_filter), iterate_upper_bound,
       statistics ? statistics->RegularDBStatistics() : nullptr);
   return std::make_unique<IntentAwareIterator>(
-      doc_db, read_opts, read_operation_data, txn_op_context,
+      doc_db, read_opts, read_operation_data, txn_op_context, use_fast_backward_scan,
       statistics ? statistics->IntentsDBStatistics() : nullptr);
 }
 
@@ -726,6 +735,9 @@ void InitRocksDBOptions(
   }
 
   options->max_write_buffer_number = FLAGS_rocksdb_max_write_buffer_number;
+  if (FLAGS_db_max_flushing_bytes != 0) {
+    options->max_flushing_bytes = FLAGS_db_max_flushing_bytes;
+  }
 
   options->memtable_factory = std::make_shared<rocksdb::SkipListFactory>(
       0 /* lookahead */, rocksdb::ConcurrentWrites::kFalse);
@@ -920,7 +932,8 @@ class RocksDBPatcher::Impl {
     return helper.Apply(options_, imm_cf_options_);
   }
 
-  Status ModifyFlushedFrontier(const ConsensusFrontier& frontier) {
+  Status ModifyFlushedFrontier(
+      const ConsensusFrontier& frontier, const CotableIdsMap& cotable_ids_map) {
     RocksDBPatcherHelper helper(&version_set_);
 
     docdb::ConsensusFrontier final_frontier = frontier;
@@ -940,7 +953,8 @@ class RocksDBPatcher::Impl {
     helper.Edit().ModifyFlushedFrontier(
         final_frontier.Clone(), rocksdb::FrontierModificationMode::kForce);
 
-    helper.IterateFiles([&helper, &frontier](int level, rocksdb::FileMetaData fmd) {
+    helper.IterateFiles([&helper, &frontier, &cotable_ids_map](
+        int level, rocksdb::FileMetaData fmd) {
       bool modified = false;
       for (auto* user_frontier : {&fmd.smallest.user_frontier, &fmd.largest.user_frontier}) {
         if (!*user_frontier) {
@@ -954,6 +968,11 @@ class RocksDBPatcher::Impl {
         if (frontier.history_cutoff_valid()) {
           consensus_frontier.set_history_cutoff_information(frontier.history_cutoff());
           modified = true;
+        }
+        for (const auto& [table_id, new_table_id] : cotable_ids_map) {
+          if (consensus_frontier.UpdateCoTableId(table_id, new_table_id)) {
+            modified = true;
+          }
         }
       }
       if (modified) {
@@ -1031,8 +1050,9 @@ Status RocksDBPatcher::SetHybridTimeFilter(std::optional<uint32_t> db_oid, Hybri
   return impl_->SetHybridTimeFilter(db_oid, value);
 }
 
-Status RocksDBPatcher::ModifyFlushedFrontier(const ConsensusFrontier& frontier) {
-  return impl_->ModifyFlushedFrontier(frontier);
+Status RocksDBPatcher::ModifyFlushedFrontier(
+    const ConsensusFrontier& frontier, const CotableIdsMap& cotable_ids_map) {
+  return impl_->ModifyFlushedFrontier(frontier, cotable_ids_map);
 }
 
 Status RocksDBPatcher::UpdateFileSizes() {

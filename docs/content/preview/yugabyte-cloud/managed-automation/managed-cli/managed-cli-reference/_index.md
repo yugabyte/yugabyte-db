@@ -2,7 +2,7 @@
 title: ybm CLI command reference
 headerTitle: Reference
 linkTitle: Reference
-description: YugabyteDB Managed CLI resource and command reference.
+description: YugabyteDB Aeon CLI resource and command reference.
 headcontent: ybm syntax and commands
 menu:
   preview_yugabyte-cloud:
@@ -69,7 +69,8 @@ You can manage the following resources using ybm:
 | [cluster](managed-cli-cluster/) | cert download, create, delete, describe,</br>encryption list, encryption update,</br>list, node list, pause, resume, update |
 | [cluster network](managed-cli-network/) | allow-list assign, allow-list unassign,</br>endpoint create, endpoint delete , endpoint describe,</br>endpoint list, endpoint update |
 | [cluster read-replica](managed-cli-read-replica/) | create, delete, list, update |
-| [metrics-exporter](managed-cli-metrics-exporter/) | attach, create, delete, list, pause, remove, resume, update |
+| [integration](managed-cli-integration/) | create, delete, list, update |
+| [metrics-exporter](managed-cli-metrics-exporter/) [deprecated] | attach, create, delete, list, pause, remove, resume, update |
 | [network-allow-list](managed-cli-network-allow-list/) | create, delete, list |
 | [permission](managed-cli-permission/) | list |
 | [region](managed-cli-region/) | list, instance list |
@@ -80,7 +81,8 @@ You can manage the following resources using ybm:
 
 <!--
 - [cdc-sink](managed-cli-cdc-sink/)
-- [cdc-stream](managed-cli-cdc-stream/) -->
+- [cdc-stream](managed-cli-cdc-stream/)
+| [db-audit-logs-exporter](managed-cli-db-audit-logs-exporter/) | Assign, list, unassign, update | -->
 
 Use the following commands to configure ybm:
 
@@ -88,14 +90,14 @@ Use the following commands to configure ybm:
 | :--- | :--- |
 | [auth](managed-cli-auth/) | Write API key to a configuration file. |
 | [completion](../managed-cli-overview/#autocompletion) | Configure autocompletion for Bash, Fish, PowerShell, and Zsh |
-| [signup](../managed-cli-overview/#install-ybm) | Navigate to the YugabyteDB Managed signup page. |
+| [signup](../managed-cli-overview/#install-ybm) | Navigate to the YugabyteDB Aeon sign up page. |
 
 ### Global flags
 
 The following flags can be passed in with any command. These flags can also be added to your configuration file (see [Configure ybm](../managed-cli-overview/#configure-ybm)).
 
 -a, --apiKey string
-: YugabyteDB Managed account API Key.
+: YugabyteDB Aeon account API Key.
 
 --config string
 : Configuration file (default is `$HOME/.ybm-cli.yaml`).
@@ -105,7 +107,7 @@ The following flags can be passed in with any command. These flags can also be a
 
 <!--
 --host string
-: Host address of YugabyteDB Managed (this should always be cloud.yugabyte.com). -->
+: Host address of YugabyteDB Aeon (this should always be cloud.yugabyte.com). -->
 
 -l, --logLevel string
 : Specify the desired level of logging. `debug` or `info` (default).

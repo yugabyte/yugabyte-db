@@ -115,6 +115,7 @@ extern bool IsYugaByteEnabled();
 
 extern bool yb_enable_docdb_tracing;
 extern bool yb_read_from_followers;
+extern bool yb_follower_reads_behavior_before_fixing_20482;
 extern int32_t yb_follower_read_staleness_ms;
 
 /*
@@ -670,6 +671,19 @@ extern const char* YBDatumToString(Datum datum, Oid typid);
  */
 extern const char* YbHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc);
 
+/*
+ * Get a string representation of a tuple (row) given its tuple description
+ * (schema) and is_omitted values.
+ *
+ * Logical Replication specific version of the general utility function
+ * YbHeapTupleToString. This function also logs the is_omitted values which
+ * indicates attributes which were omitted due to the value of the replica
+ * identity.
+ */
+extern const char* YbHeapTupleToStringWithIsOmitted(HeapTuple tuple,
+													TupleDesc tupleDesc,
+													bool *is_omitted);
+
 /* Get a string representation of a bitmapset (for debug purposes only!) */
 extern const char* YbBitmapsetToString(Bitmapset *bms);
 
@@ -725,6 +739,7 @@ extern void YBFlushBufferedOperations();
 bool YBEnableTracing();
 bool YBReadFromFollowersEnabled();
 int32_t YBFollowerReadStalenessMs();
+bool YBFollowerReadsBehaviorBefore20482();
 
 /*
  * Allocates YBCPgYBTupleIdDescriptor with nattrs arguments by using palloc.
@@ -1128,5 +1143,19 @@ extern Relation YbGetRelationWithOverwrittenReplicaIdentity(Oid relid,
 extern void YBCUpdateYbReadTimeAndInvalidateRelcache(uint64_t read_time);
 
 extern uint64_t YbCalculateTimeDifferenceInMicros(TimestampTz yb_start_time);
+
+static inline bool YbIsNormalDbOidReserved(Oid db_oid) {
+	return db_oid == kYBCPgSequencesDataDatabaseOid;
+}
+
+extern Oid YbGetSQLIncrementCatalogVersionsFunctionOid();
+
+extern bool YbIsReadCommittedTxn();
+
+extern YbReadTimePointHandle YbBuildCurrentReadTimePointHandle();
+
+extern bool YbUseFastBackwardScan();
+
+bool YbIsAttrPrimaryKeyColumn(Relation rel, AttrNumber attnum);
 
 #endif /* PG_YB_UTILS_H */

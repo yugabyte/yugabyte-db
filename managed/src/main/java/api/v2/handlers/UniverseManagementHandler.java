@@ -9,11 +9,12 @@ import api.v2.models.ClusterEditSpec;
 import api.v2.models.ClusterSpec;
 import api.v2.models.ClusterSpec.ClusterTypeEnum;
 import api.v2.models.UniverseCreateSpec;
+import api.v2.models.UniverseDeleteSpec;
 import api.v2.models.UniverseEditSpec;
 import api.v2.models.UniverseSpec;
-import api.v2.models.YBPTask;
+import api.v2.models.YBATask;
 import api.v2.utils.ApiControllerUtils;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
@@ -27,13 +28,11 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
-import play.libs.Json;
 
 @Slf4j
 public class UniverseManagementHandler extends ApiControllerUtils {
@@ -41,32 +40,31 @@ public class UniverseManagementHandler extends ApiControllerUtils {
   @Inject private UniverseCRUDHandler universeCRUDHandler;
   @Inject private Commissioner commissioner;
 
-  public api.v2.models.Universe getUniverse(UUID cUUID, UUID uniUUID) {
+  public api.v2.models.Universe getUniverse(UUID cUUID, UUID uniUUID)
+      throws JsonProcessingException {
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
     // get v1 Universe
     com.yugabyte.yw.forms.UniverseResp v1Response =
         com.yugabyte.yw.forms.UniverseResp.create(
             universe, null, runtimeConfigFactory.globalRuntimeConf());
+    log.info("Getting Universe with UUID: {}", uniUUID);
     // map to v2 Universe
     api.v2.models.Universe v2Response = UniverseRespMapper.INSTANCE.toV2UniverseResp(v1Response);
+    log.trace("Got Universe {}", prettyPrint(v2Response));
     return v2Response;
   }
 
-  public YBPTask createUniverse(UUID cUUID, UniverseCreateSpec universeSpec) {
+  public YBATask createUniverse(UUID cUUID, UniverseCreateSpec universeSpec) {
     Customer customer = Customer.getOrBadRequest(cUUID);
-    log.info(
-        "Create Universe with v2 spec: {}",
-        Json.prettyPrint(CommonUtils.maskConfig((ObjectNode) Json.toJson(universeSpec))));
+    log.info("Create Universe with v2 spec: {}", prettyPrint(universeSpec));
     // map universeSpec to v1 universe details
     UniverseDefinitionTaskParams v1DefnParams =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toV1UniverseDefinitionTaskParamsFromCreateSpec(
             universeSpec);
     UniverseConfigureTaskParams v1Params =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toUniverseConfigureTaskParams(v1DefnParams);
-    log.debug(
-        "Create Universe translated to v1 spec: {}",
-        Json.prettyPrint(CommonUtils.maskConfig((ObjectNode) Json.toJson(v1Params))));
+    log.debug("Create Universe translated to v1 spec: {}", prettyPrint(v1Params));
     // create universe with v1 spec
     v1Params.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.CREATE;
     v1Params.currentClusterType = ClusterType.PRIMARY;
@@ -78,7 +76,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     }
     com.yugabyte.yw.forms.UniverseResp universeResp =
         universeCRUDHandler.createUniverse(customer, v1Params);
-    return new YBPTask().resourceUuid(universeResp.universeUUID).taskUuid(universeResp.taskUUID);
+    return new YBATask().resourceUuid(universeResp.universeUUID).taskUuid(universeResp.taskUUID);
   }
 
   private UniverseEditSpec inheritFromPrimaryBeforeMapping(
@@ -102,12 +100,10 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     return universeEditSpec;
   }
 
-  public YBPTask editUniverse(UUID cUUID, UUID uniUUID, UniverseEditSpec universeEditSpec) {
+  public YBATask editUniverse(UUID cUUID, UUID uniUUID, UniverseEditSpec universeEditSpec) {
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe dbUniverse = Universe.getOrBadRequest(uniUUID);
-    log.info(
-        "Edit Universe with v2 spec: {}",
-        Json.prettyPrint(CommonUtils.maskConfig((ObjectNode) Json.toJson(universeEditSpec))));
+    log.info("Edit Universe with v2 spec: {}", prettyPrint(universeEditSpec));
     // inherit RR cluster properties from primary cluster in given edit spec
     UniverseSpec v2Universe =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toV2UniverseSpec(
@@ -129,9 +125,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
             universeEditSpec, dbUniverse.getUniverseDetails());
     UniverseConfigureTaskParams v1Params =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toUniverseConfigureTaskParams(v1DefnParams);
-    log.debug(
-        "Edit Universe translated to v1 spec: {}",
-        Json.prettyPrint(CommonUtils.maskConfig((ObjectNode) Json.toJson(v1Params))));
+    log.debug("Edit Universe translated to v1 spec: {}", prettyPrint(v1Params));
 
     // edit universe with v1 spec
     v1Params.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.EDIT;
@@ -169,15 +163,13 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         uniUUID,
         dbUniverse.getName(),
         taskUUID);
-    return new YBPTask().resourceUuid(uniUUID).taskUuid(taskUUID);
+    return new YBATask().resourceUuid(uniUUID).taskUuid(taskUUID);
   }
 
-  public YBPTask addCluster(UUID cUUID, UUID uniUUID, ClusterAddSpec clusterAddSpec) {
+  public YBATask addCluster(UUID cUUID, UUID uniUUID, ClusterAddSpec clusterAddSpec) {
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe dbUniverse = Universe.getOrBadRequest(uniUUID);
-    log.info(
-        "Add cluster to Universe with v2 spec: {}",
-        Json.prettyPrint(CommonUtils.maskConfig((ObjectNode) Json.toJson(clusterAddSpec))));
+    log.info("Add cluster to Universe with v2 spec: {}", prettyPrint(clusterAddSpec));
 
     UniverseConfigureTaskParams v1Params =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toUniverseConfigureTaskParams(
@@ -196,15 +188,36 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     universeCRUDHandler.configure(customer, v1Params);
     // start the add cluster task
     UUID taskUUID = universeCRUDHandler.createCluster(customer, dbUniverse, v1Params);
-    return new YBPTask().resourceUuid(newReadReplica.uuid).taskUuid(taskUUID);
+    return new YBATask().resourceUuid(newReadReplica.uuid).taskUuid(taskUUID);
   }
 
-  public YBPTask deleteReadReplicaCluster(
+  public YBATask deleteReadReplicaCluster(
       UUID cUUID, UUID uniUUID, UUID clsUUID, Boolean forceDelete) {
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
 
     UUID taskUUID = universeCRUDHandler.clusterDelete(customer, universe, clsUUID, forceDelete);
-    return new YBPTask().resourceUuid(uniUUID).taskUuid(taskUUID);
+    return new YBATask().resourceUuid(uniUUID).taskUuid(taskUUID);
+  }
+
+  public YBATask deleteUniverse(UUID cUUID, UUID uniUUID, UniverseDeleteSpec universeDeleteSpec)
+      throws JsonProcessingException {
+    boolean isForceDelete =
+        universeDeleteSpec != null ? universeDeleteSpec.getIsForceDelete() : false;
+    boolean isDeleteBackups =
+        universeDeleteSpec != null ? universeDeleteSpec.getIsDeleteBackups() : false;
+    boolean isDeleteAssociatedCerts =
+        universeDeleteSpec != null ? universeDeleteSpec.getIsDeleteAssociatedCerts() : false;
+    log.info("Starting v2 delete universe with UUID: {}", uniUUID);
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+    UUID taskUuid =
+        universeCRUDHandler.destroy(
+            customer, universe, isForceDelete, isDeleteBackups, isDeleteAssociatedCerts);
+    // construct a v2 Task to return from here
+    YBATask ybaTask = new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
+
+    log.info("Started delete universe task {}", prettyPrint(ybaTask));
+    return ybaTask;
   }
 }

@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "yb/docdb/doc_rowwise_iterator_base.h"
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/scan_choices.h"
@@ -42,18 +43,17 @@
 #include "yb/util/status_log.h"
 #include "yb/util/strongly_typed_bool.h"
 
-using std::string;
-
 DEFINE_RUNTIME_bool(ysql_use_flat_doc_reader, true,
     "Use DocDBTableReader optimization that relies on having at most 1 subkey for YSQL.");
 
 DEFINE_test_flag(int32, fetch_next_delay_ms, 0, "Amount of time to delay inside FetchNext");
 DEFINE_test_flag(string, fetch_next_delay_column, "", "Only delay when schema has specific column");
 
+DECLARE_bool(use_fast_backward_scan);
+
 using namespace std::chrono_literals;
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 DocRowwiseIterator::DocRowwiseIterator(
     const dockv::ReaderProjection& projection,
@@ -65,7 +65,8 @@ DocRowwiseIterator::DocRowwiseIterator(
     const DocDBStatistics* statistics)
     : DocRowwiseIteratorBase(
           projection, doc_read_context, txn_op_context, doc_db, read_operation_data, pending_op),
-      statistics_(statistics) {
+      statistics_(statistics),
+      deadline_info_(read_operation_data.deadline) {
 }
 
 DocRowwiseIterator::DocRowwiseIterator(
@@ -79,7 +80,8 @@ DocRowwiseIterator::DocRowwiseIterator(
     : DocRowwiseIteratorBase(
           projection, doc_read_context, txn_op_context, doc_db, read_operation_data,
           std::move(pending_op)),
-      statistics_(statistics) {
+      statistics_(statistics),
+      deadline_info_(read_operation_data.deadline) {
 }
 
 DocRowwiseIterator::~DocRowwiseIterator() = default;
@@ -88,13 +90,20 @@ void DocRowwiseIterator::InitIterator(
     BloomFilterMode bloom_filter_mode,
     const boost::optional<const Slice>& user_key_for_filter,
     const rocksdb::QueryId query_id,
-    std::shared_ptr<rocksdb::ReadFileFilter>
-        file_filter) {
+    std::shared_ptr<rocksdb::ReadFileFilter> file_filter) {
   if (table_type_ == TableType::PGSQL_TABLE_TYPE) {
     ConfigureForYsql();
   }
 
-  DCHECK(!db_iter_) << "InitIterator should be called only once.";
+  // Configure usage of fast backward scan. This must be done before creating of the intent
+  // aware iterator and when doc_mode_ is already set.
+  // TODO(#22371): Fast backward scan is supported for flat doc reader only.
+  if (FLAGS_use_fast_backward_scan && !is_forward_scan_ && doc_mode_ == DocMode::kFlat) {
+    use_fast_backward_scan_ = true;
+    VLOG_WITH_FUNC(1) << "Using FAST BACKWARD scan";
+  }
+
+  DCHECK(!db_iter_) << "InitIterator should be called only once";
 
   db_iter_ = CreateIntentAwareIterator(
       doc_db_,
@@ -105,6 +114,7 @@ void DocRowwiseIterator::InitIterator(
       read_operation_data_,
       file_filter,
       nullptr /* iterate_upper_bound */,
+      FastBackwardScan{use_fast_backward_scan_},
       statistics_);
   InitResult();
 
@@ -119,6 +129,18 @@ void DocRowwiseIterator::InitIterator(
     DCHECK(!upperbound().empty());
     upperbound_scope_.emplace(upperbound(), db_iter_.get());
   }
+
+  if (use_fast_backward_scan_) {
+    auto lower_bound = shared_key_prefix();
+    // TODO(#22373): Do we need to consider bound_key_ here?
+    if (lower_bound.empty()) {
+      static const auto kMinByte = dockv::KeyEntryTypeAsChar::kLowest;
+      lower_bound = Slice(&kMinByte, 1);
+    }
+    lowerbound_scope_.emplace(lower_bound, db_iter_.get());
+  }
+
+  VLOG_WITH_FUNC(4) << "Initialization done";
 }
 
 void DocRowwiseIterator::ConfigureForYsql() {
@@ -134,23 +156,6 @@ void DocRowwiseIterator::InitResult() {
   } else {
     row_.emplace();
   }
-}
-
-Result<bool> DocRowwiseIterator::PgFetchRow(Slice key, bool restart, dockv::PgTableRow* table_row) {
-  VLOG_WITH_FUNC(3) << "key: " << key << "/" << dockv::DocKey::DebugSliceToString(key)
-                    << ", restart: " << restart;
-  prev_doc_found_ = DocReaderResult::kNotFound;
-  done_ = false;
-
-  Slice upperbound(key.data(), key.end() + 1);
-  DCHECK_EQ(upperbound.end()[-1], dockv::KeyEntryTypeAsChar::kHighest);
-  IntentAwareIteratorUpperboundScope upperbound_scope(upperbound, db_iter_.get());
-  if (restart) {
-    db_iter_->Seek(key);
-  } else {
-    db_iter_->SeekForward(key);
-  }
-  return PgFetchNext(table_row);
 }
 
 inline void DocRowwiseIterator::Seek(Slice key) {
@@ -178,10 +183,11 @@ inline void DocRowwiseIterator::Seek(Slice key) {
   db_iter_->Seek(Slice(&null_low, 1), Full::kFalse);
 }
 
-inline void DocRowwiseIterator::PrevDocKey(Slice key) {
+inline void DocRowwiseIterator::SeekPrevDocKey(Slice key) {
   // TODO consider adding an operator bool to DocKey to use instead of empty() here.
+  // TODO(#22373): Do we need to play with prev_doc_found_?
   if (!key.empty()) {
-    db_iter_->PrevDocKey(key);
+    db_iter_->SeekPrevDocKey(key);
   } else {
     db_iter_->SeekToLastDocKey();
   }
@@ -251,6 +257,8 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
 
   bool first_iteration = true;
   for (;;) {
+    RETURN_NOT_OK(deadline_info_.CheckDeadlinePassed());
+
     if (scan_choices_->Finished()) {
       done_ = true;
       return false;
@@ -304,8 +312,8 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
 
     if (doc_reader_ == nullptr) {
       doc_reader_ = std::make_unique<DocDBTableReader>(
-          db_iter_.get(), read_operation_data_.deadline, &projection_, table_type_,
-          schema_packing_storage(), schema());
+          db_iter_.get(), deadline_info_, &projection_, table_type_,
+          schema_packing_storage(), schema(), use_fast_backward_scan_);
       RETURN_NOT_OK(doc_reader_->UpdateTableTombstoneTime(
           VERIFY_RESULT(GetTableTombstoneTime(row_key))));
       if (!ignore_ttl_) {
@@ -369,7 +377,7 @@ Status DocRowwiseIterator::FillRow(QLTableRowPair out) {
   return FillRow(out.table_row, out.projection);
 }
 
-string DocRowwiseIterator::ToString() const {
+std::string DocRowwiseIterator::ToString() const {
   return "DocRowwiseIterator";
 }
 
@@ -425,5 +433,4 @@ bool DocRowwiseIterator::LivenessColumnExists() const {
   return subdoc != nullptr && subdoc->value_type() != dockv::ValueEntryType::kInvalid;
 }
 
-}  // namespace docdb
-}  // namespace yb
+}  // namespace yb::docdb

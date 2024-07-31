@@ -34,11 +34,11 @@ Using the **Edit Universe** page, you can modify the following:
 - Instance type and volume size - you can select instance types configured in the provider
 - [User tags](../instance-tags/)
 
-YugabyteDB Anywhere performs these modifications through the [YB-Masters](../../../architecture/concepts/yb-master/) powering the universe. The YB-Masters ensure that the new nodes start hosting the tablet leaders for a set of tablets in such a way that the tablet leader count remains evenly balanced across all the available nodes.
+YugabyteDB Anywhere performs these modifications through the [YB-Masters](../../../architecture/yb-master/) powering the universe. The YB-Masters ensure that the new nodes start hosting the tablet leaders for a set of tablets in such a way that the tablet leader count remains evenly balanced across all the available nodes.
 
 Note that you can't change the replication factor of a universe.
 
-To change the number of nodes of universes created with an on-premises cloud provider and secured with third-party certificates obtained from external certification authorities, follow the instructions in [Expand the universe](../../security/enable-encryption-in-transit#expand-the-universe).
+To change the number of nodes of universes created with an on-premises cloud provider and secured with third-party certificates obtained from external certification authorities, you must first add the certificates to the nodes you will add to the universe. Refer to [Add certificates](../../security/enable-encryption-in-transit/add-certificate-ca/). Ensure that the certificates are signed by the same external CA and have the same root certificate. In addition, ensure that you copy the certificates to the same locations that you originally used when creating the universe.
 
 ### Smart resize
 

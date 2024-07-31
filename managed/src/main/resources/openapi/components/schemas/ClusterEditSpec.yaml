@@ -1,4 +1,5 @@
-title: Edit Cluster Spec
+title: ClusterEditSpec
+description: Edit Cluster Spec. Part of UniverseEditSpec.
 type: object
 required:
   - uuid
@@ -14,12 +15,8 @@ properties:
     format: int32
     example: 3
     minimum: 1
-  instance_type:
-    description: Set instance type for tserver nodes of cluster
-    type: string
-    example: c5.xlarge
-  storage_spec:
-    $ref: "./ClusterStorageSpec.yaml"
+  node_spec:
+    $ref: "./ClusterNodeSpec.yaml"
   provider_spec:
     $ref: "./ClusterProviderEditSpec.yaml"
   placement_spec:

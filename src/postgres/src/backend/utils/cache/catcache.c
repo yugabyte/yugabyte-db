@@ -83,7 +83,8 @@
 
 /* Cache management header --- pointer is NULL until created */
 static CatCacheHeader *CacheHdr = NULL;
-static long NumCatalogCacheMisses;
+static long YbNumCatalogCacheMisses;
+static long YbNumCatalogCacheIdMisses[SysCacheSize] = {0};
 
 static inline HeapTuple SearchCatCacheInternal(CatCache *cache,
 					   int nkeys,
@@ -1821,7 +1822,10 @@ SearchCatCacheMiss(CatCache *cache,
 		relation = heap_open(cache->cc_reloid, AccessShareLock);
 
 		if (IsYugaByteEnabled())
-			NumCatalogCacheMisses++;
+		{
+			YbNumCatalogCacheMisses++;
+			YbNumCatalogCacheIdMisses[cache->id]++;
+		}
 
 		if (yb_debug_log_catcache_events)
 		{
@@ -2671,7 +2675,35 @@ PrintCatCacheListLeakWarning(CatCList *list)
 }
 
 long
-GetCatCacheMisses()
+YbGetCatCacheMisses()
 {
-	return NumCatalogCacheMisses;
+	return YbNumCatalogCacheMisses;
+}
+
+long*
+YbGetCatCacheIdMisses()
+{
+	return YbNumCatalogCacheIdMisses;
+}
+
+YbCatCListIterator
+YbCatCListIteratorBegin(CatCList *list)
+{
+	YbCatCListIterator iterator = { .list = list, .index = 0 };
+	return iterator;
+}
+
+HeapTuple
+YbCatCListIteratorGetNext(YbCatCListIterator *iterator)
+{
+	if (iterator->index == iterator->list->n_members)
+		return NULL;
+
+	return &iterator->list->members[iterator->index++]->tuple;
+}
+
+void
+YbCatCListIteratorFree(YbCatCListIterator *iterator)
+{
+	ReleaseCatCacheList(iterator->list);
 }

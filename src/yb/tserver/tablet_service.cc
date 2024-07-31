@@ -263,6 +263,18 @@ DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
 DEFINE_test_flag(bool, cdc_sdk_fail_setting_retention_barrier, false,
     "Fail setting retention barrier on newly created tablets");
 
+#if defined ADDRESS_SANITIZER
+// ASAN tests run on machines with limited disk space, so disable disk full checks.
+constexpr bool kRejectWritesWhenDiskFullDefault = false;
+#else
+constexpr bool kRejectWritesWhenDiskFullDefault = true;
+#endif
+
+DEFINE_RUNTIME_bool(reject_writes_when_disk_full, kRejectWritesWhenDiskFullDefault,
+    "Reject incoming writes to the tablet if we are running out of disk space.");
+
+DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+
 METRIC_DEFINE_gauge_uint64(server, ts_split_op_added, "Split OPs Added to Leader",
     yb::MetricUnit::kOperations, "Number of split operations added to the leader's Raft log.");
 
@@ -1949,6 +1961,18 @@ void TabletServiceAdminImpl::CloneTablet(
   });
 }
 
+Result<HostPort> TabletServiceAdminImpl::GetLocalPgHostPort() {
+  HostPort local_pg_host_port;
+  if (!FLAGS_TEST_mini_cluster_pg_host_port.empty()) {
+    RETURN_NOT_OK(local_pg_host_port.ParseString(
+        FLAGS_TEST_mini_cluster_pg_host_port, pgwrapper::PgProcessConf::kDefaultPort));
+  } else {
+    local_pg_host_port = server_->pgsql_proxy_bind_address();
+  }
+  std::string unix_domain_socket = PgDeriveSocketDir(local_pg_host_port);
+  return HostPort(unix_domain_socket, local_pg_host_port.port());
+}
+
 void TabletServiceAdminImpl::ClonePgSchema(
     const ClonePgSchemaRequestPB* req, ClonePgSchemaResponsePB* resp, rpc::RpcContext context) {
   auto status = DoClonePgSchema(req, resp);
@@ -1962,47 +1986,49 @@ void TabletServiceAdminImpl::ClonePgSchema(
 Status TabletServiceAdminImpl::DoClonePgSchema(
     const ClonePgSchemaRequestPB* req, ClonePgSchemaResponsePB* resp) {
   // Run ysql_dump to generate the schema of the clone database as of restore time.
-  auto restore_time = HybridTime(req->restore_ht());
-  std::string timestamp_flag =
-      "--read-time=" + std::to_string(restore_time.GetPhysicalValueMicros());
-  HostPort local_pg_host_port;
-  if (!FLAGS_TEST_mini_cluster_pg_host_port.empty()) {
-    RETURN_NOT_OK(local_pg_host_port.ParseString(
-        FLAGS_TEST_mini_cluster_pg_host_port, pgwrapper::PgProcessConf::kDefaultPort));
-  } else {
-    local_pg_host_port = server_->pgsql_proxy_bind_address();
-  }
   const std::string& target_db_name = req->target_db_name();
-  std::string unix_domain_socket = PgDeriveSocketDir(local_pg_host_port);
-  HostPort local_hostport(unix_domain_socket, local_pg_host_port.port());
+
+  auto local_hostport = VERIFY_RESULT(GetLocalPgHostPort());
   YsqlDumpRunner ysql_dump_runner =
       VERIFY_RESULT(YsqlDumpRunner::GetYsqlDumpRunner(local_hostport));
-  std::string dump_output =
-      VERIFY_RESULT(ysql_dump_runner.DumpSchemaAsOfTime(req->source_db_name(), restore_time));
-  std::string modified_dump_script =
-      ysql_dump_runner.ModifyDBNameInScript(dump_output, target_db_name);
-  // Write the modified dump output to a file in order to execute it using ysqlsh
-  std::unique_ptr<WritableFile> dump_output_file;
-  std::string tmp_file_name;
-  RETURN_NOT_OK(Env::Default()->NewTempWritableFile(
-      WritableFileOptions(), target_db_name + "_ysql_dump_XXXXXX", &tmp_file_name,
-      &dump_output_file));
-  RETURN_NOT_OK(dump_output_file->Append(modified_dump_script));
-  RETURN_NOT_OK(dump_output_file->Close());
-  auto scope_exit = ScopeExit([tmp_file_name] {
-    if (Env::Default()->FileExists(tmp_file_name)) {
-      WARN_NOT_OK(
-          Env::Default()->DeleteFile(tmp_file_name),
-          Format("Failed to delete ysql_dump_file $0 as a cloning cleanup.", tmp_file_name));
-    }
-  });
-  // Execute the sql script to generate the PG database
-  YsqlshRunner ysqlsh_runner =
-      VERIFY_RESULT(YsqlshRunner::GetYsqlshRunner(HostPort::FromPB(local_hostport)));
-  Result<std::string> ysqlsh_output = VERIFY_RESULT(ysqlsh_runner.ExecuteSqlScript(tmp_file_name));
+  std::string dump_output = VERIFY_RESULT(ysql_dump_runner.RunAndModifyForClone(
+      req->source_db_name(), target_db_name, req->source_owner(), req->target_owner(),
+      HybridTime(req->restore_ht())));
+  VLOG(2) << "Dump output: " << dump_output;
+
+  // Execute the sql script to generate the PG database.
+  YsqlshRunner ysqlsh_runner = VERIFY_RESULT(YsqlshRunner::GetYsqlshRunner(local_hostport));
+  RETURN_NOT_OK(ysqlsh_runner.ExecuteSqlScript(dump_output, "ysql_dump" /* tmp_file_prefix */));
   LOG(INFO) << Format(
       "Clone Pg Schema Objects for source database: $0 to clone database: $1 done successfully",
       req->source_db_name(), target_db_name);
+  return Status::OK();
+}
+
+void TabletServiceAdminImpl::EnableDbConns(
+    const EnableDbConnsRequestPB* req, EnableDbConnsResponsePB* resp,
+    rpc::RpcContext context) {
+  auto status = DoEnableDbConns(req, resp);
+  if (!status.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), status, &context);
+  } else {
+    context.RespondSuccess();
+  }
+}
+
+Status TabletServiceAdminImpl::DoEnableDbConns(
+    const EnableDbConnsRequestPB* req, EnableDbConnsResponsePB* resp) {
+  const std::string script = Format(
+      "SET yb_non_ddl_txn_for_sys_tables_allowed = true;\n"
+      "UPDATE pg_database SET datallowconn = true WHERE datname = '$0'", req->target_db_name());
+
+  auto local_hostport = VERIFY_RESULT(GetLocalPgHostPort());
+  YsqlshRunner ysqlsh_runner =
+      VERIFY_RESULT(YsqlshRunner::GetYsqlshRunner(HostPort::FromPB(local_hostport)));
+  RETURN_NOT_OK(ysqlsh_runner.ExecuteSqlScript(script, "enable_connections" /* tmp_file_prefix */));
+
+  LOG(INFO) << Format(
+      "Successfully enabled connections to clone target database $0", req->target_db_name());
   return Status::OK();
 }
 
@@ -2253,6 +2279,13 @@ Status TabletServiceImpl::PerformWrite(
     FillTabletConsensusInfoIfRequestOpIdStale(tablet.peer, req, resp);
     MakeRpcOperationCompletionCallback(std::move(*context), resp, server_->Clock())(Status::OK());
     return Status::OK();
+  }
+
+  if (FLAGS_reject_writes_when_disk_full) {
+    SCHECK(
+        tablet.peer->HasSufficientDiskSpaceForWrite(), IOError,
+        "Write to tablet $0 rejected. Node $1 has insufficient disk space", req->tablet_id(),
+        tablet.peer->tablet_metadata()->fs_manager()->uuid());
   }
 
   // For postgres requests check that the syscatalog version matches.
@@ -3304,6 +3337,40 @@ void TabletServiceImpl::ClearAllMetaCachesOnServer(
     rpc::RpcContext context) {
   server_->ClearAllMetaCachesOnServer();
   context.RespondSuccess();
+}
+
+Result<AcquireObjectLockResponsePB> TabletServiceImpl::AcquireObjectLocks(
+      const AcquireObjectLockRequestPB& req, CoarseTimePoint deadline) {
+  if (!PREDICT_FALSE(FLAGS_TEST_enable_object_locking_for_table_locks)) {
+    return STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled");
+  }
+  TRACE("Start AcquireObjectLocks");
+  VLOG(2) << "Received AcquireObjectLocks RPC: " << req.DebugString();
+
+  auto* ts_local_lock_maganer = server_->ts_local_lock_maganer();
+  if (!ts_local_lock_maganer) {
+    return STATUS(IllegalState, "TSLocalLockManager not found...");
+  }
+  AcquireObjectLockResponsePB resp;
+  RETURN_NOT_OK(ts_local_lock_maganer->AcquireObjectLocks(req, deadline));
+  return resp;
+}
+
+Result<ReleaseObjectLockResponsePB> TabletServiceImpl::ReleaseObjectLocks(
+    const ReleaseObjectLockRequestPB& req, CoarseTimePoint deadline) {
+  if (!PREDICT_FALSE(FLAGS_TEST_enable_object_locking_for_table_locks)) {
+    return STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled");
+  }
+  TRACE("Start ReleaseObjectLocks");
+  VLOG(2) << "Received ReleaseObjectLocks RPC: " << req.DebugString();
+
+  auto* ts_local_lock_maganer = server_->ts_local_lock_maganer();
+  if (!ts_local_lock_maganer) {
+    return STATUS(IllegalState, "TSLocalLockManager not found...");
+  }
+  ReleaseObjectLockResponsePB resp;
+  RETURN_NOT_OK(ts_local_lock_maganer->ReleaseObjectLocks(req));
+  return resp;
 }
 
 void TabletServiceAdminImpl::TestRetry(

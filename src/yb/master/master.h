@@ -86,7 +86,7 @@ class Master : public tserver::DbServerBase {
   explicit Master(const MasterOptions& opts);
   virtual ~Master();
 
-  virtual Status InitAutoFlags(rpc::Messenger* messenger) override;
+  virtual Status InitFlags(rpc::Messenger* messenger) override;
   Status InitAutoFlagsFromMasterLeader(const HostPort& leader_address);
   Status Init() override;
   Status Start() override;
@@ -110,6 +110,8 @@ class Master : public tserver::DbServerBase {
   CatalogManagerIf* catalog_manager() const;
 
   CatalogManager* catalog_manager_impl() const { return catalog_manager_.get(); }
+
+  TabletSplitManager& tablet_split_manager() const;
 
   XClusterManagerIf* xcluster_manager() const;
 
@@ -225,6 +227,8 @@ class Master : public tserver::DbServerBase {
 
   Result<std::unordered_set<std::string>> GetAvailableAutoFlagsForServer() const override;
 
+  Result<std::unordered_set<std::string>> GetFlagsForServer() const override;
+
  private:
   friend class MasterTest;
 
@@ -251,6 +255,9 @@ class Master : public tserver::DbServerBase {
 
   std::atomic<MasterState> state_;
 
+  // The metric entity for the cluster.
+  scoped_refptr<MetricEntity> metric_entity_cluster_;
+
   std::unique_ptr<TSManager> ts_manager_;
   std::unique_ptr<CatalogManager> catalog_manager_;
   std::unique_ptr<MasterAutoFlagsManager> auto_flags_manager_;
@@ -276,9 +283,6 @@ class Master : public tserver::DbServerBase {
 
   // The maintenance manager for this master.
   std::shared_ptr<MaintenanceManager> maintenance_manager_;
-
-  // The metric entity for the cluster.
-  scoped_refptr<MetricEntity> metric_entity_cluster_;
 
   // Master's tablet server implementation used to host virtual tables like system.peers.
   std::unique_ptr<MasterTabletServer> master_tablet_server_;

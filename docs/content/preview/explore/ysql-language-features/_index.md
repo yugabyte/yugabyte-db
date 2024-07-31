@@ -5,6 +5,8 @@ linkTitle: SQL features
 description: Explore core SQL features in YSQL
 headcontent: Explore core SQL features in YSQL
 image: /images/section_icons/api/ysql.png
+aliases:
+  - /preview/explore/ysql-language-features/schema/
 menu:
   preview:
     identifier: explore-ysql-language-features
@@ -35,6 +37,7 @@ The following table lists the most important YSQL features which you would find 
 | [DDL Statements](../../api/ysql/the-sql-language/statements/#data-definition-language-ddl/) | Data definition language |
 | [Data Manipulation](data-manipulation/) | `INSERT`, `UPDATE`, `DELETE`, `INSERT ... ON CONFLICT`, and `RETURNING` clauses |
 | [Queries and Joins](queries/) | Queries, joins, `FROM`, `GROUP BY`, `HAVING` clauses, common table expressions, recursive queries |
+| [Join strategies](join-strategies/) | Inner join, outer join, full outer join, cross join, natural join. |
 | [Expressions and Operators](expressions-operators/) | Basic operators and boolean, numeric, date expressions |
 | [Indexes](indexes-constraints/) | Support for indexes and constraints |
 | [Stored Procedures](stored-procedures/) | Support for stored procedures |

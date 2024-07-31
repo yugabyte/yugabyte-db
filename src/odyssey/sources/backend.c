@@ -19,6 +19,7 @@ void od_backend_close(od_server_t *server)
 	assert(server->tls == NULL);
 	server->is_transaction = 0;
 	server->yb_sticky_connection = false;
+	server->reset_timeout = false;
 	server->idle_time = 0;
 	kiwi_key_init(&server->key);
 	kiwi_key_init(&server->key_client);
@@ -96,7 +97,8 @@ void od_backend_error(od_server_t *server, char *context, char *data,
 
 			if (server->client != NULL &&
 				((od_client_t *)server->client)->type == OD_POOL_CLIENT_EXTERNAL)
-				od_frontend_fatal(server->client, KIWI_CONNECTION_DOES_NOT_EXIST, error.hint);
+					od_frontend_error(server->client, KIWI_CONNECTION_DOES_NOT_EXIST,
+						error.hint, od_io_error(&server->io));
 		}
 	}
 }
@@ -698,8 +700,8 @@ int od_backend_update_parameter(od_server_t *server, char *context, char *data,
 		return -1;
 	}
 
-	/* ignore caching of role, only store role_oid */
-	if (strcmp("role", name) == 0)
+	/* ignore caching of role-dependent parameters, only store oid */
+	if (strcmp("role", name) == 0 || strcmp("session_authorization", name) == 0)
 		return 0;
 
 	/* update server only or client and server parameter */
@@ -713,8 +715,8 @@ int od_backend_update_parameter(od_server_t *server, char *context, char *data,
 		kiwi_vars_update_both(&client->vars, &server->vars, name,
 				      name_len, value, value_len);
 
-		/* reset role oid whenever session_authorization is changed by the user */
-		if (strcmp(name, "session_authorization") == 0)
+		/* reset role whenever session_authorization is changed by the user */
+		if (strcmp(name, "session_authorization_oid") == 0)
 			kiwi_vars_update_both(&client->vars, &server->vars, "role_oid", 9, "-1", 3);
 	}
 
@@ -736,7 +738,8 @@ int od_backend_ready_wait(od_server_t *server, char *context, int count,
 					 "read error: %s",
 					 od_io_error(&server->io));
 			}
-			return -1;
+			/* return new status if timeout error */
+			return -2;
 		}
 		kiwi_be_type_t type = *(char *)machine_msg_data(msg);
 		od_debug(&instance->logger, context, server->client, server,

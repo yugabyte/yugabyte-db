@@ -57,6 +57,7 @@ set(INTEGRATION_TESTS_SRCS
   cluster_verifier.cc
   create-table-itest-base.cc
   external_mini_cluster.cc
+  external_daemon.cc
   external_yb_controller.cc
   external_mini_cluster_fs_inspector.cc
   external_mini_cluster_validator.cc
@@ -263,6 +264,9 @@ YB_TEST_TARGET_LINK_LIBRARIES(wait_states-itest yb-cql pg_wrapper_test_base)
 
 ADD_YB_TEST(minicluster-snapshot-test)
 YB_TEST_TARGET_LINK_LIBRARIES(minicluster-snapshot-test pg_wrapper_test_base)
+
+ADD_YB_TEST(disk_full-test)
+YB_TEST_TARGET_LINK_LIBRARIES(disk_full-test pg_wrapper_test_base)
 
 ADD_YB_CQL_TEST(cql-index-test)
 ADD_YB_CQL_TEST(cql-packed-row-test)

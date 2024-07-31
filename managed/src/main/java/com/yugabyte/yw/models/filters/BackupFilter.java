@@ -32,4 +32,5 @@ public class BackupFilter {
   UUID customerUUID;
   boolean onlyShowDeletedUniverses;
   boolean onlyShowDeletedConfigs;
+  boolean showHidden;
 }

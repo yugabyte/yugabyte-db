@@ -168,6 +168,7 @@ Status AddColumnToMap(
     // send NULL values to the walsender. This is needed to be able to differentiate between NULL
     // and Omitted values.
     if (request_source == CDCSDKRequestSource::WALSENDER) {
+      cdc_datum_message->set_col_attr_num(col_schema.order());
       cdc_datum_message->set_column_type(col_schema.pg_type_oid());
       cdc_datum_message->mutable_pg_ql_value()->CopyFrom(ql_value);
       return Status::OK();
@@ -718,7 +719,7 @@ Result<SchemaDetails> GetOrPopulateRequiredSchemaDetails(
 
 Result<CDCRecordType> GetRecordTypeForPopulatingBeforeImage(
     const StreamMetadata& metadata, const TableId& table_id) {
-  if (FLAGS_ysql_yb_enable_replica_identity) {
+  if (FLAGS_ysql_yb_enable_replica_identity && IsReplicationSlotStream(metadata)) {
     auto replica_identity_map = metadata.GetReplicaIdentities();
     if (replica_identity_map.find(table_id) != replica_identity_map.end()) {
       PgReplicaIdentity replica_identity = metadata.GetReplicaIdentities().at(table_id);
@@ -2403,6 +2404,11 @@ Status HandleGetChangesForSnapshotRequest(
   return Status::OK();
 }
 
+bool IsReplicationSlotStream(const StreamMetadata& stream_metadata) {
+  return stream_metadata.GetReplicationSlotName().has_value() &&
+         !stream_metadata.GetReplicationSlotName()->empty();
+}
+
 // CDC get changes is different from xCluster as it doesn't need
 // to read intents from WAL.
 
@@ -2427,7 +2433,8 @@ Status GetChangesForCDCSDK(
     const int& wal_segment_index_req,
     int64_t* last_readable_opid_index,
     const TableId& colocated_table_id,
-    const CoarseTimePoint deadline) {
+    const CoarseTimePoint deadline,
+    const std::optional<uint64> getchanges_resp_max_size_bytes) {
   // Delete the memory context if it was created for decoding the QLValuePB.
   auto scope_exit = ScopeExit([&] { docdb::DeleteMemoryContextForCDCWrapper(); });
 
@@ -2622,11 +2629,15 @@ Status GetChangesForCDCSDK(
           resp_records_size += resp->cdc_sdk_proto_records(resp_num_records).ByteSizeLong();
         }
 
-        if (resp_records_size >= FLAGS_cdc_stream_records_threshold_size_bytes) {
+        auto resp_max_size = getchanges_resp_max_size_bytes.has_value()
+                                 ? *getchanges_resp_max_size_bytes
+                                 : FLAGS_cdc_stream_records_threshold_size_bytes;
+
+        if (resp_records_size >= resp_max_size) {
           VLOG(1) << "Response records size crossed the thresold size. Will stream rest of the "
                      "records in next GetChanges Call. resp_records_size: "
                   << resp_records_size
-                  << ", threshold: " << FLAGS_cdc_stream_records_threshold_size_bytes
+                  << ", threshold: " << resp_max_size
                   << ", resp_num_records: " << resp_num_records << ", tablet_id: " << tablet_id;
           break;
         }

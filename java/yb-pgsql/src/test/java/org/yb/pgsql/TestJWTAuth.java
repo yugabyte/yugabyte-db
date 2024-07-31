@@ -58,6 +58,7 @@ import org.yb.client.TestUtils;
 import org.yb.util.Pair;
 
 import com.google.common.base.Strings;
+import com.google.common.util.concurrent.ExecutionError;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.JWSSigner;
@@ -75,6 +76,11 @@ import com.nimbusds.jose.util.Base64;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import com.yugabyte.util.PSQLException;
+
+import okhttp3.mockwebserver.Dispatcher;
+import okhttp3.mockwebserver.MockResponse;
+import okhttp3.mockwebserver.MockWebServer;
+import okhttp3.mockwebserver.RecordedRequest;
 
 @RunWith(value = YBTestRunner.class)
 public class TestJWTAuth extends BasePgSQLTest {
@@ -216,11 +222,9 @@ public class TestJWTAuth extends BasePgSQLTest {
     });
   }
 
-  // Sets up JWT authentication with the provided configuration params.
-  // Enables JWT auth on "testuser1" while the remaining users authenticate via trust.
-  private void setJWTConfigAndRestartCluster(List<String> allowedIssuers,
-      List<String> allowedAudiences, String jwksPath, String matchingClaimKey, String mapName,
-      String identFileContents) throws Exception {
+  private void setJWTConfigAndRestartClusterWithUrl(List<String> allowedIssuers,
+  List<String> allowedAudiences, String jwksPath, String matchingClaimKey, String mapName,
+  String identFileContents, String jwksUrl) throws Exception {
     String issuersCsv = String.join(",", allowedIssuers);
     String audiencesCsv = String.join(",", allowedAudiences);
 
@@ -231,22 +235,32 @@ public class TestJWTAuth extends BasePgSQLTest {
 
     Map<String, String> flagMap = super.getTServerFlags();
     String hba_conf_value = "";
+    String jwksPathConfString = "";
+    if(!Strings.isNullOrEmpty(jwksPath)){
+      jwksPathConfString = String.format("jwt_jwks_path=%s ", jwksPath);
+    }
+    String jwksUrlConfString = "";
+    if(!Strings.isNullOrEmpty(jwksUrl)){
+      jwksUrlConfString = String.format("jwt_jwks_url=%s ", jwksUrl);
+    }
     if (Strings.isNullOrEmpty(mapName)) {
       hba_conf_value = String.format("\"host all yugabyte 0.0.0.0/0 trust\","
               + "\"host all yugabyte_test 0.0.0.0/0 trust\","
               + "\"host all all 0.0.0.0/0 jwt "
-              + "jwt_jwks_path=%s "
+              + jwksPathConfString
+              + jwksUrlConfString
               + "jwt_issuers=\"\"%s\"\" "
               + "jwt_audiences=\"\"%s\"\" %s\"",
-          jwksPath, issuersCsv, audiencesCsv, matchingClaimKeyValues);
+          issuersCsv, audiencesCsv, matchingClaimKeyValues);
     } else {
       hba_conf_value = String.format("\"host all yugabyte 0.0.0.0/0 trust\","
               + "\"host all yugabyte_test 0.0.0.0/0 trust\","
               + "\"host all all 0.0.0.0/0 jwt "
-              + "jwt_jwks_path=%s "
+              + jwksPathConfString
+              + jwksUrlConfString
               + "jwt_issuers=\"\"%s\"\" "
               + "jwt_audiences=\"\"%s\"\" %s map=%s\"",
-          jwksPath, issuersCsv, audiencesCsv, matchingClaimKeyValues, mapName);
+          issuersCsv, audiencesCsv, matchingClaimKeyValues, mapName);
     }
 
     flagMap.put("ysql_hba_conf_csv", hba_conf_value);
@@ -259,6 +273,15 @@ public class TestJWTAuth extends BasePgSQLTest {
 
     restartClusterWithFlags(Collections.emptyMap(), flagMap);
     LOG.info("Cluster restart finished");
+  }
+
+  // Sets up JWT authentication with the provided configuration params.
+  // Enables JWT auth on "testuser1" while the remaining users authenticate via trust.
+  private void setJWTConfigAndRestartCluster(List<String> allowedIssuers,
+      List<String> allowedAudiences, String jwksPath, String matchingClaimKey, String mapName,
+      String identFileContents) throws Exception {
+    setJWTConfigAndRestartClusterWithUrl(allowedIssuers, allowedAudiences, jwksPath,
+        matchingClaimKey, mapName, identFileContents, /* jwksUrl */ "");
   }
 
   // groupsOrRoles needs to be passed separately since Nimbus is not able to serialize the List when
@@ -360,6 +383,64 @@ public class TestJWTAuth extends BasePgSQLTest {
 
     // Basic JWT login with incorrect password.
     assertFailedAuthentication(passRoleUserConnBldr, "123");
+  }
+
+  @Test
+  public void authWithSubjectWithoutIdentFromUrl() throws Exception {
+    try (MockWebServer server = new MockWebServer()) {
+      Dispatcher mDispatcher = new Dispatcher() {
+        @Override
+        public MockResponse dispatch(RecordedRequest request) {
+          if (request.getPath().contains("/jwks_keys")) {
+            return new MockResponse().setResponseCode(200)
+                                     .setBody(jwks.toString(true));
+          }
+          if (request.getPath().contains("/invalid_json")) {
+            return new MockResponse().setResponseCode(200)
+                                      .setBody("invalid json");
+          }
+          return new MockResponse().setResponseCode(404);
+        }
+      };
+      server.setDispatcher(mDispatcher);
+      server.start();
+      String serverUrl = String.format("\"\"http://%s:%s/jwks_keys\"\"",
+                                      server.getHostName(), server.getPort());
+
+      setJWTConfigAndRestartClusterWithUrl(ALLOWED_ISSUERS, ALLOWED_AUDIENCES, /* jwksPath */ "",
+          /* matchingClaimKey */ "", /* mapName */ "", /* identFileContents */ "", serverUrl);
+
+      List<Pair<JWSAlgorithm, String>> keysWithAlgorithms =
+        new ArrayList<Pair<JWSAlgorithm, String>>() {
+          {
+            add(new Pair<JWSAlgorithm, String>(JWSAlgorithm.RS256, RS256_KEYID));
+            add(new Pair<JWSAlgorithm, String>(JWSAlgorithm.PS256, PS256_KEYID));
+            add(new Pair<JWSAlgorithm, String>(JWSAlgorithm.ES256, ES256_KEYID));
+            add(new Pair<JWSAlgorithm, String>(JWSAlgorithm.RS256, RS256_KEYID_WITH_X5C));
+            add(new Pair<JWSAlgorithm, String>(JWSAlgorithm.PS256, PS256_KEYID_WITH_X5C));
+            add(new Pair<JWSAlgorithm, String>(JWSAlgorithm.ES256, ES256_KEYID_WITH_X5C));
+          }
+        };
+
+      try (Statement statement = connection.createStatement()) {
+        statement.execute("CREATE ROLE testuser1 LOGIN");
+      }
+
+      ConnectionBuilder passRoleUserConnBldr = getConnectionBuilder().withUser("testuser1");
+
+      // Ensure that login works with each key type.
+      for (Pair<JWSAlgorithm, String> key : keysWithAlgorithms) {
+        String jwt = createJWT(key.getFirst(), jwks, key.getSecond(), "testuser1",
+            "login.issuer1.secured.example.com/2ac843f8-2156-11ee-be56-0242ac120002/v2.0",
+            "795c2b42-2156-11ee-be56-0242ac120002", ISSUED_AT_TIME, EXPIRATION_TIME, null);
+        assertSuccessfulAuthentication(passRoleUserConnBldr, jwt);
+      }
+
+      // Basic JWT login with incorrect password.
+      assertFailedAuthentication(passRoleUserConnBldr, "123");
+
+      server.shutdown();
+    }
   }
 
   @Test
@@ -665,12 +746,72 @@ public class TestJWTAuth extends BasePgSQLTest {
   }
 
   @Test
+  public void invalidJWTJwksUrl() throws Exception {
+    try (MockWebServer server = new MockWebServer()) {
+      Dispatcher mDispatcher = new Dispatcher() {
+        @Override
+        public MockResponse dispatch(RecordedRequest request) {
+          if (request.getPath().contains("/jwks_keys")) {
+            return new MockResponse().setResponseCode(200)
+                                     .setBody(jwks.toString(true));
+          }
+          if (request.getPath().contains("/invalid_json")) {
+            return new MockResponse().setResponseCode(200)
+                                      .setBody("invalid json");
+          }
+          return new MockResponse().setResponseCode(404);
+        }
+      };
+      server.setDispatcher(mDispatcher);
+      server.start();
+      String serverUrl = String.format("\"\"http://%s:%s/random_url\"\"",
+                                      server.getHostName(), server.getPort());
+
+      setJWTConfigAndRestartClusterWithUrl(ALLOWED_ISSUERS, ALLOWED_AUDIENCES, /* jwksPath */ "",
+          /* matchingClaimKey */ "", /* mapName */ "", /* identFileContents */ "", serverUrl);
+
+      testFailedAuthentication(jwks);
+      server.shutdown();
+    }
+  }
+
+  @Test
   public void invalidJWKSJson() throws Exception {
     String jwksPath = populateJWKSFile("some_invalid_json");
     setJWTConfigAndRestartCluster(ALLOWED_ISSUERS, ALLOWED_AUDIENCES, jwksPath,
         /* matchingClaimKey */ "", /* mapName */ "", /* identFileContents */ "");
 
     testFailedAuthentication(jwks);
+  }
+
+  @Test
+  public void invalidJWKSJsonFromUrl() throws Exception {
+    try (MockWebServer server = new MockWebServer()) {
+      Dispatcher mDispatcher = new Dispatcher() {
+        @Override
+        public MockResponse dispatch(RecordedRequest request) {
+          if (request.getPath().contains("/jwks_keys")) {
+            return new MockResponse().setResponseCode(200)
+                                     .setBody(jwks.toString(true));
+          }
+          if (request.getPath().contains("/invalid_json")) {
+            return new MockResponse().setResponseCode(200)
+                                      .setBody("invalid json");
+          }
+          return new MockResponse().setResponseCode(404);
+        }
+      };
+      server.setDispatcher(mDispatcher);
+      server.start();
+      String serverUrl = String.format("\"\"http://%s:%s/invalid_json\"\"",
+                                       server.getHostName(), server.getPort());
+
+      setJWTConfigAndRestartClusterWithUrl(ALLOWED_ISSUERS, ALLOWED_AUDIENCES, /* jwksPath */ "",
+          /* matchingClaimKey */ "", /* mapName */ "", /* identFileContents */ "", serverUrl);
+
+      testFailedAuthentication(jwks);
+      server.shutdown();
+    }
   }
 
   // Asserts that the cluster restart failed by expecting an exception. There doesn't seem to be a

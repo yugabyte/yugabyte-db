@@ -181,7 +181,9 @@ public class SessionController extends AbstractPlatformController {
 
   @ApiOperation(
       nickname = "getSessionInfo",
-      value = "Get current user/customer uuid auth/api token",
+      value =
+          "Get current user and customer uuid. This will not generate or return the API token, use"
+              + " /api_token API for that.",
       authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH),
       response = SessionInfo.class)
   @With(TokenAuthenticator.class)
@@ -193,8 +195,8 @@ public class SessionController extends AbstractPlatformController {
     SessionInfo sessionInfo =
         new SessionInfo(
             authCookie.isPresent() ? authCookie.get().value() : null,
-            user.getOrCreateApiToken(),
-            user.getApiTokenVersion(),
+            null,
+            null,
             cust.getUuid(),
             user.getUuid());
     return withData(sessionInfo);
@@ -363,7 +365,7 @@ public class SessionController extends AbstractPlatformController {
                 .build());
   }
 
-  @ApiOperation(value = "Authenticate user and return api token", response = SessionInfo.class)
+  @ApiOperation(value = "Authenticate user using email and password", response = SessionInfo.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "CustomerLoginFormData",
@@ -378,11 +380,7 @@ public class SessionController extends AbstractPlatformController {
 
     SessionInfo sessionInfo =
         new SessionInfo(
-            null,
-            user.getOrCreateApiToken(),
-            user.getApiTokenVersion(),
-            cust.getUuid(),
-            user.getUuid());
+            null, user.upsertApiToken(), user.getApiTokenVersion(), cust.getUuid(), user.getUuid());
     RequestContext.update(IS_AUDITED, val -> val.set(true));
     Audit.create(
         user,
@@ -549,7 +547,7 @@ public class SessionController extends AbstractPlatformController {
       if (user == null) {
         throw new PlatformServiceException(FORBIDDEN, "Invalid User saved.");
       }
-      String apiToken = user.getOrCreateApiToken();
+      String apiToken = user.upsertApiToken();
 
       SessionInfo sessionInfo =
           new SessionInfo(
@@ -593,7 +591,7 @@ public class SessionController extends AbstractPlatformController {
     configHelper.loadConfigToDB(Security, ImmutableMap.of("level", data.level));
     if (data.level.equals("insecure")) {
       Users user = CommonUtils.getUserFromContext();
-      user.getOrCreateApiToken();
+      user.upsertApiToken();
 
       try {
         InputStream featureStream = environment.resourceAsStream("ossFeatureConfig.json");
@@ -614,7 +612,7 @@ public class SessionController extends AbstractPlatformController {
   }
 
   @With(TokenAuthenticator.class)
-  @ApiOperation(value = "UI_ONLY", hidden = true, response = SessionInfo.class)
+  @ApiOperation(value = "Regenerate and fetch API token", response = SessionInfo.class)
   @AuthzPath
   public Result api_token(UUID customerUUID, Long apiTokenVersion, Http.Request request) {
     Users user = CommonUtils.getUserFromContext();
@@ -736,7 +734,7 @@ public class SessionController extends AbstractPlatformController {
     }
 
     String authToken = user.createAuthToken();
-    String apiToken = generateApiToken ? user.getOrCreateApiToken() : null;
+    String apiToken = generateApiToken ? user.upsertApiToken() : null;
     SessionInfo sessionInfo =
         new SessionInfo(
             authToken, apiToken, user.getApiTokenVersion(), user.getCustomerUUID(), user.getUuid());

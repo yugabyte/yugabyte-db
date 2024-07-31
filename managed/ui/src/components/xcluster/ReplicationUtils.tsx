@@ -1,5 +1,6 @@
 import { useQuery } from 'react-query';
 import moment from 'moment';
+import i18n from 'i18next';
 
 import { getAlertConfigurations } from '../../actions/universe';
 import { fetchReplicationLag, isBootstrapRequired } from '../../actions/xClusterReplication';
@@ -12,7 +13,9 @@ import {
   BROKEN_XCLUSTER_CONFIG_STATUSES,
   XClusterConfigType,
   XClusterTableEligibility,
-  XCLUSTER_SUPPORTED_TABLE_TYPES
+  XClusterTableStatus,
+  TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD,
+  XCLUSTER_UNDEFINED_LAG_NUMERIC_REPRESENTATION
 } from './constants';
 import {
   alertConfigQueryKey,
@@ -21,22 +24,30 @@ import {
   universeQueryKey
 } from '../../redesign/helpers/api';
 import { getUniverseStatus } from '../universes/helpers/universeHelpers';
-import { UnavailableUniverseStates, YBTableRelationType } from '../../redesign/helpers/constants';
+import { UnavailableUniverseStates } from '../../redesign/helpers/constants';
 import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
 import { SortOrder } from '../../redesign/helpers/constants';
 import { getTableUuid } from '../../utils/tableUtils';
+import { compareYBSoftwareVersions, getPrimaryCluster } from '../../utils/universeUtilsTyped';
 
 import {
   Metrics,
   MetricTimeRange,
   StandardMetricTimeRangeOption,
-  XClusterTable,
+  XClusterReplicationTable,
   MainTableReplicationCandidate,
   IndexTableReplicationCandidate,
-  XClusterTableType
+  XClusterTableType,
+  XClusterTable
 } from './XClusterTypes';
 import { XClusterConfig, XClusterTableDetails } from './dtos';
-import { MetricTrace, TableType, Universe, YBTable } from '../../redesign/helpers/dtos';
+import {
+  MetricTrace,
+  TableType,
+  Universe,
+  UniverseNamespace,
+  YBTable
+} from '../../redesign/helpers/dtos';
 import {
   AlertTemplate,
   AlertThresholdCondition,
@@ -87,13 +98,13 @@ export const CurrentReplicationLag = ({
     api.fetchUniverse(sourceUniverseUuid)
   );
 
-  const replciationLagMetricRequestParams = {
+  const replicationLagMetricRequestParams = {
     nodePrefix: sourceUniverseQuery.data?.universeDetails.nodePrefix,
-    replicationUuid: xClusterConfigUuid
+    xClusterConfigUuid
   };
   const universeLagQuery = useQuery(
-    metricQueryKey.live(replciationLagMetricRequestParams, '1', 'hour'),
-    () => fetchReplicationLag(replciationLagMetricRequestParams),
+    metricQueryKey.live(replicationLagMetricRequestParams, '1', 'hour'),
+    () => fetchReplicationLag(replicationLagMetricRequestParams),
     {
       enabled: !!sourceUniverseQuery.data
     }
@@ -167,14 +178,14 @@ export const CurrentTableReplicationLag = ({
   sourceUniverseUUID: string | undefined;
   xClusterConfigStatus: XClusterConfigStatus;
 }) => {
-  const replciationLagMetricRequestParams = {
+  const replicationLagMetricRequestParams = {
     nodePrefix,
     streamId,
     tableId
   };
   const tableLagQuery = useQuery(
-    metricQueryKey.live(replciationLagMetricRequestParams, '1', 'hour'),
-    () => fetchReplicationLag(replciationLagMetricRequestParams),
+    metricQueryKey.live(replicationLagMetricRequestParams, '1', 'hour'),
+    () => fetchReplicationLag(replicationLagMetricRequestParams),
     {
       enabled: queryEnabled
     }
@@ -380,7 +391,6 @@ export const getEnabledConfigActions = (
     case XClusterConfigStatus.RUNNING:
       return [
         replication.paused ? XClusterConfigAction.RESUME : XClusterConfigAction.PAUSE,
-        XClusterConfigAction.ADD_TABLE,
         XClusterConfigAction.MANAGE_TABLE,
         XClusterConfigAction.DB_SYNC,
         XClusterConfigAction.DELETE,
@@ -533,19 +543,68 @@ export const isTableToggleable = (
   (xClusterConfigAction === XClusterConfigAction.MANAGE_TABLE &&
     table.eligibilityDetails.status === XClusterTableEligibility.ELIGIBLE_IN_CURRENT_CONFIG);
 
-export const shouldAutoIncludeIndexTables = (xClusterConfig: XClusterConfig) =>
-  xClusterConfig.type === XClusterConfigType.TXN || xClusterConfig.tableType !== 'YSQL';
+export const shouldAutoIncludeIndexTables = (xClusterConfig: XClusterConfig | undefined) =>
+  xClusterConfig ? xClusterConfig.type === XClusterConfigType.TXN : true;
+
+export const getIsTransactionalAtomicityEnabled = (
+  sourceUniverse: Universe,
+  targetUniverse?: Universe
+) => {
+  const ybSoftwareVersion = getPrimaryCluster(sourceUniverse.universeDetails.clusters)?.userIntent
+    .ybSoftwareVersion;
+  const participatingUniverses = targetUniverse
+    ? [sourceUniverse, targetUniverse]
+    : [sourceUniverse];
+  const participantsHaveLinkedXClusterConfig = hasLinkedXClusterConfig(participatingUniverses);
+  return (
+    !!ybSoftwareVersion &&
+    compareYBSoftwareVersions({
+      versionA: TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD,
+      versionB: ybSoftwareVersion,
+      options: {
+        suppressFormatError: true
+      }
+    }) < 0 &&
+    !participantsHaveLinkedXClusterConfig
+  );
+};
 
 /**
- * Returns array of XClusterTable by augmenting YBTable with XClusterTableDetails
+ * Returns a string identifier for a given namespace using fields provided from the
+ * `GET /customers/{customerUuid}/universes/{universeUuid}/namespaces` endpoint.
  */
-export const augmentTablesWithXClusterDetails = (
-  ybTable: YBTable[],
+export const getNamespaceIdentifier = (namespaceName: string, tableType: string) =>
+  `${namespaceName}-${tableType}`;
+
+/**
+ * Returns a map keyed by `<namespaceName>-<namespaceTableType>`.
+ */
+export const getNamespaceIdentifierToNamespaceUuidMap = (
+  namespaces: UniverseNamespace[]
+): { [namespaceName: string]: string } =>
+  // It is important to add tableType to the key because it is possible
+  // to have a YSQL namespace and a YCQL namespace with the same name.
+  Object.fromEntries(
+    namespaces.map((namespace) => [
+      getNamespaceIdentifier(namespace.name, namespace.tableType),
+      namespace.namespaceUUID
+    ])
+  );
+
+/**
+ * Returns array of XClusterReplicationTable or array of XClusterTable by augmenting YBTable with XClusterTableDetails.
+ * - XClusterReplicationTable: may contain dropped tables
+ * - XClusterTable: doest not contain dropped tables
+ */
+export const augmentTablesWithXClusterDetails = <TIncludeDroppedTables extends boolean>(
+  sourceUniverseTables: YBTable[],
   xClusterConfigTables: XClusterTableDetails[],
-  metricTraces?: MetricTrace[]
-): XClusterTable[] => {
-  const ybTableMap = new Map<string, YBTable>(
-    ybTable.map((table) => {
+  maxAcceptableLag: number | undefined,
+  metricTraces: MetricTrace[] | undefined,
+  options?: { includeDroppedTables: TIncludeDroppedTables }
+): TIncludeDroppedTables extends true ? XClusterReplicationTable[] : XClusterTable[] => {
+  const tableIdToSourceUniverseTableDetails = new Map<string, YBTable>(
+    sourceUniverseTables.map((table) => {
       const { tableUUID, ...tableDetails } = table;
       const adaptedTableUUID = formatUuidForXCluster(getTableUuid(table));
       return [adaptedTableUUID, { ...tableDetails, tableUUID: adaptedTableUUID }];
@@ -559,20 +618,48 @@ export const augmentTablesWithXClusterDetails = (
       parseFloatIfDefined(trace.y[trace.y.length - 1])
     ])
   );
-  const tables = xClusterConfigTables.reduce((tables: XClusterTable[], table) => {
-    const ybTableDetails = ybTableMap.get(table.tableId);
-    const replicationLag = tableIdToReplicationLag.get(table.tableId);
-    if (ybTableDetails) {
-      const { tableId, ...xClusterTableDetails } = table;
-      tables.push({ ...ybTableDetails, ...xClusterTableDetails, replicationLag });
-    } else {
-      console.error(
-        `Missing table details for table ${table.tableId}. This table was found in an xCluster configuration but not in the corresponding source universe.`
-      );
+
+  const tableStatusTranslationPrefix = 'clusterDetail.xCluster.config.tableStatus';
+  // Augment tables in the current xCluster config with additional table details for the YBA UI.
+  const tables = xClusterConfigTables.reduce((tables: XClusterReplicationTable[], table) => {
+    const { tableId, ...xClusterTableDetails } = table;
+    const sourceUniverseTableDetails = tableIdToSourceUniverseTableDetails.get(tableId);
+    // We use -1 to indicate 'not reported'/undefined lag. This is because it is easier to work with
+    // when sorting or filtering by replication lag.
+    const replicationLag =
+      tableIdToReplicationLag.get(tableId) ?? XCLUSTER_UNDEFINED_LAG_NUMERIC_REPRESENTATION;
+    if (sourceUniverseTableDetails) {
+      const tableStatus =
+        xClusterTableDetails.status === XClusterTableStatus.RUNNING &&
+        maxAcceptableLag &&
+        replicationLag &&
+        replicationLag > maxAcceptableLag
+          ? XClusterTableStatus.WARNING
+          : xClusterTableDetails.status;
+      tables.push({
+        ...sourceUniverseTableDetails,
+        ...xClusterTableDetails,
+        status: tableStatus,
+        statusLabel: i18n.t(`${tableStatusTranslationPrefix}.${tableStatus}`),
+        replicationLag
+      });
+    } else if (options?.includeDroppedTables) {
+      // The current tableId is deleted on the source universe.
+      const tableStatus = XClusterTableStatus.DROPPED;
+      tables.push({
+        ...xClusterTableDetails,
+        tableUUID: tableId,
+        status: tableStatus,
+        statusLabel: i18n.t(`${tableStatusTranslationPrefix}.${tableStatus}`),
+        replicationLag
+      });
     }
     return tables;
   }, []);
-  return tables;
+
+  return tables as TIncludeDroppedTables extends true
+    ? XClusterReplicationTable[]
+    : XClusterTable[];
 };
 
 /**

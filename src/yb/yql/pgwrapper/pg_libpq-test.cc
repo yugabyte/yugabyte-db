@@ -3727,6 +3727,49 @@ TEST_P(PgOidCollisionTest, TablespaceOidCollision) {
   ASSERT_EQ(max_oid, kPgFirstNormalObjectId + num_tablespaces * 2 - 1);
 }
 
+class PgOidCollisionReservedNormalOid
+    : public PgOidCollisionTestBase {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgOidCollisionTestBase::UpdateMiniClusterOptions(options);
+    // This gflag simulates the scenario that OIDs < 65532 are already allocated
+    // so the next OID to allocate will be FirstNormalObjectId + 49148 = 65532.
+    options->extra_tserver_flags.push_back(
+        Format("--TEST_ysql_oid_prefetch_adjustment=49148"));
+  }
+};
+
+TEST_F(PgOidCollisionReservedNormalOid, PgOidCollisionSystemPostgresTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  for (int i = 0; i < 4; i++) {
+    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE test_db$0", i));
+  }
+  conn = ASSERT_RESULT(ConnectToDB("test_db3"));
+  for (int i = 0; i < 2; i++) {
+    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE t$0 (id int)", i));
+  }
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k SERIAL, v INT)"));
+  auto query = "SELECT oid FROM pg_database WHERE oid >= 16384"s;
+  auto values = ASSERT_RESULT(conn.FetchRows<PGOid>(query));
+  std::unordered_set<PgOid> user_created_db_oids;
+  for (const auto& oid : values) {
+    user_created_db_oids.insert(oid);
+  }
+  std::unordered_set<PgOid> expected = std::unordered_set<PgOid>(
+     {65532, 65533, 65534, 65536});
+  ASSERT_TRUE(user_created_db_oids == expected) << yb::ToString(user_created_db_oids);
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  master::GetNamespaceInfoResponsePB namespace_info;
+  ASSERT_OK(client->GetNamespaceInfo(
+      "" /* namespace_id */, "system_postgres", YQL_DATABASE_PGSQL, &namespace_info));
+
+  const auto db_oid = CHECK_RESULT(GetPgsqlDatabaseOid(
+      namespace_info.namespace_().id()));
+  // Make sure the reserved db_oid for system_postgres hasn't changed otherwise
+  // the value of --TEST_ysql_oid_prefetch_adjustment in this test needs to be
+  // adjusted.
+  ASSERT_EQ(db_oid, 65535);
+}
+
 class PgLibPqTempTest: public PgLibPqTest {
  public:
   Status TestDeletedByQuery(
@@ -3905,6 +3948,53 @@ TEST_F(PgLibPqTest, CatalogCacheMemoryLeak) {
   }
 }
 
+static int GetCacheMissCount(const string& metric_instance) {
+  auto begin = metric_instance.find("} ");
+  int count;
+  std::istringstream(metric_instance.substr(begin + 2)) >> count;
+  return count;
+}
+
+TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  // Make a new connection to see more cache misses (by default we will only
+  // preload the catalog caches for the first connection).
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT, value TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t (key, value) VALUES (1, 'hello')"));
+  auto result = ASSERT_RESULT(conn.Fetch("SELECT * FROM t"));
+  ExternalTabletServer* ts = cluster_->tablet_server(0);
+  auto hostport = Format("$0:$1", ts->bind_host(), ts->pgsql_http_port());
+  auto pg_metrics_url = Substitute(
+      "http://$0/prometheus-metrics?reset_histograms=false&show_help=false",
+      hostport);
+  EasyCurl c;
+  faststring buf;
+  ASSERT_OK(c.FetchURL(pg_metrics_url, &buf));
+  string page_content = buf.ToString();
+  auto cache_miss_metric =
+    "handler_latency_yb_ysqlserver_SQLProcessor_CatalogCacheMisses_count";
+  auto begin = page_content.find(cache_miss_metric);
+  auto end = page_content.find("\n", begin);
+  auto expected = GetCacheMissCount(page_content.substr(begin, end - begin));
+  ASSERT_GT(expected, 0);
+  LOG(INFO) << "Expected total cache misses: " << expected;
+  int total_cache_misses = 0;
+  for (int i = 0; ; ++i) {
+    auto cache_miss_metric_id =
+      Format("handler_latency_yb_ysqlserver_SQLProcessor_CatalogCacheMisses_$0_", i);
+    begin = page_content.find(cache_miss_metric_id);
+    if (begin == std::string::npos) {
+      break;
+    }
+    end = page_content.find("\n", begin);
+    auto cache_misses = GetCacheMissCount(page_content.substr(begin, end - begin));
+    ASSERT_GE(cache_misses, 0);
+    total_cache_misses += cache_misses;
+  }
+  ASSERT_EQ(total_cache_misses, expected);
+}
+
 class PgLibPqCreateSequenceNamespaceRaceTest : public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.push_back(
@@ -3930,6 +4020,24 @@ TEST_F(PgLibPqCreateSequenceNamespaceRaceTest, CreateSequenceNamespaceRaceTest) 
     ASSERT_OK(conn2.Execute("INSERT INTO t2(v) VALUES(2)"));
   });
   thread_holder.WaitAndStop(10s * kTimeMultiplier);
+}
+
+class PgLibPqDropIndexDelayTest : public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_master_flags.push_back(
+        "--TEST_delay_clearing_fully_applied_ms=5000");
+  }
+};
+
+TEST_F(PgLibPqDropIndexDelayTest, DropIndexDelayUpdateTableTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+    "CREATE TABLE IF NOT EXISTS tb_1 "
+    "(k varchar PRIMARY KEY, v1 VARCHAR, v2 integer)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX idx1_tb_1 ON tb_1 (k)"));
+  ASSERT_OK(conn.Execute("DROP INDEX idx1_tb_1"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE tempTable2 AS SELECT * FROM tb_1 limit 1000000"));
 }
 
 class PgBackendsSessionExpireTest : public LibPqTestBase {

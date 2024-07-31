@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include <ostream>
+
 #include "yb/util/slice.h"
 
 namespace yb {
@@ -36,6 +38,10 @@ struct FetchedEntry {
     return YB_STRUCT_TO_STRING(
         (key, key.ToDebugString()), (value, value.ToDebugString()), write_time, same_transaction,
         valid);
+  }
+
+  friend std::ostream& operator<<(std::ostream& out, const FetchedEntry& entry) {
+    return out << entry.ToString();
   }
 };
 
@@ -84,9 +90,14 @@ class IntentAwareIteratorIf {
   // appended byte is removed when the method returns.
   virtual void SeekOutOfSubDoc(dockv::KeyBytes* key_bytes) = 0;
 
-  // Position the iterator at the beginning of the DocKey found before the doc_key
-  // provided.
+  // Positions the iterator at the beginning of the DocKey found before the given encoded_doc_key.
+  // If fast backward scan is enabled, the method positions the iterator at the end (at the last
+  // record) of the DocKey found before the doc_key provided.
+  // The difference between PrevDocKey and SeekPrevDocKey is that the latter does a Seek always,
+  // while the former may use Prev call, which gives less overhead. Generally, SeekPrevDocKey
+  // should be used for the first positioning and further iteration should happen using PrevDocKey.
   virtual void PrevDocKey(Slice encoded_doc_key) = 0;
+  virtual void SeekPrevDocKey(Slice encoded_doc_key) = 0;
 
   virtual const ReadHybridTime& read_time() const = 0;
   virtual Result<HybridTime> RestartReadHt() const = 0;
@@ -95,7 +106,6 @@ class IntentAwareIteratorIf {
   // contain the DocHybridTime but is returned separately and optionally.
   virtual Result<const FetchedEntry&> Fetch() = 0;
 
-  virtual Slice SetUpperbound(Slice upperbound) = 0;
 
   // Helper function to get the current position of the iterator.
   virtual std::string DebugPosToString() = 0;

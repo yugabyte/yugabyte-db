@@ -43,7 +43,7 @@ type: indexpage
     <a class="section-link icon-offset" href="universe-issues/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
-        <div class="title">Cloud provided configuration issues</div>
+        <div class="title">Cloud provider configuration issues</div>
       </div>
       <div class="body">
         Troubleshoot issues encountered when configuring cloud providers.

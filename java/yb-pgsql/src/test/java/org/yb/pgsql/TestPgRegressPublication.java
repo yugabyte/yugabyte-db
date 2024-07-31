@@ -27,12 +27,8 @@ public class TestPgRegressPublication extends BasePgRegressTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     if (isTestRunningWithConnectionManager()) {
-      flagMap.put("allowed_preview_flags_csv",
-        "ysql_yb_enable_replication_commands,enable_ysql_conn_mgr");
-    } else {
-      flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_replication_commands");
+      flagMap.put("allowed_preview_flags_csv", "enable_ysql_conn_mgr");
     }
-    flagMap.put("ysql_yb_enable_replication_commands", "true");
     return flagMap;
   }
 

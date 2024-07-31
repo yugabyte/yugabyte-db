@@ -63,6 +63,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiFunction;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -561,6 +562,7 @@ public class TaskExecutor {
     private final AtomicInteger numTasksCompleted;
     // This predicate is invoked right before every subtask in this group.
     private final AtomicReference<Predicate<ITask>> shouldRunPredicateRef;
+    private final AtomicReference<BiFunction<ITask, Throwable, Throwable>> afterRunHandlerRef;
 
     // Parent task runnable to which this group belongs.
     private volatile RunnableTask runnableTask;
@@ -577,6 +579,7 @@ public class TaskExecutor {
       this.ignoreErrors = ignoreErrors;
       this.numTasksCompleted = new AtomicInteger();
       this.shouldRunPredicateRef = new AtomicReference<>();
+      this.afterRunHandlerRef = new AtomicReference<>();
     }
 
     /**
@@ -766,9 +769,26 @@ public class TaskExecutor {
      * This allows subtasks to be skipped based on additional conditions after they are already
      * added. The subtasks appear in the list of subtasks but are not run.
      */
-    public void setShouldRunPredicate(Predicate<ITask> predicate) {
+    public SubTaskGroup setShouldRunPredicate(Predicate<ITask> predicate) {
       Preconditions.checkNotNull(predicate, "ShouldRun predicate cannot be null");
       shouldRunPredicateRef.set(predicate);
+      return this;
+    }
+
+    /**
+     * Set a custom handler to be invoked for a task after the task is executed successfully or
+     * unsuccessfully. For failed execution, the function is called with the exception. The handler
+     * can choose to ignore it by returning null. The default behavior is to fail the task on
+     * exception.
+     *
+     * @param handler the handler function returning the exception to be thrown on failure. If it is
+     *     null, the error is ignored and the task is marked success.
+     * @return the current subtask group.
+     */
+    public SubTaskGroup setAfterRunHandler(BiFunction<ITask, Throwable, Throwable> handler) {
+      Preconditions.checkNotNull(handler, "After-run handler cannot be null");
+      afterRunHandlerRef.set(handler);
+      return this;
     }
 
     private String title() {
@@ -910,21 +930,17 @@ public class TaskExecutor {
           isTaskSkipped = true;
           log.info("Skipping task {} beause it is set to not run", getTaskInfo());
         }
-        setTaskState(TaskInfo.State.Success);
-      } catch (CancellationException e) {
-        t = e;
-        updateTaskDetailsOnError(TaskInfo.State.Aborted, e);
-        throw e;
       } catch (Exception e) {
-        if (ExceptionUtils.hasCause(e, CancellationException.class)) {
-          t = new CancellationException(e.getMessage());
-          updateTaskDetailsOnError(TaskInfo.State.Aborted, e);
-        } else {
-          t = e;
-          updateTaskDetailsOnError(TaskInfo.State.Failure, e);
-        }
-        Throwables.propagate(t);
+        t = e;
       } finally {
+        t = handleAfterRun(getTask(), t);
+        if (t == null) {
+          setTaskState(TaskInfo.State.Success);
+        } else if (ExceptionUtils.hasCause(t, CancellationException.class)) {
+          updateTaskDetailsOnError(TaskInfo.State.Aborted, t);
+        } else {
+          updateTaskDetailsOnError(TaskInfo.State.Failure, t);
+        }
         taskCompletionTime = Instant.now();
         if (log.isDebugEnabled()) {
           log.debug(
@@ -936,6 +952,9 @@ public class TaskExecutor {
             taskLabels, taskStartTime, taskCompletionTime, getTaskState(), isTaskSkipped);
         task.terminate();
         publishAfterTask(t);
+      }
+      if (t != null) {
+        Throwables.propagate(t);
       }
     }
 
@@ -973,6 +992,12 @@ public class TaskExecutor {
     protected abstract UUID getUserTaskUUID();
 
     protected abstract boolean shouldRun(ITask task);
+
+    /**
+     * Invoked after a run of a task to either report or suppress error. If the throwable is not
+     * returned, the error is suppressed.
+     */
+    protected abstract Throwable handleAfterRun(ITask task, Throwable t);
 
     Duration getTimeLimit() {
       return timeLimit;
@@ -1296,6 +1321,11 @@ public class TaskExecutor {
     protected boolean shouldRun(ITask task) {
       return true;
     }
+
+    @Override
+    protected Throwable handleAfterRun(ITask task, Throwable t) {
+      return t;
+    }
   }
 
   /** Runnable task for subtasks in a task. */
@@ -1392,6 +1422,15 @@ public class TaskExecutor {
     protected boolean shouldRun(ITask task) {
       Predicate<ITask> predicate = subTaskGroup.shouldRunPredicateRef.get();
       return predicate == null ? true : predicate.test(task);
+    }
+
+    @Override
+    protected Throwable handleAfterRun(ITask task, Throwable t) {
+      if (t != null && ExceptionUtils.hasCause(t, CancellationException.class)) {
+        return new CancellationException(t.getMessage());
+      }
+      BiFunction<ITask, Throwable, Throwable> consumer = subTaskGroup.afterRunHandlerRef.get();
+      return consumer == null ? t : consumer.apply(task, t);
     }
   }
 }

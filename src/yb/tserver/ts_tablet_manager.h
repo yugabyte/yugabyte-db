@@ -179,7 +179,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
     return admin_triggered_compaction_pool_.get();
   }
   ThreadPool* waiting_txn_pool() const { return waiting_txn_pool_.get(); }
-  ThreadPool* flush_retryable_requests_pool() const { return flush_retryable_requests_pool_.get(); }
+  ThreadPool* flush_bootstrap_state_pool() const { return flush_bootstrap_state_pool_.get(); }
 
   // Create a new tablet and register it with the tablet manager. The new tablet
   // is persisted on disk and opened before this method returns.
@@ -533,6 +533,10 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   Status StartSubtabletsSplit(
       const tablet::RaftGroupMetadata& source_tablet_meta, SplitTabletsCreationMetaData* tcmetas);
 
+  Status DoApplyCloneTablet(
+      tablet::CloneOperation* operation, log::Log* raft_log,
+      std::optional<consensus::RaftConfigPB> committed_raft_config);
+
   // Creates tablet peer and schedules opening the tablet.
   // See CreateAndRegisterTabletPeer and OpenTablet.
   void CreatePeerAndOpenTablet(
@@ -701,7 +705,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   std::unique_ptr<ThreadPool> read_pool_;
 
   // Thread pool for flushing retryable requests.
-  std::unique_ptr<ThreadPool> flush_retryable_requests_pool_;
+  std::unique_ptr<ThreadPool> flush_bootstrap_state_pool_;
 
   // Thread pool for manually triggering full compactions for tablets, either via schedule
   // of tablets created from a split.

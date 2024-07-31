@@ -102,8 +102,8 @@ ColumnSortingOptions(SortByDir dir, SortByNulls nulls, bool* is_desc, bool* is_n
 /*  Database Functions. */
 
 void
-YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, const char *src_dbname, Oid next_oid, bool colocated,
-				  bool *retry_on_oid_collision, int64 clone_time)
+YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bool colocated,
+				  bool *retry_on_oid_collision, YbCloneInfo *yb_clone_info)
 {
 	if (YBIsDBCatalogVersionMode())
 	{
@@ -125,10 +125,9 @@ YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, const char *src_
 	HandleYBStatus(YBCPgNewCreateDatabase(dbname,
 										  dboid,
 										  src_dboid,
-										  src_dbname,
 										  next_oid,
 										  colocated,
-										  clone_time,
+										  yb_clone_info,
 										  &handle));
 
 	YBCStatus createdb_status = YBCPgExecCreateDatabase(handle);
@@ -777,10 +776,19 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 		recordDependencyOn(&myself, &tablegroup, DEPENDENCY_NORMAL);
 	}
 
+	OptSplit *split_options = stmt->split_options;
 	bool is_sys_catalog_table = YbIsSysCatalogTabletRelationByIds(relationId,
 																  namespaceId,
 																  schema_name);
 	const bool is_tablegroup = OidIsValid(tablegroupId);
+	/*
+	 * Generate ybrowid ASC sequentially if the flag is on unless a SPLIT INTO
+	 * option is provided, in which case the author likely intended a HASH
+	 * partitioned table.
+	 */
+	const bool can_generate_ybrowid_sequentially =
+		(*YBCGetGFlags()->TEST_generate_ybrowid_sequentially &&
+		 !(split_options && split_options->split_type == NUM_TABLETS));
 	/*
 	 * The hidden ybrowid column is added when there is no primary key.  This
 	 * column is HASH or ASC sorted depending on certain criteria.
@@ -789,7 +797,7 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 	if (primary_key)
 		ybrowid_mode = PG_YBROWID_MODE_NONE;
 	else if (is_colocated_via_database || is_tablegroup ||
-			 is_sys_catalog_table)
+			 is_sys_catalog_table || can_generate_ybrowid_sequentially)
 		ybrowid_mode = PG_YBROWID_MODE_RANGE;
 	else
 		ybrowid_mode = PG_YBROWID_MODE_HASH;
@@ -817,7 +825,6 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 						  is_tablegroup);
 
 	/* Handle SPLIT statement, if present */
-	OptSplit *split_options = stmt->split_options;
 	if (split_options)
 	{
 		if (is_colocated_via_database)
@@ -1298,15 +1305,18 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 		case AT_DropColumn:
 		case AT_DropColumnRecurse:
 		{
-			/* Skip yb alter for IF EXISTS with non-existent column */
-			if (cmd->missing_ok)
-			{
-				HeapTuple tuple = SearchSysCacheAttName(relationId, cmd->name);
-				if (!HeapTupleIsValid(tuple))
-					break;
-				ReleaseSysCache(tuple);
-			}
-
+			HeapTuple tuple = SearchSysCacheAttName(relationId, cmd->name);
+			/* Skip yb alter for non-existent column */
+			if (!HeapTupleIsValid(tuple))
+				break;
+			AttrNumber attnum = ((Form_pg_attribute) GETSTRUCT(tuple))->attnum;
+			ReleaseSysCache(tuple);
+			/*
+			 * Skip yb alter for primary key columns (the table will be
+			 * rewritten)
+			 */
+			if (YbIsAttrPrimaryKeyColumn(rel, attnum))
+				break;
 			Assert(list_length(handles) == 1);
 			YBCPgStatement drop_col_handle =
 				(YBCPgStatement) lfirst(list_head(handles));
@@ -2020,9 +2030,10 @@ YBCDestroyVirtualWalForCDC()
 
 void
 YBCGetCDCConsistentChanges(const char *stream_id,
-						   YBCPgChangeRecordBatch **record_batch)
+						   YBCPgChangeRecordBatch **record_batch,
+						   YBCTypeEntityProvider type_entity_provider)
 {
-	HandleYBStatus(YBCPgGetCDCConsistentChanges(stream_id, record_batch));
+	HandleYBStatus(YBCPgGetCDCConsistentChanges(stream_id, record_batch, type_entity_provider));
 }
 
 void
@@ -2031,4 +2042,52 @@ YBCUpdateAndPersistLSN(const char *stream_id, XLogRecPtr restart_lsn_hint,
 {
 	HandleYBStatus(YBCPgUpdateAndPersistLSN(stream_id, restart_lsn_hint,
 											confirmed_flush, restart_lsn));
+}
+
+void
+YBCDropColumn(Relation rel, AttrNumber attnum)
+{
+	TupleDesc tupleDesc = RelationGetDescr(rel);
+	Form_pg_attribute attr = TupleDescAttr(tupleDesc, attnum - 1);
+
+	if (YbIsAttrPrimaryKeyColumn(rel, attnum))
+	{
+		/*
+		 * In YB, dropping a primary key involves a table
+		 * rewrite, so invoke the entire ALTER TABLE logic.
+		 */
+
+		/* Construct a dummy query, as we don't have the original query. */
+		char *query_str = psprintf("ALTER TABLE %s DROP COLUMN %s",
+			quote_qualified_identifier(
+				get_namespace_name(rel->rd_rel->relnamespace),
+				RelationGetRelationName(rel)),
+			attr->attname.data);
+		RawStmt *rawstmt =
+			(RawStmt *) linitial(raw_parser(query_str));
+
+		/* Construct the ALTER TABLE command. */
+		AlterTableCmd *cmd = makeNode(AlterTableCmd);
+		cmd->subtype = AT_DropColumn;
+		cmd->name = attr->attname.data;
+		List *cmds = list_make1(cmd);
+
+		EventTriggerAlterTableStart((Node *) rawstmt->stmt);
+		AlterTableInternal(RelationGetRelid(rel), cmds, true);
+		EventTriggerAlterTableEnd();
+
+		pfree(query_str);
+	}
+	else
+	{
+		YBCPgStatement handle = NULL;
+		HandleYBStatus(YBCPgNewAlterTable(
+			YBCGetDatabaseOidByRelid(RelationGetRelid(rel)),
+			YbGetRelfileNodeId(rel),
+			&handle));
+		HandleYBStatus(YBCPgAlterTableDropColumn(
+			handle,
+			attr->attname.data));
+		HandleYBStatus(YBCPgExecAlterTable(handle));
+	}
 }

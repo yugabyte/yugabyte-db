@@ -26,31 +26,72 @@ ysqlsh is installed with YugabyteDB and is located in the `bin` directory of the
 
 If you prefer, you can install a standalone version using any of the following methods:
 
-- Using Docker:
+<ul class="nav nav-tabs nav-tabs-yb">
+  <li >
+    <a href="#macos" class="nav-link active" id="macos-tab" data-bs-toggle="tab" role="tab" aria-controls="macos" aria-selected="true">
+      <i class="fa-brands fa-apple" aria-hidden="true"></i>
+      macOS
+    </a>
+  </li>
+  <li>
+    <a href="#linuxx86" class="nav-link" id="linuxx86-tab" data-bs-toggle="tab" role="tab" aria-controls="linuxx86" aria-selected="true">
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
+      Linux x86
+    </a>
+  </li>
+  <li>
+    <a href="#linuxarm" class="nav-link" id="linuxarm-tab" data-bs-toggle="tab" role="tab" aria-controls="linuxarm" aria-selected="true">
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
+      Linux ARM
+    </a>
+  </li>
+  <li>
+    <a href="#docker" class="nav-link" id="docker-tab" data-bs-toggle="tab" role="tab" aria-controls="docker" aria-selected="true">
+      <i class="fa-brands fa-docker" aria-hidden="true"></i>
+      Docker
+    </a>
+  </li>
+</ul>
 
-    ```sh
-    docker run -it yugabytedb/yugabyte-client ysqlsh -h <hostname> -p <port>
-    ```
+<div class="tab-content">
+  <div id="macos" class="tab-pane fade show active" role="tabpanel" aria-labelledby="macos-tab">
 
-- Using Homebrew:
+```sh
+curl -O https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable"  format="build">}}-darwin-x86_64.tar.gz
+tar xvfz yugabyte-client-{{< yb-version version="stable"  format="build">}}-darwin-x86_64.tar.gz && cd yugabyte-client-{{< yb-version version="stable" >}}/
+```
 
-    ```sh
-    brew tap yugabyte/tap
-    brew install yugabytedb-client
-    ysqlsh
-    ```
+  </div>
+  <div id="linuxx86" class="tab-pane fade" role="tabpanel" aria-labelledby="linuxx86-tab">
 
-- Using a shell script:
+```sh
+wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
+tar xvfz yugabyte-client-{{< yb-version version="stable"  format="build">}}-linux-x86_64.tar.gz
+cd yugabyte-client-{{< yb-version version="stable" >}}
+./bin/post_install.sh
+```
 
-    ```sh
-    $ curl -sSL https://downloads.yugabyte.com/get_clients.sh | bash
-    ```
+  </div>
+  <div id="linuxarm" class="tab-pane fade" role="tabpanel" aria-labelledby="linuxarm-tab">
 
-    If you have `wget`, you can use the following:
+```sh
+wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable" >}}/yugabyte-client-{{< yb-version version="stable" format="build">}}-linux-aarch64.tar.gz
+tar xvfz yugabyte-client-{{< yb-version version="stable" format="build">}}-linux-aarch64.tar.gz
+cd yugabyte-client-{{< yb-version version="stable" >}}
+./bin/post_install.sh
+```
 
-    ```sh
-    wget -q -O - https://downloads.yugabyte.com/get_clients.sh | sh
-    ```
+  </div>
+  <div id="docker" class="tab-pane fade" role="tabpanel" aria-labelledby="docker-tab">
+
+```sh
+docker pull yugabytedb/yugabyte-client:latest
+```
+
+  </div>
+</div>
+
+&nbsp;
 
 ysqlsh works best with servers of the same or an older major version. [Meta-commands](../ysqlsh-meta-commands/) are particularly likely to fail if the server is a newer version than ysqlsh itself. The general functionality of running SQL statements and displaying query results should also work with servers of a newer major version, but this cannot be guaranteed in all cases.
 
@@ -67,6 +108,12 @@ ysqlsh (11.2-YB-2.0.0.0-b0)
 Type "help" for help.
 
 yugabyte=#
+```
+
+Docker:
+
+```sh
+docker run -it yugabytedb/yugabyte-client:latest ysqlsh
 ```
 
 ### Online help
@@ -86,9 +133,9 @@ ysqlsh returns the following to the shell on exit:
 
 ### Connect to a database
 
-{{< note title="YugabyteDB Managed" >}}
+{{< note title="YugabyteDB Aeon" >}}
 
-For information on connecting to a YugabyteDB Managed cluster using ysqlsh, refer to [Connect via client shells](../../yugabyte-cloud/cloud-connect/connect-client-shell/).
+For information on connecting to a YugabyteDB Aeon cluster using ysqlsh, refer to [Connect via client shells](../../yugabyte-cloud/cloud-connect/connect-client-shell/).
 
 {{< /note >}}
 
@@ -256,7 +303,7 @@ Turn on HTML tabular output. This is equivalent to [\pset format html](../ysqlsh
 
 ##### -l, --list
 
-List all available databases, then exit. Other non-connection options are ignored. This is similar to the meta-command [`\list`](../ysqlsh-meta-commands/#l-list-pattern).
+List all available databases, then exit. Other non-connection options are ignored. This is similar to the meta-command [`\list`](../ysqlsh-meta-commands/#l-list-pattern-patterns).
 
 When this option is used, ysqlsh connects to the database `yugabyte`, unless a different database is named on the command line (flag `-d` or non-option argument, possibly using a service entry, but not using an environment variable).
 

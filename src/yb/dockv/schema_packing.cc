@@ -13,6 +13,7 @@
 
 #include "yb/dockv/schema_packing.h"
 
+#include "yb/common/column_id.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
@@ -85,69 +86,334 @@ struct DoGetValueVisitor {
 };
 
 UnsafeStatus NopRouter(
-    const uint8_t* value, void* context, size_t projection_index,
+    PackedColumnRouterData* data,
+    const uint8_t* value, size_t projection_index,
     const PackedColumnDecoderEntry* chain) {
   return UnsafeStatus();
 }
 
-template <PackedRowVersion kVersion, class Factory>
-void FillDecoders(
-    size_t index, size_t num_columns, const ReaderProjection& projection,
-    const SchemaPacking& schema_packing,
-    boost::container::small_vector_base<PackedColumnDecoderEntry>* decoders,
-    const Factory& factory) {
-  --num_columns;
-  int64_t next_packed_index = 0;
-  for (;;) {
-    auto packed_index = schema_packing.GetIndex(projection.columns[index].id);
-    bool last = index == num_columns;
-    if (PREDICT_FALSE(packed_index == SchemaPacking::kSkippedColumnIdx)) {
-      decoders->push_back(factory(index, packed_index, last));
-    } else {
-      if (kVersion == PackedRowVersion::kV2) {
-        while (next_packed_index < packed_index) {
-          auto entry = PgTableRow::GetPackedColumnSkipperV2(
-              schema_packing.column_packing_data(next_packed_index).data_type,
-              next_packed_index);
-          ++next_packed_index;
-          decoders->push_back(entry);
-        }
-      }
-      decoders->push_back(factory(index, packed_index, last));
-      ++next_packed_index;
-    }
-    ++index;
-    if (last) {
-      break;
-    }
+} // namespace
+
+struct PackedColumnRouterData {
+  void* context;
+};
+
+struct PackedRowScope final {
+  uint64_t token = 0;
+  const EncodedDocHybridTime* hybrid_time = nullptr;
+
+  inline bool IsValid(uint64_t token_) const {
+    return token == token_ && hybrid_time != nullptr;
+  }
+
+  inline void Reset() {
+    ++token;
+    hybrid_time = nullptr;
+  }
+
+  std::string ToString() const {
+    return hybrid_time ? YB_STRUCT_TO_STRING(token, *hybrid_time) : "{ <invalid> }";
+  }
+};
+
+struct PackedColumnEntry {
+  inline bool HasUpdate(const PackedRowScope& row_scope) const {
+    return row_scope.IsValid(row_token) && (update_time > *(row_scope.hybrid_time));
+  }
+
+  inline bool HasUpdate(uint64_t row_token_, const EncodedDocHybridTime& ht_time) const {
+    return (row_token == row_token_) && (update_time > ht_time);
+  }
+
+  inline const PackedColumnDecoderEntry& GetDecoder(const PackedRowScope& row_scope) const {
+    return HasUpdate(row_scope) ? skip_decoder : base_decoder;
+  }
+
+  inline void SetDecoders(PackedColumnDecoderEntry&& base, PackedColumnDecoderEntry&& skip) {
+    base_decoder = std::move(base);
+    skip_decoder = std::move(skip);
+  }
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(row_token, update_time);
+  }
+
+ private:
+  uint64_t row_token = 0;
+  EncodedDocHybridTime update_time;
+  PackedColumnDecoderEntry base_decoder;
+  PackedColumnDecoderEntry skip_decoder;
+
+  friend class PackedRowColumnUpdateTracker;
+};
+
+namespace {
+
+template <class Base>
+struct PackedRowScopeDecorator : public Base {
+  const PackedRowScope& row_scope;
+};
+
+using PackedColumnTrackingRouterData    = PackedRowScopeDecorator<PackedColumnRouterData>;
+using PackedColumnTrackingDecoderDataV1 = PackedRowScopeDecorator<PackedColumnDecoderDataV1>;
+using PackedColumnTrackingDecoderDataV2 = PackedRowScopeDecorator<PackedColumnDecoderDataV2>;
+
+
+template <bool kTrackingChain>
+auto CreateDecoderDataV1(
+    PackedColumnRouterData* router_data, const auto& schema_packing, const uint8_t* value) {
+  if constexpr (!kTrackingChain) {
+    return PackedColumnDecoderDataV1 {
+        .decoder = PackedRowDecoderV1(schema_packing, value),
+        .context = router_data->context,
+    };
+  } else {
+    return PackedColumnTrackingDecoderDataV1 {
+        { { schema_packing, value }, router_data->context },
+        static_cast<PackedColumnTrackingRouterData*>(router_data)->row_scope
+    };
   }
 }
 
-UnsafeStatus RoutePackedRowV1(
-    const uint8_t* value, void* context, size_t projection_index,
-    const PackedColumnDecoderEntry* chain) {
-  auto& schema_packing = *bit_cast<const SchemaPacking*>(chain->data);
-  PackedColumnDecoderDataV1 data {
-    .decoder = PackedRowDecoderV1(schema_packing, value),
-    .context = context,
-  };
-  ++chain;
-  return chain->decoder.v1(&data, projection_index, chain);
+template <bool kTrackingChain>
+auto CreateDecoderDataV2(PackedColumnRouterData* router_data, const uint8_t* header) {
+  if constexpr (!kTrackingChain) {
+    return PackedColumnDecoderDataV2 {
+        .header = header,
+        .context = router_data->context
+    };
+  } else {
+    return PackedColumnTrackingDecoderDataV2 {
+        { header, router_data->context },
+        static_cast<PackedColumnTrackingRouterData*>(router_data)->row_scope
+    };
+  }
 }
 
+UnsafeStatus PackedColumnTrackingDecoderV1(
+    PackedColumnDecoderDataV1* data, size_t projection_index,
+    const dockv::PackedColumnDecoderArgsUnion& decoder_args,
+    const PackedColumnDecoderEntry* proxy_chain) {
+  auto* row_data = static_cast<PackedColumnTrackingDecoderDataV1*>(data);
+  VLOG_WITH_FUNC(4)
+      << "Triggering proxy decoder"
+      << ": projection_index = " << projection_index
+      << ", column update = " << decoder_args.column->ToString()
+      << ", packed row scope = " << row_data->row_scope.ToString();
+  const auto& decoder = decoder_args.column->GetDecoder(row_data->row_scope);
+  return decoder.decoder.v1(data, projection_index, decoder.decoder_args, proxy_chain);
+}
+
+template <bool kLast>
+UnsafeStatus PackedColumnSkipDecoderV1(
+    PackedColumnDecoderDataV1* data, size_t projection_index,
+    const dockv::PackedColumnDecoderArgsUnion& decoder_args,
+    const PackedColumnDecoderEntry* proxy_chain) {
+  DCHECK(decoder_args.column == nullptr);
+  VLOG_WITH_FUNC(4)
+      << "Triggering packed column skip decoder"
+      << ": projection_index = " << projection_index;
+  return CallNextDecoderV1<kLast>(data, projection_index, proxy_chain);
+}
+
+inline PackedColumnDecoderV1 MakePackedColumnSkipDecoderV1(bool last) {
+  return last ? &PackedColumnSkipDecoderV1<true> : &PackedColumnSkipDecoderV1<false>;
+}
+
+template <bool kCheckNull>
+UnsafeStatus PackedColumnTrackingDecoderV2(
+    PackedColumnDecoderDataV2* data, const uint8_t* body, size_t projection_index,
+    const dockv::PackedColumnDecoderArgsUnion& decoder_args,
+    const PackedColumnDecoderEntry* proxy_chain) {
+  auto* row_data = static_cast<PackedColumnTrackingDecoderDataV2*>(data);
+  VLOG_WITH_FUNC(4)
+      << "Triggering proxy decoder"
+      << ": projection_index = " << projection_index
+      << ", column update = " << decoder_args.column->ToString()
+      << ", packed row scope = " << row_data->row_scope.ToString();
+  const auto& decoder = decoder_args.column->GetDecoder(row_data->row_scope);
+  if constexpr (kCheckNull) {
+    return decoder.decoder.v2.with_nulls(
+        data, body, projection_index, decoder.decoder_args, proxy_chain);
+  } else {
+    return decoder.decoder.v2.no_nulls(
+        data, body, projection_index, decoder.decoder_args, proxy_chain);
+  }
+}
+
+inline PackedColumnDecodersV2 MakePackedColumnTrackingDecoderV2() {
+  return PackedColumnDecodersV2 {
+    .with_nulls = &PackedColumnTrackingDecoderV2<true>,
+    .no_nulls   = &PackedColumnTrackingDecoderV2<false>
+  };
+}
+
+template <bool kTrackingChain>
+UnsafeStatus RoutePackedRowV1(
+    PackedColumnRouterData* router_data,
+    const uint8_t* value,
+    size_t projection_index,
+    const PackedColumnDecoderEntry* chain) {
+  const auto& schema_packing = *(chain->decoder_args.router.v1.schema_packing);
+
+  auto decoder_data = CreateDecoderDataV1<kTrackingChain>(router_data, schema_packing, value);
+  ++chain;
+
+  return chain->decoder.v1(&decoder_data, projection_index, chain->decoder_args, chain);
+}
+
+template <bool kTrackingChain>
 UnsafeStatus RoutePackedRowV2(
-    const uint8_t* header, void* context, size_t projection_index,
+    PackedColumnRouterData* router_data,
+    const uint8_t* header, size_t projection_index,
     const PackedColumnDecoderEntry* chain) {
   if (*header & RowPackerV2::kHasNullsFlag) {
     ++header;
-    auto body = header + chain->data;
+    auto body = header + chain->decoder_args.router.v2.value_offset;
     ++chain;
+
+    auto decoder_data = CreateDecoderDataV2<kTrackingChain>(router_data, header);
     return chain->decoder.v2.with_nulls(
-        header, body, context, projection_index, chain);
+        &decoder_data, body, projection_index, chain->decoder_args, chain);
   }
   ++chain;
+  auto decoder_data = CreateDecoderDataV2<kTrackingChain>(router_data, nullptr);
   return chain->decoder.v2.no_nulls(
-      nullptr, header + 1, context, projection_index, chain);
+      &decoder_data, header + 1, projection_index, chain->decoder_args, chain);
+}
+
+inline PackedColumnEntry* PrepareColumnEntryV1(
+    PackedColumnEntry& column_entry, PackedColumnDecoderEntry decoder, bool last) {
+  column_entry.SetDecoders(
+      std::move(decoder),
+      { .decoder = { .v1 = MakePackedColumnSkipDecoderV1(last) },
+        .decoder_args = { .column = nullptr } }
+  );
+  return &column_entry;
+}
+
+inline PackedColumnEntry* PrepareColumnEntryV2(
+    PackedColumnEntry& column_entry, PackedColumnDecoderEntry decoder,
+    bool last, const SchemaPacking& schema_packing, int64_t packed_index) {
+  column_entry.SetDecoders(
+      std::move(decoder),
+      PgTableRow::GetPackedColumnSkipperV2(
+          last, /* skip_projection_column */ true,
+          schema_packing.column_packing_data(packed_index).data_type, packed_index)
+  );
+  return &column_entry;
+}
+
+void FillDecodersV1(
+    size_t index,
+    size_t num_columns,
+    const ReaderProjection& projection,
+    const SchemaPacking& schema_packing,
+    const PackedRowDecoderFactory& decoder_factory,
+    PackedRowDecoder::DecoderVectorBase& decoders,
+    PackedRowDecoder::TrackingDecoderVector& tracking_decoders,
+    PackedRowColumnUpdateTracker* column_update_tracker) {
+  // Fill router entry.
+  decoders.push_back({
+      .decoder = { .router = &RoutePackedRowV1</* kTrackingChain */ false> },
+      .decoder_args = { .router = { .v1 = { .schema_packing = &schema_packing } } }
+  });
+  if (column_update_tracker) {
+    tracking_decoders.push_back({
+        .decoder = { .router = &RoutePackedRowV1</* kTrackingChain */ true> },
+        .decoder_args = decoders.back().decoder_args
+    });
+  }
+
+  // Fill decoders entries.
+  VLOG_WITH_FUNC(4) <<
+      "index = " << index << ", num cols = " << num_columns << ", "
+      "decoders = " << decoders.size() << ", tracking_decoders = " << tracking_decoders.size();
+  for (const auto last_index = num_columns - 1; index < num_columns; ++index) {
+    bool last = index == last_index;
+    const auto column_id = projection.columns[index].id;
+    const auto packed_index = schema_packing.GetIndex(column_id);
+
+    VLOG_WITH_FUNC(4) <<
+        "processing: index = " << index << ", column_id = " << column_id << ", "
+        "packed_index = " << packed_index << ", last = " << last;
+
+    decoders.push_back(decoder_factory.GetColumnDecoderV1(index, packed_index, last));
+    if (column_update_tracker) {
+      tracking_decoders.push_back({
+        .decoder = { .v1 = &PackedColumnTrackingDecoderV1 },
+        .decoder_args = { .column = PrepareColumnEntryV1(
+            column_update_tracker->GetEntry(column_id), decoders.back(), last) }
+      });
+    }
+  }
+}
+
+void FillDecodersV2(
+    size_t index,
+    size_t num_columns,
+    const ReaderProjection& projection,
+    const SchemaPacking& schema_packing,
+    const PackedRowDecoderFactory& decoder_factory,
+    PackedRowDecoder::DecoderVectorBase& decoders,
+    PackedRowDecoder::TrackingDecoderVector& tracking_decoders,
+    PackedRowColumnUpdateTracker* column_update_tracker) {
+  // Fill router entry.
+  decoders.push_back({
+      .decoder = { .router = &RoutePackedRowV2</* kTrackingChain */ false> },
+      .decoder_args = { .router = { .v2 = { .value_offset = schema_packing.NullMaskSize() } } }
+  });
+  if (column_update_tracker) {
+    tracking_decoders.push_back({
+        .decoder = { .router = &RoutePackedRowV2</* kTrackingChain */ true> },
+        .decoder_args = decoders.back().decoder_args
+    });
+  }
+
+  // Fill decoders entries.
+  VLOG_WITH_FUNC(4) <<
+      "index = " << index << ", num cols = " << num_columns << ", "
+      "decoders = " << decoders.size() << ", tracking_decoders = " << tracking_decoders.size();
+
+  int64_t next_packed_index = 0;
+  for (const auto last_index = num_columns - 1; index < num_columns; ++index) {
+    bool last = index == last_index;
+    const auto column_id = projection.columns[index].id;
+    const auto packed_index = schema_packing.GetIndex(column_id);
+    const auto is_skipped_column = packed_index == SchemaPacking::kSkippedColumnIdx;
+
+    VLOG_WITH_FUNC(4) <<
+        "processing: index = " << index << ", column_id = " << column_id << ", "
+        "packed_index = " << packed_index << ", last = " << last;
+
+    if (PREDICT_TRUE(!is_skipped_column)) {
+      while (next_packed_index < packed_index) {
+        auto entry = PgTableRow::GetPackedColumnSkipperV2(
+            /* last */ false, /* skip_projection_column */ false,
+            schema_packing.column_packing_data(next_packed_index).data_type, next_packed_index);
+        ++next_packed_index;
+        decoders.push_back(entry);
+        if (column_update_tracker) {
+          tracking_decoders.push_back(entry);
+        }
+      }
+    }
+
+    decoders.push_back(decoder_factory.GetColumnDecoderV2(index, packed_index, last));
+    if (column_update_tracker) {
+      tracking_decoders.push_back({
+        .decoder = { .v2 = MakePackedColumnTrackingDecoderV2() },
+        .decoder_args = {
+            .column = PrepareColumnEntryV2(
+                column_update_tracker->GetEntry(column_id), decoders.back(), last,
+                schema_packing, packed_index) }
+      });
+    }
+
+    if (PREDICT_TRUE(!is_skipped_column)) {
+      ++next_packed_index;
+    }
+  }
 }
 
 } // namespace
@@ -315,64 +581,146 @@ bool SchemaPacking::CouldPack(
   return true;
 }
 
+class PackedRowColumnUpdateTracker::Impl final {
+ public:
+  PackedColumnEntry& GetEntry(ColumnId column_id) {
+    return column_map_[column_id];
+  }
+
+  bool HasUpdates() const {
+    return latest_update_ && latest_update_->HasUpdate(row_scope_);
+  }
+
+  bool HasUpdatesAfter(const EncodedDocHybridTime& ht_time) {
+    return latest_update_ && latest_update_->HasUpdate(row_scope_.token, ht_time);
+  }
+
+  void Reset() {
+    row_scope_.Reset();
+    latest_update_ = nullptr;
+  }
+
+  const PackedRowScope& GetRowScope() const {
+    return row_scope_;
+  }
+
+  void TrackRow(const EncodedDocHybridTime* row_time) {
+    row_scope_.hybrid_time = row_time;
+  }
+
+  void TrackColumn(ColumnId column_id, const EncodedDocHybridTime& column_time) {
+    auto& entry = column_map_[column_id];
+    entry.update_time = column_time;
+    entry.row_token = row_scope_.token;
+    if (!latest_update_ || latest_update_->update_time < column_time) {
+      latest_update_ = &entry;
+    }
+  }
+
+ private:
+  PackedRowScope row_scope_;
+  const PackedColumnEntry* latest_update_;
+  std::unordered_map<ColumnId, PackedColumnEntry> column_map_;
+};
+
+PackedRowColumnUpdateTracker::~PackedRowColumnUpdateTracker() = default;
+
+PackedRowColumnUpdateTracker::PackedRowColumnUpdateTracker()
+    : impl_(std::make_unique<Impl>()) {
+}
+
+PackedColumnEntry& PackedRowColumnUpdateTracker::GetEntry(ColumnId column_id) {
+  return impl_->GetEntry(column_id);
+}
+
+bool PackedRowColumnUpdateTracker::HasUpdates() const {
+  return impl_->HasUpdates();
+}
+
+bool PackedRowColumnUpdateTracker::HasUpdatesAfter(const EncodedDocHybridTime& ht_time) const {
+  return impl_->HasUpdatesAfter(ht_time);
+}
+
+void PackedRowColumnUpdateTracker::Reset() {
+  impl_->Reset();
+}
+
+const PackedRowScope& PackedRowColumnUpdateTracker::GetRowScope() const {
+  return impl_->GetRowScope();
+}
+
+void PackedRowColumnUpdateTracker::TrackRow(const EncodedDocHybridTime* row_time) {
+  impl_->TrackRow(row_time);
+}
+
+void PackedRowColumnUpdateTracker::TrackColumn(
+    ColumnId column_id, const EncodedDocHybridTime& column_time) {
+  impl_->TrackColumn(column_id, column_time);
+}
+
 PackedRowDecoder::PackedRowDecoder() = default;
 
 void PackedRowDecoder::Init(
     PackedRowVersion version, const ReaderProjection& projection,
-    const SchemaPacking& schema_packing, PackedRowDecoderFactory* factory,
-    const Schema& schema) {
+    const SchemaPacking& schema_packing, const PackedRowDecoderFactory& factory,
+    const Schema& schema, PackedRowColumnUpdateTracker* column_tracker) {
   schema_packing_ = &schema_packing;
   num_key_columns_ = projection.num_key_columns;
   schema_ = &schema;
 
   decoders_.clear();
-  auto index = projection.num_key_columns, num_columns = projection.columns.size();
+  tracking_decoders_.clear();
+
+  auto index = projection.num_key_columns;
+  auto num_columns = projection.columns.size();
   if (index == num_columns) {
-    decoders_.push_back(PackedColumnDecoderEntry {
-      .decoder = PackedColumnDecoderUnion {
-        .router = &NopRouter,
-      },
-      .data = 0,
+    decoders_.push_back( {
+      .decoder = { .router = &NopRouter },
+      .decoder_args = { .packed_index = 0 }
     });
     return;
   }
 
+  // The math could be not accuarate enough for Packed Row V2 as it is required to create a decoder
+  // per each packed column, between the very first and the very last columns from the projection,
+  // and one decoder per skipped column from the projection. But the complexity comes from the fact
+  // that it is required to iterate over all the columns in the projection to understand which are
+  // skipped columns and which packed columns are not mentioned in the projection, but should be
+  // taken into accoount, and thus to identify what would be the real number of decoders. Hence
+  // skipping that logic now, and accepting the fact some reallocations may happen. Alternatice
+  // would be to reserve the size in accordance with the number of columns from schema packing.
   decoders_.reserve(num_columns - index + 1);
+  if (column_tracker) {
+    tracking_decoders_.reserve(decoders_.capacity());
+  }
 
   switch (version) {
     case PackedRowVersion::kV1:
-      decoders_.push_back(PackedColumnDecoderEntry {
-        .decoder = PackedColumnDecoderUnion {
-          .router = &RoutePackedRowV1,
-        },
-        .data = bit_cast<size_t>(&schema_packing),
-      });
-      FillDecoders<PackedRowVersion::kV1>(
-          index, num_columns, projection, schema_packing, &decoders_,
-          [factory](size_t projection_index, ssize_t packed_index, bool last) {
-        return factory->GetColumnDecoderV1(projection_index, packed_index, last);
-      });
-      return;
+      return FillDecodersV1(
+          index, num_columns, projection, schema_packing, factory,
+          decoders_, tracking_decoders_, column_tracker);
+
     case PackedRowVersion::kV2:
-      decoders_.push_back(PackedColumnDecoderEntry {
-        .decoder = PackedColumnDecoderUnion {
-          .router = &RoutePackedRowV2,
-        },
-        .data = schema_packing.NullMaskSize(),
-      });
-      FillDecoders<PackedRowVersion::kV2>(
-          index, num_columns, projection, schema_packing, &decoders_,
-          [factory](size_t projection_index, ssize_t packed_index, bool last) {
-        return factory->GetColumnDecoderV2(projection_index, packed_index, last);
-      });
-      return;
+      return FillDecodersV2(
+          index, num_columns, projection, schema_packing, factory,
+          decoders_, tracking_decoders_, column_tracker);
   }
   FATAL_INVALID_ENUM_VALUE(PackedRowVersion, version);
 }
 
 Status PackedRowDecoder::Apply(Slice value, void* context) {
   auto chain = decoders_.data();
-  return Status(chain->decoder.router(value.data(), context, num_key_columns_, chain));
+  PackedColumnRouterData router_data {
+    .context = context,
+  };
+  return Status(chain->decoder.router(&router_data, value.data(), num_key_columns_, chain));
+}
+
+Status PackedRowDecoder::Apply(Slice value, void* context, const PackedRowScope& row_scope) {
+  PackedColumnTrackingRouterData router_data { { context }, row_scope };
+
+  auto chain = tracking_decoders_.data();
+  return Status(chain->decoder.router(&router_data, value.data(), num_key_columns_, chain));
 }
 
 SchemaPackingStorage::SchemaPackingStorage(TableType table_type) : table_type_(table_type) {}
@@ -642,13 +990,6 @@ int64_t PackedRowDecoderV2::GetPackedIndex(ColumnId column_id) {
 const uint8_t* PackedRowDecoderV2::GetEnd(ColumnId column_id) {
   FetchValue(column_id);
   return data_;
-}
-
-PackedRowDecoderBase& DecoderBase(PackedRowDecoderVariant* decoder) {
-  return *std::visit([](auto& decoder) {
-    PackedRowDecoderBase* result = &decoder;
-    return result;
-  }, *decoder);
 }
 
 } // namespace yb::dockv

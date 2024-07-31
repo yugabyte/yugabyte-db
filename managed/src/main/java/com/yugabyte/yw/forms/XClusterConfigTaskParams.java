@@ -33,6 +33,8 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
   protected DrConfigCreateForm.PitrParams pitrParams;
   protected boolean isForceBootstrap = false;
   public Set<String> dbs;
+  protected Set<String> databaseIdsToAdd;
+  protected Set<String> databaseIdsToRemove;
 
   public XClusterConfigTaskParams(
       XClusterConfig xClusterConfig,
@@ -83,6 +85,16 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
     this.pitrParams = pitrParams;
   }
 
+  public XClusterConfigTaskParams(
+      XClusterConfig xClusterConfig,
+      XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
+      Set<String> dbs,
+      @Nullable DrConfigCreateForm.PitrParams pitrParams,
+      boolean isForceBootstrap) {
+    this(xClusterConfig, bootstrapParams, dbs, pitrParams);
+    this.isForceBootstrap = isForceBootstrap;
+  }
+
   /** It is used in the edit method. */
   public XClusterConfigTaskParams(
       XClusterConfig xClusterConfig,
@@ -108,6 +120,19 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
 
     // Todo: add support for accepting pitr params from the user for the transactional xCluster
     //  to make it consistent with the DR config api.
+  }
+
+  public XClusterConfigTaskParams(
+      XClusterConfig xClusterConfig,
+      XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
+      XClusterConfigEditFormData editFormData,
+      Set<String> databaseIdsToAdd,
+      Set<String> databaseIdsToRemove) {
+    this.setUniverseUUID(xClusterConfig.getTargetUniverseUUID());
+    this.xClusterConfig = xClusterConfig;
+    this.editFormData = editFormData;
+    this.databaseIdsToAdd = databaseIdsToAdd;
+    this.databaseIdsToRemove = databaseIdsToRemove;
   }
 
   /** It is used in the restart method. */

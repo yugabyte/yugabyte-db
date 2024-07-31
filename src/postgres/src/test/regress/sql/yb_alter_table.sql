@@ -160,3 +160,25 @@ SELECT * FROM foo_part ORDER BY a, b;
 ALTER TABLE foo ADD COLUMN g int DEFAULT null NOT NULL;
 -- Test add column with volatile default value.
 ALTER TABLE foo ADD COLUMN f FLOAT DEFAULT random();
+
+--
+-- Tests for ALTER TABLE ... ADD COLUMN ... UNIQUE
+--
+CREATE TABLE foo_unique(a int);
+INSERT INTO foo_unique VALUES (1), (2), (3);
+ALTER TABLE foo_unique ADD COLUMN b int UNIQUE NOT NULL; -- should fail
+ALTER TABLE foo_unique ADD COLUMN b int UNIQUE;
+ALTER TABLE foo_unique ADD COLUMN c float UNIQUE DEFAULT 1.0; -- should fail
+ALTER TABLE foo_unique ADD COLUMN c float UNIQUE NOT NULL DEFAULT random();
+ALTER TABLE foo_unique ADD COLUMN d float UNIQUE CHECK (d >= 1) DEFAULT random(); -- should fail
+ALTER TABLE foo_unique ADD COLUMN d float UNIQUE CHECK (d >= 1);
+SELECT a,b,d FROM foo_unique ORDER BY a;
+
+--
+-- Test for cascaded drops on columns
+--
+CREATE TABLE test_dropcolumn(a int, b int, c int);
+CREATE TYPE test_dropcolumn_type AS (a int, b int);
+ALTER TABLE test_dropcolumn ADD COLUMN d test_dropcolumn_type;
+DROP TYPE test_dropcolumn_type CASCADE; -- should drop the column d
+ALTER TABLE test_dropcolumn ADD COLUMN d int;

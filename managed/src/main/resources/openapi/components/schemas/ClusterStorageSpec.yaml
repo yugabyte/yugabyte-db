@@ -1,5 +1,9 @@
-title: Storage volume specification that is used for tserver nodes in this cluster
+title: ClusterStorageSpec
+description: 'Storage volume specification that is used for tserver nodes in this cluster. Part of ClusterSpec, ClusterAddSpec and ClusterEditSpec.'
 type: object
+required:
+  - volume_size
+  - num_volumes
 properties:
   volume_size:
     description: The size of each volume in each instance. Could be modified in payload for /resize_node API call
@@ -16,7 +20,7 @@ properties:
     description: 'Name of the storage class, if this is a kubernetes cluster'
     type: string
   storage_type:
-    description: 'Storage type used for this instance, if this is a aws (IO1, GP2, GP3), gcp (Scratch, Persistent) or azu (StandardSSD_LRS, Premium_LRS, UltraSSD_LRS) cluster.'
+    description: 'Storage type used for this instance, if this is a aws (IO1, GP2, GP3), gcp (Scratch, Persistent) or azu (StandardSSD_LRS, Premium_LRS, PremiumV2_LRS, UltraSSD_LRS) cluster.'
     type: string
     enum:
       - IO1
@@ -25,6 +29,7 @@ properties:
       - Scratch
       - Persistent
       - StandardSSD_LRS
+      - PremiumV2_LRS
       - Premium_LRS
       - UltraSSD_LRS
       - Local

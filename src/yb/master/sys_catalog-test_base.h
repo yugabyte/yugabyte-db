@@ -110,7 +110,7 @@ class SysCatalogTest : public YBTest {
                                         const std::string& tablet_id,
                                         const std::string& start_key = "",
                                         const std::string& end_key = "") {
-    auto tablet = make_scoped_refptr<TabletInfo>(table, tablet_id);
+    auto tablet = std::make_shared<TabletInfo>(table, tablet_id);
     tablet->mutable_metadata()->StartMutation();
     auto* metadata = &tablet->mutable_metadata()->mutable_dirty()->pb;
     metadata->set_state(SysTabletsEntryPB::PREPARING);
@@ -212,24 +212,20 @@ class TestTabletLoader : public Visitor<PersistentTabletInfo> {
   ~TestTabletLoader() { Reset(); }
 
   void Reset() {
-    for (const auto& entry : tablets) {
-      entry.second->Release();
-    }
     tablets.clear();
   }
 
   Status Visit(const std::string& tablet_id, const SysTabletsEntryPB& metadata) override {
     // Setup the tablet info
-    TabletInfo *tablet = new TabletInfo(nullptr, tablet_id);
+    auto tablet = std::make_shared<TabletInfo>(nullptr, tablet_id);
     auto l = tablet->LockForWrite();
     l.mutable_data()->pb.CopyFrom(metadata);
     l.Commit();
-    tablet->AddRef();
-    tablets[tablet->id()] = tablet;
+    tablets[tablet->id()] = std::move(tablet);
     return Status::OK();
   }
 
-  std::map<std::string, TabletInfo*> tablets;
+  std::map<std::string, std::shared_ptr<TabletInfo>> tablets;
 };
 
 class TestClusterConfigLoader : public Visitor<PersistentClusterConfigInfo> {

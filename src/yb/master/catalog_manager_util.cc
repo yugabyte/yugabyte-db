@@ -139,7 +139,7 @@ Status CatalogManagerUtil::AreLeadersOnPreferredOnly(
         ts_descs,
         replication_info);
 
-    for (const auto& tablet : table->GetTablets()) {
+    for (const auto& tablet : VERIFY_RESULT(table->GetTablets())) {
       auto tablet_lock = tablet->LockForRead();
       const auto replication_locations = tablet->GetReplicaLocations();
       for (const auto& replica : *replication_locations) {
@@ -248,7 +248,7 @@ Result<std::string> CatalogManagerUtil::GetPlacementUuidFromRaftPeer(
 }
 
 Status CatalogManagerUtil::CheckIfCanDeleteSingleTablet(
-    const scoped_refptr<TabletInfo>& tablet) {
+    const TabletInfoPtr& tablet) {
   static const auto stringify_partition_key = [](const Slice& key) {
     return key.empty() ? "{empty}" : key.ToDebugString();
   };
@@ -262,8 +262,8 @@ Status CatalogManagerUtil::CheckIfCanDeleteSingleTablet(
   const auto partition = tablet_pb.partition();
 
   VLOG(3) << "Tablet " << tablet_id << " " << AsString(partition);
-  TabletInfos tablets_in_range = tablet->table()->GetTabletsInRange(
-      partition.partition_key_start(), partition.partition_key_end());
+  TabletInfos tablets_in_range = VERIFY_RESULT(tablet->table()->GetTabletsInRange(
+      partition.partition_key_start(), partition.partition_key_end()));
 
   std::string partition_key = partition.partition_key_start();
   for (const auto& inner_tablet : tablets_in_range) {
@@ -525,12 +525,24 @@ void CatalogManagerUtil::FillTableInfoPB(
     const TableId& table_id, const std::string& table_name, const TableType& table_type,
     const Schema& schema, uint32_t schema_version, const dockv::PartitionSchema& partition_schema,
     tablet::TableInfoPB* pb) {
+  SchemaPB schema_pb;
+  SchemaToPB(schema, &schema_pb);
+  PartitionSchemaPB partition_schema_pb;
+  partition_schema.ToPB(&partition_schema_pb);
+  FillTableInfoPB(
+      table_id, table_name, table_type, schema_pb, schema_version, partition_schema_pb, pb);
+}
+
+void CatalogManagerUtil::FillTableInfoPB(
+    const TableId& table_id, const std::string& table_name, const TableType& table_type,
+    const SchemaPB& schema, uint32_t schema_version, const PartitionSchemaPB& partition_schema,
+    tablet::TableInfoPB* pb) {
   pb->set_table_id(table_id);
   pb->set_table_name(table_name);
   pb->set_table_type(table_type);
-  SchemaToPB(schema, pb->mutable_schema());
+  pb->mutable_schema()->CopyFrom(schema);
   pb->set_schema_version(schema_version);
-  partition_schema.ToPB(pb->mutable_partition_schema());
+  pb->mutable_partition_schema()->CopyFrom(partition_schema);
 }
 
 Result<bool> CMPerTableLoadState::CompareReplicaLoads(

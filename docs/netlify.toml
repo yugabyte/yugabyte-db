@@ -11,19 +11,22 @@
 # https://docs.netlify.com/configure-builds/file-based-configuration/#deploy-contexts
 # all api_keys were generated from btoa(orig_key)
 [context.deploy-preview.environment]
-  HUGO_VERSION = "0.115.4"
+  GO_VERSION = "1.20"
+  HUGO_VERSION = "0.125.6"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
   SEGMENT_API_KEY = "TUxwdnFRYlNlQzl5V0hNdnRBNVQ1TVhUZ0Rpc1ZMZE0="
 
 [context.branch-deploy.environment]
-  HUGO_VERSION = "0.115.4"
+  GO_VERSION = "1.20"
+  HUGO_VERSION = "0.125.6"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
   SEGMENT_API_KEY = "TUxwdnFRYlNlQzl5V0hNdnRBNVQ1TVhUZ0Rpc1ZMZE0="
 
 [context.production.environment]
-  HUGO_VERSION = "0.115.4"
+  GO_VERSION = "1.20"
+  HUGO_VERSION = "0.125.6"
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
   SEGMENT_API_KEY = "WFp1RWk3dUVBbjM2NmpncnNnbzBMZUpIVXB1ZVRvTHg="
@@ -385,6 +388,12 @@
   from = "/preview/deploy/reference/configuration/yb-tserver/"
   to = "/preview/reference/configuration/yb-tserver/"
 
+## develop
+
+[[redirects]]
+  from = "/preview/develop/common-patterns/*"
+  to = "/preview/develop/data-modeling/common-patterns/:splat"
+
 [[redirects]]
   from = "/preview/develop/learn/acid-transactions/"
   to = "/preview/develop/learn/acid-transactions-ysql/"
@@ -396,6 +405,10 @@
 [[redirects]]
   from = "/preview/develop/learn/data-types/"
   to = "/preview/develop/learn/data-types-ysql/"
+
+[[redirects]]
+  from = "/preview/develop/client-drivers/*"
+  to = "/preview/drivers-orms/:splat"
 
 [[redirects]]
   from = "/preview/explore/cloud-native/"
@@ -602,28 +615,52 @@
   to = "/preview/yugabyte-cloud/"
 
 [[redirects]]
-  from = "preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/"
+  from = "/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/"
   to = "/preview/yugabyte-platform/prepare/server-nodes-software/software-on-prem-manual/"
+
+[[redirects]]
+  from = "/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/"
+  to = "/stable/yugabyte-platform/prepare/server-nodes-software/software-on-prem-manual/"
 
 [[redirects]]
   from = "/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/*"
   to = "/preview/yugabyte-platform/configure-yugabyte-platform/:splat"
 
 [[redirects]]
+  from = "/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/*"
+  to = "/stable/yugabyte-platform/configure-yugabyte-platform/:splat"
+
+[[redirects]]
   from = "/preview/yugabyte-platform/configure-yugabyte-platform/configure/*"
   to = "/preview/yugabyte-platform/configure-yugabyte-platform/"
+
+[[redirects]]
+  from = "/stable/yugabyte-platform/configure-yugabyte-platform/configure/*"
+  to = "/stable/yugabyte-platform/configure-yugabyte-platform/"
 
 [[redirects]]
   from = "/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/*"
   to = "/preview/yugabyte-platform/prepare/cloud-permissions/"
 
 [[redirects]]
+  from = "/stable/yugabyte-platform/install-yugabyte-platform/prepare-environment/*"
+  to = "/stable/yugabyte-platform/prepare/cloud-permissions/"
+
+[[redirects]]
   from = "/preview/yugabyte-platform/install-yugabyte-platform/install/*"
   to = "/preview/yugabyte-platform/install-yugabyte-platform/install-software/installer/"
 
 [[redirects]]
+  from = "/stable/yugabyte-platform/install-yugabyte-platform/install/*"
+  to = "/stable/yugabyte-platform/install-yugabyte-platform/install-software/installer/"
+
+[[redirects]]
    from = "/preview/yugabyte-platform/install-yugabyte-platform/prerequisites/*"
    to = "/preview/yugabyte-platform/prepare/server-yba/"
+
+# [[redirects]]
+#    from = "/stable/yugabyte-platform/install-yugabyte-platform/prerequisites/*"
+#    to = "/stable/yugabyte-platform/prepare/server-yba/"
 
 [[redirects]]
   from = "/preview/yugabyte-platform/overview/"
@@ -643,6 +680,10 @@
 
 [[redirects]]
   from = "/preview/develop/realworld-apps/*"
+  to = "/preview/tutorials/"
+
+[[redirects]]
+  from = "/stable/develop/realworld-apps/*"
   to = "/preview/tutorials/"
 
 [[redirects]]
@@ -698,11 +739,15 @@
   to = "/preview/yugabyte-voyager/:splat"
   force = true
 
+[[redirects]]
+  from = "/preview/yugabyte-voyager/reference/data-modeling/"
+  to = "/preview/develop/learn/data-modeling-ysql/"
+  force = true
 # Redirect for Reference connectors
 
 [[redirects]]
   from = "/:version/reference/connectors/*"
-  to = "/preview/integrations/apache-kafka/"
+  to = "/preview/explore/change-data-capture/"
 
 # Redirect for troubleshoot
 
@@ -723,18 +768,10 @@
   to = "/preview/tutorials/azure/"
   force = true
 [[redirects]]
-  from = "/v2.16/tutorials/*"
-  to = "/preview/tutorials/azure/"
-  force = true
-[[redirects]]
   from = "/v2.18/tutorials/*"
   to = "/preview/tutorials/azure/"
   force = true
 
-[[redirects]]
-  from = "/v2.16/explore/ysql-language-features/indexes-constraints/*"
-  to = "/v2.16/explore/indexes-constraints/"
-  force = true
 [[redirects]]
   from = "/v2.18/explore/ysql-language-features/indexes-constraints/*"
   to = "/v2.18/explore/indexes-constraints/"
@@ -742,16 +779,6 @@
 [[redirects]]
   from = "/v2.14/explore/ysql-language-features/indexes-constraints/*"
   to = "/v2.14/explore/indexes-constraints/"
-  force = true
-
-[[redirects]]
-  from = "/v2.16/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-script/"
-  to = "/v2.16/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/"
-  force = true
-
-[[redirects]]
-  from = "/v2.16/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/"
-  to = "/v2.16/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/"
   force = true
 
 [[redirects]]
@@ -767,10 +794,6 @@
 [[redirects]]
   from = "/v2.18/reference/configuration/operating-systems/"
   to = "/v2.18/deploy/checklist/"
-  force = true
-[[redirects]]
-  from = "/v2.16/reference/configuration/operating-systems/"
-  to = "/v2.16/deploy/checklist/"
   force = true
 [[redirects]]
   from = "/v2.14/reference/configuration/operating-systems/"
@@ -789,15 +812,11 @@
   to = "/stable/yugabyte-platform/administer-yugabyte-platform/high-availability/"
   force = true
 [[redirects]]
-  from = "/v2.16/yugabyte-platform/manage-deployments/high-availability/"
-  to = "/v2.16/yugabyte-platform/administer-yugabyte-platform/high-availability/"
-  force = true
-[[redirects]]
   from = "/v2.14/yugabyte-platform/administer-yugabyte-platform/high-availability/"
   to = "/v2.14/yugabyte-platform/manage-deployments/high-availability/"
   force = true
 
-# Build an app was in quick-start, now in develop
+# Build an app was in quick-start, then develop, now in tutorials
 
 [[redirects]]
   from = "/preview/develop/build-apps/*"
@@ -934,6 +953,11 @@
 [[redirects]]
   from = "/v2.12/*"
   to = "https://docs-archive.yugabyte.com/v2.12/"
+  force = true
+
+[[redirects]]
+  from = "/v2.16/*"
+  to = "https://docs-archive.yugabyte.com/v2.16/"
   force = true
 
 [[redirects]]
@@ -1149,12 +1173,12 @@
 # Redirect all non-preview quick start links to preview
 
 [[redirects]]
-  from = ":version/quick-start/*"
+  from = "/:version/quick-start/*"
   to = "/preview/quick-start/"
   force = true
 
 [[redirects]]
-  from = ":version/quick-start-yugabytedb-managed/*"
+  from = "/:version/quick-start-yugabytedb-managed/*"
   to = "/preview/quick-start-yugabytedb-managed/"
   force = true
 
@@ -1330,13 +1354,16 @@
             https://www.yugabyte.com
             https://api.segment.io/
             https://cdn.segment.com/
+            https://c.6sc.co/
+            https://ipv6.6sc.co/
+            https://ingesteer.services-prod.nsvcs.net/rum_collection
         ;
 
         script-src 'self' 'unsafe-eval' 'unsafe-inline'
             https://app.clearbit.com
             https://cdn.jsdelivr.net
             https://cdnjs.cloudflare.com
-            https://code.jquery.com/jquery-3.6.0.min.js
+            https://code.jquery.com/jquery-3.7.1.min.js
             https://kit.fontawesome.com/
             https://maxcdn.bootstrapcdn.com
             https://netlify-cdp-loader.netlify.app/
@@ -1354,6 +1381,7 @@
             https://x.clearbitjs.com
             https://js.driftt.com/
             https://cdn.segment.com/
+            https://j.6sc.co/
         ;
 
         style-src 'self' 'unsafe-inline'
@@ -1388,6 +1416,7 @@
             https://www.yugabyte.com
             https://www.gstatic.com
             https://www.google.com/s2/favicons
+            https://b.6sc.co/
         ;
 
         child-src 'self' 'unsafe-inline'

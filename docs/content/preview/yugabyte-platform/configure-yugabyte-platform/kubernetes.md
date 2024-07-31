@@ -80,7 +80,9 @@ To create a Kubernetes provider:
 
     ![Auto-fill Kubernetes provider](/images/yb-platform/kubernetes-config-autofill.png)
 
-1. Click **Create Provider Configuration** when you are done and wait for the configuration to complete.
+1. Click **Validate and Save Configuration** when you are done and wait for the configuration to validate and complete.
+
+    If you want to save your progress, you can skip validation by choosing the **Ignore and save provider configuration anyway** option, which saves the provider configuration without validating. Note that you may not be able to create universes using an incomplete or unvalidated provider.
 
 ## Provider settings
 
@@ -122,7 +124,7 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
 
 1. Complete the **Overrides** field using one of the provided [options](#overrides). If you do not specify anything, YBA uses defaults specified inside the Helm chart. For additional information, see [Open source Kubernetes](../../../deploy/kubernetes/single-zone/oss/helm-chart/).
 
-1. If you are using [Kubernetes cert-manager](https://cert-manager.io) to manage TLS certificates, specify the issuer type and enter the issuer name. For more information, refer to [Enable encryption in transit](../../security/enable-encryption-in-transit/#kubernetes-cert-manager).
+1. If you are using [Kubernetes cert-manager](https://cert-manager.io) to manage TLS certificates, specify the issuer type and enter the issuer name. For more information, refer to [Enable encryption in transit](../../security/enable-encryption-in-transit/add-certificate-kubernetes/).
 
 If required, add a new zone by clicking **Add Zone**, as your configuration may have multiple zones.
 
@@ -379,7 +381,7 @@ If you plan to create multi-region YugabyteDB universes, you can set up [Multi-C
 
 The Kubernetes MCS API is currently in alpha, though there are various implementations of MCS which are [considered to be stable](https://github.com/kubernetes-sigs/mcs-api/issues/17#issuecomment-1309073682). To know more, see [API versioning](https://kubernetes.io/docs/reference/using-api/#api-versioning) in the Kubernetes documentation.
 
-MCS support in YBA is currently in [Early Access](../../../releases/versioning/#feature-availability). Keep in mind following caveats:
+MCS support in YBA is currently in [Early Access](/preview/releases/versioning/#feature-maturity). Keep in mind following caveats:
 
 - Universe metrics may not display correct metrics for all the pods.
 - xCluster replication needs an additional manual step to work on OpenShift MCS.

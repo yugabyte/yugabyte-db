@@ -1053,6 +1053,8 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 	od_route_t *route = client->route;
 	assert(route != NULL);
 
+	int prev_named_prep_stmt = 1;
+
 	kiwi_fe_type_t type = *data;
 	if (type == KIWI_FE_TERMINATE)
 		return OD_STOP;
@@ -1230,6 +1232,7 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 
 			if (desc.operator_name[0] == '\0') {
 				/* no need for odyssey to track unnamed prepared statements */
+				prev_named_prep_stmt = 0;
 				break;
 			}
 
@@ -1602,6 +1605,26 @@ static od_frontend_status_t od_frontend_remote_client(od_relay_t *relay,
 			return OD_ESERVER_WRITE;
 		}
 
+		/* unnamed prepared statement was parsed, send ParseComplete to client */
+		if (prev_named_prep_stmt == 0) {
+
+			machine_msg_t *pcmsg;
+			pcmsg = kiwi_be_write_parse_complete(NULL);
+
+			if (pcmsg == NULL) {
+				return OD_ESERVER_WRITE;
+			}
+
+			rc = od_write(&client->io, pcmsg);
+
+			if (rc == -1) {
+				od_error(&instance->logger, "parse", client,
+					 NULL, "write error: %s",
+					 od_io_error(&client->io));
+				return OD_ESERVER_WRITE;
+			}
+		}
+
 		retstatus = OD_SKIP;
 	}
 
@@ -1885,14 +1908,6 @@ static void od_frontend_cleanup(od_client_t *client, char *context,
 
 	if (od_frontend_status_is_err(status)) {
 		od_error_logger_store_err(l, status);
-
-		if (yb_is_route_invalid(client->route)) {
-			if (client->type == OD_POOL_CLIENT_EXTERNAL)
-				od_frontend_fatal(
-					client, KIWI_CONNECTION_FAILURE,
-					"Database might have been dropped by another user");
-			return;
-		}
 
 		if (route->extra_logging_enabled &&
 		    !od_route_is_dynamic(route)) {

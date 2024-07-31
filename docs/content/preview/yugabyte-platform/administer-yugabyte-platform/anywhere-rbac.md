@@ -18,7 +18,7 @@ Starting with v2.20.1, RBAC is available with fine-grained control over access t
 
 {{< note title="Fine-grained RBAC is Early Access">}}
 
-Fine-grained RBAC with the ability to limit users to manage only a subset of universes is [Early Access](/preview/releases/versioning/#feature-availability).
+Fine-grained RBAC with the ability to limit users to manage only a subset of universes is [Early Access](/preview/releases/versioning/#feature-maturity).
 
 During EA, by default fine-grained RBAC is not enabled. To enable the feature, use following API command:
 
@@ -80,13 +80,13 @@ How you add and modify users varies depending on whether you have enabled fine-g
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
-    <a href="#classic" class="nav-link active" id="classic-tab" data-toggle="tab"
+    <a href="#classic" class="nav-link active" id="classic-tab" data-bs-toggle="tab"
       role="tab" aria-controls="classic" aria-selected="true">
       Classic
     </a>
   </li>
   <li>
-    <a href="#finegrain" class="nav-link" id="finegrain-tab" data-toggle="tab"
+    <a href="#finegrain" class="nav-link" id="finegrain-tab" data-bs-toggle="tab"
       role="tab" aria-controls="finegrain" aria-selected="false">
       Fine grained (v2.20.1.0)
     </a>

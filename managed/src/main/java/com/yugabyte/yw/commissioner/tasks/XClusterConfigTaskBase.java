@@ -11,6 +11,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.AddNamespaceToXClusterReplication;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.BootstrapProducer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.CheckBootstrapRequired;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.CreateOutboundReplicationGroup;
@@ -19,12 +20,15 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ReplicateNamespaces;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetReplicationPaused;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetRestoreTime;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.WaitForReplicationDrain;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterAddNamespaceToOutboundReplicationGroup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigRename;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetStatus;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetStatusForTables;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSync;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterDbReplicationSetup;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterRemoveNamespaceFromOutboundReplicationGroup;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterRemoveNamespaceFromTargetUniverse;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
@@ -35,18 +39,20 @@ import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.table.TableInfoUtil;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.controllers.handlers.UniverseTableHandler;
 import com.yugabyte.yw.forms.DrConfigTaskParams;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.TableInfoForm.TableInfoResp;
-import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
+import com.yugabyte.yw.models.XClusterNamespaceConfig;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -64,19 +70,20 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.CommonTypes;
-import org.yb.CommonTypes.ReplicationErrorPb;
 import org.yb.CommonTypes.TableType;
 import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.cdc.CdcConsumer;
+import org.yb.cdc.CdcConsumer.ProducerEntryPB;
 import org.yb.cdc.CdcConsumer.StreamEntryPB;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.GetTableSchemaResponse;
+import org.yb.client.GetUniverseReplicationInfoResponse;
 import org.yb.client.IsSetupUniverseReplicationDoneResponse;
-import org.yb.client.ListNamespacesResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
@@ -92,6 +99,7 @@ import play.mvc.Http.Status;
 public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase {
 
   protected final XClusterUniverseService xClusterUniverseService;
+
   public static final String SOURCE_ROOT_CERTS_DIR_GFLAG = "certs_for_cdc_dir";
   public static final String DEFAULT_SOURCE_ROOT_CERTS_DIR_NAME = "/yugabyte-tls-producer";
   public static final String SOURCE_ROOT_CERTIFICATE_NAME = "ca.crt";
@@ -115,6 +123,17 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
           XClusterTableConfig.Status.Validated,
           XClusterTableConfig.Status.Updating,
           XClusterTableConfig.Status.Bootstrapping);
+
+  public static final List<XClusterNamespaceConfig.Status>
+      X_CLUSTER_NAMESPACE_CONFIG_RUNNING_STATUS_LIST =
+          ImmutableList.of(XClusterNamespaceConfig.Status.Running);
+
+  public static final List<XClusterNamespaceConfig.Status>
+      X_CLUSTER_NAMESPACE_CONFIG_PENDING_STATUS_LIST =
+          ImmutableList.of(
+              XClusterNamespaceConfig.Status.Validated,
+              XClusterNamespaceConfig.Status.Updating,
+              XClusterNamespaceConfig.Status.Bootstrapping);
 
   // XCluster setup is not supported for system and matview tables.
   public static final Set<RelationType> X_CLUSTER_SUPPORTED_TABLE_RELATION_TYPE_SET =
@@ -206,10 +225,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       return false;
     }
     // We only pass colocated parent tables and not colocated child tables for xcluster.
-    if (TableInfoUtil.isColocatedChildTable(tableInfo)) {
-      return false;
-    }
-    return true;
+    return !TableInfoUtil.isColocatedChildTable(tableInfo);
   }
 
   public static boolean isXClusterSupported(TableInfoResp tableInfoResp) {
@@ -715,6 +731,33 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     return consumerTableIdsFromClusterConfig;
   }
 
+  private static Set<String> getConsumerTableIdsFromClusterConfig(
+      CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig, String replicationGroupName) {
+    Set<String> consumerTableIdsFromClusterConfig = new HashSet<>();
+    ProducerEntryPB replicationGroup =
+        getReplicationGroupEntry(clusterConfig, replicationGroupName);
+    replicationGroup.getStreamMapMap().values().stream()
+        .map(StreamEntryPB::getConsumerTableId)
+        .forEach(consumerTableIdsFromClusterConfig::add);
+    return consumerTableIdsFromClusterConfig;
+  }
+
+  public static ProducerEntryPB getReplicationGroupEntry(
+      CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig, String replicationGroupName) {
+    return clusterConfig.getConsumerRegistry().getProducerMapOrThrow(replicationGroupName);
+  }
+
+  public static Set<String> getProducerTableIdsFromClusterConfig(
+      CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig, String replicationGroupName) {
+    Set<String> producerTableIdsFromClusterConfig = new HashSet<>();
+    ProducerEntryPB replicationGroup =
+        getReplicationGroupEntry(clusterConfig, replicationGroupName);
+    replicationGroup.getStreamMapMap().values().stream()
+        .map(StreamEntryPB::getProducerTableId)
+        .forEach(producerTableIdsFromClusterConfig::add);
+    return producerTableIdsFromClusterConfig;
+  }
+
   /**
    * It reads information for the associated replication group in DB with the xCluster config and
    * updates its state.
@@ -723,7 +766,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
    * @param xClusterConfig The xCluster config object to sync
    * @param tableIds The list of tables in the {@code xClusterConfig} to sync
    */
-  protected void syncXClusterConfigWithReplicationGroup(
+  public static void syncXClusterConfigWithReplicationGroup(
       CatalogEntityInfo.SysClusterConfigEntryPB config,
       XClusterConfig xClusterConfig,
       Set<String> tableIds) {
@@ -749,47 +792,51 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     }
 
     // Sync id and status for each stream.
-    Map<String, CdcConsumer.StreamEntryPB> replicationStreams = replicationGroup.getStreamMapMap();
-    Map<String, String> streamMap =
-        replicationStreams.entrySet().stream()
-            .collect(Collectors.toMap(e -> e.getValue().getProducerTableId(), Map.Entry::getKey));
-    for (String tableId : tableIds) {
-      Optional<XClusterTableConfig> tableConfig = xClusterConfig.maybeGetTableById(tableId);
-      if (!tableConfig.isPresent()) {
-        throw new RuntimeException(
-            String.format(
-                "Could not find tableId (%s) in the xCluster config %s", tableId, xClusterConfig));
-      }
-      String streamId = streamMap.get(tableId);
-      if (Objects.isNull(streamId)) {
-        log.warn(
-            "No stream id found for table ({}) in the cluster config for xCluster config ({})",
-            tableId,
-            xClusterConfig.getUuid());
-        tableConfig.get().setStreamId(null);
-        tableConfig.get().setStatus(XClusterTableConfig.Status.Failed);
+    if (xClusterConfig.getType() != ConfigType.Db) {
+      Map<String, CdcConsumer.StreamEntryPB> replicationStreams =
+          replicationGroup.getStreamMapMap();
+      Map<String, String> streamMap =
+          replicationStreams.entrySet().stream()
+              .collect(Collectors.toMap(e -> e.getValue().getProducerTableId(), Map.Entry::getKey));
+      for (String tableId : tableIds) {
+        Optional<XClusterTableConfig> tableConfig = xClusterConfig.maybeGetTableById(tableId);
+        if (tableConfig.isEmpty()) {
+          throw new RuntimeException(
+              String.format(
+                  "Could not find tableId (%s) in the xCluster config %s",
+                  tableId, xClusterConfig));
+        }
+        String streamId = streamMap.get(tableId);
+        if (Objects.isNull(streamId)) {
+          log.warn(
+              "No stream id found for table ({}) in the cluster config for xCluster config ({})",
+              tableId,
+              xClusterConfig.getUuid());
+          tableConfig.get().setStreamId(null);
+          tableConfig.get().setStatus(XClusterTableConfig.Status.Failed);
+          tableConfig.get().update();
+          continue;
+        }
+        if (Objects.nonNull(tableConfig.get().getStreamId())
+            && !tableConfig.get().getStreamId().equals(streamId)) {
+          log.warn(
+              "Bootstrap id ({}) for table ({}) is different from stream id ({}) in the "
+                  + "cluster config for xCluster config ({})",
+              tableConfig.get().getStreamId(),
+              tableId,
+              streamId,
+              xClusterConfig.getUuid());
+        }
+        tableConfig.get().setStreamId(streamId);
+        tableConfig.get().setStatus(XClusterTableConfig.Status.Running);
+        tableConfig.get().setReplicationSetupDone(true);
         tableConfig.get().update();
-        continue;
-      }
-      if (Objects.nonNull(tableConfig.get().getStreamId())
-          && !tableConfig.get().getStreamId().equals(streamId)) {
-        log.warn(
-            "Bootstrap id ({}) for table ({}) is different from stream id ({}) in the "
-                + "cluster config for xCluster config ({})",
-            tableConfig.get().getStreamId(),
+        log.info(
+            "StreamId for table {} in xCluster config {} is set to {}",
             tableId,
-            streamId,
-            xClusterConfig.getUuid());
+            xClusterConfig.getUuid(),
+            streamId);
       }
-      tableConfig.get().setStreamId(streamId);
-      tableConfig.get().setStatus(XClusterTableConfig.Status.Running);
-      tableConfig.get().setReplicationSetupDone(true);
-      tableConfig.get().update();
-      log.info(
-          "StreamId for table {} in xCluster config {} is set to {}",
-          tableId,
-          xClusterConfig.getUuid(),
-          streamId);
     }
   }
 
@@ -1291,6 +1338,40 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     return tableSchemaMap;
   }
 
+  /**
+   * It returns a map from main table id to a list of index table ids associated with the main table
+   * in the universe. `getIndexedTableId` was added to YBDB 2.21.1.0-b168.
+   *
+   * @param tableInfoList The list of table info in the universe
+   * @return A map from main table id to a list of index table ids
+   */
+  public static Map<String, List<String>> getMainTableIndexTablesMap(
+      Universe universe,
+      Collection<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList) {
+    // Ensure it is not called for a universe older than 2.21.1.0-b168. For older version use the
+    // other getMainTableIndexTablesMap method that uses an RPC available in older universes.
+    if (Util.compareYbVersions(
+            "2.21.1.0-b168",
+            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+            true)
+        > 0) {
+      throw new IllegalStateException(
+          "This method is only supported for universes newer than or equal to 2.21.1.0-b168");
+    }
+    Map<String, List<String>> mainTableIndexTablesMap = new HashMap<>();
+    tableInfoList.forEach(
+        tableInfo -> {
+          if (TableInfoUtil.isIndexTable(tableInfo)) {
+            String mainTableId = tableInfo.getIndexedTableId().replace("-", "");
+            mainTableIndexTablesMap
+                .computeIfAbsent(mainTableId, k -> new ArrayList<>())
+                .add(getTableId(tableInfo));
+          }
+        });
+    log.debug("mainTableIndexTablesMap is {}", mainTableIndexTablesMap);
+    return mainTableIndexTablesMap;
+  }
+
   public static Map<String, List<String>> getMainTableIndexTablesMap(
       YBClientService ybService, Universe universe, Set<String> mainTableUuidList) {
     Map<String, GetTableSchemaResponse> tableSchemaMap =
@@ -1321,7 +1402,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     return mainTableIndexTablesMap;
   }
 
-  public static final Set<String> getDroppedTableIds(
+  public static Set<String> getDroppedTableIds(
       YBClientService ybService, Universe universe, Set<String> tableIds) {
     if (tableIds.isEmpty()) {
       return Collections.emptySet();
@@ -1444,6 +1525,11 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     return tableInfo.getId().toStringUtf8();
   }
 
+  public static String getNamespaceId(
+      MasterDdlOuterClass.ListTablesResponsePB.TableInfo tableInfo) {
+    return tableInfo.getNamespace().getId().toStringUtf8();
+  }
+
   public static Set<String> getTableIds(
       Collection<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tablesInfoList) {
     if (tablesInfoList == null) {
@@ -1469,6 +1555,13 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
           }
         });
     return namespaces;
+  }
+
+  public static Map<String, MasterDdlOuterClass.ListTablesResponsePB.TableInfo>
+      getTableIdToTableInfoMap(
+          Collection<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tablesInfoList) {
+    return tablesInfoList.stream()
+        .collect(Collectors.toMap(XClusterConfigTaskBase::getTableId, Function.identity()));
   }
 
   public static Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
@@ -1558,7 +1651,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   public static boolean otherXClusterConfigsAsTargetExist(
       UUID universeUuid, UUID xClusterConfigUuid) {
     List<XClusterConfig> xClusterConfigs = XClusterConfig.getByTargetUniverseUUID(universeUuid);
-    if (xClusterConfigs.size() == 0) {
+    if (xClusterConfigs.isEmpty()) {
       return false;
     }
     return xClusterConfigs.size() != 1
@@ -1568,11 +1661,11 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   public static void validateBackupRequestParamsForBootstrapping(
       CustomerConfigService customerConfigService,
       BackupHelper backupHelper,
-      XClusterConfigCreateFormData.BootstrapParams.BootstarpBackupParams bootstarpBackupParams,
+      BootstrapParams.BootstrapBackupParams bootstrapBackupParams,
       UUID customerUUID) {
     CustomerConfig customerConfig =
         customerConfigService.getOrBadRequest(
-            customerUUID, bootstarpBackupParams.storageConfigUUID);
+            customerUUID, bootstrapBackupParams.storageConfigUUID);
     if (!customerConfig.getState().equals(CustomerConfig.ConfigState.Active)) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST, "Cannot create backup as config is queued for deletion.");
@@ -1651,12 +1744,15 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   }
 
   public static void setReplicationStatus(
-      XClusterUniverseService xClusterUniverseService, XClusterConfig xClusterConfig) {
+      XClusterUniverseService xClusterUniverseService,
+      YBClientService ybClientService,
+      UniverseTableHandler tableHandler,
+      XClusterConfig xClusterConfig) {
     Optional<Universe> targetUniverseOptional =
         Objects.isNull(xClusterConfig.getTargetUniverseUUID())
             ? Optional.empty()
             : Universe.maybeGet(xClusterConfig.getTargetUniverseUUID());
-    if (targetUniverseOptional.isEmpty()) {
+    if (!targetUniverseOptional.isPresent()) {
       log.warn(
           "The target universe for the xCluster config {} is not found; ignoring gathering"
               + " replication stream statuses",
@@ -1672,16 +1768,16 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
             xClusterUniverseService.getReplicationStatus(xClusterConfig).stream()
                 .collect(
                     Collectors.toMap(
-                        status -> status.getStreamId().toStringUtf8(), status -> status));
+                        status -> status.getStreamId().toStringUtf8(), Function.identity()));
         for (XClusterTableConfig tableConfig : xClusterConfig.getTableDetails()) {
-          if (tableConfig.getStatus().equals(XClusterTableConfig.Status.Running)) {
+          if (tableConfig.getStatus() == XClusterTableConfig.Status.Running) {
             ReplicationStatusPB replicationStatus =
                 streamIdReplicationStatusMap.get(tableConfig.getStreamId());
             if (Objects.isNull(replicationStatus)) {
               tableConfig.setStatus(XClusterTableConfig.Status.UnableToFetch);
             } else {
               List<ReplicationStatusErrorPB> replicationErrors = replicationStatus.getErrorsList();
-              if (replicationErrors.size() > 0) {
+              if (!replicationErrors.isEmpty()) {
                 String errorsString =
                     replicationErrors.stream()
                         .map(
@@ -1698,14 +1794,17 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
                     tableConfig.getTableId(),
                     tableConfig.getStreamId(),
                     errorsString);
-                // Only set the status to error for the case of WALs GC-ed
-                // (REPLICATION_MISSING_OP_ID) for UI compatibility.
-                if (replicationErrors.stream()
-                    .anyMatch(
-                        replicationError ->
-                            replicationError
-                                .getError()
-                                .equals(ReplicationErrorPb.REPLICATION_MISSING_OP_ID))) {
+                tableConfig
+                    .getReplicationStatusErrors()
+                    .addAll(
+                        replicationErrors.stream()
+                            .map(
+                                e ->
+                                    XClusterTableConfig.ReplicationStatusError.fromErrorCode(
+                                        e.getError()))
+                            .filter(Objects::nonNull)
+                            .collect(Collectors.toSet()));
+                if (!tableConfig.getReplicationStatusErrors().isEmpty()) {
                   tableConfig.setStatus(XClusterTableConfig.Status.Error);
                 }
               }
@@ -1715,8 +1814,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       } catch (Exception e) {
         log.error("xClusterUniverseService.getReplicationStatus hit error : {}", e.getMessage());
         xClusterConfig.getTableDetails().stream()
-            .filter(
-                tableConfig -> tableConfig.getStatus().equals(XClusterTableConfig.Status.Running))
+            .filter(tableConfig -> tableConfig.getStatus() == XClusterTableConfig.Status.Running)
             .forEach(
                 tableConfig -> tableConfig.setStatus(XClusterTableConfig.Status.UnableToFetch));
       }
@@ -1761,21 +1859,311 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
         log.error("XClusterConfigTaskBase.isBootstrapRequired hit error : {}", e.getMessage());
       }
     }
+
+    try {
+      if (xClusterConfig.getTableType().equals(XClusterConfig.TableType.YSQL)
+          && xClusterConfig.getStatus().equals(XClusterConfig.XClusterConfigStatusType.Running)) {
+        addTransientTableConfigs(xClusterConfig, xClusterUniverseService, ybClientService);
+      }
+    } catch (Exception e) {
+      log.error(
+          "Error getting table details not in replication for xCluster config {}",
+          xClusterConfig.getUuid(),
+          e);
+    }
+
+    try {
+      addSourceAndTargetTableInfo(xClusterConfig, xClusterUniverseService, tableHandler);
+    } catch (Exception e) {
+      log.error(
+          "Error getting table details not in replication for xCluster config {}",
+          xClusterConfig.getUuid(),
+          e);
+    }
+  }
+
+  private static void addTransientTableConfigs(
+      XClusterConfig xClusterConfig,
+      XClusterUniverseService xClusterUniverseService,
+      YBClientService ybClientService)
+      throws Exception {
+    Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceUniverseTableInfoList =
+        XClusterConfigTaskBase.getTableInfoList(ybClientService, sourceUniverse);
+
+    Set<String> sourceUniverseTableIds =
+        sourceUniverseTableInfoList.stream()
+            .map(tableInfo -> XClusterConfigTaskBase.getTableId(tableInfo))
+            .collect(Collectors.toSet());
+
+    xClusterConfig.getTableDetails().stream()
+        .filter(tableConfig -> tableConfig.getStatus() == XClusterTableConfig.Status.Running)
+        .forEach(
+            tableConfig -> {
+              if (!sourceUniverseTableIds.contains(tableConfig.getTableId())) {
+                tableConfig.setStatus(XClusterTableConfig.Status.DroppedFromSource);
+              }
+            });
+
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
+    CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig;
+    try (YBClient client =
+        ybClientService.getClient(
+            targetUniverse.getMasterAddresses(), targetUniverse.getCertificateNodetoNode())) {
+      clusterConfig = getClusterConfig(client, targetUniverse.getUniverseUUID());
+    } catch (Exception e) {
+      log.error(
+          "Error getting cluster config for universe {}", targetUniverse.getUniverseUUID(), e);
+      throw e;
+    }
+
+    Pair<List<XClusterTableConfig>, List<XClusterTableConfig>> tableConfigs =
+        getXClusterTableConfigFromReplication(
+            xClusterUniverseService, ybClientService, clusterConfig, xClusterConfig);
+
+    tableConfigs
+        .getFirst()
+        .forEach(
+            tableConfig -> {
+              xClusterConfig.addTableConfig(tableConfig);
+            });
+
+    tableConfigs
+        .getSecond()
+        .forEach(
+            tableConfig -> {
+              xClusterConfig.addTableConfig(tableConfig);
+            });
+  }
+
+  private static void addSourceAndTargetTableInfo(
+      XClusterConfig xClusterConfig,
+      XClusterUniverseService xClusterUniverseService,
+      UniverseTableHandler tableHandler) {
+    Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
+    Customer customer = Customer.get(sourceUniverse.getCustomerId());
+    List<TableInfoResp> sourceUniverseTableInfoRespList =
+        tableHandler.listTables(
+            customer.getUuid(),
+            sourceUniverse.getUniverseUUID(),
+            false /* includeParentTableInfo */,
+            false /* excludeColocatedTables */,
+            true /* includeColocatedParentTables */,
+            true /* xClusterSupportedOnly */);
+    Map<String, TableInfoResp> sourceTableIdTableInfoRespMap =
+        sourceUniverseTableInfoRespList.stream()
+            .collect(Collectors.toMap(TableInfoResp::getTableId, Function.identity()));
+
+    // Update tableInfo from source universe
+    xClusterConfig
+        .getTableDetails()
+        .forEach(
+            tableConfig -> {
+              if (tableConfig.getStatus().equals(XClusterTableConfig.Status.ExtraTableOnTarget)) {
+                return;
+              }
+              tableConfig.setSourceTableInfo(
+                  sourceTableIdTableInfoRespMap.get(tableConfig.getTableId()));
+            });
+
+    Map<String, String> producerConsumerTableIdMap =
+        xClusterUniverseService.getSourceTableIdTargetTableIdMap(
+            targetUniverse, xClusterConfig.getReplicationGroupName());
+
+    List<TableInfoResp> targetUniverseTableInfoRespList =
+        tableHandler.listTables(
+            customer.getUuid(),
+            targetUniverse.getUniverseUUID(),
+            false /* includeParentTableInfo */,
+            false /* excludeColocatedTables */,
+            true /* includeColocatedParentTables */,
+            true /* xClusterSupportedOnly */);
+    Map<String, TableInfoResp> targetTableIdTableInfoRespMap =
+        targetUniverseTableInfoRespList.stream()
+            .collect(Collectors.toMap(TableInfoResp::getTableId, Function.identity()));
+
+    // Update tableInfo from target universe.
+    xClusterConfig
+        .getTableDetails()
+        .forEach(
+            tableConfig -> {
+              if (tableConfig.getStatus().equals(XClusterTableConfig.Status.ExtraTableOnSource)) {
+                return;
+              }
+              String consumerTableId = producerConsumerTableIdMap.get(tableConfig.getTableId());
+              if (consumerTableId != null) {
+                tableConfig.setTargetTableInfo(targetTableIdTableInfoRespMap.get(consumerTableId));
+              } else {
+                tableConfig.setTargetTableInfo(
+                    targetTableIdTableInfoRespMap.get(tableConfig.getTableId()));
+              }
+            });
+  }
+
+  /**
+   * Retrieves the pair of list of XClusterTableConfig from replication for the given
+   * XClusterUniverseService, YBClientService, clusterConfig, and xClusterConfig.
+   *
+   * @param xClusterUniverseService The XClusterUniverseService instance.
+   * @param ybClientService The YBClientService instance.
+   * @param clusterConfig The CatalogEntityInfo.SysClusterConfigEntryPB instance.
+   * @param xClusterConfig The XClusterConfig instance.
+   * @return A Pair containing the list of sourceTableConfigs and targetTableConfigs.
+   */
+  public static Pair<List<XClusterTableConfig>, List<XClusterTableConfig>>
+      getXClusterTableConfigFromReplication(
+          XClusterUniverseService xClusterUniverseService,
+          YBClientService ybClientService,
+          CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig,
+          XClusterConfig xClusterConfig) {
+    List<XClusterTableConfig> targetTableConfigs = new ArrayList<>();
+    List<XClusterTableConfig> sourceTableConfigs = new ArrayList<>();
+    if (!xClusterConfig.getTableType().equals(XClusterConfig.TableType.YSQL)) {
+      return new Pair<>(sourceTableConfigs, targetTableConfigs);
+    }
+
+    targetTableConfigs =
+        getTargetOnlyTable(xClusterUniverseService, ybClientService, xClusterConfig, clusterConfig);
+    sourceTableConfigs =
+        getSourceOnlyTable(xClusterUniverseService, ybClientService, xClusterConfig, clusterConfig);
+
+    return new Pair<>(sourceTableConfigs, targetTableConfigs);
+  }
+
+  public static List<XClusterTableConfig> getTargetOnlyTable(
+      XClusterUniverseService xClusterUniverseService,
+      YBClientService ybClientService,
+      XClusterConfig xClusterConfig,
+      CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig) {
+
+    try {
+      Set<String> tableIdsInReplicationOnTargetUniverse =
+          getConsumerTableIdsFromClusterConfig(
+              clusterConfig, xClusterConfig.getReplicationGroupName());
+
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetUniverseTableInfoList =
+          getTableInfoList(
+              ybClientService, Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID()));
+
+      return extractTablesNotInReplication(
+          tableIdsInReplicationOnTargetUniverse,
+          targetUniverseTableInfoList,
+          XClusterTableConfig.Status.ExtraTableOnTarget);
+    } catch (Exception e) {
+      log.error(
+          "Error getting target only table for xCluster config {}", xClusterConfig.getUuid(), e);
+      return new ArrayList<>();
+    }
+  }
+
+  public static List<XClusterTableConfig> getSourceOnlyTable(
+      XClusterUniverseService xClusterUniverseService,
+      YBClientService ybClientService,
+      XClusterConfig xClusterConfig,
+      CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig) {
+
+    try {
+      Set<String> tableIdsInReplicationOnSourceUniverse =
+          getProducerTableIdsFromClusterConfig(
+              clusterConfig, xClusterConfig.getReplicationGroupName());
+
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceUniverseTableInfoList =
+          getTableInfoList(
+              ybClientService, Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID()));
+
+      return extractTablesNotInReplication(
+          tableIdsInReplicationOnSourceUniverse,
+          sourceUniverseTableInfoList,
+          XClusterTableConfig.Status.ExtraTableOnSource);
+    } catch (Exception e) {
+      log.error(
+          "Error getting source only table for xCluster config {}", xClusterConfig.getUuid(), e);
+      return new ArrayList<>();
+    }
+  }
+
+  public static List<XClusterTableConfig> extractTablesNotInReplication(
+      Set<String> tablesIdsInReplication,
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> allTables,
+      XClusterTableConfig.Status missingTableStatus) {
+
+    Set<String> namespaceIdsInReplication =
+        allTables.stream()
+            .filter(tableInfo -> tablesIdsInReplication.contains(getTableId(tableInfo)))
+            .map(tableInfo -> tableInfo.getNamespace().getId().toStringUtf8())
+            .collect(Collectors.toSet());
+
+    Set<String> tableIdsNotInReplication =
+        allTables.stream()
+            .filter(tableInfo -> namespaceIdsInReplication.contains(getNamespaceId(tableInfo)))
+            .filter(tableInfo -> isXClusterSupported(tableInfo))
+            .filter(tableInfo -> !tablesIdsInReplication.contains(getTableId(tableInfo)))
+            .map(tableInfo -> getTableId(tableInfo))
+            .collect(Collectors.toSet());
+
+    List<XClusterTableConfig> tableConfigNotInReplication = new ArrayList<>();
+    for (String tableId : tableIdsNotInReplication) {
+      XClusterTableConfig tableConfig = new XClusterTableConfig();
+      tableConfig.setTableId(tableId);
+      tableConfig.setStatus(missingTableStatus);
+      tableConfigNotInReplication.add(tableConfig);
+    }
+    return tableConfigNotInReplication;
   }
 
   public Set<MasterTypes.NamespaceIdentifierPB> getNamespaces(
       Universe universe, Set<String> dbIds) {
     try (YBClient client =
         ybService.getClient(universe.getMasterAddresses(), universe.getCertificateNodetoNode())) {
-      ListNamespacesResponse response = client.getNamespacesList();
-      Set<MasterTypes.NamespaceIdentifierPB> filteredNamespaces =
-          response.getNamespacesList().stream()
-              .filter(db -> dbIds.contains(db.getId().toStringUtf8()))
-              .collect(Collectors.toSet());
-      return filteredNamespaces;
+      return client.getNamespacesList().getNamespacesList().stream()
+          .filter(db -> dbIds.contains(db.getId().toStringUtf8()))
+          .collect(Collectors.toSet());
     } catch (Exception e) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
+  }
+
+  public static List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> filterIndexTableInfoList(
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList) {
+    return tableInfoList.stream()
+        .filter(tableInfo -> TableInfoUtil.isIndexTable(tableInfo))
+        .collect(Collectors.toList());
+  }
+
+  public static Map<String, String> getIndexTableIdToParentTableIdMap(
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList) {
+    return tableInfoList.stream()
+        .filter(TableInfoUtil::isIndexTable)
+        .collect(
+            Collectors.toMap(
+                tableInfo -> getTableId(tableInfo), tableInfo -> tableInfo.getIndexedTableId()));
+  }
+
+  public static List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> getRequestedTableInfoList(
+      Set<String> dbIds,
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList) {
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
+        sourceTableInfoList.stream()
+            .filter(
+                tableInfo ->
+                    isXClusterSupported(tableInfo)
+                        && dbIds.contains(tableInfo.getNamespace().getId().toStringUtf8()))
+            .collect(Collectors.toList());
+    Set<String> foundDbIds =
+        requestedTableInfoList.stream()
+            .map(tableInfo -> tableInfo.getNamespace().getId().toStringUtf8())
+            .collect(Collectors.toSet());
+    // Ensure all DB names are found.
+    if (foundDbIds.size() != dbIds.size()) {
+      Set<String> missingDbIds =
+          dbIds.stream().filter(dbId -> !foundDbIds.contains(dbId)).collect(Collectors.toSet());
+      throw new IllegalArgumentException(
+          String.format(
+              "Some of the DB ids were not found: was %d, found %d, missing dbs: %s",
+              dbIds.size(), foundDbIds.size(), missingDbIds));
+    }
+    return requestedTableInfoList;
   }
 
   // DR methods.
@@ -1806,6 +2194,16 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  public static GetUniverseReplicationInfoResponse getUniverseReplicationInfo(
+      YBClientService ybService, Universe universe, String replicationGroup) throws Exception {
+    String universeMasterAddresses = universe.getMasterAddresses();
+    String universeCertificate = universe.getCertificateNodetoNode();
+
+    try (YBClient client = ybService.getClient(universeMasterAddresses, universeCertificate)) {
+      return client.getUniverseReplicationInfo(replicationGroup);
+    }
   }
 
   // --------------------------------------------------------------------------------
@@ -1850,6 +2248,99 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     XClusterDbReplicationSetup task = createTask(XClusterDbReplicationSetup.class);
     task.initialize(xClusterConfigParams);
     subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Checkpoints the databases to be added on the source universe and verifies the checkpointing is
+   * completed.
+   *
+   * @param xClusterConfig config used
+   * @param dbId db ids on the source universe that are being added to checkpoint.
+   * @return The created subtask group
+   */
+  protected SubTaskGroup createXClusterAddNamespaceToOutboundReplicationGroupTask(
+      XClusterConfig xClusterConfig, String dbId) {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("XClusterAddNamespaceToOutboundReplicationGroup");
+    XClusterAddNamespaceToOutboundReplicationGroup.Params taskParams =
+        new XClusterAddNamespaceToOutboundReplicationGroup.Params();
+    taskParams.setUniverseUUID(xClusterConfig.getSourceUniverseUUID());
+    taskParams.xClusterConfig = xClusterConfig;
+    taskParams.dbToAdd = dbId;
+    XClusterAddNamespaceToOutboundReplicationGroup task =
+        createTask(XClusterAddNamespaceToOutboundReplicationGroup.class);
+    task.initialize(taskParams);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Removes namespace from replication on the source universe only.
+   *
+   * @param xClusterConfig config used
+   * @param dbId db id on the source universe that are being added to checkpoint.
+   * @return The created subtask group
+   */
+  protected SubTaskGroup createXClusterRemoveNamespaceFromOutboundReplicationGroupTask(
+      XClusterConfig xClusterConfig, String dbId) {
+    SubTaskGroup subTaskGroup =
+        createSubTaskGroup("XClusterRemoveNamespaceFromOutboundReplication");
+    XClusterRemoveNamespaceFromOutboundReplicationGroup.Params taskParams =
+        new XClusterRemoveNamespaceFromOutboundReplicationGroup.Params();
+    taskParams.xClusterConfig = xClusterConfig;
+    taskParams.dbToRemove = dbId;
+    XClusterRemoveNamespaceFromOutboundReplicationGroup task =
+        createTask(XClusterRemoveNamespaceFromOutboundReplicationGroup.class);
+    task.initialize(taskParams);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Removes namespace from replication on the target universe only.
+   *
+   * @param xClusterConfig config used
+   * @param dbId db id on the source universe that is being removed from the replication.
+   * @return The created subtask group
+   */
+  protected SubTaskGroup createXClusterRemoveNamespaceFromTargetUniverseTask(
+      XClusterConfig xClusterConfig, String dbId) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("XClusterRemoveNamespaceFromTargetUniverse");
+    XClusterRemoveNamespaceFromTargetUniverse.Params taskParams =
+        new XClusterRemoveNamespaceFromTargetUniverse.Params();
+    taskParams.xClusterConfig = xClusterConfig;
+    taskParams.dbToRemove = dbId;
+    XClusterRemoveNamespaceFromTargetUniverse task =
+        createTask(XClusterRemoveNamespaceFromTargetUniverse.class);
+    task.initialize(taskParams);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Add the databases to the replication.
+   *
+   * @param xClusterConfig config used
+   * @param dbIds db ids on the source universe that are being added to the replication.
+   * @return The created subtask group
+   */
+  protected SubTaskGroup createAddNamespaceToXClusterReplicationTask(
+      XClusterConfig xClusterConfig, String dbId) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("AddNamespaceToXClusterReplication");
+    AddNamespaceToXClusterReplication.Params taskParams =
+        new AddNamespaceToXClusterReplication.Params();
+    taskParams.setUniverseUUID(xClusterConfig.getSourceUniverseUUID());
+    taskParams.xClusterConfig = xClusterConfig;
+    taskParams.dbToAdd = dbId;
+    AddNamespaceToXClusterReplication task = createTask(AddNamespaceToXClusterReplication.class);
+    task.initialize(taskParams);
+    subTaskGroup.addSubTask(task);
+
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }

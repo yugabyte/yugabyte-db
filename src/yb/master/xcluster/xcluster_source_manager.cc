@@ -18,6 +18,7 @@
 #include "yb/cdc/cdc_state_table.h"
 #include "yb/cdc/xcluster_types.h"
 #include "yb/client/xcluster_client.h"
+#include "yb/common/xcluster_util.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
@@ -29,6 +30,10 @@
 #include "yb/master/xcluster/xcluster_outbound_replication_group_tasks.h"
 
 #include "yb/util/scope_exit.h"
+
+DEFINE_RUNTIME_bool(enable_tablet_split_of_xcluster_bootstrapping_tables, false,
+    "When set, it enables automatic tablet splitting for tables that are part of an "
+    "xCluster replication setup and are currently being bootstrapped for xCluster.");
 
 DECLARE_uint32(cdc_wal_retention_time_secs);
 DECLARE_bool(TEST_disable_cdc_state_insert_on_setup);
@@ -349,11 +354,21 @@ Result<std::optional<bool>> XClusterSourceManager::IsBootstrapRequired(
 
 Result<std::optional<NamespaceCheckpointInfo>> XClusterSourceManager::GetXClusterStreams(
     const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
-    std::vector<std::pair<TableName, PgSchemaName>> opt_table_names) const {
+    const std::vector<std::pair<TableName, PgSchemaName>>& opt_table_names) const {
   auto outbound_replication_group =
       VERIFY_RESULT(GetOutboundReplicationGroup(replication_group_id));
 
   return outbound_replication_group->GetNamespaceCheckpointInfo(namespace_id, opt_table_names);
+}
+
+Result<std::optional<NamespaceCheckpointInfo>> XClusterSourceManager::GetXClusterStreamsForTableIds(
+    const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
+    const std::vector<TableId>& source_table_ids) const {
+  auto outbound_replication_group =
+      VERIFY_RESULT(GetOutboundReplicationGroup(replication_group_id));
+
+  return outbound_replication_group->GetNamespaceCheckpointInfoForTableIds(
+      namespace_id, source_table_ids);
 }
 
 Status XClusterSourceManager::CreateXClusterReplication(
@@ -492,7 +507,7 @@ Status XClusterSourceManager::CheckpointStreamsToOp0(
   std::vector<cdc::CDCStateTableEntry> entries;
   for (const auto& [table_id, stream_id] : table_streams) {
     auto table = VERIFY_RESULT(catalog_manager_.FindTableById(table_id));
-    for (const auto& tablet : table->GetTablets()) {
+    for (const auto& tablet : VERIFY_RESULT(table->GetTablets())) {
       cdc::CDCStateTableEntry entry(tablet->id(), stream_id);
       entry.checkpoint = OpId().Min();
       entry.last_replication_time = GetCurrentTimeMicros();
@@ -527,7 +542,7 @@ Status XClusterSourceManager::CheckpointStreamsToEndOfWAL(
     bootstrap_req.add_xrepl_stream_ids(stream_id.ToString());
 
     if (!ts_desc) {
-      auto ts_desc_result = table_info->GetTablets().front()->GetLeader();
+      auto ts_desc_result = VERIFY_RESULT(table_info->GetTablets()).front()->GetLeader();
       if (!ts_desc_result) {
         // After a master failover we may not yet have the leader info, so we need to try again.
         if (ts_desc_result.status().IsNotFound()) {
@@ -1144,6 +1159,19 @@ XClusterSourceManager::GetXClusterOutboundReplicationGroupInfo(
     result[namespace_id] = std::move(ns_info);
   }
   return result;
+}
+
+Status XClusterSourceManager::ValidateSplitCandidateTable(const TableId& table_id) const {
+  if (!FLAGS_enable_tablet_split_of_xcluster_bootstrapping_tables &&
+      DoesTableHaveAnyBootstrappingStream(table_id)) {
+    return STATUS_FORMAT(
+        NotSupported,
+        "Tablet splitting is not supported for tables that are a part of"
+        " a bootstrapping CDC stream, table_id: $0",
+        table_id);
+  }
+
+  return Status::OK();
 }
 
 }  // namespace yb::master

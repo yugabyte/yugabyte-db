@@ -144,6 +144,7 @@ METRIC_DEFINE_counter(
 
 DECLARE_bool(create_initial_sys_catalog_snapshot);
 DECLARE_int32(master_discovery_timeout_ms);
+DECLARE_int32(retryable_request_timeout_secs);
 
 DEFINE_UNKNOWN_int32(sys_catalog_write_timeout_ms, 60000, "Timeout for writes into system catalog");
 DEFINE_UNKNOWN_uint64(copy_tables_batch_bytes, 500_KB,
@@ -571,13 +572,14 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
   tablet::TabletPtr tablet;
   scoped_refptr<Log> log;
   consensus::ConsensusBootstrapInfo consensus_info;
-  consensus::RetryableRequestsManager retryable_requests_manager(
-      metadata->raft_group_id(),
-      metadata->fs_manager(),
-      metadata->wal_dir(),
-      master_->mem_tracker(),
-      LogPrefix());
-  RETURN_NOT_OK(retryable_requests_manager.Init(master_->clock()));
+
+  auto bootstrap_state_manager = std::make_shared<tablet::TabletBootstrapStateManager>(
+      metadata->raft_group_id(), metadata->fs_manager(), metadata->wal_dir());
+  RETURN_NOT_OK(bootstrap_state_manager->Init());
+
+  consensus::RetryableRequests retryable_requests(master_->mem_tracker(), LogPrefix());
+  retryable_requests.SetServerClock(master_->clock());
+  retryable_requests.SetRequestTimeout(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs));
 
   RETURN_NOT_OK(tablet_peer()->SetBootstrapping());
   tablet::TabletOptions tablet_options;
@@ -636,7 +638,8 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       .append_pool = append_pool(),
       .allocation_pool = allocation_pool_.get(),
       .log_sync_pool = log_sync_pool(),
-      .retryable_requests_manager = &retryable_requests_manager,
+      .retryable_requests = &retryable_requests,
+      .bootstrap_state_manager = bootstrap_state_manager.get(),
       .bootstrap_retryable_requests = true
   };
   RETURN_NOT_OK(BootstrapTablet(data, &tablet, &log, &consensus_info));
@@ -656,10 +659,11 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
           raft_pool(),
           raft_notifications_pool(),
           tablet_prepare_pool(),
-          &retryable_requests_manager /* retryable_requests_manager */,
+          &retryable_requests,
+          bootstrap_state_manager,
           nullptr,
           multi_raft_manager_.get(),
-          nullptr /* flush_retryable_requests_pool */),
+          nullptr /* flush_bootstrap_state_pool */),
       "Failed to Init() TabletPeer");
 
   RETURN_NOT_OK_PREPEND(tablet_peer()->Start(consensus_info), "Failed to Start() TabletPeer");
@@ -1330,7 +1334,6 @@ Status SysCatalogTable::ReadPgClassInfo(
       continue;
     }
 
-    bool is_colocated_table = false;
     if (is_colocated_database) {
       // A table in a colocated database is colocated unless it opted out
       // of colocation.
@@ -1342,15 +1345,6 @@ Status SysCatalogTable::ReadPgClassInfo(
         // their own entry in YugaByte's catalog manager. So, we skip them here.
         continue;
       }
-
-      is_colocated_table = table_info->IsColocatedUserTable();
-    }
-
-    if (is_colocated_table) {
-      // This is a colocated table. This cannot have a tablespace associated with it.
-      VLOG(5) << "Table { oid: " << oid << ", name: " << table_name << " }"
-              << " skipped as it is colocated";
-      continue;
     }
 
     // Process the tablespace oid for this table/index.
@@ -1720,7 +1714,7 @@ Status SysCatalogTable::CopyPgsqlTables(
       source_table_ids.size(), target_table_ids.size(), InvalidArgument,
       "size mismatch between source tables and target tables");
 
-  int batch_count = 0, total_count = 0, total_bytes = 0;
+  size_t batch_count = 0, rows_so_far = 0, total_bytes = 0;
   const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
   const auto* meta = tablet->metadata();
   for (size_t i = 0; i < source_table_ids.size(); ++i) {
@@ -1741,21 +1735,21 @@ Status SysCatalogTable::CopyPgsqlTables(
           source_table_info->schema(), source_row, target_table_id, target_table_info->schema(),
           target_table_info->schema_version, true /* is_upsert */));
 
-      ++total_count;
-      if (FLAGS_copy_tables_batch_bytes > 0 && 0 == (total_count % 128)) {
+      ++rows_so_far;
+      if (FLAGS_copy_tables_batch_bytes > 0 && 0 == (rows_so_far % 128)) {
           // Break up the write into batches of roughly the same serialized size
           // in order to avoid uncontrolled large network writes.
           // ByteSizeLong is an expensive calculation so do not perform it each time
 
-        size_t batch_bytes = writer->req().ByteSizeLong();
+        auto batch_bytes = writer->req().ByteSizeLong();
         if (batch_bytes > FLAGS_copy_tables_batch_bytes) {
           RETURN_NOT_OK(SyncWrite(writer.get()));
 
           total_bytes += batch_bytes;
           ++batch_count;
-          LOG(INFO) << Format(
-              "CopyPgsqlTables: Batch# $0 copied $1 rows with $2 bytes", batch_count,
-              writer->req().pgsql_write_batch_size(), HumanizeBytes(batch_bytes));
+          LOG(INFO) << "CopyPgsqlTables: Batch# " << batch_count << " copied "
+                    << writer->req().pgsql_write_batch_size() << " rows with "
+                    << HumanizeBytes(batch_bytes) << " bytes";
 
           writer = NewWriter(leader_term);
         }
@@ -1765,17 +1759,16 @@ Status SysCatalogTable::CopyPgsqlTables(
 
   if (writer->req().pgsql_write_batch_size() > 0) {
     RETURN_NOT_OK(SyncWrite(writer.get()));
-    size_t batch_bytes = writer->req().ByteSizeLong();
+    auto batch_bytes = writer->req().ByteSizeLong();
     total_bytes += batch_bytes;
     ++batch_count;
-    LOG(INFO) << Format(
-        "CopyPgsqlTables: Batch# $0 copied $1 rows with $2 bytes", batch_count,
-        writer->req().pgsql_write_batch_size(), HumanizeBytes(batch_bytes));
+    LOG(INFO) << "CopyPgsqlTables: Batch# " << batch_count << " copied "
+              << writer->req().pgsql_write_batch_size() << " rows with "
+              << HumanizeBytes(batch_bytes) << " bytes";
   }
 
-  LOG(INFO) << Format(
-      "CopyPgsqlTables: Copied total $0 rows, total $1 bytes in $2 batches", total_count,
-      HumanizeBytes(total_bytes), batch_count);
+  LOG(INFO) << "CopyPgsqlTables: Copied total " << rows_so_far << " rows, total "
+            << HumanizeBytes(total_bytes) << " bytes in " << batch_count << " batches";
   return Status::OK();
 }
 

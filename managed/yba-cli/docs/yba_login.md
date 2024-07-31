@@ -4,7 +4,7 @@ Authenticate yba cli using email and password
 
 ### Synopsis
 
-Connect to YugabyteDB Anywhere host machine using email and password. If non-interactive mode is set, provide the host, email and password using flags. Default for host is "http://localhost:9000"
+Connect to YugabyteDB Anywhere host machine using email and password. If non-interactive mode is set, provide the host, email and password using flags. Default for host is "http://localhost:9000".
 
 ```
 yba login [flags]

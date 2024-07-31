@@ -22,38 +22,82 @@ import (
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/systemd"
 )
 
 // Install performs the installation procedures common to
 // all services.
-func Install(version string) {
+func Install(version string) error {
 	log.Info("Starting Common install")
-	// Hidden file written on first install (.installCompleted) at the end of the install,
-	// if the file already exists then it means that an installation has already taken place,
-	// and that future installs are prohibited.
-	if _, err := os.Stat(YbaInstalledMarker()); err == nil {
-		log.Fatal("Install of YBA already completed, cannot perform reinstall without clean.")
-	}
 
 	// Change into the dir we are in so that we can specify paths relative to ourselves
 	// TODO(minor): probably not a good idea in the long run
-	os.Chdir(GetBinaryDir())
+	if err := os.Chdir(GetBinaryDir()); err != nil {
+		return err
+	}
 
 	// set default values for unspecified config values
-	FixConfigValues()
+	if err := FixConfigValues(); err != nil {
+		return err
+	}
 
-	createYugabyteUser()
+	if err := createYugabyteUser(); err != nil {
+		return err
+	}
 
-	createInstallDirs()
-	copyBits(version)
-	extractPlatformSupportPackageAndYugabundle(version)
-	renameThirdPartyDependencies()
+	// Set ownership of yba-ctl.yml and yba-ctl.log
+	user := viper.GetString("service_username")
+	if err := Chown(InputFile(), user, user, false); err != nil {
+		return fmt.Errorf("could not set ownership of %s: %v", InputFile(), err)
+	}
 
-	setupJDK()
-	setJDKEnvironmentVariable()
+	if err := Chown(YbactlLogFile(), user, user, false); err != nil {
+		return fmt.Errorf("could not set ownership of %s: %v", YbactlLogFile(), err)
+	}
+
+	if err := createInstallDirs(); err != nil {
+		return err
+	}
+	if err := copyBits(version); err != nil {
+		return err
+	}
+	if err := extractPlatformSupportPackageAndYugabundle(version); err != nil {
+		return err
+	}
+	if err := renameThirdPartyDependencies(); err != nil {
+		return err
+	}
+
+	if err := setupJDK(); err != nil {
+		return err
+	}
+	if err := setJDKEnvironmentVariable(); err != nil {
+		return err
+	}
+	if !HasSudoAccess() {
+		log.Info("setup systemd --user for long running services")
+		if err := systemd.LingerEnable(); err != nil {
+			return err
+		}
+		// Create a link to network online target for user services, which otherwise cannot depend on it
+		if err := systemd.Link("/usr/lib/systemd/system/network-online.target"); err != nil {
+			return err
+		}
+		fp := fmt.Sprintf("/home/%s/.bashrc", viper.GetString("service_username"))
+		bashrc, err := os.OpenFile(fp, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
+		if err != nil {
+			return fmt.Errorf("could not open /home/%s/bashrc: %w",
+				viper.GetString("service_username"), err)
+		}
+		defer bashrc.Close()
+		if _, err := bashrc.WriteString("export XDG_RUNTIME_DIR=/run/user/$(id -u)\n"); err != nil {
+			return fmt.Errorf("could not write XDG_RUNTIME_DIR to bashrc: %w", err)
+		}
+	}
+	return nil
 }
 
-func createInstallDirs() {
+func createInstallDirs() error {
 	createDirs := []string{
 		GetSoftwareRoot(),
 		dm.WorkingDirectory(),
@@ -67,7 +111,7 @@ func createInstallDirs() {
 		_, err := os.Stat(dir)
 		if os.IsNotExist(err) {
 			if err := MkdirAll(dir, DirMode); err != nil {
-				log.Fatal(fmt.Sprintf("failed creating directory %s: %s", dir, err.Error()))
+				return fmt.Errorf(fmt.Sprintf("failed creating directory %s: %s", dir, err.Error()))
 			}
 		}
 		// Only change ownership for root installs.
@@ -75,7 +119,7 @@ func createInstallDirs() {
 			serviceuser := viper.GetString("service_username")
 			err := Chown(dir, serviceuser, serviceuser, false)
 			if err != nil {
-				log.Fatal("failed to change ownership of " + dir + " to " +
+				return fmt.Errorf("failed to change ownership of " + dir + " to " +
 					serviceuser + ": " + err.Error())
 			}
 		}
@@ -83,30 +127,32 @@ func createInstallDirs() {
 
 	// Remove the symlink if one exists
 	SetActiveInstallSymlink()
+	return nil
 }
 
-func createUpgradeDirs() {
+func createUpgradeDirs() error {
 	createDirs := []string{
 		GetInstallerSoftwareDir(),
 	}
 
 	for _, dir := range createDirs {
 		if err := MkdirAll(dir, DirMode); err != nil {
-			log.Fatal(fmt.Sprintf("failed creating directory %s: %s", dir, err.Error()))
+			return fmt.Errorf("failed creating directory %s: %s", dir, err.Error())
 		}
 		if HasSudoAccess() {
 			err := Chown(dir, viper.GetString("service_username"), viper.GetString("service_username"),
 				true)
 			if err != nil {
-				log.Fatal("failed to change ownership of " + dir + " to " +
+				return fmt.Errorf("failed to change ownership of " + dir + " to " +
 					viper.GetString("service_username") + ": " + err.Error())
 			}
 		}
 	}
+	return nil
 }
 
 // Copies over necessary files for all services from yba_installer_full to the GetSoftwareRoot()
-func copyBits(vers string) {
+func copyBits(vers string) error {
 	yugabundleBinary := "yugabundle-" + vers + "-centos-x86_64.tar.gz"
 	neededFiles := []string{GoBinaryName, VersionMetadataJSON, yugabundleBinary,
 		GetJavaPackagePath(), GetPostgresPackagePath()}
@@ -114,27 +160,20 @@ func copyBits(vers string) {
 	for _, file := range neededFiles {
 		fp := AbsoluteBundlePath(file)
 		if err := Copy(fp, GetInstallerSoftwareDir(), false, true); err != nil {
-			log.Fatal("failed to copy " + fp + ": " + err.Error())
+			return fmt.Errorf("failed to copy " + fp + ": " + err.Error())
 		}
 	}
 
 	configDest := path.Join(GetInstallerSoftwareDir(), ConfigDir)
 	if _, err := os.Stat(configDest); errors.Is(err, os.ErrNotExist) {
 		if err := Copy(GetTemplatesDir(), configDest, true, false); err != nil {
-			log.Fatal("failed to copy config files: " + err.Error())
+			return fmt.Errorf("failed to copy config files: " + err.Error())
 		}
 	} else {
 		log.Debug("skipping template file copy, already exists")
 	}
 
-	cronDest := path.Join(GetInstallerSoftwareDir(), CronDir)
-	if _, err := os.Stat(cronDest); errors.Is(err, os.ErrNotExist) {
-		if err := Copy(GetCronDir(), cronDest, true, false); err != nil {
-			log.Fatal("failed to copy cron scripts: " + err.Error())
-		}
-	} else {
-		log.Debug("skipping cron directory copy, already exists")
-	}
+	return nil
 }
 
 // Uninstall performs the uninstallation procedures common to
@@ -165,59 +204,89 @@ func Uninstall(serviceNames []string, removeData bool) {
 }
 
 // Upgrade performs the upgrade procedures common to all services.
-func Upgrade(version string) {
+func Upgrade(version string) error {
 
 	// Change into the dir we are in so that we can specify paths relative to ourselves
 	// TODO(minor): probably not a good idea in the long run
-	os.Chdir(GetBinaryDir())
+	if err := os.Chdir(GetBinaryDir()); err != nil {
+		return err
+	}
+	// Change ownership as part of upgrade to allow non-root commands
+	user := viper.GetString("service_username")
+	if err := Chown(InputFile(), user, user, false); err != nil {
+		return fmt.Errorf("could not set ownership of %s: %v", InputFile(), err)
+	}
+	if err := Chown(YbactlLogFile(), user, user, false); err != nil {
+		return fmt.Errorf("could not set ownership of %s: %v", YbactlLogFile(), err)
+	}
+	if err := createUpgradeDirs(); err != nil {
+		return err
+	}
+	if err := copyBits(version); err != nil {
+		return err
+	}
+	if err := extractPlatformSupportPackageAndYugabundle(version); err != nil {
+		return err
+	}
+	if err := renameThirdPartyDependencies(); err != nil {
+		return err
+	}
+	if err := setupJDK(); err != nil {
+		return err
+	}
+	if err := setJDKEnvironmentVariable(); err != nil {
+		return err
+	}
 
-	createUpgradeDirs()
-	copyBits(version)
-	extractPlatformSupportPackageAndYugabundle(version)
-	renameThirdPartyDependencies()
-	setupJDK()
-	setJDKEnvironmentVariable()
+	return nil
 
 }
 
 // PostUpgrade will update the active install symlink and remove old versions if needed
 func PostUpgrade() {
-	SetActiveInstallSymlink()
+	if err := SetActiveInstallSymlink(); err != nil {
+		log.Warn("Error setting active symlink. " +
+			"Upgrade has completed but backups with version metadata may be affected.")
+	}
 	PrunePastInstalls()
 }
 
 // SetActiveInstallSymlink will create <installRoot>/active symlink
-func SetActiveInstallSymlink() {
+func SetActiveInstallSymlink() error {
 	// Remove the symlink if one exists
 	if _, err := os.Stat(GetActiveSymlink()); err == nil {
-		os.Remove(GetActiveSymlink())
+		if err := os.Remove(GetActiveSymlink()); err != nil {
+			return fmt.Errorf("failed removing previous symlink: %s", err.Error())
+		}
 	}
 	if err := os.Symlink(GetSoftwareRoot(), GetActiveSymlink()); err != nil {
-		log.Fatal("could not create active symlink " + err.Error())
+		return fmt.Errorf("could not create active symlink: %s", err.Error())
 	}
+	return nil
 }
 
-func setupJDK() {
+func setupJDK() error {
 	dirName, err := javaDirectoryName()
 	if err != nil {
-		log.Fatal("failed to untar jdk: " + err.Error())
+		return fmt.Errorf("failed to untar jdk: " + err.Error())
 	}
 	_, err = os.Stat(filepath.Join(GetInstallerSoftwareDir(), dirName))
 	if errors.Is(err, os.ErrNotExist) {
 		out := shell.Run("tar", "-zxf", GetJavaPackagePath(), "-C", GetInstallerSoftwareDir())
 		if !out.SucceededOrLog() {
-			log.Fatal("failed to setup JDK: " + out.Error.Error())
+			return fmt.Errorf("failed to setup JDK: " + out.Error.Error())
 		}
 	} else {
 		log.Debug("jdk already extracted")
 	}
+	return nil
 }
 
 // When we start Yugaware, we point to the location of our bundled
 // JDK via the JAVA_HOME environment variable, so that it knows to
 // use the version we provide. Needed for non-root installs as we cannot
 // set the environment variables in the systemd service file any longer.
-func setJDKEnvironmentVariable() {
+func setJDKEnvironmentVariable() error {
 	tarArgs := []string{
 		"-tf", GetJavaPackagePath(),
 		"|",
@@ -226,15 +295,18 @@ func setJDKEnvironmentVariable() {
 	out := shell.RunShell("tar", tarArgs...)
 	out.LogDebug()
 	if !out.SucceededOrLog() {
-		log.Fatal("failed to setup JDK environment: " + out.Error.Error())
+		return fmt.Errorf("failed to setup JDK environment: " + out.Error.Error())
 	}
 
 	javaExtractedFolderName, err := javaDirectoryName()
 	if err != nil {
-		log.Fatal("failed to setup JDK Environment: " + err.Error())
+		return fmt.Errorf("failed to setup JDK Environment: " + err.Error())
 	}
 	javaHome := GetInstallerSoftwareDir() + javaExtractedFolderName
-	os.Setenv("JAVA_HOME", javaHome)
+	if err := os.Setenv("JAVA_HOME", javaHome); err != nil {
+		return fmt.Errorf("failed setting JAVA_HOME environment variable: %s", err.Error())
+	}
+	return nil
 }
 
 func javaDirectoryName() (string, error) {
@@ -255,48 +327,49 @@ func javaDirectoryName() (string, error) {
 	return javaExtractedFolderName, nil
 }
 
-func createYugabyteUser() {
+func createYugabyteUser() error {
 	userName := viper.GetString("service_username")
 	if userName != DefaultServiceUser {
 		log.Debug("skipping creation of non-yugabyte user " + userName)
-		return
+		return nil
 	}
 
 	// Check if the user exists. id command will have non 0 exit status if the user does not exist.
 	if out := shell.Run("id", "-u", userName); out.Succeeded() {
 		log.Debug("User " + userName + " already exists, skipping user creation.")
-		return
+		return nil
 	}
 
 	if HasSudoAccess() {
 		if out := shell.Run("useradd", "-m", userName, "-U"); !out.Succeeded() {
-			log.Fatal("failed to create user " + userName + ": " + out.Error.Error())
+			return fmt.Errorf("failed to create user " + userName + ": " + out.Error.Error())
 		}
 	} else {
-		log.Fatal("Need sudo access to create yugabyte user.")
+		return fmt.Errorf("need sudo access to create yugabyte user")
 	}
+	return nil
 }
 
-func extractPlatformSupportPackageAndYugabundle(vers string) {
+func extractPlatformSupportPackageAndYugabundle(vers string) error {
 
 	log.Info("Extracting yugabundle package.")
 
 	if err := RemoveAll(filepath.Join(GetInstallerSoftwareDir(), "packages")); err != nil {
-		log.Fatal("failed to remove old packages: " + err.Error())
+		return fmt.Errorf("failed to remove old packages: " + err.Error())
 	}
 
 	yugabundleBinary := GetInstallerSoftwareDir() + "/yugabundle-" + vers + "-centos-x86_64.tar.gz"
 
 	rExtract1, errExtract1 := os.Open(yugabundleBinary)
 	if errExtract1 != nil {
-		log.Fatal("Error in starting the File Extraction process. " + errExtract1.Error())
+		return fmt.Errorf("Error in starting the File Extraction process. " + errExtract1.Error())
 	}
 	defer rExtract1.Close()
 
 	log.Debug(fmt.Sprintf("Extracting %s", yugabundleBinary))
 	err := tar.Untar(rExtract1, GetInstallerSoftwareDir(), tar.WithMaxUntarSize(-1))
 	if err != nil {
-		log.Fatal(fmt.Sprintf("failed to extract file %s, error: %s", yugabundleBinary, err.Error()))
+		return fmt.Errorf(fmt.Sprintf("failed to extract file %s, error: %s", yugabundleBinary, err.Error()))
 	}
 	log.Debug(fmt.Sprintf("Completed extracting %s", yugabundleBinary))
 
@@ -306,77 +379,95 @@ func extractPlatformSupportPackageAndYugabundle(vers string) {
 	rExtract2, errExtract2 := os.Open(path1)
 	if errExtract2 != nil {
 		fmt.Println(errExtract2.Error())
-		log.Fatal("Error in starting the File Extraction process. " + errExtract2.Error())
+		return fmt.Errorf("error in starting the file extraction process: " + errExtract2.Error())
 	}
 	defer rExtract2.Close()
 
 	log.Debug(fmt.Sprintf("Extracting %s", path1))
 	err = tar.Untar(rExtract2, GetInstallerSoftwareDir(), tar.WithMaxUntarSize(-1))
 	if err != nil {
-		log.Fatal(fmt.Sprintf("failed to extract file %s, error: %s", path1, err.Error()))
+		return fmt.Errorf(fmt.Sprintf("failed to extract file %s, error: %s", path1, err.Error()))
 	}
 	log.Debug(fmt.Sprintf("Completed extracting %s", path1))
 
-	RenameOrFail(GetInstallerSoftwareDir()+"/yugabyte-"+vers,
-		GetInstallerSoftwareDir()+"/packages/yugabyte-"+vers)
+	if err := Rename(GetInstallerSoftwareDir()+"/yugabyte-"+vers,
+		GetInstallerSoftwareDir()+"/packages/yugabyte-"+vers); err != nil {
+		return err
+	}
 
 	if HasSudoAccess() {
 		userName := viper.GetString("service_username")
-		Chown(GetSoftwareRoot(), userName, userName, true)
+		if err := Chown(GetSoftwareRoot(), userName, userName, true); err != nil {
+			return err
+		}
 	}
-
+	return nil
 }
 
-func renameThirdPartyDependencies() {
+func renameThirdPartyDependencies() error {
 
 	log.Info("Extracting third-party dependencies.")
 
 	//Remove any thirdparty directories if they already exist, so
 	//that the install action is idempotent.
 	if err := RemoveAll(GetInstallerSoftwareDir() + "/thirdparty"); err != nil {
-		log.Fatal("failed to clean thirdparty directory: " + err.Error())
+		return fmt.Errorf("failed to clean thirdparty directory: " + err.Error())
 	}
 	if err := RemoveAll(GetInstallerSoftwareDir() + "/third-party"); err != nil {
-		log.Fatal("failed to clean thirdparty directory: " + err.Error())
+		return fmt.Errorf("failed to clean thirdparty directory: " + err.Error())
 	}
 
 	path := GetInstallerSoftwareDir() + "/packages/thirdparty-deps.tar.gz"
 	rExtract, _ := os.Open(path)
 	log.Debug("Extracting archive " + path)
 	if err := tar.Untar(rExtract, GetInstallerSoftwareDir(), tar.WithMaxUntarSize(-1)); err != nil {
-		log.Fatal(fmt.Sprintf("failed to extract file %s, error: %s",
+		return fmt.Errorf(fmt.Sprintf("failed to extract file %s, error: %s",
 			path, err.Error()))
 	}
 
 	log.Debug(fmt.Sprintf("Completed extracting archive at %s to %s", path, GetInstallerSoftwareDir()))
-	RenameOrFail(GetInstallerSoftwareDir()+"/thirdparty", GetInstallerSoftwareDir()+"/third-party")
+	if err := Rename(GetInstallerSoftwareDir()+"/thirdparty",
+		GetInstallerSoftwareDir()+"/third-party"); err != nil {
+		return err
+	}
+	return nil
 }
 
 // FixConfigValues sets any mandatory config defaults not set by user (generally passwords)
-func FixConfigValues() {
+func FixConfigValues() error {
 
 	if len(viper.GetString("service_username")) == 0 {
 		log.Info(fmt.Sprintf("Systemd services will be run as user %s", DefaultServiceUser))
-		SetYamlValue(InputFile(), "service_username", DefaultServiceUser)
+		if err := SetYamlValue(InputFile(), "service_username", DefaultServiceUser); err != nil {
+			return err
+		}
 		InitViper()
 	}
 
 	if len(viper.GetString("platform.appSecret")) == 0 {
 		log.Debug("Generating default app secret for platform")
-		SetYamlValue(InputFile(), "platform.appSecret", GenerateRandomStringURLSafe(64))
+		if err := SetYamlValue(InputFile(), "platform.appSecret",
+			GenerateRandomStringURLSafe(64)); err != nil {
+			return err
+		}
 		InitViper()
 	}
 
 	if len(viper.GetString("platform.keyStorePassword")) == 0 {
 		log.Debug("Generating default app secret for platform")
-		SetYamlValue(InputFile(), "platform.keyStorePassword", GenerateRandomStringURLSafe(32))
+		if err := SetYamlValue(InputFile(), "platform.keyStorePassword",
+			GenerateRandomStringURLSafe(32)); err != nil {
+			return err
+		}
 		InitViper()
 	}
 
 	if len(viper.GetString("host")) == 0 {
 		host := GuessPrimaryIP()
 		log.Info("Guessing primary IP of host to be " + host)
-		SetYamlValue(InputFile(), "host", host)
+		if err := SetYamlValue(InputFile(), "host", host); err != nil {
+			return err
+		}
 		InitViper()
 	}
 
@@ -384,32 +475,48 @@ func FixConfigValues() {
 	if len(viper.GetString("server_cert_path")) == 0 {
 		log.Info("Generating self-signed server certificates")
 		serverCertPath, serverKeyPath = GenerateSelfSignedCerts()
-		SetYamlValue(InputFile(), "server_cert_path", serverCertPath)
-		SetYamlValue(InputFile(), "server_key_path", serverKeyPath)
+		if err := SetYamlValue(InputFile(), "server_cert_path", serverCertPath); err != nil {
+			return err
+		}
+		if err := SetYamlValue(InputFile(), "server_key_path", serverKeyPath); err != nil {
+			return err
+		}
 		InitViper()
 	}
 
 	if viper.GetBool("postgres.install.enabled") &&
 		len(viper.GetString("postgres.install.password")) == 0 {
 		log.Info("Generating default password for postgres")
-		SetYamlValue(InputFile(), "postgres.install.password", GenerateRandomStringURLSafe(32))
+		if err := SetYamlValue(InputFile(), "postgres.install.password",
+			GenerateRandomStringURLSafe(32)); err != nil {
+			return err
+		}
 		InitViper()
 	}
 
 	if viper.GetBool("prometheus.enableAuth") &&
 		len(viper.GetString("prometheus.authPassword")) == 0 {
 		log.Info("Generating default password for prometheus")
-		SetYamlValue(InputFile(), "prometheus.authPassword", GenerateRandomStringURLSafe(32))
+		if err := SetYamlValue(InputFile(), "prometheus.authPassword",
+			GenerateRandomStringURLSafe(32)); err != nil {
+			return err
+		}
 		InitViper()
 	}
 
 	if viper.GetBool("prometheus.enableHttps") {
 		// Default to YBA certs
-		SetYamlValue(InputFile(), "prometheus.httpsCertPath", viper.GetString("server_cert_path"))
-		SetYamlValue(InputFile(), "prometheus.httpsKeyPath", viper.GetString("server_key_path"))
+		if err := SetYamlValue(InputFile(), "prometheus.httpsCertPath",
+			viper.GetString("server_cert_path")); err != nil {
+			return err
+		}
+		if err := SetYamlValue(InputFile(), "prometheus.httpsKeyPath",
+			viper.GetString("server_key_path")); err != nil {
+			return err
+		}
 		InitViper()
 	}
-
+	return nil
 }
 
 // GenerateSelfSignedCerts will create self signed certifacts and return their paths.
@@ -467,7 +574,7 @@ func RegenerateSelfSignedCerts() (string, string) {
 }
 
 // WaitForYBAReady waits for a YBA to be running with specified version
-func WaitForYBAReady(version string) {
+func WaitForYBAReady(version string) error {
 	log.Info("Waiting for YBA ready.")
 
 	// Needed to access https URL without x509: certificate signed by unknown authority error
@@ -483,17 +590,22 @@ func WaitForYBAReady(version string) {
 
 		var resp *http.Response
 		var err error
-		// Check YBA version every 10 seconds
-		retriesCount := 20
 
-		for i := 0; i < retriesCount; i++ {
+		waitSecs := viper.GetInt("wait_for_yba_ready_secs")
+		endTime := time.Now().Add(time.Duration(waitSecs) * time.Second)
+		success := false
+		for time.Now().Before(endTime) {
 			resp, err = http.Get(url)
 			if err != nil {
 				log.Info(fmt.Sprintf("YBA at %s not ready. Checking again in 10 seconds.", url))
 				time.Sleep(10 * time.Second)
 			} else {
+				success = true
 				break
 			}
+		}
+		if !success {
+			return fmt.Errorf("YBA at %s not ready after %d minutes", url, waitSecs/60)
 		}
 
 		if resp != nil {
@@ -510,10 +622,10 @@ func WaitForYBAReady(version string) {
 						result["version"], version))
 				}
 			} else {
-				log.Fatal(fmt.Sprintf("Error waiting for YBA ready: %s", err.Error()))
+				return fmt.Errorf("error waiting for YBA ready: %s", err.Error())
 			}
 		}
 
 	}
-
+	return nil
 }

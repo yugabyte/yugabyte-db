@@ -289,7 +289,7 @@ If these defaults are used for both TServer and master, then a node's available 
 | Postgres % | 25% | 27% | 28% | 27% |
 | other %    | 10% | 10% |  5% |  3% |
 
-To read this table, take your node's available memory in GiB, call it _M_, and find the column who's heading condition _M_ meets.  For example, a node with 7 GiB of available memory would fall under the column labeled "4 < _M_ &le; 8" because 4 < 7 &le; 8.  The defaults for [`--default_memory_limit_to_ram_ratio`](#default-memory-limit-to-ram-ratio) on this node will thus be `0.48` for TServers and `0.15` for masters. The Postgres and other percentages are not set via a flag currently but rather consist of whatever memory is left after TServer and master take their cut.  There is currently no distinction between Postgres and other memory except on [YugabyteDB Managed](/preview/yugabyte-cloud/) where a [cgroup](https://www.cybertec-postgresql.com/en/linux-cgroups-for-postgresql/) is used to limit the Postgres memory.
+To read this table, take your node's available memory in GiB, call it _M_, and find the column who's heading condition _M_ meets.  For example, a node with 7 GiB of available memory would fall under the column labeled "4 < _M_ &le; 8" because 4 < 7 &le; 8.  The defaults for [`--default_memory_limit_to_ram_ratio`](#default-memory-limit-to-ram-ratio) on this node will thus be `0.48` for TServers and `0.15` for masters. The Postgres and other percentages are not set via a flag currently but rather consist of whatever memory is left after TServer and master take their cut.  There is currently no distinction between Postgres and other memory except on [YugabyteDB Aeon](/preview/yugabyte-cloud/) where a [cgroup](https://www.cybertec-postgresql.com/en/linux-cgroups-for-postgresql/) is used to limit the Postgres memory.
 
 For comparison, when `--use_memory_defaults_optimized_for_ysql` is `false`, the split is TServer 85%, master 10%, Postgres 0%, and other 5%.
 
@@ -320,7 +320,6 @@ Also shown is an estimate of how many Postgres connections that node can handle 
 
 Thus a 8 GiB node would be expected to be able support 530 tablet replicas and 65 (physical) typical Postgres connections.  A universe of six of these nodes would be able to support 530 \* 2 = 1,060 [RF3](../../../architecture/key-concepts/#replication-factor-rf) tablets and 65 \* 6 = 570 typical physical Postgres connections assuming the connections are evenly distributed among the nodes.
 
-
 ### Flags controlling the split of memory among processes
 
 Note that in general these flags will have different values for TServer and master processes.
@@ -336,7 +335,6 @@ Default: `0`
 The percentage of available RAM to use for this process if [`--memory_limit_hard_bytes`](#memory-limit-hard-bytes) is `0`.  The special value `-1000` means to instead use the default value for this flag.  Available RAM excludes memory reserved by the kernel.
 
 Default: `0.10` unless [`--use_memory_defaults_optimized_for_ysql`](#use-memory-defaults-optimized-for-ysql) is true.
-
 
 ### Flags controlling the split of memory within a master process
 
@@ -359,7 +357,6 @@ Percentage of the process' hard memory limit to use for tablet-related overheads
 Each tablet replica generally requires 700 MiB of this memory.
 
 Default: `0` unless [`--use_memory_defaults_optimized_for_ysql`](#use-memory-defaults-optimized-for-ysql) is true.
-
 
 ## Raft flags
 
@@ -612,7 +609,37 @@ For more details, see [clusters in colocated tables](../../../architecture/docdb
 
 Default: `false`
 
+##### enforce_tablet_replica_limits
+
+Enables/disables blocking of requests which would bring the total number of tablets in the system over a limit. For more information, see [Tablet limits](../../../architecture/docdb-sharding/tablet-splitting/#tablet-limits).
+
+Default: `false`. No limits will be enforced if this is false.
+
+##### split_respects_tablet_replica_limits
+
+If set, tablets will not be split if the total number of tablet replicas in the cluster after the split would exceed the limit after the split.
+
+Default: `false`
+
+##### tablet_replicas_per_core_limit
+
+The number of tablet replicas that each core on a YB-TServer can support.
+
+Default: `0` for no limit.
+
+##### tablet_replicas_per_gib_limit
+
+The number of tablet replicas that each GiB reserved by YB-TServers for tablet overheads can support.
+
+Default: 1024 * (7/10) (corresponding to an overhead of roughly 700 KiB per tablet)
+
 ## Tablet splitting flags
+
+##### --max_create_tablets_per_ts
+
+The maximum number of tablets per tablet server that can be specified when creating a table. This also limits the number of tablets that can be created by tablet splitting.
+
+Default: `50`
 
 ##### --enable_automatic_tablet_splitting
 
@@ -636,7 +663,7 @@ Default: `1`
 
 The size threshold used to determine if a tablet should be split when the tablet's table is in the "low" phase of automatic tablet splitting. See [`--tablet_split_low_phase_shard_count_per_node`](./#tablet-split-low-phase-shard-count-per-node).
 
-Default: `128_MB`
+Default: `128 MiB`
 
 ##### --tablet_split_high_phase_shard_count_per_node
 
@@ -648,19 +675,19 @@ Default: `24`
 
 The size threshold used to determine if a tablet should be split when the tablet's table is in the "high" phase of automatic tablet splitting. See [`--tablet_split_high_phase_shard_count_per_node`](./#tablet-split-low-phase-shard-count-per-node).
 
-Default: `10_GB`
+Default: `10 GiB`
 
 ##### --tablet_force_split_threshold_bytes
 
 The size threshold used to determine if a tablet should be split even if the table's number of shards puts it past the "high phase".
 
-Default: `100_GB`
+Default: `100 GiB`
 
 ##### --tablet_split_limit_per_table
 
 The maximum number of tablets per table for tablet splitting. Limitation is disabled if this value is set to 0.
 
-Default: `256`
+Default: `0`
 
 ##### --index_backfill_tablet_split_completion_timeout_sec
 
@@ -854,14 +881,20 @@ Default: `14400` (4 hours)
 
 Toggle automatic tablet splitting for tables in a CDCSDK stream, enhancing user control over replication processes.
 
+##### --enable_truncate_cdcsdk_table
+
+By default, TRUNCATE commands on tables with an active CDCSDK stream will fail. Change this flag to `true` to enable truncating tables.
+
 Default: `false`
 
 ## Metric export flags
 
+YB-Master metrics are available in Prometheus format atmax_prometheus_metric_entries
+`http://localhost:7000/prometheus-metrics`.
+
 ##### --export_help_and_type_in_prometheus_metrics
 
-YB-Master metrics are available in Prometheus format at
-`http://localhost:7000/prometheus-metrics`.  This flag controls whether
+This flag controls whether
 #TYPE and #HELP information is included as part of the Prometheus
 metrics output by default.
 
@@ -873,9 +906,18 @@ type and help information regardless of the setting of this flag.
 
 Default: `true`
 
+##### --max_prometheus_metric_entries
+
+Introduced in version 2.21.1.0, this flag limits the number of Prometheus metric entries returned per scrape. If adding a metric with all its entities exceeds this limit, all entries from that metric are excluded. This could result in fewer entries than the set limit.
+
+To override this flag on a per-scrape basis, you can adjust the URL parameter
+`max_metric_entries`.
+
+Default: `UINT32_MAX`
+
 ## Catalog flags
 
-##### ysql_enable_db_catalog_version_mode
+##### --ysql_enable_db_catalog_version_mode
 
 Enable the per database catalog version mode. A DDL statement that
 affects the current database can only increment catalog version for
@@ -921,7 +963,7 @@ To re-enable the per database catalog version mode, use the following steps:
 1. Shut down the cluster.
 1. Start the cluster with `--ysql_enable_db_catalog_version_mode=true`.
 
-##### enable_heartbeat_pg_catalog_versions_cache
+##### --enable_heartbeat_pg_catalog_versions_cache
 
 Whether to enable the use of heartbeat catalog versions cache for the
 `pg_yb_catalog_version` table which can help to reduce the number of reads
@@ -945,15 +987,15 @@ expensive when the number of yb-tservers, or the number of databases goes up.
 
 ## Advanced flags
 
-##### ysql_index_backfill_rpc_timeout_ms
+##### --ysql_index_backfill_rpc_timeout_ms
 
 Deadline (in milliseconds) for each internal YB-Master to YB-TServer RPC for backfilling a chunk of the index.
 
 Default: 60000 (1 minute)
 
-##### hide_dead_node_threshold_mins
+##### --hide_dead_node_threshold_mins
 
-After this many minutes of no heartbeat from a node, hide it from the UI (we presume it has been removed from the cluster). If -1, this flag is ignored and the node is never hidden from the UI
+Number of minutes to wait before no longer displaying a dead node (no heartbeat) in the [YB-Master Admin UI](#admin-ui) (the node is presumed to have been removed from the cluster).
 
 Default: 1440 (1 day)
 

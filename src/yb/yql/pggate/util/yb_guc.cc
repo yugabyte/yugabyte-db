@@ -39,13 +39,13 @@ bool yb_run_with_explain_analyze = false;
 
 bool yb_enable_add_column_missing_default = true;
 
-bool yb_enable_replication_commands = false;
+bool yb_enable_replication_commands = true;
 
-bool yb_enable_replication_slot_consumption = false;
+bool yb_enable_replication_slot_consumption = true;
 
 bool yb_enable_alter_table_rewrite = true;
 
-bool yb_enable_replica_identity = false;
+bool yb_enable_replica_identity = true;
 
 // If this is set in the user's session to a positive value, it will supersede the gflag
 // ysql_session_max_batch_size.
@@ -69,7 +69,11 @@ int yb_walsender_poll_sleep_duration_nonempty_ms = 1;
 
 int yb_walsender_poll_sleep_duration_empty_ms = 1 * 1000;
 
+int yb_reorderbuffer_max_changes_in_memory = 4096;
+
 int yb_explicit_row_locking_batch_size = 1;
 
 uint64_t yb_read_time = 0;
 bool yb_is_read_time_ht = false;
+
+int yb_read_after_commit_visibility = 0;

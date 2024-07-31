@@ -45,7 +45,7 @@ type ybaCtlPaths struct {
 
 func newYbaCtlPaths() ybaCtlPaths {
 	rootDir := "/opt"
-	if !HasSudoAccess() {
+	if !HasSudoAccess() && !Exists(YbactlRootInstallDir) {
 		var err error
 		rootDir, err = os.UserHomeDir()
 		if err != nil {

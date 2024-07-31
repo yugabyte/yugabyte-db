@@ -446,6 +446,7 @@ performant
 PgBouncer
 pgLoader
 pg_cron
+pg_recvlogical
 Phabricator
 phaser
 phasers

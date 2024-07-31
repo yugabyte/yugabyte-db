@@ -26,7 +26,7 @@ type: docs
   </li>
 </ul>
 
-YugabyteDB YSQL uses PostgreSQL Audit Extension ([pgaudit](https://www.pgaudit.org/)) to provide detailed session and/or object audit logging via YugabyteDB YB-TServer logging.
+YugabyteDB YSQL uses the PostgreSQL Audit Extension v1.3.2 ([pgaudit](https://github.com/pgaudit/pgaudit/blob/1.3.2/README.md)) to provide detailed session and/or object audit logging via YugabyteDB YB-TServer logging.
 
 The goal of YSQL audit logging is to provide you with the capability to produce audit logs often required to comply with government, financial, or ISO certifications. An audit is an official inspection of an individual's or organization's accounts, typically by an independent body.
 
@@ -224,6 +224,6 @@ cloud1 datacenter1 rack1 node1 639235e1.16c3b 2022-12-08 14:11:54.374 SESSION,9,
 
 ## Learn more
 
-- [Audit logging in YugabteDB](https://www.youtube.com/watch?v=ecYN9Z5_Hzc)
+- [Audit logging in YugabyteDB](https://www.youtube.com/watch?v=ecYN9Z5_Hzc)
 - [pgaudit GitHub project](https://github.com/pgaudit/pgaudit/)
 - [PostgreSQL Extensions](../../../explore/ysql-language-features/pg-extensions/)

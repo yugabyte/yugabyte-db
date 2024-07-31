@@ -1,4 +1,5 @@
-title: Node information reported by the cloud provider
+title: CloudSpecificInfo
+description: Node information reported by the Cloud Provider. Part of NodeDetails.
 type: object
 properties:
   assign_public_ip:
@@ -8,7 +9,7 @@ properties:
     description: The node's availability zone
     type: string
   cloud:
-    description: The node's cloud provider
+    description: The node's Cloud Provider
     type: string
   instance_type:
     description: The node's instance type

@@ -395,6 +395,8 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_enable_pg_per_database_oid_allocator;
   const bool*     ysql_enable_db_catalog_version_mode;
   const bool*     TEST_ysql_hide_catalog_version_increment_log;
+  const bool*     TEST_generate_ybrowid_sequentially;
+  const bool*     ysql_use_fast_backward_scan;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {
@@ -516,12 +518,12 @@ typedef struct PgSessionTxnInfo {
 } YBCPgSessionTxnInfo;
 
 // Values to copy from main backend session into background workers
-typedef struct PgSessionParallelData {
+typedef struct PgSessionState {
   uint64_t session_id;
   uint64_t txn_serial_no;
   uint64_t read_time_serial_no;
   uint32_t active_sub_transaction_id;
-} YBCPgSessionParallelData;
+} YBCPgSessionState;
 
 typedef struct PgJwtAuthOptions {
   char* jwks;
@@ -638,7 +640,11 @@ typedef enum PgRowMessageAction {
 typedef struct PgRowMessage {
   int col_count;
   YBCPgDatumMessage* cols;
+  // Microseconds since PostgreSQL epoch (2000-01-01). Used by most of the PG code and sent to the
+  // client as part of the record.
   uint64_t commit_time;
+  // The hybrid time of the commit. Used to set the correct read time for catalog changes.
+  uint64_t commit_time_ht;
   YBCPgRowMessageAction action;
   // Valid for DMLs and kPgInvalidOid for other (BEGIN/COMMIT) records.
   YBCPgOid table_oid;
@@ -668,6 +674,9 @@ typedef struct AshMetadata {
 
   // PgClient session id.
   uint64_t session_id;
+
+  // OID of database.
+  uint32_t database_id;
 
   // If addr_family is AF_INET (ipv4) or AF_INET6 (ipv6), client_addr stores
   // the ipv4/ipv6 address and client_port stores the port of the PG process
@@ -720,7 +729,7 @@ typedef struct AshSample {
   // If a certain number of samples are available and we capture a portion of
   // them, the sample weight is the reciprocal of the captured portion or 1,
   // whichever is maximum.
-  double sample_weight;
+  float sample_weight;
 
   // Timestamp when the sample was captured.
   uint64_t sample_time;
@@ -775,6 +784,18 @@ typedef enum PgYbrowidMode {
   PG_YBROWID_MODE_HASH,   // ...add ybrowid HASH
   PG_YBROWID_MODE_RANGE,  // ...add ybrowid ASC
 } YBCPgYbrowidMode;
+
+// The reserved database oid for system_postgres. Must be the same as
+// kPgSequencesDataTableOid (defined in entity_ids.h).
+static const YBCPgOid kYBCPgSequencesDataDatabaseOid = 65535;
+
+typedef struct YbCloneInfo {
+  // The clone time in microseconds since the unix epoch (not a hybrid time).
+  uint64_t clone_time;
+  const char* src_db_name;
+  const char* src_owner;
+  const char* tgt_owner;
+} YbCloneInfo;
 
 #ifdef __cplusplus
 }  // extern "C"

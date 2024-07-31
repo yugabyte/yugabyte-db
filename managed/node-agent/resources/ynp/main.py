@@ -1,44 +1,52 @@
-import importlib.metadata
-import jinja2
 import logging
-import config
-import setup_logger
-import ynp_main
-import config
 import sys
 import argparse
+import importlib.metadata
+import os
 import yaml
 import pprint
 
-# Get all installed packages
-installed_packages = importlib.metadata.distributions()
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="YNP: Node Provisioning Tool")
-    parser.add_argument('--provision_config',
-                        type=str,
-                        required=True,
-                        help='Path to the provision configuration file')
-    args = parser.parse_args()
-    node_provision_config = args.provision_config
+from configs.config import parse_config
+from configs import setup_logger
+from executor import Executor
 
-    with open(node_provision_config) as f:
-        npc = yaml.safe_load(f)
+def get_absolute_path(relative_path):
+    # Get the absolute path of the file
+    absolute_path = os.path.realpath(relative_path)
+    return absolute_path
 
-    setup_logger.setup_logger()
-    # Get a logger for the main module
-    logger = logging.getLogger(__name__)
-    logger.debug("Node provision config %s" % pprint.pformat(npc))
-    # initialize config.
-    conf = config.parse_config()
-    # log python version.
-    python_version = sys.version
-    logger.info("Python Version: %s", python_version)
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="YNP: Yugabyte Node Provisioning Tool")
+    parser.add_argument('--command', default="provision", required=False, help='Command to execute')
+    parser.add_argument('--config_file', default="./node-agent-provision.yaml", help='Path to the ynp configuration file')
+    parser.add_argument('--preflight_check', action="store_true", help='Execute the pre-flight check on the node')
+    return parser.parse_args()
 
-    # log a list of installed packages.
+def log_installed_packages(logger):
+    installed_packages = importlib.metadata.distributions()
     for package in installed_packages:
-        logger.info("%s -- %s" % (package.metadata["Name"], package.version))
+        logger.info("%s -- %s", package.metadata["Name"], package.version)
 
-    default_config = conf.pop("DEFAULT")
-    # initialized base.ynp
-    ynp = ynp_main.YugabyteUniverseNodeProvisioner()
-    ynp.initialize(conf)
+def main():
+    args = parse_arguments()
+    setup_logger.setup_logger()
+    logger = logging.getLogger(__name__)
+
+    try:
+        with open(get_absolute_path(args.config_file)) as f:
+            ynp_config = yaml.safe_load(f)
+    except Exception as e:
+        logger.error("Parsing YAML failed with ", e)
+        raise
+    logger.debug("YNP config %s" % pprint.pformat(ynp_config))
+
+    conf = parse_config(ynp_config)
+    logger.info("Config here: %s", conf)
+    logger.info("Python Version: %s", sys.version)
+    log_installed_packages(logger)
+
+    executor = Executor(conf, args)
+    executor.exec()
+
+if __name__ == "__main__":
+    main()

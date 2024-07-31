@@ -14,7 +14,7 @@ To connect to a cluster using `ysqlsh`:
 1. If your cluster is deployed in a VPC, choose **Private Address** if you are connecting from a peered VPC. Otherwise, choose **Public Address** (only available if you have enabled Public Access for the cluster; not recommended for production).
 1. Copy the **YSQL** connection string.
 
-    The connection string includes flags specifying the host (`host`), username (`user`), database (`dbname`), and TLS settings (`sslmode` and `sslrootcert`). The command specifies that the connection will use the CA certificate you installed on your computer. For information on using other SSL modes, refer to [SSL modes in YSQL](../../cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql).
+    The connection string includes flags specifying the host (`host`), username (`user`), database (`dbname`), and TLS settings (`sslmode` and `sslrootcert`). The command specifies that the connection will use the CA certificate you installed on your computer. For information on using other SSL modes, refer to [SSL modes in YSQL](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#ssl-modes-in-ysql).
 
     Here's an example of the generated `ysqlsh` command:
 

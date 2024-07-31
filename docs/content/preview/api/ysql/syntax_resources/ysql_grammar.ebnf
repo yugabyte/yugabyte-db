@@ -202,8 +202,8 @@ alter_sequence_options = [ 'AS' seq_data_type ]  \
 
 seq_data_type = ( 'smallint' | 'integer' | 'bigint' ) ;
 
-(* 'ALTER' 'SERVER' *) 
-alter_server = 'ALTER' 'SERVER' server_name 
+(* 'ALTER' 'SERVER' *)
+alter_server = 'ALTER' 'SERVER' server_name
                [ 'VERSION' server_version ] \
                [ 'OPTIONS' '(' alter_fdw_options ')' ]
                [ 'OWNER' 'TO' new_owner ] ;
@@ -234,7 +234,8 @@ alter_table_action =
 alter_table_constraint = [ 'CONSTRAINT' constraint_name ] \
                          ( 'CHECK' '(' expression ')' |
                            'UNIQUE' '(' column_names ')' index_parameters |
-                           'FOREIGN' 'KEY' '(' column_names ')' references_clause ) \
+                           'FOREIGN' 'KEY' '(' column_names ')' references_clause |
+                           'PRIMARY' 'KEY' '(' key_columns ')' ) \
                          [ 'DEFERRABLE' | 'NOT' 'DEFERRABLE' ] [ 'INITIALLY' 'DEFERRED' | 'INITIALLY' 'IMMEDIATE' ] ;
 
 alter_column_constraint = [ 'CONSTRAINT' constraint_name ] \
@@ -243,6 +244,7 @@ alter_column_constraint = [ 'CONSTRAINT' constraint_name ] \
                              'CHECK' '(' expression ')' |
                              'DEFAULT' expression |
                              'UNIQUE' index_parameters |
+                             'PRIMARY' 'KEY' |
                              references_clause )
                           [ 'DEFERRABLE' | 'NOT' 'DEFERRABLE' ] [ 'INITIALLY' 'DEFERRED' | 'INITIALLY' 'IMMEDIATE' ] ;
 
@@ -263,6 +265,18 @@ alter_materialized_view = 'ALTER' 'MATERIALIZED' 'VIEW' [ 'IF' 'EXISTS' ] matvie
 alter_materialized_view_action =
   ( 'RENAME' 'TO' new_name
     | 'SET' 'TABLESPACE' tablespace_name ) ;
+
+(* 'ALTER' 'PUBLICATION' *)
+alter_publication = 
+  'ALTER' 'PUBLICATION' publication_name 
+  [ alter_publication_action { ',' alter_publication_action } ] ;
+
+alter_publication_action =
+  'ADD' 'TABLE' table_name { ',' table_name } |
+  'SET' 'TABLE' table_name { ',' table_name } |
+  'DROP' 'TABLE' table_name { ',' table_name } |
+  'RENAME' 'TO' publication_name |
+  'OWNER' 'TO' new_owner ;
 
 (* 'ALTER' 'SCHEMA' *)
 alter_schema = 'ALTER' 'SCHEMA' schema_name (
@@ -521,7 +535,7 @@ link_symbol = text_literal ;
 
 sql_stmt_list = sql_stmt ';' { sql_stmt ';' } ;
 
-alterable_fn_and_proc_attribute =  ( 
+alterable_fn_and_proc_attribute =  (
                       'SET' run_time_parameter ( 'TO' value | '=' value | 'FROM' 'CURRENT' )
                       | 'RESET' run_time_parameter
                       | 'RESET' 'ALL'
@@ -554,7 +568,7 @@ create_foreign_table = 'CREATE' 'FOREIGN' 'TABLE' ['IF' 'NOT' 'EXISTS'] table_na
                        'SERVER' server_name
                        [ 'OPTIONS' '(' fdw_options ')' ] ;
 
-foreign_table_elem = ( column_name data_type 
+foreign_table_elem = ( column_name data_type
               [ 'OPTIONS' '(' fdw_options ')' ]
               [ 'COLLATE' collation ]
               [ column_constraint { column_constraint } ] ) | table_constraint ;
@@ -627,6 +641,20 @@ create_procedure =  'CREATE' [ 'OR' 'REPLACE' ] 'PROCEDURE'
 
 (* ( 'TRANSFORM' ( 'FOR' 'TYPE' type_name ) { ',' ( 'FOR' 'TYPE' type_name ) } bllewell: n/a except with implementation langauges like C *)
 unalterable_proc_attribute = 'LANGUAGE' lang_name | 'AS' subprogram_implementation ;
+
+(* 'CREATE' 'PUBLICATION' *)
+create_publication = 
+  'CREATE' 'PUBLICATION' publication_name 
+  [ 'FOR' publication_for_option ] ;
+
+publication_for_option = 
+  'TABLE' table_name { ',' table_name } |
+  'ALL' 'TABLES' ;
+
+(* 'CREATE_REPLICATION_SLOT' *)
+create_replication_slot = 
+  'CREATE_REPLICATION_SLOT' slot_name 'LOGICAL' output_plugin 
+  [ 'NOEXPORT_SNAPSHOT' | 'USE_SNAPSHOT' ] ;
 
 (* 'CREATE' 'RULE' *)
 create_rule = 'CREATE' [ 'OR' 'REPLACE' ] 'RULE' rule_name 'AS' 'ON' rule_event 'TO' table_name \
@@ -958,6 +986,13 @@ drop_procedure = 'DROP' 'PROCEDURE' [ 'IF' 'EXISTS' ] \
                   { ',' ( subprogram_name '(' [ subprogram_signature ] ')' ) }
                   [ 'CASCADE' | 'RESTRICT' ] ;
 
+(* 'DROP' 'PUBLICATION' *)
+drop_publication = 'DROP' 'PUBLICATION' [ 'IF' 'EXISTS' ] publication_name
+                   [ 'CASCADE' | 'RESTRICT' ] ;
+
+(* DROP_REPLICATION_SLOT *)
+drop_replication_slot = DROP_REPLICATION_SLOT slot_name ;
+
 (* 'DROP' 'ROLE' *)
 drop_role = 'DROP' 'ROLE' [ 'IF' 'EXISTS' ] role_name { ',' role_name } ;
 
@@ -1071,7 +1106,7 @@ import_foreign_schema = 'IMPORT' 'FOREIGN' 'SCHEMA' remote_schema \
                         [ ( 'LIMIT' 'TO' | 'EXCEPT' ) '(' table_name {, table_name} ')' ] \
                         'FROM' 'SERVER' server_name 'INTO' local_schema \
                         [ 'OPTIONS' '(' fdw_options ')' ] ;
-                        
+
 remote_schema = text_literal ;
 
 local_schema = text_literal ;
@@ -1254,6 +1289,14 @@ show_stmt = 'SHOW' ( run_time_parameter | 'ALL' ) ;
 (* 'SHOW' 'TRANSACTION' *)
 show_transaction = 'SHOW' 'TRANSACTION' 'ISOLATION' 'LEVEL' ;
 
+(* 'START_REPLICATION' *)
+start_replication = 
+  'START_REPLICATION' 'SLOT' slot_name 'LOGICAL' log_sequence_number 
+    [ '(' start_replication_option { ',' start_replication_option } ')' ] ;
+
+start_replication_option = 
+  start_replication_option_name [ start_replication_option_value ] ;
+
 (* 'START' 'TRANSACTION' *)
 start_transaction = 'START' 'TRANSACTION' { transaction_mode } ;
 
@@ -1351,7 +1394,13 @@ having_clause = 'HAVING' ( boolean_expression ) ;
 qualified_name = name { '.' name } ;
 role_name = name ;
 database_name = name ;
+log_sequence_number = text_literal ; (* Format: 'XXX/XXX' representing a log sequence number *)
+output_plugin = name ;
+publication_name = name ;
 schema_name = name ;
+slot_name = name ;
+start_replication_option_name = text_literal ;
+start_replication_option_value = text_literal ;
 table_name = qualified_name ;
 cte_name = name ;
 column_name = name ;
@@ -1522,7 +1571,7 @@ plpgsql_executable_stmt = ( plpgsql_basic_stmt | plpgsql_compound_stmt ) ;
 
 (* 'Basic statement' *)
 plpgsql_basic_stmt = (
-    'NULL'                               | 
+    'NULL'                               |
     plpgsql_assert_stmt                  |
     plpgsql_assignment_stmt              |
     plpgsql_close_cursor_stmt            |
@@ -1556,7 +1605,7 @@ plpgsql_get_diagnostics_stmt = 'GET' [ 'CURRENT' ] 'DIAGNOSTICS' plpgsql_diagnos
 
 plpgsql_diagnostics_item = ( variable | formal_arg ) ( ':=' | '=' ) plpgsql_diagnostics_item_name ;
 
-plpgsql_diagnostics_item_name = ( 'PG_CONTEXT' | 
+plpgsql_diagnostics_item_name = ( 'PG_CONTEXT' |
                                   'ROW_COUNT'  |
                                   'RESULT_OID' ) ;
 
@@ -1565,7 +1614,7 @@ plpgsql_get_stacked_diagnostics_stmt = 'GET' 'STACKED' 'DIAGNOSTICS' plpgsql_sta
 
 plpgsql_stacked_diagnostics_item = ( variable | formal_arg ) ( ':=' | '=' ) plpgsql_stacked_diagnostics_item_name ;
 
-plpgsql_stacked_diagnostics_item_name = ( 'RETURNED_SQLSTATE'    | 
+plpgsql_stacked_diagnostics_item_name = ( 'RETURNED_SQLSTATE'    |
                                   'MESSAGE_TEXT'         |
                                   'PG_EXCEPTION_DETAIL'  |
                                   'PG_EXCEPTION_HINT'    |

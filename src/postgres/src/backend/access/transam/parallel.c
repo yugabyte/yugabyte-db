@@ -91,7 +91,7 @@ typedef struct FixedParallelState
 	pid_t		parallel_master_pid;
 	BackendId	parallel_master_backend_id;
 	bool		parallel_master_is_yb_session;
-	YBCPgSessionParallelData parallel_master_yb_session_data;
+	YBCPgSessionState parallel_master_yb_session_state;
 	TimestampTz xact_ts;
 	TimestampTz stmt_ts;
 
@@ -348,8 +348,9 @@ InitializeParallelDSM(ParallelContext *pcxt)
 	fps->parallel_master_pid = MyProcPid;
 	fps->parallel_master_backend_id = MyBackendId;
 	/* Capture our Session ID to share with the background workers. */
-	fps->parallel_master_is_yb_session =
-		YBCGetCurrentPgSessionParallelData(&fps->parallel_master_yb_session_data);
+	fps->parallel_master_is_yb_session = IsYugaByteEnabled();
+	if (fps->parallel_master_is_yb_session)
+		YBCDumpCurrentPgSessionState(&fps->parallel_master_yb_session_state);
 	fps->xact_ts = GetCurrentTransactionStartTimestamp();
 	fps->stmt_ts = GetCurrentStatementStartTimestamp();
 	SpinLockInit(&fps->mutex);
@@ -534,6 +535,17 @@ LaunchParallelWorkers(ParallelContext *pcxt)
 	/* Skip this if we have no workers. */
 	if (pcxt->nworkers == 0)
 		return;
+
+	if (IsYugaByteEnabled())
+	{
+		/*
+		 * Semantics of the "EnsureReadPoint" contradicts "RestartReadPoint".
+		 * Hence, if we are restarting, proceed without parallel workers.
+		 */
+		if (YBCIsRestartReadPointRequested())
+			return;
+		HandleYBStatus(YBCPgEnsureReadPoint());
+	}
 
 	/* We need to be a lock group leader. */
 	BecomeLockGroupLeader();
@@ -1374,7 +1386,7 @@ ParallelWorkerMain(Datum main_arg)
 	YbBackgroundWorkerInitializeConnectionByOid(
 		fps->database_id, fps->authenticated_user_id,
 		fps->parallel_master_is_yb_session ?
-			&fps->parallel_master_yb_session_data.session_id : NULL, 0);
+			&fps->parallel_master_yb_session_state.session_id : NULL, 0);
 
 	/*
 	 * Set the client encoding to the database encoding, since that is what
@@ -1408,6 +1420,9 @@ ParallelWorkerMain(Datum main_arg)
 	session_dsm_handle_space =
 		shm_toc_lookup(toc, PARALLEL_KEY_SESSION_DSM, false);
 	AttachSession(*(dsm_handle *) session_dsm_handle_space);
+
+	if (fps->parallel_master_is_yb_session)
+		YBCRestorePgSessionState(&fps->parallel_master_yb_session_state);
 
 	/*
 	 * If the transaction isolation level is REPEATABLE READ or SERIALIZABLE,
@@ -1463,8 +1478,6 @@ ParallelWorkerMain(Datum main_arg)
 	{
 		YbUpdateCatalogCacheVersion(YbGetMasterCatalogVersion());
 		YBCPgResetCatalogReadTime();
-		if (fps->parallel_master_is_yb_session)
-			YBCRestorePgSessionParallelData(&fps->parallel_master_yb_session_data);
 	}
 
 	/*

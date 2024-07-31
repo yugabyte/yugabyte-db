@@ -63,7 +63,7 @@ class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
     return ConnectToDB(std::string() /* db_name */);
   }
 
-  Result<PGConn> ConnectToDB(const std::string& dbname) const;
+  Result<PGConn> ConnectToDB(const std::string& dbname, size_t timeout = 0) const;
 
   Status RestartCluster();
 

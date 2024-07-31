@@ -1,4 +1,5 @@
-title: Details of a cloud node
+title: NodeDetails
+description: Details of a cloud node. Part of UniverseInfo.
 type: object
 properties:
   az_uuid:

@@ -92,4 +92,30 @@ public class PlatformScheduler {
         });
     return cancellable;
   }
+
+  public Cancellable scheduleOnce(String name, Duration initialDelay, Runnable runnable) {
+    final AtomicBoolean isRunning = new AtomicBoolean();
+
+    return actorSystem
+        .scheduler()
+        .scheduleOnce(
+            initialDelay,
+            () -> {
+              boolean shouldRun = false;
+              synchronized (isRunning) {
+                shouldRun =
+                    isRunning.compareAndSet(false, true) && !HighAvailabilityConfig.isFollower();
+              }
+              if (shouldRun) {
+                try {
+                  runnable.run();
+                } finally {
+                  isRunning.set(false);
+                }
+              } else {
+                log.warn("Scheduler {} did not run because YBA is in follower mode.", name);
+              }
+            },
+            executionContext);
+  }
 }

@@ -51,6 +51,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static org.yb.AssertionWrappers.assertTrue;
@@ -157,6 +158,10 @@ public class MiniYBCluster implements AutoCloseable {
   // This is used as the default bind address (Used only for mTLS verification).
   private String clientHost = null;
   private int clientPort = 0;
+
+  // These are only used to start YB Controller servers
+  private int ybControllerPort;
+  private int masterWebPort;
 
   /**
    * Not to be invoked directly, but through a {@link MiniYBClusterBuilder}.
@@ -456,50 +461,67 @@ public class MiniYBCluster implements AutoCloseable {
 
     startSyncClientAndWaitForMasterLeader();
 
+    // Yb Controller servers are not started for every test.
+    // YBC processes should be started later from initYBBackupUtil() ->
+    // maybeStartYbControllers().
+    if (TestUtils.useYbController()) {
+      initYbControllersFields();
+    }
+
     LOG.info("Starting {} tablet servers...", numTservers);
     startTabletServers(numTservers, commonTserverFlags, perTserverFlags, tserverEnvVars);
-
-    if (TestUtils.useYbController()) {
-      startYbControllers();
-    }
   }
 
-  private void startYbControllers() throws Exception {
+  private void initYbControllersFields() throws Exception {
     // All YB Controllers run on the same port, but with different IPs.
-    final int serverPort = TestUtils.findFreePort("127.0.0.1");
+    ybControllerPort = TestUtils.findFreePort("127.0.0.1");
     // Get web port of first master.
     MiniYBDaemon firstMaster = masterProcesses.values().stream().findFirst().get();
-    int masterWebPort = firstMaster.getWebPort();
-    int idx = 0;
-    // We need one YB Controller for each tserver.
-    for (MiniYBDaemon ts : tserverProcesses.values()) {
-      startYbController(serverPort, masterWebPort, ts.getWebPort(), ts.getLocalhostIP(), ++idx);
+    masterWebPort = firstMaster.getWebPort();
+  }
+
+  public void startYbControllers() throws Exception{
+    Set<String> ybControllerAddresses = ybControllerProcesses.values().stream()
+        .map(MiniYBDaemon::getLocalhostIP)
+        .collect(Collectors.toSet());
+    for(MiniYBDaemon ts: tserverProcesses.values()){
+      String tsAddress = ts.getLocalhostIP();
+      // Start a yb controller process for the ts if not already running.
+      if(!ybControllerAddresses.contains(tsAddress)){
+        startYbController(ts.getWebPort(), tsAddress);
+      }
     }
 
-    TestUtils.logAndSleepMs(500, "Allow YB Controllers to start...");
-
-    // Ping all the YB Controllers to make sure they started correctly
-    for (MiniYBDaemon ybController : ybControllerProcesses.values()) {
-      ybController.ping();
+    boolean pingSuccess = false;
+    int retries = 0;
+    while (!pingSuccess && retries++ < 20) {
+      try {
+        // Ping all the YB Controllers to make sure they started correctly
+        for (MiniYBDaemon ybController : ybControllerProcesses.values()) {
+          ybController.ping();
+        }
+        pingSuccess = true;
+      } catch (Exception e) {
+        TestUtils.logAndSleepMs(200, "Waiting for YB Controllers to start...");
+      }
+    }
+    if (!pingSuccess) {
+      throw new RuntimeException("Failed to ping all Yb Controller Servers");
     }
   }
 
   /**
    * Starts a YB Controller server.
-   * @param serverPort the port on which the server listens
-   * @param masterWebPort HTTP port of master
    * @param tserverWebPort HTTP port of tserver
    * @param bindAddress IP on which to bind the server
-   * @param idx index to attach to data dirs e.g. ybc-idx
    * @throws Exception
    */
-  public void startYbController(int serverPort, int masterWebPort, int tserverWebPort,
-      String bindAddress, int idx)
+  public void startYbController(int tserverWebPort, String bindAddress)
       throws Exception {
 
     LOG.info("Starting a YB Controller server: " + "bindAddress = {}, " + "serverPort = {}",
-        bindAddress, serverPort);
-    String dataDir = TestUtils.getBaseTmpDir() + "/ybc-" + idx;
+        bindAddress, ybControllerPort);
+    String dataDir = TestUtils.getBaseTmpDir() + "/ybc-" + nextYbControllerIndex.incrementAndGet();
     String logDir = FileSystems.getDefault().getPath(dataDir, "logs").toString();
     String tmpDir = FileSystems.getDefault().getPath(dataDir, "tmp").toString();
 
@@ -522,15 +544,17 @@ public class MiniYBCluster implements AutoCloseable {
         "--ysql_dump=" + TestUtils.findBinary("../postgres/bin/ysql_dump"),
         "--ysql_dumpall=" + TestUtils.findBinary("../postgres/bin/ysql_dumpall"),
         "--ysqlsh=" + TestUtils.findBinary("../postgres/bin/ysqlsh"),
-        "--server_port=" + serverPort,
+        "--server_port=" + ybControllerPort,
         "--yb_master_webserver_port=" + masterWebPort,
-        "--yb_tserver_webserver_port=" + tserverWebPort);
+        "--yb_tserver_webserver_port=" + tserverWebPort,
+        "--v=1",
+        "--logtostderr");
 
     final MiniYBDaemon daemon = configureAndStartProcess(MiniYBDaemonType.YBCONTROLLER,
-        cmdLine.toArray(new String[cmdLine.size()]), bindAddress, serverPort,
-        serverPort, /* pgsqlWebPport */ -1, /* cqlWebPort */ -1, /* redisWebPort */ -1, dataDir,
-        /* environment */ null);
-    ybControllerProcesses.put(HostAndPort.fromParts(bindAddress, serverPort), daemon);
+        cmdLine.toArray(new String[cmdLine.size()]), bindAddress, ybControllerPort,
+        ybControllerPort, /* pgsqlWebPport */ -1, /* cqlWebPort */ -1, /* redisWebPort */ -1,
+        dataDir, /* environment */ null);
+    ybControllerProcesses.put(HostAndPort.fromParts(bindAddress, ybControllerPort), daemon);
     pathsToDelete.add(dataDir);
   }
 
@@ -546,7 +570,11 @@ public class MiniYBCluster implements AutoCloseable {
       default:
         throw new IllegalArgumentException("Unknown snapshot version: " + ver);
     }
-    filename = filename + "_" + (BuildTypeUtil.isRelease() ? "release" : "debug");
+    // In the version of YugabyteDB where the EARLIEST snapshot was generated, the debug build had
+    // a column representation now used only in ASAN and TSAN builds. See src/yb/common/column_id.h
+    // file history for details.
+    filename =
+        filename + "_" + (BuildTypeUtil.isASAN() || BuildTypeUtil.isTSAN() ? "debug" : "release");
     File file = new File(YSQL_SNAPSHOTS_DIR, filename);
     Preconditions.checkState(file.exists(),
         "Snapshot %s is not found in %s, should've been downloaded by the build script!",
@@ -557,7 +585,18 @@ public class MiniYBCluster implements AutoCloseable {
   private void applyYsqlSnapshot(YsqlSnapshotVersion ver, Map<String, String> masterFlags) {
     // No need to set the flag for LATEST snapshot.
     if (ver != YsqlSnapshotVersion.LATEST) {
-      String snapshotPath = getYsqlSnapshotFilePath(ver);
+      // If the test argument provides a sys catalog snapshot path, use it.
+      // Otherwise, use the default snapshot.
+      String snapshotPath = System.getProperty("ysql_sys_catalog_snapshot_path");
+      if (snapshotPath == null) {
+        snapshotPath = getYsqlSnapshotFilePath(ver);
+      }
+      File snapshot = new File(snapshotPath);
+      assertTrue(snapshot != null);
+      if (!snapshot.isDirectory()) {
+        LOG.error("directory '{}' does not exist", snapshotPath);
+        fail();
+      }
       masterFlags.put("initial_sys_catalog_snapshot_path", snapshotPath);
     }
   }
@@ -697,6 +736,14 @@ public class MiniYBCluster implements AutoCloseable {
     redisContactPoints.add(new InetSocketAddress(tserverBindAddress, redisPort));
     pgsqlContactPoints.add(new InetSocketAddress(tserverBindAddress, postgresPort));
     ysqlConnMgrContactPoints.add(new InetSocketAddress(tserverBindAddress, ysqlConnMgrPort));
+
+    // Add a new YB Controller for the new TS only if we have YB Controllers for
+    // available TSes.
+    // Generally it's controlled from `initYBBackupUtil()` and
+    // `TestUtils.useYbController()`.
+    if (!ybControllerProcesses.isEmpty()) {
+      startYbControllers();
+    }
 
     if (flagsPath.startsWith(baseDirPath)) {
       // We made a temporary copy of the flags; delete them later.
@@ -896,10 +943,11 @@ public class MiniYBCluster implements AutoCloseable {
                                                 String dataDirPath,
                                                 Map<String, String> environment) throws Exception {
     command[0] = FileSystems.getDefault().getPath(command[0]).normalize().toString();
+    // The value of nextYbControllerIndex is incremented in startYbController()
     final int indexForLog =
       type == MiniYBDaemonType.MASTER ? nextMasterIndex.incrementAndGet()
         : (type == MiniYBDaemonType.TSERVER ? nextTServerIndex.incrementAndGet()
-            : nextYbControllerIndex.incrementAndGet());
+            : nextYbControllerIndex.get());
 
     if (type != MiniYBDaemonType.YBCONTROLLER) {
       List<String> args = new ArrayList<>();
@@ -1053,6 +1101,10 @@ public class MiniYBCluster implements AutoCloseable {
 
   public Map<HostAndPort, MiniYBDaemon> getMasters() {
     return masterProcesses;
+  }
+
+  public Map<HostAndPort, MiniYBDaemon> getYbControllers() {
+    return ybControllerProcesses;
   }
 
   /**

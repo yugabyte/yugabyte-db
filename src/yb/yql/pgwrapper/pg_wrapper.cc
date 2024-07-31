@@ -99,18 +99,37 @@ DEFINE_UNKNOWN_bool(ysql_enable_auth, false,
               "True to enforce password authentication for all connections");
 
 // Catch-all postgres configuration flags.
-DEFINE_UNKNOWN_string(ysql_pg_conf_csv, "",
-              "CSV formatted line represented list of postgres setting assignments");
-DEFINE_UNKNOWN_string(ysql_hba_conf_csv, "",
+DEFINE_RUNTIME_string(ysql_pg_conf_csv, "",
+    "List of postgres configuration parameters separated with comma (,). "
+    "Parameters should be of format: <name> [=] <value>. The equal sign between name and value is "
+    "optional. "
+    "Whitespace is insignificant (except within a single-quoted (') parameter value) and blank "
+    "parameters are ignored. "
+    "Hash marks (#) designate the remainder of the parameter as a comment. "
+    "Parameter values that are not simple identifiers or numbers must be single-quoted ('). "
+    "To embed a single quote (') in a parameter value, write either two quotes('') (preferred) or "
+    "backslash-quote (\\'). "
+    "If the parameter contains a comma (,) or double-quote (\") then the entire parameter must be "
+    "quoted with double-quote (\"): \"<name> [=] <value>\". "
+    "Two double-quotes (\"\") in a double-quoted (\") parameter represents a single double-quote "
+    "(\"). "
+    "If the list contains multiple entries for the same parameter, all but the last one are "
+    "ignored. "
+    "NOTE: Not all parameters take effect at runtime. When changed at runtime, the postgresql.conf "
+    "file is updated and a SIGHUP signal is used to notify the postmaster. "
+    "Check https://www.postgresql.org/docs/current/view-pg-settings.html for information about "
+    "which parameters take effect at runtime.");
+
+DEFINE_NON_RUNTIME_string(ysql_hba_conf_csv, "",
               "CSV formatted line represented list of postgres hba rules (in order)");
 TAG_FLAG(ysql_hba_conf_csv, sensitive_info);
 DEFINE_NON_RUNTIME_string(ysql_ident_conf_csv, "",
               "CSV formatted line represented list of postgres ident map rules (in order)");
 
-DEFINE_UNKNOWN_string(ysql_pg_conf, "",
-              "Deprecated, use the `ysql_pg_conf_csv` flag instead. " \
-              "Comma separated list of postgres setting assignments");
-DEFINE_UNKNOWN_string(ysql_hba_conf, "",
+DEFINE_NON_RUNTIME_string(ysql_pg_conf, "",
+    "Deprecated, use the `ysql_pg_conf_csv` flag instead. "
+    "Comma separated list of postgres setting assignments");
+DEFINE_NON_RUNTIME_string(ysql_hba_conf, "",
               "Deprecated, use `ysql_hba_conf_csv` flag instead. " \
               "Comma separated list of postgres hba rules (in order)");
 TAG_FLAG(ysql_hba_conf, sensitive_info);
@@ -237,11 +256,10 @@ DEFINE_NON_RUNTIME_bool(enable_ysql_conn_mgr_stats, true,
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_saop_pushdown, kLocalVolatile, false, true,
     "Push supported scalar array operations from ysql down to DocDB for evaluation.");
 
-// TODO(#19211): Convert this to an auto-flag.
-DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_replication_commands, false,
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_replication_commands, kLocalPersisted, false, true,
     "Enable logical replication commands for Publication and Replication Slots");
 
-DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_replica_identity, false,
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_replica_identity, kLocalPersisted, false, true,
     "Enable replica identity command for Alter Table query");
 
 DEFINE_RUNTIME_PG_FLAG(
@@ -263,14 +281,23 @@ DEFINE_RUNTIME_PG_FLAG(uint32, yb_walsender_poll_sleep_duration_empty_ms, 1 * 10
     "the CDC service in case the last received response was empty. The response can be empty in "
     "case there are no DMLs happening in the system.");
 
+DEFINE_RUNTIME_PG_FLAG(
+    uint32, yb_reorderbuffer_max_changes_in_memory, 4096,
+    "Maximum number of changes kept in memory per transaction in reorder buffer, which is used in "
+    "streaming changes via logical replication . After that, changes are spooled to disk.");
+
 DEFINE_RUNTIME_PG_FLAG(int32, yb_toast_catcache_threshold, -1,
     "Size threshold in bytes for a catcache tuple to be compressed.");
 
-static bool ValidateXclusterConsistencyLevel(const char* flagname, const std::string& value) {
+DEFINE_RUNTIME_PG_FLAG(string, yb_read_after_commit_visibility, "strict",
+  "Determines the behavior of read-after-commit-visibility guarantee.");
+
+DEFINE_test_flag(bool, yb_enable_query_diagnostics, false,
+              "True to enable Query Diagnostics");
+
+static bool ValidateXclusterConsistencyLevel(const char* flag_name, const std::string& value) {
   if (value != "database" && value != "tablet") {
-    fprintf(
-        stderr, "Invalid value for --%s: %s, must be 'database' or 'tablet'\n", flagname,
-        value.c_str());
+    LOG_FLAG_VALIDATION_ERROR(flag_name, value) << "Must be 'database' or 'tablet'";
     return false;
   }
   return true;
@@ -280,16 +307,6 @@ DEFINE_validator(ysql_yb_xcluster_consistency_level, &ValidateXclusterConsistenc
 
 DEFINE_NON_RUNTIME_string(ysql_conn_mgr_warmup_db, "yugabyte",
     "Database for which warmup needs to be done.");
-
-DEFINE_NON_RUNTIME_PG_FLAG(int32, yb_ash_circular_buffer_size, 16 * 1024,
-    "Size (in KiBs) of ASH circular buffer that stores the samples");
-
-DEFINE_RUNTIME_PG_FLAG(int32, yb_ash_sampling_interval_ms, 1000,
-    "Time (in milliseconds) between two consecutive sampling events");
-DEPRECATE_FLAG(int32, ysql_yb_ash_sampling_interval, "2024_03");
-
-DEFINE_RUNTIME_PG_FLAG(int32, yb_ash_sample_size, 500,
-    "Number of samples captured from each component per sampling event");
 
 DEFINE_NON_RUNTIME_string(ysql_cron_database_name, "yugabyte",
     "Database in which pg_cron metadata is kept.");
@@ -395,6 +412,42 @@ Status ReadCSVValues(const string& csv, vector<string>* lines) {
   }
   return Status::OK();
 }
+
+// Make sure that the parameter values do not contain '\n' since each line is a separate parameter.
+Status ValidateConfValuesBasic(const vector<string>& lines) {
+  for (const string& parameter : lines) {
+    SCHECK_EQ(
+        parameter.find('\n'), string::npos, InvalidArgument,
+        Format("Parameter should not contain newline: '$0'", parameter));
+  }
+  return Status::OK();
+}
+
+bool ValidateConfCsv(const char* flag_name, const std::string& value) {
+  if (value.empty()) {
+    return true;
+  }
+
+  vector<string> user_configs;
+  auto status = ReadCSVValues(value, &user_configs);
+  if (status.ok()) {
+    status = ValidateConfValuesBasic(user_configs);
+  }
+
+  if (!status.ok()) {
+    LOG_FLAG_VALIDATION_ERROR(flag_name, value) << status;
+    return false;
+  }
+  return true;
+}
+
+// Perform basic validation of the postgres parameter values. Postgres validates this via
+// `ParseConfigFp` function in `guc-file.c` using a lexer, which is very complicated to mimic
+// using a regex.
+DEFINE_validator(ysql_pg_conf_csv, &ValidateConfCsv);
+
+DEFINE_validator(ysql_hba_conf_csv, &ValidateConfCsv);
+DEFINE_validator(ysql_ident_conf_csv, &ValidateConfCsv);
 
 namespace {
 // Append any Pg gFlag with non default value, or non-promoted AutoFlag

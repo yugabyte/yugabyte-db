@@ -1,5 +1,6 @@
 import { ArchitectureType } from '../../../../../components/configRedesign/providerRedesign/constants';
 import { ProviderMin } from '../form/fields/ProvidersField/ProvidersField';
+import { AuditLogConfig } from '../../universe-tabs/db-audit-logs/utils/types';
 
 //This File has enum, interfaces, dto related Universe Form and divided to help in finding theme easily
 //--------------------------------------------------------- Most Used OR Common Types - Starts --------------------------------------------------------
@@ -59,6 +60,7 @@ export enum StorageType {
   Persistent = 'Persistent',
   StandardSSD_LRS = 'StandardSSD_LRS',
   Premium_LRS = 'Premium_LRS',
+  PremiumV2_LRS = 'PremiumV2_LRS',
   UltraSSD_LRS = 'UltraSSD_LRS'
 }
 export interface DeviceInfo {
@@ -137,8 +139,14 @@ export interface UserIntent {
   ybcPackagePath?: string | null;
   instanceTags?: Record<string, string>;
   specificGFlags?: {
+    gflagGroups?: string[];
     inheritFromPrimary: boolean;
-    perProcessFlags: {};
+    perProcessFlags: {
+      value?: {
+        MASTER?: Record<string, any>;
+        TSERVER?: Record<string, any>;
+      }
+    };
     perAZ?: {};
   };
   masterGFlags?: Record<string, any>;
@@ -150,6 +158,7 @@ export interface UserIntent {
   proxyConfig?: {};
   useSpotInstance?: boolean | null;
   imageBundleUUID?: string;
+  auditLogConfig?: AuditLogConfig;
 }
 
 export interface Cluster {
@@ -224,6 +233,7 @@ export interface UniverseDetails {
   rootAndClientRootCASame: boolean;
   universeUUID: string;
   updateInProgress: boolean;
+  updatingTaskUUID?: string;
   updateSucceeded: boolean;
   userAZSelected: boolean;
   enableYbc: boolean;
@@ -527,6 +537,7 @@ export interface AdvancedConfigFormValue {
   accessKeyCode: string | null;
   ybSoftwareVersion: string | null;
   communicationPorts: CommunicationPorts;
+  enablePGCompatibitilty: boolean;
 }
 
 export interface InstanceTag {
@@ -624,7 +635,8 @@ export const DEFAULT_ADVANCED_CONFIG: AdvancedConfigFormValue = {
   customizePort: false,
   accessKeyCode: '',
   ybSoftwareVersion: null,
-  communicationPorts: DEFAULT_COMMUNICATION_PORTS
+  communicationPorts: DEFAULT_COMMUNICATION_PORTS,
+  enablePGCompatibitilty: false
 };
 
 export const DEFAULT_USER_TAGS = [{ name: '', value: '' }];

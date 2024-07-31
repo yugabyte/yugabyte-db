@@ -18,7 +18,7 @@ Starting with v2.20.1, RBAC is available with fine-grained control over access t
 
 {{< note title="Fine-grained RBAC is Early Access">}}
 
-Fine-grained RBAC with the ability to limit users to manage only a subset of universes is [Early Access](/preview/releases/versioning/#feature-availability).
+Fine-grained RBAC with the ability to limit users to manage only a subset of universes is [Early Access](/preview/releases/versioning/#feature-maturity).
 
 During EA, by default fine-grained RBAC is not enabled. To enable the feature, use following API command:
 
@@ -53,7 +53,7 @@ The following built-in roles are available:
   - Manage all resources, including universes, nodes, backup, restore, and cloud providers.
   - Manage the user access control by creating and managing users.
 
-  For more information, see [Create admin user](../../configure-yugabyte-platform/create-admin-user/).
+  For more information, see [Create admin user](../../install-yugabyte-platform/create-admin-user/).
 
 - **Admin** has privileges that are similar to the Super Admin, except that Admin cannot manage global scope artifacts and actions, such as runtime configuration settings and LDAP authentication.
 
@@ -80,13 +80,13 @@ How you add and modify users varies depending on whether you have enabled fine-g
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
-    <a href="#classic" class="nav-link active" id="classic-tab" data-toggle="tab"
+    <a href="#classic" class="nav-link active" id="classic-tab" data-bs-toggle="tab"
       role="tab" aria-controls="classic" aria-selected="true">
       Classic
     </a>
   </li>
   <li>
-    <a href="#finegrain" class="nav-link" id="finegrain-tab" data-toggle="tab"
+    <a href="#finegrain" class="nav-link" id="finegrain-tab" data-bs-toggle="tab"
       role="tab" aria-controls="finegrain" aria-selected="false">
       Fine grained (v2.20.1.0)
     </a>
@@ -132,7 +132,7 @@ To create a user, do the following:
 
     ![Custom role](/images/yp/authorization-platform/add-user-custom.png)
 
-1. To customize access to universes, click **Edit Selection**, and select the universes that you want to grant access for. Select the **Include future universes** option to automatically grant this user access to any universe created in the future. Click **Confirm** when you are done.
+1. To customize access to universes, assign at least one custom role, then click **Edit Selection**, and select the universes that you want to grant access for. Select the **Include future universes** option to automatically grant this user access to any universe created in the future. Click **Confirm** when you are done.
 
     ![Select universes](/images/yp/authorization-platform/add-user-universe.png)
 

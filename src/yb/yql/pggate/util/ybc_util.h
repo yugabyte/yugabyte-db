@@ -185,9 +185,39 @@ extern int yb_walsender_poll_sleep_duration_nonempty_ms;
 extern int yb_walsender_poll_sleep_duration_empty_ms;
 
 /*
+ * GUC flag: Specifies the maximum number of changes kept in memory per transaction in reorder
+ * buffer, which is used in streaming changes via logical replication. After that changes are
+ * spooled to disk.
+ */
+extern int yb_reorderbuffer_max_changes_in_memory;
+
+/*
  * Allows for customizing the maximum size of a batch of explicit row lock operations.
  */
 extern int yb_explicit_row_locking_batch_size;
+
+/*
+ * Ease transition to YSQL by reducing read restart errors for new apps.
+ *
+ * This option doesn't affect SERIALIZABLE isolation level since
+ * SERIALIZABLE can't face read restart errors anyway.
+ *
+ * See the help text for yb_read_after_commit_visibility GUC for more
+ * information.
+ *
+ * XXX: This GUC is meant as a workaround only by relaxing the
+ * read-after-commit-visibility guarantee. Ideally,
+ * (a) Users should fix their apps to handle read restart errors, or
+ * (b) TODO(#22317): YB should use very accurate clocks to avoid read restart
+ *     errors altogether.
+ */
+typedef enum {
+  YB_STRICT_READ_AFTER_COMMIT_VISIBILITY = 0,
+  YB_RELAXED_READ_AFTER_COMMIT_VISIBILITY = 1,
+} YBReadAfterCommitVisibilityEnum;
+
+/* GUC for the enum above. */
+extern int yb_read_after_commit_visibility;
 
 typedef struct YBCStatusStruct* YBCStatus;
 
@@ -213,7 +243,6 @@ unsigned int YBCStatusRelationOid(YBCStatus s);
 const char** YBCStatusArguments(YBCStatus s, size_t* nargs);
 
 bool YBCIsRestartReadError(uint16_t txn_errcode);
-
 bool YBCIsTxnConflictError(uint16_t txn_errcode);
 bool YBCIsTxnSkipLockingError(uint16_t txn_errcode);
 bool YBCIsTxnDeadlockError(uint16_t txn_errcode);
@@ -307,6 +336,9 @@ const char* YBCGetWaitEventClass(uint32_t wait_event_info);
 const char* YBCGetWaitEventComponent(uint32_t wait_event_info);
 const char* YBCGetWaitEventType(uint32_t wait_event_info);
 uint8_t YBCGetQueryIdForCatalogRequests();
+int YBCGetRandomUniformInt(int a, int b);
+
+int YBCGetCallStackFrames(void** result, int max_depth, int skip_count);
 
 #ifdef __cplusplus
 } // extern "C"

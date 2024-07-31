@@ -94,12 +94,15 @@ public class TransferXClusterCerts extends NodeTaskBase {
 
     try {
       // Check that task parameters are valid.
-      if (taskParams().action == Params.Action.COPY && taskParams().rootCertPath == null) {
-        throw new IllegalArgumentException("taskParams().rootCertPath must not be null");
-      }
-      if (taskParams().action == Params.Action.COPY && !taskParams().rootCertPath.exists()) {
-        throw new IllegalArgumentException(
-            String.format("file \"%s\" does not exist", taskParams().rootCertPath));
+      if (taskParams().action == Params.Action.COPY) {
+        if (taskParams().rootCertPath == null) {
+          throw new IllegalArgumentException("taskParams().rootCertPath must not be null");
+        }
+
+        if (!taskParams().rootCertPath.exists()) {
+          throw new IllegalArgumentException(
+              String.format("file \"%s\" does not exist", taskParams().rootCertPath));
+        }
       }
 
       if (taskParams().producerCertsDirOnTarget == null) {
@@ -133,7 +136,7 @@ public class TransferXClusterCerts extends NodeTaskBase {
   private void transferXClusterCertUsingNodeUniverseManager() {
     // Find the specified universe and node.
     Optional<Universe> targetUniverseOptional = Universe.maybeGet(taskParams().getUniverseUUID());
-    if (!targetUniverseOptional.isPresent()) {
+    if (targetUniverseOptional.isEmpty()) {
       throw new IllegalArgumentException(
           String.format("No universe with UUID %s found", taskParams().getUniverseUUID()));
     }
@@ -153,7 +156,7 @@ public class TransferXClusterCerts extends NodeTaskBase {
     String sourceCertificatePath =
         Paths.get(sourceCertificateDirPath, XClusterConfigTaskBase.SOURCE_ROOT_CERTIFICATE_NAME)
             .toString();
-    if (taskParams().action.equals(Params.Action.COPY)) {
+    if (taskParams().action == Params.Action.COPY) {
       log.info(
           "Moving server cert located at {} to {}:{} in universe {}",
           taskParams().rootCertPath,
@@ -169,12 +172,8 @@ public class TransferXClusterCerts extends NodeTaskBase {
 
       // The permission for the certs used to be set to `400` which could be problematic in the case
       // that we want to overwrite the certificate.
-      if (!targetUniverse
-          .getUniverseDetails()
-          .getPrimaryCluster()
-          .userIntent
-          .providerType
-          .equals(CloudType.kubernetes)) {
+      if (targetUniverse.getUniverseDetails().getPrimaryCluster().userIntent.providerType
+          != CloudType.kubernetes) {
         nodeUniverseManager
             .runCommand(
                 node,

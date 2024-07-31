@@ -20,6 +20,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
+	"sort"
 
 	"github.com/spf13/viper"
 	"github.com/vmware-labs/yaml-jsonpath/pkg/yamlpath"
@@ -52,8 +54,6 @@ const VersionMetadataJSON = "version_metadata.json"
 const javaBinaryGlob = "yba_installer-*linux*/OpenJDK17U-jre_x64_linux_*.tar.gz"
 
 const tarTemplateDirGlob = "yba_installer-*linux*/" + ConfigDir
-
-const tarCronDirGlob = "yba_installer-*linux*/" + CronDir
 
 // IndexOf returns the index in arr where val is present, -1 otherwise.
 func IndexOf(arr []string, val string) int {
@@ -485,6 +485,13 @@ func NewYBVersion(versionString string) (*YBVersion, error) {
 
 }
 
+func Exists(file string) bool {
+	if _, err := os.Stat(file); errors.Is(err, fs.ErrNotExist) {
+		return false
+	}
+	return true
+}
+
 func (ybv YBVersion) String() string {
 	reprStr, _ := json.Marshal(ybv)
 	return string(reprStr)
@@ -694,6 +701,16 @@ func SetYamlValue(filePath string, yamlPath string, value interface{}) error {
 		return fmt.Errorf("unable to parse config file %s: %s", filePath, err.Error())
 	}
 
+	// handle case where we read empty file, initialize to blank document
+	if root.Kind == 0 {
+		root = yaml.Node{
+			Kind: yaml.DocumentNode,
+			Content: []*yaml.Node{&yaml.Node{
+					Kind: yaml.MappingNode,
+			}},
+		}
+	}
+
 	before, after, _ := strings.Cut(yamlPath, ".")
 	err = setYamlValue(&root, before, after, value)
 	if err != nil {
@@ -830,6 +847,52 @@ func Bool2Int(b bool) int {
 	return 0
 }
 
+// StatusSince takes a timestamp in UTC and returns the time since then in a human readable format
+func StatusSince(timestamp string) string {
+	// Define the layout of the input string
+	layout := "Mon 2006-01-02 15:04:05 MST"
+
+	// Parse the input string into a time.Time object
+	parsedTime, err := time.Parse(layout, timestamp)
+	if err != nil {
+		log.Warn("Error parsing time: " + err.Error())
+		return ""
+	}
+
+	// Get the current time
+	currentTime := time.Now()
+
+	// Calculate the duration difference
+	duration := currentTime.Sub(parsedTime)
+	return formatDuration(duration)
+}
+
+// formatDuration formats a duration into a human-readable string
+func formatDuration(d time.Duration) string {
+	d = d.Round(time.Second) // Round to the nearest second
+
+	days := int(d.Hours()) / 24
+	hours := int(d.Hours()) % 24
+	minutes := int(d.Minutes()) % 60
+	seconds := int(d.Seconds()) % 60
+
+	parts := []string{}
+	if days > 0 {
+		parts = append(parts, fmt.Sprintf("%dd", days))
+	}
+	if hours > 0 {
+		parts = append(parts, fmt.Sprintf("%dh", hours))
+	}
+	if minutes > 0 {
+		parts = append(parts, fmt.Sprintf("%dm", minutes))
+	}
+	if seconds > 0 || len(parts) == 0 {
+		parts = append(parts, fmt.Sprintf("%ds", seconds))
+	}
+
+	return strings.Join(parts, " ")
+}
+
 // AbsoluteBundlePath returns the absolute path to the given file, assuming that file is a relative
 // path from the extracted yba_installer_full tgz file. This is used for installs, allowing us to
 // run yba-ctl as `./yba_installer_full-b123/yba-ctl install` and still find the binaries needed
@@ -841,4 +904,31 @@ func AbsoluteBundlePath(fp string) string {
 	}
 	rootDir := filepath.Dir(executable)
 	return filepath.Join(rootDir, fp)
+}
+
+func FindRecentBackup(dir string) string {
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		log.Fatal(fmt.Sprintf("error reading directory %s: %s", dir, err.Error()))
+	}
+	// Looks for most recent backup first.
+	sort.Slice(files, func(i, j int) bool {
+		iinfo, e1 := files[i].Info()
+		jinfo, e2 := files[j].Info()
+		if e1 != nil || e2 != nil {
+			log.Fatal("Error determining modification time for backups.")
+		}
+		return iinfo.ModTime().After(jinfo.ModTime())
+	})
+	// Find the old backup.
+	for _, file := range files {
+		match, _ := regexp.MatchString(`^backup_\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.tgz$`, file.Name())
+		if match {
+			input := fmt.Sprintf("%s/%s", dir, file.Name())
+			log.Info(fmt.Sprintf("Found backup file %s", input))
+			return input
+		}
+	}
+	log.Fatal("Could not find backup file in " + dir)
+	return ""
 }

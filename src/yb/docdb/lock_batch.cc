@@ -24,9 +24,9 @@ DEFINE_UNKNOWN_bool(dump_lock_keys, true,
 namespace yb {
 namespace docdb {
 
-LockBatch::LockBatch(SharedLockManager* lock_manager, LockBatchEntries&& key_to_intent_type,
-                     CoarseTimePoint deadline)
-    : data_(std::move(key_to_intent_type), lock_manager) {
+LockBatch::LockBatch(
+    SharedLockManager* lock_manager, LockBatchEntries<RefCntPrefix>&& key_to_intent_type,
+    CoarseTimePoint deadline) : data_(std::move(key_to_intent_type), lock_manager) {
   Init(deadline);
   if (!data_.status.ok()) {
     data_.key_to_type.clear();
@@ -80,12 +80,14 @@ void LockBatch::MoveFrom(LockBatch* other) {
   other->data_.key_to_type.clear();
 }
 
-std::string LockBatchEntry::ToString() const {
-  return Format("{ key: $0 intent_types: $1 }", key.as_slice().ToDebugHexString(), intent_types);
+template <typename T>
+std::string LockBatchEntry<T>::ToString() const {
+  return YB_STRUCT_TO_STRING(key, intent_types, existing_state);
 }
 
 UnlockedBatch::UnlockedBatch(
-    LockBatchEntries&& key_to_type, SharedLockManager* shared_lock_manager):
+    LockBatchEntries<RefCntPrefix>&& key_to_type,
+    SharedLockManager* shared_lock_manager):
   key_to_type_(std::move(key_to_type)), shared_lock_manager_(shared_lock_manager) {}
 
 LockBatch UnlockedBatch::TryLock(CoarseTimePoint deadline) {
@@ -104,6 +106,9 @@ void UnlockedBatch::MoveFrom(UnlockedBatch* other) {
   shared_lock_manager_ = other->shared_lock_manager_;
   other->shared_lock_manager_ = nullptr;
 }
+
+template struct LockBatchEntry<RefCntPrefix>;
+template struct LockBatchEntry<ObjectLockPrefix>;
 
 }  // namespace docdb
 }  // namespace yb

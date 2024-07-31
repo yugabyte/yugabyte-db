@@ -1,0 +1,16 @@
+title: ClusterNodeSpec
+description: Node settings (like CPU / memory) for each node in the cluster. The node settings configured at top-level are uniform settings for both tserver and master nodes. Granular settings for tserver and master (honoured if dedicated_nodes is true or this is k8s cluster) are available for certain node properties. Granular settings can also be overridden per Availability Zone. This is part of ClusterSpec.
+type: object
+allOf:
+  - $ref: "./AvailabilityZoneNodeSpec.yaml"
+  - properties:
+      k8s_master_resource_spec:
+        description: Used only for a k8s Universe. Required for k8s Universe if instance_type is not specified. Sets custom cpu and memory requests/limits for master pods of a cluster.
+        $ref: "./K8SNodeResourceSpec.yaml"
+      k8s_tserver_resource_spec:
+        description: Used only for a k8s Universe. Required for k8s Universe if instance_type is not specified. Sets custom cpu and memory requests/limits for tserver pods of a cluster.
+        $ref: "./K8SNodeResourceSpec.yaml"
+      az_node_spec:
+        description: Granular node settings overridden per Availability Zone identified by AZ uuid.
+        additionalProperties:
+          $ref: "./AvailabilityZoneNodeSpec.yaml"

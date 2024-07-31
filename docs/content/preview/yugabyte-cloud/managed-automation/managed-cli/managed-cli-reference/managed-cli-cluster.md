@@ -2,7 +2,7 @@
 title: ybm CLI cluster resource
 headerTitle: ybm cluster
 linkTitle: cluster
-description: YugabyteDB Managed CLI reference Cluster resource.
+description: YugabyteDB Aeon CLI reference Cluster resource.
 headcontent: Manage clusters
 menu:
   preview_yugabyte-cloud:
@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Use the `cluster` resource to perform operations on a YugabyteDB Managed cluster, including the following:
+Use the `cluster` resource to perform operations on a YugabyteDB Aeon cluster, including the following:
 
 - create, update, and delete clusters
 - pause and resume clusters
@@ -72,7 +72,7 @@ Create a cluster.
 | --cluster-tier | Type of cluster. `Sandbox` or `Dedicated`. |
 | --cluster-type | Deployment type. `SYNCHRONOUS` or `GEO_PARTITIONED`. |
 | --credentials | Required. Database credentials for the default user, provided as key-value pairs.<br>Arguments:<ul><li>username</li><li>password</li></ul> |
-| &#8209;&#8209;database&#8209;version | Database version to use for the cluster. `Innovation`, `Production`, or `Preview`. |
+| &#8209;&#8209;database&#8209;version | Database version to use for the cluster. `Innovation`, `Production`, `Preview`, or `'Early Access'`. |
 | --default-region | The primary region in a [partition-by-region](../../../../cloud-basics/create-clusters/create-clusters-geopartition/) cluster. The primary region is where all the tables not created in a tablespace reside. |
 | --encryption-spec | CMK credentials for encryption at rest, provided as key-value pairs.<br>Arguments:<ul><li>cloud-provider - cloud provider (`AWS`, `AZURE`, or `GCP`); required</li></ul>Required for AWS only:<ul><li>aws-access-key - access key ID</li><li>aws-secret-key - secret access key</li><li>aws-arn - Amazon resource name of the CMK</li></ul>If not provided, you are prompted for the secret access key. AWS secret access key can also be configured using the YBM_AWS_SECRET_KEY [environment variable](../../managed-cli-overview/#environment-variables).<br><br>Required for GCP only:<ul><li>gcp-resource-id - cloud KMS resource ID</li><li>gcp-service-account-path - path to the service account credentials key file</li></ul>Required for Azure only:<ul><li>azu-client-id - client ID of registered application</li><li>azu-client-secret - client secret of registered application</li><li>azu-tenant-id - Azure tenant ID</li><li>azu-key-name - key name</li><li>azu-key-vault-uri - key vault URI in the form `https://myvault.vault.azure.net`</li></ul> |
 | --fault-tolerance | Fault domain for the cluster. `NONE`, `NODE`, `ZONE`, or `REGION`. |
@@ -164,7 +164,7 @@ Update the specified cluster.
 | --cloud-provider | Cloud provider. `AWS`, `AZURE`, or `GCP`. |
 | --cluster-tier | Type of cluster. `Sandbox` or `Dedicated`. |
 | --cluster-type | Deployment type. `SYNCHRONOUS` or `GEO_PARTITIONED`. |
-| &#8209;&#8209;database&#8209;version | Database version to use for the cluster. `Innovation`, `Production`, or `Preview`. |
+| &#8209;&#8209;database&#8209;version | Database version to use for the cluster. `Innovation`, `Production`, `Preview`, or `'Early Access'`. |
 | --fault-tolerance | Fault domain for the cluster. `NONE`, `NODE`, `ZONE`, or `REGION`. |
 | --new-name | The new name for the cluster. |
 | --node-config <br> [Deprecated in v0.1.19] | Number of vCPUs and disk size per node for the cluster, provided as key-value pairs.<br>Arguments:<ul><li>num-cores - number of vCPUs per node</li><li>disk-size-gb - disk size in GB per node</li><li>disk-iops - disk IOPS per node (AWS only)</li></ul>If specified, num-cores is required and disk-size-gb and disk-iops are optional. |

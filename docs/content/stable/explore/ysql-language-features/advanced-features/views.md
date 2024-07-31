@@ -216,6 +216,8 @@ employee_no | name
 
 ## Read more
 
+<!-- - [Active Session History](../../../observability/active-session-history) -->
+
 For detailed documentation on materialized views, refer to the following topics:
 
 - [CREATE MATERIALIZED VIEW](../../../../api/ysql/the-sql-language/statements/ddl_create_matview/)

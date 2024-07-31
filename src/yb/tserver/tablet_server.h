@@ -58,6 +58,7 @@
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/server/webserver_options.h"
 #include "yb/tserver/db_server_base.h"
+#include "yb/tserver/pg_client_service.h"
 #include "yb/tserver/pg_mutation_counter.h"
 #include "yb/tserver/remote_bootstrap_service.h"
 #include "yb/tserver/tserver_shared_mem.h"
@@ -122,7 +123,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // complete by calling WaitInited().
   Status Init() override;
 
-  virtual Status InitAutoFlags(rpc::Messenger* messenger) override;
+  virtual Status InitFlags(rpc::Messenger* messenger) override;
 
   virtual bool ShouldExportLocalCalls() override {
     return true;
@@ -149,6 +150,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   TSTabletManager* tablet_manager() override { return tablet_manager_.get(); }
   TabletPeerLookupIf* tablet_peer_lookup() override;
+  tablet::TSLocalLockManager* ts_local_lock_maganer() override {
+    return ts_local_lock_maganer_.get();
+  }
 
   Heartbeater* heartbeater() { return heartbeater_.get(); }
 
@@ -313,7 +317,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void RegisterCertificateReloader(CertificateReloader reloader) override;
 
-  const TserverXClusterContextIf& GetXClusterContext() const;
+  TserverXClusterContextIf& GetXClusterContext() const;
 
   PgMutationCounter& GetPgNodeLevelMutationCounter();
 
@@ -337,7 +341,13 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::string GetCertificateDetails() override;
 
   PgClientServiceImpl* TEST_GetPgClientService() {
-    return pg_client_service_.lock().get();
+    auto holder = pg_client_service_.lock();
+    return holder ? &holder->impl : nullptr;
+  }
+
+  PgClientServiceMockImpl* TEST_GetPgClientServiceMock() {
+    auto holder = pg_client_service_.lock();
+    return holder && holder->mock.has_value() ? &holder->mock.value() : nullptr;
   }
 
   RemoteBootstrapServiceImpl* GetRemoteBootstrapService() {
@@ -366,6 +376,14 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void TEST_SetIsCronLeader(bool is_cron_leader);
 
+  struct PgClientServiceHolder {
+    template<class... Args>
+    explicit PgClientServiceHolder(Args&&... args) : impl(std::forward<Args>(args)...) {}
+
+    PgClientServiceImpl impl;
+    std::optional<PgClientServiceMockImpl> mock;
+  };
+
  protected:
   virtual Status RegisterServices();
 
@@ -381,6 +399,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Status SetupMessengerBuilder(rpc::MessengerBuilder* builder) override;
 
   Result<std::unordered_set<std::string>> GetAvailableAutoFlagsForServer() const override;
+
+  Result<std::unordered_set<std::string>> GetFlagsForServer() const override;
 
   void SetCronLeaderLease(MonoTime cron_leader_lease_end);
 
@@ -469,7 +489,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   // An instance to pg client service. This pointer is no longer valid after RpcAndWebServerBase
   // is shut down.
-  std::weak_ptr<PgClientServiceImpl> pg_client_service_;
+  std::weak_ptr<PgClientServiceHolder> pg_client_service_;
 
   // Key to shared memory for ysql connection manager stats
   key_t ysql_conn_mgr_stats_shmem_key_ = 0;
@@ -479,6 +499,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   void AutoInitServiceFlags();
 
   void InvalidatePgTableCache();
+  void InvalidatePgTableCache(const std::unordered_set<uint32_t>& db_oids_updated,
+                              const std::unordered_set<uint32_t>& db_oids_deleted);
 
   std::string log_prefix_;
 
@@ -510,6 +532,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::atomic<yb::server::YCQLStatementStatsProvider*> cql_stmt_provider_{nullptr};
 
   std::unique_ptr<stateful_service::PgCronLeaderService> pg_cron_leader_service_;
+
+  // Lock Manager to maintain table/object locking activity in memory.
+  std::unique_ptr<tablet::TSLocalLockManager> ts_local_lock_maganer_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };

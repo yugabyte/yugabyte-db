@@ -41,6 +41,7 @@ type: docs
 ## Prerequisites
 
 This tutorial assumes that you have installed:
+
 - YugabyteDB and created a cluster. Refer to [Quick Start](../../../../quick-start/).
 - [node.js](https://nodejs.org/en/) version 16 or later.
 
@@ -68,10 +69,12 @@ $ cd ./node/sequelize/
 npm install
 ```
 
-## Specifying SSL configuration
-This configuration can be used while connecting to a YB Managed cluster or a local YB cluster with SSL enabled.
+## Specify SSL configuration
+
+This configuration can be used while connecting to a cluster with SSL enabled.
 
 Use the configuration in the following way in the `models/index.js` file when you create the sequelize object:
+
 ```js
 sequelize = new Sequelize("<db_name>", "<user_name>","<password>" , {
     dialect: 'postgres',

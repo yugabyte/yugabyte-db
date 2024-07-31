@@ -22,8 +22,8 @@ import {
   getStrictestReplicationLagAlertThreshold,
   shouldAutoIncludeIndexTables
 } from '../ReplicationUtils';
-import DeleteReplicactionTableModal from './DeleteReplicactionTableModal';
-import { ReplicationLagGraphModal } from './ReplicationLagGraphModal';
+import DeleteReplicationTableModal from './DeleteReplicationTableModal';
+import { TableReplicationLagGraphModal } from './TableReplicationLagGraphModal';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import ellipsisIcon from '../../common/media/more.svg';
 import {
@@ -36,12 +36,13 @@ import {
 } from '../../../redesign/helpers/api';
 import {
   BROKEN_XCLUSTER_CONFIG_STATUSES,
+  INPUT_FIELD_WIDTH_PX,
   liveMetricTimeRangeUnit,
   liveMetricTimeRangeValue,
   MetricName,
-  XClusterConfigType,
   XClusterModalName,
   XClusterTableStatus,
+  XCLUSTER_UNDEFINED_LAG_NUMERIC_REPRESENTATION,
   XCLUSTER_UNIVERSE_TABLE_FILTERS
 } from '../constants';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
@@ -52,7 +53,7 @@ import {
   hasNecessaryPerm
 } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
-import { getTableName } from '../../../utils/tableUtils';
+import { getTableName, getTableUuid } from '../../../utils/tableUtils';
 import { getAlertConfigurations } from '../../../actions/universe';
 
 import {
@@ -61,10 +62,18 @@ import {
   TableTypeLabel,
   YBTable
 } from '../../../redesign/helpers/dtos';
-import { XClusterTable } from '../XClusterTypes';
+import { XClusterReplicationTable, XClusterTable } from '../XClusterTypes';
 import { XClusterConfig } from '../dtos';
 import { NodeAggregation, SplitType } from '../../metrics/dtos';
 import { AlertTemplate } from '../../../redesign/features/alerts/TemplateComposer/ICustomVariables';
+import {
+  SearchToken,
+  YBSmartSearchBar
+} from '../../../redesign/components/YBSmartSearchBar/YBSmartSearchBar';
+import {
+  FieldType,
+  isMatchedBySearchToken
+} from '../../../redesign/components/YBSmartSearchBar/helpers';
 
 import styles from './ReplicationTables.module.scss';
 
@@ -84,8 +93,9 @@ const TABLE_MIN_PAGE_SIZE = 10;
 
 export function ReplicationTables(props: ReplicationTablesProps) {
   const { xClusterConfig, isActive = true } = props;
-  const [deleteTableDetails, setDeleteTableDetails] = useState<XClusterTable>();
+  const [deleteTableDetails, setDeleteTableDetails] = useState<XClusterReplicationTable>();
   const [openTableLagGraphDetails, setOpenTableLagGraphDetails] = useState<XClusterTable>();
+  const [searchTokens, setSearchTokens] = useState<SearchToken[]>([]);
 
   const dispatch = useDispatch();
   const { showModal, visibleModal } = useSelector((state: any) => state.modal);
@@ -98,7 +108,7 @@ export function ReplicationTables(props: ReplicationTablesProps) {
       fetchTablesInUniverse(
         xClusterConfig.sourceUniverseUUID,
         XCLUSTER_UNIVERSE_TABLE_FILTERS
-      ).then((respone) => respone.data)
+      ).then((response) => response.data)
   );
 
   const sourceUniverseQuery = useQuery(
@@ -119,7 +129,7 @@ export function ReplicationTables(props: ReplicationTablesProps) {
     nodeAggregation: NodeAggregation.MAX,
     splitType: SplitType.TABLE
   };
-  const replciationLagMetricRequestParams: MetricsQueryParams = {
+  const replicationLagMetricRequestParams: MetricsQueryParams = {
     metricsWithSettings: [replicationLagMetricSettings],
     nodePrefix: sourceUniverseQuery.data?.universeDetails.nodePrefix,
     xClusterConfigUuid: xClusterConfig.uuid,
@@ -128,11 +138,11 @@ export function ReplicationTables(props: ReplicationTablesProps) {
   };
   const tableReplicationLagQuery = useQuery(
     metricQueryKey.live(
-      replciationLagMetricRequestParams,
+      replicationLagMetricRequestParams,
       liveMetricTimeRangeValue,
       liveMetricTimeRangeUnit
     ),
-    () => api.fetchMetrics(replciationLagMetricRequestParams),
+    () => api.fetchMetrics(replicationLagMetricRequestParams),
     {
       enabled: !!sourceUniverseQuery.data
     }
@@ -156,7 +166,7 @@ export function ReplicationTables(props: ReplicationTablesProps) {
               queryClient.invalidateQueries(drConfigQueryKey.detail(props.drConfigUuid));
               toast.success(
                 deleteTableDetails
-                  ? `"${getTableName(deleteTableDetails)}" table removed successully.`
+                  ? `"${getTableName(deleteTableDetails)}" table removed successfully.`
                   : 'Table removed successfully.'
               );
             } else {
@@ -212,16 +222,26 @@ export function ReplicationTables(props: ReplicationTablesProps) {
     return <YBErrorIndicator customErrorMessage={errorMessage} />;
   }
 
+  const handleSearchTokenChange = (searchTokens: SearchToken[]) => {
+    setSearchTokens(searchTokens);
+  };
+
   const hideModal = () => {
     dispatch(closeDialog());
   };
-
+  const maxAcceptableLag = getStrictestReplicationLagAlertThreshold(alertConfigQuery.data);
   const tablesInConfig = augmentTablesWithXClusterDetails(
     sourceUniverseTablesQuery.data,
     xClusterConfig.tableDetails,
-    tableReplicationLagQuery.data?.async_replication_sent_lag?.data
+    maxAcceptableLag,
+    tableReplicationLagQuery.data?.async_replication_sent_lag?.data,
+    { includeDroppedTables: true }
   );
+
   const sourceUniverse = sourceUniverseQuery.data;
+  const filteredTablesInConfig = tablesInConfig.filter((table) =>
+    isTableMatchedBySearchTokens(table, searchTokens)
+  );
   return (
     <div className={styles.rootContainer}>
       {!props.isDrInterface && (
@@ -230,9 +250,23 @@ export function ReplicationTables(props: ReplicationTablesProps) {
           <span className={styles.infoText}>Tables selected for Replication</span>
         </div>
       )}
+      <YBSmartSearchBar
+        searchTokens={searchTokens}
+        onSearchTokensChange={handleSearchTokenChange}
+        recognizedModifiers={[
+          'database',
+          'table',
+          'schema',
+          'sizeBytes',
+          'status',
+          'replicationLagMs'
+        ]}
+        placeholder="Search tables..."
+        autoExpandMinWidth={INPUT_FIELD_WIDTH_PX}
+      />
       <div className={styles.replicationTable}>
         <BootstrapTable
-          data={tablesInConfig}
+          data={filteredTablesInConfig}
           tableBodyClass={styles.table}
           trClassName="tr-row-style"
           pagination={tablesInConfig && tablesInConfig.length > TABLE_MIN_PAGE_SIZE}
@@ -241,41 +275,57 @@ export function ReplicationTables(props: ReplicationTablesProps) {
           <TableHeaderColumn
             dataField="tableName"
             dataFormat={(_, xClusterTable) => getTableName(xClusterTable)}
+            dataSort
           >
             Table Name
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="pgSchemaName"
-            dataFormat={(cell: string, row: YBTable) => formatSchemaName(row.tableType, cell)}
+            dataFormat={(pgSchemaName: string, YbTable: YBTable) =>
+              formatSchemaName(YbTable.tableType, pgSchemaName)
+            }
+            dataSort
           >
             Schema Name
           </TableHeaderColumn>
           {!props.isDrInterface && (
             <TableHeaderColumn
               dataField="tableType"
-              dataFormat={(cell: TableType) => TableTypeLabel[cell]}
+              dataFormat={(tableType: TableType) => TableTypeLabel[tableType]}
+              dataSort
             >
               Table Type
             </TableHeaderColumn>
           )}
-          <TableHeaderColumn dataField="keySpace">Database</TableHeaderColumn>
-          <TableHeaderColumn dataField="sizeBytes" dataFormat={(cell) => formatBytes(cell)}>
+          <TableHeaderColumn
+            dataField="keySpace"
+            dataFormat={(keyspace) => keyspace ?? '-'}
+            dataSort
+          >
+            Database
+          </TableHeaderColumn>
+          <TableHeaderColumn
+            dataField="sizeBytes"
+            dataFormat={(size) => formatBytes(size)}
+            dataSort
+          >
             Size
           </TableHeaderColumn>
           <TableHeaderColumn
-            dataField="status"
-            dataFormat={(cell: XClusterTableStatus, xClusterTable: XClusterTable) => (
+            dataField="statusLabel"
+            dataSort
+            dataFormat={(_: XClusterTableStatus, xClusterTable: XClusterReplicationTable) => (
               <XClusterTableStatusLabel
-                replicationLag={xClusterTable.replicationLag}
-                status={cell}
-                sourceUniverseUuid={sourceUniverse.universeUUID}
+                status={xClusterTable.status}
+                errors={xClusterTable.replicationStatusErrors}
               />
             )}
           >
             Replication Status
           </TableHeaderColumn>
           <TableHeaderColumn
-            dataFormat={(_, xClusterTable: XClusterTable) => {
+            dataField="replicationLag"
+            dataFormat={(_, xClusterTable: XClusterReplicationTable) => {
               if (
                 tableReplicationLagQuery.isLoading ||
                 tableReplicationLagQuery.isIdle ||
@@ -293,12 +343,12 @@ export function ReplicationTables(props: ReplicationTablesProps) {
                 return <span>-</span>;
               }
 
-              const maxAcceptableLag = getStrictestReplicationLagAlertThreshold(
-                alertConfigQuery.data
-              );
               const formattedLag = formatLagMetric(xClusterTable.replicationLag);
 
-              if (xClusterTable.replicationLag === undefined) {
+              if (
+                xClusterTable.replicationLag === undefined ||
+                xClusterTable.replicationLag === XCLUSTER_UNDEFINED_LAG_NUMERIC_REPRESENTATION
+              ) {
                 return <span className="replication-lag-value warning">{formattedLag}</span>;
               }
 
@@ -321,6 +371,7 @@ export function ReplicationTables(props: ReplicationTablesProps) {
                 </Box>
               );
             }}
+            dataSort
           >
             Current lag
           </TableHeaderColumn>
@@ -328,14 +379,17 @@ export function ReplicationTables(props: ReplicationTablesProps) {
             columnClassName={styles.tableActionColumn}
             width="160px"
             dataField="action"
-            dataFormat={(_, row: XClusterTable) => (
+            dataFormat={(_, table: XClusterReplicationTable) => (
               <>
                 <YBButton
                   className={styles.actionButton}
                   btnIcon="fa fa-line-chart"
+                  disabled={table.status === XClusterTableStatus.DROPPED}
                   onClick={(e: any) => {
-                    setOpenTableLagGraphDetails(row);
-                    dispatch(openDialog(XClusterModalName.TABLE_REPLICATION_LAG_GRAPH));
+                    if (table.status !== XClusterTableStatus.DROPPED) {
+                      setOpenTableLagGraphDetails(table);
+                      dispatch(openDialog(XClusterModalName.TABLE_REPLICATION_LAG_GRAPH));
+                    }
                     e.currentTarget.blur();
                   }}
                 />
@@ -361,10 +415,13 @@ export function ReplicationTables(props: ReplicationTablesProps) {
                     >
                       <MenuItem
                         onClick={() => {
-                          setDeleteTableDetails(row);
+                          setDeleteTableDetails(table);
                           dispatch(openDialog(XClusterModalName.REMOVE_TABLE_FROM_CONFIG));
                         }}
-                        disabled={row.tableType === TableType.TRANSACTION_STATUS_TABLE_TYPE}
+                        disabled={
+                          table.status !== XClusterTableStatus.DROPPED &&
+                          table.tableType === TableType.TRANSACTION_STATUS_TABLE_TYPE
+                        }
                       >
                         <YBLabelWithIcon className={styles.dropdownMenuItem} icon="fa fa-times">
                           Remove Table
@@ -379,22 +436,25 @@ export function ReplicationTables(props: ReplicationTablesProps) {
         </BootstrapTable>
       </div>
       {openTableLagGraphDetails && (
-        <ReplicationLagGraphModal
-          tableDetails={openTableLagGraphDetails}
-          replicationUUID={xClusterConfig.uuid}
-          universeUUID={sourceUniverse.universeUUID}
+        <TableReplicationLagGraphModal
+          xClusterTable={openTableLagGraphDetails}
+          sourceUniverseUuid={sourceUniverse.universeUUID}
           nodePrefix={sourceUniverse.universeDetails.nodePrefix}
           queryEnabled={isActive}
-          visible={visibleModal === XClusterModalName.TABLE_REPLICATION_LAG_GRAPH}
-          onHide={hideModal}
+          modalProps={{
+            open: visibleModal === XClusterModalName.TABLE_REPLICATION_LAG_GRAPH,
+            onClose: hideModal
+          }}
         />
       )}
-      <DeleteReplicactionTableModal
+      <DeleteReplicationTableModal
         deleteTableName={deleteTableDetails ? getTableName(deleteTableDetails) : ''}
         onConfirm={() => {
           removeTableFromXCluster.mutate({
             ...xClusterConfig,
-            tables: xClusterConfig.tables.filter((t) => t !== deleteTableDetails?.tableUUID)
+            tables: xClusterConfig.tables.filter(
+              (tableUuid) => !deleteTableDetails || tableUuid !== getTableUuid(deleteTableDetails)
+            )
           });
         }}
         onCancel={hideModal}
@@ -402,3 +462,30 @@ export function ReplicationTables(props: ReplicationTablesProps) {
     </div>
   );
 }
+
+/**
+ * Fields to do substring search on if search token modifier is not specified.
+ */
+const SUBSTRING_SEARCH_FIELDS = ['table', 'database', 'schema', 'status'];
+
+const isTableMatchedBySearchTokens = (
+  table: XClusterReplicationTable,
+  searchTokens: SearchToken[]
+) => {
+  const candidate = {
+    ...(table.status !== XClusterTableStatus.DROPPED && {
+      database: { value: table.keySpace, type: FieldType.STRING },
+      schema: { value: table.pgSchemaName, type: FieldType.STRING },
+      sizeBytes: { value: table.sizeBytes, type: FieldType.NUMBER },
+      status: { value: table.statusLabel, type: FieldType.STRING },
+      replicationLagMs: { value: table.replicationLag, type: FieldType.NUMBER }
+    }),
+    table: {
+      value: table.status === XClusterTableStatus.DROPPED ? table.tableUUID : table.tableName,
+      type: FieldType.STRING
+    }
+  };
+  return searchTokens.every((searchToken) =>
+    isMatchedBySearchToken(candidate, searchToken, SUBSTRING_SEARCH_FIELDS)
+  );
+};

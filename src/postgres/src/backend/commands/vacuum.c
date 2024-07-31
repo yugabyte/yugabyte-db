@@ -52,6 +52,8 @@
 #include "utils/syscache.h"
 #include "utils/tqual.h"
 
+/* YB includes. */
+#include "access/sysattr.h"
 #include "pg_yb_utils.h"
 
 /*
@@ -894,8 +896,31 @@ vac_update_relstats(Relation relation,
 
 	rd = heap_open(RelationRelationId, RowExclusiveLock);
 
-	/* Fetch a copy of the tuple to scribble on */
-	ctup = SearchSysCacheCopy1(RELOID, ObjectIdGetDatum(relid));
+	if (IsYugaByteEnabled() && YBIsInitDbModeEnvVarSet())
+	{
+		/*
+		 * YB: workaround for stale cache issue #13500 during initdb.
+		 * Instead of fetching a tuple from sys cache,
+		 * read the tuple from pg_class directly.
+		 */
+		HeapScanDesc pg_class_scan;
+		ScanKeyData key[1];
+
+		ScanKeyInit(&key[0],
+					ObjectIdAttributeNumber,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(relid));
+
+		pg_class_scan = heap_beginscan_catalog(rd, 1, key);
+		ctup = heap_getnext(pg_class_scan, ForwardScanDirection);
+		ctup = heap_copytuple(ctup);
+		heap_endscan(pg_class_scan);
+	}
+	else
+	{
+		/* Fetch a copy of the tuple to scribble on */
+		ctup = SearchSysCacheCopy1(RELOID, ObjectIdGetDatum(relid));
+	}
 	if (!HeapTupleIsValid(ctup))
 		elog(ERROR, "pg_class entry for relid %u vanished during vacuuming",
 			 relid);

@@ -2,15 +2,23 @@
 
 package com.yugabyte.yw.forms;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
+import com.datadoghq.com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -29,11 +37,28 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
   public Map<String, String> masterGFlags;
   public Map<String, String> tserverGFlags;
 
+  @JsonIgnore GFlagsValidation gFlagsValidation;
+
   protected boolean verifyGFlagsHasChanges(Universe universe) {
     if (isUsingSpecificGFlags(universe)) {
       return verifySpecificGFlags(universe);
     } else {
       return verifyGFlagsOld(universe);
+    }
+  }
+
+  /**
+   * Verifies the preview GFlags settings for the given universe.
+   *
+   * @param universe The universe to verify the GFlags settings for.
+   * @throws PlatformServiceException If the GFlags settings are invalid.
+   */
+  protected void verifyPreviewGFlagsSettings(Universe universe) {
+    gFlagsValidation = StaticInjectorHolder.injector().instanceOf(GFlagsValidation.class);
+    if (isUsingSpecificGFlags(universe)) {
+      checkPreviewGFlagsOnSpecificGFlags(universe, gFlagsValidation);
+    } else {
+      checkPreviewGFlagsOnOld(universe, gFlagsValidation);
     }
   }
 
@@ -44,6 +69,8 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
    * @return true if changed
    */
   private boolean verifySpecificGFlags(Universe universe) {
+    // verify changes to groups here
+    // if groups are added, cannot allow changes to those gflags
     Map<UUID, Cluster> newClusters =
         clusters.stream().collect(Collectors.toMap(c -> c.uuid, c -> c));
     boolean hasClustersToUpdate = false;
@@ -52,6 +79,11 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
       if (newCluster == null
           || (Objects.equals(
                   newCluster.userIntent.specificGFlags, curCluster.userIntent.specificGFlags)
+              && (newCluster.userIntent.specificGFlags != null
+                  && curCluster.userIntent.specificGFlags != null
+                  && Objects.equals(
+                      newCluster.userIntent.specificGFlags.getGflagGroups(),
+                      curCluster.userIntent.specificGFlags.getGflagGroups()))
               && !skipMatchWithUserIntent)) {
         continue;
       }
@@ -86,6 +118,16 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
             }
           }
         }
+        // check if gflag groups have changed with NON Restart. Throw error if so
+        if (newCluster.userIntent.specificGFlags != null
+            && curCluster.userIntent.specificGFlags != null
+            && !Objects.equals(
+                newCluster.userIntent.specificGFlags.getGflagGroups(),
+                curCluster.userIntent.specificGFlags.getGflagGroups())) {
+          throw new PlatformServiceException(
+              Http.Status.BAD_REQUEST,
+              "Gflag groups cannot be changed through non-restart upgrade option.");
+        }
       }
     }
     return hasClustersToUpdate;
@@ -110,6 +152,63 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
   }
 
   /**
+   * Checks the preview GFlags on specific GFlags for each cluster in the given universe.
+   *
+   * @param universe The universe for which the GFlags are being checked.
+   * @param gFlagsValidation The GFlags validation object.
+   * @throws PlatformServiceException If the GFlags are invalid.
+   */
+  private void checkPreviewGFlagsOnSpecificGFlags(
+      Universe universe, GFlagsValidation gFlagsValidation) {
+    try {
+      for (Cluster cluster : clusters) {
+        SpecificGFlags specificGFlags = cluster.userIntent.specificGFlags;
+        if (specificGFlags == null) {
+          continue;
+        }
+        String errMsg =
+            GFlagsUtil.checkPreviewGFlagsOnSpecificGFlags(
+                specificGFlags, gFlagsValidation, cluster.userIntent.ybSoftwareVersion);
+        if (errMsg != null) {
+          throw new PlatformServiceException(BAD_REQUEST, errMsg);
+        }
+      }
+    } catch (IOException e) {
+      log.error("Error while checking preview gflags", e);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+    }
+  }
+
+  /**
+   * Checks the preview GFlags on an old version of the Universe.
+   *
+   * @param universe The Universe object.
+   * @param gFlagsValidation The GFlagsValidation object.
+   * @throws PlatformServiceException If the GFlags are invalid.
+   */
+  private void checkPreviewGFlagsOnOld(Universe universe, GFlagsValidation gFlagsValidation) {
+    String ybSoftwareVersion =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    try {
+      for (UniverseTaskBase.ServerType serverType :
+          Arrays.asList(UniverseTaskBase.ServerType.MASTER, UniverseTaskBase.ServerType.TSERVER)) {
+        String errorMsg =
+            GFlagsUtil.checkPreviewGFlags(
+                serverType.equals(ServerType.MASTER) ? masterGFlags : tserverGFlags,
+                ybSoftwareVersion,
+                serverType,
+                gFlagsValidation);
+        if (errorMsg != null) {
+          throw new PlatformServiceException(BAD_REQUEST, errorMsg);
+        }
+      }
+    } catch (IOException e) {
+      log.error("Error while checking preview gflags", e);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+    }
+  }
+
+  /**
    * Checks whether current clusters or newly provided clusters have specificGFlags
    *
    * @param universe
@@ -129,6 +228,11 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
 
   public Map<UUID, UniverseDefinitionTaskParams.Cluster> getNewVersionsOfClusters(
       Universe universe) {
+    return getVersionsOfClusters(universe, this);
+  }
+
+  public Map<UUID, UniverseDefinitionTaskParams.Cluster> getVersionsOfClusters(
+      Universe universe, UpgradeWithGFlags params) {
     boolean usingSpecificGFlags = isUsingSpecificGFlags(universe);
     Map<UUID, Cluster> clustersFromParams =
         clusters.stream().collect(Collectors.toMap(c -> c.uuid, c -> c));
@@ -140,8 +244,8 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
               curCluster.clusterType, curCluster.userIntent.clone());
       newVersion.uuid = curCluster.uuid;
       if (!usingSpecificGFlags) {
-        newVersion.userIntent.masterGFlags = this.masterGFlags;
-        newVersion.userIntent.tserverGFlags = this.tserverGFlags;
+        newVersion.userIntent.masterGFlags = params.masterGFlags;
+        newVersion.userIntent.tserverGFlags = params.tserverGFlags;
       } else if (clusterFromParams != null) {
         newVersion.userIntent.specificGFlags = clusterFromParams.userIntent.specificGFlags;
       }
@@ -154,7 +258,7 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
       NodeDetails node,
       UniverseTaskBase.ServerType serverType,
       UniverseDefinitionTaskParams.Cluster curCluster,
-      List<Cluster> curClusters,
+      Collection<Cluster> curClusters,
       UniverseDefinitionTaskParams.Cluster newClusterVersion,
       Collection<Cluster> newClusters) {
     Map<String, String> newGflags =

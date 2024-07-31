@@ -1,6 +1,12 @@
 # Get the latest docker image
 FROM quay.io/pypa/manylinux2014_x86_64
 
+
+RUN sed -i 's/mirrorlist=/#mirrorlist=/g' /etc/yum.repos.d/CentOS-*
+RUN sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' \
+            /etc/yum.repos.d/CentOS-*
+
+
 # Perform general yum updates
 RUN yum --enablerepo=extras -y install epel-release python3-pip
 RUN pip3 install --upgrade pip

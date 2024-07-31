@@ -104,3 +104,75 @@
         $ref: '../responses/_index.yaml#/ApiError'
       '500':
         $ref: '../responses/_index.yaml#/ApiError'
+'/migration_assessment_v2':
+  get:
+    summary: Get the Database assessment details
+    description: Get the Database assessment details
+    operationId: GetMigrationAssessmentInfo
+    tags:
+      - voyager-info
+    parameters:
+      - name: uuid
+        in: query
+        description: uuid of the voyager migration task
+        required: true
+        style: form
+        explode: false
+        schema:
+          type: string
+          format: uuid
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/VoyagerAssessmentResponseV2'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+'/assessment_source_db_details':
+  get:
+    summary: Get the Source Database SQL object details
+    description: Get the Source Database SQL object details
+    operationId: GetAssessmentSourceDBInfo
+    tags:
+      - voyager-info
+    parameters:
+      - name: uuid
+        in: query
+        description: uuid of the voyager migration task
+        required: true
+        style: form
+        explode: false
+        schema:
+          type: string
+          format: uuid
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/AssessmentSourceDbResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+'/assessment_target_recommendation_details':
+  get:
+    summary: Get the Target Database recommendation details
+    description: Get the Target Database recommendation details
+    operationId: GetAssessmentTargetRecommendationInfo
+    tags:
+      - voyager-info
+    parameters:
+      - name: uuid
+        in: query
+        description: uuid of the voyager migration task
+        required: true
+        style: form
+        explode: false
+        schema:
+          type: string
+          format: uuid
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/AssessmentTargetRecommendationResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
