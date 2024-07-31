@@ -92,9 +92,7 @@ The following commands are available:
 
 Use the `yugabyted backup` command to take a backup of a YugabyteDB database into a network file storage directory or public cloud object storage.
 
-Note that the yugabyted node must be started with `--backup_daemon=true` to initialize the backup/restore agent.
-
-If the cluster was started using the `--backup_daemon` flag, you also need to download and extract the [YB Controller release](https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/ybc/2.1.0.0-b9/ybc-2.1.0.0-b9-linux-x86_64.tar.gz) to the yugabyte-{{< yb-version version="preview" >}} folder.
+To use `backup`, the yugabyted node must be started with `--backup_daemon=true` to initialize the backup/restore agent. See the [start](#start) command.
 
 #### Syntax
 
@@ -625,9 +623,7 @@ yugabyted finalize_upgrade --upgrade_ysql_timeout <time_limit_ms>
 
 Use the `yugabyted restore` command to restore a database in the YugabyteDB cluster from a network file storage directory or from public cloud object storage.
 
-Note that the yugabyted node must be started with `--backup_daemon=true` to initialize the backup/restore agent.
-
-If the cluster was started using the `--backup_daemon` flag, you also need to download and extract the [YB Controller release](https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/ybc/2.1.0.0-b9/ybc-2.1.0.0-b9-linux-x86_64.tar.gz) to the yugabyte-{{< yb-version version="preview" >}} folder.
+To use `restore`, the yugabyted node must be started with `--backup_daemon=true` to initialize the backup/restore agent. See the [start](#start) command.
 
 #### Syntax
 
@@ -692,9 +688,9 @@ Determine the status of a restore task:
 
 Use the `yugabyted start` command to start a one-node YugabyteDB cluster for running [YSQL](../../../api/ysql) and [YCQL](../../../api/ycql) workloads in your local environment.
 
-Note that to use encryption in transit, OpenSSL must be installed on the nodes.
+To use encryption in transit, OpenSSL must be installed on the nodes.
 
-Note that the yugabyted node must be started with `--backup_daemon=true` to initialize the backup/restore agent. You also need to download and extract the [YB Controller release](https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/ybc/2.1.0.0-b9/ybc-2.1.0.0-b9-linux-x86_64.tar.gz) to the yugabyte-{{< yb-version version="preview" >}} folder.
+If you want to use backup and restore, start the node must with `--backup_daemon=true` to initialize the backup and restore agent. You also need to download and extract the [YB Controller release](https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/ybc/2.1.0.0-b9/ybc-2.1.0.0-b9-linux-x86_64.tar.gz) to the yugabyte-{{< yb-version version="preview" >}} folder.
 
 #### Syntax
 
@@ -1267,7 +1263,7 @@ To create a secure multi-zone cluster:
 
 1. Start the first node by running the `yugabyted start` command, using the `--secure` flag and passing in the `--cloud_location` and `--fault_tolerance` flags to set the node location details.
 
-    Add the `--backup_daemon` flag if you want to perform backup and restore operations (also required for xCluster replication) on this cluster. The `--backup_daemon` flag doesn't take a value.
+    Set the `--backup_daemon` flag to true if you want to perform backup and restore operations.
 
     ```sh
     ./bin/yugabyted start --secure --advertise_address=<host-ip> \
@@ -1289,7 +1285,7 @@ To create a secure multi-zone cluster:
 
 1. Start the second and the third node on two separate VMs using the `--join` flag.
 
-    Add the `--backup_daemon` flag if you want to perform backup and restore operations (also required for xCluster replication) on this cluster. The `--backup_daemon` flag doesn't take a value.
+    Set the `--backup_daemon` flag to true if you want to perform backup and restore operations.
 
     ```sh
     ./bin/yugabyted start --secure --advertise_address=<host-ip> \
@@ -1313,7 +1309,7 @@ To create a multi-zone cluster:
 
 1. Start the first node by running the `yugabyted start` command, passing in the `--cloud_location` and `--fault_tolerance` flags to set the node location details.
 
-    Add the `--backup_daemon` flag if you want to perform backup and restore operations (also required for xCluster replication) on this cluster. The `--backup_daemon` flag doesn't take a value.
+    Set the `--backup_daemon` flag to true if you want to perform backup and restore operations.
 
     ```sh
     ./bin/yugabyted start --advertise_address=<host-ip> \
@@ -1323,7 +1319,7 @@ To create a multi-zone cluster:
 
 1. Start the second and the third node on two separate VMs using the `--join` flag.
 
-    Add the `--backup_daemon` flag if you want to perform backup and restore operations (also required for xCluster replication) on this cluster. The `--backup_daemon` flag doesn't take a value.
+    Set the `--backup_daemon` flag to true if you want to perform backup and restore operations.
 
     ```sh
     ./bin/yugabyted start --advertise_address=<host-ip> \
@@ -1381,7 +1377,7 @@ To create a secure multi-region cluster:
 
 1. Start the first node by running the `yugabyted start` command, using the `--secure` flag and passing in the `--cloud_location` and `--fault_tolerance` flags to set the node location details.
 
-    Add the `--backup_daemon` flag if you want to perform backup and restore operations (also required for xCluster replication) on this cluster. The `--backup_daemon` flag doesn't take a value.
+    Set the `--backup_daemon` flag to true if you want to perform backup and restore operations.
 
     ```sh
     ./bin/yugabyted start --secure --advertise_address=<host-ip> \
@@ -1402,7 +1398,7 @@ To create a secure multi-region cluster:
 
 1. Start the second and the third node on two separate VMs using the `--join` flag.
 
-    Add the `--backup_daemon` flag if you want to perform backup and restore operations (also required for xCluster replication) on this cluster. The `--backup_daemon` flag doesn't take a value.
+    Set the `--backup_daemon` flag to true if you want to perform backup and restore operations.
 
     ```sh
     ./bin/yugabyted start --secure --advertise_address=<host-ip> \
@@ -1426,7 +1422,7 @@ To create a multi-region cluster:
 
 1. Start the first node by running the `yugabyted start` command, pass in the `--cloud_location` and `--fault_tolerance` flags to set the node location details.
 
-    Add the `--backup_daemon` flag if you want to perform backup and restore operations (also required for xCluster replication) on this cluster. The `--backup_daemon` flag doesn't take a value.
+    Set the `--backup_daemon` flag to true if you want to perform backup and restore operations.
 
     ```sh
     ./bin/yugabyted start --advertise_address=<host-ip> \
@@ -1436,7 +1432,7 @@ To create a multi-region cluster:
 
 1. Start the second and the third node on two separate VMs using the `--join` flag.
 
-    Add the `--backup_daemon` flag if you want to perform backup and restore operations (also required for xCluster replication) on this cluster. The `--backup_daemon` flag doesn't take a value.
+    Set the `--backup_daemon` flag to true if you want to perform backup and restore operations.
 
     ```sh
     ./bin/yugabyted start --advertise_address=<host-ip> \
@@ -1778,7 +1774,7 @@ To disable encryption at rest in a multi-zone or multi-region cluster with this 
 
 Use the following steps to set up [xCluster replication](../../../architecture/docdb-replication/async-replication/) between two YugabyteDB clusters.
 
-To set up xCluster replication, you first need to deploy two (source and target) clusters. Refer to [Create a multi-zone cluster](#create-a-multi-zone-cluster). Add the `--backup_daemon` flag.
+To set up xCluster replication, you first need to deploy two (source and target) clusters. Refer to [Create a multi-zone cluster](#create-a-multi-zone-cluster). In addition, if you need to bootstrap the databases in the target cluster, set the `--backup_daemon` flag to true and install YB Controller. See the [start](#start) command.
 
 {{< tabpane text=true >}}
 
