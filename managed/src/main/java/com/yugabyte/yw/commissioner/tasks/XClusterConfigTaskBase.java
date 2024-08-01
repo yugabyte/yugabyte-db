@@ -101,10 +101,9 @@ import play.mvc.Http.Status;
 public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase {
 
   protected final XClusterUniverseService xClusterUniverseService;
-
-  public static final String SOURCE_ROOT_CERTS_DIR_GFLAG = "certs_for_cdc_dir";
-  public static final String DEFAULT_SOURCE_ROOT_CERTS_DIR_NAME = "/yugabyte-tls-producer";
-  public static final String SOURCE_ROOT_CERTIFICATE_NAME = "ca.crt";
+  public static final String XCLUSTER_ROOT_CERTS_DIR_GFLAG = "certs_for_cdc_dir";
+  public static final String DEFAULT_XCLUSTER_ROOT_CERTS_DIR_NAME = "/yugabyte-tls-producer";
+  public static final String XCLUSTER_ROOT_CERTIFICATE_NAME = "ca.crt";
   public static final String ENABLE_REPLICATE_TRANSACTION_STATUS_TABLE_GFLAG =
       "enable_replicate_transaction_status_table";
   public static final boolean ENABLE_REPLICATE_TRANSACTION_STATUS_TABLE_DEFAULT = false;
@@ -283,7 +282,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
             (provider.getCode().equals(CloudType.kubernetes.toString())
                 ? KubernetesTaskBase.K8S_NODE_YW_DATA_DIR
                 : provider.getYbHome()),
-            DEFAULT_SOURCE_ROOT_CERTS_DIR_NAME)
+            DEFAULT_XCLUSTER_ROOT_CERTS_DIR_NAME)
         .toString();
   }
 

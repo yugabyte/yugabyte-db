@@ -560,10 +560,10 @@ public class LocalNodeManager {
       UniverseDefinitionTaskParams.UserIntent userIntent) {
     TransferXClusterCerts.Params tParams = (TransferXClusterCerts.Params) taskParams;
     String homeDir = getNodeRoot(userIntent, nodeInfo);
-    String producerCertsDirOnTarget =
-        replaceYbHome(tParams.producerCertsDirOnTarget.getAbsolutePath(), userIntent, nodeInfo);
+    String destinationCertsDir =
+        replaceYbHome(tParams.destinationCertsDir.getAbsolutePath(), userIntent, nodeInfo);
     String replicationGroupName = tParams.replicationGroupName;
-    String path = producerCertsDirOnTarget + "/" + replicationGroupName;
+    String path = destinationCertsDir + "/" + replicationGroupName;
     switch (tParams.action.toString()) {
       case "copy":
         try {

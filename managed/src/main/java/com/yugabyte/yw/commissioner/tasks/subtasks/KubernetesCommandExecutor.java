@@ -1134,7 +1134,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
     if (taskUniverseDetails.xClusterInfo.isSourceRootCertDirPathGflagConfigured()) {
       masterGFlags.put(
-          XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG,
+          XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG,
           taskUniverseDetails.xClusterInfo.sourceRootCertDirPath);
     }
     if (!masterGFlags.isEmpty()) {
@@ -1194,7 +1194,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
     if (taskUniverseDetails.xClusterInfo.isSourceRootCertDirPathGflagConfigured()) {
       tserverGFlags.put(
-          XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG,
+          XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG,
           taskUniverseDetails.xClusterInfo.sourceRootCertDirPath);
     }
     if (!tserverGFlags.isEmpty()) {

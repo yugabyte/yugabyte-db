@@ -365,7 +365,7 @@ public class GFlagsUtil {
 
     if (universe.getUniverseDetails().xClusterInfo.isSourceRootCertDirPathGflagConfigured()) {
       extra_gflags.put(
-          XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG,
+          XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG,
           universe.getUniverseDetails().xClusterInfo.sourceRootCertDirPath);
     }
 

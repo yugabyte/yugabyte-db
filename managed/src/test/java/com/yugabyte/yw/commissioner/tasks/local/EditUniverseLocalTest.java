@@ -588,17 +588,4 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     verifyNodeModifications(
         universe, increment > 0 ? increment : 0, increment < 0 ? -increment : 0);
   }
-
-  private void verifyNodeModifications(Universe universe, int added, int removed) {
-    assertEquals(
-        added,
-        universe.getUniverseDetails().nodeDetailsSet.stream()
-            .filter(n -> n.state == NodeDetails.NodeState.ToBeAdded)
-            .count());
-    assertEquals(
-        removed,
-        universe.getUniverseDetails().nodeDetailsSet.stream()
-            .filter(n -> n.state == NodeDetails.NodeState.ToBeRemoved)
-            .count());
-  }
 }

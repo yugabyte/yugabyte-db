@@ -5416,22 +5416,51 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return subTaskGroup;
   }
 
+  public void createTransferXClusterCertsRemoveTasks(
+      XClusterConfig xClusterConfig, String replicationGroupName) {
+    Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
+
+    Optional<File> sourceCertificate =
+        getOriginCertficateIfNecessary(sourceUniverse, targetUniverse);
+    sourceCertificate.ifPresent(
+        cert ->
+            createTransferXClusterCertsRemoveTasks(
+                xClusterConfig,
+                replicationGroupName,
+                targetUniverse.getUniverseDetails().getSourceRootCertDirPath(),
+                targetUniverse,
+                false /* ignoreErrors */));
+    if (xClusterConfig.getType() == ConfigType.Db) {
+      Optional<File> targetCertificate =
+          getOriginCertficateIfNecessary(targetUniverse, sourceUniverse);
+      targetCertificate.ifPresent(
+          cert ->
+              createTransferXClusterCertsRemoveTasks(
+                  xClusterConfig,
+                  replicationGroupName,
+                  sourceUniverse.getUniverseDetails().getSourceRootCertDirPath(),
+                  sourceUniverse,
+                  false /* ignoreErrors */));
+    }
+  }
+
   protected SubTaskGroup createTransferXClusterCertsRemoveTasks(
       XClusterConfig xClusterConfig,
       String replicationGroupName,
-      File sourceRootCertDirPath,
+      File certificate,
+      Universe universe,
       boolean ignoreErrors) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("TransferXClusterCerts");
-    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
 
-    for (NodeDetails node : targetUniverse.getNodes()) {
+    for (NodeDetails node : universe.getNodes()) {
       TransferXClusterCerts.Params transferParams = new TransferXClusterCerts.Params();
-      transferParams.setUniverseUUID(targetUniverse.getUniverseUUID());
+      transferParams.setUniverseUUID(universe.getUniverseUUID());
       transferParams.nodeName = node.nodeName;
       transferParams.azUuid = node.azUuid;
       transferParams.action = TransferXClusterCerts.Params.Action.REMOVE;
       transferParams.replicationGroupName = replicationGroupName;
-      transferParams.producerCertsDirOnTarget = sourceRootCertDirPath;
+      transferParams.destinationCertsDir = certificate;
       transferParams.ignoreErrors = ignoreErrors;
 
       TransferXClusterCerts transferXClusterCertsTask = createTask(TransferXClusterCerts.class);
@@ -5572,16 +5601,41 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                     .userIntent
                     .providerType
                 != CloudType.kubernetes)) {
-      File sourceRootCertDirPath =
-          Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID())
-              .getUniverseDetails()
-              .getSourceRootCertDirPath();
+      Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
+      File sourceRootCertDirPath = targetUniverse.getUniverseDetails().getSourceRootCertDirPath();
       // Delete the source universe root cert from the target universe if it is transferred.
       if (sourceRootCertDirPath != null) {
         createTransferXClusterCertsRemoveTasks(
                 xClusterConfig,
                 xClusterConfig.getReplicationGroupName(),
                 sourceRootCertDirPath,
+                targetUniverse,
+                forceDelete
+                    || xClusterConfig.getStatus()
+                        == XClusterConfig.XClusterConfigStatusType.DeletedUniverse)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
+      }
+    }
+
+    // If source universe is destroyed, ignore creating this subtask.
+    if (xClusterConfig.getType() == ConfigType.Db
+        && xClusterConfig.getSourceUniverseUUID() != null
+        && (config.getBoolean(TransferXClusterCerts.K8S_TLS_SUPPORT_CONFIG_KEY)
+            || Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID())
+                    .getUniverseDetails()
+                    .getPrimaryCluster()
+                    .userIntent
+                    .providerType
+                != CloudType.kubernetes)) {
+      Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
+      File targetRootCertDirPath = sourceUniverse.getUniverseDetails().getSourceRootCertDirPath();
+      // Delete the source universe root cert from the target universe if it is transferred.
+      if (targetRootCertDirPath != null) {
+        createTransferXClusterCertsRemoveTasks(
+                xClusterConfig,
+                xClusterConfig.getReplicationGroupName(),
+                targetRootCertDirPath,
+                sourceUniverse,
                 forceDelete
                     || xClusterConfig.getStatus()
                         == XClusterConfig.XClusterConfigStatusType.DeletedUniverse)
@@ -5652,36 +5706,38 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /**
-   * It checks if it is necessary to copy the source universe root certificate to the target
+   * It checks if it is necessary to copy the origin universe root certificate to the destination
    * universe for the xCluster replication config to work. If it is necessary, an optional
-   * containing the path to the source root certificate on the Platform host will be returned.
-   * Otherwise, it will be empty.
+   * containing the path to the origin universe's root certificate on the Platform host will be
+   * returned. Otherwise, it will be empty.
    *
-   * @param sourceUniverse The source Universe in the xCluster replication config
-   * @param targetUniverse The target Universe in the xCluster replication config
-   * @return An optional File that is present if transferring the source root certificate is
+   * @param originUniverse The origin universe in which we want to copy the certs from in the
+   *     xCluster replication config
+   * @param destUniverse The destination universe in which we want to copy the certs to in the
+   *     xCluster replication config
+   * @return An optional File that is present if transferring the origin root certificate is
    *     necessary
    * @throws IllegalArgumentException If setting up a replication config between a universe with
    *     node-to-node TLS and one without; It is not supported by coreDB
    */
-  public static Optional<File> getSourceCertificateIfNecessary(
-      Universe sourceUniverse, Universe targetUniverse) {
-    String sourceCertificatePath = sourceUniverse.getCertificateNodetoNode();
-    String targetCertificatePath = targetUniverse.getCertificateNodetoNode();
+  public static Optional<File> getOriginCertficateIfNecessary(
+      Universe originUniverse, Universe destUniverse) {
+    String originCertificatePath = originUniverse.getCertificateNodetoNode();
+    String destCertificatePath = destUniverse.getCertificateNodetoNode();
 
-    if (sourceCertificatePath == null && targetCertificatePath == null) {
+    if (originCertificatePath == null && destCertificatePath == null) {
       return Optional.empty();
     }
-    if (sourceCertificatePath != null && targetCertificatePath != null) {
-      UniverseDefinitionTaskParams targetUniverseDetails = targetUniverse.getUniverseDetails();
+    if (originCertificatePath != null && destCertificatePath != null) {
+      UniverseDefinitionTaskParams destUniverseDetails = destUniverse.getUniverseDetails();
       UniverseDefinitionTaskParams.UserIntent userIntent =
-          targetUniverseDetails.getPrimaryCluster().userIntent;
+          destUniverseDetails.getPrimaryCluster().userIntent;
       // If the "certs_for_cdc_dir" gflag is set, it must be set on masters and tservers with the
       // same value.
       String gflagValueOnMasters =
-          userIntent.masterGFlags.get(XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG);
+          userIntent.masterGFlags.get(XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG);
       String gflagValueOnTServers =
-          userIntent.tserverGFlags.get(XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG);
+          userIntent.tserverGFlags.get(XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG);
       if ((gflagValueOnMasters != null || gflagValueOnTServers != null)
           && !java.util.Objects.equals(gflagValueOnMasters, gflagValueOnTServers)) {
         throw new IllegalStateException(
@@ -5689,21 +5745,21 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                 "The %s gflag must "
                     + "be set on masters and tservers with the same value or not set at all: "
                     + "gflagValueOnMasters: %s, gflagValueOnTServers: %s",
-                XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG,
+                XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG,
                 gflagValueOnMasters,
                 gflagValueOnTServers));
       }
       // If the "certs_for_cdc_dir" gflag is set on the target universe, the certificate must
       // be transferred even though the universes are using the same certs.
-      if (!sourceCertificatePath.equals(targetCertificatePath)
+      if (!originCertificatePath.equals(destCertificatePath)
           || gflagValueOnMasters != null
-          || targetUniverseDetails.xClusterInfo.isSourceRootCertDirPathGflagConfigured()) {
-        File sourceCertificate = new File(sourceCertificatePath);
-        if (!sourceCertificate.exists()) {
+          || destUniverseDetails.xClusterInfo.isSourceRootCertDirPathGflagConfigured()) {
+        File originCertificate = new File(originCertificatePath);
+        if (!originCertificate.exists()) {
           throw new IllegalStateException(
-              String.format("sourceCertificate file \"%s\" does not exist", sourceCertificate));
+              String.format("originCertificate file \"%s\" does not exist", originCertificate));
         }
-        return Optional.of(sourceCertificate);
+        return Optional.of(originCertificate);
       }
       // The "certs_for_cdc_dir" gflag is not set and certs are equal, so the target universe does
       // not need the source cert.
@@ -5714,27 +5770,38 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             + "enabled and a universe with node-to-node encryption disabled.");
   }
 
+  /**
+   * Copies the certificate from YBA to the associated nodes in the universe based on xclusterConfig
+   * replicationGroupName.
+   *
+   * @param nodes specific nodes we will copy the certicate to in the universe
+   * @param replicationGroupName name of the replication group for xcluster (certificate will be
+   *     copied under this directory)
+   * @param certificate the certificate file to copy
+   * @param universe destination universe to copy certificate to.
+   * @return
+   */
   protected SubTaskGroup createTransferXClusterCertsCopyTasks(
       Collection<NodeDetails> nodes,
       String replicationGroupName,
       File certificate,
-      File sourceRootCertDirPath) {
+      Universe universe) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("TransferXClusterCerts");
     log.debug(
         "Creating subtasks to transfer {} to {} on nodes {} in universe {}",
         certificate,
-        sourceRootCertDirPath,
+        universe.getUniverseDetails().getSourceRootCertDirPath(),
         nodes.stream().map(node -> node.nodeName).collect(Collectors.toSet()),
-        taskParams().getUniverseUUID());
+        universe.getUniverseUUID());
     for (NodeDetails node : nodes) {
       TransferXClusterCerts.Params transferParams = new TransferXClusterCerts.Params();
-      transferParams.setUniverseUUID(taskParams().getUniverseUUID());
+      transferParams.setUniverseUUID(universe.getUniverseUUID());
       transferParams.nodeName = node.nodeName;
       transferParams.azUuid = node.azUuid;
       transferParams.rootCertPath = certificate;
       transferParams.action = TransferXClusterCerts.Params.Action.COPY;
       transferParams.replicationGroupName = replicationGroupName;
-      transferParams.producerCertsDirOnTarget = sourceRootCertDirPath;
+      transferParams.destinationCertsDir = universe.getUniverseDetails().getSourceRootCertDirPath();
       transferParams.ignoreErrors = false;
       // sshPortOverride, in case the passed imageBundle has a different port
       // configured for the region.
@@ -5749,24 +5816,41 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected void createTransferXClusterCertsCopyTasks(
-      Collection<NodeDetails> nodes, Universe targetUniverse, SubTaskGroupType subTaskGroupType) {
-    List<XClusterConfig> xClusterConfigs =
-        XClusterConfig.getByTargetUniverseUUID(targetUniverse.getUniverseUUID()).stream()
+      Collection<NodeDetails> nodes, Universe universe, SubTaskGroupType subTaskGroupType) {
+    List<XClusterConfig> xClusterConfigsAsTarget =
+        XClusterConfig.getByTargetUniverseUUID(universe.getUniverseUUID()).stream()
             .filter(xClusterConfig -> !XClusterConfigTaskBase.isInMustDeleteStatus(xClusterConfig))
             .collect(Collectors.toList());
 
-    xClusterConfigs.forEach(
+    // We only copy target universe's certs to source universe nodes for db scoped xcluster
+    // replication.
+    List<XClusterConfig> xClusterConfigAsSource =
+        XClusterConfig.getBySourceUniverseUUID(universe.getUniverseUUID()).stream()
+            .filter(xClusterConfig -> !XClusterConfigTaskBase.isInMustDeleteStatus(xClusterConfig))
+            .filter(xClusterConfig -> xClusterConfig.getType() == ConfigType.Db)
+            .collect(Collectors.toList());
+
+    xClusterConfigsAsTarget.forEach(
         xClusterConfig -> {
           Optional<File> sourceCertificate =
-              getSourceCertificateIfNecessary(
-                  Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID()), targetUniverse);
+              getOriginCertficateIfNecessary(
+                  Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID()), universe);
           sourceCertificate.ifPresent(
               cert ->
                   createTransferXClusterCertsCopyTasks(
-                          nodes,
-                          xClusterConfig.getReplicationGroupName(),
-                          cert,
-                          targetUniverse.getUniverseDetails().getSourceRootCertDirPath())
+                          nodes, xClusterConfig.getReplicationGroupName(), cert, universe)
+                      .setSubTaskGroupType(subTaskGroupType));
+        });
+
+    xClusterConfigAsSource.forEach(
+        xClusterConfig -> {
+          Optional<File> targetCertificate =
+              getOriginCertficateIfNecessary(
+                  Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID()), universe);
+          targetCertificate.ifPresent(
+              cert ->
+                  createTransferXClusterCertsCopyTasks(
+                          nodes, xClusterConfig.getReplicationGroupName(), cert, universe)
                       .setSubTaskGroupType(subTaskGroupType));
         });
   }
