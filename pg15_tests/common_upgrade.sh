@@ -93,13 +93,13 @@ run_pg_upgrade() {
     echo "$FUNCNAME: Use run_preflight_checks"
     exit 1
   fi
-  build/latest/postgres/bin/pg_upgrade -D "$data_dir/node-2/disk-1/pg_data" \
-    -h "$PGHOST" -p 5433 -H "$pghost2" -P 5433 --username "yugabyte"
+  build/latest/postgres/bin/pg_upgrade --new-datadir "$data_dir/node-2/disk-1/pg_data" \
+    --old-host "$PGHOST" --old-port 5433 --new-host "$pghost2" --new-port 5433 --username "yugabyte"
 }
 
 run_preflight_checks() {
-  build/latest/postgres/bin/pg_upgrade -d "$data_dir/node-1/disk-1/pg_data" \
-    -h "$PGHOST" -p 5433 --username "yugabyte" --check
+  build/latest/postgres/bin/pg_upgrade --old-datadir "$data_dir/node-1/disk-1/pg_data" \
+    --old-host "$PGHOST" --old-port 5433 --username "yugabyte" --check
 }
 
 verify_simple_table_mixed_cluster() {
