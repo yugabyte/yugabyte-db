@@ -1,6 +1,49 @@
+{{/*
+	Syntax:
+	  {{<yb-lags/flag-table process="<process>">}}
+	
+	process:
+	  * "tserver"
+	  * "master"
 
+*/}} 
 
-{{ $data := index .Site.Data.master_flags.flag }}
+{{ $process := .Get "process" }}
+{{ $urlPrefix := "https://downloads.yugabyte.com/releases/" }}
+{{ $version := "" }}
+{{ $appversion := "" }}
+
+<!-- Get the series folder name -->
+{{ $filePath := .Page.File.Path }}
+{{ $folderPath := split $filePath "/" }}
+{{ $versionFolder := index $folderPath 0 }}
+
+<!-- Get db version from currentVersion.json based on versionFolder  -->
+{{ range .Site.Data.currentVersions.dbVersions }}
+	{{ $alias := or .alias .series }}
+	{{ if eq $alias $versionFolder }}
+		{{ $appversion = .appVersion }}
+		{{ $version = .version }}
+	{{ end }}
+{{ end }}
+<h3>{{ $version }}</h3>
+
+<!-- Fetch all flag xml data with URL-->
+{{ $data := dict }}
+{{ $url := printf "%s%s/yugabyte-%s-%s_flags.xml" $urlPrefix $version $appversion $process }}
+
+{{ with resources.GetRemote $url }}
+  {{ with .Err }}
+    {{ errorf "%s Check url: %s" . $url}}
+  {{ else }}
+    {{ $data = .Content | transform.Unmarshal }}
+  {{ end }}
+{{ else }}
+  {{ errorf "Unable to get remote resource %q" $url }}
+{{ end }}
+
+<!-- <pre>{{ debug.Dump $data }}</pre> -->
+<!-- XML to table -->
 <table>
 	<thead>
 		<tr>
@@ -11,7 +54,7 @@
 		</tr>
 	</thead>
 	<tbody>
-		{{ range $data}}
+		{{ range $data.flag}}
 		<tr>
 			<td>{{ .name }}</td>
 			<td>{{ or .default .target}}</td>
