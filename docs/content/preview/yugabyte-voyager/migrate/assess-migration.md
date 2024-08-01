@@ -219,6 +219,7 @@ After [generating a Migration Assessment Report](#generate-a-migration-assessmen
 ![Migration Landing Page](/images/migrate/ybd-landing-page.png)
 
 #### Migration Assessment UI
+
 ![Migration Assessment Page](/images/migrate/ybd-assessment-page.png)
 
 ## Learn more
