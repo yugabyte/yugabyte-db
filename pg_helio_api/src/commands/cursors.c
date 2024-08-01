@@ -668,7 +668,7 @@ CreateAndDrainPersistedQuery(const char *cursorName, Query *query,
 		/* In order to use a portal & SPI in Merge Command we need to set it to true */
 		queryPlan->hasReturning = true;
 	}
-	else
+	else if (!closeCursor)
 	{
 		/* Since this could be holdable, copy the query plan to the portal context  */
 		MemoryContextSwitchTo(queryPortal->portalContext);
@@ -962,7 +962,7 @@ FetchCursorAndWriteUntilPageOrSize(Portal portal, int32_t batchSize,
 			}
 			else
 			{
-				documentValue = DatumGetPgBson(resultDatum);
+				documentValue = DatumGetPgBsonPacked(resultDatum);
 				datumSize = VARSIZE_ANY_EXHDR(documentValue);
 
 				/* if the new total size is > Max Bson Size */
@@ -1010,7 +1010,7 @@ FetchCursorAndWriteUntilPageOrSize(Portal portal, int32_t batchSize,
 														&isContinuationNull);
 				if (!isContinuationNull)
 				{
-					continuation = DatumGetPgBson(continuationDatum);
+					continuation = DatumGetPgBsonPacked(continuationDatum);
 				}
 			}
 

@@ -886,8 +886,7 @@ ReplaceFunctionOperatorsInPlanPath(PlannerInfo *root, RelOptInfo *rel, Path *pat
 		{
 			context->primaryKeyLookupPath = indexPath;
 		}
-
-		if (hasVectorSearch)
+		else if (hasVectorSearch)
 		{
 			/*
 			 *  indexPath->indexorderbys contains a list of order by expressions. For vector search, it is of the following form.
@@ -924,60 +923,65 @@ ReplaceFunctionOperatorsInPlanPath(PlannerInfo *root, RelOptInfo *rel, Path *pat
 			 */
 			ExtractAndSetSearchParamterFromWrapFunction(indexPath, context);
 		}
-
-		ListCell *indexPathCell;
-		foreach(indexPathCell, indexPath->indexclauses)
+		else
 		{
-			IndexClause *iclause = (IndexClause *) lfirst(indexPathCell);
-			RestrictInfo *rinfo = iclause->rinfo;
-			bytea *options = NULL;
-			if (indexPath->indexinfo->opclassoptions != NULL)
+			/* RUM/GIST indexes */
+			ListCell *indexPathCell;
+			foreach(indexPathCell, indexPath->indexclauses)
 			{
-				options = indexPath->indexinfo->opclassoptions[iclause->indexcol];
-			}
-
-			/* Specific to text indexes: If the OpFamily is for Text, update the context
-			 * with the index options for text. This is used later to process restriction info
-			 * so that we can push down the TSQuery with the appropriate default language settings.
-			 */
-			if (indexPath->indexinfo->opfamily[iclause->indexcol] ==
-				BsonRumTextPathOperatorFamily())
-			{
-				/* If there's no options, set it. Otherwise, fail with "too many paths" */
-				context->hasTextIndexQuery = true;
-				if (context->indexOptionsForText.indexOptions == NULL)
+				IndexClause *iclause = (IndexClause *) lfirst(indexPathCell);
+				RestrictInfo *rinfo = iclause->rinfo;
+				bytea *options = NULL;
+				if (indexPath->indexinfo->opclassoptions != NULL)
 				{
-					context->indexOptionsForText.indexOptions = options;
+					options = indexPath->indexinfo->opclassoptions[iclause->indexcol];
+				}
+
+				/* Specific to text indexes: If the OpFamily is for Text, update the context
+				 * with the index options for text. This is used later to process restriction info
+				 * so that we can push down the TSQuery with the appropriate default language settings.
+				 */
+				if (indexPath->indexinfo->opfamily[iclause->indexcol] ==
+					BsonRumTextPathOperatorFamily())
+				{
+					/* If there's no options, set it. Otherwise, fail with "too many paths" */
+					context->hasTextIndexQuery = true;
+					if (context->indexOptionsForText.indexOptions == NULL)
+					{
+						context->indexOptionsForText.indexOptions = options;
+					}
+					else
+					{
+						ereport(ERROR, (errcode(MongoBadValue),
+										errmsg("Too many text expressions")));
+					}
+
+					ReplaceExtensionFunctionContext childContext = {
+						{ 0 }, { 0 }, false, false, false, context->inputData
+					};
+					childContext.indexOptionsForText.indexOptions = options;
+					rinfo->clause = ProcessRestrictionInfoAndRewriteFuncExpr(
+						rinfo->clause,
+						&childContext);
+					context->indexOptionsForText = childContext.indexOptionsForText;
 				}
 				else
 				{
-					ereport(ERROR, (errcode(MongoBadValue),
-									errmsg("Too many text expressions")));
+					ReplaceExtensionFunctionContext childContext = {
+						{ 0 }, { 0 }, false, false, false, context->inputData
+					};
+					rinfo->clause = ProcessRestrictionInfoAndRewriteFuncExpr(
+						rinfo->clause,
+						&childContext);
 				}
-
-				ReplaceExtensionFunctionContext childContext = {
-					{ 0 }, { 0 }, false, false, false, context->inputData
-				};
-				childContext.indexOptionsForText.indexOptions = options;
-				rinfo->clause = ProcessRestrictionInfoAndRewriteFuncExpr(rinfo->clause,
-																		 &childContext);
-				context->indexOptionsForText = childContext.indexOptionsForText;
 			}
-			else
+
+			indexPath->indexclauses = OptimizeIndexExpressionsForRange(
+				indexPath->indexclauses);
+			if (EnableInQueryOptimization)
 			{
-				ReplaceExtensionFunctionContext childContext = {
-					{ 0 }, { 0 }, false, false, false, context->inputData
-				};
-				rinfo->clause = ProcessRestrictionInfoAndRewriteFuncExpr(rinfo->clause,
-																		 &childContext);
+				path = OptimizeIndexExpressionsForDollarIn(root, rel, path, parentType);
 			}
-		}
-
-		indexPath->indexclauses = OptimizeIndexExpressionsForRange(
-			indexPath->indexclauses);
-		if (EnableInQueryOptimization)
-		{
-			path = OptimizeIndexExpressionsForDollarIn(root, rel, path, parentType);
 		}
 
 		indexPath = OptimizeIndexPathForFilters(indexPath, context);

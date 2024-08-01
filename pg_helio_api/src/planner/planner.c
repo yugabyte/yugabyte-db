@@ -1159,6 +1159,33 @@ TryFindTextIndexForRelation(RelOptInfo *rel, RangeTblEntry *rte)
 }
 
 
+static bool
+CheckRelNameValidity(const char *relName, uint64_t *collectionId)
+{
+	if (relName == NULL ||
+		strncmp(relName, "documents_", 10) != 0)
+	{
+		return false;
+	}
+
+	/* We use strtoull since it returns the first character that didn't match
+	 * We expect this to return the '_' character when it's a collection shard
+	 * like ApiDataSchemaName.documents_1_111 and the parsed value will be 1.
+	 * Alternatively, this will be \0 and the parsed value will be 1 if the
+	 * table is documents_1 (parent table).
+	 */
+	char *numEndPointer = NULL;
+	uint64 parsedCollectionId = strtoull(&relName[10], &numEndPointer, 10);
+	if (IsShardTableForMongoTable(relName, numEndPointer))
+	{
+		*collectionId = parsedCollectionId;
+		return true;
+	}
+
+	return false;
+}
+
+
 /*
  * Returns true if the relation of RTE pointed to
  * is a Mongo table base collection. e.g.
@@ -1193,25 +1220,14 @@ IsRTEShardForMongoCollection(RangeTblEntry *rte, bool *isMongoDataNamespace,
 		return false;
 	}
 
-	const char *relName = get_rel_name(tableOid);
-	if (relName == NULL ||
-		strncmp(relName, "documents_", 10) != 0)
+	HeapTuple tp = SearchSysCache1(RELOID, ObjectIdGetDatum(tableOid));
+	if (HeapTupleIsValid(tp))
 	{
-		return false;
-	}
-
-	/* We use strtoull since it returns the first character that didn't match
-	 * We expect this to return the '_' character when it's a collection shard
-	 * like ApiDataSchemaName.documents_1_111 and the parsed value will be 1.
-	 * Alternatively, this will be \0 and the parsed value will be 1 if the
-	 * table is documents_1 (parent table).
-	 */
-	char *numEndPointer = NULL;
-	uint64 parsedCollectionId = strtoull(&relName[10], &numEndPointer, 10);
-	if (IsShardTableForMongoTable(relName, numEndPointer))
-	{
-		*collectionId = parsedCollectionId;
-		return true;
+		Form_pg_class reltup = (Form_pg_class) GETSTRUCT(tp);
+		const char *relNameStr = NameStr(reltup->relname);
+		bool isValid = CheckRelNameValidity(relNameStr, collectionId);
+		ReleaseSysCache(tp);
+		return isValid;
 	}
 
 	return false;
