@@ -121,7 +121,14 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
               >
                 <CartesianGrid horizontal={false} strokeDasharray="3 3" />
                 <XAxis type="number" />
-                <YAxis type="category" dataKey="objectType" textAnchor="start" dx={-90} tickLine={false} />
+                <YAxis
+                  type="category"
+                  dataKey="objectType"
+                  textAnchor="start"
+                  dx={-90}
+                  tickLine={false}
+                  axisLine={{ stroke: "#FFFFFF00" }}
+                />
                 <Tooltip content={<CustomTooltip />} />
                 <Bar
                   dataKey="automaticDDLImport"
