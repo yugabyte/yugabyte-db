@@ -13,21 +13,21 @@
 
 
 // eslint-disable-next-line no-duplicate-imports
-import type { RefactoringCount } from './RefactoringCount';
+import type { AssessmentSourceDbObject } from './AssessmentSourceDbObject';
 
 
 /**
- * Refectoring recommendations for migrating SQL objects
+ * 
  * @export
- * @interface RecommendedRefactoringGraph
+ * @interface APIForSourceDBSQLObjectsMetadataPage
  */
-export interface RecommendedRefactoringGraph  {
+export interface APIForSourceDBSQLObjectsMetadataPage  {
   /**
    * 
-   * @type {RefactoringCount[]}
-   * @memberof RecommendedRefactoringGraph
+   * @type {AssessmentSourceDbObject}
+   * @memberof APIForSourceDBSQLObjectsMetadataPage
    */
-  refactor_details?: RefactoringCount[];
+  data?: AssessmentSourceDbObject;
 }
 
 

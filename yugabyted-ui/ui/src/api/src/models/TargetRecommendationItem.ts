@@ -15,29 +15,29 @@
 
 
 /**
- * count for automatic and manual refactoring
+ * Target recommendation table metadata information
  * @export
- * @interface RefactoringCount
+ * @interface TargetRecommendationItem
  */
-export interface RefactoringCount  {
+export interface TargetRecommendationItem  {
   /**
    * 
    * @type {string}
-   * @memberof RefactoringCount
+   * @memberof TargetRecommendationItem
    */
-  sql_object_type?: string;
+  table_name?: string;
   /**
    * 
    * @type {number}
-   * @memberof RefactoringCount
+   * @memberof TargetRecommendationItem
    */
-  manual?: number;
+  disk_size?: number;
   /**
    * 
-   * @type {number}
-   * @memberof RefactoringCount
+   * @type {string}
+   * @memberof TargetRecommendationItem
    */
-  automatic?: number;
+  schema_recommendation?: string;
 }
 
 
