@@ -2020,6 +2020,14 @@ Result<PgTableReadData> SysCatalogTable::TableReadData(
   return TableReadData(GetPgsqlTableId(database_oid, table_oid), read_ht);
 }
 
+Status SysCatalogTable::ForceWrite(
+    int8_t type, const std::string& item_id, const google::protobuf::Message& pb,
+    QLWriteRequestPB::QLStmtType op_type, int64_t leader_term) {
+  auto writer = NewWriter(leader_term);
+  RETURN_NOT_OK(writer->Mutate(type, item_id, pb, op_type));
+  return SyncWrite(writer.get());
+}
+
 const Schema& PgTableReadData::schema() const {
   return table_info->schema();
 }
