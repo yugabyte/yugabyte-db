@@ -7586,9 +7586,10 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
   resp->set_colocated(table->colocated());
 
   if (table->IsColocatedUserTable()) {
-    auto* tablegroup = tablegroup_manager_->FindByTable(table->id());
-    if (tablegroup) {
-      resp->set_tablegroup_id(tablegroup->id());
+    // Set the tablegroup_id for colocated user tables only after Colocation is GA.
+    if (IsTablegroupParentTableId(table->LockForRead()->pb.parent_table_id())) {
+      resp->set_tablegroup_id(
+          GetTablegroupIdFromParentTableId(table->LockForRead()->pb.parent_table_id()));
     }
   }
 

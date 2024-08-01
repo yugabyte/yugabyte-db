@@ -5,6 +5,8 @@ linkTitle: CDC using Logical Replication
 description: Learn how YugabyteDB supports asynchronous replication of data changes (inserts, updates, and deletes) to external databases or applications.
 headContent: Asynchronous replication of data changes (inserts, updates, and deletes) to external databases or applications
 badges: ea
+aliases:
+  - /preview/explore/logical-replication/
 menu:
   preview:
     parent: architecture-docdb-replication
@@ -15,7 +17,7 @@ type: docs
 
 Change data capture (CDC) in YugabyteDB provides technology to ensure that any changes in data due to operations such as inserts, updates, and deletions are identified, captured, and made available for consumption by applications and other tools.
 
-CDC in YugabyteDB is based on the PostgreSQL Logical Replication model. The fundamental concept here is that of the Replication Slot. A Replication Slot represents a stream of changes that can be replayed to the client in the order they were made on the origin server in a manner that preserves transactional consistency. This is the basis for the support for Transactional CDC in YugabyteDB. Where the strict requirements of Transactional CDC are not present, multiple replication slots can be used to stream changes from unrelated tables in parallel.
+CDC in YugabyteDB is based on the PostgreSQL Logical Replication model. The fundamental concept is that of the Replication Slot. A Replication Slot represents a stream of changes that can be replayed to the client in the order they were made on the origin server in a manner that preserves transactional consistency. This is the basis for the support for Transactional CDC in YugabyteDB. Where the strict requirements of Transactional CDC are not present, multiple replication slots can be used to stream changes from unrelated tables in parallel.
 
 ## Architecture
 
@@ -33,7 +35,7 @@ The following are the main components of the Yugabyte CDC solution:
 
 Logical replication starts by copying a snapshot of the data on the publisher database. After that is done, changes on the publisher are streamed to the server as they occur in near real time.
 
-To setup Logical Replication, an application will first have to create a replication slot. When a replication slot is created, a boundary is established between the snapshot data and the streaming changes. This boundary or `consistent_point` is a consistent state of the source database. It corresponds to a commit time (HybridTime value). Data from transactions with commit time <= commit time corresponding to the `consistent_point` are consumed as part of the initial snapshot. Changes from transactions with commit time greater than the commit time of the `consistent_point` are consumed in the streaming phase in transaction commit time order.
+To set up Logical Replication, an application will first have to create a replication slot. When a replication slot is created, a boundary is established between the snapshot data and the streaming changes. This boundary or `consistent_point` is a consistent state of the source database. It corresponds to a commit time (HybridTime value). Data from transactions with commit time <= commit time corresponding to the `consistent_point` are consumed as part of the initial snapshot. Changes from transactions with commit time greater than the commit time of the `consistent_point` are consumed in the streaming phase in transaction commit time order.
 
 #### Initial Snapshot
 

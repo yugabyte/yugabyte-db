@@ -716,7 +716,7 @@ TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(AbortMessage)) {
 
 // The test is disabled in Sanitizers as ysql_dump fails in ASAN builds due to memory leaks
 // inherited from pg_dump.
-TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(CloneAfterDropTable)) {
+TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneAfterDropTable)) {
   // Clone to a time before a drop table and check that the table exists with correct data.
   // 1. Create a table and load some data.
   // 2. Mark time t.

@@ -333,11 +333,11 @@ static void FlagsHandler(
 
   HtmlPrintHelper html_print_helper(output);
   for (const auto& type : FlagTypeList()) {
-    auto field_set = html_print_helper.CreateFieldset(ToString(type).substr(1) + " Flags");
-
     if (!ContainsKey(flag_infos, type)) {
       continue;
     }
+
+    auto field_set = html_print_helper.CreateFieldset(ToString(type).substr(1) + " Flags");
 
     std::vector<std::string> column_names = {"Name", "Value"};
     if (type == FlagType::kAuto) {

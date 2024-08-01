@@ -654,6 +654,29 @@ templates:
 
         Affected nodes: {{ $labels.affected_node_names }}
 
+  DDL_ATOMICITY_CHECK:
+    name: DDL Atomicity Check Failed
+    description: Some failed DDL operations were not atomic, which can cause subsequent backups to require a manual fixup before they can be restored.
+    queryTemplate: yb_ddl_atomicity_check{universe_uuid="__universeUuid__"}
+      {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultThresholdMap:
+      SEVERE:
+        threshold: 1.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: LESS_THAN
+    defaultThresholdUnit: STATUS
+    thresholdMaxValue: 1.0
+    thresholdReadOnly: true
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
+        (up{universe_uuid='{{ $labels.universe_uuid }}'})" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        DDL atomicity issues found for universe '{{ $labels.source_name }}'.
+        Please see health check results for more details.
+
   ENCRYPTION_AT_REST_CONFIG_EXPIRY:
     name: Encryption At Rest config expiry
     description: Encryption At Rest config expires soon
