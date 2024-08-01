@@ -65,7 +65,8 @@ command_drop_collection(PG_FUNCTION_ARGS)
 
 	char *databaseName = TextDatumGetCString(databaseNameDatum);
 	char *collectionName = TextDatumGetCString(collectionNameDatum);
-	if (strncmp(collectionName, "system.", 7) == 0)
+	if (strncmp(collectionName, "system.", 7) == 0 &&
+		strcmp(collectionName, "system.dbSentinel") != 0)
 	{
 		/* system collection, cannot drop */
 		PG_RETURN_BOOL(false);

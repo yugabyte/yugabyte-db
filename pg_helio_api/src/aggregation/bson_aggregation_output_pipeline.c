@@ -164,7 +164,12 @@ bson_dollar_merge_add_object_id(PG_FUNCTION_ARGS)
 														   generatedObjectID);
 	ValidateFinalPgbsonBeforeWriting(outputBson);
 
-	PG_FREE_IF_COPY(sourceDocument, 0);
+	/* Free only when outputBson is different from sourceDocument*/
+	if (sourceDocument != outputBson)
+	{
+		PG_FREE_IF_COPY(sourceDocument, 0);
+	}
+
 	PG_RETURN_POINTER(outputBson);
 }
 

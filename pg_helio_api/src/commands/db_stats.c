@@ -541,6 +541,25 @@ GetAllCollectionIdsInDb(Datum databaseNameDatum, int64 *views)
 			{
 				bool isNull = false;
 
+				/* Attr 2 is collection_name */
+				AttrNumber collectionNameAttr = 2;
+				Datum collectionNameDatum = SPI_getbinval(SPI_tuptable->vals[tupleNumber],
+														  SPI_tuptable->tupdesc,
+														  collectionNameAttr,
+														  &isNull);
+
+				if (isNull)
+				{
+					continue;
+				}
+
+				if (strcmp(TextDatumGetCString(collectionNameDatum),
+						   "system.dbSentinel") == 0)
+				{
+					/* Skip the sentinel*/
+					continue;
+				}
+
 				/* Attr 3 is collection_id */
 				AttrNumber collectionIdAttr = 3;
 				Datum collectionIdDatum = SPI_getbinval(SPI_tuptable->vals[tupleNumber],
