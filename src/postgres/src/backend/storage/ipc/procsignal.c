@@ -227,7 +227,7 @@ CleanupProcSignalStateInternal(PGPROC *proc, int pss_idx, ProcSignalSlot *slot)
 	 * no barrier waits block on it.
 	 */
 	pg_atomic_write_u64(&slot->pss_barrierGeneration, PG_UINT64_MAX);
-	ConditionVariableBroadcast(&slot->pss_barrierCV);
+	YbConditionVariableBroadcastForProc(&slot->pss_barrierCV, proc);
 
 	slot->pss_pid = 0;
 }

@@ -59,8 +59,6 @@ extern bool ConditionVariableTimedSleep(ConditionVariable *cv, long timeout,
 										uint32 wait_event_info);
 extern void ConditionVariableCancelSleep(void);
 
-extern void ConditionVariableCancelSleepForProc(volatile PGPROC *proc);
-
 /*
  * Optionally, ConditionVariablePrepareToSleep can be called before entering
  * the test-and-sleep loop described above.  Doing so is more efficient if
@@ -72,5 +70,15 @@ extern void ConditionVariablePrepareToSleep(ConditionVariable *cv);
 /* Wake up a single waiter (via signal) or all waiters (via broadcast). */
 extern void ConditionVariableSignal(ConditionVariable *cv);
 extern void ConditionVariableBroadcast(ConditionVariable *cv);
+
+/*
+ * In YB, the Postmaster cleans up on behalf of abruptly terminated
+ * backends. In these cases, the CV functions cannot just use the `MyProc`
+ * variable, because that refers to the postmaster's PGPROC instead of the
+ * backend's PGPROC.
+ */
+extern void YbConditionVariableCancelSleepForProc(volatile PGPROC *proc);
+extern void YbConditionVariableBroadcastForProc(ConditionVariable *cv,
+												volatile PGPROC *proc);
 
 #endif							/* CONDITION_VARIABLE_H */
