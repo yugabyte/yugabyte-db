@@ -855,6 +855,14 @@ Default: `-1` (disables logging statement durations)
 
 Specifies the lowest YSQL message level to log.
 
+##### --ysql_cron_database_name
+
+Specifies the database where pg_cron is to be installed. You can create the database after setting the flag.
+
+The [pg_cron extension](../../../explore/ysql-language-features/pg-extensions/extension-pgcron/) is installed on only one database (by default, `yugabyte`).
+
+To change the database after the extension is created, you must first drop the extension and then change the flag value.
+
 ##### --ysql_output_buffer_size
 
 Size of YSQL layer output buffer, in bytes. YSQL buffers query responses in this output buffer until either a buffer flush is requested by the client or the buffer overflows.
