@@ -231,3 +231,11 @@ select
 from a
 where a in (1, 2)
 order by a.a;
+
+-- #23287 string_to_text pushdown
+create table string_to_text_test(data text);
+insert into string_to_text_test values ('foo bar');
+explain (costs off)
+select * from string_to_text_test where 'foo' = ANY(string_to_array(data, ' '));
+select * from string_to_text_test where 'foo' = ANY(string_to_array(data, ' '));
+drop table string_to_text_test;
