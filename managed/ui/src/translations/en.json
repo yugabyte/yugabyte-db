@@ -39,7 +39,13 @@
       "endDate": "End Date",
       "dot": ".",
       "and": "and",
-      "learnMore": "Learn more"
+      "learnMore": "Learn more",
+      "duration": {
+        "second": "second",
+        "minute": "minute",
+        "hour": "hour",
+        "day": "day"
+      }
     },
     "imgAltText": {
       "infoIcon": "Information Icon"
@@ -897,13 +903,26 @@
               "configureBootstrap": {
                 "instruction": "Choose the storage config to use for performing the initial copy",
                 "infoText": "Initial full copy is required when the database contains data. Performing an initial full copy requires a backup storage config as an intermediate third party storage, and is time and resource intensive. This is also referred to as bootstrapping or initial seeding.",
-                "submitButton": "Next: Confirm Alert Threshold",
+                "submitButton": "Next: Configure PITR Settings",
                 "backupStorageConfig": {
                   "label": "Backup Storage Config",
                   "tooltip": "<paragraph>Ensure that the backup storage config <bold>can be accessed from both source and target universe.</bold></paragraph><paragraph>Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions.</paragraph>"
                 },
                 "error": {
                   "backupStorageConfigRequired": "Required."
+                }
+              },
+              "configurePitr": {
+                "instruction": "Configure point-in-time recovery (PITR) settings",
+                "submitButton": "Next: Confirm Alert Threshold",
+                "retentionPeriodSeconds": {
+                  "label": "Snapshot Retention Period",
+                  "tooltip": "A longer snapshot retention period requires more disk space."
+                },
+                "error": {
+                  "pitrRetentionPeriodValueRequired": "Required.",
+                  "pitrRetentionPeriodValueMinimum": "PITR retention time must be at least 5 minutes.",
+                  "pitrRetentionPeriodUnitRequired": "Required."
                 }
               },
               "confirmAlert": {

@@ -36,7 +36,9 @@ export type SortOrder = typeof SortOrder[keyof typeof SortOrder];
 
 export const RuntimeConfigKey = {
   PROVIDER_REDESIGN_UI_FEATURE_FLAG: 'yb.ui.feature_flags.provider_redesign',
-  EDIT_IN_USE_PORIVDER_UI_FEATURE_FLAG: 'yb.ui.feature_flags.edit_in_use_provider',
+  EDIT_IN_USE_PROVIDER_UI_FEATURE_FLAG: 'yb.ui.feature_flags.edit_in_use_provider',
+  XCLUSTER_TRANSACTIONAL_PITR_SNAPSHOT_INTERVAL:
+    'yb.xcluster.transactional.pitr.default_snapshot_interval',
   XCLUSTER_TRANSACTIONAL_ATOMICITY_FEATURE_FLAG: 'yb.xcluster.transactional.enabled',
   ENABLE_XCLUSTER_SKIP_BOOTSTRAPPING: 'yb.ui.xcluster.enable_skip_bootstrapping',
   DISASTER_RECOVERY_FEATURE_FLAG: 'yb.xcluster.dr.enabled',
@@ -192,3 +194,5 @@ export const MIN_PG_SUPPORTED_STABLE_VERSION = '2024.1.0.0-b129';
 export const GFLAG_GROUPS = {
   ENHANCED_POSTGRES_COMPATIBILITY: 'ENHANCED_POSTGRES_COMPATIBILITY'
 };
+
+export const I18N_DURATION_KEY_PREFIX = 'common.duration';

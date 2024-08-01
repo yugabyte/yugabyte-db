@@ -1,4 +1,4 @@
-import { makeStyles, Typography, useTheme } from '@material-ui/core';
+import { makeStyles, Typography } from '@material-ui/core';
 import { useFormContext } from 'react-hook-form';
 import { useQuery } from 'react-query';
 import { Trans, useTranslation } from 'react-i18next';

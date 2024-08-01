@@ -252,6 +252,11 @@ export const XCLUSTER_CONFIG_REFETCH_INTERVAL_MS = PollingIntervalMs.XCLUSTER_CO
 
 export const XCLUSTER_UNDEFINED_LAG_NUMERIC_REPRESENTATION = -1;
 
+/**
+ * Constant value fallback. Used when runtime config value is invalid/undefined.
+ */
+export const XCLUSTER_TRANSACTIONAL_PITR_SNAPSHOT_INTERVAL_SECONDS = 3600;
+
 export const XClusterModalName = {
   EDIT_CONFIG: 'editXClusterConfigModal',
   DELETE_CONFIG: 'deleteXClusterConfigModal',

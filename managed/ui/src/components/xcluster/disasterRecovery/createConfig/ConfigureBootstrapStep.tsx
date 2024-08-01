@@ -2,11 +2,11 @@ import { makeStyles, Typography } from '@material-ui/core';
 import { Trans, useTranslation } from 'react-i18next';
 import { useFormContext } from 'react-hook-form';
 
-import { YBTooltip } from '../../../../redesign/components';
 import InfoIcon from '../../../../redesign/assets/info-message.svg';
-import { ReactSelectStorageConfigField } from '../../sharedComponents/ReactSelectStorageConfig';
 import { CreateDrConfigFormValues } from './CreateConfigModal';
 import { INPUT_FIELD_WIDTH_PX } from '../../constants';
+import { ReactSelectStorageConfigField } from '../../sharedComponents/ReactSelectStorageConfig';
+import { YBTooltip } from '../../../../redesign/components';
 
 interface ConfigureBootstrapStepProps {
   isFormDisabled: boolean;
