@@ -228,7 +228,7 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
                   )}
                 />
               )}
-              {unsupportedDataTypes?.length && (
+              {unsupportedFeatures?.length && (
                 <MigrationAssessmentRefactoringTable
                   data={unsupportedFeatures}
                   tableHeader={t(
@@ -236,7 +236,7 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
                   )}
                 />
               )}
-              {unsupportedDataTypes?.length && (
+              {unsupportedFunctions?.length && (
                 <MigrationAssessmentRefactoringTable
                   data={unsupportedFunctions}
                   tableHeader={t(
