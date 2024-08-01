@@ -21,16 +21,20 @@ run_and_pushd_pg11() {
   ybbuild="b1"
   if [[ $OSTYPE = linux* ]]; then
     arch="linux-x86_64"
+    tarbin="tar"
   fi
   if [[ $OSTYPE = darwin* ]]; then
     arch="darwin-x86_64"
+    tarbin="gtar"
   fi
   ybfilename_pg11="yugabyte-$ybversion_pg11-$ybbuild-$arch.tar.gz"
 
-  if [ ! -d "$prefix"/"yugabyte-$ybversion_pg11" ]; then
+  if [ ! -f "$prefix"/"$ybfilename_pg11" ]; then
     curl "https://downloads.yugabyte.com/releases/$ybversion_pg11/$ybfilename_pg11" \
-      | tar xzv -C "$prefix"
+      -o "$prefix"/"$ybfilename_pg11"
   fi
+
+  "$tarbin" xzf "$prefix"/"$ybfilename_pg11" --skip-old-files -C "$prefix"
 
   if [[ $OSTYPE = linux* ]]; then
     "$prefix/yugabyte-$ybversion_pg11/bin/post_install.sh"
