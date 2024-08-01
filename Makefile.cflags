@@ -4,7 +4,6 @@ LIBBSON := $(shell pkg-config --cflags libbson-static-1.0)
 INTEL_DECIMAL_MATH_LIB = $(shell pkg-config --cflags intelmathlib)
 PCRE2_LIB = $(shell pkg-config --cflags libpcre2-8)
 
-
 PG_CPPFLAGS = $(shell pkg-config --cflags libbson-static-1.0) -I$(libpq_srcdir) $(INTEL_DECIMAL_MATH_LIB) $(PCRE2_LIB) -Isrc -Iinclude -Ibuild/include/
 PG_LDFLAGS = $(shell pkg-config --static --libs --cflags libbson-static-1.0) $(shell pkg-config --static --libs --cflags intelmathlib) $(shell pkg-config --static --libs --cflags libpcre2-8) -L/usr/lib
 
@@ -61,3 +60,7 @@ EXTENSION_SQL_ONLY_DEFINES += -D__EXTENSION_OBJECT_PREFIX__=$(EXTENSION_OBJECT_P
 EXTENSION_SQL_ONLY_DEFINES += -D__CORE_SCHEMA__=$(CORE_SCHEMA_NAME)
 
 SQL_DEFINES = $(EXTENSION_SQL_ONLY_DEFINES)
+
+ifneq ($(EXTRA_INCLUDE),)
+include $(EXTRA_INCLUDE)
+endif
