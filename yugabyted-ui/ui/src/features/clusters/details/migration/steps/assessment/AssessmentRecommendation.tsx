@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { YBButton, YBTooltip } from "@app/components";
 import { MigrationRecommendationSidePanel } from "./AssessmentRecommendationSidePanel";
 import type { Migration } from "../../MigrationOverview";
-import { convertBytesToGB } from "@app/helpers";
+import { getMemorySizeUnits } from "@app/helpers";
 import CaretRightIcon from "@app/assets/caret-right-circle.svg";
 
 const useStyles = makeStyles((theme) => ({
@@ -193,7 +193,7 @@ export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommenda
                 </Typography>
                 <Typography variant="body2" className={classes.value}>
                   {typeof colocatedTotalSize === "number"
-                    ? `${convertBytesToGB(colocatedTotalSize)} GB`
+                    ? getMemorySizeUnits(colocatedTotalSize)
                     : colocatedTotalSize}
                 </Typography>
               </Grid>
@@ -203,7 +203,7 @@ export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommenda
                 </Typography>
                 <Typography variant="body2" className={classes.value}>
                   {typeof shardedTotalSize === "number"
-                    ? `${convertBytesToGB(shardedTotalSize)} GB`
+                    ? getMemorySizeUnits(shardedTotalSize)
                     : shardedTotalSize}
                 </Typography>
               </Grid>

@@ -17,7 +17,7 @@ import {
   AssessmentTargetRecommendationObject,
   useGetAssessmentTargetRecommendationInfoQuery,
 } from "@app/api/src";
-import { convertBytesToGB } from "@app/helpers";
+import { getMemorySizeUnits } from "@app/helpers";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -92,15 +92,11 @@ export const MigrationRecommendationSidePanel: FC<MigrationRecommendationSidePan
     () => ({
       colocated: {
         totalCount: targetRecommendationData?.num_of_colocated_tables || 0,
-        totalSize: `${convertBytesToGB(
-          targetRecommendationData?.total_size_colocated_tables || 0
-        )} GB`,
+        totalSize: getMemorySizeUnits(targetRecommendationData?.total_size_colocated_tables || 0),
       },
       sharded: {
         totalCount: targetRecommendationData?.num_of_sharded_table,
-        totalSize: `${convertBytesToGB(
-          targetRecommendationData?.total_size_sharded_tables || 0
-        )} GB`,
+        totalSize: getMemorySizeUnits(targetRecommendationData?.total_size_sharded_tables || 0),
       },
     }),
     [recommendationData]
@@ -141,7 +137,7 @@ export const MigrationRecommendationSidePanel: FC<MigrationRecommendationSidePan
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
-        customBodyRender: (size: number) => `${convertBytesToGB(size)} GB`,
+        customBodyRender: (size: number) => getMemorySizeUnits(size),
       },
     },
     {

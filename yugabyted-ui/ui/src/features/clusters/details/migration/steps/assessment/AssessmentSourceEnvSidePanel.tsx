@@ -14,7 +14,7 @@ import { YBInput, YBModal, YBSelect, YBTable } from "@app/components";
 import SearchIcon from "@app/assets/search.svg";
 import { AssessmentSourceDbObject, useGetAssessmentSourceDBInfoQuery } from "@app/api/src";
 import type { Migration } from "../../MigrationOverview";
-import { convertBytesToGB } from "@app/helpers";
+import { getMemorySizeUnits } from "@app/helpers";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -72,7 +72,6 @@ export const MigrationSourceEnvSidePanel: FC<MigrationSourceEnvSidePanelProps> =
   const sourceDBData = sourceDBDataAPI as AssessmentSourceDbObject | undefined;
 
   const sourceObjectData = useMemo(() => {
-    console.log(sourceDBData);
     if (!sourceDBData?.sql_objects_metadata) {
       return [];
     }
@@ -142,7 +141,7 @@ export const MigrationSourceEnvSidePanel: FC<MigrationSourceEnvSidePanelProps> =
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
-        customBodyRender: (size: number) => `${convertBytesToGB(size)} GB`,
+        customBodyRender: (size: number) => getMemorySizeUnits(size),
       },
     },
     {
