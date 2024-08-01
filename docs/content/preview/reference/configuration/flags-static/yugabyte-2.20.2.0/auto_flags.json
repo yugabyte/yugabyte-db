@@ -1,0 +1,219 @@
+{
+  "auto_flags": [
+    {
+      "program": "yb-master",
+      "flags": [
+        {
+          "name": "TEST_auto_flags_initialized",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
+          "name": "TEST_auto_flags_new_install",
+          "class": 4,
+          "is_runtime": true
+        },
+        {
+          "name": "enable_automatic_tablet_splitting",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
+          "name": "enable_flush_retryable_requests",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
+          "name": "enable_tablet_split_of_xcluster_replicated_tables",
+          "class": 3,
+          "is_runtime": true
+        },
+        {
+          "name": "enable_xcluster_auto_flag_validation",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
+          "name": "master_enable_universe_uuid_heartbeat_check",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
+          "name": "regular_tablets_data_block_key_value_encoding",
+          "class": 3,
+          "is_runtime": true
+        },
+        {
+          "name": "remote_bootstrap_from_leader_only",
+          "class": 1,
+          "is_runtime": true
+        },
+        {
+          "name": "save_index_into_wal_segments",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
+          "name": "use_parent_table_id_field",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
+          "name": "xcluster_enable_subtxn_abort_propagation",
+          "class": 3,
+          "is_runtime": true
+        },
+        {
+          "name": "ysql_enable_packed_row",
+          "class": 4,
+          "is_runtime": true
+        },
+        {
+          "name": "ysql_yb_bypass_cond_recheck",
+          "class": 1,
+          "is_runtime": true
+        },
+        {
+          "name": "ysql_yb_enable_add_column_missing_default",
+          "class": 3,
+          "is_runtime": true
+        },
+        {
+          "name": "ysql_yb_enable_expression_pushdown",
+          "class": 1,
+          "is_runtime": true
+        },
+        {
+          "name": "ysql_yb_enable_hash_batch_in",
+          "class": 1,
+          "is_runtime": true
+        },
+        {
+          "name": "ysql_yb_enable_index_aggregate_pushdown",
+          "class": 1,
+          "is_runtime": true
+        },
+        {
+          "name": "ysql_yb_enable_pg_locks",
+          "class": 1,
+          "is_runtime": true
+        },
+        {
+          "name": "ysql_yb_enable_sequence_pushdown",
+          "class": 1,
+          "is_runtime": true
+        },
+        {
+          "name": "ysql_yb_pushdown_is_not_null",
+          "class": 1,
+          "is_runtime": true
+        },
+        {
+          "name": "ysql_yb_pushdown_strict_inequality",
+          "class": 1,
+          "is_runtime": true
+        }
+      ]
+    },
+    {
+      "program": "yb-tserver",
+      "flags": [
+        {
+          "name": "TEST_auto_flags_initialized",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
+          "name": "TEST_auto_flags_new_install",
+          "class": 4,
+          "is_runtime": true
+        },
+        {
+          "name": "enable_automatic_tablet_splitting",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
+          "name": "enable_flush_retryable_requests",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
+          "name": "enable_xcluster_auto_flag_validation",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
+          "name": "regular_tablets_data_block_key_value_encoding",
+          "class": 3,
+          "is_runtime": true
+        },
+        {
+          "name": "remote_bootstrap_from_leader_only",
+          "class": 1,
+          "is_runtime": true
+        },
+        {
+          "name": "save_index_into_wal_segments",
+          "class": 2,
+          "is_runtime": true
+        },
+        {
+          "name": "xcluster_enable_subtxn_abort_propagation",
+          "class": 3,
+          "is_runtime": true
+        },
+        {
+          "name": "ysql_enable_packed_row",
+          "class": 4,
+          "is_runtime": true
+        },
+        {
+          "name": "ysql_yb_bypass_cond_recheck",
+          "class": 1,
+          "is_runtime": true
+        },
+        {
+          "name": "ysql_yb_enable_add_column_missing_default",
+          "class": 3,
+          "is_runtime": true
+        },
+        {
+          "name": "ysql_yb_enable_expression_pushdown",
+          "class": 1,
+          "is_runtime": true
+        },
+        {
+          "name": "ysql_yb_enable_hash_batch_in",
+          "class": 1,
+          "is_runtime": true
+        },
+        {
+          "name": "ysql_yb_enable_index_aggregate_pushdown",
+          "class": 1,
+          "is_runtime": true
+        },
+        {
+          "name": "ysql_yb_enable_pg_locks",
+          "class": 1,
+          "is_runtime": true
+        },
+        {
+          "name": "ysql_yb_enable_sequence_pushdown",
+          "class": 1,
+          "is_runtime": true
+        },
+        {
+          "name": "ysql_yb_pushdown_is_not_null",
+          "class": 1,
+          "is_runtime": true
+        },
+        {
+          "name": "ysql_yb_pushdown_strict_inequality",
+          "class": 1,
+          "is_runtime": true
+        }
+      ]
+    }
+  ]
+}

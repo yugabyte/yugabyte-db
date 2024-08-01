@@ -1,0 +1,23 @@
+
+
+{{ $data := index .Site.Data.master_flags.flag }}
+<table>
+	<thead>
+		<tr>
+			<th>NAME</th>
+			<th>DEFAULT</th>
+			<th>TAGS</th>
+			<th>DESCRIPTION</th>
+		</tr>
+	</thead>
+	<tbody>
+		{{ range $data}}
+		<tr>
+			<td>{{ .name }}</td>
+			<td>{{ or .default .target}}</td>
+			<td>{{ .tags }}</td>
+			<td>{{ .meaning }}</td>
+		</tr>
+		{{ end }}
+	</tbody>
+</table>
