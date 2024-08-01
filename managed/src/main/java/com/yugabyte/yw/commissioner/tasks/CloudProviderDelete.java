@@ -81,8 +81,7 @@ public class CloudProviderDelete extends AbstractTaskBase {
         if (!provisionInstanceScript.isEmpty()) {
           new File(provisionInstanceScript).delete();
         }
-        accessManager.deleteKeyByProvider(
-            provider, accessKey.getKeyCode(), accessKey.getKeyInfo().deleteRemote);
+        accessManager.deleteKeyByProvider(provider, accessKey);
         accessKey.delete();
       }
       // Clear Node instance for the provider.

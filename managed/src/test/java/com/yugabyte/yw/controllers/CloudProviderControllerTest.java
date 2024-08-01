@@ -615,8 +615,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
 
     assertEquals(0, AccessKey.getAll(p.getUuid()).size());
     assertNull(Provider.get(p.getUuid()));
-    verify(mockAccessManager, times(1))
-        .deleteKeyByProvider(p, ak.getKeyCode(), ak.getKeyInfo().deleteRemote);
+    verify(mockAccessManager, times(1)).deleteKeyByProvider(p, ak);
   }
 
   @Test

@@ -623,8 +623,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     assertYBPSuccess(result, "Deleted provider: " + p.getUuid());
     assertEquals(0, AccessKey.getAll(p.getUuid()).size());
     assertNull(Provider.get(p.getUuid()));
-    verify(mockAccessManager, times(1))
-        .deleteKeyByProvider(p, ak.getKeyCode(), ak.getKeyInfo().deleteRemote);
+    verify(mockAccessManager, times(1)).deleteKeyByProvider(p, ak);
     assertAuditEntry(1, customer.getUuid());
   }
 
@@ -662,8 +661,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     assertYBPSuccess(result, "Deleted provider: " + p.getUuid());
     assertEquals(0, AccessKey.getAll(p.getUuid()).size());
     assertNull(Provider.get(p.getUuid()));
-    verify(mockAccessManager, times(1))
-        .deleteKeyByProvider(p, ak.getKeyCode(), ak.getKeyInfo().deleteRemote);
+    verify(mockAccessManager, times(1)).deleteKeyByProvider(p, ak);
     assertAuditEntry(1, customer.getUuid());
   }
 
