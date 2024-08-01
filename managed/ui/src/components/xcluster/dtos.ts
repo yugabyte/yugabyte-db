@@ -1,5 +1,5 @@
 import { XClusterConfigStatus, XClusterConfigType, XClusterTableStatus } from './constants';
-import { PitrConfig } from '../../redesign/helpers/dtos';
+import { PitrConfig, YBTable } from '../../redesign/helpers/dtos';
 import { SourceUniverseDrState, TargetUniverseDrState } from './disasterRecovery/dtos';
 
 /**
@@ -13,6 +13,9 @@ export interface XClusterTableDetails {
   streamId: string;
   tableId: string;
   replicationStatusErrors: string[];
+
+  sourceTableInfo?: YBTable;
+  targetTableInfo?: YBTable;
   bootstrapCreateTime?: string;
   restoreTime?: string;
 }

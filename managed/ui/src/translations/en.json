@@ -1048,7 +1048,12 @@
             "Validated": "Validated",
             "Bootstrapping": "Bootstrapping",
             "UnableToFetch": "Unable to Fetch",
-            "Dropped": "Dropped from DB"
+            "Dropped": "Dropped from DB",
+            "ExtraTableOnSource": "Extra Table On Source",
+            "ExtraTableOnTarget": "Extra Table on Target",
+            "DroppedFromSource": "Dropped From Source",
+            "DroppedFromTarget": "Dropped From Target",
+            "ReplicationError": "Replication Error"
           }
         },
         "createConfigModal": {
@@ -1145,6 +1150,7 @@
           "matchingTableNoteXCluster": "<bold>Note!</bold> To avoid creating unnecessary full copies for selected databases, ensure the corresponding databases on the target universe contain the same tables as in the source universe.",
           "tablePill": {
             "unreplicatedTableInReplicatedNamespace": "Unreplicated",
+            "droppedOnTarget": "Dropped on Target",
             "eligible": "Eligible",
             "inCurrentConfig": "In Current Config",
             "inUse": "In Use - Not Available"

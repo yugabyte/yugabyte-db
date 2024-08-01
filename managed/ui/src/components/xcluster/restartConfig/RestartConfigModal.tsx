@@ -29,13 +29,13 @@ import { XClusterConfig } from '../dtos';
 import { AllowedTasks, TableType, Universe, YBTable } from '../../../redesign/helpers/dtos';
 import { DrConfig } from '../disasterRecovery/dtos';
 import {
+  SOURCE_MISSING_XCLUSTER_TABLE_STATUSES,
   XClusterConfigStatus,
   XClusterTableStatus,
   XCLUSTER_UNIVERSE_TABLE_FILTERS
 } from '../constants';
 import { UNIVERSE_TASKS } from '../../../redesign/helpers/constants';
 import { getXClusterConfigTableType } from '../ReplicationUtils';
-import { getTableUuid } from '../../../utils/tableUtils';
 import { XClusterTableType } from '../XClusterTypes';
 
 import styles from './RestartConfigModal.module.scss';
@@ -242,10 +242,7 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
   }
 
   const xClusterConfig = xClusterConfigQuery.data;
-  const configTableType = getXClusterConfigTableType(
-    xClusterConfig,
-    sourceUniverseTablesQuery.data
-  );
+  const configTableType = getXClusterConfigTableType(xClusterConfig);
   if (
     sourceUniverseQuery.isError ||
     sourceUniverseTablesQuery.isError ||
@@ -322,7 +319,6 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
 
   const { defaultTableUuids, defaultNamespaces } = getDefaultFormValues(
     xClusterConfig,
-    sourceUniverseTablesQuery.data,
     configTableType
   );
   const initialValues: Partial<RestartXClusterConfigFormValues> = {
@@ -464,12 +460,14 @@ const validateForm = async (
 
 const getDefaultFormValues = (
   xClusterConfig: XClusterConfig,
-  sourceUniverseTables: YBTable[],
   configTableType: XClusterTableType
 ): { defaultTableUuids: string[]; defaultNamespaces: string[] } => {
   const tableUuidsInErrorStatus = xClusterConfig.tableDetails
     .filter((tableDetail) => tableDetail.status === XClusterTableStatus.ERROR)
     .map((tableDetail) => tableDetail.tableId);
+
+  // For YCQL, backup and restore can be done at the table level so we simply
+  // set the tables which are in error state as selected by default.
   if (configTableType === TableType.YQL_TABLE_TYPE) {
     return {
       defaultTableUuids: tableUuidsInErrorStatus,
@@ -481,28 +479,32 @@ const getDefaultFormValues = (
   // Thus, we preselect all tables in any database containing tables in error state.
   const selectedTableUuids = new Set<string>();
   const selectedNamespace = new Set<string>();
-  const ysqlNamespaceToTableUuids = new Map<string, Set<string>>();
+  const ysqlNamespaceToConfiguredTableUuids = new Map<string, Set<string>>();
 
-  sourceUniverseTables.forEach((table) => {
-    const tableUUIDs = ysqlNamespaceToTableUuids.get(table.keySpace);
-    if (tableUUIDs !== undefined) {
-      tableUUIDs.add(getTableUuid(table));
-    } else {
-      ysqlNamespaceToTableUuids.set(
-        table.keySpace,
-        new Set<string>([getTableUuid(table)])
-      );
-    }
-    if (tableUuidsInErrorStatus.includes(getTableUuid(table))) {
-      selectedNamespace.add(table.keySpace);
-    }
-  });
-  selectedNamespace.forEach((namespace) => {
-    const tableUuids = ysqlNamespaceToTableUuids.get(namespace);
-    tableUuids?.forEach((tableUuid) => {
-      if (xClusterConfig.tables.includes(tableUuid)) {
-        selectedTableUuids.add(tableUuid);
+  xClusterConfig.tableDetails.forEach((tableDetail) => {
+    const namespace =
+      tableDetail.sourceTableInfo?.keySpace ?? tableDetail.targetTableInfo?.keySpace;
+    if (namespace && !SOURCE_MISSING_XCLUSTER_TABLE_STATUSES.includes(tableDetail.status)) {
+      const tableUuids = ysqlNamespaceToConfiguredTableUuids.get(namespace);
+
+      if (tableUuids !== undefined) {
+        tableUuids.add(tableDetail.tableId);
+      } else {
+        ysqlNamespaceToConfiguredTableUuids.set(
+          namespace,
+          new Set<string>([tableDetail.tableId])
+        );
       }
+      if (tableUuidsInErrorStatus.includes(tableDetail.tableId)) {
+        selectedNamespace.add(namespace);
+      }
+    }
+
+    selectedNamespace.forEach((namespace) => {
+      const tableUuids = ysqlNamespaceToConfiguredTableUuids.get(namespace);
+      tableUuids?.forEach((tableUuid) => {
+        selectedTableUuids.add(tableUuid);
+      });
     });
   });
   return {
