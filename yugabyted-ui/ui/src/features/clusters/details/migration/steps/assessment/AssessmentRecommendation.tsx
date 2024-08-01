@@ -83,7 +83,11 @@ export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommenda
           </Box>
         </Box>
 
-        <Box mb={4}>{recommendation}</Box>
+        <Box>{recommendation}</Box>
+
+        <Box my={4}>
+          <Divider orientation="horizontal" />
+        </Box>
 
         <Box display="flex">
           <Box>
