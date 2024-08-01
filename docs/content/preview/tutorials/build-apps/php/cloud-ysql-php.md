@@ -10,7 +10,7 @@ menu:
     parent: build-apps
     name: PHP
     identifier: cloud-php
-    weight: 900
+    weight: 1100
 type: docs
 ---
 
