@@ -56,6 +56,7 @@
 #include "yb/master/master_error.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/sys_catalog.h"
+#include "yb/master/tablet_split_manager.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
 
 #include "yb/tablet/tablet.h"
@@ -946,11 +947,11 @@ Status BackfillTable::SetSafeTimeAndStartBackfill(const HybridTime& read_time) {
 }
 
 Status BackfillTable::WaitForTabletSplitting() {
-  auto* tablet_split_manager = master_->catalog_manager()->tablet_split_manager();
-  tablet_split_manager->DisableSplittingForBackfillingTable(indexed_table_->id());
+  auto& tablet_split_manager = master_->tablet_split_manager();
+  tablet_split_manager.DisableSplittingForBackfillingTable(indexed_table_->id());
   CoarseTimePoint deadline = CoarseMonoClock::Now() +
                              FLAGS_index_backfill_tablet_split_completion_timeout_sec * 1s;
-  while (!tablet_split_manager->IsTabletSplittingComplete(*indexed_table_,
+  while (!tablet_split_manager.IsTabletSplittingComplete(*indexed_table_,
                                                           false /* wait_for_parent_deletion */,
                                                           deadline)) {
     if (CoarseMonoClock::Now() > deadline) {
@@ -1141,8 +1142,7 @@ Status BackfillTable::UpdateIndexPermissionsForIndexes() {
       all_success ? MonitoredTaskState::kComplete : MonitoredTaskState::kFailed);
   RETURN_NOT_OK(ClearCheckpointStateInTablets());
   indexed_table_->ClearIsBackfilling();
-  master_->catalog_manager()->tablet_split_manager()
-      ->ReenableSplittingForBackfillingTable(indexed_table_->id());
+  master_->tablet_split_manager().ReenableSplittingForBackfillingTable(indexed_table_->id());
 
   VLOG(1) << "Sending alter table requests to the Indexed table";
   RETURN_NOT_OK(master_->catalog_manager_impl()->SendAlterTableRequest(indexed_table_, epoch_));

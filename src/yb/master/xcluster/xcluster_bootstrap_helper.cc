@@ -17,6 +17,7 @@
 #include "yb/gutil/bind.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/master.h"
 #include "yb/master/snapshot_transfer_manager.h"
 #include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/xcluster/xcluster_universe_replication_setup_helper.h"
@@ -434,7 +435,7 @@ SetupUniverseReplicationWithBootstrapHelper::DoReplicationBootstrapTransferAndRe
   // Restore snapshot.
   SetReplicationBootstrapState(
       bootstrap_info, SysUniverseReplicationBootstrapEntryPB::RESTORE_SNAPSHOT);
-  auto restoration_id = VERIFY_RESULT(catalog_manager_.snapshot_coordinator().Restore(
+  auto restoration_id = VERIFY_RESULT(master_.snapshot_coordinator().Restore(
       new_snapshot_id, HybridTime(), epoch.leader_term));
 
   if (PREDICT_FALSE(FLAGS_TEST_xcluster_fail_restore_consumer_snapshot)) {
@@ -445,7 +446,7 @@ SetupUniverseReplicationWithBootstrapHelper::DoReplicationBootstrapTransferAndRe
   return WaitFor(
       [this, &new_snapshot_id, &restoration_id]() -> Result<bool> {
         ListSnapshotRestorationsResponsePB resp;
-        RETURN_NOT_OK(catalog_manager_.snapshot_coordinator().ListRestorations(
+        RETURN_NOT_OK(master_.snapshot_coordinator().ListRestorations(
             restoration_id, new_snapshot_id, &resp));
 
         SCHECK_EQ(
