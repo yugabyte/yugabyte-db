@@ -29,6 +29,7 @@ import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
@@ -154,7 +155,9 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
     authToken = user.createAuthToken();
     CustomerConfig config = createData(defaultCustomer);
     sourceUniverse = createUniverse("source Universe");
+    TestHelper.updateUniverseVersion(sourceUniverse, "2.23.0.0-b394");
     targetUniverse = createUniverse("target Universe");
+    TestHelper.updateUniverseVersion(targetUniverse, "2.23.0.0-b394");
 
     backupRequestParams = new BootstrapBackupParams();
     backupRequestParams.storageConfigUUID = config.getConfigUUID();

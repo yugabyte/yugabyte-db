@@ -12,6 +12,7 @@ import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.XClusterUtil;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -184,6 +185,10 @@ public class DrConfigController extends AuthenticatedController {
           BAD_REQUEST,
           "Support for db scoped disaster recovery configs is disabled in YBA. You may enable it "
               + "by setting yb.xcluster.db_scoped.enabled to true in the application.conf");
+    }
+
+    if (isDbScoped) {
+      XClusterUtil.dbScopedXClusterPreChecks(sourceUniverse, targetUniverse);
     }
 
     DrConfig drConfig;
