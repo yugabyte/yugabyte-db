@@ -220,30 +220,30 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
             </Box>
 
             <Box display="flex" flexDirection="column" gridGap={20}>
-              {unsupportedDataTypes?.length && (
+              {unsupportedDataTypes?.length ? (
                 <MigrationAssessmentRefactoringTable
                   data={unsupportedDataTypes}
                   tableHeader={t(
                     "clusterDetail.voyager.planAndAssess.refactoring.unsupportedDataType"
                   )}
                 />
-              )}
-              {unsupportedFeatures?.length && (
+              ) : null}
+              {unsupportedFeatures?.length ? (
                 <MigrationAssessmentRefactoringTable
                   data={unsupportedFeatures}
                   tableHeader={t(
                     "clusterDetail.voyager.planAndAssess.refactoring.unsupportedFeature"
                   )}
                 />
-              )}
-              {unsupportedFunctions?.length && (
+              ) : null}
+              {unsupportedFunctions?.length ? (
                 <MigrationAssessmentRefactoringTable
                   data={unsupportedFunctions}
                   tableHeader={t(
                     "clusterDetail.voyager.planAndAssess.refactoring.unsupportedFunction"
                   )}
                 />
-              )}
+              ) : null}
             </Box>
           </>
         ) : null}
