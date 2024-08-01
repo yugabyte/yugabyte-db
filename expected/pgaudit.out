@@ -1410,8 +1410,6 @@ NOTICE:  AUDIT: SESSION,20,1,READ,SELECT,TABLE,public.test2,"SELECT *
   FROM vw_test3, test2;",<none>,9
 NOTICE:  AUDIT: SESSION,20,1,READ,SELECT,VIEW,public.vw_test3,"SELECT *
   FROM vw_test3, test2;",<none>,9
-NOTICE:  AUDIT: SESSION,20,1,MISC,???,VIEW,public.vw_test3,"SELECT *
-  FROM vw_test3, test2;",<none>,9
 NOTICE:  AUDIT: SESSION,20,1,READ,SELECT,TABLE,public.test3,"SELECT *
   FROM vw_test3, test2;",<none>,9
  id | name | id | name 
@@ -2515,6 +2513,56 @@ NOTICE:  version "1.10" of extension "pg_stat_statements" is already installed
 DROP EXTENSION pg_stat_statements;
 WARNING:  AUDIT: SESSION,5,1,DDL,DROP EXTENSION,,,DROP EXTENSION pg_stat_statements;,<not logged>
 SET pgaudit.log_level = 'notice';
+-- Check that partition scans are skipped for auditing and do no result in an empty stack
+SET pgaudit.log = 'all';
+NOTICE:  AUDIT: SESSION,6,1,MISC,SET,,,SET pgaudit.log = 'all';,<not logged>
+CREATE TABLE part_test (c1 int, c2 int) PARTITION BY RANGE (c1);
+NOTICE:  AUDIT: SESSION,7,1,DDL,CREATE TABLE,,,"CREATE TABLE part_test (c1 int, c2 int) PARTITION BY RANGE (c1);",<not logged>
+CREATE TABLE part_test_1_to_10 PARTITION OF part_test FOR VALUES FROM (1) TO (10);
+NOTICE:  AUDIT: SESSION,8,1,DDL,CREATE TABLE,,,CREATE TABLE part_test_1_to_10 PARTITION OF part_test FOR VALUES FROM (1) TO (10);,<not logged>
+INSERT INTO part_test VALUES (generate_series(1,9));
+NOTICE:  AUDIT: SESSION,9,1,WRITE,INSERT,,,"INSERT INTO part_test VALUES (generate_series(1,9));",<not logged>
+CREATE OR REPLACE FUNCTION get_test_id(_ret REFCURSOR) RETURNS REFCURSOR
+LANGUAGE plpgsql IMMUTABLE AS $$
+BEGIN
+    OPEN _ret FOR SELECT * FROM part_test;
+    RETURN _ret;
+END $$;
+NOTICE:  AUDIT: SESSION,10,1,DDL,CREATE FUNCTION,,,"CREATE OR REPLACE FUNCTION get_test_id(_ret REFCURSOR) RETURNS REFCURSOR
+LANGUAGE plpgsql IMMUTABLE AS $$
+BEGIN
+    OPEN _ret FOR SELECT * FROM part_test;
+    RETURN _ret;
+END $$;",<not logged>
+BEGIN;
+NOTICE:  AUDIT: SESSION,11,1,MISC,BEGIN,,,BEGIN;,<not logged>
+SELECT get_test_id('_ret');
+NOTICE:  AUDIT: SESSION,12,1,READ,SELECT,,,SELECT * FROM part_test,<not logged>
+NOTICE:  AUDIT: SESSION,12,2,READ,SELECT,,,SELECT get_test_id('_ret');,<not logged>
+ get_test_id 
+-------------
+ _ret
+(1 row)
+
+FETCH ALL FROM _ret;
+NOTICE:  AUDIT: SESSION,12,3,MISC,FETCH,,,FETCH ALL FROM _ret;,<not logged>
+ c1 | c2 
+----+----
+  1 |   
+  2 |   
+  3 |   
+  4 |   
+  5 |   
+  6 |   
+  7 |   
+  8 |   
+  9 |   
+(9 rows)
+
+COMMIT;
+NOTICE:  AUDIT: SESSION,12,4,MISC,COMMIT,,,COMMIT;,<not logged>
+DROP TABLE part_test;
+NOTICE:  AUDIT: SESSION,13,1,DDL,DROP TABLE,,,DROP TABLE part_test;,<not logged>
 -- Cleanup
 -- Set client_min_messages up to warning to avoid noise
 SET client_min_messages = 'warning';

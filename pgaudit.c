@@ -1017,8 +1017,11 @@ log_select_dml(Oid auditOid, List *rangeTabls)
         Oid relNamespaceOid;
         RangeTblEntry *rte = lfirst(lr);
 
-        /* We only care about tables, and can ignore subqueries etc. */
-        if (rte->rtekind != RTE_RELATION)
+        /*
+         * We only care about tables, and can ignore subqueries etc. Also detect
+         * and skip partitions by checking for missing requiredPerms.
+         */
+        if (rte->rtekind != RTE_RELATION || rte->requiredPerms == 0)
             continue;
 
         found = true;

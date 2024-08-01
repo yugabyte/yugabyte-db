@@ -1591,6 +1591,27 @@ DROP EXTENSION pg_stat_statements;
 
 SET pgaudit.log_level = 'notice';
 
+-- Check that partition scans are skipped for auditing and do no result in an empty stack
+SET pgaudit.log = 'all';
+
+CREATE TABLE part_test (c1 int, c2 int) PARTITION BY RANGE (c1);
+CREATE TABLE part_test_1_to_10 PARTITION OF part_test FOR VALUES FROM (1) TO (10);
+INSERT INTO part_test VALUES (generate_series(1,9));
+
+CREATE OR REPLACE FUNCTION get_test_id(_ret REFCURSOR) RETURNS REFCURSOR
+LANGUAGE plpgsql IMMUTABLE AS $$
+BEGIN
+    OPEN _ret FOR SELECT * FROM part_test;
+    RETURN _ret;
+END $$;
+
+BEGIN;
+SELECT get_test_id('_ret');
+FETCH ALL FROM _ret;
+COMMIT;
+
+DROP TABLE part_test;
+
 -- Cleanup
 -- Set client_min_messages up to warning to avoid noise
 SET client_min_messages = 'warning';
