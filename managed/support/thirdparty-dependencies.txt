@@ -7,7 +7,7 @@ https://files.pythonhosted.org/packages/4c/c4/13b4776ea2d76c115c1d1b84579f3764ee
 https://files.pythonhosted.org/packages/e3/85/1aff76b966622868a73717abd8b501a3c91890e23a65e5f574ff6df1970f/python-magic-0.4.18.tar.gz
 https://files.pythonhosted.org/packages/a7/52/5f84da9ee2780682795550ddea20bec3e604a8a82600f4e5d3a6ca0bcbcd/setuptools_scm-1.17.0.tar.gz#sha256=70a4cf5584e966ae92f54a764e6437af992ba42ac4bca7eb37cc5d02b98ec40a
 https://storage.googleapis.com/pub/gsutil_4.60.tar.gz
-https://github.com/prometheus/prometheus/releases/download/v2.47.1/prometheus-2.47.1.linux-amd64.tar.gz
+https://github.com/prometheus/prometheus/releases/download/v2.53.1/prometheus-2.53.1.linux-amd64.tar.gz
 https://github.com/prometheus/alertmanager/releases/download/v0.5.1/alertmanager-0.5.1.linux-amd64.tar.gz
 https://files.pythonhosted.org/packages/b2/40/4e00501c204b457f10fe410da0c97537214b2265247bc9a5bc6edd55b9e4/setuptools-44.1.1.zip
 https://downloads.yugabyte.com/docker/thirdparty-deps/x86_64/xxhash.tar.gz
