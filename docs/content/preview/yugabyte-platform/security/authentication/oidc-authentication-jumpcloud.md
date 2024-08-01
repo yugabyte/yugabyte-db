@@ -126,7 +126,7 @@ The following illustration shows an example of setting the `ysql_hba_conf_csv` f
 The following shows an example `ysql_hba_conf_csv` flag configuration for OIDC:
 
 ```sh
-host all all 0.0.0.0/0 jwt_map=map1 jwt_audiences=""<client_id>"" jwt_issuers=""https://oauth.id.jumpcloud.com/.well-known/openid-configuration"" jwt_matching_claim_key=""preferred_username""
+host all all 0.0.0.0/0 jwt_map=map1 jwt_audiences=""<client_id>"" jwt_issuers=""https://oauth.id.jumpcloud.com/"" jwt_matching_claim_key=""preferred_username""
 ```
 
 For more information on host authentication in YugabyteDB using `ysql_hba_conf_csv`, refer to [Host-based authentication](../../../../secure/authentication/host-based-authentication/).
