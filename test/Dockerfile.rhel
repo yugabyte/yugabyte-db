@@ -1,7 +1,11 @@
-FROM centos:7
+FROM rockylinux/rockylinux:8
 
 # Install packages
-RUN yum install -y centos-release-scl-rh epel-release sudo make gcc openssl-devel
+RUN dnf install -y sudo make gcc openssl-devel redhat-rpm-config
+
+# Install and enable EPEL repository
+RUN dnf -y install epel-release
+RUN crb enable
 
 # Create postgres user/group with specific IDs
 ARG UID=1000
@@ -11,12 +15,15 @@ RUN groupadd -g $GID -o postgres
 RUN useradd -m -u $UID -g $GID -o -s /bin/bash postgres
 
 # Add PostgreSQL repository
-RUN rpm -ivh https://download.postgresql.org/pub/repos/yum/reporpms/EL-7-`uname -m`/pgdg-redhat-repo-latest.noarch.rpm
+RUN dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-8-`uname -m`/pgdg-redhat-repo-latest.noarch.rpm
+
+# Disable PostgreSQL in default repository
+RUN dnf -qy module disable postgresql
 
 # Install PostgreSQL
 ENV PGVERSION=15
 
-RUN yum install -y postgresql${PGVERSION?}-server postgresql${PGVERSION?}-devel postgresql${PGVERSION?}-contrib
+RUN dnf install -y postgresql${PGVERSION?}-server postgresql${PGVERSION?}-devel postgresql${PGVERSION?}-contrib
 
 # Configure llvm lib (required for aarch64)
 RUN echo /opt/rh/llvm-toolset-7.0/root/usr/lib64/ > /etc/ld.so.conf.d/llvm-toolset.conf
