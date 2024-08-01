@@ -3,7 +3,7 @@ title: Change data capture (CDC) Observability in YugabyteDB Anywhere
 headerTitle: CDC Observability
 linkTitle: CDC Observability
 description: Learn how YugabyteDB Anywhere monitors and capture and emit database change events for better visibility and insights into data changes.
-headcontent: Use Change Data Capture (CDC) replication slots to capture and emit database change events.
+headcontent: Use Change Data Capture (CDC) replication slots to capture and emit database change events
 badges: ea
 menu:
   stable_yugabyte-platform:

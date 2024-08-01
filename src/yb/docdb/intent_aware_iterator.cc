@@ -29,7 +29,6 @@
 #include "yb/docdb/intent_iterator.h"
 #include "yb/docdb/iter_util.h"
 #include "yb/docdb/key_bounds.h"
-#include "yb/docdb/shared_lock_manager_fwd.h"
 #include "yb/docdb/transaction_dump.h"
 
 #include "yb/dockv/doc_key.h"

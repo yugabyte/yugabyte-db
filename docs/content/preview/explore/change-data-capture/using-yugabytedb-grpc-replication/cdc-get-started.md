@@ -10,7 +10,7 @@ menu:
   preview:
     parent: explore-change-data-capture-grpc-replication
     identifier: cdc-get-started
-    weight: 30
+    weight: 10
 type: docs
 ---
 
@@ -33,14 +33,15 @@ The following steps are necessary to set up YugabyteDB for use with the Yugabyte
     In case CDC is lagging or away for some time, the disk usage may grow and cause YugabyteDB cluster instability. To avoid this scenario, if a stream is inactive for a configured amount of time, the WAL is garbage collected. This is configurable using a [YB-TServer flag](../../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags).
 
 ## Deploying the YugabyteDB gRPC Connector
+
 To stream data change events from YugabyteDB databases, follow these steps to deploy the YugabyteDB gRPC Connector:
 
-* Download the Connector: You can download the connector from the [GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases)
-* Install the Connector: Extract and install the connector archive in your Kafka Connect environment.
-* Configure the Connector: Modify the connector configuration to suit your specific requirements.
-* Start the Connector: Add the connector's configuration to Kafka Connect and start the connector.
+- Download the Connector: You can download the connector from the [GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases)
+- Install the Connector: Extract and install the connector archive in your Kafka Connect environment.
+- Configure the Connector: Modify the connector configuration to suit your specific requirements.
+- Start the Connector: Add the connector's configuration to Kafka Connect and start the connector.
 
-For more details on connector configuration and deployment steps, refer to the [YugabyteDB gRPC Connector documentation]((../debezium-connector-yugabytedb/)).
+For more details on connector configuration and deployment steps, refer to the [YugabyteDB gRPC Connector documentation](../debezium-connector-yugabytedb/).
 
 ## Serialization
 
@@ -537,12 +538,12 @@ Longer values of `cdc_intent_retention_ms`, coupled with longer CDC lags (period
 
 ## Content-based routing
 
-By default, the connector streams all of the change events that it reads from a table to a single static topic. However, you may want to re-route the events into different Kafka topics based on the event's content. You can do this using the Debezium `ContentBasedRouter`. But first, two additional dependencies need to be placed in the Kafka-Connect environment. These are not included in the official *yugabyte-debezium-connector* for security reasons. These dependencies are:
+By default, the connector streams all of the change events that it reads from a table to a single static topic. However, you may want to re-route the events into different Kafka topics based on the event's content. You can do this using the Debezium `ContentBasedRouter`. But first, two additional dependencies need to be placed in the Kafka-Connect environment. These are not included in the official _yugabyte-debezium-connector_ for security reasons. These dependencies are:
 
 - Debezium routing SMT (Single Message Transform)
 - Groovy JSR223 implementation (or other scripting languages that integrate with [JSR 223](https://jcp.org/en/jsr/detail?id=223))
 
-To get started, you can rebuild the *yugabyte-debezium-connector* image including these dependencies. Here's what the Dockerfile would look like:
+To get started, you can rebuild the _yugabyte-debezium-connector_ image including these dependencies. The following shows what the Dockerfile would look like:
 
 ```Dockerfile
 FROM quay.io/yugabyte/debezium-connector:latest
@@ -573,6 +574,6 @@ The `<routing-expression>` contains the logic for routing of the events. For exa
 value.after != null ? (value.after?.country?.value == '\''UK'\'' ? '\''uk_users'\'' : null) : (value.before?.country?.value == '\''UK'\'' ? '\''uk_users'\'' : null)"
 ```
 
-This expression checks if the value of the row after the operation has the country set to "UK". If *yes* then the expression returns "uk_users." If *no*, it returns *null*, and in case the row after the operation is *null* (for example, in a "delete" operation), the expression also checks for the same condition on row values before the operation. The value that is returned determines which new Kafka Topic will receive the re-routed event. If it returns *null*, the event is sent to the default topic.
+This expression checks if the value of the row after the operation has the country set to `UK`. If _yes_, then the expression returns `uk_users`. If _no_, it returns _null_, and in case the row after the operation is _null_ (for example, in a "delete" operation), the expression also checks for the same condition on row values before the operation. The value that is returned determines which new Kafka Topic will receive the re-routed event. If it returns _null_, the event is sent to the default topic.
 
 For more advanced routing configuration, refer to the [Debezium documentation](https://debezium.io/documentation/reference/stable/transformations/content-based-routing.html) on content-based routing.

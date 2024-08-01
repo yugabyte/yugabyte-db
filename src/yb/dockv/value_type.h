@@ -75,6 +75,8 @@ namespace yb::dockv {
     ((kInetaddress, '-'))  /* ASCII code 45 */ \
     ((kInetaddressDescending, '.'))  /* ASCII code 46 */ \
     ((kColocationId, '0')) /* ASCII code 48 */ \
+    ((kWeakObjectLock, '3')) /* ASCII code 51 */ \
+    ((kStrongObjectLock, '4')) /* ASCII code 52 */ \
     ((kFrozen, '<')) /* ASCII code 60 */ \
     ((kFrozenDescending, '>')) /* ASCII code 62 */ \
     ((kVarInt, 'B')) /* ASCII code 66 */ \
@@ -126,7 +128,7 @@ namespace yb::dockv {
     ((kGinNull, 'v')) /* ASCII code 118 */ \
     ((kTransactionId, 'x')) /* ASCII code 120 */ \
     ((kTableId, 'y')) /* ASCII code 121 */ \
-    \
+    ((kObject, '{'))  /* ASCII code 123 */ \
     /* Null desc must be higher than the other descending primitive types so that it compares */ \
     /* as bigger than them. It is used for frozen CQL user-defined types (which can contain */ \
     /* null elements) on DESC columns. */ \

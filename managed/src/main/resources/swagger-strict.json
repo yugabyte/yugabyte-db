@@ -673,7 +673,7 @@
         },
         "template" : {
           "description" : "Template name",
-          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "CLOCK_SYNC_CHECK_FAILED", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "UNIVERSE_METRIC_COLLECTION_FAILURE", "BACKUP_FAILURE", "BACKUP_DELETION_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_SYSTEM_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "NODE_OOM_KILLS", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_ERROR_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "DB_MEMORY_OVERLOAD", "DB_COMPACTION_OVERLOAD", "DB_QUEUES_OVERFLOW", "DB_DRIVE_FAILURE", "DB_WRITE_READ_TEST_ERROR", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "ENCRYPTION_AT_REST_CONFIG_EXPIRY", "SSH_KEY_EXPIRY", "SSH_KEY_ROTATION_FAILURE", "PITR_CONFIG_FAILURE", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YSQL_CONNECTIONS", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT", "MASTER_LEADER_MISSING", "MASTER_UNDER_REPLICATED", "LEADERLESS_TABLETS", "UNDER_REPLICATED_TABLETS", "PRIVATE_ACCESS_KEY_STATUS", "UNIVERSE_OS_UPDATE_REQUIRED", "DB_YCQL_WEB_SERVER_DOWN", "DB_YSQL_WEB_SERVER_DOWN", "INCREASED_REMOTE_BOOTSTRAPS", "TABLET_SERVER_AVG_READ_LATENCY", "TABLET_SERVER_AVG_WRITE_LATENCY", "REACTOR_DELAYS", "RPC_QUEUE_SIZE", "LOG_CACHE_SIZE", "CACHE_MISS", "HA_STANDBY_SYNC", "NODE_AGENT_DOWN", "UNIVERSE_RELEASE_FILES_STATUS", "HA_VERSION_MISMATCH", "TABLET_PEERS_GUARDRAIL", "XCLUSTER_CONFIG_TABLE_BAD_STATE" ],
+          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "CLOCK_SYNC_CHECK_FAILED", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "UNIVERSE_METRIC_COLLECTION_FAILURE", "BACKUP_FAILURE", "BACKUP_DELETION_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_SYSTEM_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "NODE_OOM_KILLS", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_ERROR_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "DB_MEMORY_OVERLOAD", "DB_COMPACTION_OVERLOAD", "DB_QUEUES_OVERFLOW", "DB_DRIVE_FAILURE", "DB_WRITE_READ_TEST_ERROR", "DDL_ATOMICITY_CHECK", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "ENCRYPTION_AT_REST_CONFIG_EXPIRY", "SSH_KEY_EXPIRY", "SSH_KEY_ROTATION_FAILURE", "PITR_CONFIG_FAILURE", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YSQL_CONNECTIONS", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT", "MASTER_LEADER_MISSING", "MASTER_UNDER_REPLICATED", "LEADERLESS_TABLETS", "UNDER_REPLICATED_TABLETS", "PRIVATE_ACCESS_KEY_STATUS", "UNIVERSE_OS_UPDATE_REQUIRED", "DB_YCQL_WEB_SERVER_DOWN", "DB_YSQL_WEB_SERVER_DOWN", "INCREASED_REMOTE_BOOTSTRAPS", "TABLET_SERVER_AVG_READ_LATENCY", "TABLET_SERVER_AVG_WRITE_LATENCY", "REACTOR_DELAYS", "RPC_QUEUE_SIZE", "LOG_CACHE_SIZE", "CACHE_MISS", "HA_STANDBY_SYNC", "NODE_AGENT_DOWN", "UNIVERSE_RELEASE_FILES_STATUS", "HA_VERSION_MISMATCH", "TABLET_PEERS_GUARDRAIL", "XCLUSTER_CONFIG_TABLE_BAD_STATE" ],
           "type" : "string"
         },
         "thresholdUnit" : {
@@ -726,7 +726,7 @@
           "type" : "string"
         },
         "template" : {
-          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "CLOCK_SYNC_CHECK_FAILED", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "UNIVERSE_METRIC_COLLECTION_FAILURE", "BACKUP_FAILURE", "BACKUP_DELETION_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_SYSTEM_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "NODE_OOM_KILLS", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_ERROR_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "DB_MEMORY_OVERLOAD", "DB_COMPACTION_OVERLOAD", "DB_QUEUES_OVERFLOW", "DB_DRIVE_FAILURE", "DB_WRITE_READ_TEST_ERROR", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "ENCRYPTION_AT_REST_CONFIG_EXPIRY", "SSH_KEY_EXPIRY", "SSH_KEY_ROTATION_FAILURE", "PITR_CONFIG_FAILURE", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YSQL_CONNECTIONS", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT", "MASTER_LEADER_MISSING", "MASTER_UNDER_REPLICATED", "LEADERLESS_TABLETS", "UNDER_REPLICATED_TABLETS", "PRIVATE_ACCESS_KEY_STATUS", "UNIVERSE_OS_UPDATE_REQUIRED", "DB_YCQL_WEB_SERVER_DOWN", "DB_YSQL_WEB_SERVER_DOWN", "INCREASED_REMOTE_BOOTSTRAPS", "TABLET_SERVER_AVG_READ_LATENCY", "TABLET_SERVER_AVG_WRITE_LATENCY", "REACTOR_DELAYS", "RPC_QUEUE_SIZE", "LOG_CACHE_SIZE", "CACHE_MISS", "HA_STANDBY_SYNC", "NODE_AGENT_DOWN", "UNIVERSE_RELEASE_FILES_STATUS", "HA_VERSION_MISMATCH", "TABLET_PEERS_GUARDRAIL", "XCLUSTER_CONFIG_TABLE_BAD_STATE" ],
+          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "CLOCK_SYNC_CHECK_FAILED", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "UNIVERSE_METRIC_COLLECTION_FAILURE", "BACKUP_FAILURE", "BACKUP_DELETION_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_SYSTEM_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "NODE_OOM_KILLS", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_ERROR_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "DB_MEMORY_OVERLOAD", "DB_COMPACTION_OVERLOAD", "DB_QUEUES_OVERFLOW", "DB_DRIVE_FAILURE", "DB_WRITE_READ_TEST_ERROR", "DDL_ATOMICITY_CHECK", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "ENCRYPTION_AT_REST_CONFIG_EXPIRY", "SSH_KEY_EXPIRY", "SSH_KEY_ROTATION_FAILURE", "PITR_CONFIG_FAILURE", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YSQL_CONNECTIONS", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT", "MASTER_LEADER_MISSING", "MASTER_UNDER_REPLICATED", "LEADERLESS_TABLETS", "UNDER_REPLICATED_TABLETS", "PRIVATE_ACCESS_KEY_STATUS", "UNIVERSE_OS_UPDATE_REQUIRED", "DB_YCQL_WEB_SERVER_DOWN", "DB_YSQL_WEB_SERVER_DOWN", "INCREASED_REMOTE_BOOTSTRAPS", "TABLET_SERVER_AVG_READ_LATENCY", "TABLET_SERVER_AVG_WRITE_LATENCY", "REACTOR_DELAYS", "RPC_QUEUE_SIZE", "LOG_CACHE_SIZE", "CACHE_MISS", "HA_STANDBY_SYNC", "NODE_AGENT_DOWN", "UNIVERSE_RELEASE_FILES_STATUS", "HA_VERSION_MISMATCH", "TABLET_PEERS_GUARDRAIL", "XCLUSTER_CONFIG_TABLE_BAD_STATE" ],
           "type" : "string"
         },
         "uuids" : {
@@ -887,7 +887,7 @@
         },
         "template" : {
           "description" : "Template name",
-          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "CLOCK_SYNC_CHECK_FAILED", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "UNIVERSE_METRIC_COLLECTION_FAILURE", "BACKUP_FAILURE", "BACKUP_DELETION_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_SYSTEM_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "NODE_OOM_KILLS", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_ERROR_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "DB_MEMORY_OVERLOAD", "DB_COMPACTION_OVERLOAD", "DB_QUEUES_OVERFLOW", "DB_DRIVE_FAILURE", "DB_WRITE_READ_TEST_ERROR", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "ENCRYPTION_AT_REST_CONFIG_EXPIRY", "SSH_KEY_EXPIRY", "SSH_KEY_ROTATION_FAILURE", "PITR_CONFIG_FAILURE", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YSQL_CONNECTIONS", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT", "MASTER_LEADER_MISSING", "MASTER_UNDER_REPLICATED", "LEADERLESS_TABLETS", "UNDER_REPLICATED_TABLETS", "PRIVATE_ACCESS_KEY_STATUS", "UNIVERSE_OS_UPDATE_REQUIRED", "DB_YCQL_WEB_SERVER_DOWN", "DB_YSQL_WEB_SERVER_DOWN", "INCREASED_REMOTE_BOOTSTRAPS", "TABLET_SERVER_AVG_READ_LATENCY", "TABLET_SERVER_AVG_WRITE_LATENCY", "REACTOR_DELAYS", "RPC_QUEUE_SIZE", "LOG_CACHE_SIZE", "CACHE_MISS", "HA_STANDBY_SYNC", "NODE_AGENT_DOWN", "UNIVERSE_RELEASE_FILES_STATUS", "HA_VERSION_MISMATCH", "TABLET_PEERS_GUARDRAIL", "XCLUSTER_CONFIG_TABLE_BAD_STATE" ],
+          "enum" : [ "REPLICATION_LAG", "CLOCK_SKEW", "CLOCK_SYNC_CHECK_FAILED", "MEMORY_CONSUMPTION", "HEALTH_CHECK_ERROR", "HEALTH_CHECK_NOTIFICATION_ERROR", "UNIVERSE_METRIC_COLLECTION_FAILURE", "BACKUP_FAILURE", "BACKUP_DELETION_FAILURE", "BACKUP_SCHEDULE_FAILURE", "INACTIVE_CRON_NODES", "ALERT_QUERY_FAILED", "ALERT_CONFIG_WRITING_FAILED", "ALERT_NOTIFICATION_ERROR", "ALERT_NOTIFICATION_CHANNEL_ERROR", "NODE_DOWN", "NODE_RESTART", "NODE_CPU_USAGE", "NODE_DISK_USAGE", "NODE_SYSTEM_DISK_USAGE", "NODE_FILE_DESCRIPTORS_USAGE", "NODE_OOM_KILLS", "DB_VERSION_MISMATCH", "DB_INSTANCE_DOWN", "DB_INSTANCE_RESTART", "DB_FATAL_LOGS", "DB_ERROR_LOGS", "DB_CORE_FILES", "DB_YSQL_CONNECTION", "DB_YCQL_CONNECTION", "DB_REDIS_CONNECTION", "DB_MEMORY_OVERLOAD", "DB_COMPACTION_OVERLOAD", "DB_QUEUES_OVERFLOW", "DB_DRIVE_FAILURE", "DB_WRITE_READ_TEST_ERROR", "DDL_ATOMICITY_CHECK", "NODE_TO_NODE_CA_CERT_EXPIRY", "NODE_TO_NODE_CERT_EXPIRY", "CLIENT_TO_NODE_CA_CERT_EXPIRY", "CLIENT_TO_NODE_CERT_EXPIRY", "ENCRYPTION_AT_REST_CONFIG_EXPIRY", "SSH_KEY_EXPIRY", "SSH_KEY_ROTATION_FAILURE", "PITR_CONFIG_FAILURE", "YSQL_OP_AVG_LATENCY", "YCQL_OP_AVG_LATENCY", "YSQL_OP_P99_LATENCY", "YCQL_OP_P99_LATENCY", "HIGH_NUM_YSQL_CONNECTIONS", "HIGH_NUM_YCQL_CONNECTIONS", "HIGH_NUM_YEDIS_CONNECTIONS", "YSQL_THROUGHPUT", "YCQL_THROUGHPUT", "MASTER_LEADER_MISSING", "MASTER_UNDER_REPLICATED", "LEADERLESS_TABLETS", "UNDER_REPLICATED_TABLETS", "PRIVATE_ACCESS_KEY_STATUS", "UNIVERSE_OS_UPDATE_REQUIRED", "DB_YCQL_WEB_SERVER_DOWN", "DB_YSQL_WEB_SERVER_DOWN", "INCREASED_REMOTE_BOOTSTRAPS", "TABLET_SERVER_AVG_READ_LATENCY", "TABLET_SERVER_AVG_WRITE_LATENCY", "REACTOR_DELAYS", "RPC_QUEUE_SIZE", "LOG_CACHE_SIZE", "CACHE_MISS", "HA_STANDBY_SYNC", "NODE_AGENT_DOWN", "UNIVERSE_RELEASE_FILES_STATUS", "HA_VERSION_MISMATCH", "TABLET_PEERS_GUARDRAIL", "XCLUSTER_CONFIG_TABLE_BAD_STATE" ],
           "type" : "string"
         },
         "thresholdConditionReadOnly" : {
@@ -1336,6 +1336,30 @@
           "uniqueItems" : true
         }
       },
+      "type" : "object"
+    },
+    "Artifact" : {
+      "properties" : {
+        "architecture" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "type" : "string"
+        },
+        "package_file_id" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "package_url" : {
+          "type" : "string"
+        },
+        "platform" : {
+          "enum" : [ "LINUX", "KUBERNETES" ],
+          "type" : "string"
+        },
+        "sha256" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "architecture", "package_file_id", "package_url", "platform", "sha256" ],
       "type" : "object"
     },
     "Audit" : {
@@ -4072,6 +4096,42 @@
       "required" : [ "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis" ],
       "type" : "object"
     },
+    "CreateRelease" : {
+      "description" : "Release metadata required to create a new release",
+      "properties" : {
+        "artifacts" : {
+          "items" : {
+            "$ref" : "#/definitions/Artifact"
+          },
+          "type" : "array"
+        },
+        "release_date_msecs" : {
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "release_notes" : {
+          "type" : "string"
+        },
+        "release_tag" : {
+          "type" : "string"
+        },
+        "release_type" : {
+          "type" : "string"
+        },
+        "release_uuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "version" : {
+          "type" : "string"
+        },
+        "yb_type" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "artifacts", "release_date_msecs", "release_notes", "release_tag", "release_type", "release_uuid", "version", "yb_type" ],
+      "type" : "object"
+    },
     "CreateTablespaceParams" : {
       "properties" : {
         "tablespaceInfos" : {
@@ -5230,6 +5290,20 @@
           "type" : "boolean"
         }
       },
+      "type" : "object"
+    },
+    "ExtractMetadata" : {
+      "description" : "url to release TGZ to extract metadata from",
+      "properties" : {
+        "url" : {
+          "type" : "string"
+        },
+        "uuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [ "url", "uuid" ],
       "type" : "object"
     },
     "FailedSubtasks" : {
@@ -10125,6 +10199,92 @@
       "required" : [ "resourceDefinitionSet" ],
       "type" : "object"
     },
+    "ResponseExtractMetadata" : {
+      "properties" : {
+        "architecture" : {
+          "enum" : [ "x86_64", "aarch64" ],
+          "type" : "string"
+        },
+        "metadata_uuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "platform" : {
+          "enum" : [ "LINUX", "KUBERNETES" ],
+          "type" : "string"
+        },
+        "release_date_msecs" : {
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "release_notes" : {
+          "type" : "string"
+        },
+        "release_type" : {
+          "type" : "string"
+        },
+        "sha256" : {
+          "type" : "string"
+        },
+        "status" : {
+          "enum" : [ "waiting", "running", "success", "failure" ],
+          "type" : "string"
+        },
+        "version" : {
+          "type" : "string"
+        },
+        "yb_type" : {
+          "enum" : [ "YBDB" ],
+          "type" : "string"
+        }
+      },
+      "required" : [ "architecture", "metadata_uuid", "platform", "release_date_msecs", "release_notes", "release_type", "sha256", "status", "version", "yb_type" ],
+      "type" : "object"
+    },
+    "ResponseRelease" : {
+      "properties" : {
+        "artifacts" : {
+          "items" : {
+            "$ref" : "#/definitions/Artifact"
+          },
+          "type" : "array"
+        },
+        "release_date_msecs" : {
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "release_notes" : {
+          "type" : "string"
+        },
+        "release_tag" : {
+          "type" : "string"
+        },
+        "release_type" : {
+          "type" : "string"
+        },
+        "release_uuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "state" : {
+          "type" : "string"
+        },
+        "universes" : {
+          "items" : {
+            "$ref" : "#/definitions/Universe"
+          },
+          "type" : "array"
+        },
+        "version" : {
+          "type" : "string"
+        },
+        "yb_type" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "artifacts", "release_date_msecs", "release_notes", "release_tag", "release_type", "release_uuid", "state", "universes", "version", "yb_type" ],
+      "type" : "object"
+    },
     "RestartBootstrapParams" : {
       "description" : "Bootstrap parameters for restarting",
       "properties" : {
@@ -13460,6 +13620,25 @@
       "required" : [ "apiToken", "customerUUID", "metricsScrapePeriodSecs", "metricsUrl", "tpUrl", "uuid", "ybaUrl" ],
       "type" : "object"
     },
+    "Universe" : {
+      "properties" : {
+        "creation_date" : {
+          "description" : "Universe creation date",
+          "example" : "2024-07-28T01:02:03Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "name" : {
+          "type" : "string"
+        },
+        "uuid" : {
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [ "name", "uuid" ],
+      "type" : "object"
+    },
     "Universe performance advisor status" : {
       "properties" : {
         "customerUUID" : {
@@ -14474,6 +14653,32 @@
         }
       },
       "required" : [ "firstTry", "name", "retryLimit", "sleepMultiplier", "taskInfo" ],
+      "type" : "object"
+    },
+    "UpdateRelease" : {
+      "description" : "Release metadata required to create a new release",
+      "properties" : {
+        "artifacts" : {
+          "items" : {
+            "$ref" : "#/definitions/Artifact"
+          },
+          "type" : "array"
+        },
+        "release_date" : {
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "release_notes" : {
+          "type" : "string"
+        },
+        "release_tag" : {
+          "type" : "string"
+        },
+        "state" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "artifacts", "release_date", "release_notes", "release_tag", "state" ],
       "type" : "object"
     },
     "UpgradeTaskParams" : {
@@ -15925,6 +16130,17 @@
         "targetTableInfo" : {
           "$ref" : "#/definitions/TableInfoResp",
           "description" : "tableInfo from target universe"
+        }
+      },
+      "type" : "object"
+    },
+    "YBPCreateSuccess" : {
+      "properties" : {
+        "resourceUUID" : {
+          "description" : "UUID of the successfully created resource",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
         }
       },
       "type" : "object"
@@ -27976,6 +28192,402 @@
         "tags" : [ "Asynchronous Replication" ]
       }
     },
+    "/api/v1/customers/{cUUID}/ybdb_release" : {
+      "get" : {
+        "description" : "WARNING: This is a preview API that could change: list ybdb releases",
+        "operationId" : "listNewReleases",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "default" : "null",
+          "in" : "query",
+          "name" : "deployment_type",
+          "required" : false,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/ResponseRelease"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/ResponseRelease"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List releases",
+        "tags" : [ "New Release management" ]
+      },
+      "post" : {
+        "description" : "WARNING: This is a preview API that could change: create a ybdb release",
+        "operationId" : "createNewRelease",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "Release data to be created",
+          "in" : "body",
+          "name" : "Release",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/CreateRelease"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPCreateSuccess"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPCreateSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Create a release",
+        "tags" : [ "New Release management" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/ybdb_release/extract_metadata" : {
+      "post" : {
+        "description" : "WARNING: This is a preview API that could change: start extracting metadata from a remote tgz url",
+        "operationId" : "extractMetadata",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "Release URL to extract metadata from",
+          "in" : "body",
+          "name" : "Release URL",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/ExtractMetadata"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "helper to extract release metadata from a remote tarball",
+        "tags" : [ "Extract metadata from remote tarball" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/ybdb_release/extract_metadata/{rUUID}" : {
+      "get" : {
+        "description" : "WARNING: This is a preview API that could change: Get extract metadata and its progress.",
+        "operationId" : "extractMetadata",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "rUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/ResponseExtractMetadata"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/ResponseExtractMetadata"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "get the extract release metadata from a remote tarball",
+        "tags" : [ "Extract metadata from remote tarball" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/ybdb_release/upload" : {
+      "post" : {
+        "description" : "WARNING: This is a preview API that could change: upload release tgz file",
+        "operationId" : "uploadRelease",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        } ],
+        "responses" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "responsesObject" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "upload a release tgz",
+        "tags" : [ "Upload Release packages" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/ybdb_release/upload/{rUUID}" : {
+      "get" : {
+        "description" : "WARNING: This is a preview API that could change: get uploaded release metadata",
+        "operationId" : "getUploadRelease",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "rUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/ResponseExtractMetadata"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/ResponseExtractMetadata"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "get an uploaded release metadata",
+        "tags" : [ "Upload Release packages" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/ybdb_release/{rUUID}" : {
+      "delete" : {
+        "description" : "WARNING: This is a preview API that could change: delete a ybdb release",
+        "operationId" : "deleteNewRelease",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "rUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "delete a release",
+        "tags" : [ "New Release management" ]
+      },
+      "get" : {
+        "description" : "WARNING: This is a preview API that could change: get a specific ybdb release",
+        "operationId" : "getNewRelease",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "rUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/ResponseRelease"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/ResponseRelease"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Get a release",
+        "tags" : [ "New Release management" ]
+      },
+      "put" : {
+        "description" : "WARNING: This is a preview API that could change: update or edit a ybdb release",
+        "operationId" : "updateNewRelease",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "rUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "Release data to be updated",
+          "in" : "body",
+          "name" : "Release",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/UpdateRelease"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Update a release",
+        "tags" : [ "New Release management" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/zones/{azUUID}/nodes" : {
       "post" : {
         "description" : "",
@@ -28736,6 +29348,8 @@
   }, {
     "name" : "Encryption at rest"
   }, {
+    "name" : "Extract metadata from remote tarball"
+  }, {
     "name" : "Grafana Dashboard"
   }, {
     "name" : "Instance types"
@@ -28753,6 +29367,8 @@
     "name" : "Maintenance windows"
   }, {
     "name" : "Metrics"
+  }, {
+    "name" : "New Release management"
   }, {
     "name" : "Node Agents"
   }, {
@@ -28789,6 +29405,8 @@
     "name" : "Universe performance suggestions"
   }, {
     "name" : "UniverseClusterMutations"
+  }, {
+    "name" : "Upload Release packages"
   }, {
     "name" : "User management"
   }, {

@@ -152,8 +152,8 @@ class AbstractInstancesMethod(AbstractMethod):
         else:
             self.parser.add_argument("search_pattern", nargs="?")
         self.parser.add_argument("-t", "--type", default=self.YB_SERVER_TYPE)
-        self.parser.add_argument('--tags', action='append', default=None)
-        self.parser.add_argument("--skip_tags", action='append', default=None)
+        self.parser.add_argument('--tags', action='append', default=[])
+        self.parser.add_argument("--skip_tags", action='append', default=[])
 
         # If we do not have this entry from ansible.env, then set a None default, else, assume the
         # pem file is in the same location as the ansible.env file.
@@ -793,7 +793,7 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         use_default_ssh_port = not ssh_port_updated
 
         # Check if secondary subnet is present. If so, configure it.
-        if host_info.get('secondary_subnet'):
+        if "systemd_upgrade" not in args.tags and host_info.get('secondary_subnet'):
             # Wait for host to be ready to run ssh commands.
             self.wait_for_host(args, use_default_ssh_port)
             server_ports = self.get_server_ports_to_check(args)

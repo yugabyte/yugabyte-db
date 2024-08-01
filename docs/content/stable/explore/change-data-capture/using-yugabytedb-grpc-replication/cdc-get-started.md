@@ -6,39 +6,40 @@ description: Get started with Change Data Capture in YugabyteDB.
 headcontent: Get set up for using CDC in YugabyteDB
 menu:
   stable:
-    parent: explore-change-data-capture
+    parent: explore-change-data-capture-grpc-replication
     identifier: cdc-get-started
-    weight: 30
+    weight: 10
 type: docs
 ---
 
-To stream data change events from YugabyteDB databases, you need to use Debezium YugabyteDB connector. To deploy a Debezium YugabyteDB connector, you install the Debezium YugabyteDB connector archive, configure the connector, and start the connector by adding its configuration to Kafka Connect. You can download the connector from [GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases). The connector supports Kafka Connect version 2.x and later, and for YugabyteDB, it supports version 2.14 and later. For more connector configuration details and complete steps, refer to [Debezium connector](../debezium-connector-yugabytedb/).
-
-## Ordering guarantees
-
-|Ordering guarantee| Description|
-|----------| ----------------------------|
-|Per-tablet ordered delivery guarantee|All changes for a row (or rows in the same tablet) are received in the order in which they happened. However, due to the distributed nature of the problem, there is no guarantee of the order across tablets.|
-|At least once delivery|Updates for rows are streamed at least once. This can happen in the case of Kafka Connect Node failure. If the Kafka Connect Node pushes the records to Kafka and crashes before committing the offset, on restart, it will again get the same set of records.|
-|No gaps in change stream|Note that after you have received a change for a row for some timestamp `t`, you won't receive a previously unseen change for that row at a lower timestamp. Receiving any change implies that you have received _all older changes_ for that row.|
-
 ## Set up YugabyteDB for CDC
 
-The following steps are necessary to set up YugabyteDB for use with the Debezium YugabyteDB connector:
+The following steps are necessary to set up YugabyteDB for use with the YugabyteDB gRPC connector:
 
 - Create a DB stream ID.
 
-    Before you use the YugabyteDB connector to retrieve data change events from YugabyteDB, create a stream ID using the yb-admin CLI command. Refer to the [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) CDC command reference documentation for more details.
+    Before you use the YugabyteDB connector to retrieve data change events from YugabyteDB, create a stream ID using the yb-admin CLI command. Refer to the [yb-admin](../../../../admin/yb-admin/#change-data-capture-cdc-commands) CDC command reference documentation for more details.
 
 - Make sure the YB-Master and YB-TServer ports are open.
 
-    The connector connects to the YB-Master and YB-TServer processes running on the YugabyteDB server. Make sure the ports on which these processes are running are open. The [default ports](../../../reference/configuration/default-ports/) on which the processes run are `7100` and `9100` respectively.
+    The connector connects to the YB-Master and YB-TServer processes running on the YugabyteDB server. Make sure the ports on which these processes are running are open. The [default ports](../../../../reference/configuration/default-ports/) on which the processes run are `7100` and `9100` respectively.
 
 - Monitor available disk space.
 
     The change records for CDC are read from the WAL. YugabyteDB CDC maintains checkpoints internally for each DB stream ID and garbage collects the WAL entries if those have been streamed to the CDC clients.
 
-    In case CDC is lagging or away for some time, the disk usage may grow and cause YugabyteDB cluster instability. To avoid this scenario, if a stream is inactive for a configured amount of time, the WAL is garbage collected. This is configurable using a [YB-TServer flag](../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags).
+    In case CDC is lagging or away for some time, the disk usage may grow and cause YugabyteDB cluster instability. To avoid this scenario, if a stream is inactive for a configured amount of time, the WAL is garbage collected. This is configurable using a [YB-TServer flag](../../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags).
+
+## Deploying the YugabyteDB gRPC Connector
+
+To stream data change events from YugabyteDB databases, follow these steps to deploy the YugabyteDB gRPC Connector:
+
+- Download the Connector: You can download the connector from the [GitHub releases](https://github.com/yugabyte/debezium-connector-yugabytedb/releases)
+- Install the Connector: Extract and install the connector archive in your Kafka Connect environment.
+- Configure the Connector: Modify the connector configuration to suit your specific requirements.
+- Start the Connector: Add the connector's configuration to Kafka Connect and start the connector.
+
+For more details on connector configuration and deployment steps, refer to the [YugabyteDB gRPC Connector documentation](../debezium-connector-yugabytedb/).
 
 ## Serialization
 
@@ -63,7 +64,7 @@ The YugabyteDB source connector also supports AVRO serialization with schema reg
 
   {{% tab header="JSON" lang="json" %}}
 
-For JSON schema serialization, you can use the [Kafka JSON Serializer](https://mvnrepository.com/artifact/io.confluent/kafka-json-serializer) and equivalent deserializer. After downloading and including the required `JAR` file in the Kafka-Connect environment, you can directly configure the CDC source and sink connectors to use this converter.
+For JSON schema serialization, you can use the [Kafka JSON Serializer](https://mvnrepository.com/artifact/io.confluent/kafka-json-serializer) and equivalent de-serializer. After downloading and including the required `JAR` file in the Kafka-Connect environment, you can directly configure the CDC source and sink connectors to use this converter.
 
 For source connectors:
 
@@ -110,9 +111,9 @@ To use the [protobuf](http://protobuf.dev) format for the serialization/de-seria
 
 Before image refers to the state of the row _before_ the change event occurred. The YugabyteDB connector sends the before image of the row when it will be configured using a stream ID enabled with before image. It is populated for UPDATE and DELETE events. For INSERT events, before image doesn't make sense as the change record itself is in the context of new row insertion.
 
-Yugabyte uses multi-version concurrency control (MVCC) mechanism, and compacts data at regular intervals. The compaction or the history retention is controlled by the [history retention interval flag](../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec). However, when before image is enabled for a database, YugabyteDB adjusts the history retention for that database based on the most lagging active CDC stream so that the previous row state is retained, and available. Consequently, in the case of a lagging CDC stream, the amount of space required for the database grows as more data is retained. On the other hand, older rows that are not needed for any of the active CDC streams are identified and garbage collected.
+Yugabyte uses multi-version concurrency control (MVCC) mechanism, and compacts data at regular intervals. The compaction or the history retention is controlled by the [history retention interval flag](../../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec). However, when before image is enabled for a database, YugabyteDB adjusts the history retention for that database based on the most lagging active CDC stream so that the previous row state is retained, and available. Consequently, in the case of a lagging CDC stream, the amount of space required for the database grows as more data is retained. On the other hand, older rows that are not needed for any of the active CDC streams are identified and garbage collected.
 
-Schema version that is currently being used by a CDC stream will be used to frame before and current row images. The before image functionality is disabled by default unless it is specifically turned on during the CDC stream creation. The [yb-admin](../../../admin/yb-admin/#enabling-before-image) `create_change_data_stream` command can be used to create a CDC stream with before image enabled.
+Schema version that is currently being used by a CDC stream will be used to frame before and current row images. The before image functionality is disabled by default unless it is specifically turned on during the CDC stream creation. The [yb-admin](../../../../admin/yb-admin/#enabling-before-image) `create_change_data_stream` command can be used to create a CDC stream with before image enabled.
 
 {{< tip title="Use transformers" >}}
 
@@ -501,11 +502,11 @@ CDC record for UPDATE (using schema version 1):
 
 ## Colocated tables
 
-YugabyteDB supports streaming of changes from [colocated tables](../../architecture/docdb-sharding/colocated-tables). The connector can be configured with regular configuration properties and deployed for streaming.
+YugabyteDB supports streaming of changes from [colocated tables](../../../../architecture/docdb-sharding/colocated-tables). The connector can be configured with regular configuration properties and deployed for streaming.
 
 {{< note title="Note" >}}
 
-If a connector is already streaming a set of colocated tables from a database and if a new table is created in the same database, you can't deploy a new connector for the newly created table.
+If a connector is already streaming a set of colocated tables from a database and if a new table is created in the same database, you cannot deploy a new connector for this newly created table.
 
 To stream the changes for the new table, delete the existing connector and deploy it again with the updated configuration property after adding the new table to `table.include.list`.
 
@@ -513,15 +514,15 @@ To stream the changes for the new table, delete the existing connector and deplo
 
 ## Important configuration settings
 
-You can use several flags to fine-tune YugabyteDB's CDC behavior. These flags are documented in the [Change data capture flags](../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags) section of the YB-TServer reference and [Change data capture flags](../../../reference/configuration/yb-master/#change-data-capture-cdc-flags) section of the YB-Master reference. The following flags are particularly important for configuring CDC:
+You can use several flags to fine-tune YugabyteDB's CDC behavior. These flags are documented in the [Change data capture flags](../../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags) section of the YB-TServer reference and [Change data capture flags](../../../../reference/configuration/yb-master/#change-data-capture-cdc-flags) section of the YB-Master reference. The following flags are particularly important for configuring CDC:
 
-- [cdc_intent_retention_ms](../../../reference/configuration/yb-tserver/#cdc-intent-retention-ms) - Controls retention of intents, in ms. If a request for change records is not received for this interval, un-streamed intents are garbage collected and the CDC stream is considered expired. This expiry is not reversible, and the only course of action would be to create a new CDC stream. The default value of this flag is 4 hours (4 x 3600 x 1000 ms).
+- [cdc_intent_retention_ms](../../../../reference/configuration/yb-tserver/#cdc-intent-retention-ms) - Controls retention of intents, in ms. If a request for change records is not received for this interval, un-streamed intents are garbage collected and the CDC stream is considered expired. This expiry is not reversible, and the only course of action would be to create a new CDC stream. The default value of this flag is 4 hours (4 x 3600 x 1000 ms).
 
-- [cdc_wal_retention_time_secs](../../../reference/configuration/yb-master/#cdc-wal-retention-time-secs) - Controls how long WAL is retained, in seconds. This is irrespective of whether a request for change records is received or not. The default value of this flag is 4 hours (14400 seconds).
+- [cdc_wal_retention_time_secs](../../../../reference/configuration/yb-master/#cdc-wal-retention-time-secs) - Controls how long WAL is retained, in seconds. This is irrespective of whether a request for change records is received or not. The default value of this flag is 4 hours (14400 seconds).
 
-- [cdc_snapshot_batch_size](../../../reference/configuration/yb-tserver/#cdc-snapshot-batch-size) - This flag's default value is 250 records included per batch in response to an internal call to get the snapshot. If the table contains a very large amount of data, you may need to increase this value to reduce the amount of time it takes to stream the complete snapshot. You can also choose not to take a snapshot by modifying the [Debezium](../debezium-connector-yugabytedb/) configuration.
+- [cdc_snapshot_batch_size](../../../../reference/configuration/yb-tserver/#cdc-snapshot-batch-size) - This flag's default value is 250 records included per batch in response to an internal call to get the snapshot. If the table contains a very large amount of data, you may need to increase this value to reduce the amount of time it takes to stream the complete snapshot. You can also choose not to take a snapshot by modifying the [Debezium](../debezium-connector-yugabytedb/) configuration.
 
-- [cdc_max_stream_intent_records](../../../reference/configuration/yb-tserver/#cdc-max-stream-intent-records) - Controls how many intent records can be streamed in a single `GetChanges` call. Essentially, intents of large transactions are broken down into batches of size equal to this flag, hence this controls how many batches of `GetChanges` calls are needed to stream the entire large transaction. The default value of this flag is 1680, and transactions with intents less than this value are streamed in a single batch. The value of this flag can be increased, if the workload has larger transactions and CDC throughput needs to be increased. Note that high values of this flag can increase the latency of each `GetChanges` call.
+- [cdc_max_stream_intent_records](../../../../reference/configuration/yb-tserver/#cdc-max-stream-intent-records) - Controls how many intent records can be streamed in a single `GetChanges` call. Essentially, intents of large transactions are broken down into batches of size equal to this flag, hence this controls how many batches of `GetChanges` calls are needed to stream the entire large transaction. The default value of this flag is 1680, and transactions with intents less than this value are streamed in a single batch. The value of this flag can be increased, if the workload has larger transactions and CDC throughput needs to be increased. Note that high values of this flag can increase the latency of each `GetChanges` call.
 
 ## Retaining data for longer durations
 
@@ -535,12 +536,12 @@ Longer values of `cdc_intent_retention_ms`, coupled with longer CDC lags (period
 
 ## Content-based routing
 
-By default, the Yugabyte Debezium connector streams all of the change events that it reads from a table to a single static topic. However, you may want to re-route the events into different Kafka topics based on the event's content. You can do this using the Debezium `ContentBasedRouter`. But first, two additional dependencies need to be placed in the Kafka-Connect environment. These are not included in the official *yugabyte-debezium-connector* for security reasons. These dependencies are:
+By default, the connector streams all of the change events that it reads from a table to a single static topic. However, you may want to re-route the events into different Kafka topics based on the event's content. You can do this using the Debezium `ContentBasedRouter`. But first, two additional dependencies need to be placed in the Kafka-Connect environment. These are not included in the official _yugabyte-debezium-connector_ for security reasons. These dependencies are:
 
 - Debezium routing SMT (Single Message Transform)
 - Groovy JSR223 implementation (or other scripting languages that integrate with [JSR 223](https://jcp.org/en/jsr/detail?id=223))
 
-To get started, you can rebuild the *yugabyte-debezium-connector* image including these dependencies. Here's what the Dockerfile would look like:
+To get started, you can rebuild the _yugabyte-debezium-connector_ image including these dependencies. The following shows what the Dockerfile would look like:
 
 ```Dockerfile
 FROM quay.io/yugabyte/debezium-connector:latest
@@ -571,6 +572,6 @@ The `<routing-expression>` contains the logic for routing of the events. For exa
 value.after != null ? (value.after?.country?.value == '\''UK'\'' ? '\''uk_users'\'' : null) : (value.before?.country?.value == '\''UK'\'' ? '\''uk_users'\'' : null)"
 ```
 
-This expression checks if the value of the row after the operation has the country set to "UK". If *yes* then the expression returns "uk_users." If *no*, it returns *null*, and in case the row after the operation is *null* (for example, in a "delete" operation), the expression also checks for the same condition on row values before the operation. The value that is returned determines which new Kafka Topic will receive the re-routed event. If it returns *null*, the event is sent to the default topic.
+This expression checks if the value of the row after the operation has the country set to `UK`. If _yes_, then the expression returns `uk_users`. If _no_, it returns _null_, and in case the row after the operation is _null_ (for example, in a "delete" operation), the expression also checks for the same condition on row values before the operation. The value that is returned determines which new Kafka Topic will receive the re-routed event. If it returns _null_, the event is sent to the default topic.
 
 For more advanced routing configuration, refer to the [Debezium documentation](https://debezium.io/documentation/reference/stable/transformations/content-based-routing.html) on content-based routing.

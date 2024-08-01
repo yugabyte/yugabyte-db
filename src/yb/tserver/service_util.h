@@ -44,8 +44,7 @@
 
 DECLARE_bool(ysql_enable_db_catalog_version_mode);
 
-namespace yb {
-namespace tserver {
+namespace yb::tserver {
 
 // Non-template helpers.
 
@@ -58,8 +57,6 @@ void SetupErrorAndRespond(TabletServerErrorPB* error,
                           const Status& s,
                           rpc::RpcContext* context);
 
-void SetupError(TabletServerErrorPB* error, const Status& s);
-
 void SetupErrorAndRespond(LWTabletServerErrorPB* error,
                           const Status& s,
                           TabletServerErrorPB::Code code,
@@ -68,8 +65,6 @@ void SetupErrorAndRespond(LWTabletServerErrorPB* error,
 void SetupErrorAndRespond(LWTabletServerErrorPB* error,
                           const Status& s,
                           rpc::RpcContext* context);
-
-void SetupError(LWTabletServerErrorPB* error, const Status& s);
 
 Result<int64_t> LeaderTerm(const tablet::TabletPeer& tablet_peer);
 
@@ -370,8 +365,7 @@ class CatalogVersionChecker {
   boost::optional<VersionInfo> tserver_version_info_;
 };
 
-}  // namespace tserver
-}  // namespace yb
+} // namespace yb::tserver
 
 // Macro helpers.
 
