@@ -144,14 +144,14 @@ export const MigrationSourceEnvSidePanel: FC<MigrationSourceEnvSidePanelProps> =
         customBodyRender: (size: number) => getMemorySizeUnits(size),
       },
     },
-    {
+    /* {
       name: "rowCount",
       label: t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.rowCount"),
       options: {
         setCellHeaderProps: () => ({ style: { padding: "8px 16px" } }),
         setCellProps: () => ({ style: { padding: "8px 16px" } }),
       },
-    },
+    }, */
     {
       name: "iops",
       label: t("clusterDetail.voyager.planAndAssess.sourceEnv.sourceObjects.iops"),
