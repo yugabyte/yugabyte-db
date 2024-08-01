@@ -10,7 +10,7 @@ v_tables_list_sql       text;
 
 BEGIN
 
-/* YB: advisory lock not supported
+/* YB(GH#3642): advisory lock not supported
 v_adv_lock := pg_try_advisory_lock(hashtext('pg_partman run_maintenance'));
 IF v_adv_lock = false THEN
     RAISE NOTICE 'Partman maintenance already running or another session has not released its advisory lock.';
@@ -50,7 +50,9 @@ LOOP
 
 END LOOP;
 
+/* YB(GH#3642): advisory lock not supported
 PERFORM pg_advisory_unlock(hashtext('pg_partman run_maintenance'));
+*/
 END
 $$;
 
