@@ -173,10 +173,12 @@ set(MASTER_SRCS
   yql_virtual_table.cc
   yql_vtable_iterator.cc
   ysql_backends_manager.cc
+  ysql_ddl_handler.cc
+  ysql_ddl_verification_task.cc
+  ysql_sequence_util.cc
   ysql_tablegroup_manager.cc
   ysql_tablespace_manager.cc
-  ysql_ddl_handler.cc
-  ysql_ddl_verification_task.cc)
+)
 
 set(MASTER_DEPS
   yb_common

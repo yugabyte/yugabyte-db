@@ -292,6 +292,9 @@ YB_TEST_TARGET_LINK_LIBRARIES(minicluster-snapshot-test pg_wrapper_test_base)
 ADD_YB_TEST(disk_full-test)
 YB_TEST_TARGET_LINK_LIBRARIES(disk_full-test pg_wrapper_test_base)
 
+ADD_YB_TEST(sequence_utility-itest)
+YB_TEST_TARGET_LINK_LIBRARIES(sequence_utility-itest pg_wrapper_test_base)
+
 ADD_YB_CQL_TEST(cql-index-test)
 ADD_YB_CQL_TEST(cql-packed-row-test)
 ADD_YB_CQL_TEST(cql-tablet-split-test)
