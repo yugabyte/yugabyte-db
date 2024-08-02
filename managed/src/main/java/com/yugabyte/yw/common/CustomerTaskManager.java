@@ -18,6 +18,7 @@ import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
 import com.yugabyte.yw.commissioner.tasks.ReprovisionNode;
 import com.yugabyte.yw.commissioner.tasks.params.IProviderTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.forms.AuditLogConfigParams;
@@ -80,6 +81,7 @@ public class CustomerTaskManager {
 
   private Commissioner commissioner;
   private YBClientService ybService;
+  private YbcManager ybcManager;
 
   public static final Logger LOG = LoggerFactory.getLogger(CustomerTaskManager.class);
   private static final List<TaskType> LOAD_BALANCER_TASK_TYPES =
@@ -91,9 +93,11 @@ public class CustomerTaskManager {
   private static final String ALTER_LOAD_BALANCER = "alterLoadBalancer";
 
   @Inject
-  public CustomerTaskManager(YBClientService ybService, Commissioner commissioner) {
+  public CustomerTaskManager(
+      YBClientService ybService, Commissioner commissioner, YbcManager ybcManager) {
     this.ybService = ybService;
     this.commissioner = commissioner;
+    this.ybcManager = ybcManager;
   }
 
   // Invoked if the task is in incomplete state.
@@ -530,8 +534,7 @@ public class CustomerTaskManager {
         if (universe.isYbcEnabled()) {
           nodeTaskParams.setEnableYbc(true);
           nodeTaskParams.setYbcInstalled(true);
-          nodeTaskParams.setYbcSoftwareVersion(
-              universe.getUniverseDetails().getYbcSoftwareVersion());
+          nodeTaskParams.setYbcSoftwareVersion(ybcManager.getStableYbcVersion());
         }
         if (taskType == TaskType.MasterFailover) {
           nodeTaskParams.azUuid = UUID.fromString(oldTaskParams.get("azUuid").textValue());
