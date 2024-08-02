@@ -371,12 +371,12 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         }
       }
 
-      if (context.postAction != null) {
-        context.postAction.accept(node);
-      }
       // Run post node upgrade hooks
       createHookTriggerTasks(singletonNodeList, false, true);
       createSetNodeStateTask(node, NodeState.Live).setSubTaskGroupType(subGroupType);
+      if (context.postAction != null) {
+        context.postAction.accept(node);
+      }
     }
 
     if (!isLoadBalancerOn) {

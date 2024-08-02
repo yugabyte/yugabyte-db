@@ -27,11 +27,13 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
@@ -1309,6 +1311,25 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     }
   }
 
+  @Test
+  public void testResizeNodeRetries() {
+    ResizeNodeParams taskParams = new ResizeNodeParams();
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.creatingUser = defaultUser;
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.clusters.get(0).userIntent.instanceType = NEW_INSTANCE_TYPE;
+    TestUtils.setFakeHttpContext(defaultUser);
+    super.verifyTaskRetries(
+        defaultCustomer,
+        CustomerTask.TaskType.ResizeNode,
+        CustomerTask.TargetType.Universe,
+        defaultUniverse.getUniverseUUID(),
+        TaskType.ResizeNode,
+        taskParams,
+        false);
+  }
+
   private void assertUniverseData(boolean increaseVolume, boolean changeInstance) {
     assertUniverseData(increaseVolume, changeInstance, true, false);
   }
@@ -1603,7 +1624,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       taskTypesSequence.add(index++, TaskType.CheckFollowerLag);
     }
     if (changeInstance) {
-      taskTypesSequence.add(index++, TaskType.UpdateNodeDetails);
+      taskTypesSequence.add(index + 1, TaskType.UpdateNodeDetails);
     }
   }
 
