@@ -32,8 +32,8 @@ The following operating systems and architectures are no longer supported for [d
 
 | Operating system | x86            | ARM            | Notes |
 | :--------------- | :------------- | :------------- | :---- |
-| Amazon Linux 2   | {{<icon/no>}} | {{<icon/no>}} | Supported in v2.18.0 and later<br>Deprecated in v2.20 |
-| CentOS 7          | {{<icon/no>}}  |                | Deprecated in v2.20 |
-| Oracle Linux 7   | {{<icon/no>}}  |                | Deprecated in v2.20 |
-| Red Hat Enterprise Linux 7 | {{<icon/no>}} |       | Deprecated in v2.20 |
-| Ubuntu 18        | {{<icon/no>}}  | {{<icon/no>}}  | Deprecated in v2.20 |
+| Amazon Linux 2   | {{<icon/no>}} | {{<icon/no>}} | Supported in v2.18.0 and later<br>Deprecated in v2.20<br> Removed support in v2.21. |
+| CentOS 7          | {{<icon/no>}}  |                | Deprecated in v2.20<br> Removed support in v2.21. |
+| Oracle Linux 7   | {{<icon/no>}}  |                | Deprecated in v2.20<br> Removed support in v2.21. |
+| Red Hat Enterprise Linux 7 | {{<icon/no>}} |       | Deprecated in v2.20<br> Removed support in v2.21. |
+| Ubuntu 18        | {{<icon/no>}}  | {{<icon/no>}}  | Deprecated in v2.20<br> Removed support in v2.21. |
