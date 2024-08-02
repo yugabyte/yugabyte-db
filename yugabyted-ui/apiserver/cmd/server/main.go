@@ -260,6 +260,12 @@ func main() {
     // Get Voyager assessment report
     e.GET("/api/migration_assessment_v2", c.GetVoyagerAssessmentReport)
 
+    // Get assessment source db details
+    e.GET("/api/assessment_source_db_details", c.GetAssessmentSourceDBDetails)
+
+    // Get assessment target recommendations details
+    e.GET("/api/assessment_target_recommendations", c.GetTargetRecommendations)
+
     // Get Migrate schema task details
     e.GET("/api/migrate_schema", c.GetMigrateSchemaInfo)
 

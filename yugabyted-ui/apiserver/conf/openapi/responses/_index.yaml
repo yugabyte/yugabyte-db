@@ -190,6 +190,26 @@ VoyagerAssessmentResponseV2:
         properties:
           data:
             $ref: '../schemas/_index.yaml#/MigrationAssessmentReport'
+AssessmentSourceDbResponse:
+  description: Response for migration assessment source db metadata page
+  content:
+    application/json:
+      schema:
+        title: API for Source DB SQL objects metadata page
+        type: object
+        properties:
+          data:
+            $ref: '../schemas/_index.yaml#/AssessmentSourceDbObject'
+AssessmentTargetRecommendationResponse:
+  description: Response for migration assessment target recommendation page
+  content:
+    application/json:
+      schema:
+        title: API for Target Schema recommendations page
+        type: object
+        properties:
+          data:
+            $ref: '../schemas/_index.yaml#/AssessmentTargetRecommendationObject'
 ConnectionsResponse:
   description: YSQL connection manager stats
   content:

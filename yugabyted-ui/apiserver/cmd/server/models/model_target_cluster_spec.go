@@ -3,13 +3,13 @@ package models
 // TargetClusterSpec - schema for target cluster cpu, memory
 type TargetClusterSpec struct {
 
-    NumNodes int32 `json:"num_nodes"`
+    NumNodes int64 `json:"num_nodes"`
 
-    VcpuPerNode int32 `json:"vcpu_per_node"`
+    VcpuPerNode int64 `json:"vcpu_per_node"`
 
-    MemoryPerNode int32 `json:"memory_per_node"`
+    MemoryPerNode int64 `json:"memory_per_node"`
 
-    ConnectionsPerNode int32 `json:"connections_per_node"`
+    ConnectionsPerNode int64 `json:"connections_per_node"`
 
-    InsertsPerNode int32 `json:"inserts_per_node"`
+    InsertsPerNode int64 `json:"inserts_per_node"`
 }
