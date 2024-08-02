@@ -3617,9 +3617,8 @@ class TabletSplitSingleBlockITest :
       return STATUS(Incomplete, "Empty or too small SST.");
     }
 
-    auto data_block = VERIFY_RESULT(table_reader->RetrieveBlockFromFile(
-        rocksdb::ReadOptions::kDefault, index_iter->value(), rocksdb::BlockType::kData));
-    return data_block->NumRestarts();
+    return table_reader->TEST_GetBlockNumRestarts(
+        rocksdb::ReadOptions::kDefault, index_iter->value(), rocksdb::BlockType::kData);
   }
 };
 
