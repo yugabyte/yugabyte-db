@@ -223,7 +223,8 @@ ADD_YB_LIBRARY(master_error
   DEPS ${MASTER_RPC_LIBS})
 
 set(MASTER_UTIL_SRCS
-  master_util.cc)
+  master_util.cc
+  catalog_entity_parser.cc)
 ADD_YB_LIBRARY(master_util
   SRCS ${MASTER_UTIL_SRCS}
   DEPS master_error ${MASTER_RPC_LIBS})

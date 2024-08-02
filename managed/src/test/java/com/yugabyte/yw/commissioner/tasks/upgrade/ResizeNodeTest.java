@@ -821,7 +821,8 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
     MockUpgrade mockUpgrade = initMockUpgrade();
     mockUpgrade
-        .precheckTasks(getPrecheckTasks(true))
+        // Because only RR doesn't infer CheckNodesAreSafeToTakeDown.
+        .precheckTasks(getPrecheckTasks(false))
         .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, true)
         .withContext(instanceChangeContext(mockUpgrade))
         .tserverTask(TaskType.ChangeInstanceType)

@@ -64,8 +64,7 @@ public class CloudProviderDelete extends AbstractTaskBase {
     }
 
     for (AccessKey accessKey : AccessKey.getAll(provider.getUuid())) {
-      accessManager.deleteKeyByProvider(
-          provider, accessKey.getKeyCode(), accessKey.getKeyInfo().deleteRemote);
+      accessManager.deleteKeyByProvider(provider, accessKey);
     }
     // Clear Node instance for the provider.
     NodeInstance.deleteByProvider(providerUUID);

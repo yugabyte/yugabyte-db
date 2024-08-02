@@ -11402,6 +11402,22 @@
       "required" : [ "roleUUID" ],
       "type" : "object"
     },
+    "RollMaxBatchSize" : {
+      "description" : "WARNING: This is a preview API that could change.Information about suggested number of servers to roll at a time",
+      "properties" : {
+        "primaryBatchSize" : {
+          "description" : "WARNING: This is a preview API that could change.Suggested number nodes for primary cluster",
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "readReplicaBatchSize" : {
+          "description" : "WARNING: This is a preview API that could change.Suggested number nodes for readonly cluster",
+          "format" : "int32",
+          "type" : "integer"
+        }
+      },
+      "type" : "object"
+    },
     "RollbackUpgradeParams" : {
       "properties" : {
         "allowInsecure" : {

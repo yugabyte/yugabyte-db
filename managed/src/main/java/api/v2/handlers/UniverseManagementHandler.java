@@ -19,7 +19,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler.OpType;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
@@ -36,7 +36,8 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class UniverseManagementHandler extends ApiControllerUtils {
-  @Inject private RuntimeConfigFactory runtimeConfigFactory;
+  @Inject private RuntimeConfGetter confGetter;
+
   @Inject private UniverseCRUDHandler universeCRUDHandler;
   @Inject private Commissioner commissioner;
 
@@ -46,8 +47,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
     // get v1 Universe
     com.yugabyte.yw.forms.UniverseResp v1Response =
-        com.yugabyte.yw.forms.UniverseResp.create(
-            universe, null, runtimeConfigFactory.globalRuntimeConf());
+        com.yugabyte.yw.forms.UniverseResp.create(universe, null, confGetter);
     log.info("Getting Universe with UUID: {}", uniUUID);
     // map to v2 Universe
     api.v2.models.Universe v2Response = UniverseRespMapper.INSTANCE.toV2UniverseResp(v1Response);

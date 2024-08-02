@@ -465,22 +465,22 @@ public class NodeManager extends DevopsBase {
           && !installOtelCol) {
         subCommand.add("--ssh_user");
         subCommand.add("yugabyte");
-      } else if (StringUtils.isNotBlank(providerDetails.sshUser)
-          || StringUtils.isNotBlank(sshUser)) {
-        subCommand.add("--ssh_user");
-        if (type == NodeCommandType.Manage_Otel_Collector) {
-          boolean useSudo =
-              params instanceof ManageOtelCollector.Params
-                  && ((ManageOtelCollector.Params) params).useSudo;
-          if (!useSudo) {
-            sshUser = "yugabyte";
-          }
-        }
-
+      } else {
+        String computedUser = "";
         if (StringUtils.isNotBlank(sshUser)) {
-          subCommand.add(sshUser);
-        } else {
-          subCommand.add(providerDetails.sshUser);
+          computedUser = sshUser;
+        } else if (StringUtils.isNotBlank(providerDetails.sshUser)) {
+          computedUser = providerDetails.sshUser;
+        }
+        boolean useSudo =
+            params instanceof ManageOtelCollector.Params
+                && ((ManageOtelCollector.Params) params).useSudo;
+        if (type == NodeCommandType.Manage_Otel_Collector && !useSudo) {
+          computedUser = "yugabyte";
+        }
+        if (StringUtils.isNotBlank(computedUser)) {
+          subCommand.add("--ssh_user");
+          subCommand.add(computedUser);
         }
       }
     } else if (type == NodeCommandType.Precheck) {

@@ -82,6 +82,7 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
             rowCount={newMigrationAPI?.source_database?.table_row_count?.toString() ?? "N/A"}
             totalSize={newMigrationAPI?.source_database?.total_table_size ?? "N/A"}
             indexSize={newMigrationAPI?.source_database?.total_index_size ?? "N/A"}
+            migration={migration}
           />
 
           <MigrationAssessmentRecommendation
@@ -128,7 +129,7 @@ export const MigrationAssessment: FC<MigrationAssessmentProps> = ({
           />
 
           <MigrationAssessmentRefactoring
-            sqlObjects={newMigrationAPI?.recommended_refactoring}
+            sqlObjects={newMigrationAPI?.recommended_refactoring?.refactor_details}
             unsupportedDataTypes={newMigrationAPI?.unsupported_data_types}
             unsupportedFeatures={newMigrationAPI?.unsupported_features}
             unsupportedFunctions={newMigrationAPI?.unsupported_functions}

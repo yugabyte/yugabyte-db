@@ -527,7 +527,8 @@ class NodeChecker():
                  enable_ysql, enable_ysql_auth, master_http_port, tserver_http_port,
                  ysql_server_http_port, node_version, is_ybc_enabled, ybc_port,
                  time_drift_wrn_threshold, time_drift_err_threshold, otel_enabled,
-                 temp_output_file, ddl_atomicity_check, master_leader_url):
+                 temp_output_file, ddl_atomicity_check, master_leader_url,
+                 master_rpc_port, tserver_rpc_port):
         self.node = node
         self.node_name = node_name
         self.node_identifier = node_identifier
@@ -547,7 +548,9 @@ class NodeChecker():
         self.enable_ysql = enable_ysql
         self.enable_ysql_auth = enable_ysql_auth
         self.master_http_port = master_http_port
+        self.master_rpc_port = master_rpc_port
         self.tserver_http_port = tserver_http_port
+        self.tserver_rpc_port = tserver_rpc_port
         self.ysql_server_http_port = ysql_server_http_port
         self.node_version = node_version
         self.is_ybc_enabled = is_ybc_enabled
@@ -709,10 +712,10 @@ class NodeChecker():
                 # & they are about to expire <= 30 days, we will raise the alerts
                 # for users to restart the services.
                 try:
-                    cert_output = self.retrieve_host_certs(self.node, self.tserver_http_port)
+                    cert_output = self.retrieve_host_certs(self.node, self.tserver_rpc_port)
                 except Exception as e:
                     logging.info("Failed to retrieve tserver certs, trying with master")
-                    cert_output = self.retrieve_host_certs(self.node, self.master_http_port)
+                    cert_output = self.retrieve_host_certs(self.node, self.master_rpc_port)
                 certs = self.parse_certs(cert_output)
                 if not self.are_certs_same(certs, cert_path):
                     for cert in certs:
@@ -2020,7 +2023,9 @@ class NodeInfo:
         self.redis_port = data["redisPort"]
         self.enable_ysql_auth = data["enableYSQLAuth"]
         self.master_http_port = data["masterHttpPort"]
+        self.master_rpc_port = data["masterRpcPort"]
         self.tserver_http_port = data["tserverHttpPort"]
+        self.tserver_rpc_port = data["tserverRpcPort"]
         self.ysql_server_http_port = data["ysqlServerHttpPort"]
         self.check_clock = data["checkClock"]
         self.check_time_drift = data["checkTimeDrift"]
@@ -2078,7 +2083,8 @@ def main():
         n.enable_ysql, n.enable_ysql_auth, n.master_http_port, n.tserver_http_port,
         n.ysql_server_http_port, n.yb_version, n.is_ybc_enabled, n.ybc_port,
         n.time_drift_wrn_threshold, n.time_drift_err_threshold, n.otel_enabled,
-        args.temp_output_file, args.ddl_atomicity_check, args.master_leader_url)
+        args.temp_output_file, args.ddl_atomicity_check, args.master_leader_url,
+        n.master_rpc_port, n.tserver_rpc_port)
 
     coordinator.add_precheck(checker, "check_openssl_availability")
 

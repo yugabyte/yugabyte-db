@@ -11,13 +11,15 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.AllowedTasks;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Customer;
@@ -32,6 +34,7 @@ import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -50,27 +53,44 @@ import play.Environment;
 @ApiModel(description = "Universe-creation response")
 @Slf4j
 public class UniverseResp {
-  public static UniverseResp create(Universe universe, UUID taskUUID, Config config) {
-    UniverseResourceDetails.Context context = new Context(config, universe);
+  public static UniverseResp create(
+      Universe universe, UUID taskUUID, RuntimeConfGetter confGetter) {
+    UniverseResourceDetails.Context context = new Context(confGetter.getStaticConf(), universe);
     UniverseResourceDetails resourceDetails =
         UniverseResourceDetails.create(universe.getUniverseDetails(), context);
     fillRegions(Collections.singletonList(universe));
     // Universe UUID to AllowedTasks object map.
     Map<UUID, AllowedTasks> allowedTasks =
         getAllowedTasksOnFailure(Collections.singletonList(universe));
+    RollMaxBatchSize rollMaxBatchSize = null;
+    if (confGetter.getConfForScope(universe, UniverseConfKeys.upgradeBatchRollEnabled)) {
+      rollMaxBatchSize = UpgradeTaskBase.getMaxNodesToRoll(universe);
+    }
     return new UniverseResp(
-        universe, taskUUID, resourceDetails, allowedTasks.get(universe.getUniverseUUID()));
+        universe,
+        taskUUID,
+        resourceDetails,
+        allowedTasks.get(universe.getUniverseUUID()),
+        rollMaxBatchSize);
   }
 
   public static List<UniverseResp> create(
-      Customer customer, Collection<Universe> universeList, Config config) {
+      Customer customer, Collection<Universe> universeList, RuntimeConfGetter confGetter) {
     List<UniverseDefinitionTaskParams> universeDefinitionTaskParams =
         universeList.stream().map(Universe::getUniverseDetails).collect(Collectors.toList());
     UniverseResourceDetails.Context context =
-        new Context(config, customer, universeDefinitionTaskParams);
+        new Context(confGetter.getStaticConf(), customer, universeDefinitionTaskParams);
     fillRegions(universeList);
     // Universe UUID to AllowedTasks object map.
     Map<UUID, AllowedTasks> allowedTasks = getAllowedTasksOnFailure(universeList);
+    Map<UUID, RollMaxBatchSize> suggests = new HashMap<>();
+    universeList.forEach(
+        u -> {
+          if (confGetter.getConfForScope(u, UniverseConfKeys.upgradeBatchRollEnabled)) {
+            suggests.put(u.getUniverseUUID(), UpgradeTaskBase.getMaxNodesToRoll(u));
+          }
+        });
+
     return universeList.stream()
         .map(
             universe ->
@@ -82,7 +102,8 @@ public class UniverseResp {
                         UUID.fromString(
                             universe.getUniverseDetails().getPrimaryCluster().userIntent.provider)),
                     UniverseResourceDetails.create(universe.getUniverseDetails(), context),
-                    allowedTasks.get(universe.getUniverseUUID())))
+                    allowedTasks.get(universe.getUniverseUUID()),
+                    suggests.get(universe.getUniverseUUID())))
         .collect(Collectors.toList());
   }
 
@@ -177,19 +198,25 @@ public class UniverseResp {
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2024.1.0.0")
   public final AllowedUniverseTasksResp allowedTasks;
 
+  @ApiModelProperty(
+      value = "YbaApi Internal. Suggested number of tservers to roll during upgrade if available")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2024.1.0.0")
+  public final RollMaxBatchSize rollMaxBatchSize;
+
   public UniverseResp(Universe entity) {
-    this(entity, null, null, null);
+    this(entity, null, null, null, null);
   }
 
   public UniverseResp(Universe entity, UUID taskUUID) {
-    this(entity, taskUUID, null, null);
+    this(entity, taskUUID, null, null, null);
   }
 
   public UniverseResp(
       Universe entity,
       UUID taskUUID,
       UniverseResourceDetails resources,
-      AllowedTasks allowedTasks) {
+      AllowedTasks allowedTasks,
+      RollMaxBatchSize rollMaxBatchSize) {
     this(
         entity,
         taskUUID,
@@ -197,7 +224,8 @@ public class UniverseResp {
         Provider.getOrBadRequest(
             UUID.fromString(entity.getUniverseDetails().getPrimaryCluster().userIntent.provider)),
         resources,
-        allowedTasks);
+        allowedTasks,
+        rollMaxBatchSize);
   }
 
   public UniverseResp(
@@ -206,7 +234,8 @@ public class UniverseResp {
       Customer customer,
       Provider provider,
       UniverseResourceDetails resources,
-      AllowedTasks allowedTasks) {
+      AllowedTasks allowedTasks,
+      RollMaxBatchSize rollMaxBatchSize) {
     universeUUID = entity.getUniverseUUID();
     name = entity.getName();
     creationDate = entity.getCreationDate().toString();
@@ -228,6 +257,8 @@ public class UniverseResp {
     this.allowedTasks =
         new AllowedUniverseTasksResp(
             allowedTasks == null ? AllowedTasks.builder().build() : allowedTasks);
+
+    this.rollMaxBatchSize = rollMaxBatchSize;
   }
 
   // TODO(UI folks): Remove this. This is redundant as it is already available in resources

@@ -1088,6 +1088,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
 
+  Status DumpSysCatalogEntries(
+      const DumpSysCatalogEntriesRequestPB* req, DumpSysCatalogEntriesResponsePB* resp,
+      rpc::RpcContext* rpc);
+
+  Status WriteSysCatalogEntry(
+      const WriteSysCatalogEntryRequestPB* req, WriteSysCatalogEntryResponsePB* resp,
+      rpc::RpcContext* rpc);
+
   // Deletes a tablet that is no longer serving user requests. This would require that the tablet
   // has been split and both of its children are now in RUNNING state and serving user requests
   // instead.
@@ -1616,6 +1624,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status CreateTransactionAwareSnapshot(
       const CreateSnapshotRequestPB& req, CreateSnapshotResponsePB* resp, CoarseTimePoint deadline);
+
+  Result<std::vector<SysCatalogEntryDumpPB>> FetchFromSysCatalog(
+      SysRowEntryType type, const std::string& item_id_filter);
+
+  Status WriteToSysCatalog(
+      SysRowEntryType type, const std::string& item_id, const std::string& debug_string,
+      QLWriteRequestPB::QLStmtType op_type);
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.

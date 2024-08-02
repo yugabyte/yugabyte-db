@@ -13,11 +13,12 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterUserIntent;
 import com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareUpgrade;
 import com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareUpgradeYB;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.forms.RollMaxBatchSize;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams.CommunicationPorts;
@@ -45,7 +46,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -60,6 +60,8 @@ import org.apache.commons.lang3.tuple.Pair;
 public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
   private List<ServerType> canBeIgnoredServerTypes = Arrays.asList(ServerType.CONTROLLER);
+
+  public static final String SPLIT_FALLBACK = "SPLIT_FALLBACK";
 
   public static final UpgradeContext DEFAULT_CONTEXT =
       UpgradeContext.builder()
@@ -129,7 +131,25 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     }
 
     public Set<NodeDetails> getAllNodes() {
-      return Stream.concat(mastersList.stream(), tserversList.stream()).collect(Collectors.toSet());
+      return Stream.concat(mastersList.stream(), tserversList.stream())
+          .collect(Collectors.toCollection(LinkedHashSet::new));
+    }
+
+    public List<MastersAndTservers> splitToSingle() {
+      List<MastersAndTservers> split = new ArrayList<>();
+      mastersList.stream()
+          .forEach(
+              n ->
+                  split.add(
+                      new MastersAndTservers(
+                          Collections.singletonList(n), Collections.emptyList())));
+      tserversList.stream()
+          .forEach(
+              n ->
+                  split.add(
+                      new MastersAndTservers(
+                          Collections.emptyList(), Collections.singletonList(n))));
+      return split;
     }
   }
 
@@ -158,22 +178,45 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
               .filter(n -> n.state != NodeState.Live)
               .findFirst();
       if (nonLive.isEmpty()) {
-        List<MastersAndTservers> split = new ArrayList<>();
-        nodesToBeRestarted.mastersList.stream()
-            .forEach(
-                n ->
-                    split.add(
-                        new MastersAndTservers(
-                            Collections.singletonList(n), Collections.emptyList())));
-        nodesToBeRestarted.tserversList.stream()
-            .forEach(
-                n ->
-                    split.add(
-                        new MastersAndTservers(
-                            Collections.emptyList(), Collections.singletonList(n))));
-        createCheckNodesAreSafeToTakeDownTask(split, getTargetSoftwareVersion());
+        RollMaxBatchSize rollMaxBatchSize = getCurrentRollBatchSize(universe);
+        // Use only primary nodes
+        MastersAndTservers forCluster =
+            nodesToBeRestarted.getForCluster(
+                universe.getUniverseDetails().getPrimaryCluster().uuid);
+
+        if (!forCluster.isEmpty()) {
+          List<MastersAndTservers> split = split(universe, forCluster, rollMaxBatchSize);
+          createCheckNodesAreSafeToTakeDownTask(split, getTargetSoftwareVersion(), true);
+        }
       }
     }
+  }
+
+  private RollMaxBatchSize getCurrentRollBatchSize(Universe universe) {
+    RollMaxBatchSize rollMaxBatchSize = new RollMaxBatchSize();
+    if (taskParams().rollMaxBatchSize != null
+        && confGetter.getConfForScope(universe, UniverseConfKeys.upgradeBatchRollEnabled)) {
+      rollMaxBatchSize = taskParams().rollMaxBatchSize;
+    }
+    if (getTaskCache() != null && getTaskCache().get(SPLIT_FALLBACK) != null) {
+      RollMaxBatchSize fallback = getTaskCache().get(SPLIT_FALLBACK, RollMaxBatchSize.class);
+      // Setting this only for primary cluster, RR still can be rolled with any speed.
+      rollMaxBatchSize.setPrimaryBatchSize(fallback.getPrimaryBatchSize());
+    }
+    return rollMaxBatchSize;
+  }
+
+  private List<MastersAndTservers> split(
+      Universe universe, MastersAndTservers forCluster, RollMaxBatchSize rollMaxBatchSize) {
+    List<MastersAndTservers> result = new ArrayList<>();
+    forCluster.mastersList.forEach(
+        m -> result.add(MastersAndTservers.from(m, Set.of(ServerType.MASTER))));
+    splitNodes(universe, forCluster.tserversList, n -> Set.of(ServerType.TSERVER), rollMaxBatchSize)
+        .stream()
+        .map(node -> MastersAndTservers.from(node, Set.of(ServerType.TSERVER)))
+        .forEach(result::add);
+
+    return result;
   }
 
   @Override
@@ -357,71 +400,27 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         isYbcPresent);
   }
 
-  /**
-   * Split nodes to chunks that are safe to take down simultaneously. Also we group by serverType,
-   * so that each portion will have the same set of server types. Each chunk cannot contain more
-   * than one master. Default behavior (if the feature is turned off) is single-node chunks. Nodes
-   * are expected to be sorted by az.
-   *
-   * @param universe Current universe state.
-   * @param nodes Nodes to split (sorted by az).
-   * @param activeRole False means that we are processing disabled masters.
-   * @param serverTypeFunction Function to determine which server types to use for particular node.
-   * @return
-   */
-  private List<List<NodeDetails>> splitNodes(
-      Universe universe,
-      Collection<NodeDetails> nodes,
-      boolean activeRole,
-      Function<NodeDetails, Set<ServerType>> serverTypeFunction) {
-    return splitNodes(confGetter, universe, nodes, activeRole, serverTypeFunction);
-  }
-
-  /**
-   * Split nodes to chunks that are safe to take down simultaneously. Also we group by serverType,
-   * so that each portion will have the same set of server types. Each chunk cannot contain more
-   * than one master. Default behavior (if the feature is turned off) is single-node chunks. Nodes
-   * are expected to be sorted by az.
-   *
-   * @param confGetter Getter.
-   * @param universe Current universe state.
-   * @param nodes Nodes to split (sorted by az).
-   * @param activeRole False means that we are processing disabled masters.
-   * @param serverTypeFunction Function to determine which server types to use for particular node.
-   * @return
-   */
-  static List<List<NodeDetails>> splitNodes(
-      RuntimeConfGetter confGetter,
-      Universe universe,
-      Collection<NodeDetails> nodes,
-      boolean activeRole,
-      Function<NodeDetails, Set<ServerType>> serverTypeFunction) {
-    if (!activeRole
-        || !confGetter.getConfForScope(universe, UniverseConfKeys.stopMultipleNodesInAZEnabled)) {
-      return splitNodes(nodes, serverTypeFunction, (x, y) -> 1);
-    }
-    Map<UUID, Map<UUID, Integer>> azUuidToNumNodesByCluster = new HashMap<>();
-    for (NodeDetails node : nodes) {
+  public static RollMaxBatchSize getMaxNodesToRoll(Universe universe) {
+    RollMaxBatchSize result = new RollMaxBatchSize();
+    for (UniverseDefinitionTaskParams.Cluster cluster : universe.getUniverseDetails().clusters) {
       Map<UUID, Integer> azUuidToNumNodes =
-          azUuidToNumNodesByCluster.computeIfAbsent(node.placementUuid, (x) -> new HashMap<>());
-      azUuidToNumNodes.merge(node.azUuid, 1, Integer::sum);
-    }
-    int percent =
-        confGetter.getConfForScope(universe, UniverseConfKeys.simultaneousStopsInUpgradePercent);
-    int maxAbs =
-        confGetter.getConfForScope(universe, UniverseConfKeys.maxSimultaneousStopsInUpgrade);
+          PlacementInfoUtil.getAzUuidToNumNodes(cluster.placementInfo);
+      Integer resultPerCluster = Integer.MAX_VALUE;
 
-    return splitNodes(
-        nodes,
-        serverTypeFunction,
-        (clusterUUID, azUUID) -> {
-          Integer nodesInAZ = azUuidToNumNodesByCluster.get(clusterUUID).get(azUUID);
-          int maxSizePerAZ = Math.max(1, (int) Math.round((double) nodesInAZ * percent / 100));
-          if (maxSizePerAZ > maxAbs) {
-            maxSizePerAZ = maxAbs;
-          }
-          return getMaxAllowedToStop(universe, clusterUUID, azUUID, maxSizePerAZ);
-        });
+      for (Map.Entry<UUID, Integer> entry : azUuidToNumNodes.entrySet()) {
+        int nodesInAZ = entry.getValue();
+        Integer maxAllowedToStop =
+            getMaxAllowedToStop(universe, cluster.uuid, entry.getKey(), nodesInAZ);
+        resultPerCluster = Math.min(maxAllowedToStop, resultPerCluster);
+      }
+      if (cluster.clusterType == UniverseDefinitionTaskParams.ClusterType.PRIMARY) {
+        result.setPrimaryBatchSize(resultPerCluster);
+      } else {
+        result.setReadReplicaBatchSize(resultPerCluster);
+      }
+    }
+
+    return result;
   }
 
   /**
@@ -429,15 +428,26 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
    * of server types and the same az. Also each chunk cannot contain more than one master. Max chunk
    * length is determined by {@code maxNodesPerAZFunc}.
    *
+   * @param universe Current universe state.
    * @param nodes
    * @param serverTypeFunction
-   * @param maxNodesPerAZFunc
+   * @param rollMaxBatchSize - Setting for number of nodes to roll at a time
    * @return
    */
-  private static List<List<NodeDetails>> splitNodes(
+  static List<List<NodeDetails>> splitNodes(
+      Universe universe,
       Collection<NodeDetails> nodes,
       Function<NodeDetails, Set<ServerType>> serverTypeFunction,
-      BiFunction<UUID, UUID, Integer> maxNodesPerAZFunc) {
+      RollMaxBatchSize rollMaxBatchSize) {
+    Map<UUID, Integer> maxNodesPerCluster = new HashMap<>();
+    maxNodesPerCluster.put(
+        universe.getUniverseDetails().getPrimaryCluster().uuid,
+        rollMaxBatchSize.getPrimaryBatchSize());
+    if (!universe.getUniverseDetails().getReadOnlyClusters().isEmpty()) {
+      maxNodesPerCluster.put(
+          universe.getUniverseDetails().getReadOnlyClusters().get(0).uuid,
+          rollMaxBatchSize.getReadReplicaBatchSize());
+    }
     List<List<NodeDetails>> result = new ArrayList<>();
     UUID lastAZUUID = null;
     UUID lastClusterUUID = null;
@@ -455,7 +465,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       lastClusterUUID = node.placementUuid;
       lastServerTypes = serverTypeFunction.apply(node);
       currentChunk.add(node);
-      int nodesToStop = maxNodesPerAZFunc.apply(lastClusterUUID, lastAZUUID);
+      int nodesToStop = maxNodesPerCluster.getOrDefault(lastClusterUUID, 1);
       if (currentChunk.size() >= nodesToStop || lastServerTypes.contains(ServerType.MASTER)) {
         result.add(new ArrayList<>(currentChunk));
         currentChunk.clear();
@@ -481,7 +491,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
    * @param requestedToStop Desired number of nodes to stop in az
    * @return
    */
-  static int getMaxAllowedToStop(
+  public static int getMaxAllowedToStop(
       Universe universe, UUID clusterUUID, UUID azUUID, Integer requestedToStop) {
     UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(clusterUUID);
     int maxReplicasSafeToStop = cluster.userIntent.replicationFactor / 2;
@@ -544,6 +554,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       hasTServer = hasTServer || serverTypes.contains(ServerType.TSERVER);
       typesByNode.put(node, serverTypes);
     }
+    Universe universe = getUniverse();
 
     NodeState nodeState = getNodeState();
     if (hasTServer) {
@@ -559,9 +570,15 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
             .setSubTaskGroupType(subGroupType);
       }
     }
+    // For inactive role (updating master links for tserver-only nodes)
+    // we can process all the nodes concurrently.
+    RollMaxBatchSize rollMaxBatchSize =
+        activeRole
+            ? getCurrentRollBatchSize(universe)
+            : RollMaxBatchSize.of(Integer.MAX_VALUE, Integer.MAX_VALUE);
 
     List<List<NodeDetails>> split =
-        splitNodes(getUniverse(), nodes, activeRole, processTypesFunction);
+        splitNodes(getUniverse(), nodes, processTypesFunction, rollMaxBatchSize);
 
     for (List<NodeDetails> nodeList : split) {
       // Nodes are grouped by the same set of server types, so it doesn't matter which node to take.
@@ -572,14 +589,18 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       }
       createSetNodeStateTasks(nodeList, nodeState).setSubTaskGroupType(subGroupType);
 
+      UUID primaryId = universe.getUniverseDetails().getPrimaryCluster().uuid;
+      boolean hasPrimaryNodes = false;
       for (NodeDetails node : nodeList) {
+        hasPrimaryNodes = hasPrimaryNodes || node.isInPlacement(primaryId);
         createNodePrecheckTasks(
             node, processTypes, subGroupType, true, context.targetSoftwareVersion);
       }
-      if (activeRole) {
+      if (activeRole && hasPrimaryNodes) {
         createCheckNodesAreSafeToTakeDownTask(
             Collections.singletonList(MastersAndTservers.from(nodeList, processTypes)),
-            getTargetSoftwareVersion());
+            getTargetSoftwareVersion(),
+            false);
       }
 
       // Run pre node upgrade hooks

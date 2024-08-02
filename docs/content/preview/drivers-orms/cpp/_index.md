@@ -3,12 +3,12 @@ title: Build apps with C++ Drivers and ORMs
 headerTitle: C++
 linkTitle: C++
 description: C++ Drivers and ORMs support for YugabyteDB.
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
+image: fa-classic fa-plus
 menu:
   preview:
     identifier: cpp-drivers
     parent: drivers-orms
-    weight: 550
+    weight: 560
 type: indexpage
 showRightNav: true
 ---
