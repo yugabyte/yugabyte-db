@@ -13,6 +13,7 @@
 #include <iostream>
 
 #include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/catalog_entity_parser.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_types.pb.h"
 
@@ -50,8 +51,8 @@ DECLARE_string(fs_data_dirs);
 namespace po = boost::program_options;
 
 using google::protobuf::Descriptor;
+using google::protobuf::EnumDescriptor;
 using google::protobuf::FieldDescriptor;
-using google::protobuf::GetEnumDescriptor;
 using google::protobuf::Message;
 
 using std::array;
@@ -259,75 +260,6 @@ class StatusException : public std::exception {
   const string what_;
 };
 
-// ------------------------------------------------------------------------------------------------
-// SysRowEntryType to PB-type mapping & helpers.
-// ------------------------------------------------------------------------------------------------
-// For every new SysRowEntryType:
-// 1. Add new Desc<> specializations. E.g.,
-//        template<> struct Desc<SysRowEntryType::XCLUSTER_SAFE_TIME> :
-//                          UsePB<master::XClusterSafeTimePB> {};
-// 2. Add new case into CallVisitor() function.
-// 3. Update the static assert below. E.g.,
-//        static_assert(master::SysRowEntryType_MAX == SysRowEntryType::XCLUSTER_SAFE_TIME,
-static_assert(master::SysRowEntryType_MAX == SysRowEntryType::TSERVER_REGISTRATION,
-              "Extend Desc<> specializations by new SysRowEntryType values");
-
-template<typename PB, bool unknown = false>
-struct UsePB {
-  using PBType = PB;
-
-  static Status CheckIsNotUnknown() {
-    return unknown ? STATUS(InvalidArgument, "Used UNKNOWN entry type") : Status::OK();
-  }
-};
-
-template<SysRowEntryType Type>
-struct Desc : UsePB<master::SysRowEntry, true /* unknown */> {};
-
-template<> struct Desc<SysRowEntryType::TABLE> :
-                  UsePB<master::SysTablesEntryPB> {};
-template<> struct Desc<SysRowEntryType::TABLET> :
-                  UsePB<master::SysTabletsEntryPB> {};
-template<> struct Desc<SysRowEntryType::CLUSTER_CONFIG> :
-                  UsePB<master::SysClusterConfigEntryPB> {};
-template<> struct Desc<SysRowEntryType::NAMESPACE> :
-                  UsePB<master::SysNamespaceEntryPB> {};
-template<> struct Desc<SysRowEntryType::UDTYPE> :
-                  UsePB<master::SysUDTypeEntryPB> {};
-template<> struct Desc<SysRowEntryType::ROLE> :
-                  UsePB<master::SysRoleEntryPB> {};
-template<> struct Desc<SysRowEntryType::SNAPSHOT> :
-                  UsePB<master::SysSnapshotEntryPB> {};
-template<> struct Desc<SysRowEntryType::REDIS_CONFIG> :
-                  UsePB<master::SysRedisConfigEntryPB> {};
-template<> struct Desc<SysRowEntryType::SYS_CONFIG> :
-                  UsePB<master::SysConfigEntryPB> {};
-template<> struct Desc<SysRowEntryType::CDC_STREAM> :
-                  UsePB<master::SysCDCStreamEntryPB> {};
-template<> struct Desc<SysRowEntryType::UNIVERSE_REPLICATION> :
-                  UsePB<master::SysUniverseReplicationEntryPB> {};
-template<> struct Desc<SysRowEntryType::SNAPSHOT_SCHEDULE> :
-                  UsePB<master::SnapshotScheduleOptionsPB> {};
-template<> struct Desc<SysRowEntryType::DDL_LOG_ENTRY> :
-                  UsePB<master::DdlLogEntryPB> {};
-template<> struct Desc<SysRowEntryType::SNAPSHOT_RESTORATION> :
-                  UsePB<master::SysRestorationEntryPB> {};
-template<> struct Desc<SysRowEntryType::XCLUSTER_SAFE_TIME> :
-                  UsePB<master::XClusterSafeTimePB> {};
-template<> struct Desc<SysRowEntryType::XCLUSTER_CONFIG> :
-                  UsePB<master::SysXClusterConfigEntryPB> {};
-template<> struct Desc<SysRowEntryType::UNIVERSE_REPLICATION_BOOTSTRAP> :
-                  UsePB<master::SysUniverseReplicationBootstrapEntryPB> {};
-template <>
-struct Desc<SysRowEntryType::XCLUSTER_OUTBOUND_REPLICATION_GROUP>
-    : UsePB<master::SysXClusterOutboundReplicationGroupEntryPB> {};
-
-template<> struct Desc<SysRowEntryType::CLONE_STATE> :
-                  UsePB<master::SysCloneStatePB> {};
-
-template<> struct Desc<SysRowEntryType::TSERVER_REGISTRATION> :
-    UsePB<master::SysTServerEntryPB> {};
-
 Status IsValid_SysRowEntryType(int entry_type) {
   SCHECK_FORMAT(master::SysRowEntryType_IsValid(entry_type),
                 InvalidArgument, "Unknown entry type $0", entry_type);
@@ -344,57 +276,7 @@ Result<SysRowEntryType> Parse_SysRowEntryType(const string& type_name) {
 template<typename Visitor, typename... Args>
 Status CallVisitor(int8_t entry_type, Visitor* v, Args... args) {
   RETURN_NOT_OK(IsValid_SysRowEntryType(entry_type));
-  switch (static_cast<SysRowEntryType>(entry_type)) {
-    case SysRowEntryType::UNKNOWN:
-      return v->template Visit<SysRowEntryType::UNKNOWN>(args...);
-    case SysRowEntryType::TABLE:
-      return v->template Visit<SysRowEntryType::TABLE>(args...);
-    case SysRowEntryType::TABLET:
-      return v->template Visit<SysRowEntryType::TABLET>(args...);
-    case SysRowEntryType::CLUSTER_CONFIG:
-      return v->template Visit<SysRowEntryType::CLUSTER_CONFIG>(args...);
-    case SysRowEntryType::NAMESPACE:
-      return v->template Visit<SysRowEntryType::NAMESPACE>(args...);
-    case SysRowEntryType::UDTYPE:
-      return v->template Visit<SysRowEntryType::UDTYPE>(args...);
-    case SysRowEntryType::ROLE:
-      return v->template Visit<SysRowEntryType::ROLE>(args...);
-    case SysRowEntryType::SNAPSHOT:
-      return v->template Visit<SysRowEntryType::SNAPSHOT>(args...);
-    case SysRowEntryType::REDIS_CONFIG:
-      return v->template Visit<SysRowEntryType::REDIS_CONFIG>(args...);
-    case SysRowEntryType::SYS_CONFIG:
-      return v->template Visit<SysRowEntryType::SYS_CONFIG>(args...);
-    case SysRowEntryType::CDC_STREAM:
-      return v->template Visit<SysRowEntryType::CDC_STREAM>(args...);
-    case SysRowEntryType::UNIVERSE_REPLICATION:
-      return v->template Visit<SysRowEntryType::UNIVERSE_REPLICATION>(args...);
-    case SysRowEntryType::SNAPSHOT_SCHEDULE:
-      return v->template Visit<SysRowEntryType::SNAPSHOT_SCHEDULE>(args...);
-    case SysRowEntryType::DDL_LOG_ENTRY:
-      return v->template Visit<SysRowEntryType::DDL_LOG_ENTRY>(args...);
-    case SysRowEntryType::SNAPSHOT_RESTORATION:
-      return v->template Visit<SysRowEntryType::SNAPSHOT_RESTORATION>(args...);
-    case SysRowEntryType::XCLUSTER_SAFE_TIME:
-      return v->template Visit<SysRowEntryType::XCLUSTER_SAFE_TIME>(args...);
-    case SysRowEntryType::XCLUSTER_CONFIG:
-      return v->template Visit<SysRowEntryType::XCLUSTER_CONFIG>(args...);
-    case SysRowEntryType::UNIVERSE_REPLICATION_BOOTSTRAP:
-      return v->template Visit<SysRowEntryType::UNIVERSE_REPLICATION_BOOTSTRAP>(args...);
-    case SysRowEntryType::XCLUSTER_OUTBOUND_REPLICATION_GROUP:
-      return v->template Visit<SysRowEntryType::XCLUSTER_OUTBOUND_REPLICATION_GROUP>(args...);
-    case SysRowEntryType::CLONE_STATE:
-      return v->template Visit<SysRowEntryType::CLONE_STATE>(args...);
-    case SysRowEntryType::TSERVER_REGISTRATION:
-      return v->template Visit<SysRowEntryType::TSERVER_REGISTRATION>(args...);
-    // The compilation error is expected if an enum value is not handled above:
-    //     sys-catalog.cc: error: enumeration value '...' not handled in switch
-    //         switch (static_cast<SysRowEntryType>(entry_type)) {
-    //                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    // So, DO NOT add 'default:' case into the switch.
-  }
-
-  return STATUS_FORMAT(InternalError, "Unexpected entry type: $0", entry_type);
+  return v->Visit(static_cast<SysRowEntryType>(entry_type), args...);
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -535,18 +417,15 @@ class SysRowJsonWriter : public JsonWriter {
       JsonWriter(out, mode), filters_(filters), visitor_(this) {}
   virtual ~SysRowJsonWriter() = default;
 
-  template<SysRowEntryType Type>
-  Status WriteEntryPB(const Slice& id, const Slice& data);
+  Status WriteEntryPB(SysRowEntryType type, const Slice& id, const Slice& data);
 
-  template<typename PB>
-  Status WritePB(const PB& data);
+  Status WritePB(const Message& data);
 
   struct WriteEntryPBVisitor {
     explicit WriteEntryPBVisitor(SysRowJsonWriter* writer) : writer_(DCHECK_NOTNULL(writer)) {}
 
-    template<SysRowEntryType Type>
-    Status Visit(const Slice& id, const Slice& data) {
-      return writer_->WriteEntryPB<Type>(id, data);
+    Status Visit(SysRowEntryType type, const Slice& id, const Slice& data) {
+      return writer_->WriteEntryPB(type, id, data);
     }
 
     SysRowJsonWriter* writer_;
@@ -562,11 +441,9 @@ class SysRowJsonWriter : public JsonWriter {
   void AddAction();
   void AddHexData(const Slice& data);
 
-  template<typename PB>
-  void AddDataPB();
+  void AddDataPB(const Message& pb);
 
-  template<typename PB>
-  Status AddProtobuf(const PB& pb);
+  Status AddProtobuf(const Message& pb);
 
  private:
   const ReadFilters& filters_;
@@ -607,11 +484,10 @@ void SysRowJsonWriter::AddAction() {
   }
 }
 
-template<typename PB>
-void SysRowJsonWriter::AddDataPB() {
+void SysRowJsonWriter::AddDataPB(const Message& pb) {
   if (filters_.IsNotSet(OptionFlag::kNoDataPB)) {
     String("DATA-PB");
-    String(DCHECK_NOTNULL(PB::descriptor())->full_name());
+    String(pb.GetDescriptor()->full_name());
   }
 }
 
@@ -631,8 +507,7 @@ void SysRowJsonWriter::AddHexData(const Slice& data) {
   }
 }
 
-template<typename PB>
-Status SysRowJsonWriter::AddProtobuf(const PB& pb) {
+Status SysRowJsonWriter::AddProtobuf(const Message& pb) {
   if (filters_.IsNotSet(OptionFlag::kNoData)) {
     String("DATA");
     try {
@@ -644,15 +519,14 @@ Status SysRowJsonWriter::AddProtobuf(const PB& pb) {
   return Status::OK();
 }
 
-template<typename PB>
-Status SysRowJsonWriter::WritePB(const PB& pb) {
+Status SysRowJsonWriter::WritePB(const Message& pb) {
   StartObject(); // entry
 #define WRITABLE_RAFT_AND_CONSENSUS_INFO 0 // Enable if PB can be written by the tool.
 #if WRITABLE_RAFT_AND_CONSENSUS_INFO
   AddAction();
 #endif
 
-  AddDataPB<PB>();
+  AddDataPB(pb);
 
 #if WRITABLE_RAFT_AND_CONSENSUS_INFO
   if (filters_.IsNotSet(OptionFlag::kNoHexData)) {
@@ -665,15 +539,12 @@ Status SysRowJsonWriter::WritePB(const PB& pb) {
   return Status::OK();
 }
 
-template<SysRowEntryType Type>
-Status SysRowJsonWriter::WriteEntryPB(const Slice& id, const Slice& data) {
-  RETURN_NOT_OK(Desc<Type>::CheckIsNotUnknown());
-
+Status SysRowJsonWriter::WriteEntryPB(SysRowEntryType type, const Slice& id, const Slice& data) {
   StartObject(); // entry
   AddAction();
 
   String("TYPE");
-  String(master::SysRowEntryType_Name(Type));
+  String(master::SysRowEntryType_Name(type));
 
   string id_str = id.ToBuffer();
   if (!IsPrint(id_str)) {
@@ -690,13 +561,13 @@ Status SysRowJsonWriter::WriteEntryPB(const Slice& id, const Slice& data) {
   String("ID");
   String(id_str);
 
-  AddDataPB<typename Desc<Type>::PBType>();
+  auto pb = VERIFY_RESULT(SliceToCatalogEntityPB(type, data));
+
+  AddDataPB(*pb.get());
   AddHexData(data);
 
   if (filters_.IsNotSet(OptionFlag::kNoData)) {
-    typename Desc<Type>::PBType pb;
-    RETURN_NOT_OK(pb_util::ParseFromArray(&pb, data.data(), data.size()));
-    RETURN_NOT_OK(AddProtobuf(pb));
+    RETURN_NOT_OK(AddProtobuf(*pb.get()));
   }
 
   EndObject(); // entry
@@ -801,14 +672,10 @@ class SysRowHandler : public SysRowHandlerIf {
   }
 
   // Implement Visitor API for CallVisitor() function.
-  template<SysRowEntryType Type>
-  Status Visit() {
-    return ReadSysRowPB<Type>();
-  }
+  Status Visit(SysRowEntryType type) { return ReadSysRowPB(type); }
 
  protected:
-  template<SysRowEntryType Type>
-  Status ReadSysRowPB();
+  Status ReadSysRowPB(SysRowEntryType type);
 
  protected:
   const SysRowJsonReader& reader_;
@@ -818,15 +685,11 @@ class SysRowHandler : public SysRowHandlerIf {
   unique_ptr<Message> sys_row_pb_new_; // From 'DATA' JSON member.
 };
 
-template<SysRowEntryType Type>
-Status SysRowHandler::ReadSysRowPB() {
-  RETURN_NOT_OK(Desc<Type>::CheckIsNotUnknown());
-
+Status SysRowHandler::ReadSysRowPB(SysRowEntryType type) {
   // Parse PB from DATA.
-  typename Desc<Type>::PBType* const sys_row_pb = new typename Desc<Type>::PBType;
-  RETURN_NOT_OK(reader_.ExtractProtobuf(&json_entry_, "DATA", sys_row_pb));
-  DCHECK_NOTNULL(entry_)->set_data(sys_row_pb->SerializeAsString());
-  sys_row_pb_new_.reset(sys_row_pb); // Save PB for post-processing.
+  sys_row_pb_new_ = VERIFY_RESULT(CatalogEntityPBForType(type));
+  RETURN_NOT_OK(reader_.ExtractProtobuf(&json_entry_, "DATA", sys_row_pb_new_.get()));
+  DCHECK_NOTNULL(entry_)->set_data(sys_row_pb_new_->SerializeAsString());
   return Status::OK();
 }
 
@@ -864,25 +727,19 @@ class SysCatalogTool {
   Status ShowChangesIn(const string& file_name, const ReadFilters& filters);
 
   // Implement Visitor API for CallVisitor() function.
-  template<SysRowEntryType Type>
-  Status Visit() {
-    return WriteEntryDescriptor<Type>();
-  }
+  Status Visit(SysRowEntryType type) { return WriteEntryDescriptor(type); }
 
  protected:
   Status InitFsManager();
   Status Init();
 
-  template<typename PB_ENUM>
-  Status WriteEnumDescriptor();
+  Status WriteEnumDescriptor(const EnumDescriptor& descriptor);
 
-  template<typename PB>
-  Status WritePBDescriptor(const string& type = "");
+  Status WritePBDescriptor(const Descriptor& descriptor, const string& type = "");
 
-  template<SysRowEntryType Type>
-  Status WriteEntryDescriptor() {
-    return WritePBDescriptor<typename Desc<Type>::PBType>(
-        Type == SysRowEntryType::UNKNOWN ? "" : master::SysRowEntryType_Name(Type));
+  Status WriteEntryDescriptor(SysRowEntryType type) {
+    auto pb = VERIFY_RESULT(CatalogEntityPBForType(type));
+    return WritePBDescriptor(*pb->GetDescriptor(), master::SysRowEntryType_Name(type));
   }
 
  private:
@@ -917,14 +774,13 @@ Status SysCatalogTool::Init() {
 // ------------------------------------------------------------------------------------------------
 // Dump command
 // ------------------------------------------------------------------------------------------------
-template<typename PB_ENUM>
-Status SysCatalogTool::WriteEnumDescriptor() {
-  writer_->String(DCHECK_NOTNULL(GetEnumDescriptor<PB_ENUM>())->full_name());
+Status SysCatalogTool::WriteEnumDescriptor(const EnumDescriptor& descriptor) {
+  writer_->String(descriptor.full_name());
   writer_->StartObject();
 
   writer_->String("DESCRIPTOR");
   writer_->StartArray();
-  auto lines = StringSplit(GetEnumDescriptor<PB_ENUM>()->DebugString(), '\n');
+  auto lines = StringSplit(descriptor.DebugString(), '\n');
   for (const string& str : lines) {
     writer_->String(str);
   }
@@ -934,9 +790,8 @@ Status SysCatalogTool::WriteEnumDescriptor() {
   return Status::OK();
 }
 
-template<typename PB>
-Status SysCatalogTool::WritePBDescriptor(const string& type) {
-  writer_->String(DCHECK_NOTNULL(PB::descriptor())->full_name());
+Status SysCatalogTool::WritePBDescriptor(const Descriptor& descriptor, const string& type) {
+  writer_->String(descriptor.full_name());
   writer_->StartObject();
 
   if (!type.empty()) {
@@ -946,7 +801,7 @@ Status SysCatalogTool::WritePBDescriptor(const string& type) {
 
   writer_->String("DESCRIPTOR");
   writer_->StartArray();
-  auto lines = StringSplit(PB::descriptor()->DebugString(), '\n');
+  auto lines = StringSplit(descriptor.DebugString(), '\n');
   for (const string& str : lines) {
     writer_->String(str);
   }
@@ -986,12 +841,15 @@ Result<string> SysCatalogTool::ReadIntoString(const ReadFilters& filters) {
     if (filters.IsNotSet(OptionFlag::kNoDescriptors)) {
       writer_->String("PROTO-BUFFERS");
       writer_->StartObject(); // proto-buffers
-      RETURN_NOT_OK(WritePBDescriptor<tablet::RaftGroupReplicaSuperBlockPB>());
-      RETURN_NOT_OK(WritePBDescriptor<consensus::ConsensusMetadataPB>());
-      RETURN_NOT_OK(WriteEnumDescriptor<SysRowEntryType>());
+      RETURN_NOT_OK(WritePBDescriptor(*tablet::RaftGroupReplicaSuperBlockPB::descriptor()));
+      RETURN_NOT_OK(WritePBDescriptor(*consensus::ConsensusMetadataPB::descriptor()));
+      RETURN_NOT_OK(WriteEnumDescriptor(*master::SysRowEntryType_descriptor()));
+      RETURN_NOT_OK(WritePBDescriptor(*master::SysRowEntry::descriptor()));
 
       for (int type = master::SysRowEntryType_MIN; type <= master::SysRowEntryType_MAX; ++type) {
-        RETURN_NOT_OK(CallVisitor(type, this)); // Calling WriteEntryDescriptor().
+        if (type != SysRowEntryType::UNKNOWN) {
+          RETURN_NOT_OK(CallVisitor(type, this));  // Calling WriteEntryDescriptor().
+        }
       }
       writer_->EndObject(); // proto-buffers
     }
@@ -1105,14 +963,10 @@ class ShowChangesCmdSysRowHandler : public SysRowHandler {
   Status PostProcess() override;
 
   // Implement Visitor API for CallVisitor() function.
-  template<SysRowEntryType Type>
-  Status Visit() {
-    return ReadAndCheckPB<Type>();
-  }
+  Status Visit(SysRowEntryType type) { return ReadAndCheckPB(type); }
 
  protected:
-  template<SysRowEntryType Type>
-  Status ReadAndCheckPB();
+  Status ReadAndCheckPB(SysRowEntryType type);
 
   bool show_no_op_;
   ActionType act_ = kUNKNOWN;
@@ -1165,27 +1019,23 @@ string AddPrefixToAllLines(const string& prefix, const string& str) {
   return s + "\n";
 }
 
-template<SysRowEntryType Type>
-Status ShowChangesCmdSysRowHandler::ReadAndCheckPB() {
+Status ShowChangesCmdSysRowHandler::ReadAndCheckPB(SysRowEntryType type) {
   switch (act_) {
     case kNO_OP: FALLTHROUGH_INTENDED;
     case kCHANGE: {
-      typename Desc<Type>::PBType old_pb;
       // Parse PB from DATA-HEX.
-      RETURN_NOT_OK(pb_util::ParseFromArray(
-          &old_pb, to_uchar_ptr(old_data_.data()), old_data_.size()));
+      auto old_pb = VERIFY_RESULT(SliceToCatalogEntityPB(type, Slice(old_data_)));
 
       // Compare PBs.
       string diff_str;
-      const bool pbs_equal = pb_util::ArePBsEqual(old_pb, *sys_row_pb_new_, &diff_str);
+      const bool pbs_equal = pb_util::ArePBsEqual(*old_pb.get(), *sys_row_pb_new_, &diff_str);
       if (act_ == kCHANGE) {
         SCHECK(!pbs_equal, InvalidArgument, "ERROR: No data changes found!");
         sinfo << AddPrefixToAllLines(prefix_, diff_str);
       } else {
         SCHECK(pbs_equal, InvalidArgument, "ERROR: Unexpected data changes: " + diff_str);
       }
-    }
-    break;
+    } break;
 
     case kADD: {
       sinfo << AddPrefixToAllLines(prefix_, sys_row_pb_new_->DebugString());
@@ -1193,13 +1043,10 @@ Status ShowChangesCmdSysRowHandler::ReadAndCheckPB() {
     break;
 
     case kREMOVE: {
-      typename Desc<Type>::PBType old_pb;
       // Parse PB from DATA-HEX.
-      RETURN_NOT_OK(pb_util::ParseFromArray(
-          &old_pb, to_uchar_ptr(old_data_.data()), old_data_.size()));
-      sinfo << AddPrefixToAllLines(prefix_, old_pb.DebugString());
-    }
-    break;
+      auto old_pb = VERIFY_RESULT(SliceToCatalogEntityPB(type, Slice(old_data_)));
+      sinfo << AddPrefixToAllLines(prefix_, old_pb->DebugString());
+    } break;
 
     default: return STATUS(InternalError, "Unexpected action", ToString(act_));
   }
