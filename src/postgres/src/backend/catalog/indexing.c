@@ -176,6 +176,7 @@ CatalogIndexInsert(CatalogIndexState indstate, HeapTuple heapTuple, bool yb_shar
 					 values,	/* array of index Datums */
 					 isnull,	/* is-null flags */
 					 &(heapTuple->t_self),	/* tid of heap tuple */
+					 heapTuple->t_ybctid,
 					 heapRelation,
 					 index->rd_index->indisunique ?
 					 UNIQUE_CHECK_YES : UNIQUE_CHECK_NO,
@@ -540,9 +541,9 @@ CatalogTupleUpdate(Relation heapRel, ItemPointer otid, HeapTuple tup)
 
 		if (has_indices)
 		{
-			if (YbItemPointerYbctid(otid))
+			if (tup->t_ybctid)
 			{
-				YbFetchHeapTuple(heapRel, otid, &oldtup);
+				YbFetchHeapTuple(heapRel, tup->t_ybctid, &oldtup);
 				CatalogIndexDelete(indstate, oldtup);
 			}
 			else
@@ -588,9 +589,9 @@ CatalogTupleUpdateWithInfo(Relation heapRel, ItemPointer otid, HeapTuple tup,
 
 		if (has_indices)
 		{
-			if (YbItemPointerYbctid(otid))
+			if (tup->t_ybctid)
 			{
-				YbFetchHeapTuple(heapRel, otid, &oldtup);
+				YbFetchHeapTuple(heapRel, tup->t_ybctid, &oldtup);
 				CatalogIndexDelete(indstate, oldtup);
 			}
 			else

@@ -22,6 +22,7 @@ JAVA	org.yb.pgsql.TestPgDepend#testForSuperfluousEntries
 JAVA	org.yb.pgsql.TestPgDepend#testSequenceDeletionWithCascade
 JAVA	org.yb.pgsql.TestPgDepend#testTableWithSequenceDeletion
 JAVA	org.yb.pgsql.TestPgDepend#testViewDeletionWithCascade
+JAVA	org.yb.pgsql.TestPgEstimatedDocdbResultWidth#testDocdbResultWidthEstimationArrays
 JAVA	org.yb.pgsql.TestPgExplainAnalyze
 JAVA	org.yb.pgsql.TestPgExplainAnalyzeColocated
 JAVA	org.yb.pgsql.TestPgExplainAnalyzeMetrics
@@ -556,6 +557,7 @@ pgwrapper_pg_tablet_split-test	PgTabletSplitTest/PgPartitioningTest.PgGatePartit
 pgwrapper_pg_tablet_split-test	PgTabletSplitTest/PgPartitioningVersionTest.ManualSplit/0
 pgwrapper_pg_tablet_split-test	PgTabletSplitTest/PgPartitioningVersionTest.UniqueIndexRowsPersistenceAfterManualSplit/1
 pgwrapper_pg_txn-test	PgTxnTest.ShowEffectiveYBIsolationLevel
+pgwrapper_pg_type-test	PgTypeTest.YbTypeDetailsMatch
 pgwrapper_pg_wait_on_conflict-test	*/PgWaitQueueRF1Test.TestDeadlockAcrossMultipleTablets/*
 pgwrapper_pg_wait_on_conflict-test	*/PgWaitQueueRF1Test.TestDetectorPreservesBlockerSubtxnInfo/*
 pgwrapper_pg_wait_on_conflict-test	*/PgWaitQueueRF1Test.TestResumingWaitersDoesntBlockTabletShutdown/*

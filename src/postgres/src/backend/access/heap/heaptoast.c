@@ -491,8 +491,8 @@ yb_toast_compress_tuple(HeapTuple tup, TupleDesc tupleDesc)
 	new_tuple->t_data->t_infomask2 &= ~HEAP2_XACT_MASK;
 		new_tuple->t_data->t_infomask2 |=
 		tup->t_data->t_infomask2 & HEAP2_XACT_MASK;
-	
-	HEAPTUPLE_COPY_YBITEM(tup, new_tuple);
+
+	HEAPTUPLE_COPY_YBCTID(tup, new_tuple);
 
 	/*
 	 * Free allocated temp values

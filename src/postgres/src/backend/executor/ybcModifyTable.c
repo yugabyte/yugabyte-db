@@ -570,7 +570,7 @@ YBCForeignKeyReferenceCacheDeleteIndex(Relation index, Datum *values, bool *isnu
 void YBCExecuteInsertIndex(Relation index,
 						   Datum *values,
 						   bool *isnull,
-						   ItemPointer tid,
+						   Datum ybctid,
 						   const uint64_t *backfill_write_time,
 						   yb_bind_for_write_function callback,
 						   void *indexstate)
@@ -579,7 +579,7 @@ void YBCExecuteInsertIndex(Relation index,
 							   index,
 							   values,
 							   isnull,
-							   tid,
+							   ybctid,
 							   backfill_write_time,
 							   callback,
 							   indexstate);
@@ -589,13 +589,13 @@ void YBCExecuteInsertIndexForDb(Oid dboid,
 								Relation index,
 								Datum* values,
 								bool* isnull,
-								ItemPointer tid,
+								Datum ybctid,
 								const uint64_t* backfill_write_time,
 								yb_bind_for_write_function callback,
 								void *indexstate)
 {
 	Assert(index->rd_rel->relkind == RELKIND_INDEX);
-	Assert(tid != 0 && YbItemPointerYbctid(tid));
+	Assert(ybctid != 0);
 
 	YBCPgStatement insert_stmt = NULL;
 
@@ -609,7 +609,7 @@ void YBCExecuteInsertIndexForDb(Oid dboid,
 
 	callback(insert_stmt, indexstate, index, values, isnull,
 			 RelationGetNumberOfAttributes(index),
-			 YbItemPointerYbctid(tid), true /* ybctid_as_value */);
+			 ybctid, true /* ybctid_as_value */);
 
 	/*
 	 * For non-unique indexes the primary-key component (base tuple id) already

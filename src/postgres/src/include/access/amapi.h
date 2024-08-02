@@ -123,7 +123,7 @@ typedef bool (*aminsert_function) (Relation indexRelation,
 typedef bool (*yb_aminsert_function) (Relation indexRelation,
 									  Datum *values,
 									  bool *isnull,
-									  ItemPointer heap_tid, /* contains ybctid */
+									  Datum ybctid,
 									  Relation heapRelation,
 									  IndexUniqueCheck checkUnique,
 									  struct IndexInfo *indexInfo,

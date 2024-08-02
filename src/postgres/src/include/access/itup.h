@@ -34,7 +34,8 @@
 
 typedef struct IndexTupleData
 {
-	ItemPointerData t_tid;		/* reference TID to heap tuple, including ybctid for Yugabyte */
+	ItemPointerData t_tid;		/* reference TID to heap tuple */
+	Datum 			t_ybctid;	/* virtual column ybctid */
 
 	/* ---------------
 	 * t_info is laid out in the following fashion:

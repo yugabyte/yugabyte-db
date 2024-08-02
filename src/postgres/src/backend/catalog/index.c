@@ -3355,7 +3355,7 @@ double
 IndexBackfillHeapRangeScan(Relation table_rel,
 						   Relation index_rel,
 						   IndexInfo *index_info,
-						   IndexBuildCallback callback,
+						   YbIndexBuildCallback ybcallback,
 						   void *callback_state,
 						   YbBackfillInfo *bfinfo,
 						   YbPgExecOutParam *bfresult)
@@ -3371,11 +3371,12 @@ IndexBackfillHeapRangeScan(Relation table_rel,
 														 false /* progress */,
 														 0 /* start_blockno */,
 														 InvalidBlockNumber /* num_blocks */,
-														 callback,
+														 NULL,
 														 callback_state,
 														 NULL, /* scan */
 														 bfinfo,
-														 bfresult);
+														 bfresult,
+														 ybcallback);
 }
 
 /*

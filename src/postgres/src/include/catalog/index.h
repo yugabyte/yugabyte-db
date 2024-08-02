@@ -158,10 +158,11 @@ extern void index_backfill(Relation heapRelation,
 						   YbBackfillInfo *bfinfo,
 						   YbPgExecOutParam *bfresult);
 
+/* TODO: add Yb prefix. */
 extern double IndexBackfillHeapRangeScan(Relation heapRelation,
 										 Relation indexRelation,
 										 IndexInfo *indexInfo,
-										 IndexBuildCallback callback,
+										 YbIndexBuildCallback ybcallback,
 										 void *callback_state,
 										 YbBackfillInfo *bfinfo,
 										 YbPgExecOutParam *bfresult);
