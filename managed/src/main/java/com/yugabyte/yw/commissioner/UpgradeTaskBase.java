@@ -436,9 +436,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         }
       }
 
-      if (context.postAction != null) {
-        context.postAction.accept(node);
-      }
       // Run post node upgrade hooks
       createHookTriggerTasks(singletonNodeList, false, true);
       createSetNodeStateTask(node, NodeState.Live).setSubTaskGroupType(subGroupType);
@@ -447,6 +444,10 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
           taskParams().getUniverseUUID(),
           processTypes,
           SetNodeState.getStartKey(node.getNodeName(), nodeState));
+
+      if (context.postAction != null) {
+        context.postAction.accept(node);
+      }
     }
 
     if (!isLoadBalancerOn) {
