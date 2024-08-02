@@ -385,7 +385,6 @@ SetupUniverseReplicationWithBootstrapHelper::DoReplicationBootstrapImportSnapsho
   }
 
   snapshot_req.set_add_indexes(false);
-  snapshot_req.set_transaction_aware(true);
   snapshot_req.set_imported(true);
   RETURN_NOT_OK(
       catalog_manager_.CreateTransactionAwareSnapshot(snapshot_req, &snapshot_resp, deadline));

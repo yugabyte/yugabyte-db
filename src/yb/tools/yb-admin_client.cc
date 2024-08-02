@@ -2513,7 +2513,6 @@ Status ClusterAdminClient::CreateSnapshot(
 
     req.set_add_indexes(add_indexes);
     req.set_add_ud_types(true);  // No-op for YSQL.
-    req.set_transaction_aware(true);
     if (retention_duration_hours && *retention_duration_hours <= 0) {
       req.set_retention_duration_hours(-1);
     } else if (retention_duration_hours) {
@@ -3295,7 +3294,6 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(
 
   // All indexes already are in the request. Do not add them twice.
   snapshot_req.set_add_indexes(false);
-  snapshot_req.set_transaction_aware(true);
   snapshot_req.set_imported(true);
   // Create new snapshot.
   RETURN_NOT_OK(RequestMasterLeader(&snapshot_resp, [&](RpcController* rpc) {

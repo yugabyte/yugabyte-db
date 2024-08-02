@@ -220,13 +220,6 @@ class CatalogManagerIf {
       const SnapshotScheduleId& snapshot_schedule_id, HybridTime export_time,
       CoarseTimePoint deadline) = 0;
 
-  virtual void HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool error) = 0;
-
-  virtual void HandleRestoreTabletSnapshotResponse(TabletInfo *tablet, bool error) = 0;
-
-  virtual void HandleDeleteTabletSnapshotResponse(
-      const SnapshotId& snapshot_id, TabletInfo *tablet, bool error) = 0;
-
   virtual Status GetTableLocations(const GetTableLocationsRequestPB* req,
                                            GetTableLocationsResponsePB* resp) = 0;
 
