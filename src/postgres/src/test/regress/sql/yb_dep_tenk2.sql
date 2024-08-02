@@ -17,7 +17,6 @@ SET client_min_messages TO WARNING;
 --
 
 CREATE TABLE IF NOT EXISTS tenk2 AS SELECT * FROM tenk1;
-VACUUM ANALYZE tenk2;
 
 --
 -- yb_pg_create_index
