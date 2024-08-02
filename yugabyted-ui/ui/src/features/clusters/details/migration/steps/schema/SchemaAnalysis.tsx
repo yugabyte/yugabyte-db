@@ -1,19 +1,15 @@
 import React, { FC } from "react";
 import {
-  Badge,
   Box,
-  LinearProgress,
   makeStyles,
   Paper,
   Typography,
   useTheme,
 } from "@material-ui/core";
-import TodoIcon from "@app/assets/todo.svg";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import { useTranslation } from "react-i18next";
-import { YBAccordion, YBTooltip } from "@app/components";
+import { YBAccordion } from "@app/components";
 import RestartIcon from "@app/assets/restart2.svg";
-import MigrationAccordionTitle from "../../MigrationAccordionTitle";
 import { SchemaAnalysisTabs } from "./SchemaAnalysisTabs";
 
 const useStyles = makeStyles((theme) => ({

@@ -1,7 +1,6 @@
 import React, { FC } from "react";
 import {
   Box,
-  Grid,
   LinearProgress,
   Link,
   makeStyles,
@@ -12,7 +11,6 @@ import type { Migration } from "../../MigrationOverview";
 import { GenericFailure, YBButton } from "@app/components";
 import { useTranslation } from "react-i18next";
 import RefreshIcon from "@app/assets/refresh.svg";
-import clsx from "clsx";
 import { Prereqs } from "./Prereqs";
 import { StepDetails } from "./StepDetails";
 import { StepCard } from "./StepCard";

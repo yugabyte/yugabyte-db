@@ -1,5 +1,5 @@
 import React, { FC } from "react";
-import { Box, Grid, Typography, makeStyles, useTheme } from "@material-ui/core";
+import { Box, Grid, Typography, makeStyles } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
 import clsx from "clsx";
 import { RefactoringGraph } from "./RefactoringGraph";
@@ -32,7 +32,6 @@ interface SummaryTabProps {}
 
 export const SummaryTab: FC<SummaryTabProps> = ({}) => {
   const classes = useStyles();
-  const theme = useTheme();
   const { t } = useTranslation();
 
   return (
@@ -70,7 +69,18 @@ export const SummaryTab: FC<SummaryTabProps> = ({}) => {
       </Grid>
 
       <RefactoringGraph
-        sqlObjects={{ sql_type: { manual: 2, automatic: 14 }, table: { manual: 0, automatic: 21 } }}
+        sqlObjects={[
+          {
+            sql_object_type: "sql_type",
+            automatic: 14,
+            manual: 2,
+          },
+          {
+            sql_object_type: "table",
+            automatic: 21,
+            manual: 0,
+          },
+        ]}
       />
     </Box>
   );
