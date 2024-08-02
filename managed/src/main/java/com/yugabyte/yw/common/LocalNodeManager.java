@@ -793,8 +793,9 @@ public class LocalNodeManager {
     if (additionalGFlags != null && serverType != UniverseTaskBase.ServerType.CONTROLLER) {
       gflagsToWrite.putAll(additionalGFlags.getPerProcessFlags().value.get(serverType));
     }
-    log.debug("Write gflags {} to file {}", gflagsToWrite, serverType);
-    File flagFileTmpPath = new File(getNodeGFlagsFile(userIntent, serverType, nodeInfo));
+    String fileName = getNodeGFlagsFile(userIntent, serverType, nodeInfo);
+    log.debug("Write gflags {} for {} to file {}", gflagsToWrite, serverType, fileName);
+    File flagFileTmpPath = new File(fileName);
     if (!flagFileTmpPath.exists()) {
       flagFileTmpPath.getParentFile().mkdirs();
       flagFileTmpPath.createNewFile();
@@ -898,7 +899,11 @@ public class LocalNodeManager {
 
   public String getNodeRoot(UniverseDefinitionTaskParams.UserIntent userIntent, NodeInfo nodeInfo) {
     String binDir = getCloudInfo(userIntent).getDataHomeDir();
-    return binDir + "/" + nodeInfo.ip + "-" + nodeInfo.name.substring(nodeInfo.name.length() - 2);
+    String suffix = nodeInfo.name.substring(nodeInfo.name.length() - 2);
+    if (nodeInfo.name.contains("readonly")) {
+      suffix = "rr-" + suffix;
+    }
+    return binDir + "/" + nodeInfo.ip + "-" + suffix;
   }
 
   public String getNodeRoot(UniverseDefinitionTaskParams.UserIntent userIntent, String nodeName) {
