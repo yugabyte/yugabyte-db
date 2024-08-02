@@ -29,13 +29,13 @@ The following are the main components of the Yugabyte CDC solution:
 
 3. walsender - A special purpose PostgreSQL backend responsible for streaming changes to the client and handling acknowledgments.
 
-### Data Flow
+### Data flow
 
 Logical replication starts by copying a snapshot of the data on the publisher database. After that is done, changes on the publisher are streamed to the server as they occur in near real time.
 
 To set up Logical Replication, an application will first have to create a replication slot. When a replication slot is created, a boundary is established between the snapshot data and the streaming changes. This boundary or `consistent_point` is a consistent state of the source database. It corresponds to a commit time (HybridTime value). Data from transactions with commit time <= commit time corresponding to the `consistent_point` are consumed as part of the initial snapshot. Changes from transactions with commit time greater than the commit time of the `consistent_point` are consumed in the streaming phase in transaction commit time order.
 
-#### Initial Snapshot
+#### Initial snapshot
 
 The initial snapshot data for each table is consumed by executing a corresponding snapshot query (SELECT statement) on that table. This snapshot query should be executed as of the database state corresponding to the `consistent_point`. This database state is represented by a value of HybridTime.
 
@@ -45,7 +45,7 @@ The HybridTime value to use in the `SET LOCAL yb_read_time` command is the value
 
 During Snapshot consumption, the snapshot data from all tables will be from the same consistent state (`consistent_point`). At the end of Snapshot consumption, the state of the target system is at/based on the `consistent_point`. History of the tables as of the `consistent_point` is retained on the source until the snapshot is consumed.
 
-#### Streaming Data Flow
+#### Streaming data flow
 
 YugabyteDB automatically splits user tables into multiple shards (also called tablets) using either a hash- or range-based strategy. The primary key for each row in the table uniquely identifies the location of the tablet in the row.
 
