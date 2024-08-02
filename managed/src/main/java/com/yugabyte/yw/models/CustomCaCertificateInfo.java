@@ -142,7 +142,6 @@ public class CustomCaCertificateInfo extends Model {
     log.debug("Getting certificate string from {}", cert_path);
     byte[] byteData = FileData.getDecodedData(cert_path);
     String strCert = new String(byteData, StandardCharsets.UTF_8);
-    log.debug("CA certificate data is {}", strCert);
     return strCert;
   }
 }
