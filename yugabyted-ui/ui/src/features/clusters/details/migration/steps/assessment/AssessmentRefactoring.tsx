@@ -1,4 +1,4 @@
-import React, { FC } from "react";
+import React, { FC, useMemo } from "react";
 import { Box, Divider, Paper, Typography, makeStyles } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
 import type { RefactoringCount, UnsupportedSqlInfo } from "@app/api/src";
@@ -45,6 +45,21 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
+
+  const hasGraphData = useMemo(
+    () =>
+      !!sqlObjects?.filter(({ automatic, manual }) => (automatic ?? 0) + (manual ?? 0) > 0)?.length,
+    [sqlObjects]
+  );
+
+  if (
+    !hasGraphData &&
+    !unsupportedDataTypes?.length &&
+    !unsupportedFeatures?.length &&
+    !unsupportedFunctions?.length
+  ) {
+    return null;
+  }
 
   return (
     <Paper>

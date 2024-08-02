@@ -126,11 +126,6 @@ export const YBBadge: FC<BadgeProps> = (props: BadgeProps) => {
       alertIcon = <span className={clsx(classes.icon, classes.lightIcon)} />;
       alertText = text ?? "Light";
       break;
-    case BadgeVariant.Light:
-      alertClassName = clsx(alertClassName, classes.light);
-      alertIcon = <span className={clsx(classes.icon, classes.lightIcon)} />;
-      alertText = text || "Light";
-      break;
     case BadgeVariant.Info:
     default:
       alertClassName = clsx(alertClassName, classes.info);
