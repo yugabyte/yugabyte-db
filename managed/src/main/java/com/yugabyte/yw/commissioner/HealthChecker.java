@@ -728,10 +728,16 @@ public class HealthChecker {
                 .setUniverseUuid(params.universe.getUniverseUUID())
                 .setNodeDetails(nodeDetails);
         if (nodeDetails.isMaster) {
-          nodeInfo.setMasterIndex(masterIndex++).setMasterHttpPort(nodeDetails.masterHttpPort);
+          nodeInfo
+              .setMasterIndex(masterIndex++)
+              .setMasterHttpPort(nodeDetails.masterHttpPort)
+              .setMasterRpcPort(nodeDetails.masterRpcPort);
         }
         if (nodeDetails.isTserver) {
-          nodeInfo.setTserverIndex(tserverIndex++).setTserverHttpPort(nodeDetails.tserverHttpPort);
+          nodeInfo
+              .setTserverIndex(tserverIndex++)
+              .setTserverHttpPort(nodeDetails.tserverHttpPort)
+              .setTserverRpcPort(nodeDetails.tserverRpcPort);
         }
         if (providerCode.equals(Common.CloudType.kubernetes.toString())) {
           nodeInfo.setK8s(true);
@@ -1127,6 +1133,8 @@ public class HealthChecker {
     private int redisPort = 6379;
     private int masterHttpPort = 7000;
     private int tserverHttpPort = 9000;
+    private int masterRpcPort = 7100;
+    private int tserverRpcPort = 9100;
     private int ysqlServerHttpPort = 13000;
     private boolean checkClock = false;
     private boolean checkTimeDrift = true;
