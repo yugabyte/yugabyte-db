@@ -32,6 +32,8 @@ IsShardTableForMongoTable_HookType is_shard_table_for_mongo_table_hook = NULL;
 HandleColocation_HookType handle_colocation_hook = NULL;
 RewriteListCollectionsQueryForDistribution_HookType rewrite_list_collections_query_hook =
 	NULL;
+RewriteConfigQueryForDistribution_HookType rewrite_config_shards_query_hook = NULL;
+RewriteConfigQueryForDistribution_HookType rewrite_config_chunks_query_hook = NULL;
 TryGetShardNameForUnshardedCollection_HookType
 	try_get_shard_name_for_unsharded_collection_hook = NULL;
 GetDistributedApplicationName_HookType get_distributed_application_name_hook = NULL;
@@ -206,14 +208,38 @@ HandleColocation(MongoCollection *collection, const bson_value_t *colocationOpti
 
 
 Query *
-MutateListCollectionsQueryForDistribution(Query *cosmosMetadataQuery)
+MutateListCollectionsQueryForDistribution(Query *listCollectionsQuery)
 {
 	if (rewrite_list_collections_query_hook != NULL)
 	{
-		return rewrite_list_collections_query_hook(cosmosMetadataQuery);
+		return rewrite_list_collections_query_hook(listCollectionsQuery);
 	}
 
-	return NULL;
+	return listCollectionsQuery;
+}
+
+
+Query *
+MutateShardsQueryForDistribution(Query *shardsQuery)
+{
+	if (rewrite_config_shards_query_hook != NULL)
+	{
+		return rewrite_config_shards_query_hook(shardsQuery);
+	}
+
+	return shardsQuery;
+}
+
+
+Query *
+MutateChunksQueryForDistribution(Query *chunksQuery)
+{
+	if (rewrite_config_chunks_query_hook != NULL)
+	{
+		return rewrite_config_chunks_query_hook(chunksQuery);
+	}
+
+	return chunksQuery;
 }
 
 

@@ -114,6 +114,10 @@ typedef Query *(*RewriteListCollectionsQueryForDistribution_HookType)(Query *que
 extern RewriteListCollectionsQueryForDistribution_HookType
 	rewrite_list_collections_query_hook;
 
+typedef Query *(*RewriteConfigQueryForDistribution_HookType)(Query *query);
+extern RewriteConfigQueryForDistribution_HookType rewrite_config_shards_query_hook;
+extern RewriteConfigQueryForDistribution_HookType rewrite_config_chunks_query_hook;
+
 typedef const char *(*TryGetShardNameForUnshardedCollection_HookType)(Oid relationOid,
 																	  uint64 collectionId,
 																	  const char *

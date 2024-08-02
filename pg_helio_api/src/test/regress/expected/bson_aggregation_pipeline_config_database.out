@@ -90,14 +90,14 @@ SELECT document FROM helio_api_catalog.bson_aggregation_find('config', '{ "find"
 (1 row)
 
 SELECT document FROM helio_api_catalog.bson_aggregation_find('config', '{ "find": "collections", "projection": { }, "sort": { "name": 1 } }');
-                             document                             
-------------------------------------------------------------------
- { "_id" : "test2.my_coll1", "key" : { "nameValue" : "hashed" } }
+                                       document                                       
+--------------------------------------------------------------------------------------
+ { "_id" : "test2.my_coll1", "key" : { "nameValue" : "hashed" }, "noBalance" : true }
 (1 row)
 
 SELECT document FROM helio_api_catalog.bson_aggregation_find('config', '{ "find": "chunks", "projection": { } }');
-                       document                        
--------------------------------------------------------
- { "ns" : "test2.my_coll1", "shard" : "defaultShard" }
+                                                                          document                                                                          
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "ns" : "test2.my_coll1", "shard" : "defaultShard", "min" : { "$numberLong" : "-9223372036854775808"}, "max" : { "$numberLong" : "9223372036854775807"} }
 (1 row)
 

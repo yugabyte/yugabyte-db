@@ -25,11 +25,14 @@
 #include "metadata/metadata_cache.h"
 #include "aggregation/bson_aggregation_pipeline.h"
 #include "aggregation/bson_aggregation_pipeline_private.h"
+#include "api_hooks.h"
 
 static Query * GenerateVersionQuery(AggregationPipelineBuildContext *context);
 static Query * GenerateDatabasesQuery(AggregationPipelineBuildContext *context);
 static Query * GenerateCollectionsQuery(AggregationPipelineBuildContext *context);
 static Query * GenerateChunksQuery(AggregationPipelineBuildContext *context);
+static Query * GenerateShardsQuery(AggregationPipelineBuildContext *context);
+static Query * GenerateSettingsQuery(AggregationPipelineBuildContext *context);
 
 /*
  * Sets the RTE of a table in the Config database.
@@ -55,6 +58,19 @@ GenerateConfigDatabaseQuery(AggregationPipelineBuildContext *context)
 	{
 		context->requiresPersistentCursor = true;
 		return GenerateChunksQuery(context);
+	}
+	else if (StringViewEqualsCString(&context->collectionNameView, "settings"))
+	{
+		context->requiresPersistentCursor = true;
+		return GenerateSettingsQuery(context);
+	}
+	else if (StringViewEqualsCString(&context->collectionNameView, "_shards"))
+	{
+		/* TODO: We can't enable this on shards because there's a dependency */
+		/* on the "host" which requires a connection string. Once we can pass */
+		/* the MX connection string - reconsider adding this back. */
+		context->requiresPersistentCursor = true;
+		return GenerateShardsQuery(context);
 	}
 	else
 	{
@@ -258,6 +274,12 @@ GenerateCollectionsQuery(AggregationPipelineBuildContext *context)
 
 	PgbsonWriterAppendUtf8(&writer, "key", 3, "$shard_key");
 
+	/* Since we use $project, use $literal since bools and numbers need to be escaped */
+	pgbson_writer expressionWriter;
+	PgbsonWriterStartDocument(&writer, "noBalance", 9, &expressionWriter);
+	PgbsonWriterAppendBool(&expressionWriter, "$literal", -1, true);
+	PgbsonWriterEndDocument(&writer, &expressionWriter);
+
 	pgbson *spec = PgbsonWriterGetPgbson(&writer);
 	bson_value_t projectionValue = ConvertPgbsonToBsonValue(spec);
 
@@ -343,12 +365,110 @@ GenerateChunksQuery(AggregationPipelineBuildContext *context)
 
 	PgbsonWriterAppendUtf8(&writer, "shard", 5, "defaultShard");
 
+	/* Since we use $project, use $literal since bools and numbers need to be escaped */
+	pgbson_writer expressionWriter;
+	PgbsonWriterStartDocument(&writer, "min", 3, &expressionWriter);
+	PgbsonWriterAppendInt64(&expressionWriter, "$literal", -1, LONG_MIN);
+	PgbsonWriterEndDocument(&writer, &expressionWriter);
+
+	PgbsonWriterStartDocument(&writer, "max", 3, &expressionWriter);
+	PgbsonWriterAppendInt64(&expressionWriter, "$literal", -1, LONG_MAX);
+	PgbsonWriterEndDocument(&writer, &expressionWriter);
+
+
 	pgbson *spec = PgbsonWriterGetPgbson(&writer);
 	bson_value_t projectionValue = ConvertPgbsonToBsonValue(spec);
 
 	query = HandleSimpleProjectionStage(
 		&projectionValue, query, context, "$project", BsonDollarProjectFunctionOid(),
 		NULL);
+
+	return MutateChunksQueryForDistribution(query);
+}
+
+
+static Query *
+GenerateShardsQuery(AggregationPipelineBuildContext *context)
+{
+	Query *query = makeNode(Query);
+	query->commandType = CMD_SELECT;
+	query->querySource = QSRC_ORIGINAL;
+	query->canSetTag = true;
+	context->mongoCollection = NULL;
+
+	query->rtable = NIL;
+
+	/* Create an empty jointree */
+	query->jointree = makeNode(FromExpr);
+
+	/* Create the projector. We only project the NULL::bson in this type of query */
+	pgbson_writer shardsWriter;
+	PgbsonWriterInit(&shardsWriter);
+	PgbsonWriterAppendUtf8(&shardsWriter, "_id", 3, "defaultShard");
+
+	Const *documentEntry = MakeBsonConst(PgbsonWriterGetPgbson(&shardsWriter));
+	TargetEntry *baseTargetEntry = makeTargetEntry((Expr *) documentEntry, 1, "document",
+												   false);
+	query->targetList = list_make1(baseTargetEntry);
+	context->requiresPersistentCursor = true;
+
+	query = MigrateQueryToSubQuery(query, context);
+	return MutateShardsQueryForDistribution(query);
+}
+
+
+static Query *
+GenerateSettingsQuery(AggregationPipelineBuildContext *context)
+{
+	Query *query = makeNode(Query);
+	query->commandType = CMD_SELECT;
+	query->querySource = QSRC_ORIGINAL;
+	query->canSetTag = true;
+	context->mongoCollection = NULL;
+
+	List *valuesList = NIL;
+
+	/* { _id: balancer, stopped: true } */
+	pgbson_writer balancerWriter;
+	PgbsonWriterInit(&balancerWriter);
+	PgbsonWriterAppendUtf8(&balancerWriter, "_id", 3, "balancer");
+	PgbsonWriterAppendBool(&balancerWriter, "stopped", 7, true);
+	valuesList = lappend(valuesList, list_make1(MakeBsonConst(PgbsonWriterGetPgbson(
+																  &balancerWriter))));
+
+	/* { _id: autosplit, enabled: false } */
+	pgbson_writer autosplitWriter;
+	PgbsonWriterInit(&autosplitWriter);
+	PgbsonWriterAppendUtf8(&autosplitWriter, "_id", 3, "autosplit");
+	PgbsonWriterAppendBool(&autosplitWriter, "enabled", 7, false);
+	valuesList = lappend(valuesList, list_make1(MakeBsonConst(PgbsonWriterGetPgbson(
+																  &autosplitWriter))));
+
+	RangeTblEntry *valuesRte = makeNode(RangeTblEntry);
+	valuesRte->rtekind = RTE_VALUES;
+	valuesRte->alias = valuesRte->eref = makeAlias("values", list_make1(makeString(
+																			"document")));
+	valuesRte->lateral = false;
+	valuesRte->values_lists = valuesList;
+	valuesRte->inh = false;
+	valuesRte->inFromCl = true;
+
+	valuesRte->coltypes = list_make1_oid(INT8OID);
+	valuesRte->coltypmods = list_make1_int(-1);
+	valuesRte->colcollations = list_make1_oid(InvalidOid);
+	query->rtable = list_make1(valuesRte);
+
+	query->jointree = makeNode(FromExpr);
+	RangeTblRef *valuesRteRef = makeNode(RangeTblRef);
+	valuesRteRef->rtindex = 1;
+	query->jointree->fromlist = list_make1(valuesRteRef);
+
+	/* Point to the values RTE */
+	Var *documentEntry = makeVar(1, 1, BsonTypeId(), -1, InvalidOid, 0);
+	TargetEntry *baseTargetEntry = makeTargetEntry((Expr *) documentEntry, 1, "document",
+												   false);
+	query->targetList = list_make1(baseTargetEntry);
+	context->requiresPersistentCursor = true;
 
 	return query;
 }

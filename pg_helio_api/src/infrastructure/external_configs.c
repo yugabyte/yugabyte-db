@@ -24,6 +24,8 @@ int PEC_TransactionTimeoutLimitSeconds =
 	DEFAULT_TRANSACTION_TIMEOUT_LIMIT_SECONDS;
 
 bool PEC_FailurePointDisablePipelineOptimization = false;
+bool PEC_InternalQueryForceClassicEngine = true;
+bool PEC_InternalQueryEnableSlotBasedExecutionEngine = false;
 
 /*
  * =================================================================================================================
@@ -82,6 +84,36 @@ static const ExtensionExternalConfigInfo ExtensionExternalConfigurations[] = {
 		.values = {
 			.RuntimeValue = (void *) &PEC_FeatureFlagTimeseriesMetricIndexes,
 			.DefaultValue.boolValue = false,
+			.valueType = ConfigValueType_Bool
+		}
+	},
+
+	/* internalQueryEnableSlotBasedExecutionEngine */
+	{
+		.name = "internalQueryEnableSlotBasedExecutionEngine",
+		.description = "Enables the feature flag for enabling classic query engine.",
+		.settableProperties = {
+			.isSettableAtStartup = true,
+			.isSettableAtRuntime = false
+		},
+		.values = {
+			.RuntimeValue = (void *) &PEC_InternalQueryEnableSlotBasedExecutionEngine,
+			.DefaultValue.boolValue = true,
+			.valueType = ConfigValueType_Bool
+		}
+	},
+
+	/* internalQueryForceClassicEngine */
+	{
+		.name = "internalQueryForceClassicEngine",
+		.description = "Enables the feature flag for enabling classic query engine.",
+		.settableProperties = {
+			.isSettableAtStartup = true,
+			.isSettableAtRuntime = false
+		},
+		.values = {
+			.RuntimeValue = (void *) &PEC_InternalQueryForceClassicEngine,
+			.DefaultValue.boolValue = true,
 			.valueType = ConfigValueType_Bool
 		}
 	},

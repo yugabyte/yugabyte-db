@@ -105,6 +105,18 @@ Query * MutateListCollectionsQueryForDistribution(Query *cosmosMetadataQuery);
 
 
 /*
+ * Mutates the shards query for handling distributed scenario.
+ */
+Query * MutateShardsQueryForDistribution(Query *metadataQuery);
+
+
+/*
+ * Mutates the chunks query for handling distributed scenario.
+ */
+Query * MutateChunksQueryForDistribution(Query *cosmosMetadataQuery);
+
+
+/*
  * Given a table OID, if the table is not the actual physical shard holding the data (say in a
  * distributed setup), tries to return the full shard name of the actual table if it can be found locally
  * or NULL otherwise (e.g. for ApiDataSchema.documents_1 returns ApiDataSchema.documents_1_12341 or NULL)
