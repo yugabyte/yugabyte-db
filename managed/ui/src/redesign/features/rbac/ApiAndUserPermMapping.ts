@@ -469,6 +469,10 @@ export const ApiPermissionMap = {
         requestType: ApiRequestType.DELETE,
         endpoint: '/releases/$name<[^/]+>'
     },
+    GET_YBDB_RELEASES: { requestType: ApiRequestType.GET, endpoint: '/ybdb_release' },
+    CREATE_YBDB_RELEASE: { requestType: ApiRequestType.POST, endpoint: '/ybdb_release' },
+    MODIFY_YBDB_RELEASE: { requestType: ApiRequestType.PUT, endpoint: '/ybdb_release/$rUUID<[^/]+>' },
+    DELETE_YBDB_RELEASE: { requestType: ApiRequestType.DELETE, endpoint: '/ybdb_release/$rUUID<[^/]+>' },
     RESTORE_BACKUP: { requestType: ApiRequestType.POST, endpoint: '/restore' },
     GET_RESTORES_BY_PAGE: { requestType: ApiRequestType.POST, endpoint: '/restore/page' },
     GET_RESTORE_PREFLIGHT_CHECK: {
