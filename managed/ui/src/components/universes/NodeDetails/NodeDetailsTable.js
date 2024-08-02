@@ -123,7 +123,8 @@ export default class NodeDetailsTable extends Component {
         <div>
           {isAlive ? successIcon : warningIcon}&nbsp;
           {isNotHidden(customer.currentCustomer.data.features, 'universes.proxyIp') ? (
-            isUniverseStatusGood ? (
+            isUniverseStatusGood &&
+            (isMaster ? isNonEmptyString(row.masterUUID) : isNonEmptyString(row.uuid)) ? (
               nodeProcessWithStatus
             ) : (
               nodeProcess
