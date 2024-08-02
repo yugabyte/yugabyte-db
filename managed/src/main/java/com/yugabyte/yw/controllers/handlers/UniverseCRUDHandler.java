@@ -690,10 +690,7 @@ public class UniverseCRUDHandler {
                   userIntent.ybSoftwareVersion, Util.K8S_YBC_COMPATIBLE_DB_VERSION, true)
               >= 0) {
             taskParams.setEnableYbc(true);
-            taskParams.setYbcSoftwareVersion(
-                StringUtils.isNotBlank(taskParams.getYbcSoftwareVersion())
-                    ? taskParams.getYbcSoftwareVersion()
-                    : ybcManager.getStableYbcVersion());
+            taskParams.setYbcSoftwareVersion(ybcManager.getStableYbcVersion());
           } else {
             taskParams.setEnableYbc(false);
             LOG.error(
@@ -711,10 +708,7 @@ public class UniverseCRUDHandler {
                   + confGetter.getGlobalConf(GlobalConfKeys.ybcCompatibleDbVersion));
         } else {
           taskParams.setEnableYbc(true);
-          taskParams.setYbcSoftwareVersion(
-              StringUtils.isNotBlank(taskParams.getYbcSoftwareVersion())
-                  ? taskParams.getYbcSoftwareVersion()
-                  : ybcManager.getStableYbcVersion());
+          taskParams.setYbcSoftwareVersion(ybcManager.getStableYbcVersion());
         }
       } else {
         taskParams.setEnableYbc(false);
@@ -1029,7 +1023,7 @@ public class UniverseCRUDHandler {
     if (u.isYbcEnabled()) {
       taskParams.installYbc = true;
       taskParams.setEnableYbc(true);
-      taskParams.setYbcSoftwareVersion(u.getUniverseDetails().getYbcSoftwareVersion());
+      taskParams.setYbcSoftwareVersion(ybcManager.getStableYbcVersion());
       taskParams.setYbcInstalled(true);
       for (Cluster cluster : taskParams.clusters) {
         cluster.userIntent.ybcFlags =
@@ -1337,7 +1331,7 @@ public class UniverseCRUDHandler {
     if (universe.isYbcEnabled()) {
       taskParams.installYbc = true;
       taskParams.setEnableYbc(true);
-      taskParams.setYbcSoftwareVersion(universe.getUniverseDetails().getYbcSoftwareVersion());
+      taskParams.setYbcSoftwareVersion(ybcManager.getStableYbcVersion());
       taskParams.setYbcInstalled(true);
       for (Cluster cluster : taskParams.clusters) {
         cluster.userIntent.ybcFlags =

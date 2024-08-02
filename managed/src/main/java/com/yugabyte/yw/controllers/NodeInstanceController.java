@@ -17,6 +17,7 @@ import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.controllers.JWTVerifier.ClientType;
@@ -87,10 +88,12 @@ public class NodeInstanceController extends AuthenticatedController {
   @Inject private KubernetesManagerFactory kubernetesManagerFactory;
 
   private NodeInstanceHandler nodeInstanceHandler;
+  private YbcManager ybcManager;
 
   @Inject
-  public NodeInstanceController(NodeInstanceHandler nodeInstanceHandler) {
+  public NodeInstanceController(NodeInstanceHandler nodeInstanceHandler, YbcManager ybcManager) {
     this.nodeInstanceHandler = nodeInstanceHandler;
+    this.ybcManager = ybcManager;
   }
 
   /**
@@ -491,6 +494,9 @@ public class NodeInstanceController extends AuthenticatedController {
 
     taskParams.nodeName = nodeName;
     taskParams.creatingUser = CommonUtils.getUserFromContext();
+    if (universe.isYbcEnabled()) {
+      taskParams.setYbcSoftwareVersion(ybcManager.getStableYbcVersion());
+    }
 
     // Check deleting/removing a node will not go below the RF
     // TODO: Always check this for all actions?? For now leaving it as is since it breaks many tests
