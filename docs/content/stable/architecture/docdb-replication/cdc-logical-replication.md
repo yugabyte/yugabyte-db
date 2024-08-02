@@ -15,7 +15,7 @@ type: docs
 
 Change data capture (CDC) in YugabyteDB provides technology to ensure that any changes in data due to operations such as inserts, updates, and deletions are identified, captured, and made available for consumption by applications and other tools.
 
-CDC in YugabyteDB is based on the PostgreSQL Logical Replication model. The fundamental concept is that of the Replication Slot. A Replication Slot represents a stream of changes that can be replayed to the client in the order they were made on the origin server in a manner that preserves transactional consistency. This is the basis for the support for Transactional CDC in YugabyteDB. Where the strict requirements of Transactional CDC are not present, multiple replication slots can be used to stream changes from unrelated tables in parallel.
+CDC using Logical Replication in YugabyteDB is based on the PostgreSQL Logical Replication model. The fundamental concept is that of the Replication Slot. A Replication Slot represents a stream of changes that can be replayed to the client in the order they were made on the origin server in a manner that preserves transactional consistency. This is the basis for the support for Transactional CDC in YugabyteDB. Where the strict requirements of Transactional CDC are not present, multiple replication slots can be used to stream changes from unrelated tables in parallel.
 
 ## Architecture
 
@@ -23,11 +23,11 @@ CDC in YugabyteDB is based on the PostgreSQL Logical Replication model. The fund
 
 The following are the main components of the Yugabyte CDC solution:
 
-1. Walsender - A special purpose PG backend responsible for streaming changes to the client and handling acknowledgments.
+1. CDC Service - Retrieves changes from the WAL of a specified shard starting from a given checkpoint.
 
 2. Virtual WAL (VWAL) - Assembles changes from all the shards of user tables (under the publication) to maintain transactional consistency.
 
-3. CDCService - Retrieves changes from the WAL of a specified shard starting from a given checkpoint.
+3. walsender - A special purpose PostgreSQL backend responsible for streaming changes to the client and handling acknowledgments.
 
 ### Data Flow
 
@@ -57,15 +57,15 @@ Each tablet has its own WAL. WAL is NOT in-memory, but it is disk persisted. Eac
 
 Each tablet sends changes in transaction commit time order. Further, in a transaction, the changes are in the order in which the operations were performed in the transaction.
 
-**Step 2 - Sorting in the VWAL and sending transactions to the Walsender**
+**Step 2 - Sorting in the VWAL and sending transactions to the walsender**
 
-![VWAL-Walsender](/images/architecture/vwal_walsender_interaction.png)
+![VWAL-walsender](/images/architecture/vwal_walsender_interaction.png)
 
-VWAL collects changes across multiple tablets, assembles the transactions, assigns LSN to each change and transaction boundary (BEGIN, COMMIT) record, and sends the changes to the Walsender in transaction commit time order.
+VWAL collects changes across multiple tablets, assembles the transactions, assigns LSN to each change and transaction boundary (BEGIN, COMMIT) record, and sends the changes to the walsender in transaction commit time order.
 
-**Step 3 - Walsender to client**
+**Step 3 - walsender to client**
 
-Walsender sends changes to the output plugin, which filters them according to the slot's publication and converts them into the client's desired format. These changes are then streamed to the client using the appropriate streaming replication protocols determined by the output plugin. Yugabyte follows the same streaming replication protocols as defined in PostgreSQL.
+The walsender sends changes to the output plugin, which filters them according to the slot's publication and converts them into the client's desired format. These changes are then streamed to the client using the appropriate streaming replication protocols determined by the output plugin. Yugabyte follows the same streaming replication protocols as defined in PostgreSQL.
 
 <!--TODO (Siddharth): Fix the Links to the protocol section.
 
