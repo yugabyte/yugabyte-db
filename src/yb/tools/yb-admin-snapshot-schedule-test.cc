@@ -172,7 +172,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
 
   Status WaitNewSnapshot(const std::string& id = {}) {
     LOG(INFO) << "WaitNewSnapshot, schedule id: " << id;
-    std::string_view last_snapshot_id;
+    std::string last_snapshot_id;
     return WaitFor([this, &id, &last_snapshot_id]() -> Result<bool> {
       // If there's a master leader failover then we should wait for the next cycle.
       auto schedule = VERIFY_RESULT(GetSnapshotSchedule(id));
