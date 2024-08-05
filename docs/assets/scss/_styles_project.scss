@@ -103,6 +103,7 @@ a {
 /******* Variables for Color Theme Switcher **********/
 .td-breadcrumbs {
   margin-bottom: 20px;
+  padding-right: 120px;
 
   &:has(.breadcrumb-item:only-child) {
     height: 0;
@@ -161,7 +162,7 @@ a {
 @media (min-width: 992px) {
   .td-main main {
     padding-top: 116px;
-    margin-top: 32px;
+    margin-top: 52px;
   }
 }
 

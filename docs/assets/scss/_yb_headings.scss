@@ -17,8 +17,8 @@
   h4[id],
   h5[id] {
     &::before {
-      height: 7.5rem;
-      margin-top: -7.5rem;
+      height: calc(7.5rem + 20px);
+      margin-top: calc(-7.5rem - 20px);
     }
 
     > a[aria-hidden] {

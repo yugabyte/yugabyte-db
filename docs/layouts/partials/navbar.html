@@ -34,7 +34,7 @@
         <a class="navbar-brand" href="{{ .Site.Params.yb.navbar_logo.url }}"{{- if .Site.Params.yb.navbar_logo.title }} title="{{ .Site.Params.yb.navbar_logo.title }}"{{- end }}{{- if .Site.Params.yb.navbar_logo.newTab }} target="_blank" rel="noopener"{{- end }}>
       {{- end -}}
       <span class="navbar-logo">
-        <img src="{{ .Site.Params.yb.navbar_logo.path }}" alt="YugabyteDB" title="YugabyteDB" width="181" height="30">
+        <img src="{{ .Site.Params.yb.navbar_logo.path }}" alt="YugabyteDB" title="YugabyteDB" width="148" height="20">
       </span>
       {{- if .Site.Params.yb.navbar_logo.url -}}
         </a>
@@ -48,7 +48,7 @@
 		</div>
 
     {{- if .Site.Params.kapa_ai -}}
-      <div class="ask-ai-top">OR <span class="tritiery-btn" title="Use Experimental AI"><img width="16" height="16" src="/icons/pixi-dust.svg" alt="Use Experimental AI"><span>Use Experimental AI</span></span></div>
+      <div class="ask-ai-top">OR <span class="tritiery-btn" title="Use Experimental AI"><span>Use Experimental AI</span><img width="18" height="18" src="/icons/pixi-dust.svg" alt="Use Experimental AI"></span></div>
     {{- end -}}
 
     <div class="td-navbar-nav-scroll ms-md-auto" id="main_navbar">
