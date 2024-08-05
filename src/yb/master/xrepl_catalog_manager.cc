@@ -158,6 +158,9 @@ DEFINE_RUNTIME_bool(cdcsdk_enable_cleanup_of_non_eligible_tables_from_stream, fa
     "materialised view etc. in their stream metadata and these tables will be marked for removal "
     "by catalog manager background thread.");
 
+DEFINE_test_flag(bool, cdcsdk_disable_drop_table_cleanup, false,
+                 "When enabled, cleanup of dropped tables from CDC streams will be skipped.");
+
 DEFINE_RUNTIME_AUTO_bool(cdcsdk_enable_identification_of_non_eligible_tables,
                          kLocalPersisted,
                          false,
@@ -1754,27 +1757,32 @@ void CatalogManager::FindAllNonEligibleTablesInCDCSDKStream(
   for (const auto& table_id : table_ids) {
     if (!user_table_ids.contains(table_id)) {
       auto table_info = GetTableInfoUnlocked(table_id);
-      Schema schema;
-      Status status = table_info->GetSchema(&schema);
-      if (!status.ok()) {
-        LOG_WITH_FUNC(WARNING) << "Error while getting schema for table: " << table_info->name();
-        // Skip this table for now, it will be revisited for removal on master restart/master leader
-        // change.
-        continue;
-      }
+      if (table_info) {
+        Schema schema;
+        Status status = table_info->GetSchema(&schema);
+        if (!status.ok()) {
+          LOG_WITH_FUNC(WARNING) << "Error while getting schema for table: " << table_info->name();
+          // Skip this table for now, it will be revisited for removal on master restart/master
+          // leader change.
+          continue;
+        }
 
-      // Re-confirm this table is not meant to be part of a CDC stream.
-      if (!IsTableEligibleForCDCSDKStream(table_info, schema)) {
-        LOG(INFO) << "Found a non-eligible table: " << table_info->id()
-                  << ", for stream: " << stream_id;
-        LockGuard lock(cdcsdk_non_eligible_table_mutex_);
-        namespace_to_cdcsdk_non_eligible_table_map_[table_info->namespace_id()].insert(
-            table_info->id());
+        // Re-confirm this table is not meant to be part of a CDC stream.
+        if (!IsTableEligibleForCDCSDKStream(table_info, schema)) {
+          LOG(INFO) << "Found a non-eligible table: " << table_info->id()
+                    << ", for stream: " << stream_id;
+          LockGuard lock(cdcsdk_non_eligible_table_mutex_);
+          namespace_to_cdcsdk_non_eligible_table_map_[table_info->namespace_id()].insert(
+              table_info->id());
+        } else {
+          // Ideally we are not expected to enter the else clause.
+          LOG(WARNING) << "Found table " << table_id << " in metadata of stream " << stream_id
+                       << " that is not present in the eligible list of tables "
+                          "from the namespace for CDC";
+        }
       } else {
-        // Ideally we are not expected to enter the else clause.
-        LOG(WARNING) << "Found table " << table_id << " in metadata of stream " << stream_id
-                     << " that is not present in the eligible list of tables "
-                        "from the namespace for CDC";
+        LOG(INFO) << "Found table " << table_id << " in stream " << stream_id
+                  << " metadata that is not present in master.";
       }
     }
   }
@@ -6682,12 +6690,14 @@ void CatalogManager::RunXClusterBgTasks(const LeaderEpoch& epoch) {
 
   // DELETING_METADATA special state is used by CDC, to do CDC streams metadata cleanup from
   // cache as well as from the system catalog for the drop table scenario.
-  std::vector<CDCStreamInfoPtr> cdcsdk_streams;
-  WARN_NOT_OK(
-      FindCDCStreamsMarkedForMetadataDeletion(
-          &cdcsdk_streams, SysCDCStreamEntryPB::DELETING_METADATA),
-      "Failed CDC Stream Metadata Deletion");
-  WARN_NOT_OK(CleanUpCDCStreamsMetadata(cdcsdk_streams), "Failed Cleanup CDC Streams Metadata");
+  if (!FLAGS_TEST_cdcsdk_disable_drop_table_cleanup) {
+    std::vector<CDCStreamInfoPtr> cdcsdk_streams;
+    WARN_NOT_OK(
+        FindCDCStreamsMarkedForMetadataDeletion(
+            &cdcsdk_streams, SysCDCStreamEntryPB::DELETING_METADATA),
+        "Failed CDC Stream Metadata Deletion");
+    WARN_NOT_OK(CleanUpCDCStreamsMetadata(cdcsdk_streams), "Failed Cleanup CDC Streams Metadata");
+  }
 
   // Restart xCluster and CDCSDK parent tablet deletion bg task.
   StartCDCParentTabletDeletionTaskIfStopped();
