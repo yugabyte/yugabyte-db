@@ -1538,10 +1538,13 @@ components:
       description: size, count, iops details of tables and indexes
       example:
         size: 1
+        object_name: object_name
         sql_type: sql_type
         iops: 5
         row_count: 6
       properties:
+        object_name:
+          type: string
         sql_type:
           type: string
         row_count:
@@ -1560,10 +1563,12 @@ components:
       example:
         sql_objects_metadata:
         - size: 1
+          object_name: object_name
           sql_type: sql_type
           iops: 5
           row_count: 6
         - size: 1
+          object_name: object_name
           sql_type: sql_type
           iops: 5
           row_count: 6
@@ -2788,10 +2793,12 @@ components:
         data:
           sql_objects_metadata:
           - size: 1
+            object_name: object_name
             sql_type: sql_type
             iops: 5
             row_count: 6
           - size: 1
+            object_name: object_name
             sql_type: sql_type
             iops: 5
             row_count: 6

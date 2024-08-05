@@ -957,6 +957,8 @@ components:
       description: size, count, iops details of tables and indexes
       type: object
       properties:
+        object_name:
+          type: string
         sql_type:
           type: string
         row_count:
