@@ -6783,6 +6783,8 @@ class ControlScript(object):
                 data_constraints = args.data_placement_constraint.split(",")
                 has_errors = False
                 for constraint in data_constraints:
+                    if ':' not in constraint:
+                        has_errors = True
                     cloud_info = constraint.split(":")[0].split(".")
                     if (len(cloud_info) == 3):
                         for value in cloud_info:
@@ -6794,8 +6796,8 @@ class ControlScript(object):
                 if has_errors:
                     Output.print_out(Output.make_red("ERROR") +
                         ": Incorrect value specified for --data_placement_constraint. " +
-                        "Please specify comma sperated value with format " +
-                        "- cloudprovider.region.zone")
+                        "Please specify comma sperated values with the num of replicas with " +
+                        "format - <cloudprovider.region.zone>:<num_of_replicas>")
                 else:
                     self.configs.temp_data[
                         "rr_data_placement_constraint"] = args.data_placement_constraint
@@ -6819,6 +6821,8 @@ class ControlScript(object):
                 data_constraints = args.data_placement_constraint.split(",")
                 has_errors = False
                 for constraint in data_constraints:
+                    if ':' not in constraint:
+                        has_errors = True
                     cloud_info = constraint.split(".")
                     if (len(cloud_info) == 3):
                         for value in cloud_info:
@@ -6830,9 +6834,8 @@ class ControlScript(object):
                 if has_errors:
                     Output.print_out(
                         "Incorrect value specified for --data_placement_constraint. " +
-                        "Please specify comma sperated value with format " +
-                        "- cloudprovider.region.zone".format(
-                            args.data_placement_constraint))
+                        "Please specify comma sperated values with the num of replicas with " +
+                        "format - <cloudprovider.region.zone>:<num_of_replicas>")
                 else:
                     self.configs.temp_data[
                         "rr_data_placement_constraint"] = args.data_placement_constraint
