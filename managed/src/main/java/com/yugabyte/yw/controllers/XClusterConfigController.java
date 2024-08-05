@@ -1230,11 +1230,8 @@ public class XClusterConfigController extends AuthenticatedController {
     Map<String, List<String>> sourceUniverseMainTableIndexTablesMap;
     // For universes newer than or equal to 2.21.1.0-b168, we use the following method to improve
     // performance.
-    if (Util.compareYbVersions(
-            "2.21.1.0-b168",
-            sourceUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
-            true)
-        <= 0) {
+    if (XClusterConfigTaskBase.universeTableInfoContainsIndexedTableId(
+        sourceUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion)) {
       sourceUniverseMainTableIndexTablesMap =
           XClusterConfigTaskBase.getMainTableIndexTablesMap(sourceUniverse, sourceTableInfoList);
     } else {
