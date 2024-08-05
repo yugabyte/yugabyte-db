@@ -645,6 +645,14 @@ Default: `-1` (disables logging statement durations)
 
 Specifies the lowest YSQL message level to log.
 
+##### --ysql_yb_bnl_batch_size
+
+Sets the size of a tuple batch that's taken from the outer side of a [YB Batched Nested Loop (BNL) Join](../../../explore/ysql-language-features/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
+
+See also the [yb_bnl_batch_size](#yb-bnl-batch-size) configuration parameter. If both flag and parameter are set, the parameter takes precedence.
+
+Default: 1024
+
 ### YCQL
 
 The following flags support the use of the [YCQL API](../../../api/ycql/):
