@@ -131,3 +131,11 @@ You can disable cluster-wide encryption as follows:
     ```output
     Encryption status: DISABLED
     ```
+
+
+{{< note title="Note" >}}
+
+When taking snapshots, you will have to separately track the decryption key(s) that were used on the cluster. 
+When restoring the snapshot, you will need to add these keys to the cluster so the data can be decrypted. This is automated in YugabyteDB Anywhere.
+
+{{< /note >}}
