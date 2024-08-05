@@ -61,7 +61,7 @@ public class GroupMappingInfo extends Model {
       UUID customerUUID, UUID roleUUID, String identifier, GroupType type) {
     GroupMappingInfo entity = new GroupMappingInfo();
     entity.customerUUID = customerUUID;
-    entity.identifier = identifier.toLowerCase();
+    entity.identifier = identifier;
     entity.roleUUID = roleUUID;
     entity.type = type;
     entity.save();

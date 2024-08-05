@@ -644,7 +644,7 @@ class NodeChecker():
 
     def retrieve_host_certs(self, host, port):
         """Retrieve certificates from the specified host and port."""
-        cmd = f'echo | openssl s_client -showcerts -connect {host}:{port}'
+        cmd = 'echo | openssl s_client -showcerts -connect {}:{}'.format(host, port)
         return self._check_output(cmd)
 
     def parse_certs(self, cert_output):

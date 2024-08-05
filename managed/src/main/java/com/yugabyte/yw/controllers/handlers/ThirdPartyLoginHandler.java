@@ -24,7 +24,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.OidcGroupToYbaRoles;
+import com.yugabyte.yw.models.GroupMappingInfo;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.UserType;
 import com.yugabyte.yw.models.rbac.Role;
@@ -169,15 +169,16 @@ public class ThirdPartyLoginHandler {
       log.info("List of user's groups = {}", groups.toString());
 
       for (String group : groups) {
-        OidcGroupToYbaRoles entity =
-            OidcGroupToYbaRoles.find
+        GroupMappingInfo entity =
+            GroupMappingInfo.find
                 .query()
                 .where()
                 .eq("customer_uuid", custUUID)
-                .eq("group_name", group.toLowerCase())
+                .eq("type", "OIDC")
+                .ieq("identifier", group)
                 .findOne();
         if (entity != null) {
-          roles.addAll(entity.getYbaRoles());
+          roles.add(entity.getRoleUUID());
         }
       }
     } catch (Exception e) {

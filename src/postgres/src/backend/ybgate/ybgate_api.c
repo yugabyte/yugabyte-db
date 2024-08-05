@@ -233,7 +233,7 @@ static Datum evalExpr(YbgExprContext ctx, Expr* expr, bool *is_null)
 			/* deconstruct_array inputs */
 			ArrayType *arr = (ArrayType *) DatumGetPointer(array_arg);
 			Oid elemtype = ARR_ELEMTYPE(arr);
-			int32 elmlen;
+			int16_t elmlen;
 			bool elmbyval;
 			char elmalign;
 			/* deconstruct_array outputs */
@@ -523,7 +523,7 @@ YbgStatus YbgSplitArrayDatum(uint64_t datum,
 				"Type of given datum array does not match the given type",
 				__FILE__, __LINE__);
 
-	int32 elmlen;
+	int16_t elmlen;
 	bool elmbyval;
 	char elmalign;
 	/*

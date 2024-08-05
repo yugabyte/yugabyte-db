@@ -9,7 +9,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.CustomerLoginFormData;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.LdapDnToYbaRole;
+import com.yugabyte.yw.models.GroupMappingInfo;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
@@ -249,16 +249,19 @@ public class LdapUtil {
 
   private Role getRoleMappedToLdapGroup(String group, UUID customerUuid) {
     Role role = null;
-    LdapDnToYbaRole ldapDnToYbaRole =
-        LdapDnToYbaRole.find
+    GroupMappingInfo info =
+        GroupMappingInfo.find
             .query()
             .where()
-            .eq("distinguished_name", group)
+            .ieq("identifier", group)
             .eq("customer_uuid", customerUuid)
+            .eq("type", "LDAP")
             .findOne();
 
-    if (ldapDnToYbaRole != null) {
-      role = ldapDnToYbaRole.ybaRole;
+    if (info != null) {
+      role =
+          Role.valueOf(
+              com.yugabyte.yw.models.rbac.Role.get(customerUuid, info.getRoleUUID()).getName());
     }
     return role;
   }

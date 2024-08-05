@@ -614,33 +614,39 @@ public class XClusterUniverseService {
         throw new RuntimeException(errMsg);
       }
       CatalogEntityInfo.SysClusterConfigEntryPB config = clusterConfigResp.getConfig();
-      CdcConsumer.ProducerEntryPB replicationGroup =
-          config.getConsumerRegistry().getProducerMapMap().get(replicationGroupName);
-      if (replicationGroup == null) {
-        throw new RuntimeException(
-            String.format(
-                "No replication group found with name (%s) in universe (%s) cluster config",
-                replicationGroupName, targetUniverse.getUniverseUUID()));
-      }
-
-      Map<String, CdcConsumer.StreamEntryPB> replicationStreams =
-          replicationGroup.getStreamMapMap();
-      Map<String, String> sourceTableIdTargetTableIdMap =
-          replicationStreams.values().stream()
-              .collect(
-                  Collectors.toMap(
-                      StreamEntryPB::getProducerTableId, StreamEntryPB::getConsumerTableId));
-      log.debug(
-          "XClusterUniverseService.getSourceTableIdTargetTableIdMap: "
-              + "sourceTableIdTargetTableIdMap is {}",
-          sourceTableIdTargetTableIdMap);
-      return sourceTableIdTargetTableIdMap;
+      return getSourceTableIdToTargetTableIdMapFromClusterConfig(
+          targetUniverse, replicationGroupName, config);
     } catch (Exception e) {
       log.error(
           "XClusterUniverseService.getSourceTableIdTargetTableIdMap hit error : {}",
           e.getMessage());
       throw new RuntimeException(e);
     }
+  }
+
+  public Map<String, String> getSourceTableIdToTargetTableIdMapFromClusterConfig(
+      Universe targetUniverse,
+      String replicationGroupName,
+      CatalogEntityInfo.SysClusterConfigEntryPB config) {
+    CdcConsumer.ProducerEntryPB replicationGroup =
+        config.getConsumerRegistry().getProducerMapMap().get(replicationGroupName);
+    if (replicationGroup == null) {
+      throw new RuntimeException(
+          String.format(
+              "No replication group found with name (%s) in universe (%s) cluster config",
+              replicationGroupName, targetUniverse.getUniverseUUID()));
+    }
+    Map<String, CdcConsumer.StreamEntryPB> replicationStreams = replicationGroup.getStreamMapMap();
+    Map<String, String> sourceTableIdTargetTableIdMap =
+        replicationStreams.values().stream()
+            .collect(
+                Collectors.toMap(
+                    StreamEntryPB::getProducerTableId, StreamEntryPB::getConsumerTableId));
+    log.debug(
+        "XClusterUniverseService.getSourceTableIdTargetTableIdMap: "
+            + "sourceTableIdTargetTableIdMap is {}",
+        sourceTableIdTargetTableIdMap);
+    return sourceTableIdTargetTableIdMap;
   }
 
   public Set<UUID> getXClusterTargetUniverseSetToBeImpactedWithUpgradeFinalize(Universe universe)

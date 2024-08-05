@@ -377,7 +377,7 @@ export const AZUProviderEditForm = ({
   const inUseZones = getInUseAzs(providerConfig.uuid, linkedUniverses, regionSelection?.code);
   const isEditInUseProviderEnabled = runtimeConfigEntries.some(
     (config: any) =>
-      config.key === RuntimeConfigKey.EDIT_IN_USE_PORIVDER_UI_FEATURE_FLAG &&
+      config.key === RuntimeConfigKey.EDIT_IN_USE_PROVIDER_UI_FEATURE_FLAG &&
       config.value === 'true'
   );
 

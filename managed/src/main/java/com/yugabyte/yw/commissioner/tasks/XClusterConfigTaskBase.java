@@ -45,7 +45,6 @@ import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.TableInfoForm.TableInfoResp;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
-import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -59,6 +58,7 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -70,9 +70,11 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
+import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.CommonTypes;
 import org.yb.CommonTypes.TableType;
@@ -1743,7 +1745,17 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     return filteredTableInfoList;
   }
 
-  public static void setReplicationStatus(
+  /**
+   * Updates the replication details from the database for the given xCluster configuration. It does
+   * not update the xCluster config object in the DB intentionally because the replication status is
+   * a temporary status and can be fetched each time that the xCluster object is fetched.
+   *
+   * @param xClusterUniverseService The service for managing xCluster universes.
+   * @param ybClientService The service for interacting with the YB client.
+   * @param tableHandler The handler for managing universe tables.
+   * @param xClusterConfig The xCluster configuration to update the replication details for.
+   */
+  public static void updateReplicationDetailsFromDB(
       XClusterUniverseService xClusterUniverseService,
       YBClientService ybClientService,
       UniverseTableHandler tableHandler,
@@ -1759,10 +1771,65 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
           xClusterConfig);
       return;
     }
-    // It does not update the xCluster config object in the DB intentionally because the
-    // replication status is a temporary status and can be fetched each time that the xCluster
-    // object is fetched.
-    if (supportsGetReplicationStatus(targetUniverseOptional.get())) {
+
+    setReplicationStatus(xClusterUniverseService, xClusterConfig, targetUniverseOptional.get());
+
+    ReplicationClusterData replicationClusterData = null;
+    try {
+      replicationClusterData = collectReplicationClusterData(ybClientService, xClusterConfig);
+    } catch (Exception e) {
+      log.error(
+          "Error getting cluster details for xCluster config {}", xClusterConfig.getUuid(), e);
+      return;
+    }
+
+    try {
+      if (xClusterConfig.getTableType().equals(XClusterConfig.TableType.YSQL)
+          && Arrays.asList(XClusterConfigStatusType.Running, XClusterConfigStatusType.Updating)
+              .contains(xClusterConfig.getStatus())) {
+        addTransientTableConfigs(
+            xClusterConfig,
+            xClusterUniverseService,
+            ybClientService,
+            replicationClusterData.sourceTableInfoList,
+            replicationClusterData.targetTableInfoList,
+            replicationClusterData.clusterConfig);
+      }
+    } catch (Exception e) {
+      log.error(
+          "Error getting table details not in replication for xCluster config {}",
+          xClusterConfig.getUuid(),
+          e);
+    }
+
+    try {
+      addSourceAndTargetTableInfo(
+          xClusterConfig,
+          xClusterUniverseService,
+          tableHandler,
+          replicationClusterData.sourceTableInfoList,
+          replicationClusterData.targetTableInfoList,
+          replicationClusterData.clusterConfig);
+    } catch (Exception e) {
+      log.error(
+          "Error getting table details not in replication for xCluster config {}",
+          xClusterConfig.getUuid(),
+          e);
+    }
+  }
+
+  /**
+   * Sets the replication status for the given XClusterConfig and targetUniverse.
+   *
+   * @param xClusterUniverseService The service used to interact with the XClusterUniverse.
+   * @param xClusterConfig The XClusterConfig containing the replication details.
+   * @param targetUniverse The target Universe for which the replication status is being set.
+   */
+  private static void setReplicationStatus(
+      XClusterUniverseService xClusterUniverseService,
+      XClusterConfig xClusterConfig,
+      Universe targetUniverse) {
+    if (supportsGetReplicationStatus(targetUniverse)) {
       try {
         Map<String, ReplicationStatusPB> streamIdReplicationStatusMap =
             xClusterUniverseService.getReplicationStatus(xClusterConfig).stream()
@@ -1859,40 +1926,93 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
         log.error("XClusterConfigTaskBase.isBootstrapRequired hit error : {}", e.getMessage());
       }
     }
-
-    try {
-      if (xClusterConfig.getTableType().equals(XClusterConfig.TableType.YSQL)
-          && xClusterConfig.getStatus().equals(XClusterConfig.XClusterConfigStatusType.Running)) {
-        addTransientTableConfigs(xClusterConfig, xClusterUniverseService, ybClientService);
-      }
-    } catch (Exception e) {
-      log.error(
-          "Error getting table details not in replication for xCluster config {}",
-          xClusterConfig.getUuid(),
-          e);
-    }
-
-    try {
-      addSourceAndTargetTableInfo(xClusterConfig, xClusterUniverseService, tableHandler);
-    } catch (Exception e) {
-      log.error(
-          "Error getting table details not in replication for xCluster config {}",
-          xClusterConfig.getUuid(),
-          e);
-    }
   }
 
+  /**
+   * Collects replication cluster data for the given XClusterConfig.
+   *
+   * @param ybClientService The YBClientService instance.
+   * @param xClusterConfig The XClusterConfig instance.
+   * @return The ReplicationClusterData containing the collected data.
+   */
+  private static ReplicationClusterData collectReplicationClusterData(
+      YBClientService ybClientService, XClusterConfig xClusterConfig) {
+    Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
+
+    ReplicationClusterData data = new ReplicationClusterData();
+    CompletableFuture<Void> sourceUniverseTableInfoFuture =
+        CompletableFuture.runAsync(
+            () -> {
+              try {
+                data.setSourceTableInfoList(getTableInfoList(ybClientService, sourceUniverse));
+              } catch (Exception e) {
+                log.error(
+                    "Error getting table info list for source universe {}", sourceUniverse, e);
+              }
+            });
+
+    CompletableFuture<Void> targetUniverseTableInfoFuture =
+        CompletableFuture.runAsync(
+            () -> {
+              try {
+                data.setTargetTableInfoList(getTableInfoList(ybClientService, targetUniverse));
+              } catch (Exception e) {
+                log.error(
+                    "Error getting table info list for target universe {}", targetUniverse, e);
+              }
+            });
+
+    CompletableFuture<Void> targetUniverseClusterConfigFuture =
+        CompletableFuture.runAsync(
+            () -> {
+              try (YBClient client =
+                  ybClientService.getClient(
+                      targetUniverse.getMasterAddresses(),
+                      targetUniverse.getCertificateNodetoNode())) {
+                CatalogEntityInfo.SysClusterConfigEntryPB config =
+                    getClusterConfig(client, targetUniverse.getUniverseUUID());
+                data.setClusterConfig(config);
+              } catch (Exception e) {
+                log.error(
+                    "Error getting table ids to skip bidirectional replication for xCluster config"
+                        + " {}",
+                    xClusterConfig.getUuid(),
+                    e);
+              }
+            });
+
+    CompletableFuture.allOf(
+            sourceUniverseTableInfoFuture,
+            targetUniverseTableInfoFuture,
+            targetUniverseClusterConfigFuture)
+        .join();
+    return data;
+  }
+
+  /**
+   * Adds transient table configurations to the XClusterConfig that are not part of the replication
+   * but should be.
+   *
+   * @param xClusterConfig The XClusterConfig object to add the table configurations to.
+   * @param xClusterUniverseService The XClusterUniverseService used to retrieve table
+   *     configurations.
+   * @param ybClientService The YBClientService used to interact with the YBClient.
+   * @param sourceTableInfoList The list of source table information.
+   * @param targetTableInfoList The list of target table information.
+   * @param clusterConfig The cluster configuration.
+   * @throws Exception if an error occurs while adding the table configurations.
+   */
   private static void addTransientTableConfigs(
       XClusterConfig xClusterConfig,
       XClusterUniverseService xClusterUniverseService,
-      YBClientService ybClientService)
+      YBClientService ybClientService,
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList,
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList,
+      CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig)
       throws Exception {
-    Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
-    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceUniverseTableInfoList =
-        XClusterConfigTaskBase.getTableInfoList(ybClientService, sourceUniverse);
-
     Set<String> sourceUniverseTableIds =
-        sourceUniverseTableInfoList.stream()
+        sourceTableInfoList.stream()
             .map(tableInfo -> XClusterConfigTaskBase.getTableId(tableInfo))
             .collect(Collectors.toSet());
 
@@ -1905,21 +2025,14 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
               }
             });
 
-    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
-    CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig;
-    try (YBClient client =
-        ybClientService.getClient(
-            targetUniverse.getMasterAddresses(), targetUniverse.getCertificateNodetoNode())) {
-      clusterConfig = getClusterConfig(client, targetUniverse.getUniverseUUID());
-    } catch (Exception e) {
-      log.error(
-          "Error getting cluster config for universe {}", targetUniverse.getUniverseUUID(), e);
-      throw e;
-    }
-
     Pair<List<XClusterTableConfig>, List<XClusterTableConfig>> tableConfigs =
-        getXClusterTableConfigFromReplication(
-            xClusterUniverseService, ybClientService, clusterConfig, xClusterConfig);
+        getXClusterTableConfigNotInReplication(
+            xClusterUniverseService,
+            ybClientService,
+            xClusterConfig,
+            clusterConfig,
+            sourceTableInfoList,
+            targetTableInfoList);
 
     tableConfigs
         .getFirst()
@@ -1936,17 +2049,30 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
             });
   }
 
+  /**
+   * Adds the source and target table information to the XClusterConfig object.
+   *
+   * @param xClusterConfig The XClusterConfig object to update.
+   * @param xClusterUniverseService The XClusterUniverseService object for retrieving table
+   *     mappings.
+   * @param tableHandler The UniverseTableHandler object for retrieving table information.
+   * @param sourceTableInfoList The list of source table information.
+   * @param targetTableInfoList The list of target table information.
+   * @param config The SysClusterConfigEntryPB object for cluster configuration.
+   */
   private static void addSourceAndTargetTableInfo(
       XClusterConfig xClusterConfig,
       XClusterUniverseService xClusterUniverseService,
-      UniverseTableHandler tableHandler) {
+      UniverseTableHandler tableHandler,
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList,
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList,
+      CatalogEntityInfo.SysClusterConfigEntryPB config) {
     Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
-    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
-    Customer customer = Customer.get(sourceUniverse.getCustomerId());
+
     List<TableInfoResp> sourceUniverseTableInfoRespList =
-        tableHandler.listTables(
-            customer.getUuid(),
-            sourceUniverse.getUniverseUUID(),
+        tableHandler.getTableInfoRespFromTableInfo(
+            sourceUniverse,
+            sourceTableInfoList,
             false /* includeParentTableInfo */,
             false /* excludeColocatedTables */,
             true /* includeColocatedParentTables */,
@@ -1967,14 +2093,15 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
                   sourceTableIdTableInfoRespMap.get(tableConfig.getTableId()));
             });
 
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
     Map<String, String> producerConsumerTableIdMap =
-        xClusterUniverseService.getSourceTableIdTargetTableIdMap(
-            targetUniverse, xClusterConfig.getReplicationGroupName());
+        xClusterUniverseService.getSourceTableIdToTargetTableIdMapFromClusterConfig(
+            targetUniverse, xClusterConfig.getReplicationGroupName(), config);
 
     List<TableInfoResp> targetUniverseTableInfoRespList =
-        tableHandler.listTables(
-            customer.getUuid(),
-            targetUniverse.getUniverseUUID(),
+        tableHandler.getTableInfoRespFromTableInfo(
+            targetUniverse,
+            targetTableInfoList,
             false /* includeParentTableInfo */,
             false /* excludeColocatedTables */,
             true /* includeColocatedParentTables */,
@@ -2002,21 +2129,26 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   }
 
   /**
-   * Retrieves the pair of list of XClusterTableConfig from replication for the given
-   * XClusterUniverseService, YBClientService, clusterConfig, and xClusterConfig.
+   * Retrieves the list of source and target table configurations that are not present in
+   * replication for the given XClusterConfig.
    *
-   * @param xClusterUniverseService The XClusterUniverseService instance.
-   * @param ybClientService The YBClientService instance.
-   * @param clusterConfig The CatalogEntityInfo.SysClusterConfigEntryPB instance.
-   * @param xClusterConfig The XClusterConfig instance.
-   * @return A Pair containing the list of sourceTableConfigs and targetTableConfigs.
+   * @param xClusterUniverseService The service for managing XClusterUniverse.
+   * @param ybClientService The service for interacting with the YBClient.
+   * @param xClusterConfig The XClusterConfig for which to retrieve the table configurations.
+   * @param clusterConfig The SysClusterConfigEntryPB for the cluster.
+   * @param sourceTableInfoList The list of source table information.
+   * @param targetTableInfoList The list of target table information.
+   * @return A Pair containing the list of source table configurations and the list of target table
+   *     configurations.
    */
   public static Pair<List<XClusterTableConfig>, List<XClusterTableConfig>>
-      getXClusterTableConfigFromReplication(
+      getXClusterTableConfigNotInReplication(
           XClusterUniverseService xClusterUniverseService,
           YBClientService ybClientService,
+          XClusterConfig xClusterConfig,
           CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig,
-          XClusterConfig xClusterConfig) {
+          List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList,
+          List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList) {
     List<XClusterTableConfig> targetTableConfigs = new ArrayList<>();
     List<XClusterTableConfig> sourceTableConfigs = new ArrayList<>();
     if (!xClusterConfig.getTableType().equals(XClusterConfig.TableType.YSQL)) {
@@ -2024,9 +2156,19 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     }
 
     targetTableConfigs =
-        getTargetOnlyTable(xClusterUniverseService, ybClientService, xClusterConfig, clusterConfig);
+        getTargetOnlyTable(
+            xClusterUniverseService,
+            ybClientService,
+            xClusterConfig,
+            clusterConfig,
+            targetTableInfoList);
     sourceTableConfigs =
-        getSourceOnlyTable(xClusterUniverseService, ybClientService, xClusterConfig, clusterConfig);
+        getSourceOnlyTable(
+            xClusterUniverseService,
+            ybClientService,
+            xClusterConfig,
+            clusterConfig,
+            sourceTableInfoList);
 
     return new Pair<>(sourceTableConfigs, targetTableConfigs);
   }
@@ -2035,20 +2177,17 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       XClusterUniverseService xClusterUniverseService,
       YBClientService ybClientService,
       XClusterConfig xClusterConfig,
-      CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig) {
+      CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig,
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList) {
 
     try {
       Set<String> tableIdsInReplicationOnTargetUniverse =
           getConsumerTableIdsFromClusterConfig(
               clusterConfig, xClusterConfig.getReplicationGroupName());
 
-      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetUniverseTableInfoList =
-          getTableInfoList(
-              ybClientService, Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID()));
-
       return extractTablesNotInReplication(
           tableIdsInReplicationOnTargetUniverse,
-          targetUniverseTableInfoList,
+          targetTableInfoList,
           XClusterTableConfig.Status.ExtraTableOnTarget);
     } catch (Exception e) {
       log.error(
@@ -2061,20 +2200,17 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       XClusterUniverseService xClusterUniverseService,
       YBClientService ybClientService,
       XClusterConfig xClusterConfig,
-      CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig) {
+      CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig,
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList) {
 
     try {
       Set<String> tableIdsInReplicationOnSourceUniverse =
           getProducerTableIdsFromClusterConfig(
               clusterConfig, xClusterConfig.getReplicationGroupName());
 
-      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceUniverseTableInfoList =
-          getTableInfoList(
-              ybClientService, Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID()));
-
       return extractTablesNotInReplication(
           tableIdsInReplicationOnSourceUniverse,
-          sourceUniverseTableInfoList,
+          sourceTableInfoList,
           XClusterTableConfig.Status.ExtraTableOnSource);
     } catch (Exception e) {
       log.error(
@@ -2204,6 +2340,14 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     try (YBClient client = ybService.getClient(universeMasterAddresses, universeCertificate)) {
       return client.getUniverseReplicationInfo(replicationGroup);
     }
+  }
+
+  /** Represents the data required for replication between clusters. */
+  @Data
+  public static class ReplicationClusterData {
+    private List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList;
+    private List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList;
+    private CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig;
   }
 
   // --------------------------------------------------------------------------------

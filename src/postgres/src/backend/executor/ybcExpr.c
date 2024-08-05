@@ -383,7 +383,7 @@ bool yb_pushdown_walker(Node *node, List **colrefs)
 			{
 				/* Check if DocDB can deconstruct the array */
 				Oid elmtype = get_element_type(exprType(lsecond(saop_expr->args)));
-				int elmlen;
+				int16_t elmlen;
 				bool elmbyval;
 				char elmalign;
 				if (!YbTypeDetails(elmtype, &elmlen, &elmbyval, &elmalign))

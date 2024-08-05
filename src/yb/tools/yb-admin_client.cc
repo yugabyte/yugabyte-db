@@ -2553,7 +2553,9 @@ Status ClusterAdminClient::CreateNamespaceSnapshot(
         const auto& table = resp.tables(i);
         tables[i].set_table_id(table.id());
         tables[i].set_namespace_id(table.namespace_().id());
-        tables[i].set_pgschema_name(table.pgschema_name());
+        if (!table.pgschema_name().empty()) {
+          tables[i].set_pgschema_name(table.pgschema_name());
+        }
 
         RSTATUS_DCHECK(
             table.relation_type() == master::USER_TABLE_RELATION ||

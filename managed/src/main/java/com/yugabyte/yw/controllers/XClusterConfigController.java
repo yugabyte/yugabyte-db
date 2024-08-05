@@ -370,7 +370,7 @@ public class XClusterConfigController extends AuthenticatedController {
       lagMetricData = Json.newObject().put("error", errorMsg);
     }
 
-    XClusterConfigTaskBase.setReplicationStatus(
+    XClusterConfigTaskBase.updateReplicationDetailsFromDB(
         this.xClusterUniverseService, this.ybService, this.tableHandler, xClusterConfig);
 
     // Wrap XClusterConfig with lag metric data.
@@ -2010,6 +2010,7 @@ public class XClusterConfigController extends AuthenticatedController {
                     XClusterConfigTaskBase.getTableInfoListByNamespaceId(
                         ybService, sourceUniverse, tableType, namespaceId);
                 namespaceTables.stream()
+                    .filter(tableInfo -> !TableInfoUtil.isColocatedChildTable(tableInfo))
                     .map(tableInfo -> XClusterConfigTaskBase.getTableId(tableInfo))
                     .forEach(tableIdsForBootstrap::add);
               });

@@ -157,7 +157,6 @@ Result<std::string> ReadFileToString(const std::string& file_path) {
   faststring contents;
   RETURN_NOT_OK(yb::ReadFileToString(Env::Default(), file_path, &contents));
   return contents.ToString();
-  std::string file_contents;
 }
 
 } // namespace

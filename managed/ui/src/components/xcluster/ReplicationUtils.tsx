@@ -15,7 +15,10 @@ import {
   XClusterTableEligibility,
   XClusterTableStatus,
   TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD,
-  XCLUSTER_UNDEFINED_LAG_NUMERIC_REPRESENTATION
+  XCLUSTER_UNDEFINED_LAG_NUMERIC_REPRESENTATION,
+  I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS,
+  UNCONFIGURED_XCLUSTER_TABLE_STATUSES,
+  DROPPED_XCLUSTER_TABLE_STATUSES
 } from './constants';
 import {
   alertConfigQueryKey,
@@ -513,8 +516,7 @@ export const tableSort = <RowType,>(
  * Return the table type (YSQL or YCQL) of an xCluster config.
  */
 export const getXClusterConfigTableType = (
-  xClusterConfig: XClusterConfig,
-  sourceUniverseTables: YBTable[] | undefined
+  xClusterConfig: XClusterConfig
 ): XClusterTableType | null => {
   // We allow undefined sourceUniverseTables because we are still able to return a value as long as
   // the xCluster config has updated its internal table type field.
@@ -526,8 +528,8 @@ export const getXClusterConfigTableType = (
       return TableType.YQL_TABLE_TYPE;
     case 'UNKNOWN':
       return (
-        (sourceUniverseTables?.find((table) => xClusterConfig.tables.includes(getTableUuid(table)))
-          ?.tableType as XClusterTableType) ?? null
+        (xClusterConfig.tableDetails?.find((tableDetail) => tableDetail.sourceTableInfo?.tableType)
+          ?.sourceTableInfo?.tableType as XClusterTableType) ?? null
       );
   }
 };
@@ -592,24 +594,43 @@ export const getNamespaceIdentifierToNamespaceUuidMap = (
   );
 
 /**
+ * Returns a map of table UUIDs to table details for all tables which are part of the replication config.
+ */
+export const getInConfigTableUuidsToTableDetailsMap = (tableDetails: XClusterTableDetails[]) =>
+  tableDetails.reduce((tableUuidToTableDetails, tableDetails) => {
+    if (!UNCONFIGURED_XCLUSTER_TABLE_STATUSES.includes(tableDetails.status)) {
+      tableUuidToTableDetails.set(tableDetails.tableId, tableDetails);
+    }
+    return tableUuidToTableDetails;
+  }, new Map<string, XClusterTableDetails>());
+
+const updateTableStatusWithReplicationLag = (
+  tableStatus: XClusterTableStatus,
+  maxAcceptableLag: number | undefined,
+  replicationLag: number | undefined
+) =>
+  tableStatus === XClusterTableStatus.RUNNING &&
+  maxAcceptableLag &&
+  replicationLag &&
+  replicationLag > maxAcceptableLag
+    ? XClusterTableStatus.WARNING
+    : tableStatus;
+
+/**
  * Returns array of XClusterReplicationTable or array of XClusterTable by augmenting YBTable with XClusterTableDetails.
  * - XClusterReplicationTable: may contain dropped tables
  * - XClusterTable: doest not contain dropped tables
  */
 export const augmentTablesWithXClusterDetails = <TIncludeDroppedTables extends boolean>(
-  sourceUniverseTables: YBTable[],
   xClusterConfigTables: XClusterTableDetails[],
   maxAcceptableLag: number | undefined,
   metricTraces: MetricTrace[] | undefined,
-  options?: { includeDroppedTables: TIncludeDroppedTables }
+
+  options?: {
+    includeUnconfiguredTables: boolean;
+    includeDroppedTables: TIncludeDroppedTables;
+  }
 ): TIncludeDroppedTables extends true ? XClusterReplicationTable[] : XClusterTable[] => {
-  const tableIdToSourceUniverseTableDetails = new Map<string, YBTable>(
-    sourceUniverseTables.map((table) => {
-      const { tableUUID, ...tableDetails } = table;
-      const adaptedTableUUID = formatUuidForXCluster(getTableUuid(table));
-      return [adaptedTableUUID, { ...tableDetails, tableUUID: adaptedTableUUID }];
-    })
-  );
   const tableIdToReplicationLag = new Map<string, number | undefined>(
     // Casting `trace.tableId` as string because we currently don't have specific types for each possible metric trace.
     // Metric trace with table level replication lag will have a string tableId provided.
@@ -619,41 +640,59 @@ export const augmentTablesWithXClusterDetails = <TIncludeDroppedTables extends b
     ])
   );
 
-  const tableStatusTranslationPrefix = 'clusterDetail.xCluster.config.tableStatus';
   // Augment tables in the current xCluster config with additional table details for the YBA UI.
-  const tables = xClusterConfigTables.reduce((tables: XClusterReplicationTable[], table) => {
-    const { tableId, ...xClusterTableDetails } = table;
-    const sourceUniverseTableDetails = tableIdToSourceUniverseTableDetails.get(tableId);
-    // We use -1 to indicate 'not reported'/undefined lag. This is because it is easier to work with
-    // when sorting or filtering by replication lag.
+  const tables = xClusterConfigTables.reduce((tables: XClusterReplicationTable[], tableDetails) => {
+    const { tableId, sourceTableInfo, targetTableInfo, ...xClusterTableDetails } = tableDetails;
     const replicationLag =
       tableIdToReplicationLag.get(tableId) ?? XCLUSTER_UNDEFINED_LAG_NUMERIC_REPRESENTATION;
-    if (sourceUniverseTableDetails) {
-      const tableStatus =
-        xClusterTableDetails.status === XClusterTableStatus.RUNNING &&
-        maxAcceptableLag &&
-        replicationLag &&
-        replicationLag > maxAcceptableLag
-          ? XClusterTableStatus.WARNING
-          : xClusterTableDetails.status;
+    const tableStatus = updateTableStatusWithReplicationLag(
+      xClusterTableDetails.status,
+      maxAcceptableLag,
+      replicationLag
+    );
+
+    if (
+      UNCONFIGURED_XCLUSTER_TABLE_STATUSES.includes(tableStatus) &&
+      !options?.includeUnconfiguredTables
+    ) {
+      return tables;
+    }
+
+    if (DROPPED_XCLUSTER_TABLE_STATUSES.includes(tableStatus) && !options?.includeDroppedTables) {
+      return tables;
+    }
+
+    if (sourceTableInfo) {
       tables.push({
-        ...sourceUniverseTableDetails,
+        ...sourceTableInfo,
         ...xClusterTableDetails,
         status: tableStatus,
-        statusLabel: i18n.t(`${tableStatusTranslationPrefix}.${tableStatus}`),
+        statusLabel: i18n.t(`${I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS}.${tableStatus}`),
         replicationLag
       });
-    } else if (options?.includeDroppedTables) {
-      // The current tableId is deleted on the source universe.
-      const tableStatus = XClusterTableStatus.DROPPED;
+    } else if (targetTableInfo) {
+      tables.push({
+        ...targetTableInfo,
+        ...xClusterTableDetails,
+        status: tableStatus,
+        statusLabel: i18n.t(`${I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS}.${tableStatus}`),
+        replicationLag
+      });
+    } else {
+      // Table dropped from both source and target.
+      // YBA backend does not provide a status for this case. Thus, on the client side we will
+      // use `XClusterTableStatus.DROPPED` to indicate no table detail information is available.
       tables.push({
         ...xClusterTableDetails,
         tableUUID: tableId,
-        status: tableStatus,
-        statusLabel: i18n.t(`${tableStatusTranslationPrefix}.${tableStatus}`),
+        status: XClusterTableStatus.DROPPED,
+        statusLabel: i18n.t(
+          `${I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS}.${XClusterTableStatus.DROPPED}`
+        ),
         replicationLag
       });
     }
+
     return tables;
   }, []);
 

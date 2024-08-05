@@ -180,9 +180,6 @@ public class Audit extends Model {
     @EnumValue("RoleBinding")
     RoleBinding,
 
-    @EnumValue("OIDC Group Mapping")
-    OIDCGroupMapping,
-
     @EnumValue("Group Mapping")
     GroupMapping
   }
