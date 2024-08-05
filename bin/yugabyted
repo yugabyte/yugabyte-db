@@ -1387,6 +1387,10 @@ class ControlScript(object):
                 "be part of xCluster replication"
         checkpoint_empty_db_ybd_err = "couldn't set xcluster checkpoint. " +\
                             "All provided databases should have atleast 1 table in them."
+        checkpoint_rep_id_in_use_yb_admin_err = "xClusterOutboundReplicationGroup " +\
+                                "{} already exists".format(replication_id)
+        checkpoint_rep_id_in_use_ybd_err = "xCluster Replication with replication ID: " +\
+                    "'{}' already exists. Please use another replication ID".format(replication_id)
 
         set_up_db_not_found_yb_admin_err = "YSQL keyspace name not found"
         set_up_object_not_found_yb_admin_err = "Could not find matching"
@@ -1423,6 +1427,7 @@ class ControlScript(object):
         # Map format: <err present in yb_admin stderr>: <ybd err to be displayed>
         yb_admin_err_msg_to_ybd_err_msg = {
             checkpoint_empty_db_yb_admin_err: checkpoint_empty_db_ybd_err,
+            checkpoint_rep_id_in_use_yb_admin_err: checkpoint_rep_id_in_use_ybd_err,
             set_up_db_not_found_yb_admin_err: set_up_db_not_found_ybd_err,
             set_up_object_not_found_yb_admin_err: set_up_object_not_found_ybd_err,
             delete_replication_id_not_found_yb_admin_err: delete_replication_id_not_found_ybd_err,
@@ -1452,7 +1457,7 @@ class ControlScript(object):
         is_bootstrap_required = False
 
         if ret_code:
-            err_msg = self.get_xcluster_error_msg(err)
+            err_msg = self.get_xcluster_error_msg(err, replication_id=replication_id)
             if not err_msg:
                 err_msg = "couldn't set xcluster checkpoint."
             Output.log_error_and_exit(Output.make_red("Error") +
@@ -1520,11 +1525,19 @@ class ControlScript(object):
                         databases_not_to_be_bootstrapped[0])
 
 
-
-        status_details.extend([
-            (Output.make_yellow("Bootstrapping"), bootstrap_msg),
-            (Output.make_yellow(""), schema_creation_msg),
-        ])
+        if bootstrap_msg and schema_creation_msg:
+            status_details.extend([
+                (Output.make_yellow("Bootstrapping"), bootstrap_msg),
+                (Output.make_yellow(""), schema_creation_msg),
+            ])
+        elif bootstrap_msg:
+            status_details.extend([
+                (Output.make_yellow("Bootstrapping"), bootstrap_msg),
+            ])
+        elif schema_creation_msg:
+            status_details.extend([
+                (Output.make_yellow("Bootstrapping"), schema_creation_msg),
+            ])
 
         Output.print_out(self.get_status_string_common(status_details, status_display_info))
 
