@@ -304,14 +304,14 @@ set enable_hashjoin to off;
 set enable_nestloop to off;
 explain (costs off)
 	select  count(*) from tenk1, tenk2 where tenk1.unique1 = tenk2.unique1;
-                                      QUERY PLAN
---------------------------------------------------------------------------------------
+                           QUERY PLAN
+----------------------------------------------------------------
  Aggregate
-   ->  YB Batched Nested Loop Join
-         Join Filter: (tenk1.unique1 = tenk2.unique1)
-         ->  Index Only Scan using tenk2_unique1 on tenk2
+   ->  Merge Join
+         Merge Cond: (tenk1.unique1 = tenk2.unique1)
          ->  Index Only Scan using tenk1_unique1 on tenk1
-               Index Cond: (unique1 = ANY (ARRAY[tenk2.unique1, $1, $2, ..., $1023]))
+         ->  Materialize
+               ->  Index Only Scan using tenk2_unique1 on tenk2
 (6 rows)
 
 select  count(*) from tenk1, tenk2 where tenk1.unique1 = tenk2.unique1;
