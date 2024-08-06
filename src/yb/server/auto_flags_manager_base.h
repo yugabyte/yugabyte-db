@@ -23,6 +23,7 @@ namespace yb {
 
 YB_STRONGLY_TYPED_BOOL(ApplyNonRuntimeAutoFlags);
 
+class ClockBase;
 class FsManager;
 
 // There are two common ways in which a new config is loaded.

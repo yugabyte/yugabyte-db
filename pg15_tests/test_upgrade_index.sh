@@ -14,9 +14,9 @@ SELECT * FROM t ORDER BY a;
 EOT
 
 popd
-upgrade_masters_run_initdb
+upgrade_masters_run_ysql_catalog_upgrade
 
-ysql_upgrade_using_node_2
+restart_node_2_in_pg15
 
 # Test simultaneous use of the index from both PG versions before the upgrade has been finalized.
 

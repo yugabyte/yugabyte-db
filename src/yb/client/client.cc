@@ -1087,8 +1087,8 @@ Status YBClient::DeleteNamespace(const std::string& namespace_name,
       deadline, req, &resp, "DeleteNamespace", &MasterDdlProxy::DeleteNamespaceAsync));
 
   // Verify that, once this request returns, the namespace has been successfully marked as deleted.
-  RETURN_NOT_OK(data_->WaitForDeleteNamespaceToFinish(this, namespace_name, database_type,
-      namespace_id, CoarseMonoClock::Now() + default_admin_operation_timeout()));
+  RETURN_NOT_OK(data_->WaitForDeleteNamespaceToFinish(
+      this, namespace_name, database_type, namespace_id, deadline));
 
   return Status::OK();
 }

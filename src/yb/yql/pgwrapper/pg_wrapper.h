@@ -62,6 +62,9 @@ struct PgProcessConf : public ProcessWrapperCommonConfig {
 
   // If this is true, we will not log to the file, even if the log file is specified.
   bool force_disable_log_file = false;
+
+  // Start the PostgreSQL server in binary upgrade mode.
+  bool run_in_binary_upgrade = false;
 };
 
 // Invokes a PostgreSQL child process once. Also allows invoking initdb. Not thread-safe.
@@ -90,6 +93,17 @@ class PgWrapper : public ProcessWrapper {
       std::vector<std::pair<std::string, YBCPgOid>> db_to_oid);
 
   Status SetYsqlConnManagerStatsShmKey(key_t statsshmkey);
+
+  struct PgUpgradeParams {
+    std::string data_dir;
+    std::string old_version_pg_address;
+    uint16_t old_version_pg_port;
+    std::string new_version_pg_address;
+    uint16_t new_version_pg_port;
+  };
+
+  static Status RunPgUpgrade(const PgUpgradeParams& param);
+
  private:
   struct LocalInitdbParams {
     std::string versioned_data_dir;

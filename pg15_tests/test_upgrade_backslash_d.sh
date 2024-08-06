@@ -11,7 +11,7 @@ CREATE TABLE t (a int);
 EOT
 
 popd
-upgrade_masters_run_initdb
+upgrade_masters_run_ysql_catalog_upgrade
 
 # Run \d from a PG11 tserver. Because the catalog tablets are on the master and the masters are
 # running PG15, this exercises expression pushdown across PG versions if enabled.

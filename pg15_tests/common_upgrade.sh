@@ -51,50 +51,26 @@ upgrade_masters() {
   done
 }
 
-# On a Mac, initdb takes around 22 seconds on a release build, or over 90 seconds on debug. On
-# Linux release it can take over 2 minutes.
-run_initdb() {
-  echo initdb starting at $(date +"%r")
+run_ysql_catalog_upgrade() {
+  echo run_ysql_catalog_upgrade starting at $(date +"%r")
   build/latest/bin/yb-admin --init_master_addrs=127.0.0.200:7100 --timeout_ms=300000 \
-    ysql_major_version_upgrade_initdb
-  echo initdb finished at $(date +"%r")
+    ysql_major_version_catalog_upgrade
+  echo run_ysql_catalog_upgrade finished at $(date +"%r")
 }
 
-# Restarts the masters in a mode that's aware of the PG11 to PG15 upgrade process, then runs initdb.
+# Restarts the masters in a mode that's aware of the PG11 to PG15 upgrade process, then runs ysql
+# major upgrade to populate the pg15 catalog.
 # Must be run while the current directory is a pg15 directory, typically the directory for the
 # source code being built.
-upgrade_masters_run_initdb() {
+upgrade_masters_run_ysql_catalog_upgrade() {
   upgrade_masters
-  run_initdb
+  run_ysql_catalog_upgrade
 }
 
-# Upgrades the cluster to PG15, using node 2 as the PG15 tserver. Currently it upgrades only
-# database "yugabyte", not global objects or other databases. On exit, node 2 is a working PG15
-# tserver.
-# Assumes node 2 is drained of all traffic before calling.
-ysql_upgrade_using_node_2() {
-  # Restart tserver 2 to PG15 for the upgrade, with postgres binaries in binary_upgrade mode
-  yb_ctl restart_node 2 \
-    --tserver_flags="TEST_pg_binary_upgrade=true,$common_tserver_flags,$common_pg15_flags"
-
-  echo pg_upgrade starting at $(date +"%r")
-  run_pg_upgrade
-  echo pg_upgrade finished at $(date +"%r")
-
-  # The upgrade is finished. Restart node 2 with postgres binaries *not* in binary upgrade mode
+# Restart node 2 using PG15 binaries.
+# Due to historic reasons we first restart the 2nd node instead of the 1st.
+restart_node_2_in_pg15() {
   yb_ctl restart_node 2 --tserver_flags="$common_tserver_flags,$common_pg15_flags"
-}
-
-# Run pg_upgrade which calls ysql_dumpall, ysql_dump and pg_restore.
-# ysql_dump and pg_restore together migrate the metadata for the databases.
-# Currently, pg_upgrade migrates only the 'yugabyte' database.
-run_pg_upgrade() {
-  if [[ "$@" =~ "--check" ]]; then
-    echo "$FUNCNAME: Use run_preflight_checks"
-    exit 1
-  fi
-  build/latest/postgres/bin/pg_upgrade --new-datadir "$data_dir/node-2/disk-1/pg_data" \
-    --old-host "$PGHOST" --old-port 5433 --new-host "$pghost2" --new-port 5433 --username "yugabyte"
 }
 
 run_preflight_checks() {

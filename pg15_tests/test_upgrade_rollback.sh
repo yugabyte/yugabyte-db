@@ -15,8 +15,8 @@ bin/yb-admin --init_master_addrs=127.0.0.200:7100 list_tables include_table_id |
   && exit 1
 
 popd
-upgrade_masters_run_initdb
-ysql_upgrade_using_node_2
+upgrade_masters_run_ysql_catalog_upgrade
+restart_node_2_in_pg15
 
 # Verify there are PG15 catalog tables now
 build/latest/bin/yb-admin --init_master_addrs=127.0.0.200:7100 list_tables include_table_id \
@@ -79,7 +79,7 @@ EOT
 
 # Do the upgrade again
 popd
-upgrade_masters_run_initdb
+upgrade_masters_run_ysql_catalog_upgrade
 
 # Make sure PG11 still works (for PG15, only initdb has run)
 echo making sure pg11 still works
@@ -90,7 +90,7 @@ EOT
 echo pg11 still works
 
 echo upgrade after rollback starting at $(date +"%r")
-ysql_upgrade_using_node_2
+restart_node_2_in_pg15
 echo upgrade after rollback finished at $(date +"%r")
 
 verify_simple_table_mixed_cluster

@@ -1202,12 +1202,12 @@ Status upgrade_ysql_action(const ClusterAdminCli::CLIArguments& args, ClusterAdm
 }
 
 // Takes a long time to run. Set `timeout_ms` to at least 5 minutes when calling.
-const auto ysql_major_version_upgrade_initdb_args = "";
-Status ysql_major_version_upgrade_initdb_action(const ClusterAdminCli::CLIArguments& args,
-                                                      ClusterAdminClient* client) {
+const auto ysql_major_version_catalog_upgrade_args = "";
+Status ysql_major_version_catalog_upgrade_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   RETURN_NOT_OK(CheckArgumentsCount(args.size(), 0, 0));
-  RETURN_NOT_OK_PREPEND(client->StartYsqlMajorVersionUpgradeInitdb(),
-                        "Unable to run initdb for ysql major version upgrade");
+  RETURN_NOT_OK_PREPEND(
+      client->StartYsqlMajorVersionUpgradeInitdb(), "Unable to run ysql major version upgrade");
   RETURN_NOT_OK(client->WaitForYsqlMajorVersionUpgradeInitdb());
   return Status::OK();
 }
@@ -2781,7 +2781,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(get_xcluster_outbound_replication_group_info);
 
   // PG11 -> PG15 upgrade commands
-  REGISTER_COMMAND(ysql_major_version_upgrade_initdb);
+  REGISTER_COMMAND(ysql_major_version_catalog_upgrade);
   REGISTER_COMMAND(rollback_ysql_major_version_upgrade);
 }
 

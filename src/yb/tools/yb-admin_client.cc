@@ -2326,7 +2326,7 @@ Status ClusterAdminClient::StartYsqlMajorVersionUpgradeInitdb() {
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   } else {
-    std::cout << "initdb started successfully\n";
+    std::cout << "ysql major version catalog upgrade started\n";
   }
   return Status::OK();
 }
@@ -2351,6 +2351,7 @@ Status ClusterAdminClient::WaitForYsqlMajorVersionUpgradeInitdb() {
       if (result->has_initdb_error()) {
         return StatusFromPB(result->initdb_error().status());
       } else {
+        std::cout << "ysql major version catalog upgrade completed successful\n";
         return Status::OK();
       }
     }

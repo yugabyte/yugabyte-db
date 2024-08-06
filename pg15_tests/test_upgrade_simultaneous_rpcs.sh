@@ -15,10 +15,10 @@ upgrade_masters
 
 # Start initdb twice and roll back twice, all simultaneously. Only one RPC of the 4 should succeed.
 build/latest/bin/yb-admin --init_master_addrs=127.0.0.200:7100 --timeout_ms=300000 \
-  ysql_major_version_upgrade_initdb &
+  ysql_major_version_catalog_upgrade &
 pidi1=$!
 build/latest/bin/yb-admin --init_master_addrs=127.0.0.200:7100 --timeout_ms=300000 \
-  ysql_major_version_upgrade_initdb &
+  ysql_major_version_catalog_upgrade &
 pidi2=$!
 build/latest/bin/yb-admin --init_master_addrs=127.0.0.200:7100 --timeout_ms=300000 \
   rollback_ysql_major_version_upgrade &
@@ -45,9 +45,9 @@ test $success_count -eq 1
 
 # Start initdb, and then roll back after a sleep. Only one RPC should succeed. Though this test is
 # timing-dependent, it will succeed with either ordering and its intention is to test rollback
-# blocked by initdb, which should happen the vast majority of the time.
+# blocked by the upgrade, which should happen the vast majority of the time.
 build/latest/bin/yb-admin --init_master_addrs=127.0.0.200:7100 --timeout_ms=300000 \
-  ysql_major_version_upgrade_initdb &
+  ysql_major_version_catalog_upgrade &
 pidi1=$!
 sleep 1
 build/latest/bin/yb-admin --init_master_addrs=127.0.0.200:7100 --timeout_ms=300000 \
@@ -67,21 +67,21 @@ success_count=$(( ((exiti1 == 0)) + ((exitr1 == 0)) ))
 echo "success count is $success_count"
 test $success_count -eq 1
 
-# Rollback needs to be slow for the next test to work, which requires initdb to have completed.
-# If initdb hasn't run, run it.
+# Rollback needs to be slow for the next test to work, which requires ysql catalog upgrade to have
+# completed. If the upgrade hasn't run, run it.
 if [ $exiti1 -ne 0 ]; then
-  run_initdb
+  run_ysql_catalog_upgrade
 fi
 
-# Trigger rollback, wait one second, and then start initdb. Though this test is timing-dependent, it
-# will succeed with either ordering and its intention is to test initdb blocked by running rollback,
-# which should happen the vast majority of the time.
+# Trigger rollback, wait one second, and then start ysql catalog upgrade. Though this test is
+# timing-dependent, it will succeed with either ordering and its intention is to test ysql catalog
+# upgrade blocked by running rollback, which should happen the vast majority of the time.
 build/latest/bin/yb-admin --init_master_addrs=127.0.0.200:7100 --timeout_ms=300000 \
   rollback_ysql_major_version_upgrade &
 pidr1=$!
 sleep 1
 build/latest/bin/yb-admin --init_master_addrs=127.0.0.200:7100 --timeout_ms=300000 \
-  ysql_major_version_upgrade_initdb &
+  ysql_major_version_catalog_upgrade &
 pidi1=$!
 
 set +e
@@ -97,14 +97,14 @@ success_count=$(( ((exiti1 == 0)) + ((exitr1 == 0)) ))
 echo "success count is $success_count"
 test $success_count -eq 1
 
-# The rest of the test script depends on initdb having completed.
-# If hasn't run, run it.
+# The rest of the test script depends on ysql catalog upgrade having completed.
+# If the upgrade hasn't run, run it.
 if [ $exiti1 -ne 0 ]; then
-  run_initdb
+  run_ysql_catalog_upgrade
 fi
 
 # Verify upgrade still works
-ysql_upgrade_using_node_2
+restart_node_2_in_pg15
 verify_simple_table_mixed_cluster
 
 # Restart and demo DDLs

@@ -10,13 +10,13 @@ CREATE TABLE t (a int);
 INSERT INTO t VALUES (1), (2);
 EOT
 popd
-upgrade_masters_run_initdb
+upgrade_masters_run_ysql_catalog_upgrade
 
 # Run initdb again, make sure it works (idempotent)
-run_initdb
+run_ysql_catalog_upgrade
 
 # Verify upgrade after double initdb
-ysql_upgrade_using_node_2
+restart_node_2_in_pg15
 
 verify_simple_table_mixed_cluster
 

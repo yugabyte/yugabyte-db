@@ -138,9 +138,6 @@ DECLARE_string(tmp_dir);
 DEFINE_test_flag(bool, online_pg11_to_pg15_upgrade, false,
     "Enter the mode in which the master creates PG15 catalogs alongside PG11 catalogs, leaving "
     "PG11 catalogs as they are, using pg_restore. This flag is only meaningful on the YB master.");
-DEFINE_test_flag(bool, pg_binary_upgrade, false,
-    "Send the binary upgrade flag -b to all postgres binaries used by this tserver. For use by YB "
-    "internal tools only, during major PG version upgrades.");
 
 DEFINE_RUNTIME_PG_FLAG(string, timezone, "",
     "Overrides the default ysql timezone for displaying and interpreting timestamps. If no value "
@@ -765,7 +762,7 @@ Status PgWrapper::Start() {
     argv.push_back("log_error_verbosity=VERBOSE");
   }
 
-  if (FLAGS_TEST_pg_binary_upgrade) {
+  if (conf_.run_in_binary_upgrade) {
     argv.push_back("-b");
   }
 
@@ -867,18 +864,51 @@ Status PgWrapper::InitDb(InitdbParams initdb_params) {
       initdb_subprocess.SetEnv("YB_DATABASE_OID_" + db_name, std::to_string(db_oid));
     }
   }
-  int status = 0;
-  RETURN_NOT_OK(initdb_subprocess.Start());
-  RETURN_NOT_OK(initdb_subprocess.Wait(&status));
-  if (status != 0) {
-    SCHECK(WIFEXITED(status), InternalError,
-           Format("$0 did not exit normally", initdb_program_path));
-    return STATUS_FORMAT(RuntimeError, "$0 failed with exit code $1",
-                         initdb_program_path,
-                         WEXITSTATUS(status));
+
+  std::string stdout, stderr;
+  auto status = initdb_subprocess.Call(&stdout, &stderr);
+  LOG(INFO) << "initdb stdout: " << stdout;
+  if (!stderr.empty()) {
+    LOG(WARNING) << "initdb stderr: " << stderr;
+  }
+  if (!status.ok()) {
+    return status.CloneAndAppend(stderr);
   }
 
   LOG(INFO) << "initdb completed successfully. Database initialized at " << conf_.data_dir;
+  return Status::OK();
+}
+
+Status PgWrapper::RunPgUpgrade(const PgUpgradeParams& param) {
+  const auto program_path = JoinPathSegments(GetPostgresInstallRoot(), "bin", "pg_upgrade");
+  RETURN_NOT_OK(CheckExecutableValid(program_path));
+  if (!Env::Default()->FileExists(program_path)) {
+    return STATUS_FORMAT(IOError, "pg_upgrade not found at: $0", program_path);
+  }
+
+  std::vector<std::string> args{
+      program_path,
+      "--new-datadir", param.data_dir,
+      "--old-host", param.old_version_pg_address,
+      "--old-port", ToString(param.old_version_pg_port),
+      "--new-host", param.new_version_pg_address,
+      "--new-port", ToString(param.new_version_pg_port),
+      "--username", "yugabyte"};
+
+  LOG(INFO) << "Launching pg_upgrade: " << AsString(args);
+  Subprocess subprocess(program_path, args);
+
+  std::string stdout, stderr;
+  auto status = Subprocess::Call(args, &stdout, &stderr);
+  LOG(INFO) << "pg_upgrade stdout: " << stdout;
+  if (!stderr.empty()) {
+    LOG(WARNING) << "pg_upgrade stderr: " << stderr;
+  }
+  if (!status.ok()) {
+    return status.CloneAndAppend(stderr);
+  }
+
+  LOG(INFO) << "pg_upgrade completed successfully";
   return Status::OK();
 }
 

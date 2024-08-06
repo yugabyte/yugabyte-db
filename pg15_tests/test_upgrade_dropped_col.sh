@@ -21,9 +21,9 @@ SELECT attname, attnum FROM pg_attribute WHERE attrelid = 't2'::pg_catalog.regcl
 EOT
 
 popd
-upgrade_masters_run_initdb
+upgrade_masters_run_ysql_catalog_upgrade
 
-ysql_upgrade_using_node_2
+restart_node_2_in_pg15
 
 # Demonstrate simultaneous access for DMLs involving the dropped and added columns, before the
 # upgrade has been finalized.

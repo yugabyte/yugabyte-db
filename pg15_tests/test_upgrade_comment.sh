@@ -13,8 +13,8 @@ COMMENT ON TABLE t IS 'Comment made on table t in PG11';
 EOT
 
 popd
-upgrade_masters_run_initdb
-ysql_upgrade_using_node_2
+upgrade_masters_run_ysql_catalog_upgrade
+restart_node_2_in_pg15
 
 # Check comment in PG15 during binary upgrade
 diff <(ysqlsh 2 <<EOT | sed 's/ *$//'

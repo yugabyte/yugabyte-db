@@ -149,6 +149,7 @@ namespace master {
 struct DeferredAssignmentActions;
 struct SysCatalogLoadingState;
 struct KeyRange;
+class YsqlInitDBAndMajorUpgradeHandler;
 
 using PlacementId = std::string;
 
@@ -1635,6 +1636,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status CreateTransactionAwareSnapshot(
       const CreateSnapshotRequestPB& req, CreateSnapshotResponsePB* resp, CoarseTimePoint deadline);
 
+  scoped_refptr<SysConfigInfo> GetYsqlCatalogConfig() {
+    CHECK_NOTNULL(ysql_catalog_config_);
+    return ysql_catalog_config_;
+  }
+
+  InitialSysCatalogSnapshotWriter& AllocateAndGetInitialSysCatalogSnapshotWriter();
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
@@ -1702,17 +1710,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Starts an asynchronous run of initdb. Errors are handled in the callback. Returns true
   // if started running initdb, false if decided that it is not needed.
   Result<bool> StartRunningInitDbIfNeeded(const LeaderEpoch& epoch) REQUIRES_SHARED(mutex_);
-
-  // Starts global initdb. The db_name_to_oid_list vector is used to specify OIDs for any existing
-  // YSQL databases/namespaces. If db_name_to_oid_list is empty, initdb will choose an OID.
-  //
-  // NOTE: Because this method is called in the YSQL major version upgrade path, it doesn't check
-  // that FLAGS_master_join_existing_universe is false. Callers are expected to make sure that
-  // running initdb is safe before calling this method.
-  Status StartInitDb(const std::vector<std::pair<NamespaceName, YBCPgOid>>& db_name_to_oid_list,
-                     const LeaderEpoch& epoch) REQUIRES_SHARED(mutex_);
-
-  Status ResetNextVerInitdbStatus(const LeaderEpoch& epoch);
 
   Status PrepareDefaultNamespaces(int64_t term) REQUIRES(mutex_);
 
@@ -2374,7 +2371,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   std::unique_ptr<YsqlTablegroupManager> tablegroup_manager_
       GUARDED_BY(mutex_);
 
-  boost::optional<std::future<Status>> initdb_future_;
   boost::optional<InitialSysCatalogSnapshotWriter> initial_snapshot_writer_;
 
   std::unique_ptr<PermissionsManager> permissions_manager_;
@@ -2443,9 +2439,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const TabletInfoPtr& tablet, const std::string& split_encoded_key,
       const std::string& split_partition_key, ManualSplit is_manual_split,
       const LeaderEpoch& epoch);
-
-  Status StartYsqlMajorVersionUpgradeInitdb(const LeaderEpoch& epoch);
-  Status RollbackYsqlMajorVersionUpgrade(const LeaderEpoch& epoch);
 
   Status XReplValidateSplitCandidateTableUnlocked(const TableId& table_id) const
       REQUIRES_SHARED(mutex_);
@@ -3064,8 +3057,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   std::atomic<bool> pg_cron_service_created_{false};
 
-  // Neither ysql major version initdb nor rollback can run if either of them is already running.
-  std::atomic<bool> in_initdb_or_ysql_major_version_upgrade_rollback_{false};
+  std::unique_ptr<YsqlInitDBAndMajorUpgradeHandler> ysql_initdb_and_major_upgrade_helper_;
 
   DISALLOW_COPY_AND_ASSIGN(CatalogManager);
 };

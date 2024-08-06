@@ -22,14 +22,14 @@ popd
 
 # Run preflight checks before upgrading yb-masters.
 run_preflight_checks
-upgrade_masters_run_initdb
+upgrade_masters_run_ysql_catalog_upgrade
 
 # Ensure that the PG15 initdb didn't create or modify namespace entries on the YB master.
 diff $data_dir/pg11_dbs.txt <(build/latest/bin/yb-admin \
   --master_addresses=$PGHOST:7100,$pghost2:7100,$pghost3:7100 list_namespaces | grep 30008 \
   | sort -k2 | awk '{print $1 " " $2}')
 
-ysql_upgrade_using_node_2
+restart_node_2_in_pg15
 
 # Demonstrate simultaneous access for DMLs before the upgrade has been finalized. (DDLs are not
 # allowed, and rollback to PG11 is still possible.)

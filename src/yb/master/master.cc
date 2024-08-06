@@ -637,7 +637,6 @@ const std::shared_future<client::YBClient*>& Master::cdc_state_client_future() c
 Status Master::get_ysql_db_oid_to_cat_version_info_map(
     const tserver::GetTserverCatalogVersionInfoRequestPB& req,
     tserver::GetTserverCatalogVersionInfoResponsePB *resp) const {
-  DCHECK(FLAGS_create_initial_sys_catalog_snapshot);
   DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
   // This function can only be called during initdb time.
   DbOidToCatalogVersionMap versions;

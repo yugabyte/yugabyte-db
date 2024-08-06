@@ -161,19 +161,18 @@ _wait_for_ysqlsh() {
 # to.  Remaining args are passed through to ysqlsh.
 ysqlsh() {
   host_args=()
+  maybe_idx=1
   if [ $# -gt 0 ]; then
-    maybe_idx=$1
-    if grep -Eq '^[0-9]$' <<<"$maybe_idx"; then
-      host_args=(
-        -h
-        127.0.0.$((ip_start + maybe_idx - 1))
-      )
+    if grep -Eq '^[0-9]$' <<<"$1"; then
+      maybe_idx=$1
       shift
     fi
   fi
 
+  host_addr=(127.0.0.$((ip_start + maybe_idx - 1)))
+
   # -X: ignore psqlrc
   # -v "ON_ERROR_STOP=1": on error, return bad exit code
   # "$@": user-supplied extra args
-  bin/ysqlsh -X -v "ON_ERROR_STOP=1" "${host_args[@]}" "$@"
+  bin/ysqlsh -X -v "ON_ERROR_STOP=1" -h "${host_addr}" "$@"
 }
