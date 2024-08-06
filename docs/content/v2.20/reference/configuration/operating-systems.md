@@ -13,7 +13,7 @@ type: docs
 
 ## YugabyteDB
 
-The following operating systems and architectures are supported for [deploying YugabyteDB](../../../deploy/manual-deployment/).
+The following table describes the operating system and architecture support for [deploying YugabyteDB](../../../deploy/manual-deployment/).
 
 Unless otherwise noted, operating systems are supported by all supported versions of YugabyteDB and YugabyteDB Anywhere. YugabyteDB Anywhere added support for deploying YugabyteDB to ARM-based systems for non-Kubernetes platforms in v2.18.
 
