@@ -119,6 +119,10 @@ class CloneStateManagerTest : public YBTest {
     MOCK_METHOD(
         Status, Upsert, (int64_t leader_term, const CloneStateInfoPtr& clone_state), (override));
     MOCK_METHOD(
+        Status, Upsert,
+        (int64_t leader_term, const CloneStateInfoPtr& clone_state,
+         const NamespaceInfoPtr& source_namespace), (override));
+    MOCK_METHOD(
         Status, Load,
         (const std::string& type,
          std::function<Status(const std::string&, const SysCloneStatePB&)> inserter), (override));
@@ -141,7 +145,7 @@ class CloneStateManagerTest : public YBTest {
          UDTypeMap* type_map, ExternalTableSnapshotDataMap* tables_data,
          CoarseTimePoint deadline), (override));
 
-    MOCK_METHOD(TSDescriptorPtr, PickTserver, (), (override));
+    MOCK_METHOD(Result<TSDescriptorPtr>, PickTserver, (), (override));
   };
 
  private:
@@ -218,9 +222,9 @@ class CloneStateManagerTest : public YBTest {
   // ExternalTableSnapshotDataMap (instead of using import / export snapshot).
   // NB: This does not call EXPECT_CALL(Upsert) because some tests expect this to fail.
   Result<CloneStateInfoPtr> CreateCloneState(
-      uint32_t seq_no, const ExternalTableSnapshotDataMap& table_snapshot_data) {
+      const ExternalTableSnapshotDataMap& table_snapshot_data) {
     auto clone_state = VERIFY_RESULT(clone_state_manager_->CreateCloneState(
-        kEpoch, seq_no, kSourceNamespaceId, GetDatabaseType(), kTargetNamespaceName, kRestoreTime));
+        kEpoch, source_ns_, GetDatabaseType(), kTargetNamespaceName, kRestoreTime));
 
     RETURN_NOT_OK(clone_state_manager_->UpdateCloneStateWithSnapshotInfo(
         clone_state, kSourceSnapshotId, kTargetSnapshotId, table_snapshot_data));
@@ -236,8 +240,8 @@ class CloneStateManagerTest : public YBTest {
     tablet_ids.set_new_id("test_target_id");
     *table_data.table_meta->add_tablets_ids() = tablet_ids;
 
-    EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _));
-    return CreateCloneState(kSeqNo + 1, table_snapshot_data);
+    EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _, _));
+    return CreateCloneState(table_snapshot_data);
   }
 
   ExternalTableSnapshotDataMap DefaultTableSnapshotData() {
@@ -255,8 +259,8 @@ class CloneStateManagerTest : public YBTest {
 
   // Creates a clone state and schedules clone ops to move it into the CREATING state.
   Result<CloneStateInfoPtr> CreateCloneStateAndStartCloning() {
-    EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _));
-    auto clone_state = VERIFY_RESULT(CreateCloneState(kSeqNo, DefaultTableSnapshotData()));
+    EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _, _));
+    auto clone_state = VERIFY_RESULT(CreateCloneState(DefaultTableSnapshotData()));
 
     for (int i = 0; i < kNumTablets; ++i) {
       EXPECT_CALL(MockFuncs(), GetTabletInfo(source_tablets_[i]->id()))
@@ -326,7 +330,6 @@ class CloneStateManagerTest : public YBTest {
 
   std::unique_ptr<CloneStateManager> clone_state_manager_;
 
-  const uint32_t kSeqNo = 100;
   const NamespaceId kSourceNamespaceId = "source_namespace_id";
   const NamespaceId kTargetNamespaceId = "target_namespace_id";
   const std::string kSourceNamespaceName = "source_namespace_name";
@@ -356,14 +359,14 @@ class CloneStateManagerPgTest : public CloneStateManagerTest {
 };
 
 TEST_F(CloneStateManagerTest, CreateCloneState) {
-  EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _));
-  auto clone_state = ASSERT_RESULT(CreateCloneState(kSeqNo, DefaultTableSnapshotData()));
+  EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _, _));
+  auto clone_state = ASSERT_RESULT(CreateCloneState(DefaultTableSnapshotData()));
 
   // Check clone state persisted fields.
   SysCloneStatePB expected_pb;
   expected_pb.set_aggregate_state(SysCloneStatePB::CLONE_SCHEMA_STARTED);
   expected_pb.set_source_namespace_id(kSourceNamespaceId);
-  expected_pb.set_clone_request_seq_no(kSeqNo);
+  expected_pb.set_clone_request_seq_no(1);
   expected_pb.set_target_namespace_name(kTargetNamespaceName);
   expected_pb.set_restore_time(kRestoreTime.ToUint64());
   std::string diff;
@@ -389,10 +392,10 @@ TEST_F(CloneStateManagerTest, CreateSecondCloneState) {
     l.Commit();
 
     if (CloneStateInfoHelpers::IsDone(current_clone_state->LockForRead()->pb)) {
-      EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _));
-      ASSERT_OK(CreateCloneState(i + 1, DefaultTableSnapshotData()));
+      EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _, _));
+      ASSERT_OK(CreateCloneState(DefaultTableSnapshotData()));
     } else {
-      auto s = CreateCloneState(i + 1, DefaultTableSnapshotData());
+      auto s = CreateCloneState(DefaultTableSnapshotData());
       ASSERT_NOK(s);
       ASSERT_TRUE(s.status().IsAlreadyPresent());
     }
@@ -400,8 +403,8 @@ TEST_F(CloneStateManagerTest, CreateSecondCloneState) {
 }
 
 TEST_F(CloneStateManagerTest, ScheduleCloneOps) {
-  EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _));
-  auto clone_state = ASSERT_RESULT(CreateCloneState(kSeqNo, DefaultTableSnapshotData()));
+  EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _, _));
+  auto clone_state = ASSERT_RESULT(CreateCloneState(DefaultTableSnapshotData()));
 
   for (int i = 0; i < kNumTablets; ++i) {
     tablet::CloneTabletRequestPB expected_req;
@@ -411,7 +414,7 @@ TEST_F(CloneStateManagerTest, ScheduleCloneOps) {
     expected_req.set_target_snapshot_id(kTargetSnapshotId.data(), kTargetSnapshotId.size());
     expected_req.set_target_table_id(kTargetTableId);
     expected_req.set_target_namespace_name(kTargetNamespaceName);
-    expected_req.set_clone_request_seq_no(kSeqNo);
+    expected_req.set_clone_request_seq_no(1);
     expected_req.set_target_pg_table_id(target_table_->pg_table_id());
     *expected_req.mutable_target_schema() = target_table_->LockForRead()->schema();
     *expected_req.mutable_target_partition_schema() =
@@ -527,7 +530,7 @@ TEST_F(CloneStateManagerTest, HandleRestoringStateRestored) {
   restoration->mutable_entry()->set_state(SysSnapshotEntryPB::RESTORED);
   EXPECT_CALL(MockFuncs(), ListRestorations(kRestorationId, _))
       .WillOnce(DoAll(SetArgPointee<1>(resp), Return(Status::OK())));
-  EXPECT_CALL(MockFuncs(), Upsert);
+  EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _));
 
   // Should transition the clone to the COMPLETE state.
   ASSERT_OK(HandleRestoringState(clone_state));
@@ -569,8 +572,8 @@ TEST_F_EX(CloneStateManagerTest, AbortIfFailToSchedulePgCloneSchema, CloneStateM
 }
 
 TEST_F_EX(CloneStateManagerTest, AbortInPgSchemaClone, CloneStateManagerPgTest) {
-  EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _));
-  auto clone_state = ASSERT_RESULT(CreateCloneState(kSeqNo, DefaultTableSnapshotData()));
+  EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _, _));
+  auto clone_state = ASSERT_RESULT(CreateCloneState(DefaultTableSnapshotData()));
   auto callback = MakeDoneClonePgSchemaCallback(
       clone_state, kSnapshotScheduleId, kTargetNamespaceName,
       CoarseMonoClock::Now() + 10s /* deadline */, kEpoch);
@@ -583,8 +586,8 @@ TEST_F_EX(CloneStateManagerTest, AbortInPgSchemaClone, CloneStateManagerPgTest) 
 }
 
 TEST_F_EX(CloneStateManagerTest, AbortInStartTabletsCloningPg, CloneStateManagerPgTest) {
-  EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _));
-  auto clone_state = ASSERT_RESULT(CreateCloneState(kSeqNo, DefaultTableSnapshotData()));
+  EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _, _));
+  auto clone_state = ASSERT_RESULT(CreateCloneState(DefaultTableSnapshotData()));
   auto callback = MakeDoneClonePgSchemaCallback(
       clone_state, kSnapshotScheduleId, kTargetNamespaceName,
       CoarseMonoClock::Now() + 10s /* deadline */, kEpoch);
@@ -634,7 +637,7 @@ TEST_F(CloneStateManagerTest, Load) {
   clone_state1.set_source_namespace_id(kSourceNamespaceId);
   clone_state1.set_target_namespace_name(kTargetNamespaceName);
   clone_state1.set_restore_time(kRestoreTime.ToUint64());
-  clone_state1.set_clone_request_seq_no(kSeqNo);
+  clone_state1.set_clone_request_seq_no(100);
 
   SysCloneStatePB clone_state2;
   clone_state2.set_aggregate_state(SysCloneStatePB::ABORTED);
@@ -642,7 +645,7 @@ TEST_F(CloneStateManagerTest, Load) {
   clone_state2.set_abort_message("Test abort message");
   clone_state2.set_target_namespace_name(kTargetNamespaceName);
   clone_state2.set_restore_time(kRestoreTime.ToUint64() + 1);
-  clone_state2.set_clone_request_seq_no(kSeqNo + 1);
+  clone_state2.set_clone_request_seq_no(101);
 
   // When the loader runs, we will save the function that is normally passed to
   // sys_catalog Load in 'inserter'.
