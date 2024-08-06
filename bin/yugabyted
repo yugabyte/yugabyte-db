@@ -3403,23 +3403,23 @@ class ControlScript(object):
             yb_tserver_cmd.extend(["--use_client_to_server_encryption=true",
                 "--certs_for_client_dir={}".format(certs_dir),])
 
-        hba_conf_updated = False
-        for i, flag in enumerate(yb_tserver_cmd):
-            if flag.startswith("--ysql_hba_conf_csv="):
-                pattern = re.compile(r'--ysql_hba_conf_csv=(["\']?)(.*)\1$')
-                match = pattern.match(flag)
-                # Extract the original ysql_hba_conf
-                quote_char = match.group(1)  # This will be '' if there are no quotes
-                original_hba_conf = match.group(2)
-                # Append 'local all yugabyte trust' to the original_hba_conf
-                updated_hba_conf = original_hba_conf + ',local all yugabyte trust'
+            hba_conf_updated = False
+            for i, flag in enumerate(yb_tserver_cmd):
+                if flag.startswith("--ysql_hba_conf_csv="):
+                    pattern = re.compile(r'--ysql_hba_conf_csv=(["\']?)(.*)\1$')
+                    match = pattern.match(flag)
+                    # Extract the original ysql_hba_conf
+                    quote_char = match.group(1)  # This will be '' if there are no quotes
+                    original_hba_conf = match.group(2)
+                    # Append 'local all yugabyte trust' to the original_hba_conf
+                    updated_hba_conf = original_hba_conf + ',local all yugabyte trust'
 
-                yb_tserver_cmd[i] = f'--ysql_hba_conf_csv={quote_char}' +\
-                            f'{updated_hba_conf}{quote_char}'
-                hba_conf_updated = True
+                    yb_tserver_cmd[i] = f'--ysql_hba_conf_csv={quote_char}' +\
+                                f'{updated_hba_conf}{quote_char}'
+                    hba_conf_updated = True
 
-        if not hba_conf_updated:
-            yb_tserver_cmd.extend(["--ysql_hba_conf_csv=local all yugabyte trust",])
+            if not hba_conf_updated:
+                yb_tserver_cmd.extend(["--ysql_hba_conf_csv=local all yugabyte trust",])
 
         if self.configs.saved_data.get("ysql_enable_auth"):
             yb_tserver_cmd.extend(["--ysql_enable_auth=true"])
