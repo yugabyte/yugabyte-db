@@ -32,7 +32,7 @@
 #include "query/query_operator.h"
 #include "catalog/pg_am.h"
 #include "commands/cursor_common.h"
-
+#include "customscan/helio_custom_scan_private.h"
 
 #if (PG_VERSION_NUM >= 150000)
 
@@ -174,7 +174,7 @@ static void PostProcessSlot(ExtensionScanState *extensionScanState, TupleTableSl
 static void CopyNodeInputContinuation(ExtensibleNode *target_node, const
 									  ExtensibleNode *source_node);
 static void OutInputContinuation(StringInfo str, const struct ExtensibleNode *raw_node);
-static void ReadUnsupportedExtensionScanNode(struct ExtensibleNode *node);
+static void ReadCustomScanContinuationExtensionScanNode(struct ExtensibleNode *node);
 static bool EqualUnsupportedExtensionScanNode(const struct ExtensibleNode *a,
 											  const struct ExtensibleNode *b);
 static Node * ReplaceCursorParamValuesMutator(Node *node, ParamListInfo boundParams);
@@ -211,7 +211,7 @@ static const ExtensibleNodeMethods InputContinuationMethods =
 	CopyNodeInputContinuation,
 	EqualUnsupportedExtensionScanNode,
 	OutInputContinuation,
-	ReadUnsupportedExtensionScanNode
+	ReadCustomScanContinuationExtensionScanNode
 };
 
 PG_FUNCTION_INFO_V1(command_cursor_state);
@@ -1479,16 +1479,6 @@ SkipWithUserContinuation(ExtensionScanState *state, bool *shouldContinue)
 
 
 /*
- * Function for reading HelioApiScan node (unsupported)
- */
-static void
-ReadUnsupportedExtensionScanNode(struct ExtensibleNode *node)
-{
-	ereport(ERROR, (errmsg("Read for node type not implemented")));
-}
-
-
-/*
  * Support for comparing two Scan extensible nodes
  * Currently insupported.
  */
@@ -1524,5 +1514,33 @@ CopyNodeInputContinuation(struct ExtensibleNode *target_node, const struct
 static void
 OutInputContinuation(StringInfo str, const struct ExtensibleNode *raw_node)
 {
-	/* TODO: This doesn't seem needed */
+	InputContinuation *node = (InputContinuation *) raw_node;
+
+	const char *string = PgbsonToHexadecimalString(node->continuation);
+	WRITE_STRING_FIELD_VALUE(continuation, string);
+	WRITE_OID_FIELD(queryTableId);
+	WRITE_STRING_FIELD(queryTableName);
+}
+
+
+/*
+ * Function for reading HelioApiScan node inverse of Out
+ */
+static void
+ReadCustomScanContinuationExtensionScanNode(struct ExtensibleNode *node)
+{
+	const char *token;
+	char *continuationStr;
+	int length;
+	InputContinuation *local_node = (InputContinuation *) node;
+	local_node->extensible.type = T_ExtensibleNode;
+	local_node->extensible.extnodename = InputContinuationNodeName;
+
+	READ_STRING_FIELD_VALUE(continuationStr);
+	READ_OID_FIELD(queryTableId);
+	READ_STRING_FIELD(queryTableName);
+	if (continuationStr != NULL)
+	{
+		local_node->continuation = PgbsonInitFromHexadecimalString(continuationStr);
+	}
 }

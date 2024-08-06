@@ -35,6 +35,7 @@
 #include "vector/vector_planner.h"
 #include "vector/vector_common.h"
 #include "utils/mongo_errors.h"
+#include "customscan/helio_custom_scan_private.h"
 
 
 /* --------------------------------------------------------- */
@@ -680,16 +681,6 @@ ExtensionQueryScanExplainCustomScan(CustomScanState *node, List *ancestors,
 
 
 /*
- * Function for reading HelioApiQueryScan node (unsupported)
- */
-static void
-ReadUnsupportedExtensionQueryScanNode(struct ExtensibleNode *node)
-{
-	ereport(ERROR, (errmsg("Read for node type not implemented")));
-}
-
-
-/*
  * Support for comparing two Scan extensible nodes
  * Currently insupported.
  */
@@ -697,7 +688,7 @@ static bool
 EqualUnsupportedExtensionQueryScanNode(const struct ExtensibleNode *a,
 									   const struct ExtensibleNode *b)
 {
-	ereport(ERROR, (errmsg("Equal for node type not implemented")));
+	ereport(ERROR, (errmsg("Equal for node type CustomQueryScan not implemented")));
 }
 
 
@@ -753,4 +744,14 @@ static void
 OutInputQueryScanNode(StringInfo str, const struct ExtensibleNode *raw_node)
 {
 	/* TODO: This doesn't seem needed */
+}
+
+
+/*
+ * Function for reading HelioApiQueryScan node (unsupported)
+ */
+static void
+ReadUnsupportedExtensionQueryScanNode(struct ExtensibleNode *node)
+{
+	ereport(ERROR, (errmsg("Read for node type CustomQueryScan not implemented")));
 }

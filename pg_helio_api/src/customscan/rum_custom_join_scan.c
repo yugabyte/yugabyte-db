@@ -92,7 +92,7 @@ static void ExtensionRumJoinScanExplainCustomScan(CustomScanState *node, List *a
 												  ExplainState *es);
 static void CopyNodeRumJoinInputState(struct ExtensibleNode *target_node,
 									  const struct ExtensibleNode *source_node);
-static void ReadUnsupportedExtensionRumJoinScannNode(struct ExtensibleNode *node);
+static void ReadRumJoinScannNode(struct ExtensibleNode *node);
 static void OutInputRumJoinScanNode(StringInfo str, const struct
 									ExtensibleNode *raw_node);
 static bool EqualUnsupportedExtensionRumJoinScanNode(const struct ExtensibleNode *a,
@@ -132,7 +132,7 @@ static const ExtensibleNodeMethods InputQueryStateMethods =
 	CopyNodeRumJoinInputState,
 	EqualUnsupportedExtensionRumJoinScanNode,
 	OutInputRumJoinScanNode,
-	ReadUnsupportedExtensionRumJoinScannNode
+	ReadRumJoinScannNode
 };
 
 
@@ -447,16 +447,6 @@ ExtensionRumJoinScanExplainCustomScan(CustomScanState *node, List *ancestors,
 
 
 /*
- * Function for reading HelioApiQueryScan node (unsupported)
- */
-static void
-ReadUnsupportedExtensionRumJoinScannNode(struct ExtensibleNode *node)
-{
-	ereport(ERROR, (errmsg("Read for node type not implemented")));
-}
-
-
-/*
  * Support for comparing two Scan extensible nodes
  * Currently insupported.
  */
@@ -488,7 +478,17 @@ CopyNodeRumJoinInputState(struct ExtensibleNode *target_node, const struct
 static void
 OutInputRumJoinScanNode(StringInfo str, const struct ExtensibleNode *raw_node)
 {
-	/* TODO: This doesn't seem needed */
+	/* There's no custom state for this join scan */
+}
+
+
+/*
+ * Function for reading HelioApiQueryScan node (unsupported)
+ */
+static void
+ReadRumJoinScannNode(struct ExtensibleNode *node)
+{
+	/* There's no custom state for this join scan */
 }
 
 
