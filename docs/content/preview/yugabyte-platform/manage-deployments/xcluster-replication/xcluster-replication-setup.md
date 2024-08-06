@@ -14,8 +14,6 @@ type: docs
 
 ## Prerequisites
 
-### Create universes
-
 Create two universes, the source universe which will serve reads and writes, and the target.
 
 Ensure the universes have the following characteristics:
@@ -34,15 +32,15 @@ Ensure the universes have the following characteristics:
 - They have enough disk space to support storage of write-ahead logs (WALs) in case of a network partition or a temporary outage of the target universe. During these cases, WALs will continue to write until replication is restored. Consider sizing your disk according to your ability to respond and recover from network or other infrastructure outages.
 - Neither universe is already being used for xCluster replication.
 
-Prepare your database and tables on the source. The source can be empty or have data. If the source has a lot of data, setup will take longer because the data must be copied in full to the target before on-going asynchronous replication starts.
+Prepare your database and tables on the source. The source can be empty or have data. If the source has a lot of data, setup will take longer because the [data must be copied in full to the target](#full-copy-during-xcluster-setup) before on-going asynchronous replication starts.
 
 On the target, create a database with the same name as that on the source. During initial setup, you don't need to create objects on the target. YugabyteDB Anywhere performs a full copy of the data to be replicated on the source, and automatically creates tables and objects, and restores data on the target from the source.
 
-After replication is configured, the target will only be available for reads.
+After replication is configured, by default the target will only be available for reads.
 
-### Best practices
+## Best practices
 
-- Monitor CPU and keep its  use below 65%.
+- Monitor CPU use and keep it below 65%.
 - Monitor disk space and keep its use under 65%.
 - Set the YB-TServer [log_min_seconds_to_retain](../../../../reference/configuration/yb-tserver/#log-min-seconds-to-retain) flag to 86400 on both source and target.
 
@@ -52,8 +50,42 @@ After replication is configured, the target will only be available for reads.
 
 - [Set a replication lag alert](#set-up-replication-lag-alerts) for the source to be alerted when the replication lag exceeds acceptable levels.
 - Add new tables and databases to the replication configuration soon after creating them, and before performing any writes to avoid the overhead of a full copy.
-- xCluster replication creation process (copying data from source to target, also referred to as bootstrapping) is not aborted if the source universe is running out of space. Instead, a warning is displayed notifying that the source universe has less than 100 GB of space remaining. Therefore, you must ensure that there is enough space available on the source universe before attempting to set up the replication. A recommended approach would be to estimate that the available disk space on the source universe is the same as the used disk space.
+- xCluster replication setup (including copying data from source to target) is not aborted if the source universe is running out of space. Instead, a warning is displayed notifying that the source universe has less than 100 GB of space remaining. Ensure that there is enough space available on the source universe before attempting to set up the replication. A recommended approach would be to estimate that the available disk space on the source universe is the same as the used disk space.
 - If xCluster replication setup clashes with scheduled backups, wait for the scheduled backup to finish, and then restart the replication.
+
+### Full copy during xCluster setup
+
+When xCluster is [set up](#set-up-xcluster-replication) or [restarted](#restart-replication), or when new [tables or databases are added](../xcluster-replication-ddl/) to an existing xCluster configuration, YugabyteDB Anywhere checks if a full copy is required before configuring the replication. A full copy is required in the following circumstances:
+
+- Any newly added databases or tables or index tables are not present on the target universe.
+- Any databases or tables or index tables are not empty. Newly created index tables associated with non-empty main tables are considered non-empty and trigger a full copy.
+
+For YSQL, a full copy is performed on the entire database; for YCQL, a full copy of the table (including associated index tables) is performed.
+
+A full copy causes corresponding databases and tables on the target universe to be recreated, and existing data on the target universe in those tables is dropped.
+
+Ideally, you should add tables to replication right after creating them on both universes to avoid unnecessary full copy operations.
+
+A full copy is skipped if the corresponding tables are already in replication on the target universe. Specifically, for bidirectional replication, this means that setting up or adding tables to xCluster replication from universe A to universe B might trigger a full copy; but setting up replication in the reverse direction from B to A afterwards does not trigger a full copy. See [Bidirectional replication](../bidirectional-replication/) for more information.
+
+A full copy is done by first backing up the data to external storage, and then restoring to the target universe.
+
+- For information on creating and using storage configurations, refer to [Configure backup storage](../../../back-up-restore-universes/configure-backup-storage/)
+- To configure the performance of backup and restore, refer to [Configure backup performance parameters](../../../back-up-restore-universes/back-up-universe-data/#configure-backup-performance-parameters).
+
+### YSQL tables
+
+Replication is set up at the table level on the source and target universes. Selecting a YSQL database adds all its current tables to the xCluster configuration. If you add any tables that you want replicated, you must manually add them to the xCluster configuration in YugabyteDB Anywhere.
+
+When adding tables or during xCluster setup, however, you must select the database with the tables you want, and all tables in a selected database are added to the replication.
+
+If a full copy is required, the entire database is recreated on the target universe from the current database on the source universe. Be sure to keep the set of tables the same at all times on both the source and target universes in these databases by following the steps in [Manage tables and indexes](../xcluster-replication-ddl/).
+
+To be eligible for xCluster replication, tables must not already be in replication. That is, the table can't already be in another xCluster configuration between the same two universes in the same direction.
+
+If a YSQL database includes tables considered ineligible for replication, this database cannot be selected in the YugabyteDB Anywhere UI and the database as a whole cannot be replicated.
+
+You can add databases containing colocated tables to the DR configuration as long as the underlying database is v2.18.1.0 or later. Colocated tables on the DR primary and replica should be created with the same colocation ID if they already exist on both the DR primary and replica prior to DR setup. Refer to xCluster and colocation.
 
 ## Set up xCluster replication
 
@@ -61,17 +93,27 @@ To set up replication for a universe, do the following:
 
 1. Navigate to your source universe and select **xCluster Replication**.
 
-1. Click **Configure & Enable xCluster Replication**.
+1. Click **Configure xCluster Replication**.
 
-1. Select the universe to use as the target, then click **Next: Select Databases**.
+1. Enter a name for the replication.
 
-1. Select the databases to be copied to the target for replication.
+1. Select the universe to use as the target.
+
+1. Select the API, YSQL or YCQL.
+
+1. If you selected YSQL, choose whether to use [transactional atomicity](../#xcluster-configurations).
+
+1. Click **Next: Select Databases** (YSQL) or **Select Tables** (YCQL).
+
+1. Select the databases or tables to be copied to the target for replication.
 
     You can add databases containing colocated tables to the replication configuration as long as the underlying database is v2.18.1.0 or later. Colocated tables on the source and replica should be created with the same colocation ID if they already exist on both the source and replica prior to setup. Refer to [xCluster and colocation](../../../../architecture/docdb-sharding/colocated-tables/#xcluster-and-colocation).
 
+1. Click **Validate Table Selection**.
+
     YugabyteDB Anywhere checks whether or not data needs to be copied to the target for the selected databases and its tables.
 
-1. If data needs to be copied, click **Next: Confirm Full Copy**, and select a storage configuration.
+1. If data needs to be copied, click **Next: Configure Full Copy**, and select a storage configuration.
 
     The storage is used to transfer the data to the target database. For information on how to configure storage, see [Configure backup storage](../../configure-backup-storage/).
 
@@ -79,9 +121,9 @@ To set up replication for a universe, do the following:
 
     If you have [set an alert for replication lag](#set-up-replication-lag-alerts) on the universe, the threshold for alerting is displayed.
 
-1. Click **Confirm and Enable xCluster Replication**.
+1. Click **Confirm and Enable Replication**.
 
-YugabyteDB Anywhere proceeds to set up replication for the universe. How long this takes depends mainly on the amount of data that needs to be copied to the target.
+YugabyteDB Anywhere proceeds to set up replication for the universe. How long this takes depends mainly on the amount of data that needs to be copied to the target. You can view the progress of xCluster tasks by navigating to the universe **Tasks** tab.
 
 ## Monitor replication
 
@@ -99,6 +141,8 @@ In addition, you can monitor the following metrics on the **xCluster Replication
 
     If you have [set an alert for replication lag](#set-up-replication-lag-alerts), you can also display the alert threshold.
 
+YSQL transactional replication displays the following additional metrics:
+
 - Consumer Safe Time Lag
 
     The time elapsed in microseconds between the physical time and safe time. Safe time is the time (usually in the past) at which the database or tables can be read with full correctness and consistency. For example, even though the actual time may be 3:00:00, a query or read against the target database may be able to only return a result as of 2:59:59 (that is 1 second ago) due to network lag and/or out-of-order delivery of datagrams.
@@ -106,24 +150,6 @@ In addition, you can monitor the following metrics on the **xCluster Replication
 - Consumer Safe Time Skew
 
     The time elapsed in microseconds for replication between the most caught up tablet and the tablet that lags the most on the target. This metric is available only on the target.
-
-Consider the following scenario.
-
-![Replication metrics](/images/yb-platform/disaster-recovery/disaster-recovery-metrics.png)
-
-- Three transactions, T1, T2, and T3, are written to the source at 0.001 ms, 0.002 ms, and 0.003 ms respectively.
-- The replication lag for the transactions are as follows: Repl_Lag(T1) = 10 ms, Repl_Lag(T2) = 100 ms, Repl_Lag(T3) = 20 ms.
-
-The state of the system at time t = 50 ms is as follows:
-
-- T1 and T3 have arrived at the target. T2 is still in transit.
-- Although T3 has arrived, SQL reads on the target only see T1 (T3 is hidden), because (due to T2 still being in transit, and T3 being written on the source _after_ T2) the only safe, consistent view of the database is to see T1 and hide T3.
-- Safe time is the time at which T1 was replicated, namely t = 0.001 ms.
-- Safe time lag is the difference between the current time and the safe time. As of t = 50 ms, the safe time lag is 49.999 ms (50 ms - 0.001 ms).
-
-If a failover were to occur at this moment (t = 50 ms) the target will be restored to its state as of the safe time (that is, t = .001 ms), meaning that T1 will be visible, but T3 will be hidden. T2 (which is still in transit) is currently not available on the target, and will be ignored when it arrives.
-
-In this example, the safe time skew is 90 ms, the difference between Repl_Lag(T1) and Repl_Lag(T3).
 
 ### Tables
 
@@ -224,12 +250,14 @@ In these cases, restart replication as follows:
 1. Click **Next: Confirm Full Copy**.
 1. Click **Create a New Full Copy**.
 
-This performs a full copy of the databases involved from the source to the target.
+This performs a full copy of the databases (YSQL) or tables (YCQL) involved from the source to the target.
 
 ## Remove replication
 
-To remove replication for a universe, do the following:
+To remove xCluster replication for a universe, do the following:
 
 1. Navigate to your source universe.
 
-1. On the **xCluster Replication** tab, click **Actions** and choose **Remove Replication**.
+1. On the **xCluster Replication** tab, click **Actions** and choose **Delete Replication**.
+
+You can opt to ignore errors and force delete the replication, but this is not recommended except in some rare scenarios. You can use this option to delete the xCluster configuration when one of the universes is inaccessible. However, doing so may cause some state information related to replication to be left behind on the underlying YugabyteDB universes that will require manual cleanup later on.

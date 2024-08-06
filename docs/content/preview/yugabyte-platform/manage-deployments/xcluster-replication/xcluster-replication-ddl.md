@@ -12,14 +12,16 @@ menu:
 type: docs
 ---
 
-When DDL changes are made to databases in replication for xCluster replication (such as creating, altering, or dropping tables or partitions), the changes must be:
+When making DDL changes to databases in xCluster replication (such as creating, altering, or dropping tables or partitions), you must do the following:
 
-- performed at the SQL level on both the source and replica, and then
-- updated at the YugabyteDB Anywhere level in the replication configuration.
+- Make the change at the SQL level on both the source and target.
+- Update the xCluster replication configuration in YugabyteDB Anywhere.
+
+The order in which you do this varies depending on the operation.
 
 ## Order of operations
 
-You should perform these operations in a specific order, depending on whether performing a CREATE, DROP, ALTER, and so forth, as indicated by the sequence number of the operation in the following table.
+Perform DDL operations in the order as shown in the following table.
 
 {{<tabpane text=true >}}
 {{% tab header="YSQL Transactional" lang="ysql-transaction" %}}
@@ -71,7 +73,7 @@ You should perform these operations in a specific order, depending on whether pe
 
 In addition, keep in mind the following:
 
-- If you are using Colocated tables, you CREATE TABLE on source, then CREATE TABLE on target making sure that you force the Colocation ID to be identical to that on source.
+- If you are using Colocated tables, you CREATE TABLE on target, then CREATE TABLE on source, making sure that you force the Colocation ID to be identical to that on target.
 - If you try to make a DDL change on source and it fails, you must also make the same attempt on target and get the same failure.
 
 Use the following guidance when managing tables and indexes in universes with replication configured.
@@ -84,12 +86,10 @@ Note: If you are performing application upgrades involving both adding and dropp
 
 To ensure that data is protected at all times, set up replication on a new table _before_ starting any workload.
 
-If a table already has data before adding it to replication, then adding the table to replication can result in a backup and restore of the entire database from source to target.
+Before adding a table to replication in YugabyteDB Anywhere, refer to [Order of operations](#order-of-operations) for your setup.
 
-Add tables to replication in the following sequence:
+Add tables to replication as follows:
 
-1. Create the table on the source (if it doesn't already exist).
-1. Create the table on the target.
 1. Navigate to your source and select **xCluster Replication**.
 1. Click **Actions** and choose **Select Databases and Tables**.
 1. Select the tables and click **Validate Selection**.
@@ -98,32 +98,32 @@ Add tables to replication in the following sequence:
 
 Note the following:
 
-- If the newly added table already has data, then adding the table can trigger a full copy of that entire database from source to replica.
+- If the newly added table already has data, then adding the table can trigger a full copy of that entire database from source to target.
 
 - It is recommended that you set up replication on the new table before starting any workload to ensure that data is protected at all times. This approach also avoids the full copy.
 
 - This operation also automatically adds any associated index tables of this table to the replication configuration.
 
-- If using colocation, colocated tables on the source and replica should be created with the same colocation ID if they already exist on both the source and replica prior to replication setup.
+- If using colocation, colocated tables on the source and target should be created with the same colocation ID if they already exist on both the source and target prior to replication setup.
 
 ### Remove a table from replication
 
-When dropping a table, remove the table from replication before dropping the table in the source and replica databases.
+Before dropping a table, refer to [Order of operations](#order-of-operations) for your setup.
 
-Remove tables from replication in the following sequence:
+When dropping a table in version 2.23 or later, you don't need to perform any action in YugabyteDB Anywhere.
+
+When dropping a table in versions ealier than 2.23, remove the table from replication before dropping the table in the source and target databases, as follows:
 
 1. Navigate to your source and select **xCluster Replication**.
 1. Click **Actions** and choose **Select Databases and Tables**.
 1. Deselect the tables and click **Validate Selection**.
 1. Click **Apply Changes**.
-1. Drop the table from the target database.
-1. Drop the table from the source database.
 
 ## Indexes
 
 ### Add an index to replication
 
-Indexes are automatically added to replication in an atomic fashion after you create the indexes separately on source and replica. You don't need to stop the writes on the source.
+Indexes are automatically added to replication in an atomic fashion after you create the indexes separately on source and target. You don't need to stop the writes on the source.
 
 CREATE INDEX may kill some in-flight transactions. This is a temporary error. Retry any failed transactions.
 

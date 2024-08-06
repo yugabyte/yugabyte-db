@@ -24,13 +24,13 @@ Replication takes place between two universes:
 
 One source universe can replicate to one or more target universes.
 
-You can use xCluster replication to implement disaster recovery for YugabyteDB in cases where the higher write latency and the three fault domain minimum requirement of default synchronous replication of YugabyeDB is a challenge, if some small possibility of data loss due to asynchronous replication can be tolerated. For more details on using xCluster for Disaster Recovery, see [xCluster Disaster recovery](../../back-up-restore-universes/disaster-recovery/).
+You can use xCluster replication to implement disaster recovery for YugabyteDB in cases where the higher write latency and the three fault domain minimum requirement of default synchronous replication of YugabyeDB is a challenge, if some small possibility of data loss due to asynchronous replication can be tolerated. For more details on using xCluster for Disaster Recovery, see [xCluster Disaster Recovery](../../back-up-restore-universes/disaster-recovery/).
 
 xCluster replication can be used to move data from one YugabyteDB universe to another for purposes other than disaster recovery. For example, downstream YugabyteDB clusters used for reporting or "green" deployments of blue-green deployments can be kept asynchronously up to date with the main YugabyteDB cluster.
 
 You can use YugabyteDB Anywhere to set up the initial xCluster replication across universes, monitor the status of replication, and manage changes to the replication when new databases or tables are added to the replication.
 
-For more information on xCluster replication in YugabyteDB, see [xCluster replication: overview and architecture](../../../architecture/docdb-replication/async-replication/).
+For more information on how YugabyteDB xCluster replication works, see [xCluster replication: overview and architecture](../../../architecture/docdb-replication/async-replication/).
 
 ## xCluster configurations
 
