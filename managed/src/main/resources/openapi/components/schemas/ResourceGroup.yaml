@@ -1,4 +1,4 @@
-title: ResourceGroupSpec
+title: ResourceGroup
 description: Resource group definition for the role. Only applicable for custom roles.
 type: object
 required:
@@ -7,4 +7,4 @@ properties:
   resource_definition_set:
     type: array
     items:
-      $ref: "./ResourceDefinitionSpec.yaml"
+      $ref: "./ResourceDefinition.yaml"

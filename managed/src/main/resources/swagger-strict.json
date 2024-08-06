@@ -5896,6 +5896,12 @@
     },
     "GroupMappingInfo" : {
       "properties" : {
+        "creationDate" : {
+          "description" : "Group mapping creation time",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
         "customerUUID" : {
           "format" : "uuid",
           "type" : "string"

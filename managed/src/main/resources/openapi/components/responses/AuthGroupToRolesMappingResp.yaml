@@ -1,7 +1,7 @@
-required: true
+description: OK
 content:
   application/json:
     schema:
       type: array
       items:
-        $ref: "../schemas/GroupMappingSpec.yaml"
+        $ref: "../schemas/AuthGroupToRolesMapping.yaml"
