@@ -104,6 +104,10 @@ a {
 .td-breadcrumbs {
   margin-bottom: 20px;
   padding-right: 120px;
+  @media(max-width:991px){
+    padding-right: 0;
+
+  }
 
   &:has(.breadcrumb-item:only-child) {
     height: 0;
@@ -453,6 +457,7 @@ body:not(.td-home) .td-main main {
 
     @media (max-width: 991px) {
       margin-top: 0;
+      margin-bottom: 72px;
     }
 
     @media (min-width: 991px) {

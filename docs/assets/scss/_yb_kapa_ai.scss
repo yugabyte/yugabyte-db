@@ -104,9 +104,10 @@ body {
       font-size: inherit;
       display: flex;
       flex-flow: row-reverse;
-      margin: 0 16px 0 auto;
+      margin: 0 32px 0 auto;
       animation: none;
       transform: translateX(0);
+      gap: 16px;
 
       >span.tritiery-btn:not(.btn-priority) {
         transform: translateX(0);

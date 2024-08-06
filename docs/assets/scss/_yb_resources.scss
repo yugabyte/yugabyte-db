@@ -2,7 +2,9 @@ body {
   .resources {
     margin-bottom: 40px;
     padding-right: 145px;
-
+    @media(max-width:991px){
+      padding-right: 0;
+    }
     ul {
       display: flex;
       flex-wrap: wrap;
