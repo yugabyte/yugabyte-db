@@ -439,6 +439,9 @@ public class ReleasesUtils {
   }
 
   public void validateVersionAgainstCurrentYBA(String version) {
+    if (confGetter.getGlobalConf(GlobalConfKeys.allowDbVersionMoreThanYbaVersion)) {
+      return;
+    }
     if (confGetter.getGlobalConf(GlobalConfKeys.skipVersionChecks)) {
       return;
     }
