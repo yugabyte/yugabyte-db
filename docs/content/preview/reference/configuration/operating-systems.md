@@ -28,7 +28,7 @@ Unless otherwise noted, operating systems are supported by all supported version
 | Ubuntu 20        | {{<icon/yes>}} | {{<icon/yes>}} |       |
 | Ubuntu 22        | {{<icon/yes>}} | {{<icon/yes>}} | Supported in v2.18.5, v2.20.1 |
 
-The following operating systems and architectures are no longer supported for [deploying YugabyteDB](../../../deploy/manual-deployment/).
+The following operating systems and architectures are no longer supported for deploying YugabyteDB.
 
 | Operating system | x86            | ARM            | Notes |
 | :--------------- | :------------- | :------------- | :---- |
