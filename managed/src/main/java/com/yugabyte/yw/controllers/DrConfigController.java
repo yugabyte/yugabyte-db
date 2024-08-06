@@ -191,6 +191,41 @@ public class DrConfigController extends AuthenticatedController {
       XClusterUtil.dbScopedXClusterPreChecks(sourceUniverse, targetUniverse);
     }
 
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
+        XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
+
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
+        getRequestedTableInfoList(createForm.dbs, sourceTableInfoList);
+
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList =
+        XClusterConfigTaskBase.getTableInfoList(ybService, targetUniverse);
+    Map<String, String> sourceTableIdTargetTableIdMap =
+        XClusterConfigTaskBase.getSourceTableIdTargetTableIdMap(
+            requestedTableInfoList, targetTableInfoList);
+
+    XClusterConfigController.xClusterCreatePreChecks(
+        ybService,
+        requestedTableInfoList,
+        ConfigType.Txn,
+        sourceUniverse,
+        sourceTableInfoList,
+        targetUniverse,
+        targetTableInfoList,
+        confGetter);
+
+    Set<String> tableIds = XClusterConfigTaskBase.getTableIds(requestedTableInfoList);
+    BootstrapParams bootstrapParams =
+        getBootstrapParamsFromRestartBootstrapParams(createForm.bootstrapParams, tableIds);
+    XClusterConfigController.xClusterBootstrappingPreChecks(
+        requestedTableInfoList,
+        sourceTableInfoList,
+        targetUniverse,
+        sourceUniverse,
+        sourceTableIdTargetTableIdMap,
+        ybService,
+        bootstrapParams,
+        null /* currentReplicationGroupName */);
+
     DrConfig drConfig;
     DrConfigTaskParams taskParams;
     if (isDbScoped) {
@@ -214,42 +249,15 @@ public class DrConfigController extends AuthenticatedController {
               createForm.dbs,
               createForm.pitrParams);
     } else {
-      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
-          XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
-      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
-          getRequestedTableInfoList(createForm.dbs, sourceTableInfoList);
-
-      Set<String> tableIds = XClusterConfigTaskBase.getTableIds(requestedTableInfoList);
-      Map<String, List<String>> mainTableIndexTablesMap =
-          XClusterConfigTaskBase.getMainTableIndexTablesMap(
-              this.ybService, sourceUniverse, tableIds);
-
-      XClusterConfigController.xClusterCreatePreChecks(
-          requestedTableInfoList, ConfigType.Txn, sourceUniverse, targetUniverse, confGetter);
-
-      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList =
-          XClusterConfigTaskBase.getTableInfoList(ybService, targetUniverse);
-      Map<String, String> sourceTableIdTargetTableIdMap =
-          XClusterConfigTaskBase.getSourceTableIdTargetTableIdMap(
-              requestedTableInfoList, targetTableInfoList);
-
-      BootstrapParams bootstrapParams =
-          getBootstrapParamsFromRestartBootstrapParams(createForm.bootstrapParams, tableIds);
-      XClusterConfigController.xClusterBootstrappingPreChecks(
-          requestedTableInfoList,
-          sourceTableInfoList,
-          targetUniverse,
-          sourceUniverse,
-          sourceTableIdTargetTableIdMap,
-          ybService,
-          bootstrapParams,
-          null /* currentReplicationGroupName */);
-
       if (createForm.dryRun) {
         return YBPSuccess.withMessage("The pre-checks are successful");
       }
 
       // Todo: Ensure the PITR parameters have the right RPOs.
+
+      Map<String, List<String>> mainTableIndexTablesMap =
+          XClusterConfigTaskBase.getMainTableIndexTablesMap(
+              this.ybService, sourceUniverse, tableIds);
 
       // Create xCluster config object.
       drConfig =
@@ -662,15 +670,21 @@ public class DrConfigController extends AuthenticatedController {
         List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
             XClusterConfigTaskBase.filterTableInfoListByTableIds(sourceTableInfoList, tableIds);
 
-        XClusterConfigTaskBase.verifyTablesNotInReplication(
-            tableIds, sourceUniverse.getUniverseUUID(), newTargetUniverse.getUniverseUUID());
-        XClusterConfigController.certsForCdcDirGFlagCheck(sourceUniverse, newTargetUniverse);
-
         List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> newTargetTableInfoList =
             XClusterConfigTaskBase.getTableInfoList(ybService, newTargetUniverse);
         Map<String, String> sourceTableIdNewTargetTableIdMap =
             XClusterConfigTaskBase.getSourceTableIdTargetTableIdMap(
                 requestedTableInfoList, newTargetTableInfoList);
+
+        XClusterConfigTaskBase.verifyTablesNotInReplication(
+            ybService,
+            tableIds,
+            ConfigType.Txn,
+            sourceUniverse.getUniverseUUID(),
+            sourceTableInfoList,
+            newTargetUniverse.getUniverseUUID(),
+            newTargetTableInfoList);
+        XClusterConfigController.certsForCdcDirGFlagCheck(sourceUniverse, newTargetUniverse);
 
         BootstrapParams bootstrapParams =
             getBootstrapParamsFromRestartBootstrapParams(
@@ -885,10 +899,12 @@ public class DrConfigController extends AuthenticatedController {
       }
 
       drSwitchoverFailoverPreChecks(
+          ybService,
           CustomerTask.TaskType.Switchover,
           requestedTableInfoList,
           targetTableInfoList,
           targetUniverse,
+          sourceTableInfoList,
           sourceUniverse);
 
       Map<String, List<String>> mainTableIndexTablesMap =
@@ -1026,6 +1042,9 @@ public class DrConfigController extends AuthenticatedController {
         List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList =
             XClusterConfigTaskBase.getTableInfoList(ybService, targetUniverse);
 
+        List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
+            XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
+
         // Because during failover, the source universe could be down, we should rely on the target
         // universe to get the table map between source to target.
         Map<String, String> sourceTableIdTargetTableIdMap =
@@ -1055,10 +1074,12 @@ public class DrConfigController extends AuthenticatedController {
             XClusterConfigTaskBase.filterTableInfoListByTableIds(targetTableInfoList, tableIds);
 
         drSwitchoverFailoverPreChecks(
+            ybService,
             CustomerTask.TaskType.Failover,
             requestedTableInfoList,
             targetTableInfoList,
             targetUniverse,
+            sourceTableInfoList,
             sourceUniverse);
         Map<String, List<String>> mainTableIndexTablesMap =
             XClusterConfigTaskBase.getMainTableIndexTablesMap(ybService, targetUniverse, tableIds);
@@ -1720,6 +1741,7 @@ public class DrConfigController extends AuthenticatedController {
    * reverse direction xCluster config is almost the same as the main xCluster config but in the
    * reverse direction.
    *
+   * @param ybClientService The YB client service to use for the pre-checks.
    * @param taskType This specifies the task that triggered the creation of a reverse direction
    *     xCluster config.
    * @param requestedTableInfoList The table info list on the target universe that will be part of
@@ -1727,20 +1749,29 @@ public class DrConfigController extends AuthenticatedController {
    * @param targetTableInfoList The table info list for all tables on the target universe
    * @param targetUniverse The target universe in the main xCluster config which is the same as the
    *     source universe in the reverse direction xCluster config
+   * @param sourceTableInfoList The table info list for all tables on the source universe
    * @param sourceUniverse The source universe in the main xCluster config which is the same as the
    *     target universe in the reverse direction xCluster config
    */
   public static void drSwitchoverFailoverPreChecks(
+      YBClientService ybClientService,
       CustomerTask.TaskType taskType,
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList,
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList,
       Universe targetUniverse,
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList,
       Universe sourceUniverse) {
     Set<String> tableIds = XClusterConfigTaskBase.getTableIds(requestedTableInfoList);
 
     // General xCluster pre-checks.
     XClusterConfigTaskBase.verifyTablesNotInReplication(
-        tableIds, targetUniverse.getUniverseUUID(), sourceUniverse.getUniverseUUID());
+        ybClientService,
+        tableIds,
+        ConfigType.Txn,
+        targetUniverse.getUniverseUUID(),
+        targetTableInfoList,
+        sourceUniverse.getUniverseUUID(),
+        sourceTableInfoList);
     XClusterConfigController.certsForCdcDirGFlagCheck(targetUniverse, sourceUniverse);
 
     // If table type is YSQL, all tables in that keyspace are selected.

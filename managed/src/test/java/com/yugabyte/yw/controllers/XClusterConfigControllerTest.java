@@ -333,6 +333,16 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     }
   }
 
+  private void mockDefaultInstanceClusterConfig() {
+    GetMasterClusterConfigResponse fakeClusterConfigResponse =
+        new GetMasterClusterConfigResponse(
+            0, "", CatalogEntityInfo.SysClusterConfigEntryPB.getDefaultInstance(), null);
+    try {
+      when(mockClient.getMasterClusterConfig()).thenReturn(fakeClusterConfigResponse);
+    } catch (Exception ignore) {
+    }
+  }
+
   private void validateGetXClusterResponse(
       XClusterConfig expectedXClusterConfig, Result actualResult) {
     JsonNode actual = Json.parse(contentAsString(actualResult));
@@ -397,6 +407,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   public void testCreate() {
 
     initClientGetTablesList();
+    mockDefaultInstanceClusterConfig();
     Result result =
         doRequestWithAuthTokenAndBody("POST", apiEndpoint, user.createAuthToken(), createRequest);
     assertOk(result);
@@ -433,6 +444,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   @Test
   public void testCreateUsingNewRbacAuthzWithNeededPermissions() {
     initClientGetTablesList();
+    mockDefaultInstanceClusterConfig();
     RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
     ResourceGroup rG = new ResourceGroup(new HashSet<>(Arrays.asList(rd1, rd2)));
     RoleBinding.create(user, RoleBindingType.Custom, role, rG);

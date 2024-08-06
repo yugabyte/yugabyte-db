@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.xcluster;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.XClusterUtil;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Universe;
@@ -155,7 +156,12 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
           clusterConfigResp.getConfig(), xClusterConfig, taskParams().tableIds);
 
       // For txn xCluster set the target universe role to standby.
-      if (xClusterConfig.getType().equals(ConfigType.Txn) && xClusterConfig.isTargetActive()) {
+      // But from "2024.1.0.0-b71/2.23.0.0-b157" onwards, we support multiple txn replication
+      // so we don't need to set the role to STANDBY as we will have this role per DBs which is
+      // handled by DB itself.
+      if (xClusterConfig.getType().equals(ConfigType.Txn)
+          && xClusterConfig.isTargetActive()
+          && !XClusterUtil.supportMultipleTxnReplication(targetUniverse)) {
         log.info("Setting the role of universe {} to STANDBY", targetUniverse.getUniverseUUID());
         client.changeXClusterRole(XClusterRole.STANDBY);
         xClusterConfig.setTargetActive(false);
