@@ -50,7 +50,9 @@ int cypher_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ag_scanner_t scanner)
         ACCESS_PATH,
         ANY_EXISTS,
         ALL_EXISTS,
-        CONCAT
+        CONCAT,
+        CHAR,
+        BQIDENT
     };
 
     ag_token token;
@@ -87,6 +89,18 @@ int cypher_yylex(YYSTYPE *lvalp, YYLTYPE *llocp, ag_scanner_t scanner)
             *llocp = token.location;
             return CypherKeywordTokens[kwnum];
         }
+
+        ident = pstrdup(token.value.s);
+        truncate_identifier(ident, strlen(ident), true);
+        lvalp->string = ident;
+        break;
+    }
+    case AG_TOKEN_BQIDENT:
+    {
+        char *ident;
+
+        /* these are identifiers, just back ticked */
+        token.type = AG_TOKEN_IDENTIFIER;
 
         ident = pstrdup(token.value.s);
         truncate_identifier(ident, strlen(ident), true);

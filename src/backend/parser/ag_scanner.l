@@ -628,7 +628,7 @@ ag_token token;
                         scan_errposition()));
     }
 
-    token.type = AG_TOKEN_IDENTIFIER;
+    token.type = AG_TOKEN_BQIDENT;
     token.value.s = strbuf_get_str(&yyextra.literal_buf);
     token.location = get_location();
     return token;

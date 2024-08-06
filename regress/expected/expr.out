@@ -8466,8 +8466,145 @@ ERROR:  A_indirection could not convert type boolean to agtype
 LINE 1: ...cypher('issue_1953', $$ RETURN is_valid_label_name('issue_19...
                                                              ^
 --
+-- Issue 1988: How to update a property which is a keyword.
+--
+SELECT * FROM create_graph('issue_1988');
+NOTICE:  graph "issue_1988" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * from cypher('issue_1988', $$
+    CREATE (p1:Part {part_num: 123}),
+           (p2:Part {part_num: 345}),
+           (p3:Part {part_num: 456}),
+           (p4:Part {part_num: 789}) $$) as (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('issue_1988', $$
+    MATCH (p) RETURN p $$) as (p agtype);
+                                         p                                         
+-----------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "Part", "properties": {"part_num": 123}}::vertex
+ {"id": 844424930131970, "label": "Part", "properties": {"part_num": 345}}::vertex
+ {"id": 844424930131971, "label": "Part", "properties": {"part_num": 456}}::vertex
+ {"id": 844424930131972, "label": "Part", "properties": {"part_num": 789}}::vertex
+(4 rows)
+
+SELECT * from cypher('issue_1988', $$
+    MATCH (p1:Part {part_num: 123}), (p2:Part {part_num: 345})
+    CREATE (p1)-[u:used_by { quantity: 1 }]->(p2) RETURN p1, u, p2 $$) as (p1 agtype, u agtype, p2 agtype);
+                                        p1                                         |                                                                     u                                                                     |                                        p2                                         
+-----------------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------+-----------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "Part", "properties": {"part_num": 123}}::vertex | {"id": 1125899906842625, "label": "used_by", "end_id": 844424930131970, "start_id": 844424930131969, "properties": {"quantity": 1}}::edge | {"id": 844424930131970, "label": "Part", "properties": {"part_num": 345}}::vertex
+(1 row)
+
+-- should fail
+SELECT * FROM cypher('issue_1988', $$
+    MATCH (p:Part { part_num: 123 }) SET p.match = 'xyz' RETURN p $$) as (p agtype);
+ERROR:  syntax error at or near "="
+LINE 2:     MATCH (p:Part { part_num: 123 }) SET p.match = 'xyz' RET...
+                                                         ^
+-- should succeed
+SELECT * FROM cypher('issue_1988', $$
+    MATCH (p:Part { part_num: 123 }) SET p.`match` = 'xyz' RETURN p $$) as (p agtype);
+                                                 p                                                 
+---------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "Part", "properties": {"match": "xyz", "part_num": 123}}::vertex
+(1 row)
+
+SELECT * FROM cypher('issue_1988', $$
+    MATCH (p:Part { part_num: 123 }) SET p.`set` = 'xyz' RETURN p $$) as (p agtype);
+                                                        p                                                        
+-----------------------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "Part", "properties": {"set": "xyz", "match": "xyz", "part_num": 123}}::vertex
+(1 row)
+
+SELECT * FROM cypher('issue_1988', $$
+    MATCH (p:Part { part_num: 123 }) SET p.`delete` = 'xyz' RETURN p $$) as (p agtype);
+                                                                p                                                                 
+----------------------------------------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "Part", "properties": {"set": "xyz", "match": "xyz", "delete": "xyz", "part_num": 123}}::vertex
+(1 row)
+
+SELECT * FROM cypher('issue_1988', $$
+    MATCH (p:Part { part_num: 123 }) SET p.`merge` = 'xyz' RETURN p $$) as (p agtype);
+                                                                        p                                                                         
+--------------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "Part", "properties": {"set": "xyz", "match": "xyz", "merge": "xyz", "delete": "xyz", "part_num": 123}}::vertex
+(1 row)
+
+SELECT * FROM cypher('issue_1988', $$
+    MATCH (p:Part { part_num: 123 }) SET p.`create` = 'xyz' RETURN p $$) as (p agtype);
+                                                                                 p                                                                                 
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "Part", "properties": {"set": "xyz", "match": "xyz", "merge": "xyz", "create": "xyz", "delete": "xyz", "part_num": 123}}::vertex
+(1 row)
+
+-- should succeed
+SELECT * FROM cypher('issue_1988', $$
+    MATCH (p:Part { part_num: 123 }) SET p.`match` = 'match' RETURN p $$) as (p agtype);
+                                                                                  p                                                                                  
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "Part", "properties": {"set": "xyz", "match": "match", "merge": "xyz", "create": "xyz", "delete": "xyz", "part_num": 123}}::vertex
+(1 row)
+
+SELECT * FROM cypher('issue_1988', $$
+    MATCH (p:Part { part_num: 123 }) SET p.`set` = 'set' RETURN p $$) as (p agtype);
+                                                                                  p                                                                                  
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "Part", "properties": {"set": "set", "match": "match", "merge": "xyz", "create": "xyz", "delete": "xyz", "part_num": 123}}::vertex
+(1 row)
+
+SELECT * FROM cypher('issue_1988', $$
+    MATCH (p:Part { part_num: 123 }) SET p.`delete` = 'delete' RETURN p $$) as (p agtype);
+                                                                                   p                                                                                    
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "Part", "properties": {"set": "set", "match": "match", "merge": "xyz", "create": "xyz", "delete": "delete", "part_num": 123}}::vertex
+(1 row)
+
+SELECT * FROM cypher('issue_1988', $$
+    MATCH (p:Part { part_num: 123 }) SET p.`merge` = 'merge' RETURN p $$) as (p agtype);
+                                                                                    p                                                                                     
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "Part", "properties": {"set": "set", "match": "match", "merge": "merge", "create": "xyz", "delete": "delete", "part_num": 123}}::vertex
+(1 row)
+
+SELECT * FROM cypher('issue_1988', $$
+    MATCH (p:Part { part_num: 123 }) SET p.`create` = 'create' RETURN p $$) as (p agtype);
+                                                                                      p                                                                                      
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "Part", "properties": {"set": "set", "match": "match", "merge": "merge", "create": "create", "delete": "delete", "part_num": 123}}::vertex
+(1 row)
+
+SELECT * FROM cypher('issue_1988', $$
+    MATCH (p) RETURN p $$) as (p agtype);
+                                                                                      p                                                                                      
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 844424930131970, "label": "Part", "properties": {"part_num": 345}}::vertex
+ {"id": 844424930131971, "label": "Part", "properties": {"part_num": 456}}::vertex
+ {"id": 844424930131972, "label": "Part", "properties": {"part_num": 789}}::vertex
+ {"id": 844424930131969, "label": "Part", "properties": {"set": "set", "match": "match", "merge": "merge", "create": "create", "delete": "delete", "part_num": 123}}::vertex
+(4 rows)
+
+--
 -- Cleanup
 --
+SELECT * FROM drop_graph('issue_1988', true);
+NOTICE:  drop cascades to 4 other objects
+DETAIL:  drop cascades to table issue_1988._ag_label_vertex
+drop cascades to table issue_1988._ag_label_edge
+drop cascades to table issue_1988."Part"
+drop cascades to table issue_1988.used_by
+NOTICE:  graph "issue_1988" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
 SELECT * FROM drop_graph('issue_1953', true);
 NOTICE:  drop cascades to 2 other objects
 DETAIL:  drop cascades to table issue_1953._ag_label_vertex

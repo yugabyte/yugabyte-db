@@ -66,6 +66,8 @@
 
 %token <string> IDENTIFIER
 %token <string> PARAMETER
+%token <string> BQIDENT
+%token <character> CHAR
 
 /* operators that have more than 1 character */
 %token NOT_EQ LT_EQ GT_EQ DOT_DOT TYPECAST PLUS_EQ EQ_TILDE CONCAT
@@ -656,7 +658,7 @@ subquery_stmt_no_return:
 single_subquery:
     subquery_part_init reading_clause_list return
         {
-            $$ = list_concat($1, lappend($2, $3));  
+            $$ = list_concat($1, lappend($2, $3));
         }
     ;
 
@@ -3281,7 +3283,7 @@ static Node *verify_rule_as_list_comprehension(Node *expr, Node *expr2,
                                                int where_loc, int mapping_loc)
 {
     Node *result = NULL;
-    
+
     /*
      * If the first expression is a ColumnRef, then we can build a
      * list_comprehension node.

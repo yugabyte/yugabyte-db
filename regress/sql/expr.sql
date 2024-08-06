@@ -3446,8 +3446,55 @@ SELECT * FROM cypher('issue_1953', $$ RETURN is_valid_label_name('issue_1953')[0
 SELECT * FROM cypher('issue_1953', $$ RETURN is_valid_label_name('issue_1953')[0..1] $$) AS (result agtype);
 
 --
+-- Issue 1988: How to update a property which is a keyword.
+--
+SELECT * FROM create_graph('issue_1988');
+SELECT * from cypher('issue_1988', $$
+    CREATE (p1:Part {part_num: 123}),
+           (p2:Part {part_num: 345}),
+           (p3:Part {part_num: 456}),
+           (p4:Part {part_num: 789}) $$) as (a agtype);
+SELECT * FROM cypher('issue_1988', $$
+    MATCH (p) RETURN p $$) as (p agtype);
+
+SELECT * from cypher('issue_1988', $$
+    MATCH (p1:Part {part_num: 123}), (p2:Part {part_num: 345})
+    CREATE (p1)-[u:used_by { quantity: 1 }]->(p2) RETURN p1, u, p2 $$) as (p1 agtype, u agtype, p2 agtype);
+
+-- should fail
+SELECT * FROM cypher('issue_1988', $$
+    MATCH (p:Part { part_num: 123 }) SET p.match = 'xyz' RETURN p $$) as (p agtype);
+
+-- should succeed
+SELECT * FROM cypher('issue_1988', $$
+    MATCH (p:Part { part_num: 123 }) SET p.`match` = 'xyz' RETURN p $$) as (p agtype);
+SELECT * FROM cypher('issue_1988', $$
+    MATCH (p:Part { part_num: 123 }) SET p.`set` = 'xyz' RETURN p $$) as (p agtype);
+SELECT * FROM cypher('issue_1988', $$
+    MATCH (p:Part { part_num: 123 }) SET p.`delete` = 'xyz' RETURN p $$) as (p agtype);
+SELECT * FROM cypher('issue_1988', $$
+    MATCH (p:Part { part_num: 123 }) SET p.`merge` = 'xyz' RETURN p $$) as (p agtype);
+SELECT * FROM cypher('issue_1988', $$
+    MATCH (p:Part { part_num: 123 }) SET p.`create` = 'xyz' RETURN p $$) as (p agtype);
+-- should succeed
+SELECT * FROM cypher('issue_1988', $$
+    MATCH (p:Part { part_num: 123 }) SET p.`match` = 'match' RETURN p $$) as (p agtype);
+SELECT * FROM cypher('issue_1988', $$
+    MATCH (p:Part { part_num: 123 }) SET p.`set` = 'set' RETURN p $$) as (p agtype);
+SELECT * FROM cypher('issue_1988', $$
+    MATCH (p:Part { part_num: 123 }) SET p.`delete` = 'delete' RETURN p $$) as (p agtype);
+SELECT * FROM cypher('issue_1988', $$
+    MATCH (p:Part { part_num: 123 }) SET p.`merge` = 'merge' RETURN p $$) as (p agtype);
+SELECT * FROM cypher('issue_1988', $$
+    MATCH (p:Part { part_num: 123 }) SET p.`create` = 'create' RETURN p $$) as (p agtype);
+
+SELECT * FROM cypher('issue_1988', $$
+    MATCH (p) RETURN p $$) as (p agtype);
+
+--
 -- Cleanup
 --
+SELECT * FROM drop_graph('issue_1988', true);
 SELECT * FROM drop_graph('issue_1953', true);
 SELECT * FROM drop_graph('expanded_map', true);
 SELECT * FROM drop_graph('issue_1124', true);
