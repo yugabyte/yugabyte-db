@@ -12,7 +12,6 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.DrConfigCreateForm;
 import com.yugabyte.yw.forms.DrConfigSetDatabasesForm;
 import com.yugabyte.yw.forms.TableInfoForm;
@@ -30,7 +29,6 @@ import com.yugabyte.yw.models.YugawareProperty;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.provider.LocalCloudInfo;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -48,13 +46,6 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
   public static String DB_SCOPE_MIN_VERSION_URL =
       "https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/"
           + "local-provider-test/2.23.0.0-b394/yugabyte-2.23.0.0-b394-%s-%s.tar.gz";
-
-  public static Map<String, String> dbScopedMasterGFlags = new HashMap<>(GFLAGS);
-
-  static {
-    dbScopedMasterGFlags.put("enable_xcluster_api_v2", "true");
-    dbScopedMasterGFlags.put("allowed_preview_flags_csv", "enable_xcluster_api_v2");
-  }
 
   @Before
   public void setupDrDbScoped() {
@@ -94,7 +85,6 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     ybBinPath = deriveYBBinPath(DBVersion);
     UniverseDefinitionTaskParams.UserIntent userIntent =
         getDefaultUserIntent(universeName, disableTls);
-    userIntent.specificGFlags = SpecificGFlags.construct(dbScopedMasterGFlags, GFLAGS);
     userIntent.numNodes = numNodes;
     userIntent.replicationFactor = replicationFactor;
 

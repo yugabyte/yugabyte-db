@@ -29,7 +29,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 
-DEFINE_RUNTIME_PREVIEW_bool(enable_xcluster_api_v2, false,
+DEFINE_RUNTIME_AUTO_bool(enable_xcluster_api_v2, kExternal, false, true,
     "Allow the usage of v2 xCluster APIs that support DB Scoped replication groups");
 
 DEFINE_RUNTIME_bool(disable_xcluster_db_scoped_new_table_processing, false,
