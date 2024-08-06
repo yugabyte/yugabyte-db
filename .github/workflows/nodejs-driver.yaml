@@ -16,10 +16,10 @@ jobs:
         working-directory: drivers/nodejs/
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Run apache/age docker image
-      run: docker-compose up -d
+      run: docker compose up -d
 
     - name: Set up Node
       uses: actions/setup-node@v3

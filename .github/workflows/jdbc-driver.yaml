@@ -15,7 +15,7 @@ jobs:
         working-directory: drivers/jdbc
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Set up Java
       uses: actions/setup-java@v3
