@@ -1127,18 +1127,29 @@ class UniverseDetail extends Component {
                       }}
                       isControl
                     >
-                      <YBMenuItem
-                        disabled={isEditGFlagsDisabled}
-                        onClick={showPGCompatibilityModal}
-                        availability={getFeatureState(
-                          currentCustomer.data.features,
-                          'universes.details.overview.editGFlags'
-                        )}
+                      <YBTooltip
+                        title={
+                          hasAsymmetricPrimaryCluster
+                            ? 'Editing gflags for asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.'
+                            : ''
+                        }
+                        placement="left"
                       >
-                        <YBLabelWithIcon icon="fa fa-retweet fa-fw">
-                          Edit Postgres Compatibility
-                        </YBLabelWithIcon>
-                      </YBMenuItem>
+                        <span>
+                          <YBMenuItem
+                            disabled={isEditGFlagsDisabled}
+                            onClick={showPGCompatibilityModal}
+                            availability={getFeatureState(
+                              currentCustomer.data.features,
+                              'universes.details.overview.editGFlags'
+                            )}
+                          >
+                            <YBLabelWithIcon icon="fa fa-retweet fa-fw">
+                              Edit Postgres Compatibility
+                            </YBLabelWithIcon>
+                          </YBMenuItem>
+                        </span>
+                      </YBTooltip>
                     </RbacValidator>
                   )}
                   {!universePaused && isConfigureYSQLEnabled && (
@@ -1442,7 +1453,10 @@ class UniverseDetail extends Component {
             shouldDisplayTaskButton={true}
           />
         </div>
-        <TaskDetailBanner taskUUID={currentUniverse.data.universeDetails.updatingTaskUUID} universeUUID={currentUniverse.data.universeUUID}/>
+        <TaskDetailBanner
+          taskUUID={currentUniverse.data.universeDetails.updatingTaskUUID}
+          universeUUID={currentUniverse.data.universeUUID}
+        />
         <RollingUpgradeFormContainer
           modalVisible={
             showModal &&
@@ -1588,12 +1602,7 @@ class UniverseDetail extends Component {
             id={'universe-tab-panel'}
             className={'universe-detail'}
           >
-            {
-              [
-                ...tabElements,
-                <div title={actionMenuButtons} />
-              ]
-            }
+            {[...tabElements, <div title={actionMenuButtons} />]}
           </YBTabsWithLinksPanel>
         </Measure>
       </Grid>
