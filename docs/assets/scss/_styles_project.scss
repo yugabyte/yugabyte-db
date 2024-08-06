@@ -162,6 +162,7 @@ a {
 @media (min-width: 992px) {
   .td-main main {
     padding-top: 116px;
+    //margin-top: 32px;
     margin-top: 52px;
   }
 }
@@ -455,7 +456,7 @@ body:not(.td-home) .td-main main {
     }
 
     @media (min-width: 991px) {
-      margin: 20px 0;
+      margin: 20px 0 72px;
     }
   }
 }

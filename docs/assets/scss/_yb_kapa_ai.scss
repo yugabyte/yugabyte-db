@@ -39,7 +39,7 @@
 
 body {
   .ask-ai-top {
-    margin-left: 16px;
+    margin-left: 32px;
     font-family: Inter;
     font-size: 13px;
     font-style: normal;
@@ -47,9 +47,7 @@ body {
     line-height: 16px;
     display: flex;
     align-items: center;
-    gap: 16px;
-    transform: translateX(-50px);
-    animation: ask-ai-container 500ms 3s ease forwards;
+    gap: 19px;
     text-transform:lowercase;
 
     *:not(span) {
@@ -67,7 +65,7 @@ body {
       background-clip: text;
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
-      font-family: Inter;
+     font-family: Inter;
       font-size: 13px;
       font-style: normal;
       font-weight: 600;
@@ -76,7 +74,7 @@ body {
       border-radius: 8px;
 
       >img {
-        width: 18px;
+        width: 18px ;
         margin-left: 0;
 
         @media(max-width:419px) {
@@ -91,7 +89,6 @@ body {
       @media(max-width:419px) {
         padding: 0 10px;
       }
-
       @media(max-width:355px) {
         padding: 0 6px;
       }
@@ -148,32 +145,12 @@ body {
       margin: 0 10px 0 auto;
       white-space: nowrap;
     }
-
     @media(max-width:360px) {
       margin: 0 5px 0 auto;
     }
   }
 }
 
-@keyframes ask-ai-container {
-  from {
-    transform: translateX(-50px)
-  }
-
-  to {
-    transform: translateX(0)
-  }
-}
-
-@keyframes ask-ai-btn {
-  from {
-    transform: translateX(-230px)
-  }
-
-  to {
-    transform: translateX(0)
-  }
-}
 
 @media(max-width:419px) {
   .navbar-brand img {

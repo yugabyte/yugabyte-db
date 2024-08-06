@@ -35,7 +35,7 @@
   </div>
 
   {{- if eq .Params.showRightNav false -}}
-    {{ partial "contribute_list" . }}
+    {{- partial "contribute_list" . -}}
   {{- end -}}
 	<header class="article-meta">
 		{{ partial "taxonomy_terms_article_wrapper.html" . }}
