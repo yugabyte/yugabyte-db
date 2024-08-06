@@ -3405,5 +3405,100 @@ TEST_F(
   ASSERT_EQ(PQntuples(slots.get()), 0);
 }
 
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestStreamExpiry) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 100_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_max_consistent_records) = 100;
+  ASSERT_OK(SetUpWithParams(3, 1, false, true));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE test1 (id int PRIMARY KEY, value_1 int) SPLIT INTO 3 TABLETS"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 3);
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  auto conn1 = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  int num_batches = 10;
+  int inserts_per_batch = 100;
+  for (int i = 0; i < num_batches; i++) {
+    ASSERT_OK(conn1.Execute("BEGIN"));
+    for (int j = i * inserts_per_batch; j < ((i + 1) * inserts_per_batch); j++) {
+      ASSERT_OK(conn1.ExecuteFormat("INSERT INTO test1 VALUES ($0, $1)", j, j + 1));
+    }
+    ASSERT_OK(conn1.Execute("COMMIT"));
+  }
+
+  int expected_dml_records = num_batches * inserts_per_batch;
+  auto vwal1_result = GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table.table_id()}, expected_dml_records, true /* init_virtual_wal */);
+
+  ASSERT_NOK(vwal1_result);
+  ASSERT_TRUE(vwal1_result.status().IsInternalError());
+  ASSERT_STR_CONTAINS(vwal1_result.status().message().ToBuffer(), "expired for Tablet");
+
+  // A new VWAL on the same stream should again receive the stream expired error.
+  auto vwal2_result = GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table.table_id()}, expected_dml_records, true /* init_virtual_wal */,
+      kVWALSessionId2);
+
+  ASSERT_NOK(vwal2_result);
+  ASSERT_TRUE(vwal2_result.status().IsInternalError());
+  ASSERT_STR_CONTAINS(vwal2_result.status().message().ToBuffer(), "expired for Tablet");
+}
+
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestIntentGC) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_vwal_getchanges_resp_max_size_bytes) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_skip_stream_active_check) = true;
+  ASSERT_OK(SetUpWithParams(1, 1, false, true));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  ASSERT_OK(
+      conn.Execute("CREATE TABLE test1 (id int PRIMARY KEY, value_1 int) SPLIT INTO 2 TABLETS"));
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 2);
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  auto conn1 = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  int num_batches = 50;
+  int inserts_per_batch = 2;
+  for (int i = 0; i < num_batches; i++) {
+    ASSERT_OK(conn1.Execute("BEGIN"));
+    for (int j = i * inserts_per_batch; j < ((i + 1) * inserts_per_batch); j++) {
+      ASSERT_OK(conn1.ExecuteFormat("INSERT INTO test1 VALUES ($0, $1)", j, j + 1));
+    }
+    ASSERT_OK(conn1.Execute("COMMIT"));
+  }
+
+  // Sleep for UpdatePeersAndMetrics to move retention barriers that will lead to garbage collection
+  // of intents.
+  SleepFor(MonoDelta::FromSeconds(30 * kTimeMultiplier));
+  ASSERT_OK(InitVirtualWAL(stream_id, {table.table_id()}));
+  bool received_gc_error = false;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto vwal1_result = GetConsistentChangesFromCDC(stream_id);
+
+        if (!vwal1_result.ok()) {
+          if (vwal1_result.status().IsInternalError() &&
+              vwal1_result.status().message().ToBuffer().find(
+                  "CDCSDK Trying to fetch already GCed intents") != std::string::npos) {
+            received_gc_error = true;
+            return true;
+          }
+        }
+
+        return false;
+      },
+      MonoDelta::FromSeconds(60), "Did not see Intents GC error"));
+
+  ASSERT_TRUE(received_gc_error);
+}
+
 }  // namespace cdc
 }  // namespace yb
