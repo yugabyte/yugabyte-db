@@ -2176,6 +2176,15 @@
       "deleteModalSubmitLabel": "Delete Export Configuration",
       "deleteConfirmMsg": "{{name}} export configuration got deleted succesfully",
       "deleteConfig": "Delete Configuration"
+    },
+    "footer": {
+      "platformVersion": "Platform Version",
+      "platformHostUrl": "Platform Host URL",
+      "joinUsOn": "Join us on",
+      "starUsOn": "Star us on",
+      "github": "GitHub",
+      "freeTShirtAt": "Free t-shirt at",
+      "yugabyteInc": "Yugabyte, Inc."
     }
   }
 }

@@ -34,8 +34,16 @@ footer {
     text-align: center;
   }
 
+  .footer-metadata-container {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+
+    gap: 8px;
+  }
+
   @media screen and (max-width: 960px) {
-    .footer-logo-container {
+    .footer-metadata-container {
       display: none;
     }
     .footer-social-container {
