@@ -962,12 +962,6 @@ YbIsRowHeader(ScanKey key)
 	return key->sk_flags & SK_ROW_HEADER;
 }
 
-static bool
-YbIsRowMember(ScanKey key)
-{
-	return key->sk_flags & (SK_ROW_HEADER | SK_ROW_MEMBER);
-}
-
 /*
  * Is the condition never TRUE because of c {=|<|<=|>=|>} NULL, etc.?
  */
@@ -1125,7 +1119,7 @@ YbShouldPushdownScanPrimaryKey(YbScanPlan scan_plan, AttrNumber attnum,
 		return key->sk_strategy == BTEqualStrategyNumber;
 	}
 
-	if (YbIsRowMember(key))
+	if (key->sk_flags & SK_ROW_MEMBER)
 	{
 		/* We'll recheck if this is a valid row comparison key later. */
 		return true;
@@ -1401,6 +1395,14 @@ YbCheckScanTypes(YbScanDesc ybScan, YbScanPlan scan_plan, int i)
 {
 	ScanKey key = ybScan->keys[i];
 	Oid valtypid = key->sk_subtype;
+	/*
+	 * TODO(jason): this RECORDOID logic is hacky.  It essentially skips the
+	 * whole check.  This should only arise from the (SK_ROW_HEADER |
+	 * SK_SEARCHARRAY) case, and in that case, this call should be avoided to
+	 * begin with since scan_plan->bind_key_attnums is irrelevant.  Or rather,
+	 * bind_key_attnums usage should be completely reworked to not be used in
+	 * all cases where SK_ROW_HEADER is involved.
+	 */
 	Oid atttypid = valtypid == RECORDOID ? RECORDOID :
 		ybc_get_atttypid(scan_plan->bind_desc, scan_plan->bind_key_attnums[i]);
 	Assert(OidIsValid(atttypid));
