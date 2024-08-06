@@ -1,4 +1,4 @@
-import React, { FC } from "react";
+import React, { FC, useMemo } from "react";
 import { Box, Divider, Paper, Typography, makeStyles } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
 import type { RefactoringCount, UnsupportedSqlInfo } from "@app/api/src";
