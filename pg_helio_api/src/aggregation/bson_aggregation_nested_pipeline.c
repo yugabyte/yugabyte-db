@@ -1205,7 +1205,8 @@ ValidateFacet(const bson_value_t *facetValue)
 				strcmp(nestedPipelineStage, "$out") == 0 ||
 				strcmp(nestedPipelineStage, "$merge") == 0 ||
 				strcmp(nestedPipelineStage, "$planCacheStats") == 0 ||
-				strcmp(nestedPipelineStage, "$search") == 0)
+				strcmp(nestedPipelineStage, "$search") == 0 ||
+				strcmp(nestedPipelineStage, "$changeStream") == 0)
 			{
 				ereport(ERROR, (errcode(MongoLocation40600),
 								errmsg(
@@ -1774,7 +1775,8 @@ ParseLookupStage(const bson_value_t *existingValue, LookupArgs *args)
 															  "pipeline");
 				const char *nestedPipelineStage = stageElement.path;
 				if (strcmp(nestedPipelineStage, "$out") == 0 ||
-					strcmp(nestedPipelineStage, "$merge") == 0)
+					strcmp(nestedPipelineStage, "$merge") == 0 ||
+					strcmp(nestedPipelineStage, "$changeStream") == 0)
 				{
 					ereport(ERROR, (errcode(MongoLocation51047),
 									errmsg(
@@ -3172,6 +3174,12 @@ ValidateUnionWithPipeline(const bson_value_t *pipeline, bool hasCollection)
 							errmsg(
 								"$merge is not allowed within a $unionWith's sub-pipeline")));
 		}
+		else if (strcmp(stageElement.path, "$changeStream") == 0)
+		{
+			ereport(ERROR, (errcode(MongoLocation31441),
+							errmsg(
+								"$changeStream is not allowed within a $unionWith's sub-pipeline")));
+		}
 	}
 }
 
@@ -3726,6 +3734,14 @@ GenerateBaseCaseQuery(AggregationPipelineBuildContext *parentContext,
 	{
 		baseCaseQuery = HandleMatch(&args->restrictSearch, baseCaseQuery,
 									&subPipelineContext);
+		if (baseCaseQuery->sortClause != NIL)
+		{
+			ereport(ERROR, (errcode(MongoLocation5626500),
+							errmsg(
+								"$geoNear, $near, and $nearSphere are not allowed in this context, "
+								"as these operators require sorting geospatial data. If you do not need sort, "
+								"consider using $geoWithin instead.")));
+		}
 	}
 
 	List *baseQuals = NIL;
@@ -3801,6 +3817,14 @@ GenerateRecursiveCaseQuery(AggregationPipelineBuildContext *parentContext,
 	{
 		recursiveQuery = HandleMatch(&args->restrictSearch, recursiveQuery,
 									 &subPipelineContext);
+		if (recursiveQuery->sortClause != NIL)
+		{
+			ereport(ERROR, (errcode(MongoLocation5626500),
+							errmsg(
+								"$geoNear, $near, and $nearSphere are not allowed in this context, "
+								"as these operators require sorting geospatial data. If you do not need sort, "
+								"consider using $geoWithin instead.")));
+		}
 	}
 
 	List *baseQuals = NIL;

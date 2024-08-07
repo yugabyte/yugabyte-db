@@ -474,7 +474,8 @@ CheckUnsupportedViewPipelineStages(const bson_value_t *pipeline)
 		}
 
 		if (strcmp(stageElement.path, "$out") == 0 ||
-			strcmp(stageElement.path, "$merge") == 0)
+			strcmp(stageElement.path, "$merge") == 0 ||
+			strcmp(stageElement.path, "$changeStream") == 0)
 		{
 			ereport(ERROR, (errcode(MongoOptionNotSupportedOnView),
 							errmsg(

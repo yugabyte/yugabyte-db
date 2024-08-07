@@ -2622,6 +2622,16 @@ HandleChangeStream(const bson_value_t *existingValue, Query *query,
 
 	EnsureTopLevelFieldValueType("$changeStream", existingValue, BSON_TYPE_DOCUMENT);
 
+	if (context->mongoCollection != NULL &&
+		!StringViewEqualsCString(&context->collectionNameView,
+								 context->mongoCollection->name.collectionName))
+	{
+		/* This is a view */
+		ereport(ERROR, (errcode(MongoCommandNotSupportedOnView),
+						errmsg(
+							"$changeStream is not supported on views.")));
+	}
+
 	/*Check the first stage and make sure it is $changestream. */
 	if (context->stageNum != 0)
 	{
