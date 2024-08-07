@@ -1,7 +1,7 @@
 import React, { FC } from "react";
 import { Box, LinearProgress, makeStyles, Theme, Typography, useTheme } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
-import type { Migration } from "../MigrationOverview";
+import type { Migration } from "../../MigrationOverview";
 import {
   GenericFailure,
   STATUS_TYPES,
@@ -11,7 +11,7 @@ import {
   YBStatus,
   YBTable,
 } from "@app/components";
-import { MigrationPhase } from "../migration";
+import { MigrationPhase } from "../../migration";
 import RefreshIcon from "@app/assets/refresh.svg";
 import { useGetVoyagerDataMigrationMetricsQuery } from "@app/api/src";
 

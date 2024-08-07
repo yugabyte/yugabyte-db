@@ -8,7 +8,7 @@ import {
   Typography,
   useTheme,
 } from "@material-ui/core";
-import type { Migration } from "../MigrationOverview";
+import type { Migration } from "../../MigrationOverview";
 import {
   GenericFailure,
   STATUS_TYPES,
@@ -32,8 +32,8 @@ import {
 } from "recharts";
 import type { NameType, ValueType } from "recharts/types/component/DefaultTooltipContent";
 import RefreshIcon from "@app/assets/refresh.svg";
-import { MigrationStepNA } from "../MigrationStepNA";
-import MigrationAccordionTitle from "../MigrationAccordionTitle";
+import { MigrationStepNA } from "../../MigrationStepNA";
+import MigrationAccordionTitle from "../../MigrationAccordionTitle";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import ArrowRightIcon from "@app/assets/caret-right-circle.svg";
 import clsx from "clsx";
