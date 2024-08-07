@@ -989,7 +989,7 @@ retry:
 		 * code block.
 		 * TODO(Mikhail) Verify correctness in YugaByte transaction management for on-conflict.
 		 */
-		if (!IsYugaByteEnabled()) {
+		if (!IsYBRelation(heap)) {
 			xwait = TransactionIdIsValid(DirtySnapshot.xmin) ?
 				DirtySnapshot.xmin : DirtySnapshot.xmax;
 
