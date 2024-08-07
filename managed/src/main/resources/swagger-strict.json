@@ -2110,7 +2110,6 @@
           "type" : "boolean"
         },
         "isFullBackup" : {
-          "readOnly" : true,
           "type" : "boolean"
         },
         "isStorageConfigPresent" : {
@@ -2154,7 +2153,7 @@
           "type" : "boolean"
         }
       },
-      "required" : [ "backupType", "category", "commonBackupInfo", "customerUUID", "expiryTimeUnit", "fullChainSizeInBytes", "hasIncrementalBackups", "isStorageConfigPresent", "isUniversePresent", "lastBackupState", "onDemand", "scheduleName", "scheduleUUID", "storageConfigType", "universeName", "universeUUID", "useTablespaces" ],
+      "required" : [ "backupType", "category", "commonBackupInfo", "customerUUID", "expiryTimeUnit", "fullChainSizeInBytes", "hasIncrementalBackups", "isFullBackup", "isStorageConfigPresent", "isUniversePresent", "lastBackupState", "onDemand", "scheduleName", "scheduleUUID", "storageConfigType", "universeName", "universeUUID", "useTablespaces" ],
       "type" : "object"
     },
     "BackupStorageInfo" : {
@@ -5863,9 +5862,6 @@
     },
     "KubernetesInfo" : {
       "properties" : {
-        "isKubernetesOperatorControlled" : {
-          "type" : "boolean"
-        },
         "kubeConfig" : {
           "readOnly" : true,
           "type" : "string"
@@ -6173,9 +6169,6 @@
         },
         "certManagerIssuer" : {
           "type" : "string"
-        },
-        "isKubernetesOperatorControlled" : {
-          "type" : "boolean"
         },
         "kubeConfig" : {
           "readOnly" : true,
@@ -14679,11 +14672,9 @@
           "type" : "string"
         },
         "isRequired" : {
-          "readOnly" : true,
           "type" : "boolean"
         },
         "isValid" : {
-          "readOnly" : true,
           "type" : "boolean"
         },
         "type" : {
@@ -14694,7 +14685,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "description", "type", "value" ],
+      "required" : [ "description", "isRequired", "isValid", "type", "value" ],
       "type" : "object"
     },
     "VolumeDetails" : {
