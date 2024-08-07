@@ -30,6 +30,9 @@ Ensure the universes have the following characteristics:
     If an NFS file server is used, the file server or a mirror of the file server in the target region must be accessible at the same mount point on both universes. If there is significant delay in file transfer between the file server and its mirror in a different region, set the [runtime configuration](../../../administer-yugabyte-platform/manage-runtime-config/) `yb.xcluster.sleep_time_before_restore` to the maximum delay in mirroring files across the regions.
 
 - They have enough disk space to support storage of write-ahead logs (WALs) in case of a network partition or a temporary outage of the target universe. During these cases, WALs will continue to write until replication is restored. Consider sizing your disk according to your ability to respond and recover from network or other infrastructure outages.
+
+    In addition, during xCluster replication setup, the source cluster retains WAL logs and increases in size. The setup (including copying data from source to target) is not aborted if the source universe runs out of space. Instead, a warning is displayed notifying that the source universe has less than 100 GB of space remaining. Ensure that there is enough space available on the source universe before attempting to set up the replication. A recommended approach would be to estimate that the available disk space on the source universe is the same as the used disk space.
+
 - Neither universe is already being used for xCluster replication.
 
 Prepare your database and tables on the source. The source can be empty or have data. If the source has a lot of data, setup will take longer because the [data must be copied in full to the target](#full-copy-during-xcluster-setup) before on-going asynchronous replication starts.
@@ -50,7 +53,6 @@ After replication is configured, by default the target will only be available fo
 
 - [Set a replication lag alert](#set-up-replication-lag-alerts) for the source to be alerted when the replication lag exceeds acceptable levels.
 - Add new tables and databases to the replication configuration soon after creating them, and before performing any writes to avoid the overhead of a full copy.
-- xCluster replication setup (including copying data from source to target) is not aborted if the source universe is running out of space. Instead, a warning is displayed notifying that the source universe has less than 100 GB of space remaining. Ensure that there is enough space available on the source universe before attempting to set up the replication. A recommended approach would be to estimate that the available disk space on the source universe is the same as the used disk space.
 - If xCluster replication setup clashes with scheduled backups, wait for the scheduled backup to finish, and then restart the replication.
 
 ### Full copy during xCluster setup
