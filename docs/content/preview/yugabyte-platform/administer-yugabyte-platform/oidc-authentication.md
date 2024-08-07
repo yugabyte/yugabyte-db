@@ -40,9 +40,7 @@ To configure YugabyteDB Anywhere for OIDC, you need to be signed in as a Super A
 
 **Learn more**
 
-- For information on configuring a YugabyteDB Anywhere universe to use OIDC-based authentication using Azure AD as the IdP, refer to [OIDC authentication with Azure AD](../../security/authentication/oidc-authentication-aad/).
-
-- For information on configuring a YugabyteDB Anywhere universe to use OIDC-based authentication using JumpCloud as the IdP, refer to [OIDC authentication with JumpCloud](../../security/authentication/oidc-authentication-jumpcloud/).
+- For information on configuring a YugabyteDB Anywhere universe to use OIDC-based authentication, refer to [OIDC authentication](../../security/authentication/oidc-authentication-aad/).
 
 - For information on how to add users, see [Create, modify, and delete users](../anywhere-rbac/#create-modify-and-delete-users). The email ID that you enter in the **Add User** dialog must be registered with the identity provider, and the role must reflect the user's role on YugabyteDB Anywhere.
 

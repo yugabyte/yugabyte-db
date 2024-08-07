@@ -37,7 +37,15 @@ Note that the yugabyte privileged user will continue to exist as a local databas
 - [Enable YugabyteDB Anywhere authentication via OIDC](../../../administer-yugabyte-platform/oidc-authentication/)
 - [YFTT: OIDC Authentication in YSQL](https://www.youtube.com/watch?v=KJ0XV6OnAnU&list=PL8Z3vt4qJTkLTIqB9eTLuqOdpzghX8H40&index=1)
 
-## Create an application in JumpCloud
+## Set up OIDC with JumpCloud on YugabyteDB Anywhere
+
+To enable OIDC authentication with JumpCloud, you need to do the following:
+
+- Create an app registration in JumpCloud - The JumpCloud IdP configuration includes application registration (registering YugabyteDB Anywhere in the JumpCloud tenant) and configuring JumpCloud to send (redirect) tokens with the required claims to YugabyteDB Anywhere.
+- Configure OIDC in YugabyteDB Anywhere - The OIDC configuration uses the application you registered. You can also configure YBA to display the user's JSON Web Token (JWT) on the sign in screen.
+- Configure the universe to use OIDC - You enable OIDC for universes by setting authentication rules for database access using flags. The database is implicitly configured and picks up the authentication rules you set. The database uses well-known PostgreSQL constructs to translate these authentication rules into database roles for access. Mapping JumpCloud attributes, such as group memberships, roles, and email addresses to database roles, is accomplished using the PostgreSQL `yb_hba.conf` and `yb_ident.conf` files.
+
+### Create an application in JumpCloud
 
 To use JumpCloud for your IdP, do the following:
 
@@ -49,9 +57,6 @@ To use JumpCloud for your IdP, do the following:
     - Select **Custom Application**, and make sure the integration supports "SSO with OIDC" on the next page.
     - Under **Manage Single Sign-On (SSO)**, select **Configure SSO with OIDC**, and click **Next**.
     - Under **Enter General Info**, add the application name (for **Display Label**), **Description**, and logo (for **User Portal Image**), and select **Show this application in User Portal**.
-
-      This information is displayed as a tile when users sign in to YugabyteDB Aeon.
-
     - Click **Configure Application**.
 
 1. Configure your application.
@@ -72,9 +77,9 @@ To use JumpCloud for your IdP, do the following:
 
 1. Integrate the user in JumpCloud.
 
-    - Navigate to **User Groups**, select the user groups you want to access YugabyteDB Aeon, and click **Save** when you are done.
+    - Navigate to **User Groups**, select the user groups you want to access YugabyteDB Anywhere, and click **Save** when you are done.
 
-To configure JumpCloud federated authentication in YugabyteDB Aeon, you need the following application properties:
+To configure JumpCloud federated authentication in YugabyteDB Anywhere, you need the following application properties:
 
 - **Client ID** and **Client Secret** of the application you created. These are the credentials you saved when you activated your application. The **Client ID** is also displayed on the **SSO** tab.
 
@@ -173,20 +178,4 @@ curl -k --location --request PUT '<server-address>/api/v1/customers/<customerUUI
 
 ## Manage users and roles
 
-After OIDC-based authentication is configured, an administrator can manage users as follows:
-
-- In the universe, add database users or roles.
-
-  You need to add the users and roles that will be used to authenticate to the database. The role must be assigned the appropriate permissions in advance. Users will use their database user/role as their username credential along with their JWT as the password when connecting to the universe.
-
-  For information on managing users and roles in YugabyteDB, see [Manage users and roles](../../../../secure/authorization/create-roles/).
-
-- In YugabyteDB Anywhere, create YBA users.
-
-  Create a user in YugabyteDB Anywhere for each user who wishes to sign in to YBA to obtain their JWT.
-
-  To view their JWT, YBA users can sign in to YugabyteDB Anywhere, click the **User** icon at the top right, select **User Profile**, and click **Fetch OIDC Token**.
-
-  This is not required if you enabled the **Display JWT token on login** option in the YBA OIDC configuration, as any database user can copy the JWT from the YBA landing page without signing in to YBA.
-
-  For information on how to add YBA users, see [Create, modify, and delete users](../../../administer-yugabyte-platform/anywhere-rbac/#create-modify-and-delete-users).
+{{< readfile "/preview/yugabyte-platform/security/authentication/oidc-manage-users-include.md" >}}
