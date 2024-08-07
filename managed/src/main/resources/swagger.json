@@ -14823,23 +14823,21 @@
         "description" : {
           "type" : "string"
         },
-        "isRequired" : {
-          "readOnly" : true,
-          "type" : "boolean"
-        },
-        "isValid" : {
-          "readOnly" : true,
+        "required" : {
           "type" : "boolean"
         },
         "type" : {
           "enum" : [ "NTP_SERVICE_STATUS", "PROMETHEUS_SPACE", "MOUNT_POINTS_WRITABLE", "USER", "USER_GROUP", "HOME_DIR_SPACE", "HOME_DIR_EXISTS", "RAM_SIZE", "INTERNET_CONNECTION", "CPU_CORES", "PROMETHEUS_NO_NODE_EXPORTER", "TMP_DIR_SPACE", "PAM_LIMITS_WRITABLE", "PYTHON_VERSION", "MOUNT_POINTS_VOLUME", "CHRONYD_RUNNING", "SSH_PORT", "SUDO_ACCESS", "OPENSSL", "POLICYCOREUTILS", "RSYNC", "XXHASH", "LIBATOMIC1", "LIBNCURSES6", "LIBATOMIC", "AZCOPY", "CHRONYC", "GSUTIL", "S3CMD", "NODE_EXPORTER_RUNNING", "NODE_EXPORTER_PORT", "SWAPPINESS", "ULIMIT_CORE", "ULIMIT_OPEN_FILES", "ULIMIT_USER_PROCESSES", "SYSTEMD_SUDOER_ENTRY", "SSH_ACCESS", "NODE_AGENT_ACCESS", "MASTER_HTTP_PORT", "MASTER_RPC_PORT", "TSERVER_HTTP_PORT", "TSERVER_RPC_PORT", "YB_CONTROLLER_HTTP_PORT", "YB_CONTROLLER_RPC_PORT", "REDIS_SERVER_HTTP_PORT", "REDIS_SERVER_RPC_PORT", "YCQL_SERVER_HTTP_PORT", "YCQL_SERVER_RPC_PORT", "YSQL_SERVER_HTTP_PORT", "YSQL_SERVER_RPC_PORT", "VM_MAX_MAP_COUNT" ],
           "type" : "string"
         },
+        "valid" : {
+          "type" : "boolean"
+        },
         "value" : {
           "type" : "string"
         }
       },
-      "required" : [ "description", "type", "value" ],
+      "required" : [ "description", "required", "type", "valid", "value" ],
       "type" : "object"
     },
     "VolumeDetails" : {
