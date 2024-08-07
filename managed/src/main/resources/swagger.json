@@ -2190,6 +2190,9 @@
           "$ref" : "#/definitions/ExtraDependencies",
           "description" : "Extra dependencies"
         },
+        "fullBackup" : {
+          "type" : "boolean"
+        },
         "fullChainSizeInBytes" : {
           "description" : "Incremental backups chain size",
           "format" : "int64",
@@ -2386,7 +2389,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "timeTakenPartial" ],
+      "required" : [ "creatingUser", "fullBackup", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "timeTakenPartial" ],
       "type" : "object"
     },
     "Basic Auth information" : {
@@ -5768,10 +5771,6 @@
           "format" : "int64",
           "type" : "integer"
         },
-        "isRecharts" : {
-          "description" : "Is Recharts",
-          "type" : "boolean"
-        },
         "metrics" : {
           "description" : "Metrics",
           "items" : {
@@ -5796,6 +5795,9 @@
         "nodePrefix" : {
           "description" : "Node prefix",
           "type" : "string"
+        },
+        "recharts" : {
+          "type" : "boolean"
         },
         "regionCodes" : {
           "description" : "Region code",
@@ -5831,7 +5833,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "start", "xclusterConfigUuid" ],
+      "required" : [ "recharts", "start", "xclusterConfigUuid" ],
       "type" : "object"
     },
     "MetricSettings" : {
@@ -5997,6 +5999,9 @@
         "extraDependencies" : {
           "$ref" : "#/definitions/ExtraDependencies",
           "description" : "Extra dependencies"
+        },
+        "fullBackup" : {
+          "type" : "boolean"
         },
         "fullChainSizeInBytes" : {
           "description" : "Incremental backups chain size",
@@ -6194,7 +6199,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "timeTakenPartial" ],
+      "required" : [ "creatingUser", "fullBackup", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "timeTakenPartial" ],
       "type" : "object"
     },
     "NamespaceInfoResp" : {
@@ -9209,12 +9214,6 @@
         },
         "cronExpression" : {
           "description" : "Cron expression for the schedule",
-          "type" : "string"
-        },
-        "customerUUID" : {
-          "description" : "Customer UUID",
-          "format" : "uuid",
-          "readOnly" : true,
           "type" : "string"
         },
         "failureCount" : {
@@ -12253,10 +12252,6 @@
           "example" : "username1@example.com",
           "type" : "string"
         },
-        "isPrimary" : {
-          "description" : "True if the user is the primary user",
-          "type" : "boolean"
-        },
         "ldapSpecifiedRole" : {
           "description" : "LDAP Specified Role",
           "type" : "boolean"
@@ -12264,6 +12259,9 @@
         "oidcJwtAuthToken" : {
           "readOnly" : true,
           "type" : "string"
+        },
+        "primary" : {
+          "type" : "boolean"
         },
         "role" : {
           "description" : "User role",
@@ -12286,7 +12284,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "email" ],
+      "required" : [ "email", "primary" ],
       "type" : "object"
     },
     "Users" : {
@@ -12317,10 +12315,6 @@
           "example" : "username1@example.com",
           "type" : "string"
         },
-        "isPrimary" : {
-          "description" : "True if the user is the primary user",
-          "type" : "boolean"
-        },
         "ldapSpecifiedRole" : {
           "description" : "LDAP Specified Role",
           "type" : "boolean"
@@ -12328,6 +12322,9 @@
         "oidcJwtAuthToken" : {
           "readOnly" : true,
           "type" : "string"
+        },
+        "primary" : {
+          "type" : "boolean"
         },
         "role" : {
           "description" : "User role",
@@ -12350,7 +12347,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "email" ],
+      "required" : [ "email", "primary" ],
       "type" : "object"
     },
     "VMImageUpgradeParams" : {
@@ -12603,21 +12600,21 @@
         "description" : {
           "type" : "string"
         },
-        "isRequired" : {
-          "type" : "boolean"
-        },
-        "isValid" : {
+        "required" : {
           "type" : "boolean"
         },
         "type" : {
           "enum" : [ "NTP_SERVICE_STATUS", "PROMETHEUS_SPACE", "MOUNT_POINTS_WRITABLE", "USER", "USER_GROUP", "HOME_DIR_SPACE", "HOME_DIR_EXISTS", "RAM_SIZE", "INTERNET_CONNECTION", "CPU_CORES", "PROMETHEUS_NO_NODE_EXPORTER", "TMP_DIR_SPACE", "PAM_LIMITS_WRITABLE", "PYTHON_VERSION", "MOUNT_POINTS_VOLUME", "CHRONYD_RUNNING", "SSH_PORT", "SUDO_ACCESS", "OPENSSL", "POLICYCOREUTILS", "RSYNC", "XXHASH", "LIBATOMIC1", "LIBNCURSES6", "LIBATOMIC", "AZCOPY", "GSUTIL", "S3CMD", "NODE_EXPORTER_RUNNING", "NODE_EXPORTER_PORT", "SWAPPINESS", "ULIMIT_CORE", "ULIMIT_OPEN_FILES", "ULIMIT_USER_PROCESSES", "SYSTEMD_SUDOER_ENTRY", "SSH_ACCESS", "NODE_AGENT_ACCESS", "MASTER_HTTP_PORT", "MASTER_RPC_PORT", "TSERVER_HTTP_PORT", "TSERVER_RPC_PORT", "YB_CONTROLLER_HTTP_PORT", "YB_CONTROLLER_RPC_PORT", "REDIS_SERVER_HTTP_PORT", "REDIS_SERVER_RPC_PORT", "YCQL_SERVER_HTTP_PORT", "YCQL_SERVER_RPC_PORT", "YSQL_SERVER_HTTP_PORT", "YSQL_SERVER_RPC_PORT", "VM_MAX_MAP_COUNT" ],
           "type" : "string"
         },
+        "valid" : {
+          "type" : "boolean"
+        },
         "value" : {
           "type" : "string"
         }
       },
-      "required" : [ "description", "isRequired", "isValid", "type", "value" ],
+      "required" : [ "description", "required", "type", "valid", "value" ],
       "type" : "object"
     },
     "VolumeDetails" : {
