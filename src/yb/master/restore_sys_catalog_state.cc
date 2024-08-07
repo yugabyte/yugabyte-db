@@ -745,7 +745,7 @@ Status RestoreSysCatalogState::IterateSysCatalog(
   dockv::ReaderProjection projection(doc_read_context.schema());
   docdb::DocRowwiseIterator iter = docdb::DocRowwiseIterator(
       projection, doc_read_context, TransactionOperationContext(), doc_db,
-      docdb::ReadOperationData::FromSingleReadTime(read_time), pending_op, nullptr);
+      docdb::ReadOperationData::FromSingleReadTime(read_time), pending_op);
   return EnumerateSysCatalog(
       &iter, doc_read_context.schema(), GetCatalogEntityType<PB>::value, [map, sequences_data_map](
           const Slice& id, const Slice& data) -> Status {
@@ -923,7 +923,7 @@ Status RestoreSysCatalogState::IncrementLegacyCatalogVersion(
   dockv::ReaderProjection projection(doc_read_context.schema());
   auto iter = docdb::DocRowwiseIterator(
       projection, doc_read_context, TransactionOperationContext(), doc_db,
-      docdb::ReadOperationData(), write_batch->pending_op(), nullptr);
+      docdb::ReadOperationData(), write_batch->pending_op());
 
   RETURN_NOT_OK(EnumerateSysCatalog(
       &iter, doc_read_context.schema(), SysRowEntryType::SYS_CONFIG,

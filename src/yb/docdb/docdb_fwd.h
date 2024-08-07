@@ -30,6 +30,7 @@ namespace yb::docdb {
 class ConsensusFrontier;
 class DeadlineInfo;
 class DocDBCompactionFilterFactory;
+class DocDBStatistics;
 class DocOperation;
 class DocPgsqlScanSpec;
 class DocQLScanSpec;

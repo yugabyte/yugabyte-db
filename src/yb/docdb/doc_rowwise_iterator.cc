@@ -61,11 +61,9 @@ DocRowwiseIterator::DocRowwiseIterator(
     const TransactionOperationContext& txn_op_context,
     const DocDB& doc_db,
     const ReadOperationData& read_operation_data,
-    std::reference_wrapper<const ScopedRWOperation> pending_op,
-    const DocDBStatistics* statistics)
+    std::reference_wrapper<const ScopedRWOperation> pending_op)
     : DocRowwiseIteratorBase(
           projection, doc_read_context, txn_op_context, doc_db, read_operation_data, pending_op),
-      statistics_(statistics),
       deadline_info_(read_operation_data.deadline) {
 }
 
@@ -75,12 +73,10 @@ DocRowwiseIterator::DocRowwiseIterator(
     const TransactionOperationContext& txn_op_context,
     const DocDB& doc_db,
     const ReadOperationData& read_operation_data,
-    ScopedRWOperation&& pending_op,
-    const DocDBStatistics* statistics)
+    ScopedRWOperation&& pending_op)
     : DocRowwiseIteratorBase(
           projection, doc_read_context, txn_op_context, doc_db, read_operation_data,
           std::move(pending_op)),
-      statistics_(statistics),
       deadline_info_(read_operation_data.deadline) {
 }
 
@@ -114,8 +110,7 @@ void DocRowwiseIterator::InitIterator(
       read_operation_data_,
       file_filter,
       nullptr /* iterate_upper_bound */,
-      FastBackwardScan{use_fast_backward_scan_},
-      statistics_);
+      FastBackwardScan{use_fast_backward_scan_});
   InitResult();
 
   auto prefix = shared_key_prefix();

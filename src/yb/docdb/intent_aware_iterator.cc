@@ -161,8 +161,7 @@ IntentAwareIterator::IntentAwareIterator(
     const rocksdb::ReadOptions& read_opts,
     const ReadOperationData& read_operation_data,
     const TransactionOperationContext& txn_op_context,
-    const FastBackwardScan use_fast_backward_scan,
-    rocksdb::Statistics* intentsdb_statistics)
+    const FastBackwardScan use_fast_backward_scan)
     : read_time_(read_operation_data.read_time),
       encoded_read_time_(read_operation_data.read_time),
       txn_op_context_(txn_op_context),
@@ -179,7 +178,8 @@ IntentAwareIterator::IntentAwareIterator(
   if (txn_op_context) {
     intent_iter_ = docdb::CreateIntentsIteratorWithHybridTimeFilter(
         doc_db.intents, txn_op_context.txn_status_manager, doc_db.key_bounds, &intent_upperbound_,
-        intentsdb_statistics);
+        read_operation_data.statistics ? read_operation_data.statistics->IntentsDBStatistics()
+                                       : nullptr);
   }
   // WARNING: Is is important for regular DB iterator to be created after intents DB iterator,
   // otherwise consistency could break, for example in following scenario:
