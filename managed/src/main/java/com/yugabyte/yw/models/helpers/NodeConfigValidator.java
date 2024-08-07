@@ -168,8 +168,8 @@ public class NodeConfigValidator {
           nodeConfig.getType(),
           ValidationResult.builder()
               .type(nodeConfig.getType())
-              .isValid(isValid)
-              .isRequired(isRequired)
+              .valid(isValid)
+              .required(isRequired)
               .value(nodeConfig.getValue())
               .description(nodeConfig.getType().getDescription())
               .build());
