@@ -1123,5 +1123,25 @@ export const ApiPermissionMap = {
     GET_DR_CONFIG_SAFETIME: {
         requestType: ApiRequestType.GET,
         endpoint: '/dr_configs/$drUUID<[^/]+>/safetime'
+    },
+    ENABLE_AUDITLOG_CONFIG : {
+        requestType : ApiRequestType.POST,
+        endpoint : '/universes/$uniUUID<[^/]+>/audit_log_config'
+    },
+    GET_ALL_TELEMETRY_PROVIDERS : {
+        requestType : ApiRequestType.GET,
+        endpoint : '/telemetry_provider'
+    },
+    GET_TELEMETRY_PROVIDER_BY_ID : {
+        requestType : ApiRequestType.GET,
+        endpoint : '/telemetry_provider/$intUUID<[^/]+>'
+    },
+    CREATE_TELEMETRY_PROVIDER : {
+        requestType : ApiRequestType.POST,
+        endpoint : '/telemetry_provider'
+    },
+    DELETE_TELEMETRY_PROVIDER_BY_ID : {
+        requestType : ApiRequestType.DELETE,
+        endpoint : '/telemetry_provider/$intUUID<[^/]+>'
     }
 } satisfies ApiPermissionMapType;

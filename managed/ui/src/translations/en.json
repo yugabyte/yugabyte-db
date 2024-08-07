@@ -272,8 +272,8 @@
         "ysqlServerRpcPort": "YSQL RPC Port",
         "enhancePGCompatibility": "Enhanced Postgres Compatibility",
         "earlyAccess": "Early Access",
-        "pgSubText": "Configure YSQL for maximum Postgres compatibility by enabling<br /> early access features. <1>Learn more</1>",
-        "pgTooltip": "Access to enhanced Postgres compatible features is only available for database version 2024.2 or later. <1>Learn more</1>"
+        "pgSubText": "Configure YSQL for maximum Postgres compatibility by enabling<br /> early access features.",
+        "pgTooltip": "Access to enhanced Postgres compatible features is only available for database version 2024.2 or later."
       },
       "cloudConfig": {
         "addZoneButton": "Add Zone",
@@ -2014,7 +2014,7 @@
       "exportConfigForLogs": "Export Configurations for Logs",
       "createExport": "Create Export Configuration",
       "emptyMsg1": "Export logs and/or metrics to your preferred 3rd party monitoring tool.",
-      "learnExport": "Learn more about <1>exporting logs</1> and <2>exporting metrics</2>.",
+      "learnExport": "Learn more about <1>exporting logs</1>.",
       "emptyExportNote": "<strong>Note:</strong> Audit logging requires additional resources and will impose performance overhead, especially for verbose audit logging. ",
       "addConfiguration": "Add Configuration",
       "deleteConfiguration": "Delete Configuration",
@@ -2039,7 +2039,7 @@
       "awsSecretKey": "AWS Secret Access Key",
       "logGroup": "Log group",
       "logStream": "Log Stream",
-      "awsRegion": "Region (Optional)",
+      "awsRegion": "Region",
       "awsRoleARN": "Role ARN (Optional)",
       "awsEndpoint": "Endpoint (Optional)",
       "gcpProject": "Project (Optional)",

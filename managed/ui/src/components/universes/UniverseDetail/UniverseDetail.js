@@ -1126,18 +1126,29 @@ class UniverseDetail extends Component {
                       }}
                       isControl
                     >
-                      <YBMenuItem
-                        disabled={isEditGFlagsDisabled}
-                        onClick={showPGCompatibilityModal}
-                        availability={getFeatureState(
-                          currentCustomer.data.features,
-                          'universes.details.overview.editGFlags'
-                        )}
+                      <YBTooltip
+                        title={
+                          hasAsymmetricPrimaryCluster
+                            ? 'Editing gflags for asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.'
+                            : ''
+                        }
+                        placement="left"
                       >
-                        <YBLabelWithIcon icon="fa fa-retweet fa-fw">
-                          Edit Postgres Compatibility
-                        </YBLabelWithIcon>
-                      </YBMenuItem>
+                        <span>
+                          <YBMenuItem
+                            disabled={isEditGFlagsDisabled}
+                            onClick={showPGCompatibilityModal}
+                            availability={getFeatureState(
+                              currentCustomer.data.features,
+                              'universes.details.overview.editGFlags'
+                            )}
+                          >
+                            <YBLabelWithIcon icon="fa fa-retweet fa-fw">
+                              Edit Postgres Compatibility
+                            </YBLabelWithIcon>
+                          </YBMenuItem>
+                        </span>
+                      </YBTooltip>
                     </RbacValidator>
                   )}
                   {!universePaused && isConfigureYSQLEnabled && (

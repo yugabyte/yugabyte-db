@@ -222,7 +222,7 @@ export const ExportLog: FC<ExportLogProps> = () => {
                   underline="always"
                   href="https://docs.yugabyte.com/preview/secure/audit-logging/audit-logging-ysql/"
                 ></Link>
-                <Link underline="always"></Link>
+                {/* <Link underline="always"></Link> */}
               </Trans>
             </Typography>
           </Box>

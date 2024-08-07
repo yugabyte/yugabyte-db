@@ -545,7 +545,8 @@ export const GFlagsField = ({
               ...selectedProps,
               dbVersion,
               existingFlags: fields,
-              isGFlagMultilineConfEnabled
+              isGFlagMultilineConfEnabled,
+              editMode
             }}
           />
         );

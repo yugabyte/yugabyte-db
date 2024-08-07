@@ -23,6 +23,10 @@ import {
   TPItem
 } from '../utils/types';
 import { TELEMETRY_PROVIDER_OPTIONS, DATADOG_SITES } from '../utils/constants';
+//RBAC
+import { hasNecessaryPerm } from '../../rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../rbac/ApiAndUserPermMapping';
+import { RBAC_ERR_MSG_NO_PERM } from '../../rbac/common/validator/ValidatorUtils';
 
 //styles
 import { exportLogStyles } from '../utils/ExportLogStyles';
@@ -318,6 +322,7 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
           <YBLabel>{t('exportAuditLog.awsRegion')}</YBLabel>
           <YBInputField
             control={control}
+            rules={{ required: 'This field is required' }}
             name="config.region"
             fullWidth
             disabled={isViewMode}
@@ -390,6 +395,8 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
     );
   };
 
+  const canCreateTelemetryProvider = hasNecessaryPerm(ApiPermissionMap.CREATE_TELEMETRY_PROVIDER);
+
   return (
     <YBSidePanel
       open={open}
@@ -403,9 +410,10 @@ export const ExportLogModalForm: FC<ExportLogFormProps> = ({ open, onClose, form
       cancelTestId="ExportLogModalForm-Cancel"
       buttonProps={{
         primary: {
-          disabled: isViewMode
+          disabled: isViewMode || !canCreateTelemetryProvider
         }
       }}
+      submitButtonTooltip={!canCreateTelemetryProvider ? RBAC_ERR_MSG_NO_PERM : ''}
     >
       <FormProvider {...formMethods}>
         <Box
