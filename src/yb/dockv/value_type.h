@@ -95,6 +95,7 @@ namespace yb::dockv {
     ((kString, 'S'))  /* ASCII code 83 */ \
     ((kTrue, 'T'))  /* ASCII code 84 */ \
     ((kUInt64, 'U')) /* ASCII code 85 */ \
+    ((kVertexId, 'V')) /* ASCII code 86 */ \
     ((kExternalIntents, 'Z')) /* ASCII code 90 */ \
     ((kArrayIndex, '['))  /* ASCII code 91 */ \
     ((kCollString, '\\'))  /* ASCII code 92 */ \
@@ -175,6 +176,8 @@ namespace yb::dockv {
     ((kString, 'S'))  /* ASCII code 83 */ \
     ((kTrue, 'T'))  /* ASCII code 84 */ \
     ((kUInt64, 'U')) /* ASCII code 85 */ \
+    ((kFloatVector, 'V')) /* ASCII code 86 */ \
+    ((kUInt64Vector, 'W')) /* ASCII code 87 */ \
     ((kTombstone, 'X'))  /* ASCII code 88 */ \
     ((kArrayIndex, '['))  /* ASCII code 91 */ \
     ((kCollString, '\\'))  /* ASCII code 92 */ \

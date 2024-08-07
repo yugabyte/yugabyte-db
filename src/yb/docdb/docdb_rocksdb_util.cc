@@ -112,6 +112,12 @@ DEFINE_UNKNOWN_uint64(rocksdb_max_file_size_for_compaction, 0,
 // db_max_flushing_bytes will be actual default.
 DEFINE_NON_RUNTIME_int32(rocksdb_max_write_buffer_number, 100500,
              "Maximum number of write buffers that are built up in memory.");
+
+DEFINE_RUNTIME_bool(
+    rocksdb_advise_random_on_open, true,
+    "If set to true, will hint the underlying file system that the file access pattern is random, "
+    "when a sst file is opened.");
+
 DECLARE_int64(db_block_size_bytes);
 
 DEFINE_UNKNOWN_int64(db_filter_block_size_bytes, 64_KB,
@@ -738,6 +744,8 @@ void InitRocksDBOptions(
   if (FLAGS_db_max_flushing_bytes != 0) {
     options->max_flushing_bytes = FLAGS_db_max_flushing_bytes;
   }
+
+  options->advise_random_on_open = FLAGS_rocksdb_advise_random_on_open;
 
   options->memtable_factory = std::make_shared<rocksdb::SkipListFactory>(
       0 /* lookahead */, rocksdb::ConcurrentWrites::kFalse);

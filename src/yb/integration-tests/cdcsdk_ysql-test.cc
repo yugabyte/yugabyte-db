@@ -9289,5 +9289,61 @@ TEST_F(CDCSDKYsqlTest, TestChildTabletsOfNonEligibleTableDoNotGetAddedToConsiste
       /* use_consistent_snapshot_stream */ true);
 }
 
+TEST_F(
+    CDCSDKYsqlTest,
+    YB_DISABLE_TEST_IN_TSAN(TestNonEligibleTablesCleanupWhenDropTableCleanupIsDisabled)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_cleanup_of_non_eligible_tables_from_stream) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_disable_drop_table_cleanup) = true;
+  // Setup cluster.
+  ASSERT_OK(SetUpWithParams(3, 3, false));
+  const vector<string> table_list_suffix = {"_1", "_2", "_3"};
+  const int kNumTables = 3;
+  vector<YBTableName> table(kNumTables);
+  int idx = 0;
+  vector<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> tablets(kNumTables);
+
+  while (idx < 3) {
+    table[idx] = ASSERT_RESULT(CreateTable(
+        &test_cluster_, kNamespaceName, kTableName, 1, true, false, 0, true,
+        table_list_suffix[idx]));
+    ASSERT_OK(test_client()->GetTablets(
+        table[idx], 0, &tablets[idx], /* partition_list_version = */ nullptr));
+    ASSERT_OK(WriteEnumsRows(
+        0 /* start */, 100 /* end */, &test_cluster_, table_list_suffix[idx], kNamespaceName,
+        kTableName));
+    idx += 1;
+  }
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  std::unordered_set<std::string> expected_table_ids = {
+      table[0].table_id(), table[1].table_id(), table[2].table_id()};
+  VerifyTablesInStreamMetadata(stream_id, expected_table_ids, "Waiting for stream metadata.");
+
+  LOG(INFO) << "Dropping table: " << Format("$0$1", kTableName, table_list_suffix[0]);
+  DropTable(&test_cluster_, Format("$0$1", kTableName, table_list_suffix[0]).c_str());
+  // Stream metadata wouldnt be cleaned up since the codepath is disabled via
+  // 'TEST_cdcsdk_disable_drop_table_cleanup' flag. Therefore all 3 tables are expected to be
+  // present in stream metadata.
+  SleepFor(MonoDelta::FromSeconds(3));
+  VerifyTablesInStreamMetadata(
+      stream_id, expected_table_ids, "Waiting for stream metadata after drop table.");
+
+  // On loading of CDC stream after a master leader restart, presence of non-eligible tables in CDC
+  // stream will be checked.
+  auto leader_master = ASSERT_RESULT(test_cluster_.mini_cluster_->GetLeaderMiniMaster());
+  ASSERT_OK(leader_master->Restart());
+  LOG(INFO) << "Master Restarted";
+  SleepFor(MonoDelta::FromSeconds(5));
+
+  // Enable bg threads to cleanup CDC stream metadata for dropped tables.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdcsdk_disable_drop_table_cleanup) = false;
+
+  // Verify the dropped table has been removed from stream metadata after enabling the cleanup.
+  expected_table_ids.erase(table[0].table_id());
+  VerifyTablesInStreamMetadata(
+      stream_id, expected_table_ids,
+      "Waiting for GetDBStreamInfo post metadata cleanup after restart.");
+}
+
 }  // namespace cdc
 }  // namespace yb
