@@ -129,6 +129,26 @@ OD_SERVER_POOL_NEXT_DECLARE(pg, od_server_t)
 OD_SERVER_POOL_NEXT_DECLARE(ldap, od_ldap_server_t)
 #endif
 
+static inline od_server_t *od_server_pool_idle_random (od_server_pool_t *pool)
+{
+	od_list_t *target = &pool->idle;
+	od_server_t *server;
+	od_list_t *i, *n;
+	int len = pool->count_idle;
+	if (len == 0)
+		return NULL;
+	int idx = rand() % (len);
+	od_list_foreach_safe(target, i, n)
+	{
+		if (idx-- > 0)
+			continue;
+		server = od_container_of(i, od_server_t, link);
+		return server;
+	}
+
+	return server;
+}
+
 static inline od_server_t *od_server_pool_foreach(od_server_pool_t *pool,
 						  od_server_state_t state,
 						  od_server_pool_cb_t callback,
