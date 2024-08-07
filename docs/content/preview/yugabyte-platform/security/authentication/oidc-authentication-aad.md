@@ -167,21 +167,15 @@ To configure YugabyteDB Anywhere for OIDC, you need to be signed in as a Super A
 
 To enable OIDC authentication in YugabyteDB Anywhere, do the following:
 
-1. Navigate to **Admin > Access Management > User Authentication > OIDC Configuration**.
+1. Navigate to **Admin > Access Management > User Authentication** and select **ODIC configuration**.
+1. Under **OIDC configuration**,  configure the following:
 
-1. Enter the client ID and client secret for the application you registered.
-
-1. Enter the discovery URL. This is in the following form:
-
-    ```sh
-    login.microsoftonline.com/<tenant_id>/v2.0/.well-known/openid-configuration
-    ```
-
-1. Set the scope to `openid email profile`.
-
-1. Set the email attribute to a name for the property to be used in the mapping file, such as `preferred_username`.
-
-1. Select the **Display JWT token on login** option to allow users to access their JWT from the YugabyteDB Anywhere sign in page. This allows a user to view and copy their JWT without signing in to YBA. (This option is only available if you enabled the `yb.security.oidc_feature_enhancements` configuration flag.)
+    - **Client ID** and **Client Secret** - enter the client ID and secret of the JumpCloud application you created.
+    - **Discovery URL** - enter `login.microsoftonline.com/<tenant_id>/v2.0/.well-known/openid-configuration`.
+    - **Scope** - enter `openid email profile`. If you are using the Refresh Token feature to allow the Azure server to return the refresh token (which can be used by YBA to refresh the login), enter `openid offline_access profile email` instead.
+    - **Email attribute** - enter the email attribute to a name for the property to be used in the mapping file, such as `preferred_username`.
+    - **Refresh Token URL** - if you have configured OIDC to use [refresh tokens](https://openid.net/specs/openid-connect-core-1_0.html#RefreshTokens), in the **Refresh Token URL** field, enter the URL of the refresh token endpoint.
+    - **Display JWT token on login** - select this option to allow users to access their JWT from the YugabyteDB Anywhere sign in page. This allows a user to view and copy their JWT without signing in to YBA. (This option is only available if you enabled the `yb.security.oidc_feature_enhancements` configuration flag.)
 
 1. Click **Save**.
 

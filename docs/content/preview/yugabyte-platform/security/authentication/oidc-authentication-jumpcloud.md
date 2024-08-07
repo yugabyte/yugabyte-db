@@ -96,8 +96,10 @@ To configure User authentication in YugabyteDB Anywhere, do the following:
 
     - **Client ID** and **Client Secret** - enter the client ID and secret of the JumpCloud application you created.
     - **Discovery URL** - enter `https://oauth.id.jumpcloud.com/.well-known/openid-configuration`.
-    - **Scope** - enter `openid email`.
+    - **Scope** - enter `openid email`. If you are using the Refresh Token feature to allow the Jumpcloud server to return the refresh token (which can be used by YBA to refresh the login), enter `openid offline_access profile email` instead.
     - **Email attribute** - enter your registered email.
+    - **Refresh Token URL** - if you have configured OIDC to use [refresh tokens](https://openid.net/specs/openid-connect-core-1_0.html#RefreshTokens), in the **Refresh Token URL** field, enter the URL of the refresh token endpoint.
+    - **Display JWT token on login** - select this option to allow users to access their JWT from the YugabyteDB Anywhere sign in page. This allows a user to view and copy their JWT without signing in to YBA. (This option is only available if you enabled the `yb.security.oidc_feature_enhancements` configuration flag.)
 
 1. Click **Save**.
 
