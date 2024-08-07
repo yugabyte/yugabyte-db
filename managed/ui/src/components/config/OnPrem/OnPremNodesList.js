@@ -432,7 +432,7 @@ class OnPremNodesList extends Component {
           onPremKey.keyInfo.provisionInstanceScript
         } --ask_password --ip <node IP Address> --mount_points <instance type mount points> ${
           onPremProvider.details.enableNodeAgent
-            ? '--install_node_agent --api_token <API token> --yba_url <YBA URL> --node_name <name for the node> --instance_type <instance type name> --zone_name <name for the zone>'
+            ? '--install_node_agent --api_token <API token> --yba_url <YBA URL> --node_name <name for the node> --instance_type <instance type name> --region_name <name for the region> --zone_name <name for the zone>'
             : ''
         }`;
 

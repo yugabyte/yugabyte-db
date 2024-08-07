@@ -29,6 +29,7 @@ API_TOKEN=""
 PLATFORM_URL=""
 PROVIDER_ID=""
 INSTANCE_TYPE=""
+REGION_NAME=""
 ZONE_NAME=""
 COMMAND=""
 VERSION=""
@@ -392,6 +393,10 @@ main() {
           echo "Instance type is required."
           exit 1
         fi
+        if [ -z "$REGION_NAME" ]; then
+          echo "Region name is required."
+          exit 1
+        fi
         if [ -z "$ZONE_NAME" ]; then
           echo "Zone name is required."
           exit 1
@@ -402,7 +407,8 @@ main() {
       --node_port "$NODE_PORT" "${SKIP_VERIFY_CERT:+ "--skip_verify_cert"}")
       if [ "$SILENT_INSTALL" = "true" ]; then
         NODE_AGENT_CONFIG_ARGS+=(--silent --node_name "$NODE_NAME" --node_ip "$NODE_IP" \
-        --provider_id "$PROVIDER_ID" --instance_type "$INSTANCE_TYPE" --zone_name "$ZONE_NAME")
+        --provider_id "$PROVIDER_ID" --instance_type "$INSTANCE_TYPE" --region_name \
+        "$REGION_NAME" --zone_name "$ZONE_NAME")
       fi
     else
         # This path is hidden from usage.
@@ -532,6 +538,10 @@ while [[ $# -gt 0 ]]; do
       INSTANCE_TYPE="$2"
       shift
     ;;
+    --region_name)
+      REGION_NAME="$2"
+      shift
+    ;;
     --zone_name)
       ZONE_NAME="$2"
       shift
@@ -559,7 +569,7 @@ while [[ $# -gt 0 ]]; do
     -p|--node_port)
       NODE_PORT=$2
       shift
-      ;;
+    ;;
     -t|--api_token)
       API_TOKEN="$2"
       shift
