@@ -1859,7 +1859,7 @@ ExecOnConflictUpdate(ModifyTableState *mtstate,
 	 * However, YugaByte writes the conflict tuple including its "ybctid" to execution state "estate"
 	 * and then frees the slot when done.
 	 */
-	if (IsYBBackedRelation(relation)) {
+	if (IsYBRelation(relation)) {
 		/* Not using heap buffer for YugaByte */
 		buffer = InvalidBuffer;
 
@@ -1964,7 +1964,7 @@ yb_skip_transaction_control_check:
 	 */
 	ResetExprContext(econtext);
 
-	if (IsYugaByteEnabled())
+	if (IsYBRelation(relation))
 	{
 		oldtuple = ExecMaterializeSlot(estate->yb_conflict_slot);
 		ExecStoreBufferHeapTuple(oldtuple, mtstate->mt_existing, buffer);
@@ -2005,7 +2005,7 @@ yb_skip_transaction_control_check:
 	if (!ExecQual(onConflictSetWhere, econtext))
 	{
 		/* YugaByte don't use the heap buffer to cache the conflict tuple */
-		if (!IsYugaByteEnabled())
+		if (!IsYBRelation(relation))
 			ReleaseBuffer(buffer);
 		InstrCountFiltered1(&mtstate->ps, 1);
 		return true;			/* done with the tuple */
@@ -2052,7 +2052,7 @@ yb_skip_transaction_control_check:
 							canSetTag);
 
 	/* YugaByte don't use the heap buffer to cache the conflict tuple */
-	if (!IsYugaByteEnabled())
+	if (!IsYBRelation(relation))
 		ReleaseBuffer(buffer);
 	return true;
 }

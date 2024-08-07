@@ -972,7 +972,7 @@ retry:
 		 * code block.
 		 * TODO(Mikhail) Verify correctness in YugaByte transaction management for on-conflict.
 		 */
-		if (!IsYugaByteEnabled()) {
+		if (!IsYBRelation(heap)) {
 			xwait = TransactionIdIsValid(DirtySnapshot.xmin) ?
 				DirtySnapshot.xmin : DirtySnapshot.xmax;
 
@@ -1002,7 +1002,7 @@ retry:
 		if (violationOK)
 		{
 			conflict = true;
-			if (IsYugaByteEnabled()) {
+			if (IsYBRelation(heap)) {
 				estate->yb_conflict_slot = existing_slot;
 			}
 			if (conflictTid)
