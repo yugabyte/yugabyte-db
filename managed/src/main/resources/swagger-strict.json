@@ -2392,7 +2392,6 @@
           "type" : "boolean"
         },
         "isFullBackup" : {
-          "readOnly" : true,
           "type" : "boolean"
         },
         "isStorageConfigPresent" : {
@@ -2436,7 +2435,7 @@
           "type" : "boolean"
         }
       },
-      "required" : [ "backupType", "category", "commonBackupInfo", "customerUUID", "expiryTimeUnit", "fullChainSizeInBytes", "hasIncrementalBackups", "isStorageConfigPresent", "isUniversePresent", "lastBackupState", "onDemand", "scheduleName", "scheduleUUID", "storageConfigType", "universeName", "universeUUID", "useTablespaces" ],
+      "required" : [ "backupType", "category", "commonBackupInfo", "customerUUID", "expiryTimeUnit", "fullChainSizeInBytes", "hasIncrementalBackups", "isFullBackup", "isStorageConfigPresent", "isUniversePresent", "lastBackupState", "onDemand", "scheduleName", "scheduleUUID", "storageConfigType", "universeName", "universeUUID", "useTablespaces" ],
       "type" : "object"
     },
     "BackupStorageInfo" : {
@@ -2592,6 +2591,9 @@
         "extraDependencies" : {
           "$ref" : "#/definitions/ExtraDependencies",
           "description" : "Extra dependencies"
+        },
+        "fullBackup" : {
+          "type" : "boolean"
         },
         "fullChainSizeInBytes" : {
           "description" : "Incremental backups chain size",
@@ -2796,7 +2798,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "timeTakenPartial" ],
+      "required" : [ "creatingUser", "fullBackup", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "timeTakenPartial" ],
       "type" : "object"
     },
     "Basic Auth information" : {
@@ -6186,6 +6188,9 @@
         "kubernetesImageRegistry" : {
           "type" : "string"
         },
+        "kubernetesOperatorControlled" : {
+          "type" : "boolean"
+        },
         "kubernetesProvider" : {
           "type" : "string"
         },
@@ -6203,6 +6208,7 @@
           "type" : "string"
         }
       },
+      "required" : [ "kubernetesOperatorControlled" ],
       "type" : "object"
     },
     "KubernetesOverrideError" : {
@@ -6507,6 +6513,9 @@
         "kubernetesImageRegistry" : {
           "type" : "string"
         },
+        "kubernetesOperatorControlled" : {
+          "type" : "boolean"
+        },
         "kubernetesProvider" : {
           "type" : "string"
         },
@@ -6527,6 +6536,7 @@
           "type" : "string"
         }
       },
+      "required" : [ "kubernetesOperatorControlled" ],
       "type" : "object"
     },
     "LdapDnToYbaRoleData" : {
@@ -6915,12 +6925,15 @@
     "MetricQueryParams" : {
       "description" : "Metrics request data",
       "properties" : {
+        "recharts" : {
+          "type" : "boolean"
+        },
         "xclusterConfigUuid" : {
           "format" : "uuid",
           "type" : "string"
         }
       },
-      "required" : [ "xclusterConfigUuid" ],
+      "required" : [ "recharts", "xclusterConfigUuid" ],
       "type" : "object"
     },
     "MetricSettings" : {
@@ -7051,6 +7064,9 @@
         "extraDependencies" : {
           "$ref" : "#/definitions/ExtraDependencies",
           "description" : "Extra dependencies"
+        },
+        "fullBackup" : {
+          "type" : "boolean"
         },
         "fullChainSizeInBytes" : {
           "description" : "Incremental backups chain size",
@@ -7255,7 +7271,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "timeTakenPartial" ],
+      "required" : [ "creatingUser", "fullBackup", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "timeTakenPartial" ],
       "type" : "object"
     },
     "NamespaceInfoResp" : {
@@ -11203,12 +11219,6 @@
           "description" : "Cron expression for the schedule",
           "type" : "string"
         },
-        "customerUUID" : {
-          "description" : "Customer UUID",
-          "format" : "uuid",
-          "readOnly" : true,
-          "type" : "string"
-        },
         "failureCount" : {
           "description" : "Number of failed backup attempts",
           "format" : "int32",
@@ -14773,10 +14783,6 @@
           "example" : "username1@example.com",
           "type" : "string"
         },
-        "isPrimary" : {
-          "description" : "True if the user is the primary user",
-          "type" : "boolean"
-        },
         "ldapSpecifiedRole" : {
           "description" : "LDAP Specified Role",
           "type" : "boolean"
@@ -14784,6 +14790,9 @@
         "oidcJwtAuthToken" : {
           "readOnly" : true,
           "type" : "string"
+        },
+        "primary" : {
+          "type" : "boolean"
         },
         "role" : {
           "description" : "User role",
@@ -14806,7 +14815,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "email" ],
+      "required" : [ "email", "primary" ],
       "type" : "object"
     },
     "Users" : {
@@ -14837,10 +14846,6 @@
           "example" : "username1@example.com",
           "type" : "string"
         },
-        "isPrimary" : {
-          "description" : "True if the user is the primary user",
-          "type" : "boolean"
-        },
         "ldapSpecifiedRole" : {
           "description" : "LDAP Specified Role",
           "type" : "boolean"
@@ -14848,6 +14853,9 @@
         "oidcJwtAuthToken" : {
           "readOnly" : true,
           "type" : "string"
+        },
+        "primary" : {
+          "type" : "boolean"
         },
         "role" : {
           "description" : "User role",
@@ -14870,7 +14878,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "email" ],
+      "required" : [ "email", "primary" ],
       "type" : "object"
     },
     "VMImageUpgradeParams" : {

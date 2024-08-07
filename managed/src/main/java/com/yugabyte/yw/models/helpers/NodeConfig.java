@@ -36,10 +36,8 @@ public class NodeConfig {
   @ApiModel(description = "Validation result of a node config")
   public static class ValidationResult {
     private Type type;
-
     private boolean valid;
     private boolean required;
-
     private String description;
     private String value;
   }
