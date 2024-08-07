@@ -179,5 +179,12 @@ SELECT create_elabel('graph123', 'elabel0123456789012345678901234567890123456789
 SELECT drop_graph('graph123', true);
 
 --
+-- Test GUC names
+--
+SET age.enable_containment TO ON;
+SET age.invalid_parameter TO ON;
+SET any_placeholder.any_parameter TO ON;
+
+--
 -- End of test
 --

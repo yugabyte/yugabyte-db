@@ -476,5 +476,13 @@ NOTICE:  graph "graph123" has been dropped
 (1 row)
 
 --
+-- Test GUC names
+--
+SET age.enable_containment TO ON;
+SET age.invalid_parameter TO ON;
+ERROR:  invalid configuration parameter name "age.invalid_parameter"
+DETAIL:  "age" is a reserved prefix.
+SET any_placeholder.any_parameter TO ON;
+--
 -- End of test
 --

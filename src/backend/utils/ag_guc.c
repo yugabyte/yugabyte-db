@@ -42,4 +42,5 @@ void define_config_params(void)
                              NULL,
                              NULL,
                              NULL);
+    EmitWarningsOnPlaceholders("age");
 }
