@@ -3191,8 +3191,6 @@ class ControlScript(object):
             "--webserver_port={}".format(self.configs.saved_data.get("master_webserver_port")),
             "--default_memory_limit_to_ram_ratio=0.35",
             "--instance_uuid_override={}".format(self.configs.saved_data.get("master_uuid")),
-            "--enable_xcluster_api_v2=true",
-            "--allowed_preview_flags_csv=enable_xcluster_api_v2",
         ]
 
         if self.configs.saved_data.get("secure"):
