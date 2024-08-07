@@ -37,11 +37,11 @@ To review previous backups, click **Backup**. To review previous restores, click
 
 ## Location of backups
 
-Backups are located in cloud storage of the provider where the cluster is deployed. The storage is located is the same region os the cluster.For example, for a cluster deployed in AWS and located in us-east-2, backups are stored in an S3 bucket in us-east-2.
+Backups are located in cloud storage of the provider where the cluster is deployed. The storage is located is the same region os the cluster. For example, for a cluster deployed in AWS and located in us-east-2, backups are stored in an S3 bucket in us-east-2.
 
-For Replicate across region clusters, the backup is stored in one of the cluster regions, as determined automatically by Aeon when the cluster is created.
+For [Replicate across region](../../cloud-basics/create-clusters-topology/#replicate-across-regions) clusters, the backup is stored in one of the cluster regions, as determined automatically by Aeon when the cluster is created.
 
-For Partition by region clusters, the database schema and tablet details are stored in the primary region, and the regional tablespace data is stored in its respective region to preserve data residency.
+For [Partition by region](../../cloud-basics/create-clusters-topology/#partition-by-region) clusters, the database schema and tablet details are stored in the primary region, and the regional tablespace data is stored in its respective region to preserve data residency.
 
 ## Limitations
 
