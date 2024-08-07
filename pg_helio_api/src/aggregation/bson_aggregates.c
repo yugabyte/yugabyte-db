@@ -38,11 +38,33 @@ typedef struct BsonNumericAggState
 	int64_t count;
 } BsonNumericAggState;
 
-typedef struct BsonArrayAggState
+typedef struct BsonArrayGroupAggState
 {
 	pgbson_writer writer;
 	pgbson_array_writer arrayWriter;
+} BsonArrayGroupAggState;
+
+/*
+ * Window aggregation state for bson_array_agg, contains the
+ * list of contents for bson array
+ */
+typedef struct BsonArrayWindowAggState
+{
+	List *aggregateList;
+} BsonArrayWindowAggState;
+
+typedef struct BsonArrayAggState
+{
+	union
+	{
+		/* Transition state when used a regular aggregate with $group */
+		BsonArrayGroupAggState group;
+
+		/* Transition state when used as window aggregate with $setWindowFields */
+		BsonArrayWindowAggState window;
+	} aggState;
 	int64_t currentSizeWritten;
+	bool isWindowAggregation;
 } BsonArrayAggState;
 
 typedef struct BsonObjectAggState
@@ -123,6 +145,7 @@ PG_FUNCTION_INFO_V1(bson_sum_avg_transition);
 PG_FUNCTION_INFO_V1(bson_sum_final);
 PG_FUNCTION_INFO_V1(bson_avg_final);
 PG_FUNCTION_INFO_V1(bson_sum_avg_combine);
+PG_FUNCTION_INFO_V1(bson_sum_avg_minvtransition);
 PG_FUNCTION_INFO_V1(bson_min_transition);
 PG_FUNCTION_INFO_V1(bson_max_transition);
 PG_FUNCTION_INFO_V1(bson_min_max_final);
@@ -130,6 +153,7 @@ PG_FUNCTION_INFO_V1(bson_min_combine);
 PG_FUNCTION_INFO_V1(bson_max_combine);
 PG_FUNCTION_INFO_V1(bson_build_distinct_response);
 PG_FUNCTION_INFO_V1(bson_array_agg_transition);
+PG_FUNCTION_INFO_V1(bson_array_agg_minvtransition);
 PG_FUNCTION_INFO_V1(bson_array_agg_final);
 PG_FUNCTION_INFO_V1(bson_distinct_array_agg_transition);
 PG_FUNCTION_INFO_V1(bson_distinct_array_agg_final);
@@ -446,10 +470,13 @@ BsonArrayAggTransitionCore(PG_FUNCTION_ARGS, bool handleSingleValueElement,
 	BsonArrayAggState *currentState = { 0 };
 	bytea *bytes;
 	MemoryContext aggregateContext;
-	if (!AggCheckCallContext(fcinfo, &aggregateContext))
+	int aggregationContext = AggCheckCallContext(fcinfo, &aggregateContext);
+	if (aggregationContext == 0)
 	{
 		ereport(ERROR, errmsg("aggregate function called in non-aggregate context"));
 	}
+
+	bool isWindowAggregation = aggregationContext == AGG_CONTEXT_WINDOW;
 
 	/* Create the aggregate state in the aggregate context. */
 	MemoryContext oldContext = MemoryContextSwitchTo(aggregateContext);
@@ -463,11 +490,20 @@ BsonArrayAggTransitionCore(PG_FUNCTION_ARGS, bool handleSingleValueElement,
 		bytes = combinedStateBytes;
 
 		currentState = (BsonArrayAggState *) VARDATA(bytes);
-
-		PgbsonWriterInit(&currentState->writer);
+		currentState->isWindowAggregation = isWindowAggregation;
 		currentState->currentSizeWritten = 0;
-		PgbsonWriterStartArray(&currentState->writer, path, strlen(path),
-							   &currentState->arrayWriter);
+
+		if (isWindowAggregation)
+		{
+			currentState->aggState.window.aggregateList = NIL;
+		}
+		else
+		{
+			PgbsonWriterInit(&currentState->aggState.group.writer);
+			PgbsonWriterStartArray(&currentState->aggState.group.writer, path, strlen(
+									   path),
+								   &currentState->aggState.group.arrayWriter);
+		}
 	}
 	else
 	{
@@ -475,34 +511,57 @@ BsonArrayAggTransitionCore(PG_FUNCTION_ARGS, bool handleSingleValueElement,
 		currentState = (BsonArrayAggState *) VARDATA_ANY(bytes);
 	}
 
-	pgbson *currentValue = PG_GETARG_MAYBE_NULL_PGBSON(1);
+	pgbson *currentValue = PG_GETARG_MAYBE_NULL_PGBSON_PACKED(1);
+	bool isMissingValue = IsPgbsonEmptyDocument(currentValue);
 
 	if (currentValue == NULL)
 	{
-		PgbsonArrayWriterWriteNull(&currentState->arrayWriter);
+		if (isWindowAggregation)
+		{
+			currentState->aggState.window.aggregateList = lappend(
+				currentState->aggState.window.aggregateList, NULL);
+		}
+		else
+		{
+			PgbsonArrayWriterWriteNull(&currentState->aggState.group.arrayWriter);
+		}
 	}
 	else
 	{
 		CheckAggregateIntermediateResultSize(currentState->currentSizeWritten +
 											 PgbsonGetBsonSize(currentValue));
 
-		pgbsonelement singleBsonElement;
-		if (handleSingleValueElement &&
-			TryGetSinglePgbsonElementFromPgbson(currentValue, &singleBsonElement) &&
-			singleBsonElement.pathLength == 0)
+		if (isWindowAggregation)
 		{
-			/* If it's a bson that's { "": value } */
-			PgbsonArrayWriterWriteValue(&currentState->arrayWriter,
-										&singleBsonElement.bsonValue);
+			pgbson *copiedPgbson = CopyPgbsonIntoMemoryContext(currentValue,
+															   aggregateContext);
+			currentState->aggState.window.aggregateList = lappend(
+				currentState->aggState.window.aggregateList, copiedPgbson);
 		}
-		else
+		else if (!isMissingValue)
 		{
-			PgbsonArrayWriterWriteDocument(&currentState->arrayWriter, currentValue);
+			pgbsonelement singleBsonElement;
+			if (handleSingleValueElement &&
+				TryGetSinglePgbsonElementFromPgbson(currentValue, &singleBsonElement) &&
+				singleBsonElement.pathLength == 0)
+			{
+				/* If it's a bson that's { "": value } */
+				PgbsonArrayWriterWriteValue(&currentState->aggState.group.arrayWriter,
+											&singleBsonElement.bsonValue);
+			}
+			else
+			{
+				PgbsonArrayWriterWriteDocument(&currentState->aggState.group.arrayWriter,
+											   currentValue);
+			}
 		}
-
 		currentState->currentSizeWritten += PgbsonGetBsonSize(currentValue);
 	}
 
+	if (currentValue != NULL)
+	{
+		PG_FREE_IF_COPY(currentValue, 1);
+	}
 	MemoryContextSwitchTo(oldContext);
 	PG_RETURN_POINTER(bytes);
 }
@@ -517,6 +576,61 @@ bson_array_agg_transition(PG_FUNCTION_ARGS)
 	bool handleSingleValueElement = PG_NARGS() == 4 ? PG_GETARG_BOOL(3) : false;
 
 	return BsonArrayAggTransitionCore(fcinfo, handleSingleValueElement, path);
+}
+
+
+Datum
+bson_array_agg_minvtransition(PG_FUNCTION_ARGS)
+{
+	MemoryContext aggregateContext;
+	if (AggCheckCallContext(fcinfo, &aggregateContext) != AGG_CONTEXT_WINDOW)
+	{
+		ereport(ERROR, errmsg(
+					"window aggregate function called in non-window-aggregate context"));
+	}
+
+	if (PG_ARGISNULL(0))
+	{
+		/* Returning NULL is an indiacation that inverse can't be applied and the aggregation needs to be redone */
+		PG_RETURN_NULL();
+	}
+
+	bytea *bytes = PG_GETARG_BYTEA_P(0);
+	BsonArrayAggState *currentState = (BsonArrayAggState *) VARDATA_ANY(bytes);
+
+	if (!currentState->isWindowAggregation)
+	{
+		ereport(ERROR, errmsg(
+					"window aggregate function received an invalid state for $push"));
+	}
+
+	MemoryContext oldContext = MemoryContextSwitchTo(aggregateContext);
+
+	pgbson *currentValue = PG_GETARG_MAYBE_NULL_PGBSON(1);
+
+	if (currentValue != NULL)
+	{
+		/*
+		 * Inverse function is called in sequence in which the row are added using the transition function,
+		 * so we don't need to find the `currentValue` pgbson in the list, it can be safely assume that this
+		 * is always present at the head of the list.
+		 * We only assert that these values are equal to make sure that we are deleting the correct value
+		 *
+		 * TODO: Maybe move to DLL in future to avoid memory moves when removing first entry
+		 */
+
+		Assert(PgbsonEquals(currentValue, (pgbson *) linitial(
+								currentState->aggState.window.aggregateList)));
+		currentState->currentSizeWritten -= PgbsonGetBsonSize(currentValue);
+	}
+
+	currentState->aggState.window.aggregateList = list_delete_first(
+		currentState->aggState.window.aggregateList);
+
+
+	MemoryContextSwitchTo(oldContext);
+
+	PG_RETURN_POINTER(bytes);
 }
 
 
@@ -538,12 +652,64 @@ bson_array_agg_final(PG_FUNCTION_ARGS)
 	{
 		BsonArrayAggState *state = (BsonArrayAggState *) VARDATA_ANY(
 			currentArrayAgg);
-		PgbsonWriterEndArray(&state->writer, &state->arrayWriter);
+		if (state->isWindowAggregation)
+		{
+			pgbson_writer writer;
+			pgbson_array_writer arrayWriter;
+			PgbsonWriterInit(&writer);
+			PgbsonWriterStartArray(&writer, "", 0, &arrayWriter);
 
-		PG_RETURN_POINTER(PgbsonWriterGetPgbson(&state->writer));
+			ListCell *cell;
+			foreach(cell, state->aggState.window.aggregateList)
+			{
+				pgbson *currentValue = lfirst(cell);
+
+				/* Empty pgbson values are missing field values which should not be pushed to the array */
+				bool isMissingValue = IsPgbsonEmptyDocument(currentValue);
+				if (currentValue != NULL && !isMissingValue)
+				{
+					pgbsonelement singleBsonElement;
+					if (TryGetSinglePgbsonElementFromPgbson(currentValue,
+															&singleBsonElement) &&
+						singleBsonElement.pathLength == 0)
+					{
+						/* If it's a bson that's { "": value } */
+						PgbsonArrayWriterWriteValue(&arrayWriter,
+													&singleBsonElement.bsonValue);
+					}
+					else
+					{
+						PgbsonArrayWriterWriteDocument(&arrayWriter, currentValue);
+					}
+				}
+			}
+			PgbsonWriterEndArray(&writer, &arrayWriter);
+			PG_RETURN_POINTER(PgbsonWriterGetPgbson(&writer));
+		}
+		else
+		{
+			PgbsonWriterEndArray(&state->aggState.group.writer,
+								 &state->aggState.group.arrayWriter);
+			PG_RETURN_POINTER(PgbsonWriterGetPgbson(&state->aggState.group.writer));
+		}
 	}
 	else
 	{
+		MemoryContext aggregateContext;
+		int aggContext = AggCheckCallContext(fcinfo, &aggregateContext);
+		if (aggContext == AGG_CONTEXT_WINDOW)
+		{
+			/*
+			 * We will need to return the default value of $push accumulator which is empty array in case
+			 * where the window doesn't select any document.
+			 *
+			 * e.g ["unbounded", -1] => For the first row it doesn't select any rows.
+			 */
+			pgbson_writer writer;
+			PgbsonWriterInit(&writer);
+			PgbsonWriterAppendEmptyArray(&writer, "", 0);
+			PG_RETURN_POINTER(PgbsonWriterGetPgbson(&writer));
+		}
 		PG_RETURN_NULL();
 	}
 }
@@ -563,10 +729,17 @@ bson_distinct_array_agg_final(PG_FUNCTION_ARGS)
 	{
 		BsonArrayAggState *state = (BsonArrayAggState *) VARDATA_ANY(
 			currentArrayAgg);
-		PgbsonWriterEndArray(&state->writer, &state->arrayWriter);
 
-		PgbsonWriterAppendDouble(&state->writer, "ok", 2, 1);
-		PG_RETURN_POINTER(PgbsonWriterGetPgbson(&state->writer));
+		if (state->isWindowAggregation)
+		{
+			ereport(ERROR, errmsg(
+						"distinct array aggregate can't be used in a window context"));
+		}
+		PgbsonWriterEndArray(&state->aggState.group.writer,
+							 &state->aggState.group.arrayWriter);
+
+		PgbsonWriterAppendDouble(&state->aggState.group.writer, "ok", 2, 1);
+		PG_RETURN_POINTER(PgbsonWriterGetPgbson(&state->aggState.group.writer));
 	}
 	else
 	{
@@ -817,6 +990,59 @@ bson_sum_avg_transition(PG_FUNCTION_ARGS)
 							 &overflowedFromInt64Ignore))
 	{
 		currentState->count++;
+	}
+
+	PG_RETURN_POINTER(bytes);
+}
+
+
+/*
+ * Applies the "inverse state transition" for sum and average.
+ * This subtracts the sum of the values leaving the group and decrements the count
+ * It ignores non-numeric values, and manages type upgrades and coercion
+ * to the right types as documents are encountered.
+ */
+Datum
+bson_sum_avg_minvtransition(PG_FUNCTION_ARGS)
+{
+	MemoryContext aggregateContext;
+	if (AggCheckCallContext(fcinfo, &aggregateContext) != AGG_CONTEXT_WINDOW)
+	{
+		ereport(ERROR, errmsg(
+					"window aggregate function called in non-window-aggregate context"));
+	}
+
+	bytea *bytes;
+	BsonNumericAggState *currentState;
+
+	if (PG_ARGISNULL(0))
+	{
+		/* Returning NULL is an indiacation that inverse can't be applied and the aggregation needs to be redone */
+		PG_RETURN_NULL();
+	}
+	else
+	{
+		bytes = PG_GETARG_BYTEA_P(0);
+		currentState = (BsonNumericAggState *) VARDATA_ANY(bytes);
+	}
+	pgbson *currentValue = PG_GETARG_MAYBE_NULL_PGBSON(1);
+
+	if (currentValue == NULL || IsPgbsonEmptyDocument(currentValue))
+	{
+		PG_RETURN_POINTER(bytes);
+	}
+
+	pgbsonelement currentValueElement;
+	PgbsonToSinglePgbsonElement(currentValue, &currentValueElement);
+
+	bool overflowedFromInt64Ignore = false;
+
+	/* Aply the inverse of $sum and $avg */
+	if (currentState->count > 0 &&
+		SubtractNumberFromBsonValue(&currentState->sum, &currentValueElement.bsonValue,
+									&overflowedFromInt64Ignore))
+	{
+		currentState->count--;
 	}
 
 	PG_RETURN_POINTER(bytes);

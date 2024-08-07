@@ -5,6 +5,10 @@ CREATE OR REPLACE AGGREGATE __API_CATALOG_SCHEMA__.BSONSUM(__CORE_SCHEMA__.bson)
     FINALFUNC = __API_CATALOG_SCHEMA__.bson_sum_final,
     stype = bytea,
     COMBINEFUNC = __API_CATALOG_SCHEMA__.bson_sum_avg_combine,
+    mstype = bytea,
+    MSFUNC = __API_CATALOG_SCHEMA__.bson_sum_avg_transition,
+    MFINALFUNC = __API_CATALOG_SCHEMA__.bson_sum_final,
+    MINVFUNC = helio_api_internal.bson_sum_avg_minvtransition,
     PARALLEL = SAFE
 );
 
@@ -14,6 +18,10 @@ CREATE OR REPLACE AGGREGATE __API_CATALOG_SCHEMA__.BSONAVERAGE(__CORE_SCHEMA__.b
     FINALFUNC = __API_CATALOG_SCHEMA__.bson_avg_final,
     stype = bytea,
     COMBINEFUNC = __API_CATALOG_SCHEMA__.bson_sum_avg_combine,
+    mstype = bytea,
+    MSFUNC = __API_CATALOG_SCHEMA__.bson_sum_avg_transition,
+    MFINALFUNC = __API_CATALOG_SCHEMA__.bson_avg_final,
+    MINVFUNC = helio_api_internal.bson_sum_avg_minvtransition,
     PARALLEL = SAFE
 );
 
@@ -208,6 +216,10 @@ CREATE OR REPLACE AGGREGATE __API_CATALOG_SCHEMA__.BSON_ARRAY_AGG(__CORE_SCHEMA_
     SFUNC = __API_CATALOG_SCHEMA__.bson_array_agg_transition,
     FINALFUNC = __API_CATALOG_SCHEMA__.bson_array_agg_final,
     stype = bytea,
+    mstype = bytea,
+    MSFUNC = __API_CATALOG_SCHEMA__.bson_array_agg_transition,
+    MFINALFUNC = __API_CATALOG_SCHEMA__.bson_array_agg_final,
+    MINVFUNC = helio_api_internal.bson_array_agg_minvtransition,
     PARALLEL = SAFE
 );
 

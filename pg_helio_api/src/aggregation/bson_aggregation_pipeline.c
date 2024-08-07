@@ -3705,20 +3705,21 @@ AddArrayAggGroupAccumulator(Query *query, const bson_value_t *accumulatorValue,
 {
 	Expr *constValue = (Expr *) MakeBsonConst(BsonValueToDocumentPgbson(
 												  accumulatorValue));
-	Const *trueConst = makeConst(BOOLOID, -1, InvalidOid, 1, BoolGetDatum(true), false,
-								 true);
+
+	/* isNullOnEmpty is set to false for $push */
+	Const *isNullOnEmptyConst = (Const *) MakeBoolValueConst(false);
 	List *funcArgs;
 	Oid functionOid;
 
 
 	if (variableSpec != NULL)
 	{
-		funcArgs = list_make4(documentExpr, constValue, trueConst, variableSpec);
+		funcArgs = list_make4(documentExpr, constValue, isNullOnEmptyConst, variableSpec);
 		functionOid = BsonExpressionGetWithLetFunctionOid();
 	}
 	else
 	{
-		funcArgs = list_make3(documentExpr, constValue, trueConst);
+		funcArgs = list_make3(documentExpr, constValue, isNullOnEmptyConst);
 		functionOid = BsonExpressionGetFunctionOid();
 	}
 

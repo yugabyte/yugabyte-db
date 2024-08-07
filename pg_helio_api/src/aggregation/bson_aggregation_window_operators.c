@@ -109,8 +109,6 @@ typedef struct
 
 static void ParseAndSetFrameOption(const bson_value_t *value, WindowClause *windowClause,
 								   DateUnit timeUnit, int *frameOptions);
-static WindowFunc * HandleDollarSumWindowOperator(const bson_value_t *opValue,
-												  WindowOperatorContext *context);
 static Datum EnsureValidUnitOffsetAndGetInterval(const bson_value_t *value,
 												 DateUnit dateUnit);
 
@@ -133,6 +131,21 @@ static void UpdateWindowOptions(const pgbsonelement *element, WindowClause *wind
 static void UpdateWindowAggregationOperator(const pgbsonelement *element,
 											WindowOperatorContext *context,
 											TargetEntry **entry);
+static WindowFunc * GetSimpleBsonExpressionGetWindowFunc(const bson_value_t *opValue,
+														 WindowOperatorContext *context,
+														 Oid aggregateFunctionOid);
+
+/*===================================*/
+/* Window Operator Handler functions */
+/*===================================*/
+
+static WindowFunc * HandleDollarSumWindowOperator(const bson_value_t *opValue,
+												  WindowOperatorContext *context);
+static WindowFunc * HandleDollarAvgWindowOperator(const bson_value_t *opValue,
+												  WindowOperatorContext *context);
+static WindowFunc * HandleDollarPushWindowOperator(const bson_value_t *opValue,
+												   WindowOperatorContext *context);
+
 
 /* GUC to enable SetWindowFields stage */
 extern bool EnableSetWindowFields;
@@ -150,7 +163,7 @@ static const WindowOperatorDefinition WindowOperatorDefinitions[] =
 	},
 	{
 		.operatorName = "$avg",
-		.windowOperatorFunc = NULL
+		.windowOperatorFunc = &HandleDollarAvgWindowOperator
 	},
 	{
 		.operatorName = "$bottom",
@@ -242,7 +255,7 @@ static const WindowOperatorDefinition WindowOperatorDefinitions[] =
 	},
 	{
 		.operatorName = "$push",
-		.windowOperatorFunc = NULL
+		.windowOperatorFunc = &HandleDollarPushWindowOperator
 	},
 	{
 		.operatorName = "$rank",
@@ -1261,15 +1274,18 @@ UpdateWindowAggregationOperator(const pgbsonelement *element,
 
 
 /*
- * Handle for $sum window aggregation operator.
- * Returns the WindowFunc for bson aggregate function `bsonsum`
+ * A Simple helper function to get the window function for an window aggregate of this form
+ * <window_aggregate>(bson_expression_get(<expression>)).
+ *
+ * The window aggregate to be used is determined by the aggregateFunctionOid.
  */
 static WindowFunc *
-HandleDollarSumWindowOperator(const bson_value_t *opValue,
-							  WindowOperatorContext *context)
+GetSimpleBsonExpressionGetWindowFunc(const bson_value_t *opValue,
+									 WindowOperatorContext *context,
+									 Oid aggregateFunctionOid)
 {
 	WindowFunc *windowFunc = makeNode(WindowFunc);
-	windowFunc->winfnoid = BsonSumAggregateFunctionOid();
+	windowFunc->winfnoid = aggregateFunctionOid;
 	windowFunc->wintype = BsonTypeId();
 	windowFunc->winref = context->winRef;
 	windowFunc->winstar = false;
@@ -1297,5 +1313,77 @@ HandleDollarSumWindowOperator(const bson_value_t *opValue,
 		functionOid, BsonTypeId(), args, InvalidOid,
 		InvalidOid, COERCE_EXPLICIT_CALL);
 	windowFunc->args = list_make1(accumFunc);
+	return windowFunc;
+}
+
+
+/*
+ * Handle for $sum window aggregation operator.
+ * Returns the WindowFunc for bson aggregate function `bsonsum`
+ */
+static WindowFunc *
+HandleDollarSumWindowOperator(const bson_value_t *opValue,
+							  WindowOperatorContext *context)
+{
+	return GetSimpleBsonExpressionGetWindowFunc(opValue, context,
+												BsonSumAggregateFunctionOid());
+}
+
+
+/*
+ * Handle for $avg window aggregation operator.
+ * Returns the WindowFunc for bson aggregate function `bsonavg`
+ */
+static WindowFunc *
+HandleDollarAvgWindowOperator(const bson_value_t *opValue,
+							  WindowOperatorContext *context)
+{
+	return GetSimpleBsonExpressionGetWindowFunc(opValue, context,
+												BsonAvgAggregateFunctionOid());
+}
+
+
+static WindowFunc *
+HandleDollarPushWindowOperator(const bson_value_t *opValue,
+							   WindowOperatorContext *context)
+{
+	WindowFunc *windowFunc = makeNode(WindowFunc);
+	windowFunc->winfnoid = BsonArrayAggregateAllArgsFunctionOid();
+	windowFunc->wintype = BsonTypeId();
+	windowFunc->winref = context->winRef;
+	windowFunc->winstar = false;
+	windowFunc->winagg = true;
+
+	Expr *constValue = (Expr *) MakeBsonConst(BsonValueToDocumentPgbson(
+												  opValue));
+
+	/* empty values should not be converted to {"": null} values */
+	Const *nullOnEmptyConst = (Const *) MakeBoolValueConst(false);
+
+	List *funcArgs;
+	Oid functionOid;
+
+	if (context->variableContext != NULL)
+	{
+		functionOid = BsonExpressionGetWithLetFunctionOid();
+		funcArgs = list_make4(context->docExpr, constValue, nullOnEmptyConst,
+							  context->variableContext);
+	}
+	else
+	{
+		functionOid = BsonExpressionGetFunctionOid();
+		funcArgs = list_make3(context->docExpr, constValue, nullOnEmptyConst);
+	}
+
+	FuncExpr *accumFunc = makeFuncExpr(
+		functionOid, BsonTypeId(), funcArgs, InvalidOid,
+		InvalidOid, COERCE_EXPLICIT_CALL);
+
+	bool handleSingleValue = true;
+	List *aggregateArgs = list_make3(
+		(Expr *) accumFunc,
+		MakeTextConst(context->outputFieldName, strlen(context->outputFieldName)),
+		MakeBoolValueConst(handleSingleValue));
+	windowFunc->args = aggregateArgs;
 	return windowFunc;
 }
