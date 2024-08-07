@@ -90,7 +90,7 @@ Before adding a table to replication in YugabyteDB Anywhere, refer to [Order of 
 
 Add tables to replication as follows:
 
-1. Navigate to your source and select **xCluster Replication**.
+1. In YugabyteDB Anywhere, navigate to your source, select **xCluster Replication**, and select the replication configuration.
 1. Click **Actions** and choose **Select Databases and Tables**.
 1. Select the tables and click **Validate Selection**.
 1. If data needs to be copied, click **Next: Confirm Full Copy**.
@@ -114,7 +114,7 @@ When dropping a table in version 2.23 or later, you can drop the tables and Yuga
 
 When dropping a table in versions earlier than 2.23, remove the table from replication before dropping the table in the source and target databases, as follows:
 
-1. Navigate to your source and select **xCluster Replication**.
+1. In YugabyteDB Anywhere, navigate to your source, select **xCluster Replication**, and select the replication configuration.
 1. Click **Actions** and choose **Select Databases and Tables**.
 1. Deselect the tables and click **Validate Selection**.
 1. Click **Apply Changes**.
@@ -137,5 +137,5 @@ To remove an index, refer to [Order of operations](#order-of-operations) for you
 
 For some operations, to ensure changes made outside of YugabyteDB Anywhere are reflected in YugabyteDB Anywhere, you need to reconcile the configuration as follows:
 
-1. In YugabyteDB Anywhere, navigate to your source and select **xCluster Replication**.
+1. In YugabyteDB Anywhere, navigate to your source, select **xCluster Replication**, and select the replication configuration.
 1. Click **Actions > Advanced** and choose **Reconcile Config with Database**.

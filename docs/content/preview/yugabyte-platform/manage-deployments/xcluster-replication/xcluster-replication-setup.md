@@ -95,7 +95,7 @@ To set up replication for a universe, do the following:
 
 1. Navigate to your source universe and select **xCluster Replication**.
 
-1. Click **Configure xCluster Replication**.
+1. Click **Configure Replication**.
 
 1. Enter a name for the replication.
 
@@ -207,7 +207,7 @@ Note that, although you don't need to create objects on the target during initia
 
 To add a database to replication, do the following:
 
-1. Navigate to your source universe and select **xCluster Replication**.
+1. Navigate to the source universe **xCluster Replication** tab and select the replication configuration.
 
 1. Click **Actions > Select Databases and Tables**.
 
@@ -225,43 +225,33 @@ To add a database to replication, do the following:
 
 YugabyteDB Anywhere proceeds to copy the database to the target. How long this takes depends mainly on the amount of data that needs to be copied.
 
-## Change the target
-
-You can assign a different universe to act as the target.
-
-To change the universe that is used as a target, do the following:
-
-1. Navigate to your source universe and select **xCluster Replication**.
-
-1. Click **Actions** and choose **Change target Universe**.
-
-1. Enter the name of the target and click **Next: Confirm Full Copy**.
-
-1. Click **Apply Changes**.
-
-    This removes the current target and sets up the new target, with a full copy of the databases if needed.
-
 ## Restart replication
 
 Some situations, such as extended network partitions between the source and target, can cause a permanent failure of replication due to WAL logs being no longer available on the source.
 
 In these cases, restart replication as follows:
 
-1. Navigate to the universe **xCluster Replication** tab.
+1. Navigate to the universe **xCluster Replication** tab and select the replication configuration.
 
-1. Click **Actions** and choose **Advanced** and **Resync target**.
+1. Click **Actions** and choose **Restart Replication**.
 1. Select the databases to be copied to the target.
-1. Click **Next: Confirm Full Copy**.
+1. Click **Next: Configure Full Copy** and choose the storage configuration.
 1. Click **Create a New Full Copy**.
 
 This performs a full copy of the databases (YSQL) or tables (YCQL) involved from the source to the target.
 
-## Remove replication
+## Pause and remove replication
+
+To pause xCluster replication for a universe, do the following:
+
+1. Navigate to the universe **xCluster Replication** tab and select the replication configuration.
+
+1. Click **Pause Replication**.
 
 To remove xCluster replication for a universe, do the following:
 
-1. Navigate to your source universe.
+1. Navigate to the universe **xCluster Replication** tab and select the replication configuration.
 
-1. On the **xCluster Replication** tab, click **Actions** and choose **Delete Replication**.
+1. Click **Actions** and choose **Delete Replication**.
 
 You can opt to ignore errors and force delete the replication, but this is not recommended except in some rare scenarios. You can use this option to delete the xCluster configuration when one of the universes is inaccessible. However, doing so may cause some state information related to replication to be left behind on the underlying YugabyteDB universes that will require manual cleanup later on.
