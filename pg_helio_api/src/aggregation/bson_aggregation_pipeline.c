@@ -4416,13 +4416,60 @@ HandleGroup(const bson_value_t *existingValue, Query *query,
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$stdDevSamp"))
 		{
-			ereport(ERROR, (errcode(MongoCommandNotSupported),
-							errmsg("Accumulator $stdDevSamp not implemented yet")));
+			if (!(IsClusterVersionAtleastThis(1, 20, 0)))
+			{
+				ereport(ERROR, (errcode(MongoCommandNotSupported),
+								errmsg("Accumulator $stdDevSamp is not implemented yet"),
+								errhint(
+									"Accumulator $stdDevSamp is not implemented yet")));
+			}
+
+			if (accumulatorElement.bsonValue.value_type == BSON_TYPE_ARRAY)
+			{
+				ereport(ERROR, (errcode(MongoLocation40237), errmsg(
+									"The %s accumulator is a unary operator",
+									accumulatorName.string)),
+						errhint("The %s accumulator is a unary operator",
+								accumulatorName.string));
+			}
+
+			repathArgs = AddSimpleGroupAccumulator(query,
+												   &accumulatorElement.bsonValue,
+												   repathArgs,
+												   accumulatorText, parseState,
+												   identifiers,
+												   origEntry->expr,
+												   BsonStdDevSampAggregateFunctionOid(),
+												   context->variableSpec);
 		}
 		else if (StringViewEqualsCString(&accumulatorName, "$stdDevPop"))
 		{
-			ereport(ERROR, (errcode(MongoCommandNotSupported),
-							errmsg("Accumulator $stdDevPop not implemented yet")));
+			if (!(IsClusterVersionAtleastThis(1, 20, 0)))
+			{
+				ereport(ERROR, (errcode(MongoCommandNotSupported),
+								errmsg("Accumulator $stdDevPop is not implemented yet"),
+								errhint(
+									"Accumulator $stdDevPop is not implemented yet")));
+			}
+
+
+			if (accumulatorElement.bsonValue.value_type == BSON_TYPE_ARRAY)
+			{
+				ereport(ERROR, (errcode(MongoLocation40237), errmsg(
+									"The %s accumulator is a unary operator",
+									accumulatorName.string)),
+						errhint("The %s accumulator is a unary operator",
+								accumulatorName.string));
+			}
+
+			repathArgs = AddSimpleGroupAccumulator(query,
+												   &accumulatorElement.bsonValue,
+												   repathArgs,
+												   accumulatorText, parseState,
+												   identifiers,
+												   origEntry->expr,
+												   BsonStdDevPopAggregateFunctionOid(),
+												   context->variableSpec);
 		}
 		else
 		{

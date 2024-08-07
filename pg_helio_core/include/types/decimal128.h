@@ -63,6 +63,7 @@ bool GetBsonDecimal128AsBool(const bson_value_t *value);
 char * GetBsonDecimal128AsString(const bson_value_t *value);
 bson_decimal128_t GetBsonValueAsDecimal128(const bson_value_t *value);
 bson_decimal128_t GetBsonValueAsDecimal128Quantized(const bson_value_t *value);
+bson_decimal128_t GetDecimal128FromInt64(int64_t value);
 
 /* ========= */
 /* Utilities */

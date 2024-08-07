@@ -135,7 +135,6 @@ static void LogWith1Operand(const char *logMessage, const BID_UINT128 *op1, cons
 static void LogWith2Operands(const char *logMessage, const BID_UINT128 *op1, const
 							 BID_UINT128 *op2, const _IDEC_flags *flag);
 static Decimal128Result GetDecimal128ResultFromFlag(_IDEC_flags flag);
-static bson_decimal128_t GetDecimal128FromInt64(int64_t value);
 static int64_t Decimal128ToInt64Floor(const bson_value_t *value, bool *isOverFlow);
 static Decimal128Result RoundOrTruncateDecimal128Number(const bson_value_t *number,
 														int64_t precision,
@@ -152,6 +151,7 @@ static Decimal128Result Decimal128MathematicalOperation1Operand(const bson_value
 																operation);
 static bson_decimal128_t GetBsonValueAsDecimal128Core(const bson_value_t *value,
 													  bool shouldQuantized);
+
 
 /*
  * Get the decimal 128 value as int32.
@@ -1548,7 +1548,7 @@ Decimal128ToInt64Floor(const bson_value_t *value, bool *isOverFlow)
 
 
 /* Get the bson_decimal_128 representation value from 64 bit integer */
-static bson_decimal128_t
+bson_decimal128_t
 GetDecimal128FromInt64(int64_t value)
 {
 	BID_UINT128 bidValue = __bid128_from_int64(value);

@@ -11,6 +11,7 @@
 #include <postgres.h>
 #include <fmgr.h>
 #include <catalog/pg_type.h>
+#include <math.h>
 
 #include "io/helio_bson_core.h"
 #include "query/helio_bson_compare.h"
@@ -24,6 +25,7 @@
 #include "aggregation/bson_tree.h"
 #include "aggregation/bson_tree_write.h"
 #include "aggregation/bson_sorted_accumulator.h"
+#include "types/decimal128.h"
 
 
 /* --------------------------------------------------------- */
@@ -87,6 +89,14 @@ typedef struct BsonOutAggregateState
 	bool hasFailure;
 } BsonOutAggregateState;
 
+/* state used for pop and sample variance both */
+typedef struct BsonStdDevAggState
+{
+	bson_value_t sx;
+	bson_value_t sxx;
+	bson_value_t count;
+} BsonStdDevAggState;
+
 const char charset[] = "abcdefghijklmnopqrstuvwxyz0123456789";
 
 
@@ -95,12 +105,15 @@ const char charset[] = "abcdefghijklmnopqrstuvwxyz0123456789";
 /* --------------------------------------------------------- */
 
 static bytea * AllocateBsonNumericAggState(void);
+static bytea * AllocateBsonStdDevAggState(void);
 static void CheckAggregateIntermediateResultSize(uint32_t size);
 static void GenerateUnqiqueStagingCollectionNameForOut(char *collectionName);
 static void CreateObjectAggTreeNodes(BsonObjectAggState *currentState,
 									 pgbson *currentValue);
 static void ValidateMergeObjectsInput(pgbson *input);
 static Datum ParseAndReturnMergeObjectsTree(BsonObjectAggState *state);
+static bool CalculateStandardVariance(bson_value_t *newValue,
+									  BsonStdDevAggState *currentState);
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -129,6 +142,10 @@ PG_FUNCTION_INFO_V1(bson_add_to_set_final);
 PG_FUNCTION_INFO_V1(bson_merge_objects_transition_on_sorted);
 PG_FUNCTION_INFO_V1(bson_merge_objects_transition);
 PG_FUNCTION_INFO_V1(bson_merge_objects_final);
+PG_FUNCTION_INFO_V1(bson_std_dev_pop_samp_transition);
+PG_FUNCTION_INFO_V1(bson_std_dev_pop_samp_combine);
+PG_FUNCTION_INFO_V1(bson_std_dev_pop_final);
+PG_FUNCTION_INFO_V1(bson_std_dev_samp_final);
 
 Datum
 bson_out_transition(PG_FUNCTION_ARGS)
@@ -1315,6 +1332,437 @@ bson_add_to_set_final(PG_FUNCTION_ARGS)
 }
 
 
+/*
+ * Transition function for the BSON_STD_DEV_POP and BSON_STD_DEV_SAMP aggregate.
+ * Implementation refer to https://github.com/postgres/postgres/blob/master/src/backend/utils/adt/float.c#L2950
+ */
+Datum
+bson_std_dev_pop_samp_transition(PG_FUNCTION_ARGS)
+{
+	bytea *bytes;
+	BsonStdDevAggState *currentState;
+
+	/* If the intermediate state has never been initialized, create it */
+	if (PG_ARGISNULL(0))
+	{
+		MemoryContext aggregateContext;
+		if (!AggCheckCallContext(fcinfo, &aggregateContext))
+		{
+			ereport(ERROR, errmsg(
+						"aggregate function std dev pop sample transition called in non-aggregate context"));
+		}
+
+		/* Create the aggregate state in the aggregate context. */
+		MemoryContext oldContext = MemoryContextSwitchTo(aggregateContext);
+
+		bytes = AllocateBsonStdDevAggState();
+
+		currentState = (BsonStdDevAggState *) VARDATA(bytes);
+		currentState->sx.value_type = BSON_TYPE_DECIMAL128;
+		SetDecimal128Zero(&currentState->sx);
+		currentState->sxx.value_type = BSON_TYPE_DECIMAL128;
+		SetDecimal128Zero(&currentState->sxx);
+		currentState->count.value_type = BSON_TYPE_DECIMAL128;
+		SetDecimal128Zero(&currentState->count);
+
+		MemoryContextSwitchTo(oldContext);
+	}
+	else
+	{
+		bytes = PG_GETARG_BYTEA_P(0);
+		currentState = (BsonStdDevAggState *) VARDATA_ANY(bytes);
+	}
+	pgbson *currentValue = PG_GETARG_MAYBE_NULL_PGBSON(1);
+
+	if (IsPgbsonEmptyDocument(currentValue))
+	{
+		PG_RETURN_POINTER(bytes);
+	}
+
+	pgbsonelement currentValueElement;
+	PgbsonToSinglePgbsonElement(currentValue, &currentValueElement);
+
+	/* mongo ignores non-numeric values */
+	if (BsonValueIsNumber(&currentValueElement.bsonValue))
+	{
+		if (!CalculateStandardVariance(&currentValueElement.bsonValue, currentState))
+		{
+			ereport(ERROR, (errcode(MongoInternalError)),
+					errmsg(
+						"CalculateStandardVariance: currentValue = %s, currentState->sx = %s, currentState->sxx = %s, currentState->count = %s",
+						BsonValueToJsonForLogging(
+							&currentValueElement.bsonValue),
+						BsonValueToJsonForLogging(&currentState->sx),
+						BsonValueToJsonForLogging(&currentState->sxx),
+						BsonValueToJsonForLogging(&currentState->count)),
+					errhint(
+						"CalculateStandardVariance: currentValue = %s, currentState->sx = %s, currentState->sxx = %s, currentState->count = %s",
+						BsonValueToJsonForLogging(
+							&currentValueElement.bsonValue),
+						BsonValueToJsonForLogging(&currentState->sx),
+						BsonValueToJsonForLogging(&currentState->sxx),
+						BsonValueToJsonForLogging(&currentState->count)));
+		}
+	}
+
+	PG_RETURN_POINTER(bytes);
+}
+
+
+/*
+ * Applies the "combine function" (COMBINEFUNC) for std_dev_pop and std_dev_samp.
+ * takes two of the aggregate state structures (bson_std_dev_agg_state)
+ * and combines them to form a new bson_std_dev_agg_state that has the combined
+ * sum and count.
+ */
+Datum
+bson_std_dev_pop_samp_combine(PG_FUNCTION_ARGS)
+{
+	MemoryContext aggregateContext;
+	if (!AggCheckCallContext(fcinfo, &aggregateContext))
+	{
+		ereport(ERROR, errmsg("aggregate function called in non-aggregate context"));
+	}
+
+	/* Create the aggregate state in the aggregate context. */
+	MemoryContext oldContext = MemoryContextSwitchTo(aggregateContext);
+
+	bytea *combinedStateBytes = AllocateBsonStdDevAggState();
+	BsonStdDevAggState *currentState = (BsonStdDevAggState *) VARDATA_ANY(
+		combinedStateBytes);
+
+	MemoryContextSwitchTo(oldContext);
+
+	/* Handle either left or right being null. A new state needs to be allocated regardless */
+	currentState->sx.value_type = BSON_TYPE_DECIMAL128;
+	SetDecimal128Zero(&currentState->sx);
+	currentState->sxx.value_type = BSON_TYPE_DECIMAL128;
+	SetDecimal128Zero(&currentState->sxx);
+	currentState->count.value_type = BSON_TYPE_DECIMAL128;
+	SetDecimal128Zero(&currentState->count);
+
+	/*--------------------
+	 * The transition values combine using a generalization of the
+	 * Youngs-Cramer algorithm as follows:
+	 *
+	 *	N = N1 + N2
+	 *	Sx = Sx1 + Sx2
+	 *	Sxx = Sxx1 + Sxx2 + N1 * N2 * (Sx1/N1 - Sx2/N2)^2 / N;
+	 *
+	 * It's worth handling the special cases N1 = 0 and N2 = 0 separately
+	 * since those cases are trivial, and we then don't need to worry about
+	 * division-by-zero errors in the general case.
+	 *--------------------
+	 */
+
+	if (PG_ARGISNULL(0))
+	{
+		if (PG_ARGISNULL(1))
+		{
+			PG_RETURN_NULL();
+		}
+		memcpy(VARDATA(combinedStateBytes), VARDATA_ANY(PG_GETARG_BYTEA_P(1)),
+			   sizeof(BsonStdDevAggState));
+	}
+	else if (PG_ARGISNULL(1))
+	{
+		if (PG_ARGISNULL(0))
+		{
+			PG_RETURN_NULL();
+		}
+		memcpy(VARDATA(combinedStateBytes), VARDATA_ANY(PG_GETARG_BYTEA_P(0)),
+			   sizeof(BsonStdDevAggState));
+	}
+	else
+	{
+		BsonStdDevAggState *leftState = (BsonStdDevAggState *) VARDATA_ANY(
+			PG_GETARG_BYTEA_P(0));
+		BsonStdDevAggState *rightState = (BsonStdDevAggState *) VARDATA_ANY(
+			PG_GETARG_BYTEA_P(1));
+
+		/* currentState->count = leftState->count + rightState->count */
+		if (AddDecimal128Numbers(&leftState->count, &rightState->count,
+								 &currentState->count) != Decimal128Result_Success)
+		{
+			ereport(ERROR, (errcode(MongoInternalError)),
+					errmsg("bson_std_dev_pop_samp_combine: count = %f",
+						   BsonValueAsDouble(&currentState->count)),
+					errhint("bson_std_dev_pop_samp_combine: count = %f",
+							BsonValueAsDouble(&currentState->count)));
+		}
+
+		/* currentState->sx = leftState->sx + rightState->sx */
+		if (AddDecimal128Numbers(&leftState->sx, &rightState->sx, &currentState->sx) !=
+			Decimal128Result_Success)
+		{
+			ereport(ERROR, (errcode(MongoInternalError)),
+					errmsg("bson_std_dev_pop_samp_combine: sx = %f",
+						   BsonValueAsDouble(&currentState->sx)),
+					errhint("bson_std_dev_pop_samp_combine: sx = %f",
+							BsonValueAsDouble(&currentState->sx)));
+		}
+
+		bson_value_t decimalTmpLeft;
+		decimalTmpLeft.value_type = BSON_TYPE_DECIMAL128;
+		SetDecimal128Zero(&decimalTmpLeft);
+
+		bson_value_t decimalTmpRight;
+		decimalTmpRight.value_type = BSON_TYPE_DECIMAL128;
+		SetDecimal128Zero(&decimalTmpRight);
+
+		bson_value_t decimalTmp;
+		decimalTmp.value_type = BSON_TYPE_DECIMAL128;
+
+		/* decimalTmp = leftState->sx / leftState->count - rightState->sx / rightState->count; */
+		if (BsonValueAsDouble(&leftState->count) > 0.0)
+		{
+			if (DivideDecimal128Numbers(&leftState->sx, &leftState->count,
+										&decimalTmpLeft) != Decimal128Result_Success)
+			{
+				ereport(ERROR, (errcode(MongoInternalError)),
+						errmsg(
+							"bson_std_dev_pop_samp_combine: decimalTmpLeft = %f",
+							BsonValueAsDouble(&decimalTmpLeft)),
+						errhint(
+							"bson_std_dev_pop_samp_combine: decimalTmpLeft = %f",
+							BsonValueAsDouble(&decimalTmpLeft)));
+			}
+		}
+
+		if (BsonValueAsDouble(&rightState->count) > 0.0)
+		{
+			if (DivideDecimal128Numbers(&rightState->sx, &rightState->count,
+										&decimalTmpRight) != Decimal128Result_Success)
+			{
+				ereport(ERROR, (errcode(MongoInternalError)),
+						errmsg(
+							"bson_std_dev_pop_samp_combine: decimalTmpRight = %f",
+							BsonValueAsDouble(&decimalTmpRight)),
+						errhint("bson_std_dev_pop_samp_combine: decimalTmpRight = %f",
+								BsonValueAsDouble(&decimalTmpRight)));
+			}
+		}
+
+		if (SubtractDecimal128Numbers(&decimalTmpLeft, &decimalTmpRight, &decimalTmp) !=
+			Decimal128Result_Success)
+		{
+			ereport(ERROR, (errcode(MongoInternalError)),
+					errmsg("bson_std_dev_pop_samp_combine: decimalTmp = %f",
+						   BsonValueAsDouble(&decimalTmp)),
+					errhint("bson_std_dev_pop_samp_combine: decimalTmp = %f",
+							BsonValueAsDouble(&decimalTmp)));
+		}
+
+		bson_value_t decimalNxx;
+		decimalNxx.value_type = BSON_TYPE_DECIMAL128;
+		if (MultiplyDecimal128Numbers(&leftState->count, &rightState->count,
+									  &decimalNxx) != Decimal128Result_Success)
+		{
+			ereport(ERROR, (errcode(MongoInternalError)),
+					errmsg("bson_std_dev_pop_samp_combine: decimalNxx = %f",
+						   BsonValueAsDouble(&decimalNxx)),
+					errhint("bson_std_dev_pop_samp_combine: decimalNxx = %f",
+							BsonValueAsDouble(&decimalNxx)));
+		}
+
+		bson_value_t decimalTmp1 = decimalTmp;
+		bson_value_t decimalTmpxx;
+		decimalTmpxx.value_type = BSON_TYPE_DECIMAL128;
+		if (MultiplyDecimal128Numbers(&decimalTmp, &decimalTmp1, &decimalTmpxx) !=
+			Decimal128Result_Success)
+		{
+			ereport(ERROR, (errcode(MongoInternalError)),
+					errmsg("bson_std_dev_pop_samp_combine: decimalTmpxx = %f",
+						   BsonValueAsDouble(&decimalTmpxx)),
+					errhint("bson_std_dev_pop_samp_combine: decimalTmpxx = %f",
+							BsonValueAsDouble(&decimalTmpxx)));
+		}
+
+		bson_value_t decimalNxTmp;
+		decimalNxx.value_type = BSON_TYPE_DECIMAL128;
+		if (MultiplyDecimal128Numbers(&decimalNxx, &decimalTmpxx, &decimalNxTmp) !=
+			Decimal128Result_Success)
+		{
+			ereport(ERROR, (errcode(MongoInternalError)),
+					errmsg("bson_std_dev_pop_samp_combine: decimalNxTmp = %f",
+						   BsonValueAsDouble(&decimalNxTmp)),
+					errhint("bson_std_dev_pop_samp_combine: decimalNxTmp = %f",
+							BsonValueAsDouble(&decimalNxTmp)));
+		}
+
+		bson_value_t decimalD;
+		decimalD.value_type = BSON_TYPE_DECIMAL128;
+		SetDecimal128Zero(&decimalD);
+		if (BsonValueAsDouble(&currentState->count) > 0.0)
+		{
+			if (DivideDecimal128Numbers(&decimalNxTmp, &currentState->count, &decimalD) !=
+				Decimal128Result_Success)
+			{
+				ereport(ERROR, (errcode(MongoInternalError)),
+						errmsg("bson_std_dev_pop_samp_combine: decimalD = %f",
+							   BsonValueAsDouble(&decimalD)),
+						errhint("bson_std_dev_pop_samp_combine: decimalD = %f",
+								BsonValueAsDouble(&decimalD)));
+			}
+		}
+		if (AddDecimal128Numbers(&leftState->sxx, &rightState->sxx, &currentState->sxx) !=
+			Decimal128Result_Success)
+		{
+			ereport(ERROR, (errcode(MongoInternalError)),
+					errmsg("bson_std_dev_pop_samp_combine: currentState->sxx = %f",
+						   BsonValueAsDouble(&currentState->sxx)),
+					errhint("bson_std_dev_pop_samp_combine: currentState->sxx = %f",
+							BsonValueAsDouble(&currentState->sxx)));
+		}
+
+
+		if (AddDecimal128Numbers(&currentState->sxx, &decimalD, &currentState->sxx) !=
+			Decimal128Result_Success)
+		{
+			ereport(ERROR, (errcode(MongoInternalError)),
+					errmsg("bson_std_dev_pop_samp_combine: currentState->sxx = %f",
+						   BsonValueAsDouble(&currentState->sxx)),
+					errhint("bson_std_dev_pop_samp_combine: currentState->sxx = %f",
+							BsonValueAsDouble(&currentState->sxx)));
+		}
+	}
+
+	PG_RETURN_POINTER(combinedStateBytes);
+}
+
+
+/*
+ * Applies the "final calculation" (FINALFUNC) for std_dev_pop.
+ * This takes the final value created and outputs a bson "std_dev_pop"
+ * with the appropriate type.
+ */
+Datum
+bson_std_dev_pop_final(PG_FUNCTION_ARGS)
+{
+	bytea *stdDevIntermediateState = PG_ARGISNULL(0) ? NULL : PG_GETARG_BYTEA_P(0);
+
+	pgbsonelement finalValue;
+	finalValue.path = "";
+	finalValue.pathLength = 0;
+	if (stdDevIntermediateState != NULL)
+	{
+		BsonStdDevAggState *stdDevState = (BsonStdDevAggState *) VARDATA_ANY(
+			stdDevIntermediateState);
+
+		if (IsBsonValueNaN(&stdDevState->sxx))
+		{
+			finalValue.bsonValue.value_type = BSON_TYPE_DOUBLE;
+			finalValue.bsonValue.value.v_double = NAN;
+		}
+		else if (BsonValueAsInt64(&stdDevState->count) == 0)
+		{
+			/* Mongo returns $null for empty sets */
+			finalValue.bsonValue.value_type = BSON_TYPE_NULL;
+		}
+		else if (BsonValueAsInt64(&stdDevState->count) == 1)
+		{
+			/* Mongo returns 0 for single numeric value */
+			finalValue.bsonValue.value_type = BSON_TYPE_INT32;
+			finalValue.bsonValue.value.v_int32 = 0;
+		}
+		else
+		{
+			bson_value_t result;
+			result.value_type = BSON_TYPE_DECIMAL128;
+			if (DivideDecimal128Numbers(&stdDevState->sxx, &stdDevState->count,
+										&result) != Decimal128Result_Success)
+			{
+				ereport(DEBUG1, (errcode(MongoInternalError)),
+						errmsg("bson_std_dev_pop_final: result = %lf",
+							   BsonValueAsDouble(&result)),
+						errhint("bson_std_dev_pop_final: result = %lf",
+								BsonValueAsDouble(&result)));
+			}
+
+			finalValue.bsonValue.value_type = BSON_TYPE_DOUBLE;
+			finalValue.bsonValue.value.v_double = sqrt(BsonValueAsDouble(&result));
+		}
+	}
+	else
+	{
+		/* Mongo returns $null for empty sets */
+		finalValue.bsonValue.value_type = BSON_TYPE_NULL;
+	}
+
+	PG_RETURN_POINTER(PgbsonElementToPgbson(&finalValue));
+}
+
+
+/*
+ * Applies the "final calculation" (FINALFUNC) for std_dev_samp.
+ * This takes the final value created and outputs a bson "std_dev_samp"
+ * with the appropriate type.
+ */
+Datum
+bson_std_dev_samp_final(PG_FUNCTION_ARGS)
+{
+	bytea *stdDevIntermediateState = PG_ARGISNULL(0) ? NULL : PG_GETARG_BYTEA_P(0);
+
+	pgbsonelement finalValue;
+	finalValue.path = "";
+	finalValue.pathLength = 0;
+	if (stdDevIntermediateState != NULL)
+	{
+		BsonStdDevAggState *stdDevState = (BsonStdDevAggState *) VARDATA_ANY(
+			stdDevIntermediateState);
+		if (BsonValueAsInt64(&stdDevState->count) == 0 || BsonValueAsInt64(
+				&stdDevState->count) == 1)
+		{
+			/* Mongo returns $null for empty sets or single numeric value */
+			finalValue.bsonValue.value_type = BSON_TYPE_NULL;
+		}
+		else
+		{
+			bson_value_t decimalOne;
+			decimalOne.value_type = BSON_TYPE_DECIMAL128;
+			decimalOne.value.v_decimal128 = GetDecimal128FromInt64(1);
+
+			bson_value_t countMinus1;
+			countMinus1.value_type = BSON_TYPE_DECIMAL128;
+			if (SubtractDecimal128Numbers(&stdDevState->count, &decimalOne,
+										  &countMinus1) != Decimal128Result_Success)
+			{
+				ereport(ERROR, (errcode(MongoInternalError)),
+						errmsg("bson_std_dev_samp_final: countMinus1 = %f",
+							   BsonValueAsDouble(&countMinus1)),
+						errhint("bson_std_dev_samp_final: countMinus1 = %f",
+								BsonValueAsDouble(&countMinus1)));
+			}
+
+			bson_value_t result;
+			result.value_type = BSON_TYPE_DECIMAL128;
+			Decimal128Result decimalOpResult = DivideDecimal128Numbers(&stdDevState->sxx,
+																	   &countMinus1,
+																	   &result);
+			if (decimalOpResult != Decimal128Result_Success && decimalOpResult !=
+				Decimal128Result_Inexact)
+			{
+				ereport(ERROR, (errcode(MongoInternalError)),
+						errmsg("bson_std_dev_samp_final: result = %f",
+							   BsonValueAsDouble(&result)),
+						errhint("bson_std_dev_samp_final: result = %f",
+								BsonValueAsDouble(&result)));
+			}
+
+			finalValue.bsonValue.value_type = BSON_TYPE_DOUBLE;
+			finalValue.bsonValue.value.v_double = sqrt(BsonValueAsDouble(&result));
+		}
+	}
+	else
+	{
+		/* Mongo returns $null for empty sets */
+		finalValue.bsonValue.value_type = BSON_TYPE_NULL;
+	}
+
+	PG_RETURN_POINTER(PgbsonElementToPgbson(&finalValue));
+}
+
+
 /* --------------------------------------------------------- */
 /* Private helper methods */
 /* --------------------------------------------------------- */
@@ -1323,6 +1771,17 @@ bytea *
 AllocateBsonNumericAggState()
 {
 	int bson_size = sizeof(BsonNumericAggState) + VARHDRSZ;
+	bytea *combinedStateBytes = (bytea *) palloc0(bson_size);
+	SET_VARSIZE(combinedStateBytes, bson_size);
+
+	return combinedStateBytes;
+}
+
+
+bytea *
+AllocateBsonStdDevAggState()
+{
+	int bson_size = sizeof(BsonStdDevAggState) + VARHDRSZ;
 	bytea *combinedStateBytes = (bytea *) palloc0(bson_size);
 	SET_VARSIZE(combinedStateBytes, bson_size);
 
@@ -1494,4 +1953,185 @@ ParseAndReturnMergeObjectsTree(BsonObjectAggState *state)
 	{
 		PG_RETURN_POINTER(PgbsonInitEmpty());
 	}
+}
+
+
+/*
+ * Function to calculate standard variance.
+ * Use the Youngs-Cramer algorithm to incorporate the new value into the
+ * transition values.
+ */
+static bool
+CalculateStandardVariance(bson_value_t *newValue, BsonStdDevAggState *currentState)
+{
+	bool success = true;
+
+	bson_value_t decimalOne;
+	decimalOne.value_type = BSON_TYPE_DECIMAL128;
+	decimalOne.value.v_decimal128 = GetDecimal128FromInt64(1);
+
+	bson_value_t decimalTmp;
+	decimalTmp.value_type = BSON_TYPE_DECIMAL128;
+
+	bson_value_t decimalNxx;
+	decimalNxx.value_type = BSON_TYPE_DECIMAL128;
+
+	bson_value_t decimalCurrentValue;
+	decimalCurrentValue.value_type = BSON_TYPE_DECIMAL128;
+	decimalCurrentValue.value.v_decimal128 = GetBsonValueAsDecimal128Quantized(
+		newValue);
+
+	/* decimalN = currentState->count */
+	bson_value_t decimalN;
+	decimalN.value_type = BSON_TYPE_DECIMAL128;
+	decimalN.value.v_decimal128 = GetBsonValueAsDecimal128Quantized(
+		&currentState->count);
+
+	/* decimalN += 1.0 */
+	if (AddDecimal128Numbers(&decimalN, &decimalOne,
+							 &decimalN) != Decimal128Result_Success)
+	{
+		success = false;
+		ereport(ERROR, (errcode(MongoInternalError)),
+				errmsg("bson_std_dev_pop_samp_transition: count = %f",
+					   BsonValueAsDouble(&currentState->count)),
+				errhint("bson_std_dev_pop_samp_transition: count = %f",
+						BsonValueAsDouble(&currentState->count)));
+	}
+
+	if (IsBsonValueInfinity(newValue))
+	{
+		bson_value_t doubleNaN;
+		doubleNaN.value_type = BSON_TYPE_DOUBLE;
+		doubleNaN.value.v_double = NAN;
+
+		currentState->sxx.value_type = BSON_TYPE_DECIMAL128;
+		currentState->sxx.value.v_decimal128 = GetBsonValueAsDecimal128Quantized(
+			&doubleNaN);
+
+		currentState->count = decimalN;
+		return success;
+	}
+
+	/* currentState->sx += decimalCurrentValue */
+	if (AddDecimal128Numbers(&currentState->sx, &decimalCurrentValue,
+							 &currentState->sx) != Decimal128Result_Success)
+	{
+		success = false;
+		ereport(ERROR, (errcode(MongoInternalError)),
+				errmsg("bson_std_dev_pop_samp_transition: sx = %f",
+					   BsonValueAsDouble(&currentState->sx)),
+				errhint("bson_std_dev_pop_samp_transition: sx = %f",
+						BsonValueAsDouble(&currentState->sx)));
+	}
+
+	if (BsonValueAsDouble(&currentState->count) > 0.0)
+	{
+		/* decimalTmp = decimalCurrentValue * decimalN - currentState->sx; */
+		Decimal128Result decimalOpResult = MultiplyDecimal128Numbers(&decimalCurrentValue,
+																	 &decimalN,
+																	 &decimalTmp);
+		if (decimalOpResult != Decimal128Result_Success && decimalOpResult !=
+			Decimal128Result_Inexact)
+		{
+			success = false;
+			ereport(ERROR, (errcode(MongoInternalError)),
+					errmsg("bson_std_dev_pop_samp_transition: decimalTmp_1 = %f",
+						   BsonValueAsDouble(&decimalTmp)),
+					errhint("bson_std_dev_pop_samp_transition: decimalTmp_1 = %f",
+							BsonValueAsDouble(&decimalTmp)));
+		}
+
+		decimalOpResult = SubtractDecimal128Numbers(&decimalTmp, &currentState->sx,
+													&decimalTmp);
+		if (decimalOpResult != Decimal128Result_Success && decimalOpResult !=
+			Decimal128Result_Inexact)
+		{
+			success = false;
+			ereport(ERROR, (errcode(MongoInternalError)),
+					errmsg("bson_std_dev_pop_samp_transition: decimalTmp_2 = %f",
+						   BsonValueAsDouble(&decimalTmp)),
+					errhint("bson_std_dev_pop_samp_transition: decimalTmp_2 = %f",
+							BsonValueAsDouble(&decimalTmp)));
+		}
+
+		/* currentState->sxx += decimalTmp * decimalTmp / (decimalN * currentState->count); */
+		bson_value_t decimalTmp2 = decimalTmp;
+		bson_value_t decimalTmp3 = decimalTmp;
+
+		decimalOpResult = MultiplyDecimal128Numbers(&decimalTmp2, &decimalTmp3,
+													&decimalTmp);
+		if (decimalOpResult != Decimal128Result_Success && decimalOpResult !=
+			Decimal128Result_Inexact)
+		{
+			success = false;
+			ereport(ERROR, (errcode(MongoInternalError)),
+					errmsg("bson_std_dev_pop_samp_transition: decimalTmp_3 = %f",
+						   BsonValueAsDouble(&decimalTmp)),
+					errhint("bson_std_dev_pop_samp_transition: decimalTmp_3 = %f",
+							BsonValueAsDouble(&decimalTmp)));
+		}
+
+		decimalOpResult = MultiplyDecimal128Numbers(&decimalN, &currentState->count,
+													&decimalNxx);
+		if (decimalOpResult != Decimal128Result_Success && decimalOpResult !=
+			Decimal128Result_Inexact)
+		{
+			success = false;
+			ereport(ERROR, (errcode(MongoInternalError)),
+					errmsg("bson_std_dev_pop_samp_transition: decimalNxx = %f",
+						   BsonValueAsDouble(&decimalNxx)),
+					errhint("bson_std_dev_pop_samp_transition: decimalNxx = %f",
+							BsonValueAsDouble(&decimalNxx)));
+		}
+
+		decimalTmp2 = decimalTmp;
+		decimalOpResult = DivideDecimal128Numbers(&decimalTmp2, &decimalNxx, &decimalTmp);
+		if (decimalOpResult != Decimal128Result_Success && decimalOpResult !=
+			Decimal128Result_Inexact)
+		{
+			success = false;
+			ereport(ERROR, (errcode(MongoInternalError)),
+					errmsg("bson_std_dev_pop_samp_transition: decimalTmp_4 = %f",
+						   BsonValueAsDouble(&decimalTmp)),
+					errhint("bson_std_dev_pop_samp_transition: decimalTmp_4 = %f",
+							BsonValueAsDouble(&decimalTmp)));
+		}
+
+		decimalOpResult = AddDecimal128Numbers(&currentState->sxx, &decimalTmp,
+											   &currentState->sxx);
+		if (decimalOpResult != Decimal128Result_Success && decimalOpResult !=
+			Decimal128Result_Inexact)
+		{
+			success = false;
+			ereport(ERROR, (errcode(MongoInternalError)),
+					errmsg("bson_std_dev_pop_samp_transition: sxx = %f",
+						   BsonValueAsDouble(&currentState->sxx)),
+					errhint("bson_std_dev_pop_samp_transition: sxx = %f",
+							BsonValueAsDouble(&currentState->sxx)));
+		}
+	}
+	else
+	{
+		/*
+		 * At the first input, we normally can leave currentState->sxx as 0.
+		 * However, if the first input is Inf or NaN, we'd better force currentState->sxx
+		 * to NaN; otherwise we will falsely report variance zero when there are no
+		 * more inputs.
+		 */
+		if (IsBsonValueNaN(newValue) ||
+			IsBsonValueInfinity(newValue) != 0)
+		{
+			bson_value_t doubleNaN;
+			doubleNaN.value_type = BSON_TYPE_DOUBLE;
+			doubleNaN.value.v_double = NAN;
+
+			currentState->sxx.value_type = BSON_TYPE_DECIMAL128;
+			currentState->sxx.value.v_decimal128 = GetBsonValueAsDecimal128Quantized(
+				&doubleNaN);
+		}
+	}
+
+	currentState->count = decimalN;
+	return success;
 }

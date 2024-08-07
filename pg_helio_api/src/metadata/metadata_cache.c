@@ -683,6 +683,12 @@ typedef struct HelioApiOidCacheData
 	/* OID of the bson_repath_and_build function */
 	Oid ApiCatalogBsonRepathAndBuildFunctionOid;
 
+	/* OID of the BSONSTDDEVPOP aggregate function */
+	Oid ApiCatalogBsonStdDevPopAggregateFunctionOid;
+
+	/* OID of the BSONSTDDEVSAMP aggregate function */
+	Oid ApiCatalogBsonStdDevSampAggregateFunctionOid;
+
 	/* OID of the pg_catalog.any_value aggregate */
 	Oid PostgresAnyValueFunctionOid;
 
@@ -3326,6 +3332,24 @@ BsonLastNOnSortedAggregateFunctionOid(void)
 	return GetAggregateFunctionByName(
 		&Cache.ApiCatalogBsonLastNOnSortedAggregateFunctionOid,
 		ApiCatalogSchemaName, "bsonlastnonsorted");
+}
+
+
+Oid
+BsonStdDevPopAggregateFunctionOid(void)
+{
+	return GetAggregateFunctionByName(
+		&Cache.ApiCatalogBsonStdDevPopAggregateFunctionOid,
+		"helio_api_internal", "bsonstddevpop");
+}
+
+
+Oid
+BsonStdDevSampAggregateFunctionOid(void)
+{
+	return GetAggregateFunctionByName(
+		&Cache.ApiCatalogBsonStdDevSampAggregateFunctionOid,
+		"helio_api_internal", "bsonstddevsamp");
 }
 
 

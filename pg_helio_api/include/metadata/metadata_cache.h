@@ -302,6 +302,8 @@ Oid BsonFirstNOnSortedAggregateFunctionOid(void);
 Oid BsonLastNAggregateFunctionOid(void);
 Oid BsonLastNOnSortedAggregateFunctionOid(void);
 Oid BsonAddToSetAggregateFunctionOid(void);
+Oid BsonStdDevPopAggregateFunctionOid(void);
+Oid BsonStdDevSampAggregateFunctionOid(void);
 Oid PostgresAnyValueFunctionOid(void);
 Oid BsonLookupExtractFilterExpressionFunctionOid(void);
 Oid BsonDollarLookupExpressionEvalMergeOid(void);
