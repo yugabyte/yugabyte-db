@@ -3,7 +3,7 @@ title: Bidirectional replication using xCluster
 headerTitle: Bidirectional replication
 linkTitle: Bidirectional replication
 description: Bidirectional replication using xCluster
-headContent: Switch application traffic to the DR replica
+headContent: Replicate data in both directions
 menu:
   preview_yugabyte-platform:
     parent: xcluster-replication

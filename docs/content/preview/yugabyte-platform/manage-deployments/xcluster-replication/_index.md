@@ -3,7 +3,7 @@ title: Configure xCluster replication for a YugabyteDB Anywhere universe
 headerTitle: xCluster replication
 linkTitle: xCluster replication
 description: Enable xCluster replication between universes
-headContent: Fail over to a replica universe in case of unplanned outages
+headContent: Active universe with standby using xCluster deployment
 menu:
   preview_yugabyte-platform:
     parent: manage-deployments
@@ -13,7 +13,7 @@ type: indexpage
 showRightNav: true
 ---
 
-xCluster replication is an asynchronous replication feature in YugabyteDB that allows you to replicate data between independent YugabyteDB clusters. You can set up [unidirectional (master-follower)](../../../develop/build-global-apps/active-active-single-master/) or [bidirectional (multi-master)](../../../develop/build-global-apps/active-active-multi-master/) replication between two data centers.
+xCluster replication is an asynchronous replication feature in YugabyteDB that allows you to replicate data between independent YugabyteDB universes. You can set up [unidirectional (master-follower)](../../../develop/build-global-apps/active-active-single-master/) or [bidirectional (multi-master)](../../../develop/build-global-apps/active-active-multi-master/) replication between two data centers.
 
 Replication takes place between two universes:
 
@@ -26,7 +26,7 @@ One source universe can replicate to one or more target universes.
 
 You can use xCluster replication to implement disaster recovery for YugabyteDB in cases where the higher write latency and the three fault domain minimum requirement of default synchronous replication of YugabyeDB is a challenge, if some small possibility of data loss due to asynchronous replication can be tolerated. For more details on using xCluster for Disaster Recovery, see [xCluster Disaster Recovery](../../back-up-restore-universes/disaster-recovery/).
 
-xCluster replication can be used to move data from one YugabyteDB universe to another for purposes other than disaster recovery. For example, downstream YugabyteDB clusters used for reporting or "green" deployments of blue-green deployments can be kept asynchronously up to date with the main YugabyteDB cluster.
+xCluster replication can be used to move data from one YugabyteDB universe to another for purposes other than disaster recovery. For example, downstream YugabyteDB universes used for reporting or "green" deployments of blue-green deployments can be kept asynchronously up to date with the main YugabyteDB universe.
 
 You can use YugabyteDB Anywhere to set up the initial xCluster replication across universes, monitor the status of replication, and manage changes to the replication when new databases or tables are added to the replication.
 
@@ -62,19 +62,19 @@ Video: [YFTT - Transactional xCluster](https://www.youtube.com/watch?lI6gw7ncBs8
     title="Set up xCluster replication"
     body="Designate a universe to act as a source."
     href="xcluster-replication-setup/"
-    icon="/images/section_icons/explore/fault_tolerance.png">}}
+    icon="fa-light fa-copy">}}
 
   {{<index/item
     title="Manage tables and indexes"
     body="Perform DDL changes to databases in replication."
     href="xcluster-replication-ddl/"
-    icon="/images/section_icons/architecture/concepts/replication.png">}}
+    icon="fa-light fa-table">}}
 
   {{<index/item
     title="Bidirectional"
     body="Configure bidirectional replication."
     href="bidirectional-replication/"
-    icon="/images/section_icons/manage/backup.png">}}
+    icon="fa-light fa-arrows-left-right">}}
 
 {{</index/block>}}
 
@@ -103,9 +103,9 @@ xCluster refers to all YugabyteDB deployments with two or more universes, and ha
 
 xCluster DR targets one specific and common xCluster deployment model: [active-active single-master](../../../develop/build-global-apps/active-active-single-master/), unidirectional replication configured at any moment in time, for transactional YSQL.
 
-- Active-active means that both universes are active - the primary universe for reads and writes, while the replica can handle reads only.
+- Active-active means that both universes are active - the source universe for reads and writes, while the target can handle reads only.
 
-- Single master means that the application writes to only one universe (the primary) at any moment in time.
+- Single master means that the application writes to only one universe (the source) at any moment in time.
 
 - Unidirectional replication means that at any moment in time, replication traffic flows in one direction, and is configured (and enforced) to flow only in one direction.
 

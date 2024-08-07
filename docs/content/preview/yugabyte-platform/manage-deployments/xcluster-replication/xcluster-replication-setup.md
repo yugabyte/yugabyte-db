@@ -3,7 +3,7 @@ title: Set up xCluster replication for a universe
 headerTitle: Set up xCluster replication
 linkTitle: Setup
 description: Setting up xCluster replication for a universe
-headContent: Start replication from your primary to your replica
+headContent: Start replication from your source to your target
 menu:
   preview_yugabyte-platform:
     parent: xcluster-replication
@@ -31,7 +31,7 @@ Ensure the universes have the following characteristics:
 
 - They have enough disk space to support storage of write-ahead logs (WALs) in case of a network partition or a temporary outage of the target universe. During these cases, WALs will continue to write until replication is restored. Consider sizing your disk according to your ability to respond and recover from network or other infrastructure outages.
 
-    In addition, during xCluster replication setup, the source cluster retains WAL logs and increases in size. The setup (including copying data from source to target) is not aborted if the source universe runs out of space. Instead, a warning is displayed notifying that the source universe has less than 100 GB of space remaining. Ensure that there is enough space available on the source universe before attempting to set up the replication. A recommended approach would be to estimate that the available disk space on the source universe is the same as the used disk space.
+    In addition, during xCluster replication setup, the source universe retains WAL logs and increases in size. The setup (including copying data from source to target) is not aborted if the source universe runs out of space. Instead, a warning is displayed notifying that the source universe has less than 100 GB of space remaining. Ensure that there is enough space available on the source universe before attempting to set up the replication. A recommended approach would be to estimate that the available disk space on the source universe is the same as the used disk space.
 
 - Neither universe is already being used for xCluster replication.
 
@@ -87,7 +87,7 @@ To be eligible for xCluster replication, tables must not already be in replicati
 
 If a YSQL database includes tables considered ineligible for replication, this database cannot be selected in the YugabyteDB Anywhere UI and the database as a whole cannot be replicated.
 
-You can add databases containing colocated tables to the DR configuration as long as the underlying database is v2.18.1.0 or later. Colocated tables on the DR primary and replica should be created with the same colocation ID if they already exist on both the DR primary and replica prior to DR setup. Refer to xCluster and colocation.
+You can add databases containing colocated tables to the xCluster configuration as long as the underlying database is v2.18.1.0 or later. Colocated tables on the source and target should be created with the same colocation ID if they already exist on both the source and target prior to setup. Refer to [xCluster and colocation](../../../../architecture/docdb-sharding/colocated-tables/#xcluster-and-colocation).
 
 ## Set up xCluster replication
 
@@ -109,7 +109,7 @@ To set up replication for a universe, do the following:
 
 1. Select the databases or tables to be copied to the target for replication.
 
-    You can add databases containing colocated tables to the replication configuration as long as the underlying database is v2.18.1.0 or later. Colocated tables on the source and replica should be created with the same colocation ID if they already exist on both the source and replica prior to setup. Refer to [xCluster and colocation](../../../../architecture/docdb-sharding/colocated-tables/#xcluster-and-colocation).
+    You can add databases containing colocated tables to the replication configuration as long as the underlying database is v2.18.1.0 or later. Colocated tables on the source and target should be created with the same colocation ID if they already exist on both the source and target prior to setup. Refer to [xCluster and colocation](../../../../architecture/docdb-sharding/colocated-tables/#xcluster-and-colocation).
 
 1. Click **Validate Table Selection**.
 
@@ -131,11 +131,13 @@ YugabyteDB Anywhere proceeds to set up replication for the universe. How long th
 
 After replication is set up, the **xCluster Replication** tab displays the status.
 
-![Replication](/images/yb-platform/disaster-recovery/disaster-recovery-status.png)
+![Replication](/images/yb-platform/xcluster/xcluster-status.png)
+
+To display the replication details, click the replication name.
 
 ### Metrics
 
-In addition, you can monitor the following metrics on the **xCluster Replication > Metrics** tab:
+You can monitor the following metrics on the **Metrics** tab:
 
 - Async Replication Lag
 
@@ -155,9 +157,9 @@ YSQL transactional replication displays the following additional metrics:
 
 ### Tables
 
-The **xCluster Replication** tab also lists all the tables in replication and their status on the **Tables** tab.
+The replication details also provide all the tables in replication and their status on the **Tables** tab.
 
-![Replication](/images/yb-platform/disaster-recovery/disaster-recovery-tables.png)
+![Replication](/images/yb-platform/xcluster/xcluster-tables.png)
 
 - To find out the replication lag for a specific table, click the graph icon corresponding to that table.
 
@@ -201,7 +203,7 @@ For more information on alerting in YugabyteDB Anywhere, refer to [Alerts](../..
 
 ## Add a database to an existing replication
 
-Note that, although you don't need to create objects on the target during initial setup, when you add a new database to an existing replication configuration, you _do_ need to create the same objects on the target. If source and replica objects don't match, you won't be able to add the database to replication.
+Note that, although you don't need to create objects on the target during initial setup, when you add a new database to an existing replication configuration, you _do_ need to create the same objects on the target. If source and target objects don't match, you won't be able to add the database to replication.
 
 To add a database to replication, do the following:
 
@@ -211,7 +213,7 @@ To add a database to replication, do the following:
 
 1. Select the databases to be copied to the target for replication.
 
-    You can add databases containing colocated tables to the replication configuration as long as the underlying database is v2.18.1.0 or later. Colocated tables on the source and replica should be created with the same colocation ID if they already exist on both the source and replica prior to setup. Refer to [xCluster and colocation](../../../../architecture/docdb-sharding/colocated-tables/#xcluster-and-colocation).
+    You can add databases containing colocated tables to the replication configuration as long as the underlying database is v2.18.1.0 or later. Colocated tables on the source and target should be created with the same colocation ID if they already exist on both the source and target prior to setup. Refer to [xCluster and colocation](../../../../architecture/docdb-sharding/colocated-tables/#xcluster-and-colocation).
 
 1. Click **Validate Selection**.
 
@@ -241,7 +243,7 @@ To change the universe that is used as a target, do the following:
 
 ## Restart replication
 
-Some situations, such as extended network partitions between the source and replica, can cause a permanent failure of replication due to WAL logs being no longer available on the source.
+Some situations, such as extended network partitions between the source and target, can cause a permanent failure of replication due to WAL logs being no longer available on the source.
 
 In these cases, restart replication as follows:
 
