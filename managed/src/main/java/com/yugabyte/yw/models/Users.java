@@ -7,7 +7,6 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.encryption.HashBuilder;
 import com.yugabyte.yw.common.encryption.bc.BcOpenBsdHasher;
@@ -173,7 +172,6 @@ public class Users extends Model {
 
   @Column(nullable = false)
   @ApiModelProperty(value = "True if the user is the primary user")
-  @JsonProperty("isPrimary")
   private boolean isPrimary;
 
   @Column(nullable = false)

@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.models.helpers;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import javax.validation.constraints.NotNull;
@@ -35,22 +34,10 @@ public class NodeConfig {
   @ApiModel(description = "Validation result of a node config")
   public static class ValidationResult {
     private Type type;
-
     private boolean isValid;
     private boolean isRequired;
-
     private String description;
     private String value;
-
-    @JsonProperty("isValid")
-    public boolean isValid() {
-      return isValid;
-    }
-
-    @JsonProperty("isRequired")
-    public boolean isRequired() {
-      return isRequired;
-    }
   }
 
   /**

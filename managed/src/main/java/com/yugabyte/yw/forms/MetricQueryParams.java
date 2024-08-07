@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.forms;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.metrics.MetricSettings;
 import io.swagger.annotations.ApiModel;
@@ -53,7 +52,6 @@ public class MetricQueryParams {
   private String streamId;
 
   @ApiModelProperty(value = "Is Recharts")
-  @JsonProperty("isRecharts")
   private boolean isRecharts;
 
   @ApiModelProperty(value = "List of metrics with custom settings")

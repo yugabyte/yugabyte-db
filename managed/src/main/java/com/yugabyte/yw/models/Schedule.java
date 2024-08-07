@@ -13,6 +13,8 @@ import com.cronutils.model.definition.CronDefinitionBuilder;
 import com.cronutils.model.time.ExecutionTime;
 import com.cronutils.parser.CronParser;
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -124,6 +126,8 @@ public class Schedule extends Model {
   @Column(nullable = false)
   private UUID customerUUID;
 
+  @JsonProperty
+  @JsonIgnore
   public void setCustomerUUID(UUID customerUUID) {
     this.customerUUID = customerUUID;
     ObjectNode scheduleTaskParams = (ObjectNode) getTaskParams();

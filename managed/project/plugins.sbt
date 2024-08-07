@@ -22,7 +22,7 @@ dependencyOverrides += "com.google.googlejavaformat" % "google-java-format" % "1
 libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.4.14"
 
 // The Play plugin
-addSbtPlugin("org.playframework" % "sbt-plugin" % "3.0.4")
+addSbtPlugin("org.playframework" % "sbt-plugin" % "3.0.0")
 
 // ORM
 addSbtPlugin("org.playframework" % "sbt-play-ebean" % "8.0.0")
