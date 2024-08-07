@@ -12,6 +12,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.DrConfigCreateForm;
 import com.yugabyte.yw.forms.DrConfigSetDatabasesForm;
 import com.yugabyte.yw.forms.TableInfoForm;
@@ -42,10 +43,12 @@ import play.mvc.Result;
 @Slf4j
 public class DRDbScopedLocalTest extends DRLocalTestBase {
 
-  public static final String DB_SCOPED_MIN_VERSION = "2.23.0.0-b394";
+  // 2.23.0.0-b691+ version does not require enable_xcluster_api_v2 and allowed_preview_flags_csv
+  //   gflags to be set.
+  public static final String DB_SCOPED_MIN_VERSION = "2.23.0.0-b691";
   public static String DB_SCOPE_MIN_VERSION_URL =
       "https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/"
-          + "local-provider-test/2.23.0.0-b394/yugabyte-2.23.0.0-b394-%s-%s.tar.gz";
+          + "local-provider-test/2.23.0.0-b691/yugabyte-2.23.0.0-b691-%s-%s.tar.gz";
 
   @Before
   public void setupDrDbScoped() {
@@ -85,6 +88,7 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
     ybBinPath = deriveYBBinPath(DBVersion);
     UniverseDefinitionTaskParams.UserIntent userIntent =
         getDefaultUserIntent(universeName, disableTls);
+    userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
     userIntent.numNodes = numNodes;
     userIntent.replicationFactor = replicationFactor;
 
