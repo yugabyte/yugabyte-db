@@ -33,7 +33,8 @@ public class BasePgRegressTest extends BasePgSQLTest {
         .setDirs(inputDir, pgRegress.outputDir())
         .setSchedule(schedule)
         .setHost(getPgHost(tserverIndex))
-        .setPort(getPgPort(tserverIndex))
+        .setPort(isTestRunningWithConnectionManager() ?
+            getYsqlConnMgrPort(tserverIndex) : getPgPort(tserverIndex))
         .setUser(DEFAULT_PG_USER)
         .setDatabase("yugabyte")
         .setEnvVars(getPgRegressEnvVars())
