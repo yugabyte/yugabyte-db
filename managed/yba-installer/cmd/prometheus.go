@@ -333,14 +333,6 @@ func (prom Prometheus) FinishReplicatedMigrate() error {
 			filepath.Join(rootDir, "prometheusv2"),
 			filepath.Join(prom.DataDir, "storage"),
 		},
-		{
-			filepath.Join(rootDir, "/yugaware/swamper_targets"),
-			filepath.Join(prom.DataDir, "swamper_targets"),
-		},
-		{
-			filepath.Join(rootDir, "yugaware/swamper_rules"),
-			filepath.Join(prom.DataDir, "swamper_rules"),
-		},
 	}
 
 	for _, link := range linkDirs {
@@ -360,8 +352,6 @@ func (prom Prometheus) FinishReplicatedMigrate() error {
 func (prom Prometheus) RollbackMigration(uid, gid uint32, replBaseDir string) error {
 	replDirs := []string{
 		filepath.Join(replBaseDir, "prometheusv2"),
-		filepath.Join(replBaseDir, "/yugaware/swamper_targets"),
-		filepath.Join(replBaseDir, "yugaware/swamper_rules"),
 	}
 	for _, dir := range replDirs {
 		if err := common.Chown(dir, fmt.Sprintf("%d", uid), fmt.Sprintf("%d", gid), true); err != nil {
@@ -489,14 +479,6 @@ func (prom Prometheus) migrateReplicatedDirs() error {
 		{
 			filepath.Join(rootDir, "prometheusv2"),
 			filepath.Join(prom.DataDir, "storage"),
-		},
-		{
-			filepath.Join(rootDir, "/yugaware/swamper_targets"),
-			filepath.Join(prom.DataDir, "swamper_targets"),
-		},
-		{
-			filepath.Join(rootDir, "yugaware/swamper_rules"),
-			filepath.Join(prom.DataDir, "swamper_rules"),
 		},
 	}
 	for _, ld := range linkDirs {
