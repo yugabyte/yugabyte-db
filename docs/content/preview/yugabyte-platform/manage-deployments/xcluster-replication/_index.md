@@ -13,7 +13,7 @@ type: indexpage
 showRightNav: true
 ---
 
-xCluster replication is an asynchronous replication feature in YugabyteDB that allows you to replicate data between independent YugabyteDB clusters. You can set up unidirectional (master-follower) or bidirectional (multi-master) replication between two data centers.
+xCluster replication is an asynchronous replication feature in YugabyteDB that allows you to replicate data between independent YugabyteDB clusters. You can set up [unidirectional (master-follower)](../../../develop/build-global-apps/active-active-single-master/) or [bidirectional (multi-master)](../../../develop/build-global-apps/active-active-multi-master/) replication between two data centers.
 
 Replication takes place between two universes:
 

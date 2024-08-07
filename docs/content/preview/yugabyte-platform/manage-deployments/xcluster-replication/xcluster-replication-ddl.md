@@ -112,7 +112,7 @@ Before dropping a table, refer to [Order of operations](#order-of-operations) fo
 
 When dropping a table in version 2.23 or later, you don't need to perform any action in YugabyteDB Anywhere.
 
-When dropping a table in versions ealier than 2.23, remove the table from replication before dropping the table in the source and target databases, as follows:
+When dropping a table in versions earlier than 2.23, remove the table from replication before dropping the table in the source and target databases, as follows:
 
 1. Navigate to your source and select **xCluster Replication**.
 1. Click **Actions** and choose **Select Databases and Tables**.
