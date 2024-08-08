@@ -67,14 +67,16 @@ constexpr double kSizeBuffer = 0.4;
 // Expected size of each table in bytes
 constexpr auto kTempTableSize = 464000;
 
-std::string GetTableSizeQuery(const std::string& relationType, const std::string& table_name) {
+std::string GetTableSizeQuery(const std::string& relation_type,
+                              const std::string& table_name,
+                              bool relation_is_catalog_table = false) {
   // query equivalent to \d+ in ysqlsh -E
   std::string relkind = "'r','p','v','m','S','f',''";
-  if (relationType == "T") {
+  if (relation_type == "T") {
     relkind = "'r','p',''";
-  } else if (relationType == "I") {
+  } else if (relation_type == "I") {
     relkind = "'I','i',''";
-  } else if (relationType == "M") {
+  } else if (relation_type == "M") {
     relkind = "'m',''";
   }
 
@@ -99,13 +101,14 @@ std::string GetTableSizeQuery(const std::string& relationType, const std::string
     FROM
       pg_catalog.pg_class c LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
     WHERE c.relkind IN ($0)
-      AND n.nspname <> 'pg_catalog'
+      AND n.nspname $1 'pg_catalog'
       AND n.nspname <> 'information_schema'
       AND n.nspname !~ '^pg_toast'
       AND pg_catalog.pg_table_is_visible(c.oid)
-      AND c.relname = '$1'
+      AND c.relname = '$2'
     ORDER BY 1,2)#",
     relkind,
+    relation_is_catalog_table ? "=" : "<>",
     table_name);
 
   return query;
@@ -114,13 +117,17 @@ std::string GetTableSizeQuery(const std::string& relationType, const std::string
 
 Status VerifyTableSize(MiniCluster* cluster,
                        PGConn* conn,
-                       const std::string& relationType,
-                       const std::string& table_name) {
+                       const std::string& relation_type,
+                       const std::string& table_name,
+                       bool relation_is_catalog_table = false) {
   // Wait for heartbeat interval to ensure that the metrics are updated.
   sleep(5);
-  auto query = GetTableSizeQuery(relationType, table_name);
+  auto query = GetTableSizeQuery(relation_type, table_name, relation_is_catalog_table);
+  LOG(INFO) << "Query: " << query;
   auto result = VERIFY_RESULT(conn->Fetch(query));
+  LOG(INFO) << "Number of result rows = " << PQntuples(result.get());
   auto pg_size = VERIFY_RESULT(GetValue<PGUint64>(result.get(), 0, 4));
+  LOG(INFO) << "PG table '" << table_name << "' size = " << pg_size;
 
   // Verify that the actual size in DocDB is the same.
   uint64_t size_from_ts = 0;
@@ -150,9 +157,9 @@ Result<uint64_t> GetTempTableSize(
 // Verify that the size of the table is not set in the output of pg_table_size.
 Status VerifyInvalidTableSize(MiniCluster* cluster,
                               PGConn* conn,
-                              const std::string& relationType,
+                              const std::string& relation_type,
                               const std::string& table_name) {
-  auto query = GetTableSizeQuery(relationType, table_name);
+  auto query = GetTableSizeQuery(relation_type, table_name);
   auto result = VERIFY_RESULT(conn->Fetch(query));
   const auto size = std::string(PQgetvalue(result.get(), 0, 4));
   if (!size.empty()) {
@@ -210,6 +217,18 @@ TEST_F(PgTableSizeTest, SimpleTableSize) {
   ASSERT_OK(VerifyTableSize(cluster_.get(), &test_conn, "T", kTable));
   ASSERT_OK(VerifyTableSize(cluster_.get(), &test_conn, "I", kIndex));
   ASSERT_OK(VerifyInvalidTableSize(cluster_.get(), &test_conn, "I", kTable + "_pkey"));
+}
+
+TEST_F(PgTableSizeTest, SharedTableSize) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("Create database $0", kDatabase));
+  auto test_conn = ASSERT_RESULT(ConnectToDB(kDatabase));
+  ASSERT_OK(cluster_->CompactTablets());
+
+  ASSERT_OK(VerifyTableSize(
+      cluster_.get(), &test_conn, "T", "pg_pltemplate", true /* relation_is_catalog_table */));
+  ASSERT_OK(VerifyTableSize(
+      cluster_.get(), &test_conn, "T", "pg_auth_members", true /* relation_is_catalog_table */));
 }
 
 TEST_F(PgTableSizeTest, TempTableSize) {

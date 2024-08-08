@@ -409,7 +409,7 @@ calculate_table_size(Relation rel)
 
 		int32 num_missing_tablets = 0;
 
-		HandleYBStatus(YBCPgGetTableDiskSize(relOid, MyDatabaseId,
+		HandleYBStatus(YBCPgGetTableDiskSize(relOid, YBCGetDatabaseOid(rel),
 						(int64_t *)&size, &num_missing_tablets));
 		if (num_missing_tablets > 0)
 		{
