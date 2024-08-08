@@ -2090,6 +2090,10 @@ const unsigned char *PgApiImpl::GetLocalTserverUuid() const {
   return tserver_shared_object_->tserver_uuid();
 }
 
+pid_t PgApiImpl::GetLocalTServerPid() const {
+  return tserver_shared_object_->pid();
+}
+
 // Tuple Expression -----------------------------------------------------------------------------
 Status PgApiImpl::NewTupleExpr(
     YBCPgStatement stmt, const YBCPgTypeEntity *tuple_type_entity,

@@ -357,7 +357,9 @@ void AshCopyTServerSample(
   const auto& tserver_metadata = tserver_sample.metadata();
 
   cb_metadata->query_id = tserver_metadata.query_id();
-  cb_metadata->session_id = tserver_metadata.session_id();
+  // if the pid is zero, it's a tserver background activity
+  cb_metadata->pid = tserver_metadata.pid() ? tserver_metadata.pid()
+                                            : pgapi->GetLocalTServerPid();
   cb_metadata->database_id = tserver_metadata.database_id();
   cb_sample->rpc_request_id = tserver_metadata.rpc_request_id();
   cb_sample->encoded_wait_event_code =

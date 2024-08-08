@@ -671,8 +671,8 @@ typedef struct AshMetadata {
   // root_request_id but with the same query_id.
   uint64_t query_id;
 
-  // PgClient session id.
-  uint64_t session_id;
+  // pid of the YSQL/YCQL backend which is executing the query
+  int32_t pid;
 
   // OID of database.
   uint32_t database_id;
