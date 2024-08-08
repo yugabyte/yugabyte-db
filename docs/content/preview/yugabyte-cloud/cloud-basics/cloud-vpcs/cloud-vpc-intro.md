@@ -78,7 +78,7 @@ Each region in multi-region clusters must be deployed in a VPC. Depending on the
 
 | Provider | Regional VPC setup |
 | :--- | :--- |
-| AWS | You need to create a VPC in each region where the cluster is to be deployed.<br/>To deploy a multi-region cluster into those regional VPCs, ensure that the CIDRs of the VPCs do not overlap.<br/>If you intend to peer different VPCs to the same application VPC, ensure that the CIDRs of the VPCs do not overlap. |
+| AWS | You need to create a VPC in each region where the cluster is to be deployed.<br/>To deploy a multi-region cluster into those regional VPCs, ensure that the CIDRs of the VPCs do not overlap.<br/>If you intend to peer different VPCs to the same application VPC, ensure that the CIDRs of the VPCs do not overlap. See [Restrictions](#restrictions). |
 | Azure | You need to create a VPC in each region where the cluster is to be deployed.<br/>Azure assigns the CIDR automatically. |
 | GCP Custom region selection | When creating the VPC, you provide network blocks for each region where you intend to deploy the cluster; each region of the cluster is deployed in the same VPC.<br/>If you plan to expand your cluster into new regions in the future, add those regions to the VPC when you create the VPC; _you can not expand into new regions after the VPC is created_. |
 | GCP Automated region selection | Create a single global VPC and let GCP assign network blocks to every region; each region of the cluster is deployed in the same VPC.<br/>GCP does not recommend auto mode VPC networks for production; refer to [Considerations for auto mode VPC networks](https://cloud.google.com/vpc/docs/vpc#auto-mode-considerations). |
