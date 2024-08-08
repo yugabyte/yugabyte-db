@@ -5831,24 +5831,38 @@ class ControlScript(object):
         return fqdn
 
     # Check whether the leader master is secure.
-    def is_leader_master_secure(self, master_hostport):
-        try:
-            leaderMasterURL = "http://{}/api/v1/varz".format(master_hostport)
-            response = urlopen(Request(leaderMasterURL))
-            jsonResponseFromMaster = json.load(response)
-            listOfAllFlags = jsonResponseFromMaster.get("flags")
+    def is_leader_master_secure(self, master_hostport, timeout=60):
+        start_time = time.time()
+        now = start_time
+        try_count = 0
+        while True:
+            try:
+                try_count+=1
+                leaderMasterURL = "http://{}/api/v1/varz".format(master_hostport)
+                Output.log("Trying to get response from {}. Try Count: {}".format(leaderMasterURL,
+                                                                                    try_count))
+                response = urlopen(Request(leaderMasterURL), timeout=timeout)
+                jsonResponseFromMaster = json.load(response)
+                listOfAllFlags = jsonResponseFromMaster.get("flags")
 
-            encryptionFlag = [flag for flag in listOfAllFlags if
-                flag.get("name") == "use_node_to_node_encryption"]
+                encryptionFlag = [flag for flag in listOfAllFlags if
+                    flag.get("name") == "use_node_to_node_encryption"]
 
-            return encryptionFlag[0].get("value") == "true"
+                return encryptionFlag[0].get("value") == "true"
 
-        except HTTPError as http_err:
-            Output.log_error_and_exit("HTTP error occurred while checking for security of " +
-                                    "leader master: {}".format(http_err))
-        except Exception as err:
-            Output.log_error_and_exit("Other error occurred while checking for security of " +
-                                    "leader master: {}".format(err))
+            except HTTPError as http_err:
+                Output.log_error_and_exit("HTTP error occurred while checking for security of " +
+                                        "leader master: {}".format(http_err))
+            except Exception as err:
+                now = time.time()
+                if now - start_time > timeout:
+                    Output.log_error_and_exit("Other error occurred while checking for " +
+                        "security of leader master: {}. Timeout: {}".format(err, now - start_time))
+                else:
+                    Output.log("Other error occurred while checking for " +
+                            "security of leader master: {}.".format(err))
+                    time.sleep(0.2)
+
 
     def handle_config_files(self, args, conf_dir, config_file, base_dir):
         if not os.path.isdir(conf_dir):
