@@ -16,6 +16,8 @@
 
 #include "yb/common/colocated_util.h"
 
+#include "yb/consensus/log.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
@@ -48,12 +50,16 @@ DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
 DECLARE_int64(global_memstore_size_mb_max);
 DECLARE_int64(db_block_cache_size_bytes);
 DECLARE_int32(rocksdb_max_write_buffer_number);
+DECLARE_bool(TEST_skip_applying_truncate);
+DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Write);
 METRIC_DECLARE_entity(table);
 
 DEFINE_RUNTIME_int32(TEST_scan_reads, 3, "Number of reads in scan tests");
+
+using namespace std::literals;
 
 namespace yb {
 
@@ -64,6 +70,11 @@ namespace pgwrapper {
 class PgSingleTServerTest : public PgMiniTestBase {
  protected:
   static constexpr const char* kDatabaseName = "testdb";
+
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_alter_table_rewrite) = false;
+    PgMiniTestBase::SetUp();
+  }
 
   size_t NumTabletServers() override {
     return 1;
@@ -1095,6 +1106,34 @@ TEST_F(PgSingleTServerTest, RangeConflict) {
   ASSERT_OK(cluster_->FlushTablets());
 
   ASSERT_NOK(conn2.Execute("INSERT INTO t VALUES (0, 2), (1, 2)"));
+}
+
+TEST_F(PgSingleTServerTest, BootstrapReplayTruncate) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t(id INT PRIMARY KEY, s TEXT) SPLIT INTO 1 TABLETS;"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_applying_truncate) = true;
+  ASSERT_OK(conn.Execute("TRUNCATE TABLE t;"));
+
+  // Rollover and flush the WAL, so that the truncate will be replayed during next restart.
+  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+  for (const auto& peer : peers) {
+    if (peer->tablet()->transaction_participant()) {
+      ASSERT_OK(peer->log()->AllocateSegmentAndRollOver());
+    }
+  }
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_applying_truncate) = false;
+
+  auto* ts = cluster_->mini_tablet_server(0);
+
+  ASSERT_OK(ts->Restart());
+
+  auto timeout = MonoDelta::FromSeconds(10);
+  if (!ts->server()->tablet_manager()->WaitForAllBootstrapsToFinish(timeout).ok()) {
+    LOG(FATAL) << "Tablet bootstrap didn't complete within within " << timeout.ToString();
+  }
 }
 
 TEST_F(PgSingleTServerTest, UpdateIndexWithHole) {
