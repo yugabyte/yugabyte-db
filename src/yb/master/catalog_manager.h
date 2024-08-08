@@ -63,14 +63,12 @@
 
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_manager_util.h"
-#include "yb/master/clone/clone_state_manager.h"
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_dcl.fwd.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_encryption.fwd.h"
 #include "yb/master/master_heartbeat.pb.h"
-#include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_types.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/snapshot_coordinator_context.h"
@@ -79,7 +77,6 @@
 #include "yb/master/system_tablet.h"
 #include "yb/master/table_index.h"
 #include "yb/master/tablet_creation_limits.h"
-#include "yb/master/tablet_split_manager.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/ysql_tablespace_manager.h"
@@ -755,10 +752,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   ClusterLoadBalancer* load_balancer() override { return load_balance_policy_.get(); }
 
-  TabletSplitManager* tablet_split_manager() override { return &tablet_split_manager_; }
-
-  CloneStateManager* clone_state_manager() override { return clone_state_manager_.get(); }
-
   XClusterManagerIf* GetXClusterManager() override;
   XClusterManager* GetXClusterManagerImpl() override { return xcluster_manager_.get(); }
 
@@ -1088,6 +1081,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
 
+  Status DumpSysCatalogEntries(
+      const DumpSysCatalogEntriesRequestPB* req, DumpSysCatalogEntriesResponsePB* resp,
+      rpc::RpcContext* rpc);
+
+  Status WriteSysCatalogEntry(
+      const WriteSysCatalogEntryRequestPB* req, WriteSysCatalogEntryResponsePB* resp,
+      rpc::RpcContext* rpc);
+
   // Deletes a tablet that is no longer serving user requests. This would require that the tablet
   // has been split and both of its children are now in RUNNING state and serving user requests
   // instead.
@@ -1097,6 +1098,21 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status DdlLog(
       const DdlLogRequestPB* req, DdlLogResponsePB* resp, rpc::RpcContext* rpc);
+
+  // Not implemented.
+  Status StartYsqlMajorVersionUpgradeInitdb(const StartYsqlMajorVersionUpgradeInitdbRequestPB* req,
+                                            StartYsqlMajorVersionUpgradeInitdbResponsePB* resp,
+                                            rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+
+  // Not implemented.
+  Status IsYsqlMajorVersionUpgradeInitdbDone(
+      const IsYsqlMajorVersionUpgradeInitdbDoneRequestPB* req,
+      IsYsqlMajorVersionUpgradeInitdbDoneResponsePB* resp, rpc::RpcContext* rpc);
+
+  // Not implemented.
+  Status RollbackYsqlMajorVersionUpgrade(const RollbackYsqlMajorVersionUpgradeRequestPB* req,
+                                         RollbackYsqlMajorVersionUpgradeResponsePB* resp,
+                                         rpc::RpcContext* rpc, const LeaderEpoch& epoch);
 
   // Test wrapper around protected DoSplitTablet method.
   Status TEST_SplitTablet(
@@ -1481,8 +1497,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const std::vector<xrepl::StreamId>& stream_ids,
       const std::vector<yb::master::SysCDCStreamEntryPB>& update_entries);
 
-  MasterSnapshotCoordinator& snapshot_coordinator() override { return snapshot_coordinator_; }
-
   Result<size_t> GetNumLiveTServersForActiveCluster() override;
 
   Status ClearFailedUniverse(const LeaderEpoch& epoch);
@@ -1601,6 +1615,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status CreateTransactionAwareSnapshot(
       const CreateSnapshotRequestPB& req, CreateSnapshotResponsePB* resp, CoarseTimePoint deadline);
+
+  Result<std::vector<SysCatalogEntryDumpPB>> FetchFromSysCatalog(
+      SysRowEntryType type, const std::string& item_id_filter);
+
+  Status WriteToSysCatalog(
+      SysRowEntryType type, const std::string& item_id, const std::string& debug_string,
+      QLWriteRequestPB::QLStmtType op_type);
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
@@ -2578,6 +2599,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const LeaderEpoch& epoch,
       bool is_clone,
       ExternalTableSnapshotData* table_data);
+
+  // Update the colocated user table info to point to the new parent tablet. Add the colocated table
+  // to the in-memory vector of table_ids_ of the parent tablet as the tablet is recreated in clone
+  // and doesn't have table ids.
+  Status UpdateColocatedUserTableInfoForClone(
+      scoped_refptr<TableInfo> table, ExternalTableSnapshotData* table_data,
+      const LeaderEpoch& epoch);
   Status PreprocessTabletEntry(const SysRowEntry& entry, ExternalTableSnapshotDataMap* table_map);
   Status ImportTabletEntry(const SysRowEntry& entry, ExternalTableSnapshotDataMap* table_map);
 
@@ -2909,10 +2937,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   ServerRegistrationPB server_registration_;
 
-  TabletSplitManager tablet_split_manager_;
-
-  std::unique_ptr<CloneStateManager> clone_state_manager_;
-
   mutable MutexType delete_replica_task_throttler_per_ts_mutex_;
 
   // Maps a tserver uuid to the AsyncTaskThrottler instance responsible for throttling outstanding
@@ -2981,8 +3005,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Should catalog manager resend latest consumer registry to tserver.
   std::unordered_map<TabletServerId, bool> should_send_consumer_registry_
       GUARDED_BY(should_send_consumer_registry_mutex_);
-
-  MasterSnapshotCoordinator snapshot_coordinator_;
 
   // True when the cluster is a producer of a valid replication stream.
   std::atomic<bool> cdc_enabled_{false};

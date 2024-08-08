@@ -15,11 +15,12 @@ import { useToggle } from 'react-use';
 import { useTranslation } from 'react-i18next';
 import { makeStyles } from '@material-ui/core';
 import { YBButton, YBModal } from '../../../../components';
-import { fetchCustomerTasks } from '../../../../../actions/tasks';
-import { abortTask, retryTasks } from './api';
-import { TaskDrawerCompProps } from './dtos';
 import TaskDiffModal from '../TaskDiffModal';
+import { fetchCustomerTasks } from '../../../../../actions/tasks';
+import { fetchUniverseInfo, fetchUniverseInfoResponse } from '../../../../../actions/universe';
+import { abortTask, retryTasks } from './api';
 import { doesTaskSupportsDiffData } from '../../TaskUtils';
+import { TaskDrawerCompProps } from './dtos';
 
 const useStyles = makeStyles(() => ({
   root: {
@@ -43,6 +44,13 @@ export const TaskDetailActions: FC<TaskDrawerCompProps> = ({ currentTask }) => {
 
   const dispatch = useDispatch();
 
+  // we should refresh the universe info after retrying the task, else the old task banner will be shown
+  const refreshUniverse = ()=> {
+    return dispatch(fetchUniverseInfo(currentTask.targetUUID) as any).then((response:any) => {
+      return dispatch(fetchUniverseInfoResponse(response.payload));
+    });
+  };
+
   const doRetryTask = useMutation(() => retryTasks(currentTask?.id), {
     onSuccess: () => {
       toast.success(t('messages.taskRetrySuccess'));
@@ -52,6 +60,7 @@ export const TaskDetailActions: FC<TaskDrawerCompProps> = ({ currentTask }) => {
     },
     onSettled: () => {
       toggleRetryConfirmationModal(false);
+      refreshUniverse();
       dispatch(fetchCustomerTasks());
     }
   });
@@ -65,6 +74,7 @@ export const TaskDetailActions: FC<TaskDrawerCompProps> = ({ currentTask }) => {
     },
     onSettled: () => {
       toggleAbortConfirmationModal(false);
+      refreshUniverse();
       dispatch(fetchCustomerTasks());
     }
   });

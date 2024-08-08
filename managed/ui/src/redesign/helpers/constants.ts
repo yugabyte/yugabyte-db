@@ -36,7 +36,9 @@ export type SortOrder = typeof SortOrder[keyof typeof SortOrder];
 
 export const RuntimeConfigKey = {
   PROVIDER_REDESIGN_UI_FEATURE_FLAG: 'yb.ui.feature_flags.provider_redesign',
-  EDIT_IN_USE_PORIVDER_UI_FEATURE_FLAG: 'yb.ui.feature_flags.edit_in_use_provider',
+  EDIT_IN_USE_PROVIDER_UI_FEATURE_FLAG: 'yb.ui.feature_flags.edit_in_use_provider',
+  XCLUSTER_TRANSACTIONAL_PITR_SNAPSHOT_INTERVAL:
+    'yb.xcluster.transactional.pitr.default_snapshot_interval',
   XCLUSTER_TRANSACTIONAL_ATOMICITY_FEATURE_FLAG: 'yb.xcluster.transactional.enabled',
   ENABLE_XCLUSTER_SKIP_BOOTSTRAPPING: 'yb.ui.xcluster.enable_skip_bootstrapping',
   DISASTER_RECOVERY_FEATURE_FLAG: 'yb.xcluster.dr.enabled',
@@ -57,7 +59,15 @@ export const RuntimeConfigKey = {
   AWS_COOLDOWN_HOURS: 'yb.aws.disk_resize_cooldown_hours',
   BLOCK_K8_OPERATOR: 'yb.kubernetes.operator.block_api_operator_owned_resources',
   UI_TAG_FILTER: 'yb.runtime_conf_ui.tag_filter',
-  ENABLE_AUDIT_LOG: 'yb.universe.audit_logging_enabled'
+  ENABLE_AUDIT_LOG: 'yb.universe.audit_logging_enabled',
+  AWS_DEFAULT_VOLUME_SIZE: 'yb.aws.default_volume_size_gb',
+  AWS_DEFAULT_STORAGE_TYPE: 'yb.aws.storage.default_storage_type',
+  GCP_DEFAULT_VOLUME_SIZE: 'yb.gcp.default_volume_size_gb',
+  GCP_DEFAULT_STORAGE_TYPE: 'yb.gcp.storage.default_storage_type',
+  KUBERNETES_DEFAULT_VOLUME_SIZE: 'yb.kubernetes.default_volume_size_gb',
+  AZURE_DEFAULT_VOLUME_SIZE: 'yb.azure.default_volume_size_gb',
+  AZURE_DEFAULT_STORAGE_TYPE: 'yb.azure.storage.default_storage_type',
+  AZURE_PREMIUM_V2_STORAGE_TYPE: 'yb.azure.show_premiumv2_storage_type',
 } as const;
 
 /**
@@ -184,3 +194,5 @@ export const MIN_PG_SUPPORTED_STABLE_VERSION = '2024.1.0.0-b129';
 export const GFLAG_GROUPS = {
   ENHANCED_POSTGRES_COMPATIBILITY: 'ENHANCED_POSTGRES_COMPATIBILITY'
 };
+
+export const I18N_DURATION_KEY_PREFIX = 'common.duration';

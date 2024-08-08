@@ -30,7 +30,6 @@ DECLARE_string(vmodule);
 DECLARE_bool(TEST_disable_apply_committed_transactions);
 DECLARE_bool(TEST_xcluster_fail_table_create_during_bootstrap);
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
-DECLARE_bool(enable_xcluster_api_v2);
 DECLARE_bool(TEST_fail_universe_replication_merge);
 
 using std::string;
@@ -476,7 +475,6 @@ class XClusterDbScopedYsqlIndexTest : public XClusterYsqlIndexTest {
       const xcluster::ReplicationGroupId& replication_group_id,
       const std::vector<TableId>& producer_table_ids,
       const std::vector<xrepl::StreamId>& bootstrap_ids, SetupReplicationOptions opts) override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_xcluster_api_v2) = true;
     RETURN_NOT_OK(CheckpointReplicationGroup());
     RETURN_NOT_OK(CreateReplicationFromCheckpoint());
     return Status::OK();
@@ -518,8 +516,6 @@ class XClusterYsqlIndexProducerOnlyTest : public XClusterYsqlIndexTest {
     google::SetVLOGLevel("add_table*", 4);
     google::SetVLOGLevel("multi_step*", 4);
     google::SetVLOGLevel("catalog*", 4);
-
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_xcluster_api_v2) = true;
 
     XClusterYsqlTestBase::SetUp();
     MiniClusterOptions opts;

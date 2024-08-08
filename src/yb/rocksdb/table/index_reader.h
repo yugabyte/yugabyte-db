@@ -52,9 +52,10 @@ class IndexReader {
   // - top level index block iterator is passed and updated instead of the whole index iterator,
   // but return semantic is the same - the whole index iterator is returned.
   // - index_iterator_state is used to create secondary iterators on index.
-  virtual InternalIterator* NewIterator(BlockIter* iter = nullptr,
-                                        TwoLevelIteratorState* index_iterator_state = nullptr,
-                                        bool total_order_seek = true) = 0;
+  virtual InternalIterator* NewIterator(
+      BlockIter* iter = nullptr,
+      std::unique_ptr<TwoLevelIteratorState> index_iterator_state = nullptr,
+      bool total_order_seek = true) = 0;
 
   // Returns approximate middle key from the index. Key from the index might not match any key
   // actually written to SST file, because keys could be shortened and substituted before them are
@@ -91,7 +92,8 @@ class BinarySearchIndexReader : public IndexReader {
   InternalIterator* NewIterator(
       BlockIter* iter = nullptr,
       // Rest of parameters are ignored by BinarySearchIndexReader.
-      TwoLevelIteratorState* state = nullptr, bool total_order_seek = true) override {
+      std::unique_ptr<TwoLevelIteratorState> state = nullptr,
+      bool total_order_seek = true) override {
     auto new_iter = index_block_->NewIndexIterator(comparator_.get(), iter, true);
     return iter ? nullptr : new_iter;
   }
@@ -136,7 +138,7 @@ class HashIndexReader : public IndexReader {
       bool hash_index_allow_collision, const std::shared_ptr<yb::MemTracker>& mem_tracker);
 
   InternalIterator* NewIterator(
-      BlockIter* iter = nullptr, TwoLevelIteratorState* state = nullptr,
+      BlockIter* iter = nullptr, std::unique_ptr<TwoLevelIteratorState> state = nullptr,
       bool total_order_seek = true) override {
     auto new_iter = index_block_->NewIndexIterator(comparator_.get(), iter, total_order_seek);
     return iter ? nullptr : new_iter;
@@ -196,7 +198,7 @@ class MultiLevelIndexReader : public IndexReader {
   ~MultiLevelIndexReader() {}
 
   InternalIterator* NewIterator(
-      BlockIter* iter, TwoLevelIteratorState* index_iterator_state, bool) override;
+      BlockIter* iter, std::unique_ptr<TwoLevelIteratorState> index_iterator_state, bool) override;
 
   Result<std::string> GetMiddleKey() const override;
 

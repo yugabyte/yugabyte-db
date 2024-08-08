@@ -479,6 +479,31 @@ public enum TaskType {
       CustomerTask.TaskType.Create,
       CustomerTask.TargetType.Schedule),
 
+  CreateBackupScheduleKubernetes(
+      com.yugabyte.yw.commissioner.tasks.CreateBackupScheduleKubernetes.class,
+      CustomerTask.TaskType.Create,
+      CustomerTask.TargetType.Schedule),
+
+  DeleteBackupSchedule(
+      com.yugabyte.yw.commissioner.tasks.DeleteBackupSchedule.class,
+      CustomerTask.TaskType.Delete,
+      CustomerTask.TargetType.Schedule),
+
+  DeleteBackupScheduleKubernetes(
+      com.yugabyte.yw.commissioner.tasks.DeleteBackupScheduleKubernetes.class,
+      CustomerTask.TaskType.Delete,
+      CustomerTask.TargetType.Schedule),
+
+  EditBackupSchedule(
+      com.yugabyte.yw.commissioner.tasks.EditBackupSchedule.class,
+      CustomerTask.TaskType.Update,
+      CustomerTask.TargetType.Schedule),
+
+  EditBackupScheduleKubernetes(
+      com.yugabyte.yw.commissioner.tasks.EditBackupScheduleKubernetes.class,
+      CustomerTask.TaskType.Update,
+      CustomerTask.TargetType.Schedule),
+
   CloudProviderEdit(
       com.yugabyte.yw.commissioner.tasks.CloudProviderEdit.class,
       CustomerTask.TaskType.Edit,
@@ -1073,6 +1098,10 @@ public enum TaskType {
           .put(MultiTableBackup, 97)
           .put(RestoreBackup, 98)
           .put(RestoreSnapshotSchedule, 99)
+          .put(DeleteBackupSchedule, 100)
+          .put(DeleteBackupScheduleKubernetes, 100)
+          .put(EditBackupSchedule, 101)
+          .put(EditBackupScheduleKubernetes, 101)
           // Table ops (110-119):
           .put(CreateCassandraTable, 110)
           .put(CreateTableSpacesInUniverse, 111)

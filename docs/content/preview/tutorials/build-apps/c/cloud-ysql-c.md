@@ -10,7 +10,7 @@ menu:
     parent: build-apps
     name: C
     identifier: cloud-c
-    weight: 500
+    weight: 600
 type: docs
 ---
 

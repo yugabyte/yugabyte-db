@@ -85,7 +85,8 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
           Collections.singletonList(
               new UpgradeTaskBase.MastersAndTservers(
                   Collections.singletonList(currentNode), Collections.emptyList())),
-          null);
+          null,
+          false);
     }
     addBasicPrecheckTasks();
   }

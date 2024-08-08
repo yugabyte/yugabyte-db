@@ -116,7 +116,7 @@ To understand how to improve query performance using these stats, see [Query tun
 
 ## Data statistics
 
-The statistics about the table data are stored in the _pg_statistics_ table. For efficiency, this data is not updated on the fly so it may not be up to date. This data can be updated by running the `ANALYZE` command. This table stores column-level information about the number of distinct values, most common values, their frequencies, and so on. This data is very useful for query tuning. The _pg_stats_ view provides user-friendly information by joining other tables with the _pg_statistic_ table.
+The statistics about the table data are stored in the _pg_statistic_ table. For efficiency, this data is not updated on the fly so it may not be up to date. This data can be updated by running the `ANALYZE` command. This table stores column-level information about the number of distinct values, most common values, their frequencies, and so on. This data is very useful for query tuning. The _pg_stats_ view provides user-friendly information by joining other tables with the _pg_statistic_ table.
 
 ## Users and roles
 

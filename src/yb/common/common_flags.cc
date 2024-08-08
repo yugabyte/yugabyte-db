@@ -209,6 +209,12 @@ TAG_FLAG(cdc_read_rpc_timeout_ms, advanced);
 DEFINE_NON_RUNTIME_PREVIEW_bool(use_fast_backward_scan, false,
     "Use backward scan optimization to build a row in the reverse order for YSQL.");
 
+DEFINE_RUNTIME_bool(ysql_enable_auto_analyze_service, false,
+                    "Enable the Auto Analyze service which automatically triggers ANALYZE to "
+                    "update table statistics for tables which have changed more than a "
+                    "configurable threshold.");
+TAG_FLAG(ysql_enable_auto_analyze_service, experimental);
+
 namespace yb {
 
 void InitCommonFlags() {

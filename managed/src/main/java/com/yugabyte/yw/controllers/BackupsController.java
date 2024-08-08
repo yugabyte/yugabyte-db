@@ -5,6 +5,7 @@ package com.yugabyte.yw.controllers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.StorageUtilFactory;
@@ -21,6 +22,7 @@ import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.PlatformResults.YBPTasks;
+import com.yugabyte.yw.forms.backuprestore.BackupScheduleTaskParams;
 import com.yugabyte.yw.forms.filters.BackupApiFilter;
 import com.yugabyte.yw.forms.filters.RestoreApiFilter;
 import com.yugabyte.yw.forms.paging.BackupPagedApiQuery;
@@ -343,12 +345,24 @@ public class BackupsController extends AuthenticatedController {
   public Result createBackupScheduleAsync(UUID customerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
-    BackupRequestParams taskParams = parseJsonAndValidate(request, BackupRequestParams.class);
-    validateScheduleTaskParams(taskParams, customerUUID);
+    BackupRequestParams requestParams = parseJsonAndValidate(request, BackupRequestParams.class);
+    Universe universe = Universe.getOrBadRequest(requestParams.getUniverseUUID());
+    BackupScheduleTaskParams taskParams =
+        UniverseControllerRequestBinder.bindFormDataToUpgradeTaskParams(
+            request, BackupScheduleTaskParams.class, universe);
+    taskParams.setCustomerUUID(customerUUID);
+    taskParams.setScheduleParams(requestParams);
 
-    Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
-
-    UUID taskUUID = commissioner.submit(TaskType.CreateBackupSchedule, taskParams);
+    TaskType taskType =
+        universe
+                .getUniverseDetails()
+                .getPrimaryCluster()
+                .userIntent
+                .providerType
+                .equals(CloudType.kubernetes)
+            ? TaskType.CreateBackupScheduleKubernetes
+            : TaskType.CreateBackupSchedule;
+    UUID taskUUID = commissioner.submit(taskType, taskParams);
     LOG.info("Submitted task to universe {}, task uuid = {}.", universe.getName(), taskUUID);
     CustomerTask.create(
         customer,

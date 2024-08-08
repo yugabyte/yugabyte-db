@@ -25,12 +25,14 @@ import com.yugabyte.yw.common.rbac.Permission;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.LdapDnToYbaRole;
+import com.yugabyte.yw.models.GroupMappingInfo;
+import com.yugabyte.yw.models.GroupMappingInfo.GroupType;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
 import com.yugabyte.yw.models.rbac.Role.RoleType;
 import com.yugabyte.yw.models.rbac.RoleBinding;
+import db.migration.default_.common.R__Sync_System_Roles;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -75,6 +77,7 @@ public class LdapUtilTest extends FakeDBApplication {
     entryCursor = mock(EntryCursor.class);
     ldapNetworkConnection = mock(LdapNetworkConnection.class);
     testCustomer = ModelFactory.testCustomer();
+    R__Sync_System_Roles.syncSystemRoles();
 
     doReturn(ldapNetworkConnection).when(ldapUtil).createNewLdapConnection(any());
     doNothing().when(ldapNetworkConnection).bind(anyString(), anyString());
@@ -476,7 +479,12 @@ public class LdapUtilTest extends FakeDBApplication {
       if (newLdapRoleValid) {
         String groupDn = "cn=groupname," + baseDn;
         entry.add(memberOfAttribute, groupDn);
-        LdapDnToYbaRole.create(testCustomer.getUuid(), groupDn, newLdapRole);
+        GroupMappingInfo.create(
+            testCustomer.getUuid(),
+            com.yugabyte.yw.models.rbac.Role.get(testCustomer.getUuid(), newLdapRole.name())
+                .getRoleUUID(),
+            groupDn,
+            GroupType.LDAP);
       }
     } else {
       entry.add("yugabytePlatformRole", newLdapRoleValid ? newLdapRole.toString() : "Invalid role");
@@ -580,11 +588,6 @@ public class LdapUtilTest extends FakeDBApplication {
     doNothing().when(ldapNetworkConnection).unBind();
     when(entryCursor.next()).thenReturn(true).thenReturn(false);
     when(entryCursor.get()).thenReturn(entry);
-
-    Set<Permission> permissionSet = fetchPermissionSet(Role.Admin);
-    com.yugabyte.yw.models.rbac.Role role =
-        com.yugabyte.yw.models.rbac.Role.create(
-            testCustomer.getUuid(), "Admin", "Admin", RoleType.System, permissionSet);
 
     Users user =
         ldapUtil.authViaLDAP(
@@ -730,8 +733,12 @@ public class LdapUtilTest extends FakeDBApplication {
 
     String groupDn = "cn=mygroup," + baseDn;
 
-    LdapDnToYbaRole ldapMapping =
-        LdapDnToYbaRole.create(testCustomer.getUuid(), groupDn, Users.Role.Admin);
+    GroupMappingInfo ldapMapping =
+        GroupMappingInfo.create(
+            testCustomer.getUuid(),
+            com.yugabyte.yw.models.rbac.Role.get(testCustomer.getUuid(), "Admin").getRoleUUID(),
+            groupDn,
+            GroupType.LDAP);
 
     Entry groupEntry = new DefaultEntry(groupDn);
     groupEntry.add(memberAttribute, dn);
@@ -793,7 +800,10 @@ public class LdapUtilTest extends FakeDBApplication {
 
     assertNotNull(user);
     assertEquals(username, user.getEmail());
-    assertEquals(user.getRole(), ldapMapping.ybaRole);
+    assertEquals(
+        user.getRole().name(),
+        com.yugabyte.yw.models.rbac.Role.get(testCustomer.getUuid(), ldapMapping.getRoleUUID())
+            .getName());
     assertEquals(true, user.isLdapSpecifiedRole());
   }
 
@@ -810,8 +820,12 @@ public class LdapUtilTest extends FakeDBApplication {
     when(entryCursor.next()).thenReturn(true).thenReturn(false);
     when(entryCursor.get()).thenReturn(userEntry);
 
-    LdapDnToYbaRole ldapMapping =
-        LdapDnToYbaRole.create(testCustomer.getUuid(), groupDn, Users.Role.Admin);
+    GroupMappingInfo ldapMapping =
+        GroupMappingInfo.create(
+            testCustomer.getUuid(),
+            com.yugabyte.yw.models.rbac.Role.get(testCustomer.getUuid(), "Admin").getRoleUUID(),
+            groupDn,
+            GroupType.LDAP);
 
     Users user =
         ldapUtil.authViaLDAP(
@@ -843,7 +857,10 @@ public class LdapUtilTest extends FakeDBApplication {
 
     assertNotNull(user);
     assertEquals(username, user.getEmail());
-    assertEquals(user.getRole(), ldapMapping.ybaRole);
+    assertEquals(
+        user.getRole().name(),
+        com.yugabyte.yw.models.rbac.Role.get(testCustomer.getUuid(), ldapMapping.getRoleUUID())
+            .getName());
     assertEquals(true, user.isLdapSpecifiedRole());
   }
 

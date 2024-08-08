@@ -62,7 +62,7 @@ MasterAutoFlagsManager* MasterServiceBase::handler(MasterAutoFlagsManager*) {
 }
 
 CloneStateManager* MasterServiceBase::handler(CloneStateManager*) {
-  return server_->clone_state_manager();
+  return &server_->clone_state_manager();
 }
 
 MasterClusterHandler* MasterServiceBase::handler(MasterClusterHandler*) {

@@ -390,6 +390,15 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 
+  public static final ConfKeyInfo<Boolean> showPremiumV2StorageType =
+      new ConfKeyInfo<>(
+          "yb.azure.show_premiumv2_storage_type",
+          ScopeType.PROVIDER,
+          "Show Premium V2 storage type",
+          "Show Premium V2 storage type during create/edit universe flow.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
   public static final ConfKeyInfo<String> monitoredMountRoots =
       new ConfKeyInfo<>(
           "yb.provider.monitored_mount_roots",

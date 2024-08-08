@@ -138,9 +138,9 @@ class MultiLevelIterator final : public InternalIterator {
   static constexpr auto kIterChainInitialCapacity = 4;
 
   MultiLevelIterator(
-      TwoLevelIteratorState* state, InternalIterator* top_level_iter, uint32_t num_levels,
-      bool need_free_top_level_iter)
-    : state_(state), iter_(num_levels), index_block_handle_(num_levels - 1),
+      std::unique_ptr<TwoLevelIteratorState> state, InternalIterator* top_level_iter,
+      uint32_t num_levels, bool need_free_top_level_iter)
+    : state_(std::move(state)), iter_(num_levels), index_block_handle_(num_levels - 1),
       bottom_level_iter_(iter_.data() + (num_levels - 1)),
       need_free_top_level_iter_(need_free_top_level_iter)  {
     iter_[0].Set(top_level_iter);
@@ -274,7 +274,7 @@ class MultiLevelIterator final : public InternalIterator {
     }
   }
 
-  TwoLevelIteratorState* const state_;
+  std::unique_ptr<TwoLevelIteratorState> const state_;
   boost::container::small_vector<IteratorWrapper, kIterChainInitialCapacity> iter_;
   // If iter_[level] holds non-nullptr, then "index_block_handle_[level-1]" holds the
   // handle passed to state_->NewSecondaryIterator to create iter_[level].
@@ -298,11 +298,11 @@ Result<std::unique_ptr<MultiLevelIndexReader>> MultiLevelIndexReader::Create(
 }
 
 InternalIterator* MultiLevelIndexReader::NewIterator(
-    BlockIter* iter, TwoLevelIteratorState* index_iterator_state, bool) {
+    BlockIter* iter, std::unique_ptr<TwoLevelIteratorState> index_iterator_state, bool) {
   InternalIterator* top_level_iter = top_level_index_block_->NewIndexIterator(
       comparator_.get(), iter, /* total_order_seek = */ true);
   return new MultiLevelIterator(
-      index_iterator_state, top_level_iter, num_levels_, top_level_iter != iter);
+      std::move(index_iterator_state), top_level_iter, num_levels_, top_level_iter != iter);
 }
 
 Result<std::string> MultiLevelIndexReader::GetMiddleKey() const {

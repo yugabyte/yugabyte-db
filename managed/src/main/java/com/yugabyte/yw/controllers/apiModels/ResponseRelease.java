@@ -1,8 +1,10 @@
 package com.yugabyte.yw.controllers.apiModels;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.models.ReleaseArtifact;
+import io.swagger.annotations.ApiModelProperty;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
@@ -33,6 +35,9 @@ public class ResponseRelease {
   public static class Universe {
     public UUID uuid;
     public String name;
+
+    @ApiModelProperty(value = "Universe creation date", example = "2024-07-28T01:02:03Z")
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
     public Date creation_date;
 
     public Universe(UUID uuid, String name, Date creation_date) {

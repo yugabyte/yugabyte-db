@@ -17,7 +17,8 @@ import { useBannerCommonStyles } from './BannerStyles';
 
 const useStyles = makeStyles((theme) => ({
   root: {
-    margin: '8px 20px'
+    padding: '8px 20px',
+    background: theme.palette.common.white
   }
 }));
 

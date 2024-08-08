@@ -25,11 +25,15 @@ import { assertUnreachableCase, handleServerError } from '../../../../utils/erro
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import {
   BOOTSTRAP_MIN_FREE_DISK_SPACE_GB,
+  DROPPED_XCLUSTER_TABLE_STATUSES,
+  SOURCE_MISSING_XCLUSTER_TABLE_STATUSES,
   XClusterConfigAction,
   XClusterConfigType,
+  XClusterTableStatus,
   XCLUSTER_UNIVERSE_TABLE_FILTERS
 } from '../../constants';
 import {
+  getInConfigTableUuidsToTableDetailsMap,
   getTablesForBootstrapping,
   getXClusterConfigTableType,
   parseFloatIfDefined,
@@ -238,10 +242,7 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
   }
   const xClusterConfig = xClusterConfigQuery.data;
 
-  const xClusterConfigTableType = getXClusterConfigTableType(
-    xClusterConfig,
-    sourceUniverseTablesQuery.data
-  );
+  const xClusterConfigTableType = getXClusterConfigTableType(xClusterConfig);
   const sourceUniverseUuid = xClusterConfig.sourceUniverseUUID;
   const targetUniverseUuid = xClusterConfig.targetUniverseUUID;
   if (
@@ -274,9 +275,10 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
   const {
     defaultSelectedTableUuids,
     defaultSelectedNamespaceUuids,
-    sourceDroppedTableUuids,
-    unreplicatedTableInReplicatedNamespace
-  } = classifyTablesAndNamespaces(xClusterConfig, sourceUniverseTables, sourceUniverseNamespaces);
+    unreplicatedTableInReplicatedNamespace,
+    tableUuidsDroppedOnSource,
+    tableUuidsDroppedOnTarget
+  } = classifyTablesAndNamespaces(xClusterConfig, sourceUniverseNamespaces);
 
   if (
     formMethods.formState.defaultValues &&
@@ -354,8 +356,11 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
           let bootstrapTableUuids: string[] | null = null;
           const hasSelectionError = false;
 
+          const tableUuidToTableDetails = getInConfigTableUuidsToTableDetailsMap(
+            xClusterConfig.tableDetails
+          );
           const tableUuidsToAdd = formValues.tableUuids.filter(
-            (tableUuid) => !xClusterConfig.tables.includes(tableUuid)
+            (tableUuid) => !tableUuidToTableDetails.has(tableUuid)
           );
           if (tableUuidsToAdd.length) {
             try {
@@ -547,8 +552,9 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
             targetUniverseUuid: targetUniverseUuid,
             xClusterConfigUuid: xClusterConfig.uuid,
             isTransactionalConfig: xClusterConfig.type === XClusterConfigType.TXN,
-            sourceDroppedTableUuids: sourceDroppedTableUuids,
-            unreplicatedTableInReplicatedNamespace: unreplicatedTableInReplicatedNamespace
+            unreplicatedTableInReplicatedNamespace: unreplicatedTableInReplicatedNamespace,
+            tableUuidsDroppedOnSource: tableUuidsDroppedOnSource,
+            tableUuidsDroppedOnTarget: tableUuidsDroppedOnTarget
           }}
         />
       </FormProvider>
@@ -568,54 +574,59 @@ const getDefaultFormValues = (
 
 export const classifyTablesAndNamespaces = (
   xClusterConfig: XClusterConfig,
-  sourceUniverseTables: YBTable[],
   sourceUniverseNamespaces: UniverseNamespace[]
 ) => {
   const selectedTableUuids = new Set<string>();
-  const sourceDroppedTableUuids = new Set<string>();
   const selectedNamespaceUuid = new Set<string>();
   const unreplicatedTableInReplicatedNamespace = new Set<string>();
-  const tableUuidToTable = Object.fromEntries(
-    sourceUniverseTables.map((table) => [getTableUuid(table), table])
-  );
+  const tableUuidsDroppedOnSource = new Set<string>();
+  const tableUuidsDroppedOnTarget = new Set<string>();
+
   const namespaceToNamespaceUuid = Object.fromEntries(
     sourceUniverseNamespaces.map((namespace) => [namespace.name, namespace.namespaceUUID])
   );
 
-  // Classify every table as selected or dropped by checking for a match on the source universe.
-  xClusterConfig.tables.forEach((tableUuid) => {
-    const sourceUniverseTable = tableUuidToTable[tableUuid];
+  xClusterConfig.tableDetails.forEach((tableDetail) => {
+    const sourceTableInfo = tableDetail.sourceTableInfo;
+    const tableUuid = tableDetail.tableId;
 
-    if (sourceUniverseTable) {
-      // The xCluster config table still exists on the source universe.
-      selectedTableUuids.add(tableUuid);
-      selectedNamespaceUuid.add(namespaceToNamespaceUuid[sourceUniverseTable.keySpace]);
-    } else {
-      sourceDroppedTableUuids.add(tableUuid);
-    }
-  });
-
-  // Find all the unreplicated tables which belong in a namespace that is being replicated.
-  // These are of interest in the YSQL case because all tables in a namespace should be replicated to
-  // avoid issues with backup and restore which is limited to DB scope.
-  // The backup and restore limitation is not present for YCQL.
-  sourceUniverseTables.forEach((sourceUniverseTable) => {
-    if (sourceUniverseTable.tableType === TableType.PGSQL_TABLE_TYPE) {
-      const sourceUniverseTableUuid = getTableUuid(sourceUniverseTable);
-      const sourceUniverseNamespaceUuid = namespaceToNamespaceUuid[sourceUniverseTable.keySpace];
-      if (
-        !selectedTableUuids.has(sourceUniverseTableUuid) &&
-        selectedNamespaceUuid.has(sourceUniverseNamespaceUuid)
-      ) {
-        unreplicatedTableInReplicatedNamespace.add(sourceUniverseTableUuid);
-      }
+    // Preselect all tables which are in the xCluster config and still exist on the source universe.
+    switch (tableDetail.status) {
+      case XClusterTableStatus.DROPPED_FROM_SOURCE:
+        tableUuidsDroppedOnSource.add(tableUuid);
+        return;
+      case XClusterTableStatus.DROPPED_FROM_TARGET:
+        if (sourceTableInfo) {
+          selectedTableUuids.add(getTableUuid(sourceTableInfo));
+          selectedNamespaceUuid.add(namespaceToNamespaceUuid[sourceTableInfo.keySpace]);
+        }
+        tableUuidsDroppedOnTarget.add(tableUuid);
+        return;
+      case XClusterTableStatus.DROPPED:
+        tableUuidsDroppedOnSource.add(tableUuid);
+        tableUuidsDroppedOnTarget.add(tableUuid);
+        return;
+      case XClusterTableStatus.EXTRA_TABLE_ON_SOURCE:
+        // These are of interest in the YSQL case because all tables in a namespace should be replicated to
+        // avoid issues with backup and restore which is limited to DB scope.
+        // The backup and restore limitation is not present for YCQL.
+        if (sourceTableInfo?.tableType === TableType.PGSQL_TABLE_TYPE) {
+          unreplicatedTableInReplicatedNamespace.add(tableUuid);
+        }
+        return;
+      default:
+        if (sourceTableInfo) {
+          selectedTableUuids.add(getTableUuid(sourceTableInfo));
+          selectedNamespaceUuid.add(namespaceToNamespaceUuid[sourceTableInfo.keySpace]);
+        }
     }
   });
 
   return {
     defaultSelectedTableUuids: Array.from(selectedTableUuids),
     defaultSelectedNamespaceUuids: Array.from(selectedNamespaceUuid),
-    sourceDroppedTableUuids: sourceDroppedTableUuids,
-    unreplicatedTableInReplicatedNamespace: unreplicatedTableInReplicatedNamespace
+    unreplicatedTableInReplicatedNamespace,
+    tableUuidsDroppedOnSource,
+    tableUuidsDroppedOnTarget
   };
 };

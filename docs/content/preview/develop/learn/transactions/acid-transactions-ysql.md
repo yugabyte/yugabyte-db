@@ -155,7 +155,7 @@ For more examples and details on how to tune your application's performance, see
 
 ## Observability
 
-YugabyteDB exports a lot of [observable metrics](../../../../explore/observability/) so that you can see what is going on in your cluster. These metrics can be exported to [Prometheus](../../../../explore/observability/prometheus-integration/macos/) and visualized in [Grafana](../../../../explore/observability/grafana-dashboard/grafana/). Many of these metrics are also displayed as charts in YugabyteDB Anywhere and YugabyteDB Aeon. The following are key transaction-related metrics.
+YugabyteDB exports a lot of [observable metrics](../../../../explore/observability/) so that you can see what is going on in your cluster. These metrics can be exported to [Prometheus](../../../../explore/observability/prometheus-integration/) and visualized in [Grafana](../../../../explore/observability/grafana-dashboard/grafana/). Many of these metrics are also displayed as charts in YugabyteDB Anywhere and YugabyteDB Aeon. The following are key transaction-related metrics.
 
 ##### transactions_running
 

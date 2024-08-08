@@ -70,7 +70,7 @@ typedef enum YbGateTestCase
 YbgStatus YbgTest(YbGateTestCase case_no);
 void YbgTestNoReporting(YbGateTestCase case_no);
 bool YbTypeDetailsTest(
-	unsigned int elmtype, int *elmlen, bool *elmbyval, char *elmalign);
+	unsigned int elmtype, int16_t *elmlen, bool *elmbyval, char *elmalign);
 
 #ifdef __cplusplus
 }

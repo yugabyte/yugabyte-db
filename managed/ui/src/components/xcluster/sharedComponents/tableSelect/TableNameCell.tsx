@@ -39,6 +39,11 @@ export const TableNameCell = ({ tableReplicationCandidate }: TableNameCellProps)
           {t('tablePill.unreplicatedTableInReplicatedNamespace')}
         </div>
       )}
+      {tableReplicationCandidate.isDroppedOnTarget && (
+        <div className={clsx(pillClasses.pill, pillClasses.warning)}>
+          {t('tablePill.droppedOnTarget')}
+        </div>
+      )}
     </div>
   );
 };

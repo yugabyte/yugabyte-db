@@ -47,8 +47,7 @@ class YQLStorageIf {
       const ReadOperationData& read_operation_data,
       const qlexpr::QLScanSpec& spec,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      std::unique_ptr<YQLRowwiseIteratorIf>* iter,
-      const DocDBStatistics* statistics = nullptr) const = 0;
+      std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
 
   virtual Status BuildYQLScanSpec(
       const QLReadRequestPB& request,
@@ -76,8 +75,7 @@ class YQLStorageIf {
       const TransactionOperationContext& txn_op_context,
       const ReadOperationData& read_operation_data,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      std::unique_ptr<YQLRowwiseIteratorIf>* iter,
-      const DocDBStatistics* statistics = nullptr) const = 0;
+      std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
 
   virtual Status InitIterator(
       DocRowwiseIterator* doc_iter,
@@ -94,8 +92,7 @@ class YQLStorageIf {
       const ReadOperationData& read_operation_data,
       const dockv::DocKey& start_doc_key,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
-      std::unique_ptr<YQLRowwiseIteratorIf>* iter,
-      const DocDBStatistics* statistics = nullptr) const = 0;
+      std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
 
   // Create iterator for querying by ybctid.
   virtual Status GetIteratorForYbctid(
@@ -108,7 +105,6 @@ class YQLStorageIf {
       const QLValuePB& max_ybctid,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
       std::unique_ptr<YQLRowwiseIteratorIf>* iter,
-      const DocDBStatistics* statistics = nullptr,
       SkipSeek skip_seek = SkipSeek::kFalse) const = 0;
 
   virtual std::string ToString() const = 0;

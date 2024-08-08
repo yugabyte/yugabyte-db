@@ -79,7 +79,7 @@ func (prom Prometheus) TemplateFile() string {
 }
 
 func (prom Prometheus) SystemdFile() string {
-	return prom.SystemdFileLocation
+	return prom.getSystemdFile()
 }
 
 // Name returns the name of the service.

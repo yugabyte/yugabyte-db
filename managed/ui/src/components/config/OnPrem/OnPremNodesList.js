@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import { Component } from 'react';
+import { Tooltip } from '@material-ui/core';
 import { Row, Col, Alert } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { FieldArray, SubmissionError } from 'redux-form';
@@ -20,6 +21,7 @@ import { getLatestAccessKey } from '../../configRedesign/providerRedesign/utils'
 import { TASK_SHORT_TIMEOUT } from '../../tasks/constants';
 import { NodeAgentStatus } from '../../../redesign/features/NodeAgent/NodeAgentStatus';
 import { OnPremNodeState } from '../../../redesign/helpers/dtos';
+import InfoMessageIcon from '../../../redesign/assets/info-message.svg';
 
 const TIMEOUT_BEFORE_REFRESH = 2500;
 
@@ -217,6 +219,29 @@ class OnPremNodesList extends Component {
     this.props.reset();
   };
 
+  handleOnPremNodeState = (cell, row) => {
+    const nodeState = row.state;
+    const isNodeDecommissioned = nodeState === OnPremNodeState.DECOMMISSIONED;
+
+    return (
+      <div>
+        <span>
+          {nodeState}
+          {isNodeDecommissioned && (
+            <Tooltip
+              className="decommission-tooltip"
+              title={'Perform RECOMMISSION action to set node to FREE state'}
+              placement="top"
+              arrow
+            >
+              <img src={InfoMessageIcon} alt="info" className="decommission-image" />
+            </Tooltip>
+          )}
+        </span>
+      </div>
+    );
+  };
+
   handleCheckNodesUsage = (cell, row) => {
     let result = 'n/a';
     const { universeList } = this.props;
@@ -376,6 +401,11 @@ class OnPremNodesList extends Component {
       return <NodeAgentStatus status={status} isReachable={isReachable} />;
     };
 
+    const rowClassNameFormat = (row) => {
+      const isNodeDecommissioned = row.state === OnPremNodeState.DECOMMISSIONED;
+      return isNodeDecommissioned && 'yb-fail-color';
+    };
+
     const actionsList = (cell, row) => {
       const precheckDisabled = row.inUse || isActive(row.precheckTask);
       const isNodeDecommissioned = row.state === OnPremNodeState.DECOMMISSIONED;
@@ -411,7 +441,7 @@ class OnPremNodesList extends Component {
             </MenuItem>
             {row.state === OnPremNodeState.DECOMMISSIONED && (
               <MenuItem onClick={self.showConfirmRecommissionNodeModal.bind(self, row)}>
-                <i className={`fa fa-plus`} />
+                <i className="fa fa-plus" />
                 Recommission Node
               </MenuItem>
             )}
@@ -563,6 +593,7 @@ class OnPremNodesList extends Component {
               options={{
                 clearSearch: true
               }}
+              trClassName={rowClassNameFormat}
               containerClass="onprem-nodes-table"
             >
               <TableHeaderColumn dataField="nodeId" isKey={true} hidden={true} dataSort />
@@ -578,7 +609,7 @@ class OnPremNodesList extends Component {
               <TableHeaderColumn dataField="inUse" dataFormat={this.handleCheckNodesUsage} dataSort>
                 Universe Name
               </TableHeaderColumn>
-              <TableHeaderColumn dataField="state" dataSort>
+              <TableHeaderColumn dataField="state" dataFormat={this.handleOnPremNodeState} dataSort>
                 State
               </TableHeaderColumn>
               <TableHeaderColumn dataField="region" dataSort>

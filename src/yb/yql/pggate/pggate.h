@@ -346,6 +346,8 @@ class PgApiImpl {
 
   Status AlterTableSetTableId(PgStatement* handle, const PgObjectId& table_id);
 
+  Status AlterTableSetSchema(PgStatement *handle, const char *schema_name);
+
   Status ExecAlterTable(PgStatement *handle);
 
   Status AlterTableInvalidateTableCacheEntry(PgStatement *handle);
@@ -472,7 +474,7 @@ class PgApiImpl {
   Status DmlBindColumnCondIsNotNull(PgStatement *handle, int attr_num);
   Status DmlBindRow(YBCPgStatement handle, uint64_t ybctid, YBCBindColumn* columns, int count);
 
-  Status DmlBindHashCode(
+  void DmlBindHashCode(
       PgStatement* handle, const std::optional<Bound>& start, const std::optional<Bound>& end);
 
   Status DmlBindRange(YBCPgStatement handle,

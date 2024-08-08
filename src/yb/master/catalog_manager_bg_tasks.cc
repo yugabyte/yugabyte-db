@@ -33,6 +33,7 @@
 
 #include <memory>
 
+#include "yb/master/clone/clone_state_manager.h"
 #include "yb/master/cluster_balance.h"
 #include "yb/master/master.h"
 #include "yb/master/ts_descriptor.h"
@@ -65,12 +66,6 @@ DEFINE_RUNTIME_bool(sys_catalog_respect_affinity_task, true,
             "Whether the master sys catalog tablet respects cluster config preferred zones "
             "and sends step down requests to a preferred leader.");
 
-DEFINE_RUNTIME_bool(ysql_enable_auto_analyze_service, false,
-                    "Enable the Auto Analyze service which automatically triggers ANALYZE to "
-                    "update table statistics for tables which have changed more than a "
-                    "configurable threshold.");
-TAG_FLAG(ysql_enable_auto_analyze_service, experimental);
-
 DEFINE_test_flag(bool, pause_catalog_manager_bg_loop_start, false,
                  "Pause the bg tasks thread at the beginning of the loop.");
 
@@ -83,20 +78,22 @@ DEFINE_test_flag(bool, cdcsdk_skip_processing_dynamic_table_addition, false,
 DECLARE_bool(enable_ysql);
 DECLARE_bool(TEST_echo_service_enabled);
 DECLARE_bool(cdcsdk_enable_cleanup_of_non_eligible_tables_from_stream);
+DECLARE_bool(ysql_enable_auto_analyze_service);
 
 namespace yb {
 namespace master {
 
 typedef std::unordered_map<TableId, std::list<CDCStreamInfoPtr>> TableStreamIdsMap;
 
-CatalogManagerBgTasks::CatalogManagerBgTasks(CatalogManager *catalog_manager)
+CatalogManagerBgTasks::CatalogManagerBgTasks(Master* master)
     : closing_(false),
       pending_updates_(false),
       cond_(&lock_),
       thread_(nullptr),
-      catalog_manager_(catalog_manager),
+      master_(master),
+      catalog_manager_(master->catalog_manager_impl()),
       load_balancer_duration_(METRIC_load_balancer_duration.Instantiate(
-          catalog_manager->master_->metric_entity())) {
+          master_->metric_entity())) {
 }
 
 void CatalogManagerBgTasks::Wake() {
@@ -175,7 +172,7 @@ void CatalogManagerBgTasks::TryResumeBackfillForTables(
 }
 
 void CatalogManagerBgTasks::ClearDeadTServerMetrics() const {
-  auto descs = catalog_manager_->master_->ts_manager()->GetAllDescriptors();
+  auto descs = master_->ts_manager()->GetAllDescriptors();
   for (auto& ts_desc : descs) {
     if (!ts_desc->IsLive()) {
       ts_desc->ClearMetrics();
@@ -269,10 +266,10 @@ void CatalogManagerBgTasks::Run() {
         tables = std::vector(std::begin(tables_it), std::end(tables_it));
         tablet_info_map = *catalog_manager_->tablet_map_;
       }
-      catalog_manager_->tablet_split_manager()->MaybeDoSplitting(
+      master_->tablet_split_manager().MaybeDoSplitting(
           tables, tablet_info_map, l.epoch());
 
-      WARN_NOT_OK(catalog_manager_->clone_state_manager()->Run(),
+      WARN_NOT_OK(master_->clone_state_manager().Run(),
           "Failed to run CloneStateManager: ");
 
       if (!to_delete.empty() || catalog_manager_->AreTablesDeletingOrHiding()) {
@@ -352,7 +349,7 @@ void CatalogManagerBgTasks::Run() {
       catalog_manager_->GetXClusterManager()->RunBgTasks(l.epoch());
 
       // Abort inactive YSQL BackendsCatalogVersionJob jobs.
-      catalog_manager_->master_->ysql_backends_manager()->AbortInactiveJobs();
+      master_->ysql_backends_manager()->AbortInactiveJobs();
 
       // Set the universe_uuid field in the cluster config if not already set.
       WARN_NOT_OK(catalog_manager_->SetUniverseUuidIfNeeded(l.epoch()),
@@ -366,7 +363,7 @@ void CatalogManagerBgTasks::Run() {
         load_balancer_duration_->Reset();
         catalog_manager_->ResetMetrics();
         catalog_manager_->ResetTasksTrackers();
-        catalog_manager_->master_->ysql_backends_manager()->AbortAllJobs();
+        master_->ysql_backends_manager()->AbortAllJobs();
         was_leader_ = false;
       }
     }

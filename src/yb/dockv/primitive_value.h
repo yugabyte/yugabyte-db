@@ -47,11 +47,15 @@ YB_DEFINE_ENUM(ListExtendOrder, (APPEND)(PREPEND_BLOCK)(PREPEND))
 // A necessary use of a forward declaration to avoid circular inclusion.
 class SubDocument;
 
+using FloatVector = std::vector<float>;
+using UInt64Vector = std::vector<uint64_t>;
+
 class PrimitiveValue {
  public:
   static const PrimitiveValue kInvalid;
   static const PrimitiveValue kTombstone;
   static const PrimitiveValue kObject;
+  static const PrimitiveValue kNull;
 
   using Type = ValueEntryType;
 
@@ -241,6 +245,19 @@ class PrimitiveValue {
     write_time_ = write_time;
   }
 
+  static void AppendEncodedTo(const FloatVector& v, ValueBuffer& out);
+  static void AppendEncodedTo(const UInt64Vector& v, ValueBuffer& out);
+
+  template <class T>
+  static ValueBuffer Encoded(const T& t) {
+    ValueBuffer value;
+    AppendEncodedTo(t, value);
+    return value;
+  }
+
+  static Slice NullSlice();
+  static Slice TombstoneSlice();
+
  protected:
 
   static constexpr int64_t kUninitializedWriteTime = std::numeric_limits<int64_t>::min();
@@ -276,12 +293,21 @@ class PrimitiveValue {
     // This is used in SubDocument to hold a pointer to a map or a vector.
     void* complex_data_structure_;
     uint8_t gin_null_val_;
+    FloatVector* float_vector_;
+    UInt64Vector* uint64_vector_;
   };
 
  private:
   template <class PB>
   static PrimitiveValue DoFromQLValuePB(const PB& value);
 
+  template <class Vector, class Reader>
+  Status DecodeVector(
+      Slice slice, ValueEntryType value_type, Vector*& vector, const Reader& reader);
+
+  template <class Vector, class Writer>
+  static void AppendEncodedVector(
+      ValueEntryType value_type, const Vector& v, ValueBuffer& out, const Writer& writer);
 
   // This is used in both the move constructor and the move assignment operator. Assumes this object
   // has not been constructed, or that the destructor has just been called.

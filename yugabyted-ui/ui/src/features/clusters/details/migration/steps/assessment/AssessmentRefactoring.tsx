@@ -14,7 +14,7 @@ import {
   YAxis,
 } from "recharts";
 import type { NameType, ValueType } from "recharts/types/component/DefaultTooltipContent";
-import type { RecommendedRefactoringGraph, UnsupportedSqlInfo } from "@app/api/src";
+import type { RefactoringCount, UnsupportedSqlInfo } from "@app/api/src";
 import { MigrationAssessmentRefactoringTable } from "./AssessmentRefactoringTable";
 
 const useStyles = makeStyles((theme) => ({
@@ -43,7 +43,7 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 interface MigrationAssessmentRefactoringProps {
-  sqlObjects: RecommendedRefactoringGraph | undefined;
+  sqlObjects: RefactoringCount[] | undefined;
   unsupportedDataTypes: UnsupportedSqlInfo[] | undefined;
   unsupportedFeatures: UnsupportedSqlInfo[] | undefined;
   unsupportedFunctions: UnsupportedSqlInfo[] | undefined;
@@ -63,17 +63,18 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
       return [];
     }
 
-    return Object.entries(sqlObjects)
-      .filter(([_, value]) => (value?.automatic ?? 0) + (value?.manual ?? 0) > 0)
-      .map(([key, value]) => {
+    return sqlObjects
+      .filter(({ automatic, manual }) => (automatic ?? 0) + (manual ?? 0) > 0)
+      .map(({ sql_object_type, automatic, manual }) => {
         return {
-          objectType: key
-            .replace(/^_+|_+$/g, "")
-            .trim()
-            .toUpperCase()
-            .replaceAll("_", " "),
-          automaticDDLImport: value?.automatic ?? 0,
-          manualRefactoring: value?.manual ?? 0,
+          objectType:
+            sql_object_type
+              ?.replace(/^_+|_+$/g, "")
+              .trim()
+              .toUpperCase()
+              .replaceAll("_", " ") || "",
+          automaticDDLImport: automatic ?? 0,
+          manualRefactoring: manual ?? 0,
         };
       });
   }, [sqlObjects]);
@@ -81,6 +82,15 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
   const barCategoryGap = 34;
   const barSize = 22;
   const graphHeight = graphData.length * 60 + barCategoryGap + barSize;
+
+  if (
+    !graphData.length &&
+    !unsupportedDataTypes?.length &&
+    !unsupportedFeatures?.length &&
+    !unsupportedFunctions?.length
+  ) {
+    return null;
+  }
 
   return (
     <Paper>
@@ -96,120 +106,147 @@ export const MigrationAssessmentRefactoring: FC<MigrationAssessmentRefactoringPr
           </Typography>
         </Box>
 
-        <Box my={4}>
-          <ResponsiveContainer width="100%" height={graphHeight}>
-            <BarChart
-              data={graphData}
-              layout="vertical"
-              margin={{
-                right: 30,
-                left: 50,
-              }}
-              barCategoryGap={barCategoryGap}
-              barSize={barSize}
-            >
-              <CartesianGrid horizontal={false} strokeDasharray="3 3" />
-              <XAxis type="number" />
-              <YAxis type="category" dataKey="objectType" textAnchor="start" dx={-90} />
-              <Tooltip content={<CustomTooltip />} />
-              <Bar
-                dataKey="automaticDDLImport"
-                fill="#2FB3FF"
-                stackId="stack"
-                isAnimationActive={false}
-              >
-                <LabelList
-                  dataKey="automaticDDLImport"
-                  position="insideRight"
-                  style={{ fill: "black" }}
-                  {...{
-                    formatter: (value: number) => value || null,
-                  }}
-                />
-              </Bar>
-              <Bar
-                dataKey="manualRefactoring"
-                fill="#FFA400"
-                stackId="stack"
-                isAnimationActive={false}
-              >
-                <LabelList
-                  dataKey="manualRefactoring"
-                  position="insideRight"
-                  style={{ fill: "black" }}
-                  {...{
-                    formatter: (value: number) => value || null,
-                  }}
-                />
-              </Bar>
-              <Legend
-                align="left"
-                content={({ payload }) => {
-                  if (!payload) {
-                    return null;
-                  }
-
-                  const formatter = (value: string) =>
-                    value
-                      .split(/(?=[A-Z][a-z])|(?<=[a-z])(?=[A-Z])/)
-                      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-                      .join(" ");
-
-                  return (
-                    <ul
-                      style={{
-                        listStyleType: "none",
-                        display: "flex",
-                        gap: "20px",
-                        paddingLeft: "70px",
-                      }}
-                    >
-                      {payload.map((entry) => (
-                        <li
-                          key={entry.value}
-                          style={{ display: "flex", alignItems: "center", gap: "10px" }}
-                        >
-                          <div
-                            style={{
-                              height: "16px",
-                              width: "16px",
-                              borderRadius: "2px",
-                              backgroundColor: entry.color,
-                            }}
-                          />
-                          <div style={{ color: "#4E5F6D" }}>{formatter(entry.value)}</div>
-                        </li>
-                      ))}
-                    </ul>
-                  );
+        {graphData.length ? (
+          <Box my={4}>
+            <ResponsiveContainer width="100%" height={graphHeight}>
+              <BarChart
+                data={graphData}
+                layout="vertical"
+                margin={{
+                  right: 30,
+                  left: 50,
                 }}
-              />
-            </BarChart>
-          </ResponsiveContainer>
-        </Box>
+                barCategoryGap={barCategoryGap}
+                barSize={barSize}
+              >
+                <CartesianGrid horizontal={false} strokeDasharray="3 3" />
+                <XAxis type="number" />
+                <YAxis
+                  type="category"
+                  dataKey="objectType"
+                  textAnchor="start"
+                  dx={-90}
+                  tickLine={false}
+                  axisLine={{ stroke: "#FFFFFF00" }}
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar
+                  dataKey="automaticDDLImport"
+                  fill="#2FB3FF"
+                  stackId="stack"
+                  isAnimationActive={false}
+                >
+                  <LabelList
+                    dataKey="automaticDDLImport"
+                    position="insideRight"
+                    style={{ fill: "black" }}
+                    {...{
+                      formatter: (value: number) => value || null,
+                    }}
+                  />
+                </Bar>
+                <Bar
+                  dataKey="manualRefactoring"
+                  fill="#FFA400"
+                  stackId="stack"
+                  isAnimationActive={false}
+                >
+                  <LabelList
+                    dataKey="manualRefactoring"
+                    position="insideRight"
+                    style={{ fill: "black" }}
+                    {...{
+                      formatter: (value: number) => value || null,
+                    }}
+                  />
+                </Bar>
+                <Legend
+                  align="left"
+                  content={({ payload }) => {
+                    if (!payload) {
+                      return null;
+                    }
 
-        <Divider />
+                    const formatter = (value: string) =>
+                      value
+                        .split(/(?=[A-Z][a-z])|(?<=[a-z])(?=[A-Z])/)
+                        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+                        .join(" ");
 
-        <Box my={3}>
-          <Typography variant="h5">
-            {t("clusterDetail.voyager.planAndAssess.refactoring.conversionIssues")}
-          </Typography>
-        </Box>
+                    return (
+                      <ul
+                        style={{
+                          listStyleType: "none",
+                          display: "flex",
+                          gap: "20px",
+                          paddingLeft: "70px",
+                        }}
+                      >
+                        {payload.map((entry) => (
+                          <li
+                            key={entry.value}
+                            style={{ display: "flex", alignItems: "center", gap: "10px" }}
+                          >
+                            <div
+                              style={{
+                                height: "16px",
+                                width: "16px",
+                                borderRadius: "2px",
+                                backgroundColor: entry.color,
+                              }}
+                            />
+                            <div style={{ color: "#4E5F6D" }}>{formatter(entry.value)}</div>
+                          </li>
+                        ))}
+                      </ul>
+                    );
+                  }}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </Box>
+        ) : null}
 
-        <Box display="flex" flexDirection="column" gridGap={20}>
-          <MigrationAssessmentRefactoringTable
-            data={unsupportedDataTypes}
-            tableHeader={t("clusterDetail.voyager.planAndAssess.refactoring.unsupportedDataType")}
-          />
-          <MigrationAssessmentRefactoringTable
-            data={unsupportedFeatures}
-            tableHeader={t("clusterDetail.voyager.planAndAssess.refactoring.unsupportedFeature")}
-          />
-          <MigrationAssessmentRefactoringTable
-            data={unsupportedFunctions}
-            tableHeader={t("clusterDetail.voyager.planAndAssess.refactoring.unsupportedFunction")}
-          />
-        </Box>
+        {unsupportedDataTypes?.length ||
+        unsupportedFeatures?.length ||
+        unsupportedFunctions?.length ? (
+          <>
+            <Divider />
+
+            <Box my={3}>
+              <Typography variant="h5">
+                {t("clusterDetail.voyager.planAndAssess.refactoring.conversionIssues")}
+              </Typography>
+            </Box>
+
+            <Box display="flex" flexDirection="column" gridGap={20}>
+              {unsupportedDataTypes?.length ? (
+                <MigrationAssessmentRefactoringTable
+                  data={unsupportedDataTypes}
+                  tableHeader={t(
+                    "clusterDetail.voyager.planAndAssess.refactoring.unsupportedDataType"
+                  )}
+                />
+              ) : null}
+              {unsupportedFeatures?.length ? (
+                <MigrationAssessmentRefactoringTable
+                  data={unsupportedFeatures}
+                  tableHeader={t(
+                    "clusterDetail.voyager.planAndAssess.refactoring.unsupportedFeature"
+                  )}
+                />
+              ) : null}
+              {unsupportedFunctions?.length ? (
+                <MigrationAssessmentRefactoringTable
+                  data={unsupportedFunctions}
+                  tableHeader={t(
+                    "clusterDetail.voyager.planAndAssess.refactoring.unsupportedFunction"
+                  )}
+                />
+              ) : null}
+            </Box>
+          </>
+        ) : null}
       </Box>
     </Paper>
   );

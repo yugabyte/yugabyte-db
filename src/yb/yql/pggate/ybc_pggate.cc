@@ -196,12 +196,11 @@ Slice YbctidAsSlice(uint64_t ybctid) {
   return pgapi->GetYbctidAsSlice(ybctid);
 }
 
-inline std::optional<Bound> MakeBound(YBCPgBoundType type, uint64_t value) {
+inline std::optional<Bound> MakeBound(YBCPgBoundType type, uint16_t value) {
   if (type == YB_YQL_BOUND_INVALID) {
     return std::nullopt;
   }
-  return Bound{.value = narrow_cast<uint16_t>(value),
-               .is_inclusive = (type == YB_YQL_BOUND_VALID_INCLUSIVE)};
+  return Bound{.value = value, .is_inclusive = (type == YB_YQL_BOUND_VALID_INCLUSIVE)};
 }
 
 Status InitPgGateImpl(const YBCPgTypeEntity* data_type_table,
@@ -1060,6 +1059,10 @@ YBCStatus YBCPgAlterTableSetTableId(
   return ToYBCStatus(pgapi->AlterTableSetTableId(handle, table_id));
 }
 
+YBCStatus YBCPgAlterTableSetSchema(YBCPgStatement handle, const char *schema_name) {
+  return ToYBCStatus(pgapi->AlterTableSetSchema(handle, schema_name));
+}
+
 YBCStatus YBCPgExecAlterTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecAlterTable(handle));
 }
@@ -1332,10 +1335,13 @@ YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle, YBCPgExpr lhs, int n_a
 
 YBCStatus YBCPgDmlBindHashCodes(
   YBCPgStatement handle,
-  YBCPgBoundType start_type, int start_value,
-  YBCPgBoundType end_type, int end_value) {
-  return ToYBCStatus(pgapi->DmlBindHashCode(
-      handle, MakeBound(start_type, start_value), MakeBound(end_type, end_value)));
+  YBCPgBoundType start_type, uint16_t start_value,
+  YBCPgBoundType end_type, uint16_t end_value) {
+  const auto start = MakeBound(start_type, start_value);
+  const auto end = MakeBound(end_type, end_value);
+  DCHECK(start || end);
+  pgapi->DmlBindHashCode(handle, start, end);
+  return YBCStatusOK();
 }
 
 YBCStatus YBCPgDmlBindRange(YBCPgStatement handle,

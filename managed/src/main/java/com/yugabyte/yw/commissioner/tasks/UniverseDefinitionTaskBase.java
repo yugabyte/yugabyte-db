@@ -2806,7 +2806,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     if (!skipCheckNodesAreSafeToTakeDown) {
       createCheckNodesAreSafeToTakeDownTask(
           Collections.singletonList(UpgradeTaskBase.MastersAndTservers.from(node, processTypes)),
-          targetSoftwareVersion);
+          targetSoftwareVersion,
+          false);
     }
   }
 
@@ -2953,7 +2954,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   protected void createCheckNodesAreSafeToTakeDownTask(
-      List<UpgradeTaskBase.MastersAndTservers> mastersAndTservers, String targetSoftwareVersion) {
+      List<UpgradeTaskBase.MastersAndTservers> mastersAndTservers,
+      String targetSoftwareVersion,
+      boolean fallbackToSingleSplits) {
     if (CollectionUtils.isEmpty(mastersAndTservers)) {
       return;
     }
@@ -2964,6 +2967,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.setUniverseUUID(taskParams().getUniverseUUID());
       params.targetSoftwareVersion = targetSoftwareVersion;
       params.nodesToCheck = mastersAndTservers;
+      params.fallbackToSingleSplits = fallbackToSingleSplits;
 
       CheckNodesAreSafeToTakeDown checkNodesAreSafeToTakeDown =
           createTask(CheckNodesAreSafeToTakeDown.class);
@@ -3030,7 +3034,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     } else {
       throw new IllegalArgumentException("Unknown server type " + serverType);
     }
-    // Command is run in shell.
+    // Command is run in shell. Make it return 0 even if pgrep returns non-zero on pattern mismatch.
     List<String> command =
         ImmutableList.<String>builder()
             .add("pgrep")
@@ -3038,6 +3042,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             .add("yugabyte")
             .add(processName)
             .add("2>/dev/null")
+            .add("||")
+            .add("true")
             .build();
     log.debug("Creating task to run command {}", command);
     BiConsumer<NodeDetails, ShellResponse> consumer =

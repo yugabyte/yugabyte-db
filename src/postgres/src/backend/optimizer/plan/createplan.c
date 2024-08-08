@@ -52,9 +52,10 @@
 #include "utils/syscache.h"
 #include "utils/rel.h"
 
-#include "pg_yb_utils.h"
+/* YB includes */
 #include "access/yb_scan.h"
 #include "optimizer/ybcplan.h"
+#include "pg_yb_utils.h"
 
 /*
  * Flag bits that can appear in the flags argument of create_plan_recurse().
@@ -3364,6 +3365,7 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 	List	   *column_refs = NIL;
 	bool		no_row_trigger = false;
 	List	   *no_update_index_list = NIL;
+	bool		yb_is_single_row_update_or_delete;
 
 	/*
 	 * If we are a single row UPDATE/DELETE in a YB relation, add Result subplan
@@ -3371,11 +3373,11 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 	 * running outside of a transaction and thus cannot rely on the results from a
 	 * separately executed operation.
 	 */
-	if (yb_single_row_update_or_delete_path(root, best_path, &modify_tlist,
-											&column_refs, &result_tlist,
-											&returning_cols, &no_row_trigger,
-											best_path->operation == CMD_UPDATE ?
-												&no_update_index_list : NULL))
+	yb_is_single_row_update_or_delete = yb_single_row_update_or_delete_path(
+		root, best_path, &modify_tlist, &column_refs, &result_tlist,
+		&returning_cols, &no_row_trigger,
+		best_path->operation == CMD_UPDATE ? &no_update_index_list : NULL);
+	if (yb_is_single_row_update_or_delete)
 	{
 		Plan *subplan = (Plan *) make_result(result_tlist, NULL, NULL);
 		copy_generic_path_info(subplan, linitial(best_path->subpaths));
@@ -3430,10 +3432,65 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 	plan->ybPushdownTlist = modify_tlist;
 	plan->ybReturningColumns = returning_cols;
 	plan->ybColumnRefs = column_refs;
-	plan->no_update_index_list = no_update_index_list;
 	plan->no_row_trigger = no_row_trigger;
+	plan->yb_skip_entities = YbInitSkippableEntities(no_update_index_list);
 
 	copy_generic_path_info(&plan->plan, &best_path->path);
+
+	/*
+	 * TODO(kramanathan): Evaluate whether the equivalent of "is single row
+	 * update" is need for ON CONFLICT DO UPDATE.
+	 */
+	if (YbIsUpdateOptimizationEnabled() &&
+		((!yb_is_single_row_update_or_delete && plan->operation == CMD_UPDATE) ||
+		 (plan->operation == CMD_INSERT && plan->onConflictAction == ONCONFLICT_UPDATE)))
+	{
+		RangeTblEntry *rte = NULL;
+		if (!root->simple_rel_array_size)
+		{
+			/*
+			 * This is a simple INSERT ON CONFLICT with an empty join tree.
+			 * This query involves exactly one relation. It may however have
+			 * several range table entries, but the first entry always contains
+			 * information about the ON CONFLICT DO UPDATE.
+			 */
+			rte = lfirst(list_head(root->parse->rtable));
+		}
+		else
+		{
+			/*
+			 * During execution of ModifyTable, the first entry in
+			 * resultRelations is hardcoded to be always used. Use the
+			 * same relation to compute the list of affected entities.
+			 * This also handles situations when the modifyTable is being run on
+			 * a view rather than a relation.
+			 */
+			int rt_index = lfirst_int(list_head(plan->resultRelations));
+			rte = root->simple_rte_array[rt_index];
+		}
+
+		Relation rel = RelationIdGetRelation(rte->relid);
+		/*
+		 * The memory allocations here are made in the context of the plan's
+		 * memory context and will be freed up when the plan is destroyed:
+		 * - if it is decided that the plan will not be cached and subsequently
+		 * dropped (see prepare.c for more details).
+		 * - if the plan is chosen to be cached, the plan's memory context
+		 * is re-parented under the CacheMemoryContext, in which case it is
+		 * destroyed via DEALLOCATE of the prepared statement.
+		 * An exception to this is one-shot plans, which is currently used only
+		 * by SPI. In this case, it is the responsibility of the caller to drop
+		 * the memory context associated with the plan.
+		 * TODO(kramanathan): Reevaluate this in the context of plan_cache_mode
+		 * in PG15. (#23350)
+		 * TODO(kramanathan): Add support for partitioned tables. (#23348)
+		 */
+		if (rel->rd_rel->relkind == RELKIND_RELATION)
+			plan->yb_update_affected_entities =
+				YbComputeAffectedEntitiesForRelation(plan, rel, rte->updatedCols);
+
+		RelationClose(rel);
+	}
 
 	return plan;
 }
@@ -8341,7 +8398,8 @@ make_modifytable(PlannerInfo *root,
 	/* These are set separately only if needed. */
 	node->ybPushdownTlist = NIL;
 	node->ybReturningColumns = NIL;
-	node->no_update_index_list = NIL;
+	node->yb_skip_entities = NULL;
+	node->yb_update_affected_entities = NULL;
 	node->no_row_trigger = false;
 	return node;
 }

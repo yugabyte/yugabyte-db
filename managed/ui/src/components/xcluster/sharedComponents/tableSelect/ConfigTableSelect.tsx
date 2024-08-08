@@ -297,11 +297,10 @@ export const ConfigTableSelect = ({
     replicationLagAlertConfigQuery.data
   );
   const tablesInConfig = augmentTablesWithXClusterDetails(
-    sourceUniverseTablesQuery.data,
     xClusterConfig.tableDetails,
     maxAcceptableLag,
     tableReplicationLagQuery.data?.async_replication_sent_lag?.data,
-    { includeDroppedTables: false }
+    { includeUnconfiguredTables: false, includeDroppedTables: false }
   );
 
   const tablesForSelection = tablesInConfig.filter(

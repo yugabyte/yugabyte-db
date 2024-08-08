@@ -41,7 +41,9 @@
 #include "yb/master/master.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_error.h"
+#include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/snapshot_state.h"
+#include "yb/master/tablet_split_manager.h"
 #include "yb/master/ysql_tablegroup_manager.h"
 
 #include "yb/client/client-internal.h"
@@ -233,7 +235,7 @@ Status CatalogManager::DoCreateSnapshot(const CreateSnapshotRequestPB* req,
 
   if (req->has_schedule_id()) {
     auto schedule_id = VERIFY_RESULT(FullyDecodeSnapshotScheduleId(req->schedule_id()));
-    auto snapshot_id = snapshot_coordinator_.CreateForSchedule(
+    auto snapshot_id = master_->snapshot_coordinator().CreateForSchedule(
         schedule_id, leader_ready_term(), deadline);
     if (!snapshot_id.ok()) {
       LOG(INFO) << "Create snapshot failed: " << snapshot_id.status();
@@ -504,7 +506,7 @@ Status CatalogManager::CreateTransactionAwareSnapshot(
   int32_t retention_duration_hours = req.has_retention_duration_hours() ?
       req.retention_duration_hours() : GetAtomicFlag(&FLAGS_default_snapshot_retention_hours);
 
-  auto snapshot_id = VERIFY_RESULT(snapshot_coordinator_.Create(
+  auto snapshot_id = VERIFY_RESULT(master_->snapshot_coordinator().Create(
       entries, req.imported(), leader_ready_term(), deadline,
       retention_duration_hours));
   resp->set_snapshot_id(snapshot_id.data(), snapshot_id.size());
@@ -554,7 +556,7 @@ Status CatalogManager::ListSnapshots(const ListSnapshotsRequestPB* req,
         InvalidArgument, "Request must have correct snapshot_id", (req->has_snapshot_id() ?
         req->snapshot_id() : "None"), MasterError(MasterErrorPB::SNAPSHOT_FAILED));
   }
-  RETURN_NOT_OK(snapshot_coordinator_.ListSnapshots(
+  RETURN_NOT_OK(master_->snapshot_coordinator().ListSnapshots(
       txn_snapshot_id, req->list_deleted_snapshots(), req->detail_options(), resp));
   if (req->prepare_for_backup()) {
     RETURN_NOT_OK(RepackSnapshotsForBackup(resp));
@@ -657,7 +659,7 @@ Status CatalogManager::ListSnapshotRestorations(const ListSnapshotRestorationsRe
     snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(req->snapshot_id()));
   }
 
-  return snapshot_coordinator_.ListRestorations(restoration_id, snapshot_id, resp);
+  return master_->snapshot_coordinator().ListRestorations(restoration_id, snapshot_id, resp);
 }
 
 Status CatalogManager::RestoreSnapshot(
@@ -671,8 +673,8 @@ Status CatalogManager::RestoreSnapshot(
     if (req->has_restore_ht()) {
       ht = HybridTime(req->restore_ht());
     }
-    TxnSnapshotRestorationId id =
-        VERIFY_RESULT(snapshot_coordinator_.Restore(txn_snapshot_id, ht, epoch.leader_term));
+    TxnSnapshotRestorationId id = VERIFY_RESULT(
+        master_->snapshot_coordinator().Restore(txn_snapshot_id, ht, epoch.leader_term));
     resp->set_restoration_id(id.data(), id.size());
     return Status::OK();
   }
@@ -811,7 +813,7 @@ Status CatalogManager::AbortSnapshotRestore(
     LOG(INFO) << Substitute(
         "Servicing AbortSnapshotRestore request. restoration id: $0, request: $1",
         txn_restoration_id.ToString(), req->ShortDebugString());
-    return snapshot_coordinator_.AbortRestore(
+    return master_->snapshot_coordinator().AbortRestore(
         txn_restoration_id, leader_ready_term(), rpc->GetClientDeadline());
   }
 
@@ -828,7 +830,7 @@ Status CatalogManager::DeleteSnapshot(
   if (txn_snapshot_id) {
     LOG(INFO) << "Servicing DeleteSnapshot request. id: " << txn_snapshot_id
               << ", request: " << req->ShortDebugString();
-    return snapshot_coordinator_.Delete(
+    return master_->snapshot_coordinator().Delete(
         txn_snapshot_id, epoch.leader_term, rpc->GetClientDeadline());
   }
   LOG(INFO) << "Servicing DeleteSnapshot request: " << req->ShortDebugString();
@@ -1370,12 +1372,13 @@ CatalogManager::GenerateSnapshotInfoFromScheduleForClone(
       snapshot_schedule_id, read_time);
 
   // Find or create a snapshot that covers read_time.
-  auto snapshot_id = VERIFY_RESULT(snapshot_coordinator_.GetSuitableSnapshotForRestore(
+  auto snapshot_id = VERIFY_RESULT(master_->snapshot_coordinator().GetSuitableSnapshotForRestore(
       snapshot_schedule_id, read_time, LeaderTerm(), deadline));
   LOG(INFO) << Format("Found suitable snapshot for restore: $0", snapshot_id);
 
   ListSnapshotSchedulesResponsePB resp;
-  RETURN_NOT_OK(snapshot_coordinator_.ListSnapshotSchedules(snapshot_schedule_id, &resp));
+  RETURN_NOT_OK(master_->snapshot_coordinator().ListSnapshotSchedules(
+      snapshot_schedule_id, &resp));
   const auto& filter = resp.schedules(0).options().filter().tables().tables();
   if (filter.empty() || filter.begin()->namespace_().id().empty()) {
     return STATUS_FORMAT(
@@ -1975,8 +1978,9 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
               SysTablesEntryPB_State_Name(table->old_pb().state()));
       }
       // Make sure the table's tablets can be deleted.
-      RETURN_NOT_OK_PREPEND(CheckIfForbiddenToDeleteTabletOf(table),
-                            Format("Cannot repartition table $0", table->id()));
+      RETURN_NOT_OK_PREPEND(
+          CheckIfForbiddenToDeleteTabletOf(table),
+          Format("Cannot repartition table $0", table->id()));
 
       // Create and mark new tablets for creation.
 
@@ -2027,6 +2031,11 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
       old_tablet->mutable_metadata()->StartMutation();
       old_tablet->mutable_metadata()->mutable_dirty()->set_state(
           SysTabletsEntryPB::DELETED, deletion_msg);
+      if (table->colocated()) {
+        // Remove the table_id from the old colocated tablet. This avoids reloading the deleted
+        // tablet in memory in case of master failover.
+        old_tablet->mutable_metadata()->mutable_dirty()->pb.set_table_id("");
+      }
     }
     VLOG_WITH_FUNC(3) << "Prepared deletion of " << old_tablets.size() << " old tablets for table "
                       << table->id();
@@ -2331,9 +2340,13 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
     return STATUS(InternalError, msg, MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
   }
 
+  std::optional<int> schema_version;
+
   // Don't do schema validation/column updates on the parent colocated table.
   // However, still do the validation for regular colocated tables.
-  if (!is_parent_colocated_table) {
+  // For clone, only the parent colocated table must go through the repartition path.
+  if (is_clone || !is_parent_colocated_table) {
+    // Schema validation and repartitioning checks. TODO: Refactor this code path.
     Schema persisted_schema;
     size_t new_num_tablets = 0;
     {
@@ -2399,6 +2412,12 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       }
     }
 
+    if (is_clone && table->IsColocatedUserTable()) {
+      // For colocated tables that are not the parent table, update their info to point to the newly
+      // recreated parent tablet.
+      RETURN_NOT_OK(UpdateColocatedUserTableInfoForClone(table, table_data, epoch));
+    }
+
     // Table schema update depending on different conditions.
     bool notify_ts_for_schema_change = false;
 
@@ -2460,7 +2479,6 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
     // found in the snapshotInfo if the latter is greater. This is because it is guaranteed that the
     // schema version found in snapshotInfo is the maximum schema version that can be found in the
     // snapshot at backup creation time.
-    std::optional<int> schema_version;
     if (is_clone) {
       // The Source table should be found as we are cloning from it.
       TRACE("Looking up source table");
@@ -2521,7 +2539,7 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
   IdPairPB* const table_ids = table_data->table_meta->mutable_table_ids();
   table_ids->set_new_id(table_data->new_table_id);
   table_ids->set_old_id(table_data->old_table_id);
-
+  table_data->new_table_schema_version = schema_version;
   // Recursively collect ids for used user-defined types.
   unordered_set<UDTypeId> type_ids;
   for (size_t i = 0; i < schema.num_columns(); ++i) {
@@ -2542,6 +2560,36 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
     udt_ids->set_old_id(udt_id);
   }
 
+  return Status::OK();
+}
+
+Status CatalogManager::UpdateColocatedUserTableInfoForClone(
+    scoped_refptr<TableInfo> table, ExternalTableSnapshotData* table_data,
+    const LeaderEpoch& epoch) {
+  RSTATUS_DCHECK(
+      table->IsColocatedUserTable(), InvalidArgument,
+      Format("table: $0 is not a colocated user table", table->id()));
+  // Remove old colocated tablet from TableInfo.
+  auto old_tablet = VERIFY_RESULT(table->GetTablets())[0];
+  auto old_colocated_tablet_lock = old_tablet->LockForWrite();
+  RETURN_NOT_OK(table->RemoveTablet(old_tablet->tablet_id()));
+  // Add new colocated tablet to TableInfo.
+  TableInfoPtr parent_table =
+      VERIFY_RESULT(FindTableById(VERIFY_RESULT(GetParentTableIdForColocatedTable(table))));
+  auto tablets = VERIFY_RESULT(parent_table->GetTablets());
+
+  RSTATUS_DCHECK(
+      tablets.size() == 1, NotFound,
+      Format("Wrong number of parent tablet of colocated database:$1", tablets.size()));
+  auto new_tablet_lock = tablets[0]->LockForWrite();
+  RETURN_NOT_OK(table->AddTablet(tablets[0]));
+  VLOG(1) << Format(
+      "Modifying the parent tablet of the colocated table: $0. The new Tablet is: $1",
+      table_data->new_table_id, VERIFY_RESULT(table->GetTablets())[0]->tablet_id());
+  tablets[0]->AddTableId(table_data->new_table_id);
+
+  new_tablet_lock.Commit();
+  old_colocated_tablet_lock.Commit();
   return Status::OK();
 }
 
@@ -2753,7 +2801,7 @@ Status CatalogManager::RestoreSysCatalogCommon(
   // This is to persist the restoration so that on restarts the RESTORE_ON_TABLET
   // rpcs can be retried.
   *restore_kv = VERIFY_RESULT(
-      snapshot_coordinator_.UpdateRestorationAndGetWritePair(restoration));
+      master_->snapshot_coordinator().UpdateRestorationAndGetWritePair(restoration));
 
   return Status::OK();
 }
@@ -2993,7 +3041,7 @@ void CatalogManager::RemoveHiddenColocatedTableFromTablet(
   if (!tablet_info) {
     return;
   }
-  if (snapshot_coordinator_.ShouldRetainHiddenColocatedTable(
+  if (master_->snapshot_coordinator().ShouldRetainHiddenColocatedTable(
           *table, *tablet_info, schedule_min_restore_time)) {
     return;
   }
@@ -3330,7 +3378,7 @@ Status CatalogManager::CreateSnapshotSchedule(const CreateSnapshotScheduleReques
     LOG_WITH_FUNC(INFO) << "Modified request " << req_with_ns_id.ShortDebugString();
   }
 
-  auto id = VERIFY_RESULT(snapshot_coordinator_.CreateSchedule(
+  auto id = VERIFY_RESULT(master_->snapshot_coordinator().CreateSchedule(
       req_with_ns_id, leader_ready_term(), rpc->GetClientDeadline()));
   resp->set_snapshot_schedule_id(id.data(), id.size());
   return Status::OK();
@@ -3341,7 +3389,7 @@ Status CatalogManager::ListSnapshotSchedules(const ListSnapshotSchedulesRequestP
                                              rpc::RpcContext* rpc) {
   auto snapshot_schedule_id = TryFullyDecodeSnapshotScheduleId(req->snapshot_schedule_id());
 
-  return snapshot_coordinator_.ListSnapshotSchedules(snapshot_schedule_id, resp);
+  return master_->snapshot_coordinator().ListSnapshotSchedules(snapshot_schedule_id, resp);
 }
 
 Status CatalogManager::DeleteSnapshotSchedule(const DeleteSnapshotScheduleRequestPB* req,
@@ -3349,7 +3397,7 @@ Status CatalogManager::DeleteSnapshotSchedule(const DeleteSnapshotScheduleReques
                                               rpc::RpcContext* rpc) {
   auto snapshot_schedule_id = TryFullyDecodeSnapshotScheduleId(req->snapshot_schedule_id());
 
-  return snapshot_coordinator_.DeleteSnapshotSchedule(
+  return master_->snapshot_coordinator().DeleteSnapshotSchedule(
       snapshot_schedule_id, leader_ready_term(), rpc->GetClientDeadline());
 }
 
@@ -3358,7 +3406,7 @@ Status CatalogManager::EditSnapshotSchedule(
     EditSnapshotScheduleResponsePB* resp,
     rpc::RpcContext* rpc) {
   auto id = TryFullyDecodeSnapshotScheduleId(req->snapshot_schedule_id());
-  *resp->mutable_schedule() = VERIFY_RESULT(snapshot_coordinator_.EditSnapshotSchedule(
+  *resp->mutable_schedule() = VERIFY_RESULT(master_->snapshot_coordinator().EditSnapshotSchedule(
       id, *req, leader_ready_term(), rpc->GetClientDeadline()));
   return Status::OK();
 }
@@ -3372,9 +3420,10 @@ Status CatalogManager::RestoreSnapshotSchedule(
   HybridTime ht = HybridTime(req->restore_ht());
   auto deadline = rpc->GetClientDeadline();
 
-  RETURN_NOT_OK(tablet_split_manager_.PrepareForPitr(deadline));
+  RETURN_NOT_OK(master_->tablet_split_manager().PrepareForPitr(deadline));
 
-  return snapshot_coordinator_.RestoreSnapshotSchedule(id, ht, resp, epoch.leader_term, deadline);
+  return master_->snapshot_coordinator().RestoreSnapshotSchedule(
+      id, ht, resp, epoch.leader_term, deadline);
 }
 
 template <typename Registry, typename Mutex>
@@ -3398,7 +3447,7 @@ Status CatalogManager::FillHeartbeatResponse(const TSHeartbeatRequestPB* req,
                                              TSHeartbeatResponsePB* resp) {
   SysClusterConfigEntryPB cluster_config = VERIFY_RESULT(GetClusterConfig());
   RETURN_NOT_OK(FillHeartbeatResponseEncryption(cluster_config, req, resp));
-  RETURN_NOT_OK(snapshot_coordinator_.FillHeartbeatResponse(resp));
+  RETURN_NOT_OK(master_->snapshot_coordinator().FillHeartbeatResponse(resp));
   return FillHeartbeatResponseCDC(cluster_config, req, resp);
 }
 
@@ -3527,11 +3576,11 @@ Result<RemoteTabletServer *> CatalogManager::GetLeaderTServer(
 }
 
 Result<bool> CatalogManager::IsTableUndergoingPitrRestore(const TableInfo& table_info) {
-  return snapshot_coordinator_.IsTableUndergoingPitrRestore(table_info);
+  return master_->snapshot_coordinator().IsTableUndergoingPitrRestore(table_info);
 }
 
 bool CatalogManager::IsPitrActive() {
-  return snapshot_coordinator_.IsPitrActive();
+  return master_->snapshot_coordinator().IsPitrActive();
 }
 
 Result<size_t> CatalogManager::GetNumLiveTServersForActiveCluster() {
@@ -3553,7 +3602,7 @@ void CatalogManager::PrepareRestore() {
 
 docdb::HistoryCutoff CatalogManager::AllowedHistoryCutoffProvider(
     tablet::RaftGroupMetadata* metadata) {
-  return snapshot_coordinator_.AllowedHistoryCutoffProvider(metadata);
+  return master_->snapshot_coordinator().AllowedHistoryCutoffProvider(metadata);
 }
 
 }  // namespace master

@@ -181,6 +181,11 @@ class CatalogManagerUtil {
       const Schema& schema, uint32_t schema_version, const dockv::PartitionSchema& partition_schema,
       tablet::TableInfoPB* pb);
 
+  static void FillTableInfoPB(
+      const TableId& table_id, const std::string& table_name, const TableType& table_type,
+      const SchemaPB& schema, uint32_t schema_version, const PartitionSchemaPB& partition_schema,
+      tablet::TableInfoPB* pb);
+
  private:
   CatalogManagerUtil();
 

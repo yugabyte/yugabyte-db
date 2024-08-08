@@ -614,6 +614,17 @@ typedef struct EState
 	 * a SQL statement don't read any value written by the same statement.
 	 */
 	uint64_t yb_es_in_txn_limit_ht_for_reads;
+
+	/*
+	 * A collection of entities (grouped by type) whose bookkeeping updates can
+	 * be skipped. This contains all the skippable entities computed at
+	 * planning time (see ModifyTable in plannodes.h) plus a subset of entities
+	 * in YbUpdateAffectedEntities that are discovered to be skippable at
+	 * execution time.
+	 * Marking this field as a struct rather than a pointer allows us to avoid
+	 * an extra memory allocation per tuple.
+	 */
+	YbSkippableEntities yb_skip_entities;
 } EState;
 
 /*
@@ -1147,7 +1158,7 @@ typedef struct ModifyTableState
 	TupleConversionMap **mt_per_subplan_tupconv_maps;
 
 	/* YB specific attributes. */
-	bool yb_fetch_target_tuple;	/* Perform initial scan to populate
+	bool yb_fetch_target_tuple; /* Perform initial scan to populate
 								 * the ybctid. */
 } ModifyTableState;
 

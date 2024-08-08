@@ -39,7 +39,13 @@
       "endDate": "End Date",
       "dot": ".",
       "and": "and",
-      "learnMore": "Learn more"
+      "learnMore": "Learn more",
+      "duration": {
+        "second": "second",
+        "minute": "minute",
+        "hour": "hour",
+        "day": "day"
+      }
     },
     "imgAltText": {
       "infoIcon": "Information Icon"
@@ -273,8 +279,8 @@
         "ysqlServerRpcPort": "YSQL RPC Port",
         "enhancePGCompatibility": "Enhanced Postgres Compatibility",
         "earlyAccess": "Early Access",
-        "pgSubText": "Configure YSQL for maximum Postgres compatibility by enabling<br /> early access features. <1>Learn more</1>",
-        "pgTooltip": "Access to enhanced Postgres compatible features is only available for database version 2024.2 or later. <1>Learn more</1>"
+        "pgSubText": "Configure YSQL for maximum Postgres compatibility by enabling<br /> early access features.",
+        "pgTooltip": "Access to enhanced Postgres compatible features is only available for database version 2024.2 or later."
       },
       "cloudConfig": {
         "addZoneButton": "Add Zone",
@@ -897,13 +903,26 @@
               "configureBootstrap": {
                 "instruction": "Choose the storage config to use for performing the initial copy",
                 "infoText": "Initial full copy is required when the database contains data. Performing an initial full copy requires a backup storage config as an intermediate third party storage, and is time and resource intensive. This is also referred to as bootstrapping or initial seeding.",
-                "submitButton": "Next: Confirm Alert Threshold",
+                "submitButton": "Next: Configure PITR Settings",
                 "backupStorageConfig": {
                   "label": "Backup Storage Config",
                   "tooltip": "<paragraph>Ensure that the backup storage config <bold>can be accessed from both source and target universe.</bold></paragraph><paragraph>Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions.</paragraph>"
                 },
                 "error": {
                   "backupStorageConfigRequired": "Required."
+                }
+              },
+              "configurePitr": {
+                "instruction": "Configure point-in-time recovery (PITR) settings",
+                "submitButton": "Next: Confirm Alert Threshold",
+                "retentionPeriodSeconds": {
+                  "label": "Snapshot Retention Period",
+                  "tooltip": "A longer snapshot retention period requires more disk space."
+                },
+                "error": {
+                  "pitrRetentionPeriodValueRequired": "Required.",
+                  "pitrRetentionPeriodValueMinimum": "PITR retention time must be at least 5 minutes.",
+                  "pitrRetentionPeriodUnitRequired": "Required."
                 }
               },
               "confirmAlert": {
@@ -1048,7 +1067,12 @@
             "Validated": "Validated",
             "Bootstrapping": "Bootstrapping",
             "UnableToFetch": "Unable to Fetch",
-            "Dropped": "Dropped from DB"
+            "Dropped": "Dropped from DB",
+            "ExtraTableOnSource": "Extra Table On Source",
+            "ExtraTableOnTarget": "Extra Table on Target",
+            "DroppedFromSource": "Dropped From Source",
+            "DroppedFromTarget": "Dropped From Target",
+            "ReplicationError": "Replication Error"
           }
         },
         "createConfigModal": {
@@ -1145,6 +1169,7 @@
           "matchingTableNoteXCluster": "<bold>Note!</bold> To avoid creating unnecessary full copies for selected databases, ensure the corresponding databases on the target universe contain the same tables as in the source universe.",
           "tablePill": {
             "unreplicatedTableInReplicatedNamespace": "Unreplicated",
+            "droppedOnTarget": "Dropped on Target",
             "eligible": "Eligible",
             "inCurrentConfig": "In Current Config",
             "inUse": "In Use - Not Available"
@@ -1821,7 +1846,8 @@
         "submitLabel": "Upgrade",
         "restartAfterInSecond": "Rolling Restart Delay Between Servers (secs)",
         "successMsg": "Success. Click <0>here</0> for task details",
-        "sameVersionErrMsg": "Universe is already using the imageBundle \"{{image_name}}\". Performing OS patching using it will result in no operation."
+        "sameVersionErrMsg": "Universe is already using the imageBundle \"{{image_name}}\". Performing OS patching using it will result in no operation.",
+        "verifyImageText": "It is recommended to <b>verify that the selected image can boot successfully</b> on a standalone VM with the same instance type as the universe before initiating the upgrade."
       },
       "deleteModal": {
         "title": "Delete Linux Version",
@@ -1970,9 +1996,9 @@
           "abortConfirmMsg": "Do you really want to abort this task?",
           "retryConfirmTitle": "Retry Task ?",
           "retryConfirmMsg": "Do you really want to retry this task?",
-          "taskAbortSuccess": "Task aborted successfully",
+          "taskAbortSuccess": "Task abort started",
           "taskAbortFailed": "Task abort failed",
-          "taskRetrySuccess": "Task retry success",
+          "taskRetrySuccess": "Task retry started",
           "taskRetryFailed": "Task retry failed"
         }
       },
@@ -1984,7 +2010,10 @@
         "startTime": "Start Time",
         "endTime": "End time",
         "startVersion": "Start Version",
-        "targetVersion": "Target Version"
+        "targetVersion": "Target Version",
+        "Failure": "Failed",
+        "Success": "Completed",
+        "Running": "In Progress"
       },
       "progress": {
         "title": "Progress",
@@ -2111,7 +2140,7 @@
       "exportConfigForLogs": "Export Configurations for Logs",
       "createExport": "Create Export Configuration",
       "emptyMsg1": "Export logs and/or metrics to your preferred 3rd party monitoring tool.",
-      "learnExport": "Learn more about <1>exporting logs</1> and <2>exporting metrics</2>.",
+      "learnExport": "Learn more about <1>exporting logs</1>.",
       "emptyExportNote": "<strong>Note:</strong> Audit logging requires additional resources and will impose performance overhead, especially for verbose audit logging. ",
       "addConfiguration": "Add Configuration",
       "deleteConfiguration": "Delete Configuration",
@@ -2136,7 +2165,7 @@
       "awsSecretKey": "AWS Secret Access Key",
       "logGroup": "Log group",
       "logStream": "Log Stream",
-      "awsRegion": "Region (Optional)",
+      "awsRegion": "Region",
       "awsRoleARN": "Role ARN (Optional)",
       "awsEndpoint": "Endpoint (Optional)",
       "gcpProject": "Project (Optional)",
@@ -2147,6 +2176,15 @@
       "deleteModalSubmitLabel": "Delete Export Configuration",
       "deleteConfirmMsg": "{{name}} export configuration got deleted succesfully",
       "deleteConfig": "Delete Configuration"
+    },
+    "footer": {
+      "platformVersion": "Platform Version",
+      "platformHostUrl": "Platform Host URL",
+      "joinUsOn": "Join us on",
+      "starUsOn": "Star us on",
+      "github": "GitHub",
+      "freeTShirtAt": "Free t-shirt at",
+      "yugabyteInc": "Yugabyte, Inc."
     }
   }
 }

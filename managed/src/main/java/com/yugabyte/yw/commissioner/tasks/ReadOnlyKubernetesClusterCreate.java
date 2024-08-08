@@ -18,6 +18,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -33,9 +34,13 @@ import lombok.extern.slf4j.Slf4j;
 @Abortable
 @Retryable
 public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
+  private YbcManager ybcManager;
+
   @Inject
-  protected ReadOnlyKubernetesClusterCreate(BaseTaskDependencies baseTaskDependencies) {
+  protected ReadOnlyKubernetesClusterCreate(
+      BaseTaskDependencies baseTaskDependencies, YbcManager ybcManager) {
     super(baseTaskDependencies);
+    this.ybcManager = ybcManager;
   }
 
   @Override
@@ -115,7 +120,7 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
             universe.getName(),
             tserversAdded,
             true,
-            universe.getUniverseDetails().getYbcSoftwareVersion(),
+            ybcManager.getStableYbcVersion(),
             readOnlyCluster.userIntent.ybcFlags);
         createWaitForYbcServerTask(tserversAdded);
       }

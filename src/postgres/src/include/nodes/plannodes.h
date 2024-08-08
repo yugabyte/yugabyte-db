@@ -21,7 +21,7 @@
 #include "nodes/lockoptions.h"
 #include "nodes/primnodes.h"
 #include "nodes/relation.h"
-
+#include "nodes/ybbitmatrix.h"
 
 /* ----------------------------------------------------------------
  *						node definitions
@@ -214,6 +214,117 @@ typedef struct ProjectSet
 	Plan		plan;
 } ProjectSet;
 
+/*
+ * An enum whose values describe the type of entity that may be excluded from
+ * bookkeeping operations performed by an UPDATE or an INSERT ON CONFLICT DO
+ * UPDATE query.
+ */
+typedef enum
+{
+	SKIP_PRIMARY_KEY,
+	SKIP_SECONDARY_INDEX,
+	SKIP_REFERENCING_FKEY,
+	SKIP_REFERENCED_FKEY,
+} YbSkippableEntityType;
+
+/*
+ * YbSkippableEntities is a collection of skip lists. Each skip list contains
+ * entities of a specific type (YbSkippableEntityType). The elements of the skip
+ * lists can be excluded from bookkeeping operations when being updated - for
+ * example entities in the index_list need not be updated, constraints in the
+ * ref*_fkey_list(s) need not be checked and so on).
+ */
+typedef struct
+{
+	NodeTag		type;
+
+	/* A list of indexes whose update can be skipped */
+	List		*index_list;
+
+	/*
+	 * A list of skippable foreign key relationships where the relation under
+	 * consideration is the referencing relation.
+	 */
+	List		*referencing_fkey_list;
+
+	/*
+	 * A list of skippable foreign key relationships where the relation under
+	 * consideration is the referenced relation.
+	 *
+	 * NOTE - The disambiugation between referencing and referenced foreign keys
+	 * relationships is important in the context of self-referential foreign key
+	 * constraints where one side of the relationship may be skippable, and the
+	 * other side may not be.
+	 */
+	List		*referenced_fkey_list;
+} YbSkippableEntities;
+
+/*
+ * YbUpdateAffectedEntities holds planning time computation of entities (index,
+ * constraints, etc) that maybe affected by a ModifyTable query (currently used
+ * by only UPDATE or an INSERT ON CONFLICT DO UPDATE queries).
+ * Information held in this structure includes a list of columns that may be
+ * modified by the query, a list of entities that reference these columns, and
+ * the mapping between them.
+ */
+typedef struct YbUpdateAffectedEntities
+{
+	NodeTag		type;
+	/*
+	 * Identifying information about a list of entities that may be impacted by
+	 * the current query.
+	 */
+	struct YbUpdateEntity {
+		Oid oid; /* OID of the entity that might need an update */
+		YbSkippableEntityType etype; /* What type of entity is it? */
+	}			*entity_list;
+
+	/*
+	 * YbUpdateColInfo holds information about columns that may be modified as
+	 * part of an UPDATE or an INSERT ON CONFLICT DO UPDATE query.
+	 * This includes -
+	 * 1. The attribute number of the column
+	 * 2. A list of entities that reference the column
+	 *
+	 * An entity is said to reference a column in a tuple if modification of the
+	 * column in the tuple could result in a housekeeping operation to be
+	 * performed on the entity. Examples include indexes and constraints.
+	 * Modification of one of the columns in the index will cause an index
+	 * update operation. Similarly, modification of a column that has a foreign
+	 * key constraint on it will trigger a referential integrity check.
+	 */
+	struct YbUpdateColInfo {
+		/*
+		 * The attribute number of the column offset by
+		 *'YBFirstLowInvalidAttributeNumber' or 'FirstLowInvalidHeapAttributeNumber'
+		 * The offset makes the attribute number non-negative, allowing direct
+		 * interfacing with bitmapsets.
+		 */
+		AttrNumber attnum;
+
+		/*
+		 * A list of entities that reference the column. 
+		 * Entities are identified by their index in the entity_list.
+		 */
+		List *entity_refs;
+	}			*col_info_list;
+
+	/*
+	 * A matrix that facilitates optimizing the number of columns to be compared
+	 * to decide if an entity is affected by the query. The columns of the
+	 * matrix represent the entities under consideration, the rows of the matrix
+	 * represent the columns/fields in the relation affected by the query.
+	 * A working copy of this matrix is made for each tuple that is updated at
+	 * execution time.
+	 */
+	YbBitMatrix	matrix;
+} YbUpdateAffectedEntities;
+
+#define YB_UPDATE_AFFECTED_ENTITIES_NUM_FIELDS(state) \
+	YbBitMatrixNumRows(&state->matrix)
+#define YB_UPDATE_AFFECTED_ENTITIES_NUM_ENTITIES(state) \
+	YbBitMatrixNumCols(&state->matrix)
+
 /* ----------------
  *	 ModifyTable node -
  *		Apply rows produced by subplan(s) to result table(s),
@@ -253,7 +364,25 @@ typedef struct ModifyTable
 	List	   *ybReturningColumns;	/* columns to fetch from DocDB */
 	List	   *ybColumnRefs;	/* colrefs to evaluate pushdown expressions */
 	bool		no_row_trigger; /* planner has checked no triggers apply */
-	List	   *no_update_index_list; /* OIDs of indexes to be aren't updated */
+
+	/*
+	 * A collection of entities that are impacted by the ModifyTable query, and
+	 * their relationship to the columns that are modified by the query. This is
+	 * currently used only by UPDATE and INSERT ON CONFLICT DO UPDATE queries.
+	 * The contents of this struct are computed at planning time and remain
+	 * immutable for the lifetime of the plan.
+	 */
+	YbUpdateAffectedEntities *yb_update_affected_entities;
+
+	/*
+	 * A collection of entity OIDs (grouped by type) for which it is known at
+	 * planning time that bookkeeping updates can be skipped.
+	 * This is currently used only by UPDATE and INSERT ON CONFLICT DO UPDATE
+	 * queries.
+	 * The entities in this struct are mutually exclusive to the entities in
+	 * yb_update_affected_entities.
+	 */
+	YbSkippableEntities *yb_skip_entities;
 } ModifyTable;
 
 struct PartitionPruneInfo;		/* forward reference to struct below */

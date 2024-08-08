@@ -37,15 +37,13 @@
 
 namespace yb::master {
 
-struct PersistentXClusterConfigInfo
-    : public Persistent<SysXClusterConfigEntryPB, SysRowEntryType::XCLUSTER_CONFIG> {};
+struct PersistentXClusterConfigInfo : public Persistent<SysXClusterConfigEntryPB> {};
 
 class XClusterConfigInfo : public SingletonMetadataCowWrapper<PersistentXClusterConfigInfo> {};
 
 DECLARE_SINGLETON_LOADER_CLASS(XClusterConfig, std::string, SysXClusterConfigEntryPB);
 
-struct PersistentXClusterSafeTimeInfo
-    : public Persistent<XClusterSafeTimePB, SysRowEntryType::XCLUSTER_SAFE_TIME> {};
+struct PersistentXClusterSafeTimeInfo : public Persistent<XClusterSafeTimePB> {};
 
 class XClusterSafeTimeInfo : public SingletonMetadataCowWrapper<PersistentXClusterSafeTimeInfo> {
  public:
@@ -55,9 +53,7 @@ class XClusterSafeTimeInfo : public SingletonMetadataCowWrapper<PersistentXClust
 DECLARE_SINGLETON_LOADER_CLASS(XClusterSafeTime, std::string, XClusterSafeTimePB);
 
 struct PersistentXClusterOutboundReplicationGroupInfo
-    : public Persistent<
-          SysXClusterOutboundReplicationGroupEntryPB,
-          SysRowEntryType::XCLUSTER_OUTBOUND_REPLICATION_GROUP> {};
+    : public Persistent<SysXClusterOutboundReplicationGroupEntryPB> {};
 
 class XClusterOutboundReplicationGroupInfo
     : public MetadataCowWrapper<PersistentXClusterOutboundReplicationGroupInfo> {

@@ -9,6 +9,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.forms.RollMaxBatchSize;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -41,6 +42,7 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
   public static class Params extends ServerSubTaskParams {
     public String targetSoftwareVersion;
     public Collection<UpgradeTaskBase.MastersAndTservers> nodesToCheck;
+    public boolean fallbackToSingleSplits;
   }
 
   @Override
@@ -64,6 +66,9 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
       log.debug("API is not supported for target version {}", taskParams().targetSoftwareVersion);
       return;
     }
+    if (taskParams().nodesToCheck.isEmpty()) {
+      return;
+    }
 
     if (!isApiSupported(
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion)) {
@@ -72,15 +77,6 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
           universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
       return;
     }
-
-    // Max threshold for follower lag.
-    long maxAcceptableFollowerLagMs =
-        confGetter.getConfForScope(universe, UniverseConfKeys.followerLagMaxThreshold).toMillis();
-
-    long maxTimeoutMs =
-        confGetter
-            .getConfForScope(universe, UniverseConfKeys.nodesAreSafeToTakeDownCheckTimeout)
-            .toMillis();
 
     boolean cloudEnabled =
         confGetter.getConfForScope(
@@ -91,58 +87,28 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
       return;
     }
 
+    int maxSplit =
+        taskParams().nodesToCheck.stream()
+            .mapToInt(mt -> Math.max(mt.tserversList.size(), mt.mastersList.size()))
+            .max()
+            .getAsInt();
+
+    Collection<UpgradeTaskBase.MastersAndTservers> singleSplits =
+        toSingleSplits(taskParams().nodesToCheck);
+
     try (YBClient ybClient = getClient()) {
-      AtomicInteger errorCnt = new AtomicInteger();
       List<String> lastErrors = new ArrayList<>();
       boolean result =
-          doWithExponentialTimeout(
-              INITIAL_DELAY_MS,
-              MAX_DELAY_MS,
-              maxTimeoutMs,
-              () -> {
-                try {
-                  lastErrors.clear();
-                  for (UpgradeTaskBase.MastersAndTservers ips : taskParams().nodesToCheck) {
-                    Set<String> masterIps = extractIps(universe, ips.mastersList, cloudEnabled);
-                    Set<String> tserverIps = extractIps(universe, ips.tserversList, cloudEnabled);
-                    String currentNodes = "";
-                    if (!masterIps.isEmpty()) {
-                      currentNodes += "MASTERS: " + masterIps;
-                    }
-                    if (!tserverIps.isEmpty()) {
-                      if (!currentNodes.isEmpty()) {
-                        currentNodes += ",";
-                      }
-                      currentNodes += "TSERVERS: " + tserverIps;
-                    }
-                    try {
-                      AreNodesSafeToTakeDownResponse resp =
-                          ybClient.areNodesSafeToTakeDown(
-                              masterIps, tserverIps, maxAcceptableFollowerLagMs);
-
-                      if (!resp.isSucessful()) {
-                        lastErrors.add(currentNodes + " have a problem: " + resp.getErrorMessage());
-                      }
-                    } catch (MasterErrorException me) {
-                      lastErrors.add(currentNodes + " have a problem: " + me.getMessage());
-                    }
-                  }
-                  log.debug("Last errors: {}", lastErrors);
-                  return lastErrors.isEmpty();
-                } catch (Exception e) {
-                  if (e.getMessage().contains("invalid method name")) {
-                    log.error("This db version doesn't support method AreNodesSafeToTakeDown");
-                    return true;
-                  }
-                  if (errorCnt.incrementAndGet() > MAX_ERRORS_TO_IGNORE) {
-                    throw new RuntimeException(
-                        "Exceeded max errors (" + MAX_ERRORS_TO_IGNORE + ")", e);
-                  }
-                  log.debug("Error count {}", errorCnt.get());
-                  return false;
-                }
-              });
-
+          checkNodes(ybClient, universe, taskParams().nodesToCheck, lastErrors, cloudEnabled);
+      if (!result
+          && taskParams().fallbackToSingleSplits
+          && singleSplits.size() > taskParams().nodesToCheck.size()) {
+        log.debug(
+            "Failed are nodes safe pre-check with batch size {}, switching to single", maxSplit);
+        lastErrors.clear();
+        getTaskCache().putObject(UpgradeTaskBase.SPLIT_FALLBACK, new RollMaxBatchSize());
+        result = checkNodes(ybClient, universe, singleSplits, lastErrors, cloudEnabled);
+      }
       if (!result) {
         String runtimeConfigInfo =
             "If temporary unavailability is acceptable, you can briefly "
@@ -165,6 +131,76 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
+  }
+
+  private Collection<UpgradeTaskBase.MastersAndTservers> toSingleSplits(
+      Collection<UpgradeTaskBase.MastersAndTservers> nodesToCheck) {
+    return nodesToCheck.stream()
+        .flatMap(mnt -> mnt.splitToSingle().stream())
+        .collect(Collectors.toList());
+  }
+
+  private boolean checkNodes(
+      YBClient ybClient,
+      Universe universe,
+      Collection<UpgradeTaskBase.MastersAndTservers> nodesToCheck,
+      List<String> lastErrors,
+      boolean cloudEnabled) {
+    AtomicInteger errorCnt = new AtomicInteger();
+    // Max threshold for follower lag.
+    long maxAcceptableFollowerLagMs =
+        confGetter.getConfForScope(universe, UniverseConfKeys.followerLagMaxThreshold).toMillis();
+
+    long maxTimeoutMs =
+        confGetter
+            .getConfForScope(universe, UniverseConfKeys.nodesAreSafeToTakeDownCheckTimeout)
+            .toMillis();
+    return doWithExponentialTimeout(
+        INITIAL_DELAY_MS,
+        MAX_DELAY_MS,
+        maxTimeoutMs,
+        () -> {
+          try {
+            lastErrors.clear();
+            for (UpgradeTaskBase.MastersAndTservers ips : nodesToCheck) {
+              Set<String> masterIps = extractIps(universe, ips.mastersList, cloudEnabled);
+              Set<String> tserverIps = extractIps(universe, ips.tserversList, cloudEnabled);
+              String currentNodes = "";
+              if (!masterIps.isEmpty()) {
+                currentNodes += "MASTERS: " + masterIps;
+              }
+              if (!tserverIps.isEmpty()) {
+                if (!currentNodes.isEmpty()) {
+                  currentNodes += ",";
+                }
+                currentNodes += "TSERVERS: " + tserverIps;
+              }
+              try {
+                AreNodesSafeToTakeDownResponse resp =
+                    ybClient.areNodesSafeToTakeDown(
+                        masterIps, tserverIps, maxAcceptableFollowerLagMs);
+
+                if (!resp.isSucessful()) {
+                  lastErrors.add(currentNodes + " have a problem: " + resp.getErrorMessage());
+                }
+              } catch (MasterErrorException me) {
+                lastErrors.add(currentNodes + " have a problem: " + me.getMessage());
+              }
+            }
+            log.debug("Last errors: {}", lastErrors);
+            return lastErrors.isEmpty();
+          } catch (Exception e) {
+            if (e.getMessage().contains("invalid method name")) {
+              log.error("This db version doesn't support method AreNodesSafeToTakeDown");
+              return true;
+            }
+            if (errorCnt.incrementAndGet() > MAX_ERRORS_TO_IGNORE) {
+              throw new RuntimeException("Exceeded max errors (" + MAX_ERRORS_TO_IGNORE + ")", e);
+            }
+            log.debug("Error count {}", errorCnt.get());
+            return false;
+          }
+        });
   }
 
   private void fail(String message) {

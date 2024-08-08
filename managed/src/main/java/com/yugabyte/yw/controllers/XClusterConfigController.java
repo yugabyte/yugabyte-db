@@ -30,6 +30,7 @@ import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.table.TableInfoUtil;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.controllers.handlers.UniverseTableHandler;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
@@ -105,6 +106,7 @@ public class XClusterConfigController extends AuthenticatedController {
   private final XClusterUniverseService xClusterUniverseService;
   private final AutoFlagUtil autoFlagUtil;
   private final XClusterScheduler xClusterScheduler;
+  private final UniverseTableHandler tableHandler;
 
   @Inject
   public XClusterConfigController(
@@ -116,7 +118,8 @@ public class XClusterConfigController extends AuthenticatedController {
       RuntimeConfGetter confGetter,
       XClusterUniverseService xClusterUniverseService,
       AutoFlagUtil autoFlagUtil,
-      XClusterScheduler xClusterScheduler) {
+      XClusterScheduler xClusterScheduler,
+      UniverseTableHandler tableHandler) {
     this.commissioner = commissioner;
     this.metricQueryHelper = metricQueryHelper;
     this.backupHelper = backupHelper;
@@ -126,6 +129,7 @@ public class XClusterConfigController extends AuthenticatedController {
     this.xClusterUniverseService = xClusterUniverseService;
     this.autoFlagUtil = autoFlagUtil;
     this.xClusterScheduler = xClusterScheduler;
+    this.tableHandler = tableHandler;
   }
 
   /**
@@ -366,8 +370,8 @@ public class XClusterConfigController extends AuthenticatedController {
       lagMetricData = Json.newObject().put("error", errorMsg);
     }
 
-    XClusterConfigTaskBase.setReplicationStatus(
-        this.xClusterUniverseService, this.ybService, xClusterConfig);
+    XClusterConfigTaskBase.updateReplicationDetailsFromDB(
+        this.xClusterUniverseService, this.ybService, this.tableHandler, xClusterConfig);
 
     // Wrap XClusterConfig with lag metric data.
     XClusterConfigGetResp resp = new XClusterConfigGetResp();
@@ -1696,7 +1700,7 @@ public class XClusterConfigController extends AuthenticatedController {
     // If the certs_for_cdc_dir gflag is not set, and it is required, tell the user to set it
     // before running this task.
     try {
-      if (XClusterConfigTaskBase.getSourceCertificateIfNecessary(sourceUniverse, targetUniverse)
+      if (XClusterConfigTaskBase.getOriginCertficateIfNecessary(sourceUniverse, targetUniverse)
               .isPresent()
           && targetUniverse.getUniverseDetails().getSourceRootCertDirPath() == null) {
         throw new PlatformServiceException(
@@ -1704,8 +1708,8 @@ public class XClusterConfigController extends AuthenticatedController {
             String.format(
                 "The %s gflag is required, but it is not set. Please use `Edit Flags` "
                     + "feature to set %s gflag to %s on the target universe",
-                XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG,
-                XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG,
+                XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG,
+                XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG,
                 XClusterConfigTaskBase.getProducerCertsDir(
                     targetUniverse.getUniverseDetails().getPrimaryCluster().userIntent.provider)));
       }
@@ -2006,6 +2010,7 @@ public class XClusterConfigController extends AuthenticatedController {
                     XClusterConfigTaskBase.getTableInfoListByNamespaceId(
                         ybService, sourceUniverse, tableType, namespaceId);
                 namespaceTables.stream()
+                    .filter(tableInfo -> !TableInfoUtil.isColocatedChildTable(tableInfo))
                     .map(tableInfo -> XClusterConfigTaskBase.getTableId(tableInfo))
                     .forEach(tableIdsForBootstrap::add);
               });

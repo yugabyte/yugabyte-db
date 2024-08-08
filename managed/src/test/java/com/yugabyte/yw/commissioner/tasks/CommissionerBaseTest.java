@@ -130,7 +130,7 @@ import play.libs.Json;
 
 @Slf4j
 public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseTest {
-  protected static final int MAX_RETRY_COUNT = 4000;
+  protected static final int MAX_RETRY_COUNT = 10000;
   protected static final String ENABLE_CUSTOM_HOOKS_PATH =
       "yb.security.custom_hooks.enable_custom_hooks";
   protected static final String ENABLE_SUDO_PATH = "yb.security.custom_hooks.enable_sudo";

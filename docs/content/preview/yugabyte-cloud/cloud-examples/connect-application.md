@@ -1,4 +1,4 @@
----
+<!---
 title: Connect a Spring Data YugabyteDB application
 linkTitle: Connect a Spring application
 description: Connect a Spring Spring Data YugabyteDB application to YugabyteDB Aeon.
@@ -9,7 +9,8 @@ menu:
     parent: cloud-examples
     weight: 100
 type: docs
----
+private: true
+--->
 
 The example on this page shows how you can connect a Spring application to YugabyteDB Aeon, using a version of the Spring PetClinic sample application that has been updated with a domain and persistence layer built with [Spring Data YugabyteDB](https://github.com/yugabyte/spring-data-yugabytedb).
 

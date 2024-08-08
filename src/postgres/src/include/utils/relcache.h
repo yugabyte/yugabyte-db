@@ -50,6 +50,7 @@ extern Oid	RelationGetPrimaryKeyIndex(Relation relation);
 extern Oid	RelationGetReplicaIndex(Relation relation);
 extern List *RelationGetIndexExpressions(Relation relation);
 extern List *RelationGetIndexPredicate(Relation relation);
+extern List *YbRelationGetFKeyReferencedByList(Relation relation);
 
 typedef enum IndexAttrBitmapKind
 {
@@ -62,6 +63,10 @@ typedef enum IndexAttrBitmapKind
 
 extern Bitmapset *RelationGetIndexAttrBitmap(Relation relation,
 						   IndexAttrBitmapKind attrKind);
+extern void YbComputeIndexExprOrPredicateAttrs(Bitmapset **indexattrs,
+											   Relation indexDesc,
+											   const int Anum_pg_index,
+											   AttrNumber attr_offset);
 extern bool CheckIndexForUpdate(Oid indexoid,
 						   const Bitmapset *updated_attrs, AttrNumber attr_offset);
 

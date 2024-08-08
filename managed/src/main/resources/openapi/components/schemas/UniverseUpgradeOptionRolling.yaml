@@ -9,3 +9,7 @@ properties:
       behavior. False will perform a non-rolling upgrade where all nodes are upgraded at the same
     type: boolean
     default: true
+  roll_max_batch_size:
+    description: Suggested number of tservers to roll during upgrade if available.
+    $ref: "./RollMaxBatchSize.yaml"
+    x-yba-api-visibility: internal

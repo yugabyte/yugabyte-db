@@ -12,7 +12,9 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import io.swagger.annotations.ApiModelProperty;
 import java.util.Map;
 import play.mvc.Http.Status;
 
@@ -22,6 +24,10 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
 
   public UpgradeOption upgradeOption = UpgradeOption.ROLLING_UPGRADE;
   protected RuntimeConfGetter runtimeConfGetter;
+
+  @ApiModelProperty(value = "YbaApi Internal. Requested batch size values for rolling upgrade")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2024.2.0.0")
+  public RollMaxBatchSize rollMaxBatchSize = null;
 
   public enum UpgradeTaskType {
     Everything,

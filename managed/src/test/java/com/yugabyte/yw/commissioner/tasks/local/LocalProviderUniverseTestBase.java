@@ -134,9 +134,13 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
 
   private static final String DEFAULT_BASE_DIR = "/tmp/local";
   protected static String YBC_VERSION;
-  public static String DB_VERSION = "2.20.5.0-b72";
+  public static String DB_VERSION = "2024.1.0.0-b129";
   private static final String DOWNLOAD_URL =
-      "https://downloads.yugabyte.com/releases/2.20.5.0/" + "yugabyte-2.20.5.0-b72-%s-%s.tar.gz";
+      "https://downloads.yugabyte.com/releases/2024.1.0.0/"
+          + "yugabyte-"
+          + DB_VERSION
+          + "-%s-%s.tar.gz";
+
   private static final String YBC_BASE_S3_URL = "https://downloads.yugabyte.com/ybc/";
   private static final String YBC_BIN_ENV_KEY = "YBC_PATH";
   private static final boolean KEEP_FAILED_UNIVERSE = true;
@@ -1096,5 +1100,18 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
       Thread.sleep(1000);
     } while (stopwatch.elapsed().compareTo(timeout) < 0);
     throw new RuntimeException("Timed-out waiting for next task to start");
+  }
+
+  protected void verifyNodeModifications(Universe universe, int added, int removed) {
+    assertEquals(
+        added,
+        universe.getUniverseDetails().nodeDetailsSet.stream()
+            .filter(n -> n.state == NodeDetails.NodeState.ToBeAdded)
+            .count());
+    assertEquals(
+        removed,
+        universe.getUniverseDetails().nodeDetailsSet.stream()
+            .filter(n -> n.state == NodeDetails.NodeState.ToBeRemoved)
+            .count());
   }
 }
