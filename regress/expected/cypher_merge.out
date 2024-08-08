@@ -1650,6 +1650,74 @@ SELECT * FROM cypher('issue_1709', $$ MATCH (u) DELETE u $$) AS (a agtype);
 (0 rows)
 
 --
+-- Fix issue 1907: SET on MERGE not storing edge properties
+--
+-- setup
+SELECT * FROM create_graph('issue_1907');
+NOTICE:  graph "issue_1907" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * from cypher('issue_1907', $$ CREATE (n:Testnode {name: 'Test Node A'})
+                                      RETURN n $$) as (n agtype);
+                                              n                                              
+---------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "Testnode", "properties": {"name": "Test Node A"}}::vertex
+(1 row)
+
+SELECT * from cypher('issue_1907', $$ CREATE (n:Testnode {name: 'Test Node B'})
+                                      RETURN n $$) as (n agtype);
+                                              n                                              
+---------------------------------------------------------------------------------------------
+ {"id": 844424930131970, "label": "Testnode", "properties": {"name": "Test Node B"}}::vertex
+(1 row)
+
+SELECT * FROM cypher('issue_1907', $$ MATCH ()-[r]->() RETURN r $$) AS (r agtype);
+ r 
+---
+(0 rows)
+
+-- should return properties added
+SELECT * FROM cypher('issue_1907', $$ MERGE (a {name: 'Test Node A'})-[r:RELATED_TO]->(b {name: 'Test Node B'})
+                                      SET r = {property1: 'something', property2: 'else'}
+                                      RETURN r $$) AS (r agtype);
+                                                                                      r                                                                                       
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 1125899906842625, "label": "RELATED_TO", "end_id": 281474976710658, "start_id": 281474976710657, "properties": {"property1": "something", "property2": "else"}}::edge
+(1 row)
+
+-- should return properties added
+SELECT * FROM cypher('issue_1907', $$ MATCH ()-[r]->() RETURN r $$) AS (r agtype);
+                                                                                      r                                                                                       
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 1125899906842625, "label": "RELATED_TO", "end_id": 281474976710658, "start_id": 281474976710657, "properties": {"property1": "something", "property2": "else"}}::edge
+(1 row)
+
+-- cleanup
+SELECT * FROM cypher('issue_1907', $$ MATCH ()-[r]->() DELETE r $$) AS (r agtype);
+ r 
+---
+(0 rows)
+
+-- do it again, but a different way
+SELECT * FROM cypher('issue_1907', $$ MERGE (a {name: 'Test Node A'})-[r:RELATED_TO]->(b {name: 'Test Node B'})
+                                      SET r.property1 = 'something', r.property2 = 'else'
+                                      RETURN r $$) AS (r agtype);
+                                                                                      r                                                                                       
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 1125899906842626, "label": "RELATED_TO", "end_id": 281474976710660, "start_id": 281474976710659, "properties": {"property1": "something", "property2": "else"}}::edge
+(1 row)
+
+-- should return properties added
+SELECT * FROM cypher('issue_1907', $$ MATCH ()-[r]->() RETURN r $$) AS (r agtype);
+                                                                                      r                                                                                       
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 1125899906842626, "label": "RELATED_TO", "end_id": 281474976710660, "start_id": 281474976710659, "properties": {"property1": "something", "property2": "else"}}::edge
+(1 row)
+
+--
 -- clean up graphs
 --
 SELECT * FROM cypher('cypher_merge', $$ MATCH (n) DETACH DELETE n $$) AS (a agtype);
@@ -1670,6 +1738,18 @@ SELECT * FROM cypher('issue_1709', $$ MATCH (n) DETACH DELETE n $$) AS (a agtype
 --
 -- delete graphs
 --
+SELECT drop_graph('issue_1907', true);
+NOTICE:  drop cascades to 4 other objects
+DETAIL:  drop cascades to table issue_1907._ag_label_vertex
+drop cascades to table issue_1907._ag_label_edge
+drop cascades to table issue_1907."Testnode"
+drop cascades to table issue_1907."RELATED_TO"
+NOTICE:  graph "issue_1907" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
 SELECT drop_graph('cypher_merge', true);
 NOTICE:  drop cascades to 19 other objects
 DETAIL:  drop cascades to table cypher_merge._ag_label_vertex

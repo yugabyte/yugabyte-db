@@ -761,6 +761,31 @@ SELECT * FROM cypher('issue_1709', $$ MATCH ()-[e]->() DELETE e $$) AS (a agtype
 SELECT * FROM cypher('issue_1709', $$ MATCH (u) DELETE u $$) AS (a agtype);
 
 --
+-- Fix issue 1907: SET on MERGE not storing edge properties
+--
+-- setup
+SELECT * FROM create_graph('issue_1907');
+SELECT * from cypher('issue_1907', $$ CREATE (n:Testnode {name: 'Test Node A'})
+                                      RETURN n $$) as (n agtype);
+SELECT * from cypher('issue_1907', $$ CREATE (n:Testnode {name: 'Test Node B'})
+                                      RETURN n $$) as (n agtype);
+SELECT * FROM cypher('issue_1907', $$ MATCH ()-[r]->() RETURN r $$) AS (r agtype);
+-- should return properties added
+SELECT * FROM cypher('issue_1907', $$ MERGE (a {name: 'Test Node A'})-[r:RELATED_TO]->(b {name: 'Test Node B'})
+                                      SET r = {property1: 'something', property2: 'else'}
+                                      RETURN r $$) AS (r agtype);
+-- should return properties added
+SELECT * FROM cypher('issue_1907', $$ MATCH ()-[r]->() RETURN r $$) AS (r agtype);
+-- cleanup
+SELECT * FROM cypher('issue_1907', $$ MATCH ()-[r]->() DELETE r $$) AS (r agtype);
+-- do it again, but a different way
+SELECT * FROM cypher('issue_1907', $$ MERGE (a {name: 'Test Node A'})-[r:RELATED_TO]->(b {name: 'Test Node B'})
+                                      SET r.property1 = 'something', r.property2 = 'else'
+                                      RETURN r $$) AS (r agtype);
+-- should return properties added
+SELECT * FROM cypher('issue_1907', $$ MATCH ()-[r]->() RETURN r $$) AS (r agtype);
+
+--
 -- clean up graphs
 --
 SELECT * FROM cypher('cypher_merge', $$ MATCH (n) DETACH DELETE n $$) AS (a agtype);
@@ -770,6 +795,7 @@ SELECT * FROM cypher('issue_1709', $$ MATCH (n) DETACH DELETE n $$) AS (a agtype
 --
 -- delete graphs
 --
+SELECT drop_graph('issue_1907', true);
 SELECT drop_graph('cypher_merge', true);
 SELECT drop_graph('issue_1630', true);
 SELECT drop_graph('issue_1691', true);
