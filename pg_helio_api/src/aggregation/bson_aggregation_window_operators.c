@@ -138,9 +138,10 @@ static WindowFunc * GetSimpleBsonExpressionGetWindowFunc(const bson_value_t *opV
 /*===================================*/
 /* Window Operator Handler functions */
 /*===================================*/
-
 static WindowFunc * HandleDollarSumWindowOperator(const bson_value_t *opValue,
 												  WindowOperatorContext *context);
+static WindowFunc * HandleDollarCountWindowOperator(const bson_value_t *opValue,
+													WindowOperatorContext *context);
 static WindowFunc * HandleDollarAvgWindowOperator(const bson_value_t *opValue,
 												  WindowOperatorContext *context);
 static WindowFunc * HandleDollarPushWindowOperator(const bson_value_t *opValue,
@@ -175,7 +176,7 @@ static const WindowOperatorDefinition WindowOperatorDefinitions[] =
 	},
 	{
 		.operatorName = "$count",
-		.windowOperatorFunc = NULL
+		.windowOperatorFunc = &HandleDollarCountWindowOperator
 	},
 	{
 		.operatorName = "$covariancePop",
@@ -1340,6 +1341,31 @@ HandleDollarAvgWindowOperator(const bson_value_t *opValue,
 {
 	return GetSimpleBsonExpressionGetWindowFunc(opValue, context,
 												BsonAvgAggregateFunctionOid());
+}
+
+
+/*
+ * Handle for $count window aggregation operator.
+ * Returns the WindowFunc for bson aggregate function `bsonsum`
+ */
+static WindowFunc *
+HandleDollarCountWindowOperator(const bson_value_t *opValue,
+								WindowOperatorContext *context)
+{
+	if (!IsBsonValueEmptyDocument(opValue))
+	{
+		ereport(ERROR, (errcode(MongoBadValue),
+						errmsg("$count only accepts an empty object as input")));
+	}
+
+	bson_value_t newOpValue =
+	{
+		value_type: BSON_TYPE_INT32,
+		value: { v_int32: 1 }
+	};
+
+	return GetSimpleBsonExpressionGetWindowFunc(&newOpValue, context,
+												BsonSumAggregateFunctionOid());
 }
 
 
