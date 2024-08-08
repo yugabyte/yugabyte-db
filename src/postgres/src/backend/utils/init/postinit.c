@@ -78,15 +78,12 @@
 #include "utils/timeout.h"
 #include "utils/tqual.h"
 
-#include <arpa/inet.h>
 #include "pg_yb_utils.h"
 #include "catalog/pg_yb_catalog_version.h"
 #include "catalog/pg_yb_profile.h"
 #include "catalog/pg_yb_role_profile.h"
 #include "catalog/pg_yb_tablegroup.h"
 #include "catalog/yb_catalog_version.h"
-#include "common/ip.h"
-#include "utils/builtins.h"
 #include "utils/yb_inheritscache.h"
 
 static HeapTuple GetDatabaseTuple(const char *dbname);
@@ -101,8 +98,6 @@ static void IdleInTransactionSessionTimeoutHandler(void);
 static bool ThereIsAtLeastOneRole(void);
 static void process_startup_options(Port *port, bool am_superuser);
 static void process_settings(Oid databaseid, Oid roleid);
-
-static void YbSetAshClientAddrAndPort();
 
 /*** InitPostgres support ***/
 
@@ -699,7 +694,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 	 * bootstrap because it won't have client address anyway.
 	 */
 	if (YbAshIsClientAddrSet())
-		YbSetAshClientAddrAndPort();
+		YbAshSetOneTimeMetadata();
 
 	/* Connect to YugaByte cluster. */
 	if (bootstrap)
@@ -1387,76 +1382,4 @@ ThereIsAtLeastOneRole(void)
 	heap_close(pg_authid_rel, AccessShareLock);
 
 	return result;
-}
-
-/*
- * Sets the client address and port for ASH metadata.
- * If the address family is not AF_INET or AF_INET6, then the PGPPROC ASH metadata
- * fields for client address and port don't mean anything. Otherwise, if
- * pg_getnameinfo_all returns non-zero value, a warning is printed with the error
- * code and ASH keeps working without client address and port for the current PG
- * backend.
- *
- * ASH samples only normal backends and this excludes background workers.
- * So it's fine in that case to not set the client address.
- */
-static void
-YbSetAshClientAddrAndPort()
-{
-	/* Background workers which creates a postgres backend may have null MyProcPort. */
-	if (MyProcPort == NULL)
-	{
-		Assert(MyProc->isBackgroundWorker == true);
-		return;
-	}
-
-	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
-
-	/* Set the address family and null the client_addr and client_port */
-	MyProc->yb_ash_metadata.addr_family = MyProcPort->raddr.addr.ss_family;
-	MemSet(MyProc->yb_ash_metadata.client_addr, 0, 16);
-	MyProc->yb_ash_metadata.client_port = 0;
-
-	switch (MyProcPort->raddr.addr.ss_family)
-	{
-		case AF_INET:
-#ifdef HAVE_IPV6
-		case AF_INET6:
-#endif
-			break;
-		default:
-			LWLockRelease(&MyProc->yb_ash_metadata_lock);
-			return;
-	}
-
-	char		remote_host[NI_MAXHOST];
-	int			ret;
-
-	ret = pg_getnameinfo_all(&MyProcPort->raddr.addr, MyProcPort->raddr.salen,
-							 remote_host, sizeof(remote_host),
-							 NULL, 0,
-							 NI_NUMERICHOST | NI_NUMERICSERV);
-
-	if (ret != 0)
-	{
-		ereport(WARNING,
-				(errmsg("pg_getnameinfo_all while setting ash metadata failed"),
-				 errdetail("%s\naddress family: %u",
-						   gai_strerror(ret),
-						   MyProcPort->raddr.addr.ss_family)));
-
-		LWLockRelease(&MyProc->yb_ash_metadata_lock);
-		return;
-	}
-
-	clean_ipv6_addr(MyProcPort->raddr.addr.ss_family, remote_host);
-
-	/* Setting ip address */
-	inet_pton(MyProcPort->raddr.addr.ss_family, remote_host,
-			  MyProc->yb_ash_metadata.client_addr);
-
-	/* Setting port */
-	MyProc->yb_ash_metadata.client_port = atoi(MyProcPort->remote_port);
-
-	LWLockRelease(&MyProc->yb_ash_metadata_lock);
 }

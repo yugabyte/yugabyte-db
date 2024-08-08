@@ -10482,9 +10482,9 @@
   proname => 'yb_active_session_history', prorows => '100000',
   proretset => 't', provolatile => 'v', proparallel => 'r',
   prorettype => 'record', proargtypes => '',
-  proallargtypes => '{timestamptz,uuid,int8,text,text,text,uuid,int8,int8,text,text,float4,text,oid}',
+  proallargtypes => '{timestamptz,uuid,int8,text,text,text,uuid,int8,int4,text,text,float4,text,oid}',
   proargmodes => '{o,o,o,o,o,o,o,o,o,o,o,o,o,o}',
-  proargnames => '{sample_time,root_request_id,rpc_request_id,wait_event_component,wait_event_class,wait_event,top_level_node_id,query_id,ysql_session_id,client_node_ip,wait_event_aux,sample_weight,wait_event_type,ysql_dbid}',
+  proargnames => '{sample_time,root_request_id,rpc_request_id,wait_event_component,wait_event_class,wait_event,top_level_node_id,query_id,pid,client_node_ip,wait_event_aux,sample_weight,wait_event_type,ysql_dbid}',
   prosrc => 'yb_active_session_history'},
 
 { oid => '8066',

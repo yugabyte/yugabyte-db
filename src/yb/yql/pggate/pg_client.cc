@@ -157,12 +157,12 @@ void AshMetadataToPB(const YBCPgAshConfig& ash_config, tserver::PgPerformOptions
     return;
   }
 
-  // session_id is not set here as it's already set in PgPerformRequestPB
   auto* ash_metadata = options->mutable_ash_metadata();
   const auto* pg_metadata = ash_config.metadata;
   ash_metadata->set_yql_endpoint_tserver_uuid(ash_config.yql_endpoint_tserver_uuid, 16);
   ash_metadata->set_root_request_id(pg_metadata->root_request_id, 16);
   ash_metadata->set_query_id(pg_metadata->query_id);
+  ash_metadata->set_pid(pg_metadata->pid);
   ash_metadata->set_database_id(pg_metadata->database_id);
 
   uint8_t addr_family = pg_metadata->addr_family;
