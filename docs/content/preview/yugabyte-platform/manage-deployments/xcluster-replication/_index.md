@@ -46,7 +46,7 @@ For YCQL databases, only the non-transactional replication is supported.
 
 Bidirectional replication refers to setting up xCluster replication between two YSQL databases or YCQL tables on different universes in both directions, so that writes on either database or table can be replicated to the other database or table. Certain xCluster management operations need special attention in this case. See [Bidirectional replication](bidirectional-replication/).
 
-For more information about transactional and non-transactional modes, see [xCluster](../../../architecture/docdb-replication/async-replication/#asynchronous-replication-modes).
+For more information about transactional and non-transactional modes, see [Asynchronous replication modes](../../../architecture/docdb-replication/async-replication/#asynchronous-replication-modes).
 
 {{<lead link="#">}}
 Blog: [Can Distributed Databases Achieve Transactional Consistency on Async Standbys? Yes, They Can](https://www.yugabyte.com/blog/distributed-database-transactional-consistency-async-standby/)
@@ -89,6 +89,8 @@ Video: [YFTT - Transactional xCluster](https://www.youtube.com/watch?lI6gw7ncBs8
     To fix this, close any open SQL connections to the target, delete the xCluster replication configuration, and perform the operation again.
 
 - Setting up xCluster replication between a universe upgraded to v2.20.x and a new v2.20.x universe is not supported. This is due to a limitation of xCluster deployments and packed rows. See [Packed row limitations](../../../architecture/docdb/packed-rows/#limitations).
+
+- You can set up change data capture on a source universe in xCluster replication, but not a target.
 
 ## Upgrading universes in xCluster replication
 

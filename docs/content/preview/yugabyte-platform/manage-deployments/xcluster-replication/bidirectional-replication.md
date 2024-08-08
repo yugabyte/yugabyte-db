@@ -28,6 +28,8 @@ Due to its operational complexity, bidirectional xCluster is not recommended for
 - You can't use the YugabyteDB Anywhere UI to create two separate replication configurations for YSQL, each containing a subset of the database tables.
 - Active-active bidirectional replication is not supported because the backup or restore would wipe out the existing data. This means that copying data can be done only if an xCluster configuration with reverse direction for a table does not exist. It is recommended to set up replication from your active universe to the passive target, and then set up replication for the target to the source universe. To restart a replication with a full copy, the reverse replication must be deleted.
 
+For more information, refer to [Limitations](../../../../architecture/docdb-replication/async-replication/#limitations).
+
 ## Prerequisites
 
 - Create two universes as described in [Prerequisites](../xcluster-replication-setup/#prerequisites).

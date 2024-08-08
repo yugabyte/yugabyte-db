@@ -155,6 +155,8 @@ YSQL transactional replication displays the following additional metrics:
 
     The time elapsed in microseconds for replication between the most caught up tablet and the tablet that lags the most on the target. This metric is available only on the target.
 
+For more information, refer to [Metrics](../../../back-up-restore-universes/disaster-recovery/disaster-recovery-setup/#metrics).
+
 ### Tables
 
 The replication details also provide all the tables in replication and their status on the **Tables** tab.
