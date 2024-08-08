@@ -103,6 +103,8 @@ struct TabletCDCCheckpointInfo {
 
 using TabletIdCDCCheckpointMap = std::unordered_map<TabletId, TabletCDCCheckpointInfo>;
 using TabletIdStreamIdSet = std::set<std::pair<TabletId, xrepl::StreamId>>;
+using TableIdToStreamIdMap =
+    std::unordered_map<TableId, std::pair<TabletId, std::set<xrepl::StreamId>>>;
 using RollBackTabletIdCheckpointMap =
     std::unordered_map<const std::string*, std::pair<int64_t, OpId>>;
 class CDCServiceImpl : public CDCServiceIf {
@@ -386,6 +388,10 @@ class CDCServiceImpl : public CDCServiceIf {
       const TabletIdStreamIdSet& cdc_state_entries_to_delete,
       const std::unordered_set<TabletId>& failed_tablet_ids);
 
+  // This method removes the expired / not of interest tables from the stream metadata and updates
+  // the checkpoint of cdc_state entries to max.
+  Status CleanupExpiredTables(TableIdToStreamIdMap expired_tables_map);
+
   MicrosTime GetLastReplicatedTime(const std::shared_ptr<tablet::TabletPeer>& tablet_peer);
 
   bool ShouldUpdateCDCMetrics(MonoTime time_since_update_metrics);
@@ -410,7 +416,13 @@ class CDCServiceImpl : public CDCServiceIf {
 
   Result<TabletIdCDCCheckpointMap> PopulateTabletCheckPointInfo(
       const TabletId& input_tablet_id = "",
-      TabletIdStreamIdSet* tablet_stream_to_be_deleted = nullptr);
+      TabletIdStreamIdSet* tablet_stream_to_be_deleted = nullptr,
+      TableIdToStreamIdMap* expired_tables_map = nullptr);
+
+  void AddTableToExpiredTablesMap(
+      const tablet::TabletPeerPtr& tablet_peer,
+      const xrepl::StreamId& stream_id,
+      TableIdToStreamIdMap* expired_tables_map);
 
   Status SetInitialCheckPoint(
       const OpId& checkpoint, const std::string& tablet_id,

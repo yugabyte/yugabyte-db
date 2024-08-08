@@ -137,6 +137,7 @@ public class CDCBaseClass extends BaseMiniClusterTest {
     flagMap.put("client_read_write_timeout_ms",
       String.valueOf(BuildTypeUtil.adjustTimeout(120000)));
     flagMap.put("memory_limit_hard_bytes", String.valueOf(2L * 1024 * 1024 * 1024));
+    flagMap.put("TEST_cdcsdk_skip_disabling_dynamic_table_addition_on_stream_creation", "true");
     return flagMap;
   }
 

@@ -224,7 +224,7 @@ namespace cdc {
 
   // The range is exclusive of end i.e. [start, end)
   Status CDCSDKYsqlTest::WriteRows(uint32_t start, uint32_t end, Cluster* cluster,
-    uint32_t num_cols) {
+    uint32_t num_cols, const char* const table_name) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
     LOG(INFO) << "Writing " << end - start << " row(s)";
 
@@ -238,7 +238,7 @@ namespace cdc {
 
       std::string statement(statement_buff.str());
       statement.at(statement.size() - 1) = ')';
-      RETURN_NOT_OK(conn.ExecuteFormat(statement, kTableName));
+      RETURN_NOT_OK(conn.ExecuteFormat(statement, table_name));
     }
     return Status::OK();
   }
@@ -2313,6 +2313,21 @@ namespace cdc {
         },
         MonoDelta::FromSeconds(60),
         "Tablets in cdc_state table associated with the stream are not the same as expected"));
+  }
+
+  Result<int> CDCSDKYsqlTest::GetStateTableRowCount() {
+    int num = 0;
+
+    CDCStateTable cdc_state_table(test_client());
+    Status s;
+    auto table_range = VERIFY_RESULT(cdc_state_table.GetTableRange({}, &s));
+
+    for (auto row_result : table_range) {
+      RETURN_NOT_OK(row_result);
+      num += 1;
+    }
+
+    return num;
   }
 
   Result<std::vector<TableId>> CDCSDKYsqlTest::GetCDCStreamTableIds(

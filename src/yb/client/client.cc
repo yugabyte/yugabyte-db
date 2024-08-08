@@ -1669,6 +1669,28 @@ Status YBClient::UpdateCDCStream(
   return Status::OK();
 }
 
+Status YBClient::RemoveTablesFromCDCSDKStream(
+    const std::vector<TableId>& table_ids,
+    const xrepl::StreamId stream_id) {
+  if (table_ids.empty()) {
+    return STATUS(InvalidArgument, "Table ID should not be empty");
+  }
+  if (!stream_id) {
+     return STATUS(InvalidArgument, "Stream ID should not be empty");
+  }
+
+  master::RemoveTablesFromCDCSDKStreamRequestPB req;
+  master::RemoveTablesFromCDCSDKStreamResponsePB resp;
+  req.set_stream_id(stream_id.ToString());
+  req.mutable_table_ids()->Reserve(narrow_cast<int>(table_ids.size()));
+  for (const auto& table_id : table_ids) {
+    req.add_table_ids(table_id);
+  }
+
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, RemoveTablesFromCDCSDKStream);
+  return Status::OK();
+}
+
 Result<bool> YBClient::IsObjectPartOfXRepl(const TableId& table_id) {
   IsObjectPartOfXReplRequestPB req;
   IsObjectPartOfXReplResponsePB resp;

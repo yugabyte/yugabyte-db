@@ -141,6 +141,8 @@ DECLARE_bool(TEST_cdcsdk_skip_updating_cdc_state_entries_on_table_removal);
 DECLARE_bool(TEST_cdcsdk_add_indexes_to_stream);
 DECLARE_bool(cdcsdk_enable_cleanup_of_non_eligible_tables_from_stream);
 DECLARE_bool(TEST_cdcsdk_disable_drop_table_cleanup);
+DECLARE_bool(TEST_cdcsdk_skip_disabling_dynamic_table_addition_on_stream_creation);
+DECLARE_bool(TEST_cdcsdk_disable_deleted_stream_cleanup);
 
 namespace yb {
 
@@ -221,7 +223,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const vector<string>& optional_cols_name = {});
 
   // The range is exclusive of end i.e. [start, end)
-  Status WriteRows(uint32_t start, uint32_t end, Cluster* cluster, uint32_t num_cols);
+  Status WriteRows(
+      uint32_t start, uint32_t end, Cluster* cluster, uint32_t num_cols,
+      const char* const table_name = kTableName);
 
   void DropTable(Cluster* cluster, const char* table_name = kTableName);
 
@@ -544,6 +548,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const std::unordered_set<TabletId> expected_tablet_ids,
       client::YBClient* client,
       const xrepl::StreamId& stream_id = xrepl::StreamId::Nil());
+
+  Result<int> GetStateTableRowCount();
 
   Result<std::vector<TableId>> GetCDCStreamTableIds(const xrepl::StreamId& stream_id);
 

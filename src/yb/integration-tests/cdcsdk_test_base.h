@@ -44,6 +44,8 @@ DECLARE_bool(TEST_ysql_yb_enable_replication_commands);
 DECLARE_uint32(cdcsdk_retention_barrier_no_revision_interval_secs);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
+DECLARE_bool(TEST_cdcsdk_skip_disabling_dynamic_table_addition_on_stream_creation);
+DECLARE_bool(cdcsdk_enable_cleanup_of_expired_table_entries);
 
 namespace yb {
 using client::YBClient;
@@ -110,6 +112,9 @@ class CDCSDKTestBase : public YBTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
+
+    ANNOTATE_UNPROTECTED_WRITE(
+        FLAGS_TEST_cdcsdk_skip_disabling_dynamic_table_addition_on_stream_creation) = true;
 
     google::SetVLOGLevel("cdc*", 4);
     google::SetVLOGLevel("tablet*", 1);
