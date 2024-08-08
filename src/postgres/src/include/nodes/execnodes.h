@@ -709,9 +709,6 @@ typedef struct EState
 	bool yb_es_is_single_row_modify_txn; /* Is this query a single-row modify
 										  * and the only stmt in this txn. */
 	bool yb_es_is_fk_check_disabled;	/* Is FK check disabled? */
-	TupleTableSlot *yb_conflict_slot; /* If a conflict is to be resolved when inserting data,
-									   * we cache the conflict tuple here when processing and
-									   * then free the slot after the conflict is resolved. */
 	YBCPgExecParameters yb_exec_params;
 
 	/*

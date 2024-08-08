@@ -182,7 +182,8 @@ static bool ExecOnConflictUpdate(ModifyTableContext *context,
 								 ItemPointer conflictTid,
 								 TupleTableSlot *excludedSlot,
 								 bool canSetTag,
-								 TupleTableSlot **returning);
+								 TupleTableSlot **returning,
+								 TupleTableSlot *ybConflictSlot);
 static TupleTableSlot *ExecPrepareTupleRouting(ModifyTableState *mtstate,
 											   EState *estate,
 											   PartitionTupleRouting *proute,
@@ -819,11 +820,7 @@ ExecInsert(ModifyTableContext *context,
 	PartitionTupleRouting *proute = mtstate->mt_partition_tuple_routing;
 	MemoryContext oldContext;
 
-	/*
-	 * The attribute "yb_conflict_slot" is only used within ExecInsert.
-	 * Initialize its value to NULL.
-	 */
-	estate->yb_conflict_slot = NULL;
+	TupleTableSlot *ybConflictSlot = NULL;
 
 	/*
 	 * If the input result relation is a partitioned table, find the leaf
@@ -1108,7 +1105,8 @@ ExecInsert(ModifyTableContext *context,
 			CHECK_FOR_INTERRUPTS();
 			specConflict = false;
 			if (!ExecCheckIndexConstraints(resultRelInfo, slot, estate,
-										   &conflictTid, arbiterIndexes))
+										   &conflictTid, arbiterIndexes,
+										   &ybConflictSlot))
 			{
 				/* committed conflict tuple found */
 				if (onconflict == ONCONFLICT_UPDATE)
@@ -1123,14 +1121,18 @@ ExecInsert(ModifyTableContext *context,
 
 					if (ExecOnConflictUpdate(context, resultRelInfo,
 											 &conflictTid, slot, canSetTag,
-											 &returning))
+											 &returning,
+											 ybConflictSlot))
 					{
 						InstrCountTuples2(&mtstate->ps, 1);
 						result = returning;
 						goto conflict_resolved;
 					}
 					else
+					{
+						Assert(!IsYBRelation(resultRelationDesc));
 						goto vlock;
+					}
 				}
 				else
 				{
@@ -1317,10 +1319,10 @@ ExecInsert(ModifyTableContext *context,
 		*insert_destrel = resultRelInfo;
 
 conflict_resolved:
-	if (estate->yb_conflict_slot != NULL) {
-		ExecDropSingleTupleTableSlot(estate->yb_conflict_slot);
-		estate->yb_conflict_slot = NULL;
-	}
+	/* YB: UPDATE-or-not is done: the conflict slot is no longer needed */
+	if (ybConflictSlot)
+		ExecDropSingleTupleTableSlot(ybConflictSlot);
+
 	return result;
 }
 
@@ -2970,7 +2972,8 @@ ExecOnConflictUpdate(ModifyTableContext *context,
 					 ItemPointer conflictTid,
 					 TupleTableSlot *excludedSlot,
 					 bool canSetTag,
-					 TupleTableSlot **returning)
+					 TupleTableSlot **returning,
+					 TupleTableSlot *ybConflictSlot)
 {
 	ModifyTableState *mtstate = context->mtstate;
 	ExprContext *econtext = mtstate->ps.ps_ExprContext;
@@ -3131,7 +3134,8 @@ yb_skip_transaction_control_check:
 		ExecCheckTupleVisible(context->estate, relation, existing);
 	else
 	{
-		ybOldTuple = ExecFetchSlotHeapTuple(context->estate->yb_conflict_slot,
+		Assert(ybConflictSlot);
+		ybOldTuple = ExecFetchSlotHeapTuple(ybConflictSlot,
 											false, &ybShouldFree);
 		ExecStoreHeapTuple(ybOldTuple, existing, false /* shouldFree */);
 		TABLETUPLE_YBCTID(context->planSlot) = HEAPTUPLE_YBCTID(ybOldTuple);
