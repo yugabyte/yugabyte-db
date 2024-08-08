@@ -95,7 +95,7 @@ Before performing a restore, ensure the following:
 
 - the target cluster is sized appropriately; refer to [Scale and configure clusters](../configure-clusters/)
 - if the target cluster has the same namespaces as the source cluster, those namespaces don't have any tables
-- the target cluster has the same admin user as the source cluster. For example, if the source cluster has the default admin user `admin`, the target cluster should also have an `admin` user. If you added your own credentials, ensure the target cluster has an admin user with the same name. If you restore to a cluster that does not have the same admin user, the admin user defaults to `yugabyte`, and you must contact {{% support-cloud %}} to reset the admin user.
+- the target cluster has the same users as the source cluster. If you restore to a cluster where some users are missing, ownership of objects owned by missing users defaults to `yugabyte`, and you must contact {{% support-cloud %}} to reset the owners.
 
 To review previous restores, on the **Backups** tab, select **Restore History**.
 
