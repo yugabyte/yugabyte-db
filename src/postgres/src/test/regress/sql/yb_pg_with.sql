@@ -869,7 +869,6 @@ WITH aa AS (SELECT 1 a, 2 b)
 INSERT INTO withz VALUES(1, (SELECT b || ' insert' FROM aa WHERE a = 1 ))
 ON CONFLICT (k) DO UPDATE SET v = (SELECT b || ' update' FROM aa WHERE a = 1 LIMIT 1);
 
-/* Disable the below test until #6782 is fixed
 -- Update a row more than once, in different parts of a wCTE. That is
 -- an allowed, presumably very rare, edge case, but since it was
 -- broken in the past, having a test seems worthwhile.
@@ -881,8 +880,8 @@ upsert_cte AS (
     RETURNING k, v)
 INSERT INTO withz VALUES(2, 'Red') ON CONFLICT (k) DO
 UPDATE SET (k, v) = (SELECT k, v FROM upsert_cte WHERE upsert_cte.k = withz.k)
-RETURNING k, v;
-*/
+RETURNING k, v; -- YB: output is different from PG (see #6782)
+
 DROP TABLE withz;
 
 -- check that run to completion happens in proper ordering

@@ -596,7 +596,8 @@ extern void ExecDeleteIndexTuples(Datum ybctid, HeapTuple tuple, EState *estate)
 extern void ExecDeleteIndexTuplesOptimized(Datum ybctid, HeapTuple tuple,
 										   EState *estate);
 extern bool ExecCheckIndexConstraints(TupleTableSlot *slot, EState *estate,
-						  ItemPointer conflictTid, List *arbiterIndexes);
+						  ItemPointer conflictTid, List *arbiterIndexes,
+						  TupleTableSlot **ybConflictSlot);
 extern void check_exclusion_constraint(Relation heap, Relation index,
 						   IndexInfo *indexInfo,
 						   ItemPointer tupleid,

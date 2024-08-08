@@ -131,7 +131,8 @@ static bool check_exclusion_or_unique_constraint(Relation heap, Relation index,
 									 EState *estate, bool newIndex,
 									 CEOUC_WAIT_MODE waitMode,
 									 bool errorOK,
-									 ItemPointer conflictTid);
+									 ItemPointer conflictTid,
+									 TupleTableSlot **ybConflictSlot);
 
 static bool index_recheck_constraint(Relation index, Oid *constr_procs,
 						 Datum *existing_values, bool *existing_isnull,
@@ -469,7 +470,8 @@ ExecInsertIndexTuplesOptimized(TupleTableSlot *slot,
 													 indexRelation, indexInfo,
 													 &(tuple->t_self), values, isnull,
 													 estate, false,
-													 waitMode, violationOK, NULL);
+													 waitMode, violationOK, NULL,
+													 NULL /* ybConflictSlot */);
 		}
 
 		if ((checkUnique == UNIQUE_CHECK_PARTIAL ||
@@ -659,7 +661,8 @@ ExecDeleteIndexTuplesOptimized(Datum ybctid,
 bool
 ExecCheckIndexConstraints(TupleTableSlot *slot,
 						  EState *estate, ItemPointer conflictTid,
-						  List *arbiterIndexes)
+						  List *arbiterIndexes,
+						  TupleTableSlot **ybConflictSlot)
 {
 	ResultRelInfo *resultRelInfo;
 	int			i;
@@ -769,7 +772,8 @@ ExecCheckIndexConstraints(TupleTableSlot *slot,
 												 indexInfo, &invalidItemPtr,
 												 values, isnull, estate, false,
 												 CEOUC_WAIT, true,
-												 conflictTid);
+												 conflictTid,
+												 ybConflictSlot);
 		if (!satisfiesConstraint)
 			return false;
 	}
@@ -830,7 +834,8 @@ check_exclusion_or_unique_constraint(Relation heap, Relation index,
 									 EState *estate, bool newIndex,
 									 CEOUC_WAIT_MODE waitMode,
 									 bool violationOK,
-									 ItemPointer conflictTid)
+									 ItemPointer conflictTid,
+									 TupleTableSlot **ybConflictSlot)
 {
 	Oid		   *constr_procs;
 	uint16	   *constr_strats;
@@ -898,10 +903,6 @@ check_exclusion_or_unique_constraint(Relation heap, Relation index,
 	econtext = GetPerTupleExprContext(estate);
 	save_scantuple = econtext->ecxt_scantuple;
 	econtext->ecxt_scantuple = existing_slot;
-	if (estate->yb_conflict_slot != NULL) {
-		ExecDropSingleTupleTableSlot(estate->yb_conflict_slot);
-		estate->yb_conflict_slot = NULL;
-	}
 
 	/*
 	 * May have to restart scan from this point if a potential conflict is
@@ -1003,7 +1004,8 @@ retry:
 		{
 			conflict = true;
 			if (IsYBRelation(heap)) {
-				estate->yb_conflict_slot = existing_slot;
+				Assert(!*ybConflictSlot);
+				*ybConflictSlot = existing_slot;
 			}
 			if (conflictTid)
 				*conflictTid = tup->t_self;
@@ -1048,9 +1050,17 @@ retry:
 	 */
 
 	econtext->ecxt_scantuple = save_scantuple;
-	if (estate->yb_conflict_slot == NULL) {
+	/*
+	 * YB: ordinarily, PG frees existing slot here.  But for YB, we need it for
+	 * the DO UPDATE part (PG only needs conflictTid which is not palloc'd).
+	 * If ybConflictSlot is filled, we found a conflict and need to extend the
+	 * memory lifetime till the DO UPDATE part is finished.  The memory will be
+	 * freed after that at the end of ExecInsert.
+	 * TODO(jason): this is not necessary for DO NOTHING, so it could be freed
+	 * here as a minor optimization in that case.
+	 */
+	if (!*ybConflictSlot)
 		ExecDropSingleTupleTableSlot(existing_slot);
-	}
 	return !conflict;
 }
 
@@ -1070,7 +1080,8 @@ check_exclusion_constraint(Relation heap, Relation index,
 	(void) check_exclusion_or_unique_constraint(heap, index, indexInfo, tupleid,
 												values, isnull,
 												estate, newIndex,
-												CEOUC_WAIT, false, NULL);
+												CEOUC_WAIT, false, NULL,
+												NULL /* ybConflictSlot */);
 }
 
 /*

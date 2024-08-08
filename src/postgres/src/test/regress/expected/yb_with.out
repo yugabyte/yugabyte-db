@@ -1,0 +1,92 @@
+/* Test A */
+drop table if exists a;
+NOTICE:  table "a" does not exist, skipping
+drop table if exists b;
+NOTICE:  table "b" does not exist, skipping
+create table a (i int unique);
+create table b (i int unique);
+insert into a values (1);
+insert into b values (2);
+EXPLAIN (costs off)
+with w(i) as (
+    insert into a values (1) on conflict on constraint a_i_key do update set i = 10 returning i
+) insert into b values (2) on conflict on constraint b_i_key do update set i = (select 20 from w);
+                 QUERY PLAN
+---------------------------------------------
+ Insert on b
+   Conflict Resolution: UPDATE
+   Conflict Arbiter Indexes: b_i_key
+   CTE w
+     ->  Insert on a
+           Conflict Resolution: UPDATE
+           Conflict Arbiter Indexes: a_i_key
+           ->  Result
+   InitPlan 2 (returns $2)
+     ->  CTE Scan on w
+   ->  Result
+(11 rows)
+
+with w(i) as (
+    insert into a values (1) on conflict on constraint a_i_key do update set i = 10 returning i
+) insert into b values (2) on conflict on constraint b_i_key do update set i = (select 20 from w);
+/* Test B */
+drop table if exists a;
+create table a (i int unique);
+insert into a values (1), (2);
+EXPLAIN (costs off)
+with w(i) as (
+    insert into a values (1) on conflict on constraint a_i_key do update set i = 10 returning i
+) insert into a values (2) on conflict on constraint a_i_key do update set i = (select 20 from w);
+                 QUERY PLAN
+---------------------------------------------
+ Insert on a
+   Conflict Resolution: UPDATE
+   Conflict Arbiter Indexes: a_i_key
+   CTE w
+     ->  Insert on a a_1
+           Conflict Resolution: UPDATE
+           Conflict Arbiter Indexes: a_i_key
+           ->  Result
+   InitPlan 2 (returns $2)
+     ->  CTE Scan on w
+   ->  Result
+(11 rows)
+
+with w(i) as (
+    insert into a values (1) on conflict on constraint a_i_key do update set i = 10 returning i
+) insert into a values (2) on conflict on constraint a_i_key do update set i = (select 20 from w);
+/* Test C */
+drop table if exists a;
+create table a (i int unique);
+insert into a values (1), (2), (3);
+EXPLAIN (costs off)
+with w(i) as (
+    insert into a values (1) on conflict on constraint a_i_key do update set i = 10 returning i
+), x(i) as (
+    insert into a values (2) on conflict on constraint a_i_key do update set i = 20 returning i
+) insert into a values (3) on conflict on constraint a_i_key do update set i = (select 30 from w);
+                 QUERY PLAN
+---------------------------------------------
+ Insert on a
+   Conflict Resolution: UPDATE
+   Conflict Arbiter Indexes: a_i_key
+   CTE w
+     ->  Insert on a a_1
+           Conflict Resolution: UPDATE
+           Conflict Arbiter Indexes: a_i_key
+           ->  Result
+   CTE x
+     ->  Insert on a a_2
+           Conflict Resolution: UPDATE
+           Conflict Arbiter Indexes: a_i_key
+           ->  Result
+   InitPlan 3 (returns $4)
+     ->  CTE Scan on w
+   ->  Result
+(16 rows)
+
+with w(i) as (
+    insert into a values (1) on conflict on constraint a_i_key do update set i = 10 returning i
+), x(i) as (
+    insert into a values (2) on conflict on constraint a_i_key do update set i = 20 returning i
+) insert into a values (3) on conflict on constraint a_i_key do update set i = (select 30 from w);
