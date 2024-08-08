@@ -1739,6 +1739,9 @@ class TabletBootstrap {
 
     TruncateOperation operation(tablet_, req);
 
+    operation.set_op_id(OpId::FromPB(replicate_msg->id()));
+    operation.set_hybrid_time(HybridTime::FromPB(replicate_msg->hybrid_time()));
+
     Status s = tablet_->Truncate(&operation);
 
     RETURN_NOT_OK_PREPEND(s, "Failed to Truncate:");
