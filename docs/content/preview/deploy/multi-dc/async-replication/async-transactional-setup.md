@@ -188,7 +188,7 @@ To set up unidirectional transactional replication using YugabyteDB Anywhere, do
 
     This is because setting up replication requires backing up the Primary database and restoring the backup to the Standby database after cleaning up any pre-existing data on the Standby. Close any connections to the Standby database and retry the replication setup operation.
 
-    For more information on setting up replication in YugabyteDB Anywhere, refer to [Set up replication](../../../../yugabyte-platform/create-deployments/async-replication-platform/#set-up-replication).
+    For more information on setting up replication in YugabyteDB Anywhere, refer to [xCluster replication](../../../../yugabyte-platform/manage-deployments/xcluster-replication/).
 
 **Adding a database to an existing replication**
 
