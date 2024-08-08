@@ -68,12 +68,14 @@ static Path * OptimizeBitmapQualsForBitmapAnd(BitmapAndPath *path,
 											  ReplaceExtensionFunctionContext *context);
 static IndexPath * OptimizeIndexPathForFilters(IndexPath *indexPath,
 											   ReplaceExtensionFunctionContext *context);
+static Expr * OpExprForAggregationStageSupportFunction(Node *supportRequest);
 
 /* --------------------------------------------------------- */
 /* Top level exports */
 /* --------------------------------------------------------- */
 PG_FUNCTION_INFO_V1(dollar_support);
 PG_FUNCTION_INFO_V1(bson_dollar_lookup_filter_support);
+PG_FUNCTION_INFO_V1(bson_dollar_merge_filter_support);
 
 /*
  * Handles the Support functions for the dollar logical operators.
@@ -123,55 +125,116 @@ Datum
 bson_dollar_lookup_filter_support(PG_FUNCTION_ARGS)
 {
 	Node *supportRequest = (Node *) PG_GETARG_POINTER(0);
-	if (IsA(supportRequest, SupportRequestIndexCondition))
+	Expr *finalOpExpr = OpExprForAggregationStageSupportFunction(supportRequest);
+
+	if (finalOpExpr)
 	{
-		SupportRequestIndexCondition *req =
-			(SupportRequestIndexCondition *) supportRequest;
-
-		/* This is the lookup join function. We can't use regular support functions
-		 * since they need Consts and Lookup is an expression. So we use a 3rd arg for
-		 * the index path.
-		 */
-		if (req->funcid == BsonDollarLookupJoinFilterFunctionOid() &&
-			IsA(req->node, FuncExpr))
-		{
-			FuncExpr *funcExpr = (FuncExpr *) req->node;
-			if (list_length(funcExpr->args) == 3)
-			{
-				Node *thirdNode = lthird(funcExpr->args);
-				if (!IsA(thirdNode, Const))
-				{
-					PG_RETURN_POINTER(NULL);
-				}
-
-				Const *thirdConst = (Const *) thirdNode;
-				text *path = DatumGetTextPP(thirdConst->constvalue);
-				StringView pathView = CreateStringViewFromText(path);
-
-				const MongoIndexOperatorInfo *operator =
-					GetMongoIndexOperatorInfoByPostgresFuncId(BsonInMatchFunctionId());
-
-				bytea *options = req->index->opclassoptions[req->indexcol];
-				if (options == NULL)
-				{
-					PG_RETURN_POINTER(NULL);
-				}
-
-				if (!ValidateIndexForQualifierPathForDollarIn(options, &pathView))
-				{
-					PG_RETURN_POINTER(NULL);
-				}
-
-				/* Construct a $in @*= operator OpExpr */
-				Expr *finalExpression =
-					(Expr *) GetOpExprClauseFromIndexOperator(operator, funcExpr->args,
-															  options);
-				PG_RETURN_POINTER(list_make1(finalExpression));
-			}
-		}
+		PG_RETURN_POINTER(list_make1(finalOpExpr));
 	}
 
 	PG_RETURN_POINTER(NULL);
+}
+
+
+/*
+ * Support function for index pushdown for $merge join
+ * filters. This is needed and can't use the regular index filters
+ * since those use a Const value and require Const values to push down
+ * to extract the index paths. So we use a 3rd argument which provides
+ * the index path and use that to push down to the appropriate index.
+ */
+Datum
+bson_dollar_merge_filter_support(PG_FUNCTION_ARGS)
+{
+	Node *supportRequest = (Node *) PG_GETARG_POINTER(0);
+	Expr *finalOpExpr = OpExprForAggregationStageSupportFunction(supportRequest);
+
+	if (finalOpExpr)
+	{
+		PG_RETURN_POINTER(list_make1(finalOpExpr));
+	}
+
+	PG_RETURN_POINTER(NULL);
+}
+
+
+/**
+ * This function creates an operator expression for support functions used in aggregation stages. These support functions enable the
+ * pushdown of operations to the index. Regular support functions cannot be used because they require constants, while some aggregation
+ * stages, such as $lookup and $merge, use variable expressions. To handle these cases, we need specialized support functions.
+ *
+ * Return opExpression for
+ * $merge stage we create opExpr for $eq `@=` operator
+ * $lookup stage we create opExpr for $in `@*=` operator
+ */
+static Expr *
+OpExprForAggregationStageSupportFunction(Node *supportRequest)
+{
+	if (!IsA(supportRequest, SupportRequestIndexCondition))
+	{
+		return NULL;
+	}
+
+	SupportRequestIndexCondition *req = (SupportRequestIndexCondition *) supportRequest;
+
+	if (!IsA(req->node, FuncExpr))
+	{
+		return NULL;
+	}
+
+	Oid operatorOid = -1;
+	if (req->funcid == BsonDollarLookupJoinFilterFunctionOid())
+	{
+		operatorOid = BsonInMatchFunctionId();
+	}
+	else if (IsClusterVersionAtleastThis(1, 19, 0) && req->funcid ==
+			 BsonDollarMergeJoinFunctionOid())
+	{
+		operatorOid = BsonEqualMatchIndexFunctionId();
+	}
+	else
+	{
+		return NULL;
+	}
+
+	FuncExpr *funcExpr = (FuncExpr *) req->node;
+	if (list_length(funcExpr->args) != 3)
+	{
+		return NULL;
+	}
+
+	Node *thirdNode = lthird(funcExpr->args);
+	if (!IsA(thirdNode, Const))
+	{
+		return NULL;
+	}
+
+	/* This is the lookup/merge join function. We can't use regular support functions
+	 * since they need Consts and Lookup is an expression. So we use a 3rd arg for
+	 * the index path.
+	 */
+	Const *thirdConst = (Const *) thirdNode;
+	text *path = DatumGetTextPP(thirdConst->constvalue);
+
+	StringView pathView = CreateStringViewFromText(path);
+	const MongoIndexOperatorInfo *operator = GetMongoIndexOperatorInfoByPostgresFuncId(
+		operatorOid);
+
+	bytea *options = req->index->opclassoptions[req->indexcol];
+	if (options == NULL)
+	{
+		return NULL;
+	}
+
+	if (!ValidateIndexForQualifierPathForDollarIn(options, &pathView))
+	{
+		return NULL;
+	}
+
+	OpExpr *finalExpression = GetOpExprClauseFromIndexOperator(operator,
+															   funcExpr->args,
+															   options);
+	return (Expr *) finalExpression;
 }
 
 

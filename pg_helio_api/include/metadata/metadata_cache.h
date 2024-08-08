@@ -268,6 +268,7 @@ Oid BsonDollarMergeHandleWhenMatchedFunctionOid(void);
 Oid BsonDollarMergeAddObjectIdFunctionOid(void);
 Oid BsonDollarMergeGenerateObjectId(void);
 Oid BsonDollarMergeFailWhenNotMatchedFunctionOid(void);
+Oid BsonDollarMergeExtractFilterFunctionOid(void);
 Oid BsonDollarMergeJoinFunctionOid(void);
 Oid BsonDollarProjectFindFunctionOid(void);
 Oid BsonDollarProjectFindWithLetFunctionOid(void);

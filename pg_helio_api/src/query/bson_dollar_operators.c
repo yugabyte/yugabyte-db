@@ -26,6 +26,7 @@
 #include "utils/hashset_utils.h"
 #include "opclass/helio_bson_text_gin.h"
 #include "types/decimal128.h"
+#include <utils/version_utils.h>
 
 /*
  * Custom bson_orderBy options to allow specific types when sorting.
@@ -1320,6 +1321,12 @@ bson_dollar_lookup_join_filter(PG_FUNCTION_ARGS)
 Datum
 bson_dollar_merge_join_filter(PG_FUNCTION_ARGS)
 {
+	if (IsClusterVersionAtleastThis(1, 20, 0))
+	{
+		return bson_dollar_eq(fcinfo);
+	}
+
+	/*TODO : Remove below code once we deploy 1.20 in production */
 	pgbson *targetDocument = PG_GETARG_PGBSON(0);
 	pgbson *sourceDocument = PG_GETARG_PGBSON(1);
 

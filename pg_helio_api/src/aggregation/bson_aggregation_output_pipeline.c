@@ -112,14 +112,18 @@ static void ParseMergeStage(const bson_value_t *existingValue, const
 static void VaildateMergeOnFieldValues(const bson_value_t *onArray, uint64
 									   collectionId);
 static void RearrangeTargetListForMerge(Query *query, MongoCollection *targetCollection,
-										bool isSourceAndTargetAreSame,
-										int *sourceShardKeyValueAttrNo);
+										bool isSourceAndTargetAreSame, const
+										bson_value_t *onFields);
 static void WriteJoinConditionToQueryDollarMerge(Query *query,
 												 Var *sourceDocVar,
 												 Var *targetDocVar,
 												 Var *sourceShardKeyValueVar,
-												 Var *targetShardKeyValueVar, MergeArgs
-												 mergeArgs);
+												 Var *targetShardKeyValueVar,
+												 Var *targetObjectIdVar,
+												 const int
+												 sourceExtractedOnFieldsInitIndex,
+												 const int sourceCollectionVarNo,
+												 MergeArgs mergeArgs);
 static MergeAction * MakeActionWhenMatched(WhenMatchedAction whenMatched,
 										   Var *sourceDocVar,
 										   Var *targetDocVar);
@@ -143,11 +147,80 @@ static HTAB * InitHashTableFromStringArray(const bson_value_t *onValues, int
 static inline bool ValidatePreviousStagesOfDollarMerge(Query *query);
 static bool MergeQueryCTEWalker(Node *node, void *context);
 static inline void ValidateFinalPgbsonBeforeWriting(const pgbson *sourceDocument);
+static inline Expr * CreateSingleJoinExpr(const char *joinField,
+										  Var *sourceDocVar,
+										  Var *targetDocVar,
+										  Var *targetObjectIdVar,
+										  const int extractFieldResNumber,
+										  const int sourceCollectionVarNo);
+static inline TargetEntry * MakeExtractFuncExprForMergeTE(const char *onField, uint32
+														  length, Var *sourceDocument,
+														  const int resNum);
+static void WriteJoinConditionToQueryDollarMergeLegacy(Query *query, Var *sourceDocVar,
+													   Var *targetDocVar,
+													   Var *sourceShardKeyValueVar,
+													   Var *targetShardKeyValueVar,
+													   MergeArgs mergeArgs);
 
 PG_FUNCTION_INFO_V1(bson_dollar_merge_handle_when_matched);
 PG_FUNCTION_INFO_V1(bson_dollar_merge_add_object_id);
 PG_FUNCTION_INFO_V1(bson_dollar_merge_fail_when_not_matched);
 PG_FUNCTION_INFO_V1(bson_dollar_merge_generate_object_id);
+PG_FUNCTION_INFO_V1(bson_dollar_extract_merge_filter);
+
+
+/*
+ * This function extracts merge filter from source document to match against target document.
+ */
+Datum
+bson_dollar_extract_merge_filter(PG_FUNCTION_ARGS)
+{
+	pgbson *sourceDocument = PG_GETARG_PGBSON_PACKED(0);
+	char *joinField = text_to_cstring(PG_GETARG_TEXT_P(1));
+
+	bson_iter_t sourceIter;
+	if (!PgbsonInitIteratorAtPath(sourceDocument, joinField, &sourceIter))
+	{
+		/* If the source lacks an object ID, we return false and generate a new one during the document's insertion into the target. */
+		/* when it come's to join filter for _id field we create target.objectid = bson_get_value(agg_stage_1.document, '_id'::text)*/
+		if (strcmp(joinField, "_id") == 0)
+		{
+			PG_RETURN_NULL();
+		}
+
+		ereport(ERROR, (errcode(MongoLocation51132),
+						errmsg(
+							"$merge write error: 'on' field cannot be missing, null, undefined or an array"),
+						errhint(
+							"$merge write error: 'on' field cannot be missing, null, undefined or an array")));
+	}
+
+	pgbsonelement filterElement;
+	filterElement.path = joinField;
+	filterElement.pathLength = strlen(joinField);
+	filterElement.bsonValue = *bson_iter_value(&sourceIter);
+
+	if (filterElement.bsonValue.value_type == BSON_TYPE_ARRAY)
+	{
+		ereport(ERROR, (errcode(MongoLocation51185),
+						errmsg(
+							"$merge write error: 'on' field cannot be missing, null, undefined or an array"),
+						errhint(
+							"$merge write error: 'on' field cannot be missing, null, undefined or an array")));
+	}
+	else if (filterElement.bsonValue.value_type == BSON_TYPE_NULL ||
+			 filterElement.bsonValue.value_type == BSON_TYPE_UNDEFINED)
+	{
+		ereport(ERROR, (errcode(MongoLocation51132),
+						errmsg(
+							"$merge write error: 'on' field cannot be missing, null, undefined or an array"),
+						errhint(
+							"$merge write error: 'on' field cannot be missing, null, undefined or an array")));
+	}
+
+	PG_RETURN_POINTER(PgbsonElementToPgbson(&filterElement));
+}
+
 
 /*
  * In the `$merge` stage, this function is utilized to add the '_id' field to the source document if it is missing.
@@ -424,19 +497,22 @@ HandleMerge(const bson_value_t *existingValue, Query *query,
 
 	/* constant for target collection */
 	const int targetCollectionVarNo = 1; /* In merge query target table is 1st table */
-	const int targetShardKeyValueAttrNo = 1; /* From Target table we are just selecting 2 columns first one is shard_key_value */
-	const int targetDocAttrNo = 2; /* From Target table we are just selecting 2 columns second one is document */
+	const int targetShardKeyValueAttrNo = 1; /* From Target table we are just selecting 3 columns first one is shard_key_value */
+	const int targetObjectIdAttrNo = 2; /* From Target table we are just selecting 3 columns first one is shard_key_value */
+	const int targetDocAttrNo = 3; /* From Target table we are just selecting 3 columns third one is document */
 
 	/* constant for source collection */
 	const int sourceCollectionVarNo = 2; /* In merge query source table is 2nd table */
 	const int sourceDocAttrNo = 1; /* In source table first projector is document */
-	int sourceShardKeyValueAttrNo = 2; /* we will append shard_key_value in source query at 2nd position after document column */
+	const int sourceShardKeyValueAttrNo = 2; /* we will append shard_key_value in source query at 2nd position after document column */
+	const int generatedObjectIdAttrNo = 3;  /* we will append generated object_id in source query at 3rd position after shard_key_value column */
+	const int sourceExtractedOnFieldsInitIndex = 4; /* We append all extracted source TEs starting from index 4 and repeat this process for all 'on' fields. */
 
 	if (targetCollection->shardKey == NULL)
 	{
 		RearrangeTargetListForMerge(query, targetCollection,
 									isSourceAndTargetAreSame,
-									&sourceShardKeyValueAttrNo);
+									&mergeArgs.on);
 	}
 
 	context->expandTargetList = true;
@@ -447,15 +523,15 @@ HandleMerge(const bson_value_t *existingValue, Query *query,
 	Var *sourceDocVar = makeVar(sourceCollectionVarNo, sourceDocAttrNo,
 								BsonTypeId(), -1,
 								InvalidOid, 0);
+	Var *targetObjectIdVar = makeVar(targetCollectionVarNo, targetObjectIdAttrNo,
+									 BsonTypeId(), -1,
+									 InvalidOid, 0);
 	Var *targetDocVar = makeVar(targetCollectionVarNo, targetDocAttrNo, BsonTypeId(), -1,
 								InvalidOid, 0);
 	Var *targetShardKeyValueVar = makeVar(targetCollectionVarNo,
 										  targetShardKeyValueAttrNo, INT8OID, -1, 0, 0);
 	Var *sourceShardKeyValueVar = makeVar(sourceCollectionVarNo,
 										  sourceShardKeyValueAttrNo, INT8OID, -1, 0, 0);
-
-	/* we will append generated object_id in source query at 3rd position after shard_key_value column */
-	const int generatedObjectIdAttrNo = sourceShardKeyValueAttrNo + 1;
 	Var *generatedObjectIdVar = makeVar(sourceCollectionVarNo,
 										generatedObjectIdAttrNo, BsonTypeId(), -1, 0, 0);
 
@@ -467,9 +543,24 @@ HandleMerge(const bson_value_t *existingValue, Query *query,
 																 sourceShardKeyValueVar,
 																 targetCollection));
 
-	WriteJoinConditionToQueryDollarMerge(query, sourceDocVar, targetDocVar,
-										 sourceShardKeyValueVar, targetShardKeyValueVar,
-										 mergeArgs);
+	if (IsClusterVersionAtleastThis(1, 20, 0))
+	{
+		WriteJoinConditionToQueryDollarMerge(query, sourceDocVar, targetDocVar,
+											 sourceShardKeyValueVar,
+											 targetShardKeyValueVar,
+											 targetObjectIdVar,
+											 sourceExtractedOnFieldsInitIndex,
+											 sourceCollectionVarNo,
+											 mergeArgs);
+	}
+	else
+	{
+		WriteJoinConditionToQueryDollarMergeLegacy(query, sourceDocVar,
+												   targetDocVar,
+												   sourceShardKeyValueVar,
+												   targetShardKeyValueVar, mergeArgs);
+	}
+
 	return query;
 }
 
@@ -915,7 +1006,7 @@ ParseMergeStage(const bson_value_t *existingValue, const char *currentNameSpace,
 static void
 RearrangeTargetListForMerge(Query *query, MongoCollection *targetCollection,
 							bool isSourceAndTargetAreSame,
-							int *sourceShardKeyValueAttrNo)
+							const bson_value_t *onValues)
 {
 	if (isSourceAndTargetAreSame)
 	{
@@ -930,6 +1021,8 @@ RearrangeTargetListForMerge(Query *query, MongoCollection *targetCollection,
 							"The source and target tables cannot be the same, as this functionality is not yet supported.")));
 	}
 
+	int resNumber = 0;
+
 	/* Let's create a new target list */
 
 	/* 1. Start by adding the first 'TE' from the existing query, which is a document field.
@@ -939,6 +1032,7 @@ RearrangeTargetListForMerge(Query *query, MongoCollection *targetCollection,
 
 	List *newTargetList = NIL;
 	TargetEntry *sourceDocTE = (TargetEntry *) linitial(query->targetList);
+	resNumber = sourceDocTE->resno;
 	newTargetList = lappend(newTargetList, sourceDocTE);
 
 	/* 2. append TE : target_shard_key_value. */
@@ -949,7 +1043,7 @@ RearrangeTargetListForMerge(Query *query, MongoCollection *targetCollection,
 													false, true);
 
 	TargetEntry *dummySourceShardKeyValueTE = makeTargetEntry(exprShardKeyValueCol,
-															  *sourceShardKeyValueAttrNo,
+															  ++resNumber,
 															  "target_shard_key_value",
 															  false);
 	newTargetList = lappend(newTargetList, dummySourceShardKeyValueTE);
@@ -964,15 +1058,47 @@ RearrangeTargetListForMerge(Query *query, MongoCollection *targetCollection,
 												 COERCE_EXPLICIT_CALL);
 
 	TargetEntry *generatedObjectIdTE = makeTargetEntry((Expr *) addObjectIdFuncExpr,
-													   *sourceShardKeyValueAttrNo + 1,
+													   ++resNumber,
 													   "generated_object_id",
 													   false);
 
 	newTargetList = lappend(newTargetList, generatedObjectIdTE);
 
+
+	if (IsClusterVersionAtleastThis(1, 20, 0))
+	{
+		/* 4. append bson_dollar_extract_merge_filter function so all on fields so that we can use extracted source in join condition */
+		if (onValues->value_type == BSON_TYPE_UTF8)
+		{
+			newTargetList = lappend(newTargetList,
+									MakeExtractFuncExprForMergeTE(
+										onValues->value.v_utf8.str,
+										onValues->value.v_utf8.
+										len,
+										(Var *) sourceDocVar,
+										++resNumber));
+		}
+		else if (onValues->value_type == BSON_TYPE_ARRAY)
+		{
+			bson_iter_t onValuesIter;
+			BsonValueInitIterator(onValues, &onValuesIter);
+
+			while (bson_iter_next(&onValuesIter))
+			{
+				const bson_value_t *innerValue = bson_iter_value(&onValuesIter);
+				newTargetList = lappend(newTargetList,
+										MakeExtractFuncExprForMergeTE(
+											innerValue->value.v_utf8.str,
+											innerValue->value.
+											v_utf8.len,
+											(Var *) sourceDocVar,
+											++resNumber));
+			}
+		}
+	}
+
 	/* 4. Move all Remaining entries from the existing target list to the new target list. */
 	int targetEntryIndex = 0;
-	const int numNewColumnAdded = 2;
 	ListCell *cell;
 
 	foreach(cell, query->targetList)
@@ -984,12 +1110,35 @@ RearrangeTargetListForMerge(Query *query, MongoCollection *targetCollection,
 			continue;
 		}
 
-		entry->resno += numNewColumnAdded;
+		entry->resno = ++resNumber;
 		newTargetList = lappend(newTargetList, entry);
 		targetEntryIndex++;
 	}
 
 	query->targetList = newTargetList;
+}
+
+
+/* This function creates an target entry for bson_dollar_extract_merge_filter */
+static inline TargetEntry *
+MakeExtractFuncExprForMergeTE(const char *onField, uint32 length, Var *sourceDocument,
+							  const int resNum)
+{
+	char *resName = psprintf("extracted_%d", resNum);
+	Const *onCondition = MakeTextConst(onField, length);
+	List *argsForExtractFilterFunc = list_make2(sourceDocument, onCondition);
+	FuncExpr *mergeExtractFunction = makeFuncExpr(
+		BsonDollarMergeExtractFilterFunctionOid(),
+		BsonTypeId(),
+		argsForExtractFilterFunc,
+		InvalidOid,
+		InvalidOid,
+		COERCE_EXPLICIT_CALL);
+	TargetEntry *extractFuncTE = makeTargetEntry((Expr *) mergeExtractFunction,
+												 resNum,
+												 resName,
+												 false);
+	return extractFuncTE;
 }
 
 
@@ -1000,7 +1149,8 @@ static inline void
 AddTargetCollectionRTEDollarMerge(Query *query, MongoCollection *targetCollection)
 {
 	RangeTblEntry *rte = makeNode(RangeTblEntry);
-	List *colNames = list_make2(makeString("shard_key_value"), makeString("document"));
+	List *colNames = list_make3(makeString("shard_key_value"), makeString("object_id"),
+								makeString("document"));
 	rte->alias = rte->eref = makeAlias(targetCollection->tableName, colNames);
 	rte->rtekind = RTE_RELATION;
 	rte->relkind = RELKIND_RELATION;
@@ -1035,10 +1185,15 @@ AddTargetCollectionRTEDollarMerge(Query *query, MongoCollection *targetCollectio
  * AND bson_dollar_merge_join(target.document, source.docuemnt, 'b'::text)
  */
 static void
-WriteJoinConditionToQueryDollarMerge(Query *query, Var *sourceDocVar,
+WriteJoinConditionToQueryDollarMerge(Query *query,
+									 Var *sourceDocVar,
 									 Var *targetDocVar,
 									 Var *sourceShardKeyValueVar,
-									 Var *targetShardKeyValueVar, MergeArgs mergeArgs)
+									 Var *targetShardKeyValueVar,
+									 Var *targetObjectIdVar,
+									 const int sourceExtractedOnFieldsInitIndex,
+									 const int sourceCollectionVarNo,
+									 MergeArgs mergeArgs)
 {
 	Expr *opexpr = make_opclause(PostgresInt4EqualOperatorOid(),
 								 BOOLOID, false,
@@ -1054,19 +1209,15 @@ WriteJoinConditionToQueryDollarMerge(Query *query, Var *sourceDocVar,
 	List *joinFilterList = NIL;
 	joinFilterList = lappend(joinFilterList, opexpr);
 
+	int extractFieldResNum = sourceExtractedOnFieldsInitIndex;
 	if (mergeArgs.on.value_type == BSON_TYPE_UTF8)
 	{
-		const char *onField = mergeArgs.on.value.v_utf8.str;
-		StringView onFieldStringView = CreateStringViewFromString(onField);
-		Const *onCondition = MakeTextConst(onFieldStringView.string,
-										   onFieldStringView.length);
-
-		List *argsforFuncExpr = list_make3(targetDocVar, sourceDocVar, onCondition);
-		FuncExpr *onConditionExpr = makeFuncExpr(
-			BsonDollarMergeJoinFunctionOid(), BOOLOID, argsforFuncExpr, InvalidOid,
-			InvalidOid, COERCE_EXPLICIT_CALL);
-
-		joinFilterList = lappend(joinFilterList, onConditionExpr);
+		Expr *singleJoinExpr = CreateSingleJoinExpr(mergeArgs.on.value.v_utf8.str,
+													sourceDocVar,
+													targetDocVar, targetObjectIdVar,
+													extractFieldResNum,
+													sourceCollectionVarNo);
+		joinFilterList = lappend(joinFilterList, singleJoinExpr);
 	}
 	else if (mergeArgs.on.value_type == BSON_TYPE_ARRAY)
 	{
@@ -1076,18 +1227,14 @@ WriteJoinConditionToQueryDollarMerge(Query *query, Var *sourceDocVar,
 		while (bson_iter_next(&onValuesIter))
 		{
 			const bson_value_t *onValuesElement = bson_iter_value(&onValuesIter);
-
 			const char *onField = onValuesElement->value.v_utf8.str;
-			StringView onFieldStringView = CreateStringViewFromString(onField);
-			Const *onCondition = MakeTextConst(onFieldStringView.string,
-											   onFieldStringView.length);
-
-			List *argsforFuncExpr = list_make3(targetDocVar, sourceDocVar, onCondition);
-			FuncExpr *onConditionExpr = makeFuncExpr(
-				BsonDollarMergeJoinFunctionOid(), BOOLOID, argsforFuncExpr, InvalidOid,
-				InvalidOid, COERCE_EXPLICIT_CALL);
-
-			joinFilterList = lappend(joinFilterList, onConditionExpr);
+			Expr *singleJoinExpr = CreateSingleJoinExpr(onField,
+														sourceDocVar,
+														targetDocVar, targetObjectIdVar,
+														extractFieldResNum,
+														sourceCollectionVarNo);
+			joinFilterList = lappend(joinFilterList, singleJoinExpr);
+			extractFieldResNum++;
 		}
 	}
 	else
@@ -1102,6 +1249,52 @@ WriteJoinConditionToQueryDollarMerge(Query *query, Var *sourceDocVar,
 	}
 
 	query->jointree->quals = (Node *) make_ands_explicit(joinFilterList);
+}
+
+
+/*
+ * In the $merge query, users can specify multiple "on" conditions. We handle them in two ways:
+ * 1. If the "on" field is "_id", we create an expression: targetDocument.ObjectID = BsonGetValueFunctionOid(sourceDocument, "_id").
+ * 2. For any other field, we create an expression: bson_dollar_merge_join(target.document, sourceDocVar.document, "joinfield").
+ * The bson_dollar_merge_join function is used to support function for index pushdown, which replaces the function expression with an operator expression.
+ */
+static inline Expr *
+CreateSingleJoinExpr(const char *joinField,
+					 Var *sourceDocVar,
+					 Var *targetDocVar,
+					 Var *targetObjectIdVar,
+					 const int extractFieldResNumber,
+					 const int sourceCollectionVarNo)
+{
+	StringView onFieldStringView = CreateStringViewFromString(joinField);
+	Const *onCondition = MakeTextConst(onFieldStringView.string,
+									   onFieldStringView.length);
+	Expr *singleJoinExpr = NULL;
+	if (strcmp(joinField, "_id") == 0)
+	{
+		List *argsforFuncExpr = list_make2(sourceDocVar, onCondition);
+		FuncExpr *extractFuncExpr = makeFuncExpr(
+			BsonGetValueFunctionOid(), BsonTypeId(), argsforFuncExpr, InvalidOid,
+			InvalidOid, COERCE_EXPLICIT_CALL);
+
+		singleJoinExpr = make_opclause(BsonEqualOperatorId(),
+									   BOOLOID, false,
+									   (Expr *) targetObjectIdVar,
+									   (Expr *) extractFuncExpr,
+									   InvalidOid, InvalidOid);
+	}
+	else
+	{
+		Var *extractedSourceVar = makeVar(sourceCollectionVarNo,
+										  extractFieldResNumber, BsonTypeId(), -1, 0, 0);
+		List *argsforFuncExpr = list_make3(copyObject(targetDocVar), extractedSourceVar,
+										   onCondition);
+		singleJoinExpr = (Expr *) makeFuncExpr(
+			BsonDollarMergeJoinFunctionOid(), BOOLOID, argsforFuncExpr, InvalidOid,
+			InvalidOid, COERCE_EXPLICIT_CALL);
+	}
+
+	return singleJoinExpr;
 }
 
 
@@ -1449,4 +1642,88 @@ ValidateAndAddObjectIdToWriter(pgbson_writer *writer,
 	/* Everything looks good, we can write the `_id` field to the writer */
 	PgbsonWriterInit(writer);
 	PgbsonWriterAppendValue(writer, "_id", 3, &objectIdFromTargetDocument.bsonValue);
+}
+
+
+/*
+ * write join condition to the query Tree for $merge aggregation stage.
+ *
+ * let's say `on` field is array : ["a", "b", "c"]
+ * join condition in sql :
+ *
+ * ON target.shard_key_value OPERATOR(pg_catalog.=) source.target_shard_key_value
+ * AND bson_dollar_merge_join(target.document, source.docuemnt, 'a'::text)
+ * AND bson_dollar_merge_join(target.document, source.docuemnt, 'b'::text)
+ *
+ * TODO : Remove this after release 1.20
+ */
+static void
+WriteJoinConditionToQueryDollarMergeLegacy(Query *query, Var *sourceDocVar,
+										   Var *targetDocVar,
+										   Var *sourceShardKeyValueVar,
+										   Var *targetShardKeyValueVar, MergeArgs
+										   mergeArgs)
+{
+	Expr *opexpr = make_opclause(PostgresInt4EqualOperatorOid(),
+								 BOOLOID, false,
+								 (Expr *) targetShardKeyValueVar,
+								 (Expr *) sourceShardKeyValueVar,
+								 InvalidOid,
+								 InvalidOid);
+
+	RangeTblRef *rtr = makeNode(RangeTblRef);
+	rtr->rtindex = 2;
+	query->jointree = makeFromExpr(list_make1(rtr), NULL);
+
+	List *joinFilterList = NIL;
+	joinFilterList = lappend(joinFilterList, opexpr);
+
+	if (mergeArgs.on.value_type == BSON_TYPE_UTF8)
+	{
+		const char *onField = mergeArgs.on.value.v_utf8.str;
+		StringView onFieldStringView = CreateStringViewFromString(onField);
+		Const *onCondition = MakeTextConst(onFieldStringView.string,
+										   onFieldStringView.length);
+
+		List *argsforFuncExpr = list_make3(targetDocVar, sourceDocVar, onCondition);
+		FuncExpr *onConditionExpr = makeFuncExpr(
+			BsonDollarMergeJoinFunctionOid(), BOOLOID, argsforFuncExpr, InvalidOid,
+			InvalidOid, COERCE_EXPLICIT_CALL);
+
+		joinFilterList = lappend(joinFilterList, onConditionExpr);
+	}
+	else if (mergeArgs.on.value_type == BSON_TYPE_ARRAY)
+	{
+		bson_iter_t onValuesIter;
+		BsonValueInitIterator(&mergeArgs.on, &onValuesIter);
+
+		while (bson_iter_next(&onValuesIter))
+		{
+			const bson_value_t *onValuesElement = bson_iter_value(&onValuesIter);
+
+			const char *onField = onValuesElement->value.v_utf8.str;
+			StringView onFieldStringView = CreateStringViewFromString(onField);
+			Const *onCondition = MakeTextConst(onFieldStringView.string,
+											   onFieldStringView.length);
+
+			List *argsforFuncExpr = list_make3(targetDocVar, sourceDocVar, onCondition);
+			FuncExpr *onConditionExpr = makeFuncExpr(
+				BsonDollarMergeJoinFunctionOid(), BOOLOID, argsforFuncExpr, InvalidOid,
+				InvalidOid, COERCE_EXPLICIT_CALL);
+
+			joinFilterList = lappend(joinFilterList, onConditionExpr);
+		}
+	}
+	else
+	{
+		ereport(ERROR, (errcode(MongoFailedToParse),
+						errmsg(
+							"on field in $merge stage must be either a string or an array of strings, but found %s",
+							BsonTypeName(mergeArgs.on.value_type)),
+						errhint(
+							"on field in $merge stage must be either a string or an array of strings, but found %s",
+							BsonTypeName(mergeArgs.on.value_type))));
+	}
+
+	query->jointree->quals = (Node *) make_ands_explicit(joinFilterList);
 }

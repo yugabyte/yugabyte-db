@@ -84,6 +84,7 @@ static bool IsRTEShardForMongoCollection(RangeTblEntry *rte, bool *isMongoDataNa
 										 uint64 *collectionId);
 static bool ProcessWorkerWriteQueryPath(PlannerInfo *root, RelOptInfo *rel, Index rti,
 										RangeTblEntry *rte);
+static inline bool IsAMergeOuterQuery(PlannerInfo *root, RelOptInfo *rel);
 extern bool ForceRUMIndexScanToBitmapHeapScan;
 
 planner_hook_type ExtensionPreviousPlannerHook = NULL;
@@ -528,7 +529,7 @@ ExtensionRelPathlistHookCore(PlannerInfo *root, RelOptInfo *rel, Index rti,
 		 * Streaming cursors auto convert into Bitmap Paths.
 		 * Handle force conversion of bitmap paths.
 		 */
-		if (ForceRUMIndexScanToBitmapHeapScan)
+		if (ForceRUMIndexScanToBitmapHeapScan && !IsAMergeOuterQuery(root, rel))
 		{
 			UpdatePathsToForceRumIndexScanToBitmapHeapScan(root, rel);
 		}
@@ -1309,4 +1310,16 @@ ProcessWorkerWriteQueryPath(PlannerInfo *root, RelOptInfo *rel, Index rti,
 	rel->partial_pathlist = NIL;
 	rel->baserestrictinfo = NIL;
 	return true;
+}
+
+
+/*
+ * Determine if the current relation is the outer query of a $merge stage.
+ * We do not push this relation to the bitmap index.
+ * For the outer relation, the relid will always be 1 since $merge is the last stage of the pipeline.
+ */
+static inline bool
+IsAMergeOuterQuery(PlannerInfo *root, RelOptInfo *rel)
+{
+	return root->parse->commandType == CMD_MERGE && rel->relid == 1;
 }

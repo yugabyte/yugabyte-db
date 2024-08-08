@@ -590,6 +590,9 @@ typedef struct HelioApiOidCacheData
 	/* OID of the bson_dollar_merge_generate_object_id function */
 	Oid ApiInternalBsonDollarMergeGenerateObjectId;
 
+	/* OID of the bson_dollar_extract_merge_filter function */
+	Oid ApiInternalBsonDollarMergeExtractFilterFunctionId;
+
 	/* OID of the bson_dollar_merge_fail_when_not_matched function */
 	Oid ApiInternalBsonDollarMergeFailWhenNotMathchedFunctionId;
 
@@ -3040,6 +3043,18 @@ BsonDollarMergeFailWhenNotMatchedFunctionOid(void)
 	return GetHelioInternalBinaryOperatorFunctionId(
 		&Cache.ApiInternalBsonDollarMergeFailWhenNotMathchedFunctionId,
 		"bson_dollar_merge_fail_when_not_matched",
+		BsonTypeId(),
+		TEXTOID, missingOk);
+}
+
+
+Oid
+BsonDollarMergeExtractFilterFunctionOid(void)
+{
+	bool missingOk = false;
+	return GetHelioInternalBinaryOperatorFunctionId(
+		&Cache.ApiInternalBsonDollarMergeExtractFilterFunctionId,
+		"bson_dollar_extract_merge_filter",
 		BsonTypeId(),
 		TEXTOID, missingOk);
 }
