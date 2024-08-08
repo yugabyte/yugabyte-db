@@ -156,9 +156,9 @@ ERROR:  function helio_api_catalog.bson_value_dollar_in(internal, bson) does not
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": { "$ne": 200 }}}, {"$limit": 1}]}} ], "cursor": {} }'); 
                                                                       QUERY PLAN                                                                       
 -------------------------------------------------------------------------------------------------------------------------------------------------------
- Bitmap Heap Scan on helio_data.documents_3902 collection
+ Bitmap Heap Scan on helio_data.documents_3903 collection
    Output: collection.document
-   Recheck Cond: (collection.shard_key_value = '3902'::bigint)
+   Recheck Cond: (collection.shard_key_value = '3903'::bigint)
    Filter: helio_api_internal.bson_dollar_inverse_match(collection.document, $1)
    InitPlan 2 (returns $1)
      ->  Result
@@ -168,22 +168,22 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document from bson_aggregation_pipeline('
                    Output: (COALESCE(bson_array_agg(collection_0_1.document, 'input'::text), '{ "input" : [  ] }'::bson))
                    ->  Aggregate
                          Output: COALESCE(bson_array_agg(collection_0_1.document, 'input'::text), '{ "input" : [  ] }'::bson)
-                         ->  Bitmap Heap Scan on helio_data.documents_3901 collection_0_1
+                         ->  Bitmap Heap Scan on helio_data.documents_3902 collection_0_1
                                Output: collection_0_1.shard_key_value, collection_0_1.object_id, collection_0_1.document, collection_0_1.creation_time
-                               Recheck Cond: (collection_0_1.shard_key_value = '3901'::bigint)
+                               Recheck Cond: (collection_0_1.shard_key_value = '3902'::bigint)
                                Filter: (collection_0_1.document @!= '{ "user_id" : { "$numberInt" : "200" } }'::bson)
                                ->  Bitmap Index Scan on _id_
-                                     Index Cond: (collection_0_1.shard_key_value = '3901'::bigint)
+                                     Index Cond: (collection_0_1.shard_key_value = '3902'::bigint)
    ->  Bitmap Index Scan on _id_
-         Index Cond: (collection.shard_key_value = '3902'::bigint)
+         Index Cond: (collection.shard_key_value = '3903'::bigint)
 (20 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": { "$ne": 200 }}}]}} ], "cursor": {} }'); 
                                                                    QUERY PLAN                                                                    
 -------------------------------------------------------------------------------------------------------------------------------------------------
- Bitmap Heap Scan on helio_data.documents_3902 collection
+ Bitmap Heap Scan on helio_data.documents_3903 collection
    Output: collection.document
-   Recheck Cond: (collection.shard_key_value = '3902'::bigint)
+   Recheck Cond: (collection.shard_key_value = '3903'::bigint)
    Filter: helio_api_internal.bson_dollar_inverse_match(collection.document, $1)
    InitPlan 2 (returns $1)
      ->  Result
@@ -191,25 +191,25 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document from bson_aggregation_pipeline('
            InitPlan 1 (returns $0)
              ->  Aggregate
                    Output: COALESCE(bson_array_agg(collection_0_1.document, 'input'::text), '{ "input" : [  ] }'::bson)
-                   ->  Bitmap Heap Scan on helio_data.documents_3901 collection_0_1
+                   ->  Bitmap Heap Scan on helio_data.documents_3902 collection_0_1
                          Output: collection_0_1.shard_key_value, collection_0_1.object_id, collection_0_1.document, collection_0_1.creation_time
-                         Recheck Cond: (collection_0_1.shard_key_value = '3901'::bigint)
+                         Recheck Cond: (collection_0_1.shard_key_value = '3902'::bigint)
                          Filter: (collection_0_1.document @!= '{ "user_id" : { "$numberInt" : "200" } }'::bson)
                          ->  Bitmap Index Scan on _id_
-                               Index Cond: (collection_0_1.shard_key_value = '3901'::bigint)
+                               Index Cond: (collection_0_1.shard_key_value = '3902'::bigint)
    ->  Bitmap Index Scan on _id_
-         Index Cond: (collection.shard_key_value = '3902'::bigint)
+         Index Cond: (collection.shard_key_value = '3903'::bigint)
 (18 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "input": {}}} ], "cursor": {} }'); 
                                                         QUERY PLAN                                                        
 --------------------------------------------------------------------------------------------------------------------------
- Bitmap Heap Scan on helio_data.documents_3902 collection
+ Bitmap Heap Scan on helio_data.documents_3903 collection
    Output: collection.document
-   Recheck Cond: (collection.shard_key_value = '3902'::bigint)
+   Recheck Cond: (collection.shard_key_value = '3903'::bigint)
    Filter: helio_api_internal.bson_dollar_inverse_match(collection.document, '{ "path" : "rule", "input" : {  } }'::bson)
    ->  Bitmap Index Scan on _id_
-         Index Cond: (collection.shard_key_value = '3902'::bigint)
+         Index Cond: (collection.shard_key_value = '3903'::bigint)
 (6 rows)
 
 -- negative cases

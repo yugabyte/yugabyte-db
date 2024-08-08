@@ -28,10 +28,10 @@ SELECT helio_api.insert_one('db','bsontypetests','{"_id":"7", "tsField": {"$time
 SELECT helio_api.insert_one('db','bsontypetests','{"_id":"8", "arrayOfObject": [ { "ola": "ola"}, { "tudo bem?": "tudo bem!"}, { "o que tu fizeste essa semana?" : "nada" } ]}', NULL);
 
 -- fetch all rows
-SELECT shard_key_value, object_id, document FROM helio_data.documents_1000 ORDER BY 1,2,3;
+SELECT shard_key_value, object_id, document FROM helio_data.documents_1001 ORDER BY 1,2,3;
 
 -- project two fields out.
-SELECT document->'_id', document->'value' FROM helio_data.documents_1000 ORDER BY object_id;
+SELECT document->'_id', document->'value' FROM helio_data.documents_1001 ORDER BY object_id;
 
 -- insert document with $ or . in the field path
 SELECT helio_api.insert_one('db', 'bsontypetests', '{ "_id": 9, "$field": 1}');
@@ -53,4 +53,4 @@ SELECT helio_api.insert_one('db', 'bsontypetests', '{ "_id": { "a": 2, "$c": 3 }
 select helio_api.insert_one('db', 'bsontypetests', '{"_id": [1]}');
 
 -- assert object_id matches the '_id' from the content - should be numRows.
-SELECT COUNT(*) FROM helio_data.documents_1000 where object_id::bson = bson_get_value(document, '_id');
+SELECT COUNT(*) FROM helio_data.documents_1001 where object_id::bson = bson_get_value(document, '_id');

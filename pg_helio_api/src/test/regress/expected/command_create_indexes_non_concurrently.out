@@ -461,14 +461,14 @@ NOTICE:  creating collection
 SELECT helio_test_helpers.helio_index_get_pg_def('wp_test', 'ok_test_2', 'idx_1');
                                                                                                       helio_index_get_pg_def                                                                                                       
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- CREATE INDEX documents_rum_index_6020 ON helio_data.documents_6001 USING helio_rum (document bson_rum_wildcard_project_path_ops (includeid='false', tl='2699', wkl='200', pathspec='[ "a", "b.b.a$a.k$" ]', isexclusion='false'))
+ CREATE INDEX documents_rum_index_6021 ON helio_data.documents_6002 USING helio_rum (document bson_rum_wildcard_project_path_ops (includeid='false', tl='2699', wkl='200', pathspec='[ "a", "b.b.a$a.k$" ]', isexclusion='false'))
 (1 row)
 
 SELECT helio_test_helpers.get_collection_indexes('wp_test','ok_test_2');
                                                                                                               get_collection_indexes                                                                                                               
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- (6001,6019,"{ ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }",t)
- (6001,6020,"{ ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""$**"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx_1"", ""wildcardProjection"" : { ""a"" : true, ""b"" : { ""b"" : { ""a$a"" : { ""k$"" : true } } }, ""_id"" : false } }",t)
+ (6002,6020,"{ ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }",t)
+ (6002,6021,"{ ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""$**"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx_1"", ""wildcardProjection"" : { ""a"" : true, ""b"" : { ""b"" : { ""a$a"" : { ""k$"" : true } } }, ""_id"" : false } }",t)
 (2 rows)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('wp_test',
@@ -498,7 +498,7 @@ SELECT helio_test_helpers.drop_primary_key('wp_test', 'ok_test_3');
 SELECT helio_test_helpers.get_collection_indexes('wp_test','ok_test_3');
                                                                                                               get_collection_indexes                                                                                                              
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- (6002,6022,"{ ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""$**"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx_1"", ""wildcardProjection"" : { ""a"" : true, ""b"" : { ""c"" : true, ""d"" : { ""e"" : true } }, ""_id"" : false } }",t)
+ (6003,6023,"{ ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""$**"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx_1"", ""wildcardProjection"" : { ""a"" : true, ""b"" : { ""c"" : true, ""d"" : { ""e"" : true } }, ""_id"" : false } }",t)
 (1 row)
 
 BEGIN;
@@ -507,7 +507,7 @@ BEGIN;
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_3", "filter": { "a.b": { "$eq": 1 } }, "projection": { "a": 1 } }');
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
- Bitmap Heap Scan on documents_6002 collection
+ Bitmap Heap Scan on documents_6003 collection
    Recheck Cond: (document @= '{ "a.b" : { "$numberInt" : "1" } }'::bson)
    ->  Bitmap Index Scan on idx_1
          Index Cond: (document @= '{ "a.b" : { "$numberInt" : "1" } }'::bson)
@@ -516,7 +516,7 @@ BEGIN;
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_3", "filter": { "a": { "$eq": 1 } }, "projection": { "a": 1 } }');
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
- Bitmap Heap Scan on documents_6002 collection
+ Bitmap Heap Scan on documents_6003 collection
    Recheck Cond: (document @= '{ "a" : { "$numberInt" : "1" } }'::bson)
    ->  Bitmap Index Scan on idx_1
          Index Cond: (document @= '{ "a" : { "$numberInt" : "1" } }'::bson)
@@ -525,7 +525,7 @@ BEGIN;
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_3", "filter": { "a": { "$eq": {"b": 1} } }, "projection": { "a": 1 } }');
                                       QUERY PLAN                                      
 --------------------------------------------------------------------------------------
- Bitmap Heap Scan on documents_6002 collection
+ Bitmap Heap Scan on documents_6003 collection
    Recheck Cond: (document @= '{ "a" : { "b" : { "$numberInt" : "1" } } }'::bson)
    ->  Bitmap Index Scan on idx_1
          Index Cond: (document @= '{ "a" : { "b" : { "$numberInt" : "1" } } }'::bson)
@@ -534,7 +534,7 @@ BEGIN;
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_3", "filter": { "a": { "_id": 1 } }, "projection": { "a": 1 } }');
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
- Bitmap Heap Scan on documents_6002 collection
+ Bitmap Heap Scan on documents_6003 collection
    Recheck Cond: (document @= '{ "a" : { "_id" : { "$numberInt" : "1" } } }'::bson)
    ->  Bitmap Index Scan on idx_1
          Index Cond: (document @= '{ "a" : { "_id" : { "$numberInt" : "1" } } }'::bson)
@@ -544,21 +544,21 @@ BEGIN;
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_3", "filter": { "b.d": { "$eq": 1 } }, "projection": { "a": 1 } }');
                              QUERY PLAN                             
 --------------------------------------------------------------------
- Seq Scan on documents_6002 collection
+ Seq Scan on documents_6003 collection
    Filter: (document @= '{ "b.d" : { "$numberInt" : "1" } }'::bson)
 (2 rows)
 
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_3", "filter": { "b": { "$eq": {"d": 1} } }, "projection": { "a": 1 } }');
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
- Seq Scan on documents_6002 collection
+ Seq Scan on documents_6003 collection
    Filter: (document @= '{ "b" : { "d" : { "$numberInt" : "1" } } }'::bson)
 (2 rows)
 
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_3", "filter": { "e": { "$eq": 1 } }, "projection": { "a": 1 } }');
                             QUERY PLAN                            
 ------------------------------------------------------------------
- Seq Scan on documents_6002 collection
+ Seq Scan on documents_6003 collection
    Filter: (document @= '{ "e" : { "$numberInt" : "1" } }'::bson)
 (2 rows)
 
@@ -590,7 +590,7 @@ SELECT helio_test_helpers.drop_primary_key('wp_test', 'ok_test_4');
 SELECT helio_test_helpers.get_collection_indexes('wp_test','ok_test_4');
                                                                                                                                    get_collection_indexes                                                                                                                                   
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- (6003,6024,"{ ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""$**"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx_1"", ""wildcardProjection"" : { ""a"" : false, ""b"" : { ""c"" : false, ""d"" : { ""e"" : false } }, ""f"" : { ""g"" : { ""h"" : false } }, ""_id"" : false } }",t)
+ (6004,6025,"{ ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""$**"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx_1"", ""wildcardProjection"" : { ""a"" : false, ""b"" : { ""c"" : false, ""d"" : { ""e"" : false } }, ""f"" : { ""g"" : { ""h"" : false } }, ""_id"" : false } }",t)
 (1 row)
 
 BEGIN;
@@ -599,28 +599,28 @@ BEGIN;
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "a.b": { "$eq": 1 } }, "projection": { "a": 1 } }');
                              QUERY PLAN                             
 --------------------------------------------------------------------
- Seq Scan on documents_6003 collection
+ Seq Scan on documents_6004 collection
    Filter: (document @= '{ "a.b" : { "$numberInt" : "1" } }'::bson)
 (2 rows)
 
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "a": { "$eq": 1 } }, "projection": { "a": 1 } }');
                             QUERY PLAN                            
 ------------------------------------------------------------------
- Seq Scan on documents_6003 collection
+ Seq Scan on documents_6004 collection
    Filter: (document @= '{ "a" : { "$numberInt" : "1" } }'::bson)
 (2 rows)
 
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "a": { "$eq": {"b": 1} } }, "projection": { "a": 1 } }');
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
- Seq Scan on documents_6003 collection
+ Seq Scan on documents_6004 collection
    Filter: (document @= '{ "a" : { "b" : { "$numberInt" : "1" } } }'::bson)
 (2 rows)
 
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "a": { "_id": 1 } }, "projection": { "a": 1 } }');
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
- Seq Scan on documents_6003 collection
+ Seq Scan on documents_6004 collection
    Filter: (document @= '{ "a" : { "_id" : { "$numberInt" : "1" } } }'::bson)
 (2 rows)
 
@@ -628,7 +628,7 @@ BEGIN;
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "b.d": { "$eq": 1 } }, "projection": { "a": 1 } }');
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
- Bitmap Heap Scan on documents_6003 collection
+ Bitmap Heap Scan on documents_6004 collection
    Recheck Cond: (document @= '{ "b.d" : { "$numberInt" : "1" } }'::bson)
    ->  Bitmap Index Scan on idx_1
          Index Cond: (document @= '{ "b.d" : { "$numberInt" : "1" } }'::bson)
@@ -637,7 +637,7 @@ BEGIN;
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "b": { "$eq": {"d": 1} } }, "projection": { "a": 1 } }');
                                       QUERY PLAN                                      
 --------------------------------------------------------------------------------------
- Bitmap Heap Scan on documents_6003 collection
+ Bitmap Heap Scan on documents_6004 collection
    Recheck Cond: (document @= '{ "b" : { "d" : { "$numberInt" : "1" } } }'::bson)
    ->  Bitmap Index Scan on idx_1
          Index Cond: (document @= '{ "b" : { "d" : { "$numberInt" : "1" } } }'::bson)
@@ -646,7 +646,7 @@ BEGIN;
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "e": { "$eq": 1 } }, "projection": { "a": 1 } }');
                                  QUERY PLAN                                 
 ----------------------------------------------------------------------------
- Bitmap Heap Scan on documents_6003 collection
+ Bitmap Heap Scan on documents_6004 collection
    Recheck Cond: (document @= '{ "e" : { "$numberInt" : "1" } }'::bson)
    ->  Bitmap Index Scan on idx_1
          Index Cond: (document @= '{ "e" : { "$numberInt" : "1" } }'::bson)
@@ -655,7 +655,7 @@ BEGIN;
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "f.g": { "$eq": 1 } }, "projection": { "a": 1 } }');
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
- Bitmap Heap Scan on documents_6003 collection
+ Bitmap Heap Scan on documents_6004 collection
    Recheck Cond: (document @= '{ "f.g" : { "$numberInt" : "1" } }'::bson)
    ->  Bitmap Index Scan on idx_1
          Index Cond: (document @= '{ "f.g" : { "$numberInt" : "1" } }'::bson)
@@ -686,7 +686,7 @@ BEGIN;
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "$and": [{"b.d": { "$eq": 1 } }, {"a.k": {"$eq": 1}}]}, "projection": { "a": 1 } }');
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
- Bitmap Heap Scan on documents_6003 collection
+ Bitmap Heap Scan on documents_6004 collection
    Recheck Cond: (document @= '{ "b.d" : { "$numberInt" : "1" } }'::bson)
    Filter: (document @= '{ "a.k" : { "$numberInt" : "1" } }'::bson)
    ->  Bitmap Index Scan on idx_1
@@ -696,7 +696,7 @@ BEGIN;
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "$and": [{"a.k": { "$eq": 1 } }, {"b.d": {"$eq": 1}}]}, "projection": { "a": 1 } }');
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
- Bitmap Heap Scan on documents_6003 collection
+ Bitmap Heap Scan on documents_6004 collection
    Recheck Cond: (document @= '{ "b.d" : { "$numberInt" : "1" } }'::bson)
    Filter: (document @= '{ "a.k" : { "$numberInt" : "1" } }'::bson)
    ->  Bitmap Index Scan on idx_1
@@ -719,7 +719,7 @@ BEGIN;
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": {"b.d": {"$in": [1,2,3]}}, "projection": { "a": 1 } }');
                                                             QUERY PLAN                                                             
 -----------------------------------------------------------------------------------------------------------------------------------
- Bitmap Heap Scan on documents_6003 collection
+ Bitmap Heap Scan on documents_6004 collection
    Recheck Cond: (document @*= '{ "b.d" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }'::bson)
    ->  Bitmap Index Scan on idx_1
          Index Cond: (document @*= '{ "b.d" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }'::bson)
@@ -729,7 +729,7 @@ BEGIN;
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": {"$or": [{"b.d": {"$eq": [1,2,3]}}, {"a.z": {"r": {"$gte": 5}}}]}, "projection": { "a": 1 } }');
                                                                                                  QUERY PLAN                                                                                                  
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Seq Scan on documents_6003 collection
+ Seq Scan on documents_6004 collection
    Filter: ((document @= '{ "b.d" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }'::bson) OR (document @= '{ "a.z" : { "r" : { "$gte" : { "$numberInt" : "5" } } } }'::bson))
 (2 rows)
 
@@ -737,7 +737,7 @@ BEGIN;
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": {"$or": [{"b.d": {"$eq": [1,2,3]}}, {"k": 5}]}, "projection": { "a": 1 } }');
                                                                                         QUERY PLAN                                                                                        
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Bitmap Heap Scan on documents_6003 collection
+ Bitmap Heap Scan on documents_6004 collection
    Recheck Cond: ((document @= '{ "b.d" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }'::bson) OR (document @= '{ "k" : { "$numberInt" : "5" } }'::bson))
    ->  BitmapOr
          ->  Bitmap Index Scan on idx_1
@@ -774,7 +774,7 @@ SELECT helio_test_helpers.drop_primary_key('wp_test', 'ok_test_5');
 SELECT helio_test_helpers.get_collection_indexes('wp_test','ok_test_5') ORDER BY 1;
                                                                                                                              get_collection_indexes                                                                                                                              
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- (6004,6026,"{ ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""$**"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx_1"", ""wildcardProjection"" : { ""a"" : false, ""b"" : { ""c"" : { ""p"" : false, ""r"" : false }, ""d"" : { ""_id"" : false } }, ""_id"" : true } }",t)
+ (6005,6027,"{ ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""$**"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx_1"", ""wildcardProjection"" : { ""a"" : false, ""b"" : { ""c"" : { ""p"" : false, ""r"" : false }, ""d"" : { ""_id"" : false } }, ""_id"" : true } }",t)
 (1 row)
 
 BEGIN;
@@ -783,7 +783,7 @@ BEGIN;
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": {"d.e.f": {"$eq": 1}, "_id": {"$eq": 0}}, "projection": { "a": 1 } }');
                                                            QUERY PLAN                                                           
 --------------------------------------------------------------------------------------------------------------------------------
- Bitmap Heap Scan on documents_6003 collection
+ Bitmap Heap Scan on documents_6004 collection
    Recheck Cond: (document @= '{ "d.e.f" : { "$numberInt" : "1" } }'::bson)
    Filter: ((document @= '{ "_id" : { "$numberInt" : "0" } }'::bson) AND (object_id = '{ "" : { "$numberInt" : "0" } }'::bson))
    ->  Bitmap Index Scan on idx_1
@@ -850,7 +850,7 @@ NOTICE:  creating collection
 SELECT helio_test_helpers.helio_index_get_pg_def('wp_test', 'no_path_collision_1', 'idx_1');
                                                                                                 helio_index_get_pg_def                                                                                                 
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- CREATE INDEX documents_rum_index_6029 ON helio_data.documents_6005 USING helio_rum (document bson_rum_wildcard_project_path_ops (includeid='false', tl='2699', wkl='200', pathspec='[ "a.b" ]', isexclusion='false'))
+ CREATE INDEX documents_rum_index_6030 ON helio_data.documents_6006 USING helio_rum (document bson_rum_wildcard_project_path_ops (includeid='false', tl='2699', wkl='200', pathspec='[ "a.b" ]', isexclusion='false'))
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('wp_test',
@@ -873,7 +873,7 @@ NOTICE:  creating collection
 SELECT helio_test_helpers.helio_index_get_pg_def('wp_test', 'no_path_collision_2', 'idx_1');
                                                                                                helio_index_get_pg_def                                                                                                
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- CREATE INDEX documents_rum_index_6031 ON helio_data.documents_6006 USING helio_rum (document bson_rum_wildcard_project_path_ops (includeid='false', tl='2699', wkl='200', pathspec='[ "a" ]', isexclusion='false'))
+ CREATE INDEX documents_rum_index_6032 ON helio_data.documents_6007 USING helio_rum (document bson_rum_wildcard_project_path_ops (includeid='false', tl='2699', wkl='200', pathspec='[ "a" ]', isexclusion='false'))
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('wp_test',
@@ -896,7 +896,7 @@ NOTICE:  creating collection
 SELECT helio_test_helpers.helio_index_get_pg_def('wp_test', 'no_path_collision_3', 'idx_1');
                                                                                                 helio_index_get_pg_def                                                                                                 
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- CREATE INDEX documents_rum_index_6033 ON helio_data.documents_6007 USING helio_rum (document bson_rum_wildcard_project_path_ops (includeid='false', tl='2699', wkl='200', pathspec='[ "a.b" ]', isexclusion='false'))
+ CREATE INDEX documents_rum_index_6034 ON helio_data.documents_6008 USING helio_rum (document bson_rum_wildcard_project_path_ops (includeid='false', tl='2699', wkl='200', pathspec='[ "a.b" ]', isexclusion='false'))
 (1 row)
 
 SELECT helio_api_internal.create_indexes_non_concurrently('wp_test',
@@ -919,6 +919,6 @@ NOTICE:  creating collection
 SELECT helio_test_helpers.helio_index_get_pg_def('wp_test', 'no_path_collision_4', 'idx_1');
                                                                                                   helio_index_get_pg_def                                                                                                   
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- CREATE INDEX documents_rum_index_6035 ON helio_data.documents_6008 USING helio_rum (document bson_rum_wildcard_project_path_ops (includeid='false', tl='2699', wkl='200', pathspec='[ "a.b.c.d" ]', isexclusion='false'))
+ CREATE INDEX documents_rum_index_6036 ON helio_data.documents_6009 USING helio_rum (document bson_rum_wildcard_project_path_ops (includeid='false', tl='2699', wkl='200', pathspec='[ "a.b.c.d" ]', isexclusion='false'))
 (1 row)
 

@@ -23,6 +23,8 @@
 #include "metadata/metadata_cache.h"
 #include "utils/query_utils.h"
 
+extern bool EnableNativeColocation;
+
 PG_FUNCTION_INFO_V1(command_get_shard_key_value);
 PG_FUNCTION_INFO_V1(command_validate_shard_key);
 PG_FUNCTION_INFO_V1(command_shard_collection);
@@ -171,8 +173,9 @@ command_shard_collection(PG_FUNCTION_ARGS)
 					 collection->collectionId);
 	ExtensionExecuteQueryViaSPI(queryInfo->data, readOnly, SPI_OK_UTILITY, &isNull);
 
-	const char *colocateWith = NULL;
+	const char *colocateWith = EnableNativeColocation ? "none" : NULL;
 	bool isUnsharded = false;
+
 	DistributePostgresTable(tmpDataTableName, "shard_key_value", colocateWith,
 							isUnsharded);
 

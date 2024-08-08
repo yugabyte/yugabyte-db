@@ -25,8 +25,10 @@
 extern bool EnableNativeColocation;
 extern bool EnableNativeTableColocation;
 
-static const char * CreatePostgresDataTable(uint64_t collectionId, const
-											char *colocateWith);
+static bool CanColocateAtDatabaseLevel(text *databaseDatum);
+static const char * CreatePostgresDataTable(uint64_t collectionId,
+											const char *colocateWith,
+											const char *shardingColumn);
 static uint64_t InsertIntoCollectionTable(text *databaseDatum, text *collectionDatum);
 
 static uint64_t InsertMetadataIntoCollections(text *databaseDatum, text *collectionDatum,
@@ -83,13 +85,33 @@ command_create_collection_core(PG_FUNCTION_ARGS)
 	}
 
 	const char *colocateWith = NULL;
-	if (EnableNativeColocation && !EnableNativeTableColocation)
+	const char *shardingColumn = "shard_key_value";
+	if (EnableNativeColocation)
 	{
-		/* To ensure colocation across tables, we get or create
-		 * a special config table per database so that all tables
-		 * can be colocated with this table.
+		/* For backwards compatibility, check if we can colocate with
+		 * the database level colocation
 		 */
-		colocateWith = GetOrCreateDatabaseConfigCollection(databaseDatum);
+		if (CanColocateAtDatabaseLevel(databaseDatum))
+		{
+			/* Not a legacy table, set the sharding column to null to create
+			 * an unsharded collection.
+			 */
+			shardingColumn = NULL;
+
+			/* To ensure colocation across tables, we get or create
+			 * a special config table per database so that all tables
+			 * can be colocated with this table.
+			 */
+			colocateWith = GetOrCreateDatabaseConfigCollection(databaseDatum);
+
+			/* If table level colocation is desired - ignore the colocate with
+			 * on the sentinel.
+			 */
+			if (EnableNativeTableColocation)
+			{
+				colocateWith = "none";
+			}
+		}
 	}
 
 	bool collectionExists = false;
@@ -102,7 +124,7 @@ command_create_collection_core(PG_FUNCTION_ARGS)
 	}
 
 	ereport(NOTICE, (errmsg("creating collection")));
-	CreatePostgresDataTable(collectionId, colocateWith);
+	CreatePostgresDataTable(collectionId, colocateWith, shardingColumn);
 	PG_RETURN_BOOL(true);
 }
 
@@ -161,7 +183,8 @@ InsertMetadataIntoCollections(text *databaseDatum, text *collectionDatum,
  * Returns the name of the Postgres table
  */
 static const char *
-CreatePostgresDataTable(uint64_t collectionId, const char *colocateWith)
+CreatePostgresDataTable(uint64_t collectionId, const char *colocateWith, const
+						char *shardingColumn)
 {
 	StringInfo dataTableNameInfo = makeStringInfo();
 	appendStringInfo(dataTableNameInfo, "%s.documents_%lu",
@@ -222,7 +245,7 @@ CreatePostgresDataTable(uint64_t collectionId, const char *colocateWith)
 								&isNull);
 
 	const char *distributionColumnUsed = DistributePostgresTable(dataTableNameInfo->data,
-																 "shard_key_value",
+																 shardingColumn,
 																 colocateWith,
 																 isUnsharded);
 
@@ -327,6 +350,49 @@ InsertIntoCollectionTable(text *databaseDatum, text *collectionDatum)
 
 
 /*
+ * Conditions for colocation:
+ * 1) db.system.dbSentinel exists: We can safely colocate at the database level.
+ * 2) There are no collections for that database.
+ */
+static bool
+CanColocateAtDatabaseLevel(text *databaseDatum)
+{
+	const char *systemCollectionTable = "system.dbSentinel";
+	text *systemCollectionsText = cstring_to_text(systemCollectionTable);
+	MongoCollection *collection = GetMongoCollectionByNameDatum(
+		PointerGetDatum(databaseDatum), PointerGetDatum(systemCollectionsText),
+		AccessShareLock);
+
+	if (collection != NULL)
+	{
+		/* db.system.dbSentinel already exists - we're good */
+		ereport(LOG, (errmsg("Sentinel table exists for %s - can colocate",
+							 collection->name.databaseName)));
+		return true;
+	}
+
+	/*
+	 * db.system.dbSentinel does not exist - we can
+	 * safely colocate if the database is empty.
+	 */
+	Datum args[1] = { PointerGetDatum(databaseDatum) };
+	Oid argTypes[1] = { TEXTOID };
+	const char *checkDatabaseQuery = psprintf(
+		"SELECT 1 FROM %s.collections WHERE database_name = $1 LIMIT 1",
+		ApiCatalogSchemaName);
+	bool isNull;
+	ExtensionExecuteQueryWithArgsViaSPI(checkDatabaseQuery, 1, argTypes, args, NULL,
+										false, SPI_OK_SELECT, &isNull);
+	ereport(LOG, (errmsg("database %s has collections: %s", text_to_cstring(
+							 databaseDatum),
+						 isNull ? "false" : "true")));
+
+	/* If the query returned no results then we can safely do database colocation */
+	return isNull;
+}
+
+
+/*
  * Creates a database wide sentinel collection that is used for colocating other collections against.
  * This is a single collection per database.
  *
@@ -352,9 +418,9 @@ GetOrCreateDatabaseConfigCollection(text *databaseDatum)
 	if (collection != NULL)
 	{
 		/* This already exists - we're good */
-		elog(INFO, "Returning existing %s for the sentinel table for %s.%s",
-			 collection->tableName, collection->name.databaseName,
-			 collection->name.collectionName);
+		ereport(LOG, (errmsg("Returning existing %s for the sentinel table for %s.%s",
+							 collection->tableName, collection->name.databaseName,
+							 collection->name.collectionName)));
 		return psprintf("%s.%s", ApiDataSchemaName, collection->tableName);
 	}
 
@@ -375,16 +441,18 @@ GetOrCreateDatabaseConfigCollection(text *databaseDatum)
 								"Unable to create metadata database sentinel collection.")));
 		}
 
-		elog(INFO, "Returning %s for the sentinel table for %s.%s",
-			 collection->tableName, collection->name.databaseName,
-			 collection->name.collectionName);
+		ereport(LOG, (errmsg("Returning %s for the sentinel table for %s.%s",
+							 collection->tableName, collection->name.databaseName,
+							 collection->name.collectionName)));
 		return psprintf("%s.%s", ApiDataSchemaName, collection->tableName);
 	}
 
-	const char *colocateWith = NULL;
-	const char *tableName = CreatePostgresDataTable(databaseCollectionId, colocateWith);
-	elog(INFO, "Creating and returning %s for the sentinel database %s",
-		 tableName, text_to_cstring(databaseDatum));
+	const char *colocateWith = "none";
+	const char *shardingColumn = NULL;
+	const char *tableName = CreatePostgresDataTable(databaseCollectionId, colocateWith,
+													shardingColumn);
+	ereport(LOG, (errmsg("Creating and returning %s for the sentinel database %s",
+						 tableName, text_to_cstring(databaseDatum))));
 
 	/* Add a policy to disallow writes on this table (TODO: Investigate why RLS didn't work here) */
 	StringInfo createCheckStringInfo = makeStringInfo();
