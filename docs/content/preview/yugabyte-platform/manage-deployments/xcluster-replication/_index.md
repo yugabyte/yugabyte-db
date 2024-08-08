@@ -9,6 +9,8 @@ menu:
     parent: manage-deployments
     identifier: xcluster-replication
     weight: 90
+aliases:
+  - /preview/yugabyte-platform/create-deployments/async-replication-platform
 type: indexpage
 showRightNav: true
 ---
