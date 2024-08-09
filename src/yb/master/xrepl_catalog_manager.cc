@@ -4164,7 +4164,7 @@ Status CatalogManager::DoClearFailedReplicationBootstrap(
     case SysUniverseReplicationBootstrapEntryPB_State_CREATE_CONSUMER_SNAPSHOT: {
       if (!new_snapshot_id.IsNil()) {
         auto deadline = CoarseMonoClock::Now() + 30s;
-        s = snapshot_coordinator_.Delete(new_snapshot_id, leader_ready_term(), deadline);
+        s = master_->snapshot_coordinator().Delete(new_snapshot_id, leader_ready_term(), deadline);
         if (!s.ok()) {
           LOG(WARNING) << Format("Failed to delete snapshot on consumer on status: $0", s);
         }

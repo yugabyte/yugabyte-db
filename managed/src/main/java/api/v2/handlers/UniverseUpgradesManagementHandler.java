@@ -60,6 +60,7 @@ import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoRequest;
 import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoResponse;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
+import play.mvc.Http.Request;
 
 @Singleton
 @Slf4j
@@ -68,7 +69,8 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
   @Inject public Commissioner commissioner;
   @Inject private RuntimeConfGetter confGetter;
 
-  public YBATask editGFlags(UUID cUUID, UUID uniUUID, UniverseEditGFlags editGFlags)
+  public YBATask editGFlags(
+      Request request, UUID cUUID, UUID uniUUID, UniverseEditGFlags editGFlags)
       throws JsonProcessingException {
     log.info("Starting v2 edit GFlags with {}", editGFlags);
 
@@ -79,11 +81,11 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     if (Util.isKubernetesBasedUniverse(universe)) {
       v1Params =
           UniverseDefinitionTaskParamsMapper.INSTANCE.toKubernetesGFlagsUpgradeParams(
-              universe.getUniverseDetails());
+              universe.getUniverseDetails(), request);
     } else {
       v1Params =
           UniverseDefinitionTaskParamsMapper.INSTANCE.toGFlagsUpgradeParams(
-              universe.getUniverseDetails());
+              universe.getUniverseDetails(), request);
     }
     // fill in SpecificGFlags from universeGFlags params into v1Params
     UniverseEditGFlagsMapper.INSTANCE.copyToV1GFlagsUpgradeParams(editGFlags, v1Params);
@@ -97,14 +99,14 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
   }
 
   public YBATask startSoftwareUpgrade(
-      UUID cUUID, UUID uniUUID, UniverseSoftwareUpgradeStart upgradeStart)
+      Request request, UUID cUUID, UUID uniUUID, UniverseSoftwareUpgradeStart upgradeStart)
       throws JsonProcessingException {
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
 
     SoftwareUpgradeParams v1Params =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toSoftwareUpgradeParams(
-            universe.getUniverseDetails());
+            universe.getUniverseDetails(), request);
 
     UniverseSoftwareUpgradeStartMapper.INSTANCE.copyToV1SoftwareUpgradeParams(
         upgradeStart, v1Params);
@@ -123,14 +125,14 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
   }
 
   public YBATask finalizeSoftwareUpgrade(
-      UUID cUUID, UUID uniUUID, UniverseSoftwareUpgradeFinalize upgradeStart)
+      Request request, UUID cUUID, UUID uniUUID, UniverseSoftwareUpgradeFinalize upgradeStart)
       throws JsonProcessingException {
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
 
     FinalizeUpgradeParams v1Params =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toFinalizeUpgradeParams(
-            universe.getUniverseDetails());
+            universe.getUniverseDetails(), request);
     UniverseSoftwareFinalizeMapper.INSTANCE.copyToV1FinalizeUpgradeParams(upgradeStart, v1Params);
 
     UUID taskUuid = v1Handler.finalizeUpgrade(v1Params, customer, universe);
@@ -154,14 +156,17 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
   }
 
   public YBATask startThirdPartySoftwareUpgrade(
-      UUID cUUID, UUID uniUUID, UniverseThirdPartySoftwareUpgradeStart upgradeStart)
+      Request request,
+      UUID cUUID,
+      UUID uniUUID,
+      UniverseThirdPartySoftwareUpgradeStart upgradeStart)
       throws JsonProcessingException {
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
 
     ThirdpartySoftwareUpgradeParams v1Params =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toThirdpartySoftwareUpgradeParams(
-            universe.getUniverseDetails());
+            universe.getUniverseDetails(), request);
 
     UniverseThirdPartySoftwareUpgradeMapper.INSTANCE.copyToV1ThirdpartySoftwareUpgradeParams(
         upgradeStart, v1Params);
@@ -174,14 +179,14 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     return ybaTask;
   }
 
-  public YBATask rollbackSoftwareUpgrade(UUID cUUID, UUID uniUUID, UniverseRollbackUpgradeReq req)
-      throws Exception {
+  public YBATask rollbackSoftwareUpgrade(
+      Request request, UUID cUUID, UUID uniUUID, UniverseRollbackUpgradeReq req) throws Exception {
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
 
     RollbackUpgradeParams v1Params =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toRollbackUpgradeParams(
-            universe.getUniverseDetails());
+            universe.getUniverseDetails(), request);
     UniverseRollbackUpgradeMapper.INSTANCE.copyToV1RollbackUpgradeParams(req, v1Params);
     UUID taskUuid = v1Handler.rollbackUpgrade(v1Params, customer, universe);
     // construct a v2 Task to return from here
@@ -203,7 +208,8 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
         v1Resp);
   }
 
-  public YBATask restartUniverse(UUID cUUID, UUID uniUUID, UniverseRestart uniRestart)
+  public YBATask restartUniverse(
+      Request request, UUID cUUID, UUID uniUUID, UniverseRestart uniRestart)
       throws JsonProcessingException {
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
@@ -222,7 +228,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
       log.debug("performing universe restart (service only)");
       RestartTaskParams v1Params =
           UniverseDefinitionTaskParamsMapper.INSTANCE.toRestartTaskParams(
-              universe.getUniverseDetails());
+              universe.getUniverseDetails(), request);
       UniverseRestartParamsMapper.INSTANCE.copyToV1RestartTaskParams(uniRestart, v1Params);
       taskUuid = v1Handler.restartUniverse(v1Params, customer, universe);
     } else if (uniRestart.getRestartType().equals(UniverseRestart.RestartTypeEnum.OS)) {
@@ -230,7 +236,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
       log.debug("performing universe reboot (SOFT)");
       UpgradeTaskParams v1Params =
           UniverseDefinitionTaskParamsMapper.INSTANCE.toUpgradeTaskParams(
-              universe.getUniverseDetails());
+              universe.getUniverseDetails(), request);
       UniverseRestartParamsMapper.INSTANCE.copyToV1UpgradeTaskParams(uniRestart, v1Params);
       taskUuid = v1Handler.rebootUniverse(v1Params, customer, universe);
     } else {
@@ -242,7 +248,8 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     return ybaTask;
   }
 
-  public YBATask systemdEnable(UUID cUUID, UUID uniUUID, UniverseSystemdEnableStart systemd)
+  public YBATask systemdEnable(
+      Request request, UUID cUUID, UUID uniUUID, UniverseSystemdEnableStart systemd)
       throws JsonProcessingException {
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
@@ -253,7 +260,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
 
     SystemdUpgradeParams v1Params =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toSystemdUpgradeParams(
-            universe.getUniverseDetails());
+            universe.getUniverseDetails(), request);
     UniverseSystemdUpgradeMapper.INSTANCE.copToV1SystemdUpgradeParams(systemd, v1Params);
 
     UUID taskUUID = v1Handler.upgradeSystemd(v1Params, customer, universe);
@@ -262,7 +269,8 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     return ybaTask;
   }
 
-  public YBATask tlsToggle(UUID cUUID, UUID uniUUID, UniverseEditEncryptionInTransit spec)
+  public YBATask tlsToggle(
+      Request request, UUID cUUID, UUID uniUUID, UniverseEditEncryptionInTransit spec)
       throws JsonProcessingException {
 
     Customer customer = Customer.getOrBadRequest(cUUID);
@@ -270,7 +278,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
 
     TlsToggleParams v1Params =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toTlsToggleParams(
-            universe.getUniverseDetails());
+            universe.getUniverseDetails(), request);
     UniverseTlsToggleParamsMapper.INSTANCE.copyToV1TlsToggleParams(spec, v1Params);
 
     UUID taskUUID = v1Handler.toggleTls(v1Params, customer, universe);
@@ -279,7 +287,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     return ybaTask;
   }
 
-  public YBATask certRotate(UUID cUUID, UUID uniUUID, UniverseCertRotateSpec spec)
+  public YBATask certRotate(Request request, UUID cUUID, UUID uniUUID, UniverseCertRotateSpec spec)
       throws JsonProcessingException {
 
     Customer customer = Customer.getOrBadRequest(cUUID);
@@ -287,7 +295,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
 
     CertsRotateParams v1Params =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toCertsRotateParams(
-            universe.getUniverseDetails());
+            universe.getUniverseDetails(), request);
     v1Params = UniverseCertsRotateParamsMapper.INSTANCE.copyToV1CertsRotateParams(spec, v1Params);
 
     UUID taskUUID = v1Handler.rotateCerts(v1Params, customer, universe);
@@ -297,14 +305,14 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
   }
 
   public YBATask editKubernetesOverrides(
-      UUID cUUID, UUID uniUUID, UniverseEditKubernetesOverrides spec)
+      Request request, UUID cUUID, UUID uniUUID, UniverseEditKubernetesOverrides spec)
       throws JsonProcessingException {
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
 
     KubernetesOverridesUpgradeParams v1Params =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toKubernetesOverridesUpgradeParams(
-            universe.getUniverseDetails());
+            universe.getUniverseDetails(), request);
     v1Params =
         UniverseEditKubernetesOverridesParamsMapper.INSTANCE.copyToV1KubernetesOverridesParams(
             spec, v1Params);

@@ -1231,3 +1231,5 @@ uIBuild := (uIBuild dependsOn (buildDependentArtifacts)).value
  *  Make SBT packaging depend on the UI build hook.
  */
 Universal / packageZipTarball := (Universal / packageZipTarball).dependsOn(uIBuild).value
+
+addCommandAlias("api", "cleanV2ServerStubs;openApiProcessServer;compile")

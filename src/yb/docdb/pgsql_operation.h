@@ -172,8 +172,7 @@ class PgsqlReadOperation : public DocExprExecutor {
                          const DocReadContext* index_doc_read_context,
                          std::reference_wrapper<const ScopedRWOperation> pending_op,
                          WriteBuffer* result_buffer,
-                         HybridTime* restart_read_ht,
-                         const DocDBStatistics* statistics = nullptr);
+                         HybridTime* restart_read_ht);
 
   Status GetSpecialColumn(ColumnIdRep column_id, QLValuePB* result);
 
@@ -189,8 +188,7 @@ class PgsqlReadOperation : public DocExprExecutor {
                                std::reference_wrapper<const ScopedRWOperation> pending_op,
                                WriteBuffer* result_buffer,
                                HybridTime* restart_read_ht,
-                               bool* has_paging_state,
-                               const DocDBStatistics* statistics);
+                               bool* has_paging_state);
 
   // Execute a READ operator for a given batch of ybctids.
   Result<size_t> ExecuteBatchYbctid(const YQLStorageIf& ql_storage,
@@ -198,8 +196,7 @@ class PgsqlReadOperation : public DocExprExecutor {
                                     const DocReadContext& doc_read_context,
                                     std::reference_wrapper<const ScopedRWOperation> pending_op,
                                     WriteBuffer* result_buffer,
-                                    HybridTime* restart_read_ht,
-                                    const DocDBStatistics* statistics);
+                                    HybridTime* restart_read_ht);
 
   Result<size_t> ExecuteSample(const YQLStorageIf& ql_storage,
                                const ReadOperationData& read_operation_data,
@@ -208,8 +205,7 @@ class PgsqlReadOperation : public DocExprExecutor {
                                std::reference_wrapper<const ScopedRWOperation> pending_op,
                                WriteBuffer* result_buffer,
                                HybridTime* restart_read_ht,
-                               bool* has_paging_state,
-                               const DocDBStatistics* statistics);
+                               bool* has_paging_state);
 
   Status PopulateResultSet(const dockv::PgTableRow& table_row,
                            WriteBuffer *result_buffer);

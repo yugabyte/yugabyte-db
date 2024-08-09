@@ -599,11 +599,27 @@ od_router_status_t od_router_attach(od_router_t *router,
 	od_server_t *server;
 	int busyloop_sleep = 0;
 	int busyloop_retry = 0;
+	const char *is_warmup_needed = getenv("YB_YSQL_CONN_MGR_DOWARMUP_ALL_POOLS_RANDOM_ATTACH");
+	bool enable_warmup_and_random_allot = false;
+	if (is_warmup_needed != NULL && strcmp(is_warmup_needed, "true") == 0)
+		enable_warmup_and_random_allot = true;
+
 	for (;;) {
-		server = od_pg_server_pool_next(&route->server_pool,
+
+		if (enable_warmup_and_random_allot)
+		{
+			server = od_server_pool_idle_random(&route->server_pool);
+			if (server &&
+				(od_server_pool_total(&route->server_pool) >= route->rule->min_pool_size))
+				goto attach;
+		}
+		else
+		{
+			server = od_pg_server_pool_next(&route->server_pool,
 						OD_SERVER_IDLE);
-		if (server)
-			goto attach;
+			if (server)
+				goto attach;
+		}
 
 		if (wait_for_idle) {
 			/* special case, when we are interested only in an idle connection
@@ -674,13 +690,33 @@ od_router_status_t od_router_attach(od_router_t *router,
 	od_route_unlock(route);
 
 	/* create new server object */
-	server = od_server_allocate(
+	bool created_atleast_one = false;
+	while (enable_warmup_and_random_allot &&
+		  (od_server_pool_total(&route->server_pool) < route->rule->min_pool_size))
+	{
+		server = od_server_allocate(
 		route->rule->pool->reserve_prepared_statement);
-	if (server == NULL)
-		return OD_ROUTER_ERROR;
-	od_id_generate(&server->id, "s");
-	server->global = client_for_router->global;
-	server->route = route;
+		if (server == NULL)
+			return OD_ROUTER_ERROR;
+		od_id_generate(&server->id, "s");
+		server->global = client_for_router->global;
+		server->route = route;
+		server->client = NULL;
+		od_pg_server_pool_set(&route->server_pool, server,
+						OD_SERVER_IDLE);
+		created_atleast_one = true;
+	}
+
+	if (!created_atleast_one)
+	{
+		server = od_server_allocate(
+		route->rule->pool->reserve_prepared_statement);
+		if (server == NULL)
+			return OD_ROUTER_ERROR;
+		od_id_generate(&server->id, "s");
+		server->global = client_for_router->global;
+		server->route = route;
+	}
 
 	od_route_lock(route);
 

@@ -254,9 +254,7 @@ public class UniverseResp {
         DrConfig.getByTargetUniverseUuid(universeUUID).stream()
             .map(DrConfig::getUuid)
             .collect(Collectors.toSet());
-    this.allowedTasks =
-        new AllowedUniverseTasksResp(
-            allowedTasks == null ? AllowedTasks.builder().build() : allowedTasks);
+    this.allowedTasks = allowedTasks == null ? null : new AllowedUniverseTasksResp(allowedTasks);
 
     this.rollMaxBatchSize = rollMaxBatchSize;
   }

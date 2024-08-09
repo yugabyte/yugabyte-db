@@ -4680,7 +4680,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_KB
 		},
 		&yb_ash_circular_buffer_size,
-		16 * 1024, 0, INT_MAX,
+		16 * 1024, 1, INT_MAX,
 		NULL, NULL, NULL
 	},
 

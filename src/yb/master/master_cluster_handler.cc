@@ -15,6 +15,7 @@
 
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager_util.h"
+#include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_util.h"
 
 DEFINE_RUNTIME_int32(blacklist_progress_initial_delay_secs, yb::master::kDelayAfterFailoverSecs,

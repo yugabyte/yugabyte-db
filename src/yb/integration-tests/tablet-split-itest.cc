@@ -833,14 +833,16 @@ TEST_F(TabletSplitITest, MaxCreateTabletsPerTs) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = false;
   SetNumTablets(3);
   CreateTable();
+
+  auto& master = ASSERT_RESULT(GetLeaderMaster()).get();
   auto catalog_mgr = ASSERT_RESULT(catalog_manager());
   auto table = catalog_mgr->GetTableInfo(table_->id());
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_create_tablets_per_ts) = 1;
-  ASSERT_NOK(catalog_mgr->tablet_split_manager()->ValidateSplitCandidateTable(table));
+  ASSERT_NOK(master.tablet_split_manager().ValidateSplitCandidateTable(table));
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_create_tablets_per_ts) = 2;
-  ASSERT_OK(catalog_mgr->tablet_split_manager()->ValidateSplitCandidateTable(table));
+  ASSERT_OK(master.tablet_split_manager().ValidateSplitCandidateTable(table));
 }
 
 TEST_F(TabletSplitITest, SplitDuringReplicaOffline) {
@@ -1840,8 +1842,8 @@ TEST_F(AutomaticTabletSplitITest, IncludeTasksInOutstandingSplits) {
 
   // Allow no new splits. The stalled split task should resume after the pause is removed.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
-  auto catalog_mgr = ASSERT_RESULT(catalog_manager());
-  ASSERT_OK(catalog_mgr->tablet_split_manager()->WaitUntilIdle());
+  auto& master = ASSERT_RESULT(GetLeaderMaster()).get();
+  ASSERT_OK(master.tablet_split_manager().WaitUntilIdle());
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_tserver_get_split_key) = false;
   ASSERT_OK(WaitForTabletSplitCompletion(kInitialNumTablets + 1, /* expected_non_split_tablets */
                                          1 /* expected_split_tablets */));
@@ -2291,8 +2293,9 @@ TEST_F(TabletSplitSingleServerITest, MaxFileSizeTTLTabletOnlyValidForManualSplit
   CreateSingleTablet();
   ASSERT_RESULT(WriteRowsAndFlush(kNumRows));
 
+  auto& master = ASSERT_RESULT(GetLeaderMaster()).get();
   auto* catalog_mgr = ASSERT_RESULT(catalog_manager());
-  auto* split_manager = catalog_mgr->tablet_split_manager();
+  auto* split_manager = &master.tablet_split_manager();
   auto source_tablet_info = ASSERT_RESULT(GetSingleTestTabletInfo(catalog_mgr));
 
   // Requires a metrics heartbeat to get max_file_size_for_compaction flag to master.
@@ -2333,8 +2336,9 @@ TEST_F(TabletSplitSingleServerITest, AutoSplitNotValidOnceCheckedForTtl) {
   CreateSingleTablet();
   ASSERT_RESULT(WriteRowsAndFlush(kNumRows));
 
+  auto& master = ASSERT_RESULT(GetLeaderMaster()).get();
   auto* catalog_mgr = ASSERT_RESULT(catalog_manager());
-  auto* split_manager = catalog_mgr->tablet_split_manager();
+  auto* split_manager = &master.tablet_split_manager();
   auto table_info = ASSERT_NOTNULL(catalog_mgr->GetTableInfo(table_->id()));
 
   // Candidate table should start as a valid split candidate.

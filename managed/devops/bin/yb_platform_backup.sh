@@ -373,18 +373,20 @@ create_backup() {
   if [ "$disable_version_check" != true ]; then
 
     metadata_regex="**/yugaware/conf/${VERSION_METADATA}"
+    metadata_dir="${data_dir}"
+    target_dir="${data_dir}"
+    # Hardcode container values for replicated
+    if [[ "$DOCKER_BASED" = true ]]; then
+      metadata_dir="/opt/yugabyte"
+      target_dir="/opt/yugabyte/yugaware/data"
+    fi
     if [[ "${yba_installer}" = true ]]; then
       version=$(basename $(realpath ${data_dir}/software/active))
       metadata_regex="**/${version}/**/yugaware/conf/${VERSION_METADATA}"
     fi
-    version_path=$(docker_aware_cmd "yugaware" "find ${data_dir} -wholename ${metadata_regex}")
+    version_path=$(docker_aware_cmd "yugaware" "find ${metadata_dir} -wholename ${metadata_regex}")
 
-    # At least keep some default as a worst case.
-    if [ ! -f ${version_path} ] || [ -z ${version_path} ]; then
-      version_path="${data_dir}/yugaware/conf/${VERSION_METADATA}"
-    fi
-
-    command="cp ${version_path} ${data_dir}/${VERSION_METADATA_BACKUP}"
+    command="cp ${version_path} ${target_dir}/${VERSION_METADATA_BACKUP}"
     docker_aware_cmd "yugaware" "${command}"
   fi
 
@@ -555,9 +557,9 @@ restore_backup() {
       ${VERSION_METADATA_BACKUP}"
       exit 1
     fi
-    tar -xzf ${input_path} -C ${K8S_BACKUP_DIR} ${backup_metadata_path}
+    tar -xzf ${input_path} -C ${destination} ${backup_metadata_path}
     set +e
-    backup_metadata_path=$(find ${K8S_BACKUP_DIR} -name ${VERSION_METADATA_BACKUP} | head -1)
+    backup_metadata_path=$(find ${destination} -name ${VERSION_METADATA_BACKUP} | head -1)
     set -e
     if [ ! -f ${backup_metadata_path} ] || [ -z ${backup_metadata_path} ]; then
       echo "could not find untarred ${VERSION_METADATA_BACKUP}"

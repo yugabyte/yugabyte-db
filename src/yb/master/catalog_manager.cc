@@ -125,6 +125,7 @@
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager_bg_tasks.h"
 #include "yb/master/catalog_manager_util.h"
+#include "yb/master/clone/clone_state_manager.h"
 #include "yb/master/cluster_balance.h"
 #include "yb/master/encryption_manager.h"
 #include "yb/master/master.h"
@@ -137,12 +138,14 @@
 #include "yb/master/master_error.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_replication.pb.h"
+#include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_util.h"
 #include "yb/master/permissions_manager.h"
 #include "yb/master/post_tablet_create_task_base.h"
 #include "yb/master/scoped_leader_shared_lock-internal.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
+#include "yb/master/tablet_split_manager.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/yql_aggregates_vtable.h"
@@ -975,9 +978,7 @@ CatalogManager::CatalogManager(Master* master)
       jobs_tracker_(new TasksTracker(IsUserInitiated::kTrue)),
       encryption_manager_(new EncryptionManager()),
       tablespace_manager_(std::make_shared<YsqlTablespaceManager>(nullptr, nullptr)),
-      tablespace_bg_task_running_(false),
-      tablet_split_manager_(*this, master_->metric_entity(), master_->metric_entity_cluster()),
-      snapshot_coordinator_(this, this, tablet_split_manager_) {
+      tablespace_bg_task_running_(false) {
   InitMasterFlags();
   CHECK_OK(ThreadPoolBuilder("leader-initialization")
                .set_max_threads(1)
@@ -989,7 +990,6 @@ CatalogManager::CatalogManager(Master* master)
       master_, master_->metric_registry(),
       Bind(&CatalogManager::ElectedAsLeaderCb, Unretained(this))));
 
-  clone_state_manager_ = CloneStateManager::Create(this, master, sys_catalog_.get());
   xcluster_manager_ = std::make_unique<XClusterManager>(*master_, *this, *sys_catalog_.get());
 }
 
@@ -1517,7 +1517,7 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   RETURN_NOT_OK(LoadUniverseReplicationBootstrap());
 
   RETURN_NOT_OK(xcluster_manager_->RunLoaders(hidden_tablets_));
-  RETURN_NOT_OK(clone_state_manager_->ClearAndRunLoaders(state->epoch));
+  RETURN_NOT_OK(master_->clone_state_manager().ClearAndRunLoaders(state->epoch));
 
   return Status::OK();
 }
@@ -2246,7 +2246,6 @@ bool CatalogManager::StartShutdown() {
 }
 
 void CatalogManager::CompleteShutdown() {
-  snapshot_coordinator_.Shutdown();
   refresh_yql_partitions_task_.CompleteShutdown();
   refresh_ysql_tablespace_info_task_.CompleteShutdown();
   xrepl_parent_tablet_deletion_task_.CompleteShutdown();
@@ -3109,7 +3108,7 @@ Status CatalogManager::DoSplitTablet(
     .source = source_tablet_info->tablet_id(),
     .children = { child_tablet_ids_sorted[0], child_tablet_ids_sorted[1] }
   };
-  RETURN_NOT_OK(tablet_split_manager_.ProcessSplitTabletResult(
+  RETURN_NOT_OK(master_->tablet_split_manager().ProcessSplitTabletResult(
       source_tablet_info->table()->id(), split_tablet_ids, epoch));
 
   // TODO(tsplit): what if source tablet will be deleted before or during TS leader is processing
@@ -3194,12 +3193,12 @@ Status CatalogManager::SplitTablet(
             tserver::TabletServerErrorPB::TABLET_SPLIT_DISABLED_TTL_EXPIRY) {
           LOG(INFO) << "AsyncGetTabletSplitKey task failed for tablet " << tablet->tablet_id()
                     << ". Tablet split not supported for tablets with TTL file expiration.";
-          tablet_split_manager()->DisableSplittingForTtlTable(tablet->table()->id());
+          master_->tablet_split_manager().DisableSplittingForTtlTable(tablet->table()->id());
         } else if (
             tserver::TabletServerError(result.status()) ==
             tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL) {
           LOG(INFO) << "Tablet key range is too small to split, disabling splitting temporarily.";
-          tablet_split_manager()->DisableSplittingForSmallKeyRangeTablet(tablet->id());
+          master_->tablet_split_manager().DisableSplittingForSmallKeyRangeTablet(tablet->id());
         } else {
           LOG(WARNING) << "AsyncGetTabletSplitKey task failed with status: " << result.status();
         }
@@ -3246,7 +3245,7 @@ Status CatalogManager::ValidateSplitCandidate(
 Status CatalogManager::ValidateSplitCandidateUnlocked(
     const TabletInfoPtr& tablet, const ManualSplit is_manual_split) {
   const IgnoreDisabledList ignore_disabled_list { is_manual_split.get() };
-  RETURN_NOT_OK(tablet_split_manager_.ValidateSplitCandidateTable(
+  RETURN_NOT_OK(master_->tablet_split_manager().ValidateSplitCandidateTable(
       tablet->table(), ignore_disabled_list));
   RETURN_NOT_OK(XReplValidateSplitCandidateTableUnlocked(tablet->table()->id()));
 
@@ -3255,7 +3254,7 @@ Status CatalogManager::ValidateSplitCandidateUnlocked(
   const TabletId parent_id = tablet->LockForRead()->pb.split_parent_tablet_id();
   auto parent_result = GetTabletInfoUnlocked(parent_id);
   TabletInfoPtr parent = parent_result.ok() ? parent_result.get() : nullptr;
-  return tablet_split_manager_.ValidateSplitCandidateTablet(
+  return master_->tablet_split_manager().ValidateSplitCandidateTablet(
       *tablet, parent, ignore_ttl_validation, ignore_disabled_list);
 }
 
@@ -5787,7 +5786,7 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
   if (!FLAGS_enable_truncate_on_pitr_table) {
       // Disallow deleting tables with snapshot schedules.
       auto covering_schedules = VERIFY_RESULT(
-          snapshot_coordinator_.GetSnapshotSchedules(
+          master_->snapshot_coordinator().GetSnapshotSchedules(
               SysRowEntryType::TABLE, table_id));
       if (!covering_schedules.empty()) {
         return STATUS_EC_FORMAT(
@@ -6430,7 +6429,7 @@ Status CatalogManager::DeleteTableInternal(
   }
 
   auto schedules_to_tables_map = VERIFY_RESULT(
-      snapshot_coordinator_.MakeSnapshotSchedulesToObjectIdsMap(SysRowEntryType::TABLE));
+      master_->snapshot_coordinator().MakeSnapshotSchedulesToObjectIdsMap(SysRowEntryType::TABLE));
 
   vector<DeletingTableData> tables;
   RETURN_NOT_OK(DeleteTableInMemory(req->table(), req->is_index_table(),
@@ -8821,7 +8820,7 @@ Status CatalogManager::DoDeleteNamespace(const DeleteNamespaceRequestPB* req,
 
   // Disallow deleting namespaces with snapshot schedules.
   auto covering_schedules = VERIFY_RESULT(
-      snapshot_coordinator_.GetSnapshotSchedules(
+      master_->snapshot_coordinator().GetSnapshotSchedules(
           SysRowEntryType::NAMESPACE, ns->id()));
   if (!covering_schedules.empty()) {
     return STATUS_EC_FORMAT(
@@ -8887,7 +8886,7 @@ Status CatalogManager::DeleteYsqlDatabase(const DeleteNamespaceRequestPB* req,
 
   // Disallow deleting namespaces with snapshot schedules.
   auto covering_schedules = VERIFY_RESULT(
-      snapshot_coordinator_.GetSnapshotSchedules(
+      master_->snapshot_coordinator().GetSnapshotSchedules(
           SysRowEntryType::NAMESPACE, database->id()));
   if (!covering_schedules.empty()) {
     return STATUS_EC_FORMAT(
@@ -9924,7 +9923,7 @@ Status CatalogManager::EnableBgTasks() {
   // will be started by the CatalogManagerBgTasks below.
   refresh_ysql_pg_catalog_versions_task_.Bind(&master_->messenger()->scheduler());
 
-  background_tasks_.reset(new CatalogManagerBgTasks(this));
+  background_tasks_.reset(new CatalogManagerBgTasks(master_));
   RETURN_NOT_OK_PREPEND(background_tasks_->Init(),
                         "Failed to initialize catalog manager background tasks");
 
@@ -10975,7 +10974,8 @@ Status CatalogManager::SendCreateTabletRequests(
     const std::vector<TabletInfoPtr>& tablets,
     const LeaderEpoch& epoch) {
   auto schedules_to_tablets_map = VERIFY_RESULT(
-      snapshot_coordinator_.MakeSnapshotSchedulesToObjectIdsMap(SysRowEntryType::TABLET));
+      master_->snapshot_coordinator().MakeSnapshotSchedulesToObjectIdsMap(
+          SysRowEntryType::TABLET));
   for (const TabletInfoPtr& tablet : tablets) {
     const consensus::RaftConfigPB& config =
         tablet->metadata().dirty().pb.committed_consensus_state().config();
@@ -12509,7 +12509,7 @@ Status CatalogManager::GetStatefulServiceLocation(
 }
 
 void CatalogManager::Started() {
-  snapshot_coordinator_.Start();
+  master_->snapshot_coordinator().Start();
 }
 
 void CatalogManager::SysCatalogLoaded(SysCatalogLoadingState&& state) {
@@ -12519,7 +12519,7 @@ void CatalogManager::SysCatalogLoaded(SysCatalogLoadingState&& state) {
   StartPostLoadTasks(std::move(state.post_load_tasks));
   StartWriteTableToSysCatalogTasks(std::move(state.write_to_disk_tables));
 
-  snapshot_coordinator_.SysCatalogLoaded(state.epoch.leader_term);
+  master_->snapshot_coordinator().SysCatalogLoaded(state.epoch.leader_term);
 
   xcluster_manager_->SysCatalogLoaded(state.epoch);
   SchedulePostTabletCreationTasksForPendingTables(state.epoch);
@@ -12806,8 +12806,8 @@ void CatalogManager::RefreshPgCatalogVersionInfoPeriodically() {
 Result<TabletDeleteRetainerInfo> CatalogManager::GetDeleteRetainerInfoForTabletDrop(
     const TabletInfo& tablet_info) {
   TabletDeleteRetainerInfo retainer;
-  RETURN_NOT_OK(
-      snapshot_coordinator_.PopulateDeleteRetainerInfoForTabletDrop(tablet_info, retainer));
+  RETURN_NOT_OK(master_->snapshot_coordinator().PopulateDeleteRetainerInfoForTabletDrop(
+      tablet_info, retainer));
 
   xcluster_manager_->PopulateTabletDeleteRetainerInfoForTabletDrop(tablet_info, retainer);
 
@@ -12823,7 +12823,7 @@ Result<TabletDeleteRetainerInfo> CatalogManager::GetDeleteRetainerInfoForTableDr
     const TableInfo& table_info, const SnapshotSchedulesToObjectIdsMap& schedules_to_tables_map) {
   TabletDeleteRetainerInfo retainer;
   auto tablets_to_check = VERIFY_RESULT(table_info.GetTablets(IncludeInactive::kFalse));
-  RETURN_NOT_OK(snapshot_coordinator_.PopulateDeleteRetainerInfoForTableDrop(
+  RETURN_NOT_OK(master_->snapshot_coordinator().PopulateDeleteRetainerInfoForTableDrop(
       table_info, tablets_to_check, schedules_to_tables_map, retainer));
 
   xcluster_manager_->PopulateTabletDeleteRetainerInfoForTableDrop(table_info, retainer);
@@ -12864,7 +12864,8 @@ void CatalogManager::RecordHiddenTablets(
 bool CatalogManager::ShouldRetainHiddenTablet(
     const TabletInfo& tablet, const ScheduleMinRestoreTime& schedule_to_min_restore_time) {
   const auto& tablet_id = tablet.tablet_id();
-  if (snapshot_coordinator_.ShouldRetainHiddenTablet(tablet, schedule_to_min_restore_time)) {
+  if (master_->snapshot_coordinator().ShouldRetainHiddenTablet(
+        tablet, schedule_to_min_restore_time)) {
     VLOG(1) << Format("Tablet $0 retained by snapshots", tablet_id);
     return true;
   }
