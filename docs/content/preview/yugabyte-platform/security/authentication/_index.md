@@ -31,8 +31,8 @@ YugabyteDB supports LDAP and OIDC for database authentication.
     icon="/images/section_icons/secure/authentication.png">}}
 
   {{<index/item
-    title="OIDC with Azure AD"
-    body="Authenticate database users using SSO via Azure AD."
+    title="OIDC authentication"
+    body="Use an identity provider to authenticate database users."
     href="oidc-authentication-aad/"
     icon="/images/section_icons/secure/authorization.png">}}
 
