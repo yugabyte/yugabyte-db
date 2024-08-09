@@ -1607,8 +1607,9 @@ void CDCServiceImpl::GetChanges(
     auto last_checkpoint = RPC_VERIFY_RESULT(
         GetLastCheckpoint(producer_tablet, stream_meta_ptr.get()->GetSourceType(), false),
         resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
-    LOG(WARNING) << "GetChanges called on T " << req->tablet_id() << " S " << req->stream_id()
-                 << " without an index. Using last checkpoint: " << last_checkpoint;
+    YB_LOG_EVERY_N_SECS_OR_VLOG(INFO, 10, 1)
+        << "GetChanges called on T " << req->tablet_id() << " S " << req->stream_id()
+        << " without an index. Using last checkpoint: " << last_checkpoint;
     if (record.GetSourceType() == XCLUSTER) {
       from_op_id = last_checkpoint;
     } else {
