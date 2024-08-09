@@ -244,7 +244,7 @@ To do a PITR on a database:
 
     ![Primary unreachable](/images/yp/create-deployments/xcluster/deploy-xcluster-tran-unreachable.png)
 
-    For more information on managing replication in YugabyteDB Anywhere, refer to [View, manage, and monitor replication](../../../../yugabyte-platform/create-deployments/async-replication-platform/#view-manage-and-monitor-replication).
+    For more information on managing replication in YugabyteDB Anywhere, refer to [xCluster replication](../../../../yugabyte-platform/manage-deployments/xcluster-replication).
 
 1. Resume the application traffic on the new Primary (B).
 
