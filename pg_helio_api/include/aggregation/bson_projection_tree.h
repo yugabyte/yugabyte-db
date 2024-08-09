@@ -65,6 +65,9 @@ typedef struct BuildBsonPathTreeContext
 	/* OUT: Whether the tree contains a leaf node with a non constant aggregation expression or not. */
 	bool hasAggregationExpressions;
 
+	/* IN: the parse aggregation expression context. */
+	ParseAggregationExpressionContext parseAggregationContext;
+
 	/* INOUT: the state of the tree which is used/modified for special find query operators. */
 	void *pathTreeState;
 

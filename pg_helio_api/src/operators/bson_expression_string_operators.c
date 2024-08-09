@@ -110,7 +110,8 @@ static bool ParseDollarRegexInput(const bson_value_t *operatorValue,
 								  RegexData *regexData,
 								  const char *opName,
 								  bool enableNoAutoCapture,
-								  bool *isNullOrUndefinedInput);
+								  bool *isNullOrUndefinedInput,
+								  ParseAggregationExpressionContext *context);
 static void ProcessDollarStrCaseCmpResult(bson_value_t *result, void *state);
 static void ProcessCoersionForStrCaseCmp(bson_value_t *element);
 static void ProcessDollarReplace(bson_value_t *input,
@@ -139,7 +140,8 @@ static bson_value_t ConstructResultForDollarRegex(RegexData *regexData,
 static void ParseDollarReplaceHelper(const bson_value_t *argument,
 									 AggregationExpressionData *data,
 									 const char *opName,
-									 bool isDollarReplaceOne);
+									 bool isDollarReplaceOne,
+									 ParseAggregationExpressionContext *context);
 static void HandlePreParsedDollarReplaceHelper(pgbson *doc, void *arguments,
 											   ExpressionResult *expressionResult,
 											   const char *opName,
@@ -1768,7 +1770,8 @@ HandlePreParsedDollarSubstrCP(pgbson *doc, void *arguments,
  * $regexMatch is expressed as { "$regexMatch": { "input" : <string>, "regex" : <string>, "options": <string>}}
  */
 void
-ParseDollarRegexMatch(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarRegexMatch(const bson_value_t *argument, AggregationExpressionData *data,
+					  ParseAggregationExpressionContext *context)
 {
 	bson_value_t input = { 0 };
 	RegexData regexData = { 0 };
@@ -1776,7 +1779,7 @@ ParseDollarRegexMatch(const bson_value_t *argument, AggregationExpressionData *d
 	bool isNullOrUndefinedInput = false;
 
 	if (ParseDollarRegexInput(argument, data, &input, &regexData, "$regexMatch",
-							  enableNoAutoCapture, &isNullOrUndefinedInput))
+							  enableNoAutoCapture, &isNullOrUndefinedInput, context))
 	{
 		if (isNullOrUndefinedInput)
 		{
@@ -1797,7 +1800,8 @@ ParseDollarRegexMatch(const bson_value_t *argument, AggregationExpressionData *d
  * $regexFind is expressed as { "$regexFind": { "input" : <string>, "regex" : <string>, "options": <string>}}
  */
 void
-ParseDollarRegexFind(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarRegexFind(const bson_value_t *argument, AggregationExpressionData *data,
+					 ParseAggregationExpressionContext *context)
 {
 	bson_value_t input = { 0 };
 	RegexData regexData = { 0 };
@@ -1805,7 +1809,7 @@ ParseDollarRegexFind(const bson_value_t *argument, AggregationExpressionData *da
 	bool isNullOrUndefinedInput = false;
 
 	if (ParseDollarRegexInput(argument, data, &input, &regexData, "$regexFind",
-							  enableNoAutoCapture, &isNullOrUndefinedInput))
+							  enableNoAutoCapture, &isNullOrUndefinedInput, context))
 	{
 		if (isNullOrUndefinedInput || !CompareRegexTextMatch(&input, &regexData))
 		{
@@ -1831,7 +1835,8 @@ ParseDollarRegexFind(const bson_value_t *argument, AggregationExpressionData *da
  * $regexFindAll is expressed as { "$regexFindAll": { "input" : <string>, "regex" : <string>, "options": <string>}}
  */
 void
-ParseDollarRegexFindAll(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarRegexFindAll(const bson_value_t *argument, AggregationExpressionData *data,
+						ParseAggregationExpressionContext *context)
 {
 	bson_value_t input = { 0 };
 	RegexData regexData = { 0 };
@@ -1839,7 +1844,7 @@ ParseDollarRegexFindAll(const bson_value_t *argument, AggregationExpressionData 
 	bool isNullOrUndefinedInput = false;
 
 	if (ParseDollarRegexInput(argument, data, &input, &regexData, "$regexFindAll",
-							  enableNoAutoCapture, &isNullOrUndefinedInput))
+							  enableNoAutoCapture, &isNullOrUndefinedInput, context))
 	{
 		if (isNullOrUndefinedInput)
 		{
@@ -1857,14 +1862,16 @@ ParseDollarRegexFindAll(const bson_value_t *argument, AggregationExpressionData 
  * Parses an $substrBytes expression and sets the parsed data in the data argument.
  */
 void
-ParseDollarSubstrBytes(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarSubstrBytes(const bson_value_t *argument, AggregationExpressionData *data,
+					   ParseAggregationExpressionContext *context)
 {
 	int numOfRequiredArgs = 3;
 	List *arguments = ParseFixedArgumentsForExpression(argument,
 													   numOfRequiredArgs,
 													   "$substrBytes",
 													   &data->operator.
-													   argumentsKind);
+													   argumentsKind,
+													   context);
 
 	AggregationExpressionData *first = list_nth(arguments, 0);
 	AggregationExpressionData *second = list_nth(arguments, 1);
@@ -1892,14 +1899,16 @@ ParseDollarSubstrBytes(const bson_value_t *argument, AggregationExpressionData *
  * Parses an $substrCP expression and sets the parsed data in the data argument.
  */
 void
-ParseDollarSubstrCP(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarSubstrCP(const bson_value_t *argument, AggregationExpressionData *data,
+					ParseAggregationExpressionContext *context)
 {
 	int numOfRequiredArgs = 3;
 	List *arguments = ParseFixedArgumentsForExpression(argument,
 													   numOfRequiredArgs,
 													   "$substrCP",
 													   &data->operator.
-													   argumentsKind);
+													   argumentsKind,
+													   context);
 
 	AggregationExpressionData *first = list_nth(arguments, 0);
 	AggregationExpressionData *second = list_nth(arguments, 1);
@@ -2131,7 +2140,8 @@ ParseDollarRegexInput(const bson_value_t *operatorValue,
 					  RegexData *regexData,
 					  const char *opName,
 					  bool enableNoAutoCapture,
-					  bool *isNullOrUndefinedInput)
+					  bool *isNullOrUndefinedInput,
+					  ParseAggregationExpressionContext *context)
 {
 	bson_value_t regex = { 0 };
 	bson_value_t options = { 0 };
@@ -2181,9 +2191,9 @@ ParseDollarRegexInput(const bson_value_t *operatorValue,
 
 
 	DollarRegexArguments *regexArgs = palloc0(sizeof(DollarRegexArguments));
-	ParseAggregationExpressionData(&regexArgs->input, input);
-	ParseAggregationExpressionData(&regexArgs->regex, &regex);
-	ParseAggregationExpressionData(&regexArgs->options, &options);
+	ParseAggregationExpressionData(&regexArgs->input, input, context);
+	ParseAggregationExpressionData(&regexArgs->regex, &regex, context);
+	ParseAggregationExpressionData(&regexArgs->options, &options, context);
 
 	if (IsAggregationExpressionConstant(&regexArgs->input) &&
 		IsAggregationExpressionConstant(&regexArgs->regex) &&
@@ -2245,23 +2255,25 @@ HandlePreParsedDollarReplaceAll(pgbson *doc, void *arguments,
 
 /* Parses a $replaceOne expression and sets the parsed data in the data argument. */
 void
-ParseDollarReplaceOne(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarReplaceOne(const bson_value_t *argument, AggregationExpressionData *data,
+					  ParseAggregationExpressionContext *context)
 {
 	/* boolean to avoid strcmp on opName. Passing opName as well to avoid if-else cases in error messages. */
 	bool isDollarReplaceOne = true;
 	const char *opName = "$replaceOne";
-	ParseDollarReplaceHelper(argument, data, opName, isDollarReplaceOne);
+	ParseDollarReplaceHelper(argument, data, opName, isDollarReplaceOne, context);
 }
 
 
 /* Parses a $replaceAll expression and sets the parsed data in the data argument. */
 void
-ParseDollarReplaceAll(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarReplaceAll(const bson_value_t *argument, AggregationExpressionData *data,
+					  ParseAggregationExpressionContext *context)
 {
 	/* boolean to avoid strcmp on opName. Passing opName as well to avoid if-else cases in error messages. */
 	bool isDollarReplaceOne = false;
 	const char *opName = "$replaceAll";
-	ParseDollarReplaceHelper(argument, data, opName, isDollarReplaceOne);
+	ParseDollarReplaceHelper(argument, data, opName, isDollarReplaceOne, context);
 }
 
 
@@ -2569,7 +2581,8 @@ static void
 ParseDollarReplaceHelper(const bson_value_t *argument,
 						 AggregationExpressionData *data,
 						 const char *opName,
-						 bool isDollarReplaceOne)
+						 bool isDollarReplaceOne,
+						 ParseAggregationExpressionContext *context)
 {
 	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
@@ -2628,9 +2641,9 @@ ParseDollarReplaceHelper(const bson_value_t *argument,
 
 	DollarReplaceArguments *arguments = palloc0(sizeof(DollarReplaceArguments));
 
-	ParseAggregationExpressionData(&arguments->input, &input);
-	ParseAggregationExpressionData(&arguments->find, &find);
-	ParseAggregationExpressionData(&arguments->replacement, &replacement);
+	ParseAggregationExpressionData(&arguments->input, &input, context);
+	ParseAggregationExpressionData(&arguments->find, &find, context);
+	ParseAggregationExpressionData(&arguments->replacement, &replacement, context);
 
 	if (IsAggregationExpressionConstant(&arguments->input) &&
 		IsAggregationExpressionConstant(&arguments->find) &&

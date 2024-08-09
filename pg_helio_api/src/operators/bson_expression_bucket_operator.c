@@ -145,7 +145,9 @@ RewriteBucketGroupSpec(const bson_value_t *bucketSpec, bson_value_t *groupSpec)
 	if (defaultBucket.value_type != BSON_TYPE_EOD)
 	{
 		AggregationExpressionData parsedDefaultValue = { 0 };
-		ParseAggregationExpressionData(&parsedDefaultValue, &defaultBucket);
+		ParseAggregationExpressionContext parseContext = { 0 };
+		ParseAggregationExpressionData(&parsedDefaultValue, &defaultBucket,
+									   &parseContext);
 		if (parsedDefaultValue.kind != AggregationExpressionKind_Constant)
 		{
 			ereport(ERROR, (errcode(MongoLocation40195),
@@ -153,8 +155,7 @@ RewriteBucketGroupSpec(const bson_value_t *bucketSpec, bson_value_t *groupSpec)
 								"The $bucket 'default' field must be a constant. Input value: %s",
 								BsonValueToJsonForLogging(&defaultBucket)),
 							errhint(
-								"The $bucket 'default' field must be a constant. Input value: %s",
-								BsonValueToJsonForLogging(&defaultBucket))));
+								"The $bucket 'default' field must be a constant.")));
 		}
 	}
 
@@ -307,7 +308,8 @@ HandlePreParsedDollarBucketInternal(pgbson *doc, void *arguments,
  * "$_bucketInternal" : { "groupBy" : "$year", "boundaries" : [ 2020, 2021, 2022 ], "default" : "other" }.
  */
 void
-ParseDollarBucketInternal(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarBucketInternal(const bson_value_t *argument, AggregationExpressionData *data,
+						  ParseAggregationExpressionContext *context)
 {
 	bson_iter_t docIter;
 	BsonValueInitIterator(argument, &docIter);
@@ -335,7 +337,8 @@ ParseDollarBucketInternal(const bson_value_t *argument, AggregationExpressionDat
 	BucketInternalArguments *arguments = palloc0(sizeof(BucketInternalArguments));
 
 	/* During $bucket stage handling, we already validated required fields and data type for each argument. */
-	ParseAggregationExpressionData(&arguments->groupBy, &groupBy);
+	ParseAggregationExpressionContext parseContext = { 0 };
+	ParseAggregationExpressionData(&arguments->groupBy, &groupBy, &parseContext);
 
 	ParseBoundariesForBucketInternal(arguments, &boundaries, &defaultBucket);
 
@@ -361,7 +364,8 @@ ParseBoundariesForBucketInternal(BucketInternalArguments *arguments,
 	{
 		const bson_value_t *value = bson_iter_value(&boundariesIter);
 		AggregationExpressionData parsedValue = { 0 };
-		ParseAggregationExpressionData(&parsedValue, value);
+		ParseAggregationExpressionContext parseContext = { 0 };
+		ParseAggregationExpressionData(&parsedValue, value, &parseContext);
 		if (parsedValue.kind != AggregationExpressionKind_Constant)
 		{
 			ereport(ERROR, (errcode(MongoLocation40191),

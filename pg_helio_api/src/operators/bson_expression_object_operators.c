@@ -52,10 +52,14 @@ static bson_value_t ProcessResultForDollarGetField(bson_value_t field, bson_valu
 static bool IsAggregationExpressionEvaluatesToNull(
 	AggregationExpressionData *expressionData);
 static AggregationExpressionData * PerformConstantFolding(
-	AggregationExpressionData *expressionData, const bson_value_t *value);
+	AggregationExpressionData *expressionData, const bson_value_t *value,
+	ParseAggregationExpressionContext
+	*context);
 static void ParseFieldExpressionForDollarGetField(const bson_value_t *field,
 												  AggregationExpressionData *
-												  fieldExpression);
+												  fieldExpression,
+												  ParseAggregationExpressionContext *
+												  context);
 
 /*
  * Evaluates the output of an $mergeObjects expression.
@@ -142,6 +146,7 @@ AppendDocumentForMergeObjects(pgbson *sourceDocument, const bson_value_t *value,
 
 		/* Expressions are already evaluated (this will change once we move this to the new framework. )*/
 		bool treatLeafDataAsConstant = true;
+		ParseAggregationExpressionContext ignoreContext = { 0 };
 
 		while (bson_iter_next(&docIter))
 		{
@@ -152,7 +157,7 @@ AppendDocumentForMergeObjects(pgbson *sourceDocument, const bson_value_t *value,
 			const BsonLeafPathNode *treeNode = TraverseDottedPathAndGetOrAddLeafFieldNode(
 				&pathView, docValue,
 				tree, BsonDefaultCreateLeafNode,
-				treatLeafDataAsConstant, &nodeCreated);
+				treatLeafDataAsConstant, &nodeCreated, &ignoreContext);
 
 			/* if the node already exists we need to update the value
 			 * as $mergeObjects has the behavior that the last path spec
@@ -160,7 +165,7 @@ AppendDocumentForMergeObjects(pgbson *sourceDocument, const bson_value_t *value,
 			if (!nodeCreated)
 			{
 				ResetNodeWithField(treeNode, NULL, docValue, BsonDefaultCreateLeafNode,
-								   treatLeafDataAsConstant);
+								   treatLeafDataAsConstant, &ignoreContext);
 			}
 		}
 	}
@@ -370,7 +375,8 @@ HandlePreParsedDollarSetField(pgbson *doc, void *arguments,
  * $setField { "field": <const expression>, "input": <document> can also be "$$ROOT", "value": <expression> can also be "$$REMOVE" } }
  */
 void
-ParseDollarSetField(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarSetField(const bson_value_t *argument, AggregationExpressionData *data,
+					ParseAggregationExpressionContext *context)
 {
 	bson_value_t input = { 0 };
 	bson_value_t field = { 0 };
@@ -456,14 +462,14 @@ ParseDollarSetField(const bson_value_t *argument, AggregationExpressionData *dat
 	/* Optimize, if input, field and value are constants, we can calculate the result at this parse phase,
 	 * and have resolved already if the input was null to a return NULL expression as a rewrite. */
 
-	ParseAggregationExpressionData(&arguments->field, &field);
-	ParseAggregationExpressionData(&arguments->value, &value);
+	ParseAggregationExpressionData(&arguments->field, &field, context);
+	ParseAggregationExpressionData(&arguments->value, &value, context);
 
 	/* The following will Constant Fold expressions... */
-	PerformConstantFolding(&arguments->value, &value);
-	PerformConstantFolding(&arguments->field, &field);
+	PerformConstantFolding(&arguments->value, &value, context);
+	PerformConstantFolding(&arguments->field, &field, context);
 
-	ParseAggregationExpressionData(&arguments->input, &input);
+	ParseAggregationExpressionData(&arguments->input, &input, context);
 
 	/* The following will optimize out NULL as Constant Fold expressions... */
 	if (expressionHasNullArgument ||
@@ -617,7 +623,8 @@ HandlePreParsedDollarGetField(pgbson *doc, void *arguments,
  * 6. if other cases, do nothing to return missing
  */
 void
-ParseDollarGetField(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarGetField(const bson_value_t *argument, AggregationExpressionData *data,
+					ParseAggregationExpressionContext *context)
 {
 	bson_value_t input = { 0 };
 	bson_value_t field = { 0 };
@@ -690,10 +697,10 @@ ParseDollarGetField(const bson_value_t *argument, AggregationExpressionData *dat
 	data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
 
 	/* Parse field */
-	ParseFieldExpressionForDollarGetField(&field, &arguments->field);
+	ParseFieldExpressionForDollarGetField(&field, &arguments->field, context);
 
 	/* Parse input */
-	ParseAggregationExpressionData(&arguments->input, &input);
+	ParseAggregationExpressionData(&arguments->input, &input, context);
 
 	/* if input is a constant document, we can evaluate the result directly */
 	if ((IsAggregationExpressionConstant(&arguments->input) && input.value_type ==
@@ -718,7 +725,8 @@ ParseDollarGetField(const bson_value_t *argument, AggregationExpressionData *dat
  * short circuit to null by definitions; for field and value we look for constants to fold. */
 static AggregationExpressionData *
 PerformConstantFolding(AggregationExpressionData *expressionData,
-					   const bson_value_t *value)
+					   const bson_value_t *value,
+					   ParseAggregationExpressionContext *context)
 {
 	switch (expressionData->kind)
 	{
@@ -748,11 +756,12 @@ PerformConstantFolding(AggregationExpressionData *expressionData,
 					.value_type = BSON_TYPE_NULL
 				};
 
-				ParseAggregationExpressionData(expressionData, &valueLiteral);
+				ParseAggregationExpressionData(expressionData, &valueLiteral, context);
 			}
 			else
 			{
-				ParseAggregationExpressionData(expressionData, &evaluatedInputArg);
+				ParseAggregationExpressionData(expressionData, &evaluatedInputArg,
+											   context);
 			}
 
 			return expressionData;
@@ -827,7 +836,8 @@ PerformConstantFolding(AggregationExpressionData *expressionData,
 static void
 ParseFieldExpressionForDollarGetField(const bson_value_t *field,
 									  AggregationExpressionData *
-									  fieldExpression)
+									  fieldExpression,
+									  ParseAggregationExpressionContext *context)
 {
 	bool isConstOrLiteralExpression = false;
 
@@ -838,7 +848,7 @@ ParseFieldExpressionForDollarGetField(const bson_value_t *field,
 	/* If the first key is not a recognized operator, throw error */
 	/*      example: {"$getField": {$unknown: "a"}} */
 	/*      throw error: Unrecognized expression '$unknown' */
-	ParseAggregationExpressionData(fieldExpression, field);
+	ParseAggregationExpressionData(fieldExpression, field, context);
 
 	/* We should check if the field is a valid $const or $literal expression */
 	/* as we need to separate these two cases where fieldExpression->kind are both AggregationExpressionKind_Constant */

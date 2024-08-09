@@ -198,7 +198,7 @@ HINT:  The $bucket 'boundaries' field must be an array of values of the same typ
 -- default must be a constant, the default value must be less than the lowest boundaries value, or greater than or equal to the highest boundaries value, if having same type.
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022], "default": "$pricing"  } } ] }');
 ERROR:  The $bucket 'default' field must be a constant. Input value: "$pricing"
-HINT:  The $bucket 'default' field must be a constant. Input value: "$pricing"
+HINT:  The $bucket 'default' field must be a constant.
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021], "default": 2020 } } ] }');
 ERROR:  The $bucket 'default' field must be less than the lowest boundary or greater than or equal to the highest boundary.
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2022, 2023], "default": 2021 } } ] }');

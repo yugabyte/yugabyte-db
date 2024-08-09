@@ -702,6 +702,7 @@ ProcessQueryProjectionValue(void *context, const char *path, const bson_value_t 
 	 * specified before (say, via "x.y") in that spec.
 	 */
 	bool treatLeafDataAsConstant = true;
+	ParseAggregationExpressionContext parseContext = { 0 };
 	TraverseDottedPathAndGetOrAddField(&pathView,
 									   value,
 									   tree,
@@ -709,7 +710,8 @@ ProcessQueryProjectionValue(void *context, const char *path, const bson_value_t 
 									   BsonDefaultCreateLeafNode,
 									   treatLeafDataAsConstant,
 									   nodeCreationState,
-									   &nodeCreated);
+									   &nodeCreated,
+									   &parseContext);
 
 	bool isDocumentDottedIdField = strncmp(path, "_id.", 4) == 0;
 	bool isDocumentIdField = isDocumentDottedIdField || strcmp(path, "_id") == 0;

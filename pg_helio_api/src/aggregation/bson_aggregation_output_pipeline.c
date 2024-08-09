@@ -310,8 +310,9 @@ bson_dollar_merge_handle_when_matched(PG_FUNCTION_ARGS)
 			 * its values will not override the existing ones.
 			 */
 			BsonIntermediatePathNode *tree = MakeRootNode();
-			BuildTreeFromPgbson(tree, sourceDocument);
-			BuildTreeFromPgbson(tree, targetDocument);
+			ParseAggregationExpressionContext parseContext = { 0 };
+			BuildTreeFromPgbson(tree, sourceDocument, &parseContext);
+			BuildTreeFromPgbson(tree, targetDocument, &parseContext);
 
 			TraverseTreeAndWrite(tree, &writer, targetDocument);
 			finalDocument = PgbsonWriterGetPgbson(&writer);

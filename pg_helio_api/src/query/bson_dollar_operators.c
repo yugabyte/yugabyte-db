@@ -3199,7 +3199,8 @@ PopulateExprStateFromQuery(BsonDollarExprQueryState *state,
 
 	AggregationExpressionData *exprData = (AggregationExpressionData *) palloc0(
 		sizeof(AggregationExpressionData));
-	ParseAggregationExpressionData(exprData, &element.bsonValue);
+	ParseAggregationExpressionContext parseContext = { 0 };
+	ParseAggregationExpressionData(exprData, &element.bsonValue, &parseContext);
 	state->expression = exprData;
 
 	if (variableSpec != NULL)
@@ -3208,7 +3209,7 @@ PopulateExprStateFromQuery(BsonDollarExprQueryState *state,
 		ExpressionVariableContext *variableContext =
 			palloc0(sizeof(ExpressionVariableContext));
 
-		ParseVariableSpec(&varsValue, variableContext);
+		ParseVariableSpec(&varsValue, variableContext, &parseContext);
 		state->variableContext = variableContext;
 	}
 }

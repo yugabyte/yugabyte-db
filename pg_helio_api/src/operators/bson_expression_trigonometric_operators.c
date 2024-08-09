@@ -53,7 +53,8 @@ static void HandlePreParsedTrigOperatorSingleOperand(pgbson *doc,
 static void ParseTrigOperatorSingleOperand(const bson_value_t *argument,
 										   AggregationExpressionData *data,
 										   const char *operatorName,
-										   TrigOperatorType operatorType);
+										   TrigOperatorType operatorType,
+										   ParseAggregationExpressionContext *parseContext);
 static void ProcessDegreesToRadiansOperator(const bson_value_t *currentValue,
 											bson_value_t *result);
 static void ProcessRadiansToDegreesOperator(const bson_value_t *currentValue,
@@ -83,10 +84,11 @@ static void ProcessAtanhOperator(const bson_value_t *currentValue, bson_value_t 
  * $degreesToRadians is expressed as { "$degreesToRadians": <expression> }
  */
 void
-ParseDollarDegreesToRadians(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarDegreesToRadians(const bson_value_t *argument, AggregationExpressionData *data,
+							ParseAggregationExpressionContext *parseContext)
 {
 	ParseTrigOperatorSingleOperand(argument, data, "$degreesToRadians",
-								   TrigOperatorType_DegreesToRadians);
+								   TrigOperatorType_DegreesToRadians, parseContext);
 }
 
 
@@ -110,10 +112,11 @@ HandlePreParsedDollarDegreesToRadians(pgbson *doc, void *arguments,
  * $radiansToDegrees is expressed as { "$radiansToDegrees": <expression> }
  */
 void
-ParseDollarRadiansToDegrees(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarRadiansToDegrees(const bson_value_t *argument, AggregationExpressionData *data,
+							ParseAggregationExpressionContext *parseContext)
 {
 	ParseTrigOperatorSingleOperand(argument, data, "$radiansToDegrees",
-								   TrigOperatorType_RadiansToDegrees);
+								   TrigOperatorType_RadiansToDegrees, parseContext);
 }
 
 
@@ -137,9 +140,11 @@ HandlePreParsedDollarRadiansToDegrees(pgbson *doc, void *arguments,
  * $sin is expressed as { "$sin": <expression> }
  */
 void
-ParseDollarSin(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarSin(const bson_value_t *argument, AggregationExpressionData *data,
+			   ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorSingleOperand(argument, data, "$sin", TrigOperatorType_Sin);
+	ParseTrigOperatorSingleOperand(argument, data, "$sin", TrigOperatorType_Sin,
+								   parseContext);
 }
 
 
@@ -161,9 +166,11 @@ HandlePreParsedDollarSin(pgbson *doc, void *arguments, ExpressionResult *express
  * $cos is expressed as { "$cos": <expression> }
  */
 void
-ParseDollarCos(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarCos(const bson_value_t *argument, AggregationExpressionData *data,
+			   ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorSingleOperand(argument, data, "$cos", TrigOperatorType_Cos);
+	ParseTrigOperatorSingleOperand(argument, data, "$cos", TrigOperatorType_Cos,
+								   parseContext);
 }
 
 
@@ -185,9 +192,11 @@ HandlePreParsedDollarCos(pgbson *doc, void *arguments, ExpressionResult *express
  * $tan is expressed as { "$tan": <expression> }
  */
 void
-ParseDollarTan(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarTan(const bson_value_t *argument, AggregationExpressionData *data,
+			   ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorSingleOperand(argument, data, "$tan", TrigOperatorType_Tan);
+	ParseTrigOperatorSingleOperand(argument, data, "$tan", TrigOperatorType_Tan,
+								   parseContext);
 }
 
 
@@ -209,9 +218,11 @@ HandlePreParsedDollarTan(pgbson *doc, void *arguments, ExpressionResult *express
  * $sinh is expressed as { "$sinh": <expression> }
  */
 void
-ParseDollarSinh(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarSinh(const bson_value_t *argument, AggregationExpressionData *data,
+				ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorSingleOperand(argument, data, "$sinh", TrigOperatorType_Sinh);
+	ParseTrigOperatorSingleOperand(argument, data, "$sinh", TrigOperatorType_Sinh,
+								   parseContext);
 }
 
 
@@ -234,9 +245,11 @@ HandlePreParsedDollarSinh(pgbson *doc, void *arguments,
  * $cosh is expressed as { "$cosh": <expression> }
  */
 void
-ParseDollarCosh(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarCosh(const bson_value_t *argument, AggregationExpressionData *data,
+				ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorSingleOperand(argument, data, "$cosh", TrigOperatorType_Cosh);
+	ParseTrigOperatorSingleOperand(argument, data, "$cosh", TrigOperatorType_Cosh,
+								   parseContext);
 }
 
 
@@ -259,9 +272,11 @@ HandlePreParsedDollarCosh(pgbson *doc, void *arguments,
  * $tanh is expressed as { "$tanh": <expression> }
  */
 void
-ParseDollarTanh(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarTanh(const bson_value_t *argument, AggregationExpressionData *data,
+				ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorSingleOperand(argument, data, "$tanh", TrigOperatorType_Tanh);
+	ParseTrigOperatorSingleOperand(argument, data, "$tanh", TrigOperatorType_Tanh,
+								   parseContext);
 }
 
 
@@ -284,9 +299,11 @@ HandlePreParsedDollarTanh(pgbson *doc, void *arguments,
  * $asin is expressed as { "$asin": <expression> }
  */
 void
-ParseDollarAsin(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarAsin(const bson_value_t *argument, AggregationExpressionData *data,
+				ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorSingleOperand(argument, data, "$asin", TrigOperatorType_Asin);
+	ParseTrigOperatorSingleOperand(argument, data, "$asin", TrigOperatorType_Asin,
+								   parseContext);
 }
 
 
@@ -309,9 +326,11 @@ HandlePreParsedDollarAsin(pgbson *doc, void *arguments,
  * $acos is expressed as { "$acos": <expression> }
  */
 void
-ParseDollarAcos(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarAcos(const bson_value_t *argument, AggregationExpressionData *data,
+				ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorSingleOperand(argument, data, "$acos", TrigOperatorType_Acos);
+	ParseTrigOperatorSingleOperand(argument, data, "$acos", TrigOperatorType_Acos,
+								   parseContext);
 }
 
 
@@ -334,9 +353,11 @@ HandlePreParsedDollarAcos(pgbson *doc, void *arguments,
  * $atan is expressed as { "$atan": <expression> }
  */
 void
-ParseDollarAtan(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarAtan(const bson_value_t *argument, AggregationExpressionData *data,
+				ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorSingleOperand(argument, data, "$atan", TrigOperatorType_Atan);
+	ParseTrigOperatorSingleOperand(argument, data, "$atan", TrigOperatorType_Atan,
+								   parseContext);
 }
 
 
@@ -359,13 +380,15 @@ HandlePreParsedDollarAtan(pgbson *doc, void *arguments,
  * $atan2 is expressed as { "$atan2": [ <expression1>, <expression2> ] }
  */
 void
-ParseDollarAtan2(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarAtan2(const bson_value_t *argument, AggregationExpressionData *data,
+				 ParseAggregationExpressionContext *parseContext)
 {
 	int numOfRequiredArgs = 2;
 	List *arguments = ParseFixedArgumentsForExpression(argument,
 													   numOfRequiredArgs,
 													   "$atan2",
-													   &data->operator.argumentsKind);
+													   &data->operator.argumentsKind,
+													   parseContext);
 
 	AggregationExpressionData *first = list_nth(arguments, 0);
 	AggregationExpressionData *second = list_nth(arguments, 1);
@@ -421,9 +444,11 @@ HandlePreParsedDollarAtan2(pgbson *doc, void *arguments,
  * $asinh is expressed as { "$asinh": <expression> }
  */
 void
-ParseDollarAsinh(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarAsinh(const bson_value_t *argument, AggregationExpressionData *data,
+				 ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorSingleOperand(argument, data, "$asinh", TrigOperatorType_Asinh);
+	ParseTrigOperatorSingleOperand(argument, data, "$asinh", TrigOperatorType_Asinh,
+								   parseContext);
 }
 
 
@@ -446,9 +471,11 @@ HandlePreParsedDollarAsinh(pgbson *doc, void *arguments,
  * $acosh is expressed as { "$acosh": <expression> }
  */
 void
-ParseDollarAcosh(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarAcosh(const bson_value_t *argument, AggregationExpressionData *data,
+				 ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorSingleOperand(argument, data, "$acosh", TrigOperatorType_Acosh);
+	ParseTrigOperatorSingleOperand(argument, data, "$acosh", TrigOperatorType_Acosh,
+								   parseContext);
 }
 
 
@@ -471,9 +498,11 @@ HandlePreParsedDollarAcosh(pgbson *doc, void *arguments,
  * $atanh is expressed as { "$atanh": <expression> }
  */
 void
-ParseDollarAtanh(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarAtanh(const bson_value_t *argument, AggregationExpressionData *data,
+				 ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorSingleOperand(argument, data, "$atanh", TrigOperatorType_Atanh);
+	ParseTrigOperatorSingleOperand(argument, data, "$atanh", TrigOperatorType_Atanh,
+								   parseContext);
 }
 
 
@@ -520,7 +549,8 @@ static void
 ParseTrigOperatorSingleOperand(const bson_value_t *argument,
 							   AggregationExpressionData *data,
 							   const char *operatorName,
-							   TrigOperatorType operatorType)
+							   TrigOperatorType operatorType,
+							   ParseAggregationExpressionContext *parseContext)
 {
 	int numOfRequiredArgs = 1;
 	AggregationExpressionData *parsedData = ParseFixedArgumentsForExpression(argument,
@@ -528,7 +558,8 @@ ParseTrigOperatorSingleOperand(const bson_value_t *argument,
 																			 operatorName,
 																			 &data->
 																			 operator.
-																			 argumentsKind);
+																			 argumentsKind,
+																			 parseContext);
 
 	/* If argument is a constant: compute comparison result, change
 	 * expression type to constant, store the result in the expression value

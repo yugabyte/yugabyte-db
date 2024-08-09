@@ -424,6 +424,7 @@ BsonUnwindElement(pgbson *document, char *path, char *indexFieldName, long index
 	/* unwound elements come from arrays in documents which will already be evaluated in a previous stage or directly from a collection, */
 	/* so we can safely treat the values as constants and no need to pay the cost to parse them as expressions. */
 	bool treatLeafDataAsConstant = true;
+	ParseAggregationExpressionContext parseContext = { 0 };
 
 	/* Create the node for unwound element */
 	if (element->value_type != BSON_TYPE_EOD)
@@ -433,7 +434,8 @@ BsonUnwindElement(pgbson *document, char *path, char *indexFieldName, long index
 											  element,
 											  root,
 											  BsonDefaultCreateLeafNode,
-											  treatLeafDataAsConstant);
+											  treatLeafDataAsConstant,
+											  &parseContext);
 	}
 
 	/* Create the node for the new indexField name */
@@ -456,7 +458,8 @@ BsonUnwindElement(pgbson *document, char *path, char *indexFieldName, long index
 											  &indexValue,
 											  root,
 											  BsonDefaultCreateLeafNode,
-											  treatLeafDataAsConstant);
+											  treatLeafDataAsConstant,
+											  &parseContext);
 	}
 
 	pgbson_writer writer;

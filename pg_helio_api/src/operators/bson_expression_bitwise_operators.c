@@ -30,11 +30,13 @@ static bson_value_t BsonValueBitwiseOperation(const bson_value_t *left, const
 											  bson_value_t *right, SelectBitOperationType
 											  type);
 static void ParseDollarBitNotOperation(const bson_value_t *argument,
-									   AggregationExpressionData *data);
+									   AggregationExpressionData *data,
+									   ParseAggregationExpressionContext *context);
 
 static void ParseDollarBitOperation(const bson_value_t *argument,
 									AggregationExpressionData *data,
-									SelectBitOperationType type);
+									SelectBitOperationType type,
+									ParseAggregationExpressionContext *context);
 static void ProcessDollarBit(pgbson *doc, bson_value_t *result, void *expressionsArray,
 							 SelectBitOperationType type,
 							 ExpressionResult *expressionResult, bool
@@ -123,43 +125,48 @@ HandlePreParsedDollarBitXor(pgbson *doc, void *arguments,
 /* Parses the $bitAnd expression specified in the bson_value_t and stores it in the data argument.
  */
 void
-ParseDollarBitAnd(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarBitAnd(const bson_value_t *argument, AggregationExpressionData *data,
+				  ParseAggregationExpressionContext *context)
 {
-	ParseDollarBitOperation(argument, data, SelectBitOperationType_BitAnd);
+	ParseDollarBitOperation(argument, data, SelectBitOperationType_BitAnd, context);
 }
 
 
 /* Parses the $bitNot expression specified in the bson_value_t and stores it in the data argument.
  */
 void
-ParseDollarBitNot(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarBitNot(const bson_value_t *argument, AggregationExpressionData *data,
+				  ParseAggregationExpressionContext *context)
 {
-	ParseDollarBitNotOperation(argument, data);
+	ParseDollarBitNotOperation(argument, data, context);
 }
 
 
 /* Parses the $bitOr expression specified in the bson_value_t and stores it in the data argument.
  */
 void
-ParseDollarBitOr(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarBitOr(const bson_value_t *argument, AggregationExpressionData *data,
+				 ParseAggregationExpressionContext *context)
 {
-	ParseDollarBitOperation(argument, data, SelectBitOperationType_BitOr);
+	ParseDollarBitOperation(argument, data, SelectBitOperationType_BitOr, context);
 }
 
 
 /* Parses the $bitXor expression specified in the bson_value_t and stores it in the data argument.
  */
 void
-ParseDollarBitXor(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarBitXor(const bson_value_t *argument, AggregationExpressionData *data,
+				  ParseAggregationExpressionContext *context)
 {
-	ParseDollarBitOperation(argument, data, SelectBitOperationType_BitXor);
+	ParseDollarBitOperation(argument, data, SelectBitOperationType_BitXor, context);
 }
 
 
 /* Parses the $bitNot expression specified in the bson_value_t and stores it in the data argument.
  */
 static void
-ParseDollarBitNotOperation(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarBitNotOperation(const bson_value_t *argument, AggregationExpressionData *data,
+						   ParseAggregationExpressionContext *context)
 {
 	const char *operatorName = "$bitNot";
 
@@ -167,7 +174,8 @@ ParseDollarBitNotOperation(const bson_value_t *argument, AggregationExpressionDa
 																			operatorName,
 																			&data->
 																			operator.
-																			argumentsKind);
+																			argumentsKind,
+																			context);
 
 	if (IsAggregationExpressionConstant(arguments))
 	{
@@ -193,11 +201,13 @@ ParseDollarBitNotOperation(const bson_value_t *argument, AggregationExpressionDa
  */
 static void
 ParseDollarBitOperation(const bson_value_t *argument, AggregationExpressionData *data,
-						SelectBitOperationType type)
+						SelectBitOperationType type,
+						ParseAggregationExpressionContext *context)
 {
 	bool areArgumentsConstant;
 	List *arguments = ParseVariableArgumentsForExpression(argument,
-														  &areArgumentsConstant);
+														  &areArgumentsConstant,
+														  context);
 
 	if (areArgumentsConstant)
 	{

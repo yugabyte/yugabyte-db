@@ -862,11 +862,12 @@ ReadUpdateSpecAndUpdateTree(bson_iter_t *updateIterator,
 	excludeValue.value_type = BSON_TYPE_INT32;
 	excludeValue.value.v_int32 = 0;
 	bool treatLeafDataAsConstant = true;
+	ParseAggregationExpressionContext parseContext = { 0 };
 	BsonUpdateTreeState updateTreeState = { 0 };
 	TraverseDottedPathAndGetOrAddValue(&IdFieldStringView, &excludeValue, root,
 									   CreateUpdateIntermediateNode, CreateUpdateLeafNode,
 									   treatLeafDataAsConstant,
-									   &updateTreeState, NULL);
+									   &updateTreeState, NULL, &parseContext);
 
 	while (bson_iter_next(updateIterator))
 	{
@@ -1026,6 +1027,7 @@ HandleBasicUpdateTree(BsonIntermediatePathNode *tree, bson_iter_t *updateSpec,
 
 		/* Update operators are parsed later, so we should just treat them as constant when creating the leaf nodes. */
 		bool treatLeafDataAsConstant = true;
+		ParseAggregationExpressionContext parseContext = { 0 };
 		const BsonPathNode *node = TraverseDottedPathAndGetOrAddField(&updatePathView,
 																	  value,
 																	  tree,
@@ -1033,7 +1035,8 @@ HandleBasicUpdateTree(BsonIntermediatePathNode *tree, bson_iter_t *updateSpec,
 																	  CreateUpdateLeafNode,
 																	  treatLeafDataAsConstant,
 																	  &updateTreeState,
-																	  &nodeCreated);
+																	  &nodeCreated,
+																	  &parseContext);
 		if (!nodeCreated)
 		{
 			/* validate scenarios where the path we're trying to update already has a conflict */
@@ -1065,6 +1068,7 @@ HandleRenameUpdateTree(BsonIntermediatePathNode *tree, bson_iter_t *updateSpec,
 					   const PositionalUpdateSpec *positionalSpec)
 {
 	bool treatLeafDataAsConstant = true;
+	ParseAggregationExpressionContext parseContext = { 0 };
 	while (bson_iter_next(updateSpec))
 	{
 		StringView updatePathView = bson_iter_key_string_view(updateSpec);
@@ -1092,7 +1096,8 @@ HandleRenameUpdateTree(BsonIntermediatePathNode *tree, bson_iter_t *updateSpec,
 											   CreateUpdateLeafNode,
 											   treatLeafDataAsConstant,
 											   &updateTreeState,
-											   &nodeCreated);
+											   &nodeCreated,
+											   &parseContext);
 		if (!nodeCreated)
 		{
 			sourceNode = HandleNodeExistsInTree(sourceNode, updatePathView.string,
@@ -1137,7 +1142,8 @@ HandleRenameUpdateTree(BsonIntermediatePathNode *tree, bson_iter_t *updateSpec,
 											   CreateUpdateLeafNode,
 											   treatLeafDataAsConstant,
 											   &renameNodeState,
-											   &nodeCreated);
+											   &nodeCreated,
+											   &parseContext);
 		if (!nodeCreated)
 		{
 			targetNode = HandleNodeExistsInTree(targetNode, renamePath.string, value,
@@ -1183,6 +1189,7 @@ HandleUnsetUpdateTree(BsonIntermediatePathNode *tree,
 					  const PositionalUpdateSpec *positionalSpec)
 {
 	bool treatLeafDataAsConstant = true;
+	ParseAggregationExpressionContext parseContext = { 0 };
 	while (bson_iter_next(updateSpec))
 	{
 		StringView updatePathView = bson_iter_key_string_view(updateSpec);
@@ -1204,7 +1211,8 @@ HandleUnsetUpdateTree(BsonIntermediatePathNode *tree,
 																	  CreateUpdateLeafNode,
 																	  treatLeafDataAsConstant,
 																	  &updateTreeState,
-																	  &nodeCreated);
+																	  &nodeCreated,
+																	  &parseContext);
 		if (!nodeCreated)
 		{
 			HandleNodeExistsInTree(node, updatePathView.string, value, &updateTreeState);
@@ -1288,12 +1296,13 @@ HandleNodeExistsInTree(const BsonPathNode *existing,
 	else
 	{
 		bool treatLeafDataAsConstant = true;
+		ParseAggregationExpressionContext parseContext = { 0 };
 
 		/* replace the node in the tree. */
 		return ResetNodeWithFieldAndState((const BsonLeafPathNode *) existing, updatePath,
 										  value,
 										  CreateUpdateLeafNode, treatLeafDataAsConstant,
-										  updateTreeState);
+										  &parseContext, updateTreeState);
 	}
 }
 

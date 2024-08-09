@@ -40,7 +40,8 @@
 /* --------------------------------------------------------- */
 
 typedef void (*ParseAggregationExpressionFunc)(const bson_value_t *argument,
-											   AggregationExpressionData *data);
+											   AggregationExpressionData *data,
+											   ParseAggregationExpressionContext *context);
 
 /*
  * The declaration of an operator used in OperatorExpressions[] below.
@@ -108,8 +109,7 @@ static void EvaluateAggregationExpressionDocumentToWriter(const
 														  pgbson *document,
 														  pgbson_element_writer *writer,
 														  const ExpressionVariableContext
-														  *
-														  variableContext,
+														  *variableContext,
 														  bool isNullOnEmpty);
 static void EvaluateAggregationExpressionArrayToWriter(const
 													   AggregationExpressionData *data,
@@ -130,9 +130,13 @@ static void EvaluateAggregationExpressionSystemVariable(const
 														bool isNullOnEmpty);
 static void ParseDocumentAggregationExpressionData(const bson_value_t *value,
 												   AggregationExpressionData *
-												   expressionData);
+												   expressionData,
+												   ParseAggregationExpressionContext *
+												   parseContext);
 static void ParseArrayAggregationExpressionData(const bson_value_t *value,
-												AggregationExpressionData *expressionData);
+												AggregationExpressionData *expressionData,
+												ParseAggregationExpressionContext *
+												parseContext);
 static bool GetVariableValueFromData(const VariableData *variable,
 									 pgbson *currentDocument,
 									 ExpressionResult *parentExpressionResult,
@@ -714,17 +718,21 @@ bson_expression_map(PG_FUNCTION_ARGS)
 	/* Init AggregateExpressionData */
 	const AggregationExpressionData *state;
 	const int argPosition = 2;
+	ParseAggregationExpressionContext context = { 0 };
 
 	SetCachedFunctionState(
 		state,
 		AggregationExpressionData,
 		argPosition,
 		ParseAggregationExpressionData,
-		&expressionElement.bsonValue);
+		&expressionElement.bsonValue,
+		&context);
 
 	if (state == NULL)
 	{
-		ParseAggregationExpressionData(&expressionData, &expressionElement.bsonValue);
+		memset(&context, 0, sizeof(ParseAggregationExpressionContext));
+		ParseAggregationExpressionData(&expressionData, &expressionElement.bsonValue,
+									   &context);
 		state = &expressionData;
 	}
 
@@ -1188,14 +1196,15 @@ ParseBsonExpressionGetState(BsonExpressionGetState *getState,
 		sizeof(AggregationExpressionData));
 	getState->variableContext = NULL;
 
-	ParseAggregationExpressionData(getState->expressionData, expressionValue);
+	ParseAggregationExpressionContext context = { 0 };
+	ParseAggregationExpressionData(getState->expressionData, expressionValue, &context);
 	if (variableSpec != NULL)
 	{
 		bson_value_t varsValue = ConvertPgbsonToBsonValue(variableSpec);
 		ExpressionVariableContext *variableContext =
 			palloc0(sizeof(ExpressionVariableContext));
 
-		ParseVariableSpec(&varsValue, variableContext);
+		ParseVariableSpec(&varsValue, variableContext, &context);
 		getState->variableContext = variableContext;
 	}
 }
@@ -1458,7 +1467,8 @@ ValidateVariableName(StringView name)
 /* Helper function that parses a variable spec and adds them to the given expression context. */
 void
 ParseVariableSpec(const bson_value_t *variableSpec,
-				  ExpressionVariableContext *variableContext)
+				  ExpressionVariableContext *variableContext,
+				  ParseAggregationExpressionContext *parseContext)
 {
 	Assert(variableSpec->value_type == BSON_TYPE_DOCUMENT);
 
@@ -1473,7 +1483,7 @@ ParseVariableSpec(const bson_value_t *variableSpec,
 
 		AggregationExpressionData *variableExpression = palloc0(
 			sizeof(AggregationExpressionData));
-		ParseAggregationExpressionData(variableExpression, varValue);
+		ParseAggregationExpressionData(variableExpression, varValue, parseContext);
 
 		/* if no context is provided, we just perform validation. */
 		if (variableContext == NULL)
@@ -1593,7 +1603,10 @@ GetAndEvaluateOperator(pgbson *document,
 		AggregationExpressionData *expressionData =
 			palloc0(sizeof(AggregationExpressionData));
 		expressionData->kind = AggregationExpressionKind_Operator;
-		pItem->parseAggregationExpressionFunc(operatorValue, expressionData);
+
+		ParseAggregationExpressionContext parseContext = { 0 };
+		pItem->parseAggregationExpressionFunc(operatorValue, expressionData,
+											  &parseContext);
 
 		/* If it was not optimized to a constant when parsing, call the handler and free the arguments allocated memory. */
 		if (expressionData->kind == AggregationExpressionKind_Operator)
@@ -2369,7 +2382,8 @@ ProcessFourArgumentElement(bson_value_t *result, const
  * expressionData with the expression information. */
 void
 ParseAggregationExpressionData(AggregationExpressionData *expressionData,
-							   const bson_value_t *value)
+							   const bson_value_t *value,
+							   ParseAggregationExpressionContext *context)
 {
 	/* Specific operators' parse functions will call into this function recursively to parse its arguments. */
 	check_stack_depth();
@@ -2377,11 +2391,11 @@ ParseAggregationExpressionData(AggregationExpressionData *expressionData,
 
 	if (value->value_type == BSON_TYPE_DOCUMENT)
 	{
-		ParseDocumentAggregationExpressionData(value, expressionData);
+		ParseDocumentAggregationExpressionData(value, expressionData, context);
 	}
 	else if (value->value_type == BSON_TYPE_ARRAY)
 	{
-		ParseArrayAggregationExpressionData(value, expressionData);
+		ParseArrayAggregationExpressionData(value, expressionData, context);
 	}
 	else
 	{
@@ -2478,7 +2492,7 @@ ParseAggregationExpressionData(AggregationExpressionData *expressionData,
 				}
 				else
 				{
-					/* Remove the $$ prefx. */
+					/* Remove the $$ prefix. */
 					StringView variableName = StringViewSubstring(&expressionView, 2);
 
 					bool allowStartWithUpper = true;
@@ -2508,6 +2522,11 @@ ParseAggregationExpressionData(AggregationExpressionData *expressionData,
 	}
 
 	Assert(expressionData->kind != AggregationExpressionKind_Invalid);
+
+	if (context->validateParsedExpressionFunc != NULL)
+	{
+		context->validateParsedExpressionFunc(expressionData);
+	}
 }
 
 
@@ -2763,7 +2782,8 @@ EvaluateAggregationExpressionDataToWriter(const AggregationExpressionData *expre
 void *
 ParseFixedArgumentsForExpression(const bson_value_t *argumentValue, int
 								 numberOfExpectedArgs, const char *operatorName,
-								 AggregationExpressionArgumentsKind *argumentsKind)
+								 AggregationExpressionArgumentsKind *argumentsKind,
+								 ParseAggregationExpressionContext *context)
 {
 	Assert(numberOfExpectedArgs > 0);
 
@@ -2776,7 +2796,7 @@ ParseFixedArgumentsForExpression(const bson_value_t *argumentValue, int
 
 		AggregationExpressionData *argumentData = palloc0(
 			sizeof(AggregationExpressionData));
-		ParseAggregationExpressionData(argumentData, argumentValue);
+		ParseAggregationExpressionData(argumentData, argumentValue, context);
 		*argumentsKind = AggregationExpressionArgumentsKind_Palloc;
 		return argumentData;
 	}
@@ -2808,7 +2828,7 @@ ParseFixedArgumentsForExpression(const bson_value_t *argumentValue, int
 		const bson_value_t *arg = bson_iter_value(&arrayIterator);
 		AggregationExpressionData *argumentData = palloc0(
 			sizeof(AggregationExpressionData));
-		ParseAggregationExpressionData(argumentData, arg);
+		ParseAggregationExpressionData(argumentData, arg, context);
 		*argumentsKind = AggregationExpressionArgumentsKind_Palloc;
 		return argumentData;
 	}
@@ -2820,7 +2840,7 @@ ParseFixedArgumentsForExpression(const bson_value_t *argumentValue, int
 			const bson_value_t *arg = bson_iter_value(&arrayIterator);
 			AggregationExpressionData *argData = palloc0(
 				sizeof(AggregationExpressionData));
-			ParseAggregationExpressionData(argData, arg);
+			ParseAggregationExpressionData(argData, arg, context);
 			arguments = lappend(arguments, argData);
 		}
 
@@ -3040,7 +3060,8 @@ EvaluateAggregationExpressionArrayToWriter(const AggregationExpressionData *data
 /* Parses an expression specified as a bson_value_t document into the specified expressionData. */
 static void
 ParseDocumentAggregationExpressionData(const bson_value_t *value,
-									   AggregationExpressionData *expressionData)
+									   AggregationExpressionData *expressionData,
+									   ParseAggregationExpressionContext *parseContext)
 {
 	Assert(value->value_type == BSON_TYPE_DOCUMENT);
 
@@ -3089,7 +3110,7 @@ ParseDocumentAggregationExpressionData(const bson_value_t *value,
 
 		if (pItem->parseAggregationExpressionFunc != NULL)
 		{
-			pItem->parseAggregationExpressionFunc(argument, expressionData);
+			pItem->parseAggregationExpressionFunc(argument, expressionData, parseContext);
 
 			if (expressionData->kind == AggregationExpressionKind_Operator)
 			{
@@ -3206,7 +3227,8 @@ VariableHashEntryHashFunc(const void *obj, size_t objsize)
 /* Parses an expression specified as a bson_value_t array into the specified expressionData. */
 static void
 ParseArrayAggregationExpressionData(const bson_value_t *value,
-									AggregationExpressionData *expressionData)
+									AggregationExpressionData *expressionData,
+									ParseAggregationExpressionContext *parseContext)
 {
 	Assert(value->value_type == BSON_TYPE_ARRAY);
 
@@ -3239,7 +3261,8 @@ ParseArrayAggregationExpressionData(const bson_value_t *value,
 																		   bson_iter_value(
 																			   &arrayIter),
 																		   BsonDefaultCreateLeafNode,
-																		   treatLeafDataAsConstant);
+																		   treatLeafDataAsConstant,
+																		   parseContext);
 		isConstantArray = isConstantArray &&
 						  IsAggregationExpressionConstant(&newNode->fieldData);
 		index++;
@@ -3284,7 +3307,8 @@ ParseRangeArgumentsForExpression(const bson_value_t *argumentValue,
 								 int minRequiredArgs,
 								 int maxRequiredArgs,
 								 const char *operatorName,
-								 AggregationExpressionArgumentsKind *argumentsKind)
+								 AggregationExpressionArgumentsKind *argumentsKind,
+								 ParseAggregationExpressionContext *context)
 {
 	Assert(maxRequiredArgs > minRequiredArgs);
 	if (argumentValue->value_type != BSON_TYPE_ARRAY)
@@ -3297,7 +3321,7 @@ ParseRangeArgumentsForExpression(const bson_value_t *argumentValue,
 
 		AggregationExpressionData *argumentData = palloc0(
 			sizeof(AggregationExpressionData));
-		ParseAggregationExpressionData(argumentData, argumentValue);
+		ParseAggregationExpressionData(argumentData, argumentValue, context);
 		*argumentsKind = AggregationExpressionArgumentsKind_Palloc;
 		return argumentData;
 	}
@@ -3327,7 +3351,7 @@ ParseRangeArgumentsForExpression(const bson_value_t *argumentValue,
 			const bson_value_t *arg = bson_iter_value(&arrayIterator);
 			AggregationExpressionData *argData = palloc0(
 				sizeof(AggregationExpressionData));
-			ParseAggregationExpressionData(argData, arg);
+			ParseAggregationExpressionData(argData, arg, context);
 			arguments = lappend(arguments, argData);
 		}
 
@@ -3348,7 +3372,8 @@ ParseRangeArgumentsForExpression(const bson_value_t *argumentValue,
  * target writer.
  */
 void
-ParseDollarLiteral(const bson_value_t *inputDocument, AggregationExpressionData *data)
+ParseDollarLiteral(const bson_value_t *inputDocument, AggregationExpressionData *data,
+				   ParseAggregationExpressionContext *context)
 {
 	data->kind = AggregationExpressionKind_Constant;
 	data->value = *inputDocument;
@@ -3360,7 +3385,8 @@ ParseDollarLiteral(const bson_value_t *inputDocument, AggregationExpressionData 
  * $let is expressed as: { $let: { vars: {var1: <expression>, var2: <expression> }, in: <expression> }}
  */
 void
-ParseDollarLet(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarLet(const bson_value_t *argument, AggregationExpressionData *data,
+			   ParseAggregationExpressionContext *context)
 {
 	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
@@ -3412,7 +3438,7 @@ ParseDollarLet(const bson_value_t *argument, AggregationExpressionData *data)
 	}
 
 	AggregationExpressionData *inData = palloc0(sizeof(AggregationExpressionData));
-	ParseAggregationExpressionData(inData, &in);
+	ParseAggregationExpressionData(inData, &in, context);
 
 	bool isInConstant = inData->kind == AggregationExpressionKind_Constant;
 
@@ -3420,7 +3446,7 @@ ParseDollarLet(const bson_value_t *argument, AggregationExpressionData *data)
 	ExpressionVariableContext *inputVariableContext =
 		isInConstant ? NULL : palloc0(sizeof(ExpressionVariableContext));
 
-	ParseVariableSpec(&vars, inputVariableContext);
+	ParseVariableSpec(&vars, inputVariableContext, context);
 
 	if (isInConstant)
 	{
@@ -3474,7 +3500,8 @@ HandlePreParsedDollarLet(pgbson *doc, void *arguments,
 /* Parses the expressions that are specified as arguments for an operator and returns
  * the list of AggregationExpressionData arguments */
 List *
-ParseVariableArgumentsForExpression(const bson_value_t *value, bool *isConstant)
+ParseVariableArgumentsForExpression(const bson_value_t *value, bool *isConstant,
+									ParseAggregationExpressionContext *context)
 {
 	List *resultList = NIL;
 	*isConstant = true;
@@ -3489,7 +3516,7 @@ ParseVariableArgumentsForExpression(const bson_value_t *value, bool *isConstant)
 			const bson_value_t *current = bson_iter_value(&arrayIter);
 			AggregationExpressionData *expressionData = palloc0(
 				sizeof(AggregationExpressionData));
-			ParseAggregationExpressionData(expressionData, current);
+			ParseAggregationExpressionData(expressionData, current, context);
 
 			if (!IsAggregationExpressionConstant(expressionData))
 			{
@@ -3503,7 +3530,7 @@ ParseVariableArgumentsForExpression(const bson_value_t *value, bool *isConstant)
 	{
 		AggregationExpressionData *expressionData = palloc0(
 			sizeof(AggregationExpressionData));
-		ParseAggregationExpressionData(expressionData, value);
+		ParseAggregationExpressionData(expressionData, value, context);
 
 		if (!IsAggregationExpressionConstant(expressionData))
 		{

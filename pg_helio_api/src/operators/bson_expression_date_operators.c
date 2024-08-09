@@ -384,7 +384,8 @@ static inline bool IsInputForDatePartNull(
 static inline bool IsValidUnitForDateBinOid(DateTruncUnit dateTruncUnit);
 static void HandleCommonParseForDateAddSubtract(char *opName, bool isDateAdd, const
 												bson_value_t *argument,
-												AggregationExpressionData *data);
+												AggregationExpressionData *data,
+												ParseAggregationExpressionContext *context);
 static void HandleCommonPreParsedForDateAddSubtract(char *opName, bool isDateAdd,
 													pgbson *doc, void *arguments,
 													ExpressionResult *expressionResult);
@@ -2305,7 +2306,8 @@ HandlePreParsedDollarDateFromParts(pgbson *doc, void *arguments,
  * This function also validates the input expression and stores the result in case all the arguments are constant
  */
 void
-ParseDollarDateFromParts(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarDateFromParts(const bson_value_t *argument, AggregationExpressionData *data,
+						 ParseAggregationExpressionContext *context)
 {
 	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
@@ -2339,21 +2341,23 @@ ParseDollarDateFromParts(const bson_value_t *argument, AggregationExpressionData
 
 	if (dateFromParts->isISOWeekDate)
 	{
-		ParseAggregationExpressionData(&dateFromParts->isoWeekYear, &isoWeekYear);
-		ParseAggregationExpressionData(&dateFromParts->isoWeek, &isoWeek);
-		ParseAggregationExpressionData(&dateFromParts->isoDayOfWeek, &isoDayOfWeek);
+		ParseAggregationExpressionData(&dateFromParts->isoWeekYear, &isoWeekYear,
+									   context);
+		ParseAggregationExpressionData(&dateFromParts->isoWeek, &isoWeek, context);
+		ParseAggregationExpressionData(&dateFromParts->isoDayOfWeek, &isoDayOfWeek,
+									   context);
 	}
 	else
 	{
-		ParseAggregationExpressionData(&dateFromParts->year, &year);
-		ParseAggregationExpressionData(&dateFromParts->month, &month);
-		ParseAggregationExpressionData(&dateFromParts->day, &day);
+		ParseAggregationExpressionData(&dateFromParts->year, &year, context);
+		ParseAggregationExpressionData(&dateFromParts->month, &month, context);
+		ParseAggregationExpressionData(&dateFromParts->day, &day, context);
 	}
-	ParseAggregationExpressionData(&dateFromParts->hour, &hour);
-	ParseAggregationExpressionData(&dateFromParts->minute, &minute);
-	ParseAggregationExpressionData(&dateFromParts->second, &second);
-	ParseAggregationExpressionData(&dateFromParts->millisecond, &millisecond);
-	ParseAggregationExpressionData(&dateFromParts->timezone, &timezone);
+	ParseAggregationExpressionData(&dateFromParts->hour, &hour, context);
+	ParseAggregationExpressionData(&dateFromParts->minute, &minute, context);
+	ParseAggregationExpressionData(&dateFromParts->second, &second, context);
+	ParseAggregationExpressionData(&dateFromParts->millisecond, &millisecond, context);
+	ParseAggregationExpressionData(&dateFromParts->timezone, &timezone, context);
 
 	if (IsDateFromPartsArgumentConstant(dateFromParts))
 	{
@@ -2958,7 +2962,8 @@ HandlePreParsedDollarDateTrunc(pgbson *doc, void *arguments,
 
 
 void
-ParseDollarDateTrunc(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarDateTrunc(const bson_value_t *argument, AggregationExpressionData *data,
+					 ParseAggregationExpressionContext *context)
 {
 	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
@@ -2978,11 +2983,11 @@ ParseDollarDateTrunc(const bson_value_t *argument, AggregationExpressionData *da
 	DollarDateTruncArgumentState *dateTruncState = palloc0(
 		sizeof(DollarDateTruncArgumentState));
 
-	ParseAggregationExpressionData(&dateTruncState->date, &date);
-	ParseAggregationExpressionData(&dateTruncState->unit, &unit);
-	ParseAggregationExpressionData(&dateTruncState->binSize, &binSize);
-	ParseAggregationExpressionData(&dateTruncState->timezone, &timezone);
-	ParseAggregationExpressionData(&dateTruncState->startOfWeek, &startOfWeek);
+	ParseAggregationExpressionData(&dateTruncState->date, &date, context);
+	ParseAggregationExpressionData(&dateTruncState->unit, &unit, context);
+	ParseAggregationExpressionData(&dateTruncState->binSize, &binSize, context);
+	ParseAggregationExpressionData(&dateTruncState->timezone, &timezone, context);
+	ParseAggregationExpressionData(&dateTruncState->startOfWeek, &startOfWeek, context);
 	if (IsDateTruncArgumentConstant(dateTruncState))
 	{
 		/*add null check for behaviour */
@@ -3819,11 +3824,12 @@ HandlePreParsedDollarDateAdd(pgbson *doc, void *arguments,
  * The function parses the input and if input is not constant stores into a struct DollarDateAddSubtract.
  */
 void
-ParseDollarDateAdd(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarDateAdd(const bson_value_t *argument, AggregationExpressionData *data,
+				   ParseAggregationExpressionContext *context)
 {
 	char *opName = "$dateAdd";
 	bool isDateAdd = true;
-	HandleCommonParseForDateAddSubtract(opName, isDateAdd, argument, data);
+	HandleCommonParseForDateAddSubtract(opName, isDateAdd, argument, data, context);
 }
 
 
@@ -3864,7 +3870,8 @@ GetAdjustHourWithTimezoneForDateAddSubtract(Datum startTimestamp, Datum
 static void
 HandleCommonParseForDateAddSubtract(char *opName, bool isDateAdd, const
 									bson_value_t *argument,
-									AggregationExpressionData *data)
+									AggregationExpressionData *data,
+									ParseAggregationExpressionContext *context)
 {
 	bson_value_t startDate = { 0 }, unit = { 0 }, amount = { 0 }, timezone = { 0 };
 	ParseInputForDollarDateAddSubtract(argument, opName, &startDate, &unit, &amount,
@@ -3872,10 +3879,10 @@ HandleCommonParseForDateAddSubtract(char *opName, bool isDateAdd, const
 
 	DollarDateAddSubtract *dateAddSubtractArgs = palloc0(sizeof(DollarDateAddSubtract));
 
-	ParseAggregationExpressionData(&dateAddSubtractArgs->startDate, &startDate);
-	ParseAggregationExpressionData(&dateAddSubtractArgs->unit, &unit);
-	ParseAggregationExpressionData(&dateAddSubtractArgs->amount, &amount);
-	ParseAggregationExpressionData(&dateAddSubtractArgs->timezone, &timezone);
+	ParseAggregationExpressionData(&dateAddSubtractArgs->startDate, &startDate, context);
+	ParseAggregationExpressionData(&dateAddSubtractArgs->unit, &unit, context);
+	ParseAggregationExpressionData(&dateAddSubtractArgs->amount, &amount, context);
+	ParseAggregationExpressionData(&dateAddSubtractArgs->timezone, &timezone, context);
 
 	/* This here is part of optimization as now we know if all inputs are constant */
 	if (IsAggregationExpressionConstant(&dateAddSubtractArgs->startDate) &&
@@ -4307,11 +4314,12 @@ HandlePreParsedDollarDateSubtract(pgbson *doc, void *arguments,
  * The function parses the input and if input is not constant stores into a struct DollarDateAddSubtract.
  */
 void
-ParseDollarDateSubtract(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarDateSubtract(const bson_value_t *argument, AggregationExpressionData *data,
+						ParseAggregationExpressionContext *context)
 {
 	char *opName = "$dateSubtract";
 	bool isDateAdd = false;
-	HandleCommonParseForDateAddSubtract(opName, isDateAdd, argument, data);
+	HandleCommonParseForDateAddSubtract(opName, isDateAdd, argument, data, context);
 }
 
 
@@ -4410,7 +4418,8 @@ HandlePreParsedDollarDateDiff(pgbson *doc, void *arguments,
  * The input exresssion is of the format $dateDiff : {startDate: <Expression>, endDate: <expression>, unit: <Expression> , timezone: <tzExpression>, startOfWeek: <string>}
  */
 void
-ParseDollarDateDiff(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarDateDiff(const bson_value_t *argument, AggregationExpressionData *data,
+					ParseAggregationExpressionContext *context)
 {
 	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
@@ -4429,11 +4438,13 @@ ParseDollarDateDiff(const bson_value_t *argument, AggregationExpressionData *dat
 	DollarDateDiffArgumentState *dateDiffArgumentState = palloc0(
 		sizeof(DollarDateDiffArgumentState));
 
-	ParseAggregationExpressionData(&dateDiffArgumentState->startDate, &startDate);
-	ParseAggregationExpressionData(&dateDiffArgumentState->endDate, &endDate);
-	ParseAggregationExpressionData(&dateDiffArgumentState->unit, &unit);
-	ParseAggregationExpressionData(&dateDiffArgumentState->timezone, &timezone);
-	ParseAggregationExpressionData(&dateDiffArgumentState->startOfWeek, &startOfWeek);
+	ParseAggregationExpressionData(&dateDiffArgumentState->startDate, &startDate,
+								   context);
+	ParseAggregationExpressionData(&dateDiffArgumentState->endDate, &endDate, context);
+	ParseAggregationExpressionData(&dateDiffArgumentState->unit, &unit, context);
+	ParseAggregationExpressionData(&dateDiffArgumentState->timezone, &timezone, context);
+	ParseAggregationExpressionData(&dateDiffArgumentState->startOfWeek, &startOfWeek,
+								   context);
 
 	if (IsDateDiffArgumentConstant(dateDiffArgumentState))
 	{
@@ -5121,7 +5132,8 @@ HandlePreParsedDollarDateFromString(pgbson *doc, void *arguments,
  * }
  */
 void
-ParseDollarDateFromString(const bson_value_t *argument, AggregationExpressionData *data)
+ParseDollarDateFromString(const bson_value_t *argument, AggregationExpressionData *data,
+						  ParseAggregationExpressionContext *context)
 {
 	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
@@ -5147,11 +5159,13 @@ ParseDollarDateFromString(const bson_value_t *argument, AggregationExpressionDat
 	/* We need to set this flag as true because we need to identify a way if input timezone was provided or not. */
 	dateFromStringArguments->isTimezoneProvided = isTimezoneProvided;
 
-	ParseAggregationExpressionData(&dateFromStringArguments->dateString, &dateString);
-	ParseAggregationExpressionData(&dateFromStringArguments->format, &format);
-	ParseAggregationExpressionData(&dateFromStringArguments->timezone, &timezone);
-	ParseAggregationExpressionData(&dateFromStringArguments->onNull, &onNull);
-	ParseAggregationExpressionData(&dateFromStringArguments->onError, &onError);
+	ParseAggregationExpressionData(&dateFromStringArguments->dateString, &dateString,
+								   context);
+	ParseAggregationExpressionData(&dateFromStringArguments->format, &format, context);
+	ParseAggregationExpressionData(&dateFromStringArguments->timezone, &timezone,
+								   context);
+	ParseAggregationExpressionData(&dateFromStringArguments->onNull, &onNull, context);
+	ParseAggregationExpressionData(&dateFromStringArguments->onError, &onError, context);
 
 	if (IsDateFromStringArgumentConstant(dateFromStringArguments))
 	{

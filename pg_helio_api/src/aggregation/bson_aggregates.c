@@ -872,8 +872,10 @@ bson_merge_objects_final(PG_FUNCTION_ARGS)
 
 	AggregationExpressionData expressionData;
 	memset(&expressionData, 0, sizeof(AggregationExpressionData));
+	ParseAggregationExpressionContext parseContext = { 0 };
 	PgbsonToSinglePgbsonElement(orderState.inputExpression, &expressionElement);
-	ParseAggregationExpressionData(&expressionData, &expressionElement.bsonValue);
+	ParseAggregationExpressionData(&expressionData, &expressionElement.bsonValue,
+								   &parseContext);
 	const AggregationExpressionData *state = &expressionData;
 	StringView path = {
 		.length = expressionElement.pathLength,
@@ -2065,6 +2067,7 @@ CreateObjectAggTreeNodes(BsonObjectAggState *currentState, pgbson *currentValue)
 	bson_iter_t docIter;
 	pgbsonelement singleBsonElement;
 	bool treatLeafDataAsConstant = true;
+	ParseAggregationExpressionContext parseContext = { 0 };
 
 	/*
 	 * If currentValue has the form of { "": value } and value is a bson document,
@@ -2092,14 +2095,14 @@ CreateObjectAggTreeNodes(BsonObjectAggState *currentState, pgbson *currentValue)
 		const BsonLeafPathNode *treeNode = TraverseDottedPathAndGetOrAddLeafFieldNode(
 			&pathView, docValue,
 			currentState->tree, BsonDefaultCreateLeafNode,
-			treatLeafDataAsConstant, &nodeCreated);
+			treatLeafDataAsConstant, &nodeCreated, &parseContext);
 
 		/* If the node already exists we need to update the value as object agg and merge objects
 		 * have the behavior that the last path spec (if duplicate) takes precedence. */
 		if (!nodeCreated)
 		{
 			ResetNodeWithField(treeNode, NULL, docValue, BsonDefaultCreateLeafNode,
-							   treatLeafDataAsConstant);
+							   treatLeafDataAsConstant, &parseContext);
 		}
 	}
 }

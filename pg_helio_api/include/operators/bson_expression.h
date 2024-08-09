@@ -197,6 +197,17 @@ typedef struct AggregationExpressionData
 } AggregationExpressionData;
 
 
+/* Func that is called after every aggregation expression is parsed to check if it is valid on the current context, i.e let in top level commands like find can't have path expressions ($a) nor use $$CURRENT/$$ROOT system variables. */
+typedef void (*ValidateParsedAggregationExpression)(AggregationExpressionData *data);
+
+/* Struct to pass down at parse time of the aggregation expressions that sets the information of what kind of expressions were found on the expression tree.*/
+typedef struct ParseAggregationExpressionContext
+{
+	/* Function that is called after every aggregation expression is parsed. */
+	ValidateParsedAggregationExpression validateParsedExpressionFunc;
+} ParseAggregationExpressionContext;
+
+
 void EvaluateExpressionToWriter(pgbson *document, const pgbsonelement *element,
 								pgbson_writer *writer,
 								ExpressionVariableContext *variableContext,
@@ -209,8 +220,10 @@ void EvaluateAggregationExpressionDataToWriter(const
 											   variableContext,
 											   bool isNullOnEmpty);
 void ParseAggregationExpressionData(AggregationExpressionData *expressionData,
-									const bson_value_t *value);
+									const bson_value_t *value,
+									ParseAggregationExpressionContext *context);
 void ParseVariableSpec(const bson_value_t *variableSpec,
-					   ExpressionVariableContext *variableContext);
+					   ExpressionVariableContext *variableContext,
+					   ParseAggregationExpressionContext *parseContext);
 
 #endif

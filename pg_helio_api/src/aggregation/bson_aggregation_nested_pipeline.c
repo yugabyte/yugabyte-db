@@ -4309,5 +4309,8 @@ ValidateLetHasNoVariables(pgbson *let)
 
 	bson_value_t varsValue = ConvertPgbsonToBsonValue(let);
 	ExpressionVariableContext *nullContext = NULL;
-	ParseVariableSpec(&varsValue, nullContext);
+
+	/* TODO: use parse context to validate. */
+	ParseAggregationExpressionContext parseContext = { 0 };
+	ParseVariableSpec(&varsValue, nullContext, &parseContext);
 }

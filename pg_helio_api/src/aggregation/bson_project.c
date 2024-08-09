@@ -1250,7 +1250,8 @@ SetVariableSpec(ExpressionVariableContext **state, pgbson *variableSpec)
 		ExpressionVariableContext *variableContext =
 			palloc0(sizeof(ExpressionVariableContext));
 
-		ParseVariableSpec(&varsValue, variableContext);
+		ParseAggregationExpressionContext parseContext = { 0 };
+		ParseVariableSpec(&varsValue, variableContext, &parseContext);
 		*state = variableContext;
 	}
 }
@@ -1400,6 +1401,7 @@ BsonLookUpProject(pgbson *sourceDocument, int numMatched, Datum *matchedDocument
 	StringView matchedDocsView = CreateStringViewFromString(matchedDocsFieldName);
 
 	bool treatLeafDataAsConstant = true;
+	ParseAggregationExpressionContext ignoreContext = { 0 };
 	BsonLeafArrayWithFieldPathNode *matchedDocsNode =
 		TraverseDottedPathAndAddLeafArrayNode(
 			&matchedDocsView,
@@ -1416,7 +1418,8 @@ BsonLookUpProject(pgbson *sourceDocument, int numMatched, Datum *matchedDocument
 		AddValueNodeToLeafArrayWithField(matchedDocsNode, relativePath, i,
 										 &documentBsonValue,
 										 BsonDefaultCreateLeafNode,
-										 treatLeafDataAsConstant);
+										 treatLeafDataAsConstant,
+										 &ignoreContext);
 	}
 
 
@@ -1596,6 +1599,7 @@ BuildBsonUnsetPathTree(const bson_value_t *pathSpecification)
 	excludeValue.value_type = BSON_TYPE_INT32;
 	excludeValue.value.v_int32 = 0;
 	bool treatLeafDataAsConstant = true;
+	ParseAggregationExpressionContext parseContext = { 0 };
 
 	BsonIntermediatePathNode *tree = MakeRootNode();
 	if (pathSpecification->value_type == BSON_TYPE_UTF8)
@@ -1609,7 +1613,8 @@ BuildBsonUnsetPathTree(const bson_value_t *pathSpecification)
 											  tree,
 											  BsonDefaultCreateLeafNode,
 											  BsonDefaultCreateIntermediateNode,
-											  treatLeafDataAsConstant);
+											  treatLeafDataAsConstant,
+											  &parseContext);
 	}
 	else if (pathSpecification->value_type == BSON_TYPE_ARRAY)
 	{
@@ -1630,7 +1635,8 @@ BuildBsonUnsetPathTree(const bson_value_t *pathSpecification)
 													  tree,
 													  BsonDefaultCreateLeafNode,
 													  BsonDefaultCreateIntermediateNode,
-													  treatLeafDataAsConstant);
+													  treatLeafDataAsConstant,
+													  &parseContext);
 			}
 			else
 			{
@@ -1677,12 +1683,13 @@ AdjustPathProjectionsForId(BsonIntermediatePathNode *tree,
 	includedValue.value.v_int32 = 1;
 	includedValue.value_type = BSON_TYPE_INT32;
 	bool treatLeafDataAsConstant = true;
+	ParseAggregationExpressionContext ignoreContext = { 0 };
 	if (idField == NULL)
 	{
 		TraverseDottedPathAndAddLeafValueNode(
 			&IdFieldStringView, &includedValue, tree,
 			BsonDefaultCreateLeafNode, BsonDefaultCreateIntermediateNode,
-			treatLeafDataAsConstant);
+			treatLeafDataAsConstant, &ignoreContext);
 	}
 	else
 	{
@@ -1699,7 +1706,7 @@ AdjustPathProjectionsForId(BsonIntermediatePathNode *tree,
 		{
 			ResetNodeWithValue(CastAsLeafNode(idField), IdFieldStringView.string,
 							   &includedValue, BsonDefaultCreateLeafNode,
-							   treatLeafDataAsConstant);
+							   treatLeafDataAsConstant, &ignoreContext);
 		}
 	}
 }
@@ -2127,7 +2134,9 @@ PopulateReplaceRootExpressionDataFromSpec(BsonReplaceRootState *expressionData,
 	GetBsonValueForReplaceRoot(&pathSpecIter, &bsonValue);
 
 	expressionData->expressionData = palloc0(sizeof(AggregationExpressionData));
-	ParseAggregationExpressionData(expressionData->expressionData, &bsonValue);
+	ParseAggregationExpressionContext parseContext = { 0 };
+	ParseAggregationExpressionData(expressionData->expressionData, &bsonValue,
+								   &parseContext);
 
 	SetVariableSpec(&expressionData->variableContext, variableSpec);
 }
@@ -2202,6 +2211,7 @@ ProjectGeonearDocument(const GeonearDistanceState *state, pgbson *document)
 	BsonIntermediatePathNode *root = MakeRootNode();
 	bool nodeCreated = false;
 	bool treatLeafDataAsConstant = true;
+	ParseAggregationExpressionContext parseContext = { 0 };
 
 	/*
 	 * Add location to the document first if distance and loc fields are same then loc field gets the priority
@@ -2220,8 +2230,8 @@ ProjectGeonearDocument(const GeonearDistanceState *state, pgbson *document)
 			BsonDefaultCreateLeafNode,
 			treatLeafDataAsConstant,
 			NULL,
-			&nodeCreated
-			);
+			&nodeCreated,
+			&parseContext);
 	}
 
 	/* Add distance field */
@@ -2233,8 +2243,8 @@ ProjectGeonearDocument(const GeonearDistanceState *state, pgbson *document)
 		BsonDefaultCreateLeafNode,
 		treatLeafDataAsConstant,
 		NULL,
-		&nodeCreated
-		);
+		&nodeCreated,
+		&parseContext);
 
 	pgbson_writer writer;
 	bson_iter_t documentIterator;

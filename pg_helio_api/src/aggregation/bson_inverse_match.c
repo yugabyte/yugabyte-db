@@ -255,7 +255,9 @@ PopulateInverseMatchArgs(InverseMatchArgs *args, bson_iter_t *specIter)
 	 * We support parsing as an expression to support cases where the input might come from a previous stage,
 	 * i.e: $project in order to build the input in a specific shape and reference it via a path expression.
 	 */
-	ParseAggregationExpressionData(&args->queryInputExpression, &queryInput);
+	ParseAggregationExpressionContext parseContext = { 0 };
+	ParseAggregationExpressionData(&args->queryInputExpression, &queryInput,
+								   &parseContext);
 
 	AggregationExpressionKind expressionKind = args->queryInputExpression.kind;
 	if (expressionKind != AggregationExpressionKind_Constant &&
