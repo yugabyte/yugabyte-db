@@ -143,10 +143,6 @@ static void TryDropCollectionIndex(int indexId);
 Datum
 command_build_index_concurrently(PG_FUNCTION_ARGS)
 {
-	/* If the binary is in 1.12 and the schema in 1.11, we do not want proceed here.
-	 * GW already has a check (EnableIndexBuildBackground && IsAtLeastVersion1_11_0)
-	 * to call create_indexes_background.
-	 */
 	if (!EnableIndexBuildBackground)
 	{
 		PG_RETURN_VOID();
