@@ -8751,7 +8751,6 @@ TEST_F(CDCSDKYsqlTest, TestCleanupOfTableNotOfInterest) {
       FLAGS_TEST_cdcsdk_skip_disabling_dynamic_table_addition_on_stream_creation) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_cleanup_of_expired_table_entries) = true;
   ASSERT_OK(SetUpWithParams(3, 3, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
@@ -8784,7 +8783,6 @@ TEST_F(CDCSDKYsqlTest, TestCleanupOfExpiredTable) {
       FLAGS_TEST_cdcsdk_skip_disabling_dynamic_table_addition_on_stream_creation) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_cleanup_of_expired_table_entries) = true;
   ASSERT_OK(SetUpWithParams(3, 3, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
@@ -8824,7 +8822,6 @@ TEST_F(CDCSDKYsqlTest, TestCleanupOfUnpolledTableWithTabletSplit) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
   ANNOTATE_UNPROTECTED_WRITE(
       FLAGS_TEST_cdcsdk_skip_disabling_dynamic_table_addition_on_stream_creation) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_cleanup_of_expired_table_entries) = true;
   ASSERT_OK(SetUpWithParams(
       1, 1, false /* colocated */, false /* cdc_populate_safepoint_record */,
       true /* set_pgsql_proxy_bind_address */));
@@ -8924,7 +8921,6 @@ TEST_F(CDCSDKYsqlTest, TestSplitOfTabletNotOfInterestDuringCleanup) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(
       FLAGS_TEST_cdcsdk_skip_disabling_dynamic_table_addition_on_stream_creation) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_cleanup_of_expired_table_entries) = true;
 
   SyncPoint::GetInstance()->LoadDependency(
       {{"RemoveUserTableFromCDCSDKStream::UpdateCheckpointDone", "SplitTablet::Start"},
@@ -8985,7 +8981,6 @@ TEST_F(CDCSDKYsqlTest, TestCleanupOfNotOfInterestColocatedTabletWithMultipleStre
       FLAGS_TEST_cdcsdk_skip_disabling_dynamic_table_addition_on_stream_creation) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_enable_cleanup_of_expired_table_entries) = true;
 
   ASSERT_OK(SetUpWithParams(3, 3, true));
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));

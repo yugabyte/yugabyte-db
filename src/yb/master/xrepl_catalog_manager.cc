@@ -6446,9 +6446,10 @@ Status CatalogManager::RemoveTablesFromCDCSDKStream(
     remove_req.set_table_id(table_id);
     auto status = RemoveUserTableFromCDCSDKStream(&remove_req, &remove_resp, rpc);
     if (!status.ok()) {
+      // No need to return the non-ok status to the caller (Update Peers and Metrics), since it will
+      // be retried if the state table entry is found again in next iteration.
       LOG(WARNING) << "Could not remove table: " << table_id << " from stream: " << req->stream_id()
                    << " : " << status.ToString();
-      return status;
     }
   }
   return Status::OK();

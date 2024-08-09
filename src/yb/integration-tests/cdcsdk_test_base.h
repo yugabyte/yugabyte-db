@@ -45,7 +45,6 @@ DECLARE_uint32(cdcsdk_retention_barrier_no_revision_interval_secs);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
 DECLARE_bool(TEST_cdcsdk_skip_disabling_dynamic_table_addition_on_stream_creation);
-DECLARE_bool(cdcsdk_enable_cleanup_of_expired_table_entries);
 
 namespace yb {
 using client::YBClient;

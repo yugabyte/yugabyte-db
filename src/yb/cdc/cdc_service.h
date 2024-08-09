@@ -420,7 +420,7 @@ class CDCServiceImpl : public CDCServiceIf {
       TableIdToStreamIdMap* expired_tables_map = nullptr);
 
   void AddTableToExpiredTablesMap(
-      const tablet::TabletPeerPtr& tablet_peer,
+      const TabletId& tablet_id,
       const xrepl::StreamId& stream_id,
       TableIdToStreamIdMap* expired_tables_map);
 
