@@ -145,9 +145,11 @@ void free_ListGraphId(ListGraphId *container)
         next_node = curr_node->next;
         /* we can do this because this is just a list of ints */
         pfree(curr_node);
+        container->size--;
         curr_node = next_node;
     }
 
+    Assert(container->size == 0);
     /* free the container */
     pfree(container);
 }
