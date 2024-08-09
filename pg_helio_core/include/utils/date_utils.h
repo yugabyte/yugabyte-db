@@ -150,9 +150,22 @@ GetIntervalFromDateUnitAndAmount(DateUnit unitEnum, int64 amount)
 static inline Datum
 GetPgTimestampFromUnixEpoch(int64_t epochInMs)
 {
+	float8 seconds = ((float8) epochInMs) / MILLISECONDS_IN_SECOND;
+
+	/*
+	 * This is a defensive check as float8_timestamptz throws error for this and we can pre-check if this range of seconds is valid
+	 * This check is similar to check in the file udt/adt/timestamp.c
+	 */
+	if (seconds < (float8) SECS_PER_DAY * (DATETIME_MIN_JULIAN - UNIX_EPOCH_JDATE) ||
+		seconds >= (float8) SECS_PER_DAY * (TIMESTAMP_END_JULIAN - UNIX_EPOCH_JDATE))
+	{
+		ereport(ERROR, (errcode(MongoOverflow),
+						errmsg("Invalid conversion to date time.")));
+	}
+
 	return DirectFunctionCall1(
 		float8_timestamptz,
-		Float8GetDatum(((float8) epochInMs) / MILLISECONDS_IN_SECOND));
+		Float8GetDatum(seconds));
 }
 
 
