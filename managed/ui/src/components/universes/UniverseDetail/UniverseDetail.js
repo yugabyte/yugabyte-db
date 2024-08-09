@@ -148,6 +148,7 @@ class UniverseDetail extends Component {
         const providerUUID = primaryCluster?.userIntent?.provider;
         this.props.fetchSupportedReleases(providerUUID);
         this.props.fetchProviderRunTimeConfigs(providerUUID);
+        this.props.getUniverseLbState(uuid);
       });
 
       if (isDisabled(currentCustomer.data.features, 'universes.details.health')) {
@@ -171,6 +172,7 @@ class UniverseDetail extends Component {
     // Always refresh universe info on Overview tab
     if (prevProps.params.tab !== this.props.params.tab && this.props.params.tab === 'overview') {
       this.props.getUniverseInfo(currentUniverse.data.universeUUID);
+      this.props.getUniverseLbState(currentUniverse.data.universeUUID);
     }
     if (
       getPromiseState(currentUniverse).isSuccess() &&
@@ -271,7 +273,7 @@ class UniverseDetail extends Component {
       modal: { showModal, visibleModal },
       universe,
       tasks,
-      universe: { currentUniverse, supportedReleases },
+      universe: { currentUniverse, supportedReleases, universeLbState },
       showSoftwareUpgradesModal,
       showLinuxSoftwareUpgradeModal,
       showSoftwareUpgradesNewModal,
@@ -538,6 +540,7 @@ class UniverseDetail extends Component {
               updateAvailable={updateAvailable}
               showSoftwareUpgradesModal={showSoftwareUpgradesModal}
               isReleasesEnabled={isReleasesEnabled}
+              universeLbState={universeLbState}
             />
           </Tab.Pane>
         ),

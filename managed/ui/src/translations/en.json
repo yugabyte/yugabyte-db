@@ -81,6 +81,11 @@
       "consumer_safe_time_skew": "Consumer Safe Time Skew"
     },
     "universeActions": {
+      "lbState": {
+        "loadBalancerEnabled": "Tablet Load Balancer",
+        "loadIsBalanced": "Tablet load is balanced",
+        "loadBalanceInProgress": "Tablet load balancing in progress"
+      },
       "encryptionAtRest": {
         "title": "Manage encryption at-Rest",
         "enableEAR": "Enable encryption at-Rest for this Universe",
