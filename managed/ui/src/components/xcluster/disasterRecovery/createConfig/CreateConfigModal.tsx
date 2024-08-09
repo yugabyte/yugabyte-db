@@ -38,7 +38,7 @@ import { parseDurationToSeconds } from '../../../../utils/parsers';
 import toastStyles from '../../../../redesign/styles/toastStyles.module.scss';
 
 export interface CreateDrConfigFormValues {
-  targetUniverse: { label: string; value: Universe };
+  targetUniverse: { label: string; value: Universe; isDisabled: boolean; disabledReason?: string };
   namespaceUuids: string[];
   tableUuids: string[];
   storageConfig: StorageConfigOption;

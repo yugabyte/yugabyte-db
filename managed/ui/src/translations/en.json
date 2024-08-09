@@ -890,6 +890,7 @@
                 "submitButton": "Next: Select Databases",
                 "drReplica": "DR Replica Universe",
                 "drReplicaSelectionHelpText": "Make sure the DR replica has the right <drReplicaPrerequisiteDocsLink>prerequisites</drReplicaPrerequisiteDocsLink> for disaster recovery.",
+                "missingPermissionOnUniverse": "This user does not have permission to set up xCluster DR with this universe.",
                 "error": {
                   "targetUniverseRequired": "Required.",
                   "mismatchedNodeToNodeEncryption": "The source and target universe must have matching TLS enable/disable setting."
@@ -979,6 +980,7 @@
               "selectTargetUniverse": {
                 "drReplica": "DR Replica Universe",
                 "nextButton": "Next: Confirm Full Copy",
+                "missingPermissionOnUniverse": "This user does not have permission to set up xCluster DR with this universe.",
                 "error": {
                   "targetUniverseRequired": "Required."
                 }
@@ -1093,6 +1095,7 @@
                 "tableType": "Table Type",
                 "isTransactionalConfig": "Enable transactional atomicity"
               },
+              "missingPermissionOnUniverse": "This user does not have permission to set up xCluster replication with this universe.",
               "isTransactionalConfigTooltip": "<paragraph>YBA support for transactional atomicity has the following constraints:<orderedList><listItem>The minimum YBDB version that supports transactional atomicity is 2.18.1.0-b1.</listItem><listItem>PITR must be enabled on the target universe.</listItem><listItem>Neither the source universe nor the target universe is a participant in any other xCluster configuration.</listItem></orderedList>You may find further information on this feature on our<xClusterDocLink> public docs.</xClusterDocLink></paragraph>",
               "backupStorageConfigNote": "<paragraph><bold>Note!</bold> If the tables to replicate are not empty on this source universe, ensure that the <bold> backup storage config can be accessed from both source and target universe </bold> for creating an initial full copy. Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions. In that case, refer to the <ybAdminDocsLink>documentation for creating replication using yb-admin</ybAdminDocsLink>.</paragraph>",
               "fullCopyNote": "<bold>What is a full copy?</bold><paragraph>A full copy of your source universe is created to bring the target universe to the same checkpoint before turning on async replication. First, YBAnywhere creates a backup of the source universe. Then it restores the backup to the target universe. Hence the need to ensure the backup storage config is accessible from both source &amp; target universe. If the tables selected for xcluster replication are empty on the source universe, no full copy creation is required.</paragraph>",
