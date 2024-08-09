@@ -1,6 +1,6 @@
 ---
 title: Configure disaster recovery for a YugabyteDB Anywhere universe
-headerTitle: xCluster Disaster recovery
+headerTitle: xCluster Disaster Recovery
 linkTitle: Disaster recovery
 description: Enable deployment using transactional (active-standby) replication between universes
 headContent: Fail over to a replica universe in case of unplanned outages
@@ -15,7 +15,7 @@ type: indexpage
 showRightNav: true
 ---
 
-Use xCluster disaster recovery (DR) to recover from an unplanned outage (failover) or to perform a planned switchover. Planned switchover is commonly used for business continuity and disaster recovery testing, and failback after a failover.
+Use xCluster Disaster Recovery (DR) to recover from an unplanned outage (failover) or to perform a planned switchover. Planned switchover is commonly used for business continuity and disaster recovery testing, and failback after a failover.
 
 A DR configuration consists of the following:
 
