@@ -67,9 +67,9 @@ To back up a YugabyteDB Anywhere server, perform the following:
 
     `--output_path` specifies the location for the `.tar` output file.
 
-    `--data_dir` is optional. It specifies the data directory to be backed up. Default is `/opt/yugabyte`. If you specify a data directory, be sure to add the `--disable_version_check` flag.
+    `--data_dir` specifies the data directory to be backed up. Default is `/opt/yugabyte`. Use this flag if YugabyteDB Anywhere is not installed in the default location.
 
-    `--exclude_prometheus` is optional. It excludes Prometheus metrics from the backup.
+    `--exclude_prometheus` excludes Prometheus metrics from the backup. Optional.
 
     `--disable_version_check` is optional. Use this flag if you are specifying a custom data directory (that is, you are not using `/opt/yugabyte`).
 
