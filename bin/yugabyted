@@ -1917,8 +1917,12 @@ class ControlScript(object):
                     "root-ca certs database. Removing...")
                 shutil.rmtree(node_certs_dir)
 
+            if self.configs.saved_data.get("dns_enabled"):
+                hostname_type = "DNS"
+            else:
+                hostname_type = "IP"
             status = OpenSSLProxy.generate_node_server_certs(root_certs_dir=root_certs_dir,
-                hostname=hostname, server_cert_dir=node_certs_dir)
+                hostname=hostname, server_cert_dir=node_certs_dir, hostname_type=hostname_type)
 
             if not status:
                 status_details = [
@@ -9015,9 +9019,10 @@ class OpenSSLProxy(object):
 
     # Generate node server certificates
     @staticmethod
-    def generate_node_server_certs(root_certs_dir, server_cert_dir, hostname, timeout=60):
+    def generate_node_server_certs(root_certs_dir, server_cert_dir, hostname, hostname_type,
+                                    timeout=60):
         cmd = OpenSSLProxy.cmd_args + ['generate-server-cert', '-rcp', root_certs_dir,
-            '-scp', server_cert_dir, '-hn', hostname]
+            '-scp', server_cert_dir, '-hn', hostname, '-ht', hostname_type]
         out, err, ret = run_process(cmd, timeout=timeout, log_cmd=True)
 
         return (0 == ret)
