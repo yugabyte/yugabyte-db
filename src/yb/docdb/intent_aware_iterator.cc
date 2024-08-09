@@ -399,6 +399,23 @@ void IntentAwareIterator::SeekToLastDocKey() {
   FillEntry();
 }
 
+void IntentAwareIterator::SeekBeforeSubKey(Slice key) {
+  VLOG_WITH_FUNC(4) << DebugDumpKeyToStr(key);
+  if (!status_.ok()) {
+    return;
+  }
+
+  SeekTriggered();
+
+  SkipFutureRecords<Direction::kBackward>(docdb::SeekBackward(key, iter_));
+  if (intent_iter_.Initialized()) {
+    ResetIntentUpperbound();
+    SeekToSuitableIntent<Direction::kBackward>(docdb::SeekBackward(key, intent_iter_));
+  }
+
+  FillEntry</* kDescending */ true>();
+}
+
 // If we reach a different key, stop seeking.
 Result<FetchedEntry> IntentAwareIterator::NextFullValue() {
   auto key_data = VERIFY_RESULT_REF(Fetch());
@@ -603,11 +620,11 @@ void IntentAwareIterator::DoPrevDocKey(Slice doc_key) {
 
   SeekTriggered();
 
-  // TODO(#22373): Logically, we firstly need to check if regular entry is already positioned before
-  // the given doc_key, and if the position is correct, then it is required to check if current
-  // regular entry satisfies bounds. But we are rely on the fact that regular entry matches regular
-  // iterator's current entry and the combination of SeekBackward and SkipFutureRecords make all
-  // the necessary job to check if bounds are satisfied.
+  // TODO(fast-backward-scan) logically, we firstly need to check if regular entry is already
+  // positioned before the given doc_key, and if the position is correct, then it is required
+  // to check if current regular entry satisfies bounds. But we are rely on the fact that regular
+  // entry matches regular iterator's current entry and the combination of SeekBackward and
+  // SkipFutureRecords make all the necessary job to check if bounds are satisfied.
   SkipFutureRecords<Direction::kBackward>(docdb::SeekBackward(doc_key, iter_));
 
   if (intent_iter_.Initialized()) {
@@ -898,8 +915,8 @@ void IntentAwareIterator::SeekToSuitableIntent(const rocksdb::KeyValueEntry& ent
                             << intent_upperbound_.ToDebugHexString();
           // We are not calling RevalidateAfterUpperBoundChange here because it is only needed
           // during forward iteration, and is not needed immediately before a seek.
-          // TODO(#22373): It is not clear why SeekToLast for backward direction. It should be
-          // investigated in the context of mentioned GH. Also for the details refer to
+          // TODO(fast-backward-scan) it is not clear why SeekToLast for backward direction. It
+          // should be investigated in the context of mentioned GH. Also for the details refer to
           // https://phorge.dev.yugabyte.com/D7915.
           entry = &intent_iter_.SeekToLast();
           break;
@@ -1356,7 +1373,8 @@ HybridTime IntentAwareIterator::TEST_MaxSeenHt() const {
   return CHECK_RESULT(max_seen_ht_.Decode()).hybrid_time();
 }
 
-const EncodedDocHybridTime& IntentAwareIterator::GetIntentDocHybridTime(bool* same_transaction) {
+const EncodedDocHybridTime& IntentAwareIterator::GetIntentDocHybridTime(
+    bool* same_transaction) const {
   if (!intent_dht_from_same_txn_.is_min()) {
     if (same_transaction) {
       *same_transaction = true;

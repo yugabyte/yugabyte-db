@@ -93,7 +93,7 @@ void DocRowwiseIterator::InitIterator(
 
   // Configure usage of fast backward scan. This must be done before creating of the intent
   // aware iterator and when doc_mode_ is already set.
-  // TODO(#22371): Fast backward scan is supported for flat doc reader only.
+  // TODO(#22371) fast-backward-scan is supported for flat doc reader only.
   if (FLAGS_use_fast_backward_scan && !is_forward_scan_ && doc_mode_ == DocMode::kFlat) {
     use_fast_backward_scan_ = true;
     VLOG_WITH_FUNC(1) << "Using FAST BACKWARD scan";
@@ -127,7 +127,7 @@ void DocRowwiseIterator::InitIterator(
 
   if (use_fast_backward_scan_) {
     auto lower_bound = shared_key_prefix();
-    // TODO(#22373): Do we need to consider bound_key_ here?
+    // TODO(fast-backward-scan): do we need to consider bound_key_ here?
     if (lower_bound.empty()) {
       static const auto kMinByte = dockv::KeyEntryTypeAsChar::kLowest;
       lower_bound = Slice(&kMinByte, 1);
@@ -187,7 +187,7 @@ inline void DocRowwiseIterator::Seek(Slice key) {
 
 inline void DocRowwiseIterator::SeekPrevDocKey(Slice key) {
   // TODO consider adding an operator bool to DocKey to use instead of empty() here.
-  // TODO(#22373): Do we need to play with prev_doc_found_?
+  // TODO(fast-backward-scan) do we need to play with prev_doc_found_?
   if (!key.empty()) {
     db_iter_->SeekPrevDocKey(key);
   } else {
