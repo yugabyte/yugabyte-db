@@ -144,10 +144,6 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
                     "Retry limit of %d reached for task %s on universe %s",
                     retryLimit, action.getTaskType(), universe.getUniverseUUID());
             log.error(errMsg);
-            // Disable the schedule but keep it to track the failure count.
-            runtimeParams
-                .getJobScheduler()
-                .disableSchedule(runtimeParams.getJobSchedule().getUuid(), true);
             throw new RuntimeException(errMsg);
           }
         }

@@ -113,49 +113,52 @@ public class AutoMasterFailoverScheduler {
                 scheduler.detectMasterFailure(customer, universe, runtime);
                 break;
               case MASTER_FAILOVER:
-                log.debug(
-                    "Running auto master failover for universe {}", universe.getUniverseUUID());
-                AutoMasterFailover automatedMasterFailover =
-                    runtime.getInjector().getInstance(AutoMasterFailover.class);
-                String detectScheduleName = scheduler.getDetectMasterFailureScheduleName(universe);
-                Optional<JobSchedule> optional =
-                    runtime
-                        .getJobScheduler()
-                        .maybeGetSchedule(customer.getUuid(), detectScheduleName);
-                if (!optional.isPresent()) {
-                  log.warn(
-                      "Master failover detection schedule is already deleted for universe {}",
-                      universe.getUniverseUUID());
-                  return;
-                }
-                if (optional.get().getScheduleConfig().isDisabled()) {
-                  log.info(
-                      "Disabling master failover schedule for universe {} as detection is disabled",
-                      universe.getUniverseUUID());
+                try {
+                  log.debug(
+                      "Running auto master failover for universe {}", universe.getUniverseUUID());
+                  AutoMasterFailover automatedMasterFailover =
+                      runtime.getInjector().getInstance(AutoMasterFailover.class);
+                  String detectScheduleName =
+                      scheduler.getDetectMasterFailureScheduleName(universe);
+                  Optional<JobSchedule> optional =
+                      runtime
+                          .getJobScheduler()
+                          .maybeGetSchedule(customer.getUuid(), detectScheduleName);
+                  if (!optional.isPresent()) {
+                    log.warn(
+                        "Master failover detection schedule is already deleted for universe {}",
+                        universe.getUniverseUUID());
+                    return;
+                  }
+                  if (optional.get().getScheduleConfig().isDisabled()) {
+                    log.info(
+                        "Skipping master failover for universe {} as detection is disabled",
+                        universe.getUniverseUUID());
+                    return;
+                  }
+
+                  automatedMasterFailover
+                      .maybeFailoverMaster(customer, universe, runtime)
+                      .ifPresent(
+                          tf -> {
+                            if (tf.getTaskState() != TaskInfo.State.Success) {
+                              // Fail the job and keep the schedule to keep track of the failed
+                              // counts.
+                              String errMsg =
+                                  String.format(
+                                      "Auto master failover task %s (%s) failed for universe %s",
+                                      tf.getTaskType(),
+                                      tf.getTaskUUID(),
+                                      universe.getUniverseUUID());
+                              throw new RuntimeException(errMsg);
+                            }
+                          });
+                } finally {
+                  // Task has completed. Disable the schedule until it is enabled by the detector.
                   runtime
                       .getJobScheduler()
                       .disableSchedule(runtime.getJobSchedule().getUuid(), true);
-                  return;
                 }
-                automatedMasterFailover
-                    .maybeFailoverMaster(customer, universe, runtime)
-                    .ifPresent(
-                        tf -> {
-                          if (tf.getTaskState() == TaskInfo.State.Success) {
-                            // Task executed successfully. Disable the schedule for tracking.
-                            runtime
-                                .getJobScheduler()
-                                .disableSchedule(runtime.getJobSchedule().getUuid(), true);
-                          } else {
-                            // Fail the job and keep the schedule to keep track of the failed
-                            // counts.
-                            String errMsg =
-                                String.format(
-                                    "Auto master failover task %s (%s) failed for universe %s",
-                                    tf.getTaskType(), tf.getTaskUUID(), universe.getUniverseUUID());
-                            throw new RuntimeException(errMsg);
-                          }
-                        });
                 break;
               default:
                 throw new RuntimeException("Unknown failover job type " + failoverJobType);
@@ -275,15 +278,7 @@ public class AutoMasterFailoverScheduler {
             "Master failover detection schedule is disabled for universe {}",
             universe.getUniverseUUID());
         // Disable the existing failover if the detection is disabled.
-        String failoverScheduleName = getAutoMasterFailoverScheduleName(universe);
-        jobScheduler
-            .maybeGetSchedule(customer.getUuid(), failoverScheduleName)
-            .ifPresent(
-                s -> {
-                  if (!s.getScheduleConfig().isDisabled()) {
-                    jobScheduler.disableSchedule(s.getUuid(), true);
-                  }
-                });
+        disableSchedule(customer, getAutoMasterFailoverScheduleName(universe));
       } else if (detectionInterval.getSeconds() != scheduleConfig.getIntervalSecs()) {
         log.info(
             "Failover detection schedule has changed from {} secs to {} secs",
@@ -331,21 +326,30 @@ public class AutoMasterFailoverScheduler {
               .plus(cooldownPeriod.getSeconds(), ChronoUnit.SECONDS);
       Instant now = Instant.now();
       if (restrictionEndTime.isAfter(now)) {
-        String scheduleName = getAutoMasterFailoverScheduleName(universe);
         long diffSecs = now.until(restrictionEndTime, ChronoUnit.SECONDS);
         log.info(
             "Universe {} is cooling down for {} seconds", universe.getUniverseUUID(), diffSecs);
-        jobScheduler
-            .maybeGetSchedule(customer.getUuid(), scheduleName)
-            .ifPresent(s -> jobScheduler.disableSchedule(s.getUuid(), true));
         return false;
       }
     }
     return true;
   }
 
+  // Disabling a schedule already executing a job does not affect the job.
+  private void disableSchedule(Customer customer, String scheduleName) {
+    jobScheduler
+        .maybeGetSchedule(customer.getUuid(), scheduleName)
+        .ifPresent(
+            s -> {
+              if (!s.getScheduleConfig().isDisabled()) {
+                jobScheduler.disableSchedule(s.getUuid(), true);
+              }
+            });
+  }
+
   private void detectMasterFailure(
       Customer customer, Universe universe, RuntimeParams runtimeParams) {
+    String failoverScheduleName = getAutoMasterFailoverScheduleName(universe);
     boolean isFailoverEnabled =
         confGetter.getConfForScope(universe, UniverseConfKeys.enableAutoMasterFailover);
     if (!isFailoverEnabled) {
@@ -353,6 +357,7 @@ public class AutoMasterFailoverScheduler {
           "Skipping automated master failover for universe {} because it is disabled",
           universe.getUniverseUUID(),
           isFailoverEnabled);
+      disableSchedule(customer, failoverScheduleName);
       // Let the creator of this schedule handle the life-cycle.
       return;
     }
@@ -360,37 +365,56 @@ public class AutoMasterFailoverScheduler {
       log.info(
           "Skipping master failover for universe {} because it is already being updated",
           universe.getUniverseUUID());
-      // Let the creator of this schedule handle the life-cycle.
+      disableSchedule(customer, failoverScheduleName);
       return;
     }
-    String scheduleName = getAutoMasterFailoverScheduleName(universe);
     Action action = autoMasterFailover.getAllowedMasterFailoverAction(customer, universe);
     if (action.getActionType() == ActionType.NONE) {
-      // No fail-over action can be performed. Disable to keep track of the last run.
-      jobScheduler
-          .maybeGetSchedule(customer.getUuid(), scheduleName)
-          .ifPresent(s -> jobScheduler.disableSchedule(s.getUuid(), true));
+      // No fail-over action can be performed.
+      disableSchedule(customer, failoverScheduleName);
       return;
     }
     log.info(
         "Detected master failure for universe {}, next action {}",
         universe.getUniverseUUID(),
         action);
-    if (action.getActionType() == ActionType.SUBMIT
-        && action.getTaskType() == TaskType.MasterFailover) {
-      if (!isFailoverTaskCooldownOver(customer, universe)) {
-        return;
-      }
-      // Verify that the replacement node exists before creating the failover schedule.
-      NodeDetails node = universe.getNode(action.getNodeName());
-      NodeDetails possibleReplacementCandidate =
-          autoMasterFailover.findReplacementMaster(universe, node);
-      if (possibleReplacementCandidate == null) {
-        log.info(
-            "Skipping failover schedule as no replacement master found for node {} in universe {}",
-            action.getNodeName(),
-            universe.getUniverseUUID());
-        return;
+    if (action.getTaskType() == TaskType.MasterFailover) {
+      if (action.getActionType() == ActionType.SUBMIT) {
+        if (!isFailoverTaskCooldownOver(customer, universe)) {
+          disableSchedule(customer, failoverScheduleName);
+          return;
+        }
+        // Verify that the replacement node exists before creating the failover schedule.
+        NodeDetails node = universe.getNode(action.getNodeName());
+        NodeDetails possibleReplacementCandidate =
+            autoMasterFailover.findReplacementMaster(universe, node);
+        if (possibleReplacementCandidate == null) {
+          disableSchedule(customer, failoverScheduleName);
+          log.info(
+              "Skipping failover schedule as no replacement master found for node {} in universe"
+                  + " {}",
+              action.getNodeName(),
+              universe.getUniverseUUID());
+          return;
+        }
+        // Reset counters on new submission.
+        jobScheduler
+            .maybeGetSchedule(customer.getUuid(), failoverScheduleName)
+            .ifPresent(s -> jobScheduler.resetCounters(s.getUuid()));
+      } else if (action.getActionType() == ActionType.RETRY) {
+        long retryLimit =
+            (long)
+                confGetter.getConfForScope(
+                    universe, UniverseConfKeys.autoMasterFailoverMaxTaskRetries);
+        if (runtimeParams.getJobSchedule().getFailedCount() > retryLimit) {
+          disableSchedule(customer, failoverScheduleName);
+          String errMsg =
+              String.format(
+                  "Retry limit of %d reached for task %s on universe %s",
+                  retryLimit, action.getTaskType(), universe.getUniverseUUID());
+          log.error(errMsg);
+          return;
+        }
       }
     }
     Duration taskDelay =
@@ -402,7 +426,7 @@ public class AutoMasterFailoverScheduler {
         taskDelay.getSeconds(),
         universe.getUniverseUUID());
     Optional<JobSchedule> optional =
-        jobScheduler.maybeGetSchedule(customer.getUuid(), scheduleName);
+        jobScheduler.maybeGetSchedule(customer.getUuid(), failoverScheduleName);
     if (optional.isPresent()) {
       ScheduleConfig scheduleConfig = optional.get().getScheduleConfig();
       if (scheduleConfig.isDisabled()) {
@@ -426,7 +450,7 @@ public class AutoMasterFailoverScheduler {
     } else {
       JobSchedule jobSchedule = new JobSchedule();
       jobSchedule.setCustomerUuid(customer.getUuid());
-      jobSchedule.setName(scheduleName);
+      jobSchedule.setName(failoverScheduleName);
       jobSchedule.setScheduleConfig(
           ScheduleConfig.builder().intervalSecs(taskDelay.getSeconds()).build());
       jobSchedule.setJobConfig(
