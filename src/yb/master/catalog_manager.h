@@ -3265,7 +3265,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
     YsqlDdlVerificationState state;
 
     // The table info objects of the tables affected by this transaction.
+    // The processed_tables is used to avoid duplicated processing. Currently it is the set of
+    // tables for which delete table has already been called. For PITR, we cannot make duplicate
+    // delete table calls.
     std::vector<scoped_refptr<TableInfo>> tables;
+    std::unordered_set<TableId> processed_tables;
   };
 
   // This map stores the transaction ids of all the DDL transactions undergoing verification.

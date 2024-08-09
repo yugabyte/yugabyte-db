@@ -127,7 +127,7 @@ bool CatalogManager::CreateOrUpdateDdlTxnVerificationState(
   ysql_ddl_txn_verfication_state_map_.emplace(txn.transaction_id,
       YsqlDdlTransactionState{TxnState::kUnknown,
                               YsqlDdlVerificationState::kDdlInProgress,
-                              {table}});
+                              {table}, {} /* processed_tables */});
   return true;
 }
 
@@ -189,6 +189,7 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(const string& pb_txn_id,
             << txn << " is_committed: " << (is_committed ? "true" : "false");
 
   vector<TableInfoPtr> tables;
+  std::unordered_set<TableId> processed_tables;
   {
     LockGuard lock(ddl_txn_verifier_mutex_);
     auto verifier_state = FindOrNull(ysql_ddl_txn_verfication_state_map_, txn);
@@ -214,7 +215,8 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(const string& pb_txn_id,
       // t3 gets added, if we return Status::OK() here, then t3 will never be
       // processed. Therefore we need to call YsqlDdlTxnCompleteCallbackInternal
       // to process t3. It is fine to reprocess t1 and t2, that will result in a
-      // no-op.
+      // no-op, except for delete table operation for which we'll detect and avoid
+      // reprocessing.
       SCHECK_EQ(txn_state, verifier_state->txn_state, IllegalState,
                 Format("Mismatch in txn_state for transaction $0", txn));
     } else {
@@ -222,10 +224,15 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(const string& pb_txn_id,
       verifier_state->state = YsqlDdlVerificationState::kDdlPostProcessing;
     }
     tables = verifier_state->tables;
+    processed_tables = verifier_state->processed_tables;
   }
 
   bool ddl_verification_success = true;
   for (auto& table : tables) {
+    if (processed_tables.contains(table->id())) {
+      VLOG(1) << "DDL already processed on table " << table->id();
+      continue;
+    }
     // If the table is already involved in a new DDL transaction, then txn
     // has already completed. The table will be taken care of by the new
     // transaction.
@@ -472,6 +479,21 @@ Status CatalogManager::YsqlDdlTxnDropTableHelper(
 
   if (RandomActWithProbability(FLAGS_TEST_ysql_ddl_rollback_failure_probability)) {
     return STATUS(InternalError, "Injected random failure for testing.");
+  }
+  // Mark that we have called delete table on this table.
+  {
+    LockGuard lock(ddl_txn_verifier_mutex_);
+    auto verifier_state = FindOrNull(ysql_ddl_txn_verfication_state_map_, txn_data.ddl_txn_id);
+    if (!verifier_state) {
+      VLOG(3) << "Transaction " << txn_data.ddl_txn_id << " is already verified, ignoring";
+      return Status::OK();
+    }
+    if (verifier_state->processed_tables.contains(table->id())) {
+      VLOG(1) << "Delete table already called on table " << table->id()
+              << " in txn " << txn_data.ddl_txn_id;
+      return Status::OK();
+    }
+    verifier_state->processed_tables.insert(table->id());
   }
   return DeleteTableInternal(&dtreq, &dtresp, nullptr /* rpc */, txn_data.epoch);
 }
