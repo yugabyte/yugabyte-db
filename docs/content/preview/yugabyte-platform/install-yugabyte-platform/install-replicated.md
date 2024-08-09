@@ -3,7 +3,7 @@ title: Install YugabyteDB Anywhere using Replicated
 headerTitle: Install YugabyteDB Anywhere using Replicated
 linkTitle: Install using Replicated
 description: Install YugabyteDB Anywhere using Replicated.
-headContent: Install YBA software using Replicated and Docker containers
+headContent: Install YugabyteDB Anywhere using Replicated and Docker containers
 aliases:
   - /preview/yugabyte-platform/install-yugabyte-platform/install-software/airgapped/
   - /preview/yugabyte-platform/install-yugabyte-platform/install-software/replicated/
@@ -25,7 +25,7 @@ To migrate existing Replicated YugabyteDB Anywhere installations to YBA Installe
 
 {{< /warning >}}
 
-You can install YugabyteDB Anywhere (YBA) on a host machine using Replicated in both online and airgapped environments.
+You can install YugabyteDB Anywhere on a host machine using Replicated in both online and airgapped environments.
 
 Installation starts with installing Replicated on a Linux host. Replicated installs the [docker-engine](https://docs.docker.com/engine/), the Docker container runtime, and then pulls its own container images from the [Replicated.com container registry](https://help.replicated.com/docs/native/getting-started/docker-registries/). YugabyteDB Anywhere then becomes a managed application of Replicated, which starts by pulling the YugabyteDB Anywhere (`yugaware`) container images from Quay.io for the very first time.
 
@@ -63,7 +63,7 @@ A node running YugabyteDB Anywhere is expected to meet the following requirement
 | / | Assuming /opt/yugabyte shares a file system with / | 50 GB |
 | /tmp | Used during Install and Upgrade | 10 GB<sup>1</sup> |
 | /opt/yugabyte | Database configuration and Prometheus logs | 150+ GB<sup>1,2</sup> |
-| /var/lib/docker | Running YBA components | 40 GB<sup>1</sup> |
+| /var/lib/docker | Running YugabyteDB Anywhere components | 40 GB<sup>1</sup> |
 | /var/lib/replicated | Images and staging | 15 GB<sup>1</sup> |
 
 <sup>1</sup> Where two or more of these paths share a file system, the free space required on that file system is the sum of the free space requirements.
@@ -255,6 +255,10 @@ Click **Continue** to configure YugabyteDB Anywhere.
 
 If the preflight check fails, review the [Troubleshoot YugabyteDB Anywhere](../../../troubleshoot/) to resolve the issue.
 
+{{<note title="Configuring YugabyteDB Anywhere">}}
+After making changes to your configuration using Replicated, restart the Yugaware application in Replicated.
+{{</note>}}
+
 ## Set the TLS version for Yugaware frontend
 
 Under **Application config**, specify TLS versions as shown in the following illustration:
@@ -273,7 +277,7 @@ YugabyteDB Anywhere sometimes initiates HTTP or HTTPS connections to other serve
 - Deposit backups on a public cloud provider's object storage service.
 - Contact an external load balancer.
 
-You can set up YBA to use an HTTP/HTTPS proxy server via **Application config**, and select **Enable Proxy** as per the following illustration:
+You can set up YugabyteDB Anywhere to use an HTTP/HTTPS proxy server via **Application config**, and select **Enable Proxy** as per the following illustration:
 
 ![Enable Proxy](/images/replicated/enable-proxy.png)
 
@@ -290,9 +294,9 @@ When completing the **Enable Proxy** settings, keep in mind the following:
   - The address of any previously-specified web proxy.
   - Any other IP addresses that you deem safe to bypass the proxy.
 
-- These settings comprehensively govern all network connections that YBA initiates. For example, if you specify a proxy server for HTTP, all unencrypted connections initiated by YBA will be affected. If you want YBA to bypass the proxy server when connecting to database universe nodes, then you must explicitly specify the database universe node IP addresses as exception hosts (also known as "no proxy").
+- These settings comprehensively govern all network connections that YugabyteDB Anywhere initiates. For example, if you specify a proxy server for HTTP, all unencrypted connections initiated by YugabyteDB Anywhere will be affected. If you want YugabyteDB Anywhere to bypass the proxy server when connecting to database universe nodes, then you must explicitly specify the database universe node IP addresses as exception hosts (also known as "no proxy").
 
-- Because some YBA network connections are driven by YBA's Java process, while others are driven outside of Java (for example, via Python or a Linux shell execution), each (Java and non-Java) has its own separate configurable parameters.
+- Because some YugabyteDB Anywhere network connections are driven by YugabyteDB Anywhere's Java process, while others are driven outside of Java (for example, via Python or a Linux shell execution), each (Java and non-Java) has its own separate configurable parameters.
 
 - The Java fields can accept values as Java system properties, including the use of pipe ("|") as a field separator. Refer to [Java Networking and Proxies](https://docs.oracle.com/javase/8/docs/technotes/guides/net/proxies.html) for more details about the properties.
 
