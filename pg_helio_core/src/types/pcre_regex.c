@@ -150,7 +150,7 @@ RegexCompileForAggregation(char *regexPatternStr, char *options, bool enableNoAu
 												pcreData->generalContext);
 	if (pcreData->jitStack == NULL)
 	{
-		ereport(ERROR, (errcode(MongoInternalError), errmsg(
+		ereport(ERROR, (errcode(MongoExceededMemoryLimit), errmsg(
 							"PCRE2 stack creation failure.")));
 	}
 
@@ -398,14 +398,14 @@ CreatePcreCompileContext(PcreData *pcreData)
 															NULL);
 	if (pcreData->generalContext == NULL)
 	{
-		ereport(ERROR, (errcode(MongoInternalError), errmsg(
+		ereport(ERROR, (errcode(MongoExceededMemoryLimit), errmsg(
 							"PCRE2 general context creation failure.")));
 	}
 
 	pcreData->compileContext = pcre2_compile_context_create(pcreData->generalContext);
 	if (pcreData->compileContext == NULL)
 	{
-		ereport(ERROR, (errcode(MongoInternalError), errmsg(
+		ereport(ERROR, (errcode(MongoExceededMemoryLimit), errmsg(
 							"PCRE2 compile context creation failure.")));
 	}
 }
