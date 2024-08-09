@@ -211,6 +211,9 @@ void CatalogManagerBgTasks::Run() {
       // Cleanup old tasks from tracker.
       catalog_manager_->tasks_tracker_->CleanupOldTasks();
 
+      // Mark unresponsive tservers.
+      catalog_manager_->master_->ts_manager()->MarkUnresponsiveTServers();
+
       TabletInfos to_delete;
       TableToTabletInfos to_process;
 

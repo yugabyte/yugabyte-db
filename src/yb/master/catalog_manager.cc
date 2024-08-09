@@ -5388,6 +5388,7 @@ std::string CatalogManager::GenerateIdUnlocked(
       case SysRowEntryType::XCLUSTER_CONFIG: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNIVERSE_REPLICATION_BOOTSTRAP: FALLTHROUGH_INTENDED;
       case SysRowEntryType::XCLUSTER_OUTBOUND_REPLICATION_GROUP: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::TSERVER_REGISTRATION: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNKNOWN:
         LOG(DFATAL) << "Invalid id type: " << *entity_type;
         return id;
@@ -9847,9 +9848,8 @@ Status CatalogManager::RegisterTsFromRaftConfig(const consensus::RaftPeerPB& pee
         : "";
     common->set_placement_uuid(placement_uuid);
   }
-  return master_->ts_manager()->RegisterTS(instance_pb, registration_pb, master_->MakeCloudInfoPB(),
-                                           &master_->proxy_cache(),
-                                           RegisteredThroughHeartbeat::kFalse);
+  return master_->ts_manager()->RegisterFromRaftConfig(
+      instance_pb, registration_pb, master_->MakeCloudInfoPB(), &master_->proxy_cache());
 }
 
 Result<tablet::TabletPeerPtr> CatalogManager::GetServingTablet(const TabletId& tablet_id) const {
@@ -11176,13 +11176,13 @@ void CatalogManager::SelectReplicas(
     // value decays back to 0 over time.
     ts->IncrementRecentReplicaCreations();
 
-    TSRegistrationPB reg = ts->GetRegistration();
+    auto reg = ts->GetRegistration();
 
     RaftPeerPB *peer = config->add_peers();
     peer->set_permanent_uuid(ts->permanent_uuid());
 
     // TODO: This is temporary, we will use only UUIDs.
-    TakeRegistration(reg.mutable_common(), peer);
+    TakeRegistration(&reg, peer);
     peer->set_member_type(member_type);
   }
 }
@@ -11402,17 +11402,15 @@ Status CatalogManager::BuildLocationsForTablet(
     }
 
     locs_pb->mutable_replicas()->Reserve(narrow_cast<int32_t>(locs->size()));
-    for (const auto& replica : *locs) {
+    for (const auto& [_, tablet_replica] : *locs) {
       TabletLocationsPB_ReplicaPB* replica_pb = locs_pb->add_replicas();
-      replica_pb->set_role(replica.second.role);
-      replica_pb->set_member_type(replica.second.member_type);
-      replica_pb->set_state(replica.second.state);
-      auto tsinfo_pb = replica.second.ts_desc->GetTSInformationPB();
-
+      replica_pb->set_role(tablet_replica.role);
+      replica_pb->set_member_type(tablet_replica.member_type);
+      replica_pb->set_state(tablet_replica.state);
       TSInfoPB* out_ts_info = replica_pb->mutable_ts_info();
-      out_ts_info->set_permanent_uuid(tsinfo_pb->tserver_instance().permanent_uuid());
-      CopyRegistration(tsinfo_pb->registration().common(), out_ts_info);
-      out_ts_info->set_placement_uuid(tsinfo_pb->registration().common().placement_uuid());
+      out_ts_info->set_permanent_uuid(tablet_replica.ts_desc->permanent_uuid());
+      CopyRegistration(tablet_replica.ts_desc->GetRegistration(), out_ts_info);
+      out_ts_info->set_placement_uuid(tablet_replica.ts_desc->placement_uuid());
     }
   } else if (cstate.IsInitialized()) {
     // If the locations were not cached.
@@ -12500,11 +12498,11 @@ Status CatalogManager::GetStatefulServiceLocation(
             TryAgain, "Leader not found for Stateful Service of kind $0: ", req->service_kind(),
             ts_result.status().ToString()));
   }
+  auto ts = *ts_result;
 
-  auto tsinfo_pb = ts_result.get()->GetTSInformationPB();
   auto* service_info = resp->mutable_service_info();
-  service_info->set_permanent_uuid(tsinfo_pb->tserver_instance().permanent_uuid());
-  auto& registration = tsinfo_pb->registration().common();
+  service_info->set_permanent_uuid(ts->permanent_uuid());
+  auto registration = ts->GetRegistration();
   service_info->mutable_private_rpc_addresses()->CopyFrom(registration.private_rpc_addresses());
   service_info->mutable_broadcast_addresses()->CopyFrom(registration.broadcast_addresses());
   service_info->mutable_cloud_info()->CopyFrom(registration.cloud_info());

@@ -1007,6 +1007,7 @@ Status CatalogManager::ImportSnapshotPreprocess(
       case SysRowEntryType::UNIVERSE_REPLICATION_BOOTSTRAP: FALLTHROUGH_INTENDED;
       case SysRowEntryType::XCLUSTER_OUTBOUND_REPLICATION_GROUP: FALLTHROUGH_INTENDED;
       case SysRowEntryType::CLONE_STATE: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::TSERVER_REGISTRATION: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNKNOWN:
         FATAL_INVALID_ENUM_VALUE(SysRowEntryType, entry.type());
     }
@@ -3443,7 +3444,7 @@ bool ShouldResendRegistry(
   return should_resend_registry;
 }
 
-Status CatalogManager::FillHeartbeatResponse(const TSHeartbeatRequestPB* req,
+Status CatalogManager::FillHeartbeatResponse(const TSHeartbeatRequestPB& req,
                                              TSHeartbeatResponsePB* resp) {
   SysClusterConfigEntryPB cluster_config = VERIFY_RESULT(GetClusterConfig());
   RETURN_NOT_OK(FillHeartbeatResponseEncryption(cluster_config, req, resp));
@@ -3453,11 +3454,11 @@ Status CatalogManager::FillHeartbeatResponse(const TSHeartbeatRequestPB* req,
 
 Status CatalogManager::FillHeartbeatResponseEncryption(
     const SysClusterConfigEntryPB& cluster_config,
-    const TSHeartbeatRequestPB* req,
+    const TSHeartbeatRequestPB& req,
     TSHeartbeatResponsePB* resp) {
-  const auto& ts_uuid = req->common().ts_instance().permanent_uuid();
+  const auto& ts_uuid = req.common().ts_instance().permanent_uuid();
   if (!cluster_config.has_encryption_info() ||
-      !ShouldResendRegistry(ts_uuid, req->has_registration(), &should_send_universe_key_registry_,
+      !ShouldResendRegistry(ts_uuid, req.has_registration(), &should_send_universe_key_registry_,
                             &should_send_universe_key_registry_mutex_)) {
     return Status::OK();
   }

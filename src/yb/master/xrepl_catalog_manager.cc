@@ -4491,21 +4491,21 @@ Result<scoped_refptr<TableInfo>> CatalogManager::GetTableById(const TableId& tab
 
 Status CatalogManager::FillHeartbeatResponseCDC(
     const SysClusterConfigEntryPB& cluster_config,
-    const TSHeartbeatRequestPB* req,
+    const TSHeartbeatRequestPB& req,
     TSHeartbeatResponsePB* resp) {
   if (cdc_enabled_.load(std::memory_order_acquire)) {
     resp->set_xcluster_enabled_on_producer(true);
   }
 
   if (cluster_config.has_consumer_registry()) {
-    if (req->cluster_config_version() < cluster_config.version()) {
+    if (req.cluster_config_version() < cluster_config.version()) {
       const auto& consumer_registry = cluster_config.consumer_registry();
       resp->set_cluster_config_version(cluster_config.version());
       *resp->mutable_consumer_registry() = consumer_registry;
     }
   }
 
-  RETURN_NOT_OK(xcluster_manager_->FillHeartbeatResponse(*req, resp));
+  RETURN_NOT_OK(xcluster_manager_->FillHeartbeatResponse(req, resp));
 
   return Status::OK();
 }

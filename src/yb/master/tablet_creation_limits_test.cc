@@ -15,6 +15,7 @@
 
 #include "yb/master/tablet_creation_limits.h"
 #include "yb/master/ts_descriptor.h"
+#include "yb/master/ts_descriptor_test_util.h"
 
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
@@ -41,7 +42,7 @@ Result<TSDescriptorPtr> CreateTSDescriptor(
   }
   NodeInstancePB instance;
   instance.set_permanent_uuid(Uuid::Generate().ToString());
-  auto ts_descriptor = VERIFY_RESULT(TSDescriptor::RegisterNew(
+  auto ts_descriptor = VERIFY_RESULT(TSDescriptorTestUtil::RegisterNew(
       instance, ts_reg, CloudInfoPB(), /* proxy_cache */ nullptr));
   ts_descriptor->set_num_live_replicas(num_live_replicas);
   return ts_descriptor;

@@ -86,7 +86,7 @@ TabletId AsyncTabletSnapshotOp::tablet_id() const {
 }
 
 TabletServerId AsyncTabletSnapshotOp::permanent_uuid() const {
-  return target_ts_desc_ != nullptr ? target_ts_desc_->permanent_uuid() : "";
+  return target_ts_desc_ != nullptr ? target_ts_desc_->id() : "";
 }
 
 bool AsyncTabletSnapshotOp::RetryAllowed(TabletServerErrorPB::Code code, const Status& status) {

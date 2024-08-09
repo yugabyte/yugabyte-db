@@ -108,14 +108,14 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
       }
     }
 
-    for (const std::shared_ptr<TSDescriptor>& desc : descs) {
-      auto ts_info = *desc->GetTSInformationPB();
+    for (const auto& desc : descs) {
+      auto l = desc->LockForRead();
       if (is_ysql_replication_info_required) {
         LOG(INFO) << "Filter TServers based on placement ID "
                   << "and cloud info against placement "
                   << replication_info->live_replicas().placement_uuid();
         // Filter based on placement ID
-        if (ts_info.registration().common().placement_uuid() !=
+        if (l->pb.registration().placement_uuid() !=
             replication_info->live_replicas().placement_uuid())
           continue;
 
@@ -125,20 +125,18 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
             replication_info->live_replicas().placement_blocks();
         for (const auto& pb : placement_blocks) {
           if (CatalogManagerUtil::IsCloudInfoPrefix(
-                  ts_info.registration().common().cloud_info(),
-                  pb.cloud_info())) {
+                  l->pb.registration().cloud_info(), pb.cloud_info())) {
             is_cloud_match = true;
             break;
           }
         }
-        if (!is_cloud_match)
-          continue;
+        if (!is_cloud_match) continue;
         LOG(INFO) << "Placement info has matched against placement "
                   << replication_info->live_replicas().placement_uuid();
       }
       ListTabletServersResponsePB::Entry* entry = resp->add_servers();
-      *entry->mutable_instance_id() = std::move(*ts_info.mutable_tserver_instance());
-      *entry->mutable_registration() = std::move(*ts_info.mutable_registration());
+      *entry->mutable_instance_id() = desc->GetNodeInstancePB();
+      *entry->mutable_registration() = desc->GetTSRegistrationPB();
       auto last_heartbeat = desc->LastHeartbeatTime();
       if (last_heartbeat) {
         auto ms_since_heartbeat = MonoTime::Now().GetDeltaSince(last_heartbeat).ToMilliseconds();
@@ -182,9 +180,8 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
         continue;
       }
       ListLiveTabletServersResponsePB::Entry* entry = resp->add_servers();
-      auto ts_info = *desc->GetTSInformationPB();
-      *entry->mutable_instance_id() = std::move(*ts_info.mutable_tserver_instance());
-      *entry->mutable_registration() = std::move(*ts_info.mutable_registration());
+      *entry->mutable_instance_id() = desc->GetNodeInstancePB();
+      *entry->mutable_registration() = desc->GetTSRegistrationPB();
       bool isPrimary = server_->ts_manager()->IsTsInCluster(desc, placement_uuid);
       entry->set_isfromreadreplica(!isPrimary);
     }

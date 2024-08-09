@@ -269,7 +269,7 @@ class StatusException : public std::exception {
 // 2. Add new case into CallVisitor() function.
 // 3. Update the static assert below. E.g.,
 //        static_assert(master::SysRowEntryType_MAX == SysRowEntryType::XCLUSTER_SAFE_TIME,
-static_assert(master::SysRowEntryType_MAX == SysRowEntryType::CLONE_STATE,
+static_assert(master::SysRowEntryType_MAX == SysRowEntryType::TSERVER_REGISTRATION,
               "Extend Desc<> specializations by new SysRowEntryType values");
 
 template<typename PB, bool unknown = false>
@@ -324,6 +324,9 @@ struct Desc<SysRowEntryType::XCLUSTER_OUTBOUND_REPLICATION_GROUP>
 
 template<> struct Desc<SysRowEntryType::CLONE_STATE> :
                   UsePB<master::SysCloneStatePB> {};
+
+template<> struct Desc<SysRowEntryType::TSERVER_REGISTRATION> :
+    UsePB<master::SysTServerEntryPB> {};
 
 Status IsValid_SysRowEntryType(int entry_type) {
   SCHECK_FORMAT(master::SysRowEntryType_IsValid(entry_type),
@@ -382,6 +385,8 @@ Status CallVisitor(int8_t entry_type, Visitor* v, Args... args) {
       return v->template Visit<SysRowEntryType::XCLUSTER_OUTBOUND_REPLICATION_GROUP>(args...);
     case SysRowEntryType::CLONE_STATE:
       return v->template Visit<SysRowEntryType::CLONE_STATE>(args...);
+    case SysRowEntryType::TSERVER_REGISTRATION:
+      return v->template Visit<SysRowEntryType::TSERVER_REGISTRATION>(args...);
     // The compilation error is expected if an enum value is not handled above:
     //     sys-catalog.cc: error: enumeration value '...' not handled in switch
     //         switch (static_cast<SysRowEntryType>(entry_type)) {

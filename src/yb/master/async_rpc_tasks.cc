@@ -125,7 +125,7 @@ string ReplicaMapToString(const TabletReplicaMap& replicas) {
     } else {
       ret += "(";
     }
-    ret += r.second.ts_desc->permanent_uuid();
+    ret += r.second.ts_desc->id();
   }
   ret += ")";
   return ret;
@@ -585,18 +585,18 @@ void RetryingTSRpcTask::DoRpcCallback() {
 
   if (!rpc_.status().ok()) {
     // TODO: Move this implementation-specific handling out of the base class.
-    LOG_WITH_PREFIX(WARNING) << "TS " << target_ts_desc_->permanent_uuid() << ": "
+    LOG_WITH_PREFIX(WARNING) << "TS " << target_ts_desc_->id() << ": "
                              << type_name() << " RPC failed for tablet "
                              << tablet_id() << ": " << rpc_.status().ToString();
     if (type() == MonitoredTaskType::kBackendsCatalogVersionTs && rpc_.status().IsRemoteError() &&
         rpc_.status().message().ToBuffer().find("invalid method name:") != std::string::npos) {
       LOG_WITH_PREFIX(WARNING)
-          << "TS " << target_ts_desc_->permanent_uuid() << " is on an older version that doesn't"
+          << "TS " << target_ts_desc_->id() << " is on an older version that doesn't"
           << " support backends catalog version RPC. Ignoring.";
       TransitionToCompleteState();
     } else if (type() == MonitoredTaskType::kDeleteReplica && !target_ts_desc_->IsLive()) {
       LOG_WITH_PREFIX(WARNING)
-          << "TS " << target_ts_desc_->permanent_uuid() << ": delete failed for tablet "
+          << "TS " << target_ts_desc_->id() << ": delete failed for tablet "
           << tablet_id() << ". TS is DEAD. No further retry.";
       TransitionToCompleteState();
     } else if (type() == MonitoredTaskType::kBackendsCatalogVersionTs &&
@@ -605,7 +605,7 @@ void RetryingTSRpcTask::DoRpcCallback() {
       // when this RPC failed and tserver's lease expired.  That check is hit when this RPC
       // succeeded and tserver's lease is expired.
       LOG_WITH_PREFIX(WARNING)
-          << "TS " << target_ts_desc_->permanent_uuid() << " catalog lease expired. Assume backends"
+          << "TS " << target_ts_desc_->id() << " catalog lease expired. Assume backends"
           << " on that TS will be resolved to sufficient catalog version";
       TransitionToCompleteState();
     }
@@ -700,7 +700,7 @@ TabletId AsyncTabletLeaderTask::tablet_id() const {
 }
 
 TabletServerId AsyncTabletLeaderTask::permanent_uuid() const {
-  return target_ts_desc_ != nullptr ? target_ts_desc_->permanent_uuid() : "";
+  return target_ts_desc_ != nullptr ? target_ts_desc_->id() : "";
 }
 
 // ============================================================================
@@ -1451,9 +1451,9 @@ Status AsyncAddServerTask::PrepareRequest(int attempt) {
   RaftPeerPB* peer = req_.mutable_server();
   peer->set_permanent_uuid(replacement_replica->permanent_uuid());
   peer->set_member_type(member_type_);
-  TSRegistrationPB peer_reg = replacement_replica->GetRegistration();
+  auto peer_reg = replacement_replica->GetRegistration();
 
-  if (peer_reg.common().private_rpc_addresses().empty()) {
+  if (peer_reg.private_rpc_addresses().empty()) {
     auto status = STATUS_FORMAT(
         IllegalState, "Candidate replacement $0 has no registered rpc address: $1",
         replacement_replica->permanent_uuid(), peer_reg);
@@ -1461,7 +1461,7 @@ Status AsyncAddServerTask::PrepareRequest(int attempt) {
     return status;
   }
 
-  TakeRegistration(peer_reg.mutable_common(), peer);
+  TakeRegistration(&peer_reg, peer);
 
   return Status::OK();
 }

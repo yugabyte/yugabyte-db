@@ -554,7 +554,8 @@ TEST_F_EX(CloneStateManagerTest, AbortIfFailToSchedulePgCloneSchema, CloneStateM
   EXPECT_CALL(MockFuncs(), FindNamespace).WillOnce(Return(source_ns_));
   EXPECT_CALL(MockFuncs(), ListSnapshotSchedules)
       .WillOnce(DoAll(SetArgPointee<0>(DefaultListSnapshotSchedules()), Return(Status::OK())));
-  TSDescriptorPtr dummy_ts_desc = std::make_shared<TSDescriptor>("ts0" /* perm_id*/);
+  TSDescriptorPtr dummy_ts_desc =
+    std::make_shared<TSDescriptor>("ts0" /* perm_id*/, RegisteredThroughHeartbeat::kTrue);
   EXPECT_CALL(MockFuncs(), PickTserver).WillOnce(Return(dummy_ts_desc));
   EXPECT_CALL(MockFuncs(), Upsert(kEpoch.leader_term, _)).WillRepeatedly(Return(Status::OK()));
   EXPECT_CALL(MockFuncs(), ScheduleClonePgSchemaTask).WillOnce(Return(
