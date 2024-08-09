@@ -75,6 +75,7 @@ JAVA	org.yb.pgsql.TestPgRegressJson
 JAVA	org.yb.pgsql.TestPgRegressLegacyColocation
 JAVA	org.yb.pgsql.TestPgRegressMatview
 JAVA	org.yb.pgsql.TestPgRegressMisc#testPgRegressMiscIndependent
+JAVA	org.yb.pgsql.TestPgRegressMisc#testPgRegressMiscSerial
 JAVA	org.yb.pgsql.TestPgRegressMisc#testPgRegressMiscSerial2
 JAVA	org.yb.pgsql.TestPgRegressMisc#testPgRegressMiscSerial3
 JAVA	org.yb.pgsql.TestPgRegressNonTxnCopy

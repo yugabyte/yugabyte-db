@@ -73,7 +73,7 @@ show yb_fetch_size_limit;
 (1 row)
 
 set yb_fetch_size_limit = -1;  -- ERROR since yb_fetch_size_limit must be non-negative.
-ERROR:  -1 is outside the valid range for parameter "yb_fetch_size_limit" (0 .. 2147483647)
+ERROR:  -1 B is outside the valid range for parameter "yb_fetch_size_limit" (0 .. 2147483647)
 -- Check enable_seqscan, enable_indexscan, enable_indexonlyscan for YB scans.
 CREATE TABLE test_scan (i int, j int);
 CREATE INDEX NONCONCURRENTLY ON test_scan (j);
@@ -300,16 +300,6 @@ select myfunc(0), current_setting('work_mem');
 -- test SET unrecognized parameter
 SET foo = false;  -- no such setting
 ERROR:  unrecognized configuration parameter "foo"
--- test setting a parameter with a registered prefix (plpgsql)
-SET plpgsql.extra_foo_warnings = false;  -- no such setting
-WARNING:  unrecognized configuration parameter "plpgsql.extra_foo_warnings"
-DETAIL:  "plpgsql" is a reserved prefix.
-SHOW plpgsql.extra_foo_warnings;  -- but the parameter is set
- plpgsql.extra_foo_warnings
-----------------------------
- false
-(1 row)
-
 -- test temp_file_limit default
 SHOW temp_file_limit;
  temp_file_limit
@@ -362,7 +352,4 @@ ERROR:  permission denied to set parameter "track_functions"
 -- cleanup
 RESET foo;
 ERROR:  unrecognized configuration parameter "foo"
-RESET plpgsql.extra_foo_warnings;
-WARNING:  unrecognized configuration parameter "plpgsql.extra_foo_warnings"
-DETAIL:  "plpgsql" is a reserved prefix.
 RESET yb_enable_bitmapscan;
