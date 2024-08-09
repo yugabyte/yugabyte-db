@@ -26,11 +26,11 @@ Replication takes place between two universes:
 
 One source universe can replicate to one or more target universes.
 
-You can use xCluster replication to implement disaster recovery for YugabyteDB in cases where the higher write latency and the three fault domain minimum requirement of default synchronous replication of YugabyeDB is a challenge, if some small possibility of data loss due to asynchronous replication can be tolerated. For more details on using xCluster for Disaster Recovery, see [xCluster Disaster Recovery](../../back-up-restore-universes/disaster-recovery/).
+You can use xCluster replication to implement disaster recovery for YugabyteDB. This is a good option where you have only two regions where you can deploy, or the higher write latency of a [global database](../../../../develop/build-global-apps/global-database/) is a problem. You do need to tolerate some small possibility of data loss due to asynchronous replication. For more details on using xCluster for Disaster Recovery, see [xCluster Disaster Recovery](../../back-up-restore-universes/disaster-recovery/).
 
 xCluster replication can be used to move data from one YugabyteDB universe to another for purposes other than disaster recovery. For example, downstream YugabyteDB universes used for reporting or "green" deployments of blue-green deployments can be kept asynchronously up to date with the main YugabyteDB universe.
 
-You can use YugabyteDB Anywhere to set up the initial xCluster replication across universes, monitor the status of replication, and manage changes to the replication when new databases or tables are added to the replication.
+You can use YugabyteDB Anywhere to set up xCluster replication across universes, monitor the status of replication, and manage changes to the replication when new databases or tables are added to the replication.
 
 For more information on how YugabyteDB xCluster replication works, see [xCluster replication: overview and architecture](../../../architecture/docdb-replication/async-replication/).
 
@@ -90,7 +90,7 @@ Video: [YFTT - Transactional xCluster](https://www.youtube.com/watch?lI6gw7ncBs8
 
     To fix this, close any open SQL connections to the target, delete the xCluster replication configuration, and perform the operation again.
 
-- Setting up xCluster replication between a universe upgraded to v2.20.x and a new v2.20.x universe is not supported. This is due to a limitation of xCluster deployments and packed rows. See [Packed row limitations](../../../architecture/docdb/packed-rows/#limitations).
+- Setting up xCluster replication between a universe earlier than or upgraded to v2.20.x and a new v2.20.x universe is not supported. This is due to a limitation of xCluster deployments and packed rows. See [Packed row limitations](../../../architecture/docdb/packed-rows/#limitations).
 
 - You can set up change data capture on a source universe in xCluster replication, but not a target.
 
@@ -113,7 +113,7 @@ xCluster DR targets one specific and common xCluster deployment model: [active-a
 
 - Unidirectional replication means that at any moment in time, replication traffic flows in one direction, and is configured (and enforced) to flow only in one direction.
 
-- Transactional SQL means that the application is using SQL (and not CQL), and write-ordering is guaranteed. Furthermore, transactions are guaranteed to be atomic.
+- Transactional SQL means that the application is using SQL (and not CQL), and write-ordering is guaranteed for reads on the target. Furthermore, transactions are guaranteed to be atomic.
 
 xCluster DR adds higher-level orchestration workflows to this deployment to make the end-to-end setup, switchover, and failover of the DR primary to DR replica simple and turnkey. This orchestration includes the following:
 
@@ -125,7 +125,7 @@ For all deployment models _other than_ active-active single-master, unidirection
 
 For example, use xCluster replication for the following:
 
-- Multi-master deployments, where you have two application instances, each one writing to a different universe.
+- Multi-master (bidirectional) deployments, where you have two application instances, each one writing to a different universe.
 - Active-active single-master deployments in which a single master application can freely write (without coordinating with YugabyteDB for failover or switchover) to either universe, because both accept writes.
 - Non-transactional SQL. That is, SQL without write-order guarantees and without transactional atomicity guarantees.
 - CQL
