@@ -12,12 +12,12 @@ import com.yugabyte.yba.v2.client.ApiException;
 import com.yugabyte.yba.v2.client.ApiResponse;
 import com.yugabyte.yba.v2.client.Configuration;
 import com.yugabyte.yba.v2.client.api.AuthenticationApi;
-import com.yugabyte.yba.v2.client.models.GroupMappingSpec;
-import com.yugabyte.yba.v2.client.models.GroupMappingSpec.TypeEnum;
-import com.yugabyte.yba.v2.client.models.ResourceDefinitionSpec;
-import com.yugabyte.yba.v2.client.models.ResourceDefinitionSpec.ResourceTypeEnum;
-import com.yugabyte.yba.v2.client.models.ResourceGroupSpec;
-import com.yugabyte.yba.v2.client.models.RoleResourceDefinitionSpec;
+import com.yugabyte.yba.v2.client.models.AuthGroupToRolesMapping;
+import com.yugabyte.yba.v2.client.models.AuthGroupToRolesMapping.TypeEnum;
+import com.yugabyte.yba.v2.client.models.ResourceDefinition;
+import com.yugabyte.yba.v2.client.models.ResourceDefinition.ResourceTypeEnum;
+import com.yugabyte.yba.v2.client.models.ResourceGroup;
+import com.yugabyte.yba.v2.client.models.RoleResourceDefinition;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.rbac.Permission;
@@ -80,16 +80,19 @@ public class AuthenticationGroupMappingApisTest extends FakeDBApplication {
     GroupMappingInfo info1 = GroupMappingInfo.create(cUUID, "test-group-2", GroupType.LDAP);
     info1.setRoleUUID(Role.get(cUUID, "Admin").getRoleUUID());
     info1.save();
-    ApiResponse<List<GroupMappingSpec>> result = api.listMappingsWithHttpInfo(cUUID);
+    assertNotNull(info0.getCreationDate());
+    assertNotNull(info1.getCreationDate());
+    ApiResponse<List<AuthGroupToRolesMapping>> result = api.listMappingsWithHttpInfo(cUUID);
     assertEquals(OK, result.getStatusCode());
-    List<GroupMappingSpec> res = result.getData();
+    List<AuthGroupToRolesMapping> res = result.getData();
     assertEquals(2, res.size());
 
-    GroupMappingSpec res0 = res.get(0), res1 = res.get(1);
+    AuthGroupToRolesMapping res0 = res.get(0), res1 = res.get(1);
 
     assertEquals(1, res0.getRoleResourceDefinitions().size());
     assertEquals(info0.getIdentifier(), res0.getGroupIdentifier());
     assertEquals(info0.getRoleUUID(), res0.getRoleResourceDefinitions().get(0).getRoleUuid());
+    assertNotNull(res0.getCreationDate());
     assertEquals(
         Role.get(cUUID, "ConnectOnly").getRoleUUID(),
         res0.getRoleResourceDefinitions().get(0).getRoleUuid());
@@ -118,29 +121,29 @@ public class AuthenticationGroupMappingApisTest extends FakeDBApplication {
             RoleType.Custom,
             new HashSet<>(Arrays.asList(permission1, permission2)));
 
-    List<GroupMappingSpec> mappingSpecList = new ArrayList<>();
-    GroupMappingSpec ldapSpec = new GroupMappingSpec();
-    GroupMappingSpec oidcSpec = new GroupMappingSpec();
+    List<AuthGroupToRolesMapping> mappingSpecList = new ArrayList<>();
+    AuthGroupToRolesMapping ldapSpec = new AuthGroupToRolesMapping();
+    AuthGroupToRolesMapping oidcSpec = new AuthGroupToRolesMapping();
 
     ldapSpec.setGroupIdentifier("test-group-ldap");
     ldapSpec.setType(TypeEnum.LDAP);
-    RoleResourceDefinitionSpec rrdSystemRole = new RoleResourceDefinitionSpec();
+    RoleResourceDefinition rrdSystemRole = new RoleResourceDefinition();
     rrdSystemRole.setRoleUuid(Role.get(cUUID, "Admin").getRoleUUID());
     ldapSpec.setRoleResourceDefinitions(Arrays.asList(rrdSystemRole));
 
     oidcSpec.setGroupIdentifier("test-group-oidc");
     oidcSpec.setType(TypeEnum.OIDC);
-    RoleResourceDefinitionSpec rrdCustomRole = new RoleResourceDefinitionSpec();
+    RoleResourceDefinition rrdCustomRole = new RoleResourceDefinition();
     rrdCustomRole.setRoleUuid(customRole.getRoleUUID());
-    ResourceDefinitionSpec rd1 =
-        new ResourceDefinitionSpec().allowAll(true).resourceType(ResourceTypeEnum.UNIVERSE);
-    ResourceDefinitionSpec rd2 =
-        new ResourceDefinitionSpec()
+    ResourceDefinition rd1 =
+        new ResourceDefinition().allowAll(true).resourceType(ResourceTypeEnum.UNIVERSE);
+    ResourceDefinition rd2 =
+        new ResourceDefinition()
             .allowAll(false)
             .resourceType(ResourceTypeEnum.OTHER)
             .resourceUuidSet(Arrays.asList(cUUID));
     rrdCustomRole.setResourceGroup(
-        new ResourceGroupSpec().resourceDefinitionSet(Arrays.asList(rd1, rd2)));
+        new ResourceGroup().resourceDefinitionSet(Arrays.asList(rd1, rd2)));
     oidcSpec.setRoleResourceDefinitions(Arrays.asList(rrdSystemRole, rrdCustomRole));
 
     mappingSpecList.add(ldapSpec);
@@ -149,13 +152,13 @@ public class AuthenticationGroupMappingApisTest extends FakeDBApplication {
     ApiResponse<Void> resUpdate = api.updateGroupMappingsWithHttpInfo(cUUID, mappingSpecList);
     assertEquals(OK, resUpdate.getStatusCode());
 
-    ApiResponse<List<GroupMappingSpec>> resList = api.listMappingsWithHttpInfo(cUUID);
+    ApiResponse<List<AuthGroupToRolesMapping>> resList = api.listMappingsWithHttpInfo(cUUID);
     assertEquals(OK, resList.getStatusCode());
 
-    List<GroupMappingSpec> specList = resList.getData();
+    List<AuthGroupToRolesMapping> specList = resList.getData();
     assertEquals(2, specList.size());
 
-    GroupMappingSpec ldapGroupInfo = specList.get(0);
+    AuthGroupToRolesMapping ldapGroupInfo = specList.get(0);
     assertEquals("test-group-ldap", ldapGroupInfo.getGroupIdentifier());
     assertEquals(TypeEnum.LDAP, ldapGroupInfo.getType());
     assertEquals(2, ldapGroupInfo.getRoleResourceDefinitions().size());
@@ -164,7 +167,7 @@ public class AuthenticationGroupMappingApisTest extends FakeDBApplication {
         Role.get(cUUID, "Admin").getRoleUUID(),
         ldapGroupInfo.getRoleResourceDefinitions().get(1).getRoleUuid());
 
-    GroupMappingSpec oidcGroupInfo = specList.get(1);
+    AuthGroupToRolesMapping oidcGroupInfo = specList.get(1);
     assertEquals("test-group-oidc", oidcGroupInfo.getGroupIdentifier());
     assertEquals(TypeEnum.OIDC, oidcGroupInfo.getType());
     assertEquals(3, oidcGroupInfo.getRoleResourceDefinitions().size());
@@ -200,14 +203,14 @@ public class AuthenticationGroupMappingApisTest extends FakeDBApplication {
   public void testBadInput() throws Exception {
     RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "false");
     AuthenticationApi api = new AuthenticationApi();
-    List<GroupMappingSpec> mappingSpecList = new ArrayList<>();
-    GroupMappingSpec ldapSpec = new GroupMappingSpec();
+    List<AuthGroupToRolesMapping> mappingSpecList = new ArrayList<>();
+    AuthGroupToRolesMapping ldapSpec = new AuthGroupToRolesMapping();
 
     ldapSpec.setGroupIdentifier("test-group-ldap");
     ldapSpec.setType(TypeEnum.LDAP);
-    RoleResourceDefinitionSpec rrdSystemRole = new RoleResourceDefinitionSpec();
+    RoleResourceDefinition rrdSystemRole = new RoleResourceDefinition();
     rrdSystemRole.setRoleUuid(Role.get(cUUID, "Admin").getRoleUUID());
-    List<RoleResourceDefinitionSpec> rrdList = new ArrayList<>();
+    List<RoleResourceDefinition> rrdList = new ArrayList<>();
     rrdList.add(rrdSystemRole);
     rrdList.add(rrdSystemRole);
     ldapSpec.setRoleResourceDefinitions(rrdList);
@@ -269,24 +272,24 @@ public class AuthenticationGroupMappingApisTest extends FakeDBApplication {
 
     V365__Migrate_Group_Mappings.migrateGroupMappings();
 
-    ApiResponse<List<GroupMappingSpec>> resList = api.listMappingsWithHttpInfo(cUUID);
+    ApiResponse<List<AuthGroupToRolesMapping>> resList = api.listMappingsWithHttpInfo(cUUID);
     assertEquals(OK, resList.getStatusCode());
 
-    List<GroupMappingSpec> specList = resList.getData();
+    List<AuthGroupToRolesMapping> specList = resList.getData();
     assertEquals(6, specList.size());
 
     List<UUID> ldapRolesList =
         specList.stream()
             .filter(groupMapping -> groupMapping.getType().equals(TypeEnum.LDAP))
             .flatMap(groupMapping -> groupMapping.getRoleResourceDefinitions().stream())
-            .map(RoleResourceDefinitionSpec::getRoleUuid)
+            .map(RoleResourceDefinition::getRoleUuid)
             .collect(Collectors.toList());
 
     List<UUID> oidcRolesList =
         specList.stream()
             .filter(groupMapping -> groupMapping.getType().equals(TypeEnum.OIDC))
             .flatMap(groupMapping -> groupMapping.getRoleResourceDefinitions().stream())
-            .map(RoleResourceDefinitionSpec::getRoleUuid)
+            .map(RoleResourceDefinition::getRoleUuid)
             .collect(Collectors.toList());
 
     // Make sure response contains all assigned roles.
@@ -294,9 +297,10 @@ public class AuthenticationGroupMappingApisTest extends FakeDBApplication {
     assertTrue(oidcRolesList.containsAll(oidcRoles));
 
     // Make sure all role bindings have resource groups.
-    for (GroupMappingSpec groupMapping : specList) {
+    for (AuthGroupToRolesMapping groupMapping : specList) {
       assertNotNull(groupMapping.getRoleResourceDefinitions());
-      for (RoleResourceDefinitionSpec rrds : groupMapping.getRoleResourceDefinitions()) {
+      assertNotNull(groupMapping.getCreationDate());
+      for (RoleResourceDefinition rrds : groupMapping.getRoleResourceDefinitions()) {
         assertNotNull(rrds.getRoleUuid());
         // We don't add role bindings for ConnectOnly Role.
         if (!Role.get(cUUID, rrds.getRoleUuid()).getName().equals("ConnectOnly")) {

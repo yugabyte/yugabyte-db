@@ -6,8 +6,8 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.NOT_FOUND;
 
 import api.v2.mappers.RoleResourceDefinitionMapper;
-import api.v2.models.GroupMappingSpec;
-import api.v2.models.GroupMappingSpec.TypeEnum;
+import api.v2.models.AuthGroupToRolesMapping;
+import api.v2.models.AuthGroupToRolesMapping.TypeEnum;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -23,6 +23,7 @@ import com.yugabyte.yw.models.rbac.Role.RoleType;
 import com.yugabyte.yw.models.rbac.RoleBinding;
 import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
 import io.ebean.annotation.Transactional;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -37,18 +38,19 @@ public class AuthenticationHandler {
   @Inject TokenAuthenticator tokenAuthenticator;
   @Inject RoleBindingUtil roleBindingUtil;
 
-  public List<GroupMappingSpec> listMappings(UUID cUUID) throws Exception {
+  public List<AuthGroupToRolesMapping> listMappings(UUID cUUID) throws Exception {
 
     checkRuntimeConfig();
 
     List<GroupMappingInfo> groupInfoList =
         GroupMappingInfo.find.query().where().eq("customer_uuid", cUUID).findList();
-    List<GroupMappingSpec> specList = new ArrayList<GroupMappingSpec>();
+    List<AuthGroupToRolesMapping> groupMappingList = new ArrayList<AuthGroupToRolesMapping>();
     for (GroupMappingInfo info : groupInfoList) {
-      GroupMappingSpec spec =
-          new GroupMappingSpec()
+      AuthGroupToRolesMapping groupMapping =
+          new AuthGroupToRolesMapping()
               .groupIdentifier(info.getIdentifier())
               .type(TypeEnum.valueOf(info.getType().toString()))
+              .creationDate(info.getCreationDate().toInstant().atOffset(ZoneOffset.UTC))
               .uuid(info.getGroupUUID());
 
       List<RoleResourceDefinition> roleResourceDefinitions = new ArrayList<>();
@@ -68,17 +70,17 @@ public class AuthenticationHandler {
       } else {
         roleResourceDefinitions.add(rrd);
       }
-      spec.setRoleResourceDefinitions(
+      groupMapping.setRoleResourceDefinitions(
           RoleResourceDefinitionMapper.INSTANCE.toV2RoleResourceDefinitionList(
               roleResourceDefinitions));
-      specList.add(spec);
+      groupMappingList.add(groupMapping);
     }
-    return specList;
+    return groupMappingList;
   }
 
   @Transactional
   public void updateGroupMappings(
-      Http.Request request, UUID cUUID, List<GroupMappingSpec> groupMappingSpec) {
+      Http.Request request, UUID cUUID, List<AuthGroupToRolesMapping> AuthGroupToRolesMapping) {
     boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(request);
     if (!isSuperAdmin) {
       throw new PlatformServiceException(BAD_REQUEST, "Only SuperAdmin can create group mappings!");
@@ -86,7 +88,7 @@ public class AuthenticationHandler {
 
     checkRuntimeConfig();
 
-    for (GroupMappingSpec mapping : groupMappingSpec) {
+    for (AuthGroupToRolesMapping mapping : AuthGroupToRolesMapping) {
       GroupMappingInfo mappingInfo =
           GroupMappingInfo.find
               .query()

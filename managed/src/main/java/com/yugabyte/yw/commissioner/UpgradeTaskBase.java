@@ -681,18 +681,17 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         }
       }
 
-      if (context.postAction != null) {
-        nodeList.forEach(context.postAction);
-      }
       // Run post node upgrade hooks
       createHookTriggerTasks(nodeList, false, true);
       createSetNodeStateTasks(nodeList, NodeState.Live).setSubTaskGroupType(subGroupType);
-
       for (NodeDetails node : nodeList) {
         createSleepAfterStartupTask(
             taskParams().getUniverseUUID(),
             processTypes,
             SetNodeState.getStartKey(node.getNodeName(), nodeState));
+      }
+      if (context.postAction != null) {
+        nodeList.forEach(context.postAction);
       }
     }
 

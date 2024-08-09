@@ -1700,7 +1700,7 @@ public class XClusterConfigController extends AuthenticatedController {
     // If the certs_for_cdc_dir gflag is not set, and it is required, tell the user to set it
     // before running this task.
     try {
-      if (XClusterConfigTaskBase.getSourceCertificateIfNecessary(sourceUniverse, targetUniverse)
+      if (XClusterConfigTaskBase.getOriginCertficateIfNecessary(sourceUniverse, targetUniverse)
               .isPresent()
           && targetUniverse.getUniverseDetails().getSourceRootCertDirPath() == null) {
         throw new PlatformServiceException(
@@ -1708,8 +1708,8 @@ public class XClusterConfigController extends AuthenticatedController {
             String.format(
                 "The %s gflag is required, but it is not set. Please use `Edit Flags` "
                     + "feature to set %s gflag to %s on the target universe",
-                XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG,
-                XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG,
+                XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG,
+                XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG,
                 XClusterConfigTaskBase.getProducerCertsDir(
                     targetUniverse.getUniverseDetails().getPrimaryCluster().userIntent.provider)));
       }

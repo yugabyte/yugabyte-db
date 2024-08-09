@@ -427,7 +427,6 @@ DELETE  /customers/:cUUID/universes/:uniUUID/pitr_config/:pUUID                 
 POST    /customers/:cUUID/backups                                              com.yugabyte.yw.controllers.BackupsController.createBackupYb(cUUID: java.util.UUID, request: Request)
 POST    /customers/:customerUUID/universes/:universeUUID/universe_backup       com.yugabyte.yw.controllers.BackupsController.backupUniverse(customerUUID: java.util.UUID, universeUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/create_backup_schedule                               com.yugabyte.yw.controllers.BackupsController.createBackupSchedule(cUUID: java.util.UUID, request: Request)
-POST    /customers/:cUUID/create_backup_schedule_async                         com.yugabyte.yw.controllers.BackupsController.createBackupScheduleAsync(cUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/backups/page                                         com.yugabyte.yw.controllers.BackupsController.pageBackupList(cUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/restore                                              com.yugabyte.yw.controllers.BackupsController.restoreBackup(cUUID: java.util.UUID, request: Request)
 GET     /customers/:cUUID/backups/:backupUUID                                  com.yugabyte.yw.controllers.BackupsController.get(cUUID: java.util.UUID, backupUUID: java.util.UUID)
@@ -441,6 +440,12 @@ POST    /customers/:cUUID/restore/page                                         c
 DELETE  /customers/:cUUID/schedules/:sUUID/delete                              com.yugabyte.yw.controllers.ScheduleController.deleteYb(cUUID: java.util.UUID, sUUID: java.util.UUID, request: Request)
 GET     /customers/:cUUID/backups/:backupUUID/list_increments                  com.yugabyte.yw.controllers.BackupsController.listIncrementalBackups(cUUID: java.util.UUID, backupUUID: java.util.UUID)
 POST    /customers/:cUUID/restore/preflight                                    com.yugabyte.yw.controllers.BackupsController.restorePreflight(cUUID: java.util.UUID, request: Request)
+
+# New Backup Schedule Create/Edit/Delete/Toggle APIs
+POST      /customers/:cUUID/create_backup_schedule_async                                          com.yugabyte.yw.controllers.BackupsController.createBackupScheduleAsync(cUUID: java.util.UUID, request: Request)
+DELETE    /customers/:cUUID/universes/:uniUUID/schedules/:sUUID/delete_backup_schedule_async      com.yugabyte.yw.controllers.ScheduleController.deleteBackupScheduleAsync(cUUID: java.util.UUID, uniUUID: java.util.UUID, sUUID: java.util.UUID, request: Request)
+PUT       /customers/:cUUID/universes/:uniUUID/schedules/:sUUID/edit_backup_schedule_async        com.yugabyte.yw.controllers.ScheduleController.editBackupScheduleAsync(cUUID: java.util.UUID, uniUUID: java.util.UUID, sUUID: java.util.UUID, request: Request)
+PUT       /customers/:cUUID/universes/:uniUUID/schedules/:sUUID/pause_resume                      com.yugabyte.yw.controllers.ScheduleController.toggleSchedule(cUUID: java.util.UUID, uniUUID: java.util.UUID, sUUID: java.util.UUID, request: Request)
 
 # Task History API
 GET    /customers/:cUUID/tasks                                                 com.yugabyte.yw.controllers.CustomerTaskController.list(cUUID: java.util.UUID)

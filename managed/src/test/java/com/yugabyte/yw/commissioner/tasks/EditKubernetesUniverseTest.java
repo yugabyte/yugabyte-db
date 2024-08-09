@@ -103,7 +103,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
     this.editUniverse =
         new EditKubernetesUniverse(
-            mockBaseTaskDependencies, null, mockOperatorStatusUpdaterFactory);
+            mockBaseTaskDependencies, null, mockOperatorStatusUpdaterFactory, mockYbcManager);
   }
 
   private void setup() {

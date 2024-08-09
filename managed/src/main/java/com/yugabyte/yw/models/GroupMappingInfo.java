@@ -4,16 +4,20 @@ package com.yugabyte.yw.models;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.rbac.Role;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.EnumValue;
 import io.ebean.annotation.Transactional;
+import io.ebean.annotation.WhenCreated;
+import io.swagger.annotations.ApiModelProperty;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.util.Date;
 import java.util.UUID;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -41,6 +45,12 @@ public class GroupMappingInfo extends Model {
 
   @Column(name = "type", nullable = false)
   private GroupType type;
+
+  @Column(name = "creation_date", nullable = false)
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  @ApiModelProperty(value = "Group mapping creation time", example = "2022-12-12T13:07:18Z")
+  @WhenCreated
+  private Date creationDate;
 
   public enum GroupType {
     @EnumValue("LDAP")

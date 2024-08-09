@@ -1,4 +1,4 @@
-title: ResourceDefinitionSpec
+title: ResourceDefinition
 description: Resource definition containing the resource type and resource set.
 type: object
 required:

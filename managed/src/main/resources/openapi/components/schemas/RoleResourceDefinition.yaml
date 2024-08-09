@@ -1,5 +1,5 @@
-title: RoleResourceDefinitionSpec.
-description: Defines the association of Role to Resource Groups. Part of GroupMappingSpec.
+title: RoleResourceDefinition.
+description: Defines the association of Role to Resource Groups. Part of AuthGroupToRolesMapping.
 type: object
 required:
   - role_uuid
@@ -9,4 +9,4 @@ properties:
     type: string
     format: uuid
   resource_group:
-    $ref: "./ResourceGroupSpec.yaml"
+    $ref: "./ResourceGroup.yaml"

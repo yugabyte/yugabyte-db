@@ -103,6 +103,11 @@ a {
 /******* Variables for Color Theme Switcher **********/
 .td-breadcrumbs {
   margin-bottom: 20px;
+  padding-right: 120px;
+  @media(max-width:991px){
+    padding-right: 0;
+
+  }
 
   &:has(.breadcrumb-item:only-child) {
     height: 0;
@@ -161,7 +166,8 @@ a {
 @media (min-width: 992px) {
   .td-main main {
     padding-top: 116px;
-    margin-top: 32px;
+    //margin-top: 32px;
+    margin-top: 52px;
   }
 }
 
@@ -451,10 +457,11 @@ body:not(.td-home) .td-main main {
 
     @media (max-width: 991px) {
       margin-top: 0;
+      margin-bottom: 72px;
     }
 
     @media (min-width: 991px) {
-      margin: 20px 0;
+      margin: 20px 0 72px;
     }
   }
 }

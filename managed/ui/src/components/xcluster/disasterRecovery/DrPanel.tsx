@@ -229,6 +229,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
         <EnableDrPrompt
           onConfigureDrButtonClick={openCreateConfigModal}
           isDisabled={isDrCreationDisabled}
+          universeUUID={currentUniverseUuid}
         />
         {isCreateConfigModalOpen && (
           <CreateConfigModal

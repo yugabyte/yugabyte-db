@@ -1101,4 +1101,17 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     } while (stopwatch.elapsed().compareTo(timeout) < 0);
     throw new RuntimeException("Timed-out waiting for next task to start");
   }
+
+  protected void verifyNodeModifications(Universe universe, int added, int removed) {
+    assertEquals(
+        added,
+        universe.getUniverseDetails().nodeDetailsSet.stream()
+            .filter(n -> n.state == NodeDetails.NodeState.ToBeAdded)
+            .count());
+    assertEquals(
+        removed,
+        universe.getUniverseDetails().nodeDetailsSet.stream()
+            .filter(n -> n.state == NodeDetails.NodeState.ToBeRemoved)
+            .count());
+  }
 }

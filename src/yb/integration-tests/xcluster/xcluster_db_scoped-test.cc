@@ -19,7 +19,6 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
 
-DECLARE_bool(enable_xcluster_api_v2);
 DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
 DECLARE_string(certs_for_cdc_dir);
 DECLARE_bool(disable_xcluster_db_scoped_new_table_processing);
@@ -37,7 +36,6 @@ class XClusterDBScopedTest : public XClusterYsqlTestBase {
 
   virtual void SetUp() override {
     XClusterYsqlTestBase::SetUp();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_xcluster_api_v2) = true;
   }
 
   Result<master::GetXClusterStreamsResponsePB> GetXClusterStreams(

@@ -18,6 +18,7 @@ import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
 import com.yugabyte.yw.commissioner.tasks.ReprovisionNode;
 import com.yugabyte.yw.commissioner.tasks.params.IProviderTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.forms.AuditLogConfigParams;
@@ -47,6 +48,7 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.RestoreKeyspace;
+import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -80,6 +82,7 @@ public class CustomerTaskManager {
 
   private Commissioner commissioner;
   private YBClientService ybService;
+  private YbcManager ybcManager;
 
   public static final Logger LOG = LoggerFactory.getLogger(CustomerTaskManager.class);
   private static final List<TaskType> LOAD_BALANCER_TASK_TYPES =
@@ -91,9 +94,11 @@ public class CustomerTaskManager {
   private static final String ALTER_LOAD_BALANCER = "alterLoadBalancer";
 
   @Inject
-  public CustomerTaskManager(YBClientService ybService, Commissioner commissioner) {
+  public CustomerTaskManager(
+      YBClientService ybService, Commissioner commissioner, YbcManager ybcManager) {
     this.ybService = ybService;
     this.commissioner = commissioner;
+    this.ybcManager = ybcManager;
   }
 
   // Invoked if the task is in incomplete state.
@@ -329,12 +334,24 @@ public class CustomerTaskManager {
                 handlePendingTask(customerTask, taskInfo);
               });
 
-      // Change the DeleteInProgress backups state to QueuedForDeletion
       for (Customer customer : Customer.getAll()) {
+        // Change the DeleteInProgress backups state to QueuedForDeletion
         Backup.findAllBackupWithState(
                 customer.getUuid(), Arrays.asList(Backup.BackupState.DeleteInProgress))
             .stream()
             .forEach(b -> b.transitionState(Backup.BackupState.QueuedForDeletion));
+        // Update intermediate schedules to Error state and clear running state
+        Schedule.getAllByCustomerUUIDAndType(customer.getUuid(), TaskType.CreateBackup).stream()
+            .forEach(
+                s -> {
+                  if (s.isRunningState()) {
+                    s.setRunningState(false /* runningState */);
+                  }
+                  if (s.getStatus().isIntermediateState()) {
+                    s.setStatus(Schedule.State.Error);
+                  }
+                  s.save();
+                });
       }
     } catch (Exception e) {
       LOG.error("Encountered error failing pending tasks", e);
@@ -530,8 +547,7 @@ public class CustomerTaskManager {
         if (universe.isYbcEnabled()) {
           nodeTaskParams.setEnableYbc(true);
           nodeTaskParams.setYbcInstalled(true);
-          nodeTaskParams.setYbcSoftwareVersion(
-              universe.getUniverseDetails().getYbcSoftwareVersion());
+          nodeTaskParams.setYbcSoftwareVersion(ybcManager.getStableYbcVersion());
         }
         if (taskType == TaskType.MasterFailover) {
           nodeTaskParams.azUuid = UUID.fromString(oldTaskParams.get("azUuid").textValue());

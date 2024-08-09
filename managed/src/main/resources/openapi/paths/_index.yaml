@@ -17,7 +17,7 @@
       - Authentication
     responses:
       '200':
-        $ref: "../components/responses/GroupMappingResp.yaml"
+        $ref: "../components/responses/AuthGroupToRolesMappingResp.yaml"
       '400':
         description: Invalid input
       '500':
@@ -42,7 +42,7 @@
     tags:
       - Authentication
     requestBody:
-      $ref: "../components/requestBodies/GroupMappingReq.yaml"
+      $ref: "../components/requestBodies/AuthGroupToRolesMappingReq.yaml"
     responses:
       '200':
         description: Operation Successfull
