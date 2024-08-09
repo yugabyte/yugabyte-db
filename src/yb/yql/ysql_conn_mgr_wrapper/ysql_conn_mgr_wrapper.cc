@@ -112,9 +112,11 @@ Status YsqlConnMgrWrapper::Start() {
   auto ysql_conn_mgr_executable = GetYsqlConnMgrExecutablePath();
   RETURN_NOT_OK(CheckExecutableValid(ysql_conn_mgr_executable));
 
-  if (FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_random_attach &&
-      FLAGS_ysql_conn_mgr_min_conns_per_db < 3) {
-    FLAGS_ysql_conn_mgr_min_conns_per_db = 3;
+  if (FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_random_attach) {
+    LOG(INFO) << "Warmup and random allotment of server connections is enabled in "
+    "ysql connection manager";
+    if (FLAGS_ysql_conn_mgr_min_conns_per_db < 3)
+      FLAGS_ysql_conn_mgr_min_conns_per_db = 3;
   }
 
   std::vector<std::string> argv{
