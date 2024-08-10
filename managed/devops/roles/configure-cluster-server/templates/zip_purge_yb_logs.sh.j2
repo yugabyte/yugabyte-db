@@ -63,6 +63,7 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
+USER=${USER:-$(whoami)}
 if [[ "$(id -u)" != "0" && "$USER" != "yugabyte" ]]; then
   echo "This script must be run as root or yugabyte" >&2
   exit 1
