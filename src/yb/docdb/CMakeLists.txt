@@ -78,6 +78,8 @@ set(DOCDB_SRCS
         transaction_dump.cc
         transaction_status_cache.cc
         local_waiting_txn_registry.cc
+        vector_index.cc
+        vector_index_read.cc
         vector_index_update.cc
         wait_queue.cc
         )

@@ -227,6 +227,65 @@ Status CheckNumberOfBytes(size_t found, size_t expected, const Name& name) {
                        name, found, expected);
 }
 
+struct FloatReader {
+  float operator()(const uint8_t*& input) const {
+    return bit_cast<float>(Read<uint32_t, VectorEndian>(input));
+  }
+};
+
+struct UInt64Reader {
+  uint64_t operator()(const uint8_t*& input) const {
+    return Read<uint64_t, VectorEndian>(input);
+  }
+};
+
+template <class Vector, class Reader>
+Result<Vector> DoDecodeVectorBody(
+    Slice slice, ValueEntryType value_type, const Reader& reader) {
+  size_t size = VERIFY_RESULT((CheckedRead<uint32_t, VectorEndian>(slice)));
+  RETURN_NOT_OK(CheckNumberOfBytes(
+      slice.size(), size * sizeof(typename Vector::value_type), value_type));
+  Vector result(size);
+
+  auto* input = slice.data();
+  for (size_t i = 0; i != size; ++i) {
+    result[i] = reader(input);
+  }
+
+  return result;
+}
+
+template <class EntryType>
+Status ConsumeEntryType(Slice& slice, EntryType entry_type) {
+  if (slice.TryConsumeByte(static_cast<char>(entry_type))) {
+    return Status::OK();
+  }
+  if (slice.empty()) {
+    return STATUS_FORMAT(Corruption, "Empty slice while expecting $0", entry_type);
+  }
+  return STATUS_FORMAT(Corruption, "Invalid entry type $0 while $1 expected",
+                       static_cast<EntryType>(slice[0]), entry_type);
+}
+
+template <class Vector, class Reader>
+Result<Vector> DoDecodeVector(
+    Slice slice, ValueEntryType value_type, const Reader& reader) {
+  RETURN_NOT_OK(ConsumeValueEntryType(slice, value_type));
+  return DoDecodeVectorBody<Vector>(slice, value_type, reader);
+}
+
+template <class Vector, class Writer>
+void AppendEncodedVector(
+    ValueEntryType value_type, const Vector& v, ValueBuffer& buffer, const Writer& writer) {
+  auto* out = buffer.GrowByAtLeast(
+      1 + sizeof(uint32_t) + v.size() * sizeof(typename Vector::value_type));
+  *(out++) = static_cast<char>(value_type);
+  Write<uint32_t, VectorEndian>(out, narrow_cast<uint32_t>(v.size()));
+  for (auto entry : v) {
+    writer(out, entry);
+  }
+}
+
 } // anonymous namespace
 
 const PrimitiveValue PrimitiveValue::kInvalid = PrimitiveValue(ValueEntryType::kInvalid);
@@ -1353,14 +1412,10 @@ Status PrimitiveValue::DecodeFromValue(const Slice& rocksdb_slice) {
     }
 
     case ValueEntryType::kFloatVector:
-      return DecodeVector(slice, value_type, float_vector_, [](auto*& input) {
-        return bit_cast<float>(Read<uint32_t, VectorEndian>(input));
-      });
+      return DecodeVector(slice, value_type, float_vector_, FloatReader());
 
     case ValueEntryType::kUInt64Vector:
-      return DecodeVector(slice, value_type, uint64_vector_, [](auto*& input) {
-        return Read<uint64_t, VectorEndian>(input);
-      });
+      return DecodeVector(slice, value_type, uint64_vector_, UInt64Reader());
 
     case ValueEntryType::kInvalid: [[fallthrough]];
     case ValueEntryType::kPackedRowV1: [[fallthrough]];
@@ -1375,16 +1430,9 @@ Status PrimitiveValue::DecodeFromValue(const Slice& rocksdb_slice) {
 template <class Vector, class Reader>
 Status PrimitiveValue::DecodeVector(
     Slice slice, ValueEntryType value_type, Vector*& vector, const Reader& reader) {
-  size_t size = VERIFY_RESULT((CheckedRead<uint32_t, VectorEndian>(slice)));
-  RETURN_NOT_OK(CheckNumberOfBytes(
-      slice.size(), size * sizeof(typename Vector::value_type), value_type));
+  auto temp = VERIFY_RESULT(DoDecodeVectorBody<Vector>(slice, value_type, reader));
   type_ = value_type;
-  vector = new Vector(size);
-
-  auto* input = slice.data();
-  for (size_t i = 0; i != size; ++i) {
-    (*vector)[i] = reader(input);
-  }
+  vector = new Vector(std::move(temp));
   return Status::OK();
 }
 
@@ -3119,18 +3167,6 @@ bool operator==(const KeyEntryValue& lhs, const KeyEntryValue& rhs) {
   FATAL_INVALID_ENUM_VALUE(KeyEntryType, lhs.type_);
 }
 
-template <class Vector, class Writer>
-void PrimitiveValue::AppendEncodedVector(
-    ValueEntryType value_type, const Vector& v, ValueBuffer& buffer, const Writer& writer) {
-  auto* out = buffer.GrowByAtLeast(
-      1 + sizeof(uint32_t) + v.size() * sizeof(typename Vector::value_type));
-  *(out++) = static_cast<char>(value_type);
-  Write<uint32_t, VectorEndian>(out, narrow_cast<uint32_t>(v.size()));
-  for (auto entry : v) {
-    writer(out, entry);
-  }
-}
-
 void PrimitiveValue::AppendEncodedTo(const FloatVector& v, ValueBuffer& buffer) {
   AppendEncodedVector(
       dockv::ValueEntryType::kFloatVector, v, buffer, [](auto*& out, float entry) {
@@ -3145,6 +3181,16 @@ void PrimitiveValue::AppendEncodedTo(const UInt64Vector& v, ValueBuffer& buffer)
   });
 }
 
+Result<FloatVector> PrimitiveValue::DecodeFloatVector(Slice input) {
+  return DoDecodeVector<FloatVector>(
+      input, dockv::ValueEntryType::kFloatVector, FloatReader());
+}
+
+Result<UInt64Vector> PrimitiveValue::DecodeUInt64Vector(Slice input) {
+  return DoDecodeVector<UInt64Vector>(
+      input, dockv::ValueEntryType::kUInt64Vector, UInt64Reader());
+}
+
 Slice PrimitiveValue::NullSlice() {
   static const char kBuffer = ValueEntryTypeAsChar::kNullLow;
   return Slice(&kBuffer, 1);
@@ -3153,6 +3199,14 @@ Slice PrimitiveValue::NullSlice() {
 Slice PrimitiveValue::TombstoneSlice() {
   static const char kBuffer = ValueEntryTypeAsChar::kTombstone;
   return Slice(&kBuffer, 1);
+}
+
+Status ConsumeKeyEntryType(Slice& slice, KeyEntryType key_entry_type) {
+  return ConsumeEntryType(slice, key_entry_type);
+}
+
+Status ConsumeValueEntryType(Slice& slice, ValueEntryType value_entry_type) {
+  return ConsumeEntryType(slice, value_entry_type);
 }
 
 }  // namespace yb::dockv

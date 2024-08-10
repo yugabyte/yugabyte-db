@@ -636,6 +636,11 @@ bool IntentAwareIterator::IsRegularEntryOrderedBeforeResolvedIntent() const {
       regular_entry_.key, resolved_intent_sub_doc_key_encoded_.AsSlice());
 }
 
+Result<const FetchedEntry&> IntentAwareIterator::FetchNext() {
+  Next();
+  return Fetch();
+}
+
 Result<const FetchedEntry&> IntentAwareIterator::Fetch() {
 #ifndef NDEBUG
   need_fetch_ = false;

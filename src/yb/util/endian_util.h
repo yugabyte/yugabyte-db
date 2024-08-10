@@ -49,4 +49,13 @@ Result<T> CheckedRead(Slice& slice) {
   return Load<T, Endian>(ptr);
 }
 
+template <class T, class Endian>
+Result<T> CheckedReadFull(Slice& slice) {
+  auto result = CheckedRead<T, Endian>(slice);
+  if (result.ok() && !slice.empty()) {
+    return STATUS_FORMAT(Corruption, "Extra data: $0", slice.ToDebugHexString());
+  }
+  return result;
+}
+
 }  // namespace yb

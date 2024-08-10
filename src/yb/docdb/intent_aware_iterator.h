@@ -106,6 +106,9 @@ class IntentAwareIterator final : public IntentAwareIteratorIf {
   // contain the DocHybridTime but is returned separately and optionally.
   Result<const FetchedEntry&> Fetch() override;
 
+  // Utility function to execute Next and retrieve result via Fetch in one call.
+  Result<const FetchedEntry&> FetchNext();
+
   const ReadHybridTime& read_time() const override { return read_time_; }
   Result<HybridTime> RestartReadHt() const override;
 

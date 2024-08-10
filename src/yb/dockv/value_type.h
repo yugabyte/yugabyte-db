@@ -285,6 +285,10 @@ inline ValueEntryType ConsumeValueEntryType(Slice* slice) {
                         : DecodeValueEntryType(slice->consume_byte());
 }
 
+inline ValueEntryType ConsumeValueEntryType(Slice& slice) {
+  return ConsumeValueEntryType(&slice);
+}
+
 inline KeyEntryType DecodeKeyEntryType(const Slice& value) {
   return value.empty() ? KeyEntryType::kInvalid : static_cast<KeyEntryType>(value.data()[0]);
 }

@@ -248,6 +248,9 @@ class PrimitiveValue {
   static void AppendEncodedTo(const FloatVector& v, ValueBuffer& out);
   static void AppendEncodedTo(const UInt64Vector& v, ValueBuffer& out);
 
+  static Result<FloatVector> DecodeFloatVector(Slice input);
+  static Result<UInt64Vector> DecodeUInt64Vector(Slice input);
+
   template <class T>
   static ValueBuffer Encoded(const T& t) {
     ValueBuffer value;
@@ -305,10 +308,6 @@ class PrimitiveValue {
   Status DecodeVector(
       Slice slice, ValueEntryType value_type, Vector*& vector, const Reader& reader);
 
-  template <class Vector, class Writer>
-  static void AppendEncodedVector(
-      ValueEntryType value_type, const Vector& v, ValueBuffer& out, const Writer& writer);
-
   // This is used in both the move constructor and the move assignment operator. Assumes this object
   // has not been constructed, or that the destructor has just been called.
   void MoveFrom(PrimitiveValue* other);
@@ -336,5 +335,8 @@ void AppendEncodedValue(const QLValuePB& value, std::string* out);
 void AppendEncodedValue(const LWQLValuePB& value, ValueBuffer* out);
 size_t EncodedValueSize(const QLValuePB& value);
 size_t EncodedValueSize(const LWQLValuePB& value);
+
+Status ConsumeKeyEntryType(Slice& slice, KeyEntryType key_entry_type);
+Status ConsumeValueEntryType(Slice& slice, ValueEntryType value_entry_type);
 
 }  // namespace yb::dockv

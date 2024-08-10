@@ -72,37 +72,10 @@ auto VectorIndexUpdate<CoordinateType>::GetLevel(VertexId id, VectorIndexLevel l
   return node.levels[level];
 }
 
-namespace {
-
-void AppendSubkeys(dockv::KeyBytes& key) {
-}
-
-void AppendSubkey(dockv::KeyBytes& key, VectorIndexLevel level) {
-  key.AppendKeyEntryType(dockv::KeyEntryType::kUInt32);
-  key.AppendUInt32(level);
-}
-
-void AppendSubkey(dockv::KeyBytes& key, VertexId id) {
-  key.AppendKeyEntryType(dockv::KeyEntryType::kUInt64);
-  key.AppendUInt64(id);
-}
-
-template <class T, class... Subkeys>
-void AppendSubkeys(dockv::KeyBytes& key, const T& t, Subkeys&&... subkeys) {
-  AppendSubkey(key, t);
-  AppendSubkeys(key, std::forward<Subkeys>(subkeys)...);
-}
-
-} // namespace
-
 template <class CoordinateType>
 template <class... Subkeys>
 dockv::KeyBytes VectorIndexUpdate<CoordinateType>::MakeKey(VertexId id, Subkeys&&... subkeys) {
-  dockv::KeyBytes key;
-  auto key_entry_value = dockv::KeyEntryValue::VectorVertexId(id);
-  key_entry_value.AppendToKey(&key);
-  key.AppendGroupEnd();
-  AppendSubkeys(key, std::forward<Subkeys>(subkeys)...);
+  auto key = MakeVectorIndexKey(id, std::forward<Subkeys>(subkeys)...);
   key.AppendKeyEntryType(dockv::KeyEntryType::kHybridTime);
   key.AppendHybridTime(doc_ht_);
 
