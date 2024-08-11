@@ -1,4 +1,13 @@
 CREATE SCHEMA helio_test_helpers;
+SELECT datname, datcollate, datctype, pg_encoding_to_char(encoding), datlocprovider FROM pg_database;
+  datname   | datcollate  |  datctype   | pg_encoding_to_char | datlocprovider 
+------------+-------------+-------------+---------------------+----------------
+ postgres   | en_US.UTF-8 | en_US.UTF-8 | UTF8                | c
+ regression | en_US.UTF-8 | en_US.UTF-8 | UTF8                | c
+ template1  | en_US.UTF-8 | en_US.UTF-8 | UTF8                | c
+ template0  | en_US.UTF-8 | en_US.UTF-8 | UTF8                | c
+(4 rows)
+
 -- Check if recreating the extension works
 DROP EXTENSION IF EXISTS pg_helio_api;
 -- Install the latest available helio_api version

@@ -1,5 +1,7 @@
 CREATE SCHEMA helio_test_helpers;
 
+SELECT datname, datcollate, datctype, pg_encoding_to_char(encoding), datlocprovider FROM pg_database;
+
 -- Check if recreating the extension works
 DROP EXTENSION IF EXISTS pg_helio_api;
 
