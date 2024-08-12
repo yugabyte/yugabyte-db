@@ -163,6 +163,21 @@ WITH temp AS (UPDATE single_row SET v1 = v1 + 1 WHERE k = 2 RETURNING k, v1)
 
 SELECT * FROM single_row;
 
+-- GHI 23461
+CREATE TABLE single_row_changes(k int, v1 int);
+INSERT INTO single_row_changes VALUES (1, 1), (1, 2);
+
+WITH deleted_rows AS (
+  DELETE FROM single_row_changes
+  WHERE k = 1
+  RETURNING v1
+)
+UPDATE single_row
+SET v1 = v1 + (SELECT COALESCE(SUM(v1), 0) FROM deleted_rows)
+WHERE k = 1;
+
+SELECT * FROM single_row;
+
 -- Updates on a table with a secondary index
 CREATE INDEX single_row_v2_idx ON single_row(v2);
 EXPLAIN (COSTS FALSE) WITH temp AS (UPDATE single_row SET v1 = v1 + 1 WHERE k = 1 RETURNING k, v1)
