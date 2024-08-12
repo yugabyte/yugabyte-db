@@ -277,6 +277,21 @@ There are many applications where handling a large number of client connections 
 
 - **Connection Manager**: Enable the built-in connection pooler called [YSQL Connection Manager](../../../explore/going-beyond-sql/connection-mgr-ysql/). The connection manager works by multiplexing many client connection over few physical connections to the database. With the connection manager enabled, each node in the cluster will be able to handle more than 10K connections per node.
 
+## Post-migration activities
+
+After the migration is complete, several key steps must be taken to ensure the system operates smoothly and without issues. These include verifying the integrity of migrated data, testing system performance, addressing any compatibility concerns, and monitoring the system closely for any unexpected behavior. Properly addressing these aspects will help ensure a seamless transition and the reliable functioning of the system.
+
+### Verification
+
+After the migration is complete you need to take steps to verify the migration. You can do this as follows:
+
+- **Functional testing**: Verify that all application queries work as expected in YugabyteDB.
+- **Consistency checks**: Run data consistency checks between PostgreSQL and YugabyteDB to ensure no data is lost or corrupted during the migration by [verifying the database objects](../bulk-import-ysql#verify-database-objects) and by [verifying row counts](../bulk-import-ysql#verify-row-counts-for-tables).
+
+### Monitoring
+
+Regularly monitor the target database to ensure it is performing efficiently. This includes tracking metrics such as query execution times, CPU usage, memory consumption, and disk I/O. Pay close attention to any errors or warnings that arise, as they can indicate potential issues with the database configuration, queries, or underlying infrastructure.
+
 ### Tune performance
 
 Because of the distributed nature of YugabyteDB, queries are executed quite differently from Postgres. This is because the latency across the nodes are taken into account by the query planner. Adopting the following practices will help improve the performance of your applications.
@@ -292,23 +307,6 @@ Because of the distributed nature of YugabyteDB, queries are executed quite diff
 {{<lead link="../../../develop/learn/transactions/transactions-performance-ysql/">}}
 For a full list of best practices to improve performance, see [Performance tuning in YSQL](../../../develop/learn/transactions/transactions-performance-ysql/)
 {{</lead>}}
-
-## Post-migration activities
-
-After the migration is complete, several key steps must be taken to ensure the system operates smoothly and without issues. These include verifying the integrity of migrated data, testing system performance, addressing any compatibility concerns, and monitoring the system closely for any unexpected behavior. Properly addressing these aspects will help ensure a seamless transition and the reliable functioning of the system.
-
-### Verification
-
-After the migration is complete you need to take steps to verify the migration. You can do this as follows:
-
-- **Functional testing**: Verify that all application queries work as expected in YugabyteDB.
-- **Consistency checks**: Run data consistency checks between PostgreSQL and YugabyteDB to ensure no data is lost or corrupted during the migration by [verifying the database objects](../bulk-import-ysql#verify-database-objects) and by [verifying row counts](../bulk-import-ysql#verify-row-counts-for-tables).
-
-### Monitoring and optimization
-
-Regularly monitor the target database to ensure it is performing efficiently. This includes tracking metrics such as query execution times, CPU usage, memory consumption, and disk I/O. Pay close attention to any errors or warnings that arise, as they can indicate potential issues with the database configuration, queries, or underlying infrastructure.
-
-After the migration, review and optimize queries to ensure they are well-suited for the new database engine. Different database systems may handle query execution differently, so it's important to adjust queries for optimal performance. Evaluate and refine indexes to match the query patterns of the new database environment. Indexes that were effective in the previous system may need adjustments or reconfiguration to achieve the best performance in the new system.
 
 ### Backup and disaster recovery
 
