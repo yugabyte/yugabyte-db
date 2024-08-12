@@ -116,6 +116,9 @@ typedef struct IndexDetails
 
 	/* Mongo index spec */
 	IndexSpec indexSpec;
+
+	/* Whether or not the index build is in progress (background build) */
+	bool isIndexBuildInProgress;
 } IndexDetails;
 
 /*
@@ -186,6 +189,8 @@ List * IndexKeyGetMatchingIndexes(uint64 collectionId,
 								  const pgbson *indexKeyDocument);
 List * CollectionIdGetIndexes(uint64 collectionId, bool excludeIdIndex,
 							  bool enableNestedDistribution);
+List * CollectionIdGetValidIndexes(uint64 collectionId, bool excludeIdIndex,
+								   bool enableNestedDistribution);
 List * CollectionIdGetIndexNames(uint64 collectionId, bool excludeIdIndex, bool
 								 inProgressOnly);
 int CollectionIdGetIndexCount(uint64 collectionId);

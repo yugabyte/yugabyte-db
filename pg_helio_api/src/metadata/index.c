@@ -200,12 +200,13 @@ WriteIndexSpecAsCurrentOpCommand(pgbson_writer *finalWriter, const char *databas
 IndexDetails *
 FindIndexWithSpecOptions(uint64 collectionId, const IndexSpec *targetIndexSpec)
 {
-	const char *cmdStr = FormatSqlQuery("SELECT index_id, index_spec "
-										"FROM %s.collection_indexes "
-										"WHERE collection_id = $1 AND %s.index_spec_options_are_equivalent(index_spec, $2) AND"
-										" (index_is_valid OR %s.index_build_is_in_progress(index_id))",
-										ApiCatalogSchemaName, ApiInternalSchemaName,
-										ApiInternalSchemaName);
+	const char *cmdStr = FormatSqlQuery(
+		"SELECT index_id, index_spec, %s.index_build_is_in_progress(index_id)"
+		"FROM %s.collection_indexes "
+		"WHERE collection_id = $1 AND %s.index_spec_options_are_equivalent(index_spec, $2) AND"
+		" (index_is_valid OR %s.index_build_is_in_progress(index_id))",
+		ApiInternalSchemaName, ApiCatalogSchemaName,
+		ApiInternalSchemaName, ApiInternalSchemaName);
 
 	int argCount = 2;
 	Oid argTypes[2];
@@ -222,9 +223,9 @@ FindIndexWithSpecOptions(uint64 collectionId, const IndexSpec *targetIndexSpec)
 
 	bool readOnly = true;
 
-	int numValues = 2;
-	bool isNull[2];
-	Datum results[2];
+	int numValues = 3;
+	bool isNull[3];
+	Datum results[3];
 	ExtensionExecuteMultiValueQueryWithArgsViaSPI(cmdStr, argCount, argTypes,
 												  argValues, argNulls, readOnly,
 												  SPI_OK_SELECT, results, isNull,
@@ -238,6 +239,7 @@ FindIndexWithSpecOptions(uint64 collectionId, const IndexSpec *targetIndexSpec)
 	indexDetails->indexId = DatumGetInt32(results[0]);
 	indexDetails->indexSpec = *DatumGetIndexSpec(results[1]);
 	indexDetails->collectionId = collectionId;
+	indexDetails->isIndexBuildInProgress = DatumGetBool(results[2]);
 
 	return indexDetails;
 }
@@ -253,8 +255,9 @@ IndexIdGetIndexDetails(int indexId)
 {
 	const char *cmdStr =
 		FormatSqlQuery(
-			"SELECT collection_id, index_spec FROM %s.collection_indexes WHERE index_id = $1",
-			ApiCatalogSchemaName);
+			"SELECT collection_id, index_spec, %s.index_build_is_in_progress(index_id)"
+			" FROM %s.collection_indexes WHERE index_id = $1",
+			ApiInternalSchemaName, ApiCatalogSchemaName);
 
 	int argCount = 1;
 	Oid argTypes[1];
@@ -267,9 +270,9 @@ IndexIdGetIndexDetails(int indexId)
 	char *argNulls = NULL;
 	bool readOnly = true;
 
-	int numValues = 2;
-	bool isNull[2];
-	Datum results[2];
+	int numValues = 3;
+	bool isNull[3];
+	Datum results[3];
 	ExtensionExecuteMultiValueQueryWithArgsViaSPI(cmdStr, argCount, argTypes,
 												  argValues, argNulls, readOnly,
 												  SPI_OK_SELECT, results, isNull,
@@ -283,6 +286,7 @@ IndexIdGetIndexDetails(int indexId)
 	indexDetails->indexId = indexId;
 	indexDetails->collectionId = DatumGetInt64(results[0]);
 	indexDetails->indexSpec = *DatumGetIndexSpec(results[1]);
+	indexDetails->isIndexBuildInProgress = DatumGetBool(results[2]);
 
 	return indexDetails;
 }
@@ -602,27 +606,41 @@ CollectionIdGetIndexNames(uint64 collectionId, bool excludeIdIndex, bool inProgr
 }
 
 
-/*
- * CollectionIdGetIndexes returns List of IndexDetails of the indexes that collection
- * with `collectionId` has.
- *
- * Parameters-
- * uint64 collectionId: collectionId to get indexes for
- * bool excludeIdIndex: Whether or not to include _id default index in the result
- * bool enableNestedDistribution: Whether or not to allow nested distribution for the query:
- *  Note: Only to be used in non-data critical paths.
- */
-List *
-CollectionIdGetIndexes(uint64 collectionId, bool excludeIdIndex,
-					   bool enableNestedDistribution)
+static List *
+CollectionIdGetIndexesCore(uint64 collectionId, bool excludeIdIndex,
+						   bool enableNestedDistribution, bool includeIndexBuilds)
 {
 	StringInfo cmdStr = makeStringInfo();
 	appendStringInfo(cmdStr,
-					 "SELECT array_agg(a.index_id), array_agg(a.index_spec) FROM ("
-					 " SELECT index_id, index_spec FROM %s.collection_indexes "
-					 " WHERE collection_id = " UINT64_FORMAT
-					 " AND (index_is_valid OR %s.index_build_is_in_progress(index_id))",
-					 ApiCatalogSchemaName, collectionId, ApiInternalSchemaName);
+					 "SELECT array_agg(a.index_id), array_agg(a.index_spec), "
+					 " array_agg(a.index_build_in_progress) FROM (");
+
+	appendStringInfo(cmdStr, " SELECT index_id, index_spec");
+	if (includeIndexBuilds)
+	{
+		appendStringInfo(cmdStr,
+						 ", %s.index_build_is_in_progress(index_id) AS index_build_in_progress",
+						 ApiInternalSchemaName);
+	}
+	else
+	{
+		appendStringInfo(cmdStr, ", FALSE AS index_build_in_progress");
+	}
+
+	appendStringInfo(cmdStr,
+					 " FROM %s.collection_indexes WHERE collection_id = " UINT64_FORMAT,
+					 ApiCatalogSchemaName, collectionId);
+
+	if (includeIndexBuilds)
+	{
+		appendStringInfo(cmdStr,
+						 " AND (index_is_valid OR %s.index_build_is_in_progress(index_id))",
+						 ApiInternalSchemaName);
+	}
+	else
+	{
+		appendStringInfo(cmdStr, " AND index_is_valid");
+	}
 
 	if (excludeIdIndex)
 	{
@@ -634,9 +652,9 @@ CollectionIdGetIndexes(uint64 collectionId, bool excludeIdIndex,
 	appendStringInfo(cmdStr, " ORDER BY index_id) a");
 
 	bool readOnly = true;
-	int numValues = 2;
-	bool isNull[2];
-	Datum results[2];
+	int numValues = 3;
+	bool isNull[3];
+	Datum results[3];
 	if (enableNestedDistribution)
 	{
 		int nArgs = 0;
@@ -675,6 +693,12 @@ CollectionIdGetIndexes(uint64 collectionId, bool excludeIdIndex,
 	int nIdelems = 0;
 	ArrayExtractDatums(idArray, INT4OID, &idElems, nulls, &nIdelems);
 
+	ArrayType *indexBuildInProgressArray = DatumGetArrayTypeP(results[2]);
+	Datum *buildProgressElems = NULL;
+	int nProgressElems = 0;
+	ArrayExtractDatums(indexBuildInProgressArray, BOOLOID, &buildProgressElems, nulls,
+					   &nProgressElems);
+
 	List *indexesList = NIL;
 
 	for (int i = 0; i < nelems; i++)
@@ -684,10 +708,44 @@ CollectionIdGetIndexes(uint64 collectionId, bool excludeIdIndex,
 		indexDetail->indexId = DatumGetInt64(idElems[i]);
 		indexDetail->indexSpec = *DatumGetIndexSpec(elems[i]);
 		indexDetail->collectionId = collectionId;
+		indexDetail->isIndexBuildInProgress = DatumGetBool(buildProgressElems[i]);
 		indexesList = lappend(indexesList, (void *) indexDetail);
 	}
 
 	return indexesList;
+}
+
+
+/*
+ * CollectionIdGetIndexes returns List of IndexDetails of the indexes that collection
+ * with `collectionId` has.
+ *
+ * Parameters-
+ * uint64 collectionId: collectionId to get indexes for
+ * bool excludeIdIndex: Whether or not to include _id default index in the result
+ * bool enableNestedDistribution: Whether or not to allow nested distribution for the query:
+ *  Note: Only to be used in non-data critical paths.
+ */
+List *
+CollectionIdGetIndexes(uint64 collectionId, bool excludeIdIndex,
+					   bool enableNestedDistribution)
+{
+	bool includeIndexBuilds = true;
+	return CollectionIdGetIndexesCore(collectionId, excludeIdIndex,
+									  enableNestedDistribution, includeIndexBuilds);
+}
+
+
+/*
+ * Like CollectionIdGetIndexes but does not consult index build in progress.
+ */
+List *
+CollectionIdGetValidIndexes(uint64 collectionId, bool excludeIdIndex,
+							bool enableNestedDistribution)
+{
+	bool includeIndexBuilds = false;
+	return CollectionIdGetIndexesCore(collectionId, excludeIdIndex,
+									  enableNestedDistribution, includeIndexBuilds);
 }
 
 
@@ -819,11 +877,13 @@ DeleteCollectionIndexRecordCore(uint64 collectionId, int *indexId)
 IndexDetails *
 IndexNameGetIndexDetails(uint64 collectionId, const char *indexName)
 {
-	const char *cmdStr = FormatSqlQuery("SELECT index_id, index_spec "
-										"FROM %s.collection_indexes WHERE collection_id = $1 AND"
-										" (index_spec).index_name = $2 AND"
-										" (index_is_valid OR %s.index_build_is_in_progress(index_id))",
-										ApiCatalogSchemaName, ApiInternalSchemaName);
+	const char *cmdStr = FormatSqlQuery(
+		"SELECT index_id, index_spec, %s.index_build_is_in_progress(index_id) "
+		"FROM %s.collection_indexes WHERE collection_id = $1 AND"
+		" (index_spec).index_name = $2 AND"
+		" (index_is_valid OR %s.index_build_is_in_progress(index_id))",
+		ApiInternalSchemaName, ApiCatalogSchemaName,
+		ApiInternalSchemaName);
 
 	int argCount = 2;
 	Oid argTypes[2];
@@ -840,9 +900,9 @@ IndexNameGetIndexDetails(uint64 collectionId, const char *indexName)
 
 	bool readOnly = true;
 
-	int numValues = 2;
-	bool isNull[2];
-	Datum results[2];
+	int numValues = 3;
+	bool isNull[3];
+	Datum results[3];
 	ExtensionExecuteMultiValueQueryWithArgsViaSPI(cmdStr, argCount, argTypes,
 												  argValues, argNulls, readOnly,
 												  SPI_OK_SELECT, results, isNull,
@@ -856,6 +916,7 @@ IndexNameGetIndexDetails(uint64 collectionId, const char *indexName)
 	indexDetails->indexId = DatumGetInt32(results[0]);
 	indexDetails->indexSpec = *DatumGetIndexSpec(results[1]);
 	indexDetails->collectionId = collectionId;
+	indexDetails->isIndexBuildInProgress = DatumGetBool(results[2]);
 
 	return indexDetails;
 }
@@ -872,11 +933,12 @@ IndexKeyGetMatchingIndexes(uint64 collectionId, const pgbson *indexKeyDocument)
 {
 	const char *cmdStr =
 		FormatSqlQuery(
-			"SELECT array_agg(index_id ORDER BY index_id), array_agg(index_spec ORDER BY index_id) "
+			"SELECT array_agg(index_id ORDER BY index_id), array_agg(index_spec ORDER BY index_id), "
+			" array_agg(%s.index_build_is_in_progress(index_id) ORDER BY index_id) "
 			"FROM %s.collection_indexes WHERE collection_id = $1 AND"
 			" (index_spec).index_key::%s OPERATOR(%s.=) $2::%s AND"
 			" (index_is_valid OR %s.index_build_is_in_progress(index_id))",
-			ApiCatalogSchemaName, FullBsonTypeName, CoreSchemaName,
+			ApiInternalSchemaName, ApiCatalogSchemaName, FullBsonTypeName, CoreSchemaName,
 			FullBsonTypeName, ApiInternalSchemaName);
 
 	int argCount = 2;
@@ -894,9 +956,9 @@ IndexKeyGetMatchingIndexes(uint64 collectionId, const pgbson *indexKeyDocument)
 
 	bool readOnly = true;
 
-	int numValues = 2;
-	bool isNull[2];
-	Datum results[2];
+	int numValues = 3;
+	bool isNull[3];
+	Datum results[3];
 	ExtensionExecuteMultiValueQueryWithArgsViaSPI(cmdStr, argCount, argTypes,
 												  argValues, argNulls, readOnly,
 												  SPI_OK_SELECT, results, isNull,
@@ -909,6 +971,7 @@ IndexKeyGetMatchingIndexes(uint64 collectionId, const pgbson *indexKeyDocument)
 
 	ArrayType *indexIdArray = DatumGetArrayTypeP(results[0]);
 	ArrayType *indexSpecArray = DatumGetArrayTypeP(results[1]);
+	ArrayType *indexBuildInProgressArray = DatumGetArrayTypeP(results[2]);
 
 	/* error if any Datums are NULL */
 	bool **nulls = NULL;
@@ -925,6 +988,13 @@ IndexKeyGetMatchingIndexes(uint64 collectionId, const pgbson *indexKeyDocument)
 
 	Assert(nIndexIdArrayElems == nIndexSpecArrayElems);
 
+	Datum *indexBuildProgressArrayElems = NULL;
+	int nIndexIsValidArrayElems = 0;
+	ArrayExtractDatums(indexBuildInProgressArray, BOOLOID, &indexBuildProgressArrayElems,
+					   nulls,
+					   &nIndexIsValidArrayElems);
+	Assert(nIndexIsValidArrayElems == nIndexIdArrayElems);
+
 	List *keyMatchedIndexDetailsList = NIL;
 	for (int i = 0; i < nIndexIdArrayElems; i++)
 	{
@@ -932,6 +1002,7 @@ IndexKeyGetMatchingIndexes(uint64 collectionId, const pgbson *indexKeyDocument)
 		indexDetails->indexId = DatumGetInt32(indexIdArrayElems[i]);
 		indexDetails->indexSpec = *DatumGetIndexSpec(indexSpecArrayElems[i]);
 		indexDetails->collectionId = collectionId;
+		indexDetails->isIndexBuildInProgress = indexBuildProgressArrayElems[i];
 
 		keyMatchedIndexDetailsList = lappend(keyMatchedIndexDetailsList, indexDetails);
 	}
@@ -1391,8 +1462,9 @@ uint64 *
 GetCollectionIdsForIndexBuild(char cmdType, List *excludeCollectionIds)
 {
 	Assert(cmdType == CREATE_INDEX_COMMAND_TYPE || cmdType == REINDEX_COMMAND_TYPE);
-	uint64 *collectionIds = palloc(sizeof(uint64) * MaxNumActiveUsersIndexBuilds);
-	memset(collectionIds, 0, MaxNumActiveUsersIndexBuilds * sizeof(uint64)); /* 0 is not a valid collection_id */
+
+	/* Allocate one more collectionId than MaxNumActiveUsersIndexBuilds so that the last one is always 0 */
+	uint64 *collectionIds = palloc0(sizeof(uint64) * (MaxNumActiveUsersIndexBuilds + 1));
 
 	/* For a collectionId also, if there are multiple requests, we first try to get a request which is in Queued state over Failed requests.
 	 *
@@ -1476,6 +1548,7 @@ GetCollectionIdsForIndexBuild(char cmdType, List *excludeCollectionIds)
 	int nelems = 0;
 	ArrayExtractDatums(array, INT8OID, &elems, nulls, &nelems);
 
+	Assert(nelems <= MaxNumActiveUsersIndexBuilds);
 	for (int i = 0; i < nelems; i++)
 	{
 		collectionIds[i] = DatumGetInt64(elems[i]);
@@ -1595,59 +1668,33 @@ MarkIndexRequestStatus(int indexId, char cmdType, IndexCmdStatus status, pgbson 
 IndexCmdStatus
 GetIndexBuildStatusFromIndexQueue(int indexId)
 {
-	IndexCmdStatus status = IndexCmdStatus_Unknown;
-
 	const char *cmdStr =
 		FormatSqlQuery(
 			"SELECT index_cmd_status FROM %s WHERE index_id = $1 AND cmd_type = 'C';",
 			GetIndexQueueName());
 	int argCount = 1;
-	Oid argTypes[1];
-	Datum argValues[1];
+	Oid argTypes[1] = { INT4OID };
+	Datum argValues[1] = { Int32GetDatum(indexId) };
 	char argNulls[1] = { ' ' };
 
-	argTypes[0] = INT4OID;
-	argValues[0] = Int32GetDatum(indexId);
-
+	int savedGUCLevel = NewGUCNestLevel();
+	SetGUCLocally("client_min_messages", "WARNING");
 	bool readOnly = true;
+	bool isNull = true;
+	Datum result = ExtensionExecuteQueryWithArgsViaSPI(cmdStr, argCount, argTypes,
+													   argValues, argNulls, readOnly,
+													   SPI_OK_SELECT, &isNull);
 
-	if (SPI_connect() != SPI_OK_CONNECT)
+	/* rollback the GUC change that we made for client_min_messages */
+	RollbackGUCChange(savedGUCLevel);
+	if (isNull)
 	{
-		ereport(ERROR, (errmsg("could not connect to SPI manager")));
+		return IndexCmdStatus_Unknown;
 	}
-
-	/* Let this be DEBUG2 only otherwise commands_create_indexes.sql test will start showing this log. */
-	ereport(DEBUG2, (errmsg("executing \"%s\" via SPI", cmdStr)));
-	int tupleCountLimit = 1;
-
-	if (SPI_execute_with_args(cmdStr, argCount, argTypes, argValues, argNulls,
-							  readOnly, tupleCountLimit) != SPI_OK_SELECT)
+	else
 	{
-		ereport(ERROR, (errmsg("could not run SPI query")));
+		return (IndexCmdStatus) DatumGetInt64(result);
 	}
-
-	if (SPI_processed > 0)
-	{
-		bool isNull = true;
-		int tupleNumber = 0;
-		AttrNumber attrNumber = 1;
-		Datum resultDatum = SPI_getbinval(SPI_tuptable->vals[tupleNumber],
-										  SPI_tuptable->tupdesc, attrNumber, &isNull);
-		if (!isNull)
-		{
-			/* copy datum into original memory context */
-			Form_pg_attribute attr = TupleDescAttr(SPI_tuptable->tupdesc, attrNumber - 1);
-			resultDatum = SPI_datumTransfer(resultDatum, attr->attbyval, attr->attlen);
-			status = DatumGetInt64(resultDatum);
-		}
-	}
-
-	if (SPI_finish() != SPI_OK_FINISH)
-	{
-		ereport(ERROR, (errmsg("could not finish SPI connection")));
-	}
-
-	return status;
 }
 
 

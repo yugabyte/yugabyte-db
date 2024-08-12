@@ -304,7 +304,8 @@ void InitFCInfoForCallStmt(FunctionCallInfo fcinfo, const CallStmt *callStmt,
 void SendTupleToClient(HeapTuple tup, TupleDesc tupDesc,
 					   DestReceiver *destReceiver);
 List * CheckForConflictsAndPruneExistingIndexes(uint64 collectionId,
-												List *indexDefList);
+												List *indexDefList,
+												List **inBuildIndexIds);
 char * CreatePostgresIndexCreationCmd(uint64 collectionId, IndexDef *indexDef, int
 									  indexId,
 									  bool concurrently, bool isTempCollection);

@@ -291,7 +291,8 @@ static void ThrowUnsupportedPartFilterExprError(Node *node);
 static char * GetPartFilterExprNodeRepr(Node *node);
 static bool GetPartFilterExprNodeReprWalker(Node *node, void *contextArg);
 static bool CheckIndexSpecConflictWithExistingIndexes(uint64 collectionId,
-													  const IndexSpec *indexSpec);
+													  const IndexSpec *indexSpec,
+													  int *inBuildIndexId);
 static void ThrowIndexNameConflictError(const IndexSpec *existingIndexSpec,
 										const IndexSpec *requestedIndexSpec);
 static void ThrowIndexOptionsConflictError(const char *existingIndexName);
@@ -622,6 +623,11 @@ command_index_build_is_in_progress(PG_FUNCTION_ARGS)
 	}
 	int indexId = DatumGetInt32(PG_GETARG_DATUM(0));
 
+	if (!IsClusterVersionAtleastThis(1, 15, 0))
+	{
+		PG_RETURN_BOOL(false);
+	}
+
 	PG_RETURN_BOOL(IndexBuildIsInProgress(indexId));
 }
 
@@ -679,9 +685,11 @@ create_indexes_concurrently(Datum dbNameDatum, CreateIndexesArg createIndexesArg
 	 */
 	int nindexesRequested = list_length(createIndexesArg.indexDefList);
 
+	List *inBuildIndexIdList = NIL;
 	createIndexesArg.indexDefList =
 		CheckForConflictsAndPruneExistingIndexes(collectionId,
-												 createIndexesArg.indexDefList);
+												 createIndexesArg.indexDefList,
+												 &inBuildIndexIdList);
 
 	result.numIndexesBefore = CollectionIdGetIndexCount(collectionId);
 
@@ -894,9 +902,11 @@ create_indexes_non_concurrently(Datum dbNameDatum, CreateIndexesArg createIndexe
 	 * some of them due to an identical index.
 	 */
 	int nindexesRequested = list_length(createIndexesArg.indexDefList);
+	List *inBuildIndexIdList = NIL;
 	createIndexesArg.indexDefList =
 		CheckForConflictsAndPruneExistingIndexes(collectionId,
-												 createIndexesArg.indexDefList);
+												 createIndexesArg.indexDefList,
+												 &inBuildIndexIdList);
 
 	result.numIndexesBefore = CollectionIdGetIndexCount(collectionId);
 
@@ -3685,7 +3695,8 @@ AcquireAdvisoryExclusiveLockForCreateIndexes(uint64 collectionId)
  * an already existing & identical index).
  */
 List *
-CheckForConflictsAndPruneExistingIndexes(uint64 collectionId, List *indexDefList)
+CheckForConflictsAndPruneExistingIndexes(uint64 collectionId, List *indexDefList,
+										 List **inBuildIndexIds)
 {
 	List *prunedIndexDefList = NIL;
 
@@ -3700,9 +3711,15 @@ CheckForConflictsAndPruneExistingIndexes(uint64 collectionId, List *indexDefList
 		IndexDef *indexDef = lfirst(indexDefCell);
 
 		IndexSpec indexSpec = MakeIndexSpecForIndexDef(indexDef);
-		if (!CheckIndexSpecConflictWithExistingIndexes(collectionId, &indexSpec))
+		int32_t inBuildIndexId = -1;
+		if (!CheckIndexSpecConflictWithExistingIndexes(collectionId, &indexSpec,
+													   &inBuildIndexId))
 		{
 			prunedIndexDefList = lappend(prunedIndexDefList, indexDef);
+		}
+		else if (inBuildIndexId > 0)
+		{
+			*inBuildIndexIds = lappend_int(*inBuildIndexIds, inBuildIndexId);
 		}
 	}
 
@@ -3801,16 +3818,25 @@ CheckForConflictsAndPruneExistingIndexes(uint64 collectionId, List *indexDefList
  * with given one either by name or by index options.
  */
 static bool
-CheckIndexSpecConflictWithExistingIndexes(uint64 collectionId, const IndexSpec *indexSpec)
+CheckIndexSpecConflictWithExistingIndexes(uint64 collectionId, const IndexSpec *indexSpec,
+										  int32_t *inBuildIndexId)
 {
 	const IndexDetails *nameMatchedIndexDetails =
 		IndexNameGetIndexDetails(collectionId, indexSpec->indexName);
+
 	if (nameMatchedIndexDetails == NULL)
 	{
 		const IndexDetails *optionsMatchedIndexDetails =
 			FindIndexWithSpecOptions(collectionId, indexSpec);
+
+		/* Don't consider indexes not in progress */
 		if (optionsMatchedIndexDetails != NULL)
 		{
+			if (optionsMatchedIndexDetails->isIndexBuildInProgress)
+			{
+				*inBuildIndexId = optionsMatchedIndexDetails->indexId;
+			}
+
 			/*
 			 * If it's a plain _id index, then we assume both indexes are
 			 * identical even if their names are different as Mongo does.
@@ -3855,6 +3881,10 @@ CheckIndexSpecConflictWithExistingIndexes(uint64 collectionId, const IndexSpec *
 		return false;
 	}
 
+	if (nameMatchedIndexDetails->isIndexBuildInProgress)
+	{
+		*inBuildIndexId = nameMatchedIndexDetails->indexId;
+	}
 
 	if (IndexSpecOptionsAreEquivalent(&nameMatchedIndexDetails->indexSpec,
 									  indexSpec) == IndexOptionsEquivalency_NotEquivalent)
@@ -4135,6 +4165,7 @@ TryCreateCollectionIndexes(uint64 collectionId, List *indexDefList,
 
 	/* declared volatile because of the longjmp in PG_CATCH */
 	volatile bool createdInvalidIndexes = false;
+	volatile ErrorData *edata = NULL;
 	PG_TRY();
 	{
 		ereport(DEBUG1, (errmsg("trying to create indexes and insert "
@@ -4149,7 +4180,7 @@ TryCreateCollectionIndexes(uint64 collectionId, List *indexDefList,
 	{
 		/* save error info into right context */
 		MemoryContextSwitchTo(retValueContext);
-		ErrorData *edata = CopyErrorDataAndFlush();
+		edata = CopyErrorDataAndFlush();
 		result->errcode = edata->sqlerrcode;
 		result->errmsg = edata->message;
 
@@ -4168,6 +4199,21 @@ TryCreateCollectionIndexes(uint64 collectionId, List *indexDefList,
 
 	if (!createdInvalidIndexes)
 	{
+		int errorCodeInternal = 0;
+		char *errorMessageInternal = NULL;
+		if (edata != NULL)
+		{
+			MemoryContext oldContext = MemoryContextSwitchTo(retValueContext);
+			if (TryGetErrorMessageAndCode((ErrorData *) edata, &errorCodeInternal,
+										  &errorMessageInternal))
+			{
+				result->errcode = errorCodeInternal;
+				result->errmsg = errorMessageInternal;
+			}
+
+			MemoryContextSwitchTo(oldContext);
+		}
+
 		result->ok = false;
 		return result;
 	}

@@ -207,9 +207,11 @@ command_build_index_concurrently(PG_FUNCTION_ARGS)
 
 	if (indexCmdRequest->attemptCount >= MaxIndexBuildAttempts)
 	{
-		/* remove the request permanently */
-		RemoveRequestFromIndexQueue(indexCmdRequest->indexId,
-									CREATE_INDEX_COMMAND_TYPE);
+		/* mark the request as skipped (pruned at a later point) */
+		MarkIndexRequestStatus(indexCmdRequest->indexId,
+							   CREATE_INDEX_COMMAND_TYPE,
+							   IndexCmdStatus_Skippable, indexCmdRequest->comment, NULL,
+							   indexCmdRequest->attemptCount);
 		DeleteCollectionIndexRecord(indexCmdRequest->collectionId,
 									indexCmdRequest->indexId);
 		PG_RETURN_VOID();
@@ -298,6 +300,7 @@ command_build_index_concurrently(PG_FUNCTION_ARGS)
 	volatile bool indexCreated = false;
 	volatile char *volatile errorMessage = NULL;
 	volatile int errorCode = 0;
+	volatile ErrorData *edata = NULL;
 	PG_TRY();
 	{
 		char *cmd = indexCmdRequest->cmd;
@@ -325,7 +328,7 @@ command_build_index_concurrently(PG_FUNCTION_ARGS)
 	{
 		/* save error info into right context */
 		MemoryContextSwitchTo(oldMemContext);
-		ErrorData *edata = CopyErrorDataAndFlush();
+		edata = CopyErrorDataAndFlush();
 		errorMessage = edata->message;
 		errorCode = edata->sqlerrcode;
 
@@ -341,6 +344,21 @@ command_build_index_concurrently(PG_FUNCTION_ARGS)
 		StartTransactionCommand();
 	}
 	PG_END_TRY();
+
+	if (!indexCreated && edata != NULL)
+	{
+		/* Try to get a friendlier error message */
+		MemoryContext switchContext = MemoryContextSwitchTo(oldMemContext);
+		int errorCodeInternal = 0;
+		char *errorMessageInternal = NULL;
+		if (TryGetErrorMessageAndCode((ErrorData *) edata, &errorCodeInternal,
+									  &errorMessageInternal))
+		{
+			errorCode = errorCodeInternal;
+			errorMessage = errorMessageInternal;
+		}
+		MemoryContextSwitchTo(switchContext);
+	}
 
 	/* declared volatile because of the longjmp in PG_CATCH */
 	volatile bool markedIndexAsValid = false;
@@ -446,9 +464,12 @@ command_build_index_concurrently(PG_FUNCTION_ARGS)
 							  UINT64_FORMAT,
 							  indexCmdRequest->indexId, collectionId)));
 
-			/* remove the request permanently */
-			RemoveRequestFromIndexQueue(indexCmdRequest->indexId,
-										CREATE_INDEX_COMMAND_TYPE);
+			/* mark the request skippable (removed after the TTL window) */
+			MarkIndexRequestStatus(indexCmdRequest->indexId,
+								   CREATE_INDEX_COMMAND_TYPE,
+								   IndexCmdStatus_Skippable, indexCmdRequest->comment,
+								   NULL,
+								   attemptCount);
 			DeleteCollectionIndexRecord(indexCmdRequest->collectionId,
 										indexCmdRequest->indexId);
 		}
@@ -833,9 +854,11 @@ SubmitCreateIndexesRequest(Datum dbNameDatum,
 
 	int nindexesRequested = list_length(createIndexesArg.indexDefList);
 
+	List *indexIdList = NIL;
 	createIndexesArg.indexDefList =
 		CheckForConflictsAndPruneExistingIndexes(collectionId,
-												 createIndexesArg.indexDefList);
+												 createIndexesArg.indexDefList,
+												 &indexIdList);
 
 	result.numIndexesBefore = CollectionIdGetIndexCount(collectionId);
 
@@ -860,18 +883,10 @@ SubmitCreateIndexesRequest(Datum dbNameDatum,
 	 * Record indexes into metadata as invalid.
 	 */
 	ListCell *indexDefCell = NULL;
-	List *indexIdList = NIL;
-	bool hasUniqueIndex = false;
 
 	foreach(indexDefCell, createIndexesArg.indexDefList)
 	{
 		IndexDef *indexDef = (IndexDef *) lfirst(indexDefCell);
-		if (indexDef->unique == BoolIndexOption_True)
-		{
-			hasUniqueIndex = true;
-			continue;
-		}
-
 		const IndexSpec indexSpec = MakeIndexSpecForIndexDef(indexDef);
 		bool indexIsValid = false;
 		int indexId = RecordCollectionIndex(collectionId, &indexSpec, indexIsValid);
@@ -918,23 +933,6 @@ SubmitCreateIndexesRequest(Datum dbNameDatum,
 		result.request->indexIds = indexIdList;
 	}
 
-	if (hasUniqueIndex)
-	{
-		ereport(LOG, (errmsg("Building Unique indexes for collection "UINT64_FORMAT,
-							 collectionId),
-					  errhint("Building Unique indexes for collection "UINT64_FORMAT,
-							  collectionId)));
-		bool uniqueIndexOnly = true;
-		bool skipCheckCollectionCreate = true;
-		CreateIndexesResult resultInner = create_indexes_non_concurrently(dbNameDatum,
-																		  createIndexesArg,
-																		  skipCheckCollectionCreate,
-																		  uniqueIndexOnly);
-		if (!resultInner.ok)
-		{
-			return resultInner;
-		}
-	}
 	return result;
 }
 
@@ -1000,6 +998,13 @@ IsSkippableError(int targetErrorCode, char *errMsg)
 {
 	if (targetErrorCode != -1)
 	{
+		if (targetErrorCode >= MongoBadValue && targetErrorCode <=
+			_ERRCODE_MONGO_ERROR_LAST)
+		{
+			/* Mongo errors that are not internal errors are skippable */
+			return true;
+		}
+
 		for (int i = 0; i < NumberOfSkippableErrors; i++)
 		{
 			if (SkippableErrors[i].errCode == targetErrorCode)

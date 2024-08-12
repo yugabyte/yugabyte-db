@@ -353,8 +353,8 @@ MergeWorkerResults(MongoCollection *collection, List *workerResults,
 	 * nested distributed execution.
 	 */
 	bool enableNestedDistribution = true;
-	List *indexes = CollectionIdGetIndexes(collection->collectionId, excludeIdIndex,
-										   enableNestedDistribution);
+	List *indexes = CollectionIdGetValidIndexes(collection->collectionId, excludeIdIndex,
+												enableNestedDistribution);
 
 	HTAB *bsonElementHash = CreatePgbsonElementHashSet();
 

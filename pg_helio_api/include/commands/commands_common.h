@@ -70,6 +70,7 @@ bool FindShardKeyValueForDocumentId(MongoCollection *collection, pgbson *queryDo
 bool IsCommonSpecIgnoredField(const char *fieldName);
 
 WriteError * GetWriteErrorFromErrorData(ErrorData *errorData, int writeErrorIdx);
+bool TryGetErrorMessageAndCode(ErrorData *errorData, int *code, char **errmessage);
 
 pgbson * GetObjectIdFilterFromQueryDocument(pgbson *queryDoc);
 

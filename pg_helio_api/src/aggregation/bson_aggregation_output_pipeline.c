@@ -1352,8 +1352,8 @@ VaildateMergeOnFieldValues(const bson_value_t *onValues, uint64 collectionId)
 	/* By design, collection IDs are always greater than 0. Therefore, if a caller passes a collection ID of 0, it implies that the collection does not exist. */
 	if (collectionId != 0)
 	{
-		indexesDetailList = CollectionIdGetIndexes(collectionId, excludeIdIndex,
-												   enableNestedDistribution);
+		indexesDetailList = CollectionIdGetValidIndexes(collectionId, excludeIdIndex,
+														enableNestedDistribution);
 	}
 
 	ListCell *indexDetailCell = NULL;

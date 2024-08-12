@@ -209,13 +209,27 @@ GetWriteErrorFromErrorData(ErrorData *errorData, int writeErrorIdx)
 	}
 
 	WriteError *writeError = palloc0(sizeof(WriteError));
+	writeError->index = writeErrorIdx;
+	if (!TryGetErrorMessageAndCode(errorData, &writeError->code, &writeError->errmsg))
+	{
+		writeError->code = errorData->sqlerrcode;
+		writeError->errmsg = pstrdup(errorData->message);
+	}
+
+	return writeError;
+}
+
+
+bool
+TryGetErrorMessageAndCode(ErrorData *errorData, int *code, char **errmessage)
+{
 	if (errorData->sqlerrcode == ERRCODE_CHECK_VIOLATION)
 	{
 		ereport(LOG, (errmsg("Check constraint error %s", errorData->message)));
-		writeError->index = writeErrorIdx;
-		writeError->code = MongoDuplicateKey;
-		writeError->errmsg =
+		*code = MongoDuplicateKey;
+		*errmessage =
 			"Invalid write detected. Please validate the collection and/or shard key being written to";
+		return true;
 	}
 	else if (errorData->sqlerrcode == ERRCODE_EXCLUSION_VIOLATION ||
 			 errorData->sqlerrcode == ERRCODE_UNIQUE_VIOLATION)
@@ -229,6 +243,8 @@ GetWriteErrorFromErrorData(ErrorData *errorData, int writeErrorIdx)
 				"conflicting key value violates exclusion constraint \"");
 			StringView uniqueIndexError = CreateStringViewFromString(
 				"duplicate key value violates unique constraint \"");
+			StringView constraintCreateError = CreateStringViewFromString(
+				"could not create exclusion constraint \"");
 			StringView errorView = CreateStringViewFromString(errorData->message);
 			if (StringViewStartsWithStringView(&errorView, &constraintError))
 			{
@@ -242,6 +258,15 @@ GetWriteErrorFromErrorData(ErrorData *errorData, int writeErrorIdx)
 			{
 				StringView indexNameView = StringViewSubstring(&errorView,
 															   uniqueIndexError.length);
+				StringView actualNameView = StringViewFindPrefix(&indexNameView, '\"');
+				mongoIndexName = GetHelioIndexNameFromPostgresIndex(
+					CreateStringFromStringView(&actualNameView), useLibPq);
+			}
+			else if (StringViewStartsWithStringView(&errorView, &constraintCreateError))
+			{
+				StringView indexNameView = StringViewSubstring(&errorView,
+															   constraintCreateError.
+															   length);
 				StringView actualNameView = StringViewFindPrefix(&indexNameView, '\"');
 				mongoIndexName = GetHelioIndexNameFromPostgresIndex(
 					CreateStringFromStringView(&actualNameView), useLibPq);
@@ -261,18 +286,12 @@ GetWriteErrorFromErrorData(ErrorData *errorData, int writeErrorIdx)
 		char *errorMessage = psprintf(
 			"Duplicate key violation on the requested collection: Index '%s'",
 			mongoIndexName);
-		writeError->index = writeErrorIdx;
-		writeError->code = MongoDuplicateKey;
-		writeError->errmsg = errorMessage;
-	}
-	else
-	{
-		writeError->index = writeErrorIdx;
-		writeError->code = errorData->sqlerrcode;
-		writeError->errmsg = pstrdup(errorData->message);
+		*code = MongoDuplicateKey;
+		*errmessage = errorMessage;
+		return true;
 	}
 
-	return writeError;
+	return false;
 }
 
 
