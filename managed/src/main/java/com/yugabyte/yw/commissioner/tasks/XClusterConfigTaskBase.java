@@ -158,7 +158,8 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
         ImmutableList.of(
             TaskType.EditXClusterConfig,
             TaskType.DeleteXClusterConfig,
-            TaskType.RestartXClusterConfig));
+            TaskType.RestartXClusterConfig,
+            TaskType.SyncXClusterConfig));
     STATUS_TO_ALLOWED_TASKS.put(
         XClusterConfigStatusType.Updating,
         ImmutableList.of(TaskType.DeleteXClusterConfig, TaskType.RestartXClusterConfig));
