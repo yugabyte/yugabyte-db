@@ -21,7 +21,7 @@ To export an entire database that consists of smaller datasets, you can also use
 To automate your migration from PostgreSQL to YugabyteDB, use [YugabyteDB Voyager](../../../yugabyte-voyager/). To learn more, refer to the [export schema](../../../yugabyte-voyager/migrate/migrate-steps/#export-schema) and [export data](../../../yugabyte-voyager/migrate/migrate-steps/#export-data) steps.
 {{< /tip >}}
 
-### Export data into CSV files using the COPY command
+## Export data into CSV files using the COPY command
 
 To export the data, connect to the source PostgreSQL database using the psql tool, and execute the COPY TO command as follows:
 
@@ -50,7 +50,7 @@ WITH (FORMAT CSV, HEADER false, DELIMITER ',');
 
 For all available options provided by the COPY TO command, refer to the [PostgreSQL documentation](https://www.postgresql.org/docs/current/sql-copy.html).
 
-#### Parallelize large table export
+### Parallelize large table export
 
 For large tables, it might be beneficial to parallelize the process by exporting data in chunks as follows:
 
@@ -86,7 +86,7 @@ WITH (FORMAT CSV, HEADER false, DELIMITER ',');
 
 You can run the above commands in parallel to speed up the process. This approach will also produce multiple CSV files, allowing for parallel import on the YugabyteDB side.
 
-### Export data into SQL script using ysql_dump
+## Export data into SQL script using ysql_dump
 
 An alternative way to export the data is using the YugabyteDB [ysql_dump](../../../admin/ysql-dump/) backup utility, which is derived from PostgreSQL pg_dump.
 
