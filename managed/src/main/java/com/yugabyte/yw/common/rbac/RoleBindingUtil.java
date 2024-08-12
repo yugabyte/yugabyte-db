@@ -61,12 +61,12 @@ public class RoleBindingUtil {
   public RoleBinding editRoleBinding(
       UUID roleBindingUUID, UUID roleUUID, ResourceGroup resourceGroup) {
     RoleBinding roleBinding = RoleBinding.getOrBadRequest(roleBindingUUID);
-    Role role = Role.getOrBadRequest(roleBinding.getUser().getCustomerUUID(), roleUUID);
+    Role role = Role.getOrBadRequest(roleBinding.getPrincipal().getCustomerUUID(), roleUUID);
     log.info(
-        "Editing {} RoleBinding '{}' with user UUID '{}', role UUID {} on resource group {}.",
+        "Editing {} RoleBinding '{}' with principal UUID '{}', role UUID {} on resource group {}.",
         roleBinding.getType(),
         roleBinding.getUuid(),
-        roleBinding.getUser().getUuid(),
+        roleBinding.getPrincipal().getUuid(),
         roleUUID,
         resourceGroup);
     roleBinding.edit(role, resourceGroup);
@@ -370,11 +370,11 @@ public class RoleBindingUtil {
               expandResourceDefinition(customerUUID, resourceTypeToExpand, null);
           resourceGroup.getResourceDefinitionSet().add(expandedResourceDefinition);
           log.info(
-              "Expanded {} RoleBinding '{}' with user UUID '{}', role UUID '{}', from "
+              "Expanded {} RoleBinding '{}' with principal UUID '{}', role UUID '{}', from "
                   + "old resource definition '{}' to new resource definition '{}'.",
               roleBinding.getType(),
               roleBinding.getUuid(),
-              roleBinding.getUser().getUuid(),
+              roleBinding.getPrincipal().getUuid(),
               roleBinding.getRole().getRoleUUID(),
               null,
               expandedResourceDefinition);
@@ -388,11 +388,11 @@ public class RoleBindingUtil {
             expandResourceDefinition(
                 customerUUID, resourceDefinition.getResourceType(), resourceDefinition);
             log.info(
-                "Expanded {} RoleBinding '{}' with user UUID '{}', role UUID '{}', from "
+                "Expanded {} RoleBinding '{}' with principal UUID '{}', role UUID '{}', from "
                     + "old resource definition '{}' to new resource definition '{}'.",
                 roleBinding.getType(),
                 roleBinding.getUuid(),
-                roleBinding.getUser().getUuid(),
+                roleBinding.getPrincipal().getUuid(),
                 roleBinding.getRole().getRoleUUID(),
                 oldResourceDefinition,
                 resourceDefinition);
@@ -417,7 +417,7 @@ public class RoleBindingUtil {
     Set<ResourcePermissionData> resourcePermissions = new HashSet<>();
     Map<ResourceType, Set<Action>> nonResourcePermissionsToAdd = new HashMap<>();
     Map<ResourceType, Map<UUID, Set<Permission>>> userResourcePermissions = new HashMap<>();
-    List<RoleBinding> userAssociatedRoleBindings = RoleBinding.getAll(userUUID);
+    List<RoleBinding> userAssociatedRoleBindings = RoleBinding.fetchRoleBindingsForUser(userUUID);
     // Iterate through each role binding for the user.
     for (RoleBinding roleBinding : userAssociatedRoleBindings) {
       // Get all the permissions in that role from the binding.

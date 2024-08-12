@@ -247,7 +247,8 @@ public class LdapUtil {
     return groups;
   }
 
-  private Role getRoleMappedToLdapGroup(String group, UUID customerUuid) {
+  private Role getRoleMappedToLdapGroup(
+      String group, UUID customerUuid, Set<UUID> groupMemberships) {
     Role role = null;
     GroupMappingInfo info =
         GroupMappingInfo.find
@@ -259,6 +260,7 @@ public class LdapUtil {
             .findOne();
 
     if (info != null) {
+      groupMemberships.add(info.getGroupUUID());
       role =
           Role.valueOf(
               com.yugabyte.yw.models.rbac.Role.get(customerUuid, info.getRoleUUID()).getName());
@@ -271,11 +273,12 @@ public class LdapUtil {
       String ybaUsername,
       LdapNetworkConnection connection,
       LdapConfiguration ldapConfiguration,
-      UUID customerUuid) {
+      UUID customerUuid,
+      Set<UUID> groupMemberships) {
     Role role = null;
     Set<String> groups = getGroups(ybaUsername, userEntry, connection, ldapConfiguration);
     for (String group : groups) {
-      Role groupRole = getRoleMappedToLdapGroup(group, customerUuid);
+      Role groupRole = getRoleMappedToLdapGroup(group, customerUuid, groupMemberships);
       role = Role.union(role, groupRole);
     }
     return role;
@@ -400,6 +403,7 @@ public class LdapUtil {
   public Users authViaLDAP(String email, String password, LdapConfiguration ldapConfiguration)
       throws LdapException {
     Users users = new Users();
+    Set<UUID> groupMemberships = new HashSet<>();
     LdapNetworkConnection connection = null;
     try {
       String distinguishedName =
@@ -552,7 +556,12 @@ public class LdapUtil {
 
         Role roleFromGroupMappings =
             getRoleFromGroupMappings(
-                userEntry, email, connection, ldapConfiguration, users.getCustomerUUID());
+                userEntry,
+                email,
+                connection,
+                ldapConfiguration,
+                users.getCustomerUUID(),
+                groupMemberships);
 
         if (roleFromGroupMappings == null) {
           log.warn("No role mappings from LDAP group membership of user: " + email);
@@ -664,6 +673,7 @@ public class LdapUtil {
       if (ldapConfiguration.isEnableDetailedLogs()) {
         log.debug("Saving new user: {}", users);
       }
+      users.setGroupMemberships(groupMemberships);
       users.save();
 
       if (ldapConfiguration.isUseNewRbacAuthz()) {

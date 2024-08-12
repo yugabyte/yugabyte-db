@@ -15443,6 +15443,14 @@
           "example" : "username1@example.com",
           "type" : "string"
         },
+        "groupMemberships" : {
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
         "ldapSpecifiedRole" : {
           "description" : "LDAP Specified Role",
           "type" : "boolean"
@@ -15475,7 +15483,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "email", "primary" ],
+      "required" : [ "email", "groupMemberships", "primary" ],
       "type" : "object"
     },
     "Users" : {
@@ -15506,6 +15514,14 @@
           "example" : "username1@example.com",
           "type" : "string"
         },
+        "groupMemberships" : {
+          "items" : {
+            "format" : "uuid",
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
         "ldapSpecifiedRole" : {
           "description" : "LDAP Specified Role",
           "type" : "boolean"
@@ -15538,7 +15554,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "email", "primary" ],
+      "required" : [ "email", "groupMemberships", "primary" ],
       "type" : "object"
     },
     "VMImageUpgradeParams" : {

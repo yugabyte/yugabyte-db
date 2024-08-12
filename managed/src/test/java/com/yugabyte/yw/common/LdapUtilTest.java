@@ -805,6 +805,7 @@ public class LdapUtilTest extends FakeDBApplication {
         com.yugabyte.yw.models.rbac.Role.get(testCustomer.getUuid(), ldapMapping.getRoleUUID())
             .getName());
     assertEquals(true, user.isLdapSpecifiedRole());
+    assertTrue(user.getGroupMemberships().contains(ldapMapping.getGroupUUID()));
   }
 
   @Test

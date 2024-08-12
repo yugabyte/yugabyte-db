@@ -15,6 +15,7 @@ import com.yugabyte.yw.common.encryption.bc.BcOpenBsdHasher;
 import io.ebean.DuplicateKeyException;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.annotation.DbArray;
 import io.ebean.annotation.Encrypted;
 import io.ebean.annotation.EnumValue;
 import io.ebean.annotation.Transactional;
@@ -28,7 +29,9 @@ import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.Getter;
@@ -184,6 +187,9 @@ public class Users extends Model {
   @Setter
   @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
   private String oidcJwtAuthToken;
+
+  @DbArray(name = "group_memberships")
+  private Set<UUID> groupMemberships = new HashSet<>();
 
   public String getOidcJwtAuthToken() {
     return null;
