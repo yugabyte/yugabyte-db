@@ -3,7 +3,7 @@ title: Migrate data
 headerTitle: Migrate data
 linkTitle: Migrate data
 description: Import and export data in YugabyteDB.
-image: /images/section_icons/manage/enterprise.png
+image: fa-thin fa-cloud-binary
 headcontent: Bulk export and import data from and to YugabyteDB
 menu:
   preview:
@@ -12,27 +12,29 @@ menu:
     weight: 703
 type: indexpage
 ---
-<div class="row">
- <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="bulk-export-ysql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/index/deploy.png" aria-hidden="true" />
-        <div class="title">Bulk export</div>
-      </div>
-      <div class="body">
-        This section describes how to bulk export data out of YugabyteDB.
-      </div>
-    </a>
-  </div>
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="bulk-import-ysql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/index/deploy.png" aria-hidden="true" />
-        <div class="title">Bulk import</div>
-      </div>
-      <div class="body">
-        This section describes how to bulk import data into YugabyteDB.
-      </div>
-    </a>
-  </div>
-</div>
+
+{{<index/block>}}
+
+  {{<index/item
+    title="Guide to migration"
+    body="Essential steps and best practices for migrating to YugabyteDB."
+    href="migrate-from-postgres/"
+    icon="fa-thin fa-memo-circle-info">}}
+
+{{</index/block>}}
+
+{{<index/block>}}
+
+  {{<index/item
+    title="Bulk export"
+    body="Export data from PostgreSQL."
+    href="bulk-export-ysql/"
+    icon="fa-thin fa-file-export">}}
+
+  {{<index/item
+    title="Bulk import"
+    body="Import data into YugabyteDB."
+    href="bulk-import-ysql/"
+    icon="fa-thin fa-file-import">}}
+
+{{</index/block>}}

@@ -14,7 +14,8 @@ type: docs
 {{<api-tabs>}}
 
 The recommended way to export data from PostgreSQL for purposes of importing it to YugabyteDB is via CSV files using the COPY command.
-However, for exporting an entire database that consists of smaller datasets, you can use the YugabyteDB [`ysql_dump`](../../../admin/ysql-dump/) utility.
+
+To export an entire database that consists of smaller datasets, you can also use the YugabyteDB [ysql_dump](../../../admin/ysql-dump/) utility.
 
 {{< tip title="Migrate using YugabyteDB Voyager" >}}
 To automate your migration from PostgreSQL to YugabyteDB, use [YugabyteDB Voyager](../../../yugabyte-voyager/). To learn more, refer to the [export schema](../../../yugabyte-voyager/migrate/migrate-steps/#export-schema) and [export data](../../../yugabyte-voyager/migrate/migrate-steps/#export-data) steps.
@@ -87,13 +88,13 @@ You can run the above commands in parallel to speed up the process. This approac
 
 ### Export data into SQL script using ysql_dump
 
-An alternative way to export the data is using the YugabyteDB [`ysql_dump`](../../../admin/ysql-dump/) backup utility, which is derived from PostgreSQL pg_dump.
+An alternative way to export the data is using the YugabyteDB [ysql_dump](../../../admin/ysql-dump/) backup utility, which is derived from PostgreSQL pg_dump.
 
 ```sh
 $ ysql_dump -d <database_name> > <database_name>.sql
 ```
 
-`ysql_dump` is the ideal option for smaller datasets, because it allows you to export a whole database by running a single command. However, the COPY command is recommended for large databases, because it significantly enhances the performance.
+ysql_dump is the ideal option for smaller datasets, because it allows you to export a whole database by running a single command. However, the COPY command is recommended for large databases, because it significantly enhances the performance.
 
 ## Next step
 

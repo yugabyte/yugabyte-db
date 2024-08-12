@@ -13,7 +13,7 @@ type: docs
 
 {{<api-tabs>}}
 
-This page describes the following steps to manually migrate PostgreSQL data and applications to YugabyteDB after [exporting PostgreSQL data](../../data-migration/bulk-export-ysql/).
+Use the following steps to manually migrate PostgreSQL data and applications to YugabyteDB after [exporting PostgreSQL data](../../data-migration/bulk-export-ysql/):
 
 - [Prepare a cluster](#prepare-a-cluster)
 - [Import PostgreSQL data](#import-postgresql-data)
