@@ -1,7 +1,7 @@
 ---
 title: Migrate from Postgres
-headerTitle: Migrate from Postgres
-linkTitle: Migrate from Postgres
+headerTitle: Migrate from PostgreSQL
+linkTitle: Migrate from PostgreSQL
 description: Guide to migration from PostgreSQL
 menu:
   preview:
@@ -13,12 +13,12 @@ type: docs
 
 As businesses grow and demand more from their data infrastructure, traditional monolithic databases like PostgreSQL can sometimes struggle to keep up with the scalability, availability, and performance requirements of modern, cloud-native applications. To address these challenges, many organizations are turning to distributed databases like YugabyteDB, which offer horizontal scalability, global distribution, and built-in fault tolerance.
 
-This guide is designed to help you smoothly transition your data and applications from a monolithic PostgreSQL database to YugabyteDB’s distributed architecture. Whether you’re looking to scale out your existing applications, reduce latency for globally dispersed users, or ensure continuous availability, migrating to YugabyteDB can provide the foundation you need for a robust, future-proof database infrastructure.
+This guide is designed to help you smoothly transition your data and applications from a monolithic PostgreSQL database to YugabyteDB's distributed architecture. Whether you're looking to scale out your existing applications, reduce latency for globally dispersed users, or ensure continuous availability, migrating to YugabyteDB can provide the foundation you need for a robust, future-proof database infrastructure.
 
-This guide will walk you through the essential steps and best practices for migrating your data, including planning the migration, setting up the YugabyteDB cluster, transforming your schema, migrating your data, and optimizing your applications for a distributed environment. By following these steps, you can minimize downtime, preserve data integrity, and leverage YugabyteDB’s advanced features to meet your evolving business needs.
+The guide will walk you through the essential steps and best practices for migrating your data, including planning the migration, setting up the YugabyteDB cluster, transforming your schema, migrating your data, and optimizing your applications for a distributed environment. By following these steps, you can minimize downtime, preserve data integrity, and leverage YugabyteDB's advanced features to meet your evolving business needs.
 
 {{<note>}}
-The preferred way of migration of a PostgreSQL database on to YugabyteDB is via [YB Voyager](../../../yugabyte-voyager/migrate/). Voyager has been designed to handle various corner cases correctly to minimize errors and achieve faster migration. This guide provides general guidelines to be considered during migration.
+The preferred way of migrating a PostgreSQL database to YugabyteDB is via [YugabyteDB Voyager](../../../yugabyte-voyager/migrate/). Voyager has been designed to handle various corner cases to minimize errors and achieve faster migration. This guide provides _general guidelines_ to be considered during migration.
 {{</note>}}
 
 ## PostgreSQL Compatibility
