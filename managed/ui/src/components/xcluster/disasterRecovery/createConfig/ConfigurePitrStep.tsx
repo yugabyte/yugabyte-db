@@ -36,18 +36,18 @@ export const ConfigurePitrStep = ({ isFormDisabled }: ConfigureAlertStepProps) =
 
   const UNIT_OPTIONS: ReactSelectOption[] = [
     {
-      label: t('second', { keyPrefix: I18N_DURATION_KEY_PREFIX }),
+      label: t('seconds', { keyPrefix: I18N_DURATION_KEY_PREFIX }),
       value: DurationUnit.SECOND
     },
     {
-      label: t('minute', { keyPrefix: I18N_DURATION_KEY_PREFIX }),
+      label: t('minutes', { keyPrefix: I18N_DURATION_KEY_PREFIX }),
       value: DurationUnit.MINUTE
     },
     {
-      label: t('hour', { keyPrefix: I18N_DURATION_KEY_PREFIX }),
+      label: t('hours', { keyPrefix: I18N_DURATION_KEY_PREFIX }),
       value: DurationUnit.HOUR
     },
-    { label: t('day', { keyPrefix: I18N_DURATION_KEY_PREFIX }), value: DurationUnit.DAY }
+    { label: t('days', { keyPrefix: I18N_DURATION_KEY_PREFIX }), value: DurationUnit.DAY }
   ];
 
   const pitrRetentionPeriodValue = watch('pitrRetentionPeriodValue');

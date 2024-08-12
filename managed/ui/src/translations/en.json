@@ -42,10 +42,10 @@
       "learnMore": "Learn more",
       "clear": "Clear",
       "duration": {
-        "second": "second",
-        "minute": "minute",
-        "hour": "hour",
-        "day": "day"
+        "seconds": "Seconds",
+        "minutes": "Minutes",
+        "hours": "Hours",
+        "days": "Days"
       }
     },
     "imgAltText": {
@@ -923,7 +923,7 @@
                 },
                 "error": {
                   "pitrRetentionPeriodValueRequired": "Required.",
-                  "pitrRetentionPeriodValueMinimum": "PITR retention time must be at least 5 minutes.",
+                  "pitrRetentionPeriodValueMinimum": "Minimum 5 minutes.",
                   "pitrRetentionPeriodUnitRequired": "Required."
                 }
               },
