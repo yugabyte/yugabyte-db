@@ -472,6 +472,7 @@ public class CloudProviderHandler {
         TaskType.CreateAndRotateAccessKey,
         schedulingFrequency,
         null,
+        true /* useLocalTimezone */,
         frequencyTimeUnit,
         null);
   }
