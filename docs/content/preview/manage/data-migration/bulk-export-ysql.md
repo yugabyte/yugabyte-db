@@ -1,8 +1,9 @@
 ---
 title: Bulk export YSQL
-headerTitle: Bulk export for YSQL
-linkTitle: Bulk export
+headerTitle: Bulk export
+linkTitle: Export data
 description: Bulk export for YSQL using ysql_dump.
+badges: ysql
 menu:
   preview:
     identifier: manage-bulk-export-ysql

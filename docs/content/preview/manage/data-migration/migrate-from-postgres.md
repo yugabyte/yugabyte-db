@@ -7,13 +7,13 @@ menu:
   preview:
     identifier: migrate-from-postgres
     parent: manage-bulk-import-export
-    weight: 710
+    weight: 750
 type: docs
 rightNav:
   hideH4: true
 ---
 
-The following guide is designed to help you smoothly transition your data and applications from a monolithic PostgreSQL database to YugabyteDB's distributed architecture. The guide walks you through the essential steps and best practices for migrating your data, including planning the migration, setting up the YugabyteDB cluster, transforming your schema, migrating your data, and optimizing your applications for a distributed environment. By following these steps, you can minimize downtime, preserve data integrity, and leverage YugabyteDB's advanced features to meet your evolving business needs.
+The following guide is designed to help you smoothly transition your data and applications from a monolithic PostgreSQL database to YugabyteDB's distributed architecture. The guide walks you through the essential steps and best practices for migrating your data, including planning the migration, transforming your schema, migrating your data, and optimizing your applications for a distributed environment. By following these steps, you can minimize downtime, preserve data integrity, and leverage YugabyteDB's advanced features to meet your evolving business needs.
 
 {{<tip title="Migrate using YugabyteDB Voyager">}}
 Manage end-to-end database migration, including cluster preparation, schema migration, and data migration, using [YugabyteDB Voyager](../../../yugabyte-voyager/). Voyager is designed to handle various corner cases correctly to minimize errors and achieve faster migration.
