@@ -49,7 +49,7 @@ To migrate in place, do the following:
     Note that the `installRoot` (by default `/opt/ybanywhere`) in `yba-ctl.yml` needs to be different from the Replicated Storage Path (by default `/opt/yugabyte`). If they are set to the same value, the migration will fail. You can delete `yba-ctl.yml` and try again.
 
     {{< warning title="Install Root" >}}
-    The `installRoot` must **_not_** be a subdirectory of the Replicated Storage Path (`/opt/yugabyte` and `/opt/yugabyte/ybanywhere`) or upon completion of `replicated-migrate finish` all data will be lost while cleaning up Replicated.
+The `installRoot` must **_not_** be a subdirectory of the Replicated Storage Path (`/opt/yugabyte` and `/opt/yugabyte/ybanywhere`) or upon completion of `replicated-migrate finish` all data will be lost while cleaning up Replicated.
     {{</ warning >}}
 
     For a list of options, refer to [Configuration options](../../install-yugabyte-platform/install-software/installer/#configuration-options).
