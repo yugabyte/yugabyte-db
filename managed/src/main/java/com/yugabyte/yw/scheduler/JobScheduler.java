@@ -245,6 +245,17 @@ public class JobScheduler {
   }
 
   /**
+   * Reset counters like failedCount for the given schedule UUID.
+   *
+   * @param uuid the schedule UUID.
+   * @return the updated job schedule.
+   */
+  public synchronized JobSchedule resetCounters(UUID uuid) {
+    JobSchedule jobSchedule = JobSchedule.getOrBadRequest(uuid);
+    return jobSchedule.resetCounters();
+  }
+
+  /**
    * Delete schedules for the given JobConfig class that also satisfy the predicate.
    *
    * @param jobConfigClass the job config class.

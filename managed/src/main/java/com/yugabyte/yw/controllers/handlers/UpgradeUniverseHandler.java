@@ -10,6 +10,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
@@ -720,6 +721,8 @@ public class UpgradeUniverseHandler {
       Customer customer,
       Universe universe,
       String customTaskName) {
+    customTaskName =
+        CustomerTaskManager.getCustomTaskName(customerTaskType, upgradeTaskParams, customTaskName);
     UUID taskUUID = commissioner.submit(taskType, upgradeTaskParams);
     log.info(
         "Submitted {} for {} : {}, task uuid = {}.",

@@ -4098,6 +4098,34 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         });
   }
 
+  @Test(expected = UnsupportedOperationException.class)
+  public void testConfigureChangeRFAndOther() {
+    setupAndApplyActions(
+        "r1-z1r1-1-1;r1-z2r1-1-1;r1-z3r1-1-1",
+        null,
+        Collections.emptyMap(),
+        Collections.emptyList(),
+        Arrays.asList(
+            new Pair(UserAction.UPD_RF, 0), // inc RF
+            new Pair(UserAction.MODIFY_AZ_COUNT, 1), // inc az
+            new Pair(UserAction.MODIFY_COMMUNICATION_PORTS, 1) // port -> 7000
+            ),
+        (idx, params) -> {
+          switch (idx) {
+            case 0:
+              assertEquals(Set.of(UPDATE), UniverseCRUDHandler.getUpdateOptions(params, EDIT));
+              assertEquals(5, params.getPrimaryCluster().userIntent.replicationFactor);
+              assertEquals(5, params.nodeDetailsSet.size());
+              break;
+            case 1:
+              assertEquals(Set.of(UPDATE), UniverseCRUDHandler.getUpdateOptions(params, EDIT));
+              // One more node
+              assertEquals(6, params.nodeDetailsSet.size());
+              break;
+          }
+        });
+  }
+
   @Test
   public void testChaosConfigureEdit() {
     Customer customer =
@@ -4169,6 +4197,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
                     .filter(ua -> ua.forDedicated == false)
                     .collect(Collectors.toList());
           }
+          // Currently we allow changing RF only with placement changes.
+          userActions.remove(UserAction.UPD_RF);
           UserAction chaosAction = userActions.get(random.nextInt(userActions.size()));
           int var = random.nextInt(20);
 

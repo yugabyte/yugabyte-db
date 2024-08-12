@@ -60,18 +60,19 @@ namespace yb::master {
     macro elem \
   } break;
 
+Result<std::unique_ptr<google::protobuf::Message>> CatalogEntityPBForType(SysRowEntryType type) {
+#define HANDLE_CASE(entry_type, pb_type) return std::make_unique<pb_type>();
+  SWITCH_FOR_EACH_CATALOG_ENTITY_TYPE(HANDLE_CASE, type);
+#undef HANDLE_CASE
+}
+
 Result<std::unique_ptr<google::protobuf::Message>> DebugStringToCatalogEntityPB(
     SysRowEntryType type, const std::string& debug_string) {
-#define HANDLE_CASE(entry_type, pb_type) \
-  auto new_pb = std::make_unique<pb_type>(); \
-  SCHECK_FORMAT( \
-      google::protobuf::TextFormat::ParseFromString(debug_string, new_pb.get()), InvalidArgument, \
-      "Failed to parse debug string into type $0", SysRowEntryType_Name(entry_type)); \
+  auto new_pb = VERIFY_RESULT(CatalogEntityPBForType(type));
+  SCHECK_FORMAT(
+      google::protobuf::TextFormat::ParseFromString(debug_string, new_pb.get()), InvalidArgument,
+      "Failed to parse debug string into type $0", SysRowEntryType_Name(type));
   return new_pb;
-
-  SWITCH_FOR_EACH_CATALOG_ENTITY_TYPE(HANDLE_CASE, type);
-
-#undef HANDLE_CASE
 }
 
 Result<std::unique_ptr<google::protobuf::Message>> SliceToCatalogEntityPB(

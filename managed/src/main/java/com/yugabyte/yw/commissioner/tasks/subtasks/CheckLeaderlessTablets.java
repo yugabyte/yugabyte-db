@@ -51,13 +51,22 @@ public class CheckLeaderlessTablets extends ServerSubTaskBase {
     Duration timeout =
         confGetter.getConfForScope(universe, UniverseConfKeys.leaderlessTabletsTimeout);
     int httpPort = universe.getUniverseDetails().communicationPorts.masterHttpPort;
+    int initialDelay = INITIAL_DELAY_MS;
+    int maxDelay = MAX_DELAY_MS;
+    if (taskParams().isRunOnlyPrechecks()) {
+      // We need to get only single try.
+      initialDelay = 0;
+      maxDelay = 1;
+      timeout = Duration.ofMillis(1);
+    }
+
     try (YBClient client = ybService.getClient(masterAddresses, certificate)) {
       AtomicInteger errorCnt = new AtomicInteger();
       AtomicReference<List<String>> tablets = new AtomicReference<>();
       boolean result =
           doWithExponentialTimeout(
-              INITIAL_DELAY_MS,
-              MAX_DELAY_MS,
+              initialDelay,
+              maxDelay,
               timeout.toMillis(),
               () -> {
                 try {

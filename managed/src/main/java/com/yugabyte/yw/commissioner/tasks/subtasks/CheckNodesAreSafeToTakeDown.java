@@ -155,6 +155,12 @@ public class CheckNodesAreSafeToTakeDown extends ServerSubTaskBase {
         confGetter
             .getConfForScope(universe, UniverseConfKeys.nodesAreSafeToTakeDownCheckTimeout)
             .toMillis();
+
+    if (taskParams().isRunOnlyPrechecks()) {
+      // Only single try.
+      maxTimeoutMs = 1;
+    }
+
     return doWithExponentialTimeout(
         INITIAL_DELAY_MS,
         MAX_DELAY_MS,

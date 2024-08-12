@@ -277,6 +277,7 @@ import org.yb.master.MasterTypes;
 import org.yb.util.ServerInfo;
 import org.yb.util.TabletServerInfo;
 import play.libs.Json;
+import play.mvc.Http;
 
 @Slf4j
 public abstract class UniverseTaskBase extends AbstractTaskBase {
@@ -1123,6 +1124,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         taskParams().getUniverseUUID(), expectedUniverseVersion, firstRunTxnCallback);
   }
 
+  protected boolean maybeRunOnlyPrechecks() {
+    if (taskParams().isRunOnlyPrechecks()) {
+      createPrecheckTasks(getUniverse());
+      getRunnableTask().runSubTasks();
+      return true;
+    }
+    return false;
+  }
+
   /**
    * This method locks the universe, runs {@link #createPrecheckTasks(Universe)}, and freezes the
    * universe with the given txnCallback. By freezing, the association between the task and the
@@ -1139,6 +1149,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       UUID universeUuid,
       int expectedUniverseVersion,
       @Nullable Consumer<Universe> firstRunTxnCallback) {
+    if (taskParams().isRunOnlyPrechecks()) {
+      throw new PlatformServiceException(
+          Http.Status.FORBIDDEN, "Current task doesn't support running only prechecks");
+    }
     UniverseUpdaterConfig updaterConfig =
         UniverseUpdaterConfig.builder()
             .expectedUniverseVersion(expectedUniverseVersion)

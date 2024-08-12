@@ -22,6 +22,9 @@
 
 namespace yb::master {
 
+// Returns an empty catalog entity protobuf that maps to the provided SysRowEntryType.
+Result<std::unique_ptr<google::protobuf::Message>> CatalogEntityPBForType(SysRowEntryType type);
+
 // Converts a debug string (produced by pb.DebugString(), or pb.ShortDebugString()) into a catalog
 // entity protobuf of the given type.
 Result<std::unique_ptr<google::protobuf::Message>> DebugStringToCatalogEntityPB(

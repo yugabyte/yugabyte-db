@@ -743,7 +743,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status WaitForTransactionTableVersionUpdateToPropagate();
 
-  Status FillHeartbeatResponse(const TSHeartbeatRequestPB* req, TSHeartbeatResponsePB* resp);
+  Status FillHeartbeatResponse(const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp);
 
   SysCatalogTable* sys_catalog() override { return sys_catalog_.get(); }
 
@@ -2735,12 +2735,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status FillHeartbeatResponseEncryption(
       const SysClusterConfigEntryPB& cluster_config,
-      const TSHeartbeatRequestPB* req,
+      const TSHeartbeatRequestPB& req,
       TSHeartbeatResponsePB* resp);
 
   Status FillHeartbeatResponseCDC(
       const SysClusterConfigEntryPB& cluster_config,
-      const TSHeartbeatRequestPB* req,
+      const TSHeartbeatRequestPB& req,
       TSHeartbeatResponsePB* resp);
 
   Status AddSchemaVersionMappingToUniverseReplication(

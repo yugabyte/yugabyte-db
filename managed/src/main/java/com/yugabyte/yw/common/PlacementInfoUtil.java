@@ -782,7 +782,7 @@ public class PlacementInfoUtil {
                 + " cluster in universe "
                 + universe.getUniverseUUID());
       }
-      verifyEditParams(oldCluster, cluster);
+      verifyEditParams(oldCluster, cluster, taskParams, universe);
     }
     // Create node details set if needed.
     if (taskParams.nodeDetailsSet == null) {
@@ -1055,8 +1055,14 @@ public class PlacementInfoUtil {
    *
    * @param oldCluster The current (soon to be old) version of a cluster.
    * @param newCluster The intended next version of the same cluster.
+   * @param taskParams
+   * @param universe
    */
-  private static void verifyEditParams(Cluster oldCluster, Cluster newCluster) {
+  private static void verifyEditParams(
+      Cluster oldCluster,
+      Cluster newCluster,
+      UniverseDefinitionTaskParams taskParams,
+      Universe universe) {
     UserIntent existingIntent = oldCluster.userIntent;
     UserIntent userIntent = newCluster.userIntent;
     LOG.info("old intent: {}", existingIntent.toString());
@@ -1072,12 +1078,23 @@ public class PlacementInfoUtil {
     }
 
     if (oldCluster.clusterType == PRIMARY
-        && existingIntent.replicationFactor > userIntent.replicationFactor) {
-      LOG.error(
-          "Replication factor for primary cluster cannot be decreased from {} to {}",
-          existingIntent.replicationFactor,
-          userIntent.replicationFactor);
-      throw new UnsupportedOperationException("Replication factor cannot be decreased.");
+        && existingIntent.replicationFactor != userIntent.replicationFactor) {
+      if (existingIntent.replicationFactor > userIntent.replicationFactor) {
+        LOG.error(
+            "Replication factor for primary cluster cannot be decreased from {} to {}",
+            existingIntent.replicationFactor,
+            userIntent.replicationFactor);
+        throw new UnsupportedOperationException("Replication factor cannot be decreased.");
+      }
+      if (!newCluster.areTagsSame(oldCluster)
+          || !existingIntent.deviceInfo.equals(userIntent.deviceInfo)
+          || UniverseCRUDHandler.isKubernetesNodeSpecUpdate(oldCluster, newCluster)
+          || UniverseCRUDHandler.isAwsArnChanged(oldCluster, newCluster)
+          || UniverseCRUDHandler.areCommunicationPortsChanged(taskParams, universe)
+          || existingIntent.assignPublicIP != userIntent.assignPublicIP) {
+        throw new UnsupportedOperationException(
+            "Cannot change anything but placement if replication factor is altered.");
+      }
     }
 
     if (!existingIntent.universeName.equals(userIntent.universeName)) {

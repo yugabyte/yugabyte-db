@@ -266,7 +266,7 @@ public class UniverseCRUDHandler {
             < cluster.userIntent.deviceInfo.volumeSize;
   }
 
-  private static boolean isKubernetesNodeSpecUpdate(Cluster cluster, Cluster currentCluster) {
+  public static boolean isKubernetesNodeSpecUpdate(Cluster cluster, Cluster currentCluster) {
     return currentCluster.userIntent.providerType == Common.CloudType.kubernetes
         && (!(Objects.equals(
                 currentCluster.userIntent.tserverK8SNodeResourceSpec,

@@ -232,4 +232,28 @@ public class JobSchedulerTest extends FakeDBApplication {
     assertTrue(jobSchedule.getNextStartTime().after(jobInstance.getEndTime()));
     assertEquals(JobInstance.State.SKIPPED, jobInstance.getState());
   }
+
+  @Test
+  public void testJobScheduleResetCounters() throws Exception {
+    ScheduleConfig scheduleConfig =
+        ScheduleConfig.builder().type(ScheduleType.FIXED_DELAY).intervalSecs(1).build();
+    TestJobConfig jobConfig = new TestJobConfig();
+    jobConfig.setFail(true);
+    JobSchedule jobSchedule = createJobSchedule(scheduleConfig, jobConfig);
+    UUID uuid = jobScheduler.submitSchedule(jobSchedule);
+    List<JobInstance> jobInstances = JobInstance.getAll(uuid);
+    assertEquals(1, jobInstances.size());
+    JobInstance jobInstance = jobInstances.get(0);
+    jobScheduler.executeJobInstance(jobInstance);
+    jobInstance = JobInstance.getOrBadRequest(jobInstance.getUuid());
+    assertEquals(JobInstance.State.FAILED, jobInstance.getState());
+    // Fetch the latest.
+    jobSchedule = JobSchedule.getOrBadRequest(uuid);
+    assertEquals(1, jobSchedule.getExecutionCount());
+    assertEquals(1, jobSchedule.getFailedCount());
+    jobScheduler.resetCounters(uuid);
+    jobSchedule = JobSchedule.getOrBadRequest(uuid);
+    assertEquals(0, jobSchedule.getExecutionCount());
+    assertEquals(0, jobSchedule.getFailedCount());
+  }
 }

@@ -2824,6 +2824,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     SubTaskGroup subTaskGroup = createSubTaskGroup("CheckUnderReplicatedTables");
     Duration maxWaitTime =
         confGetter.getConfForScope(getUniverse(), UniverseConfKeys.underReplicatedTabletsTimeout);
+    if (taskParams().isRunOnlyPrechecks()) {
+      maxWaitTime = Duration.ofMillis(1);
+    }
     CheckUnderReplicatedTablets.Params params = new CheckUnderReplicatedTablets.Params();
     params.targetSoftwareVersion = targetSoftwareVersion;
     params.setUniverseUUID(taskParams().getUniverseUUID());
@@ -2931,6 +2934,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       CheckClusterConsistency.Params params = new CheckClusterConsistency.Params();
       params.setUniverseUUID(taskParams().getUniverseUUID());
       params.skipMayBeRunning = skipMaybeRunning;
+      params.runOnlyPrechecks = taskParams().isRunOnlyPrechecks();
       CheckClusterConsistency task = createTask(CheckClusterConsistency.class);
       task.initialize(params);
       // Add it to the task list.
@@ -2945,6 +2949,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       subTaskGroup.setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
       ServerSubTaskParams params = new ServerSubTaskParams();
       params.setUniverseUUID(taskParams().getUniverseUUID());
+      params.runOnlyPrechecks = taskParams().isRunOnlyPrechecks();
 
       CheckLeaderlessTablets checkLeaderlessTablets = createTask(CheckLeaderlessTablets.class);
       checkLeaderlessTablets.initialize(params);
@@ -2968,6 +2973,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.targetSoftwareVersion = targetSoftwareVersion;
       params.nodesToCheck = mastersAndTservers;
       params.fallbackToSingleSplits = fallbackToSingleSplits;
+      params.runOnlyPrechecks = taskParams().isRunOnlyPrechecks();
 
       CheckNodesAreSafeToTakeDown checkNodesAreSafeToTakeDown =
           createTask(CheckNodesAreSafeToTakeDown.class);

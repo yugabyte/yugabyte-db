@@ -127,7 +127,7 @@ TEST_F(RegistrationTest, TestTSRegisters) {
   ASSERT_EQ(1, descs.size());
 
   // Verify that the registration is sane.
-  master::TSRegistrationPB reg = descs[0]->GetRegistration();
+  auto reg = descs[0]->GetRegistration();
   {
     SCOPED_TRACE(reg.ShortDebugString());
     ASSERT_EQ(reg.ShortDebugString().find("0.0.0.0"), string::npos)

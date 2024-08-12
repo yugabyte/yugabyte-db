@@ -249,4 +249,18 @@ public class JobSchedule extends Model {
     }
     return this;
   }
+
+  public JobSchedule resetCounters() {
+    if (db().update(JobSchedule.class)
+            .set("executionCount", 0L)
+            .set("failedCount", 0L)
+            .set("updatedAt", new Date())
+            .where()
+            .eq("uuid", getUuid())
+            .update()
+        > 0) {
+      refresh();
+    }
+    return this;
+  }
 }

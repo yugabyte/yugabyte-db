@@ -48,6 +48,7 @@ enum SysRowEntryType {
   UNIVERSE_REPLICATION_BOOTSTRAP = 17;
   XCLUSTER_OUTBOUND_REPLICATION_GROUP = 18;
   CLONE_STATE = 19;
+  TSERVER_REGISTRATION = 20;
 
   // Each value must have a corresponding entry in CATALOG_ENTITY_TYPE_MAP of
   // catalog_entity_types.h
