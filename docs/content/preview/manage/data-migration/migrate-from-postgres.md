@@ -9,6 +9,8 @@ menu:
     parent: manage-bulk-import-export
     weight: 710
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 The following guide is designed to help you smoothly transition your data and applications from a monolithic PostgreSQL database to YugabyteDB's distributed architecture. The guide walks you through the essential steps and best practices for migrating your data, including planning the migration, setting up the YugabyteDB cluster, transforming your schema, migrating your data, and optimizing your applications for a distributed environment. By following these steps, you can minimize downtime, preserve data integrity, and leverage YugabyteDB's advanced features to meet your evolving business needs.
@@ -241,13 +243,6 @@ For more details, see [Live migration with fall-forward](../../../yugabyte-voyag
 For more details, see [Live migration with fall-back](../../../yugabyte-voyager/migrate/live-fall-back/).
 {{</lead>}}
 
-## Verification
-
-After the migration is complete you need to take steps to verify the migration. You can do this as follows:
-
-- **Functional testing**: Verify that all application queries work as expected in YugabyteDB.
-- **Consistency checks**: Run data consistency checks between PostgreSQL and YugabyteDB to ensure no data is lost or corrupted during the migration by [verifying the database objects](../bulk-import-ysql#verify-database-objects) and by [verifying row counts](../bulk-import-ysql#verify-row-counts-for-tables).
-
 ## Application migration
 
 When porting an existing PostgreSQL application to YugabyteDB you can follow a set of best practices to get the best out of your new deployment.
@@ -258,7 +253,7 @@ For a full list of tips and tricks for high performance and availability, see [B
 
 ### Retry transactions on conflicts
 
-YugabyteDB uses the error code 40001 (serialization_failure) for retryable transaction conflict errors. You should retry the transactions from the application when encountering these errors.
+YugabyteDB returns different [error codes](../../../develop/learn/transactions/transactions-errorcodes-ysql/) for the various scenarios that go wrong during transaction processing. The error code [40001 (serialization_failure)](../../../develop/learn/transactions/transactions-errorcodes-ysql/#40001-serialization-failure) for retryable transaction conflict errors. You should retry the transactions from the application when encountering these errors.
 
 {{<lead link="../../../develop/learn/transactions/transactions-retries-ysql/#client-side-retry">}}
 For application-side retry logic, see [Client-side retry](../../../develop/learn/transactions/transactions-retries-ysql/#client-side-retry)
@@ -280,11 +275,34 @@ There are many applications where handling a large number of client connections 
 
 - **Increase number of nodes in cluster:** The number of connections to a YugabyteDB cluster scales linearly with the number of nodes in the cluster. By deploying more nodes with smaller vCPUs per node, it may be possible to get more connections. For example, a 10 node cluster consisting of 32 vCPU per node can handle 3000 connections; a 20 node cluster with 16 vCPUs per node (which is equivalent to the 10 node, 32 vCPU cluster) can handle 6000 connections.
 
-- **Connection Manager**: YugabyteDB includes an built-in connection pooler called [YSQL Connection Manager](../../../explore/going-beyond-sql/connection-mgr-ysql/). The connection manager works by multiplexing many client connection over few physical connections to the database.
+- **Connection Manager**: Enable the built-in connection pooler called [YSQL Connection Manager](../../../explore/going-beyond-sql/connection-mgr-ysql/). The connection manager works by multiplexing many client connection over few physical connections to the database. With the connection manager enabled, each node in the cluster will be able to handle more than 10K connections per node.
+
+### Tune performance
+
+Because of the distributed nature of YugabyteDB, queries are executed quite differently from Postgres. This is because the latency across the nodes are taken into account by the query planner. Adopting the following practices will help improve the performance of your applications.
+
+- **Single-row transactions**: YugabyteDB has optimizations to improve the performance of transactions in certain scenarios where transactions operate on a single row. Consider converting multi-statement transactions to single-statement ones to improve performace. {{<link "../../../develop/learn/transactions/transactions-performance-ysql/#fast-single-row-transactions">}}
+
+- **Use On Conflict clause**: Use the optional ON CONFLICT clause in the INSERT statement to circumvent certain errors and avoid multiple round trips. {{<link "../../../develop/learn/transactions/transactions-performance-ysql/#minimize-conflict-errors">}}
+
+- **Set statement timeouts**: Avoid getting stuck in a wait loop because of starvation by using a reasonable timeout for the statements.  {{<link "../../../develop/learn/transactions/transactions-performance-ysql/#avoid-long-waits">}}
+
+- **Stored procedures**: Use stored procedures to bundle a set of statements with error handling to be executed on the server and and avoid multiple round trips. {{<link "../../../develop/learn/transactions/transactions-performance-ysql/#stored-procedures-minimize-round-trips">}}
+
+{{<lead link="../../../develop/learn/transactions/transactions-performance-ysql/">}}
+For a full list of best practices to improve performance, see [Performance tuning in YSQL](../../../develop/learn/transactions/transactions-performance-ysql/)
+{{</lead>}}
 
 ## Post-migration activities
 
 After the migration is complete, several key steps must be taken to ensure the system operates smoothly and without issues. These include verifying the integrity of migrated data, testing system performance, addressing any compatibility concerns, and monitoring the system closely for any unexpected behavior. Properly addressing these aspects will help ensure a seamless transition and the reliable functioning of the system.
+
+### Verification
+
+After the migration is complete you need to take steps to verify the migration. You can do this as follows:
+
+- **Functional testing**: Verify that all application queries work as expected in YugabyteDB.
+- **Consistency checks**: Run data consistency checks between PostgreSQL and YugabyteDB to ensure no data is lost or corrupted during the migration by [verifying the database objects](../bulk-import-ysql#verify-database-objects) and by [verifying row counts](../bulk-import-ysql#verify-row-counts-for-tables).
 
 ### Monitoring and optimization
 
