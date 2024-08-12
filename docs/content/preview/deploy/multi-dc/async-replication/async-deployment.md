@@ -46,7 +46,7 @@ After you created the required tables, you can set up unidirectional replication
       ./bin/yb-admin -master_addresses <source_universe_master_addresses> list_tables include_table_id | grep table_name
       ```
 
-- Run the following `yb-admin` [`setup_universe_replication`](../../../../admin/yb-admin/#setup-universe-replication) command from the YugabyteDB home directory in the source universe:
+- Run the following yb-admin [`setup_universe_replication`](../../../../admin/yb-admin/#setup-universe-replication) command from the YugabyteDB home directory in the source universe:
 
     ```sh
     ./bin/yb-admin \
@@ -132,7 +132,7 @@ To obtain information about the overall maximum lag, you should check `/metrics`
 
 ### Replication status
 
-You can use `yb-admin` to return the current replication status. The `get_replication_status` command returns the replication status for all *consumer-side* replication streams. An empty `errors` field means the replication stream is healthy.
+You can use yb-admin to return the current replication status. The `get_replication_status` command returns the replication status for all *consumer-side* replication streams. An empty `errors` field means the replication stream is healthy.
 
 ```sh
 ./bin/yb-admin \

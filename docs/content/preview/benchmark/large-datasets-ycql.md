@@ -84,7 +84,7 @@ The graph below shows the steady growth in `SSTables` size at a node from `Sep 4
 
 ## Final data set size
 
-The figure below is from the `yb-master` Admin UI that shows the tablet servers, number of tablets on each, number of tablet leaders, and size of the on-disk `SSTable` files.
+The figure below is from the yb-master Admin UI that shows the tablet servers, number of tablets on each, number of tablet leaders, and size of the on-disk `SSTable` files.
 
 {{< note title="Note" >}}
 

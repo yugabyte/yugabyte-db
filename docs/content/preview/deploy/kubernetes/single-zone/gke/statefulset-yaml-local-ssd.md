@@ -174,7 +174,7 @@ The following `nodeSelector` snippet in the YAML file instructs the Kubernetes s
     cloud.google.com/gke-local-ssd: "true"
 ```
 
-Also note that you instruct the scheduler to place the various pods in the `yb-master` or `yb-tserver` services on different physical nodes with the `antiAffinity` hint:
+Also note that you instruct the scheduler to place the various pods in the yb-master or yb-tserver services on different physical nodes with the `antiAffinity` hint:
 
 ```yaml
   spec:
