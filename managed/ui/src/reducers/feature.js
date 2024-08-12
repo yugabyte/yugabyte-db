@@ -37,7 +37,8 @@ const initialStateFeatureInTest = {
   enableCACertRotation: true,
   enableNewAdvancedRestoreModal: false,
   showReplicationSlots: true,
-  newTaskDetailsUI: false
+  newTaskDetailsUI: false,
+  enableNewAuthAndMappings: false
 };
 
 const initialStateFeatureReleased = {
