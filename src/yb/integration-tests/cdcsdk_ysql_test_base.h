@@ -123,6 +123,7 @@ DECLARE_bool(TEST_cdcsdk_add_indexes_to_stream);
 DECLARE_bool(cdcsdk_enable_cleanup_of_non_eligible_tables_from_stream);
 DECLARE_bool(TEST_cdcsdk_skip_stream_active_check);
 DECLARE_bool(TEST_cdcsdk_disable_drop_table_cleanup);
+DECLARE_bool(TEST_cdcsdk_disable_deleted_stream_cleanup);
 
 namespace yb {
 
