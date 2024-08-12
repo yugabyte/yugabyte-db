@@ -14,14 +14,14 @@ type: docs
 
 {{<api-tabs>}}
 
-To ensure that the migration was successful, you can perform a number of steps.
+To ensure that the migration was successful, you can perform the following actions.
 
-### Verify database objects
+## Verify database objects
 
 - Verify that all the tables and indexes have been created in YugabyteDB.
 - Ensure that triggers and constraints are migrated and are working as expected.
 
-### Run count query in YCQL
+## Run count query in YCQL
 
 In YCQL, the `count()` query can be executed using the [ycrc](https://github.com/yugabyte/yb-tools/tree/main/ycrc) tool.
 

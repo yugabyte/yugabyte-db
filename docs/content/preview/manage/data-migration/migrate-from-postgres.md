@@ -256,7 +256,7 @@ For a full list of tips and tricks for high performance and availability, see [B
 YugabyteDB returns different [error codes](../../../develop/learn/transactions/transactions-errorcodes-ysql/) for the various scenarios that go wrong during transaction processing. The error code [40001 (serialization_failure)](../../../develop/learn/transactions/transactions-errorcodes-ysql/#40001-serialization-failure) for retryable transaction conflict errors. You should retry the transactions from the application when encountering these errors.
 
 {{<lead link="../../../develop/learn/transactions/transactions-retries-ysql/#client-side-retry">}}
-For application-side retry logic, see [Client-side retry](../../../develop/learn/transactions/transactions-retries-ysql/#client-side-retry)
+For application-side retry logic, see [Client-side retry](../../../develop/learn/transactions/transactions-retries-ysql/#client-side-retry).
 {{</lead>}}
 
 ### Distribute load evenly across the cluster
@@ -286,7 +286,11 @@ After the migration is complete, several key steps must be taken to ensure the s
 After the migration is complete you need to take steps to verify the migration. You can do this as follows:
 
 - **Functional testing**: Verify that all application queries work as expected in YugabyteDB.
-- **Consistency checks**: Run data consistency checks between PostgreSQL and YugabyteDB to ensure no data is lost or corrupted during the migration by [verifying the database objects](../bulk-import-ysql#verify-database-objects) and by [verifying row counts](../bulk-import-ysql#verify-row-counts-for-tables).
+- **Consistency checks**: Run data consistency checks between PostgreSQL and YugabyteDB to ensure no data is lost or corrupted during the migration by verifying the database objects and row counts.
+
+{{<lead link="../verify-migration-ysql/">}}
+For more information, see [Verify migration](../verify-migration-ysql/).
+{{</lead>}}
 
 ### Monitoring
 
@@ -302,7 +306,7 @@ Because of the distributed nature of YugabyteDB, queries are executed quite diff
 
 - **Set statement timeouts**: Avoid getting stuck in a wait loop because of starvation by using a reasonable timeout for the statements.  {{<link "../../../develop/learn/transactions/transactions-performance-ysql/#avoid-long-waits">}}
 
-- **Stored procedures**: Use stored procedures to bundle a set of statements with error handling to be executed on the server and and avoid multiple round trips. {{<link "../../../develop/learn/transactions/transactions-performance-ysql/#stored-procedures-minimize-round-trips">}}
+- **Stored procedures**: Use stored procedures to bundle a set of statements with error handling to be executed on the server and avoid multiple round trips. {{<link "../../../develop/learn/transactions/transactions-performance-ysql/#stored-procedures-minimize-round-trips">}}
 
 {{<lead link="../../../develop/learn/transactions/transactions-performance-ysql/">}}
 For a full list of best practices to improve performance, see [Performance tuning in YSQL](../../../develop/learn/transactions/transactions-performance-ysql/)

@@ -1,6 +1,6 @@
 ---
 title: Bulk export YCQL
-headerTitle: Bulk export
+headerTitle: Export data
 linkTitle: Export data
 description: Bulk export for YCQL using cassandra-loader and cassandra-unloader.
 badges: ycql

@@ -14,14 +14,14 @@ type: docs
 
 {{<api-tabs>}}
 
-Following are some steps that can be verified to ensure that the migration was successful.
+What follows are some steps that you can use to verify that your migration was successful.
 
-### Verify database objects
+## Verify database objects
 
 - Verify that all the tables and indexes have been created in YugabyteDB.
 - Ensure that triggers and constraints are migrated and are working as expected.
 
-### Verify row counts for tables
+## Verify row counts for tables
 
 Run a `COUNT(*)` command to verify that the total number of rows match between the source database and YugabyteDB.
 
@@ -86,11 +86,13 @@ example=# SELECT cnt_rows(table_schema, table_name)
 (14 rows)
 ```
 
-#### Timeouts
+### Timeouts
 
-The `COUNT(*)` query may time out in case of large tables. The following two options are recommended for such use cases:
+The `COUNT(*)` query may time out in case of large tables. The following two options are recommended for such use cases.
 
-**Option 1**: Create a function and execute the query using the function which uses an implicit cursor.
+#### Create a function
+
+Create a function and execute the query using the function which uses an implicit cursor.
 
 ```sql
 CREATE OR REPLACE FUNCTION row_count(tbl regclass)
@@ -136,6 +138,8 @@ explain select count(*) from test cross join dual;
                ->  Seq Scan on dual  (cost=0.00..100.00 rows=1000 width=0)
 ```
 
-**Option 2**: Use [`yb_hash_code()`](../../../api/ysql/exprs/func_yb_hash_code/) to run different queries that work on different parts of the table and control the parallelism at the application level.
+#### yb_hash_code function
+
+Use [`yb_hash_code()`](../../../api/ysql/exprs/func_yb_hash_code/) to run different queries that work on different parts of the table and control the parallelism at the application level.
 
 Refer to [Distributed parallel queries](../../../api/ysql/exprs/func_yb_hash_code/#distributed-parallel-queries) for additional information on running `COUNT(*)` on tables using `yb_hash_code()`.

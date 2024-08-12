@@ -1,6 +1,6 @@
 ---
 title: Bulk import YSQL
-headerTitle: Bulk import
+headerTitle: Import data
 linkTitle: Import data
 description: Import data from PostgreSQL into YugabyteDB for YSQL.
 badges: ysql
@@ -165,4 +165,4 @@ After the data import step, remember to recreate any constraints and triggers th
 
 ## Verify migration
 
-Once the data and schema have been migrated follow the steps outlined in [Verify migration](../verify-migration-ysql) to ensure the migration was successful.
+After the data and schema have been migrated, follow the steps in [Verify migration](../verify-migration-ysql) to ensure the migration was successful.
