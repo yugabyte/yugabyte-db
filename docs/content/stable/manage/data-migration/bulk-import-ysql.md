@@ -67,7 +67,7 @@ While loading data that is exported from another RDBMS, the source data set may 
 ## Import PostgreSQL data
 
 {{< tip title="Migrate using YugabyteDB Voyager" >}}
-To automate your migration from PostgreSQL to YugabyteDB, use [YugabyteDB Voyager](../../../yugabyte-voyager/). To learn more, refer to the [import schema](../../../yugabyte-voyager/migrate/migrate-steps/#import-schema) and [import data](../../../yugabyte-voyager/migrate/migrate-steps/#import-data) steps.
+To automate your migration from PostgreSQL to YugabyteDB, use [YugabyteDB Voyager](/preview/yugabyte-voyager/). To learn more, refer to the [import schema](/preview/yugabyte-voyager/migrate/migrate-steps/#import-schema) and [import data](/preview/yugabyte-voyager/migrate/migrate-steps/#import-data) steps.
 {{< /tip >}}
 
 ### Import data from CSV files

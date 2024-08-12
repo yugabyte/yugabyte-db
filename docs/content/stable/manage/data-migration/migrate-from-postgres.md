@@ -16,7 +16,7 @@ rightNav:
 The following guide is designed to help you smoothly transition your data and applications from a monolithic PostgreSQL database to YugabyteDB's distributed architecture. The guide walks you through the essential steps and best practices for migrating your data, including planning the migration, transforming your schema, migrating your data, and optimizing your applications for a distributed environment. By following these steps, you can minimize downtime, preserve data integrity, and leverage YugabyteDB's advanced features to meet your evolving business needs.
 
 {{<tip title="Migrate using YugabyteDB Voyager">}}
-Manage end-to-end database migration, including cluster preparation, schema migration, and data migration, using [YugabyteDB Voyager](../../../yugabyte-voyager/). Voyager is designed to handle various corner cases correctly to minimize errors and achieve faster migration.
+Manage end-to-end database migration, including cluster preparation, schema migration, and data migration, using [YugabyteDB Voyager](/preview/yugabyte-voyager/). Voyager is designed to handle various corner cases correctly to minimize errors and achieve faster migration.
 {{</tip>}}
 
 ## PostgreSQL compatibility
@@ -125,11 +125,11 @@ You can use the [ysql_dump](../../../admin/ysql-dump/) utility to export a Yugab
 ysql_dump --schema-only -h source_host -U source_user source_db > schema.sql
 ```
 
-If you are using YubabyteDB Voyager, use the [yb-voyager export schema](../../../yugabyte-voyager/reference/schema-migration/export-schema/) command.
+If you are using YubabyteDB Voyager, use the [yb-voyager export schema](/preview/yugabyte-voyager/reference/schema-migration/export-schema/) command.
 
 ### Changes to schema
 
-Depending on the use case, your schema may require the following changes. You can also use [yb-voyager analyze schema](../../../yugabyte-voyager/reference/schema-migration/analyze-schema/) command to analyze the schema and get suggestions for modifications.
+Depending on the use case, your schema may require the following changes. You can also use [yb-voyager analyze schema](/preview/yugabyte-voyager/reference/schema-migration/analyze-schema/) command to analyze the schema and get suggestions for modifications.
 
 #### Specify `PRIMARY KEY` inline
 
@@ -185,7 +185,7 @@ After completing your schema changes, you can use ysqlsh to import the modified 
 ysqlsh -h yugabyte_host -U yugabyte_user -d yugabyte_db -f schema.sql
 ```
 
-If you are using YubabyteDB Voyager, use the [yb-voyage import schema](../../../yugabyte-voyager/reference/schema-migration/import-schema/) command.
+If you are using YubabyteDB Voyager, use the [yb-voyage import schema](/preview/yugabyte-voyager/reference/schema-migration/import-schema/) command.
 
 ## Data migration
 
@@ -195,7 +195,7 @@ The data from the source PostgreSQL database can be exported either using the [C
 ysql_dump --data-only --disable-triggers -h source_host -U source_user source_db > data.sql
 ```
 
-If you are using YubabyteDB Voyager, use the [yb-voyager export data](../../../yugabyte-voyager/reference/data-migration/export-data/) command (recommended).
+If you are using YubabyteDB Voyager, use the [yb-voyager export data](/preview/yugabyte-voyager/reference/data-migration/export-data/) command (recommended).
 
 Import the exported data into YugabyteDB using [COPY FROM](../../../manage/data-migration/bulk-import-ysql/#import-data-from-csv-files) command or using ysqlsh as follows:
 
@@ -203,7 +203,7 @@ Import the exported data into YugabyteDB using [COPY FROM](../../../manage/data-
 ysqlsh -h yugabyte_host -U yugabyte_user -d yugabyte_db -f data.sql
 ```
 
-If you are using YubabyteDB Voyager, use the [yb-voyager import data](../../../yugabyte-voyager/reference/data-migration/import-data/) command.
+If you are using YubabyteDB Voyager, use the [yb-voyager import data](/preview/yugabyte-voyager/reference/data-migration/import-data/) command.
 
 ### What to migrate
 
@@ -221,26 +221,26 @@ Regardless of how much data you decide to migrate, you can choose from the follo
 
 **Offline migration**: You can take down the system and import the exported data. This approach is typically used when downtime is acceptable or the system is not required to be available during the migration.
 
-{{<lead link="../../../yugabyte-voyager/migrate/migrate-steps/">}}
-For more details, see [Offline migration](../../../yugabyte-voyager/migrate/migrate-steps/).
+{{<lead link="/preview/yugabyte-voyager/migrate/migrate-steps/">}}
+For more details, see [Offline migration](/preview/yugabyte-voyager/migrate/migrate-steps/).
 {{</lead>}}
 
 **Live migration**: Live migration aims to minimize downtime by keeping the application running during the migration process. Data is copied from the source database to the target database while the application is still live, and a final switchover is made after the migration is complete.
 
-{{<lead link="../../../yugabyte-voyager/migrate/live-migrate/">}}
-For more details, see [Live migration](../../../yugabyte-voyager/migrate/live-migrate/).
+{{<lead link="/preview/yugabyte-voyager/migrate/live-migrate/">}}
+For more details, see [Live migration](/preview/yugabyte-voyager/migrate/live-migrate/).
 {{</lead>}}
 
 **Live migration with fall-forward**: Live migration with fall-forward is a variant of live migration where, after the application has switched to the new database, there is no option to revert to the old database. This strategy is typically used when the new database is considered stable and there is confidence in the migration process.
 
-{{<lead link="../../../yugabyte-voyager/migrate/live-fall-forward/">}}
-For more details, see [Live migration with fall-forward](../../../yugabyte-voyager/migrate/live-fall-forward/).
+{{<lead link="/preview/yugabyte-voyager/migrate/live-fall-forward/">}}
+For more details, see [Live migration with fall-forward](/preview/yugabyte-voyager/migrate/live-fall-forward/).
 {{</lead>}}
 
 **Live migration with fall-back**: Live migration with fall-back provides a safety net by allowing a return to the original database if issues are encountered after the cutover to the new database. This strategy involves maintaining bidirectional synchronization between the source and target databases for a period after the migration.
 
 {{<lead link="">}}
-For more details, see [Live migration with fall-back](../../../yugabyte-voyager/migrate/live-fall-back/).
+For more details, see [Live migration with fall-back](/preview/yugabyte-voyager/migrate/live-fall-back/).
 {{</lead>}}
 
 ## Application migration
