@@ -170,7 +170,7 @@ To enable OIDC authentication in YugabyteDB Anywhere, do the following:
 1. Navigate to **Admin > Access Management > User Authentication** and select **ODIC configuration**.
 1. Under **OIDC configuration**,  configure the following:
 
-    - **Client ID** and **Client Secret** - enter the client ID and secret of the JumpCloud application you created.
+    - **Client ID** and **Client Secret** - enter the client ID and secret of the Azure application you created.
     - **Discovery URL** - enter `login.microsoftonline.com/<tenant_id>/v2.0/.well-known/openid-configuration`.
     - **Scope** - enter `openid email profile`. If you are using the Refresh Token feature to allow the Azure server to return the refresh token (which can be used by YBA to refresh the login), enter `openid offline_access profile email` instead.
     - **Email attribute** - enter the email attribute to a name for the property to be used in the mapping file, such as `preferred_username`.
