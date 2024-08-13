@@ -34,6 +34,8 @@ class RpcServerBase;
 
 namespace pgwrapper {
 
+class PGConn;
+
 struct MetricWatcherDescriptor {
   MetricWatcherDescriptor(
       size_t* delta_receiver_,
@@ -107,6 +109,15 @@ using SingleMetricWatcher = MetricWatcher<SingleMetricDescriber>;
 
 [[nodiscard]] std::string_view SerializeAccessErrorMessageSubstring();
 [[nodiscard]] std::string MaxQueryLayerRetriesConf(uint16_t max_retries);
+
+
+YB_STRONGLY_TYPED_BOOL(IsBreakingCatalogVersionChange);
+
+Status SetNonDDLTxnAllowedForSysTableWrite(PGConn& conn, bool value);
+
+Status IncrementAllDBCatalogVersions(
+    PGConn& conn,
+    IsBreakingCatalogVersionChange is_breaking = IsBreakingCatalogVersionChange::kTrue);
 
 } // namespace pgwrapper
 } // namespace yb

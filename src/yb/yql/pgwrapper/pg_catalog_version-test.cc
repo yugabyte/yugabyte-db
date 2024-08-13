@@ -16,6 +16,7 @@
 #include "yb/util/path_util.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 
 using std::string;
 
@@ -60,11 +61,10 @@ class PgCatalogVersionTest : public LibPqTestBase {
     } else {
       LOG(INFO) << "Preparing pg_yb_catalog_version to only have one row for template1";
     }
-    RETURN_NOT_OK(conn->Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
+    RETURN_NOT_OK(SetNonDDLTxnAllowedForSysTableWrite(*conn, true));
     VERIFY_RESULT(conn->FetchFormat(
         "SELECT yb_fix_catalog_version_table($0)", per_database_mode ? "true" : "false"));
-    RETURN_NOT_OK(conn->Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=0"));
-    return Status::OK();
+    return SetNonDDLTxnAllowedForSysTableWrite(*conn, false);
   }
 
   void RestartClusterSetDBCatalogVersionMode(
@@ -428,12 +428,6 @@ class PgCatalogVersionTest : public LibPqTestBase {
       ASSERT_STR_CONTAINS(status.ToString(), "permission denied for table t5");
     }
   }
-  static void IncrementAllDBCatalogVersions(PGConn* conn, bool breaking) {
-    ASSERT_OK(conn->Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
-    ASSERT_OK(conn->FetchFormat(
-        "SELECT yb_increment_all_db_catalog_versions($0)", breaking ? "true" : "false"));
-    ASSERT_OK(conn->Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=0"));
-  }
   static size_t CountRelCacheInitFiles(const string& dirpath) {
     auto CloseDir = [](DIR* d) { closedir(d); };
     std::unique_ptr<DIR, decltype(CloseDir)> d(opendir(dirpath.c_str()),
@@ -686,11 +680,11 @@ TEST_F(PgCatalogVersionTest, DBCatalogVersionPrematureOn) {
   ASSERT_GT(num_initial_databases, 1);
   // We should not see master CHECK failure if we try to get duplicate
   // db_oid into the same request.
-  ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
+  ASSERT_OK(SetNonDDLTxnAllowedForSysTableWrite(conn, true));
   auto status = conn.Execute(
       "INSERT INTO pg_catalog.pg_yb_catalog_version VALUES "
       "(16384, 1, 1), (16384, 2, 2)");
-  ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=0"));
+  ASSERT_OK(SetNonDDLTxnAllowedForSysTableWrite(conn, false));
   ASSERT_TRUE(status.IsNetworkError()) << status;
   ASSERT_STR_CONTAINS(status.ToString(),
                       "duplicate key value violates unique constraint");
@@ -722,7 +716,7 @@ TEST_F(PgCatalogVersionTest, IncrementAllDBCatalogVersions) {
   ASSERT_OK(CheckMatch(expected_versions, ASSERT_RESULT(GetShmCatalogVersionMap())));
 
   constexpr CatalogVersion kSecondCatalogVersion{2, 1};
-  IncrementAllDBCatalogVersions(&conn_yugabyte, false);
+  ASSERT_OK(IncrementAllDBCatalogVersions(conn_yugabyte, IsBreakingCatalogVersionChange::kFalse));
   WaitForCatalogVersionToPropagate();
   expected_versions = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte));
   for (const auto& entry : expected_versions) {
@@ -731,7 +725,7 @@ TEST_F(PgCatalogVersionTest, IncrementAllDBCatalogVersions) {
   ASSERT_OK(CheckMatch(expected_versions, ASSERT_RESULT(GetShmCatalogVersionMap())));
 
   constexpr CatalogVersion kThirdCatalogVersion{3, 3};
-  IncrementAllDBCatalogVersions(&conn_yugabyte, true);
+  ASSERT_OK(IncrementAllDBCatalogVersions(conn_yugabyte));
   WaitForCatalogVersionToPropagate();
   expected_versions = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte));
   for (const auto& entry : expected_versions) {
@@ -743,7 +737,7 @@ TEST_F(PgCatalogVersionTest, IncrementAllDBCatalogVersions) {
   // to fail.
   ASSERT_OK(conn_yugabyte.Execute("SET yb_enable_replication_commands = true"));
   ASSERT_OK(conn_yugabyte.Execute("CREATE PUBLICATION testpub_foralltables FOR ALL TABLES"));
-  IncrementAllDBCatalogVersions(&conn_yugabyte, true);
+  ASSERT_OK(IncrementAllDBCatalogVersions(conn_yugabyte));
 
   // Ensure that in global catalog version mode, by turning on
   // yb_non_ddl_txn_for_sys_tables_allowed, we can perform both update and
@@ -754,7 +748,7 @@ TEST_F(PgCatalogVersionTest, IncrementAllDBCatalogVersions) {
   // This involves deleting all rows except for template1 from pg_yb_catalog_version.
   ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte, false));
   // Update the row for template1 to increment catalog version.
-  IncrementAllDBCatalogVersions(&conn_yugabyte, false);
+  ASSERT_OK(IncrementAllDBCatalogVersions(conn_yugabyte, IsBreakingCatalogVersionChange::kFalse));
 }
 
 // Test yb_fix_catalog_version_table, that will sync up pg_yb_catalog_version
@@ -885,18 +879,18 @@ TEST_F(PgCatalogVersionTest, RecycleManyDatabases) {
       ss << Format(i == 0 ? "($0, 1, 1)" : ", ($0, 1, 1)", db_oid++);
     }
     LOG(INFO) << "Inserting " << kNumRows << " rows";
-    ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
+    ASSERT_OK(SetNonDDLTxnAllowedForSysTableWrite(conn, true));
     ASSERT_OK(conn.Execute(ss.str()));
-    ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=0"));
+    ASSERT_OK(SetNonDDLTxnAllowedForSysTableWrite(conn, false));
     WaitForCatalogVersionToPropagate();
     auto count = ASSERT_RESULT(conn.FetchRow<PGUint64>(
         "SELECT COUNT(*) FROM pg_yb_catalog_version"));
     CHECK_EQ(count, kNumRows + initial_count);
     LOG(INFO) << "Deleting the newly inserted " << kNumRows << " rows";
-    ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
+    ASSERT_OK(SetNonDDLTxnAllowedForSysTableWrite(conn, true));
     ASSERT_OK(conn.ExecuteFormat(
         "DELETE FROM pg_yb_catalog_version WHERE db_oid >= $0", kPgFirstNormalObjectId));
-    ASSERT_OK(conn.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=0"));
+    ASSERT_OK(SetNonDDLTxnAllowedForSysTableWrite(conn, false));
     WaitForCatalogVersionToPropagate();
     count = ASSERT_RESULT(conn.FetchRow<PGUint64>(
         "SELECT COUNT(*) FROM pg_yb_catalog_version"));
