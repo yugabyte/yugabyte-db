@@ -35,6 +35,8 @@ DEFINE_UNKNOWN_double(master_slow_get_registration_probability, 0,
               "Probability of injecting delay in GetMasterRegistration.");
 DECLARE_bool(enable_ysql_tablespaces_for_placement);
 
+DECLARE_bool(emergency_repair_mode);
+
 using namespace std::literals;
 
 namespace yb {
@@ -235,7 +237,10 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
     Status s = server_->GetMasterRegistration(resp->mutable_registration());
     CheckRespErrorOrSetUnknown(s, resp);
     auto role = server_->catalog_manager_impl()->Role();
-    if (role == PeerRole::LEADER) {
+    if (role == PeerRole::LEADER && !FLAGS_emergency_repair_mode) {
+      // When in emergency_repair_mode the CatalogManager is not fully loaded and leader_state will
+      // be invalid. We need to allow the leader to respond to the GetMasterRegistration request so
+      // that the client can then invoke DumpSysCatalogEntries and WriteSysCatalogEntry RPCs.
       if (!l.leader_status().ok()) {
         YB_LOG_EVERY_N_SECS(INFO, 1)
             << "Patching role from leader to follower because of: " << l.leader_status()

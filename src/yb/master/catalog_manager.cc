@@ -120,6 +120,7 @@
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/backfill_index.h"
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_parser.h"
 #include "yb/master/catalog_loaders.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager_bg_tasks.h"
@@ -657,6 +658,11 @@ DEFINE_RUNTIME_uint32(initial_tserver_registration_duration_secs,
     "registered.");
 TAG_FLAG(initial_tserver_registration_duration_secs, advanced);
 
+DEFINE_NON_RUNTIME_bool(emergency_repair_mode, false,
+    "Starts yb-master in emergency repair mode where CatalogManager is not started.");
+TAG_FLAG(emergency_repair_mode, advanced);
+TAG_FLAG(emergency_repair_mode, unsafe);
+
 DECLARE_bool(ysql_yb_enable_replica_identity);
 
 namespace yb {
@@ -938,6 +944,22 @@ IndexStatusPB::BackfillStatus GetBackfillStatus(const IndexInfoPB& index) {
                                        : IndexStatusPB::BACKFILL_UNKNOWN;
 }
 
+Result<QLWriteRequestPB::QLStmtType> ToQLStmtType(
+    WriteSysCatalogEntryRequestPB::WriteOp pb_op_type) {
+  switch (pb_op_type) {
+    case WriteSysCatalogEntryRequestPB::SYS_CATALOG_INSERT:
+      return QLWriteRequestPB::QL_STMT_INSERT;
+    case WriteSysCatalogEntryRequestPB::SYS_CATALOG_UPDATE:
+      return QLWriteRequestPB::QL_STMT_UPDATE;
+    case WriteSysCatalogEntryRequestPB::SYS_CATALOG_DELETE:
+      return QLWriteRequestPB::QL_STMT_DELETE;
+  }
+
+  return STATUS_FORMAT(
+      InvalidArgument, "Unsupported type $0",
+      WriteSysCatalogEntryRequestPB::WriteOp_Name(pb_op_type));
+}
+
 }  // anonymous namespace
 
 ////////////////////////////////////////////////////////////
@@ -1114,6 +1136,12 @@ XClusterManagerIf* CatalogManager::GetXClusterManager() {
 }
 
 Status CatalogManager::ElectedAsLeaderCb() {
+  if (FLAGS_emergency_repair_mode) {
+    // In this mode the sys_catalog leader will not start CatalogManager. The only operations that
+    // can be performed in this mode are DumpSysCatalogEntries and WriteSysCatalogEntry.
+    return Status::OK();
+  }
+
   time_elected_leader_.store(MonoTime::Now());
   return leader_initialization_pool_->SubmitClosure(
       Bind(&CatalogManager::LoadSysCatalogDataTask, Unretained(this)));
@@ -14017,6 +14045,84 @@ std::optional<UniverseUuid> CatalogManager::GetUniverseUuidIfExists() const {
   }
 
   return *universe_uuid_res;
+}
+
+Result<std::vector<SysCatalogEntryDumpPB>> CatalogManager::FetchFromSysCatalog(
+    SysRowEntryType type, const std::string& item_id_filter) {
+  SCHECK_NOTNULL(sys_catalog_);
+  SCHECK_NOTNULL(tablet_peer());
+  auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+
+  std::vector<SysCatalogEntryDumpPB> result;
+
+  RETURN_NOT_OK(EnumerateSysCatalog(
+      tablet.get(), schema(), type,
+      [&item_id_filter, &result, &type](const Slice& id, const Slice& data) -> Status {
+        if (!item_id_filter.empty() && item_id_filter != id.ToString()) {
+          return Status::OK();
+        }
+
+        auto entry_pb = VERIFY_RESULT(SliceToCatalogEntityPB(type, data));
+        auto& entry = result.emplace_back();
+        entry.set_entry_type(type);
+        entry.set_entity_id(id.ToString());
+        entry.set_pb_debug_string(entry_pb->DebugString());
+
+        return Status::OK();
+      }));
+
+  return result;
+}
+
+Status CatalogManager::WriteToSysCatalog(
+    SysRowEntryType type, const std::string& item_id, const std::string& debug_string,
+    QLWriteRequestPB::QLStmtType op_type) {
+  auto pb = VERIFY_RESULT(DebugStringToCatalogEntityPB(type, debug_string));
+  LOG_WITH_FUNC(WARNING) << "Updating Sys Catalog. OpType: "
+                         << QLWriteRequestPB::QLStmtType_Name(op_type)
+                         << ", EntryType: " << SysRowEntryType_Name(type)
+                         << ", EntryId: " << item_id << ", EntryData: " << pb->DebugString();
+
+  SCHECK_NOTNULL(sys_catalog_);
+
+  // We need to lookup the consensus object for the current term because the leader_ready_term_
+  // field is only set upon sys catalog load. We cannot use LeaderEpoch either as that is set
+  // through the scoped leader shared lock which we cannot when in emergency_repair_mode.
+  auto consensus = VERIFY_RESULT(tablet_peer()->GetConsensus());
+  consensus::ConsensusStatePB consensus_state;
+  RETURN_NOT_OK(GetCurrentConfig(&consensus_state));
+
+  return sys_catalog_->ForceWrite(
+      type, item_id, *pb.get(), op_type, consensus_state.current_term());
+}
+
+Status CatalogManager::DumpSysCatalogEntries(
+    const DumpSysCatalogEntriesRequestPB* req, DumpSysCatalogEntriesResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  LOG_WITH_FUNC(INFO) << req->ShortDebugString() << ", from: " << RequestorString(rpc);
+  SCHECK_PB_FIELDS_NOT_EMPTY(*req, entry_type);
+
+  auto entries = VERIFY_RESULT(FetchFromSysCatalog(req->entry_type(), req->entity_id_filter()));
+  for (auto& entry : entries) {
+    *resp->add_entries() = std::move(entry);
+  }
+
+  return Status::OK();
+}
+
+Status CatalogManager::WriteSysCatalogEntry(
+    const WriteSysCatalogEntryRequestPB* req, WriteSysCatalogEntryResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  LOG_WITH_FUNC(INFO) << req->ShortDebugString() << ", from: " << RequestorString(rpc);
+  SCHECK_PB_FIELDS_NOT_EMPTY(*req, entry_type);
+  SCHECK_PB_FIELDS_SET(*req, op_type);
+  SCHECK(
+      FLAGS_emergency_repair_mode, IllegalState,
+      "Updating sys_catalog is only allowed in emergency repair mode");
+
+  auto statement_type = VERIFY_RESULT(ToQLStmtType(req->op_type()));
+  return WriteToSysCatalog(
+      req->entry_type(), req->entity_id(), req->pb_debug_string(), statement_type);
 }
 
 }  // namespace master

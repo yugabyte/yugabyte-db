@@ -20,8 +20,7 @@
 
 namespace yb::master {
 
-struct PersistentCloneStateInfo :
-    public Persistent<SysCloneStatePB, SysRowEntryType::CLONE_STATE> {};
+struct PersistentCloneStateInfo : public Persistent<SysCloneStatePB> {};
 
 class CloneStateInfo : public RefCountedThreadSafe<CloneStateInfo>,
                        public MetadataCowWrapper<PersistentCloneStateInfo> {
