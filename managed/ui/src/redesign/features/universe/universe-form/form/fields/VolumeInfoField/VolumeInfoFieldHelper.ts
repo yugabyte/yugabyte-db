@@ -188,7 +188,9 @@ const getStorageType = (instance: InstanceType, providerRuntimeConfigs: any) => 
 
 export const getDeviceInfoFromInstance = (
   instance: InstanceType,
-  providerRuntimeConfigs: any
+  providerRuntimeConfigs: any,
+  isEditMode: boolean,
+  selectedStorageType: StorageType
 ): DeviceInfo | null => {
   if (!instance.instanceTypeDetails.volumeDetailsList.length) return null;
 
@@ -197,7 +199,7 @@ export const getDeviceInfoFromInstance = (
   const defaultInstanceVolumeSize = isEphemeralAwsStorageInstance(instance)
     ? volumeSize
     : getVolumeSize(instance, providerRuntimeConfigs);
-  const storageType = getStorageType(instance, providerRuntimeConfigs);
+  const storageType = isEditMode ? selectedStorageType : getStorageType(instance, providerRuntimeConfigs);
 
   return {
     numVolumes: volumeDetailsList.length,
