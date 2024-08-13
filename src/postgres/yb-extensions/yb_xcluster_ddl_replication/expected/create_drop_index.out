@@ -1,0 +1,78 @@
+CALL TEST_reset();
+SET yb_xcluster_ddl_replication.replication_role = DISABLED;
+CREATE SCHEMA create_index;
+SET search_path TO create_index;
+-- Test temp table and index.
+SET yb_xcluster_ddl_replication.replication_role = SOURCE;
+CREATE TEMP TABLE temp_foo(i int PRIMARY KEY, a int);
+CREATE INDEX foo_idx_temp on temp_foo(a);
+DROP INDEX foo_idx_temp;
+DROP TABLE temp_foo;
+SELECT yb_data FROM yb_xcluster_ddl_replication.ddl_queue ORDER BY start_time;
+ yb_data
+---------
+(0 rows)
+
+SET yb_xcluster_ddl_replication.replication_role = BIDIRECTIONAL;
+-- Create base table.
+CREATE TABLE foo(i int PRIMARY KEY, a int, b text, c int);
+-- Create indexes.
+CREATE INDEX foo_idx_simple ON foo(a);
+CREATE UNIQUE INDEX foo_idx_unique ON foo(b);
+CREATE INDEX foo_idx_filtered ON foo(c ASC, a) WHERE a > c;
+-- Test that role is captured properly.
+CREATE ROLE new_role SUPERUSER;
+SET ROLE new_role;
+CREATE INDEX foo_idx_include ON foo(lower(b)) INCLUDE (a) SPLIT INTO 2 TABLETS;
+SET ROLE NONE;
+SELECT yb_data FROM yb_xcluster_ddl_replication.ddl_queue ORDER BY start_time;
+                                                                                                                             yb_data
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"user": "yugabyte", "query": "CREATE TABLE foo(i int PRIMARY KEY, a int, b text, c int);", "schema": "create_index", "version": 1, "command_tag": "CREATE TABLE", "new_rel_map": [{"rel_name": "foo", "relfile_oid": 16451}]}
+ {"user": "yugabyte", "query": "CREATE INDEX foo_idx_simple ON foo(a);", "schema": "create_index", "version": 1, "command_tag": "CREATE INDEX", "new_rel_map": [{"rel_name": "foo_idx_simple", "relfile_oid": 16456}]}
+ {"user": "yugabyte", "query": "CREATE UNIQUE INDEX foo_idx_unique ON foo(b);", "schema": "create_index", "version": 1, "command_tag": "CREATE INDEX", "new_rel_map": [{"rel_name": "foo_idx_unique", "relfile_oid": 16457}]}
+ {"user": "yugabyte", "query": "CREATE INDEX foo_idx_filtered ON foo(c ASC, a) WHERE a > c;", "schema": "create_index", "version": 1, "command_tag": "CREATE INDEX", "new_rel_map": [{"rel_name": "foo_idx_filtered", "relfile_oid": 16458}]}
+ {"user": "new_role", "query": "CREATE INDEX foo_idx_include ON foo(lower(b)) INCLUDE (a) SPLIT INTO 2 TABLETS;", "schema": "create_index", "version": 1, "command_tag": "CREATE INDEX", "new_rel_map": [{"rel_name": "foo_idx_include", "relfile_oid": 16459}]}
+(5 rows)
+
+SELECT * FROM yb_xcluster_ddl_replication.replicated_ddls ORDER BY start_time;
+ start_time | query_id |                                           yb_data
+------------+----------+----------------------------------------------------------------------------------------------
+          1 |        1 | {"query": "CREATE TABLE foo(i int PRIMARY KEY, a int, b text, c int);"}
+          2 |        1 | {"query": "CREATE INDEX foo_idx_simple ON foo(a);"}
+          3 |        1 | {"query": "CREATE UNIQUE INDEX foo_idx_unique ON foo(b);"}
+          4 |        1 | {"query": "CREATE INDEX foo_idx_filtered ON foo(c ASC, a) WHERE a > c;"}
+          5 |        1 | {"query": "CREATE INDEX foo_idx_include ON foo(lower(b)) INCLUDE (a) SPLIT INTO 2 TABLETS;"}
+(5 rows)
+
+-- Now drop these indexes.
+-- Drop two indexes by themselves.
+DROP INDEX foo_idx_unique;
+DROP INDEX foo_idx_filtered;
+-- Drop base table and cascade deletion of other indexes.
+DROP TABLE foo;
+SELECT yb_data FROM yb_xcluster_ddl_replication.ddl_queue ORDER BY start_time;
+                                                                                                                             yb_data
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"user": "yugabyte", "query": "CREATE TABLE foo(i int PRIMARY KEY, a int, b text, c int);", "schema": "create_index", "version": 1, "command_tag": "CREATE TABLE", "new_rel_map": [{"rel_name": "foo", "relfile_oid": 16451}]}
+ {"user": "yugabyte", "query": "CREATE INDEX foo_idx_simple ON foo(a);", "schema": "create_index", "version": 1, "command_tag": "CREATE INDEX", "new_rel_map": [{"rel_name": "foo_idx_simple", "relfile_oid": 16456}]}
+ {"user": "yugabyte", "query": "CREATE UNIQUE INDEX foo_idx_unique ON foo(b);", "schema": "create_index", "version": 1, "command_tag": "CREATE INDEX", "new_rel_map": [{"rel_name": "foo_idx_unique", "relfile_oid": 16457}]}
+ {"user": "yugabyte", "query": "CREATE INDEX foo_idx_filtered ON foo(c ASC, a) WHERE a > c;", "schema": "create_index", "version": 1, "command_tag": "CREATE INDEX", "new_rel_map": [{"rel_name": "foo_idx_filtered", "relfile_oid": 16458}]}
+ {"user": "new_role", "query": "CREATE INDEX foo_idx_include ON foo(lower(b)) INCLUDE (a) SPLIT INTO 2 TABLETS;", "schema": "create_index", "version": 1, "command_tag": "CREATE INDEX", "new_rel_map": [{"rel_name": "foo_idx_include", "relfile_oid": 16459}]}
+ {"user": "yugabyte", "query": "DROP INDEX foo_idx_unique;", "schema": "create_index", "version": 1, "command_tag": "DROP INDEX"}
+ {"user": "yugabyte", "query": "DROP INDEX foo_idx_filtered;", "schema": "create_index", "version": 1, "command_tag": "DROP INDEX"}
+ {"user": "yugabyte", "query": "DROP TABLE foo;", "schema": "create_index", "version": 1, "command_tag": "DROP TABLE"}
+(8 rows)
+
+SELECT * FROM yb_xcluster_ddl_replication.replicated_ddls ORDER BY start_time;
+ start_time | query_id |                                           yb_data
+------------+----------+----------------------------------------------------------------------------------------------
+          1 |        1 | {"query": "CREATE TABLE foo(i int PRIMARY KEY, a int, b text, c int);"}
+          2 |        1 | {"query": "CREATE INDEX foo_idx_simple ON foo(a);"}
+          3 |        1 | {"query": "CREATE UNIQUE INDEX foo_idx_unique ON foo(b);"}
+          4 |        1 | {"query": "CREATE INDEX foo_idx_filtered ON foo(c ASC, a) WHERE a > c;"}
+          5 |        1 | {"query": "CREATE INDEX foo_idx_include ON foo(lower(b)) INCLUDE (a) SPLIT INTO 2 TABLETS;"}
+          6 |        1 | {"query": "DROP INDEX foo_idx_unique;"}
+          7 |        1 | {"query": "DROP INDEX foo_idx_filtered;"}
+          8 |        1 | {"query": "DROP TABLE foo;"}
+(8 rows)
