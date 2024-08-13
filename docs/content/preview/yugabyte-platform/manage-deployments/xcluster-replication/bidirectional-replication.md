@@ -12,9 +12,11 @@ menu:
 type: docs
 ---
 
-With bidirectional replication, both universes can perform reads and writes, and writes are replicated in both directions. This is also referred to as [Active-active multi-master](../../../architecture/docdb-replication/async-replication/#active-active-multi-master).
+With bidirectional replication, both universes can perform reads and writes, and writes are replicated in both directions. This is also referred to as [Active-active multi-master](../../../../architecture/docdb-replication/async-replication/#active-active-multi-master).
 
 You set up bidirectional replication using YugabyteDB Anywhere by creating two separate non-transactional xCluster replication configurations. Under this scenario, you create a replication configuration from universe A to universe B, and then you create a new replication configuration from universe B to universe A.
+
+![Active-Active Multi-Master](/images/architecture/replication/active-active-deployment-new.png)
 
 YugabyteDB Anywhere detects an xCluster setup is for bidirectional if the tables that are being added to the replication are already part of a replication in the reverse direction (from A to B). In this scenario, YugabyteDB Anywhere skips the full copy for tables on universe B that are already in replication.
 

@@ -86,7 +86,9 @@ Note: If you are performing application upgrades involving both adding and dropp
 
 To ensure that data is protected at all times, set up replication on a new table _before_ starting any workload.
 
+{{<tip>}}
 Before adding a table to replication in YugabyteDB Anywhere, refer to [Order of operations](#order-of-operations) for your setup.
+{{</tip>}}
 
 Add tables to replication as follows:
 
@@ -108,7 +110,9 @@ Note the following:
 
 ### Remove a table from replication
 
-Before dropping a table, refer to [Order of operations](#order-of-operations) for your setup.
+{{<tip>}}
+Before dropping a table in replication in YugabyteDB Anywhere, refer to [Order of operations](#order-of-operations) for your setup.
+{{</tip>}}
 
 When dropping a table in version 2.23 or later, you can drop the tables and YugabyteDB Anywhere automatically updates the xCluster configuration. You can also manually remove the tables from the configuration in YugabyteDB Anywhere, in which case you would still need to drop the tables.
 

@@ -15,9 +15,7 @@ type: indexpage
 showRightNav: true
 ---
 
-xCluster replication is an asynchronous replication feature in YugabyteDB that allows you to replicate data between independent YugabyteDB universes. You can set up [unidirectional (master-follower)](../../../develop/build-global-apps/active-active-single-master/) or [bidirectional (multi-master)](../../../develop/build-global-apps/active-active-multi-master/) replication between two data centers.
-
-Replication takes place between two universes:
+xCluster replication is an asynchronous replication feature in YugabyteDB that allows you to replicate data between independent YugabyteDB universes. You can set up unidirectional (master-follower) or bidirectional (multi-master) replication between two data centers:
 
 - Source - contains the original data that is subject to replication.
 - Target - recipient of the replicated data.
@@ -26,13 +24,15 @@ Replication takes place between two universes:
 
 One source universe can replicate to one or more target universes.
 
-You can use xCluster replication to implement disaster recovery for YugabyteDB. This is a good option where you have only two regions available, or the higher write latency of a [global database](../../../../develop/build-global-apps/global-database/) is a problem. You do need to tolerate some small possibility of data loss due to asynchronous replication. For more details on using xCluster for disaster recovery, see [xCluster Disaster Recovery](../../back-up-restore-universes/disaster-recovery/).
+You can use xCluster replication to implement disaster recovery for YugabyteDB. This is a good option where you have only two regions available, or the higher write latency of a [global database](../../../develop/build-global-apps/global-database/) is a problem. You do need to tolerate some small possibility of data loss due to asynchronous replication. For more details on using xCluster for disaster recovery, see [xCluster Disaster Recovery](../../back-up-restore-universes/disaster-recovery/).
 
 xCluster replication can be used to move data from one YugabyteDB universe to another for purposes other than disaster recovery. For example, downstream YugabyteDB universes used for reporting or "green" deployments of blue-green deployments can be kept asynchronously up to date with the main YugabyteDB universe.
 
-You can use YugabyteDB Anywhere to set up xCluster replication across universes, monitor the status of replication, and manage changes to the replication when new databases or tables are added to the replication.
+You can use YugabyteDB Anywhere to set up xCluster replication, monitor the status of replication, and manage changes to the replication when new databases or tables are added to the replication.
 
-For more information on how YugabyteDB xCluster replication works, see [xCluster replication: overview and architecture](../../../architecture/docdb-replication/async-replication/).
+- For more information on how YugabyteDB xCluster replication works, see [xCluster replication: overview and architecture](../../../architecture/docdb-replication/async-replication/).
+- For an example of unidirectional (master-follower) xCluster replication, see [Active-active single-master](../../../develop/build-global-apps/active-active-single-master/).
+- For an example of bidirectional (multi-master) xCluster replication, see [Active-active multi-master](../../../develop/build-global-apps/active-active-multi-master/).
 
 ## xCluster configurations
 
@@ -48,7 +48,7 @@ For YCQL databases, only non-transactional replication is supported.
 
 Bidirectional replication refers to setting up xCluster replication between two YSQL databases or YCQL tables on different universes in both directions, so that writes on either database or table can be replicated to the other database or table. Certain xCluster management operations need special attention in this case. See [Bidirectional replication](bidirectional-replication/).
 
-For more information about transactional and non-transactional modes, see [Asynchronous replication modes](../../../architecture/docdb-replication/async-replication/#asynchronous-replication-modes).
+- For more information about transactional and non-transactional modes, see [Asynchronous replication modes](../../../architecture/docdb-replication/async-replication/#asynchronous-replication-modes).
 
 {{<lead link="#">}}
 Blog: [Can Distributed Databases Achieve Transactional Consistency on Async Standbys? Yes, They Can](https://www.yugabyte.com/blog/distributed-database-transactional-consistency-async-standby/)
