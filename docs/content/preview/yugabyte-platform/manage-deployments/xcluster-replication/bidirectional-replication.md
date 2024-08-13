@@ -85,6 +85,6 @@ To add an index table to a bidirectional replication, do the following:
 1. Stop the workload on the main table.
 1. Wait for the replication lag for the corresponding main table to become 0.
 1. Create the index table on both universes.
-1. Add the newly created index tables to both replication configurations by following the steps in [Add a table to xCluster replication](./xcluster-replication-ddl/#add-a-table-to-replication).
+1. Add the newly created index tables to both replication configurations by following the steps in [Add a table to xCluster replication](../xcluster-replication-ddl/#add-a-table-to-replication).
 
 Note: If the main table has data, and the index table is added to the replication configurations without stopping the workload against the main table, the index table can be potentially inconsistent between the two universes.

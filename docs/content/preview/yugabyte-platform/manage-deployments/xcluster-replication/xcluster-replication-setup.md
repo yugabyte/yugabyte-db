@@ -117,7 +117,7 @@ To set up replication for a universe, do the following:
 
 1. If data needs to be copied, click **Next: Configure Full Copy**, and select a storage configuration.
 
-    The storage is used to transfer the data to the target database. For information on how to configure storage, see [Configure backup storage](../../configure-backup-storage/).
+    The storage is used to transfer the data to the target database. For information on how to configure storage, see [Configure backup storage](../../../back-up-restore-universes/configure-backup-storage/).
 
 1. Click **Next: Confirm Alert Threshold**.
 
