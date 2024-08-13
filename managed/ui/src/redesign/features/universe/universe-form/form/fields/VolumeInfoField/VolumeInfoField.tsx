@@ -114,7 +114,9 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   );
   const instance = instanceTypes?.find((item) => item.instanceTypeCode === instanceType);
 
-  //update volume info after istance changes
+  // Update volume info after instance changes
+  // We need to have have 2 separate useEffects for instanceType and provider changes
+  // once provider can be edited via the UI in case of primary cluster
   useEffect(() => {
     if (!instance) return;
     const getProviderRuntimeConfigs = async () => {
@@ -123,7 +125,9 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
         instance,
         providerRuntimeConfigsRefetch.isError
           ? providerRuntimeConfigs
-          : providerRuntimeConfigsRefetch.data
+          : providerRuntimeConfigsRefetch.data,
+        isEditMode,
+        fieldValue?.storageType
       );
 
       //retain old volume size if its edit mode or not ephemeral storage
