@@ -15,9 +15,9 @@ type: docs
 
 Use the [Hasura GraphQL Engine](https://hasura.io) with YugabyteDB Aeon to power your GraphQL applications with a distributed SQL database.
 
-This page describes how to connect a YugabyteDB Aeon cluster to a Hasura Cloud project.
+The following tutorial describes how to connect a YugabyteDB Aeon cluster to a Hasura Cloud project.
 
-For an example of how to deploy a GraphQL application for a Hasura Cloud project connected to YugabyteDB Aeon, refer to [Deploy a GraphQL application](../hasura-sample-app/).
+<!--For an example of how to deploy a GraphQL application for a Hasura Cloud project connected to YugabyteDB Aeon, refer to [Deploy a GraphQL application](../hasura-sample-app/).-->
 
 ## Obtain your Yugabyte cluster connection info
 
@@ -103,4 +103,4 @@ To connect your cluster:
 
 1. Click **View Database**.
 
-The schema is empty, and your project is ready to be [connected to an application](../hasura-sample-app/).
+The schema is empty, and your project is ready to be connected to an application.

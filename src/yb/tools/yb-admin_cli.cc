@@ -55,6 +55,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
+#include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
@@ -214,17 +215,6 @@ Status ListSnapshots(ClusterAdminClient* client, const EnumBitSet<ListSnapshotsF
 
   rapidjson::Document document(rapidjson::kObjectType);
   bool json = flags.Test(ListSnapshotsFlag::JSON);
-
-  if (snapshot_response.has_current_snapshot_id()) {
-    if (json) {
-      AddStringField(
-          "current_snapshot_id", SnapshotIdToString(snapshot_response.current_snapshot_id()),
-          &document, &document.GetAllocator());
-    } else {
-      std::cout << "Current snapshot id: "
-                << SnapshotIdToString(snapshot_response.current_snapshot_id()) << std::endl;
-    }
-  }
 
   rapidjson::Value json_snapshots(rapidjson::kArrayType);
   if (!json) {
@@ -498,9 +488,10 @@ Status ClusterAdminCli::Run(int argc, char** argv) {
   return RunCommand(command, command_args, args[0]);
 }
 
-void ClusterAdminCli::Register(string&& cmd_name, const std::string& cmd_args, Action&& action) {
+void ClusterAdminCli::Register(
+    string&& cmd_name, const std::string& cmd_args, Action&& action, bool hidden) {
   command_indexes_[cmd_name] = commands_.size();
-  commands_.push_back({std::move(cmd_name), cmd_args, std::move(action)});
+  commands_.push_back({std::move(cmd_name), cmd_args, std::move(action), hidden});
 }
 
 void ClusterAdminCli::SetUsage(const string& prog_name) {
@@ -511,9 +502,12 @@ void ClusterAdminCli::SetUsage(const string& prog_name) {
       << "<operation> must be one of:" << endl;
 
   for (size_t i = 0; i < commands_.size(); ++i) {
-    str << ' ' << i + 1 << ". " << commands_[i].name_
-        << (commands_[i].usage_arguments_.empty() ? "" : " ") << commands_[i].usage_arguments_
-        << endl;
+    const auto& command = commands_[i];
+    if (command.hidden_) {
+      continue;
+    }
+    str << ' ' << i + 1 << ". " << command.name_ << (command.usage_arguments_.empty() ? "" : " ")
+        << command.usage_arguments_ << endl;
   }
 
   str << endl;
@@ -956,6 +950,9 @@ Status change_master_config_action(
   return Status::OK();
 }
 
+// Dump subset of info stored on yb-master in a user friendly format.
+// Requires yb-master and CatalogManager to be running and healthy.
+// Use `dump_sys_catalog_entries` to get on-disk data, or if master is unhealthy.
 const auto dump_masters_state_args = "[CONSOLE]";
 Status dump_masters_state_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
@@ -2625,6 +2622,99 @@ Status get_universe_replication_info_action(
   return Status::OK();
 }
 
+// Dump on-disk Catalog Entry infos stored in sys_catalog tablet of yb-master.
+// This can be used even when CatalogManager is unhealthy or completely turned off (yb-master
+// --emergency_repair_mode).
+//
+// If no entry_id is provided all entries of the given type will be dumped
+// out. entry_id can be an empty string. Ex:
+// ./bin/yb-admin -master_addresses 127.0.0.1.9:7100 dump_sys_catalog_entries
+//    UNIVERSE_REPLICATION  /tmp/catalog_dump "rg1"
+//
+// ./bin/yb-admin -master_addresses 127.0.0.1.9:7100 dump_sys_catalog_entries
+//    CLUSTER_CONFIG /tmp/catalog_dump ""
+const auto dump_sys_catalog_entries_args = "<entry_type> <folder_path> [entry_id]";
+Status dump_sys_catalog_entries_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() < 2 || args.size() > 3) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  master::SysRowEntryType entry_type;
+  SCHECK(
+      master::SysRowEntryType_Parse(args[0], &entry_type), InvalidArgument, "Invalid entry type");
+  SCHECK_NE(entry_type, master::SysRowEntryType::UNKNOWN, InvalidArgument, "Invalid entry type");
+
+  std::string folder_path = args[1];
+
+  std::string entry_id_filter;
+  if (args.size() > 2) {
+    entry_id_filter = args[2];
+  }
+
+  return client->DumpSysCatalogEntriesAction(entry_type, /*folder_path=*/args[1], entry_id_filter);
+}
+
+namespace {
+Result<master::WriteSysCatalogEntryRequestPB::WriteOp> ToCatalogEntryWriteOp(
+    const std::string& operation) {
+  if (IsEqCaseInsensitive(operation, "insert")) {
+    return master::WriteSysCatalogEntryRequestPB::SYS_CATALOG_INSERT;
+  }
+  if (IsEqCaseInsensitive(operation, "update")) {
+    return master::WriteSysCatalogEntryRequestPB::SYS_CATALOG_UPDATE;
+  }
+  if (IsEqCaseInsensitive(operation, "delete")) {
+    return master::WriteSysCatalogEntryRequestPB::SYS_CATALOG_DELETE;
+  }
+
+  return STATUS(InvalidArgument, "Invalid operation", operation);
+}
+
+}  // namespace
+// WARNING!! Use with caution! Incorrect usage may result in unavailability, data loss, and/or
+// corruption.
+// - yb-master must be in --emergency_repair_mode.
+//
+// - entry_id can be an empty string. This is because singleton catalog_entity types like
+//   CLUSTER_CONFIG, and XCLUSTER_CONFIG use empty strings as ids.
+// - file_path is not required for DELETE operation.
+// - force will bypass the confirmation prompt.
+// Ex:
+// ./bin/yb-admin -master_addresses 127.0.0.1.9:7100 write_sys_catalog_entry INSERT
+//    UNIVERSE_REPLICATION "rg1" /tmp/catalog_dump/UNIVERSE_REPLICATION-rg1
+//
+// ./bin/yb-admin -master_addresses 127.0.0.1.9:7100 write_sys_catalog_entry DELETE
+//    XCLUSTER_CONFIG ""
+//
+// ./bin/yb-admin -master_addresses 127.0.0.1.9:7100 write_sys_catalog_entry UPDATE
+//    UNIVERSE_REPLICATION "rg1" /tmp/catalog_dump/UNIVERSE_REPLICATION-rg1
+const auto write_sys_catalog_entry_args =
+    "<insert/update/delete> <entry_type> <entry_id> [file_path] [force]";
+Status write_sys_catalog_entry_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() < 3 || args.size() > 5) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  auto operation = VERIFY_RESULT(ToCatalogEntryWriteOp(args[0]));
+  if (operation != master::WriteSysCatalogEntryRequestPB::SYS_CATALOG_DELETE && args.size() < 4) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  master::SysRowEntryType entry_type;
+  SCHECK(
+      master::SysRowEntryType_Parse(args[1], &entry_type), InvalidArgument, "Invalid entry type");
+  SCHECK_NE(entry_type, master::SysRowEntryType::UNKNOWN, InvalidArgument, "Invalid entry type");
+
+  std::string entry_id = args[2];
+
+  bool force = (args.size() > 3 && IsEqCaseInsensitive(args[args.size() - 1], "force"));
+
+  return client->WriteSysCatalogEntryAction(
+      operation, entry_type, /*entry_id=*/args[2], /*file_path=*/args[3], force);
+}
+
 }  // namespace
 
 void ClusterAdminCli::RegisterCommandHandlers() {
@@ -2758,6 +2848,10 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(repair_xcluster_outbound_replication_remove_table);
   REGISTER_COMMAND(list_xcluster_outbound_replication_groups);
   REGISTER_COMMAND(get_xcluster_outbound_replication_group_info);
+
+  // SysCatalog util commands
+  REGISTER_COMMAND(dump_sys_catalog_entries);
+  REGISTER_COMMAND(write_sys_catalog_entry);
 }
 
 Result<std::vector<client::YBTableName>> ResolveTableNames(

@@ -13,6 +13,8 @@ import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.rbac.ResourcePermissionData;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.GroupMappingInfo;
+import com.yugabyte.yw.models.Principal;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
 import com.yugabyte.yw.models.rbac.ResourceGroup.ResourceDefinition;
@@ -586,5 +588,46 @@ public class RoleBindingUtil {
         user.getUuid(),
         user.getEmail(),
         createdRoleBindings.toString());
+  }
+
+  /**
+   * Add role binding for group with system role.
+   *
+   * @param groupMappingInfo
+   */
+  public static void createSystemRoleBindingsForGroup(
+      GroupMappingInfo groupMappingInfo, Role role) {
+    if (role.getRoleType().equals(RoleType.Custom)) {
+      return;
+    }
+    Users.Role sysRole = Users.Role.valueOf(role.getName());
+    // Once RBAC is enabled, we'll assign a ConnectOnly role to all group members
+    // upon login, so a role binding won't be necessary.
+    if (sysRole.equals(Users.Role.ConnectOnly)) {
+      return;
+    }
+    log.info("Adding system role bindings for group: " + groupMappingInfo.getIdentifier());
+    RoleBinding.create(
+        groupMappingInfo,
+        RoleBindingType.Custom,
+        role,
+        ResourceGroup.getSystemDefaultResourceGroup(groupMappingInfo, sysRole));
+  }
+
+  public static void createSystemRoleBindingsForGroup(GroupMappingInfo groupMappingInfo) {
+    Role role = Role.get(groupMappingInfo.getCustomerUUID(), groupMappingInfo.getRoleUUID());
+    createSystemRoleBindingsForGroup(groupMappingInfo, role);
+  }
+
+  public static void clearRoleBindingsForPrincipal(Principal principal) {
+    log.info("Clearing role bindings for principal: " + principal.toString());
+    List<RoleBinding> list = RoleBinding.getAll(principal.getUuid());
+    list.forEach(rb -> rb.delete());
+  }
+
+  public static void clearRoleBindingsForGroup(GroupMappingInfo group) {
+    log.info("Clearing role bindings for group: " + group.getIdentifier());
+    List<RoleBinding> list = RoleBinding.getAll(group.getGroupUUID());
+    list.forEach(rb -> rb.delete());
   }
 }

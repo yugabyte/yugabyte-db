@@ -221,9 +221,9 @@ YB_NODE_CONTROLLER_CHECK = MetricDefinition(
     "yb_node_controller_check",
     "YB-Controller server check")
 YB_NODE_CLOCK_DRIFT_CHECK = MetricDefinition(
-    "yb_node_clock_drift_check",
-    "Time Drift betwen nodes within limits"
-)
+    "yb_node_clock_drift_check_ms",
+    "Time Drift betwen nodes within limits",
+    "millisec")
 YB_DDL_ATOMICITY_CHECK = MetricDefinition(
     "yb_ddl_atomicity_check",
     "Status of DDL atomicity check"
@@ -527,7 +527,8 @@ class NodeChecker():
                  enable_ysql, enable_ysql_auth, master_http_port, tserver_http_port,
                  ysql_server_http_port, node_version, is_ybc_enabled, ybc_port,
                  time_drift_wrn_threshold, time_drift_err_threshold, otel_enabled,
-                 temp_output_file, ddl_atomicity_check, master_leader_url):
+                 temp_output_file, ddl_atomicity_check, master_leader_url,
+                 master_rpc_port, tserver_rpc_port):
         self.node = node
         self.node_name = node_name
         self.node_identifier = node_identifier
@@ -547,7 +548,9 @@ class NodeChecker():
         self.enable_ysql = enable_ysql
         self.enable_ysql_auth = enable_ysql_auth
         self.master_http_port = master_http_port
+        self.master_rpc_port = master_rpc_port
         self.tserver_http_port = tserver_http_port
+        self.tserver_rpc_port = tserver_rpc_port
         self.ysql_server_http_port = ysql_server_http_port
         self.node_version = node_version
         self.is_ybc_enabled = is_ybc_enabled
@@ -641,7 +644,7 @@ class NodeChecker():
 
     def retrieve_host_certs(self, host, port):
         """Retrieve certificates from the specified host and port."""
-        cmd = f'echo | openssl s_client -showcerts -connect {host}:{port}'
+        cmd = 'echo | openssl s_client -showcerts -connect {}:{}'.format(host, port)
         return self._check_output(cmd)
 
     def parse_certs(self, cert_output):
@@ -709,10 +712,10 @@ class NodeChecker():
                 # & they are about to expire <= 30 days, we will raise the alerts
                 # for users to restart the services.
                 try:
-                    cert_output = self.retrieve_host_certs(self.node, self.tserver_http_port)
+                    cert_output = self.retrieve_host_certs(self.node, self.tserver_rpc_port)
                 except Exception as e:
                     logging.info("Failed to retrieve tserver certs, trying with master")
-                    cert_output = self.retrieve_host_certs(self.node, self.master_http_port)
+                    cert_output = self.retrieve_host_certs(self.node, self.master_rpc_port)
                 certs = self.parse_certs(cert_output)
                 if not self.are_certs_same(certs, cert_path):
                     for cert in certs:
@@ -1733,8 +1736,9 @@ class NodeChecker():
         pid_list.append(root_pid)
         if process_name == TSERVER:
             postgre_pid = self.get_process_pid_by_name(POSTMASTER)
-            pid_list.remove(postgre_pid)
-            pid_list = [p for p in pid_list if p not in self._get_subprocess_pids(postgre_pid)]
+            if postgre_pid is not None:
+                pid_list.remove(postgre_pid)
+                pid_list = [p for p in pid_list if p not in self._get_subprocess_pids(postgre_pid)]
         total_stat = self._get_empty_proc_results()
         prev_process_map = {}
         if process_name in self.prev_process_results.keys():
@@ -1910,7 +1914,7 @@ def get_clock_drift_ms():
         out = check_output("chronyc tracking", env)
         match = re.search("System time.*: (.*) second", out, re.MULTILINE)
         if match:
-          return int(float(match.group(1))*1000) # Convert seconds to milliseconds
+          return float(match.group(1))*1000 # Convert seconds to milliseconds
     return "Error: Unknown time service"
 
 def chrony_exists():
@@ -2019,7 +2023,9 @@ class NodeInfo:
         self.redis_port = data["redisPort"]
         self.enable_ysql_auth = data["enableYSQLAuth"]
         self.master_http_port = data["masterHttpPort"]
+        self.master_rpc_port = data["masterRpcPort"]
         self.tserver_http_port = data["tserverHttpPort"]
+        self.tserver_rpc_port = data["tserverRpcPort"]
         self.ysql_server_http_port = data["ysqlServerHttpPort"]
         self.check_clock = data["checkClock"]
         self.check_time_drift = data["checkTimeDrift"]
@@ -2077,7 +2083,8 @@ def main():
         n.enable_ysql, n.enable_ysql_auth, n.master_http_port, n.tserver_http_port,
         n.ysql_server_http_port, n.yb_version, n.is_ybc_enabled, n.ybc_port,
         n.time_drift_wrn_threshold, n.time_drift_err_threshold, n.otel_enabled,
-        args.temp_output_file, args.ddl_atomicity_check, args.master_leader_url)
+        args.temp_output_file, args.ddl_atomicity_check, args.master_leader_url,
+        n.master_rpc_port, n.tserver_rpc_port)
 
     coordinator.add_precheck(checker, "check_openssl_availability")
 
@@ -2102,8 +2109,9 @@ def main():
             coordinator.add_check(checker, "check_file_descriptors")
         if n.check_clock:
             coordinator.add_check(checker, "check_clock_skew")
-        if n.check_time_drift:
-            coordinator.add_check(checker, "check_yb_node_clock_drift")
+
+    if n.check_time_drift:
+        coordinator.add_check(checker, "check_yb_node_clock_drift")
 
     if n.master_index >= 0:
         coordinator.add_check(checker, "check_uptime_for_process", MASTER)

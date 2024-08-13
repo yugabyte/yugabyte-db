@@ -140,18 +140,6 @@ Result<bool> MatchTable(
   return false;
 }
 
-template <class PB>
-struct GetEntryType;
-
-template<> struct GetEntryType<SysNamespaceEntryPB>
-    : public std::integral_constant<SysRowEntryType, SysRowEntryType::NAMESPACE> {};
-
-template<> struct GetEntryType<SysTablesEntryPB>
-    : public std::integral_constant<SysRowEntryType, SysRowEntryType::TABLE> {};
-
-template<> struct GetEntryType<SysTabletsEntryPB>
-    : public std::integral_constant<SysRowEntryType, SysRowEntryType::TABLET> {};
-
 Status ValidateSysCatalogTables(
     const std::unordered_set<TableId>& restoring_tables,
     const std::unordered_map<TableId, TableName>& existing_tables) {
@@ -530,7 +518,7 @@ Status RestoreSysCatalogState::AddRestoringEntry(
 template <class PB>
 Status RestoreSysCatalogState::PatchAndAddRestoringEntry(
     const std::string& id, PB* pb, faststring* buffer) {
-  auto type = GetEntryType<PB>::value;
+  auto type = GetCatalogEntityType<PB>::value;
   VLOG_WITH_FUNC(1) << SysRowEntryType_Name(type) << ": " << id << ", " << pb->ShortDebugString();
 
   if (!VERIFY_RESULT(PatchRestoringEntry(id, pb))) {
@@ -757,9 +745,9 @@ Status RestoreSysCatalogState::IterateSysCatalog(
   dockv::ReaderProjection projection(doc_read_context.schema());
   docdb::DocRowwiseIterator iter = docdb::DocRowwiseIterator(
       projection, doc_read_context, TransactionOperationContext(), doc_db,
-      docdb::ReadOperationData::FromSingleReadTime(read_time), pending_op, nullptr);
+      docdb::ReadOperationData::FromSingleReadTime(read_time), pending_op);
   return EnumerateSysCatalog(
-      &iter, doc_read_context.schema(), GetEntryType<PB>::value, [map, sequences_data_map](
+      &iter, doc_read_context.schema(), GetCatalogEntityType<PB>::value, [map, sequences_data_map](
           const Slice& id, const Slice& data) -> Status {
     auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<PB>(data));
     if (!ShouldLoadObject(pb)) {
@@ -768,12 +756,12 @@ Status RestoreSysCatalogState::IterateSysCatalog(
     if (IsSequencesDataObject(id.ToBuffer(), pb)) {
       if (!sequences_data_map->emplace(id.ToBuffer(), pb).second) {
         return STATUS_FORMAT(IllegalState, "Duplicate $0: $1",
-                             SysRowEntryType_Name(GetEntryType<PB>::value), id.ToBuffer());
+                             SysRowEntryType_Name(GetCatalogEntityType<PB>::value), id.ToBuffer());
       }
     }
     if (!map->emplace(id.ToBuffer(), std::move(pb)).second) {
       return STATUS_FORMAT(IllegalState, "Duplicate $0: $1",
-                           SysRowEntryType_Name(GetEntryType<PB>::value), id.ToBuffer());
+                           SysRowEntryType_Name(GetCatalogEntityType<PB>::value), id.ToBuffer());
     }
     return Status::OK();
   });
@@ -935,7 +923,7 @@ Status RestoreSysCatalogState::IncrementLegacyCatalogVersion(
   dockv::ReaderProjection projection(doc_read_context.schema());
   auto iter = docdb::DocRowwiseIterator(
       projection, doc_read_context, TransactionOperationContext(), doc_db,
-      docdb::ReadOperationData(), write_batch->pending_op(), nullptr);
+      docdb::ReadOperationData(), write_batch->pending_op());
 
   RETURN_NOT_OK(EnumerateSysCatalog(
       &iter, doc_read_context.schema(), SysRowEntryType::SYS_CONFIG,

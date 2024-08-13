@@ -269,15 +269,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     }
 
     // Support mismatched TLS root certificates.
-    Optional<File> sourceCertificate =
-        getSourceCertificateIfNecessary(sourceUniverse, targetUniverse);
-    sourceCertificate.ifPresent(
-        cert ->
-            createTransferXClusterCertsCopyTasks(
-                targetUniverse.getNodes(),
-                xClusterConfig.getReplicationGroupName(),
-                cert,
-                targetUniverse.getUniverseDetails().getSourceRootCertDirPath()));
+    createTransferXClusterCertsCopyTasks(xClusterConfig);
 
     Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
         dbToTablesInfoMapNeedBootstrap = null;
@@ -997,5 +989,37 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     restoreTaskParams.backupStorageInfoList.add(backupStorageInfo);
 
     return restoreTaskParams;
+  }
+
+  public void createTransferXClusterCertsCopyTasks(XClusterConfig xClusterConfig) {
+    createTransferXClusterCertsCopyTasks(xClusterConfig, xClusterConfig.getReplicationGroupName());
+  }
+
+  /**
+   * Transfer source universe certs -> target universe. Also, target universe certs -> source
+   * universe if db scoped.
+   *
+   * @param xClusterConfig config with source and target universe to transfer certs.
+   * @param replicationGroupName name of the replication group for xClusterConfig.
+   */
+  public void createTransferXClusterCertsCopyTasks(
+      XClusterConfig xClusterConfig, String replicationGroupName) {
+    Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
+    Optional<File> sourceCertificate =
+        getOriginCertficateIfNecessary(sourceUniverse, targetUniverse);
+
+    sourceCertificate.ifPresent(
+        cert ->
+            createTransferXClusterCertsCopyTasks(
+                targetUniverse.getNodes(), replicationGroupName, cert, targetUniverse));
+    if (xClusterConfig.getType() == ConfigType.Db) {
+      Optional<File> targetCertificate =
+          getOriginCertficateIfNecessary(targetUniverse, sourceUniverse);
+      targetCertificate.ifPresent(
+          cert ->
+              createTransferXClusterCertsCopyTasks(
+                  sourceUniverse.getNodes(), replicationGroupName, cert, sourceUniverse));
+    }
   }
 }

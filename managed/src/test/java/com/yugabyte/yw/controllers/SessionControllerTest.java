@@ -37,11 +37,13 @@ import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.controllers.handlers.ThirdPartyLoginHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.*;
-import com.yugabyte.yw.models.Users.Role;
+import com.yugabyte.yw.models.GroupMappingInfo.GroupType;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.UserType;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.rbac.Role.RoleType;
+import com.yugabyte.yw.models.rbac.Role;
 import com.yugabyte.yw.scheduler.Scheduler;
+import db.migration.default_.common.R__Sync_System_Roles;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.PrivateKey;
@@ -222,20 +224,20 @@ public class SessionControllerTest {
     startApp(false);
     authorizeUserMockSetup(); // authorize "test@yugabyte.com"
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
+    R__Sync_System_Roles.syncSystemRoles();
 
-    // create group mappings
-    com.yugabyte.yw.models.rbac.Role role1 =
-        com.yugabyte.yw.models.rbac.Role.create(
-            customer.getUuid(), "Admin", "Admin role", RoleType.System, null);
-    com.yugabyte.yw.models.rbac.Role role2 =
-        com.yugabyte.yw.models.rbac.Role.create(
-            customer.getUuid(), "BackupAdmin", "BackupAdmin role", RoleType.System, null);
-    OidcGroupToYbaRoles group1 =
-        OidcGroupToYbaRoles.create(
-            customer.getUuid(), "Admin Group", ImmutableList.of(role1.getRoleUUID()));
-    OidcGroupToYbaRoles group2 =
-        OidcGroupToYbaRoles.create(
-            customer.getUuid(), "BackupAdmin Group", ImmutableList.of(role2.getRoleUUID()));
+    GroupMappingInfo group1 =
+        GroupMappingInfo.create(
+            customer.getUuid(),
+            Role.get(customer.getUuid(), "Admin").getRoleUUID(),
+            "Admin Group",
+            GroupType.OIDC);
+    GroupMappingInfo group2 =
+        GroupMappingInfo.create(
+            customer.getUuid(),
+            Role.get(customer.getUuid(), "BackupAdmin").getRoleUUID(),
+            "BackupAdmin Group",
+            GroupType.OIDC);
 
     Result result = route(app, fakeRequest("GET", "/api/third_party_login"));
     assertEquals("Headers:" + result.headers(), SEE_OTHER, result.status());
@@ -245,7 +247,7 @@ public class SessionControllerTest {
     // assert user created
     assertNotNull(user);
     // assert correct role assigned
-    assertEquals(Role.Admin, user.getRole());
+    assertEquals(Users.Role.Admin, user.getRole());
   }
 
   public void authorizeUserMockSetup() {
@@ -426,7 +428,7 @@ public class SessionControllerTest {
   public void testInsecureLoginValid() {
     startApp(false);
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
-    ModelFactory.testUser(customer, "tc1@test.com", Role.ReadOnly);
+    ModelFactory.testUser(customer, "tc1@test.com", Users.Role.ReadOnly);
     ConfigHelper configHelper = new ConfigHelper();
     configHelper.loadConfigToDB(
         ConfigHelper.ConfigType.Security, ImmutableMap.of("level", "insecure"));
@@ -446,7 +448,7 @@ public class SessionControllerTest {
       throws InterruptedException, ExecutionException, TimeoutException {
     startApp(false);
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
-    ModelFactory.testUser(customer, "tc1@test.com", Role.Admin);
+    ModelFactory.testUser(customer, "tc1@test.com", Users.Role.Admin);
     ConfigHelper configHelper = new ConfigHelper();
     configHelper.loadConfigToDB(
         ConfigHelper.ConfigType.Security, ImmutableMap.of("level", "insecure"));
@@ -536,7 +538,7 @@ public class SessionControllerTest {
     String authToken = json.get("authToken").asText();
     Customer c1 = Customer.get(UUID.fromString(json.get("customerUUID").asText()));
     Users user = Users.get(UUID.fromString(json.get("userUUID").asText()));
-    assertEquals(Role.SuperAdmin, user.getRole());
+    assertEquals(Users.Role.SuperAdmin, user.getRole());
     assertAuditEntry(1, c1.getUuid());
 
     ObjectNode registerJson2 = Json.newObject();

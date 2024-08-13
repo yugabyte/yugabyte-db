@@ -89,6 +89,7 @@ public class SpecificGFlags {
             newValue.perAZ.put(k, clone(v));
           });
     }
+    newValue.gflagGroups = new ArrayList<>(gflagGroups == null ? new ArrayList<>() : gflagGroups);
     return newValue;
   }
 

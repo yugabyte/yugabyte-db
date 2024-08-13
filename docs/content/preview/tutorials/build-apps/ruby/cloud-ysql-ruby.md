@@ -10,7 +10,7 @@ menu:
     parent: build-apps
     name: Ruby
     identifier: cloud-ruby
-    weight: 700
+    weight: 900
 type: docs
 ---
 

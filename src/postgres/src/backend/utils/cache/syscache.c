@@ -1548,6 +1548,11 @@ SearchSysCache(int cacheId,
 			   Datum key3,
 			   Datum key4)
 {
+	if (IsMultiThreadedMode())
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("Catalog cache lookup is not allowed in multithread mode"),
+				 errhint("Try to set yb_enable_expression_pushdown to false.")));
 	Assert(cacheId >= 0 && cacheId < SysCacheSize &&
 		   PointerIsValid(SysCache[cacheId]));
 
@@ -1558,6 +1563,11 @@ HeapTuple
 SearchSysCache1(int cacheId,
 				Datum key1)
 {
+	if (IsMultiThreadedMode())
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("Catalog cache lookup is not allowed in multithread mode"),
+				 errhint("Try to set yb_enable_expression_pushdown to false.")));
 	Assert(cacheId >= 0 && cacheId < SysCacheSize &&
 		   PointerIsValid(SysCache[cacheId]));
 	Assert(SysCache[cacheId]->cc_nkeys == 1);
@@ -1569,6 +1579,11 @@ HeapTuple
 SearchSysCache2(int cacheId,
 				Datum key1, Datum key2)
 {
+	if (IsMultiThreadedMode())
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("Catalog cache lookup is not allowed in multithread mode"),
+				 errhint("Try to set yb_enable_expression_pushdown to false.")));
 	Assert(cacheId >= 0 && cacheId < SysCacheSize &&
 		   PointerIsValid(SysCache[cacheId]));
 	Assert(SysCache[cacheId]->cc_nkeys == 2);
@@ -1580,6 +1595,11 @@ HeapTuple
 SearchSysCache3(int cacheId,
 				Datum key1, Datum key2, Datum key3)
 {
+	if (IsMultiThreadedMode())
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("Catalog cache lookup is not allowed in multithread mode"),
+				 errhint("Try to set yb_enable_expression_pushdown to false.")));
 	Assert(cacheId >= 0 && cacheId < SysCacheSize &&
 		   PointerIsValid(SysCache[cacheId]));
 	Assert(SysCache[cacheId]->cc_nkeys == 3);
@@ -1591,6 +1611,11 @@ HeapTuple
 SearchSysCache4(int cacheId,
 				Datum key1, Datum key2, Datum key3, Datum key4)
 {
+	if (IsMultiThreadedMode())
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("Catalog cache lookup is not allowed in multithread mode"),
+				 errhint("Try to set yb_enable_expression_pushdown to false.")));
 	Assert(cacheId >= 0 && cacheId < SysCacheSize &&
 		   PointerIsValid(SysCache[cacheId]));
 	Assert(SysCache[cacheId]->cc_nkeys == 4);

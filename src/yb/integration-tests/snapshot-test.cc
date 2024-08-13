@@ -29,6 +29,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/master.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.proxy.h"
@@ -179,9 +180,6 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
     LOG(INFO) << "Number of snapshots: " << list_resp.snapshots_size();
     ASSERT_EQ(list_resp.snapshots_size(), snapshot_info.size());
 
-    // Current snapshot is available for non-transaction aware snapshots only.
-    ASSERT_FALSE(list_resp.has_current_snapshot_id());
-
     for (int i = 0; i < list_resp.snapshots_size(); ++i) {
       LOG(INFO) << "Snapshot " << i << ": " << list_resp.snapshots(i).DebugString();
       auto id = ASSERT_RESULT(FullyDecodeTxnSnapshotId(list_resp.snapshots(i).id()));
@@ -269,7 +267,6 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
       std::optional<bool> imported = std::nullopt) {
     CreateSnapshotRequestPB req;
     CreateSnapshotResponsePB resp;
-    req.set_transaction_aware(true);
     TableIdentifierPB* const table = req.mutable_tables()->Add();
     table->set_table_name(kTableName.table_name());
     table->mutable_namespace_()->set_name(kTableName.namespace_name());
@@ -480,7 +477,7 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
     auto table = VERIFY_RESULT(master_leader->catalog_manager_impl().GetTableById(table_id));
     auto tablets = VERIFY_RESULT(table->GetTablets(master::IncludeInactive::kTrue));
     auto* coordinator = down_cast<master::MasterSnapshotCoordinator*>(
-        &master_leader->catalog_manager_impl().snapshot_coordinator());
+        &master_leader->master()->snapshot_coordinator());
     for (const auto& tablet : tablets) {
       if (!coordinator->TEST_IsTabletCoveredBySnapshot(tablet->id(), snapshot_id)) {
         return STATUS_FORMAT(

@@ -46,6 +46,8 @@
 
 #include "yb/ash/wait_state.h"
 
+#include "yb/cdc/cdc_service.h"
+
 #include "yb/client/client.h"
 #include "yb/client/meta_data_cache.h"
 #include "yb/client/transaction_manager.h"
@@ -2096,6 +2098,11 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
                  << s.ToString();
       tablet_peer->SetFailed(s);
       return;
+    }
+
+    if (server_->GetCDCService()) {
+      tablet_peer->log()->SetGetXClusterMinIndexToRetainFunc(
+          server_->GetCDCService()->GetXClusterMinRequiredIndexFunc());
     }
 
     tablet_peer->RegisterMaintenanceOps(server_->maintenance_manager());

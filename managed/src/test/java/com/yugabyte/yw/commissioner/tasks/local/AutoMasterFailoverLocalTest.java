@@ -51,13 +51,16 @@ public class AutoMasterFailoverLocalTest extends LocalProviderUniverseTestBase {
         .setValue(GlobalConfKeys.autoMasterFailoverPollerInterval.getKey(), "10s");
     settableRuntimeConfigFactory
         .forUniverse(universe)
-        .setValue(UniverseConfKeys.autoMasterFailoverTaskInterval.getKey(), "5s");
+        .setValue(UniverseConfKeys.autoMasterFailoverTaskDelay.getKey(), "5s");
     settableRuntimeConfigFactory
         .forUniverse(universe)
         .setValue(UniverseConfKeys.autoMasterFailoverCooldown.getKey(), "5s");
     settableRuntimeConfigFactory
         .forUniverse(universe)
         .setValue(UniverseConfKeys.autoMasterFailoverDetectionInterval.getKey(), "5s");
+    settableRuntimeConfigFactory
+        .forUniverse(universe)
+        .setValue(UniverseConfKeys.autoMasterFailoverMaxMasterHeartbeatDelay.getKey(), "5s");
     settableRuntimeConfigFactory
         .forUniverse(universe)
         .setValue(UniverseConfKeys.enableAutoMasterFailover.getKey(), "true");

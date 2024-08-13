@@ -33,11 +33,6 @@ export const YSQL_AUDIT_CLASSES = [
     title: 'Misc',
     value: YSQLAuditStatementClass.MISC,
     tooltip: 'Log miscellaneous commands, such as DISCARD, FETCH, CHECKPOINT, VACUUM, SET.'
-  },
-  {
-    title: 'Misc SET',
-    value: YSQLAuditStatementClass.MISC_SET,
-    tooltip: 'Log miscellaneous SET commands, such as SET ROLE.'
   }
 ];
 

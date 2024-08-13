@@ -12,6 +12,7 @@ package com.yugabyte.yw.common.config.impl;
 import com.yugabyte.yw.common.config.RuntimeConfigChangeListener;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.GroupMappingInfo;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
 import com.yugabyte.yw.models.rbac.Role;
@@ -80,6 +81,13 @@ public class UseNewRbacAuthzListener implements RuntimeConfigChangeListener {
               createdRoleBinding.toString());
         }
       }
+      // Add role bindings for all group mappings.
+      GroupMappingInfo.find
+          .query()
+          .where()
+          .eq("customer_uuid", customer.getUuid())
+          .findList()
+          .forEach(group -> RoleBindingUtil.createSystemRoleBindingsForGroup(group));
     }
   }
 }

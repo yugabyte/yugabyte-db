@@ -815,6 +815,10 @@ public class TaskExecutor {
       return data.get(key);
     }
 
+    public <T> void putObject(String key, T object) {
+      data.put(key, Json.toJson(object));
+    }
+
     public <T> T get(String key, Class<T> clazz) {
       JsonNode node = get(key);
       if (node == null || node.isNull()) {

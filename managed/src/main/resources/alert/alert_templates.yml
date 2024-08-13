@@ -1901,3 +1901,28 @@ templates:
         Percentage of tablet peers is high for universe '{{ $labels.source_name }}'.
         Current value is {{ $value | printf "%.0f" }} %.
         Affected nodes: {{ $labels.affected_node_names }}
+
+  NODE_CLOCK_DRIFT:
+    name: High clock drift
+    description: Local clock on the node has drift too far from the actual time in the past 10 minutes.
+    queryTemplate: max by (universe_uuid) (yb_node_clock_drift_check_ms{universe_uuid="__universeUuid__"}) {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true 
+    defaultThresholdMap:
+      WARNING:
+        threshold: 200.0
+      SEVERE:
+        threshold: 400.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: GREATER_THAN
+    defaultThresholdUnit: MILLISECOND
+    thresholdUnitName: ms
+    labels:
+      affected_node_names: >-
+        {{ range $index, $element := query "max by (universe_uuid, node_name)
+        (yb_node_clock_drift_check_ms{universe_uuid='{{ $labels.universe_uuid }}'})
+        / 1000 {{ query_condition }} {{ query_threshold }}" }}{{if $index}},{{end}}{{ $element.Labels.node_name }}{{ end }}
+    annotations:
+      summary: >-
+        Clock drift is high for universe '{{ $labels.source_name }}'.
+        Current drift from actual clock is {{ $value }} milliseconds.
+        Affected nodes: {{ $labels.affected_node_names }}

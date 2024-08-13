@@ -19,6 +19,7 @@
 #include <boost/assign.hpp>
 #include <gtest/gtest.h>
 
+#include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/cdc/cdc_state_table.h"
@@ -151,6 +152,7 @@ DECLARE_bool(xcluster_skip_health_check_on_replication_setup);
 
 namespace yb {
 
+using cdc::CDCServiceImpl;
 using client::YBClient;
 using client::YBSchema;
 using client::YBSchemaBuilder;
@@ -160,6 +162,7 @@ using client::YBTableAlterer;
 using client::YBTableName;
 using master::MiniMaster;
 
+
 using SessionTransactionPair = std::pair<client::YBSessionPtr, client::YBTransactionPtr>;
 
 struct XClusterTestParams {
@@ -168,6 +171,10 @@ struct XClusterTestParams {
 
   bool transactional_table;  // For XCluster + CQL only. All YSQL tables are transactional.
 };
+
+CDCServiceImpl* CDCService(tserver::TabletServer* tserver) {
+  return down_cast<CDCServiceImpl*>(tserver->GetCDCService().get());
+}
 
 class XClusterTestNoParam : public XClusterYcqlTestBase {
  public:
@@ -1383,8 +1390,7 @@ TEST_P(XClusterTest, PollAndObserveIdleDampening) {
   ASSERT_ONLY_NOTNULL(cdc_ts);
 
   // Find the CDCTabletMetric associated with the above pair.
-  auto cdc_service = dynamic_cast<cdc::CDCServiceImpl*>(
-      cdc_ts->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+  auto cdc_service = CDCService(cdc_ts);
   auto metrics = ASSERT_RESULT(GetXClusterTabletMetrics(*cdc_service, tablet_id, stream_id));
 
   /***********************************
@@ -2741,8 +2747,7 @@ TEST_P(XClusterTest, TestNonZeroLagMetricsWithoutGetChange) {
 
   // Check that the CDC enabled flag is true.
   tserver::TabletServer* cdc_ts = producer_cluster()->mini_tablet_server(0)->server();
-  auto cdc_service = dynamic_cast<cdc::CDCServiceImpl*>(
-      cdc_ts->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+  auto cdc_service = CDCService(cdc_ts);
 
   ASSERT_OK(WaitFor(
       [&]() { return cdc_service->CDCEnabled(); }, MonoDelta::FromSeconds(30), "IsCDCEnabled"));
@@ -3487,13 +3492,15 @@ TEST_F_EX(XClusterTest, CdcCheckpointPeerMove, XClusterTestNoParam) {
           int64_t min_found = std::numeric_limits<int64_t>::max();
           int64_t max_found = std::numeric_limits<int64_t>::min();
           for (auto& tablet_server : producer_cluster()->mini_tablet_servers()) {
+            auto cdc_service = CDCService(tablet_server->server());
             for (const auto& tablet_peer :
                  tablet_server->server()->tablet_manager()->GetTabletPeers()) {
               if (tablet_peer->tablet_id() != tablet_id) {
                 continue;
               }
               peer_count++;
-              auto cdc_checkpoint = tablet_peer->get_cdc_min_replicated_index();
+              auto cdc_checkpoint =
+                  cdc_service->GetXClusterMinRequiredIndex(tablet_peer->tablet_id());
               LOG(INFO) << "TServer: " << tablet_server->server()->ToString()
                         << ", CDC min replicated index: " << cdc_checkpoint;
               if (cdc_checkpoint == std::numeric_limits<int64_t>::max() ||

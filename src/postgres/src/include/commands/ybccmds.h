@@ -104,6 +104,8 @@ extern void YBCExecAlterTable(YBCPgStatement handle, Oid relationId);
 
 extern void YBCRename(RenameStmt* stmt, Oid relationId);
 
+extern void YBCAlterTableNamespace(Form_pg_class classForm, Oid relationId);
+
 extern void YbBackfillIndex(BackfillIndexStmt *stmt, DestReceiver *dest);
 
 extern TupleDesc YbBackfillIndexResultDesc(BackfillIndexStmt *stmt);

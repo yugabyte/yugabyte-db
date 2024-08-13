@@ -111,3 +111,10 @@ export const getApiRoutePermMapList = () => {
 export const getRBACEnabledStatus = () => {
     return axios.get<RunTimeConfigEntry[]>(`${ROOT_URL}/runtime_config/feature_flags`);
 };
+
+export const getAllGroups = () => {
+    const cUUID = localStorage.getItem('customerId');
+    const requestUrl = `${ROOT_URL}/customers/${cUUID}/groups`;
+    return Promise.resolve([{ name: 'group1', authProvider: 'LDAP', role: { name: 'role1', roleType: 'Admin' }, createdAt: '2023-07-08' }]);
+    // return axios.get<RbacUser[]>(requestUrl);   
+};

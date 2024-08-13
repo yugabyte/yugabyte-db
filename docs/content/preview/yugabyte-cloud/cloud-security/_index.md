@@ -27,29 +27,18 @@ The YugabyteDB Aeon architecture is secure by default, and uses the following fe
 
 For information on how to configure the security features of clusters in YugabyteDB Aeon, refer to [Secure clusters in YugabyteDB Aeon](../cloud-secure-clusters/).
 
-<div class="row">
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="cloud-security-features/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/checklist.png" aria-hidden="true" />
-        <div class="title">Security architecture</div>
-      </div>
-      <div class="body">
-        Learn about the YugabyteDB Aeon security architecture.
-      </div>
-    </a>
-  </div>
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="shared-responsibility/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/grant-permissions.png" aria-hidden="true" />
-        <div class="title">Shared responsibility model</div>
-      </div>
-      <div class="body">
-        The YugabyteDB Aeon shared responsibility model for security.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Security architecture"
+    body="Learn about the YugabyteDB Aeon security architecture."
+    href="cloud-security-features/"
+    icon="/images/section_icons/secure/checklist.png">}}
 
-</div>
+  {{<index/item
+    title="Shared responsibility model"
+    body="The YugabyteDB Aeon shared responsibility model for security."
+    href="shared-responsibility/"
+    icon="/images/section_icons/secure/grant-permissions.png">}}
+
+{{</index/block>}}

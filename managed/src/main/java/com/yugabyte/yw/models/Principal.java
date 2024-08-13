@@ -5,6 +5,7 @@ package com.yugabyte.yw.models;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.models.GroupMappingInfo.GroupType;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -17,12 +18,14 @@ import java.util.UUID;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 @Entity
 @Table(name = "principal")
 @Data
 @NoArgsConstructor
 @EqualsAndHashCode(callSuper = false)
+@ToString
 public class Principal extends Model {
   // A Principal is an entity which is allowed to have role bindings.
   // Currently it can either be a group or an user.
@@ -81,6 +84,15 @@ public class Principal extends Model {
       throw new PlatformServiceException(BAD_REQUEST, "Invalid Principal UUID:" + principalUuid);
     }
     return principal;
+  }
+
+  // Wrapper around delete to make sure all role bindings belonging to this principal are cleared
+  // before deletion.
+  // This saves us from doing it manually everywhere.
+  @Override
+  public boolean delete() {
+    RoleBindingUtil.clearRoleBindingsForPrincipal(this);
+    return super.delete();
   }
 
   public static final Finder<UUID, Principal> find =

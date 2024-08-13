@@ -424,3 +424,11 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
       return; \
     } \
   } while (false)
+
+#define YB_SKIP_TEST_IN_SANITIZERS() \
+  do { \
+    if (::yb::IsSanitizer()) { \
+      GTEST_SKIP() << "Skipping test in sanitizers"; \
+      return; \
+    } \
+  } while (false)

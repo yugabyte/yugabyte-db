@@ -21,8 +21,7 @@
 
 namespace yb::master {
 
-struct PersistentCloneStateInfo : public Persistent<SysCloneStatePB, SysRowEntryType::CLONE_STATE>
-  {};
+struct PersistentCloneStateInfo : public Persistent<SysCloneStatePB> {};
 
 struct CloneStateInfoHelpers {
   static bool IsDone(const SysCloneStatePB& pb) {

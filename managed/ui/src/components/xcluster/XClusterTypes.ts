@@ -62,6 +62,7 @@ export type EligibilityDetails =
 export interface IndexTableReplicationCandidate extends YBTable {
   eligibilityDetails: EligibilityDetails;
   isUnreplicatedTableInReplicatedNamespace: boolean;
+  isDroppedOnTarget: boolean;
 }
 /**
  * YBTable with with additional metadata for table selection and an array of index tables.
@@ -69,6 +70,7 @@ export interface IndexTableReplicationCandidate extends YBTable {
 export interface MainTableReplicationCandidate extends YBTable {
   eligibilityDetails: EligibilityDetails;
   isUnreplicatedTableInReplicatedNamespace: boolean;
+  isDroppedOnTarget: boolean;
 
   indexTables?: IndexTableReplicationCandidate[];
 }

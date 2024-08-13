@@ -217,9 +217,6 @@ public interface UserIntentMapper {
     if (clusterSpec.getReplicationFactor() != null) {
       userIntent.replicationFactor = clusterSpec.getReplicationFactor();
     }
-    if (clusterSpec.getDedicatedNodes() != null) {
-      userIntent.dedicatedNodes = clusterSpec.getDedicatedNodes();
-    }
     fillUserIntentFromClusterNodeSpec(clusterSpec.getNodeSpec(), userIntent);
     fillUserIntentFromClusterNetworkingSpec(clusterSpec.getNetworkingSpec(), userIntent);
     fillUserIntentFromClusterProviderSpec(clusterSpec.getProviderSpec(), userIntent);
@@ -290,6 +287,9 @@ public interface UserIntentMapper {
       ClusterNodeSpec clusterNodeSpec, UserIntent userIntent) {
     if (clusterNodeSpec == null) {
       return userIntent;
+    }
+    if (clusterNodeSpec.getDedicatedNodes() != null) {
+      userIntent.dedicatedNodes = clusterNodeSpec.getDedicatedNodes();
     }
     userIntent.instanceType = clusterNodeSpec.getInstanceType();
     userIntent.deviceInfo = storageSpecToDeviceInfo(clusterNodeSpec.getStorageSpec());

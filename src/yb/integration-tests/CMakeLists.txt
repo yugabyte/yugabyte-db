@@ -47,6 +47,14 @@ add_custom_command(
 
 add_custom_target(fips_install DEPENDS ${CMAKE_BINARY_DIR}/openssl-config/openssl-fips.cnf)
 
+file(COPY
+  ${CMAKE_SOURCE_DIR}/src/yb/integration-tests/xcluster/sql
+  DESTINATION ${CMAKE_BINARY_DIR}/test_xcluster_ddl_replication_sql
+  FILE_PERMISSIONS OWNER_READ)
+
+add_custom_target(
+  xcluster_ddl_replication_sql DEPENDS ${CMAKE_BINARY_DIR}/test_xcluster_ddl_replication_sql)
+
 ADD_YB_TEST_LIBRARY(
     cdc_test_util
     SRCS cdc_test_util.cc
@@ -79,6 +87,7 @@ set(INTEGRATION_TESTS_SRCS
   cdcsdk_ysql_test_base.cc
   xcluster/xcluster_ysql_test_base.cc
   xcluster/xcluster_ycql_test_base.cc
+  xcluster/xcluster_ddl_replication_test_base.cc
 )
 
 ADD_YB_TEST_LIBRARY(integration-tests SRCS ${INTEGRATION_TESTS_SRCS})
@@ -109,7 +118,8 @@ add_dependencies(integration-tests
   gen_auto_flags_json
   yb-ts-cli
   generate_test_certs
-  fips_install)
+  fips_install
+  xcluster_ddl_replication_sql)
 
 ADD_YB_TEST_LIBRARY(
     cql_test_util
@@ -226,6 +236,7 @@ ADD_YB_TEST(secure_connection_test)
 ADD_YB_TEST(xcluster/xcluster_consistency-test)
 ADD_YB_TEST(xcluster/xcluster_db_scoped-test)
 ADD_YB_TEST(xcluster/xcluster_ddl_replication-test)
+ADD_YB_TEST(xcluster/xcluster_ddl_replication_pgregress-test)
 ADD_YB_TEST(xcluster/xcluster_dr-itest)
 ADD_YB_TEST(xcluster/xcluster_upgrade-test)
 ADD_YB_TEST(xcluster/xcluster_safe_time-itest)

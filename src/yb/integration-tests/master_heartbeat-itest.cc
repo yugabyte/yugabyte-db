@@ -42,6 +42,7 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
+#include "yb/util/tostring.h"
 
 using namespace std::literals;
 
@@ -54,10 +55,7 @@ DECLARE_int32(TEST_mini_cluster_registration_wait_time_sec);
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_bool(master_enable_universe_uuid_heartbeat_check);
 
-namespace yb {
-
-using master::GetMasterClusterConfigResponsePB;
-namespace integration_tests {
+namespace yb::integration_tests {
 
 class MasterHeartbeatITest : public YBTableTestBase {
  public:
@@ -79,10 +77,10 @@ master::TSToMasterCommonPB MakeTSToMasterCommonPB(
 
 master::TabletReportPB MakeTabletReportPBWithNewLeader(
     master::TSDescriptor* ts, master::TabletInfo* tablet, bool incremental,
-    int32_t report_sequence_number) {
+    int32_t report_seqno) {
   master::TabletReportPB report;
   report.set_is_incremental(incremental);
-  report.set_sequence_number(report_sequence_number);
+  report.set_sequence_number(report_seqno);
   auto* tablet_report = report.add_updated_tablets();
   tablet_report->set_tablet_id(tablet->id());
   auto* consensus = tablet_report->mutable_committed_consensus_state();
@@ -94,10 +92,10 @@ master::TabletReportPB MakeTabletReportPBWithNewLeader(
   new_peer->set_member_type(consensus::PeerMemberType::VOTER);
   auto ts_info = ts->GetTSInformationPB();
   *new_peer->mutable_last_known_private_addr() =
-      ts_info->registration().common().private_rpc_addresses();
+      ts_info.registration().common().private_rpc_addresses();
   *new_peer->mutable_last_known_broadcast_addr() =
-      ts_info->registration().common().broadcast_addresses();
-  *new_peer->mutable_cloud_info() = ts_info->registration().common().cloud_info();
+      ts_info.registration().common().broadcast_addresses();
+  *new_peer->mutable_cloud_info() = ts_info.registration().common().cloud_info();
   tablet_report->set_state(tablet::RaftGroupStatePB::RUNNING);
   tablet_report->set_tablet_data_state(tablet::TabletDataState::TABLET_DATA_READY);
   return report;
@@ -222,9 +220,9 @@ TEST_F(MasterHeartbeatITest, IgnoreEarlierHeartbeatFromSameTSProcess) {
   master::TSHeartbeatRequestPB req;
   *req.mutable_common() = MakeTSToMasterCommonPB(ts.get(), ts->latest_seqno());
   req.set_universe_uuid(cluster_config.universe_uuid());
-  const auto original_latest_report_sequence_number = ts->latest_report_sequence_number();
+  const auto original_latest_report_seqno = ts->latest_report_seqno();
   *req.mutable_tablet_report() = MakeTabletReportPBWithNewLeader(
-      ts.get(), tablet.get(), true, original_latest_report_sequence_number + 2);
+      ts.get(), tablet.get(), true, original_latest_report_seqno + 2);
   req.set_num_live_tablets(1);
   master::TSHeartbeatResponsePB resp;
   auto rpc = rpc::RpcController();
@@ -250,7 +248,7 @@ TEST_F(MasterHeartbeatITest, IgnoreEarlierHeartbeatFromSameTSProcess) {
     second_req.set_num_live_tablets(0);
     auto* bootstrapping_report = second_req.mutable_tablet_report();
     bootstrapping_report->set_is_incremental(true);
-    bootstrapping_report->set_sequence_number(original_latest_report_sequence_number + 1);
+    bootstrapping_report->set_sequence_number(original_latest_report_seqno + 1);
     auto* rbs_tablet = bootstrapping_report->add_updated_tablets();
     rbs_tablet->set_tablet_id(tablet->id());
     rbs_tablet->set_state(tablet::RaftGroupStatePB::BOOTSTRAPPING);
@@ -304,13 +302,13 @@ TEST_F(MasterHeartbeatITest, ProcessHeartbeatAfterTSRestart) {
       proxy_cache_.get(), mini_cluster_->mini_master()->bound_rpc_addr());
   auto cluster_config = ASSERT_RESULT(catalog_mgr.GetClusterConfig());
   master::TSHeartbeatRequestPB req;
-  ASSERT_GT(ts->latest_report_sequence_number(), 0);
+  ASSERT_GT(ts->latest_report_seqno(), 0);
   // Use a later sequence number to simulate the tserver restarting.
   *req.mutable_common() = MakeTSToMasterCommonPB(ts.get(), ts->latest_seqno() + 10);
   req.set_universe_uuid(cluster_config.universe_uuid());
-  *req.mutable_registration() = ts->GetTSInformationPB()->registration();
+  *req.mutable_registration() = ts->GetTSRegistrationPB();
   *req.mutable_tablet_report() = MakeTabletReportPBWithNewLeader(
-      ts.get(), tablet.get(), /* incremental */ false, /* report_sequence_number */ 0);
+      ts.get(), tablet.get(), /* incremental */ false, /* report_seqno */ 0);
   master::TSHeartbeatResponsePB resp;
   auto rpc = rpc::RpcController();
   auto status = master_proxy.TSHeartbeat(req, &resp, &rpc);
@@ -325,7 +323,7 @@ TEST_F(MasterHeartbeatITest, ProcessHeartbeatAfterTSRestart) {
       });
   ASSERT_NE(ts_replica_it, replica_locations->cend());
   ASSERT_EQ(ts_replica_it->second.role, PeerRole::LEADER);
-  ASSERT_EQ(ts->latest_report_sequence_number(), 0);
+  ASSERT_EQ(ts->latest_report_seqno(), 0);
 }
 
 class MasterHeartbeatITestWithUpgrade : public YBTableTestBase {
@@ -441,19 +439,20 @@ class MasterHeartbeatITestWithExternal : public MasterHeartbeatITest {
       const std::set<std::string>& uuids, MonoDelta timeout, const std::string& message) {
     master::MasterClusterProxy master_proxy(
         proxy_cache_.get(), external_mini_cluster()->master()->bound_rpc_addr());
+    std::set<std::string> current_uuids;
     return WaitFor(
         [&]() -> Result<bool> {
           master::ListTabletServersResponsePB resp;
           master::ListTabletServersRequestPB req;
           rpc::RpcController rpc;
           RETURN_NOT_OK(master_proxy.ListTabletServers(req, &resp, &rpc));
-          std::set<std::string> current_uuids;
+          current_uuids.clear();
           for (const auto& server : resp.servers()) {
             current_uuids.insert(server.instance_id().permanent_uuid());
           }
           return current_uuids == uuids;
         },
-        timeout, message);
+        timeout, Format("$0: current tserver uuids: $1", message, current_uuids));
   }
 };
 
@@ -469,9 +468,10 @@ TEST_F(MasterHeartbeatITestWithExternal, ReRegisterRemovedPeers) {
   std::map<std::string, ExternalTabletServer*> wiped_tservers;
   wiped_tservers[cluster->tablet_server(1)->uuid()] = cluster->tablet_server(1);
   wiped_tservers[cluster->tablet_server(2)->uuid()] = cluster->tablet_server(2);
-  LOG(INFO) << "Wipe a majority of the quorum to simulate majority disk failures.";
+  LOG(INFO) << Format(
+      "Wipe a majority of the quorum to simulate majority disk failures, tservers: $0, $1",
+      cluster->tablet_server(1)->uuid(), cluster->tablet_server(2)->uuid());
   ASSERT_OK(RestartAndWipeWithFlags({cluster->tablet_server(1), cluster->tablet_server(2)}));
-
   std::set<std::string> original_uuids;
   std::set<std::string> new_uuids;
   original_uuids.insert(cluster->tablet_server(0)->uuid());
@@ -503,6 +503,4 @@ TEST_F(MasterHeartbeatITestWithExternal, ReRegisterRemovedPeers) {
       original_uuids, 60s, "Wait for master to register original uuids"));
 }
 
-}  // namespace integration_tests
-
-}  // namespace yb
+}  // namespace yb::integration_tests

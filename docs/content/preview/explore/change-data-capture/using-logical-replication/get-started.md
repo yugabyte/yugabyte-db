@@ -231,7 +231,7 @@ After starting YugabyteDB, use ysqlsh to create your database:
     You should see output similar to the following:
 
     ```output
-    ysqlsh (11.2-YB-2.21.1.0-b0)
+    ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
     Type "help" for help.
 
     yugabyte=#

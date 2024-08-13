@@ -24,6 +24,8 @@ servers:
 tags:
   - name: Authentication
     description: Authentication operations on YBA
+  - name: Job Scheduler
+    description: Job Scheduler
   - name: Universe
     description: CRUD operations for a Universe
 paths:

@@ -1733,8 +1733,8 @@ Status Tablet::HandleQLReadRequest(
         CreateTransactionOperationContext(transaction_metadata, /* is_ysql_catalog_table */ false);
     RETURN_NOT_OK(txn_op_ctx);
     status = AbstractTablet::HandleQLReadRequest(
-        read_operation_data, ql_read_request, *txn_op_ctx, storage, scoped_read_operation,
-        result, rows_data, metrics_scope.statistics());
+        read_operation_data.WithStatistics(metrics_scope.statistics()), ql_read_request,
+        *txn_op_ctx, storage, scoped_read_operation, result, rows_data);
 
     schema_version_compatible = IsSchemaVersionCompatible(
         metadata()->schema_version(), ql_read_request.schema_version(),
@@ -1822,8 +1822,9 @@ Status Tablet::HandlePgsqlReadRequest(
       pgsql_read_request.metrics_capture(), result->response);
 
   auto status = DoHandlePgsqlReadRequest(
-      &scoped_read_operation, metrics_scope.statistics(), metrics_scope.metrics(),
-      read_operation_data, is_explicit_request_read_time, pgsql_read_request, transaction_metadata,
+      &scoped_read_operation, metrics_scope.metrics(),
+      read_operation_data.WithStatistics(metrics_scope.statistics()),
+      is_explicit_request_read_time, pgsql_read_request, transaction_metadata,
       subtransaction_metadata, result);
 
   return status;
@@ -1831,7 +1832,6 @@ Status Tablet::HandlePgsqlReadRequest(
 
 Status Tablet::DoHandlePgsqlReadRequest(
     ScopedRWOperation* scoped_read_operation,
-    docdb::DocDBStatistics* statistics,
     TabletMetrics* metrics,
     const docdb::ReadOperationData& read_operation_data,
     bool is_explicit_request_read_time,
@@ -1859,7 +1859,7 @@ Status Tablet::DoHandlePgsqlReadRequest(
     RETURN_NOT_OK(txn_op_ctx);
     status = ProcessPgsqlReadRequest(
         read_operation_data, is_explicit_request_read_time, pgsql_read_request, table_info,
-        *txn_op_ctx, storage, statistics, *scoped_read_operation, result);
+        *txn_op_ctx, storage, *scoped_read_operation, result);
   }
 
   // Assert the table is a Postgres table.

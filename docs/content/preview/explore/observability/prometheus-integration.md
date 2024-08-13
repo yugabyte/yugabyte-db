@@ -3,6 +3,8 @@ title: Prometheus integration
 headerTitle: Prometheus integration
 linkTitle: Prometheus integration
 description: Learn about exporting YugabyteDB metrics and monitoring the cluster with Prometheus.
+aliases:
+  - /preview/explore/observability/prometheus-integration/macos/
 menu:
   preview:
     parent: explore-observability
@@ -11,7 +13,7 @@ menu:
 type: docs
 ---
 
-You can monitor your local YugabyteDB cluster with a local instance of [Prometheus](https://prometheus.io/), a popular standard for time series monitoring of cloud native infrastructure. YugabyteDB services and APIs expose metrics in the Prometheus format at the `/prometheus-metrics` endpoint. For details on the metrics targets for YugabyteDB, see [Prometheus monitoring](../../../../reference/configuration/default-ports/#prometheus-monitoring).
+You can monitor your local YugabyteDB cluster with a local instance of [Prometheus](https://prometheus.io/), a popular standard for time series monitoring of cloud native infrastructure. YugabyteDB services and APIs expose metrics in the Prometheus format at the `/prometheus-metrics` endpoint. For details on the metrics targets for YugabyteDB, see [Prometheus monitoring](../../../reference/configuration/default-ports/#prometheus-monitoring).
 
 ## Setup
 
@@ -160,4 +162,4 @@ avg(irate(rpc_latency_count{server_type="yb_cqlserver", service_type="SQLProcess
 
 ## What's next?
 
-Set up [Grafana dashboards](../../grafana-dashboard/grafana/) for better visualization of the metrics being collected by Prometheus.
+Set up [Grafana dashboards](../grafana-dashboard/grafana/) for better visualization of the metrics being collected by Prometheus.

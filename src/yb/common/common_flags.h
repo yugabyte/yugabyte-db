@@ -29,6 +29,7 @@ DECLARE_bool(ysql_yb_enable_replication_slot_consumption);
 DECLARE_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms);
 DECLARE_bool(TEST_ysql_hide_catalog_version_increment_log);
 DECLARE_int32(ysql_clone_pg_schema_rpc_timeout_ms);
+DECLARE_bool(ysql_enable_auto_analyze_service);
 
 namespace yb {
 

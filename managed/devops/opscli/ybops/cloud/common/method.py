@@ -152,8 +152,8 @@ class AbstractInstancesMethod(AbstractMethod):
         else:
             self.parser.add_argument("search_pattern", nargs="?")
         self.parser.add_argument("-t", "--type", default=self.YB_SERVER_TYPE)
-        self.parser.add_argument('--tags', action='append', default=[])
-        self.parser.add_argument("--skip_tags", action='append', default=[])
+        self.parser.add_argument('--tags', action='append', default=None)
+        self.parser.add_argument("--skip_tags", action='append', default=None)
 
         # If we do not have this entry from ansible.env, then set a None default, else, assume the
         # pem file is in the same location as the ansible.env file.
@@ -793,7 +793,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         use_default_ssh_port = not ssh_port_updated
 
         # Check if secondary subnet is present. If so, configure it.
-        if "systemd_upgrade" not in args.tags and host_info.get('secondary_subnet'):
+        if (not args.tags or "systemd_upgrade" not in args.tags) \
+                and host_info.get('secondary_subnet'):
             # Wait for host to be ready to run ssh commands.
             self.wait_for_host(args, use_default_ssh_port)
             server_ports = self.get_server_ports_to_check(args)
@@ -1875,9 +1876,9 @@ class TransferXClusterCerts(AbstractInstancesMethod):
                                  required=True,
                                  help="The format of this name must be "
                                       "[Source universe UUID]_[Config name].")
-        self.parser.add_argument("--producer_certs_dir",
+        self.parser.add_argument("--xcluster_dest_certs_dir",
                                  required=True,
-                                 help="The directory containing the certs on the target universe.")
+                                 help="The directory containing the certs on destination universe.")
         self.parser.add_argument("--action",
                                  default="copy",
                                  help="If true, the root certificate will be removed.")
@@ -1912,12 +1913,12 @@ class TransferXClusterCerts(AbstractInstancesMethod):
                 connect_options,
                 args.root_cert_path,
                 args.replication_config_name,
-                args.producer_certs_dir)
+                args.xcluster_dest_certs_dir)
         elif args.action == "remove":
             self.cloud.remove_xcluster_root_cert(
                 connect_options,
                 args.replication_config_name,
-                args.producer_certs_dir)
+                args.xcluster_dest_certs_dir)
         else:
             raise YBOpsRuntimeError("The action \"{}\" was not found: Must be either copy, "
                                     "or remove".format(args.action))

@@ -1152,29 +1152,13 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Maximum value of heartbeat delay allowed before master is considered to have failed",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Boolean> stopMultipleNodesInAZEnabled =
+  public static final ConfKeyInfo<Boolean> upgradeBatchRollEnabled =
       new ConfKeyInfo<>(
-          "yb.task.upgrade.stop_multiple_in_az",
+          "yb.task.upgrade.batch_roll_enabled",
           ScopeType.UNIVERSE,
           "Stop multiple nodes in az simultaneously during upgrade",
           "Stop multiple nodes simultaneously in az during upgrade",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Integer> simultaneousStopsInUpgradePercent =
-      new ConfKeyInfo<>(
-          "yb.task.upgrade.simultaneous_stops_in_az_percent",
-          ScopeType.UNIVERSE,
-          "Number of nodes to stop simultaneously during upgrade (percent of nodes per az)",
-          "Number of nodes to stop simultaneously during upgrade (percent of nodes per az)",
-          ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Integer> maxSimultaneousStopsInUpgrade =
-      new ConfKeyInfo<>(
-          "yb.task.upgrade.max_simultaneous_stops_in_az",
-          ScopeType.UNIVERSE,
-          "Maximum number of nodes to stop simultaneously during upgrade",
-          "Maximum number of nodes to stop simultaneously during upgrade",
-          ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Duration> autoMasterFailoverDetectionInterval =
       new ConfKeyInfo<>(
@@ -1184,12 +1168,21 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Automated master failover detection interval for a universe in background process",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Duration> autoMasterFailoverTaskInterval =
+  public static final ConfKeyInfo<Duration> autoMasterFailoverTaskDelay =
       new ConfKeyInfo<>(
-          "yb.auto_master_failover.task_interval",
+          "yb.auto_master_failover.failover_task_delay",
           ScopeType.UNIVERSE,
-          "Automated Master Failover Task Interval",
-          "Automated master failover task submission interval for a universe in background process",
+          "Automated Master Failover Task Delay",
+          "Automated master failover task submission delay for a universe in background process",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> autoSyncMasterAddrsTaskDelay =
+      new ConfKeyInfo<>(
+          "yb.auto_master_failover.sync_master_addrs_task_delay",
+          ScopeType.UNIVERSE,
+          "Automated Sync Master Addresses Task Delay",
+          "Automated sync master addresses task submission delay for a universe in background"
+              + " process",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> nodeAgentNodeActionUseJavaClient =
@@ -1258,4 +1251,13 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Threshold to raise a error when time drift exceeds this amount",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> pitEnabledBackupsRetentionBufferTimeSecs =
+      new ConfKeyInfo<>(
+          "yb.backup.pit_enabled_backups_history_retention_buffer_time_secs",
+          ScopeType.UNIVERSE,
+          "Time in seconds added to history_retention gflag on top of backup frequency",
+          "Time in seconds added to history_retention gflag on top of backup frequency. This is to"
+              + " accommodate backup upload times etc",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

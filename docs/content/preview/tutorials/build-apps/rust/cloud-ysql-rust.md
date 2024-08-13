@@ -10,7 +10,7 @@ menu:
     parent: build-apps
     name: Rust
     identifier: cloud-rust
-    weight: 800
+    weight: 1000
 type: docs
 ---
 

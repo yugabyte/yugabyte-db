@@ -32,6 +32,7 @@
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/clone/clone_state_entity.h"
 #include "yb/master/clone/external_functions.h"
+#include "yb/master/master.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_fwd.h"
@@ -72,24 +73,24 @@ class CloneStateManagerExternalFunctions : public CloneStateManagerExternalFunct
 
   Status ListSnapshotSchedules(ListSnapshotSchedulesResponsePB* resp) override {
     auto schedule_id = SnapshotScheduleId::Nil();
-    return catalog_manager_->snapshot_coordinator().ListSnapshotSchedules(schedule_id, resp);
+    return master_->snapshot_coordinator().ListSnapshotSchedules(schedule_id, resp);
   }
 
   Status DeleteSnapshot(const TxnSnapshotId& snapshot_id) override {
-    return catalog_manager_->snapshot_coordinator().Delete(
+    return master_->snapshot_coordinator().Delete(
         snapshot_id, catalog_manager_->leader_ready_term(), CoarseMonoClock::Now() + 30s);
   }
 
   Result<TxnSnapshotRestorationId> Restore(
       const TxnSnapshotId& snapshot_id, HybridTime restore_at) override {
-    return catalog_manager_->snapshot_coordinator().Restore(
+    return master_->snapshot_coordinator().Restore(
         snapshot_id, restore_at, catalog_manager_->leader_ready_term());
   }
 
   Status ListRestorations(
       const TxnSnapshotRestorationId& restoration_id, ListSnapshotRestorationsResponsePB* resp)
       override {
-    return catalog_manager_->snapshot_coordinator().ListRestorations(
+    return master_->snapshot_coordinator().ListRestorations(
         restoration_id, TxnSnapshotId::Nil(), resp);
   }
 
@@ -345,7 +346,6 @@ Status CloneStateManager::StartTabletsCloning(
     create_snapshot_req.mutable_tables()->Add()->set_table_id(new_table_id);
   }
   create_snapshot_req.set_add_indexes(false);
-  create_snapshot_req.set_transaction_aware(true);
   create_snapshot_req.set_imported(true);
   RETURN_NOT_OK(external_funcs_->DoCreateSnapshot(
       &create_snapshot_req, &create_snapshot_resp, deadline, clone_state->Epoch()));

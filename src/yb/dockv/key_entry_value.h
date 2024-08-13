@@ -149,6 +149,7 @@ class KeyEntryValue {
   static KeyEntryValue UInt32(uint32_t v, SortOrder sort_order = SortOrder::kAscending);
   static KeyEntryValue Int64(int64_t v, SortOrder sort_order = SortOrder::kAscending);
   static KeyEntryValue UInt64(uint64_t v, SortOrder sort_order = SortOrder::kAscending);
+  static KeyEntryValue VectorVertexId(uint64_t v);
   static KeyEntryValue MakeTimestamp(
       const Timestamp& timestamp, SortOrder sort_order = SortOrder::kAscending);
   static KeyEntryValue MakeInetAddress(

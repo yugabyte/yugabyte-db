@@ -59,7 +59,7 @@ AggregatedClusterInfo ComputeAggregatedClusterInfo(
     if (ts->placement_uuid() != placement_uuid) {
       continue;
     }
-    const auto resources = ts->GetRegistration().resources();
+    const auto resources = ts->GetResources();
     cores_aggregator.Add(resources.has_core_count(), resources.core_count());
     memory_aggregator.Add(
         resources.has_tablet_overhead_ram_in_bytes(), resources.tablet_overhead_ram_in_bytes());

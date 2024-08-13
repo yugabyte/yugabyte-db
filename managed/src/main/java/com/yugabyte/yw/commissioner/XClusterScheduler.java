@@ -358,7 +358,7 @@ public class XClusterScheduler {
       return metricsList;
     }
 
-    XClusterConfigTaskBase.setReplicationStatus(
+    XClusterConfigTaskBase.updateReplicationDetailsFromDB(
         xClusterUniverseService, ybClientService, tableHandler, xClusterConfig);
     Set<XClusterTableConfig> xClusterTableConfigs = xClusterConfig.getTableDetails();
     xClusterTableConfigs.forEach(

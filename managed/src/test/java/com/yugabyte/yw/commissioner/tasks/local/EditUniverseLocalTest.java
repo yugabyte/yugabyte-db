@@ -7,7 +7,9 @@ import static org.hamcrest.Matchers.containsString;
 import static org.junit.Assert.assertEquals;
 
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckLeaderlessTablets;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.RetryTaskUntilCondition;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.Pair;
@@ -19,12 +21,14 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Test;
+import org.yb.client.YBClient;
 import play.libs.Json;
 
 @Slf4j
@@ -42,6 +46,8 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     Universe universe = createUniverse(userIntent);
     initYSQL(universe);
     initAndStartPayload(universe);
+    verifyMasterLBStatus(customer, universe, true /*enabled*/, true /*idle*/);
+
     changeNumberOfNodesInPrimary(universe, 2);
     UUID taskID =
         universeCRUDHandler.update(
@@ -49,6 +55,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
             Universe.getOrBadRequest(universe.getUniverseUUID()),
             universe.getUniverseDetails());
     TaskInfo taskInfo = waitForTask(taskID, universe);
+
     verifyUniverseTaskSuccess(taskInfo);
     verifyUniverseState(Universe.getOrBadRequest(universe.getUniverseUUID()));
     verifyYSQL(universe);
@@ -442,8 +449,8 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     assertThat(error, containsString("Unexpected TSERVER: " + removed.cloudInfo.private_ip));
   }
 
-  //   @Test
-  public void testLeaderlessTabletsBeforeEditFAIL() throws InterruptedException {
+  //  @Test
+  public void testLeaderlessTabletsBeforeEditFAIL() throws Exception {
     RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.timeout", "10s");
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
     userIntent.numNodes = 3;
@@ -461,7 +468,23 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
                 throw new RuntimeException("Failed to kill process", e);
               }
             });
-    Thread.sleep(TimeUnit.SECONDS.toMillis(65));
+
+    try (YBClient client =
+        ybClientService.getClient(
+            universe.getMasterAddresses(), universe.getCertificateNodetoNode())) {
+      RetryTaskUntilCondition<List<String>> waiter =
+          new RetryTaskUntilCondition<>(
+              () ->
+                  CheckLeaderlessTablets.doGetLeaderlessTablets(
+                      universe.getUniverseUUID(),
+                      client,
+                      nodeUIApiHelper,
+                      universe.getNodes().iterator().next().masterHttpPort),
+              (lst) -> lst.size() > 0);
+      if (!waiter.retryUntilCond(10, TimeUnit.MINUTES.toSeconds(2))) {
+        throw new RuntimeException("Failed to wait for leaderless tablets");
+      }
+    }
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getPrimaryCluster();
     cluster.userIntent.numNodes += 1;
@@ -567,18 +590,5 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
         UniverseConfigureTaskParams.ClusterOperationType.EDIT);
     verifyNodeModifications(
         universe, increment > 0 ? increment : 0, increment < 0 ? -increment : 0);
-  }
-
-  private void verifyNodeModifications(Universe universe, int added, int removed) {
-    assertEquals(
-        added,
-        universe.getUniverseDetails().nodeDetailsSet.stream()
-            .filter(n -> n.state == NodeDetails.NodeState.ToBeAdded)
-            .count());
-    assertEquals(
-        removed,
-        universe.getUniverseDetails().nodeDetailsSet.stream()
-            .filter(n -> n.state == NodeDetails.NodeState.ToBeRemoved)
-            .count());
   }
 }

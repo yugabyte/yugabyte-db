@@ -4,14 +4,14 @@
 .td-sidebar-toc {
   @supports (position: sticky) {
     position: sticky;
-    top: 129px;
+    top: 150px;
     background: rgb(246, 246, 248);
-    margin-top: 129px;
-    max-height: calc(100vh - 129px);
+    margin-top: 149px;
+    max-height: calc(100vh - 150px);
     height: auto;
 
     .td-toc {
-      max-height: calc(100vh - (129px + 80px));
+      max-height: calc(100vh - (180px + 80px));
       height: auto;
       scrollbar-width: thin;
       overflow-y: auto;
@@ -32,16 +32,24 @@
   vertical-align: top;
 
   .td-toc {
-    > nav > ul:first-child > li:first-child::before {
-      content: "On this page";
+    > .head-title {
       padding-bottom: 0;
-      margin-bottom: 24px;
+      margin-bottom: 16px;
       font-weight: 600;
       display: block;
       text-transform: uppercase;
       font-size: 12px;
       line-height: 24px;
-      color: #0b1117;
+      color: #0B1117;
+      font-family: Inter;
+      display: flex;
+      align-items:center;
+      gap: 8px;
+
+      img {
+        width: 24px;
+        height: 18px;
+      }
     }
 
     ul {

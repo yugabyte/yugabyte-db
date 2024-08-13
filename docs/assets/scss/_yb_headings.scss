@@ -17,8 +17,8 @@
   h4[id],
   h5[id] {
     &::before {
-      height: 7.5rem;
-      margin-top: -7.5rem;
+      height: calc(7.5rem + 20px);
+      margin-top: calc(-7.5rem - 20px);
     }
 
     > a[aria-hidden] {
@@ -70,18 +70,19 @@
     font-size: 32px;
     font-weight: 700;
     line-height: 42px;
-    margin-bottom: 16px;
     word-break: break-word;
+    margin-bottom: 0;
 
     & + p {
       font-size: 20px;
       font-weight: 400;
       line-height: 28px;
       color: $yb-font-darkgray;
+      margin-top: 16px;
     }
-
     & + {
       .lead {
+        margin-top: 16px;
         font-size: 20px;
         font-weight: 400;
         line-height: 28px;
@@ -169,4 +170,9 @@
   .td-heading-self-link {
     visibility: hidden;
   }
+}
+
+
+.td-searchpage .td-content  h1{
+  margin-bottom: 16px;
 }

@@ -2,7 +2,10 @@
 
 package com.yugabyte.yw.controllers;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
+import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ScheduleUtil;
 import com.yugabyte.yw.common.Util;
@@ -10,13 +13,19 @@ import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
+import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.EditBackupScheduleParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.forms.backuprestore.BackupScheduleEditParams;
+import com.yugabyte.yw.forms.backuprestore.BackupScheduleTaskParams;
+import com.yugabyte.yw.forms.backuprestore.BackupScheduleToggleParams;
 import com.yugabyte.yw.forms.filters.ScheduleApiFilter;
 import com.yugabyte.yw.forms.paging.SchedulePagedApiQuery;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Schedule.State;
 import com.yugabyte.yw.models.ScheduleTask;
@@ -24,6 +33,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.filters.ScheduleFilter;
+import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.paging.SchedulePagedApiResponse;
 import com.yugabyte.yw.models.paging.SchedulePagedQuery;
 import com.yugabyte.yw.models.paging.SchedulePagedResponse;
@@ -38,12 +48,14 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
+import java.io.IOException;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
 
@@ -54,10 +66,12 @@ public class ScheduleController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(ScheduleController.class);
 
   private final BackupHelper backupHelper;
+  private final Commissioner commissioner;
 
   @Inject
-  public ScheduleController(BackupHelper backupHelper) {
+  public ScheduleController(BackupHelper backupHelper, Commissioner commissioner) {
     this.backupHelper = backupHelper;
+    this.commissioner = commissioner;
   }
 
   @Deprecated
@@ -151,8 +165,13 @@ public class ScheduleController extends AuthenticatedController {
     return YBPSuccess.empty();
   }
 
+  @Deprecated
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2024.2.0.0")
   @ApiOperation(
-      value = "Edit a backup schedule V2",
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2024.2.0.0.</b></p>"
+              + "Use 'Edit a backup schedule async' instead.",
+      value = "Edit a backup schedule V2 - deprecated",
       response = Schedule.class,
       nickname = "editBackupScheduleV2")
   @ApiImplicitParams({
@@ -179,11 +198,16 @@ public class ScheduleController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Schedule schedule = Schedule.getOrBadRequest(customerUUID, scheduleUUID);
     EditBackupScheduleParams params = parseJsonAndValidate(request, EditBackupScheduleParams.class);
+    if (params.status == null) {
+      params.status = State.Active;
+    }
+    // Check this API is not used to modify PIT enabled schedule.
+    ScheduleUtil.checkScheduleActionFromDeprecatedMethod(schedule);
     if (params.status.equals(State.Paused)) {
       throw new PlatformServiceException(
           BAD_REQUEST, "State paused is an internal state and cannot be specified by the user");
     } else if (params.status.equals(State.Stopped)) {
-      schedule.stopSchedule();
+      Schedule.updateStatusAndSave(customerUUID, scheduleUUID, State.Stopped);
     } else if (params.status.equals(State.Active)) {
       if (params.frequency == null && params.cronExpression == null) {
         throw new PlatformServiceException(
@@ -205,12 +229,10 @@ public class ScheduleController extends AuthenticatedController {
         Date nextScheduleTaskTime;
 
         if (lastTask == null
-            || Util.isTimeExpired(
-                Schedule.nextExpectedTaskTime(lastTask.getScheduledTime(), schedule))) {
-          nextScheduleTaskTime = Schedule.nextExpectedTaskTime(null, schedule);
+            || Util.isTimeExpired(schedule.nextExpectedTaskTime(lastTask.getScheduledTime()))) {
+          nextScheduleTaskTime = schedule.nextExpectedTaskTime(null);
         } else {
-          nextScheduleTaskTime =
-              Schedule.nextExpectedTaskTime(lastTask.getScheduledTime(), schedule);
+          nextScheduleTaskTime = schedule.nextExpectedTaskTime(lastTask.getScheduledTime());
         }
 
         schedule.updateNextScheduleTaskTime(nextScheduleTaskTime);
@@ -218,7 +240,7 @@ public class ScheduleController extends AuthenticatedController {
       } else if (params.cronExpression != null) {
         BackupUtil.validateBackupCronExpression(params.cronExpression);
         schedule.updateCronExpression(params.cronExpression);
-        Date nextScheduleTaskTime = Schedule.nextExpectedTaskTime(null, schedule);
+        Date nextScheduleTaskTime = schedule.nextExpectedTaskTime(null);
         schedule.updateNextScheduleTaskTime(nextScheduleTaskTime);
       }
 
@@ -254,8 +276,13 @@ public class ScheduleController extends AuthenticatedController {
     return PlatformResults.withData(schedule);
   }
 
+  @Deprecated
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2024.2.0.0")
   @ApiOperation(
-      value = "Delete a schedule V2",
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2024.2.0.0.</b></p>"
+              + "Use 'Delete a backup schedule async' instead.",
+      value = "Delete a schedule V2 - deprecated",
       response = PlatformResults.YBPSuccess.class,
       nickname = "deleteScheduleV2")
   @AuthzPath({
@@ -270,12 +297,201 @@ public class ScheduleController extends AuthenticatedController {
     if (schedule.getStatus().equals(State.Active) && schedule.isRunningState()) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot delete schedule as it is running.");
     }
+    // Check this API is not used to delete PIT enabled schedule
+    ScheduleUtil.checkScheduleActionFromDeprecatedMethod(schedule);
+
     schedule.stopSchedule();
     ScheduleTask.getAllTasks(scheduleUUID).forEach(Model::delete);
     schedule.delete();
     auditService()
         .createAuditEntry(
             request, Audit.TargetType.Schedule, scheduleUUID.toString(), Audit.ActionType.Delete);
+    return YBPSuccess.empty();
+  }
+
+  @ApiOperation(
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Edit a backup schedule async",
+      response = Schedule.class,
+      nickname = "editBackupScheduleAsync")
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        required = true,
+        dataType = "com.yugabyte.yw.forms.backuprestore.BackupScheduleEditParams",
+        paramType = "body")
+  })
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT)),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.0.0")
+  public Result editBackupScheduleAsync(
+      UUID customerUUID, UUID universeUUID, UUID scheduleUUID, Http.Request request) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Schedule schedule = Schedule.getOrBadRequest(customerUUID, scheduleUUID);
+    if (!schedule.getOwnerUUID().equals(universeUUID)) {
+      throw new PlatformServiceException(BAD_REQUEST, "Schedule not owned by Universe.");
+    }
+    BackupScheduleEditParams requestParams =
+        parseJsonAndValidate(request, BackupScheduleEditParams.class);
+    BackupRequestParams scheduleParams =
+        Json.fromJson(schedule.getTaskParams(), BackupRequestParams.class);
+    scheduleParams.applyScheduleEditParams(requestParams);
+    // Check if attempting to modify schedule when universe is locked( not allowed ).
+    Universe universe = Universe.getOrBadRequest(scheduleParams.getUniverseUUID());
+    if (schedule.isRunningState()
+        || (scheduleParams.enablePointInTimeRestore && universe.universeIsLocked())) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot edit schedule as Universe is locked.");
+    }
+
+    // Generate task params with modified schedule params
+    BackupScheduleTaskParams taskParams =
+        UniverseControllerRequestBinder.bindFormDataToUpgradeTaskParams(
+            request, BackupScheduleTaskParams.class, universe);
+    taskParams.setCustomerUUID(customerUUID);
+    taskParams.setScheduleUUID(schedule.getScheduleUUID());
+    taskParams.setScheduleParams(scheduleParams);
+
+    TaskType taskType =
+        universe
+                .getUniverseDetails()
+                .getPrimaryCluster()
+                .userIntent
+                .providerType
+                .equals(CloudType.kubernetes)
+            ? TaskType.EditBackupScheduleKubernetes
+            : TaskType.EditBackupSchedule;
+    UUID taskUUID = commissioner.submit(taskType, taskParams);
+    LOG.info("Submitted task to universe {}, task uuid = {}.", universe.getName(), taskUUID);
+    CustomerTask.create(
+        customer,
+        schedule.getScheduleUUID(),
+        taskUUID,
+        CustomerTask.TargetType.Schedule,
+        CustomerTask.TaskType.Update,
+        schedule.getScheduleName());
+    LOG.info("Saved task uuid {} in customer tasks for universe {}", taskUUID, universe.getName());
+    auditService().createAuditEntry(request, Json.toJson(taskParams), taskUUID);
+    return new YBPTask(taskUUID).asResult();
+  }
+
+  @ApiOperation(
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Delete a backup schedule async",
+      response = Schedule.class,
+      nickname = "deleteBackupScheduleAsync")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT)),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.0.0")
+  public Result deleteBackupScheduleAsync(
+      UUID customerUUID, UUID universeUUID, UUID scheduleUUID, Http.Request request) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Schedule schedule = Schedule.getOrBadRequest(customerUUID, scheduleUUID);
+    if (!schedule.getOwnerUUID().equals(universeUUID)) {
+      throw new PlatformServiceException(BAD_REQUEST, "Schedule not owned by Universe.");
+    }
+    BackupRequestParams scheduleParams =
+        Json.fromJson(schedule.getTaskParams(), BackupRequestParams.class);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    if (schedule.isRunningState()
+        || (scheduleParams.enablePointInTimeRestore && universe.universeIsLocked())) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot delete schedule as Universe is locked.");
+    }
+    ObjectMapper mapper = new ObjectMapper();
+    BackupScheduleTaskParams taskParams = null;
+    try {
+      taskParams =
+          mapper.readValue(
+              mapper.writeValueAsString(universe.getUniverseDetails()),
+              BackupScheduleTaskParams.class);
+    } catch (IOException e) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Failed while processing delete schedule task params: " + e.getMessage());
+    }
+    taskParams.setCustomerUUID(customerUUID);
+    taskParams.setScheduleUUID(schedule.getScheduleUUID());
+    taskParams.setScheduleParams(scheduleParams);
+
+    TaskType taskType =
+        universe
+                .getUniverseDetails()
+                .getPrimaryCluster()
+                .userIntent
+                .providerType
+                .equals(CloudType.kubernetes)
+            ? TaskType.DeleteBackupScheduleKubernetes
+            : TaskType.DeleteBackupSchedule;
+    UUID taskUUID = commissioner.submit(taskType, taskParams);
+    LOG.info("Submitted task to universe {}, task uuid = {}.", universe.getName(), taskUUID);
+    CustomerTask.create(
+        customer,
+        scheduleUUID,
+        taskUUID,
+        CustomerTask.TargetType.Schedule,
+        CustomerTask.TaskType.Delete,
+        schedule.getScheduleName());
+    LOG.info("Saved task uuid {} in customer tasks for universe {}", taskUUID, universe.getName());
+    auditService().createAuditEntry(request, Json.toJson(taskParams), taskUUID);
+    return new YBPTask(taskUUID).asResult();
+  }
+
+  @ApiOperation(
+      notes =
+          "WARNING: This is a preview API that could change. Toggle a backup schedule. Only allowed"
+              + " to toggle backup schedule state between Active and Stopped.",
+      value = "Toggle a backup schedule",
+      response = Schedule.class,
+      nickname = "toggleBackupSchedule")
+  @ApiImplicitParams({
+    @ApiImplicitParam(
+        required = true,
+        dataType = "com.yugabyte.yw.forms.backuprestore.BackupScheduleToggleParams",
+        paramType = "body")
+  })
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.0.0")
+  public Result toggleSchedule(
+      UUID customerUUID, UUID universeUUID, UUID scheduleUUID, Http.Request request) {
+    Customer.getOrBadRequest(customerUUID);
+    Schedule schedule = Schedule.getOrBadRequest(customerUUID, scheduleUUID);
+    if (!schedule.getOwnerUUID().equals(universeUUID)) {
+      throw new PlatformServiceException(BAD_REQUEST, "Schedule not owned by Universe.");
+    }
+
+    BackupScheduleToggleParams scheduleToggleParams =
+        parseJsonAndValidate(request, BackupScheduleToggleParams.class);
+    // Check if attempting to modify schedule when universe is locked( not allowed ).
+    // Only allow to toggle schedule between Active and Stopped.
+    scheduleToggleParams.verifyScheduleToggle(schedule.getStatus());
+    Schedule.toggleBackupSchedule(customerUUID, scheduleUUID, scheduleToggleParams.status);
+
+    Audit.ActionType actionType =
+        scheduleToggleParams.status == Schedule.State.Stopped
+            ? Audit.ActionType.StopPeriodicBackup
+            : Audit.ActionType.StartPeriodicBackup;
+    auditService()
+        .createAuditEntry(request, Audit.TargetType.Schedule, scheduleUUID.toString(), actionType);
     return YBPSuccess.empty();
   }
 }

@@ -45,7 +45,10 @@
       </div>
     </div>
   </div>
-  {{ partial "contribute_list" . }}
+
+  {{- if ne .Params.showRightNav true -}}
+    {{- partial "contribute_list" . -}}
+  {{- end -}}
   {{ partial "earlier-version-warning" . }}
   <!-- Wrap table in div for responsive -->
   {{ .Content | replaceRE "(<table(?:.|\n)+?</table>)" "<div class=table-responsive> ${1} </div>"  | safeHTML }}

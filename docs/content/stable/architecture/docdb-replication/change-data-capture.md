@@ -49,7 +49,7 @@ CDC in YugabyteDB provides technology to ensure that any changes in data due to 
 
 ### Per-tablet ordered delivery
 
-All data changes for one row or multiple rows in the same tablet are received in the order in which they occur. Due to the distributed nature of the problem, however, there is no guarantee for the order across tablets.
+All data changes for one row or multiple rows in the same tablet are received in the order in which they occur. Due to the distributed nature of the problem, however, gRPC replication does not guarantee order across tablets.
 
 Consider the following scenario:
 

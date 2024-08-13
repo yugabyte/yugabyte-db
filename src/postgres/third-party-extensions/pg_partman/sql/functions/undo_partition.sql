@@ -78,7 +78,7 @@ RAISE EXCEPTION 'undo_partition not supported yet in YB';
  * For trigger-based, moves data to parent
  */
 
-/* YB: advisory lock not supported
+/* YB(GH#3642): advisory lock not supported
 v_adv_lock := pg_try_advisory_xact_lock(hashtext('pg_partman undo_partition_native'));
 IF v_adv_lock = 'false' THEN
     RAISE NOTICE 'undo_partition_native already running.';

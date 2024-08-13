@@ -373,7 +373,9 @@ Result<YBTableName> XClusterYsqlTestBase::GetYsqlTable(
         yb_table.set_table_name(table_name);
         yb_table.set_namespace_id(table.namespace_().id());
         yb_table.set_namespace_name(namespace_name);
-        yb_table.set_pgschema_name(table.has_pgschema_name() ? table.pgschema_name() : "");
+        if (!table.pgschema_name().empty()) {
+          yb_table.set_pgschema_name(table.pgschema_name());
+        }
         return yb_table;
       }
     }

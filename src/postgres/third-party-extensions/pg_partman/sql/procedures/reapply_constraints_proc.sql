@@ -29,7 +29,7 @@ BEGIN
  * Typical usage would be to run the drop mode, edit the data, then run apply mode to re-create all constraints on a partition set."
  */
 
-/* YB: advisory lock not supported
+/* YB(GH#3642): advisory lock not supported
 v_adv_lock := pg_try_advisory_lock(hashtext('pg_partman reapply_constraints'));
 IF v_adv_lock = false THEN
     RAISE NOTICE 'Partman reapply_constraints_proc already running or another session has not released its advisory lock.';
@@ -106,7 +106,9 @@ END LOOP;
 
 EXECUTE format('ANALYZE %I.%I', v_parent_schema, v_parent_tablename);
 
+/* YB(GH#3642): advisory lock not supported
 PERFORM pg_advisory_unlock(hashtext('pg_partman reapply_constraints'));
+*/
 END
 $$;
 
