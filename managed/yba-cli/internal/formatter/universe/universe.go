@@ -65,6 +65,29 @@ func NewUniverseFormat(source string) formatter.Format {
 
 // Write renders the context for a list of Universes
 func Write(ctx formatter.Context, universes []ybaclient.UniverseResp) error {
+	// Check if the format is JSON or Pretty JSON
+	if ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON() {
+		// Marshal the slice of universes into JSON
+		var output []byte
+		var err error
+
+		if ctx.Format.IsPrettyJSON() {
+			output, err = json.MarshalIndent(universes, "", "  ")
+		} else {
+			output, err = json.Marshal(universes)
+		}
+
+		if err != nil {
+			logrus.Errorf("Error marshaling universes to json: %v\n", err)
+			return err
+		}
+
+		// Write the JSON output to the context
+		_, err = ctx.Output.Write(output)
+		return err
+	}
+
+	// Existing logic for table and other formats
 	render := func(format func(subContext formatter.SubContext) error) error {
 		for _, universe := range universes {
 			err := format(&Context{u: universe})
@@ -225,7 +248,7 @@ func (c *Context) YSQLAuthEnabled() string {
 	return fmt.Sprintf("%t", userIntent.GetEnableYSQLAuth())
 }
 
-// YCQLAutheEnabled fetches password of the primary cluster
+// YCQLAuthEnabled fetches password of the primary cluster
 func (c *Context) YCQLAuthEnabled() string {
 	details := c.u.GetUniverseDetails()
 	primaryCluster := details.GetClusters()[0]

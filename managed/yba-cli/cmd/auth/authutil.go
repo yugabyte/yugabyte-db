@@ -86,10 +86,8 @@ func authUtil(url *url.URL, apiToken string) {
 	}
 	logrus.Debugf("Fetched Customer UUID without errors.\n")
 
-	
-		viper.GetViper().Set("apiToken", apiToken)
-		r.SetApiToken(apiToken)
-	
+	viper.GetViper().Set("apiToken", apiToken)
+	r.SetApiToken(apiToken)
 
 	authWriteConfigFile(r)
 }

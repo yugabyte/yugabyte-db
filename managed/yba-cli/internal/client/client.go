@@ -147,6 +147,7 @@ func ParseURL(host string) (*url.URL, error) {
 	return endpoint, err
 }
 
+// YBAMinimumVersion contains the minimum YBA version for stable and preview releases for a feature
 type YBAMinimumVersion struct {
 	Stable  string
 	Preview string
@@ -184,6 +185,7 @@ func (a *AuthAPIClient) CheckValidYBAVersion(versions YBAMinimumVersion) (bool,
 	return false, currentVersion, err
 }
 
+// IsCLISupported checks if the CLI version is supported
 func (a *AuthAPIClient) IsCLISupported() {
 	allowedVersions := YBAMinimumVersion{
 		Stable:  util.MinCLIStableVersion,
