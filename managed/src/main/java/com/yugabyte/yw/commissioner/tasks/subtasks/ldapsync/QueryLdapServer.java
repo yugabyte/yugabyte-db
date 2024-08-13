@@ -77,13 +77,22 @@ public class QueryLdapServer extends AbstractTaskBase {
               dn,
               ldapUnivSyncFormData.getLdapUserfield());
         }
+
         // if userfield is not found in the DN, search in the rest of the attributes
-        Attribute userAttribute = entry.get(ldapUnivSyncFormData.getLdapUserfield());
-        if (userAttribute != null) {
-          userKey = userAttribute.get().getString();
-          if (enabledDetailedLogs) {
-            log.debug("User name: {} retrieved from user attribute: {}", userKey, userAttribute);
+        ArrayList<Attribute> userAttributes = new ArrayList<>(entry.getAttributes());
+        if (userAttributes != null) {
+          for (Attribute ae : userAttributes) {
+            if (ae.getId().trim().equalsIgnoreCase(ldapUnivSyncFormData.getLdapUserfield())) {
+              userKey = ae.getString();
+              if (enabledDetailedLogs) {
+                log.debug("User name: {} retrieved from user attribute: {}", userKey, ae.getId());
+              }
+            }
           }
+          // Clear the list to remove all elements
+          userAttributes.clear();
+          // Set the reference to null to allow for garbage collection
+          userAttributes = null;
         }
       }
       if (enabledDetailedLogs && StringUtils.isEmpty(userKey)) {
