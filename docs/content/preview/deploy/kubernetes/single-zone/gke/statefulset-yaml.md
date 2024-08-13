@@ -63,16 +63,14 @@ Before starting deployment, perform the following:
 
 ## Create a GKE cluster
 
-Create a Kubernetes cluster using the following command:
+Create a private Kubernetes cluster using the following command.
+
+Note that you require to set up Cloud NAT for a private Kubernetes cluster in Google Cloud to ensure that your cluster can access the internet while its nodes do not have public IP addresses.
+
+Refer to [Configuring Private Google Access and Cloud NAT in Google Cloud Platform (GCP)](https://kloudkraft.medium.com/configuring-private-google-access-and-cloud-nat-in-google-cloud-platform-gcp-3c4406b590b3).
 
 ```sh
-gcloud container clusters create yugabyte
-```
-
-Note that as this command creates public kubernetes clusters, you can't change this configuration later. If you want to run YugabyteDB in a private kubernetes cluster, run the following command instead:
-
-```sh
-gcloud container clusters create yugabyte --enable-private-nodes
+gcloud container clusters create cluster_name --enable-private-nodes
 ```
 
 ## Create a YugabyteDB cluster
