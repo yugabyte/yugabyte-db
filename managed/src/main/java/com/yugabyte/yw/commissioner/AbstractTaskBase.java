@@ -31,6 +31,7 @@ import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -91,6 +92,7 @@ public abstract class AbstractTaskBase implements ITask {
   protected final ImageBundleUtil imageBundleUtil;
   protected final ReleaseManager releaseManager;
   protected final YsqlQueryExecutor ysqlQueryExecutor;
+  protected final GFlagsValidation gFlagsValidation;
 
   @Inject
   protected AbstractTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -117,6 +119,7 @@ public abstract class AbstractTaskBase implements ITask {
     this.imageBundleUtil = baseTaskDependencies.getImageBundleUtil();
     this.releaseManager = baseTaskDependencies.getReleaseManager();
     this.ysqlQueryExecutor = baseTaskDependencies.getYsqlQueryExecutor();
+    this.gFlagsValidation = baseTaskDependencies.getGFlagsValidation();
   }
 
   protected ITaskParams taskParams() {
