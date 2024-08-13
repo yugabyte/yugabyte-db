@@ -12,80 +12,198 @@ pool:
   vmImage: 'ubuntu-latest'
 
 variables:
-  system.debug: 'true'
+  branchName: $[replace(variables['Build.SourceBranch'], 'refs/heads/', '')]
 
 steps:
 - checkout: self
+  persistCredentials: true
+
 - script: |
-    cd ..
-    git clone https://$(USERNAME):$(PAT)@msdata.visualstudio.com/DefaultCollection/CosmosDB/_git/$(innerRepo)
-    rm -rf $(innerRepo)/oss
-    cp -r heliodb $(innerRepo)/oss
-    cd $(innerRepo)
-    git chekcout -b helio-oss/$(Build.SourceBranchName)
-    git add .
-    git commit -m "$(git -C ../heliodb log -1 --pretty=format:'%s')"
-    git push origin helio-oss/$(Build.SourceBranchName)
-    last_commit_hash=$(git rev-parse HEAD)
-    echo "##vso[task.setvariable variable=LAST_COMMIT_HASH]$last_commit_hash"
-  displayName: 'Push to Azure DevOps'
+    current_commit_hash=$(git rev-parse HEAD)
+    echo "##vso[task.setvariable variable=CURRENT_COMMIT_HASH]$current_commit_hash"
+  displayName: 'Set Current Commit Hash'
 
 - task: UsePythonVersion@0
-    inputs:
-      versionSpec: '3.x'
-      addToPath: true
+  inputs:
+    versionSpec: '3.x'
+    addToPath: true
+
+- script: |
+    python -m pip install --upgrade pip
+    pip install requests
+  displayName: 'Install Python Modules'
 
 - task: PythonScript@0
-    inputs:
-      scriptSource: 'inline'
-      script: |
-        import time
-        import os
-        import requests
-        import sys
-        from requests.auth import HTTPBasicAuth
+  inputs:
+    scriptSource: 'inline'
+    script: |
+      import time
+      import os
+      import requests
+      import sys
+      from requests.auth import HTTPBasicAuth
 
+      organization = "$(ORGANIZATION)"
+      project = "$(PROJECT)"
+      branch_name = "refs/heads/$(branchName)"
+      commit_id = "$(current_commit_hash)"
+      build_name = "heliodb-oss-sync"
 
-        time.sleep(60)
+      url = f"https://dev.azure.com/{organization}/{project}/_apis/build/builds?api-version=7.1&branchName={branch_name}"
 
-        organization = "$(ORGANIZATION)"
-        project = "$(PROJECT)"
-        branch_name = "refs/heads/helio-oss/$(Build.SourceBranchName)"
-        commit_id = "$(LAST_COMMIT_HASH)"
-        build_name = "$(INTERNAL_PIPELINE_NAME)"
+      response = requests.get(url, auth=HTTPBasicAuth("", "$(System.AccessToken)"))
 
-        url = f"https://dev.azure.com/{organization}/{project}/_apis/build/builds?api-version=7.1&branchName={branch_name}&sourceVersion={commit_id}"
-
-        response = requests.get(url, auth=HTTPBasicAuth("$(USERNAME)", "$(PAT)"))
-
+      while True:
         if response.status_code == 200:
           builds = response.json()["value"]
-          filtered_builds = [build for build in builds if build_name == build['definition']['name']]
-          
+          filtered_builds = [build for build in builds if build_name == build['definition']['name'] and commit_id == build['sourceVersion']]
+
           if filtered_builds:
             build_id = filtered_builds[0]['id']
-          
+            print(f"Sync Build Found!")
+            sys.stdout.flush()
+            break
+
           else:
-            print("##vso[task.logissue type=error]Internal build not found :(")
-            sys.exit(1)
-        
+            print("Sync build on current commit $(current_commit_hash) has not been triggered yet.")
+            sys.stdout.flush()
+            time.sleep(30)
+
         else:
           print(f"##vso[task.logissue type=error]Failed to fetch builds: {response.status_code} - {response.text}")
           sys.exit(1)       
         
-        while True:
-          time.sleep(300)
-          response = requests.get(f"https://dev.azure.com/{organization}/{project}/_apis/build/builds/{build_id}?api-version=7.1", auth=HTTPBasicAuth("$(USERNAME)", "$(PAT2)"))
-          build = response.json()
-          status = build['status']
-          print(f"Internal build status: {status}")
+      while True:
+        response = requests.get(f"https://dev.azure.com/{organization}/{project}/_apis/build/builds/{build_id}?api-version=7.1", auth=HTTPBasicAuth("", "$(System.AccessToken)"))
 
-          if status == "completed":
-            result = build['result']
-            if result == "succeeded":
-              print("Internal build succeeded :)")
-            else:
-              print("##vso[task.logissue type=error]Internal build failed. Please go check the issue at: https://msdata.visualstudio.com/CosmosDB/_build/results?buildId={build_id}&view=results")
-              sys.exit(1)
+        if response.status_code != 200:
+          print(f"##vso[task.logissue type=error]Failed to fetch build status: {response.status_code} - {response.text}")
+          sys.exit(1)
+        
+        build = response.json()
+        status = build['status']
+        print(f"Sync build status: {status}")
+        sys.stdout.flush()
 
-    displayName: 'Validate Internal Pipeline Correctness'
+        if status == "completed":
+          result = build['result']
+          if result == "succeeded":
+            print("Sync completed!")
+            sys.stdout.flush()
+            break
+          else:
+            print("##vso[task.logissue type=error]Sync Failed. Please address that first before rerunning this job.")
+            sys.exit(1)
+        
+        print("Waiting for sync build to progress ...")
+        sys.stdout.flush()
+        time.sleep(30)
+  displayName: 'Wait for Sync'
+
+- script: |
+    set -euo pipefail
+
+    git config --global user.name "heliodb-internal-compatibility pipeline"
+
+    cd ..
+
+    git clone -b helio-oss/submoduled-main https://$(System.AccessToken)@$(INTERNAL_REPO_URL) internal-repo
+    cd internal-repo
+    git fetch origin > /dev/null 2>&1
+
+    if ! git show-ref --verify --quiet refs/remotes/origin/helio-oss/$(branchName); then
+      # If the branch does not exist, create it
+      git checkout -b helio-oss/$(branchName)
+      sed -i "s|branch = .*|branch = $(branchName)|" .gitmodules
+      git add .
+      git commit -m "$(current_commit_hash)"
+      git push -u origin helio-oss/$(branchName)
+    elif git merge-base --is-ancestor helio-oss/submoduled-main origin/helio-oss/$(branchName) && \
+         [ "$(git log origin/helio-oss/$(branchName) -1 --pretty=%s)" == "$(current_commit_hash)" ]; then
+      # If the branch exists, is up to date with main, and the last commit message is the same as the current heliodb commit hash
+      # do nothing
+      echo "No changes to push to internal repo"
+    else
+      # If the branch exists, but is not up to date with main OR its last commit message is not the same as the current heliodb commit hash
+      # merge with main and push with a new commit with message as the current heliodb commit hash
+      git checkout helio-oss/$(branchName)
+      git merge helio-oss/submoduled-main
+      # cause a change in the repo to trigger a new build
+      echo $(date) > timestamp.txt
+      git add -f timestamp.txt
+      git commit -m "$(current_commit_hash)"
+      git push origin helio-oss/$(branchName)
+    fi
+
+    last_commit_hash_internal_repo=$(git rev-parse HEAD)
+    echo "##vso[task.setvariable variable=LAST_COMMIT_HASH_INTERNAL_REPO]$last_commit_hash_internal_repo"
+  displayName: 'Push to Azure DevOps'
+
+- task: PythonScript@0
+  inputs:
+    scriptSource: 'inline'
+    script: |
+      import time
+      import os
+      import requests
+      import sys
+      from requests.auth import HTTPBasicAuth
+
+      # giving some time for the internal build to start / become available to query
+      print("Waiting for internal build to start ...")
+      sys.stdout.flush()
+      time.sleep(60)
+
+      organization = "$(ORGANIZATION)"
+      project = "$(PROJECT)"
+      branch_name = "refs/heads/helio-oss/$(branchName)"
+      commit_id = "$(last_commit_hash_internal_repo)"
+      build_name = "$(INTERNAL_BUILD_NAME)"
+
+      url = f"https://dev.azure.com/{organization}/{project}/_apis/build/builds?api-version=7.1&branchName={branch_name}"
+
+      response = requests.get(url, auth=HTTPBasicAuth("", "$(System.AccessToken)"))
+
+      if response.status_code == 200:
+        builds = response.json()["value"]
+        filtered_builds = [build for build in builds if build_name == build['definition']['name'] and commit_id == build['sourceVersion']]
+          
+        if filtered_builds:
+          build_id = filtered_builds[0]['id']
+          print(f"Internal build found, check the build at: $(BUILD_RESULT_URL)/results?buildId={build_id}&view=results")
+          sys.stdout.flush()
+          
+        else:
+          print("##vso[task.logissue type=error]Internal build not found :(")
+          sys.exit(1)
+        
+      else:
+        print(f"##vso[task.logissue type=error]Failed to fetch builds: {response.status_code} - {response.text}")
+        sys.exit(1)       
+        
+      while True:
+        response = requests.get(f"https://dev.azure.com/{organization}/{project}/_apis/build/builds/{build_id}?api-version=7.1", auth=HTTPBasicAuth("", "$(System.AccessToken)"))
+
+        if response.status_code != 200:
+          print(f"##vso[task.logissue type=error]Failed to fetch build status: {response.status_code} - {response.text}")
+          sys.exit(1)
+        
+        build = response.json()
+        status = build['status']
+        print(f"Internal build status: {status}")
+        sys.stdout.flush()
+
+        if status == "completed":
+          result = build['result']
+          if result == "succeeded":
+            print("Internal build succeeded :)")
+          else:
+            print("##vso[task.logissue type=error]Internal build failed. Please go check the issue at: $(BUILD_RESULT_URL)/results?buildId={build_id}&view=results"
+                  "\nNote that if the internal build timed out or failed due to flakiness, you can rerun the failed jobs of the internal build and then retry this failed job. "
+                  "Rerunning this failed job will only trigger a new internal build if the main of the internal repo has changed.")
+            sys.exit(1)
+        
+        print("Waiting for internal build to progress ...")
+        sys.stdout.flush()
+        time.sleep(300)
+  displayName: 'Validate Internal Build Succeeds'

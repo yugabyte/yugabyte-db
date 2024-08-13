@@ -8,7 +8,6 @@ pool:
   vmImage: 'ubuntu-latest'
 
 variables:
-  system.debug: 'true'
   tempBranchName: 'temp-branch-for-sync-pipeline'
   branchName: $[replace(variables['Build.SourceBranch'], 'refs/heads/', '')]
 
@@ -19,7 +18,7 @@ steps:
     set -euo pipefail
 
     git remote add azure-devops https://$(System.AccessToken)@$(INTERNAL_REPO_URL)
-    git fetch azure-devops
+    git fetch azure-devops > /dev/null 2>&1
 
     git checkout -b $(tempBranchName)
 
