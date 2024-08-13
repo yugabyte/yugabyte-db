@@ -21,9 +21,13 @@ Use this data to:
 - Visually identify slower running database operations.
 - Evaluate query execution times over time.
 - Discover potential queries for [tuning](../../../explore/query-1-performance/).
-- View latency percentile metrics, including P99, P95, and P90 percentiles.
+- View latency percentile metrics, including P99, P95, P90, P50, and P25 percentiles.
 
 Slow queries are not available for YCQL.
+
+## View Slow Queries
+
+To view slow queries, navigate to the cluster **Performance** tab and choose **Slow Queries**.
 
 ![Cluster Slow Queries](/images/yb-cloud/managed-monitor-slow-queries.png)
 
@@ -42,7 +46,7 @@ Click **Edit Options** to select the columns to display. The following table des
 | Rows            | The total number of database table rows returned across all iterations of this query |
 | Min time        | The minimum execution time (in milliseconds) for this query. |
 | Max time        | The maximum execution time (in milliseconds) for this query. |
-| Latency distribution | Histogram showing the latency distribution of the query. |
+| Latency distribution | Histogram showing the latency distribution of the query. To view a full chart and display P99 percentiles, view the [Query Details](#query-details). |
 
 To reset the slow queries list, click **Reset**. To update the slow queries list, click **Refresh**.
 
