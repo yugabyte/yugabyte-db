@@ -51,7 +51,7 @@ var upgradeSoftwareCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if !skipValidations {
-			_, universe, err := UpgradeValidations(cmd, util.UpgradeOperation)
+			_, universe, err := Validations(cmd, util.UpgradeOperation)
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 			}
@@ -96,7 +96,7 @@ var upgradeSoftwareCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		authAPI, universe, err := UpgradeValidations(cmd, util.UpgradeOperation)
+		authAPI, universe, err := Validations(cmd, util.UpgradeOperation)
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
