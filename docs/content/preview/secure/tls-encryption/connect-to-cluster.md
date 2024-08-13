@@ -51,7 +51,7 @@ $ ./bin/ysqlsh -h 127.0.0.1 -p 5433 -U yugabyte "sslmode=require"
 
 ```
 $ ./bin/ysqlsh
-ysqlsh (11.2-YB-2.0.11.0-b0)
+ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 

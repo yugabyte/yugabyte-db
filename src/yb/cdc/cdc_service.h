@@ -160,7 +160,7 @@ class CDCServiceImpl : public CDCServiceIf {
 
   Result<TabletCheckpoint> TEST_GetTabletInfoFromCache(const TabletStreamInfo& producer_tablet);
 
-  void ProcessEntry(
+  void ProcessEntryForCdcsdk(
       const CDCStateTableEntry& entry,
       const StreamMetadata& stream_metadata,
       const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
@@ -168,6 +168,10 @@ class CDCServiceImpl : public CDCServiceIf {
       StreamIdSet* slot_entries_to_be_deleted = nullptr,
       const std::unordered_map<NamespaceId, uint64_t>& namespace_to_min_record_id_commit_time =
       std::unordered_map<NamespaceId, uint64_t>{});
+
+  void ProcessEntryForXCluster(
+      const CDCStateTableEntry& entry,
+      std::unordered_map<TabletId, OpId>& xcluster_tablet_min_opid_map);
 
   // Update peers in other tablet servers about the latest minimum applied cdc index for a specific
   // tablet.
@@ -269,6 +273,16 @@ class CDCServiceImpl : public CDCServiceIf {
   void UpdateTabletCDCSDKMetrics(
       const GetChangesResponsePB& resp, const TabletStreamInfo& producer_tablet,
       const std::shared_ptr<tablet::TabletPeer>& tablet_peer);
+
+  // Retrieves the cdc_min_replicated_index for a given tablet.
+  // Returns the min index that is still required for xCluster replication.
+  // Returns max if the tablet is not replicated by xCluster.
+  int64_t GetXClusterMinRequiredIndex(const TabletId& tablet_id)
+        EXCLUDES(xcluster_replication_maps_mutex_);
+
+  auto GetXClusterMinRequiredIndexFunc() {
+    return std::bind_front(&CDCServiceImpl::GetXClusterMinRequiredIndex, this);
+  }
 
  private:
   friend class XClusterProducerBootstrap;
@@ -403,8 +417,11 @@ class CDCServiceImpl : public CDCServiceIf {
   // Called periodically default 1s.
   void UpdateMetrics();
 
-  // This method is used to read the cdc_state table to find the minimum replicated index for each
-  // tablet and then update the peers' log objects. Also used to update lag metrics.
+  // This method runs following tasks when xCluster or CDCSDK is enabled.
+  // 1.For every second, it invokes UpdateMetrics()
+  // 2.For every minute, it reads the cdc_state table to collect the min checkpoint info for
+  //   each tablet. Next, it caches the min checkpoint info for tablets under XCluster replication
+  //   then it records the checkpoint info in the tablet if it is under CDCSDK replication.
   void UpdatePeersAndMetrics();
 
   Status GetTabletIdsToPoll(
@@ -449,7 +466,9 @@ class CDCServiceImpl : public CDCServiceIf {
       const CDCStateTableRange& table_range, Status* iteration_status,
       StreamIdSet* slot_entries_to_be_deleted);
 
-  Result<TabletIdCDCCheckpointMap> PopulateTabletCheckPointInfo(
+  Status PopulateTabletCheckPointInfo(
+      TabletIdCDCCheckpointMap& cdcsdk_min_checkpoint_map,
+      std::unordered_map<TabletId, OpId>& xcluster_tablet_min_opid_map,
       TabletIdStreamIdSet& tablet_stream_to_be_deleted, StreamIdSet& slot_entries_to_be_deleted);
 
   Result<TabletCDCCheckpointInfo> PopulateCDCSDKTabletCheckPointInfo(
@@ -499,6 +518,10 @@ class CDCServiceImpl : public CDCServiceIf {
 
   void LogGetChangesLagForCDCSDK(
       const xrepl::StreamId& stream_id, const GetChangesResponsePB& resp);
+
+  void UpdateXClusterReplicationMaps(
+    std::unordered_map<TabletId, OpId> new_map,
+    const MonoTime& last_refresh_time) EXCLUDES(xcluster_replication_maps_mutex_);
 
   rpc::Rpcs rpcs_;
 
@@ -561,6 +584,15 @@ class CDCServiceImpl : public CDCServiceIf {
   // Map of session_id (uint64) to VirtualWAL instance.
   std::unordered_map<uint64_t, std::shared_ptr<CDCSDKVirtualWAL>> session_virtual_wal_
       GUARDED_BY(mutex_);
+
+  mutable rw_spinlock xcluster_replication_maps_mutex_;
+
+  // Cached minimum opid for each tablet under xCluster replication.
+  std::unordered_map<TabletId, OpId> xcluster_tablet_min_opid_map_
+      GUARDED_BY(xcluster_replication_maps_mutex_);
+
+  MonoTime xcluster_map_last_refresh_time_ GUARDED_BY(xcluster_replication_maps_mutex_)
+      = MonoTime::Min();
 };
 
 }  // namespace cdc

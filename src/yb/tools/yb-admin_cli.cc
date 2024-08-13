@@ -216,17 +216,6 @@ Status ListSnapshots(ClusterAdminClient* client, const EnumBitSet<ListSnapshotsF
   rapidjson::Document document(rapidjson::kObjectType);
   bool json = flags.Test(ListSnapshotsFlag::JSON);
 
-  if (snapshot_response.has_current_snapshot_id()) {
-    if (json) {
-      AddStringField(
-          "current_snapshot_id", SnapshotIdToString(snapshot_response.current_snapshot_id()),
-          &document, &document.GetAllocator());
-    } else {
-      std::cout << "Current snapshot id: "
-                << SnapshotIdToString(snapshot_response.current_snapshot_id()) << std::endl;
-    }
-  }
-
   rapidjson::Value json_snapshots(rapidjson::kArrayType);
   if (!json) {
     if (snapshot_response.snapshots_size()) {

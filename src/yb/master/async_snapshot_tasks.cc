@@ -140,46 +140,7 @@ void AsyncTabletSnapshotOp::HandleResponse(int attempt) {
 
   if (state() != server::MonitoredTaskState::kComplete) {
     VLOG_WITH_PREFIX(1) << "TabletSnapshotOp task is not completed";
-    return;
   }
-
-  switch (operation_) {
-    case tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET: {
-      // TODO: this class should not know CatalogManager API,
-      //       remove circular dependency between classes.
-      master_->catalog_manager()->HandleCreateTabletSnapshotResponse(
-          tablet_.get(), resp_.has_error());
-      return;
-    }
-    case tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET: {
-      // TODO: this class should not know CatalogManager API,
-      //       remove circular dependency between classes.
-      master_->catalog_manager()->HandleRestoreTabletSnapshotResponse(
-          tablet_.get(), resp_.has_error());
-      return;
-    }
-    case tserver::TabletSnapshotOpRequestPB::DELETE_ON_TABLET: {
-      // TODO: this class should not know CatalogManager API,
-      //       remove circular dependency between classes.
-      // HandleDeleteTabletSnapshotResponse handles only non transaction aware snapshots.
-      // So prevent log flooding for transaction aware snapshots.
-      if (!TryFullyDecodeTxnSnapshotId(snapshot_id_)) {
-        master_->catalog_manager()->HandleDeleteTabletSnapshotResponse(
-            snapshot_id_, tablet_.get(), resp_.has_error());
-      }
-      return;
-    }
-    case tserver::TabletSnapshotOpRequestPB::RESTORE_FINISHED:
-      return;
-    case tserver::TabletSnapshotOpRequestPB::CREATE_ON_MASTER: FALLTHROUGH_INTENDED;
-    case tserver::TabletSnapshotOpRequestPB::DELETE_ON_MASTER: FALLTHROUGH_INTENDED;
-    case tserver::TabletSnapshotOpRequestPB::RESTORE_SYS_CATALOG: FALLTHROUGH_INTENDED;
-    case google::protobuf::kint32min: FALLTHROUGH_INTENDED;
-    case google::protobuf::kint32max: FALLTHROUGH_INTENDED;
-    case tserver::TabletSnapshotOpRequestPB::UNKNOWN: break; // Not handled.
-  }
-
-  FATAL_INVALID_ENUM_VALUE(tserver::TabletSnapshotOpRequestPB::Operation, operation_);
 }
 
 bool AsyncTabletSnapshotOp::SendRequest(int attempt) {

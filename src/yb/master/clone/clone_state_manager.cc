@@ -346,7 +346,6 @@ Status CloneStateManager::StartTabletsCloning(
     create_snapshot_req.mutable_tables()->Add()->set_table_id(new_table_id);
   }
   create_snapshot_req.set_add_indexes(false);
-  create_snapshot_req.set_transaction_aware(true);
   create_snapshot_req.set_imported(true);
   RETURN_NOT_OK(external_funcs_->DoCreateSnapshot(
       &create_snapshot_req, &create_snapshot_resp, deadline, clone_state->Epoch()));

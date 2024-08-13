@@ -25,7 +25,8 @@ namespace yb::docdb {
 template <class CoordinateType>
 class VectorIndexUpdate {
  public:
-  using IndexedVector = std::vector<CoordinateType>;
+  using Types = VectorIndexTypes<CoordinateType>;
+  using IndexedVector = typename Types::IndexedVector;
 
   explicit VectorIndexUpdate(HybridTime ht, rocksdb::WriteBatch& write_batch)
       : doc_ht_(ht), write_batch_(write_batch) {}

@@ -12,26 +12,36 @@
 //
 
 #include "yb/docdb/docdb_test_base.h"
+#include "yb/docdb/vector_index_read.h"
 #include "yb/docdb/vector_index_update.h"
 
 #include "yb/util/range.h"
 
 namespace yb::docdb {
 
+using VITypes = VectorIndexTypes<float>;
+
 class VectorIndexDocDBTest : public DocDBTestBase {
+ protected:
   Schema CreateSchema() override {
     return Schema();
   }
+
+  void WriteSimple();
 };
 
-TEST_F(VectorIndexDocDBTest, Update) {
-  const HybridTime hybrid_time = HybridTime::FromMicros(1000);
+VITypes::IndexedVector GenVector(VertexId id) {
+  return {static_cast<float>(M_E * id), static_cast<float>(M_PI * id)};
+}
+
+void VectorIndexDocDBTest::WriteSimple() {
+  const HybridTime kHybridTime = HybridTime::FromMicros(1000);
   constexpr int kNumNodes = 3;
   const auto kNodes = Range(1, kNumNodes + 1);
   rocksdb::WriteBatch write_batch;
-  FloatVectorIndexUpdate update(hybrid_time, write_batch);
+  FloatVectorIndexUpdate update(kHybridTime, write_batch);
   for (int i : kNodes) {
-    update.AddVector(i, {static_cast<float>(M_E * i), static_cast<float>(M_PI * i)});
+    update.AddVector(i, GenVector(i));
   }
   for (int i : kNodes) {
     update.SetNeighbors(i, /* level= */ 0, Range(i + 1, kNumNodes + 1).ToContainer());
@@ -43,8 +53,25 @@ TEST_F(VectorIndexDocDBTest, Update) {
   update.DeleteDirectedEdge(2, 3, 20);
   update.DeleteVector(3);
 
-  ASSERT_OK(rocksdb()->Write(write_options(), &write_batch));
+  update.AddVector(4, GenVector(4));
+  update.SetNeighbors(4, /* level= */ 0, Range(1, 2).ToContainer());
+  update.SetNeighbors(4, /* level= */ 0, Range(1, 3).ToContainer());
 
+  update.AddVector(5, GenVector(5));
+  update.SetNeighbors(5, /* level= */ 0, Range(1, 3).ToContainer());
+  update.DeleteDirectedEdge(5, 2, 0);
+  update.AddDirectedEdge(5, 10, 0);
+  update.SetNeighbors(5, /* level= */ 0, Range(1, 4).ToContainer());
+
+  ASSERT_OK(rocksdb()->Write(write_options(), &write_batch));
+}
+
+TEST_F(VectorIndexDocDBTest, Update) {
+  WriteSimple();
+
+  // Please note that in real system we would never get such set of data.
+  // But it is controlled by higher levels of the system.
+  // So storage layer just perform its job and store/load requested information.
   AssertDocDbDebugDumpStrEq(R"#(
     // The vector 1 itself.
     SubDocKey(DocKey([], [1]), [HT{ physical: 1000 }]) -> [2.71828174591064, 3.14159274101257]
@@ -63,7 +90,59 @@ TEST_F(VectorIndexDocDBTest, Update) {
     SubDocKey(DocKey([], [3]), [HT{ physical: 1000 w: 2 }]) -> [8.15484523773193, 9.42477798461914]
     SubDocKey(DocKey([], [3]), [0; HT{ physical: 1000 w: 5 }]) -> []
     SubDocKey(DocKey([], [3]), [30, 1; HT{ physical: 1000 w: 8 }]) -> null
+    // Vector 4
+    SubDocKey(DocKey([], [4]), [HT{ physical: 1000 w: 11 }]) -> [10.8731269836426, 12.5663709640503]
+    // Overwrite vector 4 neighbors in level 0.
+    SubDocKey(DocKey([], [4]), [0; HT{ physical: 1000 w: 13 }]) -> [1, 2]
+    SubDocKey(DocKey([], [4]), [0; HT{ physical: 1000 w: 12 }]) -> [1]
+    // Vector 5
+    SubDocKey(DocKey([], [5]), [HT{ physical: 1000 w: 14 }]) -> [13.5914087295532, 15.7079629898071]
+    // Overwrite vector 4 neighbors in level 0. Including overwrite to updates.
+    SubDocKey(DocKey([], [5]), [0; HT{ physical: 1000 w: 18 }]) -> [1, 2, 3]
+    SubDocKey(DocKey([], [5]), [0; HT{ physical: 1000 w: 15 }]) -> [1, 2]
+    SubDocKey(DocKey([], [5]), [0, 2; HT{ physical: 1000 w: 16 }]) -> DEL
+    SubDocKey(DocKey([], [5]), [0, 10; HT{ physical: 1000 w: 17 }]) -> null
   )#");
+}
+
+TEST_F(VectorIndexDocDBTest, Read) {
+  WriteSimple();
+
+  const HybridTime kReadHybridTime = HybridTime::FromMicros(1001);
+
+  ReadOperationData read_operation_data = {
+    .deadline = CoarseTimePoint::max(),
+    .read_time = ReadHybridTime::SingleTime(kReadHybridTime),
+  };
+
+  FloatVectorIndexStorage storage(doc_db());
+
+  auto vector = ASSERT_RESULT(storage.GetVector(read_operation_data, 1));
+  ASSERT_EQ(vector, GenVector(1));
+  auto neighbors = ASSERT_RESULT(storage.GetNeighbors(read_operation_data, 1, 0));
+  ASSERT_EQ(neighbors, VectorNodeNeighbors({2, 3}));
+  neighbors = ASSERT_RESULT(storage.GetNeighbors(read_operation_data, 1, 10));
+  ASSERT_EQ(neighbors, VectorNodeNeighbors({2}));
+
+  vector = ASSERT_RESULT(storage.GetVector(read_operation_data, 2));
+  ASSERT_EQ(vector, GenVector(2));
+  neighbors = ASSERT_RESULT(storage.GetNeighbors(read_operation_data, 2, 0));
+  ASSERT_EQ(neighbors, VectorNodeNeighbors({3}));
+  neighbors = ASSERT_RESULT(storage.GetNeighbors(read_operation_data, 2, 20));
+  ASSERT_EQ(neighbors, VectorNodeNeighbors({}));
+
+  vector = ASSERT_RESULT(storage.GetVector(read_operation_data, 3));
+  ASSERT_TRUE(vector.empty()); // Vector not found
+
+  vector = ASSERT_RESULT(storage.GetVector(read_operation_data, 4));
+  ASSERT_EQ(vector, GenVector(4));
+  neighbors = ASSERT_RESULT(storage.GetNeighbors(read_operation_data, 4, 0));
+  ASSERT_EQ(neighbors, VectorNodeNeighbors({1, 2}));
+
+  vector = ASSERT_RESULT(storage.GetVector(read_operation_data, 5));
+  ASSERT_EQ(vector, GenVector(5));
+  neighbors = ASSERT_RESULT(storage.GetNeighbors(read_operation_data, 5, 0));
+  ASSERT_EQ(neighbors, VectorNodeNeighbors({1, 2, 3}));
 }
 
 }  // namespace yb::docdb

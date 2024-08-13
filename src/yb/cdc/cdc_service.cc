@@ -53,6 +53,7 @@
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/replicate_msgs_holder.h"
 
+#include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/join.h"
 
 #include "yb/master/master_client.pb.h"
@@ -179,6 +180,31 @@ DEFINE_RUNTIME_PREVIEW_bool(enable_cdcsdk_setting_get_changes_response_byte_limi
 DEFINE_test_flag(bool, cdcsdk_skip_stream_active_check, false,
                  "When enabled, GetChanges will skip checking if stream is active as well as skip "
                  "updating the active time.");
+
+DEFINE_RUNTIME_uint32(xcluster_checkpoint_max_staleness_secs, 300,
+    "The maximum interval in seconds that the xcluster checkpoint map can go without being "
+    "refreshed. If the map is not refreshed within this interval, it is considered stale, "
+    "and all WAL segments will be retained until the next refresh. "
+    "Setting to 0 will disable Opid-based WAL segment retention for XCluster.");
+
+DECLARE_int32(log_min_seconds_to_retain);
+
+static bool ValidateMaxRefreshInterval(const char* flag_name, uint32 value) {
+  // This validation depends on the value of other flag(s):
+  // log_min_seconds_to_retain, update_min_cdc_indices_interval_secs.
+  DELAY_FLAG_VALIDATION_ON_STARTUP(flag_name);
+
+  if (value == 0 || value < static_cast<uint32>(
+      FLAGS_log_min_seconds_to_retain + FLAGS_update_min_cdc_indices_interval_secs)) {
+    return true;
+  }
+  LOG_FLAG_VALIDATION_ERROR(flag_name, value)
+      << "Must be less than the sume of log_min_seconds_to_retain and "
+      << "update_min_cdc_indices_interval_secs";
+  return false;
+}
+
+DEFINE_validator(xcluster_checkpoint_max_staleness_secs, &ValidateMaxRefreshInterval);
 
 DECLARE_bool(enable_log_retention_by_op_idx);
 
@@ -1096,6 +1122,13 @@ Result<SetCDCCheckpointResponsePB> CDCServiceImpl::SetCDCCheckpoint(
 
   auto stream_id = VERIFY_STRING_TO_STREAM_ID(req.stream_id());
   auto record = VERIFY_RESULT(GetStream(stream_id));
+
+  if (record->GetSourceType() != XCLUSTER) {
+    LOG(INFO) << "SetCDCCheckpoint is not supported for xCluster stream " << req.tablet_id();
+  }
+  RSTATUS_DCHECK(record->GetSourceType() != XCLUSTER,
+      InvalidArgument, "SetCDCCheckpoint is not supported for xCluster stream $0", stream_id);
+
   if (record->GetCheckpointType() != EXPLICIT) {
     LOG(WARNING) << "Setting the checkpoint explicitly even though the checkpoint type is implicit";
   }
@@ -2331,6 +2364,10 @@ void PopulateTabletMinCheckpointAndLatestActiveTime(
     const string& tablet_id, const OpId& checkpoint, CDCRequestSource cdc_source_type,
     const int64_t& last_active_time, TabletIdCDCCheckpointMap& tablet_min_checkpoint_index,
     const HybridTime cdc_sdk_safe_time = HybridTime::kInvalid) {
+  if (cdc_source_type == XCLUSTER) {
+    return;
+  }
+
   auto& tablet_info = tablet_min_checkpoint_index[tablet_id];
 
   tablet_info.cdc_op_id = min(tablet_info.cdc_op_id, checkpoint);
@@ -2350,7 +2387,23 @@ void PopulateTabletMinCheckpointAndLatestActiveTime(
   }
 }
 
-void CDCServiceImpl::ProcessEntry(
+void CDCServiceImpl::ProcessEntryForXCluster(
+    const CDCStateTableEntry& entry,
+    std::unordered_map<TabletId, OpId>& xcluster_tablet_min_opid_map) {
+  const auto& checkpoint = *entry.checkpoint;
+
+  if (checkpoint == OpId::Invalid()) {
+    return;
+  }
+
+  auto [it, inserted] =
+      xcluster_tablet_min_opid_map.insert({entry.key.tablet_id, checkpoint});
+  if (!inserted) {
+    it->second = std::min(it->second, checkpoint);
+  }
+}
+
+void CDCServiceImpl::ProcessEntryForCdcsdk(
     const CDCStateTableEntry& entry,
     const StreamMetadata& stream_metadata,
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
@@ -2666,7 +2719,7 @@ Result<TabletCDCCheckpointInfo> CDCServiceImpl::PopulateCDCSDKTabletCheckPointIn
       break;
     }
 
-    ProcessEntry(entry, stream_metadata, tablet_peer, tablet_min_checkpoint_map);
+    ProcessEntryForCdcsdk(entry, stream_metadata, tablet_peer, tablet_min_checkpoint_map);
   }
 
   RETURN_NOT_OK(iteration_status);
@@ -2678,9 +2731,47 @@ Result<TabletCDCCheckpointInfo> CDCServiceImpl::PopulateCDCSDKTabletCheckPointIn
   return *it;
 }
 
-Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
+int64_t CDCServiceImpl::GetXClusterMinRequiredIndex(const TabletId& tablet_id) {
+  if (!CDCEnabled()) {
+    return std::numeric_limits<int64_t>::max();
+  }
+
+  auto max_staleness_secs = FLAGS_xcluster_checkpoint_max_staleness_secs;
+
+  if (max_staleness_secs == 0) {
+    // Feature is disabled.
+    return std::numeric_limits<int64_t>::max();
+  }
+
+  SharedLock l(xcluster_replication_maps_mutex_);
+
+  auto seconds_since_last_refresh =
+      MonoTime::Now().GetDeltaSince(xcluster_map_last_refresh_time_).ToSeconds();
+
+  if (seconds_since_last_refresh > max_staleness_secs) {
+    YB_LOG_EVERY_N_SECS(WARNING, 60)
+        << "XCluster min opid map hasn't been refresh for a while, "
+        << "retain all WAL segments until the map is refreshed";
+    return 0;
+  }
+
+  auto* min_replicated_opid = FindOrNull(xcluster_tablet_min_opid_map_, tablet_id);
+
+  if (min_replicated_opid == nullptr) {
+    // Tablet is not under XCluster replication.
+    return std::numeric_limits<int64_t>::max();
+  }
+
+  VLOG(2) << min_replicated_opid->index
+          << " is the xcluster min required index for tablet " << tablet_id;
+
+  return min_replicated_opid->index;
+}
+
+Status CDCServiceImpl::PopulateTabletCheckPointInfo(
+    TabletIdCDCCheckpointMap& cdcsdk_min_checkpoint_map,
+    std::unordered_map<TabletId, OpId>& xcluster_tablet_min_opid_map,
     TabletIdStreamIdSet& tablet_stream_to_be_deleted, StreamIdSet& slot_entries_to_be_deleted) {
-  TabletIdCDCCheckpointMap tablet_min_checkpoint_map;
   std::unordered_set<xrepl::StreamId> refreshed_metadata_set;
 
   int count = 0;
@@ -2721,13 +2812,6 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
       continue;
     }
 
-    auto tablet_peer = context_->LookupTablet(tablet_id);
-    if (!tablet_peer) {
-      LOG(WARNING) << "Could not find tablet peer for tablet_id: " << tablet_id
-                   << ". Will not update its peers in this round";
-      continue;
-    }
-
     RefreshStreamMapOption refresh_option = RefreshStreamMapOption::kNone;
     if (refreshed_metadata_set.find(stream_id) == refreshed_metadata_set.end()) {
       refresh_option = RefreshStreamMapOption::kIfInitiatedState;
@@ -2738,11 +2822,11 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
                    << get_stream_metadata.status();
       // The stream_id present in the cdc_state table was not found in the master cache, it means
       // that the stream is deleted. To update the corresponding tablet PEERs, give an entry in
-      // tablet_min_checkpoint_map which will update  cdc_sdk_min_checkpoint_op_id to
+      // cdcsdk_min_checkpoint_map which will update  cdc_sdk_min_checkpoint_op_id to
       // OpId::Max()(i.e no need to retain the intents.). And also mark the row to be deleted.
-      if (!tablet_min_checkpoint_map.contains(tablet_id)) {
+      if (!cdcsdk_min_checkpoint_map.contains(tablet_id)) {
         VLOG(2) << "We could not get the metadata for the stream: " << stream_id;
-        auto& tablet_info = tablet_min_checkpoint_map[tablet_id];
+        auto& tablet_info = cdcsdk_min_checkpoint_map[tablet_id];
         tablet_info.cdc_op_id = OpId::Max();
         tablet_info.cdc_sdk_op_id = OpId::Max();
         tablet_info.cdc_sdk_safe_time = HybridTime::kInvalid;
@@ -2771,9 +2855,20 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
       streams_with_tablet_entries_to_be_deleted.insert(stream_id);
     }
 
-    ProcessEntry(
-        entry, stream_metadata, tablet_peer, tablet_min_checkpoint_map,
-        &slot_entries_to_be_deleted, namespace_to_min_record_id_commit_time);
+    if (stream_metadata.GetSourceType() == CDCSDK) {
+      auto tablet_peer = context_->LookupTablet(tablet_id);
+      if (!tablet_peer) {
+        LOG(WARNING) << "Could not find tablet peer for tablet_id: " << tablet_id
+                     << ". Will not update its peers in this round";
+        continue;
+      }
+
+      ProcessEntryForCdcsdk(
+          entry, stream_metadata, tablet_peer, cdcsdk_min_checkpoint_map,
+          &slot_entries_to_be_deleted, namespace_to_min_record_id_commit_time);
+    } else if (stream_metadata.GetSourceType() == XCLUSTER) {
+      ProcessEntryForXCluster(entry, xcluster_tablet_min_opid_map);
+    }
   }
 
   RETURN_NOT_OK(iteration_status);
@@ -2789,7 +2884,7 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
 
   YB_LOG_EVERY_N_SECS(INFO, 300) << "Read " << count << " records from "
                                  << kCdcStateTableName;
-  return tablet_min_checkpoint_map;
+  return Status::OK();
 }
 
 void CDCServiceImpl::UpdateTabletPeersWithMaxCheckpoint(
@@ -3083,23 +3178,32 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
     // if we fail to read cdc_state table, lets wait for the next retry after 60 secs.
     TabletIdStreamIdSet cdc_state_entries_to_delete;
     StreamIdSet slot_entries_to_be_deleted;
-    auto result =
-        PopulateTabletCheckPointInfo(cdc_state_entries_to_delete, slot_entries_to_be_deleted);
-    if (!result.ok()) {
-      LOG(WARNING) << "Failed to populate tablets checkpoint info: " << result.status();
+    TabletIdCDCCheckpointMap cdcsdk_min_checkpoint_map;
+    std::unordered_map<TabletId, OpId> xcluster_tablet_min_opid_map;
+    const auto now = MonoTime::Now();
+
+    auto status = PopulateTabletCheckPointInfo(
+        cdcsdk_min_checkpoint_map, xcluster_tablet_min_opid_map,
+        cdc_state_entries_to_delete, slot_entries_to_be_deleted);
+    if (!status.ok()) {
+      LOG(WARNING) << "Failed to populate tablets checkpoint info: " << status;
       continue;
     }
-    TabletIdCDCCheckpointMap& tablet_checkpoint_map = *result;
-    VLOG(3) << "List of tablets with checkpoint info read from cdc_state table: "
-            << tablet_checkpoint_map.size();
+
+    VLOG(3) << "Number of cdcsdk tablets with checkpoint info read from cdc_state table: "
+            << cdcsdk_min_checkpoint_map.size()
+            << "\n Number of xcluster tablets with checkpoint info read from cdc_state table: "
+            << xcluster_tablet_min_opid_map.size();
+
+    UpdateXClusterReplicationMaps(std::move(xcluster_tablet_min_opid_map), now);
 
     // Collect and remove entries for the tablet_ids for which we will set the checkpoint as
-    // 'OpId::Max' from 'tablet_checkpoint_map', into 'tablet_ids_with_max_checkpoint'.
+    // 'OpId::Max' from 'cdcsdk_min_checkpoint_map', into 'tablet_ids_with_max_checkpoint'.
     std::unordered_set<TabletId> tablet_ids_with_max_checkpoint;
     FilterOutTabletsToBeDeletedByAllStreams(
-        &tablet_checkpoint_map, &tablet_ids_with_max_checkpoint);
+        &cdcsdk_min_checkpoint_map, &tablet_ids_with_max_checkpoint);
 
-    UpdateTabletPeersWithMinReplicatedIndex(&tablet_checkpoint_map);
+    UpdateTabletPeersWithMinReplicatedIndex(&cdcsdk_min_checkpoint_map);
 
     {
       YB_LOG_EVERY_N_SECS(INFO, 300)
@@ -3119,6 +3223,16 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
         GetAtomicFlag(&FLAGS_xcluster_get_changes_max_send_rate_mbps) * 1_MB);
 
   } while (sleep_while_not_stopped());
+}
+
+void CDCServiceImpl::UpdateXClusterReplicationMaps(
+    std::unordered_map<TabletId, OpId> new_map,
+    const MonoTime& last_refresh_time) {
+  std::lock_guard l(xcluster_replication_maps_mutex_);
+
+  xcluster_tablet_min_opid_map_.swap(new_map);
+
+  xcluster_map_last_refresh_time_ = last_refresh_time;
 }
 
 Status CDCServiceImpl::DeleteCDCStateTableMetadata(

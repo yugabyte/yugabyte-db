@@ -38,7 +38,7 @@ To connect to a cluster using `ysqlsh`:
 The `ysqlsh` shell opens connected to the remote cluster.
 
 ```output
-ysqlsh (11.2-YB-2.6.1.0-b0)
+ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
 

@@ -1290,13 +1290,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
 
-  void HandleCreateTabletSnapshotResponse(TabletInfo* tablet, bool error) override;
-
-  void HandleRestoreTabletSnapshotResponse(TabletInfo* tablet, bool error) override;
-
-  void HandleDeleteTabletSnapshotResponse(
-      const SnapshotId& snapshot_id, TabletInfo* tablet, bool error) override;
-
   // Is encryption at rest enabled for this cluster.
   Status IsEncryptionEnabled(
       const IsEncryptionEnabledRequestPB* req, IsEncryptionEnabledResponsePB* resp);
@@ -2395,7 +2388,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
     const TSDescriptorVector& ts_descs);
 
  private:
-  friend class SnapshotLoader;
   friend class yb::master::ClusterLoadBalancer;
   friend class CDCStreamLoader;
   friend class UniverseReplicationLoader;
@@ -2764,14 +2756,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   std::unordered_set<xrepl::StreamId> GetCDCSDKStreamsForTable(const TableId& table_id) const;
 
-  Status CreateNonTransactionAwareSnapshot(
-      const CreateSnapshotRequestPB* req, CreateSnapshotResponsePB* resp, const LeaderEpoch& epoch);
-
-  Status RestoreNonTransactionAwareSnapshot(
-      const SnapshotId& snapshot_id, const LeaderEpoch& epoch);
-
-  Status DeleteNonTransactionAwareSnapshot(const SnapshotId& snapshot_id, const LeaderEpoch& epoch);
-
   Status AddNamespaceEntriesToPB(
       const std::vector<TableDescription>& tables,
       google::protobuf::RepeatedPtrField<SysRowEntry>* out,
@@ -2943,11 +2927,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // AsyncDeletaReplica tasks per destination.
   std::unordered_map<std::string, std::unique_ptr<DynamicAsyncTaskThrottler>>
     delete_replica_task_throttler_per_ts_ GUARDED_BY(delete_replica_task_throttler_per_ts_mutex_);
-
-  // Snapshot map: snapshot-id -> SnapshotInfo.
-  typedef std::unordered_map<SnapshotId, scoped_refptr<SnapshotInfo>> SnapshotInfoMap;
-  SnapshotInfoMap non_txn_snapshot_ids_map_;
-  SnapshotId current_snapshot_id_;
 
   // mutex on should_send_universe_key_registry_mutex_.
   mutable simple_spinlock should_send_universe_key_registry_mutex_;

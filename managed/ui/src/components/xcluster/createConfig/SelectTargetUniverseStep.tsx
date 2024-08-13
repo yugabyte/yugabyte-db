@@ -21,6 +21,8 @@ import {
 import { getIsTransactionalAtomicityEnabled } from '../ReplicationUtils';
 import { YBBanner, YBBannerVariant } from '../../common/descriptors';
 import InfoMessageIcon from '../../../redesign/assets/info-message.svg';
+import { hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 import { TableType, TableTypeLabel, Universe } from '../../../redesign/helpers/dtos';
 
@@ -133,9 +135,15 @@ export const SelectTargetUniverseStep = ({
         !UnavailableUniverseStates.includes(getUniverseStatus(universe).state)
     )
     .map((universe) => {
+      const isDisabled = !hasNecessaryPerm({
+        ...ApiPermissionMap.CREATE_XCLUSTER_REPLICATION,
+        onResource: universe.universeUUID
+      });
       return {
         label: universe.name,
-        value: universe
+        value: universe,
+        isDisabled: isDisabled,
+        disabledReason: isDisabled ? t('missingPermissionOnUniverse') : ''
       };
     });
 

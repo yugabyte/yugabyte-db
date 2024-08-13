@@ -486,9 +486,17 @@ export function ReplicationDetails({
                               </YBLabelWithIcon>
                             </MenuItem>
                             <RbacValidator
-                              accessRequiredOn={{
-                                ...ApiPermissionMap.SYNC_XCLUSTER_REQUIREMENT,
-                                onResource: xClusterConfig.targetUniverseUUID
+                              customValidateFunction={() => {
+                                return (
+                                  hasNecessaryPerm({
+                                    ...ApiPermissionMap.SYNC_XCLUSTER,
+                                    onResource: xClusterConfig.sourceUniverseUUID
+                                  }) &&
+                                  hasNecessaryPerm({
+                                    ...ApiPermissionMap.SYNC_XCLUSTER,
+                                    onResource: xClusterConfig.targetUniverseUUID
+                                  })
+                                );
                               }}
                               isControl
                             >
@@ -532,17 +540,33 @@ export function ReplicationDetails({
                     numTablesRequiringBootstrap > 1 ? 'tables' : 'table'
                   } and replication restart is
                 required.`}
-                  <YBButton
-                    className="restart-replication-button"
-                    btnIcon="fa fa-refresh"
-                    btnText="Restart Replication"
-                    onClick={() => {
-                      if (_.includes(enabledConfigActions, XClusterConfigAction.RESTART)) {
-                        dispatch(openDialog(XClusterModalName.RESTART_CONFIG));
-                      }
+                  <RbacValidator
+                    customValidateFunction={() => {
+                      return (
+                        hasNecessaryPerm({
+                          ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
+                          onResource: xClusterConfig.sourceUniverseUUID
+                        }) &&
+                        hasNecessaryPerm({
+                          ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
+                          onResource: xClusterConfig.targetUniverseUUID
+                        })
+                      );
                     }}
-                    disabled={!_.includes(enabledConfigActions, XClusterConfigAction.RESTART)}
-                  />
+                    isControl
+                  >
+                    <YBButton
+                      className="restart-replication-button"
+                      btnIcon="fa fa-refresh"
+                      btnText="Restart Replication"
+                      onClick={() => {
+                        if (_.includes(enabledConfigActions, XClusterConfigAction.RESTART)) {
+                          dispatch(openDialog(XClusterModalName.RESTART_CONFIG));
+                        }
+                      }}
+                      disabled={!_.includes(enabledConfigActions, XClusterConfigAction.RESTART)}
+                    />
+                  </RbacValidator>
                 </div>
               </YBBanner>
             )}

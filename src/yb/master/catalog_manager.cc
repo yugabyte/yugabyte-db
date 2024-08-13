@@ -892,47 +892,6 @@ Result<QLWriteRequestPB::QLStmtType> ToQLStmtType(
 }  // anonymous namespace
 
 ////////////////////////////////////////////////////////////
-// Snapshot Loader
-////////////////////////////////////////////////////////////
-
-class SnapshotLoader : public Visitor<PersistentSnapshotInfo> {
- public:
-  explicit SnapshotLoader(CatalogManager* catalog_manager) : catalog_manager_(catalog_manager) {}
-
-  Status Visit(const SnapshotId& snapshot_id, const SysSnapshotEntryPB& metadata) override {
-    if (TryFullyDecodeTxnSnapshotId(snapshot_id)) {
-      // Transaction aware snapshots should be already loaded.
-      return Status::OK();
-    }
-    return VisitNonTransactionAwareSnapshot(snapshot_id, metadata);
-  }
-
-  Status VisitNonTransactionAwareSnapshot(
-      const SnapshotId& snapshot_id, const SysSnapshotEntryPB& metadata) {
-    // Setup the snapshot info.
-    auto snapshot_info = make_scoped_refptr<SnapshotInfo>(snapshot_id);
-    auto l = snapshot_info->LockForWrite();
-    l.mutable_data()->pb.CopyFrom(metadata);
-
-    // Add the snapshot to the IDs map (if the snapshot is not deleted).
-    auto emplace_result =
-        catalog_manager_->non_txn_snapshot_ids_map_.emplace(snapshot_id, std::move(snapshot_info));
-    CHECK(emplace_result.second) << "Snapshot already exists: " << snapshot_id;
-
-    LOG(INFO) << "Loaded metadata for snapshot (id=" << snapshot_id
-              << "): " << emplace_result.first->second->ToString() << ": "
-              << metadata.ShortDebugString();
-    l.Commit();
-    return Status::OK();
-  }
-
- private:
-  CatalogManager* catalog_manager_;
-
-  DISALLOW_COPY_AND_ASSIGN(SnapshotLoader);
-};
-
-////////////////////////////////////////////////////////////
 // CatalogManager
 ////////////////////////////////////////////////////////////
 
@@ -1503,14 +1462,6 @@ Status CatalogManager::RunLoaders(SysCatalogLoadingState* state) {
   if (!transaction_tables_config_) {
     RETURN_NOT_OK(InitializeTransactionTablesConfig(state->epoch.leader_term));
   }
-
-  // Clear the snapshots.
-  non_txn_snapshot_ids_map_.clear();
-
-  LOG_WITH_FUNC(INFO) << "Loading snapshots into memory.";
-  unique_ptr<SnapshotLoader> snapshot_loader(new SnapshotLoader(this));
-  RETURN_NOT_OK_PREPEND(
-      sys_catalog_->Visit(snapshot_loader.get()), "Failed while visiting snapshots in sys catalog");
 
   RETURN_NOT_OK(LoadXReplStream());
   RETURN_NOT_OK(LoadUniverseReplication());

@@ -158,7 +158,8 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
         ImmutableList.of(
             TaskType.EditXClusterConfig,
             TaskType.DeleteXClusterConfig,
-            TaskType.RestartXClusterConfig));
+            TaskType.RestartXClusterConfig,
+            TaskType.SyncXClusterConfig));
     STATUS_TO_ALLOWED_TASKS.put(
         XClusterConfigStatusType.Updating,
         ImmutableList.of(TaskType.DeleteXClusterConfig, TaskType.RestartXClusterConfig));
@@ -1265,6 +1266,24 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   }
 
   /**
+   * Returns a map that maps target table IDs to source table IDs.
+   *
+   * @param sourceTableInfoList A list of source table information.
+   * @param targetTableInfoList A list of target table information.
+   * @return A map that maps target table IDs to source table IDs.
+   */
+  public static Map<String, String> getTargetTableIdToSourceTableIdMap(
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList,
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList) {
+    log.debug(
+        "switching the sequence of source and target tables in order to achieve the"
+            + " targetTableIdToSourceTableIdMap");
+    Map<String, String> targetTableIdToSourceTableIdMap =
+        getSourceTableIdTargetTableIdMap(targetTableInfoList, sourceTableInfoList);
+    return targetTableIdToSourceTableIdMap;
+  }
+
+  /**
    * It assumes table names in both {@code tableInfoListOnSource} and {@code tableInfoListOnTarget}
    * are unique except for colocated parent table names.
    *
@@ -1340,6 +1359,16 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   }
 
   /**
+   * Checks if the table info will contain an indexed table ID.
+   *
+   * @param ybSoftwareVersion The version of the YB software.
+   * @return True if the table info contains an indexed table ID, false otherwise.
+   */
+  public static boolean universeTableInfoContainsIndexedTableId(String ybSoftwareVersion) {
+    return Util.compareYbVersions("2.21.1.0-b168", ybSoftwareVersion, true) <= 0;
+  }
+
+  /**
    * It returns a map from main table id to a list of index table ids associated with the main table
    * in the universe. `getIndexedTableId` was added to YBDB 2.21.1.0-b168.
    *
@@ -1351,11 +1380,8 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       Collection<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList) {
     // Ensure it is not called for a universe older than 2.21.1.0-b168. For older version use the
     // other getMainTableIndexTablesMap method that uses an RPC available in older universes.
-    if (Util.compareYbVersions(
-            "2.21.1.0-b168",
-            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
-            true)
-        > 0) {
+    if (!universeTableInfoContainsIndexedTableId(
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion)) {
       throw new IllegalStateException(
           "This method is only supported for universes newer than or equal to 2.21.1.0-b168");
     }
@@ -1783,9 +1809,8 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     }
 
     try {
-      if (xClusterConfig.getTableType().equals(XClusterConfig.TableType.YSQL)
-          && Arrays.asList(XClusterConfigStatusType.Running, XClusterConfigStatusType.Updating)
-              .contains(xClusterConfig.getStatus())) {
+      if (Arrays.asList(XClusterConfigStatusType.Running, XClusterConfigStatusType.Updating)
+          .contains(xClusterConfig.getStatus())) {
         addTransientTableConfigs(
             xClusterConfig,
             xClusterUniverseService,
@@ -2015,6 +2040,8 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
             .map(tableInfo -> XClusterConfigTaskBase.getTableId(tableInfo))
             .collect(Collectors.toSet());
 
+    // Update the status for tables that were previously being replicated but have been dropped from
+    // the source.
     xClusterConfig.getTableDetails().stream()
         .filter(tableConfig -> tableConfig.getStatus() == XClusterTableConfig.Status.Running)
         .forEach(
@@ -2023,6 +2050,9 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
                 tableConfig.setStatus(XClusterTableConfig.Status.DroppedFromSource);
               }
             });
+
+    // Note: Tables dropped from target are already updated with status
+    // "UnableToFetch" as part of setReplicationStatus function.
 
     Pair<List<XClusterTableConfig>, List<XClusterTableConfig>> tableConfigs =
         getXClusterTableConfigNotInReplication(
@@ -2037,15 +2067,55 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
         .getFirst()
         .forEach(
             tableConfig -> {
-              xClusterConfig.addTableConfig(tableConfig);
+              Optional<XClusterTableConfig> existingTableConfig =
+                  xClusterConfig.getTableDetails().stream()
+                      .filter(t -> t.getTableId().equals(tableConfig.getTableId()))
+                      .findFirst();
+              if (!existingTableConfig.isPresent()) {
+                xClusterConfig.addTableConfig(tableConfig);
+              } else {
+                log.info(
+                    "Found table {} with status {} on source universe but already exists in"
+                        + " xCluster config in YBA",
+                    tableConfig.getTableId(),
+                    tableConfig.getStatus());
+              }
             });
 
-    tableConfigs
-        .getSecond()
-        .forEach(
-            tableConfig -> {
-              xClusterConfig.addTableConfig(tableConfig);
-            });
+    if (tableConfigs.getSecond().size() > 0) {
+      Map<String, String> targetTableIdToSourceTableIdMap =
+          getTargetTableIdToSourceTableIdMap(sourceTableInfoList, targetTableInfoList);
+
+      tableConfigs
+          .getSecond()
+          .forEach(
+              tableConfig -> {
+                String targetTableId = tableConfig.getTableId();
+                String sourceTableId = targetTableIdToSourceTableIdMap.get(targetTableId);
+                if (sourceTableId != null) {
+                  Optional<XClusterTableConfig> existingTableConfig =
+                      xClusterConfig.getTableDetails().stream()
+                          .filter(t -> t.getTableId().equals(sourceTableId))
+                          .findFirst();
+                  if (!existingTableConfig.isPresent()
+                      || existingTableConfig
+                          .get()
+                          .getStatus()
+                          .equals(XClusterTableConfig.Status.ExtraTableOnSource)) {
+                    xClusterConfig.addTableConfig(tableConfig);
+                  } else {
+                    log.info(
+                        "Found table target: {} source: {} with status {} on target universe but"
+                            + " already exists in xCluster config in YBA",
+                        targetTableId,
+                        sourceTableId,
+                        tableConfig.getStatus());
+                  }
+                } else {
+                  xClusterConfig.addTableConfig(tableConfig);
+                }
+              });
+    }
   }
 
   /**
@@ -2150,9 +2220,6 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
           List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList) {
     List<XClusterTableConfig> targetTableConfigs = new ArrayList<>();
     List<XClusterTableConfig> sourceTableConfigs = new ArrayList<>();
-    if (!xClusterConfig.getTableType().equals(XClusterConfig.TableType.YSQL)) {
-      return new Pair<>(sourceTableConfigs, targetTableConfigs);
-    }
 
     targetTableConfigs =
         getTargetOnlyTable(
@@ -2178,13 +2245,15 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       XClusterConfig xClusterConfig,
       CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig,
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList) {
-
     try {
       Set<String> tableIdsInReplicationOnTargetUniverse =
           getConsumerTableIdsFromClusterConfig(
               clusterConfig, xClusterConfig.getReplicationGroupName());
 
       return extractTablesNotInReplication(
+          xClusterConfig,
+          xClusterConfig.getTargetUniverseUUID(),
+          ybClientService,
           tableIdsInReplicationOnTargetUniverse,
           targetTableInfoList,
           XClusterTableConfig.Status.ExtraTableOnTarget);
@@ -2208,6 +2277,9 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
               clusterConfig, xClusterConfig.getReplicationGroupName());
 
       return extractTablesNotInReplication(
+          xClusterConfig,
+          xClusterConfig.getSourceUniverseUUID(),
+          ybClientService,
           tableIdsInReplicationOnSourceUniverse,
           sourceTableInfoList,
           XClusterTableConfig.Status.ExtraTableOnSource);
@@ -2219,23 +2291,160 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   }
 
   public static List<XClusterTableConfig> extractTablesNotInReplication(
+      XClusterConfig xClusterConfig,
+      UUID universeUUID,
+      YBClientService ybClientService,
       Set<String> tablesIdsInReplication,
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> allTables,
       XClusterTableConfig.Status missingTableStatus) {
 
-    Set<String> namespaceIdsInReplication =
-        allTables.stream()
-            .filter(tableInfo -> tablesIdsInReplication.contains(getTableId(tableInfo)))
-            .map(tableInfo -> tableInfo.getNamespace().getId().toStringUtf8())
-            .collect(Collectors.toSet());
+    Set<String> tableIdsNotInReplication = new HashSet<>();
 
-    Set<String> tableIdsNotInReplication =
-        allTables.stream()
-            .filter(tableInfo -> namespaceIdsInReplication.contains(getNamespaceId(tableInfo)))
-            .filter(tableInfo -> isXClusterSupported(tableInfo))
-            .filter(tableInfo -> !tablesIdsInReplication.contains(getTableId(tableInfo)))
-            .map(tableInfo -> getTableId(tableInfo))
-            .collect(Collectors.toSet());
+    if (xClusterConfig.getTableType().equals(XClusterConfig.TableType.YSQL)) {
+      // Gather all namespaceIds for tables that are in replication.
+      Set<String> namespaceIdsInReplication =
+          allTables.stream()
+              .filter(tableInfo -> tablesIdsInReplication.contains(getTableId(tableInfo)))
+              .map(tableInfo -> tableInfo.getNamespace().getId().toStringUtf8())
+              .collect(Collectors.toSet());
+
+      // All the tables that is xCluster supported and belong to the namespace that is in
+      // replication but not in the tablesIdsInReplication are the tables that are not in
+      // replication.
+      tableIdsNotInReplication =
+          allTables.stream()
+              .filter(tableInfo -> namespaceIdsInReplication.contains(getNamespaceId(tableInfo)))
+              .filter(tableInfo -> isXClusterSupported(tableInfo))
+              .filter(tableInfo -> !tablesIdsInReplication.contains(getTableId(tableInfo)))
+              .map(tableInfo -> getTableId(tableInfo))
+              .collect(Collectors.toSet());
+    } else if (xClusterConfig.getTableType().equals(XClusterConfig.TableType.YCQL)) {
+      Universe universe = Universe.getOrBadRequest(universeUUID);
+      // On old universes, tableInfo does not contain the field indexedTableId, so we need to gather
+      // index table ids using tableSchemas.
+      if (universeTableInfoContainsIndexedTableId(
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion)) {
+        // Gather all index table ids not in replication by parsing each tables and checking if it's
+        // indexedTableId is in replication.
+        tableIdsNotInReplication =
+            allTables.stream()
+                .filter(
+                    tableInfo ->
+                        tableInfo.getRelationType().equals(RelationType.INDEX_TABLE_RELATION))
+                .filter(tableInfo -> !tablesIdsInReplication.contains(getTableId(tableInfo)))
+                .filter(
+                    tableInfo ->
+                        tableInfo.getIndexedTableId() != null
+                            && tablesIdsInReplication.contains(tableInfo.getIndexedTableId()))
+                .map(tableInfo -> getTableId(tableInfo))
+                .collect(Collectors.toSet());
+
+        // Extract main table ids for tables that are not in replication but their index tables are
+        // in replication.
+        Set<String> mainTableIdsNotInReplicationWithIndexInReplication =
+            allTables.stream()
+                .filter(tableInfo -> TableInfoUtil.isIndexTable(tableInfo))
+                .filter(tableInfo -> tablesIdsInReplication.contains(getTableId(tableInfo)))
+                .filter(
+                    tableInfo -> !tablesIdsInReplication.contains(tableInfo.getIndexedTableId()))
+                .map(tableInfo -> tableInfo.getIndexedTableId())
+                .collect(Collectors.toSet());
+
+        if (mainTableIdsNotInReplicationWithIndexInReplication.size() > 0) {
+          List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>
+              mainTableIdsNotInReplicationWithIndexInReplicationInfo =
+                  allTables.stream()
+                      .filter(
+                          tableInfo ->
+                              mainTableIdsNotInReplicationWithIndexInReplication.contains(
+                                  getTableId(tableInfo)))
+                      .collect(Collectors.toList());
+
+          Map<String, List<String>> mainTableIdToIndexTableIdsNotInReplicationMap =
+              getMainTableIndexTablesMap(
+                  universe, mainTableIdsNotInReplicationWithIndexInReplicationInfo);
+
+          // Add main table ids that are not in replication and its indexes which are not
+          // in replication.
+          for (Map.Entry<String, List<String>> entry :
+              mainTableIdToIndexTableIdsNotInReplicationMap.entrySet()) {
+            boolean indexTableInReplication =
+                entry.getValue().stream()
+                    .anyMatch(indexTableId -> tablesIdsInReplication.contains(indexTableId));
+            if (indexTableInReplication) {
+              tableIdsNotInReplication.add(entry.getKey());
+              for (String indexTableId : entry.getValue()) {
+                if (!tablesIdsInReplication.contains(indexTableId)) {
+                  tableIdsNotInReplication.add(indexTableId);
+                }
+              }
+            }
+          }
+        }
+
+      } else {
+        // Gather all main table ids for tables that are in replication.
+        Set<String> mainTableIdsInReplication =
+            allTables.stream()
+                .filter(tableInfo -> !TableInfoUtil.isIndexTable(tableInfo))
+                .filter(tableInfo -> tablesIdsInReplication.contains(getTableId(tableInfo)))
+                .map(tableInfo -> getTableId(tableInfo))
+                .collect(Collectors.toSet());
+
+        // Index table ids which has its main table in replication.
+        Set<String> indexTableIdsWithMainTableIdsInReplication = new HashSet<>();
+
+        // Gather all index table ids for tables that are in replication and add index table
+        // ids that are not in replication.
+        Map<String, List<String>> mainTableIdToIndexTableIdsInReplicationMap =
+            getMainTableIndexTablesMap(ybClientService, universe, mainTableIdsInReplication);
+        for (List<String> indexTableIdsList : mainTableIdToIndexTableIdsInReplicationMap.values()) {
+          for (String indexTableId : indexTableIdsList) {
+            if (!tablesIdsInReplication.contains(indexTableId)) {
+              tableIdsNotInReplication.add(indexTableId);
+            }
+            indexTableIdsWithMainTableIdsInReplication.add(indexTableId);
+          }
+        }
+
+        // Index tables that are in replication but their main tables are not in replication.
+        Set<String> indexTableIdsInReplicationWithMissingMainTable =
+            tablesIdsInReplication.stream()
+                .filter(tableId -> !indexTableIdsWithMainTableIdsInReplication.contains(tableId))
+                .collect(Collectors.toSet());
+        if (indexTableIdsInReplicationWithMissingMainTable.size() > 0) {
+          // All main tables in a universe which are not in replication.
+          Set<String> mainTableIdsNotInReplication =
+              allTables.stream()
+                  .filter(tableInfo -> !TableInfoUtil.isIndexTable(tableInfo))
+                  .filter(tableInfo -> !tablesIdsInReplication.contains(getTableId(tableInfo)))
+                  .map(tableInfo -> getTableId(tableInfo))
+                  .collect(Collectors.toSet());
+          Map<String, List<String>> mainTableIdToIndexTableIdsNotInReplicationMap =
+              getMainTableIndexTablesMap(ybClientService, universe, mainTableIdsNotInReplication);
+          // Search through the indexes of each main table not in replication and if found,
+          // add the main table and index table to the list of tables not in replication
+          // if they are not already in replication.
+          for (Map.Entry<String, List<String>> entry :
+              mainTableIdToIndexTableIdsNotInReplicationMap.entrySet()) {
+            boolean indexTableInReplication =
+                entry.getValue().stream()
+                    .anyMatch(indexTableId -> tablesIdsInReplication.contains(indexTableId));
+            if (indexTableInReplication) {
+              tableIdsNotInReplication.add(entry.getKey());
+              for (String indexTableId : entry.getValue()) {
+                if (!tablesIdsInReplication.contains(indexTableId)) {
+                  tableIdsNotInReplication.add(indexTableId);
+                }
+              }
+            }
+          }
+        }
+      }
+    } else {
+      throw new IllegalArgumentException(
+          "Unsupported table type " + xClusterConfig.getTableType() + " for xCluster config");
+    }
 
     List<XClusterTableConfig> tableConfigNotInReplication = new ArrayList<>();
     for (String tableId : tableIdsNotInReplication) {
