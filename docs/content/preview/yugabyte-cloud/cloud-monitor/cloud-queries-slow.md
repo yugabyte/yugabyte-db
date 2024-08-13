@@ -54,6 +54,8 @@ To reset the slow queries list, click **Reset**. To update the slow queries list
 
 To view query details, click the row for the query to display the **Query Details** sheet.
 
-The query details show a full view of the query statement, along with all the column data, the P25, P50, P90, P95, and P99 latency metrics, and a chart of the latency histogram. The chart shows the query count by response time range, in milliseconds; linear and logarithmic views are available. (Latency histogram support is only available for clusters running YugabyteDB v2.18.1 (or later), or v2.19.1 (or later).)
+The query details show a full view of the query statement, along with all the column data, the P25, P50, P90, P95, and P99 latency metrics, and a chart of the latency histogram. The chart shows the query count by response time range, in milliseconds; linear and logarithmic views are available.
+
+Latency histogram support is only available for clusters running YugabyteDB v2.18.1 or later, or v2.19.1 or later.
 
 ![Query Details](/images/yb-cloud/managed-monitor-slow-queries-details.png)
