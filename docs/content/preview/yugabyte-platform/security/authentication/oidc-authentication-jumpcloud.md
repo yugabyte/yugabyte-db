@@ -87,6 +87,8 @@ For more information, refer to the [JumpCloud](https://jumpcloud.com/support/sso
 
 ### Configure YugabyteDB Anywhere
 
+To configure YugabyteDB Anywhere for OIDC, you need to be signed in as a Super Admin. You need your JumpCloud application client ID and client secret.
+
 To allow users to access their JWT from the YugabyteDB sign in page, you must enable the OIDC feature via a configuration flag before you configure OIDC.
 
 #### Enable OIDC enhancements
@@ -100,8 +102,6 @@ To enable some features of the OIDC functionality in Yugabyte Anywhere, you need
     ![Configuring yb.security.oidc_feature_enhancements flag for OIDC](/images/yp/security/oidc-azure-globalfeature.png)
 
 #### Enable OIDC authentication
-
-To configure YugabyteDB Anywhere for OIDC, you need to be signed in as a Super Admin. You need your JumpCloud application client ID and client secret.
 
 To configure User authentication in YugabyteDB Anywhere, do the following:
 
