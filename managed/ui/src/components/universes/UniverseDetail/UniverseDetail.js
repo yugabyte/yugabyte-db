@@ -400,6 +400,11 @@ class UniverseDetail extends Component {
         (config) => config.key === RuntimeConfigKey.BLOCK_K8_OPERATOR
       )?.value === 'true';
 
+    const isRollingUpradeMutlipleNodesEnabled =
+      runtimeConfigs?.data?.configEntries?.find(
+        (c) => c.key === RuntimeConfigKey.BATCH_ROLLING_UPGRADE_FEATURE_FLAG
+      )?.value === 'true';
+
     const isAuditLogEnabled =
       runtimeConfigs?.data?.configEntries?.find(
         (config) => config.key === RuntimeConfigKey.ENABLE_AUDIT_LOG
@@ -1482,6 +1487,7 @@ class UniverseDetail extends Component {
           }}
           isGFlagMultilineConfEnabled={isGFlagMultilineConfEnabled}
           universeData={currentUniverse.data}
+          isRollingUpradeMutlipleNodesEnabled={isRollingUpradeMutlipleNodesEnabled}
         />
         <UpgradeLinuxVersionModal
           visible={showModal && visibleModal === 'linuxVersionUpgradeModal'}
