@@ -28,7 +28,6 @@ Due to its operational complexity, bidirectional xCluster is not recommended for
 
 - Bidirectional replication can only be done using non-transactional replication. Transactional replication is not supported because transactional replication puts the target universe in read-only mode. For more information, see [Asynchronous replication modes](../../../../architecture/docdb-replication/async-replication/#asynchronous-replication-modes).
 - You can't use the YugabyteDB Anywhere UI to create two separate replication configurations for YSQL, each containing a subset of the database tables.
-- Active-active bidirectional replication is not supported because the backup or restore would wipe out the existing data. This means that copying data can be done only if an xCluster configuration with reverse direction for a table does not exist. It is recommended to set up replication from your active universe to the passive target, and then set up replication for the target to the source universe. To restart a replication with a full copy, the reverse replication must be deleted.
 
 For more information, refer to [Limitations](../../../../architecture/docdb-replication/async-replication/#limitations).
 
@@ -50,7 +49,9 @@ For information on how to monitor and manage the replication configurations, ref
 
 ## Restart bidirectional replication
 
-Restarting a bidirectional replication can cause unreplicated data on one of the universes to be lost, because a full copy is performed as part of the restart. Before restarting, you need to identify the universe whose data is more up to date.
+Restarting bidirectional replication can cause unreplicated data on one of the universes to be lost, because a full copy is performed as part of the restart. Copying data can be done only if an xCluster configuration with reverse direction for a table does not exist, which means the reverse replication must first be deleted.
+
+As a result, before restarting bidirectional replication, you need to identify the universe whose data is more up to date.
 
 To restart a bidirectional replication setup:
 
