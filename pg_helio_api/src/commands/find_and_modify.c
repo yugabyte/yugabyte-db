@@ -448,8 +448,9 @@ ProcessFindAndModifySpec(MongoCollection *collection, FindAndModifySpec *spec,
 		};
 
 		DeleteOneResult deleteOneResult = { 0 };
+		bool forceInlineWrites = false;
 		CallDeleteOne(collection, &deleteOneParams, shardKeyHash, transactionId,
-					  &deleteOneResult);
+					  forceInlineWrites, &deleteOneResult);
 
 		if (deleteOneResult.isRowDeleted &&
 			deleteOneResult.resultDeletedDocument == NULL)

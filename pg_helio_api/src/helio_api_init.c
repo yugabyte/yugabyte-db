@@ -152,7 +152,8 @@ bool SimulateRecoveryState = DEFAULT_SIMULATE_RECOVERY_STATE;
 #define DEFAULT_MAX_WORKER_CURSOR_SIZE BSON_MAX_ALLOWED_SIZE
 int32_t MaxWorkerCursorSize = DEFAULT_MAX_WORKER_CURSOR_SIZE;
 
-#define DEFAULT_BATCH_WRITE_SUB_TRANSACTION_COUNT 500
+/* Use 512 to line up with Mongo spark client to minimize splitting transactions */
+#define DEFAULT_BATCH_WRITE_SUB_TRANSACTION_COUNT 512
 int BatchWriteSubTransactionCount = DEFAULT_BATCH_WRITE_SUB_TRANSACTION_COUNT;
 
 #define DEFAULT_ENABLE_GEOSPATIAL true
@@ -230,8 +231,8 @@ int32 MaxSegmentVertices = DEFAULT_MAX_SEGMENT_VERTICES;
 #define DEFAULT_MAX_INDEXES_PER_COLLECTION 64
 int32 MaxIndexesPerCollection = DEFAULT_MAX_INDEXES_PER_COLLECTION;
 
-#define DEFAULT_UNSHARDED_BATCH_UPDATE true
-bool EnableUnshardedBatchUpdate = DEFAULT_UNSHARDED_BATCH_UPDATE;
+#define DEFAULT_UNSHARDED_BATCH_DELETE true
+bool EnableUnshardedBatchDelete = DEFAULT_UNSHARDED_BATCH_DELETE;
 
 #define DEFAULT_ENABLE_MERGE_OBJECTS_SUPPORT false
 bool EnableGroupMergeObjectsSupport = DEFAULT_ENABLE_MERGE_OBJECTS_SUPPORT;
@@ -645,11 +646,11 @@ InitApiConfigurations(char *prefix)
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		"helio_api.enableUnshardedBatchUpdate",
+		"helio_api.enableUnshardedBatchDelete",
 		gettext_noop(
 			"Feature flag to enable pushing an unsharded batch update to the worker"),
 		NULL,
-		&EnableUnshardedBatchUpdate, DEFAULT_UNSHARDED_BATCH_UPDATE, PGC_USERSET, 0,
+		&EnableUnshardedBatchDelete, DEFAULT_UNSHARDED_BATCH_DELETE, PGC_USERSET, 0,
 		NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(

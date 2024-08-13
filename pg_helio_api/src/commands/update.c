@@ -245,8 +245,6 @@ typedef struct
 } WorkerUpdateParam;
 
 
-extern bool EnableUnshardedBatchUpdate;
-
 static BatchUpdateSpec * BuildBatchUpdateSpec(bson_iter_t *updateCommandIter,
 											  pgbsonsequence *updateDocs);
 static List * BuildUpdateSpecList(bson_iter_t *updateArrayIter, bool *hasUpsert);
@@ -421,7 +419,7 @@ command_update(PG_FUNCTION_ARGS)
 
 	bool hasWriteErrors = false;
 	pgbson *result = NULL;
-	if (DefaultInlineWriteOperations || !EnableUnshardedBatchUpdate ||
+	if (DefaultInlineWriteOperations ||
 		collection->shardKey != NULL || collection->shardTableName[0] != '\0')
 	{
 		ProcessBatchUpdate(collection, batchSpec, transactionId,

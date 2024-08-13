@@ -52,7 +52,7 @@ typedef struct
 
 
 void CallDeleteOne(MongoCollection *collection, DeleteOneParams *deleteOneParams,
-				   int64 shardKeyHash, text *transactionId,
+				   int64 shardKeyHash, text *transactionId, bool forceInlineWrites,
 				   DeleteOneResult *result);
 
 #endif

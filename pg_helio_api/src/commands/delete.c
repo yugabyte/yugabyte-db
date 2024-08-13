@@ -35,6 +35,8 @@
 #include "utils/query_utils.h"
 #include "api_hooks.h"
 
+extern bool EnableUnshardedBatchDelete;
+
 /*
  * DeletionSpec describes a single delete operation.
  */
@@ -55,11 +57,17 @@ typedef struct
 	/* collection in which to perform deletions */
 	char *collectionName;
 
-	/* DeletionSpec list describing the deletions */
-	List *deletions;
+	/* DeletionSpec raw value */
+	bson_value_t deletionValue;
 
 	/* if ordered, stop after the first failure */
 	bool isOrdered;
+
+	/* The bsonSequence for the delete */
+	pgbsonsequence *deletionSequence;
+
+	/* DeletionSpec list describing the deletions */
+	List *deletionsProcessed;
 } BatchDeletionSpec;
 
 
@@ -92,10 +100,14 @@ static List * BuildDeletionSpecListFromSequence(pgbsonsequence *sequence);
 static DeletionSpec * BuildDeletionSpec(bson_iter_t *deletionIterator);
 static void ProcessBatchDeletion(MongoCollection *collection,
 								 BatchDeletionSpec *batchSpec,
-								 text *transactionId,
+								 bool forceInline, text *transactionId,
 								 BatchDeletionResult *batchResult);
+
+static pgbson * ProcessBatchDeleteUnsharded(MongoCollection *collection,
+											BatchDeletionSpec *batchSpec,
+											text *transactionId);
 static uint64 ProcessDeletion(MongoCollection *collection, DeletionSpec *deletionSpec,
-							  text *transactionId);
+							  bool forceInlineWrites, text *transactionId);
 static uint64 DeleteAllMatchingDocuments(MongoCollection *collection, pgbson *query,
 										 bool hasShardKeyValueFilter,
 										 int64 shardKeyHash);
@@ -103,22 +115,30 @@ static void DeleteOneInternal(uint64 collectionId, DeleteOneParams *deleteOnePar
 							  int64 shardKeyHash, DeleteOneResult *result);
 static void DeleteOneObjectId(MongoCollection *collection,
 							  DeleteOneParams *deleteOneParams,
-							  bson_value_t *objectId, text *transactionId,
-							  DeleteOneResult *result);
+							  bson_value_t *objectId, bool forceInlineWrites,
+							  text *transactionId, DeleteOneResult *result);
 static List * ValidateQueryDocuments(BatchDeletionSpec *batchSpec);
 static pgbson * BuildResponseMessage(BatchDeletionResult *batchResult);
 static void DeleteOneInternalCore(uint64 collectionId, int64 shardKeyHash,
 								  DeleteOneParams *deleteOneParams,
 								  text *transactionId, DeleteOneResult *deleteOneResult);
-static void CallDeleteWorkerForDeleteOne(MongoCollection *collection,
-										 DeleteOneParams *deleteOneParams,
-										 int64 shardKeyHash, text *transactionId,
-										 DeleteOneResult *result);
+static pgbson * CallDeleteWorker(MongoCollection *collection,
+								 pgbson *serializedDeleteSpec,
+								 int64 shardKeyHash,
+								 text *transactionId,
+								 pgbsonsequence *sequence);
 static pgbson * SerializeDeleteOneParams(const DeleteOneParams *deleteParams);
-static void DeserializeDeleteWorkerSpec(pgbson *workerSpec,
-										DeleteOneParams *deleteOneParams);
-static void DeserializeWorkerDeleteResult(pgbson *resultBson, DeleteOneResult *result);
+static void DeserializeDeleteWorkerSpecForDeleteOne(const bson_value_t *workerSpecValue,
+													DeleteOneParams *deleteOneParams);
+static void DeserializeWorkerDeleteResultForDeleteOne(pgbson *resultBson,
+													  DeleteOneResult *result);
 static pgbson * SerializeDeleteOneResult(DeleteOneResult *result);
+static void PostProcessDeleteBatchSpec(BatchDeletionSpec *spec);
+static void DeserializeDeleteWorkerSpecForUnsharded(const
+													bson_value_t *deleteInternalSpec,
+													BatchDeletionSpec *batchDeletionSpec);
+static pgbson * SerializeDeleteWorkerSpecForUnsharded(BatchDeletionSpec *batchSpec);
+
 
 /*
  * command_delete handles a single delete on a collection.
@@ -168,7 +188,7 @@ command_delete(PG_FUNCTION_ARGS)
 	 */
 	BatchDeletionSpec *batchSpec = BuildBatchDeletionSpec(&deleteCommandIter, deleteDocs);
 
-	BatchDeletionResult batchResult;
+	pgbson *batchResponse;
 
 	Datum collectionNameDatum = CStringGetTextDatum(batchSpec->collectionName);
 	MongoCollection *collection =
@@ -176,16 +196,31 @@ command_delete(PG_FUNCTION_ARGS)
 									  RowExclusiveLock);
 	if (collection != NULL)
 	{
-		ProcessBatchDeletion(collection, batchSpec, transactionId,
-							 &batchResult);
+		if (DefaultInlineWriteOperations || !EnableUnshardedBatchDelete ||
+			collection->shardKey != NULL || collection->shardTableName[0] != '\0')
+		{
+			BatchDeletionResult batchResult = { 0 };
+			bool forceInline = false;
+			ProcessBatchDeletion(collection, batchSpec, forceInline, transactionId,
+								 &batchResult);
+			batchResponse = BuildResponseMessage(&batchResult);
+		}
+		else
+		{
+			/* Unsharded and the shard table is in a remote node we can push the whole batch to the worker directly. */
+			batchResponse = ProcessBatchDeleteUnsharded(collection, batchSpec,
+														transactionId);
+		}
 	}
 	else
 	{
+		BatchDeletionResult batchResult = { 0 };
 		StringView collectionView = {
 			.length = VARSIZE_ANY_EXHDR(collectionNameDatum),
 			.string = VARDATA_ANY(collectionNameDatum)
 		};
 
+		PostProcessDeleteBatchSpec(batchSpec);
 		ValidateCollectionNameForValidSystemNamespace(&collectionView,
 													  databaseNameDatum);
 
@@ -196,13 +231,19 @@ command_delete(PG_FUNCTION_ARGS)
 		batchResult.ok = 1;
 		batchResult.rowsDeleted = 0;
 		batchResult.writeErrors = ValidateQueryDocuments(batchSpec);
+		batchResponse = BuildResponseMessage(&batchResult);
 	}
 
 	Datum values[2];
 	bool isNulls[2] = { false, false };
 
-	values[0] = PointerGetDatum(BuildResponseMessage(&batchResult));
-	values[1] = BoolGetDatum(batchResult.writeErrors == NIL);
+	/* The second value is true if we had any writeErrors set */
+	bson_iter_t writeErrorsIter;
+	bool hasWriteErrors = PgbsonInitIteratorAtPath(batchResponse, "writeErrors",
+												   &writeErrorsIter);
+
+	values[0] = PointerGetDatum(batchResponse);
+	values[1] = BoolGetDatum(!hasWriteErrors);
 	HeapTuple resultTuple = heap_form_tuple(resultTupDesc, values, isNulls);
 	PG_RETURN_DATUM(HeapTupleGetDatum(resultTuple));
 }
@@ -216,7 +257,7 @@ static BatchDeletionSpec *
 BuildBatchDeletionSpec(bson_iter_t *deleteCommandIter, pgbsonsequence *deleteDocs)
 {
 	const char *collectionName = NULL;
-	List *deletions = NIL;
+	bson_value_t deletions = { 0 };
 	bool isOrdered = true;
 	bool hasDeletes = false;
 
@@ -245,10 +286,7 @@ BuildBatchDeletionSpec(bson_iter_t *deleteCommandIter, pgbsonsequence *deleteDoc
 								errmsg("Unexpected additional deletes")));
 			}
 
-			bson_iter_t deleteArrayIter;
-			bson_iter_recurse(deleteCommandIter, &deleteArrayIter);
-
-			deletions = BuildDeletionSpecList(&deleteArrayIter);
+			deletions = *bson_iter_value(deleteCommandIter);
 			hasDeletes = true;
 		}
 		else if (strcmp(field, "ordered") == 0)
@@ -285,7 +323,6 @@ BuildBatchDeletionSpec(bson_iter_t *deleteCommandIter, pgbsonsequence *deleteDoc
 
 	if (deleteDocs != NULL)
 	{
-		deletions = BuildDeletionSpecListFromSequence(deleteDocs);
 		hasDeletes = true;
 	}
 
@@ -296,19 +333,12 @@ BuildBatchDeletionSpec(bson_iter_t *deleteCommandIter, pgbsonsequence *deleteDoc
 							   "a required field")));
 	}
 
-	int deletionCount = list_length(deletions);
-	if (deletionCount == 0 || deletionCount > MaxWriteBatchSize)
-	{
-		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-						errmsg("Write batch sizes must be between 1 and %d. "
-							   "Got %d operations.", MaxWriteBatchSize, deletionCount)));
-	}
-
 	BatchDeletionSpec *batchSpec = palloc0(sizeof(BatchDeletionSpec));
 
 	batchSpec->collectionName = (char *) collectionName;
-	batchSpec->deletions = deletions;
+	batchSpec->deletionValue = deletions;
 	batchSpec->isOrdered = isOrdered;
+	batchSpec->deletionSequence = deleteDocs;
 
 	return batchSpec;
 }
@@ -340,6 +370,35 @@ BuildDeletionSpecList(bson_iter_t *deleteArrayIter)
 	}
 
 	return deletions;
+}
+
+
+/*
+ * Given a lazily initialized BatchDeletionSpec processes it into the
+ * List of deleteSpecs needed for processing the deletes.
+ */
+static void
+PostProcessDeleteBatchSpec(BatchDeletionSpec *spec)
+{
+	if (spec->deletionValue.value_type != BSON_TYPE_EOD)
+	{
+		bson_iter_t deletionIter;
+		BsonValueInitIterator(&spec->deletionValue, &deletionIter);
+		spec->deletionsProcessed = BuildDeletionSpecList(&deletionIter);
+	}
+	else
+	{
+		spec->deletionsProcessed = BuildDeletionSpecListFromSequence(
+			spec->deletionSequence);
+	}
+
+	int deletionCount = list_length(spec->deletionsProcessed);
+	if (deletionCount == 0 || deletionCount > MaxWriteBatchSize)
+	{
+		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+						errmsg("Write batch sizes must be between 1 and %d. "
+							   "Got %d operations.", MaxWriteBatchSize, deletionCount)));
+	}
 }
 
 
@@ -466,9 +525,11 @@ BuildDeletionSpec(bson_iter_t *deletionIter)
  */
 static void
 ProcessBatchDeletion(MongoCollection *collection, BatchDeletionSpec *batchSpec,
-					 text *transactionId, BatchDeletionResult *batchResult)
+					 bool forceInline, text *transactionId,
+					 BatchDeletionResult *batchResult)
 {
-	List *deletions = batchSpec->deletions;
+	PostProcessDeleteBatchSpec(batchSpec);
+	List *deletions = batchSpec->deletionsProcessed;
 	bool isOrdered = batchSpec->isOrdered;
 
 	/*
@@ -501,7 +562,8 @@ ProcessBatchDeletion(MongoCollection *collection, BatchDeletionSpec *batchSpec,
 
 		PG_TRY();
 		{
-			rowsDeleted = ProcessDeletion(collection, deletionSpec, transactionId);
+			rowsDeleted = ProcessDeletion(collection, deletionSpec, forceInline,
+										  transactionId);
 
 			/* Commit the inner transaction, return to outer xact context */
 			ReleaseCurrentSubTransaction();
@@ -540,13 +602,28 @@ ProcessBatchDeletion(MongoCollection *collection, BatchDeletionSpec *batchSpec,
 }
 
 
+static pgbson *
+ProcessBatchDeleteUnsharded(MongoCollection *collection, BatchDeletionSpec *batchSpec,
+							text *transactionId)
+{
+	Assert(collection->shardKey == NULL);
+
+	pgbson *deleteWorkerSpecs = SerializeDeleteWorkerSpecForUnsharded(batchSpec);
+
+	/* since this is unsharded, the keyHash is just the collection id. */
+	int shardKeyHash = collection->collectionId;
+	return CallDeleteWorker(collection, deleteWorkerSpecs,
+							shardKeyHash, transactionId, batchSpec->deletionSequence);
+}
+
+
 /*
  * ProcessDeletion processes a single deletion operation defined in
  * deletionSpec on the given collection.
  */
 static uint64
 ProcessDeletion(MongoCollection *collection, DeletionSpec *deletionSpec,
-				text *transactionId)
+				bool forceInlineWrites, text *transactionId)
 {
 	if (deletionSpec->deleteOneParams.returnDeletedDocument)
 	{
@@ -596,7 +673,7 @@ ProcessDeletion(MongoCollection *collection, DeletionSpec *deletionSpec,
 			 * data.
 			 */
 			CallDeleteOne(collection, &deletionSpec->deleteOneParams, shardKeyHash,
-						  transactionId, &deleteOneResult);
+						  transactionId, forceInlineWrites, &deleteOneResult);
 		}
 		else if (hasObjectIdFilter)
 		{
@@ -605,7 +682,8 @@ ProcessDeletion(MongoCollection *collection, DeletionSpec *deletionSpec,
 			 * a sharded collection without specifying a a shard key filter.
 			 */
 			DeleteOneObjectId(collection, &deletionSpec->deleteOneParams,
-							  &idFromQueryDocument, transactionId, &deleteOneResult);
+							  &idFromQueryDocument, forceInlineWrites, transactionId,
+							  &deleteOneResult);
 		}
 		else
 		{
@@ -703,14 +781,16 @@ DeleteAllMatchingDocuments(MongoCollection *collection, pgbson *queryDoc,
 
 void
 CallDeleteOne(MongoCollection *collection, DeleteOneParams *deleteOneParams,
-			  int64 shardKeyHash, text *transactionId, DeleteOneResult *result)
+			  int64 shardKeyHash, text *transactionId, bool forceInlineWrites,
+			  DeleteOneResult *result)
 {
 	/* In single node scenarios (like HelioDB where we can inline the write, call the internal)
 	 * delete functions directly.
 	 * Alternatively in a distributed scenario, if the shard is colocated on the current node anyway,
 	 * then we don't need to go remote - we can simply call the delete internal functions directly.
 	 */
-	if (DefaultInlineWriteOperations || collection->shardTableName[0] != '\0')
+	if (DefaultInlineWriteOperations || collection->shardTableName[0] != '\0' ||
+		forceInlineWrites)
 	{
 		DeleteOneInternalCore(collection->collectionId, shardKeyHash, deleteOneParams,
 							  transactionId, result);
@@ -721,17 +801,21 @@ CallDeleteOne(MongoCollection *collection, DeleteOneParams *deleteOneParams,
 		 * If the cluster supports it, and we need to go remote, call the update worker
 		 * function with the appropriate spec args.
 		 */
-		CallDeleteWorkerForDeleteOne(collection, deleteOneParams, shardKeyHash,
-									 transactionId, result);
+		pgbsonsequence *docSequence = NULL;
+		pgbson *workerResult = CallDeleteWorker(collection, SerializeDeleteOneParams(
+													deleteOneParams),
+												shardKeyHash, transactionId, docSequence);
+		DeserializeWorkerDeleteResultForDeleteOne(workerResult, result);
 	}
 }
 
 
-static void
-CallDeleteWorkerForDeleteOne(MongoCollection *collection,
-							 DeleteOneParams *deleteOneParams,
-							 int64 shardKeyHash, text *transactionId,
-							 DeleteOneResult *result)
+static pgbson *
+CallDeleteWorker(MongoCollection *collection,
+				 pgbson *serializedDeleteSpec,
+				 int64 shardKeyHash,
+				 text *transactionId,
+				 pgbsonsequence *sequence)
 {
 	int argCount = 6;
 	Datum argValues[6];
@@ -753,7 +837,13 @@ CallDeleteWorkerForDeleteOne(MongoCollection *collection,
 	/* p_shard_oid */
 	argValues[2] = ObjectIdGetDatum(InvalidOid);
 
-	argValues[3] = PointerGetDatum(SerializeDeleteOneParams(deleteOneParams));
+	argValues[3] = PointerGetDatum(serializedDeleteSpec);
+
+	if (sequence != NULL)
+	{
+		argValues[4] = PointerGetDatum(sequence);
+		argNulls[4] = ' ';
+	}
 
 	if (transactionId != NULL)
 	{
@@ -780,7 +870,7 @@ CallDeleteWorkerForDeleteOne(MongoCollection *collection,
 	}
 	pgbson *resultPgbson = (pgbson *) DatumGetPointer(resultDatum[0]);
 
-	DeserializeWorkerDeleteResult(resultPgbson, result);
+	return resultPgbson;
 }
 
 
@@ -940,18 +1030,54 @@ command_delete_worker(PG_FUNCTION_ARGS)
 						errhint("Explicit shardOid must be set - this is a server bug")));
 	}
 
+	pgbsonsequence *specDocuments = PG_GETARG_MAYBE_NULL_PGBSON_SEQUENCE(4);
 	text *transactionId = PG_ARGISNULL(5) ? NULL : PG_GETARG_TEXT_PP(5);
 
-	DeleteOneParams deleteOneParams = { 0 };
-	DeserializeDeleteWorkerSpec(deleteInternalSpec, &deleteOneParams);
+	pgbsonelement commandElement;
+	PgbsonToSinglePgbsonElement(deleteInternalSpec, &commandElement);
 
-	DeleteOneResult result;
-	memset(&result, 0, sizeof(result));
+	pgbson *serializedResult;
+	if (strcmp(commandElement.path, "deleteOne") == 0)
+	{
+		DeleteOneParams deleteOneParams = { 0 };
+		DeserializeDeleteWorkerSpecForDeleteOne(&commandElement.bsonValue,
+												&deleteOneParams);
 
-	DeleteOneInternalCore(collectionId, shardKeyHash, &deleteOneParams, transactionId,
-						  &result);
+		DeleteOneResult result;
+		memset(&result, 0, sizeof(result));
 
-	pgbson *serializedResult = SerializeDeleteOneResult(&result);
+		DeleteOneInternalCore(collectionId, shardKeyHash, &deleteOneParams, transactionId,
+							  &result);
+
+		serializedResult = SerializeDeleteOneResult(&result);
+	}
+	else if (strcmp(commandElement.path, "deleteUnsharded") == 0)
+	{
+		BatchDeletionSpec batchDeletionSpec = { 0 };
+		BatchDeletionResult result = { 0 };
+
+		DeserializeDeleteWorkerSpecForUnsharded(&commandElement.bsonValue,
+												&batchDeletionSpec);
+		batchDeletionSpec.deletionSequence = specDocuments;
+
+		MongoCollection mongoCollection = {
+			.collectionId = collectionId, .shardKey = NULL
+		};
+		snprintf(mongoCollection.tableName, NAMEDATALEN, MONGO_DATA_TABLE_NAME_FORMAT,
+				 collectionId);
+
+		bool forceInline = true;
+		ProcessBatchDeletion(&mongoCollection, &batchDeletionSpec, forceInline,
+							 transactionId, &result);
+		serializedResult = BuildResponseMessage(&result);
+	}
+	else
+	{
+		ereport(ERROR, (errcode(MongoInternalError),
+						errmsg(
+							"Delete worker only supports deleteOne or deleteUnsharded call")));
+	}
+
 	PG_RETURN_POINTER(serializedResult);
 }
 
@@ -1167,19 +1293,11 @@ SerializeDeleteOneParams(const DeleteOneParams *deleteParams)
 
 
 static void
-DeserializeDeleteWorkerSpec(pgbson *workerSpec, DeleteOneParams *deleteOneParams)
+DeserializeDeleteWorkerSpecForDeleteOne(const bson_value_t *workerSpecValue,
+										DeleteOneParams *deleteOneParams)
 {
-	pgbsonelement commandElement;
-	PgbsonToSinglePgbsonElement(workerSpec, &commandElement);
-
-	if (strcmp(commandElement.path, "deleteOne") != 0)
-	{
-		ereport(ERROR, (errcode(MongoInternalError),
-						errmsg("Delete worker only supports deleteOne call")));
-	}
-
 	bson_iter_t commandIter;
-	BsonValueInitIterator(&commandElement.bsonValue, &commandIter);
+	BsonValueInitIterator(workerSpecValue, &commandIter);
 
 	while (bson_iter_next(&commandIter))
 	{
@@ -1208,7 +1326,7 @@ DeserializeDeleteWorkerSpec(pgbson *workerSpec, DeleteOneParams *deleteOneParams
 
 
 static void
-DeserializeWorkerDeleteResult(pgbson *resultBson, DeleteOneResult *result)
+DeserializeWorkerDeleteResultForDeleteOne(pgbson *resultBson, DeleteOneResult *result)
 {
 	bson_iter_t deleteResultIter;
 	PgbsonInitIterator(resultBson, &deleteResultIter);
@@ -1257,6 +1375,54 @@ SerializeDeleteOneResult(DeleteOneResult *result)
 }
 
 
+static pgbson *
+SerializeDeleteWorkerSpecForUnsharded(BatchDeletionSpec *batchSpec)
+{
+	pgbson_writer topWriter;
+	pgbson_writer writer;
+	PgbsonWriterInit(&topWriter);
+	PgbsonWriterStartDocument(&topWriter, "deleteUnsharded", 15, &writer);
+	PgbsonWriterAppendUtf8(&writer, "collectionName", 14, batchSpec->collectionName);
+
+	if (batchSpec->deletionValue.value_type != BSON_TYPE_EOD)
+	{
+		PgbsonWriterAppendValue(&writer, "deletionValue", 13, &batchSpec->deletionValue);
+	}
+
+	PgbsonWriterAppendBool(&writer, "ordered", 7, batchSpec->isOrdered);
+
+	PgbsonWriterEndDocument(&topWriter, &writer);
+	return PgbsonWriterGetPgbson(&topWriter);
+}
+
+
+static void
+DeserializeDeleteWorkerSpecForUnsharded(const bson_value_t *value,
+										BatchDeletionSpec *batchDeletionSpec)
+{
+	bson_iter_t deleteResultIter;
+	BsonValueInitIterator(value, &deleteResultIter);
+
+	while (bson_iter_next(&deleteResultIter))
+	{
+		const char *key = bson_iter_key(&deleteResultIter);
+		if (strcmp(key, "collectionName") == 0)
+		{
+			batchDeletionSpec->collectionName = bson_iter_dup_utf8(&deleteResultIter,
+																   NULL);
+		}
+		else if (strcmp(key, "deletionValue") == 0)
+		{
+			batchDeletionSpec->deletionValue = *bson_iter_value(&deleteResultIter);
+		}
+		else if (strcmp(key, "ordered") == 0)
+		{
+			batchDeletionSpec->isOrdered = bson_iter_bool(&deleteResultIter);
+		}
+	}
+}
+
+
 /*
  * DeleteOneObjectId handles the case where we are deleting a single document
  * by _id from a collection that is sharded on some other key. In this case,
@@ -1270,7 +1436,8 @@ SerializeDeleteOneResult(DeleteOneResult *result)
  */
 static void
 DeleteOneObjectId(MongoCollection *collection, DeleteOneParams *deleteOneParams,
-				  bson_value_t *objectId, text *transactionId, DeleteOneResult *result)
+				  bson_value_t *objectId, bool forceInlineWrites, text *transactionId,
+				  DeleteOneResult *result)
 {
 	const int maxTries = 5;
 
@@ -1301,7 +1468,8 @@ DeleteOneObjectId(MongoCollection *collection, DeleteOneParams *deleteOneParams,
 			return;
 		}
 
-		CallDeleteOne(collection, deleteOneParams, shardKeyValue, transactionId, result);
+		CallDeleteOne(collection, deleteOneParams, shardKeyValue, transactionId,
+					  forceInlineWrites, result);
 
 		if (result->isRowDeleted)
 		{
@@ -1342,10 +1510,11 @@ ValidateQueryDocuments(BatchDeletionSpec *batchSpec)
 	 * longjmp in PG_CATCH, so declare writeErrorIdx as volatile as well.
 	 */
 	for (volatile int writeErrorIdx = 0;
-		 writeErrorIdx < list_length(batchSpec->deletions);
+		 writeErrorIdx < list_length(batchSpec->deletionsProcessed);
 		 writeErrorIdx++)
 	{
-		DeletionSpec *deletionSpec = list_nth(batchSpec->deletions, writeErrorIdx);
+		DeletionSpec *deletionSpec = list_nth(batchSpec->deletionsProcessed,
+											  writeErrorIdx);
 
 		/* declared volatile because of the longjmp in PG_CATCH */
 		volatile bool isSuccess = false;
