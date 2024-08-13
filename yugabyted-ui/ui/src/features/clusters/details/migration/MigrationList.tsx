@@ -434,7 +434,7 @@ export const MigrationList: FC<MigrationListProps> = ({
   );
 
   if (!migrationDataProp?.length && !hasError) {
-    return <MigrationsGetStarted />;
+    return <MigrationsGetStarted onRefresh={onRefresh} />;
   }
 
   const completedCount = 1;
