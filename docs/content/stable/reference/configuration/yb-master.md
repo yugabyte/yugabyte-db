@@ -901,7 +901,7 @@ Default: `true`
 
 ##### --max_prometheus_metric_entries
 
-Introduced in version 2.21.1.0, this flag limits the number of Prometheus metric entries returned per scrape. If adding a metric with all its entities exceeds this limit, all entries from that metric are excluded. This could result in fewer entries than the set limit.
+This flag limits the number of Prometheus metric entries returned per scrape. If adding a metric with all its entities exceeds this limit, all entries from that metric are excluded. This could result in fewer entries than the set limit.
 
 To override this flag on a per-scrape basis, you can adjust the URL parameter `max_metric_entries`.
 
