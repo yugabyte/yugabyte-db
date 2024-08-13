@@ -50,6 +50,7 @@
 #include "utils/hashset_utils.h"
 #include "aggregation/bson_tree.h"
 #include "aggregation/bson_tree_write.h"
+#include "optimizer/optimizer.h"
 
 #include "aggregation/bson_aggregation_pipeline_private.h"
 
@@ -1003,25 +1004,15 @@ ParseMergeStage(const bson_value_t *existingValue, const char *currentNameSpace,
  *         bson_dollar_merge_generate_object_id(collection.document) AS generated_object_id
  * FROM   mongo_data.documents_1 collection
  * WHERE collection.shard_key_value = '1'::bigint
+ *
+ * TODO : if source and target collection are same we need to add actual shard_key_value column to the query but need to be careful when there are nested stages
+ *        this optimization will help when both collection are sharded so we should do when we support target sharded collection.
  */
 static void
 RearrangeTargetListForMerge(Query *query, MongoCollection *targetCollection,
 							bool isSourceAndTargetAreSame,
 							const bson_value_t *onValues)
 {
-	if (isSourceAndTargetAreSame)
-	{
-		/* TODO :
-		 * 1. if source and target collection are same we need to add actual shard_key_value column to the query but need to be careful when there are nested stages
-		 * 2. Remove this check when all clusters are on citus v12.1.5
-		 */
-		ereport(ERROR, (errcode(MongoCommandNotSupported),
-						errmsg(
-							"The source and target tables cannot be the same, as this functionality is not yet supported."),
-						errhint(
-							"The source and target tables cannot be the same, as this functionality is not yet supported.")));
-	}
-
 	int resNumber = 0;
 
 	/* Let's create a new target list */
@@ -1531,6 +1522,16 @@ InitHashTableFromStringArray(const bson_value_t *inputKeyArray, int arraySize)
 static inline bool
 ValidatePreviousStagesOfDollarMerge(Query *query)
 {
+	/* An example of this could be when the target collection for the $lookup operation is missing, and the empty_data_table function is invoked. */
+	if (contain_mutable_functions((Node *) query))
+	{
+		ereport(ERROR, (errcode(MongoCommandNotSupported),
+						errmsg(
+							"The `$merge` stage is not supported with this command. If your query references any non-existent collections, please create them and try again."),
+						errhint(
+							"MUTABLE functions are not yet in MERGE command by citus")));
+	}
+
 	return query_tree_walker(query, MergeQueryCTEWalker, NULL, 0);
 }
 
