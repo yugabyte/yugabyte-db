@@ -32,7 +32,7 @@ This section covers deployment for a single region or data center in a multi-zon
 
 ## Run YB-Master servers with command line flags
 
-Run the yb-master server on each of the three nodes as shown below. Note how multiple directories can be provided to the [`--fs_data_dirs`](../../../reference/configuration/yb-master/#fs-data-dirs) flag. Replace the [`--rpc_bind_addresses`](../../../reference/configuration/yb-master/#rpc-bind-addresses) value with the private IP address of the host as well as the set the `placement_cloud`,`placement_region` and `placement_zone` values appropriately. For single zone deployment, use the same value for the `placement_zone` flag.
+Run the yb-master server on each of the three nodes as follows. Note how multiple directories can be provided to the [`--fs_data_dirs`](../../../reference/configuration/yb-master/#fs-data-dirs) flag. Replace the [`--rpc_bind_addresses`](../../../reference/configuration/yb-master/#rpc-bind-addresses) value with the private IP address of the host as well as the set the `placement_cloud`,`placement_region` and `placement_zone` values appropriately. For single zone deployment, use the same value for the `placement_zone` flag.
 
 ```sh
 $ ./bin/yb-master \
