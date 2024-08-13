@@ -1046,6 +1046,16 @@ Status PgApiImpl::AlterTableSetTableId(PgStatement *handle, const PgObjectId &ta
   return pg_stmt->SetTableId(table_id);
 }
 
+Status PgApiImpl::AlterTableSetSchema(PgStatement *handle, const char *schema_name) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_ALTER_TABLE)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+
+  PgAlterTable *pg_stmt = down_cast<PgAlterTable*>(handle);
+  return pg_stmt->SetSchema(schema_name);
+}
+
 Status PgApiImpl::ExecAlterTable(PgStatement *handle) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_ALTER_TABLE)) {
     // Invalid handle.

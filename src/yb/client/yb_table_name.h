@@ -38,8 +38,8 @@ DECLARE_bool(yb_system_namespace_readonly);
 // The class is used to store a table name, which can include namespace name as a suffix.
 class YBTableName {
  public:
-  // Empty (undefined) name.
-  YBTableName() : namespace_type_(YQL_DATABASE_UNKNOWN) {}
+  // Empty (undefined) name. Only the table type can be known.
+  explicit YBTableName(YQLDatabase db_type = YQL_DATABASE_UNKNOWN) : namespace_type_(db_type) {}
 
   // Complex table name: 'namespace_name.table_name'.
   // The namespace must not be empty.

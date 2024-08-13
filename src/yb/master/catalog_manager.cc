@@ -7209,7 +7209,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   RETURN_NOT_OK(SchemaFromPB(l->pb.schema(), &previous_schema));
   string previous_table_name = l->pb.name();
   ColumnId next_col_id = ColumnId(l->pb.next_column_id());
-  if (req->alter_schema_steps_size() || req->has_alter_properties()) {
+  if (req->alter_schema_steps_size() || req->has_alter_properties() || req->has_pgschema_name()) {
     TRACE("Apply alter schema");
     Status s = ApplyAlterSteps(
         master_->clock(), table->id(), l->pb, req, &new_schema, &next_col_id, &ddl_log_entries);
@@ -7224,6 +7224,10 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
 
   if (req->has_pgschema_name()) {
     new_schema.SetSchemaName(req->pgschema_name());
+    // TODO (Oleg): It can be optimized: we don't need to call SendAlterTableRequest()
+    //              if only the 'pgschema_name' is changed in the schema, because it's only
+    //              the master-level change - no need to notify TServers in this case.
+    //              Exception: TabletStatusPB::pgschema_name.
     has_changes = true;
   }
 

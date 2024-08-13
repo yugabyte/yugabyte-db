@@ -1059,6 +1059,10 @@ YBCStatus YBCPgAlterTableSetTableId(
   return ToYBCStatus(pgapi->AlterTableSetTableId(handle, table_id));
 }
 
+YBCStatus YBCPgAlterTableSetSchema(YBCPgStatement handle, const char *schema_name) {
+  return ToYBCStatus(pgapi->AlterTableSetSchema(handle, schema_name));
+}
+
 YBCStatus YBCPgExecAlterTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecAlterTable(handle));
 }

@@ -42,9 +42,13 @@ class YBTableAlterer {
  public:
   ~YBTableAlterer();
 
-  // Renames the table.
-  // If there is no new namespace (only the new table name provided), that means that the table
-  // namespace must not be changed (changing the table name only in the same namespace).
+  // Renames the table. Options:
+  // (1) Provided the new namespace + the new table name - changing the table name and
+  //     moving it to the new namespace (keeping the PG schema name unchanged).
+  // (2) Provided only the new table name - changing the table name only in the same namespace
+  //     (keeping the namespace & the PG schema name unchanged).
+  // (3) Provided only the new PG schema name - changing the table schema only
+  //     (keeping the namespace & the table name unchanged).
   YBTableAlterer* RenameTo(const YBTableName& new_name);
 
   // Adds a new column to the table.

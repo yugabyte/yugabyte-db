@@ -634,7 +634,6 @@ ALTER TABLE public.test
 
 ALTER TABLE public.test2
 	SET SCHEMA test;
-CREATE TABLE test.test2 (LIKE public.test2 INCLUDING ALL); -- YB: workaround for above failure
 
 ALTER TABLE test.test2
 	ADD COLUMN description TEXT;
@@ -642,7 +641,7 @@ ALTER TABLE test.test2
 ALTER TABLE test.test2
 	DROP COLUMN description;
 
-DROP TABLE test.test2; -- YB: output has "test2_pkey" because of workaround above
+DROP TABLE test.test2;
 
 --
 -- Test multiple statements with one semi-colon
@@ -878,7 +877,6 @@ CREATE INDEX h_idx ON h (x);
 DROP INDEX h_idx;
 DROP TABLE h;
 
-DROP TABLE test2; -- YB: followup on above workaround for failed "ALTER TABLE SET SCHEMA" (do it now to avoid shifting upstream's audit numbers)
 --
 -- Test rows retrived or affected by statements
 \connect - :current_user
@@ -1319,7 +1317,6 @@ ALTER TABLE public.test
 
 ALTER TABLE public.test2
 	SET SCHEMA test;
-CREATE TABLE test.test2 (LIKE public.test2 INCLUDING ALL); -- YB: workaround for above failure
 
 ALTER TABLE test.test2
 	ADD COLUMN description TEXT;
