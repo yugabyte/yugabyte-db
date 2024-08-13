@@ -12,11 +12,11 @@ menu:
 type: docs
 ---
 
-Use the **Slow Queries** dashboard to analyze statistics of past queries on your YugabyteDB universes. You can use this data for the following:
+Use the **Slow Queries** dashboard to analyze statistics of past queries on your YugabyteDB universes. You can use this data to do the following:
 
-- Visually identifying slower running database operations.
-- Evaluating query execution times over time.
-- Discovering potential queries for memory optimization.
+- Visually identify slower running database operations.
+- Evaluate query execution times over time.
+- Discover potential queries for memory optimization.
 
 All user roles can use the **Slow Queries** dashboard.
 
@@ -42,12 +42,12 @@ The following table describes the **Slow Queries** column values.
 
 | Column | Description |
 | :----- | :---------- |
-| Query | The query command.<br>For example, `select * from my_keyspace.my_table` |
+| Query | The query command.<br>For example, `select * from my_keyspace.my_table`. |
 | Database | The YSQL database used by the query. |
 | User | The name of role used to access YSQL database. |
 | Count/ Total count | The total number of times this type of query has executed. |
 | Total time | The total duration (in milliseconds) this query has taken. |
-| Rows | The total number of database table rows returned across all iterations of this query |
+| Rows | The total number of database table rows returned across all iterations of this query. |
 | Avg Exec Time | Average or mean execution time (in milliseconds) for this query. |
 | Min Exec Time | Minimum execution time (in milliseconds) for this query. |
 | Max Exec Time | Maximum execution time (in milliseconds) for this query. |
@@ -67,7 +67,7 @@ You can filter the list of queries by entering terms in the **Filter by query te
 
 Use filtering for comparisons on numbers columns (`Avg Time`) using `>`, `>=`, `<`, and `<=` to search for values that are greater than, greater than or equal to, less than, and less than or equal to another value. For example, `Avg Time: < 30`.
 
-You can also use the range syntax `n..m` to search for values within a range, where the first number `n` is the lowest value and the second number `m` is the highest value. The range syntax supports tokens like the following: `n..*` which is equivalent to `>= n`. Or `*..n` which is the same as `<= n`.
+You can also use the range syntax `n..m` to search for values in a range, where the first number `n` is the lowest value and the second number `m` is the highest value. The range syntax supports tokens like the following: `n..*` which is equivalent to `>= n`. Or `*..n` which is the same as `<= n`.
 
 ### View query details
 

@@ -43,7 +43,7 @@ Click **Edit Options** to select the columns to display. The following table des
 | Avg time        | The average execution time (in milliseconds) for this query. |
 | Count           | The total number of times this type of query has executed.   |
 | Total time      | The total duration (in milliseconds) of all iterations this query has taken. |
-| Rows            | The total number of database table rows returned across all iterations of this query |
+| Rows            | The total number of database table rows returned across all iterations of this query. |
 | Min time        | The minimum execution time (in milliseconds) for this query. |
 | Max time        | The maximum execution time (in milliseconds) for this query. |
 | Latency distribution | Histogram showing the latency distribution of the query. To view a full chart and display P99 percentiles, view the [Query Details](#query-details). |
