@@ -32,7 +32,7 @@ This section covers deployment for a single region or data center in a multi-zon
 
 ## Run YB-TServer with command line flags
 
-Run the `yb-tserver` server on each of the six nodes as follows. Note that all of the master addresses have to be provided using the `--tserver_master_addrs` flag. Replace the [`--rpc_bind_addresses`](../../../reference/configuration/yb-tserver/#rpc-bind-addresses) value with the private IP address of the host, and set the `placement_cloud`, `placement_region`, and `placement_zone` values appropriately. For single zone deployment, use the same value for the `--placement_zone` flag.
+Run the yb-tserver server on each of the six nodes as follows. Note that all of the master addresses have to be provided using the `--tserver_master_addrs` flag. Replace the [`--rpc_bind_addresses`](../../../reference/configuration/yb-tserver/#rpc-bind-addresses) value with the private IP address of the host, and set the `placement_cloud`, `placement_region`, and `placement_zone` values appropriately. For single zone deployment, use the same value for the `--placement_zone` flag.
 
 ```sh
 $ ./bin/yb-tserver \
@@ -58,7 +58,7 @@ The number of comma-separated values in the [`--tserver_master_addrs`](../../../
 
 ## Run YB-TServer with configuration file
 
-Alternatively, you can also create a `tserver.conf` file with the following flags and then run the `yb-tserver` with the [`--flagfile`](../../../reference/configuration/yb-tserver/#flagfile) flag. For each YB-TServer server, replace the RPC bind address flags with the private IP address of the host running the YB-TServer server.
+Alternatively, you can also create a `tserver.conf` file with the following flags and then run the yb-tserver with the [`--flagfile`](../../../reference/configuration/yb-tserver/#flagfile) flag. For each YB-TServer server, replace the RPC bind address flags with the private IP address of the host running the YB-TServer server.
 
 ```sh
 --tserver_master_addrs=172.151.17.130:7100,172.151.17.220:7100,172.151.17.140:7100
