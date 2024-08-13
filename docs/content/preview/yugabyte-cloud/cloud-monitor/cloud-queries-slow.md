@@ -2,8 +2,8 @@
 title: View slow queries in YugabyteDB Aeon
 headerTitle: View slow queries
 linkTitle: Slow queries
-description: View slow running queries that have run on your YugabyteDB Aeon cluster.
-headcontent: View slow running queries that have run on your cluster
+description: View slow running YSQL queries that have run on your YugabyteDB Aeon cluster.
+headcontent: Identify candidates for YSQL query optimization
 menu:
   preview_yugabyte-cloud:
     identifier: cloud-queries-slow
@@ -23,7 +23,7 @@ Use this data to:
 - Discover potential queries for [tuning](../../../explore/query-1-performance/).
 - View latency percentile metrics, including P99, P95, P90, P50, and P25 percentiles.
 
-Slow queries are not available for YCQL.
+Slow queries are only available for YSQL.
 
 ## View Slow Queries
 
