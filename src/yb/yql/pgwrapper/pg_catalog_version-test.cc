@@ -1400,5 +1400,42 @@ TEST_F(PgCatalogVersionTest, NonBreakingDDLMode) {
   ASSERT_OK(conn1.Execute("ABORT"));
 }
 
+TEST_F(PgCatalogVersionTest, SimulateRollingUpgrade) {
+  // Manually switch back to non-per-db catalog version mode.
+  RestartClusterWithoutDBCatalogVersionMode();
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(PrepareDBCatalogVersion(&conn, false));
+
+  // Test setup.
+  ASSERT_OK(conn.Execute("CREATE USER u1"));
+  ASSERT_OK(conn.Execute("CREATE TABLE t(id int)"));
+  ASSERT_OK(conn.Execute("GRANT ALL ON t TO public"));
+
+  // Make a connection to the first node.
+  pg_ts = cluster_->tablet_server(0);
+  auto conn1 = ASSERT_RESULT(Connect());
+
+  // Make a connection to the second node as user u1.
+  pg_ts = cluster_->tablet_server(1);
+  auto conn2 = ASSERT_RESULT(ConnectToDBAsUser("yugabyte", "u1"));
+
+  // On the second connection, u1 should have permission to access table t
+  ASSERT_OK(conn2.Fetch("SELECT * FROM t"));
+
+  // Simulate rolling upgrade where masters are upgraded to a new version which has
+  // --ysql_enable_db_catalog_version_mode enabled.
+  ASSERT_OK(cluster_->SetFlagOnMasters(
+      "ysql_enable_db_catalog_version_mode", "true"));
+  // Execute a DDL statement on the first connection to bumps up the catalog version
+  ASSERT_OK(conn1.Execute("REVOKE ALL ON t FROM public"));
+  WaitForCatalogVersionToPropagate();
+
+  // On conn2 we should see permission denied error because of the previous REVOKE.
+  auto status = ResultToStatus(conn2.Fetch("SELECT * FROM t"));
+  ASSERT_TRUE(status.IsNetworkError()) << status;
+  const string msg = "permission denied for table t";
+  ASSERT_STR_CONTAINS(status.ToString(), msg);
+}
+
 } // namespace pgwrapper
 } // namespace yb
