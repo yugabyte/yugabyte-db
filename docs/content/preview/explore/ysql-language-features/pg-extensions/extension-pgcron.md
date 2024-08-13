@@ -67,7 +67,7 @@ For more information on how to schedule jobs, refer to the [pg_cron documentatio
 
 ## Examples
 
-The following examples decribe various ways `pg_cron` can be used to automate and improve database management tasks. It's a versatile tool that can help maintain database performance, consistency, and reliability through scheduled jobs.
+The following examples decribe various ways `pg_cron` can be used to automate and improve database management tasks. The tool can help maintain database performance, consistency, and reliability through scheduled jobs.
 
 ### Monitor and identify
 
@@ -139,6 +139,8 @@ $$);
 ### Data synchronization between tables
 
 You can synchronize data between tables ensuring consistency across different parts of the database.
+
+This example schedules a job to synchronize data between `source_table` and `target_table` every 15 minutes.
 
 ```sql
 SELECT cron.schedule('sync_tables', '*/15 * * * *', $$
