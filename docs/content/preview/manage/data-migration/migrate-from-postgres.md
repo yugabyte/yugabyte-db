@@ -296,6 +296,10 @@ For more information, see [Verify migration](../verify-migration-ysql/).
 
 Regularly monitor the target database to ensure it is performing efficiently. This includes tracking metrics such as query execution times, CPU usage, memory consumption, and disk I/O. Pay close attention to any errors or warnings that arise, as they can indicate potential issues with the database configuration, queries, or underlying infrastructure.
 
+{{<lead link="../../../launch-and-manage/monitor-and-alert/metrics/">}}
+To learn more about the various useful metrics that can be monitored, see [Metrics](../../../launch-and-manage/monitor-and-alert/metrics/).
+{{</lead>}}
+
 ### Tune performance
 
 Because of the distributed nature of YugabyteDB, queries are executed quite differently from Postgres. This is because the latency across the nodes are taken into account by the query planner. Adopting the following practices will help improve the performance of your applications.
@@ -316,6 +320,10 @@ For a full list of best practices to improve performance, see [Performance tunin
 
 Establish a comprehensive backup strategy that includes full, incremental, and differential backups, depending on your system's needs. This ensures that you have multiple restore points in case of data loss or corruption.
 You should schedule backups to run at regular intervals, ideally during off-peak hours, to minimize the impact on system performance. The frequency of backups should be based on how often the data changes and the criticality of the information.
+
+{{<lead link="../../backup-restore/">}}
+To understand the various schemes of backup, see [Backup and restore](../../backup-restore/).
+{{</lead>}}
 
 ### Decommissioning
 
