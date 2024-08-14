@@ -31,6 +31,8 @@ bool ValidateTestFlag(const char* flag_name, const int32 new_val) {
   return false;
 }
 DEFINE_validator(flagstest_testflag, &ValidateTestFlag);
+DEFINE_NEW_INSTALL_VALUE(flagstest_testflag, 50);
+
 DECLARE_string(vmodule);
 
 DECLARE_string(allowed_preview_flags_csv);
@@ -306,6 +308,19 @@ TEST_F(FlagsTest, ValidateFlagValue) {
       flags_internal::SetFlagResult::SUCCESS);
   ASSERT_NOK_STR_CONTAINS(
       flags_internal::ValidateFlagValue("allowed_preview_flags_csv", ""), kPreviewFlagMissingError);
+}
+
+namespace flags_internal {
+std::optional<std::string> GetFlagNewInstallValue(const std::string& flag_name);
+}  // namespace flags_internal
+
+TEST_F(FlagsTest, NewInstallValue) {
+  auto new_install_value = flags_internal::GetFlagNewInstallValue("flagstest_testflag");
+  ASSERT_TRUE(new_install_value.has_value());
+  ASSERT_EQ(*new_install_value, "50");
+
+  new_install_value = flags_internal::GetFlagNewInstallValue("flagstest_secret_flag");
+  ASSERT_FALSE(new_install_value.has_value());
 }
 
 } // namespace yb
