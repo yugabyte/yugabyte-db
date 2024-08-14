@@ -1,4 +1,4 @@
-name: Build and Test
+name: SQL Tests
 run-name: ${{ github.event.pull_request.title || '' }}
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -71,13 +71,12 @@ jobs:
         run: |
           export CLEANUP_SETUP=1
           export INSTALL_DEPENDENCIES_ROOT=/tmp/install_setup
-          sudo mkdir -p /tmp/install_setup
-          sudo cp -r scripts/ /tmp/install_setup
-          sudo MAKE_PROGRAM=cmake /tmp/install_setup/install_setup_libbson.sh
-          sudo /tmp/install_setup/install_setup_pcre2.sh
-          sudo /tmp/install_setup/install_setup_intel_decimal_math_lib.sh
-          sudo /tmp/install_setup/install_citus_indent.sh
-        shell: bash
+          mkdir -p /tmp/install_setup
+          cp -r scripts/ /tmp/install_setup
+          sudo -n MAKE_PROGRAM=cmake /tmp/install_setup/install_setup_libbson.sh
+          sudo -n /tmp/install_setup/install_setup_pcre2.sh
+          sudo -n /tmp/install_setup/install_setup_intel_decimal_math_lib.sh
+          sudo -n /tmp/install_setup/install_citus_indent.sh
 
       - name: Clean up and Set Locale
         run: |
