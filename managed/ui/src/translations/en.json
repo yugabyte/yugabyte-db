@@ -2068,7 +2068,9 @@
         "targetVersion": "Target Version",
         "Failure": "Failed",
         "Success": "Completed",
-        "Running": "In Progress"
+        "Running": "In Progress",
+        "Abort": "Aborting",
+        "Aborted": "Aborted"
       },
       "progress": {
         "title": "Progress",

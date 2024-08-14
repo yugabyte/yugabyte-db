@@ -7,15 +7,14 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { keys } from 'lodash';
 import { DiffActions } from '../DiffActions';
 import { DiffTitleBanner, TaskDiffBanner } from '../DiffBanners';
 import { DiffCardWrapper } from '../DiffCardWrapper';
 import DiffCard, { DiffCardRef } from '../DiffCard';
 import { Task } from '../../../dtos';
 import { BaseDiff } from './BaseDiff';
-import { getDiffsInObject } from '../DiffUtils';
-import { DiffComponentProps, DiffOperation, DiffProps } from '../dtos';
+import { getGFlagOperation } from '../DiffUtils';
+import { DiffComponentProps, DiffProps, GFlagsDiffProps } from '../dtos';
 
 /**
  * Represents a component for displaying the differences the task made during the GFlag operation.
@@ -38,63 +37,51 @@ export class GFlagsDiff extends BaseDiff<DiffComponentProps, {}> {
   }
 
   getDiffComponent(): React.ReactElement {
-    const { beforeData, afterData } = this.diffProps;
+
+    const { beforeData }: { beforeData: GFlagsDiffProps } = this.diffProps as { beforeData: GFlagsDiffProps };
 
     const cards: Record<string, React.ReactElement<typeof DiffCard>[]> = {
       masterGFlags: [],
       tserverGFlags: []
     };
 
-    // Get the differences in the master and tserver GFlags.
-    const masterGFlagsDiffs = getDiffsInObject(
-      beforeData.clusters[0].userIntent.specificGFlags!.perProcessFlags.value!.MASTER!,
-      afterData.clusters[0].userIntent.specificGFlags!.perProcessFlags.value!.MASTER!
-    );
-
-    const tserverGFlagsDiffs = getDiffsInObject(
-      beforeData.clusters[0].userIntent.specificGFlags!.perProcessFlags.value!.TSERVER!,
-      afterData.clusters[0].userIntent.specificGFlags!.perProcessFlags.value!.TSERVER!
-    );
-
     // Create the diff cards for the master and tserver GFlags.
-    keys(masterGFlagsDiffs).forEach((key) => {
-      masterGFlagsDiffs[key].forEach((diff: DiffProps) => {
-        cards.masterGFlags.push(
-          <DiffCard
-            ref={(ref) => this.cardRefs?.push({ current: ref })}
-            attribute={{
-              title: diff.attribute ?? ''
-            }}
-            beforeValue={{
-              title: (diff.beforeData as unknown) as string
-            }}
-            afterValue={{
-              title: (diff.afterData as unknown) as string
-            }}
-            operation={diff.operation as DiffOperation}
-          />
-        );
-      });
+    beforeData?.gflags?.master?.forEach((diff) => {
+      cards.masterGFlags.push(
+        <DiffCard
+          ref={(ref) => this.cardRefs?.push({ current: ref })}
+          attribute={{
+            title: diff.name ?? ''
+          }}
+          beforeValue={{
+            title: (diff.old as unknown) as string
+          }}
+          afterValue={{
+            title: (diff.new as unknown) as string
+          }}
+          operation={getGFlagOperation(diff)}
+        />
+      );
     });
 
-    keys(tserverGFlagsDiffs).forEach((key) => {
-      tserverGFlagsDiffs[key].forEach((diff: DiffProps) => {
+    beforeData?.gflags?.tserver?.forEach((diff) => {
+      // tserverGFlagsDiffs[key].forEach((diff: GFlagDiff) => {
         cards.tserverGFlags.push(
           <DiffCard
             ref={(ref) => this.cardRefs.push({ current: ref })}
             attribute={{
-              title: diff.attribute ?? ''
+              title: diff.name ?? ''
             }}
             beforeValue={{
-              title: (diff.beforeData as unknown) as string
+              title: (diff.old as unknown) as string
             }}
             afterValue={{
-              title: (diff.afterData as unknown) as string
+              title: (diff.new as unknown) as string
             }}
-            operation={diff.operation as DiffOperation}
+            operation={getGFlagOperation(diff)}
           />
         );
-      });
+      // });
     });
     return (
       <DiffCardWrapper>
