@@ -492,6 +492,20 @@ int YBCGetRandomUniformInt(int a, int b) {
   return RandomUniformInt<int>(a, b);
 }
 
+YBCWaitEventDescriptor YBCGetWaitEventDescription(size_t index) {
+  static const auto desc = ash::WaitStateInfo::GetWaitStatesDescription();
+  if (index < desc.size()) {
+    // Fill up the component bits with non-zero value so that when YBCGetWaitEventClass
+    // is called later from yb_wait_event_desc, it doesn't report YSQLQuery as the class
+    // for most cases. It's fine because we don't use the component bits here for
+    // anything else.
+    uint32_t code = (((1 << YB_ASH_COMPONENT_BITS) - 1) << YB_ASH_COMPONENT_POSITION) |
+        static_cast<uint32_t>(desc[index].code);
+    return { code, desc[index].description.c_str() };
+  }
+  return { 0, nullptr };
+}
+
 int YBCGetCallStackFrames(void** result, int max_depth, int skip_count) {
   return google::GetStackTrace(result, max_depth, skip_count);
 }

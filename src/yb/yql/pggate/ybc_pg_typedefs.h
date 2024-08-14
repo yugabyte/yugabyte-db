@@ -740,6 +740,11 @@ typedef struct PgAshConfig {
   char host[46];
 } YBCPgAshConfig;
 
+typedef struct WaitEventDescriptor {
+  uint32_t code;
+  const char *description;
+} YBCWaitEventDescriptor;
+
 typedef struct YBCBindColumn {
   int attr_num;
   const YBCPgTypeEntity* type_entity;

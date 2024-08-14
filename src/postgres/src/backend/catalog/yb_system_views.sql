@@ -36,6 +36,10 @@ CREATE VIEW yb_local_tablets AS
     SELECT *
     FROM yb_local_tablets();
 
+CREATE VIEW yb_wait_event_desc AS
+    SELECT *
+    FROM yb_wait_event_desc();
+
 CREATE OR REPLACE FUNCTION
   yb_is_database_colocated(check_legacy boolean DEFAULT false)
 RETURNS boolean

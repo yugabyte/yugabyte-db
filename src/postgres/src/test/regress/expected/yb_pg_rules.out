@@ -2372,6 +2372,11 @@ yb_terminated_queries| SELECT d.datname AS databasename,
     s.query_end AS query_end_time
    FROM (yb_pg_stat_get_queries(NULL::oid) s(db_oid, backend_pid, query_text, termination_reason, query_start, query_end)
      LEFT JOIN pg_database d ON ((s.db_oid = d.oid)));
+yb_wait_event_desc| SELECT yb_wait_event_desc.wait_event_class,
+    yb_wait_event_desc.wait_event_type,
+    yb_wait_event_desc.wait_event,
+    yb_wait_event_desc.wait_event_description
+   FROM yb_wait_event_desc() yb_wait_event_desc(wait_event_class, wait_event_type, wait_event, wait_event_description);
 -- YB_TODO(jason): update the output for pg15
 SELECT tablename, rulename, definition FROM pg_rules
 WHERE schemaname = 'pg_catalog'
