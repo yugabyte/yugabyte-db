@@ -931,7 +931,7 @@ Support for the following YugabyteDB data types will be enabled in future releas
 Before using the connector to monitor the changes on a YugabyteDB server, you need to ensure the following:
 
 * You have a stream ID created on the database you want to monitor the changes for. The stream can be created using the [yb-admin create_change_data_stream](../../../../admin/yb-admin#create_change_data_stream) command.
-* The table which is supposed to be monitored should have a primary key. Only tables which have a primary key can be streamed. See [limitations](../cdc-overview/#known-limitations).
+* The table which is supposed to be monitored should have a primary key. Only tables which have a primary key can be streamed.
 
 ### WAL disk space consumption
 
