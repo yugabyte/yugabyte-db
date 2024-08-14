@@ -127,6 +127,7 @@ void YBTableName::set_table_id(const std::string& table_id) {
 }
 
 void YBTableName::set_pgschema_name(const std::string& pgschema_name) {
+  DCHECK(!pgschema_name.empty());
   pgschema_name_ = pgschema_name;
 }
 

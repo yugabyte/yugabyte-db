@@ -39,7 +39,14 @@
       "endDate": "End Date",
       "dot": ".",
       "and": "and",
-      "learnMore": "Learn more"
+      "learnMore": "Learn more",
+      "clear": "Clear",
+      "duration": {
+        "seconds": "Seconds",
+        "minutes": "Minutes",
+        "hours": "Hours",
+        "days": "Days"
+      }
     },
     "imgAltText": {
       "infoIcon": "Information Icon"
@@ -74,6 +81,11 @@
       "consumer_safe_time_skew": "Consumer Safe Time Skew"
     },
     "universeActions": {
+      "lbState": {
+        "loadBalancerEnabled": "Tablet Load Balancer",
+        "loadIsBalanced": "Tablet load is balanced",
+        "loadBalanceInProgress": "Tablet load balancing in progress"
+      },
       "encryptionAtRest": {
         "title": "Manage encryption at-Rest",
         "enableEAR": "Enable encryption at-Rest for this Universe",
@@ -158,6 +170,8 @@
         "configureUpgrade": "2. Configure upgrade details",
         "rolllingUpgradeLabel": "Rolling upgrade (upgrade nodes one at a time)",
         "upgradeDelayLabel": "Upgrade delay between Nodes:",
+        "numNodesToRollingUpgrade": "Max batch size: ",
+        "rollingUpgradeMsg": "Refers to the number of nodes that can be unavailable during upgrade process across AZs. This can possibly affect the performance of the cluster till the upgrade is finished",
         "footerMsg1": "Once the upgrade is finished, you can assess Universe performance and ",
         "footerMsg2": "if any unusual behavior is detected.",
         "rollbackPrevious": "roll back to the previous version",
@@ -273,8 +287,8 @@
         "ysqlServerRpcPort": "YSQL RPC Port",
         "enhancePGCompatibility": "Enhanced Postgres Compatibility",
         "earlyAccess": "Early Access",
-        "pgSubText": "Configure YSQL for maximum Postgres compatibility by enabling<br /> early access features. <1>Learn more</1>",
-        "pgTooltip": "Access to enhanced Postgres compatible features is only available for database version 2024.2 or later. <1>Learn more</1>"
+        "pgSubText": "Configure YSQL for maximum Postgres compatibility by enabling<br /> early access features.",
+        "pgTooltip": "Access to enhanced Postgres compatible features is only available for database version 2024.2 or later."
       },
       "cloudConfig": {
         "addZoneButton": "Add Zone",
@@ -396,6 +410,8 @@
         "flagsModifiedModalBody2": "If you don't want to lose modified flags, please reload the page.",
         "flagsModifiedModalLine1": "Do you want to reload ?",
         "flagsModifiedModalLine2": "Note that current changes will be lost.",
+        "numNodesToRollingUpgrade": "Max batch size: ",
+        "rollingUpgradeMsg": "Refers to the number of nodes that can be unavailable during upgrade process across AZs. This can possibly affect the performance of the cluster till the upgrade is finished",
         "pgGroupWarning": "You can't change this flag because it was set using the Enhanced Postgres Compatibility option"
       },
       "helmOverrides": {
@@ -883,6 +899,7 @@
                 "submitButton": "Next: Select Databases",
                 "drReplica": "DR Replica Universe",
                 "drReplicaSelectionHelpText": "Make sure the DR replica has the right <drReplicaPrerequisiteDocsLink>prerequisites</drReplicaPrerequisiteDocsLink> for disaster recovery.",
+                "missingPermissionOnUniverse": "This user does not have permission to set up xCluster DR with this universe.",
                 "error": {
                   "targetUniverseRequired": "Required.",
                   "mismatchedNodeToNodeEncryption": "The source and target universe must have matching TLS enable/disable setting."
@@ -897,13 +914,26 @@
               "configureBootstrap": {
                 "instruction": "Choose the storage config to use for performing the initial copy",
                 "infoText": "Initial full copy is required when the database contains data. Performing an initial full copy requires a backup storage config as an intermediate third party storage, and is time and resource intensive. This is also referred to as bootstrapping or initial seeding.",
-                "submitButton": "Next: Confirm Alert Threshold",
+                "submitButton": "Next: Configure PITR Settings",
                 "backupStorageConfig": {
                   "label": "Backup Storage Config",
                   "tooltip": "<paragraph>Ensure that the backup storage config <bold>can be accessed from both source and target universe.</bold></paragraph><paragraph>Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions.</paragraph>"
                 },
                 "error": {
                   "backupStorageConfigRequired": "Required."
+                }
+              },
+              "configurePitr": {
+                "instruction": "Configure point-in-time recovery (PITR) settings",
+                "submitButton": "Next: Confirm Alert Threshold",
+                "retentionPeriodSeconds": {
+                  "label": "Snapshot Retention Period",
+                  "tooltip": "A longer snapshot retention period requires more disk space."
+                },
+                "error": {
+                  "pitrRetentionPeriodValueRequired": "Required.",
+                  "pitrRetentionPeriodValueMinimum": "Minimum 5 minutes.",
+                  "pitrRetentionPeriodUnitRequired": "Required."
                 }
               },
               "confirmAlert": {
@@ -959,6 +989,7 @@
               "selectTargetUniverse": {
                 "drReplica": "DR Replica Universe",
                 "nextButton": "Next: Confirm Full Copy",
+                "missingPermissionOnUniverse": "This user does not have permission to set up xCluster DR with this universe.",
                 "error": {
                   "targetUniverseRequired": "Required."
                 }
@@ -1048,7 +1079,12 @@
             "Validated": "Validated",
             "Bootstrapping": "Bootstrapping",
             "UnableToFetch": "Unable to Fetch",
-            "Dropped": "Dropped from DB"
+            "Dropped": "Dropped from DB",
+            "ExtraTableOnSource": "Extra Table On Source",
+            "ExtraTableOnTarget": "Extra Table on Target",
+            "DroppedFromSource": "Dropped From Source",
+            "DroppedFromTarget": "Dropped From Target",
+            "ReplicationError": "Replication Error"
           }
         },
         "createConfigModal": {
@@ -1068,6 +1104,7 @@
                 "tableType": "Table Type",
                 "isTransactionalConfig": "Enable transactional atomicity"
               },
+              "missingPermissionOnUniverse": "This user does not have permission to set up xCluster replication with this universe.",
               "isTransactionalConfigTooltip": "<paragraph>YBA support for transactional atomicity has the following constraints:<orderedList><listItem>The minimum YBDB version that supports transactional atomicity is 2.18.1.0-b1.</listItem><listItem>PITR must be enabled on the target universe.</listItem><listItem>Neither the source universe nor the target universe is a participant in any other xCluster configuration.</listItem></orderedList>You may find further information on this feature on our<xClusterDocLink> public docs.</xClusterDocLink></paragraph>",
               "backupStorageConfigNote": "<paragraph><bold>Note!</bold> If the tables to replicate are not empty on this source universe, ensure that the <bold> backup storage config can be accessed from both source and target universe </bold> for creating an initial full copy. Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions. In that case, refer to the <ybAdminDocsLink>documentation for creating replication using yb-admin</ybAdminDocsLink>.</paragraph>",
               "fullCopyNote": "<bold>What is a full copy?</bold><paragraph>A full copy of your source universe is created to bring the target universe to the same checkpoint before turning on async replication. First, YBAnywhere creates a backup of the source universe. Then it restores the backup to the target universe. Hence the need to ensure the backup storage config is accessible from both source &amp; target universe. If the tables selected for xcluster replication are empty on the source universe, no full copy creation is required.</paragraph>",
@@ -1145,6 +1182,7 @@
           "matchingTableNoteXCluster": "<bold>Note!</bold> To avoid creating unnecessary full copies for selected databases, ensure the corresponding databases on the target universe contain the same tables as in the source universe.",
           "tablePill": {
             "unreplicatedTableInReplicatedNamespace": "Unreplicated",
+            "droppedOnTarget": "Dropped on Target",
             "eligible": "Eligible",
             "inCurrentConfig": "In Current Config",
             "inUse": "In Use - Not Available"
@@ -1740,6 +1778,52 @@
           "includeFutureUniverse": "Include future Universes",
           "disabledOnUniverseCreatePerm": "Universe selection is not allowed for role with \"Create Universe\" permission"
         }
+      },
+      "groups": {
+        "list": {
+          "rowsCount": "{{count}} Groups",
+          "createGroup": "Add Group",
+          "search": "Search Group Name",
+          "inactive": "Inactive",
+          "table": {
+            "name": "Group Name",
+            "authProvider": "Auth Provider",
+            "roles": "Roles",
+            "createdAt": "Created At",
+            "actions": "Actions",
+            "moreActions": {
+              "editGroup": "Edit Group",
+              "deleteGroup": "Delete Group"
+            }
+          },
+          "groupDisabled": "This group will become active once {{auth_provider}} is enabled."
+        },
+        "create": {
+          "title": "Add Group",
+          "editGroup": "Edit Group",
+          "authProvider": "Group Authentication Provider",
+          "groupName": "Group DN (Name)",
+          "groupNamePlaceholder": "Example:  cn = eng , ou = backend, dc = Yugabyte, dc = com",
+          "groupRolesTitle": "Group Roles",
+          "authProviderDisabled": "You need to first configure {{auth_provider}} before you can add its user groups.",
+          "configureLDAPRoleSettings": "<b>Note!</b> You need to <a>configure LDAP role settings for membership lookup</a> before adding its user groups.",
+          "groupInactive": "<b>Note!</b> This group is currently inactive.  Any change to the group will take effect once {{auth_provider}} is enabled.",
+          "createSuccess": "Group added successfully",
+          "updateSuccess": "Group updated successfully",
+          "groupNameRequired": "Group name is required"
+        },
+        "delete": {
+          "groupName": "Group Name",
+          "groupNamePlaceholder": "Enter Group Name",
+          "title": "Delete Group",
+          "errMsg": "This operation will delete the following group:<br/><bold>“{{group_name}}”</bold><br/>Enter the group name to continue.",
+          "successMsg": "\"{{group_name}}\" group was deleted successfully"
+        },
+        "empty": {
+          "addGroup": "Add Group",
+          "addGroupHelpText": "Add user groups configured in your user authentication provider.",
+          "noAuthConfigured": "<b>Note!</b> You need to <a>configure a user authentication provider</a> before you can add its user groups."
+        }
       }
     },
     "restore": {
@@ -1821,7 +1905,8 @@
         "submitLabel": "Upgrade",
         "restartAfterInSecond": "Rolling Restart Delay Between Servers (secs)",
         "successMsg": "Success. Click <0>here</0> for task details",
-        "sameVersionErrMsg": "Universe is already using the imageBundle \"{{image_name}}\". Performing OS patching using it will result in no operation."
+        "sameVersionErrMsg": "Universe is already using the imageBundle \"{{image_name}}\". Performing OS patching using it will result in no operation.",
+        "verifyImageText": "It is recommended to <b>verify that the selected image can boot successfully</b> on a standalone VM with the same instance type as the universe before initiating the upgrade."
       },
       "deleteModal": {
         "title": "Delete Linux Version",
@@ -1970,9 +2055,9 @@
           "abortConfirmMsg": "Do you really want to abort this task?",
           "retryConfirmTitle": "Retry Task ?",
           "retryConfirmMsg": "Do you really want to retry this task?",
-          "taskAbortSuccess": "Task aborted successfully",
+          "taskAbortSuccess": "Task abort started",
           "taskAbortFailed": "Task abort failed",
-          "taskRetrySuccess": "Task retry success",
+          "taskRetrySuccess": "Task retry started",
           "taskRetryFailed": "Task retry failed"
         }
       },
@@ -1984,7 +2069,12 @@
         "startTime": "Start Time",
         "endTime": "End time",
         "startVersion": "Start Version",
-        "targetVersion": "Target Version"
+        "targetVersion": "Target Version",
+        "Failure": "Failed",
+        "Success": "Completed",
+        "Running": "In Progress",
+        "Abort": "Aborting",
+        "Aborted": "Aborted"
       },
       "progress": {
         "title": "Progress",
@@ -2111,7 +2201,7 @@
       "exportConfigForLogs": "Export Configurations for Logs",
       "createExport": "Create Export Configuration",
       "emptyMsg1": "Export logs and/or metrics to your preferred 3rd party monitoring tool.",
-      "learnExport": "Learn more about <1>exporting logs</1> and <2>exporting metrics</2>.",
+      "learnExport": "Learn more about <1>exporting logs</1>.",
       "emptyExportNote": "<strong>Note:</strong> Audit logging requires additional resources and will impose performance overhead, especially for verbose audit logging. ",
       "addConfiguration": "Add Configuration",
       "deleteConfiguration": "Delete Configuration",
@@ -2136,7 +2226,7 @@
       "awsSecretKey": "AWS Secret Access Key",
       "logGroup": "Log group",
       "logStream": "Log Stream",
-      "awsRegion": "Region (Optional)",
+      "awsRegion": "Region",
       "awsRoleARN": "Role ARN (Optional)",
       "awsEndpoint": "Endpoint (Optional)",
       "gcpProject": "Project (Optional)",
@@ -2147,6 +2237,138 @@
       "deleteModalSubmitLabel": "Delete Export Configuration",
       "deleteConfirmMsg": "{{name}} export configuration got deleted succesfully",
       "deleteConfig": "Delete Configuration"
+    },
+    "userAuth": {
+      "disableModal": {
+        "title": "Disable {{type}}",
+        "content": "<b>Note! </b>By disabling {{type}} users won't be able to login with your current authentication provider. Are you sure?"
+      },
+      "OIDC": {
+        "title": "OIDC Configuration",
+        "oidcEnabled": "OIDC Enabled",
+        "oidcDisabled": "OIDC Disabled",
+        "clientID": "Client ID",
+        "clientSecret": "Client Secret",
+        "airGapped": "Airgapped",
+        "open": "Connected to the Internet",
+        "yugabyteConnectionMode": "YugabyteDB Anywhere is",
+        "discoveryURL": "Discovery URL",
+        "scope": "Scope",
+        "emailAttribute": "Email Attribute",
+        "refreshTokenURL": "Refresh Token URL",
+        "displayJWTToken": "Display JWT token on login",
+        "oidcProviderConfig": "Add OIDC Provider configuration ",
+        "roles": {
+          "title": "Role Settings",
+          "userRoleSettings": "User Role Settings",
+          "userDefaultRole": "User Default Role",
+          "connectOnly": "Connect Only",
+          "readOnly": "Read Only",
+          "alertText": "Assign roles to groups under <a>Groups tab</a>."
+        },
+        "messages": {
+          "oidcEnabled": "OIDC authentication is enabled",
+          "oidcDisabled": "OIDC authentication is disabled",
+          "oidcSaveFailed": "Failed to update OIDC configuration: {{key}}`",
+          "oidcSaveSuccess": "OIDC configuration updated successfully",
+          "discoveryURLRequired": "Discovery URL is required",
+          "clientIDRequired": "Client ID is required",
+          "clientSecretRequired": "Client Secret is required"
+        },
+        "OIDCMetadataModal": {
+          "title": "Add OIDC Provider Configuration",
+          "helpText": "Paste the content of your identity <b>provider's OIDC configuration document</b> (in JSON format) into the field below.<br/><br/>The document contains key-value pairs with details about the OIDC provider's configuration, including all necessary endpoints and public key location information. <a>Learn More</a>"
+        },
+        "infos": {
+          "oidcEnabled": "Enable or Disable OIDC Authentication",
+          "clientID": "The unique identifier of your manually created client application in the Identity Provider",
+          "clientSecret": "The password or secret for authenticating your Yugabyte client application with your Identity Provider",
+          "discoveryURL": "Endpoint that validates all authorization requests. This can be found in discovery document",
+          "scope": "Identity provider scope",
+          "emailAttribute": "Scope containing email ID of the user",
+          "refreshTokenURL": "Provide the endpoint that will be used for re-fetching the access token",
+          "connectOnly": "Users with ConnectOnly role cannot see any information other than their own profile information",
+          "jwtTokenURL": "Option to display button to retrieve the JWT token"
+        }
+      },
+      "LDAP": {
+        "title": "LDAP Configuration",
+        "ldapEnabled": "LDAP Enabled",
+        "ldapDisabled": "LDAP Disabled",
+        "ldapURL": "LDAP URL",
+        "ldapSecurity": "Security Protocol",
+        "tlsProtocol": "TLS Protocol Version",
+        "ldapBaseDN": "LDAP Base DN",
+        "ldapDNPrefix": "LDAP DN Prefix (Optional)",
+        "customerUUID": "LDAP Customer UUID (Optional)",
+        "searchAndBind": "Binding Mechanism",
+        "searchAttribute": "Search Attribute",
+        "searchFilter": "Search Filter",
+        "serviceAccountName": "Bind DN",
+        "serviceAccountPassword": "Password",
+        "useQuery": "Configure membership lookup",
+        "groupMemeberAttribute": " Attribute that will be used to find the list of groups that is a member of",
+        "groupSearchFilter": "Filter to find all groups that a user belongs to",
+        "groupSearchBaseDN": "Group Search Base DN",
+        "ldapGroupSearchScope": "Select Scope",
+        "addServiceAccountDetails": "Add Service Account Details",
+        "infos": {
+          "ldapEnabled": "Enable or Disable LDAP Authentication",
+          "ldapURL": "LDAP URL must be a valid URL with port number, Ex:- 0.0.0.0:0000",
+          "ldapSecurity": "Configure the LDAP server connection to use LDAPS (SSL) or LDAP with StartTLS (TLS) encryption",
+          "tlsProtocol": "Configure the TLS Protocol Version to be used in case of StartTLS or LDAPS",
+          "ldapBaseDN": "Base of the DN for LDAP queries. Will be appended to the user name at login time to query the LDAP server",
+          "ldapDNPrefix": "LDAP DN Prefix will be set to CN= by default if not provided",
+          "customerUUID": "Unique ID of the customer in case of multi-tenant platform",
+          "searchAndBind": "Mechanism used to bind to the LDAP server",
+          "searchAttribute": "Attribute that will be used to search for the user in the LDAP server",
+          "searchFilter": "Filter that will be used to narrow down the search for the user inside specific LDAP groups. Either search attribute or filter should be specified.",
+          "serviceAccountName": "Bind DN will be used to login to the service account",
+          "serviceAccountPassword": "Password for Service Account",
+          "connectOnly": "Users with ConnectOnly role cannot see any information other than their own profile information",
+          "groupSearchFilter": "<b>Use {username} to refer to the user CN</b><br/>Example: (&(objectClass=group)(member=CN={username},OU=Users,DC=yugabyte,DC=com)",
+          "groupSearchBaseDN": "Base DN used to search for user group membership",
+          "serviceAccountNameHelpText": "Format : {{DN prefix}} + {{LDAP user username/service account username }}+ {{LDAP base DN}}"
+        },
+        "roles": {
+          "title": "Role Settings",
+          "userRoleSettings": "User Role Settings",
+          "userDefaultRole": "User Default Role",
+          "connectOnly": "Connect Only",
+          "readOnly": "Read Only",
+          "alertText": "Assign roles to groups under <a>Groups tab</a>."
+        },
+        "group": {
+          "title": "Group Role Settings",
+          "helpText": "This is required if you want to assign YugabyteDB Anywhere roles to your LDAP Groups. "
+        },
+        "messages": {
+          "ldapEnabled": "LDAP authentication is enabled",
+          "ldapDisabled": "LDAP authentication is disabled",
+          "ldapSaveFailed": "Failed to update LDAP configuration: {{key}}`",
+          "ldapSaveSuccess": "LDAP configuration updated successfully",
+          "ldapURL": "LDAP URL is required",
+          "ldapURLPortNo": "LDAP URL must be a valid URL with port number",
+          "ldapSecurity": "Connection security is required",
+          "password": "Password is required",
+          "searchAttributeOrFilter": "Either search attribute or filter should be specified",
+          "userAttribute": "User attribute is required",
+          "searchFilter": "Search Filter is Required",
+          "groupSearchBN": "Group Search Base DN is Required",
+          "bindDN": "Bind DN is Required",
+          "tlsVersion": "TLS Version is required",
+          "baseDN": "Base DN is required"
+        }
+      }
+    },
+    "footer": {
+      "platformVersion": "Platform Version",
+      "platformHostUrl": "Platform Host URL",
+      "joinUsOn": "Join us on",
+      "starUsOn": "Star us on",
+      "github": "GitHub",
+      "freeTShirtAt": "Free t-shirt at",
+      "yugabyteInc": "Yugabyte, Inc."
     }
   }
 }

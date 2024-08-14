@@ -1060,6 +1060,19 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * Get the load balancer state on master.
+   *
+   * @return a deferred object that yields the response to the config change.
+   */
+  public Deferred<GetLoadBalancerStateResponse> getLoadBalancerState() {
+    checkIsClosed();
+    GetLoadBalancerStateRequest rpc =
+        new GetLoadBalancerStateRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
    * Get the tablet load move completion percentage for blacklisted nodes.
    *
    * @return a deferred object that yields the move completion info.

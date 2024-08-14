@@ -14,6 +14,7 @@ import com.yugabyte.yw.models.Principal.PrincipalType;
 import com.yugabyte.yw.models.Users;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.annotation.Cache;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
 import io.ebean.annotation.WhenCreated;
@@ -27,8 +28,10 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Transient;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -45,6 +48,7 @@ import play.data.validation.Constraints;
 @Getter
 @Setter
 @ToString
+@Cache(enableQueryCache = true)
 public class RoleBinding extends Model {
 
   @ApiModelProperty(value = "UUID", accessMode = READ_ONLY)
@@ -150,16 +154,36 @@ public class RoleBinding extends Model {
   }
 
   public static RoleBinding get(UUID roleBindingUUID) {
-    RoleBinding rb = find.query().where().eq("uuid", roleBindingUUID).findOne();
+    RoleBinding rb = find.byId(roleBindingUUID);
     populatePrincipalInfo(rb);
     return rb;
   }
 
+  /**
+   * Returns an unmodifiable list containing all the role bindings applicable for this user. This
+   * includes the bindings of the groups this user is a part of. DO NOT modify the list or the state
+   * of it contents. To get only the role bindings of a user use {@link #getAll(UUID)} instead.
+   *
+   * @param userUUID
+   * @return UnmodifiableList containing all the role bindings appilicable for the user.
+   */
   public static List<RoleBinding> fetchRoleBindingsForUser(UUID userUUID) {
     Users user = Users.getOrBadRequest(userUUID);
     List<RoleBinding> list = find.query().where().eq("principal_uuid", userUUID).findList();
     list.forEach(rb -> rb.setUser(user));
-    return list;
+    Set<UUID> groupMemberships = user.getGroupMemberships();
+    if (groupMemberships == null) {
+      return Collections.unmodifiableList(list);
+    }
+    // Fetch role bindings for the user's groups.
+    for (UUID groupUUID : groupMemberships) {
+      Principal p = Principal.get(groupUUID);
+      if (p == null) {
+        continue;
+      }
+      list.addAll(getAll(groupUUID));
+    }
+    return Collections.unmodifiableList(list);
   }
 
   public static RoleBinding getOrBadRequest(UUID roleBindingUUID) {

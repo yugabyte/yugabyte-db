@@ -16,9 +16,10 @@ import { YBProgress, YBProgressBarState } from '../../../../components/YBProgres
 import { useBannerCommonStyles } from './BannerStyles';
 import { TaskBannerCompProps } from './dtos';
 
-const useStyles = makeStyles(() => ({
+const useStyles = makeStyles((theme) => ({
   root: {
-    margin: '8px 20px'
+    padding: '8px 20px',
+    background: theme.palette.common.white
   },
   bannerStyles: {
     border: `1px solid #A5BDF2`,

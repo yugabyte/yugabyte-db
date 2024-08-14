@@ -793,7 +793,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         use_default_ssh_port = not ssh_port_updated
 
         # Check if secondary subnet is present. If so, configure it.
-        if host_info.get('secondary_subnet'):
+        if (not args.tags or "systemd_upgrade" not in args.tags) \
+                and host_info.get('secondary_subnet'):
             # Wait for host to be ready to run ssh commands.
             self.wait_for_host(args, use_default_ssh_port)
             server_ports = self.get_server_ports_to_check(args)
@@ -1607,6 +1608,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                             # Example path is /mnt/d0/yb-data/master/wals.
                             path = os.path.join(fs_data_dir, 'yb-data', 'master', state_dir)
                             delete_paths.append(path)
+            self.extra_vars["expected_yb_process_state"] = "stopped"
             if delete_paths:
                 self.extra_vars["delete_paths"] = delete_paths
         # If we are just rotating certs, we don't need to do any configuration changes.
@@ -1874,9 +1876,9 @@ class TransferXClusterCerts(AbstractInstancesMethod):
                                  required=True,
                                  help="The format of this name must be "
                                       "[Source universe UUID]_[Config name].")
-        self.parser.add_argument("--producer_certs_dir",
+        self.parser.add_argument("--xcluster_dest_certs_dir",
                                  required=True,
-                                 help="The directory containing the certs on the target universe.")
+                                 help="The directory containing the certs on destination universe.")
         self.parser.add_argument("--action",
                                  default="copy",
                                  help="If true, the root certificate will be removed.")
@@ -1911,12 +1913,12 @@ class TransferXClusterCerts(AbstractInstancesMethod):
                 connect_options,
                 args.root_cert_path,
                 args.replication_config_name,
-                args.producer_certs_dir)
+                args.xcluster_dest_certs_dir)
         elif args.action == "remove":
             self.cloud.remove_xcluster_root_cert(
                 connect_options,
                 args.replication_config_name,
-                args.producer_certs_dir)
+                args.xcluster_dest_certs_dir)
         else:
             raise YBOpsRuntimeError("The action \"{}\" was not found: Must be either copy, "
                                     "or remove".format(args.action))

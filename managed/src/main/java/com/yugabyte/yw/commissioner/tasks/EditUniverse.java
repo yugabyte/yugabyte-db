@@ -65,6 +65,9 @@ public class EditUniverse extends EditUniverseTaskBase {
 
   @Override
   public void run() {
+    if (maybeRunOnlyPrechecks()) {
+      return;
+    }
     log.info("Started {} task for uuid={}", getName(), taskParams().getUniverseUUID());
     checkUniverseVersion();
     String errorString = null;

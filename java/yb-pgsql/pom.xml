@@ -8,7 +8,7 @@
   <parent>
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
-    <version>0.8.92-SNAPSHOT</version>
+    <version>0.8.93-SNAPSHOT</version>
   </parent>
   <artifactId>yb-pgsql</artifactId>
   <name>YB PostgreSQL Support</name>

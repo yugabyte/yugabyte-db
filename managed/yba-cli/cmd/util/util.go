@@ -123,7 +123,7 @@ func GetFloat64Pointer(in float64) *float64 {
 	return &in
 }
 
-// GetStringArrayPointer returns the pointer to a string array
+// GetArrayPointer returns the pointer to a string array
 func GetArrayPointer(in []interface{}) *[]interface{} {
 	return &in
 }
@@ -282,6 +282,9 @@ func CompareYbVersions(v1 string, v2 string) (int, error) {
 	return 0, errors.New("Unable to parse YB version strings")
 }
 
+// IsVersionStable returns true if the version string is stable
+// A stable version is a version with an even minor number
+// or a version with a 4 digit major version
 func IsVersionStable(version string) bool {
 	v := strings.Split(version, ".")
 	v1, err := strconv.Atoi(v[1])

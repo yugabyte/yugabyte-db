@@ -330,6 +330,8 @@ YBCStatus YBCPgAlterTableIncrementSchemaVersion(YBCPgStatement handle);
 YBCStatus YBCPgAlterTableSetTableId(
     YBCPgStatement handle, const YBCPgOid database_oid, const YBCPgOid table_relfilenode_oid);
 
+YBCStatus YBCPgAlterTableSetSchema(YBCPgStatement handle, const char *schema_name);
+
 YBCStatus YBCPgExecAlterTable(YBCPgStatement handle);
 
 YBCStatus YBCPgAlterTableInvalidateTableCacheEntry(YBCPgStatement handle);
@@ -505,9 +507,10 @@ YBCStatus YBCPgDmlBindRow(
 
 YBCStatus YBCPgDmlGetColumnInfo(YBCPgStatement handle, int attr_num, YBCPgColumnInfo* info);
 
-YBCStatus YBCPgDmlBindHashCodes(YBCPgStatement handle,
-                                YBCPgBoundType start_type, int start_value,
-                                YBCPgBoundType end_type, int end_value);
+YBCStatus YBCPgDmlBindHashCodes(
+    YBCPgStatement handle,
+    YBCPgBoundType start_type, uint16_t start_value,
+    YBCPgBoundType end_type, uint16_t end_value);
 
 // For parallel scan only, limit fetch to specified range of ybctids
 YBCStatus YBCPgDmlBindRange(YBCPgStatement handle,
@@ -798,6 +801,11 @@ void* YBCPgGetThreadLocalJumpBuffer();
 void* YBCPgSetThreadLocalErrStatus(void* new_status);
 
 void* YBCPgGetThreadLocalErrStatus();
+
+YBCPgThreadLocalRegexpCache* YBCPgGetThreadLocalRegexpCache();
+
+YBCPgThreadLocalRegexpCache* YBCPgInitThreadLocalRegexpCache(
+    size_t buffer_size, YBCPgThreadLocalRegexpCacheCleanup cleanup);
 
 void YBCPgResetCatalogReadTime();
 

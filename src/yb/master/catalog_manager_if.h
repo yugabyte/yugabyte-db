@@ -39,6 +39,8 @@
 
 #include "yb/tablet/tablet_fwd.h"
 
+#include "yb/tserver/tserver.pb.h"
+
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 
@@ -220,13 +222,6 @@ class CatalogManagerIf {
       const SnapshotScheduleId& snapshot_schedule_id, HybridTime export_time,
       CoarseTimePoint deadline) = 0;
 
-  virtual void HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool error) = 0;
-
-  virtual void HandleRestoreTabletSnapshotResponse(TabletInfo *tablet, bool error) = 0;
-
-  virtual void HandleDeleteTabletSnapshotResponse(
-      const SnapshotId& snapshot_id, TabletInfo *tablet, bool error) = 0;
-
   virtual Status GetTableLocations(const GetTableLocationsRequestPB* req,
                                            GetTableLocationsResponsePB* resp) = 0;
 
@@ -300,10 +295,6 @@ class CatalogManagerIf {
 
   virtual ClusterLoadBalancer* load_balancer() = 0;
 
-  virtual TabletSplitManager* tablet_split_manager() = 0;
-
-  virtual CloneStateManager* clone_state_manager() = 0;
-
   virtual XClusterManagerIf* GetXClusterManager() = 0;
 
   virtual XClusterManager* GetXClusterManagerImpl() = 0;
@@ -313,8 +304,6 @@ class CatalogManagerIf {
   virtual intptr_t tablets_version() const = 0;
 
   virtual intptr_t tablet_locations_version() const = 0;
-
-  virtual MasterSnapshotCoordinator& snapshot_coordinator() = 0;
 
   virtual Status UpdateLastFullCompactionRequestTime(
       const TableId& table_id, const LeaderEpoch& epoch) = 0;

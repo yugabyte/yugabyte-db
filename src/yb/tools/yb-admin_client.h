@@ -481,6 +481,21 @@ class ClusterAdminClient {
   using NamespaceMap = std::unordered_map<NamespaceId, client::NamespaceInfo>;
   Result<const NamespaceMap&> GetNamespaceMap(bool include_nonrunning = false);
 
+  Result<master::DumpSysCatalogEntriesResponsePB> DumpSysCatalogEntries(
+      master::SysRowEntryType entry_type, const std::string& entity_id_filter);
+
+  Status DumpSysCatalogEntriesAction(
+      master::SysRowEntryType entry_type, const std::string& folder_path,
+      const std::string& entry_id_filter);
+
+  Status WriteSysCatalogEntry(
+      master::WriteSysCatalogEntryRequestPB::WriteOp operation, master::SysRowEntryType entry_type,
+      const std::string& entity_id, const std::string& pb_debug_string);
+
+  Status WriteSysCatalogEntryAction(
+      master::WriteSysCatalogEntryRequestPB::WriteOp operation, master::SysRowEntryType entry_type,
+      const std::string& entry_id, const std::string& file_path, bool force);
+
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.
   Status GetTabletLocations(const TabletId& tablet_id,

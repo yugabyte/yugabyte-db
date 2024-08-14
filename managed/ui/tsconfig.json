@@ -34,6 +34,5 @@
   ],
   "exclude": [
     "node_modules",
-    "src/v2/api/**/*"
   ]
 }

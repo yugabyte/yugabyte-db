@@ -35,6 +35,14 @@ To delete a backup, click the **Delete** icon.
 
 To review previous backups, click **Backup**. To review previous restores, click **Restore**.
 
+## Location of backups
+
+Backups are located in cloud storage of the provider where the cluster is deployed. The storage is located is the same region os the cluster. For example, for a cluster deployed in AWS and located in us-east-2, backups are stored in an S3 bucket in us-east-2.
+
+For [Replicate across region](../../cloud-basics/create-clusters-topology/#replicate-across-regions) clusters, the backup is stored in one of the cluster regions, as determined automatically by Aeon when the cluster is created.
+
+For [Partition by region](../../cloud-basics/create-clusters-topology/#partition-by-region) clusters, the database schema and tablet details are stored in the primary region, and the regional tablespace data is stored in its respective region to preserve data residency.
+
 ## Limitations
 
 If [some cluster operations](../#locking-operations) are already running during a scheduled backup window, the backup may be prevented from running.
@@ -87,6 +95,7 @@ Before performing a restore, ensure the following:
 
 - the target cluster is sized appropriately; refer to [Scale and configure clusters](../configure-clusters/)
 - if the target cluster has the same namespaces as the source cluster, those namespaces don't have any tables
+- the target cluster has the same users as the source cluster. If you restore to a cluster where some users are missing, ownership of objects owned by missing users defaults to `yugabyte`, and you must contact {{% support-cloud %}} to reset the owners.
 
 To review previous restores, on the **Backups** tab, select **Restore History**.
 

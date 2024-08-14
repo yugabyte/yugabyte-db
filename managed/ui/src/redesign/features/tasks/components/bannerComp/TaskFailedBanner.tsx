@@ -19,7 +19,8 @@ import ErrorIcon from '../../../../assets/error.svg';
 
 const useStyles = makeStyles((theme) => ({
   root: {
-    margin: '8px 20px'
+    padding: '8px 20px',
+    background: theme.palette.common.white
   },
   bannerStyles: {
     border: '1px solid rgba(231, 62, 54, 0.25)',

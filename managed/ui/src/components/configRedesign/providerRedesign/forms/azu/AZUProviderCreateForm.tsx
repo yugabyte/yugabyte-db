@@ -679,6 +679,12 @@ const constructProviderPayload = async (
             }),
             ...(regionFormValues.ybImage && {
               ybImage: regionFormValues.ybImage
+            }),
+            ...(regionFormValues.azuNetworkRGOverride && {
+              azuNetworkRGOverride: regionFormValues.azuNetworkRGOverride
+            }),
+            ...(regionFormValues.azuRGOverride && {
+              azuRGOverride: regionFormValues.azuRGOverride
             })
           }
         }

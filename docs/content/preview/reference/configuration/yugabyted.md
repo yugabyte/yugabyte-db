@@ -19,12 +19,12 @@ YugabyteDB uses a two-server architecture, with [YB-TServers](../yb-tserver/) ma
 
 {{< youtube id="ah_fPDpZjnc" title="How to Start YugabyteDB on Your Laptop" >}}
 
-The `yugabyted` executable file is located in the YugabyteDB home's `bin` directory.
+The yugabyted executable file is located in the YugabyteDB home's `bin` directory.
 
 For examples of using yugabyted to deploy single- and multi-node clusters, see [Examples](#examples).
 
 {{<note title="Production deployments">}}
-You can use yugabyted for production deployments (v2.18.4 and later). You can also administer [`yb-tserver`](../yb-tserver/) and [`yb-master`](../yb-master/) directly (refer to [Deploy YugabyteDB](../../../deploy/)).
+You can use yugabyted for production deployments (v2.18.4 and later). You can also administer [yb-tserver](../yb-tserver/) and [yb-master](../yb-master/) directly (refer to [Deploy YugabyteDB](../../../deploy/)).
 {{</note>}}
 
 {{% note title="Running on macOS" %}}
@@ -50,7 +50,7 @@ $ ./bin/yugabyted start
 
 ### Online help
 
-You can access command-line help for `yugabyted` by running one of the following examples from the YugabyteDB home:
+You can access command-line help for yugabyted by running one of the following examples from the YugabyteDB home:
 
 ```sh
 $ ./bin/yugabyted -h
@@ -60,7 +60,7 @@ $ ./bin/yugabyted -h
 $ ./bin/yugabyted -help
 ```
 
-For help with specific `yugabyted` commands, run 'yugabyted [ command ] -h'. For example, you can print the command-line help for the `yugabyted start` command by running the following:
+For help with specific yugabyted commands, run 'yugabyted [ command ] -h'. For example, you can print the command-line help for the `yugabyted start` command by running the following:
 
 ```sh
 $ ./bin/yugabyted start -h
@@ -176,9 +176,6 @@ For example, to create node server certificates for hostnames 127.0.0.1, 127.0.0
 --hostnames *hostnames*
 : Hostnames of the nodes to be added in the cluster. Mandatory flag.
 
---config *config-file*
-: The path to the configuration file of the yugabyted server.
-
 --data_dir *data-directory*
 : The data directory for the yugabyted server.
 
@@ -207,9 +204,6 @@ Usage: yugabyted collect_logs [flags]
 
 --stdout *stdout*
 : Redirect the `logs.tar.gz` file's content to stdout. For example, `docker exec \<container-id\> bin/yugabyted collect_logs --stdout > yugabyted.tar.gz`
-
---config *config-file*
-: The path to the configuration file of the yugabyted server whose logs are desired.
 
 --data_dir *data-directory*
 : The data directory for the yugabyted server whose logs are desired.
@@ -270,9 +264,6 @@ For example, you would use the following command to create a multi-zone Yugabyte
 --rf *replication-factor*
 : Specify the replication factor for the cluster. This is an optional flag which takes a value of `3` or `5`.
 
---config *config-file*
-: The path to the configuration file of the yugabyted server.
-
 --data_dir *data-directory*
 : The data directory for the yugabyted server.
 
@@ -310,9 +301,6 @@ To disable encryption at rest for a YugabyteDB cluster which has encryption at r
 
 --enable *enable*
 : Enable encryption at rest for the cluster. There is no need to set a value for the flag. Use `--enable` or `--disable` flag to toggle encryption features on a YugabyteDB cluster.
-
---config *config-file*
-: The path to the configuration file of the yugabyted server.
 
 --data_dir *data-directory*
 : The data directory for the yugabyted server.
@@ -501,9 +489,6 @@ Use the `yugabyted connect ycql` sub-command to connect to YugabyteDB with [ycql
 -h | --help
 : Print the command-line help and exit.
 
---config *config-file*
-: The path to the configuration file of the yugabyted server to connect to.
-
 --data_dir *data-directory*
 : The data directory for the yugabyted server to connect to.
 
@@ -545,9 +530,6 @@ Use the `yuagbyted demo destroy` sub-command to shut down the yugabyted single-n
 -h | --help
 : Print the help message and exit.
 
---config *config-file*
-: The path to the configuration file of the yugabyted server to connect to or destroy.
-
 --data_dir *data-directory*
 : The data directory for the yugabyted server to connect to or destroy.
 
@@ -575,9 +557,6 @@ For examples, see [Destroy a local cluster](#destroy-a-local-cluster).
 
 -h | --help
 : Print the command-line help and exit.
-
---config *config-file*
-: The path to the configuration file of the yugabyted server that needs to be destroyed.
 
 --data_dir *data-directory*
 : The data directory for the yugabyted server that needs to be destroyed.
@@ -762,7 +741,7 @@ For on-premises deployments, consider racks as zones to treat them as fault doma
 : Encryption in transit requires SSL/TLS certificates for each node in the cluster.
 : - When starting a local single-node cluster, a certificate is automatically generated for the cluster.
 : - When deploying a node in a multi-node cluster, you need to generate the certificate for the node using the `--cert generate_server_certs` command and copy it to the node *before* you start the node using the `--secure` flag, or the node creation will fail.
-: When authentication is enabled, the default user is `yugabyte` in YSQL, and `cassandra` in YCQL. When a cluster is started,`yugabyted` outputs a message `Credentials File is stored at <credentials_file_path.txt>` with the credentials file location.
+: When authentication is enabled, the default user is `yugabyte` in YSQL, and `cassandra` in YCQL. When a cluster is started, yugabyted outputs a message `Credentials File is stored at <credentials_file_path.txt>` with the credentials file location.
 : For examples creating secure local multi-node, multi-zone, and multi-region clusters, refer to [Examples](#examples).
 
 --read_replica *read_replica_node*
@@ -850,9 +829,6 @@ Usage: yugabyted status [flags]
 -h | --help
 : Print the command-line help and exit.
 
---config *config-file*
-: The path to the configuration file of the yugabyted server whose status is desired.
-
 --data_dir *data-directory*
 : The data directory for the yugabyted server whose status is desired.
 
@@ -879,9 +855,6 @@ Usage: yugabyted stop [flags]
 -h | --help
 : Print the command-line help and exit.
 
---config *config-file*
-: The path to the configuration file of the yugabyted server that needs to be stopped.
-
 --data_dir *data-directory*
 : The data directory for the yugabyted server that needs to be stopped.
 
@@ -907,9 +880,6 @@ Usage: yugabyted version [flags]
 
 -h | --help
 : Print the command-line help and exit.
-
---config *config-file*
-: The path to the configuration file of the yugabyted server whose version is desired.
 
 --data_dir *data-directory*
 : The data directory for the yugabyted server whose version is desired.
@@ -1943,7 +1913,7 @@ Upgrading an existing YugabyteDB cluster that was deployed using yugabyted inclu
 
 ### Upgrade a cluster from single to multi zone
 
-The following steps assume that you have a running YugabyteDB cluster deployed using `yugabyted`, and have downloaded the update:
+The following steps assume that you have a running YugabyteDB cluster deployed using yugabyted, and have downloaded the update:
 
 1. Stop the first node by using `yugabyted stop` command:
 

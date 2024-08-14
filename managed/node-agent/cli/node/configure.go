@@ -47,8 +47,9 @@ func SetupConfigureCommand(parentCmd *cobra.Command) {
 	configureCmd.PersistentFlags().String("customer_id", "", "Customer ID")
 	configureCmd.PersistentFlags().String("cert_dir", "", "Node agent cert directory")
 	/* Required only for silent configuration mode. */
-	configureCmd.PersistentFlags().String("provider_id", "", "Provider config ID")
+	configureCmd.PersistentFlags().String("provider_id", "", "Provider config ID or name")
 	configureCmd.PersistentFlags().String("instance_type", "", "Instance type")
+	configureCmd.PersistentFlags().String("region_name", "", "Region name")
 	configureCmd.PersistentFlags().String("zone_name", "", "Zone name")
 
 	parentCmd.AddCommand(configureCmd)
@@ -66,6 +67,7 @@ func configurePreValidator(cmd *cobra.Command, args []string) {
 			Fatalf(server.Context(), "Error in reading silent - %s", err.Error())
 	}
 	if disabled {
+		// This mode is for automatic installation of node-agent by YBA.
 		cmd.MarkPersistentFlagRequired("id")
 		cmd.MarkPersistentFlagRequired("customer_id")
 		cmd.MarkPersistentFlagRequired("cert_dir")
@@ -80,6 +82,7 @@ func configurePreValidator(cmd *cobra.Command, args []string) {
 		cmd.MarkPersistentFlagRequired("node_port")
 		cmd.MarkPersistentFlagRequired("provider_id")
 		cmd.MarkPersistentFlagRequired("instance_type")
+		cmd.MarkPersistentFlagRequired("region_name")
 		cmd.MarkPersistentFlagRequired("zone_name")
 	} else {
 		cmd.MarkPersistentFlagRequired("api_token")
@@ -351,7 +354,8 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 			true, /* isRequired */
 			func(in string) (string, error) {
 				for _, pr := range onpremProviders {
-					if pr.Id() == in {
+					// Overload the option to use either name or provider ID for backward compatibility.
+					if pr.Id() == in || pr.Name() == in {
 						selectedProvider = pr
 						return pr.Id(), nil
 					}
@@ -416,6 +420,24 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 	}
 	// Update availability Zone.
 	if silent {
+		var selectedRegion model.Region
+		_, err = config.StoreCommandFlagString(
+			ctx,
+			cmd,
+			"region_name",
+			util.NodeRegionKey,
+			nil,  /* default value */
+			true, /* isRequired */
+			func(in string) (string, error) {
+				for _, region := range selectedProvider.Regions {
+					if region.Id() == in {
+						selectedRegion = region
+						return region.Id(), nil
+					}
+				}
+				return "", errors.New("Region name is not found")
+			},
+		)
 		_, err = config.StoreCommandFlagString(
 			ctx,
 			cmd,
@@ -424,12 +446,10 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 			nil,  /* default value */
 			true, /* isRequired */
 			func(in string) (string, error) {
-				for _, region := range selectedProvider.Regions {
-					for _, zone := range region.Zones {
-						if zone.Id() == in {
-							config.Update(util.NodeAzIdKey, zone.Uuid)
-							return zone.Id(), nil
-						}
+				for _, zone := range selectedRegion.Zones {
+					if zone.Id() == in {
+						config.Update(util.NodeAzIdKey, zone.Uuid)
+						return zone.Id(), nil
 					}
 				}
 				return "", errors.New("Zone name is not found")

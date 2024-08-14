@@ -1,0 +1,11 @@
+title: User
+description: |
+  User
+
+  Contains the user provided `spec` and system generated `info` of a User. Returned as response payload for a GET request on a User. Also part of User property in UniverseInfo.
+type: object
+properties:
+  spec:
+    $ref: "./UserSpec.yaml"
+  info:
+    $ref: "./UserInfo.yaml"

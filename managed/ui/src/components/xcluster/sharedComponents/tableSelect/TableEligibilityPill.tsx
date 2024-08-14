@@ -24,9 +24,7 @@ export const TableEligibilityPill = ({ eligibilityDetails }: TableEligibilityPil
         <div className={clsx(pillClasses.pill, pillClasses.ready)}>{t('inCurrentConfig')}</div>
       );
     case XClusterTableEligibility.INELIGIBLE_IN_USE:
-      return (
-        <div className={clsx(pillClasses.pill, pillClasses.danger)}>{t('inCurrentConfig')}</div>
-      );
+      return <div className={clsx(pillClasses.pill, pillClasses.danger)}>{t('inUse')}</div>;
     default:
       return assertUnreachableCase(eligibilityDetails);
   }

@@ -227,8 +227,6 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     ArgumentCaptor<NodeTaskParams> commandParams = ArgumentCaptor.forClass(NodeTaskParams.class);
     verify(mockNodeManager, times(9)).nodeCommand(any(), commandParams.capture());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
-    Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     initMockUpgrade()
         .precheckTasks(getPrecheckTasks(true))
@@ -493,7 +491,8 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
         defaultUniverse.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.tserverGFlags);
 
     initMockUpgrade()
-        .precheckTasks(getPrecheckTasks(true))
+        // Because only RR doesn't infer CheckNodesAreSafeToTakeDown.
+        .precheckTasks(getPrecheckTasks(false))
         .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
         .task(TaskType.AnsibleConfigureServers)
         .applyToCluster(clusterId)
@@ -583,7 +582,8 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
               .tserverGFlags);
 
       initMockUpgrade()
-          .precheckTasks(getPrecheckTasks(true))
+          // Because only RR doesn't infer CheckNodesAreSafeToTakeDown.
+          .precheckTasks(getPrecheckTasks(false))
           .upgradeRound(UpgradeOption.ROLLING_UPGRADE)
           .task(TaskType.AnsibleConfigureServers)
           .applyToCluster(clusterId)
@@ -1133,6 +1133,32 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     taskParams.tserverGFlags = ImmutableMap.of("tserver-flag", "t2");
     taskInfo = submitTask(taskParams, -1);
     assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testGFlagsOnlyPrechecksUpgrade() {
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    SpecificGFlags specificGFlags =
+        SpecificGFlags.construct(
+            ImmutableMap.of("master-flag", "m1111"), ImmutableMap.of("tserver-flag", "t1111"));
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.specificGFlags = specificGFlags;
+    taskParams.upgradeOption = UpgradeOption.ROLLING_UPGRADE;
+    taskParams.runOnlyPrechecks = true;
+
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
+
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+
+    TaskType[] precheckTasks = getPrecheckTasks(true);
+    assertEquals(precheckTasks.length, subTasks.size());
+    int i = 0;
+    for (TaskType precheckTask : precheckTasks) {
+      assertEquals(precheckTask, subTasks.get(i++).getTaskType());
+    }
   }
 
   private Map<String, String> getGflagsForNode(

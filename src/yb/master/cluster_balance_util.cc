@@ -454,7 +454,7 @@ void PerTableLoadState::UpdateTabletServer(std::shared_ptr<TSDescriptor> ts_desc
       // Consider as non affinitized
       priority = affinitized_zones_.size();
     } else if (!affinitized_zones_.empty()) {
-      auto ci = ts_desc->GetRegistration().common().cloud_info();
+      auto ci = ts_desc->GetRegistration().cloud_info();
       for (; priority < affinitized_zones_.size(); priority++) {
         if (affinitized_zones_[priority].find(ci) != affinitized_zones_[priority].end()) {
           break;

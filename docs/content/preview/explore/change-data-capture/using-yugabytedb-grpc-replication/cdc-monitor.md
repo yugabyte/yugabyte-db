@@ -10,7 +10,7 @@ menu:
   preview:
     parent: explore-change-data-capture-grpc-replication
     identifier: cdc-monitor
-    weight: 60
+    weight: 20
 type: docs
 ---
 
@@ -104,7 +104,7 @@ The following streaming metrics are available:
 | QueueTotalCapacity | `int` | The length the queue used to pass events between the streamer and the main Kafka Connect loop. |
 | QueueRemainingCapacity | `int` | The free capacity of the queue used to pass events between the streamer and the main Kafka Connect loop. |
 | Connected | `boolean` | Indicates whether the connector is currently connected to the database server. |
-| MilliSecondsBehindSource | `long` | The number of milliseconds between the last change event’s timestamp and when the connector processed it. The value incorporates any differences between the clocks on the machines where the database server and the connector are running. |
+| MilliSecondsBehindSource | `long` | The number of milliseconds between the last change event's timestamp and when the connector processed it. The value incorporates any differences between the clocks on the machines where the database server and the connector are running. |
 | SourceEventPosition | `Map<String, String>` | The coordinates of the last received event. |
 | LastTransactionId | `string` | Transaction identifier of the last processed transaction. |
 | MaxQueueSizeInBytes | `long` | The maximum buffer of the queue in bytes. This metric is available if `max.queue.size.in.bytes` is set to a positive long value. |

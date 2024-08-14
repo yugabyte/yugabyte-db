@@ -18,8 +18,17 @@ import WarningIcon from '../../../redesign/assets/warning-triangle.svg';
 // Styles
 import './UniverseForm.scss';
 
+const AUDIT_LOG_FLAG = 'ysql_pg_conf_csv';
+
 const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus, disabledFlags = {} }) => {
-  const { mode, server, dbVersion, existingFlags, isGFlagMultilineConfEnabled } = gFlagProps;
+  const {
+    mode,
+    server,
+    dbVersion,
+    existingFlags,
+    isGFlagMultilineConfEnabled,
+    editMode
+  } = gFlagProps;
   const [searchVal, setSearchVal] = useState('');
   const [isLoading, setLoader] = useState(true);
   const [toggleMostUsed, setToggleMostUsed] = useState(true);
@@ -35,10 +44,13 @@ const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus, disabledFlags
 
   const handleFlagSelect = (flag) => {
     let flagvalue = null;
-    const existingFlagValue = get(
-      existingFlags.find((f) => f.Name === flag?.name),
-      server
-    );
+    const disabledFlagValue = get(disabledFlags, flag?.name, null);
+    const existingFlagValue =
+      disabledFlagValue ??
+      get(
+        existingFlags.find((f) => f.Name === flag?.name),
+        server
+      );
     // eslint-disable-next-line no-prototype-builtins
     const defaultKey = flag?.hasOwnProperty('current') ? 'current' : 'default'; // Guard condition to handle inconstintency in gflag metadata
     if (flag?.type === 'bool')
@@ -140,6 +152,17 @@ const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus, disabledFlags
       <span>
         You can&apos;t change this flag because it was set using the Enhanced Postgres Compatibility
         option.
+      </span>
+    </div>
+  );
+
+  const auditLogBanner = (
+    <div className="pg-banner">
+      <img alt="Warning" src={WarningIcon} width="24" />
+      &nbsp;
+      <span>
+        Please be careful when modifying the &quot;pgaudit&quot; params if DB audit logging is
+        enabled on this universe.
       </span>
     </div>
   );
@@ -306,6 +329,7 @@ const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus, disabledFlags
       return (
         <>
           {get(disabledFlags, selectedFlag?.name, false) && pgBanner}
+          {editMode && selectedFlag?.name === AUDIT_LOG_FLAG && auditLogBanner}
           <div className="gflag-detail-container">
             <span className="flag-detail-header">Flag Details</span>
             {renderFieldInfo('Name', selectedFlag?.name)}

@@ -672,8 +672,8 @@ typedef struct AshMetadata {
   // root_request_id but with the same query_id.
   uint64_t query_id;
 
-  // PgClient session id.
-  uint64_t session_id;
+  // pid of the YSQL/YCQL backend which is executing the query
+  int32_t pid;
 
   // OID of database.
   uint32_t database_id;
@@ -796,6 +796,14 @@ typedef struct YbCloneInfo {
   const char* src_owner;
   const char* tgt_owner;
 } YbCloneInfo;
+
+// A thread-safe way to cache compiled regexes.
+typedef struct PgThreadLocalRegexpCache {
+  int num;
+  void* array;
+} YBCPgThreadLocalRegexpCache;
+
+typedef void (*YBCPgThreadLocalRegexpCacheCleanup)(YBCPgThreadLocalRegexpCache*);
 
 #ifdef __cplusplus
 }  // extern "C"

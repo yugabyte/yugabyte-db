@@ -266,7 +266,7 @@ public class UniverseCRUDHandler {
             < cluster.userIntent.deviceInfo.volumeSize;
   }
 
-  private static boolean isKubernetesNodeSpecUpdate(Cluster cluster, Cluster currentCluster) {
+  public static boolean isKubernetesNodeSpecUpdate(Cluster cluster, Cluster currentCluster) {
     return currentCluster.userIntent.providerType == Common.CloudType.kubernetes
         && (!(Objects.equals(
                 currentCluster.userIntent.tserverK8SNodeResourceSpec,
@@ -690,10 +690,7 @@ public class UniverseCRUDHandler {
                   userIntent.ybSoftwareVersion, Util.K8S_YBC_COMPATIBLE_DB_VERSION, true)
               >= 0) {
             taskParams.setEnableYbc(true);
-            taskParams.setYbcSoftwareVersion(
-                StringUtils.isNotBlank(taskParams.getYbcSoftwareVersion())
-                    ? taskParams.getYbcSoftwareVersion()
-                    : ybcManager.getStableYbcVersion());
+            taskParams.setYbcSoftwareVersion(ybcManager.getStableYbcVersion());
           } else {
             taskParams.setEnableYbc(false);
             LOG.error(
@@ -711,10 +708,7 @@ public class UniverseCRUDHandler {
                   + confGetter.getGlobalConf(GlobalConfKeys.ybcCompatibleDbVersion));
         } else {
           taskParams.setEnableYbc(true);
-          taskParams.setYbcSoftwareVersion(
-              StringUtils.isNotBlank(taskParams.getYbcSoftwareVersion())
-                  ? taskParams.getYbcSoftwareVersion()
-                  : ybcManager.getStableYbcVersion());
+          taskParams.setYbcSoftwareVersion(ybcManager.getStableYbcVersion());
         }
       } else {
         taskParams.setEnableYbc(false);
@@ -1011,7 +1005,7 @@ public class UniverseCRUDHandler {
             + ":"
             + universe.getName());
 
-    return UniverseResp.create(universe, taskUUID, runtimeConfigFactory.globalRuntimeConf());
+    return UniverseResp.create(universe, taskUUID, confGetter);
   }
 
   /**
@@ -1029,7 +1023,7 @@ public class UniverseCRUDHandler {
     if (u.isYbcEnabled()) {
       taskParams.installYbc = true;
       taskParams.setEnableYbc(true);
-      taskParams.setYbcSoftwareVersion(u.getUniverseDetails().getYbcSoftwareVersion());
+      taskParams.setYbcSoftwareVersion(ybcManager.getStableYbcVersion());
       taskParams.setYbcInstalled(true);
       for (Cluster cluster : taskParams.clusters) {
         cluster.userIntent.ybcFlags =
@@ -1223,16 +1217,12 @@ public class UniverseCRUDHandler {
   }
 
   public List<UniverseResp> list(Customer customer) {
-    return UniverseResp.create(
-        customer, customer.getUniverses(), runtimeConfigFactory.globalRuntimeConf());
+    return UniverseResp.create(customer, customer.getUniverses(), confGetter);
   }
 
   public List<UniverseResp> findByName(Customer customer, String name) {
     return Universe.maybeGetUniverseByName(customer.getId(), name)
-        .map(
-            value ->
-                Collections.singletonList(
-                    UniverseResp.create(value, null, runtimeConfigFactory.globalRuntimeConf())))
+        .map(value -> Collections.singletonList(UniverseResp.create(value, null, confGetter)))
         .orElseGet(Collections::emptyList);
   }
 
@@ -1341,7 +1331,7 @@ public class UniverseCRUDHandler {
     if (universe.isYbcEnabled()) {
       taskParams.installYbc = true;
       taskParams.setEnableYbc(true);
-      taskParams.setYbcSoftwareVersion(universe.getUniverseDetails().getYbcSoftwareVersion());
+      taskParams.setYbcSoftwareVersion(ybcManager.getStableYbcVersion());
       taskParams.setYbcInstalled(true);
       for (Cluster cluster : taskParams.clusters) {
         cluster.userIntent.ybcFlags =

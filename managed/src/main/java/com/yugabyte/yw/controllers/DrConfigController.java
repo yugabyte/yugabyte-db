@@ -12,6 +12,7 @@ import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.XClusterUtil;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -20,6 +21,7 @@ import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.controllers.handlers.UniverseTableHandler;
 import com.yugabyte.yw.forms.DrConfigCreateForm;
 import com.yugabyte.yw.forms.DrConfigEditForm;
 import com.yugabyte.yw.forms.DrConfigFailoverForm;
@@ -103,6 +105,7 @@ public class DrConfigController extends AuthenticatedController {
   private final XClusterUniverseService xClusterUniverseService;
   private final AutoFlagUtil autoFlagUtil;
   private final XClusterScheduler xClusterScheduler;
+  private final UniverseTableHandler tableHandler;
 
   @Inject
   public DrConfigController(
@@ -114,7 +117,8 @@ public class DrConfigController extends AuthenticatedController {
       RuntimeConfGetter confGetter,
       XClusterUniverseService xClusterUniverseService,
       AutoFlagUtil autoFlagUtil,
-      XClusterScheduler xClusterScheduler) {
+      XClusterScheduler xClusterScheduler,
+      UniverseTableHandler tableHandler) {
     this.commissioner = commissioner;
     this.metricQueryHelper = metricQueryHelper;
     this.backupHelper = backupHelper;
@@ -124,6 +128,7 @@ public class DrConfigController extends AuthenticatedController {
     this.xClusterUniverseService = xClusterUniverseService;
     this.autoFlagUtil = autoFlagUtil;
     this.xClusterScheduler = xClusterScheduler;
+    this.tableHandler = tableHandler;
   }
 
   /**
@@ -145,8 +150,14 @@ public class DrConfigController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(path = "sourceUniverseUUID", sourceType = SourceType.REQUEST_BODY)),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(path = "targetUniverseUUID", sourceType = SourceType.REQUEST_BODY))
   })
   public Result create(UUID customerUUID, Http.Request request) {
     log.info("Received create drConfig request");
@@ -174,6 +185,10 @@ public class DrConfigController extends AuthenticatedController {
           BAD_REQUEST,
           "Support for db scoped disaster recovery configs is disabled in YBA. You may enable it "
               + "by setting yb.xcluster.db_scoped.enabled to true in the application.conf");
+    }
+
+    if (isDbScoped) {
+      XClusterUtil.dbScopedXClusterPreChecks(sourceUniverse, targetUniverse);
     }
 
     DrConfig drConfig;
@@ -295,8 +310,24 @@ public class DrConfigController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "sourceUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid")),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "targetUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid"))
   })
   public Result edit(UUID customerUUID, UUID drConfigUuid, Http.Request request) {
     log.info("Received edit drConfig request");
@@ -336,8 +367,24 @@ public class DrConfigController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "sourceUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid")),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "targetUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid"))
   })
   public Result setTables(UUID customerUUID, UUID drConfigUuid, Http.Request request) {
     log.info("Received set tables drConfig request");
@@ -419,8 +466,24 @@ public class DrConfigController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "sourceUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid")),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "targetUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid"))
   })
   public Result restart(
       UUID customerUUID, UUID drConfigUuid, boolean isForceDelete, Http.Request request) {
@@ -526,8 +589,24 @@ public class DrConfigController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "sourceUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid")),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "targetUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid"))
   })
   public Result replaceReplica(UUID customerUUID, UUID drConfigUuid, Http.Request request) {
     log.info("Received replaceReplica drConfig request");
@@ -678,8 +757,24 @@ public class DrConfigController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "sourceUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid")),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "targetUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid"))
   })
   public Result switchover(UUID customerUUID, UUID drConfigUuid, Http.Request request) {
     log.info("Received switchover drConfig request");
@@ -883,8 +978,24 @@ public class DrConfigController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "sourceUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid")),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "targetUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid"))
   })
   public Result failover(UUID customerUUID, UUID drConfigUuid, Http.Request request) {
     log.info("Received failover drConfig request");
@@ -1051,8 +1162,24 @@ public class DrConfigController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation =
+            @Resource(
+                path = "sourceUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid")),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation =
+            @Resource(
+                path = "targetUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid")),
   })
   public Result get(UUID customerUUID, UUID drUUID) {
     log.info("Received get DrConfig({}) request", drUUID);
@@ -1060,8 +1187,8 @@ public class DrConfigController extends AuthenticatedController {
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drUUID);
 
     for (XClusterConfig xClusterConfig : drConfig.getXClusterConfigs()) {
-      XClusterConfigTaskBase.setReplicationStatus(
-          this.xClusterUniverseService, this.ybService, xClusterConfig);
+      XClusterConfigTaskBase.updateReplicationDetailsFromDB(
+          this.xClusterUniverseService, this.ybService, this.tableHandler, xClusterConfig);
     }
 
     XClusterConfig activeXClusterConfig = drConfig.getActiveXClusterConfig();
@@ -1085,8 +1212,24 @@ public class DrConfigController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "sourceUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid")),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "targetUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid"))
   })
   public Result sync(UUID customerUUID, UUID drConfigUuid, Http.Request request) {
     log.info("Received sync drConfig request");
@@ -1132,8 +1275,24 @@ public class DrConfigController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "sourceUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid")),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "targetUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid"))
   })
   public Result delete(
       UUID customerUUID, UUID drConfigUuid, boolean isForceDelete, Http.Request request) {
@@ -1278,8 +1437,24 @@ public class DrConfigController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation =
+            @Resource(
+                path = "sourceUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid")),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation =
+            @Resource(
+                path = "targetUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid")),
   })
   public Result getSafetime(UUID customerUUID, UUID drUUID) {
     log.info("Received getSafetime DrConfig({}) request", drUUID);
@@ -1321,8 +1496,24 @@ public class DrConfigController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "sourceUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid")),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "targetUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid"))
   })
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.0.0")
   public Result setDatabases(UUID customerUUID, UUID drConfigUuid, Http.Request request) {

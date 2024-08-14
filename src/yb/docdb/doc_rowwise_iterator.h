@@ -59,16 +59,14 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
                      const TransactionOperationContext& txn_op_context,
                      const DocDB& doc_db,
                      const ReadOperationData& read_operation_data,
-                     std::reference_wrapper<const ScopedRWOperation> pending_op,
-                     const DocDBStatistics* statistics = nullptr);
+                     std::reference_wrapper<const ScopedRWOperation> pending_op);
 
   DocRowwiseIterator(const dockv::ReaderProjection& projection,
                      std::shared_ptr<DocReadContext> doc_read_context,
                      const TransactionOperationContext& txn_op_context,
                      const DocDB& doc_db,
                      const ReadOperationData& read_operation_data,
-                     ScopedRWOperation&& pending_op,
-                     const DocDBStatistics* statistics = nullptr);
+                     ScopedRWOperation&& pending_op);
 
   ~DocRowwiseIterator() override;
 
@@ -161,8 +159,6 @@ class DocRowwiseIterator final : public DocRowwiseIteratorBase {
   DocReaderResult prev_doc_found_ = DocReaderResult::kNotFound;
 
   bool use_fast_backward_scan_ = false;
-
-  const DocDBStatistics* statistics_;
 
   DeadlineInfo deadline_info_;
 };

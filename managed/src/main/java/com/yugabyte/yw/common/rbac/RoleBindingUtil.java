@@ -13,6 +13,8 @@ import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.rbac.ResourcePermissionData;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.GroupMappingInfo;
+import com.yugabyte.yw.models.Principal;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
 import com.yugabyte.yw.models.rbac.ResourceGroup.ResourceDefinition;
@@ -59,12 +61,12 @@ public class RoleBindingUtil {
   public RoleBinding editRoleBinding(
       UUID roleBindingUUID, UUID roleUUID, ResourceGroup resourceGroup) {
     RoleBinding roleBinding = RoleBinding.getOrBadRequest(roleBindingUUID);
-    Role role = Role.getOrBadRequest(roleBinding.getUser().getCustomerUUID(), roleUUID);
+    Role role = Role.getOrBadRequest(roleBinding.getPrincipal().getCustomerUUID(), roleUUID);
     log.info(
-        "Editing {} RoleBinding '{}' with user UUID '{}', role UUID {} on resource group {}.",
+        "Editing {} RoleBinding '{}' with principal UUID '{}', role UUID {} on resource group {}.",
         roleBinding.getType(),
         roleBinding.getUuid(),
-        roleBinding.getUser().getUuid(),
+        roleBinding.getPrincipal().getUuid(),
         roleUUID,
         resourceGroup);
     roleBinding.edit(role, resourceGroup);
@@ -368,11 +370,11 @@ public class RoleBindingUtil {
               expandResourceDefinition(customerUUID, resourceTypeToExpand, null);
           resourceGroup.getResourceDefinitionSet().add(expandedResourceDefinition);
           log.info(
-              "Expanded {} RoleBinding '{}' with user UUID '{}', role UUID '{}', from "
+              "Expanded {} RoleBinding '{}' with principal UUID '{}', role UUID '{}', from "
                   + "old resource definition '{}' to new resource definition '{}'.",
               roleBinding.getType(),
               roleBinding.getUuid(),
-              roleBinding.getUser().getUuid(),
+              roleBinding.getPrincipal().getUuid(),
               roleBinding.getRole().getRoleUUID(),
               null,
               expandedResourceDefinition);
@@ -386,11 +388,11 @@ public class RoleBindingUtil {
             expandResourceDefinition(
                 customerUUID, resourceDefinition.getResourceType(), resourceDefinition);
             log.info(
-                "Expanded {} RoleBinding '{}' with user UUID '{}', role UUID '{}', from "
+                "Expanded {} RoleBinding '{}' with principal UUID '{}', role UUID '{}', from "
                     + "old resource definition '{}' to new resource definition '{}'.",
                 roleBinding.getType(),
                 roleBinding.getUuid(),
-                roleBinding.getUser().getUuid(),
+                roleBinding.getPrincipal().getUuid(),
                 roleBinding.getRole().getRoleUUID(),
                 oldResourceDefinition,
                 resourceDefinition);
@@ -415,7 +417,7 @@ public class RoleBindingUtil {
     Set<ResourcePermissionData> resourcePermissions = new HashSet<>();
     Map<ResourceType, Set<Action>> nonResourcePermissionsToAdd = new HashMap<>();
     Map<ResourceType, Map<UUID, Set<Permission>>> userResourcePermissions = new HashMap<>();
-    List<RoleBinding> userAssociatedRoleBindings = RoleBinding.getAll(userUUID);
+    List<RoleBinding> userAssociatedRoleBindings = RoleBinding.fetchRoleBindingsForUser(userUUID);
     // Iterate through each role binding for the user.
     for (RoleBinding roleBinding : userAssociatedRoleBindings) {
       // Get all the permissions in that role from the binding.
@@ -586,5 +588,46 @@ public class RoleBindingUtil {
         user.getUuid(),
         user.getEmail(),
         createdRoleBindings.toString());
+  }
+
+  /**
+   * Add role binding for group with system role.
+   *
+   * @param groupMappingInfo
+   */
+  public static void createSystemRoleBindingsForGroup(
+      GroupMappingInfo groupMappingInfo, Role role) {
+    if (role.getRoleType().equals(RoleType.Custom)) {
+      return;
+    }
+    Users.Role sysRole = Users.Role.valueOf(role.getName());
+    // Once RBAC is enabled, we'll assign a ConnectOnly role to all group members
+    // upon login, so a role binding won't be necessary.
+    if (sysRole.equals(Users.Role.ConnectOnly)) {
+      return;
+    }
+    log.info("Adding system role bindings for group: " + groupMappingInfo.getIdentifier());
+    RoleBinding.create(
+        groupMappingInfo,
+        RoleBindingType.Custom,
+        role,
+        ResourceGroup.getSystemDefaultResourceGroup(groupMappingInfo, sysRole));
+  }
+
+  public static void createSystemRoleBindingsForGroup(GroupMappingInfo groupMappingInfo) {
+    Role role = Role.get(groupMappingInfo.getCustomerUUID(), groupMappingInfo.getRoleUUID());
+    createSystemRoleBindingsForGroup(groupMappingInfo, role);
+  }
+
+  public static void clearRoleBindingsForPrincipal(Principal principal) {
+    log.info("Clearing role bindings for principal: " + principal.toString());
+    List<RoleBinding> list = RoleBinding.getAll(principal.getUuid());
+    list.forEach(rb -> rb.delete());
+  }
+
+  public static void clearRoleBindingsForGroup(GroupMappingInfo group) {
+    log.info("Clearing role bindings for group: " + group.getIdentifier());
+    List<RoleBinding> list = RoleBinding.getAll(group.getGroupUUID());
+    list.forEach(rb -> rb.delete());
   }
 }

@@ -1354,8 +1354,6 @@
             https://www.yugabyte.com
             https://api.segment.io/
             https://cdn.segment.com/
-            https://c.6sc.co/
-            https://ipv6.6sc.co/
             https://ingesteer.services-prod.nsvcs.net/rum_collection
         ;
 
@@ -1381,7 +1379,6 @@
             https://x.clearbitjs.com
             https://js.driftt.com/
             https://cdn.segment.com/
-            https://j.6sc.co/
         ;
 
         style-src 'self' 'unsafe-inline'
@@ -1416,7 +1413,6 @@
             https://www.yugabyte.com
             https://www.gstatic.com
             https://www.google.com/s2/favicons
-            https://b.6sc.co/
         ;
 
         child-src 'self' 'unsafe-inline'

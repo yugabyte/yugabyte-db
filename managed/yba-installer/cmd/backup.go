@@ -22,13 +22,16 @@ import (
 
 func CreateBackupScript(outputPath string, dataDir string, excludePrometheus bool,
 	excludeReleases bool, restart bool, disableVersion bool, verbose bool, plat Platform) {
-		CreateBackupScriptHelper(outputPath, dataDir, excludePrometheus, excludeReleases, restart,
-			disableVersion, verbose, plat.backupScript(), plat.YsqlDump, plat.PgBin + "/pg_dump")
+
+		if err := CreateBackupScriptHelper(outputPath, dataDir, excludePrometheus, excludeReleases, restart,
+			disableVersion, verbose, plat.backupScript(), plat.YsqlDump, plat.PgBin + "/pg_dump"); err != nil {
+				log.Fatal(err.Error())
+			}
 }
 
 // CreateBackupScript calls the yb_platform_backup.sh script with the correct args.
 func CreateBackupScriptHelper(outputPath string, dataDir string, excludePrometheus bool,
-	excludeReleases bool, restart bool, disableVersion bool, verbose bool, script, ysqldump, pgdump string) {
+	excludeReleases bool, restart bool, disableVersion bool, verbose bool, script, ysqldump, pgdump string) error {
 
 
 	err := os.Chmod(script, 0777)
@@ -74,8 +77,9 @@ func CreateBackupScriptHelper(outputPath string, dataDir string, excludePromethe
 	log.Info("Creating a backup of your YugabyteDB Anywhere Installation.")
 	out := shell.Run(script, args...)
 	if !out.SucceededOrLog() {
-		log.Fatal(out.Error.Error())
+		return out.Error
 	}
+	return nil
 }
 
 // CreateReplicatedBackupScript backs up a replicated based installation of YBA.

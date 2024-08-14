@@ -178,7 +178,7 @@ func BuildZoneMapFromString(
 	return zone
 }
 
-// BuilRegionMapFromString is for region flags
+// BuildRegionMapFromString is for region flags
 func BuildRegionMapFromString(
 	regionString, operation string,
 ) map[string]string {

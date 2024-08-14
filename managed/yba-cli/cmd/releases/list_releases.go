@@ -41,7 +41,7 @@ var listReleasesCmd = &cobra.Command{
 			if util.IsOutputType("table") {
 				logrus.Infoln("No releases found\n")
 			} else {
-				logrus.Infoln("{}\n")
+				logrus.Infoln("[]\n")
 			}
 			return
 		}

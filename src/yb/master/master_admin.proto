@@ -177,6 +177,29 @@ message DdlLogResponsePB {
   repeated DdlLogEntryPB entries = 2;
 }
 
+message StartYsqlMajorVersionUpgradeInitdbRequestPB {
+}
+
+message StartYsqlMajorVersionUpgradeInitdbResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message IsYsqlMajorVersionUpgradeInitdbDoneRequestPB {
+}
+
+message IsYsqlMajorVersionUpgradeInitdbDoneResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bool done = 2;
+  optional MasterErrorPB initdb_error = 3;
+}
+
+message RollbackYsqlMajorVersionUpgradeRequestPB {
+}
+
+message RollbackYsqlMajorVersionUpgradeResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 message CheckIfPitrActiveRequestPB {}
 
 message CheckIfPitrActiveResponsePB {
@@ -235,6 +258,40 @@ message GetMasterHeartbeatDelaysResponsePB {
   repeated MasterHeartbeatDelay heartbeat_delay = 2;
 }
 
+message DumpSysCatalogEntriesRequestPB {
+  optional SysRowEntryType entry_type = 1;
+  optional string entity_id_filter = 2;
+}
+
+message SysCatalogEntryDumpPB {
+  optional SysRowEntryType entry_type = 1;
+  optional string entity_id = 2;
+  optional string pb_debug_string = 3;
+}
+
+message DumpSysCatalogEntriesResponsePB {
+  optional MasterErrorPB error = 1;
+  repeated SysCatalogEntryDumpPB entries = 2;
+}
+
+message WriteSysCatalogEntryRequestPB {
+  optional SysRowEntryType entry_type = 1;
+  optional string entity_id = 2;
+  optional string pb_debug_string = 3;
+
+  enum WriteOp {
+    SYS_CATALOG_INSERT = 1;
+    SYS_CATALOG_UPDATE = 2;
+    SYS_CATALOG_DELETE = 3;
+  }
+
+  optional WriteOp op_type = 4;
+}
+
+message WriteSysCatalogEntryResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 service MasterAdmin {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -268,6 +325,13 @@ service MasterAdmin {
 
   rpc DdlLog(DdlLogRequestPB) returns (DdlLogResponsePB);
 
+  rpc StartYsqlMajorVersionUpgradeInitdb(StartYsqlMajorVersionUpgradeInitdbRequestPB)
+      returns (StartYsqlMajorVersionUpgradeInitdbResponsePB);
+  rpc IsYsqlMajorVersionUpgradeInitdbDone(IsYsqlMajorVersionUpgradeInitdbDoneRequestPB)
+      returns (IsYsqlMajorVersionUpgradeInitdbDoneResponsePB);
+  rpc RollbackYsqlMajorVersionUpgrade(RollbackYsqlMajorVersionUpgradeRequestPB)
+      returns (RollbackYsqlMajorVersionUpgradeResponsePB);
+
   rpc CheckIfPitrActive(CheckIfPitrActiveRequestPB)
       returns (CheckIfPitrActiveResponsePB);
 
@@ -275,4 +339,9 @@ service MasterAdmin {
       returns (AccessYsqlBackendsManagerTestRegisterResponsePB);
   rpc WaitForYsqlBackendsCatalogVersion(WaitForYsqlBackendsCatalogVersionRequestPB)
       returns (WaitForYsqlBackendsCatalogVersionResponsePB);
+
+  rpc DumpSysCatalogEntries(DumpSysCatalogEntriesRequestPB)
+      returns (DumpSysCatalogEntriesResponsePB);
+  rpc WriteSysCatalogEntry(WriteSysCatalogEntryRequestPB)
+      returns (WriteSysCatalogEntryResponsePB);
 }

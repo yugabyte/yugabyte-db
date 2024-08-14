@@ -9,12 +9,14 @@ import static play.test.Helpers.contentAsString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.DrConfigCreateForm;
 import com.yugabyte.yw.forms.DrConfigSetDatabasesForm;
 import com.yugabyte.yw.forms.TableInfoForm;
+import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigRestartFormData;
@@ -41,14 +43,12 @@ import play.mvc.Result;
 @Slf4j
 public class DRDbScopedLocalTest extends DRLocalTestBase {
 
-  public static final String DB_SCOPED_MIN_VERSION = "2.23.0.0-b394";
+  // 2.23.0.0-b691+ version does not require enable_xcluster_api_v2 and allowed_preview_flags_csv
+  //   gflags to be set.
+  public static final String DB_SCOPED_MIN_VERSION = "2.23.0.0-b691";
   public static String DB_SCOPE_MIN_VERSION_URL =
       "https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/"
-          + "local-provider-test/2.23.0.0-b394/yugabyte-2.23.0.0-b394-%s-%s.tar.gz";
-
-  public static Map<String, String> dbScopedMasterGFlags =
-      Map.of(
-          "enable_xcluster_api_v2", "true", "allowed_preview_flags_csv", "enable_xcluster_api_v2");
+          + "local-provider-test/2.23.0.0-b691/yugabyte-2.23.0.0-b691-%s-%s.tar.gz";
 
   @Before
   public void setupDrDbScoped() {
@@ -74,11 +74,23 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
 
   public Universe createDRUniverse(String DBVersion, String universeName, boolean disableTls)
       throws InterruptedException {
+    return createDRUniverse(DBVersion, universeName, disableTls, 3, 3);
+  }
+
+  public Universe createDRUniverse(
+      String DBVersion,
+      String universeName,
+      boolean disableTls,
+      int numNodes,
+      int replicationFactor)
+      throws InterruptedException {
     ybVersion = DBVersion;
     ybBinPath = deriveYBBinPath(DBVersion);
     UniverseDefinitionTaskParams.UserIntent userIntent =
         getDefaultUserIntent(universeName, disableTls);
-    userIntent.specificGFlags = SpecificGFlags.construct(dbScopedMasterGFlags, GFLAGS);
+    userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
+    userIntent.numNodes = numNodes;
+    userIntent.replicationFactor = replicationFactor;
 
     // Set to use new db version for master/tserver.
     Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
@@ -364,6 +376,140 @@ public class DRDbScopedLocalTest extends DRLocalTestBase {
 
     // Delete db scoped DR.
     Result deleteResult = deleteDrConfig(drConfigUUID);
+    assertOk(deleteResult);
+    JsonNode deleteJson = Json.parse(contentAsString(deleteResult));
+    TaskInfo deleteTaskInfo =
+        waitForTask(
+            UUID.fromString(deleteJson.get("taskUUID").asText()), sourceUniverse, targetUniverse);
+    assertEquals(TaskInfo.State.Success, deleteTaskInfo.getTaskState());
+    verifyUniverseState(Universe.getOrBadRequest(sourceUniverse.getUniverseUUID()));
+    verifyUniverseState(Universe.getOrBadRequest(targetUniverse.getUniverseUUID()));
+  }
+
+  @Test
+  public void testDrDbScopedWithTLS() throws InterruptedException {
+    Universe sourceUniverse =
+        createDRUniverse(
+            DB_SCOPED_MIN_VERSION,
+            "source-universe",
+            false,
+            1 /* numNodes */,
+            1 /* replicationFactor */);
+    Universe targetUniverse =
+        createDRUniverse(
+            DB_SCOPED_MIN_VERSION,
+            "target-universe",
+            false,
+            1 /* numNodes */,
+            1 /* replicationFactor */);
+
+    // Set up the storage config.
+    CustomerConfig customerConfig =
+        ModelFactory.createNfsStorageConfig(customer, "test_nfs_storage", getBackupBaseDirectory());
+
+    List<String> namespaceNames = Arrays.asList("dbnoncolocated");
+    Db db1 = Db.create(namespaceNames.get(0), false);
+    List<Db> dbs = Arrays.asList(db1);
+
+    Table table1 = Table.create("table1", DEFAULT_TABLE_COLUMNS, db1);
+    List<Table> tables = Arrays.asList(table1);
+
+    // Create databases on both source + target universe.
+    createTestSet(sourceUniverse, dbs, tables);
+    createTestSet(targetUniverse, dbs, tables);
+
+    // Get the namespace info for the source universe.
+    List<TableInfoForm.NamespaceInfoResp> namespaceInfo =
+        tableHandler.listNamespaces(customer.getUuid(), sourceUniverse.getUniverseUUID(), false);
+
+    DrConfigCreateForm formData = new DrConfigCreateForm();
+    formData.sourceUniverseUUID = sourceUniverse.getUniverseUUID();
+    formData.targetUniverseUUID = targetUniverse.getUniverseUUID();
+    formData.name = "db-scoped-disaster-recovery-1";
+    formData.dbScoped = true;
+    formData.dbs = new HashSet<String>();
+    for (TableInfoForm.NamespaceInfoResp namespace : namespaceInfo) {
+      if (namespaceNames.contains(namespace.name)) {
+        formData.dbs.add(namespace.namespaceUUID.toString());
+      }
+    }
+
+    formData.bootstrapParams = new XClusterConfigRestartFormData.RestartBootstrapParams();
+    formData.bootstrapParams.backupRequestParams =
+        new XClusterConfigCreateFormData.BootstrapParams.BootstrapBackupParams();
+    formData.bootstrapParams.backupRequestParams.storageConfigUUID = customerConfig.getConfigUUID();
+
+    Result result = createDrConfig(formData);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    TaskInfo taskInfo =
+        waitForTask(UUID.fromString(json.get("taskUUID").asText()), sourceUniverse, targetUniverse);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    verifyUniverseState(Universe.getOrBadRequest(sourceUniverse.getUniverseUUID()));
+    verifyUniverseState(Universe.getOrBadRequest(targetUniverse.getUniverseUUID()));
+
+    // Insert values into source universe and make sure they are replicated on target.
+    insertRow(sourceUniverse, table1, Map.of("id", "1", "name", "'val1'"));
+    Thread.sleep(5000);
+    int rowCount = getRowCount(targetUniverse, table1);
+    assertEquals(1, rowCount);
+
+    // Perform full move on source universe.
+    UniverseDefinitionTaskParams.Cluster sourceCluster =
+        sourceUniverse.getUniverseDetails().getPrimaryCluster();
+    sourceCluster.userIntent.instanceType = INSTANCE_TYPE_CODE_2;
+    PlacementInfoUtil.updateUniverseDefinition(
+        sourceUniverse.getUniverseDetails(),
+        customer.getId(),
+        sourceCluster.uuid,
+        UniverseConfigureTaskParams.ClusterOperationType.EDIT);
+    verifyNodeModifications(sourceUniverse, 1, 1);
+    UUID taskID1 =
+        universeCRUDHandler.update(
+            customer,
+            Universe.getOrBadRequest(sourceUniverse.getUniverseUUID()),
+            sourceUniverse.getUniverseDetails());
+    TaskInfo fullMoveTaskInfo1 = waitForTask(taskID1, sourceUniverse);
+    verifyUniverseTaskSuccess(fullMoveTaskInfo1);
+    verifyUniverseState(Universe.getOrBadRequest(sourceUniverse.getUniverseUUID()));
+    // Get new universe state.
+    sourceUniverse = Universe.getOrBadRequest(sourceUniverse.getUniverseUUID());
+
+    // Validate replication working as expected.
+    insertRow(sourceUniverse, table1, Map.of("id", "2", "name", "'val2'"));
+    Thread.sleep(5000);
+    rowCount = getRowCount(targetUniverse, table1);
+    assertEquals(2, rowCount);
+
+    // Perform full move on target universe.
+    UniverseDefinitionTaskParams.Cluster targetCluster =
+        targetUniverse.getUniverseDetails().getPrimaryCluster();
+    targetCluster.userIntent.instanceType = INSTANCE_TYPE_CODE_2;
+    PlacementInfoUtil.updateUniverseDefinition(
+        targetUniverse.getUniverseDetails(),
+        customer.getId(),
+        targetCluster.uuid,
+        UniverseConfigureTaskParams.ClusterOperationType.EDIT);
+    verifyNodeModifications(targetUniverse, 1, 1);
+    UUID taskID2 =
+        universeCRUDHandler.update(
+            customer,
+            Universe.getOrBadRequest(targetUniverse.getUniverseUUID()),
+            targetUniverse.getUniverseDetails());
+    TaskInfo fullMoveTaskInfo2 = waitForTask(taskID2, targetUniverse);
+    verifyUniverseTaskSuccess(fullMoveTaskInfo2);
+    verifyUniverseState(Universe.getOrBadRequest(targetUniverse.getUniverseUUID()));
+    // Get new universe state.
+    targetUniverse = Universe.getOrBadRequest(targetUniverse.getUniverseUUID());
+
+    // Validate replication working as expected.
+    insertRow(sourceUniverse, table1, Map.of("id", "3", "name", "'val3'"));
+    Thread.sleep(5000);
+    rowCount = getRowCount(targetUniverse, table1);
+    assertEquals(3, rowCount);
+
+    // Delete db scoped DR.
+    Result deleteResult = deleteDrConfig(UUID.fromString(json.get("resourceUUID").asText()));
     assertOk(deleteResult);
     JsonNode deleteJson = Json.parse(contentAsString(deleteResult));
     TaskInfo deleteTaskInfo =

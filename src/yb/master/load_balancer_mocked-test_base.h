@@ -102,10 +102,12 @@ class LoadBalancerMockedBase : public YBTest {
   }
 
   void StopTsHeartbeat(std::shared_ptr<TSDescriptor> ts_desc) {
+    std::lock_guard l(ts_desc->mutex_);
     ts_desc->last_heartbeat_ = MonoTime();
   }
 
   void ResumeTsHeartbeat(std::shared_ptr<TSDescriptor> ts_desc) {
+    std::lock_guard l(ts_desc->mutex_);
     ts_desc->last_heartbeat_ = MonoTime::Now();
   }
 

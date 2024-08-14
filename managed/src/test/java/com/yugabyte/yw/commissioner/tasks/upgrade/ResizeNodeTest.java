@@ -27,11 +27,13 @@ import com.yugabyte.yw.commissioner.MockUpgrade;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
@@ -470,6 +472,9 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     MockUpgrade mockUpgrade = initMockUpgrade();
     mockUpgrade
         .precheckTasks(getPrecheckTasks(true))
+        // Persist for Primary although we have no changes but this will help to avoid
+        // inconsistency.
+        .addTasks(TaskType.PersistResizeNode)
         .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE)
         .withContext(UpgradeTaskBase.RUN_BEFORE_STOPPING)
         .tserverTask(TaskType.AnsibleConfigureServers)
@@ -821,7 +826,11 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
     MockUpgrade mockUpgrade = initMockUpgrade();
     mockUpgrade
-        .precheckTasks(getPrecheckTasks(true))
+        // Because only RR doesn't infer CheckNodesAreSafeToTakeDown.
+        .precheckTasks(getPrecheckTasks(false))
+        // Persist for Primary although we have no changes but this will help to avoid
+        // inconsistency.
+        .addTasks(TaskType.PersistResizeNode)
         .upgradeRound(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, true)
         .withContext(instanceChangeContext(mockUpgrade))
         .tserverTask(TaskType.ChangeInstanceType)
@@ -1368,6 +1377,25 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     for (NodeDetails nodeDetails : defaultUniverse.getUniverseDetails().nodeDetailsSet) {
       assertEquals(DEFAULT_INSTANCE_TYPE, nodeDetails.cloudInfo.instance_type);
     }
+  }
+
+  @Test
+  public void testResizeNodeRetries() {
+    ResizeNodeParams taskParams = new ResizeNodeParams();
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.creatingUser = defaultUser;
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.clusters.get(0).userIntent.instanceType = NEW_INSTANCE_TYPE;
+    TestUtils.setFakeHttpContext(defaultUser);
+    super.verifyTaskRetries(
+        defaultCustomer,
+        CustomerTask.TaskType.ResizeNode,
+        CustomerTask.TargetType.Universe,
+        defaultUniverse.getUniverseUUID(),
+        TaskType.ResizeNode,
+        taskParams,
+        false);
   }
 
   private void assertUniverseData(boolean increaseVolume, boolean changeInstance) {

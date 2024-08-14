@@ -34,13 +34,7 @@ import {
 import { RuntimeConfigKey } from '../../../redesign/helpers/constants';
 
 import { XClusterTableType } from '../XClusterTypes';
-import {
-  TableType,
-  TableTypeLabel,
-  Universe,
-  UniverseNamespace,
-  YBTable
-} from '../../../redesign/helpers/dtos';
+import { TableType, TableTypeLabel, Universe, YBTable } from '../../../redesign/helpers/dtos';
 
 import toastStyles from '../../../redesign/styles/toastStyles.module.scss';
 
@@ -51,7 +45,7 @@ interface CreateConfigModalProps {
 
 export interface CreateXClusterConfigFormValues {
   configName: string;
-  targetUniverse: { label: string; value: Universe };
+  targetUniverse: { label: string; value: Universe; isDisabled: boolean; disabledReason?: string };
   tableType: { label: string; value: XClusterTableType };
   isTransactionalConfig: boolean;
   namespaceUuids: string[];

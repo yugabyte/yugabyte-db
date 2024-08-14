@@ -52,6 +52,8 @@ public class UniverseApiControllerTest extends UniverseTestBase {
             universe -> {
               // arch
               universe.getUniverseDetails().arch = PublicCloudConstants.Architecture.aarch64;
+              // systemd
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd = true;
               // ysql
               universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL = true;
               universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQLAuth = true;

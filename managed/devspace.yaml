@@ -20,6 +20,8 @@ pipelines:
       # ensure_pull_secrets --all  # 2. Ensure pull secrets
       echo "Deploying YBA tag ${YB_IMAGE_TAG} on the cluster"
       echo "You can override this by running 'export YB_IMAGE_TAG=<custom tag>'"
+      echo "Using Helm release name ${YBA_HELM_RELEASE_NAME}"
+      echo "You can override this by running 'export YBA_HELM_RELEASE_NAME=<custom name>'"
       create_deployments --all
 
       echo "Building the YBA UI"
@@ -34,6 +36,7 @@ pipelines:
 deployments:
   yba:
     helm:
+      releaseName: ${YBA_HELM_RELEASE_NAME}
       chart:
         name: ../../charts/stable/yugaware/
       values:
@@ -42,7 +45,9 @@ deployments:
           tag: ${YB_IMAGE_TAG}
         yugaware:
           service:
-            type: ClusterIP
+            annotations:
+              'networking.gke.io/load-balancer-type': Internal
+            type: LoadBalancer
           storage: 100Gi
           storageClass: yb-standard
       # valuesFiles:
@@ -133,3 +138,6 @@ vars:
     source: env
     default: "${GIT_LATEST_TAG}"
   YBA_LOG_LEVEL: "DEBUG"
+  YBA_HELM_RELEASE_NAME:
+    source: env
+    default: "yba-${DEVSPACE_NAMESPACE}"

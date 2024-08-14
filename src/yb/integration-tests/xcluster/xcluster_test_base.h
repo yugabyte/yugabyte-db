@@ -321,6 +321,9 @@ class XClusterTestBase : public YBTest {
     return output;
   }
 
+  // Run ysql_dump on a database for the given cluster.
+  Result<std::string> RunYSQLDump(Cluster& cluster, const std::string& database_name = "yugabyte");
+
   // Wait for the xcluster safe time to advance to the given time on all TServers.
   Status WaitForSafeTime(const NamespaceId& namespace_id, const HybridTime& min_safe_time);
 

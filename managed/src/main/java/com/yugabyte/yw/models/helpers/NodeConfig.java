@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.models.helpers;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import javax.validation.constraints.NotNull;
@@ -13,6 +12,7 @@ import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
+import lombok.extern.jackson.Jacksonized;
 
 /** Pair of node configuration type and its value. */
 @Data
@@ -31,26 +31,15 @@ public class NodeConfig {
 
   @Builder
   @Getter
+  @Jacksonized
   @ToString
   @ApiModel(description = "Validation result of a node config")
   public static class ValidationResult {
     private Type type;
-
-    private boolean isValid;
-    private boolean isRequired;
-
+    private boolean valid;
+    private boolean required;
     private String description;
     private String value;
-
-    @JsonProperty("isValid")
-    public boolean isValid() {
-      return isValid;
-    }
-
-    @JsonProperty("isRequired")
-    public boolean isRequired() {
-      return isRequired;
-    }
   }
 
   /**

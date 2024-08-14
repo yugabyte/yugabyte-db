@@ -66,7 +66,7 @@ void YbGetTypeTable(const YBCPgTypeEntity **type_table, int *count);
  * Callback functions
  */
 int64_t YbUnixEpochToPostgresEpoch(int64_t unix_t);
-bool YbTypeDetails(Oid elmtype, int *elmlen, bool *elmbyval, char *elmalign);
+bool YbTypeDetails(Oid elmtype, int16_t *elmlen, bool *elmbyval, char *elmalign);
 void YbConstructArrayDatum(Oid arraytypoid, const char **items,
 						   const int nelems, char **datum, size_t *len);
 #endif

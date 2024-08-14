@@ -79,7 +79,7 @@ This view provides a list of wait events and their metadata. The columns of the 
 | wait_event_aux | text | Additional information for the wait event. For example, tablet ID for TServer wait events. |
 | top_level_node_id | UUID | 16-byte TServer UUID of the YSQL/YCQL node where the query is being executed. |
 | query_id | bigint | Query ID as seen on the `/statements` endpoint. This can be used to join with [pg_stat_statements](../../query-1-performance/pg-stat-statements/)/[ycql_stat_statements](../../query-1-performance/ycql-stat-statements/). It is set as a known constant for background activities. For example, _flush_ is 2, _compaction_ is 3, and so on. |
-| ysql_session_id | bigint | YSQL session identifier. Zero for YCQL and background activities. |
+| pid | bigint | PID of the process that is executing the query. For YCQL and background activites, this will be the YB-TServer PID. |
 | client_node_ip | text | IP address of the client which sent the query to YSQL/YCQL. Null for background activities. |
 | sample_weight | float | If in any sampling interval there are too many events, YugabyteDB only collects `ysql_yb_ash_sample_size` samples/events. Based on how many were sampled, weights are assigned to the collected events. <br><br>For example, if there are 200 events, but only 100 events are collected, each of the collected samples will have a weight of (200 / 100) = 2.0 |
 

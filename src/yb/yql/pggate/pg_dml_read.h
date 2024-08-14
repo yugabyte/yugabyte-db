@@ -91,7 +91,7 @@ class PgDmlRead : public PgDml {
   // Bind a column with an IS NOT NULL condition.
   Status BindColumnCondIsNotNull(int attr_num);
 
-  Status BindHashCode(const std::optional<Bound>& start, const std::optional<Bound>& end);
+  void BindHashCode(const std::optional<Bound>& start, const std::optional<Bound>& end);
 
   // Limit scan to specific ybctid range for parallel scan.
   // Sets underlying request's bounds to specified values, also resets any psql operations
