@@ -84,7 +84,7 @@ Note: If you are performing application upgrades involving both adding and dropp
 
 ### Add a table to replication
 
-To ensure that data is protected at all times, set up replication on a new table _before_ starting any workload.
+To potentially avoid a full copy, set up replication on a new table _before_ starting any workload.
 
 {{<tip>}}
 Before adding a table to replication in YugabyteDB Anywhere, refer to [Order of operations](#order-of-operations) for your setup.

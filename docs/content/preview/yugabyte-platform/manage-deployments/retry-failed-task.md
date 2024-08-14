@@ -31,9 +31,9 @@ Critical task failures, such as scaling a universe, placement changes, software 
 
 Note that some operations, such as taking [universe backups](../../back-up-restore-universes/) or creating [support bundles](../../troubleshoot/universe-issues/#use-support-bundles), can always be attempted even after such failures.
 
-In case of certain failures, a retry of the task might continue to fail indefinitely. For example, an incorrect flag value might have been specified during a flag update operation. For such specific operations, you can do a new flag update operation with the corrected flag value instead of retrying the failed operation. You can fix the operation parameters instead of retrying for the following operations:
+For some failures, a retry of the task might continue to fail indefinitely. For example, an incorrect flag value might have been specified during a flag update operation. In this case, you would run a new flag update operation with the corrected flag value instead of retrying the failed operation. You can fix the operation parameters instead of retrying for the following operations:
 
-1. Flag updates.
-1. Upgrade Linux Version.
-1. Update Kubernetes overrides.
-1. Changing the resource specification of a Kubernetes universe.
+- [Flag updates](../edit-config-flags/)
+- [Upgrade Linux Version](../upgrade-nodes/)
+- [Update Kubernetes overrides](../edit-helm-overrides/)
+- Changing the resource specification of a Kubernetes universe

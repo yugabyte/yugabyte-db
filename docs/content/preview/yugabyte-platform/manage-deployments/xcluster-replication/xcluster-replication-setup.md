@@ -33,13 +33,11 @@ Ensure the universes have the following characteristics:
 
     In addition, during xCluster replication setup, the source universe retains WAL logs and increases in size. The setup (including copying data from source to target) is not aborted if the source universe runs out of space. Instead, a warning is displayed notifying that the source universe has less than 100 GB of space remaining. Ensure that there is enough space available on the source universe before attempting to set up the replication. A recommended approach would be to estimate that the available disk space on the source universe is the same as the used disk space.
 
-- Neither universe is already being used for xCluster replication.
-
 Prepare your database and tables on the source. The source can be empty or have data. If the source has a lot of data, setup will take longer because the [data must be copied in full to the target](#full-copy-during-xcluster-setup) before on-going asynchronous replication starts.
 
-On the target, create a database with the same name as that on the source. During initial setup, you don't need to create objects on the target. YugabyteDB Anywhere performs a full copy of the data to be replicated on the source, and automatically creates tables and objects, and restores data on the target from the source.
+During initial setup, you don't need to create objects on the target. YugabyteDB Anywhere performs a full copy of the data to be replicated on the source, and automatically creates tables and objects, and restores data on the target from the source.
 
-After replication is configured, by default the target will only be available for reads.
+For transactional YSQL, after replication is configured, the target will only be available for reads.
 
 ## Best practices
 
@@ -101,7 +99,7 @@ To set up replication for a universe, do the following:
 
 1. Select the universe to use as the target.
 
-1. Select the API, YSQL or YCQL.
+1. Select the table type, YSQL or YCQL.
 
 1. If you selected YSQL, choose whether to use [transactional atomicity](../#xcluster-configurations).
 
@@ -205,7 +203,7 @@ For more information on alerting in YugabyteDB Anywhere, refer to [Alerts](../..
 
 ## Add a database to an existing replication
 
-Note that, although you don't need to create objects on the target during initial setup, when you add a new database to an existing replication configuration, you _do_ need to create the same objects on the target. If source and target objects don't match, you won't be able to add the database to replication.
+Note that, although you don't need to create objects on the target when adding tables to an existing replication configuration, for YSQL, if a table is missing on the target, xCluster Replication must copy the entire database. By adding the objects to the target, you can potentially avoid a full copy.
 
 To add a database to replication, do the following:
 
@@ -229,7 +227,7 @@ YugabyteDB Anywhere proceeds to copy the database to the target. How long this t
 
 ## Restart replication
 
-Some situations, such as extended network partitions between the source and target, can cause a permanent failure of replication due to WAL logs being no longer available on the source.
+Some situations, such as extended network partitions between the source and target, can cause a permanent failure of replication due to WAL logs being no longer available on the source. For information on restarting bidirectional replication, see [Restart bidirectional replication](../bidirectional-replication/#restart-bidirectional-replication).
 
 In these cases, restart replication as follows:
 

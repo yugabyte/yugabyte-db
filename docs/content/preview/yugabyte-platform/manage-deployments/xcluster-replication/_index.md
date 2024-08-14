@@ -84,11 +84,9 @@ Video: [YFTT - Transactional xCluster](https://www.youtube.com/watch?lI6gw7ncBs8
 
 - Currently, replication of DDL (SQL-level changes such as creating or dropping tables or indexes) is not supported. To make these changes requires first performing the DDL operation (for example, creating a table), and then adding the new object to replication in YugabyteDB Anywhere. Refer to [Manage tables and indexes](./xcluster-replication-ddl/).
 
-- xCluster replication setup (and other operations that require making a full copy from source to target, such as adding tables with data to replication, resuming replication after an extended network outage, and so on) may fail with the error `database "<database_name>" is being accessed by other users`.
+- xCluster replication setup (and other operations that require making a full copy from source to target, such as adding tables with data to replication, resuming replication after an extended network outage, and so on) forcefully drop the tables on the target if they exist before performing the restore.
 
-    This happens because the operation relies on a backup and restore of the database, and the restore will fail if there are any open connections to the target.
-
-    To fix this, close any open SQL connections to the target, delete the xCluster replication configuration, and perform the operation again.
+    If there are any open SQL connections to the database on the target, they will be interrupted and you should retry the connection.
 
 - Setting up xCluster replication between a universe earlier than or upgraded to v2.20.x and a new v2.20.x universe is not supported. This is due to a limitation of xCluster deployments and packed rows. See [Packed row limitations](../../../architecture/docdb/packed-rows/#limitations).
 
@@ -119,7 +117,7 @@ xCluster DR adds higher-level orchestration workflows to this deployment to make
 
 - During setup, xCluster DR ensures that both universes have identical copies of the data (using backup and restore to synchronize), and configures the DR replica to be read-only.
 - During switchover, xCluster DR waits for all remaining changes on the DR primary to be replicated to the DR replica before switching over.
-- During both switchover and failover, xCluster DR also promotes the DR replica from read only to read and write, and demotes (when possible) the original DR primary from read and write to read only.
+- During both switchover and failover, xCluster DR promotes the DR replica from read only to read and write; during switchover, xCluster DR demotes (when possible) the original DR primary from read and write to read only.
 
 For all deployment models _other than_ active-active single-master, unidirectional replication configured at any moment in time, for transactional YSQL, use xCluster replication directly instead of xCluster DR.
 
@@ -128,7 +126,7 @@ For example, use xCluster replication for the following:
 - Multi-master (bidirectional) deployments, where you have two application instances, each one writing to a different universe.
 - Active-active single-master deployments in which a single master application can freely write (without coordinating with YugabyteDB for failover or switchover) to either universe, because both accept writes.
 - Non-transactional SQL. That is, SQL without write-order guarantees and without transactional atomicity guarantees.
-- CQL
+- CQL deployments.
 
 Note that a universe configured for xCluster DR cannot be used for xCluster replication, and vice versa. Although xCluster DR uses xCluster replication under the hood, xCluster DR replication is managed exclusively from the **xCluster Disaster Recovery** tab, and not on the **xCluster Replication** tab.
 
