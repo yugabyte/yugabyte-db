@@ -49,6 +49,7 @@
 
 #include "yb/consensus/consensus_types.pb.h"
 
+#include "yb/master/catalog_entity_types.h"
 #include "yb/master/master_client.fwd.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/catalog_entity_info.pb.h"
@@ -185,7 +186,7 @@ struct TabletReplica {
 // sys_catalog. Subclasses of this will provide convenience getter/setter methods around the
 // protos and instances of these will be wrapped around CowObjects and locks for access and
 // modifications.
-template <class DataEntryPB, SysRowEntryType entry_type>
+template <class DataEntryPB>
 struct Persistent {
   // Type declaration to be used in templated read/write methods. We are using typename
   // Class::data_type in templated methods for figuring out the type we need.
@@ -193,7 +194,7 @@ struct Persistent {
 
   // Subclasses of this need to provide a valid value of the entry type through
   // the template class argument.
-  static SysRowEntryType type() { return entry_type; }
+  static SysRowEntryType type() { return GetCatalogEntityType<DataEntryPB>::value; }
 
   // The proto that is persisted in the sys_catalog.
   DataEntryPB pb;
@@ -251,7 +252,7 @@ class MetadataCowWrapper {
 // The data related to a tablet which is persisted on disk.
 // This portion of TabletInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
-struct PersistentTabletInfo : public Persistent<SysTabletsEntryPB, SysRowEntryType::TABLET> {
+struct PersistentTabletInfo : public Persistent<SysTabletsEntryPB> {
   bool is_running() const {
     return pb.state() == SysTabletsEntryPB::RUNNING;
   }
@@ -431,7 +432,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
 // The data related to a table which is persisted on disk.
 // This portion of TableInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
-struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType::TABLE> {
+struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
   bool started_deleting() const {
     return pb.state() == SysTablesEntryPB::DELETING ||
            pb.state() == SysTablesEntryPB::DELETED;
@@ -890,8 +891,7 @@ class DeletedTableInfo : public RefCountedThreadSafe<DeletedTableInfo> {
 // The data related to a namespace which is persisted on disk.
 // This portion of NamespaceInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
-struct PersistentNamespaceInfo : public Persistent<
-    SysNamespaceEntryPB, SysRowEntryType::NAMESPACE> {
+struct PersistentNamespaceInfo : public Persistent<SysNamespaceEntryPB> {
   // Get the namespace name.
   const NamespaceName& name() const {
     return pb.name();
@@ -940,7 +940,7 @@ class NamespaceInfo : public RefCountedThreadSafe<NamespaceInfo>,
 // The data related to a User-Defined Type which is persisted on disk.
 // This portion of UDTypeInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
-struct PersistentUDTypeInfo : public Persistent<SysUDTypeEntryPB, SysRowEntryType::UDTYPE> {
+struct PersistentUDTypeInfo : public Persistent<SysUDTypeEntryPB> {
   // Return the type's name.
   const UDTypeName& name() const {
     return pb.name();
@@ -1002,9 +1002,7 @@ class UDTypeInfo : public RefCountedThreadSafe<UDTypeInfo>,
 
 // This wraps around the proto containing cluster level config information. It will be used for
 // CowObject managed access.
-struct PersistentClusterConfigInfo : public Persistent<SysClusterConfigEntryPB,
-                                                       SysRowEntryType::CLUSTER_CONFIG> {
-};
+struct PersistentClusterConfigInfo : public Persistent<SysClusterConfigEntryPB> {};
 
 // This is the in memory representation of the cluster config information serialized proto data,
 // using metadata() for CowObject access.
@@ -1022,8 +1020,7 @@ class ClusterConfigInfo : public MetadataCowWrapper<PersistentClusterConfigInfo>
 
 // This wraps around the proto containing xcluster cluster level config information. It will be used
 // for CowObject managed access.
-struct PersistentXClusterConfigInfo
-    : public Persistent<SysXClusterConfigEntryPB, SysRowEntryType::XCLUSTER_CONFIG> {};
+struct PersistentXClusterConfigInfo : public Persistent<SysXClusterConfigEntryPB> {};
 
 // This is the in memory representation of the xcluster config information serialized proto
 // data, using metadata() for CowObject access.
@@ -1039,8 +1036,7 @@ class XClusterConfigInfo : public MetadataCowWrapper<PersistentXClusterConfigInf
   const std::string fake_id_;
 };
 
-struct PersistentRedisConfigInfo
-    : public Persistent<SysRedisConfigEntryPB, SysRowEntryType::REDIS_CONFIG> {};
+struct PersistentRedisConfigInfo : public Persistent<SysRedisConfigEntryPB> {};
 
 class RedisConfigInfo : public RefCountedThreadSafe<RedisConfigInfo>,
                         public MetadataCowWrapper<PersistentRedisConfigInfo> {
@@ -1058,7 +1054,7 @@ class RedisConfigInfo : public RefCountedThreadSafe<RedisConfigInfo>,
   DISALLOW_COPY_AND_ASSIGN(RedisConfigInfo);
 };
 
-struct PersistentRoleInfo : public Persistent<SysRoleEntryPB, SysRowEntryType::ROLE> {};
+struct PersistentRoleInfo : public Persistent<SysRoleEntryPB> {};
 
 class RoleInfo : public RefCountedThreadSafe<RoleInfo>,
                  public MetadataCowWrapper<PersistentRoleInfo> {
@@ -1075,8 +1071,7 @@ class RoleInfo : public RefCountedThreadSafe<RoleInfo>,
   DISALLOW_COPY_AND_ASSIGN(RoleInfo);
 };
 
-struct PersistentSysConfigInfo
-    : public Persistent<SysConfigEntryPB, SysRowEntryType::SYS_CONFIG> {};
+struct PersistentSysConfigInfo : public Persistent<SysConfigEntryPB> {};
 
 class SysConfigInfo : public RefCountedThreadSafe<SysConfigInfo>,
                       public MetadataCowWrapper<PersistentSysConfigInfo> {
@@ -1186,8 +1181,7 @@ struct SplitTabletIds {
   }
 };
 
-struct PersistentXClusterSafeTimeInfo
-    : public Persistent<XClusterSafeTimePB, SysRowEntryType::XCLUSTER_SAFE_TIME> {};
+struct PersistentXClusterSafeTimeInfo : public Persistent<XClusterSafeTimePB> {};
 
 class XClusterSafeTimeInfo : public MetadataCowWrapper<PersistentXClusterSafeTimeInfo> {
  public:
@@ -1205,8 +1199,7 @@ class XClusterSafeTimeInfo : public MetadataCowWrapper<PersistentXClusterSafeTim
 
 // This wraps around the proto containing CDC stream information. It will be used for
 // CowObject managed access.
-struct PersistentCDCStreamInfo : public Persistent<
-    SysCDCStreamEntryPB, SysRowEntryType::CDC_STREAM> {
+struct PersistentCDCStreamInfo : public Persistent<SysCDCStreamEntryPB> {
   const google::protobuf::RepeatedPtrField<std::string>& table_id() const {
     return pb.table_id();
   }
@@ -1299,7 +1292,7 @@ class UniverseReplicationInfoBase {
 // This wraps around the proto containing universe replication information. It will be used for
 // CowObject managed access.
 struct PersistentUniverseReplicationInfo
-    : public Persistent<SysUniverseReplicationEntryPB, SysRowEntryType::UNIVERSE_REPLICATION> {
+    : public Persistent<SysUniverseReplicationEntryPB> {
   bool is_deleted_or_failed() const {
     return pb.state() == SysUniverseReplicationEntryPB::DELETED
       || pb.state() == SysUniverseReplicationEntryPB::DELETED_ERROR
@@ -1344,8 +1337,7 @@ class UniverseReplicationInfo : public UniverseReplicationInfoBase,
 // This wraps around the proto containing universe replication information. It will be used for
 // CowObject managed access.
 struct PersistentUniverseReplicationBootstrapInfo
-    : public Persistent<
-          SysUniverseReplicationBootstrapEntryPB, SysRowEntryType::UNIVERSE_REPLICATION_BOOTSTRAP> {
+    : public Persistent<SysUniverseReplicationBootstrapEntryPB> {
   bool is_deleted_or_failed() const {
     return pb.state() == SysUniverseReplicationBootstrapEntryPB::DELETED ||
            pb.state() == SysUniverseReplicationBootstrapEntryPB::DELETED_ERROR ||
@@ -1436,7 +1428,7 @@ class UniverseReplicationBootstrapInfo
 // The data related to a snapshot which is persisted on disk.
 // This portion of SnapshotInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
-struct PersistentSnapshotInfo : public Persistent<SysSnapshotEntryPB, SysRowEntryType::SNAPSHOT> {
+struct PersistentSnapshotInfo : public Persistent<SysSnapshotEntryPB> {
   SysSnapshotEntryPB::State state() const {
     return pb.state();
   }

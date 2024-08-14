@@ -41,6 +41,34 @@ class MasterAdminServiceImpl : public MasterServiceBase, public MasterAdminIf {
     HANDLE_ON_LEADER_WITHOUT_LOCK(CatalogManager, IsInitDbDone);
   }
 
+  void DumpSysCatalogEntries(
+      const DumpSysCatalogEntriesRequestPB* req, DumpSysCatalogEntriesResponsePB* resp,
+      rpc::RpcContext rpc) override {
+    // We cannot use HANDLE_ON_LEADER since leader_status may be bad.
+
+    SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager_impl());
+    if (!l.CheckIsInitializedOrRespond(resp, &rpc)) {
+      return;
+    }
+    auto s = server_->catalog_manager_impl()->DumpSysCatalogEntries(req, resp, &rpc);
+    CheckRespErrorOrSetUnknown(s, resp);
+    rpc.RespondSuccess();
+  }
+
+  void WriteSysCatalogEntry(
+      const WriteSysCatalogEntryRequestPB* req, WriteSysCatalogEntryResponsePB* resp,
+      rpc::RpcContext rpc) override {
+    // We cannot use HANDLE_ON_LEADER since leader_status may be bad.
+
+    SCOPED_LEADER_SHARED_LOCK(l, server_->catalog_manager_impl());
+    if (!l.CheckIsInitializedOrRespond(resp, &rpc)) {
+      return;
+    }
+    auto s = server_->catalog_manager_impl()->WriteSysCatalogEntry(req, resp, &rpc);
+    CheckRespErrorOrSetUnknown(s, resp);
+    rpc.RespondSuccess();
+  }
+
   MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(
       CatalogManager,
       (AddTransactionStatusTablet)
