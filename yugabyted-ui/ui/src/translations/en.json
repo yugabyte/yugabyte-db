@@ -1087,7 +1087,7 @@
           "schemaExportSourceDB": "Export schema from source database",
           "schemaAnalysis": "Schema analysis",
           "schemaImportTargetDB": "Import schema to target database",
-          "schemaAnalysisDesc": "Analyze schema in order to xyz",
+          "schemaAnalysisDesc": "Analyze schema to generate Schema Analysis report which suggests changes to the source DB schema to make it appropriate for YugabyteDB",
           "schemaAnalysisLearn": "Learn how to analyze schema",
           "automaticDDLImport": "Automatic DDL Import",
           "manualRefactoring": "Manual Refactoring",
