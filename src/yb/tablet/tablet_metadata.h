@@ -289,6 +289,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
       const TableId& table_id, const ColocationId& colocation_id = kColocationIdNotSet) const
       REQUIRES(data_mutex_);
 
+  std::vector<TableInfoPtr> GetColocatedTableInfos() const;
+
   const RaftGroupId& raft_group_id() const {
     DCHECK_NE(state_, kNotLoadedYet);
     return raft_group_id_;
