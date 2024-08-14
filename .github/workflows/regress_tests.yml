@@ -27,64 +27,44 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up dependencies
+      - name: Install package dependencies
         run: |
-          sudo apt-get update && export DEBIAN_FRONTEND=noninteractive \
-            && sudo apt-get install -qy \
-            wget \
-            curl \
-            sudo \
-            gnupg2 \
-            lsb-release \
-            tzdata \
-            build-essential \
-            pkg-config \
-            cmake \
-            git \
-            && sudo rm -rf /var/lib/apt/lists/*
-
-      - name: Add PostgreSQL repo
-        run: |
-          echo "deb http://apt.postgresql.org/pub/repos/apt/ $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list && \
-          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add - && \
-          sudo apt-get update && \
-          sudo rm -rf /var/lib/apt/lists/*
-
-      - name: Add CitusData repo
-        run: |
-          curl -4sSf https://packagecloud.io/install/repositories/citusdata/community/script.deb.sh | sudo bash
-
-      - name: Install PostgreSQL and Extensions
-        run: |
-          sudo apt-get update && export DEBIAN_FRONTEND=noninteractive \
-            && sudo apt-get install -y \
-            postgresql-16 \
-            postgresql-server-dev-16 \
-            libpq-dev \
-            postgresql-16-pgcron \
-            postgresql-16-pgvector \
-            postgresql-16-postgis-3 \
-            postgresql-16-rum \
-            && sudo rm -rf /var/lib/apt/lists/*
-
-      - name: Install Additional Libraries
-        run: |
-          export CLEANUP_SETUP=1
+          # Create the file repository configuration:
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main 15" > /etc/apt/sources.list.d/pgdg.list'
+          # Import the repository signing key:
+          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+          wget \
+          curl \
+          sudo \
+          gnupg2 \
+          lsb-release \
+          tzdata \
+          build-essential \
+          pkg-config \
+          cmake \
+          git \
+          postgresql-15 \
+          postgresql-server-dev-15 \
+          libpq-dev \
+          postgresql-15-cron \
+          postgresql-15-pgvector \
+          postgresql-15-postgis-3 \
+          postgresql-15-rum 
+          export CLEAN_SETUP=1
           export INSTALL_DEPENDENCIES_ROOT=/tmp/install_setup
           mkdir -p /tmp/install_setup
-          cp -r scripts/* /tmp/install_setup
-          sudo -E MAKE_PROGRAM=cmake /tmp/install_setup/install_setup_libbson.sh
-          sudo -E /tmp/install_setup/install_setup_pcre2.sh
-          sudo -E /tmp/install_setup/install_setup_intel_decimal_math_lib.sh
-          sudo -E /tmp/install_setup/install_citus_indent.sh
+          cp ./scripts/* /tmp/install_setup
+          sudo INSTALL_DEPENDENCIES_ROOT=$INSTALL_DEPENDENCIES_ROOT MAKE_PROGRAM=cmake /tmp/install_setup/install_setup_libbson.sh
+          sudo INSTALL_DEPENDENCIES_ROOT=$INSTALL_DEPENDENCIES_ROOT /tmp/install_setup/install_setup_pcre2.sh
+          sudo INSTALL_DEPENDENCIES_ROOT=$INSTALL_DEPENDENCIES_ROOT /tmp/install_setup/install_setup_intel_decimal_math_lib.sh
+          sudo INSTALL_DEPENDENCIES_ROOT=$INSTALL_DEPENDENCIES_ROOT /tmp/install_setup/install_citus_indent.sh
 
-      - name: Clean up and Set Locale
+      - name: Configure, Build and Install HelioDB
         run: |
-          sudo rm -rf /var/lib/apt/lists/* \
-            && sudo localedef -i en_US -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8
-
-      - name: Build and install
-        run: sudo make install
+          make
+          sudo make install
 
       - name: Run Tests
         run: make check
