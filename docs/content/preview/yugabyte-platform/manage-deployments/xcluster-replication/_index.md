@@ -22,8 +22,6 @@ xCluster replication is an asynchronous replication feature in YugabyteDB that a
 
 ![xCluster asynchronous replication](/images/architecture/replication/active-standby-deployment-new.png)
 
-One source universe can replicate to one or more target universes.
-
 You can use xCluster replication to implement disaster recovery for YugabyteDB. This is a good option where you have only two regions available, or the higher write latency of a [global database](../../../develop/build-global-apps/global-database/) is a problem. You do need to tolerate some small possibility of data loss due to asynchronous replication. For more details on using xCluster for disaster recovery, see [xCluster Disaster Recovery](../../back-up-restore-universes/disaster-recovery/).
 
 xCluster replication can be used to move data from one YugabyteDB universe to another for purposes other than disaster recovery. For example, downstream YugabyteDB universes used for reporting or "green" deployments of blue-green deployments can be kept asynchronously up to date with the main YugabyteDB universe.
