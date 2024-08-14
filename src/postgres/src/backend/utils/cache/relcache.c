@@ -2543,7 +2543,6 @@ YbRunWithPrefetcherImpl(
 	YBCStatus (*func)(YbRunWithPrefetcherContext *ctx),
 	bool keep_prefetcher)
 {
-	YBCPgResetCatalogReadTime();
 	const bool is_using_response_cache =
 		prefetcher_starter->call(prefetcher_starter);
 	YBCStatus result = NULL;
@@ -2564,7 +2563,6 @@ YbRunWithPrefetcherImpl(
 		return NULL;
 
 	YBCStopSysTablePrefetching();
-	YBCPgResetCatalogReadTime();
 
 	if (result && YBCStatusIsNotFound(result))
 		YbRaiseInvalidDBConnectionError();
