@@ -369,12 +369,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/19"), 9));
           add(PgOutputUpdateMessage.CreateForComparison(
-            new PgOutputMessageTuple((short) 3,
-              Arrays.asList(
-                // No before image in CHANGE, so all columns come as Toasted.
-                new PgOutputMessageTupleColumnToasted(),
-                new PgOutputMessageTupleColumnToasted(),
-                new PgOutputMessageTupleColumnToasted())),
+            // No before image in CHANGE, so old tuple comes out as null.
+            null,
             new PgOutputMessageTuple((short) 3,
               Arrays.asList(
                 new PgOutputMessageTupleColumnValue("1"),
@@ -386,12 +382,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/1C"), 10));
           add(PgOutputUpdateMessage.CreateForComparison(
-            new PgOutputMessageTuple((short) 3,
-              Arrays.asList(
-                // No before image in CHANGE, so all columns come as Toasted.
-                new PgOutputMessageTupleColumnToasted(),
-                new PgOutputMessageTupleColumnToasted(),
-                new PgOutputMessageTupleColumnToasted())),
+            // No before image in CHANGE, so old tuple comes out as null.
+            null,
             new PgOutputMessageTuple((short) 3,
               Arrays.asList(
                 new PgOutputMessageTupleColumnValue("2"),
@@ -403,12 +395,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/1F"), 11));
           add(PgOutputUpdateMessage.CreateForComparison(
-            new PgOutputMessageTuple((short) 3,
-              Arrays.asList(
-                // No before image in DEFAULT, so all columns come as NULL, same as in PG.
-                new PgOutputMessageTupleColumnNull(),
-                new PgOutputMessageTupleColumnNull(),
-                new PgOutputMessageTupleColumnNull())),
+            // No before image in DEFAULT, so old tuple comes out as null.
+            null,
             new PgOutputMessageTuple((short) 3,
               Arrays.asList(
                 new PgOutputMessageTupleColumnValue("1"),
@@ -420,12 +408,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/22"), 12));
           add(PgOutputUpdateMessage.CreateForComparison(
-            new PgOutputMessageTuple((short) 3,
-              Arrays.asList(
-                // No before image in DEFAULT, so all columns come as NULL, same as in PG.
-                new PgOutputMessageTupleColumnNull(),
-                new PgOutputMessageTupleColumnNull(),
-                new PgOutputMessageTupleColumnNull())),
+            // No before image in DEFAULT, so old tuple comes out as null.
+            null,
             new PgOutputMessageTuple((short) 3,
               Arrays.asList(
                 new PgOutputMessageTupleColumnValue("2"),
@@ -526,12 +510,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/10"), 6));
           add(PgOutputUpdateMessage.CreateForComparison(
-            new PgOutputMessageTuple((short) 3,
-              Arrays.asList(
-                // No before image in DEFAULT, so all columns come as NULL, same as in PG.
-                new PgOutputMessageTupleColumnNull(),
-                new PgOutputMessageTupleColumnNull(),
-                new PgOutputMessageTupleColumnNull())),
+            // No before image in DEFAULT, so old tuple comes out as null.
+            null,
             new PgOutputMessageTuple((short) 3,
               Arrays.asList(
                 new PgOutputMessageTupleColumnValue("1"),
@@ -543,12 +523,8 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
           add(PgOutputBeginMessage.CreateForComparison(LogSequenceNumber.valueOf("0/13"), 7));
           add(PgOutputUpdateMessage.CreateForComparison(
-            new PgOutputMessageTuple((short) 3,
-              Arrays.asList(
-                // No before image in DEFAULT, so all columns come as NULL, same as in PG.
-                new PgOutputMessageTupleColumnNull(),
-                new PgOutputMessageTupleColumnNull(),
-                new PgOutputMessageTupleColumnNull())),
+            // No before image in DEFAULT, so old tuple comes out as null.
+            null,
             new PgOutputMessageTuple((short) 3,
               Arrays.asList(
                 new PgOutputMessageTupleColumnValue("2"),
@@ -2108,11 +2084,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                   new PgOutputMessageTupleColumnValue("t")))));
     }
     expectedResult.add(PgOutputUpdateMessage.CreateForComparison(
-        new PgOutputMessageTuple((short) 3,
-            Arrays.asList(
-                new PgOutputMessageTupleColumnToasted(),
-                new PgOutputMessageTupleColumnToasted(),
-                new PgOutputMessageTupleColumnToasted())),
+        null,
         new PgOutputMessageTuple((short) 3,
             Arrays.asList(
                 new PgOutputMessageTupleColumnValue("1"),
@@ -2228,10 +2200,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
                   new PgOutputMessageTupleColumnValue(String.format("text_%d", i))))));
     }
     expectedResult.add(PgOutputUpdateMessage.CreateForComparison(
-        new PgOutputMessageTuple((short) 2,
-            Arrays.asList(
-                new PgOutputMessageTupleColumnToasted(),
-                new PgOutputMessageTupleColumnToasted())),
+        null,
         new PgOutputMessageTuple((short) 2,
             Arrays.asList(
                 new PgOutputMessageTupleColumnValue("1"),
@@ -2394,12 +2363,12 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         add("COMMIT 4");
 
         add("BEGIN 5");
-        add("table public.t1: UPDATE: old-key: new-tuple: a[integer]:1 b[text]:'updated_abcd'" +
+        add("table public.t1: UPDATE: a[integer]:1 b[text]:'updated_abcd'" +
                 " c[boolean]:unchanged-toast-datum");
         add("COMMIT 5");
 
         add("BEGIN 6");
-        add("table public.t1: UPDATE: old-key: new-tuple: a[integer]:2 b[text]:null " +
+        add("table public.t1: UPDATE: a[integer]:2 b[text]:null " +
                 "c[boolean]:false");
         add("COMMIT 6");
 
@@ -2425,7 +2394,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         add("COMMIT 11");
 
         add("BEGIN 12");
-        add("table public.t3: UPDATE: old-key: new-tuple: a[integer]:1 b[text]:'updated_abcd' " +
+        add("table public.t3: UPDATE: a[integer]:1 b[text]:'updated_abcd' " +
                 "c[boolean]:true");
         add("COMMIT 12");
 
@@ -2788,14 +2757,12 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
         add(
           "{\"xid\":5,\"change\":[{\"kind\":\"update\",\"schema\":\"public\",\"table\":\"t1\","
           +"\"columnnames\":[\"a\",\"b\"],\"columntypes\":[\"integer\",\"text\"],"
-          +"\"columnvalues\":[1,\"updated_abcd\"],\"oldkeys\":{\"keynames\":[],\"keytypes\":[],"
-          +"\"keyvalues\":[]}}]}"
+          +"\"columnvalues\":[1,\"updated_abcd\"]}]}"
         );
         add(
           "{\"xid\":6,\"change\":[{\"kind\":\"update\",\"schema\":\"public\",\"table\":\"t1\","
           +"\"columnnames\":[\"a\",\"b\",\"c\"],\"columntypes\":[\"integer\",\"text\",\"boolean\"],"
-          +"\"columnvalues\":[2,null,false],\"oldkeys\":{\"keynames\":[],\"keytypes\":[],"
-          +"\"keyvalues\":[]}}]}"
+          +"\"columnvalues\":[2,null,false]}]}"
         );
         add(
           "{\"xid\":7,\"change\":[{\"kind\":\"delete\",\"schema\":\"public\",\"table\":\"t1\","
@@ -2829,7 +2796,7 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
           "{\"xid\":12,\"change\":[{\"kind\":\"update\",\"schema\":\"public\",\"table\":\"t3\","
           +"\"columnnames\":[\"a\",\"b\",\"c\"],\"columntypes\":[\"integer\",\"text\",\"boolean\"],"
           +"\"columnvalues\":[1,\"updated_abcd\",true],"
-          +"\"oldkeys\":{\"keynames\":[],\"keytypes\":[],\"keyvalues\":[]}}]}"
+          +"\"oldkeys\":{\"keynames\":[\"a\"],\"keytypes\":[\"integer\"],\"keyvalues\":[1]}}]}"
         );
         add(
           "{\"xid\":13,\"change\":[{\"kind\":\"delete\",\"schema\":\"public\",\"table\":\"t3\","
