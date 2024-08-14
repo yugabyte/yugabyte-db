@@ -7,6 +7,11 @@ pr:
   branches:
     include:
       - "*"
+  paths:
+    exclude:
+      - 'docs/**'
+      - '.devcontainer/**'
+      - '*.md'
 
 pool:
   vmImage: 'ubuntu-latest'
