@@ -76,6 +76,7 @@ jobs:
         run: |
           export CLEANUP_SETUP=1
           export INSTALL_DEPENDENCIES_ROOT=/tmp/install_setup
+          ls /tmp/install_setup
           /tmp/install_setup/install_setup_pcre2.sh
 
       - name: Install Intel Decimal Math Library
