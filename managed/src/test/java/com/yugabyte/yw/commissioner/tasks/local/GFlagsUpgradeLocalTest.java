@@ -36,6 +36,7 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -189,6 +190,87 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
             UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE,
             specificGFlags,
             SpecificGFlags.constructInherited());
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    compareGFlags(universe);
+    verifyYSQL(universe);
+    verifyPayload();
+  }
+
+  @Test
+  public void testAddingGFlagGroups() throws InterruptedException {
+    Universe universe = createUniverse(getDefaultUserIntent());
+    initYSQL(universe);
+    initAndStartPayload(universe);
+    SpecificGFlags specificGFlags = new SpecificGFlags();
+    List<GFlagGroup.GroupName> gflagGroups = new ArrayList<>();
+    gflagGroups.add(GFlagGroup.GroupName.ENHANCED_POSTGRES_COMPATIBILITY);
+    specificGFlags.setGflagGroups(gflagGroups);
+    TaskInfo taskInfo =
+        doGflagsUpgrade(
+            universe, UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, specificGFlags, null);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    UniverseDefinitionTaskParams.Cluster primaryCluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+    NodeDetails primary = universe.getNodesByCluster(primaryCluster.uuid).get(0);
+
+    Map<String, String> newValues =
+        getDiskFlags(primary, universe, UniverseTaskBase.ServerType.TSERVER);
+
+    assertTrue(
+        getVarz(primary, universe, UniverseTaskBase.ServerType.TSERVER)
+            .containsKey("yb_enable_read_committed_isolation"));
+    assertTrue(newValues.containsKey("yb_enable_read_committed_isolation"));
+
+    assertTrue(
+        getVarz(primary, universe, UniverseTaskBase.ServerType.TSERVER)
+            .containsKey("ysql_enable_read_request_caching"));
+    assertTrue(newValues.containsKey("ysql_enable_read_request_caching"));
+    verifyYSQL(universe);
+    verifyPayload();
+  }
+
+  @Test
+  public void testRemovingGFlagGroups() throws InterruptedException {
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    SpecificGFlags specificGFlags = new SpecificGFlags();
+    List<GFlagGroup.GroupName> gflagGroups = new ArrayList<>();
+    gflagGroups.add(GFlagGroup.GroupName.ENHANCED_POSTGRES_COMPATIBILITY);
+    specificGFlags.setGflagGroups(gflagGroups);
+    userIntent.specificGFlags = specificGFlags;
+
+    Universe universe = createUniverse(userIntent);
+    initYSQL(universe);
+    initAndStartPayload(universe);
+
+    UniverseDefinitionTaskParams.Cluster primaryCluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+    NodeDetails primary = universe.getNodesByCluster(primaryCluster.uuid).get(0);
+
+    NodeDetails primaryNode = universe.getNodesByCluster(primaryCluster.uuid).get(0);
+    Map<String, String> newValues =
+        getDiskFlags(primaryNode, universe, UniverseTaskBase.ServerType.TSERVER);
+
+    assertTrue(
+        getVarz(primary, universe, UniverseTaskBase.ServerType.TSERVER)
+            .containsKey("yb_enable_read_committed_isolation"));
+    assertTrue(newValues.containsKey("yb_enable_read_committed_isolation"));
+
+    assertTrue(
+        getVarz(primary, universe, UniverseTaskBase.ServerType.TSERVER)
+            .containsKey("ysql_enable_read_request_caching"));
+    assertTrue(newValues.containsKey("ysql_enable_read_request_caching"));
+
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+
+    gflagGroups = new ArrayList<>();
+    specificGFlags.setGflagGroups(gflagGroups);
+    userIntent.specificGFlags = specificGFlags;
+
+    TaskInfo taskInfo =
+        doGflagsUpgrade(
+            universe, UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, specificGFlags, null);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     compareGFlags(universe);
