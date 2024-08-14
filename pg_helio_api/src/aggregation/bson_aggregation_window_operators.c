@@ -88,6 +88,9 @@ typedef struct
 
 	/* Variable context for operators */
 	Expr *variableContext;
+
+	/* boolean to check if the window is present */
+	bool isWindowPresent;
 } WindowOperatorContext;
 
 
@@ -731,15 +734,9 @@ UpdateWindowOperatorAndFrameOptions(const bson_value_t *windowOpValue,
 	while (bson_iter_next(&valueIter))
 	{
 		const char *key = bson_iter_key(&valueIter);
-		const bson_value_t *value = bson_iter_value(&valueIter);
 
 		if (strcmp(key, "window") == 0)
 		{
-			if (value->value_type != BSON_TYPE_DOCUMENT)
-			{
-				ereport(ERROR, (errcode(MongoFailedToParse),
-								errmsg("'window' field must be an object")));
-			}
 			BsonIterToPgbsonElement(&valueIter, &windowValue);
 		}
 		else if (key[0] == '$')
@@ -761,11 +758,19 @@ UpdateWindowOperatorAndFrameOptions(const bson_value_t *windowOpValue,
 	}
 
 	/* Add the window operators and frame options */
+	context->isWindowPresent = windowValue.bsonValue.value_type != BSON_TYPE_EOD;
+	UpdateWindowAggregationOperator(&operatorValue, context, &entry);
 	if (windowValue.bsonValue.value_type != BSON_TYPE_EOD)
 	{
+		/* The window value object should be a document.*/
+		if (windowValue.bsonValue.value_type != BSON_TYPE_DOCUMENT)
+		{
+			ereport(ERROR, (errcode(MongoFailedToParse),
+							errmsg("'window' field must be an object")));
+		}
+
 		UpdateWindowOptions(&windowValue, windowClause, context, &frameOptions);
 	}
-	UpdateWindowAggregationOperator(&operatorValue, context, &entry);
 
 	if (frameOptions == 0)
 	{
