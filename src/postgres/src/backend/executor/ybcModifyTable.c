@@ -893,19 +893,21 @@ bool YBCExecuteUpdate(Relation rel,
 		 */
 		Assert(!bms_is_member(attnum - minattr, pkey));
 
-		MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 		/* Assign this attr's value, handle expression pushdown if needed. */
 		if (pushdown_lc != NULL &&
 			((TargetEntry *) lfirst(pushdown_lc))->resno == attnum)
 		{
 			TargetEntry *tle = (TargetEntry *) lfirst(pushdown_lc);
 			Expr *expr = YbExprInstantiateParams(tle->expr, estate);
+			MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 			YBCPgExpr ybc_expr = YBCNewEvalExprCall(update_stmt, expr);
 			HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr));
 			pushdown_lc = lnext(pushdown_lc);
+			MemoryContextSwitchTo(oldContext);
 		}
 		else
 		{
+			MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 			bool is_null = false;
 			Datum d = heap_getattr(tuple, attnum, inputTupleDesc, &is_null);
 			/*
@@ -919,8 +921,8 @@ bool YBCExecuteUpdate(Relation rel,
 			YBCPgExpr ybc_expr = YBCNewConstant(update_stmt, type_id, collation_id, d, is_null);
 
 			HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr));
+			MemoryContextSwitchTo(oldContext);
 		}
-		MemoryContextSwitchTo(oldContext);
 	}
 	bms_free(pkey);
 
