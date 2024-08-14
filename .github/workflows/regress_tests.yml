@@ -73,7 +73,6 @@ jobs:
           export INSTALL_DEPENDENCIES_ROOT=/tmp/install_setup
           mkdir -p /tmp/install_setup
           cp -r scripts/* /tmp/install_setup
-          MAKE_PROGRAM=cmake /tmp/install_setup/install_setup_libbson.sh
           /tmp/install_setup/install_setup_pcre2.sh
           /tmp/install_setup/install_setup_intel_decimal_math_lib.sh
           /tmp/install_setup/install_citus_indent.sh
