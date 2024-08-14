@@ -1,7 +1,7 @@
 ---
 title: OIDC authentication using Azure AD in YugabyteDB Anywhere
 headerTitle: OIDC authentication with Azure AD
-linkTitle: OIDC with Azure AD
+linkTitle: OIDC authentication
 description: Configuring YugabyteDB Anywhere universe to use OIDC with Microsoft Entra.
 headcontent: Use Azure AD to authenticate accounts for database access
 badges: ea
@@ -12,6 +12,19 @@ menu:
     weight: 20
 type: docs
 ---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../oidc-authentication-aad/" class="nav-link active">
+      Azure AD
+    </a>
+  </li>
+  <li >
+    <a href="../oidc-authentication-jumpcloud/" class="nav-link">
+      JumpCloud
+    </a>
+  </li>
+</ul>
 
 This section describes how to configure a YugabyteDB Anywhere (YBA) universe to use OIDC-based authentication for YugabyteDB YSQL database access using Azure AD (also known as [Microsoft Entra ID](https://www.microsoft.com/en-ca/security/business/identity-access/microsoft-entra-id)) as the Identity Provider (IdP).
 
@@ -117,7 +130,7 @@ To register an application, do the following:
 1. Set the redirect URI. This is where the IdP redirects after authentication. The URI is in the following form:
 
     ```sh
-    https://<YBA_IP_Address>/api/v1/callback?client_name=OidcClient 
+    https://<YBA_IP_Address>/api/v1/callback?client_name=OidcClient
     ```
 
 1. Click **Register**.
@@ -136,6 +149,8 @@ For more information, refer to [Register an application with the Microsoft ident
 
 ### Configure YugabyteDB Anywhere
 
+To configure YugabyteDB Anywhere for OIDC, you need to be signed in as a Super Admin. You need your Azure application client ID, client secret, and tenant ID.
+
 To allow users to access their JWT from the YugabyteDB sign in page, you must enable the OIDC feature via a configuration flag before you configure OIDC.
 
 #### Enable OIDC enhancements
@@ -150,25 +165,17 @@ To enable some features of the OIDC functionality in Yugabyte Anywhere, you need
 
 #### Enable OIDC authentication
 
-To configure YugabyteDB Anywhere for OIDC, you need to be signed in as a Super Admin. You need your Azure application client ID, client secret, and tenant ID.
-
 To enable OIDC authentication in YugabyteDB Anywhere, do the following:
 
-1. Navigate to **Admin > Access Management > User Authentication > OIDC Configuration**.
+1. Navigate to **Admin > Access Management > User Authentication** and select **ODIC configuration**.
+1. Under **OIDC configuration**,  configure the following:
 
-1. Enter the client ID and client secret for the application you registered.
-
-1. Enter the discovery URL. This is in the following form:
-
-    ```sh
-    login.microsoftonline.com/<tenant_id>/v2.0/.well-known/openid-configuration
-    ```
-
-1. Set the scope to `openid email profile`.
-
-1. Set the email attribute to a name for the property to be used in the mapping file, such as `preferred_username`.
-
-1. Select the **Display JWT token on login** option to allow users to access their JWT from the YugabyteDB Anywhere sign in page. This allows a user to view and copy their JWT without signing in to YBA. (This option is only available if you enabled the `yb.security.oidc_feature_enhancements` configuration flag.)
+    - **Client ID** and **Client Secret** - enter the client ID and secret of the Azure application you created.
+    - **Discovery URL** - enter `login.microsoftonline.com/<tenant_id>/v2.0/.well-known/openid-configuration`.
+    - **Scope** - enter `openid email profile`. If you are using the Refresh Token feature to allow the Azure server to return the refresh token (which can be used by YBA to refresh the login), enter `openid offline_access profile email` instead.
+    - **Email attribute** - enter the email attribute to a name for the property to be used in the mapping file, such as `preferred_username`.
+    - **Refresh Token URL** - if you have configured OIDC to use [refresh tokens](https://openid.net/specs/openid-connect-core-1_0.html#RefreshTokens), in the **Refresh Token URL** field, enter the URL of the refresh token endpoint.
+    - **Display JWT token on login** - select this option to allow users to access their JWT from the YugabyteDB Anywhere sign in page. This allows a user to view and copy their JWT without signing in to YBA. (This option is only available if you enabled the `yb.security.oidc_feature_enhancements` configuration flag.)
 
 1. Click **Save**.
 
@@ -247,26 +254,4 @@ curl -k --location --request PUT '<server-address>/api/v1/customers/<customerUUI
 
 ## Manage users and roles
 
-After OIDC-based authentication is configured, an administrator can manage users as follows:
-
-- In the universe, add database users or roles.
-
-  You need to add the users and roles that will be used to authenticate to the database. The role must be assigned the appropriate permissions in advance. Users will use their database user/role as their username credential along with their JWT as the password when connecting to the universe.
-
-  For information on managing users and roles in YugabyteDB, see [Manage users and roles](../../../../secure/authorization/create-roles/).
-
-- In YugabyteDB Anywhere, create YBA users.
-
-  Create a user in YugabyteDB Anywhere for each user who wishes to sign in to YBA to obtain their JWT.
-
-  To view their JWT, YBA users can sign in to YugabyteDB Anywhere, click the **User** icon at the top right, select **User Profile**, and click **Fetch OIDC Token**.
-
-  This is not required if you enabled the **Display JWT token on login** option in the YBA OIDC configuration, as any database user can copy the JWT from the YBA landing page without signing in to YBA.
-
-  For information on how to add YBA users, see [Create, modify, and delete users](../../../administer-yugabyte-platform/anywhere-rbac/#create-modify-and-delete-users).
-
-## Using your JWT
-
-If the administrator has enabled the **Display JWT token on login** setting, you can obtain your token from the YugabyteDB Anywhere landing page. Click **Fetch JSON Web Token**; you are redirected to the IdP to enter your credentials as required. You are then redirected back to YugabyteDB Anywhere, where your token is displayed, along with the expiration time of the token.
-
-Use the token as your password to access the database. Your username will match the database username/role that was assigned to you by your administrator.
+{{< readfile "/preview/yugabyte-platform/security/authentication/oidc-manage-users-include.md" >}}
