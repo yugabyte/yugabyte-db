@@ -119,10 +119,10 @@ using rpc::RpcController;
 const std::string kCDCTestKeyspace = "my_keyspace";
 const std::string kCDCTestTableName = "cdc_test_table";
 const client::YBTableName kTableName(YQL_DATABASE_CQL, kCDCTestKeyspace, kCDCTestTableName);
+const int kRowCount = 10;
 
 CDCServiceImpl* CDCService(tserver::TabletServer* tserver) {
-  return down_cast<CDCServiceImpl*>(
-      tserver->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+  return down_cast<CDCServiceImpl*>(tserver->GetCDCService().get());
 }
 
 class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster> {
@@ -617,7 +617,7 @@ TEST_F(CDCServiceTest, TestDeleteXClusterStream) {
   {
     const auto& tserver = cluster_->mini_tablet_server(0)->server();
     std::string tablet_id = GetTablet(table_.name());
-    ASSERT_NO_FATALS(WriteTestRow(0, 10, "key0", tablet_id, tserver->proxy()));
+    ASSERT_NO_FATALS(WriteTestRow(0, kRowCount, "key0", tablet_id, tserver->proxy()));
   }
 
   ASSERT_OK(DeleteXClusterStream(stream_id_));
@@ -665,8 +665,8 @@ TEST_F(CDCServiceTest, TestSafeTime) {
   ASSERT_OK(GetChangesInitialSchema(change_req, change_req.mutable_from_checkpoint()));
 
   auto ht_0 = ASSERT_RESULT(tablet_peer->LeaderSafeTime()).ToUint64();
-  ASSERT_NO_FATALS(WriteTestRow(0, 10, "key0", tablet_id, leader_tserver->proxy()));
-  ASSERT_NO_FATALS(WriteTestRow(1, 11, "key0", tablet_id, leader_tserver->proxy()));
+  ASSERT_NO_FATALS(WriteTestRow(0, kRowCount, "key0", tablet_id, leader_tserver->proxy()));
+  ASSERT_NO_FATALS(WriteTestRow(1, kRowCount + 1, "key0", tablet_id, leader_tserver->proxy()));
   auto ht_1 = ASSERT_RESULT(tablet_peer->LeaderSafeTime()).ToUint64();
 
 
@@ -1135,7 +1135,8 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestMetricsAfterServerFailure) {
     return leader_mini_tserver != nullptr;
   }, MonoDelta::FromSeconds(30) * kTimeMultiplier, "Wait for tablet to have a leader."));
   auto timestamp_before_write = GetCurrentTimeMicros();
-  ASSERT_NO_FATALS(WriteTestRow(0, 10, "key0", tablet_id, leader_mini_tserver->server()->proxy()));
+  ASSERT_NO_FATALS(WriteTestRow(
+      0, kRowCount, "key0", tablet_id, leader_mini_tserver->server()->proxy()));
   ASSERT_NO_FATALS(GetChanges(tablet_id, stream_id_, term, index));
   ASSERT_OK(leader_mini_tserver->Restart());
   leader_mini_tserver = nullptr;
@@ -1299,7 +1300,7 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestMetricsUponRegainingLeadershi
   ASSERT_OK(MoveLeadersToTserver(tservers[0]));
 
   // Write data, and call GetChanges to bump up the last_x_physicaltime metrics on tserver 0.
-  ASSERT_NO_FATALS(WriteTestRow(0, 10, "key0", tablet_id, tservers[0]->server()->proxy()));
+  ASSERT_NO_FATALS(WriteTestRow(0, kRowCount, "key0", tablet_id, tservers[0]->server()->proxy()));
   GetChangesResponsePB change_resp;
   ASSERT_NO_FATALS(GetAllChanges(tablet_id, stream_id_, &change_resp));
   auto ts0_metrics = ASSERT_RESULT(
@@ -1311,7 +1312,8 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestMetricsUponRegainingLeadershi
   }
 
   // Write more data, but don't call GetChanges so that we can test lag when switching leaders.
-  ASSERT_NO_FATALS(WriteTestRow(1, 11, "key0", tablet_id, tservers[0]->server()->proxy()));
+  ASSERT_NO_FATALS(
+      WriteTestRow(1, kRowCount + 1, "key0", tablet_id, tservers[0]->server()->proxy()));
   // [TIMESTAMP 1] - GetLastReplicatedTime of this tablet.
 
   // Move leader to ts1.
@@ -1341,7 +1343,8 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestMetricsUponRegainingLeadershi
   // - But the last_x_physicaltime metrics were set to [TIMESTAMP 1] (< [TIMESTAMP 2]).
 
   // Write data, so that we have lag again before swapping leaders.
-  ASSERT_NO_FATALS(WriteTestRow(2, 12, "key0", tablet_id, tservers[1]->server()->proxy()));
+  ASSERT_NO_FATALS(
+      WriteTestRow(2, kRowCount + 2, "key0", tablet_id, tservers[1]->server()->proxy()));
   // [TIMESTAMP 3] - new GetLastReplicatedTime of this tablet.
 
   // Simulate bg thread updating metrics on ts1.
@@ -1814,23 +1817,85 @@ TEST_F(CDCServiceTest, TestCheckpointUpdate) {
 }
 
 namespace {
-void WaitForCDCIndex(const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+void WaitForCDCIndex(const std::string& tablet_id,
+                     CDCServiceImpl* cdc_service,
                      int64_t expected_index,
                      int timeout_secs) {
   LOG(INFO) << "Waiting until index equals " << expected_index
             << ". Timeout: " << timeout_secs;
   ASSERT_OK(WaitFor([&](){
-    if (tablet_peer->log_available() &&
-        tablet_peer->log()->cdc_min_replicated_index() == expected_index &&
-        tablet_peer->tablet_metadata()->cdc_min_replicated_index() == expected_index) {
-      return true;
-    }
-    return false;
+    return cdc_service->GetXClusterMinRequiredIndex(tablet_id) == expected_index;
   }, MonoDelta::FromSeconds(timeout_secs) * kTimeMultiplier,
       "Wait until cdc min replicated index."));
   LOG(INFO) << "Done waiting";
 }
 } // namespace
+
+class CDCServiceTestFourServers : public CDCServiceTest {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 100;
+    CDCServiceTest::SetUp();
+  }
+  virtual int server_count() override { return 4; }
+  virtual int tablet_count() override { return 1; }
+};
+
+
+// xcluster map from cdc service should not be affected by tablet move.
+TEST_F(CDCServiceTestFourServers, TestMinReplicatedIndexAfterTabletMove) {
+  docdb::DisableYcqlPackedRow();
+  stream_id_ = ASSERT_RESULT(CreateXClusterStream(*client_, table_.table()->id()));
+
+  std::string tablet_id = GetTablet();
+
+  tserver::MiniTabletServer* leader_mini_tserver;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    leader_mini_tserver = GetLeaderForTablet(tablet_id);
+    return leader_mini_tserver != nullptr;
+  }, MonoDelta::FromSeconds(30) * kTimeMultiplier, "Wait for tablet to have a leader."));
+
+  const auto& proxy = leader_mini_tserver->server()->proxy();
+
+  WriteTestRow(0, kRowCount, "key", tablet_id, proxy);
+  GetChanges(tablet_id, stream_id_, /* term */ 0, /* index */ kRowCount);
+
+  // Find the tservers that don't have the tablet.
+  tserver::TabletServer* move_to_server = nullptr;
+  size_t move_from_server_idx = 0;
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
+    const auto& tserver = cluster_->mini_tablet_server(i)->server();
+
+    auto tablet_peer =
+        tserver->tablet_manager()->GetTablet(tablet_id);
+
+    if (tablet_peer.ok()) {
+      move_from_server_idx = i;
+    } else {
+      ASSERT_TRUE(move_to_server == nullptr);
+      move_to_server = tserver;
+    }
+    WaitForCDCIndex(
+        tablet_id, CDCService(tserver), 10, 4 * FLAGS_update_min_cdc_indices_interval_secs);
+  }
+  ASSERT_TRUE(move_to_server != nullptr);
+
+  tserver::TabletServer* move_from_server =
+      cluster_->mini_tablet_server(move_from_server_idx)->server();
+
+  ASSERT_OK(cluster_->ClearBlacklist());
+  ASSERT_OK(cluster_->AddTServerToBlacklist(move_from_server_idx));
+
+  ASSERT_OK(WaitFor([&]() -> bool {
+    return move_to_server->tablet_manager()->GetTablet(tablet_id).ok();
+  }, MonoDelta::FromSeconds(30) * kTimeMultiplier, "Waiting for tablet move"));
+
+  WaitForCDCIndex(
+      tablet_id, CDCService(move_to_server), 10, 4 * FLAGS_update_min_cdc_indices_interval_secs);
+
+  WaitForCDCIndex(
+      tablet_id, CDCService(move_from_server), 10, 4 * FLAGS_update_min_cdc_indices_interval_secs);
+}
 
 class CDCServiceTestMaxRentionTime : public CDCServiceTest {
  public:
@@ -1858,24 +1923,27 @@ TEST_F(CDCServiceTestMaxRentionTime, TestLogRetentionByOpId_MaxRentionTime) {
 
   std::string tablet_id = GetTablet();
 
-  const auto& proxy = cluster_->mini_tablet_server(0)->server()->proxy();
+  const auto& tserver = cluster_->mini_tablet_server(0)->server();
+
+  const auto& proxy = tserver->proxy();
 
   auto tablet_peer = ASSERT_RESULT(
-      cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTablet(tablet_id));
+      tserver->tablet_manager()->GetTablet(tablet_id));
 
   // Write a row so that the next GetChanges request doesn't fail.
-  WriteTestRow(0, 10, "key0", tablet_id, proxy);
+  WriteTestRow(0, kRowCount, "key0", tablet_id, proxy);
 
   // Get CDC changes.
   GetChanges(tablet_id, stream_id_, /* term */ 0, /* index */ 0);
 
-  WaitForCDCIndex(tablet_peer, 0, 4 * FLAGS_update_min_cdc_indices_interval_secs);
+  WaitForCDCIndex(
+      tablet_id, CDCService(tserver), 0, 4 * FLAGS_update_min_cdc_indices_interval_secs);
 
   MonoTime start = MonoTime::Now();
   // Write a lot more data to generate many log files that can be GCed. This should take less
   // than kMaxSecondsToRetain for the next check to succeed.
   for (int i = 1; i <= 100; i++) {
-    WriteTestRow(i, 10 + i, "key" + std::to_string(i), tablet_id, proxy);
+    WriteTestRow(i, kRowCount + i, "key" + std::to_string(i), tablet_id, proxy);
   }
   MonoDelta elapsed = MonoTime::Now().GetDeltaSince(start);
   ASSERT_LT(elapsed.ToSeconds(), kMaxSecondsToRetain);
@@ -1924,13 +1992,15 @@ TEST_F(CDCServiceTestDurableMinReplicatedIndex, TestBootstrapProducer) {
 
   const auto& proxy = cluster_->mini_tablet_server(0)->server()->proxy();
   for (int i = 0; i < kNRows; i++) {
-    WriteTestRow(i, 10 + i, "key" + std::to_string(i), tablet_id, proxy);
+    WriteTestRow(i, kRowCount + i, "key" + std::to_string(i), tablet_id, proxy);
   }
 
+  const auto& tserver = cluster_->mini_tablet_server(0)->server();
+
   // Verify that the cdc_min_replicated_index was initialized at the max index.
-  auto tablet_peer = ASSERT_RESULT(
-      cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTablet(tablet_id));
-  WaitForCDCIndex(tablet_peer, OpId::Max().index, 4 * FLAGS_update_min_cdc_indices_interval_secs);
+  WaitForCDCIndex(
+      tablet_id, CDCService(tserver), OpId::Max().index,
+      4 * FLAGS_update_min_cdc_indices_interval_secs);
 
   // Force the producer bootstrap to fail after updating the tablet replication index entries.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_inject_replication_index_update_failure) = true;
@@ -1945,9 +2015,9 @@ TEST_F(CDCServiceTestDurableMinReplicatedIndex, TestBootstrapProducer) {
 
   // Verify that the cdc_min_replicated_index remains in the initial state. This tests that the
   // the tablet replication index was rolled back after the injected failure.
-  tablet_peer = ASSERT_RESULT(
-      cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTablet(tablet_id));
-  WaitForCDCIndex(tablet_peer, OpId::Max().index, 4 * FLAGS_update_min_cdc_indices_interval_secs);
+  WaitForCDCIndex(
+      tablet_id, CDCService(tserver), OpId::Max().index,
+      4 * FLAGS_update_min_cdc_indices_interval_secs);
 
   // Clear the error injection.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_inject_replication_index_update_failure) = false;
@@ -1986,35 +2056,93 @@ TEST_F(CDCServiceTestDurableMinReplicatedIndex, TestBootstrapProducer) {
   ASSERT_EQ(nrows, 1);
 
   // Ensure that cdc_min_replicated_index is set to the correct value after Bootstrap.
-  tablet_peer = ASSERT_RESULT(
-      cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTablet(tablet_id));
+  auto tablet_peer = ASSERT_RESULT(
+      tserver->tablet_manager()->GetTablet(tablet_id));
   auto latest_opid = tablet_peer->log()->GetLatestEntryOpId();
-  WaitForCDCIndex(tablet_peer, latest_opid.index, 4 * FLAGS_update_min_cdc_indices_interval_secs);
+  WaitForCDCIndex(
+      tablet_id, CDCService(tserver), latest_opid.index,
+      4 * FLAGS_update_min_cdc_indices_interval_secs);
 }
 
-TEST_F(CDCServiceTestDurableMinReplicatedIndex, TestLogCDCMinReplicatedIndexIsDurable) {
+TEST_F(CDCServiceTestDurableMinReplicatedIndex, TestMinReplicatedIndex) {
+  constexpr int kNStreams = 5;
+
+  std::vector<xrepl::StreamId> stream_ids;
+
+  for (int i = 0; i < kNStreams; i++) {
+    stream_ids.push_back(ASSERT_RESULT(CreateXClusterStream(*client_, table_.table()->id())));
+  }
+
+  std::string tablet_id = GetTablet();
+
+  const auto& tserver = cluster_->mini_tablet_server(0)->server();
+  const auto &proxy = tserver->proxy();
+
+  // Insert test rows.
+  for (int i = 1; i <= kNStreams; i++) {
+    WriteTestRow(i, kRowCount + i, "key" + std::to_string(i), tablet_id, proxy);
+  }
+
+  auto tablet_peer = ASSERT_RESULT(
+      tserver->tablet_manager()->GetTablet(tablet_id));
+
+
+  // The periodic loop within'CDCServiceImpl::UpdatePeersAndMetrics' will periodically
+  // update the min index. This will eventually update the min index to 0.
+  WaitForCDCIndex(
+      tablet_id, CDCService(tserver), 0, 4 * FLAGS_update_min_cdc_indices_interval_secs);
+
+  for (int i = 0; i < kNStreams; i++) {
+    // Get CDC changes.
+    GetChanges(tablet_id, stream_ids[i], /* term */ 0, /* index */ i);
+  }
+
+  // After the request succeeded, verify that the min cdc limit was set correctly. In this case
+  // it belongs to stream_id[0] with index 0.
+  WaitForCDCIndex(
+      tablet_id, CDCService(tserver), 0, 4 * FLAGS_update_min_cdc_indices_interval_secs);
+
+  // Changing the lowest index from all the streams should also be reflected in the log object.
+  GetChanges(tablet_id, stream_ids[0], /* term */ 0, /* index */ 4);
+
+  // After the request succeeded, verify that the min cdc limit was set correctly. In this case
+  // it belongs to stream_id[1] with index 1.
+  WaitForCDCIndex(
+      tablet_id, CDCService(tserver), 1, 4 * FLAGS_update_min_cdc_indices_interval_secs);
+
+  for (int i = 0; i < kNStreams; i++) {
+    ASSERT_OK(DeleteXClusterStream(stream_ids[i]));
+  }
+}
+
+TEST_F(CDCServiceTestDurableMinReplicatedIndex, TestCDCMinReplicatedIndexIsDurable) {
   stream_id_ = ASSERT_RESULT(CreateXClusterStream(*client_, table_.table()->id()));
 
   std::string tablet_id = GetTablet();
 
-  const auto& proxy = cluster_->mini_tablet_server(0)->server()->proxy();
+  auto tserver = cluster_->mini_tablet_server(0)->server();
+
+  const auto& proxy = tserver->proxy();
 
   auto tablet_peer = ASSERT_RESULT(
-      cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTablet(tablet_id));
+      tserver->tablet_manager()->GetTablet(tablet_id));
   // Write a row so that the next GetChanges request doesn't fail.
-  WriteTestRow(0, 10, "key0", tablet_id, proxy);
+  WriteTestRow(0, kRowCount, "key0", tablet_id, proxy);
 
   // Get CDC changes.
-  GetChanges(tablet_id, stream_id_, /* term */ 0, /* index */ 10);
+  GetChanges(tablet_id, stream_id_, /* term */ 0, /* index */ kRowCount);
 
-  WaitForCDCIndex(tablet_peer, 10, 4 * FLAGS_update_min_cdc_indices_interval_secs);
+  WaitForCDCIndex(
+      tablet_id, CDCService(tserver), kRowCount, 4 * FLAGS_update_min_cdc_indices_interval_secs);
 
   // Restart the entire cluster to verify that the CDC tablet metadata got loaded from disk.
   ASSERT_OK(cluster_->RestartSync());
 
+  tserver = cluster_->mini_tablet_server(0)->server();
+
   ASSERT_OK(WaitFor([&]() {
     auto tablet_peer =
-        cluster_->mini_tablet_server(0)->server()->tablet_manager()->LookupTablet(tablet_id);
+        tserver->tablet_manager()->LookupTablet(tablet_id);
     if (tablet_peer) {
       if (tablet_peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY &&
           tablet_peer->log() != nullptr) {
@@ -2025,9 +2153,61 @@ TEST_F(CDCServiceTestDurableMinReplicatedIndex, TestLogCDCMinReplicatedIndexIsDu
     return false;
   }, MonoDelta::FromSeconds(30) * kTimeMultiplier, "Wait until tablet has a leader."));
 
-  // Verify the log and meta min replicated index was loaded correctly from disk.
-  ASSERT_EQ(tablet_peer->log()->cdc_min_replicated_index(), 10);
-  ASSERT_EQ(tablet_peer->tablet_metadata()->cdc_min_replicated_index(), 10);
+  WaitForCDCIndex(
+      tablet_id, CDCService(tserver), 10, 4 * FLAGS_update_min_cdc_indices_interval_secs);
+}
+
+// Test that when all the streams for a specific tablet have been deleted,
+// cdc min replicated index is reset to max int64.
+TEST_F(CDCServiceTestDurableMinReplicatedIndex, TestCdcMinReplicatedIndexAreReset) {
+  constexpr int kNStreams = 5;
+
+  std::vector<xrepl::StreamId> stream_ids;
+  for (int i = 0; i < kNStreams; i++) {
+    stream_ids.push_back(ASSERT_RESULT(CreateXClusterStream(*client_, table_.table()->id())));
+  }
+  std::string tablet_id = GetTablet();
+
+  const auto& tserver = cluster_->mini_tablet_server(0)->server();
+  const auto &proxy = tserver->proxy();
+
+  // Insert test rows.
+  for (int i = 1; i <= kNStreams; i++) {
+    WriteTestRow(i, kRowCount + i, "key" + std::to_string(i), tablet_id, proxy);
+  }
+
+  // The periodic loop within'CDCServiceImpl::UpdatePeersAndMetrics' will periodically
+  // update the min index. This willeventually update the min index to 0.
+  WaitForCDCIndex(
+      tablet_id, CDCService(tserver), 0, 4 * FLAGS_update_min_cdc_indices_interval_secs);
+
+  for (auto& stream_id : stream_ids) {
+    // Get CDC changes.
+    GetChanges(tablet_id, stream_id, /* term */ 0, /* index */ 5);
+  }
+
+  // After the request succeeded, verify that the min cdc limit was set correctly. In this case
+  // all the streams have index 5.
+  WaitForCDCIndex(
+    tablet_id, CDCService(tserver), 5, 4 * FLAGS_update_min_cdc_indices_interval_secs);
+
+  CDCStateTable cdc_state_table(client_.get());
+
+  std::vector<CDCStateTableKey> keys_to_delete;
+  for (auto& stream_id : stream_ids) {
+    keys_to_delete.push_back({tablet_id, stream_id});
+  }
+  ASSERT_OK(cdc_state_table.DeleteEntries(keys_to_delete));
+  LOG(INFO) << "Successfully deleted all streams from cdc_state";
+
+  SleepFor(MonoDelta::FromSeconds(FLAGS_update_min_cdc_indices_interval_secs + 1));
+
+  ASSERT_EQ(CDCService(tserver)->GetXClusterMinRequiredIndex(tablet_id),
+      std::numeric_limits<int64_t>::max());
+
+  for (auto& stream_id : stream_ids) {
+    ASSERT_OK(DeleteXClusterStream(stream_id));
+  }
 }
 
 class CDCServiceTestMinSpace : public CDCServiceTest {
@@ -2057,22 +2237,25 @@ TEST_F(CDCServiceTestMinSpace, TestLogRetentionByOpId_MinSpace) {
 
   std::string tablet_id = GetTablet();
 
-  const auto& proxy = cluster_->mini_tablet_server(0)->server()->proxy();
+  const auto& tserver = cluster_->mini_tablet_server(0)->server();
+
+  const auto& proxy = tserver->proxy();
 
   auto tablet_peer = ASSERT_RESULT(
-      cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTablet(tablet_id));
+      tserver->tablet_manager()->GetTablet(tablet_id));
   // Write a row so that the next GetChanges request doesn't fail.
-  WriteTestRow(0, 10, "key0", tablet_id, proxy);
+  WriteTestRow(0, kRowCount, "key0", tablet_id, proxy);
 
   // Get CDC changes.
   GetChanges(tablet_id, stream_id_, /* term */ 0, /* index */ 0);
 
-  WaitForCDCIndex(tablet_peer, 0, 4 * FLAGS_update_min_cdc_indices_interval_secs);
+  WaitForCDCIndex(
+      tablet_id, CDCService(tserver), 0, 4 * FLAGS_update_min_cdc_indices_interval_secs);
 
   // Write a lot more data to generate many log files that can be GCed. This should take less
   // than kMaxSecondsToRetain for the next check to succeed.
   for (int i = 1; i <= 5000; i++) {
-    WriteTestRow(i, 10 + i, "key" + std::to_string(i), tablet_id, proxy);
+    WriteTestRow(i, kRowCount + i, "key" + std::to_string(i), tablet_id, proxy);
   }
 
   log::SegmentSequence segment_sequence;
@@ -2101,148 +2284,6 @@ TEST_F(CDCServiceTestMinSpace, TestLogRetentionByOpId_MinSpace) {
 
   // Read from 0.0.  This should start reading from the beginning of the logs.
   GetChanges(tablet_id, stream_id_, /* term */ 0, /* index */ 0);
-}
-
-class CDCLogAndMetaIndex : public CDCServiceTest {
- public:
-  void SetUp() override {
-    // Immediately write any index provided by a GetChanges request to cdc_state table.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 5;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_log_retention_by_op_idx) = true;
-    CDCServiceTest::SetUp();
-  }
-};
-
-TEST_F(CDCLogAndMetaIndex, TestLogAndMetaCdcIndex) {
-  constexpr int kNStreams = 5;
-
-  // This will rollover log segments a lot faster.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 100;
-
-  std::vector<xrepl::StreamId> stream_ids;
-
-  for (int i = 0; i < kNStreams; i++) {
-    stream_ids.push_back(ASSERT_RESULT(CreateXClusterStream(*client_, table_.table()->id())));
-  }
-
-  std::string tablet_id = GetTablet();
-
-  const auto &proxy = cluster_->mini_tablet_server(0)->server()->proxy();
-
-  // Insert test rows.
-  for (int i = 1; i <= kNStreams; i++) {
-    WriteTestRow(i, 10 + i, "key" + std::to_string(i), tablet_id, proxy);
-  }
-
-  auto tablet_peer = ASSERT_RESULT(
-      cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTablet(tablet_id));
-
-  // The log and metadata min index are initialized to max value, but the periodic loop within
-  // 'CDCServiceImpl::UpdatePeersAndMetrics' will periodically update the min index. This will
-  // eventually update the min index to 0.
-  ASSERT_OK(WaitFor([&](){
-    return tablet_peer->log()->cdc_min_replicated_index() == 0 &&
-           tablet_peer->tablet_metadata()->cdc_min_replicated_index() == 0;
-  }, MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for the min index."));
-
-  for (int i = 0; i < kNStreams; i++) {
-    // Get CDC changes.
-    GetChanges(tablet_id, stream_ids[i], /* term */ 0, /* index */ i);
-  }
-
-  // After the request succeeded, verify that the min cdc limit was set correctly. In this case
-  // it belongs to stream_id[0] with index 0.
-  WaitForCDCIndex(tablet_peer, 0, 4 * FLAGS_update_min_cdc_indices_interval_secs);
-
-  // Changing the lowest index from all the streams should also be reflected in the log object.
-  GetChanges(tablet_id, stream_ids[0], /* term */ 0, /* index */ 4);
-
-  // After the request succeeded, verify that the min cdc limit was set correctly. In this case
-  // it belongs to stream_id[1] with index 1.
-  WaitForCDCIndex(tablet_peer, 1, 4 * FLAGS_update_min_cdc_indices_interval_secs);
-
-  for (int i = 0; i < kNStreams; i++) {
-    ASSERT_OK(DeleteXClusterStream(stream_ids[i]));
-  }
-}
-
-class CDCLogAndMetaIndexReset : public CDCLogAndMetaIndex {
- public:
-  void SetUp() override {
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_min_replicated_index_considered_stale_secs) = 5;
-    // This will rollover log segments a lot faster.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 100;
-    CDCLogAndMetaIndex::SetUp();
-  }
-};
-
-// Test that when all the streams for a specific tablet have been deleted, the log and meta
-// cdc min replicated index is reset to max int64.
-TEST_F(CDCLogAndMetaIndexReset, TestLogAndMetaCdcIndexAreReset) {
-  constexpr int kNStreams = 5;
-
-  // This will rollover log segments a lot faster.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 100;
-
-  std::vector<xrepl::StreamId> stream_ids;
-  for (int i = 0; i < kNStreams; i++) {
-    stream_ids.push_back(ASSERT_RESULT(CreateXClusterStream(*client_, table_.table()->id())));
-  }
-  std::string tablet_id = GetTablet();
-
-  const auto &proxy = cluster_->mini_tablet_server(0)->server()->proxy();
-
-  // Insert test rows.
-  for (int i = 1; i <= kNStreams; i++) {
-    WriteTestRow(i, 10 + i, "key" + std::to_string(i), tablet_id, proxy);
-  }
-
-  auto tablet_peer = ASSERT_RESULT(
-      cluster_->mini_tablet_server(0)->server()->tablet_manager()->GetTablet(tablet_id));
-
-  // The log and metadata min index are initialized to max value, but the periodic loop within
-  // 'CDCServiceImpl::UpdatePeersAndMetrics' will periodically update the min index. This will
-  // eventually update the min index to 0.
-  ASSERT_OK(WaitFor([&](){
-    return tablet_peer->log()->cdc_min_replicated_index() == 0 &&
-           tablet_peer->tablet_metadata()->cdc_min_replicated_index() == 0;
-  }, MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for the min index."));
-
-  for (auto& stream_id : stream_ids) {
-    // Get CDC changes.
-    GetChanges(tablet_id, stream_id, /* term */ 0, /* index */ 5);
-  }
-
-  // After the request succeeded, verify that the min cdc limit was set correctly. In this case
-  // all the streams have index 5.
-  WaitForCDCIndex(tablet_peer, 5, 4 * FLAGS_update_min_cdc_indices_interval_secs);
-
-  CDCStateTable cdc_state_table(client_.get());
-
-  std::vector<CDCStateTableKey> keys_to_delete;
-  for (auto& stream_id : stream_ids) {
-    keys_to_delete.push_back({tablet_id, stream_id});
-  }
-  ASSERT_OK(cdc_state_table.DeleteEntries(keys_to_delete));
-  LOG(INFO) << "Successfully deleted all streams from cdc_state";
-
-  SleepFor(MonoDelta::FromSeconds(FLAGS_cdc_min_replicated_index_considered_stale_secs + 1));
-
-  LOG(INFO) << "Done sleeping";
-  // RunLogGC should reset cdc min replicated index to max int64 because more than
-  // FLAGS_cdc_min_replicated_index_considered_stale_secs seconds have elapsed since the index
-  // was last updated.
-  ASSERT_OK(tablet_peer->RunLogGC());
-  LOG(INFO) << "GC done running";
-  ASSERT_EQ(tablet_peer->log()->cdc_min_replicated_index(), std::numeric_limits<int64_t>::max());
-  ASSERT_EQ(tablet_peer->tablet_metadata()->cdc_min_replicated_index(),
-      std::numeric_limits<int64_t>::max());
-
-  for (auto& stream_id : stream_ids) {
-    ASSERT_OK(DeleteXClusterStream(stream_id));
-  }
 }
 
 class CDCServiceTestThreeServers : public CDCServiceTest {
@@ -2324,23 +2365,24 @@ TEST_F(CDCServiceTestThreeServers, TestNewLeaderUpdatesLogCDCAppliedIndex) {
 
   const auto &proxy = cluster_->mini_tablet_server(leader_idx)->server()->proxy();
   for (int i = 0; i < kNRecords; i++) {
-    WriteTestRow(i, 10 + i, "key" + std::to_string(i), tablet_id, proxy);
+    WriteTestRow(i, kRowCount + i, "key" + std::to_string(i), tablet_id, proxy);
   }
   LOG(INFO) << "Inserted " << kNRecords << " records";
 
   stream_id_ = ASSERT_RESULT(CreateXClusterStream(*client_, table_.table()->id()));
   LOG(INFO) << "Created cdc stream " << stream_id_;
 
+  // The periodic loop within'CDCServiceImpl::UpdatePeersAndMetrics' will periodically
+  // update the min index. This will eventually update the min index to 0.
   std::shared_ptr<tablet::TabletPeer> tablet_peer;
-  // Check that the index hasn't been updated in any of the peers.
   for (int idx = 0; idx < server_count(); idx++) {
+    const auto& tserver = cluster_->mini_tablet_server(idx)->server();
     auto new_tablet_peer =
-        cluster_->mini_tablet_server(idx)->server()->tablet_manager()->LookupTablet(tablet_id);
+        tserver->tablet_manager()->LookupTablet(tablet_id);
     if (new_tablet_peer) {
       tablet_peer = new_tablet_peer;
-      ASSERT_EQ(tablet_peer->log()->cdc_min_replicated_index(), std::numeric_limits<int64>::max());
-      ASSERT_EQ(tablet_peer->tablet_metadata()->cdc_min_replicated_index(),
-                std::numeric_limits<int64>::max());
+      WaitForCDCIndex(
+          tablet_id, CDCService(tserver), 0, 4 * FLAGS_update_min_cdc_indices_interval_secs);
     }
   }
 
@@ -2364,14 +2406,15 @@ TEST_F(CDCServiceTestThreeServers, TestNewLeaderUpdatesLogCDCAppliedIndex) {
   }, MonoDelta::FromSeconds(180) * kTimeMultiplier, "Wait until cdc state table can take writes."));
 
   std::unique_ptr<CDCServiceProxy> cdc_proxy;
+  tserver::TabletServer* tserver;
   ASSERT_OK(WaitFor([&](){
     for (int idx = 0; idx < server_count(); idx++) {
       if (idx == leader_idx) {
         // This TServer is shutdown for now.
         continue;
       }
-      tablet_peer =
-          cluster_->mini_tablet_server(idx)->server()->tablet_manager()->LookupTablet(tablet_id);
+      tserver = cluster_->mini_tablet_server(idx)->server();
+      tablet_peer = tserver->tablet_manager()->LookupTablet(tablet_id);
       if (tablet_peer && tablet_peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY) {
         LOG(INFO) << "Found new leader for tablet " << tablet_id << " in TS " << idx;
         return true;
@@ -2383,8 +2426,8 @@ TEST_F(CDCServiceTestThreeServers, TestNewLeaderUpdatesLogCDCAppliedIndex) {
   SleepFor(MonoDelta::FromSeconds((FLAGS_update_min_cdc_indices_interval_secs * 3)));
   LOG(INFO) << "Done sleeping";
 
-  ASSERT_EQ(tablet_peer->log()->cdc_min_replicated_index(), 5);
-  ASSERT_EQ(tablet_peer->tablet_metadata()->cdc_min_replicated_index(), 5);
+  WaitForCDCIndex(
+      tablet_id, CDCService(tserver), 5, 4 * FLAGS_update_min_cdc_indices_interval_secs);
 
   ASSERT_OK(cluster_->mini_tablet_server(leader_idx)->Start());
 }
@@ -2488,7 +2531,7 @@ TEST_F(CDCServiceTestThreeServers, TestCheckpointIsMinOverMultipleStreams) {
   }
   // Test writing and sending GetChanges requests to update the checkpoints.
   for (int i = 0; i < kNRecords; i++) {
-    WriteTestRow(i, 10 + i, "key" + std::to_string(i), tablet_id, proxy);
+    WriteTestRow(i, kRowCount + i, "key" + std::to_string(i), tablet_id, proxy);
     // Make the three streams have different checkpoints where checkpoints are in decreasing order
     // in get_changes_req_resps.
     size_t max_get_changes_req_resps_index;
@@ -2522,17 +2565,14 @@ TEST_F(CDCServiceTestThreeServers, TestCheckpointIsMinOverMultipleStreams) {
       if (is_leader_shutdown && idx == initial_leader_idx) {
         continue;
       }
+      const auto& tserver = cluster_->mini_tablet_server(idx)->server();
       auto tablet_peer =
-          cluster_->mini_tablet_server(idx)->server()->tablet_manager()->LookupTablet(tablet_id);
+          tserver->tablet_manager()->LookupTablet(tablet_id);
       if (tablet_peer) {
         SCHECK_LE(
-            tablet_peer->log()->cdc_min_replicated_index(), lowest_checkpoint, IllegalState,
+            CDCService(tserver)->GetXClusterMinRequiredIndex(tablet_peer->tablet_id()),
+            lowest_checkpoint, IllegalState,
             Format("Peer on node $0 has invalid log::cdc_min_replicated_index", idx + 1));
-        SCHECK_LE(
-            tablet_peer->tablet_metadata()->cdc_min_replicated_index(), lowest_checkpoint,
-            IllegalState,
-            Format(
-                "Peer on node $0 has invalid tablet_metadata::cdc_min_replicated_index", idx + 1));
       }
     }
 

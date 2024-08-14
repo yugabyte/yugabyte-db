@@ -3,12 +3,14 @@ title: Build apps using C# drivers and ORMs
 headerTitle: C#
 linkTitle: C#
 description: C# Drivers and ORMs support for YugabyteDB.
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
+image: fa-classic fa-hashtag
+aliases:
+  - /preview/develop/client-drivers/csharp/
 menu:
   preview:
     identifier: csharp-drivers
     parent: drivers-orms
-    weight: 560
+    weight: 570
 type: indexpage
 showRightNav: true
 ---
@@ -49,7 +51,7 @@ To develop C# applications for YugabyteDB, you need the following:
     ```
 
 - **YugabyteDB cluster**
-  - Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Refer to [Use a cloud cluster](../../quick-start-yugabytedb-managed/). Note that YugabyteDB Managed requires SSL.
+  - Create a free cluster on YugabyteDB Aeon. Refer to [Use a cloud cluster](../../quick-start-yugabytedb-managed/). Note that YugabyteDB Aeon requires SSL.
   - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](../../quick-start/).
 
 ## Next step

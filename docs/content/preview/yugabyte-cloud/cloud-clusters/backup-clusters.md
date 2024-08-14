@@ -1,7 +1,7 @@
 ---
 title: Back up and restore clusters
 linkTitle: Backup and restore
-description: Back up and restore clusters in YugabyteDB Managed.
+description: Back up and restore clusters in YugabyteDB Aeon.
 headcontent: Configure your backup schedule and restore databases
 menu:
   preview_yugabyte-cloud:
@@ -11,9 +11,9 @@ menu:
 type: docs
 ---
 
-YugabyteDB Managed can perform full and incremental cluster (all namespaces) level backups, and the backups are stored in the same region as your cluster. 100GB/month of basic backup storage is provided for every vCPU; more than that and overage charges apply. Refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
+YugabyteDB Aeon can perform full and incremental cluster (all namespaces) level backups, and the backups are stored in the same region as your cluster.
 
-{{< youtube id="3qzAdrVFgxc" title="Back up and restore clusters in YugabyteDB Managed" >}}
+{{< youtube id="3qzAdrVFgxc" title="Back up and restore clusters in YugabyteDB Aeon" >}}
 
 By default, clusters are backed up automatically every 24 hours, and these automatic full backups are retained for 8 days. The first automatic backup is triggered after 24 hours of creating a table, and is scheduled every 24 hours thereafter.
 
@@ -34,6 +34,14 @@ You can also perform backups [on demand](#on-demand-backups) and manually [resto
 To delete a backup, click the **Delete** icon.
 
 To review previous backups, click **Backup**. To review previous restores, click **Restore**.
+
+## Location of backups
+
+Backups are located in cloud storage of the provider where the cluster is deployed. The storage is located is the same region os the cluster. For example, for a cluster deployed in AWS and located in us-east-2, backups are stored in an S3 bucket in us-east-2.
+
+For [Replicate across region](../../cloud-basics/create-clusters-topology/#replicate-across-regions) clusters, the backup is stored in one of the cluster regions, as determined automatically by Aeon when the cluster is created.
+
+For [Partition by region](../../cloud-basics/create-clusters-topology/#partition-by-region) clusters, the database schema and tablet details are stored in the primary region, and the regional tablespace data is stored in its respective region to preserve data residency.
 
 ## Limitations
 
@@ -87,6 +95,7 @@ Before performing a restore, ensure the following:
 
 - the target cluster is sized appropriately; refer to [Scale and configure clusters](../configure-clusters/)
 - if the target cluster has the same namespaces as the source cluster, those namespaces don't have any tables
+- the target cluster has the same users as the source cluster. If you restore to a cluster where some users are missing, ownership of objects owned by missing users defaults to `yugabyte`, and you must contact {{% support-cloud %}} to reset the owners.
 
 To review previous restores, on the **Backups** tab, select **Restore History**.
 

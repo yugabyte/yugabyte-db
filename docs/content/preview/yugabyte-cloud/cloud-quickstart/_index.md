@@ -1,9 +1,9 @@
 ---
-title: YugabyteDB Managed quick start
+title: YugabyteDB Aeon quick start
 headerTitle: Quick start
 linkTitle: Quick start
-headcontent: Sign up for YugabyteDB Managed and create a free Sandbox cluster
-description: Get started using YugabyteDB Managed in less than five minutes.
+headcontent: Sign up for YugabyteDB Aeon and create a free Sandbox cluster
+description: Get started using YugabyteDB Aeon in less than five minutes.
 image: /images/section_icons/index/quick_start.png
 layout: single
 type: docs
@@ -15,13 +15,13 @@ menu:
       hideLink: true
 ---
 
-The quickest way to get started with YugabyteDB is to create a free Sandbox cluster in YugabyteDB Managed:
+The quickest way to get started with YugabyteDB is to create a free Sandbox cluster in YugabyteDB Aeon:
 
 1. [Sign up](https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup).
 1. [Log in](https://cloud.yugabyte.com/login).
 1. Click **Create a Free cluster**.
 
-The first time you log in, YugabyteDB Managed provides a welcome experience with a 15 minute guided tutorial. Complete the steps in the **Get Started** tutorial to do the following:
+The first time you log in, YugabyteDB Aeon provides a welcome experience with a 15 minute guided tutorial. Complete the steps in the **Get Started** tutorial to do the following:
 
 - Connect to the database
 - Load sample data and run queries
@@ -65,13 +65,13 @@ To create your Sandbox cluster:
 
 1. Click **Create Cluster**.
 
-YugabyteDB Managed bootstraps and provisions the cluster, and configures YugabyteDB. The process takes around 5 minutes. While you wait, you can optionally fill out a survey to customize your getting started experience.
+YugabyteDB Aeon bootstraps and provisions the cluster, and configures YugabyteDB. The process takes around 5 minutes. While you wait, you can optionally fill out a survey to customize your getting started experience.
 
-When the cluster is ready, the cluster [Overview](/preview/yugabyte-cloud/cloud-monitor/overview/) is displayed. You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Managed.
+When the cluster is ready, the cluster [Overview](/preview/yugabyte-cloud/cloud-monitor/overview/) is displayed. You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Aeon.
 
 ## Connect to the cluster
 
-Use Cloud Shell to connect to your YugabyteDB Managed cluster from your browser, and interact with it using distributed SQL.
+Use Cloud Shell to connect to your YugabyteDB Aeon cluster from your browser, and interact with it using distributed SQL.
 
 >The shell has a one hour connection limit. If your session is idle for more than 5 minutes, it may disconnect. If your session expires, close your browser tab and connect again.
 
@@ -98,7 +98,7 @@ To connect to your cluster, do the following:
     The shell prompt appears and is ready to use.
 
     ```output
-    ysqlsh (11.2-YB-2.2.0.0-b0)
+    ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
     SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
     Type "help" for help.
 
@@ -117,12 +117,12 @@ When you connect to your cluster using Cloud Shell with the [YSQL API](/preview/
 
 ## Build an application
 
-Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). The tutorials in this section show how to connect applications to YugabyteDB Managed clusters using your favorite programming language.
+Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). The tutorials in this section show how to connect applications to YugabyteDB Aeon clusters using your favorite programming language.
 
 Before you begin, you need the following:
 
-- a cluster deployed in YugabyteDB Managed.
-- the cluster CA certificate; YugabyteDB Managed uses TLS to secure connections to the database.
+- a cluster deployed in YugabyteDB Aeon.
+- the cluster CA certificate; YugabyteDB Aeon uses TLS to secure connections to the database.
 - your computer added to the cluster IP allow list.
 
 Refer to [Before you begin](/preview/tutorials/build-apps/cloud-add-ip/).

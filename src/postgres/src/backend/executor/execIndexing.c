@@ -131,7 +131,8 @@ static bool check_exclusion_or_unique_constraint(Relation heap, Relation index,
 									 EState *estate, bool newIndex,
 									 CEOUC_WAIT_MODE waitMode,
 									 bool errorOK,
-									 ItemPointer conflictTid);
+									 ItemPointer conflictTid,
+									 TupleTableSlot **ybConflictSlot);
 
 static bool index_recheck_constraint(Relation index, Oid *constr_procs,
 						 Datum *existing_values, bool *existing_isnull,
@@ -279,7 +280,7 @@ ExecInsertIndexTuples(TupleTableSlot *slot,
 {
 	return ExecInsertIndexTuplesOptimized(
 	    slot, tuple, estate, noDupErr, specConflict,
-	    arbiterIndexes, NIL /* no_update_index_list */);
+	    arbiterIndexes);
 }
 
 List *
@@ -288,8 +289,7 @@ ExecInsertIndexTuplesOptimized(TupleTableSlot *slot,
                                EState *estate,
                                bool noDupErr,
                                bool *specConflict,
-                               List *arbiterIndexes,
-                               List *no_update_index_list)
+                               List *arbiterIndexes)
 {
 	List	   *result = NIL;
 	ResultRelInfo *resultRelInfo;
@@ -337,9 +337,10 @@ ExecInsertIndexTuplesOptimized(TupleTableSlot *slot,
 		 * For an update command check if we need to skip index. For that purpose,
 		 * we check if the relid of the index is part of the skip list.
 		 */
-		if (indexRelation == NULL || (no_update_index_list &&
-		    list_member_oid(no_update_index_list, RelationGetRelid(indexRelation))))
-		continue;
+		if (indexRelation == NULL ||
+			list_member_oid(estate->yb_skip_entities.index_list,
+							RelationGetRelid(indexRelation)))
+			continue;
 
 		indexInfo = indexInfoArray[i];
 		Assert(indexInfo->ii_ReadyForInserts ==
@@ -469,7 +470,8 @@ ExecInsertIndexTuplesOptimized(TupleTableSlot *slot,
 													 indexRelation, indexInfo,
 													 &(tuple->t_self), values, isnull,
 													 estate, false,
-													 waitMode, violationOK, NULL);
+													 waitMode, violationOK, NULL,
+													 NULL /* ybConflictSlot */);
 		}
 
 		if ((checkUnique == UNIQUE_CHECK_PARTIAL ||
@@ -503,14 +505,13 @@ ExecInsertIndexTuplesOptimized(TupleTableSlot *slot,
 void
 ExecDeleteIndexTuples(Datum ybctid, HeapTuple tuple, EState *estate)
 {
-  ExecDeleteIndexTuplesOptimized(ybctid, tuple, estate, NIL /* no_update_index_list */);
+	ExecDeleteIndexTuplesOptimized(ybctid, tuple, estate);
 }
 
 void
 ExecDeleteIndexTuplesOptimized(Datum ybctid,
                                HeapTuple tuple,
-                               EState *estate,
-                               List *no_update_index_list)
+                               EState *estate)
 {
 	ResultRelInfo *resultRelInfo;
 	int			i;
@@ -561,9 +562,10 @@ ExecDeleteIndexTuplesOptimized(Datum ybctid,
 		 * For an update command check if we need to skip index.
 		 * For that purpose, we check if the relid of the index is part of the skip list.
 		 */
-		if (indexRelation == NULL || (no_update_index_list &&
-		    list_member_oid(no_update_index_list, RelationGetRelid(indexRelation))))
-		  continue;
+		if (indexRelation == NULL ||
+			list_member_oid(estate->yb_skip_entities.index_list,
+							RelationGetRelid(indexRelation)))
+			continue;
 
 		/*
 		 * No need to update YugaByte primary key which is intrinic part of
@@ -659,7 +661,8 @@ ExecDeleteIndexTuplesOptimized(Datum ybctid,
 bool
 ExecCheckIndexConstraints(TupleTableSlot *slot,
 						  EState *estate, ItemPointer conflictTid,
-						  List *arbiterIndexes)
+						  List *arbiterIndexes,
+						  TupleTableSlot **ybConflictSlot)
 {
 	ResultRelInfo *resultRelInfo;
 	int			i;
@@ -769,7 +772,8 @@ ExecCheckIndexConstraints(TupleTableSlot *slot,
 												 indexInfo, &invalidItemPtr,
 												 values, isnull, estate, false,
 												 CEOUC_WAIT, true,
-												 conflictTid);
+												 conflictTid,
+												 ybConflictSlot);
 		if (!satisfiesConstraint)
 			return false;
 	}
@@ -830,7 +834,8 @@ check_exclusion_or_unique_constraint(Relation heap, Relation index,
 									 EState *estate, bool newIndex,
 									 CEOUC_WAIT_MODE waitMode,
 									 bool violationOK,
-									 ItemPointer conflictTid)
+									 ItemPointer conflictTid,
+									 TupleTableSlot **ybConflictSlot)
 {
 	Oid		   *constr_procs;
 	uint16	   *constr_strats;
@@ -898,10 +903,6 @@ check_exclusion_or_unique_constraint(Relation heap, Relation index,
 	econtext = GetPerTupleExprContext(estate);
 	save_scantuple = econtext->ecxt_scantuple;
 	econtext->ecxt_scantuple = existing_slot;
-	if (estate->yb_conflict_slot != NULL) {
-		ExecDropSingleTupleTableSlot(estate->yb_conflict_slot);
-		estate->yb_conflict_slot = NULL;
-	}
 
 	/*
 	 * May have to restart scan from this point if a potential conflict is
@@ -972,7 +973,7 @@ retry:
 		 * code block.
 		 * TODO(Mikhail) Verify correctness in YugaByte transaction management for on-conflict.
 		 */
-		if (!IsYugaByteEnabled()) {
+		if (!IsYBRelation(heap)) {
 			xwait = TransactionIdIsValid(DirtySnapshot.xmin) ?
 				DirtySnapshot.xmin : DirtySnapshot.xmax;
 
@@ -1002,8 +1003,9 @@ retry:
 		if (violationOK)
 		{
 			conflict = true;
-			if (IsYugaByteEnabled()) {
-				estate->yb_conflict_slot = existing_slot;
+			if (IsYBRelation(heap)) {
+				Assert(!*ybConflictSlot);
+				*ybConflictSlot = existing_slot;
 			}
 			if (conflictTid)
 				*conflictTid = tup->t_self;
@@ -1048,9 +1050,17 @@ retry:
 	 */
 
 	econtext->ecxt_scantuple = save_scantuple;
-	if (estate->yb_conflict_slot == NULL) {
+	/*
+	 * YB: ordinarily, PG frees existing slot here.  But for YB, we need it for
+	 * the DO UPDATE part (PG only needs conflictTid which is not palloc'd).
+	 * If ybConflictSlot is filled, we found a conflict and need to extend the
+	 * memory lifetime till the DO UPDATE part is finished.  The memory will be
+	 * freed after that at the end of ExecInsert.
+	 * TODO(jason): this is not necessary for DO NOTHING, so it could be freed
+	 * here as a minor optimization in that case.
+	 */
+	if (!*ybConflictSlot)
 		ExecDropSingleTupleTableSlot(existing_slot);
-	}
 	return !conflict;
 }
 
@@ -1070,7 +1080,8 @@ check_exclusion_constraint(Relation heap, Relation index,
 	(void) check_exclusion_or_unique_constraint(heap, index, indexInfo, tupleid,
 												values, isnull,
 												estate, newIndex,
-												CEOUC_WAIT, false, NULL);
+												CEOUC_WAIT, false, NULL,
+												NULL /* ybConflictSlot */);
 }
 
 /*

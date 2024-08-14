@@ -35,6 +35,7 @@ DECLARE_string(TEST_xcluster_simulated_lag_tablet_filter);
 DECLARE_string(ysql_yb_xcluster_consistency_level);
 DECLARE_uint32(xcluster_safe_time_log_outliers_interval_secs);
 DECLARE_uint32(xcluster_safe_time_slow_tablet_delta_secs);
+DECLARE_bool(xcluster_skip_health_check_on_replication_setup);
 
 using namespace std::chrono_literals;
 
@@ -167,8 +168,7 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
     uint32_t count = 0;
     for (const auto& mini_tserver : producer_cluster()->mini_tablet_servers()) {
       auto* tserver = mini_tserver->server();
-      auto cdc_service = dynamic_cast<cdc::CDCServiceImpl*>(
-          tserver->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+      auto cdc_service = dynamic_cast<cdc::CDCServiceImpl*>(tserver->GetCDCService().get());
 
       for (const auto& stream_id : stream_ids_) {
         for (const auto& tablet_id : producer_tablet_ids_) {
@@ -190,8 +190,7 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
     uint32_t count = 0;
     for (const auto& mini_tserver : producer_cluster()->mini_tablet_servers()) {
       auto* tserver = mini_tserver->server();
-      auto cdc_service = dynamic_cast<cdc::CDCServiceImpl*>(
-          tserver->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+      auto cdc_service = dynamic_cast<cdc::CDCServiceImpl*>(tserver->GetCDCService().get());
 
       for (const auto& stream_id : stream_ids_) {
         for (const auto& tablet_id : producer_tablet_ids_) {
@@ -329,6 +328,8 @@ class XClusterConsistencyNoSafeTimeTest : public XClusterConsistencyTest {
  public:
   void SetUp() override {
     ASSERT_OK(SET_FLAG(TEST_xcluster_simulated_lag_ms, -1));
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_xcluster_skip_health_check_on_replication_setup) = true;
+
     XClusterConsistencyTest::SetUp();
   }
 

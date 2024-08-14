@@ -1,6 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 import { Component } from 'react';
 import { browserHistory, Link } from 'react-router';
+import { toast } from 'react-toastify';
 import { YBBanner, YBBannerVariant } from '../common/descriptors';
 import { isNonAvailable, isNotHidden, showOrRedirect } from '../../utils/LayoutUtils';
 import UserProfileForm from './UserProfileForm';
@@ -11,10 +12,13 @@ import { isRbacEnabled, RBAC_USER_MNG_ROUTE } from '../../redesign/features/rbac
 const BannerContent = () => (
   <>
     <b>Note!</b> “Users” page has moved. You can now{' '}
-    <Link className="p-page-banner-link" to={ isRbacEnabled() ? RBAC_USER_MNG_ROUTE : "/admin/user-management"}>
+    <Link
+      className="p-page-banner-link"
+      to={isRbacEnabled() ? RBAC_USER_MNG_ROUTE : '/admin/user-management'}
+    >
       access Users page
     </Link>{' '}
-    from the {isRbacEnabled ? "Access" : "User"} Management section under Admin menu.
+    from the {isRbacEnabled ? 'Access' : 'User'} Management section under Admin menu.
   </>
 );
 
@@ -51,26 +55,20 @@ export default class CustomerProfile extends Component {
         (c) => c.key === 'yb.security.oidc_feature_enhancements'
       ).value === 'true';
 
-    if (!isRbacEnabled() && (getPromiseState(customer).isLoading() || getPromiseState(customer).isInit())) {
+    if (
+      !isRbacEnabled() &&
+      (getPromiseState(customer).isLoading() || getPromiseState(customer).isInit())
+    ) {
       return <YBLoading />;
     }
 
     showOrRedirect(customer.data.features, 'main.profile');
 
-    let profileUpdateStatus = <span />;
     if (this.state.statusUpdated) {
       if (this.state.updateStatus === 'updated-success') {
-        profileUpdateStatus = (
-          <span className="pull-right request-status yb-success-color yb-dissapear">
-            Profile Updated Successfully
-          </span>
-        );
+        toast.success('Profile Updated Successfully');
       } else {
-        profileUpdateStatus = (
-          <span className="pull-right request-status yb-fail-color yb-dissapear">
-            Profile Update Failed
-          </span>
-        );
+        toast.error('Profile Update Failed');
       }
       setTimeout(() => {
         this.setState({ statusUpdated: false });
@@ -90,7 +88,7 @@ export default class CustomerProfile extends Component {
         )}
         <div className="dashboard-container">
           <div className="tab-content">
-            <h2 className="content-title">User Profile {profileUpdateStatus}</h2>
+            <h2 className="content-title">User Profile</h2>
 
             <UserProfileForm
               customer={this.props.customer}

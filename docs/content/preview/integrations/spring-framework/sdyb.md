@@ -48,7 +48,7 @@ The project definition includes the following dependencies:
 <dependency>
   <groupId>com.yugabyte</groupId>
   <artifactId>jdbc-yugabytedb</artifactId>
-  <version>42.2.7-yb-5.beta.1</version>
+  <version>42.3.5-yb-5</version>
 </dependency>
 ```
 

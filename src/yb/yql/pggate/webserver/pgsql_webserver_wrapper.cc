@@ -202,8 +202,8 @@ void emitYsqlConnectionManagerMetrics(PrometheusWriter *pwriter) {
   for (ConnectionStats stats : stats_list) {
     ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_active_clients", stats.active_clients});
     ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_queued_clients", stats.queued_clients});
-    ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_idle_or_pending_clients",
-            stats.idle_or_pending_clients});
+    ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_waiting_clients",
+            stats.waiting_clients});
     ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_active_servers", stats.active_servers});
     ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_idle_servers", stats.idle_servers});
     ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_query_rate", stats.query_rate});
@@ -478,8 +478,8 @@ static void PgLogicalRpczHandler(const Webserver::WebRequest &req, Webserver::We
 
     // Number of logical connections which are either idle (i.e. no ongoing transaction) or waiting
     // for the worker thread to be processed (i.e. waiting for od_router_attach to be called).
-    writer.String("idle_or_pending_logical_connections");
-    writer.Int64(stat.idle_or_pending_clients);
+    writer.String("waiting_logical_connections");
+    writer.Int64(stat.waiting_clients);
 
     // Number of physical connections which currently attached to a logical connection.
     writer.String("active_physical_connections");
@@ -515,14 +515,34 @@ static void PgPrometheusMetricsHandler(
   MetricPrometheusOptions opts;
   PrometheusWriter writer(output, opts);
 
+  auto cache_miss_prefix_len = sizeof("CatalogCacheMisses");
   for (int i = 0; i < ybpgm_num_entries; ++i) {
+    bool is_cache_id_miss = false;
     std::string name = ybpgm_table[i].name;
-    WARN_NOT_OK(writer.WriteSingleEntry(prometheus_attr, name + "_count",
+    auto pos = name.find("CatalogCacheMisses");
+    if (pos != std::string::npos) {
+      // Example of name:
+      // handler_latency_yb_ysqlserver_SQLProcessor_CatalogCacheMisses_pg_authid_oid_index
+      // In this case, we split the name into metric_name and the index table name:
+      // metric_name: handler_latency_yb_ysqlserver_SQLProcessor_CatalogCacheIdMisses
+      // table_name: pg_authid_oid_index
+      pos += cache_miss_prefix_len - 1;
+      if (name[pos] == '_') {
+        is_cache_id_miss = true;
+        DCHECK(!prometheus_attr.contains("table_name"));
+        prometheus_attr["table_name"] = name.substr(pos + 1);
+      }
+    }
+    auto metric_name = is_cache_id_miss ? name.substr(0, pos) : name;
+    WARN_NOT_OK(writer.WriteSingleEntry(prometheus_attr, metric_name + "_count",
         ybpgm_table[i].calls, AggregationFunction::kSum, kServerLevel),
             "Couldn't write text metrics for Prometheus");
-    WARN_NOT_OK(writer.WriteSingleEntry(prometheus_attr, name + "_sum",
+    WARN_NOT_OK(writer.WriteSingleEntry(prometheus_attr, metric_name + "_sum",
         ybpgm_table[i].total_time, AggregationFunction::kSum, kServerLevel),
             "Couldn't write text metrics for Prometheus");
+    if (is_cache_id_miss) {
+      prometheus_attr.erase("table_name");
+    }
   }
 
   // Publish sql server connection related metrics

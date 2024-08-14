@@ -180,8 +180,11 @@ public class Audit extends Model {
     @EnumValue("RoleBinding")
     RoleBinding,
 
-    @EnumValue("OIDC Group Mapping")
-    OIDCGroupMapping
+    @EnumValue("Group Mapping")
+    GroupMapping,
+
+    @EnumValue("JobSchedule")
+    JobSchedule
   }
 
   public enum ActionType {
@@ -310,6 +313,12 @@ public class Audit extends Model {
 
     @EnumValue("Delete Troubleshooting Platform Config")
     DeleteTroubleshootingConfig,
+
+    @EnumValue("Register Universe with Troubleshooting Platform")
+    TroubleshootingPlatformRegister,
+
+    @EnumValue("Unregister Universe from Troubleshooting Platform")
+    TroubleshootingPlatformUnregister,
 
     @EnumValue("Upgrade Kubernetes Overrides")
     UpgradeKubernetesOverrides,

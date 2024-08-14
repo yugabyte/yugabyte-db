@@ -5,8 +5,8 @@ linkTitle: Back up universe data
 description: Use YugabyteDB Anywhere to back up data.
 headContent: Create full and incremental backups
 aliases:
-  - /preview/back-up-restore-universes/back-up-universe-data/ycql/
-  - /preview/back-up-restore-universes/back-up-universe-data/ysql/
+  - /preview/yugabyte-platform/back-up-restore-universes/back-up-universe-data/ycql/
+  - /preview/yugabyte-platform/back-up-restore-universes/back-up-universe-data/ysql/
 menu:
   preview_yugabyte-platform:
     parent: back-up-restore-universes
@@ -15,7 +15,7 @@ menu:
 type: docs
 ---
 
-You can use YugabyteDB Anywhere to back up your YugabyteDB universe data. This includes actions such as deleting and restoring the backup, as well as restoring and copying the database location.
+You can use YugabyteDB Anywhere (YBA) to back up your YugabyteDB universe data. This includes actions such as deleting and restoring the backup, as well as restoring and copying the database location.
 
 Before you can back up universes, you need to [configure a storage location](../configure-backup-storage/) for your backups.
 

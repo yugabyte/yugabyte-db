@@ -3,6 +3,7 @@ package com.yugabyte.yw.forms;
 import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.XClusterConfig;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -90,6 +91,24 @@ public class DrConfigTaskParams extends XClusterConfigTaskParams {
         mainTableIndexTablesMap,
         Collections.emptyMap() /* sourceTableIdTargetTableIdMap */);
     this.drConfig = drConfig;
+    this.oldXClusterConfig = oldXClusterConfig;
+    this.namespaceIdSafetimeEpochUsMap = namespaceIdSafetimeEpochUsMap;
+  }
+
+  public DrConfigTaskParams(
+      DrConfig drConfig,
+      @Nullable XClusterConfig oldXClusterConfig,
+      XClusterConfig newXClusterConfig,
+      Set<String> dbs,
+      @Nullable Map<String, Long> namespaceIdSafetimeEpochUsMap) {
+    super(
+        newXClusterConfig,
+        null /* bootstrapParams */,
+        Collections.emptyList(), /* tableInfoList */
+        Collections.emptyMap(), /* mainTableIndexTablesMap */
+        Collections.emptyMap() /* sourceTableIdTargetTableIdMap */);
+    this.drConfig = drConfig;
+    this.dbs = new HashSet<>(dbs);
     this.oldXClusterConfig = oldXClusterConfig;
     this.namespaceIdSafetimeEpochUsMap = namespaceIdSafetimeEpochUsMap;
   }

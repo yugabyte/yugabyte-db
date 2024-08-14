@@ -409,6 +409,12 @@ class ClusterAdminClient {
   Status YsqlBackfillReplicationSlotNameToCDCSDKStream(
       const std::string& stream_id, const std::string& replication_slot_name);
 
+  Status DisableDynamicTableAdditionOnCDCSDKStream(const std::string& stream_id);
+
+  Status RemoveUserTableFromCDCSDKStream(const std::string& stream_id, const std::string& table_id);
+
+  Status ValidateAndSyncCDCStateEntriesForCDCSDKStream(const std::string& stream_id);
+
   Status SetupNamespaceReplicationWithBootstrap(const std::string& replication_id,
                                   const std::vector<std::string>& producer_addresses,
                                   const TypedNamespaceName& ns,
@@ -448,10 +454,6 @@ class ClusterAdminClient {
   Status WaitForReplicationDrain(
       const std::vector<xrepl::StreamId>& stream_ids, const std::string& target_time);
 
-  Status SetupNSUniverseReplication(const std::string& replication_group_id,
-                                    const std::vector<std::string>& producer_addresses,
-                                    const TypedNamespaceName& producer_namespace);
-
   Status GetReplicationInfo(const std::string& replication_group_id);
 
   Result<rapidjson::Document> GetXClusterSafeTime(bool include_lag_and_skew = false);
@@ -478,6 +480,21 @@ class ClusterAdminClient {
 
   using NamespaceMap = std::unordered_map<NamespaceId, client::NamespaceInfo>;
   Result<const NamespaceMap&> GetNamespaceMap(bool include_nonrunning = false);
+
+  Result<master::DumpSysCatalogEntriesResponsePB> DumpSysCatalogEntries(
+      master::SysRowEntryType entry_type, const std::string& entity_id_filter);
+
+  Status DumpSysCatalogEntriesAction(
+      master::SysRowEntryType entry_type, const std::string& folder_path,
+      const std::string& entry_id_filter);
+
+  Status WriteSysCatalogEntry(
+      master::WriteSysCatalogEntryRequestPB::WriteOp operation, master::SysRowEntryType entry_type,
+      const std::string& entity_id, const std::string& pb_debug_string);
+
+  Status WriteSysCatalogEntryAction(
+      master::WriteSysCatalogEntryRequestPB::WriteOp operation, master::SysRowEntryType entry_type,
+      const std::string& entry_id, const std::string& file_path, bool force);
 
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.

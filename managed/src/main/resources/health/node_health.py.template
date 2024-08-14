@@ -40,10 +40,17 @@ import sys
 import time
 
 try:
+    import html
+except Exception as e:
+    import HTMLParser
+    html = HTMLParser.HTMLParser()
+
+try:
     from builtins import RuntimeError
 except Exception as e:
     from exceptions import RuntimeError
 from datetime import datetime, timedelta
+from collections import defaultdict
 
 NODE_INFO = '{{NODE_INFO}}'
 
@@ -51,6 +58,9 @@ MASTER = "yb-master"
 TSERVER = "yb-tserver"
 POSTMASTER = "yb-postmaster"
 POSTGRES = "postgres"
+OTEL_COLLECTOR = "otelcol-contrib"
+YB_CONTROLLER = "yb-controller-server"
+NODE_EXPORTER = "node_exporter"
 
 ALERT_ENHANCEMENTS_RELEASE_BUILD = "2.6.0.0-b0"
 RELEASE_BUILD_PATTERN = "(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)[-](.+)"
@@ -126,6 +136,10 @@ HEALTH_CHECK_N2N_CA_CERT_VALIDITY_DAYS = MetricDefinition(
 HEALTH_CHECK_N2N_CERT_VALIDITY_DAYS = MetricDefinition(
     "ybp_health_check_n2n_cert_validity_days",
     "Remaining Node to Node certificate validity days",
+    "days")
+HEALTH_CHECK_N2N_RUNTIME_CERT_VALIDITY_DAYS = MetricDefinition(
+    "ybp_health_check_n2n_runtime_cert_validity_days",
+    "Remaining Node to Node Runtime certificate validity days",
     "days")
 HEALTH_CHECK_C2N_CA_CERT_VALIDITY_DAYS = MetricDefinition(
     "ybp_health_check_c2n_ca_cert_validity_days",
@@ -206,6 +220,23 @@ YB_NODE_CLOCK_SKEW_CHECK = MetricDefinition(
 YB_NODE_CONTROLLER_CHECK = MetricDefinition(
     "yb_node_controller_check",
     "YB-Controller server check")
+YB_NODE_CLOCK_DRIFT_CHECK = MetricDefinition(
+    "yb_node_clock_drift_check_ms",
+    "Time Drift betwen nodes within limits",
+    "millisec")
+YB_DDL_ATOMICITY_CHECK = MetricDefinition(
+    "yb_ddl_atomicity_check",
+    "Status of DDL atomicity check"
+)
+YB_PROCESS_CPU_SECONDS_TOTAL = MetricDefinition(
+    "yb_process_cpu_seconds_total",
+    "Check total cpu seconds per process and its subprocesses")
+YB_PROCESS_MEMORY_KB = MetricDefinition(
+    "yb_process_memory_kb",
+    "Check memory bytes per process and its subprocesses")
+YB_PROCESS_IO_KB_TOTAL = MetricDefinition(
+    "yb_process_io_kb_total",
+    "Check io bytes per process and its subprocesses")
 
 ###################################################################################################
 # Reporting
@@ -342,10 +373,11 @@ class Entry:
         self.ignore_result = True
         return self
 
-    def fill_and_return_warning_entry(self, details):
+    def fill_and_return_warning_entry(self, details, metrics=None):
         self.details = details
         self.has_error = False
         self.has_warning = True
+        self.metrics = metrics
         return self
 
     def as_json(self):
@@ -493,7 +525,10 @@ class NodeChecker():
                  yb_home_dir, ybc_dir, start_time_ms, ysql_port, ycql_port, redis_port,
                  enable_tls_client, enable_tls, root_and_client_root_ca_same, ssl_protocol,
                  enable_ysql, enable_ysql_auth, master_http_port, tserver_http_port,
-                 ysql_server_http_port, node_version, is_ybc_enabled, ybc_port):
+                 ysql_server_http_port, node_version, is_ybc_enabled, ybc_port,
+                 time_drift_wrn_threshold, time_drift_err_threshold, otel_enabled,
+                 temp_output_file, ddl_atomicity_check, master_leader_url,
+                 master_rpc_port, tserver_rpc_port):
         self.node = node
         self.node_name = node_name
         self.node_identifier = node_identifier
@@ -513,12 +548,38 @@ class NodeChecker():
         self.enable_ysql = enable_ysql
         self.enable_ysql_auth = enable_ysql_auth
         self.master_http_port = master_http_port
+        self.master_rpc_port = master_rpc_port
         self.tserver_http_port = tserver_http_port
+        self.tserver_rpc_port = tserver_rpc_port
         self.ysql_server_http_port = ysql_server_http_port
         self.node_version = node_version
         self.is_ybc_enabled = is_ybc_enabled
         self.ybc_port = ybc_port
+        self.time_drift_wrn_threshold = time_drift_wrn_threshold
+        self.time_drift_err_threshold = time_drift_err_threshold
         self.additional_info = {}
+        self.otel_enabled = otel_enabled
+        self.temp_output_file = temp_output_file
+        self.ddl_atomicity_check = ddl_atomicity_check
+        self.master_leader_url = master_leader_url
+        self.prev_process_results = self._load_previous_per_process_results(temp_output_file)
+        self.current_process_results = {}
+
+    def _load_previous_per_process_results(self, temp_output_file):
+        try:
+            with open(temp_output_file) as f:
+                js = json.load(f)
+                return js
+        except IOError as ie:
+            logging.info("Failed to load prev process results")
+            return {}
+
+    def _dump_per_process_results(self):
+         try:
+            with open(self.temp_output_file, 'w') as f:
+                json.dump(self.current_process_results, f)
+         except IOError as ie:
+            logging.error("Failed to write current per process results: {}".format(str(ie)))
 
     def _new_entry(self, message, process=None):
         return Entry(message, self.node, process, self.node_name, self.node_identifier)
@@ -571,10 +632,47 @@ class NodeChecker():
 
         return e.fill_and_return_entry(msgs, has_error=found_error)
 
-    def get_certificate_expiration_date(self, cert_path):
-        cmd = 'if [ -f {} ]; then openssl x509 -enddate -noout -in {} 2>/dev/null;' \
-                     ' else echo \"File not found\"; fi;'.format(cert_path, cert_path)
+    def get_certificate_expiration_date_from_string(self, cert_string):
+        cmd = 'echo "{}" | openssl x509 -enddate -noout'.format(cert_string.replace('"', '\\"'))
         return self._check_output(cmd)
+
+    def get_certificate_expiration_date(self, cert_path):
+        cmd = 'if [ -f "{}" ]; then openssl x509 -enddate -noout -in "{}"; ' \
+              'else echo "File not found"; fi'.format(cert_path, cert_path)
+        return self._check_output(cmd)
+
+
+    def retrieve_host_certs(self, host, port):
+        """Retrieve certificates from the specified host and port."""
+        cmd = 'echo | openssl s_client -showcerts -connect {}:{}'.format(host, port)
+        return self._check_output(cmd)
+
+    def parse_certs(self, cert_output):
+        """Extract certificates from the openssl output."""
+        certs = re.findall(r'-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----',
+                           cert_output, re.DOTALL)
+        return certs
+
+    def read_cert_from_file(self, cert_path):
+        """Read the certificate from the given file path."""
+        with open(cert_path, 'r') as cert_file:
+            cert_data = cert_file.read()
+        return cert_data
+
+    def normalize_cert(self, cert):
+        """Normalize certificate by removing unnecessary whitespace."""
+        return re.sub(r'\s+', '', cert)
+
+    def are_certs_same(self, certs, cert_path):
+        """Compare parsed certificates with the certificate from the file."""
+        file_cert = self.read_cert_from_file(cert_path)
+        normalized_file_cert = self.normalize_cert(file_cert)
+
+        for cert in certs:
+            if not self.normalize_cert(cert) == normalized_file_cert:
+                return False
+
+        return True
 
     def check_certificate_expiration(self, cert_name, cert_path, metric_definition,
                                      fail_if_not_found=True):
@@ -606,16 +704,56 @@ class NodeChecker():
         delta = expiry_date - datetime.now()
         days_till_expiry = delta.days
         metric = Metric.from_definition(metric_definition).add_value(days_till_expiry)
-        if days_till_expiry >=0 and days_till_expiry < 30:
+
+        if cert_name == "Node To Node Runtime":
+            if days_till_expiry > 30:
+                # We will extract the runtime certificates serving tserver/master.
+                # In case the runtime certs are different from the on-disk certs
+                # & they are about to expire <= 30 days, we will raise the alerts
+                # for users to restart the services.
+                try:
+                    cert_output = self.retrieve_host_certs(self.node, self.tserver_rpc_port)
+                except Exception as e:
+                    logging.info("Failed to retrieve tserver certs, trying with master")
+                    cert_output = self.retrieve_host_certs(self.node, self.master_rpc_port)
+                certs = self.parse_certs(cert_output)
+                if not self.are_certs_same(certs, cert_path):
+                    for cert in certs:
+                        output = self.get_certificate_expiration_date_from_string(cert)
+                        try:
+                            ssl_date_fmt = r'%b %d %H:%M:%S %Y %Z'
+                            date = output.replace('notAfter=', '')
+                            expiry_date = datetime.strptime(date, ssl_date_fmt)
+                        except Exception as ex:
+                            message = str(ex)
+                            return e.fill_and_return_entry([message], has_error=True)
+
+                        delta = expiry_date - datetime.now()
+                        if delta.days < days_till_expiry:
+                            days_till_expiry = delta.days
+
+                    if days_till_expiry >=0 and days_till_expiry < 30:
+                        return e.fill_and_return_entry(
+                            ['{} certificate expires in {} days. Consider running rolling restart'
+                            .format(cert_name, days_till_expiry)],
+                            has_error=True,
+                            metrics=[metric])
+
             return e.fill_and_return_entry(
-                ['{} certificate will expire in {} days'.format(cert_name, days_till_expiry)],
-                has_error=True,
+                ['{} days'.format(days_till_expiry)],
+                has_error=False,
                 metrics=[metric])
-        if days_till_expiry < 0:
-            return e.fill_and_return_entry(
-                ['{} certificate expired {} day(s) ago'.format(cert_name, -days_till_expiry)],
-                has_error=True,
-                metrics=[metric])
+        else:
+            if days_till_expiry >= 0 and days_till_expiry < 30:
+                return e.fill_and_return_entry(
+                    ['{} certificate will expire in {} days'.format(cert_name, days_till_expiry)],
+                    has_error=True,
+                    metrics=[metric])
+            if days_till_expiry < 0:
+                return e.fill_and_return_entry(
+                    ['{} certificate expired {} day(s) ago'.format(cert_name, -days_till_expiry)],
+                    has_error=True,
+                    metrics=[metric])
         return e.fill_and_return_entry(
             ['{} days'.format(days_till_expiry)],
             has_error=False,
@@ -672,6 +810,12 @@ class NodeChecker():
         return self.check_certificate_expiration("Node To Node",
                                                  self.get_node_to_node_certificate_path(),
                                                  HEALTH_CHECK_N2N_CERT_VALIDITY_DAYS
+                                                 )
+
+    def check_node_to_node_runtime_certificate_expiration(self):
+        return self.check_certificate_expiration("Node To Node Runtime",
+                                                 self.get_node_to_node_certificate_path(),
+                                                 HEALTH_CHECK_N2N_RUNTIME_CERT_VALIDITY_DAYS
                                                  )
 
     def check_client_to_node_ca_certificate_expiration(self):
@@ -851,7 +995,7 @@ class NodeChecker():
 
             return self.get_process_pid_by_parent_pid_and_name(POSTGRES, tserver_pid)
 
-        cmd = "ps --no-headers -C {} -o pid=".format(process_name)
+        cmd = "ps hf -opid -C {} | head -n1".format(process_name)
         pid = self._check_output(cmd).strip()
         if pid.isdigit():
             return pid
@@ -1224,7 +1368,7 @@ class NodeChecker():
         metric = Metric.from_definition(YB_NODE_REDIS_CONNECT).add_value(0 if has_errors else 1)
         return e.fill_and_return_entry(errors, has_error=has_errors, metrics=[metric])
 
-    def create_ysqlsh_command(self):
+    def create_ysqlsh_command(self, db_name="system_platform"):
         ysqlsh = '{}/bin/ysqlsh'.format(self.yb_tserver_dir())
         port_args = "-p {}".format(self.ysql_port)
         host = self.node
@@ -1240,8 +1384,9 @@ class NodeChecker():
             else:
                 raise RuntimeError("Could not find local socket")
 
-        ysqlsh_cmd = "{} {} -h {} {} -U yugabyte -d system_platform".format(
-            'env sslmode="require"' if (self.enable_tls_client) else '', ysqlsh, host, port_args, )
+        ysqlsh_cmd = "{} {} -h {} {} -U yugabyte -d {}".format(
+            'env sslmode="require"' if (self.enable_tls_client) else '',
+            ysqlsh, host, port_args, db_name)
 
         return ysqlsh_cmd
 
@@ -1385,6 +1530,123 @@ class NodeChecker():
         metric = Metric.from_definition(YB_NODE_CLOCK_SKEW_CHECK).add_value(0 if has_errors else 1)
         return e.fill_and_return_entry(errors, has_error=has_errors, metrics=[metric])
 
+    def check_ddl_atomicity(self):
+        logging.info("Checking DDL atomicity on node {}".format(self.node))
+        e = self._new_entry("DDL atomicity")
+        metric = Metric.from_definition(YB_DDL_ATOMICITY_CHECK)
+
+        try:
+            ysqlsh_cmd = self.create_ysqlsh_command("")
+        except RuntimeError as re:
+            metric.add_value(0)
+            return e.fill_and_return_entry([str(re)], has_error=True, metrics=[metric])
+
+        errors = []
+        try:
+            # Get table data
+            tables_output = (json.loads(self.http_request(
+                "{}/api/v1/tables".format(self.master_leader_url))))
+            table_data_json = tables_output["user"]
+            table_data_json += tables_output["index"]
+
+            # Initialize a dictionary to store table data by database
+            db_tables = {}
+
+            # Iterate through each line of table data
+            for table in table_data_json:
+                pg_oid = table["ysql_oid"]
+                dbname = table["keyspace"]
+
+                # Skip over tables that aren't in YSQL/are hidden.
+                if pg_oid == "" or table["hidden"]:
+                    continue
+                # Extract table oid
+                yb_pg_table_oid = str(int(table["uuid"][-4:], 16))
+
+                # Add table to the database's list in the dictionary
+                if dbname not in db_tables:
+                    db_tables[dbname] = []
+                db_tables[dbname].append(
+                    (table["table_name"], pg_oid, yb_pg_table_oid, table["uuid"]))
+
+            # Iterate through each database
+            for dbname, tables in db_tables.items():
+                pg_class_cmd = "{}{} -t -c \"{}\"".format(ysqlsh_cmd, dbname,
+                    "SELECT json_agg(row_to_json(t)) FROM \
+                     (SELECT relname, oid, relfilenode FROM pg_class WHERE oid >= 16384) t;")
+
+                # Fetch all user tables from pg_class for the database
+                pg_class_output = json.loads(self._check_output(pg_class_cmd).strip())
+                pg_class_oid_tableinfo_dict = {}
+                # Use relfilenode if it exists (as the table may be rewritten)
+                for table in pg_class_output:
+                    if table['relfilenode'] != '0':
+                        pg_class_oid_tableinfo_dict[table['relfilenode']] = table
+                    else:
+                        pg_class_oid_tableinfo_dict[table['oid']] = table
+
+                pg_attribute_cmd = "{}{} -t -c \"{}\"".format(ysqlsh_cmd, dbname,
+                    "SELECT json_agg(row_to_json(t)) FROM \
+                     (SELECT attname, attrelid FROM pg_attribute WHERE attrelid >= 16384) t;")
+                pg_attribute_output = json.loads(self._check_output(pg_attribute_cmd).strip())
+                pg_attribute_attrelid_attnames_dict = defaultdict(list)
+                for attribute in pg_attribute_output:
+                    (pg_attribute_attrelid_attnames_dict[attribute['attrelid']]
+                        .append(attribute['attname']))
+
+                # Iterate through each table
+                for tablename, pg_oid, yb_pg_table_oid, tableid in tables:
+                    # Check if the table exists in pg_class
+                    if yb_pg_table_oid not in pg_class_oid_tableinfo_dict:
+                        # Note: on versions older than 2024.1, the oid in this log
+                        # will refer to the relfilenode for materialized views.
+                        errors.append(("Table {} with oid {} and uuid {} does not exist in "
+                                       "database {} - ORPHANED TABLE NEEDS TO BE DROPPED")
+                                       .format(tablename, pg_oid, tableid, dbname))
+                        continue
+
+                    pg_class_entry = pg_class_oid_tableinfo_dict[yb_pg_table_oid]
+                    # work-around for versions older than 2024.1, as master UI doesn't populate
+                    # YSQL table oid on the UI correctly
+                    # (it populated it with relfilenode oid instead).
+                    pg_oid = pg_class_entry['oid']
+
+                    if tablename != pg_class_entry['relname']:
+                        errors.append(("Table {} with oid {} and uuid {} exists in {} but has a "
+                                       "mismatched table name - TABLE NAME NEEDS TO BE FIXED")
+                                       .format(tablename, pg_oid, tableid, dbname))
+                        continue
+
+                    # Get columns
+                    table_schema_json = json.loads(self.http_request(
+                        "{}/api/v1/table?id={}".format(self.master_leader_url, tableid)))
+                    columns = [html.unescape(
+                        column['column']) for column in table_schema_json["columns"]]
+                    # Check if each column exists in pg_attribute
+                    for column in columns:
+                        if (column == "ybrowid" or column == "ybuniqueidxkeysuffix"
+                            or column == "ybidxbasectid"):
+                            continue
+                        if column not in pg_attribute_attrelid_attnames_dict[pg_oid]:
+                            errors.append(("Column {} does not exist in table {} in database {} - "
+                                           "ORPHANED COLUMN NEEDS TO BE DROPPED")
+                                           .format(column, tablename, dbname))
+                            continue
+        except Exception as ex:
+            metric.add_value(0)
+            return e.fill_and_return_entry([str(ex)], has_error=True, metrics=[metric])
+
+        has_errors = len(errors) > 0
+        if has_errors:
+            msgs = ["Found {} errors:".format(len(errors))]
+            msgs.extend(errors[:10])
+            if len(errors) > 10:
+                msgs.append("...")
+        else:
+            msgs = ["No errors found"]
+        metric.add_value(0 if has_errors else 1)
+        return e.fill_and_return_entry(msgs, has_error=has_errors, metrics=[metric])
+
     def check_openssl_availability(self):
         cmd = "which openssl &>/dev/null; echo $?"
         output = self._check_output(cmd).rstrip()
@@ -1409,6 +1671,169 @@ class NodeChecker():
         has_errors = len(errors) > 0
         metric.add_value(0 if has_errors else 1)
         return e.fill_and_return_entry(errors, has_error=has_errors, metrics=[metric])
+
+    def check_yb_node_clock_drift(self):
+        e = self._new_entry("Node Clock Drift")
+        if not chrony_exists():
+          return e.ignore_check()
+        metric = Metric.from_definition(YB_NODE_CLOCK_DRIFT_CHECK)
+        drift_ms = get_clock_drift_ms()
+        # Returns error string on failure, int on success
+        if isinstance(drift_ms, str):
+          return e.fill_and_return_entry([drift_ms], has_error=True)
+        metric.add_value(drift_ms)
+        errors = []
+        if drift_ms > self.time_drift_err_threshold:
+            errors.append("Node clock drift is {} ms, over {} ms".format(
+                drift_ms, self.time_drift_err_threshold))
+            return e.fill_and_return_entry(errors, has_error=True, metrics=[metric])
+        if drift_ms > self.time_drift_wrn_threshold:
+            errors.append("Node clock drift is {} ms, over {} ms".format(
+                drift_ms, self.time_drift_wrn_threshold))
+            return e.fill_and_return_warning_entry(errors, metrics=[metric])
+        return e.fill_and_return_entry(["%s ms" % drift_ms], has_error=False, metrics=[metric])
+
+    def check_process_stats(self, process_name):
+        metrics = [Metric.from_definition(YB_PROCESS_CPU_SECONDS_TOTAL),
+                   Metric.from_definition(YB_PROCESS_MEMORY_KB),
+                   Metric.from_definition(YB_PROCESS_IO_KB_TOTAL)]
+
+        e = self._new_metric_entry("Per-process check", process_name)
+        process = Label("process", process_name)
+        try:
+            res = self._load_per_process_metrics(process_name)
+            stat = res['total_stat']
+            self.current_process_results[process_name] = res
+            self._dump_per_process_results()
+
+            metrics[0].add_value(stat['user_cpu_seconds'], labels=[process,
+                                                                   Label('type', 'user')])
+            metrics[0].add_value(stat['system_cpu_seconds'], labels=[process,
+                                                                     Label('type', 'system')])
+            metrics[1].add_value(stat['resident_memory_kb'], labels=[process,
+                                                                        Label('type', 'resident')])
+            metrics[1].add_value(stat['proportional_memory_kb'], labels=[
+                process, Label('type', 'proportional')])
+            metrics[1].add_value(stat['virtual_memory_kb'], labels=[process,
+                                                                       Label('type', 'virtual')])
+            metrics[2].add_value(stat['io_write_kb'], labels=[process,
+                                                                 Label('type', 'write')])
+            metrics[2].add_value(stat['io_read_kb'], labels=[process,
+                                                                Label('type', 'read')])
+            return e.fill_and_return_entry([], has_error=False, metrics=metrics)
+        except Exception as ex:
+            return e.fill_and_return_entry(["Failed to parse process stats: {}".format(str(ex))],
+                                           has_error=True, metrics = metrics)
+
+    def _load_per_process_metrics(self, process_name):
+        root_pid = self.get_process_pid_by_name(process_name)
+        if root_pid is None:
+            return {
+                'process_map': {},
+                'total_stat': self._get_empty_proc_results()
+            }
+        pid_list = self._get_subprocess_pids(root_pid)
+        pid_list.append(root_pid)
+        if process_name == TSERVER:
+            postgre_pid = self.get_process_pid_by_name(POSTMASTER)
+            if postgre_pid is not None:
+                pid_list.remove(postgre_pid)
+                pid_list = [p for p in pid_list if p not in self._get_subprocess_pids(postgre_pid)]
+        total_stat = self._get_empty_proc_results()
+        prev_process_map = {}
+        if process_name in self.prev_process_results.keys():
+            prev_process_map = self.prev_process_results[process_name]['process_map']
+            total_stat = self.prev_process_results[process_name]['total_stat']
+            self._clear_gauge_stats(total_stat)
+
+        process_map = {}
+        for cur_pid in pid_list:
+            stat = self._get_process_stats_by_pid(cur_pid)
+            # Calculating the sum with current state
+            total_stat = self._merge_proc_results(total_stat, stat)
+            # We need to substract pid stats from prev run
+            if cur_pid in prev_process_map:
+                prev_stat = prev_process_map[cur_pid]['stats']
+                self._invert_prev_pid_stats(prev_stat)
+                total_stat = self._merge_proc_results(total_stat, prev_stat)
+
+            process_map[cur_pid] = {
+                'is_root': cur_pid == root_pid,
+                'stats': stat
+            }
+        logging.info("Collected {} stats for {}".format(total_stat, process_name))
+        return {
+            'process_map': process_map,
+            'total_stat': total_stat
+        }
+
+    def _get_subprocess_pids(self, pid):
+        res = []
+        cmd = "ps --no-headers --ppid {} -o pid= ".format(pid)
+        child_processes = self._check_output(cmd).split('\n')
+        for child in child_processes:
+            if child.strip().isdigit():
+                res.append(child.strip())
+        return res
+
+    def _get_empty_proc_results(self):
+        return {
+            'user_cpu_seconds': 0,
+            'system_cpu_seconds': 0,
+            'io_write_kb': 0,
+            'io_read_kb': 0,
+            'resident_memory_kb': 0,
+            'proportional_memory_kb': 0,
+            'virtual_memory_kb': 0,
+        }
+
+    def _invert_prev_pid_stats(self, stat):
+        self._clear_gauge_stats(stat)
+        for key in stat.keys():
+            stat[key] = -stat[key]
+
+    def _clear_gauge_stats(self, stat):
+        for k in ['resident_memory_kb', 'virtual_memory_kb', 'proportional_memory_kb']:
+            stat[k] = 0
+
+    def _merge_proc_results(self, stat1, stat2):
+        res = {}
+        for key in stat1.keys():
+            res[key] = stat1[key] + stat2[key]
+        return res
+
+    def _get_process_stats_by_pid(self, pid):
+        res = self._get_empty_proc_results()
+        cmd = 'cat /proc/{}/stat'.format(pid)
+        stat = self._check_output(cmd).strip()
+        stat_list = stat.split(" ")
+        if len(stat_list) > 0:
+            res['user_cpu_seconds'] = int(stat_list[13])
+            res['system_cpu_seconds'] = int(stat_list[14])
+            res['virtual_memory_kb'] = int(stat_list[22]) // 1024
+
+        cmd = 'cat /proc/{}/smaps'.format(pid)
+        stat = self._check_output(cmd).strip()
+        stat_list = stat.split('\n')
+        for stat in stat_list:
+            lst = stat.split(' ')
+            if len(lst) > 0:
+                if lst[0] == 'Pss:':
+                    res['proportional_memory_kb'] += int(lst[len(lst) - 2])
+                if lst[0] == 'Rss:':
+                    res['resident_memory_kb'] += int(lst[len(lst) - 2])
+
+        cmd = 'cat /proc/{}/io'.format(pid)
+        stat = self._check_output(cmd).strip()
+        stat_list = stat.split("\n")
+        for lst in stat_list:
+            if "read_bytes" in lst:
+                res['io_read_kb'] = int(lst.split(" ")[1]) // 1024
+            if "write_bytes:" in lst:
+                res['io_write_kb'] = int(lst.split(" ")[1]) // 1024
+        logging.info("stats for {} pid are {}".format(pid, res))
+        return res
+
 
 ###################################################################################################
 # Utility functions
@@ -1478,6 +1903,24 @@ def is_equal_release_build(release_build1, release_build2):
     return (is_equal_or_newer_release_build(release_build1, release_build2) and
             is_equal_or_newer_release_build(release_build2, release_build1))
 
+def get_clock_drift_ms():
+    """
+    Get the clock drift in milliseconds. Returns absolute value of the drift
+    """
+    env = os.environ.copy()
+    chrony_out = check_output("systemctl status chronyd.service", env)
+    if "Error" not in chrony_out and "Active: active" in chrony_out:
+        # Check drift using chrony
+        out = check_output("chronyc tracking", env)
+        match = re.search("System time.*: (.*) second", out, re.MULTILINE)
+        if match:
+          return float(match.group(1))*1000 # Convert seconds to milliseconds
+    return "Error: Unknown time service"
+
+def chrony_exists():
+    env = os.environ.copy()
+    chrony_out = check_output("command -v chronyc", env)
+    return "Error" not in chrony_out
 
 class CheckCoordinator:
     class PreCheckRunInfo:
@@ -1580,15 +2023,21 @@ class NodeInfo:
         self.redis_port = data["redisPort"]
         self.enable_ysql_auth = data["enableYSQLAuth"]
         self.master_http_port = data["masterHttpPort"]
+        self.master_rpc_port = data["masterRpcPort"]
         self.tserver_http_port = data["tserverHttpPort"]
+        self.tserver_rpc_port = data["tserverRpcPort"]
         self.ysql_server_http_port = data["ysqlServerHttpPort"]
         self.check_clock = data["checkClock"]
+        self.check_time_drift = data["checkTimeDrift"]
+        self.time_drift_wrn_threshold = data["timeDriftWrnThreshold"]
+        self.time_drift_err_threshold = data["timeDriftErrThreshold"]
         self.test_read_write = data["testReadWrite"]
         self.test_ysqlsh_connectivity = data["testYsqlshConnectivity"]
         self.test_cqlsh_connectivity = data["testCqlshConnectivity"]
         self.universe_uuid = data["universeUuid"]
         self.is_ybc_enabled = data["enableYbc"]
         self.ybc_port = data["ybcPort"]
+        self.otel_enabled = data["otelCollectorEnabled"]
 
 
 def main():
@@ -1603,6 +2052,14 @@ def main():
                         help='Output file to which the metrics will be written to.')
     parser.add_argument('--retry_interval_secs', type=int, required=False, default=30,
                         help='Time to wait between retries of failed checks.')
+    parser.add_argument('--temp_output_file', type=str, default="{{TMP_DIR}}/process_stats.json",
+                        required=False, help='Temporary output file to which the process '
+                                             'stats will be written to.')
+    parser.add_argument('--ddl_atomicity_check', type=bool, default=False, required=False,
+                        help='In case we want to get only metrics as an output.')
+    parser.add_argument('--master_leader_url', type=str, default="", required=False,
+                        help='Master leader URL.')
+
     args = parser.parse_args()
 
     if args.metrics_only:
@@ -1624,7 +2081,10 @@ def main():
         n.yb_home_dir, n.ybc_dir, n.node_start_time, n.ysql_port, n.ycql_port, n.redis_port,
         n.enable_tls_client, n.enable_tls, n.root_and_client_root_ca_same, n.ssl_protocol,
         n.enable_ysql, n.enable_ysql_auth, n.master_http_port, n.tserver_http_port,
-        n.ysql_server_http_port, n.yb_version, n.is_ybc_enabled, n.ybc_port)
+        n.ysql_server_http_port, n.yb_version, n.is_ybc_enabled, n.ybc_port,
+        n.time_drift_wrn_threshold, n.time_drift_err_threshold, n.otel_enabled,
+        args.temp_output_file, args.ddl_atomicity_check, args.master_leader_url,
+        n.master_rpc_port, n.tserver_rpc_port)
 
     coordinator.add_precheck(checker, "check_openssl_availability")
 
@@ -1634,6 +2094,7 @@ def main():
     if n.enable_tls:
         coordinator.add_check(checker, "check_node_to_node_ca_certificate_expiration")
         coordinator.add_check(checker, "check_node_to_node_certificate_expiration")
+        coordinator.add_check(checker, "check_node_to_node_runtime_certificate_expiration")
     if n.enable_tls_client:
         coordinator.add_check(checker, "check_client_ca_certificate_expiration")
         if not n.root_and_client_root_ca_same:
@@ -1649,6 +2110,9 @@ def main():
         if n.check_clock:
             coordinator.add_check(checker, "check_clock_skew")
 
+    if n.check_time_drift:
+        coordinator.add_check(checker, "check_yb_node_clock_drift")
+
     if n.master_index >= 0:
         coordinator.add_check(checker, "check_uptime_for_process", MASTER)
         if alert_enhancements_version:
@@ -1657,6 +2121,7 @@ def main():
         coordinator.add_check(checker, "check_is_master_leader")
         coordinator.add_check(checker, "check_leaderless_tablets")
         coordinator.add_check(checker, "check_underreplicated_tablets")
+        coordinator.add_check(checker, "check_process_stats", MASTER)
 
     if n.tserver_index >= 0:
         coordinator.add_check(checker, "check_uptime_for_process", TSERVER)
@@ -1684,9 +2149,19 @@ def main():
             coordinator.add_check(checker, "check_ysql_cgroup_memory_usage")
         if n.is_ybc_enabled:
             coordinator.add_check(checker, "check_yb_controller_availability", max_tries=3)
+            coordinator.add_check(checker, "check_process_stats", YB_CONTROLLER)
+        coordinator.add_check(checker, "check_process_stats", POSTMASTER)
+        coordinator.add_check(checker, "check_process_stats", TSERVER)
 
     if not n.is_k8s:
         coordinator.add_check(checker, "check_oom_kills")
+        coordinator.add_check(checker, "check_process_stats", NODE_EXPORTER)
+
+    if n.otel_enabled:
+        coordinator.add_check(checker, "check_process_stats", OTEL_COLLECTOR)
+
+    if args.ddl_atomicity_check:
+        coordinator.add_check(checker, "check_ddl_atomicity")
 
     entries = coordinator.run()
     for e in entries:

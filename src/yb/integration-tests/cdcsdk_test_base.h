@@ -50,6 +50,8 @@ DECLARE_string(allowed_preview_flags_csv);
 DECLARE_bool(ysql_yb_enable_ddl_atomicity_infra);
 DECLARE_bool(ysql_enable_pack_full_row_update);
 DECLARE_bool(ysql_yb_enable_replica_identity);
+DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
+DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
 
 namespace yb {
 using client::YBClient;
@@ -133,6 +135,11 @@ class CDCSDKTestBase : public YBTest {
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
 
+    // TODO(#23000) Rationalize the tests to run with consistent / non-consistent snapshot streams.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = false;
+
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
+
     google::SetVLOGLevel("cdc*", 4);
     google::SetVLOGLevel("tablet*", 1);
   }
@@ -214,7 +221,9 @@ class CDCSDKTestBase : public YBTest {
 
   Result<xrepl::StreamId> CreateDBStream(
       CDCCheckpointType checkpoint_type = CDCCheckpointType::EXPLICIT,
-      CDCRecordType record_type = CDCRecordType::CHANGE);
+      CDCRecordType record_type = CDCRecordType::CHANGE,
+      std::string namespace_name = kNamespaceName);
+
   // Creates a DB stream on the database kNamespaceName using the Replication Slot syntax.
   // Only supports the CDCCheckpointType::EXPLICIT and CDCRecordType::CHANGE.
   // TODO(#19260): Support customizing the CDCRecordType.
@@ -226,7 +235,9 @@ class CDCSDKTestBase : public YBTest {
   Result<xrepl::StreamId> CreateConsistentSnapshotStreamWithReplicationSlot(
       const std::string& replication_slot_name,
       CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT,
-      bool verify_snapshot_name = false);
+      bool verify_snapshot_name = false,
+      std::string namespace_name = kNamespaceName);
+
   Result<xrepl::StreamId> CreateConsistentSnapshotStreamWithReplicationSlot(
       CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT,
       bool verify_snapshot_name = false);

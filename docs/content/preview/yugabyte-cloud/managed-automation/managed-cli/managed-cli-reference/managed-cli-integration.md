@@ -2,7 +2,7 @@
 title: ybm CLI integration resource
 headerTitle: ybm integration
 linkTitle: integration
-description: YugabyteDB Managed CLI reference integration resource.
+description: YugabyteDB Aeon CLI reference integration resource.
 headcontent: Manage integration configuration
 menu:
   preview_yugabyte-cloud:

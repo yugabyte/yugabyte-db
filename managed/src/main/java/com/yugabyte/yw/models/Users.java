@@ -15,8 +15,10 @@ import com.yugabyte.yw.common.encryption.bc.BcOpenBsdHasher;
 import io.ebean.DuplicateKeyException;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.annotation.DbArray;
 import io.ebean.annotation.Encrypted;
 import io.ebean.annotation.EnumValue;
+import io.ebean.annotation.Transactional;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
@@ -27,14 +29,15 @@ import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -185,6 +188,9 @@ public class Users extends Model {
   @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
   private String oidcJwtAuthToken;
 
+  @DbArray(name = "group_memberships")
+  private Set<UUID> groupMemberships = new HashSet<>();
+
   public String getOidcJwtAuthToken() {
     return null;
   }
@@ -318,6 +324,28 @@ public class Users extends Model {
     return;
   }
 
+  /** Wrapper around save to make sure principal entity is created. */
+  @Transactional
+  @Override
+  public void save() {
+    super.save();
+    Principal principal = Principal.get(this.uuid);
+    if (principal == null) {
+      log.info("Adding Principal entry for user with email: " + this.email);
+      new Principal(this).save();
+    }
+  }
+
+  /** Wrapper around delete to make sure principal entity is deleted. */
+  @Transactional
+  @Override
+  public boolean delete() {
+    log.info("Deleting Principal entry for user with email: " + this.email);
+    Principal principal = Principal.getOrBadRequest(this.uuid);
+    principal.delete();
+    return super.delete();
+  }
+
   /**
    * Validate if the email and password combination is valid, we use this to authenticate the Users.
    *
@@ -380,14 +408,18 @@ public class Users extends Model {
    * @return apiToken
    */
   public String upsertApiToken() {
-    return upsertApiToken(null);
+    return upsertApiToken(apiTokenVersion);
   }
 
   public String upsertApiToken(Long version) {
+    String apiTokenFormatVersion = "2";
     UUID uuidToLock = uuid != null ? uuid : NULL_UUID;
     usersLock.acquireLock(uuidToLock);
     try {
-      if (version != null && apiTokenVersion != null && !version.equals(apiTokenVersion)) {
+      if (version != null
+          && version != -1
+          && apiTokenVersion != null
+          && !version.equals(apiTokenVersion)) {
         throw new PlatformServiceException(BAD_REQUEST, "API token version has changed");
       }
       String apiTokenUnhashed = UUID.randomUUID().toString();
@@ -395,26 +427,9 @@ public class Users extends Model {
 
       apiTokenVersion = apiTokenVersion == null ? 1L : apiTokenVersion + 1;
       save();
-      return apiTokenUnhashed;
-    } finally {
-      usersLock.releaseLock(uuidToLock);
-    }
-  }
+      // new format of api token = apiTokenFormatVersion$userUUID$apiTokenUnhashed
+      return apiTokenFormatVersion + "$" + uuid + "$" + apiTokenUnhashed;
 
-  /**
-   * Get current apiToken or create a new one if not exists.
-   *
-   * @return apiToken
-   */
-  @JsonIgnore
-  public String getOrCreateApiToken() {
-    UUID uuidToLock = uuid != null ? uuid : NULL_UUID;
-    usersLock.acquireLock(uuidToLock);
-    try {
-      if (StringUtils.isEmpty(apiToken)) {
-        upsertApiToken();
-      }
-      return apiToken;
     } finally {
       usersLock.releaseLock(uuidToLock);
     }
@@ -466,12 +481,41 @@ public class Users extends Model {
       return null;
     }
 
+    // Supporting the 2 formats of api token
+    // 1. apiTokenFormatVersion$userUUID$apiToken (newer format)
+    // 2. apiToken (older format)
+
+    // The second format would lead to performance degradation in the case of more than 10 users
+    // Recommended to reissue the token (which will follow the first format)
+
     try {
-      List<Users> usersList = find.query().where().isNotNull("apiToken").findList();
-      for (Users user : usersList) {
-        if (Users.hasher.isValid(apiToken, user.getApiToken())) {
-          return user;
+      if (apiToken.contains("$")) {
+        // to authenticate new format of api token = apiTokenFormatVersion$userUUID$apiTokenUnhashed
+        String[] parts = apiToken.split("\\$");
+        UUID userUUID = UUID.fromString(parts[1]);
+        String apiTokenUnhashed = parts[2];
+        Users userWithToken = find.query().where().eq("uuid", userUUID).findOne();
+        if (userWithToken != null) {
+          if (Users.hasher.isValid(apiTokenUnhashed, userWithToken.getApiToken())) {
+            return userWithToken;
+          }
         }
+      } else {
+        // to authenticate old format of api token
+        LOG.warn("Using older API token format. Renew to improve performance.");
+        List<Users> usersList = find.query().where().isNotNull("apiToken").findList();
+        long startTime = System.currentTimeMillis();
+        for (Users user : usersList) {
+          if (Users.hasher.isValid(apiToken, user.getApiToken())) {
+            LOG.info(
+                "Authentication using API token. Completed time: {} ms",
+                System.currentTimeMillis() - startTime);
+            return user;
+          }
+        }
+        LOG.info(
+            "Authentication using API token. Completed time: {} ms",
+            System.currentTimeMillis() - startTime);
       }
       return null;
     } catch (Exception e) {

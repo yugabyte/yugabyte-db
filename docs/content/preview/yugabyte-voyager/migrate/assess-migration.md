@@ -1,72 +1,146 @@
 ---
 title: YB Voyager Migration Assessment
+headerTitle: Migration assessment
 linkTitle: Assess migration
-headcontent: Steps to create a migration assessment report
+headcontent: Create a migration assessment report
 description: Steps to create a migration assessment report to ensure successful migration using YugabyteDB Voyager.
 menu:
   preview_yugabyte-voyager:
     identifier: assess-migration
     parent: migration-types
     weight: 101
-techPreview: /preview/releases/versioning/#feature-maturity
+badges: tp
 type: docs
 ---
 
-The Voyager Migration Assessment feature is specifically designed to optimize the database migration process from various source databases, currently supporting PostgreSQL to YugabyteDB. Voyager conducts a detailed analysis of the source database by capturing essential metadata and metrics. It generates a comprehensive assessment report that recommends effective migration strategies, and provides key insights on ideal cluster configurations for optimal performance with YugabyteDB.
+The Voyager Migration Assessment feature is specifically designed to optimize the database migration process from various source databases, currently supporting PostgreSQL and Oracle to YugabyteDB. Voyager conducts a detailed analysis of the source database by capturing essential metadata and metrics. It generates a comprehensive assessment report that recommends effective migration strategies, and provides key insights on ideal cluster configurations for optimal performance with YugabyteDB.
 
 ## Overview
 
-Voyager collects various metadata or metrics from the source database, such as table columns metadata, sizes of tables/indexes, read/write IOPS for tables/indexes, and so on. With this data, an assessment report is prepared which covers the following key details:
+When you run an assessment, Voyager collects metadata or metrics from the source database. This includes table columns metadata, sizes of tables and indexes, read and write IOPS for tables and indexes, and so on. With this data, Voyager generates an assessment report with the following key details:
 
-- **Database compatibility**: Assesses the compatibility of the source database with YugabyteDB, identifying unsupported features and data types.
+- **Database compatibility**. An assessment of the compatibility of the source database with YugabyteDB, identifying unsupported features and data types.
 
-- **Cluster size evaluation**: Provides an estimation of the resource requirements for the target environment, helping in the planning and scaling of infrastructure needs. The sizing logic depends on various factors such as the size and number of tables in the source database, as well as the throughput requirements (read/write IOPS).
+- **Cluster size evaluation**. Estimated resource requirements for the target environment, to help with planning and scaling your infrastructure. The sizing logic depends on various factors such as the size and number of tables in the source database, as well as the throughput requirements (read/write IOPS).
 
-- **Schema evaluation**: Reviews the database schema, to suggest effective sharding strategies for tables and indexes.
+- **Schema evaluation**. Reviews the database schema to suggest effective sharding strategies for tables and indexes.
 
-- **Performance metrics**: Analyzes performance metrics to understand workload characteristics, and provides recommendations for optimization in YugabyteDB.
+- **Performance metrics**. Voyager analyzes performance metrics to understand workload characteristics and provide recommendations for optimization in YugabyteDB.
 
-- **Migration time estimation**: Offers a calculated estimate of the time needed to import data into YugabyteDB after export from the source database, helping with better migration planning. These estimates are calculated based on various experiments during data import to YugabyteDB.
+- **Migration time estimate**. An estimate of the time needed to import data into YugabyteDB after export from the source database. These estimates are calculated based on various experiments during data import to YugabyteDB.
 
-{{< warning title="Caveats" >}}
-Recommendations are based on experiments done on [RF3](../../../architecture/docdb-replication/replication/#replication-factor) setup on instance types with 4GiB memory/core against YugabyteDB v2024.1.
+{{< warning title="Caveat" >}}
+The recommendations are based on testing using a [RF3](../../../architecture/docdb-replication/replication/#replication-factor) YugabyteDB cluster on instance types with 4GiB memory per core and running v2024.1.
 {{< /warning >}}
 
-Note that for cases where it is not possible to provide database access to the client machine running voyager, you can gather the metadata from the source database using plain bash/psql scripts by voyager, and then use voyager to analyze the metadata directly.
+Note that if providing database access to the client machine running Voyager is not possible, you can gather metadata from the source database using the provided bash scripts and then use Voyager to assess the migration.
 
-### Sample Migration Assessment Report
+The following table describes the type of data that is collected during a migration assessment.
 
-A sample Migration Assessment Report is as follows:
+| Data | Collected | Details |
+| :--- | :-------- | :------ |
+| Application or user data  | No | No application or user data is collected. |
+| Passwords | No | The assessment does not store any passwords. |
+| Database metadata<br>schema,&nbsp;object,&nbsp;object&nbsp;names | Yes | Voyager collects the schema metadata including table IOPS, table size, and so on, and the actual schema. |
+| Database name | Yes | Voyager collects database and schema names to be used in the generated report. |
+| Performance metrics | Optional | Voyager captures performance metrics from the database (IOPS) for rightsizing the target environment. |
+| Server or database credentials | No | No server or database credentials are collected. |
+
+### PostgreSQL Sample Migration Assessment report
+
+A sample Migration Assessment report for PostgreSQL is as follows:
 
 ![Migration report](/images/migrate/assess-migration.jpg)
 
-## Generate a Migration Assessment Report
+## Generate a Migration Assessment report
 
 1. [Install yb-voyager](../../install-yb-voyager/).
 1. Prepare the source database.
 
-    1. Create a new user, `ybvoyager` as follows:
+    {{< tabpane text=true >}}
 
-        ```sql
-        CREATE USER ybvoyager PASSWORD 'password';
-        ```
+      {{% tab header="PostgreSQL" %}}
 
-    1. Grant necessary permissions to the `ybvoyager` user.
+1. Create a new user, `ybvoyager` as follows:
 
-        ```sql
-        /* Switch to the database that you want to migrate.*/
-        \c <database_name>
+    ```sql
+    CREATE USER ybvoyager PASSWORD 'password';
+    ```
 
-        /* Grant the USAGE permission to the ybvoyager user on all schemas of the database.*/
+1. Grant necessary permissions to the `ybvoyager` user.
 
-        SELECT 'GRANT USAGE ON SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
+    ```sql
+    /* Switch to the database that you want to migrate.*/
+    \c <database_name>
 
-        /* The above SELECT statement generates a list of GRANT USAGE statements which are then executed by psql because of the \gexec switch. The \gexec switch works for PostgreSQL v9.6 and later. For older versions, you'll have to manually execute the GRANT USAGE ON SCHEMA schema_name TO ybvoyager statement, for each schema in the source PostgreSQL database. */
+    /* Grant the USAGE permission to the ybvoyager user on all schemas of the database.*/
 
-        /* Grant SELECT permission on all the tables. */
+    SELECT 'GRANT USAGE ON SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
 
-        SELECT 'GRANT SELECT ON ALL TABLES IN SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
-        ```
+    /* The above SELECT statement generates a list of GRANT USAGE statements which are then executed by psql because of the \gexec switch. The \gexec switch works for PostgreSQL v9.6 and later. For older versions, you'll have to manually execute the GRANT USAGE ON SCHEMA schema_name TO ybvoyager statement, for each schema in the source PostgreSQL database. */
+
+    /* Grant SELECT permission on all the tables. */
+
+    SELECT 'GRANT SELECT ON ALL TABLES IN SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
+    ```
+
+    {{% /tab %}}
+
+    {{% tab header="Oracle" %}}
+
+1. Create a role that has the privileges as listed in the following table:
+
+   | Permission | Object type in the source schema |
+   | :--------- | :---------------------------------- |
+   | `SELECT` | VIEW, SEQUENCE, TABLE PARTITION, TABLE, SYNONYM, MATERIALIZED VIEW |
+   | `EXECUTE` | TYPE |
+
+   Change the `<SCHEMA_NAME>` appropriately in the following snippets, and run the following steps as a privileged user.
+
+   ```sql
+   CREATE ROLE <SCHEMA_NAME>_reader_role;
+
+   BEGIN
+       FOR R IN (SELECT owner, object_name FROM all_objects WHERE owner=UPPER('<SCHEMA_NAME>') and object_type in ('VIEW','SEQUENCE','TABLE PARTITION','SYNONYM','MATERIALIZED VIEW'))
+       LOOP
+          EXECUTE IMMEDIATE 'grant select on '||R.owner||'."'||R.object_name||'" to <SCHEMA_NAME>_reader_role';
+       END LOOP;
+   END;
+   /
+
+   BEGIN
+       FOR R IN (SELECT owner, object_name FROM all_objects WHERE owner=UPPER('<SCHEMA_NAME>') and object_type ='TABLE' MINUS SELECT owner, table_name from all_nested_tables where owner = UPPER('<SCHEMA_NAME>'))
+       LOOP
+          EXECUTE IMMEDIATE 'grant select on '||R.owner||'."'||R.object_name||'" to  <SCHEMA_NAME>_reader_role';
+       END LOOP;
+   END;
+   /
+
+   BEGIN
+       FOR R IN (SELECT owner, object_name FROM all_objects WHERE owner=UPPER('<SCHEMA_NAME>') and object_type = 'TYPE')
+       LOOP
+          EXECUTE IMMEDIATE 'grant execute on '||R.owner||'."'||R.object_name||'" to <SCHEMA_NAME>_reader_role';
+       END LOOP;
+   END;
+   /
+
+   GRANT SELECT_CATALOG_ROLE TO <SCHEMA_NAME>_reader_role;
+   GRANT SELECT ANY DICTIONARY TO <SCHEMA_NAME>_reader_role;
+   GRANT SELECT ON SYS.ARGUMENT$ TO <SCHEMA_NAME>_reader_role;
+
+   ```
+
+1. Create a user `ybvoyager` and grant `CONNECT` and `<SCHEMA_NAME>_reader_role` to the user:
+
+   ```sql
+   CREATE USER ybvoyager IDENTIFIED BY password;
+   GRANT CONNECT TO ybvoyager;
+   GRANT <SCHEMA_NAME>_reader_role TO ybvoyager;
+   ```
+
+    {{% /tab %}}
+
+{{< /tabpane >}}
 
 1. Assess migration - Voyager supports two primary modes for conducting migration assessments, depending on your access to the source database as follows:
 
@@ -79,9 +153,9 @@ A sample Migration Assessment Report is as follows:
         --source-db-schema schema1,schema2 --export-dir /path/to/export/dir
         ```
 
-    1. **Without source database connectivity**: In situations where direct access to the source database is restricted, there is an alternative approach. Voyager includes packages with scripts present at `/etc/yb-voyager/gather-assessment-metadata/postgresql`. You can perform the following steps with these scripts.
+    1. **Without source database connectivity** (only PostgreSQL): In situations where direct access to the source database is restricted, there is an alternative approach. Voyager includes packages with scripts for PostgreSQL at `/etc/yb-voyager/gather-assessment-metadata`. You can perform the following steps with these scripts:
 
-        1. Copy the scripts to a machine which has access to the source database.
+        1. On a machine which has access to the source database, copy the scripts and install dependencies psql, and pg_dump version 14 or later. Alternatively, you can install yb-voyager on the machine to automatically get the dependencies.
         1. Run the `yb-voyager-pg-gather-assessment-metadata.sh` script by providing the source connection string, the schema names, path to a directory where metadata will be saved, and an optional argument of an interval to capture the IOPS metadata of the source (in seconds with a default value of 120). For example,
 
             ```sh
@@ -103,7 +177,7 @@ For the most accurate migration assessment, the source database must be actively
 
 1. Create a target YugabyteDB cluster as follows:
 
-    1. Create a cluster based on the sizing recommendations in the assessment report.
+    1. Create a cluster in [Enhanced Postgres Compatibility Mode](/preview/releases/ybdb-releases/v2024.1/#highlights) based on the sizing recommendations in the assessment report. For a universe in YugabyteDB Anywhere, [enable the compatibility mode](/preview/releases/yba-releases/v2024.1/#highlights) by setting some flags on the universe.
     1. Create a database with colocation set to TRUE.
 
         ```sql
@@ -116,6 +190,44 @@ For the most accurate migration assessment, the source database must be actively
     - [Live migration](../../migrate/live-migrate/)
     - [Live migration with fall-forward](../../migrate/live-fall-forward/)
     - [Live migration with fall-back](../../migrate/live-fall-back/)
+
+## Visualize the Migration Assessment report
+
+[yugabyted](/preview/reference/configuration/yugabyted/) UI allows you to visualize the database migrations performed by YugabyteDB Voyager. The UI provides details of migration complexity, SQL objects details from the source database, YugabyteDB sharding strategy, conversion issues (if any), and also allows you to track the percentage completion of data export from the source database and data import to the target YugabyteDB cluster.
+
+### Prerequisites
+
+Before you begin the Voyager migration, do the following:
+
+1. Start a local YugabyteDB cluster using the steps described in [Use a local cluster](/preview/quick-start/) section.
+
+1. [Install Voyager](../../install-yb-voyager/).
+
+
+### Send Voyager details to a local YugabyteDB cluster 
+
+Set the following environment variables before starting the migration:
+
+```sh
+export CONTROL_PLANE_TYPE=yugabyted
+export YUGABYTED_DB_CONN_STRING=<ysql-connection-string-to-yugabyted-instance>
+```
+
+For example, `postgresql://yugabyte:yugabyte@127.0.0.1:5433`
+
+### Assess Migration
+
+Voyager Migration Assessment conducts a detailed analysis of the source database by capturing essential metadata and metrics. Yugabyted UI allows you to go over the assessment report which includes recommendations of effective migration strategies, migration complexity, and provides an overview on effort involved in migrating from the source database.
+
+After [generating a Migration Assessment Report](#generate-a-migration-assessment-report), from yugabyted UI, navigate to **Migrations** tab, available at [http://127.0.0.1:15433](http://127.0.0.1:15433) to see a list of the available migrations.
+
+#### Migrations
+![Migration Landing Page](/images/migrate/ybd-landing-page.png)
+
+#### Migration Assessment UI
+![Migration Assessment Page](/images/migrate/ybd-assessment-page.png)
+
+
 
 ## Learn more
 

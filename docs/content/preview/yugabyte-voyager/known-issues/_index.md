@@ -29,64 +29,36 @@ Currently, yb-voyager doesn't support the following features:
 
 ## Manual review
 
-<div class="row">
- <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="general-issues/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/architecture/concepts.png" aria-hidden="true" />
-        <div class="title">General</div>
-      </div>
-      <div class="body">
-       Explore workarounds for limitations associated with MySQL, PostgreSQL, and Oracle source databases.
-      </div>
-    </a>
-  </div>
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="mysql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/architecture/concepts.png" aria-hidden="true" />
-        <div class="title">MySQL</div>
-      </div>
-      <div class="body">
-        Explore workarounds for limitations associated with MySQL as the source database.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="General"
+    body="Explore workarounds for limitations associated with MySQL, PostgreSQL, and Oracle source databases."
+    href="general-issues/"
+    icon="/images/section_icons/architecture/concepts.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="postgresql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/architecture/concepts.png" aria-hidden="true" />
-        <div class="title">PostgreSQL</div>
-      </div>
-      <div class="body">
-        Explore workarounds for limitations associated with PostgreSQL as the source database.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="MySQL"
+    body="Explore workarounds for limitations associated with MySQL as the source database."
+    href="mysql/"
+    icon="/images/section_icons/architecture/concepts.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="oracle/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/architecture/concepts.png" aria-hidden="true" />
-        <div class="title">Oracle</div>
-      </div>
-      <div class="body">
-       Explore workarounds for limitations associated with Oracle as the source database.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="PostgreSQL"
+    body="Explore workarounds for limitations associated with PostgreSQL as the source database."
+    href="postgresql/"
+    icon="/images/section_icons/architecture/concepts.png">}}
 
-<div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="mysql-oracle/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/architecture/concepts.png" aria-hidden="true" />
-        <div class="title">MySQL and Oracle</div>
-      </div>
-      <div class="body">
-       Explore workarounds for limitations associated with MySQL and Oracle source databases.
-      </div>
-    </a>
-  </div>
-</div>
+  {{<index/item
+    title="Oracle"
+    body="Explore workarounds for limitations associated with Oracle as the source database."
+    href="oracle/"
+    icon="/images/section_icons/architecture/concepts.png">}}
+
+  {{<index/item
+    title="MySQL and Oracle"
+    body="Explore workarounds for limitations associated with MySQL and Oracle source databases."
+    href="mysql-oracle/"
+    icon="/images/section_icons/architecture/concepts.png">}}
+
+{{</index/block>}}

@@ -871,10 +871,7 @@ class BlockerData {
   std::vector<std::weak_ptr<WaiterData>> post_resolve_waiters_ GUARDED_BY(mutex_);
   bool is_active_ GUARDED_BY(mutex_) = true;
 
-  using IntentsByKey = std::unordered_map<
-      RefCntPrefix,
-      dockv::IntentTypeSet,
-      RefCntPrefixHash>;
+  using IntentsByKey = std::unordered_map<RefCntPrefix, dockv::IntentTypeSet, RefCntPrefixHash>;
   std::unordered_map<SubTransactionId, IntentsByKey> subtxn_intents_by_key_ GUARDED_BY(mutex_);
 };
 
@@ -1871,8 +1868,12 @@ class WaitQueue::Impl {
       }
       return;
     }
-    LOG(DFATAL) << "Waiting transaction " << waiter_id
-                << " found in unexpected state " << resp.status(0);
+    // We could be processing the transaction status request of a WaitingTxn which previously had
+    // non-zero WaiterDataPtr(s), but currently has none (all WaiterDataPtrs got resolved). Since a
+    // WaitingTxn with 0 WaiterDataPtrs is only pruned during WaitQueue::Impl::Poll, it is expected
+    // to see other txn statuses like COMMITTED here iff waiter->GetNumWaiters() == 0.
+    LOG_IF(DFATAL, waiter->GetNumWaiters() != 0)
+        << "Waiting transaction " << waiter_id << " found in unexpected state " << resp.status(0);
   }
 
   void HandleWaiterStatusResponse(
@@ -1973,9 +1974,6 @@ class WaitQueue::Impl {
       return;
     }
 
-    // Note -- it's important that we remove the waiter from waiter_status_ before invoking it's
-    // callback. Otherwise, the callback will re-run conflict resolution, end up back in the wait
-    // queue, and attempt to reuse the WaiterData still present in waiter_status_.
     for (const auto& found_waiter : found_waiters) {
       waiter_runner_.Submit(found_waiter, status, resume_ht);
     }

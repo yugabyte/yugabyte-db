@@ -1,8 +1,8 @@
 ---
 title: Audit account activity
 linkTitle: Audit account activity
-description: Monitor activity in YugabyteDB Managed.
-headcontent: Monitor account and cluster activity in YugabyteDB Managed
+description: Monitor activity in YugabyteDB Aeon.
+headcontent: Monitor account and cluster activity in YugabyteDB Aeon
 menu:
   preview_yugabyte-cloud:
     identifier: cloud-activity

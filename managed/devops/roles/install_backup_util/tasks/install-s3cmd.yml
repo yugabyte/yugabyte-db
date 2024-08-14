@@ -53,7 +53,8 @@
       ansible.builtin.package:
         name: python3-distutils
         state: present
-      when: py_version.stdout is match("Python 3.") and ansible_os_family == "Debian"
+      when: not (air_gap | default(false)) and
+            py_version.stdout is match("Python 3.") and ansible_os_family == "Debian"
 
     - name: Copy and unarchive required packages
       unarchive:

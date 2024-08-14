@@ -494,6 +494,8 @@ void RaftConsensusITest::AddFlagsForLogRolls(vector<string>* extra_tserver_flags
   extra_tserver_flags->push_back("--log_async_preallocate_segments=false");
   extra_tserver_flags->push_back("--log_min_segments_to_retain=1");
   extra_tserver_flags->push_back("--log_min_seconds_to_retain=0");
+  // Prevent the flag validator from failing when FLAGS_log_min_seconds_to_retain is also set to 0
+  extra_tserver_flags->push_back("--xcluster_checkpoint_max_staleness_secs=0");
   extra_tserver_flags->push_back("--maintenance_manager_polling_interval_ms=100");
   extra_tserver_flags->push_back("--db_write_buffer_size=100000");
 }

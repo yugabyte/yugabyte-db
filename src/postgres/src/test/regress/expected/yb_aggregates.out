@@ -1,4 +1,5 @@
 -- YB AGGREGATES TEST (for pushdown)
+SET yb_enable_bitmapscan = true;
 --
 -- Test basic aggregates and verify overflow is handled properly.
 --
@@ -28,9 +29,10 @@ INSERT INTO ybaggtest
 \set ss '/*+SeqScan(ybaggtest)*/'
 \set ios '/*+IndexOnlyScan(ybaggtest ybaggtestindex)*/'
 \set is '/*+IndexScan(ybaggtest ybaggtestindexsimple)*/'
+\set bs '/*+BitmapScan(ybaggtest)*/'
 \set query 'SELECT COUNT(*) FROM ybaggtest'
 \set isquery ':query WHERE int_4 > 0'
-\set run ':explain :query; :explain :ss :query; :explain :ios :query; :explain :is :isquery; :query; :ss :query; :ios :query; :is :isquery'
+\set run ':explain :query; :explain :ss :query; :explain :ios :query; :explain :is :isquery; :explain :bs :isquery; :query; :ss :query; :ios :query; :is :isquery; :bs :isquery'
 :run;
            QUERY PLAN
 ---------------------------------
@@ -60,6 +62,20 @@ INSERT INTO ybaggtest
          Index Cond: (int_4 > 0)
          Partial Aggregate: true
 (4 rows)
+
+                      QUERY PLAN
+-------------------------------------------------------
+ Finalize Aggregate
+   ->  YB Bitmap Table Scan on ybaggtest
+         Partial Aggregate: true
+         ->  Bitmap Index Scan on ybaggtestindexsimple
+               Index Cond: (int_4 > 0)
+(5 rows)
+
+ count
+-------
+   100
+(1 row)
 
  count
 -------
@@ -112,6 +128,20 @@ INSERT INTO ybaggtest
          Partial Aggregate: true
 (4 rows)
 
+                      QUERY PLAN
+-------------------------------------------------------
+ Finalize Aggregate
+   ->  YB Bitmap Table Scan on ybaggtest
+         Partial Aggregate: true
+         ->  Bitmap Index Scan on ybaggtestindexsimple
+               Index Cond: (int_4 > 0)
+(5 rows)
+
+ count
+-------
+   100
+(1 row)
+
  count
 -------
    100
@@ -162,6 +192,20 @@ INSERT INTO ybaggtest
          Index Cond: (int_4 > 0)
          Partial Aggregate: true
 (4 rows)
+
+                      QUERY PLAN
+-------------------------------------------------------
+ Finalize Aggregate
+   ->  YB Bitmap Table Scan on ybaggtest
+         Partial Aggregate: true
+         ->  Bitmap Index Scan on ybaggtestindexsimple
+               Index Cond: (int_4 > 0)
+(5 rows)
+
+ count
+-------
+     0
+(1 row)
 
  count
 -------
@@ -243,6 +287,20 @@ SELECT COUNT(0) FROM ybaggtest;
          Partial Aggregate: true
 (4 rows)
 
+                      QUERY PLAN
+-------------------------------------------------------
+ Finalize Aggregate
+   ->  YB Bitmap Table Scan on ybaggtest
+         Partial Aggregate: true
+         ->  Bitmap Index Scan on ybaggtestindexsimple
+               Index Cond: (int_4 > 0)
+(5 rows)
+
+     sum      |    max     |    min     |   sum   |  max  |  min
+--------------+------------+------------+---------+-------+-------
+ 212600881053 | 2147483647 | 2147483647 | 3243933 | 32767 | 32767
+(1 row)
+
      sum      |    max     |    min     |   sum   |  max  |  min
 --------------+------------+------------+---------+-------+-------
  212600881053 | 2147483647 | 2147483647 | 3243933 | 32767 | 32767
@@ -290,6 +348,19 @@ SELECT COUNT(0) FROM ybaggtest;
    ->  Index Scan using ybaggtestindexsimple on ybaggtest
          Index Cond: (int_4 > 0)
 (3 rows)
+
+                      QUERY PLAN
+-------------------------------------------------------
+ Aggregate
+   ->  YB Bitmap Table Scan on ybaggtest
+         ->  Bitmap Index Scan on ybaggtestindexsimple
+               Index Cond: (int_4 > 0)
+(4 rows)
+
+   sum   |     sum      |          sum          |  sum  |  sum
+---------+--------------+-----------------------+-------+-------
+ 3243933 | 212600881053 | 913113831648622804893 | 108.9 | 217.8
+(1 row)
 
    sum   |     sum      |          sum          |  sum  |  sum
 ---------+--------------+-----------------------+-------+-------
@@ -344,6 +415,20 @@ SELECT COUNT(0) FROM ybaggtest;
          Partial Aggregate: true
 (4 rows)
 
+                      QUERY PLAN
+-------------------------------------------------------
+ Finalize Aggregate
+   ->  YB Bitmap Table Scan on ybaggtest
+         Partial Aggregate: true
+         ->  Bitmap Index Scan on ybaggtestindexsimple
+               Index Cond: (int_4 > 0)
+(5 rows)
+
+   sum   |     sum      |  sum  |  sum
+---------+--------------+-------+-------
+ 3243933 | 212600881053 | 108.9 | 217.8
+(1 row)
+
    sum   |     sum      |  sum  |  sum
 ---------+--------------+-------+-------
  3243933 | 212600881053 | 108.9 | 217.8
@@ -395,6 +480,20 @@ SELECT COUNT(0) FROM ybaggtest;
          Index Cond: (int_4 > 0)
          Partial Aggregate: true
 (4 rows)
+
+                      QUERY PLAN
+-------------------------------------------------------
+ Finalize Aggregate
+   ->  YB Bitmap Table Scan on ybaggtest
+         Partial Aggregate: true
+         ->  Bitmap Index Scan on ybaggtestindexsimple
+               Index Cond: (int_4 > 0)
+(5 rows)
+
+     sum      |   ?column?
+--------------+--------------
+ 212600881053 | 212600881054
+(1 row)
 
      sum      |   ?column?
 --------------+--------------
@@ -449,6 +548,20 @@ INSERT INTO ybaggtest (id, int_4, float_4, float_8) VALUES (101, 1, 'NaN', 'NaN'
          Partial Aggregate: true
 (4 rows)
 
+                      QUERY PLAN
+-------------------------------------------------------
+ Finalize Aggregate
+   ->  YB Bitmap Table Scan on ybaggtest
+         Partial Aggregate: true
+         ->  Bitmap Index Scan on ybaggtestindexsimple
+               Index Cond: (int_4 > 0)
+(5 rows)
+
+ count | sum | max | min
+-------+-----+-----+-----
+   100 | NaN | NaN | 1.1
+(1 row)
+
  count | sum | max | min
 -------+-----+-----+-----
    100 | NaN | NaN | 1.1
@@ -500,6 +613,20 @@ INSERT INTO ybaggtest (id, int_4, float_4, float_8) VALUES (101, 1, 'NaN', 'NaN'
          Partial Aggregate: true
 (4 rows)
 
+                      QUERY PLAN
+-------------------------------------------------------
+ Finalize Aggregate
+   ->  YB Bitmap Table Scan on ybaggtest
+         Partial Aggregate: true
+         ->  Bitmap Index Scan on ybaggtestindexsimple
+               Index Cond: (int_4 > 0)
+(5 rows)
+
+ count | sum | max | min
+-------+-----+-----+-----
+   100 | NaN | NaN | 2.2
+(1 row)
+
  count | sum | max | min
 -------+-----+-----+-----
    100 | NaN | NaN | 2.2
@@ -521,9 +648,11 @@ INSERT INTO ybaggtest (id, int_4, float_4, float_8) VALUES (101, 1, 'NaN', 'NaN'
 (1 row)
 
 -- In case indexquals are planned to be rechecked, pushdown should be avoided.
-\set runnois ':explain :query; :explain :ss :query; :explain :ios :query; :query; :ss :query; :ios :query;'
+-- These queries skip Index Scan because the Index Scan hint forces using ybaggtestindexsimple,
+-- which only contains int_4.
+\set run_ss_ios_bs ':explain :query; :explain :ss :query; :explain :ios :query; :explain :bs :query; :query; :ss :query; :ios :query; :bs :query'
 \set query 'SELECT COUNT(*) FROM ybaggtest WHERE float_4 > 0'
-:runnois;
+:run_ss_ios_bs;
                         QUERY PLAN
 -----------------------------------------------------------
  Finalize Aggregate
@@ -547,6 +676,21 @@ INSERT INTO ybaggtest (id, int_4, float_4, float_8) VALUES (101, 1, 'NaN', 'NaN'
          Index Cond: (float_4 > '0'::double precision)
 (3 rows)
 
+                           QUERY PLAN
+-----------------------------------------------------------------
+ Finalize Aggregate
+   ->  YB Bitmap Table Scan on ybaggtest
+         Storage Recheck Cond: (float_4 > '0'::double precision)
+         Partial Aggregate: true
+         ->  Bitmap Index Scan on ybaggtestindex
+               Index Cond: (float_4 > '0'::double precision)
+(6 rows)
+
+ count
+-------
+   100
+(1 row)
+
  count
 -------
    100
@@ -563,7 +707,7 @@ INSERT INTO ybaggtest (id, int_4, float_4, float_8) VALUES (101, 1, 'NaN', 'NaN'
 (1 row)
 
 \set query 'SELECT COUNT(*) FROM ybaggtest WHERE int_4 > 0 AND float_8 > 0'
-:runnois;
+:run_ss_ios_bs;
                         QUERY PLAN
 -----------------------------------------------------------
  Finalize Aggregate
@@ -589,6 +733,21 @@ INSERT INTO ybaggtest (id, int_4, float_4, float_8) VALUES (101, 1, 'NaN', 'NaN'
          Storage Filter: (float_8 > '0'::double precision)
 (4 rows)
 
+                        QUERY PLAN
+-----------------------------------------------------------
+ Finalize Aggregate
+   ->  YB Bitmap Table Scan on ybaggtest
+         Storage Filter: (float_8 > '0'::double precision)
+         Partial Aggregate: true
+         ->  Bitmap Index Scan on ybaggtestindexsimple
+               Index Cond: (int_4 > 0)
+(6 rows)
+
+ count
+-------
+   100
+(1 row)
+
  count
 -------
    100
@@ -605,7 +764,7 @@ INSERT INTO ybaggtest (id, int_4, float_4, float_8) VALUES (101, 1, 'NaN', 'NaN'
 (1 row)
 
 \set query 'SELECT COUNT(*) FROM ybaggtest WHERE int_8 = 9223372036854775807'
-:runnois;
+:run_ss_ios_bs;
                            QUERY PLAN
 -----------------------------------------------------------------
  Finalize Aggregate
@@ -629,6 +788,21 @@ INSERT INTO ybaggtest (id, int_4, float_4, float_8) VALUES (101, 1, 'NaN', 'NaN'
          Index Cond: (int_8 = '9223372036854775807'::bigint)
 (3 rows)
 
+                              QUERY PLAN
+-----------------------------------------------------------------------
+ Finalize Aggregate
+   ->  YB Bitmap Table Scan on ybaggtest
+         Storage Recheck Cond: (int_8 = '9223372036854775807'::bigint)
+         Partial Aggregate: true
+         ->  Bitmap Index Scan on ybaggtestindex
+               Index Cond: (int_8 = '9223372036854775807'::bigint)
+(6 rows)
+
+ count
+-------
+    99
+(1 row)
+
  count
 -------
     99
@@ -645,7 +819,7 @@ INSERT INTO ybaggtest (id, int_4, float_4, float_8) VALUES (101, 1, 'NaN', 'NaN'
 (1 row)
 
 \set query 'SELECT COUNT(*) FROM ybaggtest WHERE int_8 = 9223372036854775807 AND int_2 = 32767'
-:runnois;
+:run_ss_ios_bs;
                                     QUERY PLAN
 -----------------------------------------------------------------------------------
  Finalize Aggregate
@@ -669,6 +843,20 @@ INSERT INTO ybaggtest (id, int_4, float_4, float_8) VALUES (101, 1, 'NaN', 'NaN'
          Index Cond: ((int_8 = '9223372036854775807'::bigint) AND (int_2 = 32767))
          Partial Aggregate: true
 (4 rows)
+
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  YB Bitmap Table Scan on ybaggtest
+         Partial Aggregate: true
+         ->  Bitmap Index Scan on ybaggtestindex
+               Index Cond: ((int_8 = '9223372036854775807'::bigint) AND (int_2 = 32767))
+(5 rows)
+
+ count
+-------
+    99
+(1 row)
 
  count
 -------
@@ -750,7 +938,10 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 \set ss '/*+SeqScan(ybaggtest2)*/'
 \set ios '/*+IndexOnlyScan(ybaggtest2 ybaggtest2index)*/'
 \set query 'SELECT COUNT(*) FROM ybaggtest2'
-:runnois;
+-- tests using run_ss_ios cannot use a plain index scan (so they also cannot use a bitmap index scan)
+-- adding a hint would just re-test sequential scan
+\set run_ss_ios ':explain :query; :explain :ss :query; :explain :ios :query; :ss :query; :ios :query;'
+:run_ss_ios;
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
@@ -771,11 +962,6 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
    ->  Index Only Scan using ybaggtest2index on ybaggtest2
          Partial Aggregate: true
 (3 rows)
-
- count
--------
-     5
-(1 row)
 
  count
 -------
@@ -788,7 +974,7 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 (1 row)
 
 \set query 'SELECT COUNT(a) FROM ybaggtest2'
-:runnois;
+:run_ss_ios;
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
@@ -809,11 +995,6 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
    ->  Index Only Scan using ybaggtest2index on ybaggtest2
          Partial Aggregate: true
 (3 rows)
-
- count
--------
-     3
-(1 row)
 
  count
 -------
@@ -826,7 +1007,7 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 (1 row)
 
 \set query 'SELECT COUNT(*), COUNT(a) FROM ybaggtest2'
-:runnois;
+:run_ss_ios;
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
@@ -847,11 +1028,6 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
    ->  Index Only Scan using ybaggtest2index on ybaggtest2
          Partial Aggregate: true
 (3 rows)
-
- count | count
--------+-------
-     5 |     3
-(1 row)
 
  count | count
 -------+-------
@@ -865,7 +1041,7 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 
 -- Verify MAX/MIN respect NULL values.
 \set query 'SELECT MAX(a), MIN(a) FROM ybaggtest2'
-:runnois;
+:run_ss_ios;
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
@@ -886,11 +1062,6 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
    ->  Index Only Scan using ybaggtest2index on ybaggtest2
          Partial Aggregate: true
 (3 rows)
-
- max | min
------+-----
-   3 |   1
-(1 row)
 
  max | min
 -----+-----
@@ -904,7 +1075,7 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 
 -- Verify SUM/MAX/MIN work as expected with constant arguments.
 \set query 'SELECT SUM(2), MAX(2), MIN(2) FROM ybaggtest2'
-:runnois;
+:run_ss_ios;
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
@@ -925,11 +1096,6 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
    ->  Index Only Scan using ybaggtest2index on ybaggtest2
          Partial Aggregate: true
 (3 rows)
-
- sum | max | min
------+-----+-----
-  10 |   2 |   2
-(1 row)
 
  sum | max | min
 -----+-----+-----
@@ -942,7 +1108,7 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 (1 row)
 
 \set query 'SELECT SUM(NULL::int), MAX(NULL), MIN(NULL) FROM ybaggtest2'
-:runnois;
+:run_ss_ios;
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
@@ -963,11 +1129,6 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
    ->  Index Only Scan using ybaggtest2index on ybaggtest2
          Partial Aggregate: true
 (3 rows)
-
- sum | max | min
------+-----+-----
-     |     |
-(1 row)
 
  sum | max | min
 -----+-----+-----
@@ -981,7 +1142,7 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 
 -- Verify IS NULL, IS NOT NULL quals.
 \set query 'SELECT COUNT(*) FROM ybaggtest2 WHERE a IS NULL'
-:runnois;
+:run_ss_ios;
              QUERY PLAN
 -------------------------------------
  Finalize Aggregate
@@ -1005,11 +1166,6 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
          Storage Filter: (a IS NULL)
          Partial Aggregate: true
 (4 rows)
-
- count
--------
-     2
-(1 row)
 
  count
 -------
@@ -1022,7 +1178,7 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 (1 row)
 
 \set query 'SELECT COUNT(*) FROM ybaggtest2 WHERE a IS NOT NULL'
-:runnois;
+:run_ss_ios;
                QUERY PLAN
 -----------------------------------------
  Finalize Aggregate
@@ -1046,11 +1202,6 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
          Storage Filter: (a IS NOT NULL)
          Partial Aggregate: true
 (4 rows)
-
- count
--------
-     3
-(1 row)
 
  count
 -------
@@ -1075,6 +1226,7 @@ INSERT INTO test VALUES(1), (2), (3);
 \set ss '/*+SeqScan(test)*/'
 \set ios '/*+IndexOnlyScan(test testindex)*/'
 \set is '/*+IndexScan(test testindex)*/'
+\set bs '/*+BitmapScan(test)*/'
 \set query 'SELECT COUNT(*) FROM test'
 \set isquery ':query WHERE k > 0'
 :run;
@@ -1106,6 +1258,20 @@ INSERT INTO test VALUES(1), (2), (3);
          Index Cond: (k > 0)
          Partial Aggregate: true
 (4 rows)
+
+                 QUERY PLAN
+--------------------------------------------
+ Finalize Aggregate
+   ->  YB Bitmap Table Scan on test
+         Partial Aggregate: true
+         ->  Bitmap Index Scan on testindex
+               Index Cond: (k > 0)
+(5 rows)
+
+ count
+-------
+     3
+(1 row)
 
  count
 -------
@@ -1158,6 +1324,20 @@ INSERT INTO test VALUES(1), (2), (3);
          Partial Aggregate: true
 (4 rows)
 
+                 QUERY PLAN
+--------------------------------------------
+ Finalize Aggregate
+   ->  YB Bitmap Table Scan on test
+         Partial Aggregate: true
+         ->  Bitmap Index Scan on testindex
+               Index Cond: (k > 0)
+(5 rows)
+
+ count
+-------
+     3
+(1 row)
+
  count
 -------
      3
@@ -1209,6 +1389,20 @@ INSERT INTO test VALUES(1), (2), (3);
          Partial Aggregate: true
 (4 rows)
 
+                 QUERY PLAN
+--------------------------------------------
+ Finalize Aggregate
+   ->  YB Bitmap Table Scan on test
+         Partial Aggregate: true
+         ->  Bitmap Index Scan on testindex
+               Index Cond: (k > 0)
+(5 rows)
+
+ count
+-------
+     3
+(1 row)
+
  count
 -------
      3
@@ -1259,6 +1453,20 @@ INSERT INTO test VALUES(1), (2), (3);
          Index Cond: (k > 0)
          Partial Aggregate: true
 (4 rows)
+
+                 QUERY PLAN
+--------------------------------------------
+ Finalize Aggregate
+   ->  YB Bitmap Table Scan on test
+         Partial Aggregate: true
+         ->  Bitmap Index Scan on testindex
+               Index Cond: (k > 0)
+(5 rows)
+
+ count
+-------
+     3
+(1 row)
 
  count
 -------
@@ -1331,6 +1539,24 @@ INSERT INTO test VALUES(1), (2), (3);
          Index Cond: (k = ANY (ARRAY[(count(test.v2)), $1, $2, ..., $1023]))
 (8 rows)
 
+                                 QUERY PLAN
+-----------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (d.k = (count(test.v2)))
+   ->  Finalize Aggregate
+         ->  YB Bitmap Table Scan on test
+               Partial Aggregate: true
+               ->  Bitmap Index Scan on testindex
+                     Index Cond: (k > 0)
+   ->  Index Scan using digit_pkey on digit d
+         Index Cond: (k = ANY (ARRAY[(count(test.v2)), $1, $2, ..., $1023]))
+(9 rows)
+
+ k |   v   | count
+---+-------+-------
+ 3 | three |     3
+(1 row)
+
  k |   v   | count
 ---+-------+-------
  3 | three |     3
@@ -1384,6 +1610,20 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
          Partial Aggregate: true
 (4 rows)
 
+                 QUERY PLAN
+--------------------------------------------
+ Finalize Aggregate
+   ->  YB Bitmap Table Scan on test
+         Partial Aggregate: true
+         ->  Bitmap Index Scan on testindex
+               Index Cond: (k > 0)
+(5 rows)
+
+ count
+-------
+     6
+(1 row)
+
  count
 -------
      6
@@ -1434,6 +1674,20 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
          Index Cond: (k > 0)
          Partial Aggregate: true
 (4 rows)
+
+                 QUERY PLAN
+--------------------------------------------
+ Finalize Aggregate
+   ->  YB Bitmap Table Scan on test
+         Partial Aggregate: true
+         ->  Bitmap Index Scan on testindex
+               Index Cond: (k > 0)
+(5 rows)
+
+ count
+-------
+     6
+(1 row)
 
  count
 -------
@@ -1486,6 +1740,20 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
          Partial Aggregate: true
 (4 rows)
 
+                 QUERY PLAN
+--------------------------------------------
+ Finalize Aggregate
+   ->  YB Bitmap Table Scan on test
+         Partial Aggregate: true
+         ->  Bitmap Index Scan on testindex
+               Index Cond: (k > 0)
+(5 rows)
+
+ count
+-------
+     5
+(1 row)
+
  count
 -------
      5
@@ -1536,6 +1804,20 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
          Index Cond: (k > 0)
          Partial Aggregate: true
 (4 rows)
+
+                 QUERY PLAN
+--------------------------------------------
+ Finalize Aggregate
+   ->  YB Bitmap Table Scan on test
+         Partial Aggregate: true
+         ->  Bitmap Index Scan on testindex
+               Index Cond: (k > 0)
+(5 rows)
+
+ count
+-------
+     4
+(1 row)
 
  count
 -------
@@ -1606,6 +1888,24 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
          Index Cond: (k = ANY (ARRAY[(count(*)), $1, $2, ..., $1023]))
 (8 rows)
 
+                              QUERY PLAN
+-----------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (d.k = (count(*)))
+   ->  Finalize Aggregate
+         ->  YB Bitmap Table Scan on test
+               Partial Aggregate: true
+               ->  Bitmap Index Scan on testindex
+                     Index Cond: (k > 0)
+   ->  Index Scan using digit_pkey on digit d
+         Index Cond: (k = ANY (ARRAY[(count(*)), $1, $2, ..., $1023]))
+(9 rows)
+
+ k |  v  | count
+---+-----+-------
+ 6 | six |     6
+(1 row)
+
  k |  v  | count
 ---+-----+-------
  6 | six |     6
@@ -1672,6 +1972,24 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
    ->  Index Scan using digit_pkey on digit d
          Index Cond: (k = ANY (ARRAY[(count(test.k)), $1, $2, ..., $1023]))
 (8 rows)
+
+                                 QUERY PLAN
+----------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (d.k = (count(test.k)))
+   ->  Finalize Aggregate
+         ->  YB Bitmap Table Scan on test
+               Partial Aggregate: true
+               ->  Bitmap Index Scan on testindex
+                     Index Cond: (k > 0)
+   ->  Index Scan using digit_pkey on digit d
+         Index Cond: (k = ANY (ARRAY[(count(test.k)), $1, $2, ..., $1023]))
+(9 rows)
+
+ k |  v  | count
+---+-----+-------
+ 6 | six |     6
+(1 row)
 
  k |  v  | count
 ---+-----+-------
@@ -1740,6 +2058,24 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
          Index Cond: (k = ANY (ARRAY[(count(test.v1)), $1, $2, ..., $1023]))
 (8 rows)
 
+                                 QUERY PLAN
+-----------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (d.k = (count(test.v1)))
+   ->  Finalize Aggregate
+         ->  YB Bitmap Table Scan on test
+               Partial Aggregate: true
+               ->  Bitmap Index Scan on testindex
+                     Index Cond: (k > 0)
+   ->  Index Scan using digit_pkey on digit d
+         Index Cond: (k = ANY (ARRAY[(count(test.v1)), $1, $2, ..., $1023]))
+(9 rows)
+
+ k |  v   | count
+---+------+-------
+ 5 | five |     5
+(1 row)
+
  k |  v   | count
 ---+------+-------
  5 | five |     5
@@ -1807,6 +2143,24 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
          Index Cond: (k = ANY (ARRAY[(count(test.v2)), $1, $2, ..., $1023]))
 (8 rows)
 
+                                 QUERY PLAN
+-----------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (d.k = (count(test.v2)))
+   ->  Finalize Aggregate
+         ->  YB Bitmap Table Scan on test
+               Partial Aggregate: true
+               ->  Bitmap Index Scan on testindex
+                     Index Cond: (k > 0)
+   ->  Index Scan using digit_pkey on digit d
+         Index Cond: (k = ANY (ARRAY[(count(test.v2)), $1, $2, ..., $1023]))
+(9 rows)
+
+ k |  v   | count
+---+------+-------
+ 4 | four |     4
+(1 row)
+
  k |  v   | count
 ---+------+-------
  4 | four |     4
@@ -1868,6 +2222,20 @@ AlTER TABLE test DROP v1;
          Partial Aggregate: true
 (4 rows)
 
+                 QUERY PLAN
+--------------------------------------------
+ Finalize Aggregate
+   ->  YB Bitmap Table Scan on test
+         Partial Aggregate: true
+         ->  Bitmap Index Scan on testindex
+               Index Cond: (k > 0)
+(5 rows)
+
+ min
+-----
+   1
+(1 row)
+
  min
 -----
    1
@@ -1918,6 +2286,20 @@ AlTER TABLE test DROP v1;
          Index Cond: (k > 0)
          Partial Aggregate: true
 (4 rows)
+
+                 QUERY PLAN
+--------------------------------------------
+ Finalize Aggregate
+   ->  YB Bitmap Table Scan on test
+         Partial Aggregate: true
+         ->  Bitmap Index Scan on testindex
+               Index Cond: (k > 0)
+(5 rows)
+
+ max
+-----
+   3
+(1 row)
 
  max
 -----
@@ -1970,6 +2352,20 @@ AlTER TABLE test DROP v1;
          Partial Aggregate: true
 (4 rows)
 
+                 QUERY PLAN
+--------------------------------------------
+ Finalize Aggregate
+   ->  YB Bitmap Table Scan on test
+         Partial Aggregate: true
+         ->  Bitmap Index Scan on testindex
+               Index Cond: (k > 0)
+(5 rows)
+
+ sum
+-----
+   6
+(1 row)
+
  sum
 -----
    6
@@ -2021,6 +2417,20 @@ AlTER TABLE test DROP v1;
          Partial Aggregate: true
 (4 rows)
 
+                 QUERY PLAN
+--------------------------------------------
+ Finalize Aggregate
+   ->  YB Bitmap Table Scan on test
+         Partial Aggregate: true
+         ->  Bitmap Index Scan on testindex
+               Index Cond: (k > 0)
+(5 rows)
+
+ count
+-------
+     3
+(1 row)
+
  count
 -------
      3
@@ -2054,6 +2464,7 @@ INSERT INTO t1(c0) VALUES(0.9946693818538820952568357824929989874362945556640625
 \set ss '/*+SeqScan(t1)*/'
 \set ios '/*+IndexOnlyScan(t1 t1index)*/'
 \set is '/*+IndexScan(t1 t1index)*/'
+\set bs '/*+BitmapScan(t1)*/'
 \set outerquery1 'SELECT SUM(count) FROM'
 \set innerquery 'SELECT (CAST(((((''[-1962327130,2000870418)''::int4range)*(''(-1293215916,183586536]''::int4range)))-(((''[-545024026,526859443]''::int4range)*(NULL)))) AS VARCHAR)~current_query())::INT as count FROM ONLY t1'
 \set outerquery2 'as res'
@@ -2085,6 +2496,19 @@ INSERT INTO t1(c0) VALUES(0.9946693818538820952568357824929989874362945556640625
          Index Cond: (c0 > '0'::numeric)
 (3 rows)
 
+                  QUERY PLAN
+-----------------------------------------------
+ Aggregate
+   ->  YB Bitmap Table Scan on t1
+         ->  Bitmap Index Scan on t1index
+               Index Cond: (c0 > '0'::numeric)
+(4 rows)
+
+ sum
+-----
+
+(1 row)
+
  sum
 -----
 
@@ -2112,6 +2536,7 @@ INSERT INTO t2 VALUES(1), (2), (3);
 \set ss '/*+SeqScan(t2)*/'
 \set ios '/*+IndexOnlyScan(t2 t2index)*/'
 \set is '/*+IndexScan(t2 t2index)*/'
+\set bs '/*+BitmapScan(t2)*/'
 \set outerquery1 'SELECT SUM(r) < 6 from'
 \set innerquery 'SELECT random() as r from t2'
 :run;
@@ -2140,6 +2565,19 @@ INSERT INTO t2 VALUES(1), (2), (3);
          Index Cond: (c0 > '0'::numeric)
 (3 rows)
 
+                  QUERY PLAN
+-----------------------------------------------
+ Aggregate
+   ->  YB Bitmap Table Scan on t2
+         ->  Bitmap Index Scan on t2index
+               Index Cond: (c0 > '0'::numeric)
+(4 rows)
+
+ ?column?
+----------
+ t
+(1 row)
+
  ?column?
 ----------
  t
@@ -2167,6 +2605,7 @@ INSERT INTO t3 VALUES(1), (2), (3);
 \set ss '/*+SeqScan(t3)*/'
 \set ios '/*+IndexOnlyScan(t3 t3index)*/'
 \set is '/*+IndexScan(t3 t3index)*/'
+\set bs '/*+BitmapScan(t3)*/'
 \set outerquery1 'SELECT SUM(r) from'
 \set innerquery 'SELECT (NULL=random())::int as r from t3'
 :run;
@@ -2195,6 +2634,19 @@ INSERT INTO t3 VALUES(1), (2), (3);
          Index Cond: (c0 > '0'::numeric)
 (3 rows)
 
+                  QUERY PLAN
+-----------------------------------------------
+ Aggregate
+   ->  YB Bitmap Table Scan on t3
+         ->  Bitmap Index Scan on t3index
+               Index Cond: (c0 > '0'::numeric)
+(4 rows)
+
+ sum
+-----
+
+(1 row)
+
  sum
 -----
 
@@ -2222,6 +2674,7 @@ INSERT INTO t4 VALUES(1), (2), (3);
 \set ss '/*+SeqScan(t4)*/'
 \set ios '/*+IndexOnlyScan(t4 t4index)*/'
 \set is '/*+IndexScan(t4 t4index)*/'
+\set bs '/*+BitmapScan(t4)*/'
 \set outerquery1 'SELECT SUM(r) = 6 from'
 \set innerquery 'SELECT random() as r from t4'
 :run;
@@ -2249,6 +2702,19 @@ INSERT INTO t4 VALUES(1), (2), (3);
    ->  Index Scan using t4index on t4
          Index Cond: (c0 > '0'::double precision)
 (3 rows)
+
+                       QUERY PLAN
+--------------------------------------------------------
+ Aggregate
+   ->  YB Bitmap Table Scan on t4
+         ->  Bitmap Index Scan on t4index
+               Index Cond: (c0 > '0'::double precision)
+(4 rows)
+
+ ?column?
+----------
+ f
+(1 row)
 
  ?column?
 ----------
@@ -2279,6 +2745,7 @@ INSERT INTO rsplit VALUES (1), (2), (3);
 \set ss '/*+SeqScan(rsplit)*/'
 \set ios '/*+IndexOnlyScan(rsplit rsplit_i_idx)*/'
 \set is '/*+IndexScan(rsplit rsplit_i_idx)*/'
+\set bs '/*+BitmapScan(rsplit)*/'
 \set query 'SELECT SUM(i) FROM rsplit WHERE i = 2'
 \set isquery ':query'
 :run;
@@ -2313,6 +2780,20 @@ INSERT INTO rsplit VALUES (1), (2), (3);
          Index Cond: (i = 2)
          Partial Aggregate: true
 (4 rows)
+
+                  QUERY PLAN
+----------------------------------------------
+ Finalize Aggregate
+   ->  YB Bitmap Table Scan on rsplit
+         Partial Aggregate: true
+         ->  Bitmap Index Scan on rsplit_pkey
+               Index Cond: (i = 2)
+(5 rows)
+
+ sum
+-----
+   2
+(1 row)
 
  sum
 -----
@@ -2368,6 +2849,20 @@ INSERT INTO rsplit VALUES (1), (2), (3);
          Partial Aggregate: true
 (4 rows)
 
+                  QUERY PLAN
+----------------------------------------------
+ Finalize Aggregate
+   ->  YB Bitmap Table Scan on rsplit
+         Partial Aggregate: true
+         ->  Bitmap Index Scan on rsplit_pkey
+               Index Cond: (i = 3)
+(5 rows)
+
+ sum
+-----
+   3
+(1 row)
+
  sum
 -----
    3
@@ -2394,6 +2889,7 @@ INSERT INTO rsplit VALUES (1), (2), (3);
 \set ss '/*+SeqScan(pg_type)*/'
 \set ios '/*+IndexOnlyScan(pg_type pg_type_typname_nsp_index)*/'
 \set is '/*+IndexScan(pg_type pg_type_typname_nsp_index)*/'
+\set bs '/*+BitmapScan(pg_type)*/'
 \set query 'SELECT MIN(typnamespace) FROM pg_type'
 \set isquery ':query WHERE typname > '''''
 :run;
@@ -2425,6 +2921,20 @@ INSERT INTO rsplit VALUES (1), (2), (3);
          Index Cond: (typname > ''::name)
          Partial Aggregate: true
 (4 rows)
+
+                         QUERY PLAN
+------------------------------------------------------------
+ Finalize Aggregate
+   ->  YB Bitmap Table Scan on pg_type
+         Partial Aggregate: true
+         ->  Bitmap Index Scan on pg_type_typname_nsp_index
+               Index Cond: (typname > ''::name)
+(5 rows)
+
+ min
+-----
+  11
+(1 row)
 
  min
 -----
@@ -2458,7 +2968,7 @@ INSERT INTO tmp SELECT g, -g FROM generate_series(1, 10) g;
 \set query 'SELECT SUM(j), AVG(j), COUNT(*), MAX(j) FROM tmp'
 \set isquery ':query WHERE j < 0'
 -- TODO(#18619): change the following to :run;
-:runnois;
+:run_ss_ios;
       QUERY PLAN
 -----------------------
  Aggregate
@@ -2476,11 +2986,6 @@ INSERT INTO tmp SELECT g, -g FROM generate_series(1, 10) g;
  Aggregate
    ->  Index Only Scan using tmp_j_idx on tmp
 (2 rows)
-
- sum |         avg         | count | max
------+---------------------+-------+-----
- -55 | -5.5000000000000000 |    10 |  -1
-(1 row)
 
  sum |         avg         | count | max
 -----+---------------------+-------+-----
@@ -2712,12 +3217,14 @@ DROP TABLE nlptest;
 --
 CREATE DATABASE co COLOCATION TRUE;
 \c co
+SET yb_enable_bitmapscan = true;
 CREATE TABLE t (i int, j int, k int);
 CREATE INDEX NONCONCURRENTLY i ON t (j, k DESC, i);
 INSERT INTO t VALUES (1, 2, 3), (4, 2, 6);
 \set ss '/*+SeqScan(t)*/'
 \set ios '/*+IndexOnlyScan(t i)*/'
 \set is '/*+IndexScan(t i)*/'
+\set bs '/*+BitmapScan(t)*/'
 \set query 'SELECT MAX(k), AVG(i), COUNT(*), SUM(j) FROM t'
 \set isquery ':query WHERE j = 2'
 :run;
@@ -2749,6 +3256,20 @@ INSERT INTO t VALUES (1, 2, 3), (4, 2, 6);
          Index Cond: (j = 2)
          Partial Aggregate: true
 (4 rows)
+
+             QUERY PLAN
+------------------------------------
+ Finalize Aggregate
+   ->  YB Bitmap Table Scan on t
+         Partial Aggregate: true
+         ->  Bitmap Index Scan on i
+               Index Cond: (j = 2)
+(5 rows)
+
+ max |        avg         | count | sum
+-----+--------------------+-------+-----
+   6 | 2.5000000000000000 |     2 |   4
+(1 row)
 
  max |        avg         | count | sum
 -----+--------------------+-------+-----

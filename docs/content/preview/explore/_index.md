@@ -15,7 +15,7 @@ showRightNav: true
 
 The Explore documentation introduces you to YugabyteDB's features, often through examples.
 
-Most examples demonstrating database features, such as API compatibility, can be run on a single-node universe either on your computer, using the free Sandbox universe (cluster) in YugabyteDB Managed, or using a universe created via YugabyteDB Anywhere. More advanced scenarios use a multi-node deployment. Refer to [Set up YugabyteDB universe](#set-up-yugabytedb-universe) for instructions on creating universes to run the examples.
+Most examples demonstrating database features, such as API compatibility, can be run on a single-node universe either on your computer, using the free Sandbox universe (cluster) in YugabyteDB Aeon, or using a universe created via YugabyteDB Anywhere. More advanced scenarios use a multi-node deployment. Refer to [Set up YugabyteDB universe](#set-up-yugabytedb-universe) for instructions on creating universes to run the examples.
 
 ## Overview
 
@@ -41,26 +41,26 @@ The following table describes the YugabyteDB features you can explore, along wit
 You can run examples using a universe set up on your local machine or in a cloud, assuming you have performed one of the following:
 
 - [Installed](../quick-start/linux/) YugabyteDB.
-- [Created an account](https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=Cloud_signup) in YugabyteDB Managed.
+- [Created an account](https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=Cloud_signup) in YugabyteDB Aeon.
 - [Installed](../yugabyte-platform/install-yugabyte-platform/) YugabyteDB Anywhere and [configured](../yugabyte-platform/configure-yugabyte-platform/) it to run in AWS.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
-    <a href="#local" class="nav-link active" id="local-tab" data-toggle="tab"
+    <a href="#local" class="nav-link active" id="local-tab" data-bs-toggle="tab"
       role="tab" aria-controls="local" aria-selected="true">
       <img src="/icons/database.svg" alt="Server Icon">
       Local
     </a>
   </li>
   <li >
-    <a href="#cloud" class="nav-link" id="cloud-tab" data-toggle="tab"
+    <a href="#cloud" class="nav-link" id="cloud-tab" data-bs-toggle="tab"
       role="tab" aria-controls="cloud" aria-selected="false">
       <img src="/icons/cloud.svg" alt="Cloud Icon">
-      YugabyteDB Managed
+      YugabyteDB Aeon
     </a>
   </li>
   <li>
-    <a href="#anywhere" class="nav-link" id="anywhere-tab" data-toggle="tab"
+    <a href="#anywhere" class="nav-link" id="anywhere-tab" data-bs-toggle="tab"
       role="tab" aria-controls="anywhere" aria-selected="false">
       <img src="/icons/server.svg" alt="Server Icon">
       YugabyteDB Anywhere
@@ -124,7 +124,7 @@ You can start ysqlsh as follows:
 ```
 
 ```output
-ysqlsh (11.2-YB-2.0.0.0-b0)
+ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
 Type "help" for help.
 
 yugabyte=#
@@ -147,7 +147,7 @@ ycqlsh>
 
   <div id="cloud" class="tab-pane fade" role="tabpanel" aria-labelledby="cloud-tab">
 
-To run the examples in YugabyteDB Managed, create a single- or multi-node universe (which is referred to as cluster in YugabyteDB Managed).
+To run the examples in YugabyteDB Aeon, create a single- or multi-node universe (which is referred to as cluster in YugabyteDB Aeon).
 
 {{< tabpane text=true >}}
 
@@ -155,13 +155,13 @@ To run the examples in YugabyteDB Managed, create a single- or multi-node univer
 
 Examples requiring a single-node cluster can be run using the free [Sandbox](../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/) cluster.
 
-If you haven't already created your sandbox cluster, log in to YugabyteDB Managed, on the **Clusters** page click **Add Cluster**, and follow the instructions in the **Create Cluster** wizard.
+If you haven't already created your sandbox cluster, log in to YugabyteDB Aeon, on the **Clusters** page click **Add Cluster**, and follow the instructions in the **Create Cluster** wizard.
 
   {{% /tab %}}
 
   {{% tab header="Multi-node cluster" lang="YBM Multi" %}}
 
-Before you can create a multi-node cluster in YugabyteDB Managed, you need to [add your billing profile and payment method](../yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
+Before you can create a multi-node cluster in YugabyteDB Aeon, you need to [add your billing profile and payment method](../yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
 
 To create a single region three-node cluster, refer to [Create a single-region cluster](../yugabyte-cloud/cloud-basics/create-clusters/create-single-region/). Set **Fault tolerance** to **None** and **Nodes** to 3.
 
@@ -173,9 +173,9 @@ Save your cluster credentials in a convenient location. You will use them to con
 
 **Connect to your clusters**
 
-You can run Explore exercises in YugabyteDB Managed using the [Cloud Shell](../yugabyte-cloud/cloud-connect/connect-cloud-shell/):
+You can run Explore exercises in YugabyteDB Aeon using the [Cloud Shell](../yugabyte-cloud/cloud-connect/connect-cloud-shell/):
 
-1. In YugabyteDB Managed, on the **Clusters** page, select your cluster.
+1. In YugabyteDB Aeon, on the **Clusters** page, select your cluster.
 1. Click **Connect**.
 1. Click **Launch Cloud Shell**.
 1. Enter the user name from the cluster credentials you downloaded when you created the cluster.
@@ -216,21 +216,21 @@ wget https://github.com/YugabyteDB-Samples/yb-workload-simulator/releases/downlo
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
-    <a href="#localworkload" class="nav-link active" id="local-tab" data-toggle="tab"
+    <a href="#localworkload" class="nav-link active" id="local-tab" data-bs-toggle="tab"
       role="tab" aria-controls="local" aria-selected="true">
       <img src="/icons/database.svg" alt="Server Icon">
       Local
     </a>
   </li>
   <li >
-    <a href="#cloudworkload" class="nav-link" id="cloud-tab" data-toggle="tab"
+    <a href="#cloudworkload" class="nav-link" id="cloud-tab" data-bs-toggle="tab"
       role="tab" aria-controls="cloud" aria-selected="false">
       <img src="/icons/cloud.svg" alt="Cloud Icon">
-      YugabyteDB Managed
+      YugabyteDB Aeon
     </a>
   </li>
   <li>
-    <a href="#anywhereworkload" class="nav-link" id="anywhere-tab" data-toggle="tab"
+    <a href="#anywhereworkload" class="nav-link" id="anywhere-tab" data-bs-toggle="tab"
       role="tab" aria-controls="anywhere" aria-selected="false">
       <img src="/icons/server.svg" alt="Server Icon">
       YugabyteDB Anywhere
@@ -243,7 +243,7 @@ wget https://github.com/YugabyteDB-Samples/yb-workload-simulator/releases/downlo
 
 To connect the application to your cluster, ensure that you have downloaded the cluster SSL certificate and your computer is added to the IP allow list. Refer to [Before you begin](../tutorials/build-apps/cloud-add-ip/).
 
-To start the application against a running YugabyteDB Managed cluster, use the following command:
+To start the application against a running YugabyteDB Aeon cluster, use the following command:
 
 ```sh
 java -Dnode=<host name> \
@@ -256,7 +256,7 @@ java -Dnode=<host name> \
     -jar ./yb-workload-sim-0.0.8.jar
 ```
 
-- `<host name>` - The host name of your YugabyteDB cluster. For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
+- `<host name>` - The host name of your YugabyteDB cluster. For YugabyteDB Aeon, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
 - `<dbname>` - The name of the database you are connecting to (the default is `yugabyte`).
 - `<dbuser>` and `<dbpassword>` - The username and password for the YugabyteDB database. Use the credentials in the credentials file you downloaded when you created your cluster.
 <!-- `<cloud.region.zone>` - The zones in your cluster, comma-separated, in the format `cloud.region.zone`, to be used as topology keys for [topology-aware load balancing](../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing). Node details are displayed on the cluster **Nodes** tab. For example, to add topology keys for a multi-zone cluster in the AWS US East region, you would enter the following:

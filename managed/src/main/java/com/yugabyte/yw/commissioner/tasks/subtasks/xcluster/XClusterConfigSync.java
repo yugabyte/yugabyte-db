@@ -3,7 +3,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.xcluster;
 
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.XClusterSyncScheduler;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.table.TableInfoUtil;
@@ -34,15 +33,10 @@ import org.yb.master.CatalogEntityInfo;
 @Slf4j
 public class XClusterConfigSync extends XClusterConfigTaskBase {
 
-  private final XClusterSyncScheduler xClusterSyncScheduler;
-
   @Inject
   protected XClusterConfigSync(
-      BaseTaskDependencies baseTaskDependencies,
-      XClusterUniverseService xClusterUniverseService,
-      XClusterSyncScheduler xClusterSyncScheduler) {
+      BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
     super(baseTaskDependencies, xClusterUniverseService);
-    this.xClusterSyncScheduler = xClusterSyncScheduler;
   }
 
   @Override

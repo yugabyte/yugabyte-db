@@ -10,6 +10,8 @@
 
 package com.yugabyte.yw.common.config;
 
+import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
+
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.google.common.collect.Streams;
@@ -144,8 +146,7 @@ public class RuntimeConfService extends AuthenticatedController {
       log.trace(
           "key: {} overriddenInScope: {} includeInherited: {}", k, isOverridden, includeInherited);
 
-      String value = fullConfig.getValue(k).render(ConfigRenderOptions.concise());
-      value = unwrap(value);
+      String value = getValueFromConfig(fullConfig, k);
       if (sensitiveKeys.contains(k)) {
         value = CommonUtils.getEmptiableMaskedValue(k, value);
       }
@@ -169,17 +170,51 @@ public class RuntimeConfService extends AuthenticatedController {
     return maybeQuoted;
   }
 
+  private String getValueFromConfig(Config config, String path) {
+    String value = config.getValue(path).render(ConfigRenderOptions.concise());
+    return unwrap(value);
+  }
+
   public String getKeyOrBadRequest(
       UUID customerUUID, UUID scopeUUID, String path, boolean isSuperAdmin) {
     Optional<String> value = maybeGetKey(customerUUID, scopeUUID, path, isSuperAdmin);
-    if (value.isPresent()) return value.get();
-    else {
-      // return default value if DB doesn't have value defined
-      if (isValidScope(path, scopeUUID)) return staticConfig.getString(path);
-      else {
-        throw new PlatformServiceException(
-            NOT_FOUND, String.format("Key %s is not defined in scope %s", path, scopeUUID));
+    if (value.isPresent()) {
+      return value.get();
+    } else if (isValidScope(path, scopeUUID)) {
+      ScopeType scope = getScopeType(scopeUUID);
+      switch (scope) {
+        case GLOBAL:
+          return getValueFromConfig(settableRuntimeConfigFactory.globalRuntimeConf(), path);
+        case CUSTOMER:
+          return getValueFromConfig(
+              settableRuntimeConfigFactory.forCustomer(Customer.get(scopeUUID)), path);
+        case PROVIDER:
+          return getValueFromConfig(
+              settableRuntimeConfigFactory.forProvider(Provider.maybeGet(scopeUUID).get()), path);
+        case UNIVERSE:
+          return getValueFromConfig(
+              settableRuntimeConfigFactory.forUniverse(Universe.maybeGet(scopeUUID).get()), path);
+        default:
+          // should never reach here.
+          return getValueFromConfig(settableRuntimeConfigFactory.staticApplicationConf(), path);
       }
+    } else {
+      throw new PlatformServiceException(
+          NOT_FOUND, String.format("Key %s is not defined in scope %s", path, scopeUUID));
+    }
+  }
+
+  private ScopeType getScopeType(UUID scopeUUID) {
+    if (scopeUUID.equals(GLOBAL_SCOPE_UUID)) {
+      return ScopeType.GLOBAL;
+    } else if (Customer.get(scopeUUID) != null) {
+      return ScopeType.CUSTOMER;
+    } else if (Provider.maybeGet(scopeUUID).isPresent()) {
+      return ScopeType.PROVIDER;
+    } else if (Universe.maybeGet(scopeUUID).isPresent()) {
+      return ScopeType.UNIVERSE;
+    } else {
+      throw new PlatformServiceException(BAD_REQUEST, "Invalid Scope UUID!");
     }
   }
 

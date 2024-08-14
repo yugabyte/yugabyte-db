@@ -120,7 +120,7 @@ To use SCRAM-SHA-256 password authentication on a new YugabyteDB cluster, follow
     When prompted for the password, enter the `yugabyte` password (default is `yugabyte`). You should be able to log in and see a response like this:
 
     ```output
-    ysqlsh (11.2-YB-2.3.3.0-b0)
+    ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
     Type "help" for help.
 
     yugabyte=#

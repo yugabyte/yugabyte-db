@@ -40,9 +40,8 @@ class PgCreateDatabase : public PgDdl {
                    const char *database_name,
                    PgOid database_oid,
                    PgOid source_database_oid,
-                   const char* source_database_name,
                    PgOid next_oid,
-                   const int64_t clone_time,
+                   YbCloneInfo *yb_clone_info,
                    const bool colocated);
   virtual ~PgCreateDatabase();
 
@@ -271,6 +270,8 @@ class PgAlterTable : public PgDdl {
   Status SetTableId(const PgObjectId& table_id);
 
   Status SetReplicaIdentity(const char identity_type);
+
+  Status SetSchema(const char *schema_name);
 
   Status Exec();
 

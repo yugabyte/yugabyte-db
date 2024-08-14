@@ -357,7 +357,8 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
               currentLiveMasters.add(node);
               getOrCreateExecutionContext().addMasterNode(node);
             }
-            createMasterAddressUpdateTask(universe, currentLiveMasters, allLiveTservers);
+            createMasterAddressUpdateTask(
+                universe, currentLiveMasters, allLiveTservers, false /* ignore error */);
           });
       if (!mastersToStop.isEmpty()) {
         createStopServerTasks(

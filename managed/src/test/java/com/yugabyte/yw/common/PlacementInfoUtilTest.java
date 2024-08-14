@@ -4098,6 +4098,34 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         });
   }
 
+  @Test(expected = UnsupportedOperationException.class)
+  public void testConfigureChangeRFAndOther() {
+    setupAndApplyActions(
+        "r1-z1r1-1-1;r1-z2r1-1-1;r1-z3r1-1-1",
+        null,
+        Collections.emptyMap(),
+        Collections.emptyList(),
+        Arrays.asList(
+            new Pair(UserAction.UPD_RF, 0), // inc RF
+            new Pair(UserAction.MODIFY_AZ_COUNT, 1), // inc az
+            new Pair(UserAction.MODIFY_COMMUNICATION_PORTS, 1) // port -> 7000
+            ),
+        (idx, params) -> {
+          switch (idx) {
+            case 0:
+              assertEquals(Set.of(UPDATE), UniverseCRUDHandler.getUpdateOptions(params, EDIT));
+              assertEquals(5, params.getPrimaryCluster().userIntent.replicationFactor);
+              assertEquals(5, params.nodeDetailsSet.size());
+              break;
+            case 1:
+              assertEquals(Set.of(UPDATE), UniverseCRUDHandler.getUpdateOptions(params, EDIT));
+              // One more node
+              assertEquals(6, params.nodeDetailsSet.size());
+              break;
+          }
+        });
+  }
+
   @Test
   public void testChaosConfigureEdit() {
     Customer customer =
@@ -4169,6 +4197,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
                     .filter(ua -> ua.forDedicated == false)
                     .collect(Collectors.toList());
           }
+          // Currently we allow changing RF only with placement changes.
+          userActions.remove(UserAction.UPD_RF);
           UserAction chaosAction = userActions.get(random.nextInt(userActions.size()));
           int var = random.nextInt(20);
 
@@ -4446,6 +4476,209 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     assertEquals(6, params.nodeDetailsSet.size());
   }
 
+  //  @Test
+  //  Right now we don't support decreasing of RF, but our code for VMs can already handle it.
+  public void testConfigureNodesDedicatedToggleAndDecreaseRF() {
+    Customer customer = ModelFactory.testCustomer("Test Customer");
+    Provider provider = ModelFactory.newProvider(customer, CloudType.aws);
+
+    Universe existing = createFromConfig(provider, "Existing", "r1-az1-3-3");
+
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.setUniverseUUID(existing.getUniverseUUID());
+    params.currentClusterType = ClusterType.PRIMARY;
+    params.clusters = existing.getUniverseDetails().clusters;
+    params.getPrimaryCluster().userIntent.dedicatedNodes = true;
+    params.nodeDetailsSet = new HashSet<>(existing.getUniverseDetails().nodeDetailsSet);
+
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getId(), params.getPrimaryCluster().uuid, EDIT);
+
+    params.getPrimaryCluster().userIntent.replicationFactor = 1;
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getId(), params.getPrimaryCluster().uuid, EDIT);
+
+    AtomicInteger addedMasters = new AtomicInteger();
+    AtomicInteger addedTservers = new AtomicInteger();
+    AtomicInteger removedTservers = new AtomicInteger();
+    AtomicInteger removedMasters = new AtomicInteger();
+    AtomicInteger stoppedMasters = new AtomicInteger();
+
+    params.nodeDetailsSet.forEach(
+        node -> {
+          if (node.state == NodeState.ToBeAdded) {
+            if (node.isMaster) {
+              addedMasters.incrementAndGet();
+            } else {
+              removedTservers.incrementAndGet();
+            }
+          } else if (node.state == ToBeRemoved) {
+            if (node.isMaster) {
+              removedMasters.incrementAndGet();
+            } else {
+              removedTservers.incrementAndGet();
+            }
+          } else {
+            if (node.masterState == NodeDetails.MasterState.ToStop) {
+              stoppedMasters.incrementAndGet();
+            }
+          }
+        });
+
+    assertEquals(1, addedMasters.get());
+    assertEquals(0, addedTservers.get());
+    assertEquals(0, removedTservers.get());
+    assertEquals(0, removedMasters.get());
+    assertEquals(3, stoppedMasters.get());
+  }
+
+  //  @Test
+  //  Right now we don't support decreasing of RF, but our code for VMs can already handle it.
+  public void testDedicatedDecreaseRF() {
+    Customer customer = ModelFactory.testCustomer("Test Customer");
+    Provider provider = ModelFactory.newProvider(customer, CloudType.aws);
+
+    Universe existing = createFromConfig(provider, "Existing", "r1-az1-3-3");
+
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.setUniverseUUID(existing.getUniverseUUID());
+    params.currentClusterType = ClusterType.PRIMARY;
+    params.clusters = existing.getUniverseDetails().clusters;
+    params.getPrimaryCluster().userIntent.dedicatedNodes = true;
+    params.nodeDetailsSet = new HashSet<>(existing.getUniverseDetails().nodeDetailsSet);
+
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getId(), params.getPrimaryCluster().uuid, EDIT);
+    existing =
+        Universe.saveDetails(
+            existing.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.nodeDetailsSet = params.nodeDetailsSet;
+              details.nodeDetailsSet.forEach(
+                  node -> {
+                    node.state = Live;
+                  });
+              details.getPrimaryCluster().userIntent.dedicatedNodes = true;
+              u.setUniverseDetails(details);
+            });
+
+    assertEquals(6, existing.getNodes().size());
+
+    params.clusters = existing.getUniverseDetails().clusters;
+    params.nodeDetailsSet = new HashSet<>(existing.getUniverseDetails().nodeDetailsSet);
+
+    params.getPrimaryCluster().userIntent.replicationFactor = 1;
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getId(), params.getPrimaryCluster().uuid, EDIT);
+
+    long removedMasters =
+        params.nodeDetailsSet.stream()
+            .filter(n -> n.state == ToBeRemoved)
+            .peek(
+                n -> {
+                  assertEquals(n.dedicatedTo, UniverseTaskBase.ServerType.MASTER);
+                })
+            .count();
+    assertEquals(2l, removedMasters);
+  }
+
+  @Test
+  public void testDedicatedIncreaseRF() {
+    Customer customer = ModelFactory.testCustomer("Test Customer");
+    Provider provider = ModelFactory.newProvider(customer, CloudType.aws);
+
+    Universe existing = createFromConfig(provider, "Existing", "r1-az1-1-1;r1-az2-1-1;r1-az3-1-1");
+
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.setUniverseUUID(existing.getUniverseUUID());
+    params.currentClusterType = ClusterType.PRIMARY;
+    params.clusters = existing.getUniverseDetails().clusters;
+    params.getPrimaryCluster().userIntent.dedicatedNodes = true;
+    params.nodeDetailsSet = new HashSet<>(existing.getUniverseDetails().nodeDetailsSet);
+
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getId(), params.getPrimaryCluster().uuid, EDIT);
+    existing =
+        Universe.saveDetails(
+            existing.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.nodeDetailsSet = params.nodeDetailsSet;
+              details.nodeDetailsSet.forEach(
+                  node -> {
+                    node.state = Live;
+                  });
+              details.getPrimaryCluster().userIntent.dedicatedNodes = true;
+              u.setUniverseDetails(details);
+            });
+
+    assertEquals(6, existing.getNodes().size());
+
+    params.clusters = existing.getUniverseDetails().clusters;
+    params.nodeDetailsSet = new HashSet<>(existing.getUniverseDetails().nodeDetailsSet);
+
+    params.getPrimaryCluster().userIntent.replicationFactor = 5;
+    params.getPrimaryCluster().userIntent.numNodes = 5;
+
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getId(), params.getPrimaryCluster().uuid, EDIT);
+
+    AtomicInteger addedTservers = new AtomicInteger();
+    AtomicInteger addedMasters = new AtomicInteger();
+
+    params.nodeDetailsSet.stream()
+        .filter(n -> n.state == ToBeAdded)
+        .forEach(
+            n -> {
+              if (n.dedicatedTo == UniverseTaskBase.ServerType.MASTER) {
+                addedMasters.incrementAndGet();
+              } else if (n.dedicatedTo == UniverseTaskBase.ServerType.TSERVER) {
+                addedTservers.incrementAndGet();
+              }
+            });
+
+    assertEquals(2, addedTservers.get());
+    assertEquals(2, addedMasters.get());
+  }
+
+  @Test
+  public void testConfigureIncreaseRF6nodes() {
+    Customer customer = ModelFactory.testCustomer("Test Customer");
+    Provider provider = ModelFactory.newProvider(customer, CloudType.aws);
+
+    Universe existing = createFromConfig(provider, "Existing", "r1-az1-6-3");
+    Region region = getOrCreate(provider, "r1");
+    AvailabilityZone az1 = AvailabilityZone.getByCode(provider, "az1");
+
+    AvailabilityZone az2 = AvailabilityZone.createOrThrow(region, "az2", "az2", "subnet-az2");
+
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.setUniverseUUID(existing.getUniverseUUID());
+    params.currentClusterType = ClusterType.PRIMARY;
+    params.clusters = existing.getUniverseDetails().clusters;
+    params.getPrimaryCluster().userIntent.numNodes = 7;
+    params.getPrimaryCluster().userIntent.replicationFactor = 7;
+    params.nodeDetailsSet = new HashSet<>(existing.getUniverseDetails().nodeDetailsSet);
+
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getId(), params.getPrimaryCluster().uuid, EDIT);
+
+    List<NodeDetails> addedNodes =
+        params.nodeDetailsSet.stream()
+            .filter(n -> n.state == NodeState.ToBeAdded)
+            .collect(Collectors.toList());
+
+    assertEquals(1, addedNodes.size());
+
+    assertEquals(7, params.nodeDetailsSet.size());
+    assertEquals(az2.getUuid(), addedNodes.get(0).azUuid);
+    assertEquals(
+        1, params.getPrimaryCluster().placementInfo.findByAZUUID(az2.getUuid()).replicationFactor);
+    assertEquals(
+        6, params.getPrimaryCluster().placementInfo.findByAZUUID(az1.getUuid()).replicationFactor);
+  }
+
   private void markNodeInstancesAsOccupied(Map<UUID, Integer> azUuidToNumNodes) {
     Map<UUID, Integer> counts = new HashMap<>(azUuidToNumNodes);
     for (NodeInstance nodeInstance : NodeInstance.getAll()) {
@@ -4539,14 +4772,10 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
                     !curZones.contains(az.getUuid())
                         && curRegions.contains(az.getRegion().getUuid()))
             .collect(Collectors.toList());
-    boolean rfUpdatePossible = false;
     switch (action) {
       case UPD_RF:
-        if (!rfUpdatePossible) {
-          return null;
-        }
         int rfIdx = rfs.indexOf(userIntent.replicationFactor);
-        if (var % 2 == 0) { // decrease
+        if (var % 1 != 0) { // TODO: decrease currently not available
           if (rfIdx == 0) {
             return null;
           }
@@ -4557,6 +4786,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
             return null;
           }
           userIntent.replicationFactor = rfs.get(rfIdx + 1);
+          userIntent.numNodes = Math.max(userIntent.replicationFactor, userIntent.numNodes);
           return "++";
         }
       case UPD_TOTAL:

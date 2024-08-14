@@ -24,7 +24,7 @@ On MacOS and Linux, you can also install ybm using [Homebrew](https://brew.sh) b
 brew install yugabyte/tap/ybm
 ```
 
-If you don't have a YugabyteDB Managed account yet, you can use the following command to bring up the sign up page:
+If you don't have a YugabyteDB Aeon account yet, you can use the following command to bring up the sign up page:
 
 ```sh
 ybm signup
@@ -83,7 +83,7 @@ You can set the following ybm environment variables.
 
 | Variable | Description |
 | :--- | :--- |
-| YBM_APIKEY | The API key to use to authenticate to your YugabyteDB Managed account. |
+| YBM_APIKEY | The API key to use to authenticate to your YugabyteDB Aeon account. |
 | YBM_CI | Set to `true` to avoid outputting unnecessary log lines. |
 | YBM_AWS_SECRET_KEY | AWS secret access key. For encryption at rest of AWS clusters. |
 <!--| YBM_HOST | The host address of the cluster you are managing. By default, https is added to the host if no scheme is provided. |-->

@@ -58,6 +58,15 @@ DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_dowarmup, false,
   "Enable precreation of server connections in Ysql Connection Manager. If set false, "
   "the server connections are created lazily (on-demand) in Ysql Connection Manager.");
 
+DEFINE_test_flag(bool, ysql_conn_mgr_dowarmup_all_pools_random_attach, false,
+  "Enable precreation of server connections in every pool in Ysql Connection Manager and "
+  " randomly attach any idle server connection to client to serve it's quries. "
+  "ysql_conn_mgr_dowarmup is responsible for creating server connections only in "
+  "yugabyte (user), yugabyte (database) pool during the initialization of connection "
+  "manager process. Whereas this flag will create max of ysql_conn_mgr_min_conns_per_db"
+  " and 3 number of server connections in any pool whenever there is a requirement to create "
+  "first backend process in that particular pool.");
+
 DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_stats_interval, 10,
   "Interval (in secs) at which the stats for Ysql Connection Manager will be updated.");
 
@@ -73,9 +82,9 @@ DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_use_unix_conn, true,
 
 namespace {
 
-bool ValidateMaxClientConn(const char* flagname, uint32_t value) {
+bool ValidateMaxClientConn(const char* flag_name, uint32_t value) {
   if (value < 1) {
-    LOG(ERROR) << flagname << "(" << value << ") can not be less than 1";
+    LOG_FLAG_VALIDATION_ERROR(flag_name, value) << "Must be greater than 1";
     return false;
   }
   return true;
@@ -103,6 +112,13 @@ Status YsqlConnMgrWrapper::Start() {
   auto ysql_conn_mgr_executable = GetYsqlConnMgrExecutablePath();
   RETURN_NOT_OK(CheckExecutableValid(ysql_conn_mgr_executable));
 
+  if (FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_random_attach) {
+    LOG(INFO) << "Warmup and random allotment of server connections is enabled in "
+    "ysql connection manager";
+    if (FLAGS_ysql_conn_mgr_min_conns_per_db < 3)
+      FLAGS_ysql_conn_mgr_min_conns_per_db = 3;
+  }
+
   std::vector<std::string> argv{
       ysql_conn_mgr_executable, conf_.CreateYsqlConnMgrConfigAndGetPath()};
   proc_.emplace(ysql_conn_mgr_executable, argv);
@@ -115,6 +131,9 @@ Status YsqlConnMgrWrapper::Start() {
   proc_->SetEnv("YB_YSQL_CONN_MGR_PASSWORD", conf_.yb_tserver_key_);
 
   proc_->SetEnv("YB_YSQL_CONN_MGR_DOWARMUP", FLAGS_ysql_conn_mgr_dowarmup ? "true" : "false");
+
+  proc_->SetEnv("YB_YSQL_CONN_MGR_DOWARMUP_ALL_POOLS_RANDOM_ATTACH",
+                FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_random_attach ? "true" : "false");
 
   unsetenv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME);
   if (FLAGS_enable_ysql_conn_mgr_stats) {

@@ -35,8 +35,7 @@ import play.mvc.Result;
 
 @Api(
     value = "Upload Release packages",
-    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH),
-    hidden = true)
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 @Slf4j
 public class ReleasesUploadController extends AuthenticatedController {
 
@@ -52,15 +51,14 @@ public class ReleasesUploadController extends AuthenticatedController {
   @ApiOperation(
       value = "upload a release tgz",
       nickname = "uploadRelease",
-      notes = "YbaApi Internal upload release",
-      hidden = true) // TODO: remove hidden once complete.
+      notes = "WARNING: This is a preview API that could change: upload release tgz file")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
-  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.21.1.0")
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2024.2.0.0")
   public Result upload(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -72,9 +70,7 @@ public class ReleasesUploadController extends AuthenticatedController {
       throw new PlatformServiceException(BAD_REQUEST, "no 'file' found in body");
     }
     String fileName = FilenameUtils.getName(filePart.getFilename());
-    Path destPath =
-        Paths.get(
-            appConfig.getString(releaseUtils.RELEASE_PATH_CONFKEY), uuid.toString(), fileName);
+    Path destPath = Paths.get(releaseUtils.getUploadStoragePath(), uuid.toString(), fileName);
     if (!destPath.getParent().toFile().mkdir()) {
       log.error("failed to create directory {}", destPath.getParent());
       throw new PlatformServiceException(
@@ -100,16 +96,15 @@ public class ReleasesUploadController extends AuthenticatedController {
   @ApiOperation(
       value = "get an uploaded release metadata",
       nickname = "getUploadRelease",
-      notes = "YbaApi Internal get uploaded release metadata",
-      response = ResponseExtractMetadata.class,
-      hidden = true) // TODO: remove hidden once complete.
+      notes = "WARNING: This is a preview API that could change: get uploaded release metadata",
+      response = ResponseExtractMetadata.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
-  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.21.1.0")
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2024.2.0.0")
   public Result get(UUID customerUUID, UUID fileUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     ReleaseLocalFile rlf = ReleaseLocalFile.getOrBadRequest(fileUUID);

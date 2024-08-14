@@ -13,10 +13,11 @@
 
 #pragma once
 
+#include <rapidjson/document.h>
 #include "yb/tserver/xcluster_consumer_if.h"
 
 namespace yb {
-
+struct YsqlFullTableName;
 namespace tserver {
 
 struct XClusterOutputClientResponse;
@@ -33,7 +34,8 @@ class XClusterDDLQueueHandler {
  public:
   XClusterDDLQueueHandler(
       client::YBClient* local_client, const NamespaceName& namespace_name,
-      const NamespaceId& namespace_id, ConnectToPostgresFunc connect_to_pg_func);
+      const NamespaceId& namespace_id, TserverXClusterContextIf& xcluster_context,
+      ConnectToPostgresFunc connect_to_pg_func);
   virtual ~XClusterDDLQueueHandler();
 
   Status ProcessDDLQueueTable(const XClusterOutputClientResponse& response);
@@ -44,16 +46,24 @@ class XClusterDDLQueueHandler {
   Status RunAndLogQuery(const std::string& query);
 
   struct DDLQueryInfo {
-    const std::string& query;
+    std::string query;
     int64 start_time;
     int64 query_id;
-    const std::string& schema = "";
-    const std::string& user = "";
+    int version;
+    std::string command_tag;
+    std::string schema = "";
+    std::string user = "";
+
+    std::string ToString() const {
+      return YB_STRUCT_TO_STRING(query, start_time, query_id, version, command_tag, schema, user);
+    }
   };
+
+  Result<DDLQueryInfo> GetDDLQueryInfo(rapidjson::Document& doc, int64 start_time, int64 query_id);
 
   virtual Status ProcessDDLQuery(const DDLQueryInfo& query_info);
 
-  virtual Result<bool> CheckIfAlreadyProcessed(int64 start_time, int64 query_id);
+  virtual Result<bool> CheckIfAlreadyProcessed(const DDLQueryInfo& query_info);
 
   Status ProcessManualExecutionQuery(const DDLQueryInfo& query_info);
 
@@ -62,11 +72,17 @@ class XClusterDDLQueueHandler {
   virtual Result<std::vector<std::tuple<int64, int64, std::string>>> GetRowsToProcess(
       const HybridTime& apply_safe_time);
 
+  // Sets xcluster_context with the mapping of table name -> source table id.
+  Status ProcessNewRelations(
+      rapidjson::Document& doc, const std::string& schema,
+      std::vector<YsqlFullTableName>& new_relations);
+
   client::YBClient* local_client_;
 
   std::unique_ptr<pgwrapper::PGConn> pg_conn_;
   NamespaceName namespace_name_;
   NamespaceId namespace_id_;
+  TserverXClusterContextIf& xcluster_context_;
   ConnectToPostgresFunc connect_to_pg_func_;
 
   // Whether we have applied new rows to the ddl_queue table since the last apply_safe_time update.

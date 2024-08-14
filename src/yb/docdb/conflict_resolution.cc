@@ -408,6 +408,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
       return true;
     }
     RETURN_NOT_OK(OnConflictingTransactionsFound());
+    DEBUG_ONLY_TEST_SYNC_POINT("ConflictResolver::OnConflictingTransactionsFound");
     return false;
   }
 
@@ -947,9 +948,10 @@ class StrongConflictChecker {
                         TransactionError(TransactionErrorCode::kSkipLocking));
         } else {
           tablet_metrics_.Increment(tablet::TabletCounters::kTransactionConflicts);
-          return STATUS_EC_FORMAT(TryAgain, TransactionError(TransactionErrorCode::kConflict),
-                                  "Value write after transaction start: $0 >= $1",
-                                  doc_ht.hybrid_time(), read_time_);
+          return STATUS_EC_FORMAT(
+              TryAgain, TransactionError(TransactionErrorCode::kConflict),
+              "Conflict with concurrently committed data. Value write after transaction start: "
+              "doc ht ($0) >= read time ($1)", doc_ht.hybrid_time(), read_time_);
         }
       }
       buffer_.Reset(existing_key);

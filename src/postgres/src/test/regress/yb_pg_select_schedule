@@ -14,3 +14,4 @@ test: yb_dep_onek2
 test: yb_pg_select
 test: yb_pg_select_distinct
 test: yb_pg_select_distinct_on
+test: yb_pg_subselect

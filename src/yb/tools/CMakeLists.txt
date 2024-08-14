@@ -61,6 +61,7 @@ add_executable(yb-admin
 target_link_libraries(yb-admin
   yb-admin_lib
   master_error
+  master_util
   ${LINK_LIBS})
 
 add_library(yb-admin_lib

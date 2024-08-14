@@ -4,6 +4,7 @@ package com.yugabyte.yw.api.v2;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -12,6 +13,7 @@ import com.yugabyte.yba.v2.client.ApiException;
 import com.yugabyte.yba.v2.client.api.UniverseApi;
 import com.yugabyte.yba.v2.client.models.ClusterAddSpec;
 import com.yugabyte.yba.v2.client.models.ClusterEditSpec;
+import com.yugabyte.yba.v2.client.models.ClusterNodeSpec;
 import com.yugabyte.yba.v2.client.models.ClusterPlacementSpec;
 import com.yugabyte.yba.v2.client.models.ClusterProviderEditSpec;
 import com.yugabyte.yba.v2.client.models.ClusterSpec;
@@ -38,8 +40,10 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.junit.Before;
@@ -50,7 +54,7 @@ import org.mockito.ArgumentCaptor;
 public class UniverseApiControllerEditTest extends UniverseTestBase {
 
   @Before
-  public void setupUniverse() throws ApiException {
+  public void setupUniverse() throws ApiException, IOException {
     UniverseApi api = new UniverseApi();
     UniverseCreateSpec universeCreateSpec = getUniverseCreateSpecV2();
 
@@ -58,6 +62,8 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseConfigureTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     when(mockRuntimeConfig.getInt("yb.universe.otel_collector_metrics_port")).thenReturn(8889);
+    when(mockGFlagsValidation.getGFlagDetails(anyString(), anyString(), anyString()))
+        .thenReturn(Optional.empty());
 
     YBATask createTask = api.createUniverse(customer.getUuid(), universeCreateSpec);
     universeUuid = createTask.getResourceUuid();
@@ -142,14 +148,16 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
             .orElseThrow();
     ClusterStorageSpec newStorageSpec =
         primaryClusterSpec
+            .getNodeSpec()
             .getStorageSpec()
             .numVolumes(3)
             .volumeSize(65432)
             .storageType(StorageTypeEnum.GP3)
             .diskIops(16000)
             .throughput(1000);
+    ClusterNodeSpec newNodeSpec = primaryClusterSpec.getNodeSpec().storageSpec(newStorageSpec);
     ClusterEditSpec clusterEditSpec =
-        new ClusterEditSpec().uuid(primaryClusterSpec.getUuid()).storageSpec(newStorageSpec);
+        new ClusterEditSpec().uuid(primaryClusterSpec.getUuid()).nodeSpec(newNodeSpec);
     UniverseEditSpec universeEditSpec =
         new UniverseEditSpec().expectedUniverseVersion(-1).clusters(List.of(clusterEditSpec));
     // run the edit universe
@@ -190,8 +198,9 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
             .findAny()
             .orElseThrow();
 
+    ClusterNodeSpec newNodeSpec = primaryClusterSpec.getNodeSpec().instanceType("c5.large");
     ClusterEditSpec clusterEditSpec =
-        new ClusterEditSpec().uuid(primaryClusterSpec.getUuid()).instanceType("c5.large");
+        new ClusterEditSpec().uuid(primaryClusterSpec.getUuid()).nodeSpec(newNodeSpec);
     UniverseEditSpec universeEditSpec =
         new UniverseEditSpec().expectedUniverseVersion(-1).clusters(List.of(clusterEditSpec));
     // run the edit universe
@@ -224,7 +233,17 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
         com.yugabyte.yba.v2.client.models.ClusterAddSpec.ClusterTypeEnum.READ_REPLICA);
     // numNodes should be greater than rf=5 inherited from primary
     clusterAddSpec.setNumNodes(6);
-    clusterAddSpec.setInstanceType("c5.medium");
+    ClusterNodeSpec nodeSpec =
+        new ClusterNodeSpec()
+            .instanceType("c5.medium")
+            .storageSpec(
+                new ClusterStorageSpec()
+                    .numVolumes(1)
+                    .volumeSize(1024)
+                    .storageType(StorageTypeEnum.GP2)
+                    .diskIops(3000)
+                    .throughput(250));
+    clusterAddSpec.setNodeSpec(nodeSpec);
     ClusterProviderEditSpec clusterProviderSpec = new ClusterProviderEditSpec();
     clusterProviderSpec.addRegionListItem(Region.getByProvider(providerUuid).get(0).getUuid());
     clusterAddSpec.setProviderSpec(clusterProviderSpec);

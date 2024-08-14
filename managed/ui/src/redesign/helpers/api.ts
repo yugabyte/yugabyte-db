@@ -193,14 +193,20 @@ export interface CreateDrConfigRequest {
   name: string;
   sourceUniverseUUID: string;
   targetUniverseUUID: string;
-  dbs: string[]; // Database uuids (from source universe) selected for replication.
+  // `dbs` - source universe database UUIDs
+  dbs: string[];
   bootstrapParams: {
     backupRequestParams?: {
       storageConfigUUID: string;
     };
   };
+  pitrParams: {
+    retentionPeriodSec: number;
+    snapshotIntervalSec: number;
+  };
 
-  dryRun?: boolean; // Run the pre-checks without actually running the subtasks
+  // `dryRun` - When `true`, it runs the pre-checks without actually running the subtasks
+  dryRun?: boolean;
 }
 
 export interface EditDrConfigRequest {
@@ -683,9 +689,7 @@ class ApiService {
 
   fetchUniverseTasks = (universeUuid: string): Promise<any> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/tasks_list`;
-    return axios
-      .get<any>(requestUrl, { params: { uUUID: universeUuid } })
-      .then((response) => response.data);
+    return axios.get<any>(requestUrl, { params: { uUUID: universeUuid } });
   };
 
   getAlerts = (

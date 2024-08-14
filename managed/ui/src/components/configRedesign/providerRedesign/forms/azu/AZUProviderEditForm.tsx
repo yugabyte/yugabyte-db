@@ -141,7 +141,7 @@ const VALIDATION_SCHEMA = object().shape({
     .required('Azure Client ID is required.')
     .matches(
       UUID_REGEX,
-      "UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)"
+      'UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)'
     ),
   azuClientSecret: mixed().test({
     test: (value, context) => {
@@ -160,19 +160,19 @@ const VALIDATION_SCHEMA = object().shape({
     .required('Azure Resource Group is required.')
     .matches(
       RG_REGEX,
-      "Resource group names can only include alphanumeric, underscore, parentheses, hyphen, period (except at end)"
+      'Resource group names can only include alphanumeric, underscore, parentheses, hyphen, period (except at end)'
     ),
   azuSubscriptionId: string()
     .required('Azure Subscription ID is required.')
     .matches(
       UUID_REGEX,
-      "UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)"
+      'UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)'
     ),
   azuTenantId: string()
     .required('Azure Tenant ID is required.')
     .matches(
       UUID_REGEX,
-      "UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)"
+      'UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)'
     ),
   sshKeypairManagement: mixed().when('editSSHKeypair', {
     is: true,
@@ -201,16 +201,16 @@ const VALIDATION_SCHEMA = object().shape({
     )
   }),
   regions: array().min(1, 'Provider configurations must contain at least one region.'),
-  azuNetworkRG: string()
-    .matches(
-      RG_REGEX,
-      "Resource group names can only include alphanumeric, underscore, parentheses, hyphen, period (except at end)"
-    ),
-  azuNetworkSubscriptionId: string()
-    .matches(
-      UUID_REGEX,
-      "UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)"
-    )
+  azuNetworkRG: string().matches(RG_REGEX, {
+    message:
+      'Resource group names can only include alphanumeric, underscore, parentheses, hyphen, period (except at end)',
+    excludeEmptyString: true
+  }),
+  azuNetworkSubscriptionId: string().matches(UUID_REGEX, {
+    message:
+      'UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)',
+    excludeEmptyString: true
+  })
 });
 
 const FORM_NAME = 'AZUProviderEditForm';
@@ -377,7 +377,7 @@ export const AZUProviderEditForm = ({
   const inUseZones = getInUseAzs(providerConfig.uuid, linkedUniverses, regionSelection?.code);
   const isEditInUseProviderEnabled = runtimeConfigEntries.some(
     (config: any) =>
-      config.key === RuntimeConfigKey.EDIT_IN_USE_PORIVDER_UI_FEATURE_FLAG &&
+      config.key === RuntimeConfigKey.EDIT_IN_USE_PROVIDER_UI_FEATURE_FLAG &&
       config.value === 'true'
   );
 
@@ -882,6 +882,8 @@ const constructDefaultFormValues = (
     vnet: region.details.cloudInfo.azu.vnet,
     securityGroupId: region.details.cloudInfo.azu.securityGroupId,
     ybImage: region.details.cloudInfo.azu.ybImage ?? '',
+    azuNetworkRGOverride: region.details.cloudInfo.azu.azuNetworkRGOverride ?? '',
+    azuRGOverride: region.details.cloudInfo.azu.azuRGOverride ?? '',
     zones: region.zones
   })),
   sshKeypairManagement: getLatestAccessKey(providerConfig.allAccessKeys)?.keyInfo.managementState,
@@ -978,6 +980,12 @@ const constructProviderPayload = async (
                 }),
                 ...(regionFormValues.ybImage && {
                   ybImage: regionFormValues.ybImage
+                }),
+                ...(regionFormValues.azuNetworkRGOverride && {
+                  azuNetworkRGOverride: regionFormValues.azuNetworkRGOverride
+                }),
+                ...(regionFormValues.azuRGOverride && {
+                  azuRGOverride: regionFormValues.azuRGOverride
                 })
               }
             }

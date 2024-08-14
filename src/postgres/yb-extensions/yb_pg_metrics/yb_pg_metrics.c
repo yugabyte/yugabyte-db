@@ -12,6 +12,7 @@
 
 #include "postgres.h"
 
+#include <assert.h>
 #include <math.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -61,6 +62,87 @@ typedef enum statementType
   Transaction,
   AggregatePushdown,
   CatCacheMisses,
+  CatCacheIdMisses_Start,
+  CatCacheIdMisses_0 = CatCacheIdMisses_Start,
+  CatCacheIdMisses_1,
+  CatCacheIdMisses_2,
+  CatCacheIdMisses_3,
+  CatCacheIdMisses_4,
+  CatCacheIdMisses_5,
+  CatCacheIdMisses_6,
+  CatCacheIdMisses_7,
+  CatCacheIdMisses_8,
+  CatCacheIdMisses_9,
+  CatCacheIdMisses_10,
+  CatCacheIdMisses_11,
+  CatCacheIdMisses_12,
+  CatCacheIdMisses_13,
+  CatCacheIdMisses_14,
+  CatCacheIdMisses_15,
+  CatCacheIdMisses_16,
+  CatCacheIdMisses_17,
+  CatCacheIdMisses_18,
+  CatCacheIdMisses_19,
+  CatCacheIdMisses_20,
+  CatCacheIdMisses_21,
+  CatCacheIdMisses_22,
+  CatCacheIdMisses_23,
+  CatCacheIdMisses_24,
+  CatCacheIdMisses_25,
+  CatCacheIdMisses_26,
+  CatCacheIdMisses_27,
+  CatCacheIdMisses_28,
+  CatCacheIdMisses_29,
+  CatCacheIdMisses_30,
+  CatCacheIdMisses_31,
+  CatCacheIdMisses_32,
+  CatCacheIdMisses_33,
+  CatCacheIdMisses_34,
+  CatCacheIdMisses_35,
+  CatCacheIdMisses_36,
+  CatCacheIdMisses_37,
+  CatCacheIdMisses_38,
+  CatCacheIdMisses_39,
+  CatCacheIdMisses_40,
+  CatCacheIdMisses_41,
+  CatCacheIdMisses_42,
+  CatCacheIdMisses_43,
+  CatCacheIdMisses_44,
+  CatCacheIdMisses_45,
+  CatCacheIdMisses_46,
+  CatCacheIdMisses_47,
+  CatCacheIdMisses_48,
+  CatCacheIdMisses_49,
+  CatCacheIdMisses_50,
+  CatCacheIdMisses_51,
+  CatCacheIdMisses_52,
+  CatCacheIdMisses_53,
+  CatCacheIdMisses_54,
+  CatCacheIdMisses_55,
+  CatCacheIdMisses_56,
+  CatCacheIdMisses_57,
+  CatCacheIdMisses_58,
+  CatCacheIdMisses_59,
+  CatCacheIdMisses_60,
+  CatCacheIdMisses_61,
+  CatCacheIdMisses_62,
+  CatCacheIdMisses_63,
+  CatCacheIdMisses_64,
+  CatCacheIdMisses_65,
+  CatCacheIdMisses_66,
+  CatCacheIdMisses_67,
+  CatCacheIdMisses_68,
+  CatCacheIdMisses_69,
+  CatCacheIdMisses_70,
+  CatCacheIdMisses_71,
+  CatCacheIdMisses_72,
+  CatCacheIdMisses_73,
+  CatCacheIdMisses_74,
+  CatCacheIdMisses_75,
+  CatCacheIdMisses_76,
+  CatCacheIdMisses_77,
+  CatCacheIdMisses_78,
+  CatCacheIdMisses_End,
   kMaxStatementType
 } statementType;
 int num_entries = kMaxStatementType;
@@ -103,6 +185,7 @@ PgBackendStatus *backendStatusArray = NULL;
 extern int MaxConnections;
 
 static long last_cache_misses_val = 0;
+static long last_cache_id_misses_val[SysCacheSize] = {0};
 
 static volatile sig_atomic_t got_SIGHUP = false;
 static volatile sig_atomic_t got_SIGTERM = false;
@@ -195,6 +278,16 @@ set_metric_names(void)
   strcpy(ybpgm_table[Transaction].name, YSQL_METRIC_PREFIX "Transactions");
   strcpy(ybpgm_table[AggregatePushdown].name, YSQL_METRIC_PREFIX "AggregatePushdowns");
   strcpy(ybpgm_table[CatCacheMisses].name, YSQL_METRIC_PREFIX "CatalogCacheMisses");
+  for (int i = CatCacheIdMisses_Start; i < CatCacheIdMisses_End; ++i)
+  {
+	int cache_id = i - CatCacheIdMisses_Start;
+	char index_name[NAMEDATALEN + 16];
+	strcpy(ybpgm_table[i].name, YSQL_METRIC_PREFIX "CatalogCacheMisses");
+	sprintf(index_name, "_%s", YbGetCatalogCacheIndexName(cache_id));
+	Assert(strlen(ybpgm_table[i].name) + strlen(index_name) <
+		   sizeof(ybpgm_table[i].name));
+	strcat(ybpgm_table[i].name, index_name);
+  }
 }
 
 /*
@@ -530,6 +623,8 @@ _PG_init(void)
 
   prev_ProcessUtility = ProcessUtility_hook;
   ProcessUtility_hook = ybpgm_ProcessUtility;
+  static_assert(SysCacheSize == CatCacheIdMisses_End - CatCacheIdMisses_Start,
+				"Wrong catalog cache number");
 }
 
 /*
@@ -663,27 +758,37 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
 
 	ybpgm_Store(type, time, rows_count);
 
-  if (queryDesc->estate->yb_es_is_single_row_modify_txn)
-  {
-    ybpgm_Store(Single_Shard_Transaction, time, rows_count);
-    ybpgm_Store(SingleShardTransaction, time, rows_count);
-  }
+	if (queryDesc->estate->yb_es_is_single_row_modify_txn)
+	{
+		ybpgm_Store(Single_Shard_Transaction, time, rows_count);
+		ybpgm_Store(SingleShardTransaction, time, rows_count);
+	}
 
-  if (!is_inside_transaction_block)
-  ybpgm_Store(Transaction, time, rows_count);
+	if (!is_inside_transaction_block)
+	  ybpgm_Store(Transaction, time, rows_count);
 
-  if (IsA(queryDesc->planstate, AggState) &&
-      castNode(AggState, queryDesc->planstate)->yb_pushdown_supported)
-    ybpgm_Store(AggregatePushdown, time, rows_count);
+	if (IsA(queryDesc->planstate, AggState) &&
+		castNode(AggState, queryDesc->planstate)->yb_pushdown_supported)
+	ybpgm_Store(AggregatePushdown, time, rows_count);
 
-  long current_cache_misses = GetCatCacheMisses();
+	long current_cache_misses = YbGetCatCacheMisses();
+	long* current_cache_id_misses = YbGetCatCacheIdMisses();
 
-  /* Currently we set the time parameter to 0 as we don't have metrics
-   * for that available
-   * TODO: Get timing metrics for catalog cache misses
-   */
-  ybpgm_StoreCount(CatCacheMisses, 0, current_cache_misses - last_cache_misses_val);
-  last_cache_misses_val = current_cache_misses;
+	long total_delta = current_cache_misses - last_cache_misses_val;
+	last_cache_misses_val = current_cache_misses;
+
+	/* Currently we set the time parameter to 0 as we don't have metrics
+	 * for that available
+	 * TODO: Get timing metrics for catalog cache misses
+	 */
+	ybpgm_StoreCount(CatCacheMisses, 0, total_delta);
+	if (total_delta > 0)
+		for (int i = CatCacheIdMisses_Start; i < CatCacheIdMisses_End; ++i)
+		{
+			int j = i - CatCacheIdMisses_Start;
+			ybpgm_StoreCount(i, 0, current_cache_id_misses[j] - last_cache_id_misses_val[j]);
+			last_cache_id_misses_val[j] = current_cache_id_misses[j];
+		}
   }
 
   IncStatementNestingLevel();

@@ -55,7 +55,7 @@ npm install
 
 ## Specify SSL configuration
 
-This configuration can be used while connecting to a YB Managed cluster or a local YB cluster with SSL enabled.
+This configuration can be used while connecting to a cluster with SSL enabled.
 
 Use the configuration in the following way in the `models/index.js` file when you create the sequelize object:
 

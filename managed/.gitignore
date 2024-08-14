@@ -71,5 +71,8 @@ devops/pex/pexEnv
 # openapi generated server stubs during build
 src/main/resources/openapi.yaml
 src/main/resources/openapi_public.yaml
-src/main/resources/openapi/paths/_index.yaml
 tmp
+
+# openapi generated JS API stubs
+ui/src/v2/api
+ui/src/v2/validationSchema

@@ -36,6 +36,8 @@ DEFINE_UNKNOWN_double(master_slow_get_registration_probability, 0,
               "Probability of injecting delay in GetMasterRegistration.");
 DECLARE_bool(enable_ysql_tablespaces_for_placement);
 
+DECLARE_bool(emergency_repair_mode);
+
 using namespace std::literals;
 
 namespace yb {
@@ -106,14 +108,14 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
       }
     }
 
-    for (const std::shared_ptr<TSDescriptor>& desc : descs) {
-      auto ts_info = *desc->GetTSInformationPB();
+    for (const auto& desc : descs) {
+      auto l = desc->LockForRead();
       if (is_ysql_replication_info_required) {
         LOG(INFO) << "Filter TServers based on placement ID "
                   << "and cloud info against placement "
                   << replication_info->live_replicas().placement_uuid();
         // Filter based on placement ID
-        if (ts_info.registration().common().placement_uuid() !=
+        if (l->pb.registration().placement_uuid() !=
             replication_info->live_replicas().placement_uuid())
           continue;
 
@@ -123,20 +125,18 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
             replication_info->live_replicas().placement_blocks();
         for (const auto& pb : placement_blocks) {
           if (CatalogManagerUtil::IsCloudInfoPrefix(
-                  ts_info.registration().common().cloud_info(),
-                  pb.cloud_info())) {
+                  l->pb.registration().cloud_info(), pb.cloud_info())) {
             is_cloud_match = true;
             break;
           }
         }
-        if (!is_cloud_match)
-          continue;
+        if (!is_cloud_match) continue;
         LOG(INFO) << "Placement info has matched against placement "
                   << replication_info->live_replicas().placement_uuid();
       }
       ListTabletServersResponsePB::Entry* entry = resp->add_servers();
-      *entry->mutable_instance_id() = std::move(*ts_info.mutable_tserver_instance());
-      *entry->mutable_registration() = std::move(*ts_info.mutable_registration());
+      *entry->mutable_instance_id() = desc->GetNodeInstancePB();
+      *entry->mutable_registration() = desc->GetTSRegistrationPB();
       auto last_heartbeat = desc->LastHeartbeatTime();
       if (last_heartbeat) {
         auto ms_since_heartbeat = MonoTime::Now().GetDeltaSince(last_heartbeat).ToMilliseconds();
@@ -180,9 +180,8 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
         continue;
       }
       ListLiveTabletServersResponsePB::Entry* entry = resp->add_servers();
-      auto ts_info = *desc->GetTSInformationPB();
-      *entry->mutable_instance_id() = std::move(*ts_info.mutable_tserver_instance());
-      *entry->mutable_registration() = std::move(*ts_info.mutable_registration());
+      *entry->mutable_instance_id() = desc->GetNodeInstancePB();
+      *entry->mutable_registration() = desc->GetTSRegistrationPB();
       bool isPrimary = server_->ts_manager()->IsTsInCluster(desc, placement_uuid);
       entry->set_isfromreadreplica(!isPrimary);
     }
@@ -236,7 +235,10 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
     Status s = server_->GetMasterRegistration(resp->mutable_registration());
     CheckRespErrorOrSetUnknown(s, resp);
     auto role = server_->catalog_manager_impl()->Role();
-    if (role == PeerRole::LEADER) {
+    if (role == PeerRole::LEADER && !FLAGS_emergency_repair_mode) {
+      // When in emergency_repair_mode the CatalogManager is not fully loaded and leader_state will
+      // be invalid. We need to allow the leader to respond to the GetMasterRegistration request so
+      // that the client can then invoke DumpSysCatalogEntries and WriteSysCatalogEntry RPCs.
       if (!l.leader_status().ok()) {
         YB_LOG_EVERY_N_SECS(INFO, 1)
             << "Patching role from leader to follower because of: " << l.leader_status()
@@ -273,11 +275,17 @@ class MasterClusterServiceImpl : public MasterServiceBase, public MasterClusterI
 
     if (req->return_dump_as_string()) {
       std::ostringstream ss;
-      server_->catalog_manager_impl()->DumpState(&ss, req->on_disk());
+      auto s = server_->catalog_manager_impl()->DumpState(&ss, req->on_disk());
+      CheckRespErrorOrSetUnknown(s, resp);
+      if (!s.ok())
+        return;
       resp->set_dump(title + ":\n" + ss.str());
     } else {
       LOG(INFO) << title;
-      server_->catalog_manager_impl()->DumpState(&LOG(INFO), req->on_disk());
+      auto s = server_->catalog_manager_impl()->DumpState(&LOG(INFO), req->on_disk());
+      CheckRespErrorOrSetUnknown(s, resp);
+      if (!s.ok())
+        return;
     }
 
     if (req->has_peers_also() && req->peers_also()) {

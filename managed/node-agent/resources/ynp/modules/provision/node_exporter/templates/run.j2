@@ -1,0 +1,62 @@
+thirdparty_dir="{{ ynp_dir }}/../../thirdparty"
+
+# Setup the directories & permissions for prometheus user
+mkdir -p /opt/prometheus
+mkdir -p /etc/prometheus
+mkdir -p /var/log/prometheus
+mkdir -p /var/run/prometheus
+mkdir -p /tmp/yugabyte/metrics
+
+if [ -f "$thirdparty_dir/node_exporter-1.7.0.linux-amd64.tar.gz" ]; then
+    mv "$thirdparty_dir/node_exporter-1.7.0.linux-amd64.tar.gz" /opt/prometheus
+fi
+
+# Check if the user "prometheus" already exists
+if ! id -u prometheus >/dev/null 2>&1; then
+    adduser --shell /bin/bash prometheus
+fi
+
+# Set ownership and permissions
+chown -R prometheus:prometheus /opt/prometheus
+chown -R prometheus:prometheus /etc/prometheus
+chown -R prometheus:prometheus /var/log/prometheus
+chown -R prometheus:prometheus /var/run/prometheus
+chown -R yugabyte:yugabyte /tmp/yugabyte/metrics
+chmod -R 755 /tmp/yugabyte/metrics
+
+if [ -f /opt/prometheus/node_exporter-1.7.0.linux-amd64.tar.gz ]; then
+    chmod +r /opt/prometheus/node_exporter-1.7.0.linux-amd64.tar.gz
+
+    # Extract the node_exporter tarball
+    su - {{ prometheus_user }} -c "cd /opt/prometheus && tar zxf node_exporter-1.7.0.linux-amd64.tar.gz"
+fi
+
+# Configure Systemd Unit
+file_path="/etc/systemd/system/node_exporter.service"
+
+# Create the file and write the content
+cat <<EOL > $file_path
+[Unit]
+Description=node_exporter - Exporter for machine metrics.
+Documentation=https://github.com/William-Yeh/ansible-prometheus
+After=network.target
+
+[Install]
+WantedBy=multi-user.target
+
+[Service]
+Type=simple
+Restart=on-failure
+
+User=prometheus
+Group=prometheus
+
+ExecStart=/opt/prometheus/node_exporter-1.7.0.linux-amd64/node_exporter  --web.listen-address=:9300 --collector.textfile.directory={{ yb_home_dir }}/metrics
+EOL
+
+# Enable and start the node_exporter service
+systemctl daemon-reload
+systemctl enable node_exporter
+systemctl start node_exporter
+
+echo "Node exporter setup is complete."

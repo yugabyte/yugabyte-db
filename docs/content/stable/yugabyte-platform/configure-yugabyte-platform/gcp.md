@@ -69,9 +69,11 @@ To create a GCP provider:
 
 1. Enter the provider details. Refer to [Provider settings](#provider-settings).
 
-1. Click **Create Provider Configuration** when you are done and wait for the configuration to complete.
+1. Click **Validate and Save Configuration** when you are done and wait for the configuration to validate and complete.
 
-This process includes generating a new VPC, a network, subnetworks in all available regions, as well as a new firewall rule, VPC peering for network connectivity, and a custom SSH key pair for YBA-to-YugabyteDB connectivity.
+    If you want to save your progress, you can skip validation by choosing the **Ignore and save provider configuration anyway** option, which saves the provider configuration without validating. Note that you may not be able to create universes using an incomplete or unvalidated provider.
+
+The create provider process includes generating a new VPC, a network, subnetworks in all available regions, as well as a new firewall rule, VPC peering for network connectivity, and a custom SSH key pair for YBA-to-YugabyteDB connectivity.
 
 Now you are ready to create a YugabyteDB universe on GCP.
 
@@ -108,7 +110,7 @@ Enter a Provider name. The Provider name is an internal tag used for organizing 
 
 ### Cloud Info
 
-If your YBA instance is not running inside GCP, you need to supply YBA with credentials to the desired GCP project by uploading a configuration file. To do this, set **Credential Type** to **Upload Service Account config** and proceed to upload the JSON file that you obtained when you created your service account, as described in [Cloud permissions](../../prepare/cloud-permissions/cloud-permissions-nodes/).
+If your YBA instance is not running inside GCP, you need to supply YBA with credentials to the desired GCP project by uploading a configuration file. To do this, set **Credential Type** to **Upload Service Account config** and proceed to upload the JSON file that you obtained when you created your service account, as described in [Cloud permissions](../../prepare/cloud-permissions/cloud-permissions-nodes-gcp/).
 
 If your YBA instance is running inside GCP, the preferred method for authentication to the GCP APIs is to add a service account role to the GCP instance running YBA and then configure YBA to use the instance's service account. To do this, set **Credential Type** to **Use service account from this YBA host's instance**.
 

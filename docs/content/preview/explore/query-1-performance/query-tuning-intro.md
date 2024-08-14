@@ -21,7 +21,7 @@ Before trying to optimize individual statements, make sure the YugabyteDB cluste
 * Verify that all nodes that are supposed to be running are indeed running.
 * Verify that the YB-TServer and, where applicable, YB-Master processes are running on the nodes.
 
-To view the nodes and servers that make up your cluster, use the `yb-admin` command to request the master and tablet servers. For example:
+To view the nodes and servers that make up your cluster, use yb-admin to request the master and tablet servers. For example:
 
 ```sh
 $ ./bin/yb-admin -init_master_addrs=$(hostname):7100 list_all_masters

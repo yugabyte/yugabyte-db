@@ -1,7 +1,7 @@
 ---
 title: Maintenance windows
 linkTitle: Maintenance windows
-description: Manage maintenance windows for clusters in YugabyteDB Managed.
+description: Manage maintenance windows for clusters in YugabyteDB Aeon.
 headcontent: Manage cluster maintenance windows and set exclusion periods
 menu:
   preview_yugabyte-cloud:

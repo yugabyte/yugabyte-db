@@ -48,6 +48,7 @@ DECLARE_bool(rocksdb_use_logging_iterator);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
 DECLARE_bool(use_fast_backward_scan);
+DECLARE_bool(ysql_use_packed_row_v2);
 DECLARE_int64(global_memstore_size_mb_max);
 DECLARE_int64(db_block_cache_size_bytes);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
@@ -704,9 +705,37 @@ TEST_F(PgSingleTServerTest, YB_DISABLE_TEST(PerfScanG7RangePK100Columns)) {
   }
 }
 
-class PgFastBackwardScanTest : public PgSingleTServerTest {
+YB_DEFINE_ENUM(OptionalPackedRowVersion, (kNone)(kV1)(kV2));
+
+using FastBackwardScanParams = std::tuple<
+    /* fast backward scan: on / off */ bool,
+    /* with nulls: on / off */ bool,
+    OptionalPackedRowVersion>;
+
+std::string FastBackwardScanParamsToString(
+    const testing::TestParamInfo<FastBackwardScanParams>& param_info) {
+  return yb::Format(
+    "$0_$1_$2",
+    std::get<0>(param_info.param) ? "Fast" : "Slow",
+    std::get<1>(param_info.param) ? "WithNulls" : "WithoutNulls",
+    yb::AsString(std::get<2>(param_info.param)));
+}
+
+class PgFastBackwardScanTest
+    : public PgSingleTServerTest,
+      public testing::WithParamInterface<FastBackwardScanParams> {
+
+ public:
+  PgFastBackwardScanTest()
+      : use_fast_backward_scan_(std::get<0>(GetParam())),
+        use_row_with_nulls_(std::get<1>(GetParam())),
+        use_packed_row_(std::get<2>(GetParam()) != OptionalPackedRowVersion::kNone),
+        use_packed_row_v2_(std::get<2>(GetParam()) == OptionalPackedRowVersion::kV2)
+  {}
+
  protected:
   enum class IntentsUsage { kRegularOnly, kIntentsOnly, kMixed };
+
   friend std::ostream& operator<<(std::ostream& out, IntentsUsage usage) {
     switch (usage) {
       case IntentsUsage::kRegularOnly:
@@ -720,6 +749,12 @@ class PgFastBackwardScanTest : public PgSingleTServerTest {
   }
 
   void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_fast_backward_scan) = use_fast_backward_scan_;
+
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = use_packed_row_;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = use_packed_row_;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_packed_row_v2) = use_packed_row_v2_;
+
     // Disable backgorund compactions.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
 
@@ -737,14 +772,17 @@ class PgFastBackwardScanTest : public PgSingleTServerTest {
   Status FetchAndValidate(
       PGConn& conn, const std::string& fetch_stmt,
       const std::string& expected_result, size_t num_iterations = 4) {
+    VLOG_WITH_FUNC(1)
+        << "fetch stmt: '" << fetch_stmt << "' expected result: '" << expected_result << "'";
     for ([[maybe_unused]] const auto _ : Range(num_iterations)) {
       const auto result = VERIFY_RESULT(conn.FetchAllAsString(fetch_stmt));
+      VLOG_WITH_FUNC(1) << "iteration: " << _ << " actual result: '" << result << "'";
       SCHECK_EQ(result, expected_result, IllegalState, "Unexpected result");
     }
     return Status::OK();
   }
 
-  void SimpleTest(IntentsUsage intents_usage) {
+  void SimpleTest(const std::string& table_name, IntentsUsage intents_usage, bool with_nulls) {
     // A helper functor to generate RangeObject for to cover requested keys.
     auto keys = [](int min_key, int max_key = 0) {
       return Range(min_key, max_key > 0 ? max_key + 1 : min_key + 1);
@@ -774,24 +812,26 @@ class PgFastBackwardScanTest : public PgSingleTServerTest {
     auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
 
     // A helper functor to execute 'INSERT INTO table VALUES <values>' statement.
-    auto insert_values = [&conn](const std::string& values) {
-      return conn.ExecuteFormat("INSERT INTO ttable VALUES $0", values);
+    auto insert_values = [&conn, &table_name](const std::string& values) {
+      return conn.ExecuteFormat("INSERT INTO $0 VALUES $1", table_name, values);
     };
 
     // A helper functor to execute a select statement for the test.
-    auto fetch_and_validate = [this, &conn](const std::string& expected) {
+    auto fetch_and_validate = [this, &conn, &table_name, with_nulls](
+        const std::string& expected_without_nulls, const std::string& expected_with_nulls) {
       return FetchAndValidate(conn,
-          "SELECT c_1, c_5, r FROM ttable WHERE h = 1 ORDER BY r DESC", expected);
+          Format("SELECT c_1, c_5, r FROM $0 WHERE h = 1 ORDER BY r DESC", table_name),
+          with_nulls ? expected_with_nulls : expected_without_nulls);
     };
 
     // Create table.
     {
-      std::string stmt = "CREATE TABLE ttable(h int, r int, ";
+      std::string stmt = "CREATE TABLE $0(h int, r int, ";
       for (const auto i : kColumns) {
         stmt += Format("c_$0 int, ", i);
       }
       stmt += "PRIMARY KEY(h, r asc));";
-      ASSERT_OK(conn.Execute(stmt));
+      ASSERT_OK(conn.ExecuteFormat(stmt, table_name));
     }
 
     if (intents_usage == IntentsUsage::kIntentsOnly) {
@@ -800,122 +840,125 @@ class PgFastBackwardScanTest : public PgSingleTServerTest {
 
     // Load data.
     {
-      std::string stmt = "INSERT INTO ttable SELECT h_val, r_val";
+      std::string stmt = "INSERT INTO $0 SELECT h_val, r_val";
       for (const auto i : kColumns) {
-        stmt += Format(", $0", i);
+        stmt += (with_nulls && i == 1) ? ", NULL" : Format(", $0", i);
       }
       stmt += Format(
           " FROM generate_series(1, $0) h_val, generate_series(1, 3) r_val;", kHKeys.size());
-      ASSERT_OK(conn.ExecuteFormat(stmt));
+      ASSERT_OK(conn.ExecuteFormat(stmt, table_name));
       ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
     }
 
-    // For mixed mode, regular DB contains records #1, #2, #4, intents DB is empty.
-    ASSERT_OK(fetch_and_validate("1, 5, 3; 1, 5, 2; 1, 5, 1"));
+    // For mixed mode, regular DB contains records #1, #2, #3, intents DB is empty.
+    ASSERT_OK(fetch_and_validate(
+        "1, 5, 3; 1, 5, 2; 1, 5, 1", "NULL, 5, 3; NULL, 5, 2; NULL, 5, 1"
+    ));
 
     if (intents_usage == IntentsUsage::kMixed) {
       ASSERT_OK(conn.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
     }
 
     // Update some rows, make deletes and more inserts.
-    ASSERT_OK(conn.Execute("UPDATE ttable SET c_1 = 4096 WHERE h = 1 and r = 1"));
+    ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET c_1 = 4096 WHERE h = 1 and r = 1", table_name));
     ASSERT_OK(insert_values(build_values(/* r_keys */ keys(4, 5), 255)));
-    ASSERT_OK(conn.ExecuteFormat("DELETE FROM ttable WHERE r = 3"));
+    ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE r = 3", table_name));
     ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
-    ASSERT_OK(fetch_and_validate("256, 260, 5; 256, 260, 4; 1, 5, 2; 4096, 5, 1"));
+    ASSERT_OK(fetch_and_validate(
+        "256, 260, 5; 256, 260, 4; 1, 5, 2; 4096, 5, 1",
+        "256, 260, 5; 256, 260, 4; NULL, 5, 2; 4096, 5, 1"
+    ));
 
     // Re-insert data for the deleted rows.
     ASSERT_OK(insert_values(build_values(/* r_keys */ keys(3), 16383)));
     ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
-    ASSERT_OK(fetch_and_validate("256, 260, 5; 256, 260, 4; 16384, 16388, 3; 1, 5, 2; 4096, 5, 1"));
+    ASSERT_OK(fetch_and_validate(
+        "256, 260, 5; 256, 260, 4; 16384, 16388, 3; 1, 5, 2; 4096, 5, 1",
+        "256, 260, 5; 256, 260, 4; 16384, 16388, 3; NULL, 5, 2; 4096, 5, 1"
+    ));
 
     // Delete the same records again.
-    ASSERT_OK(conn.ExecuteFormat("DELETE FROM ttable WHERE r = 3"));
+    ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE r = 3", table_name));
     ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
-    ASSERT_OK(fetch_and_validate("256, 260, 5; 256, 260, 4; 1, 5, 2; 4096, 5, 1"));
+    ASSERT_OK(fetch_and_validate(
+        "256, 260, 5; 256, 260, 4; 1, 5, 2; 4096, 5, 1",
+        "256, 260, 5; 256, 260, 4; NULL, 5, 2; 4096, 5, 1"));
 
     // Delete records from the intents DB in such way the very first row would be in regular DB.
-    ASSERT_OK(conn.ExecuteFormat("DELETE FROM ttable WHERE r IN (4, 5, 6)"));
+    ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE r IN (4, 5, 6)", table_name));
     ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
-    ASSERT_OK(fetch_and_validate("1, 5, 2; 4096, 5, 1"));
+    ASSERT_OK(fetch_and_validate("1, 5, 2; 4096, 5, 1", "NULL, 5, 2; 4096, 5, 1"));
 
     // Insert some data which would be positioned before all the existing rows.
     ASSERT_OK(insert_values(build_values(/* r_keys */ keys(0), 65535)));
     ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
-    ASSERT_OK(fetch_and_validate("1, 5, 2; 4096, 5, 1; 65536, 65540, 0"));
+    ASSERT_OK(fetch_and_validate(
+        "1, 5, 2; 4096, 5, 1; 65536, 65540, 0", "NULL, 5, 2; 4096, 5, 1; 65536, 65540, 0"
+    ));
 
     if (intents_usage != IntentsUsage::kRegularOnly) {
       ASSERT_OK(conn.CommitTransaction());
     }
 
     // Remove all rows for the corresponding key outside the transaction.
-    ASSERT_OK(conn.ExecuteFormat("DELETE FROM ttable WHERE h = 1 AND r >= 0"));
+    ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE h = 1 AND r >= 0", table_name));
     ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
-    ASSERT_OK(fetch_and_validate(""));
+    ASSERT_OK(fetch_and_validate("", ""));
 
-    ASSERT_OK(conn.Execute("DROP TABLE ttable"));
     LOG_WITH_FUNC(INFO) << "Done";
   }
 
   void RunSimpleTests() {
-    // TODO(#22556): Update this test when fast backward scan will be supported for packed row V2.
-    for (const auto use_fast_backward_scan : {false, true}) {
-      ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_fast_backward_scan) = use_fast_backward_scan;
+    size_t table_counter = 0;
 
-        for (auto max_prevs : {10, 0, -1}) {
-          ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_prevs_to_avoid_seek) = max_prevs;
-          std::this_thread::yield();
-          std::this_thread::sleep_for(1s);
+    for (auto max_prevs : {10, 0, -1}) {
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_prevs_to_avoid_seek) = max_prevs;
+      std::this_thread::yield();
+      std::this_thread::sleep_for(1s);
+      for (auto intents_usage : {IntentsUsage::kRegularOnly,
+                                 IntentsUsage::kIntentsOnly,
+                                 IntentsUsage::kMixed}) {
+        for (auto attempt = 0; attempt < 2; ++attempt) {
+          const auto table_name = "ttable" + std::to_string(table_counter++);
+          LOG(INFO) << "Running simple test attempt #" << attempt
+                    << ": table_name = '" << table_name << "'"
+                    << ", packed_row = " << use_packed_row_
+                    << ", packed_row_v2 = " << use_packed_row_v2_
+                    << ", fast_backward_scan = " << use_fast_backward_scan_
+                    << ", row_with_nulls = " << use_row_with_nulls_
+                    << ", max_prevs_to_avoid_seek = " << max_prevs
+                    << ", intents_usage = " << intents_usage;
 
-          for (auto intents_usage : {IntentsUsage::kRegularOnly,
-                                    IntentsUsage::kIntentsOnly,
-                                    IntentsUsage::kMixed}) {
-
-            LOG(INFO) << "Running simple test with fast bacward scan "
-                      << (use_fast_backward_scan ? "enabled" : "disabled") << ","
-                      << " max_prevs_to_avoid_seek set to " << max_prevs
-                      << " and " << intents_usage << " usage";
-
-            SimpleTest(intents_usage);
-
-            if (HasFailure()) {
-              return;
-            }
-          } // for (auto intents_usage... )
-        } // for (auto max_prevs... )
-    } // for (const auto use_fast_backward_scan... )
+          SimpleTest(table_name, intents_usage, use_row_with_nulls_);
+          if (HasFailure()) {
+            return;
+          }
+        } // for (auto attempt... )
+      } // for (auto intents_usage... )
+    } // for (auto max_prevs... )
   }
+
+ private:
+  bool use_fast_backward_scan_;
+  bool use_row_with_nulls_;
+  bool use_packed_row_;
+  bool use_packed_row_v2_;
 };
 
-TEST_F(PgFastBackwardScanTest, Simple) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = false;
+INSTANTIATE_TEST_SUITE_P(
+    PgSingleTServerTest, PgFastBackwardScanTest,
+    ::testing::Combine(
+        ::testing::Bool(),
+        ::testing::Bool(),
+        ::testing::ValuesIn(kOptionalPackedRowVersionArray)),
+    FastBackwardScanParamsToString);
 
+TEST_P(PgFastBackwardScanTest, Simple) {
   ASSERT_OK(CreateDB(/* colocated */ false));
   RunSimpleTests();
 }
 
-TEST_F(PgFastBackwardScanTest, SimpleWithPackedRow) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
-
-  ASSERT_OK(CreateDB(/* colocated */ false));
-  RunSimpleTests();
-}
-
-TEST_F(PgFastBackwardScanTest, SimpleColocated) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = false;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_sst_files_soft_limit) = 256;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_sst_files_hard_limit) = 256;
-
-  ASSERT_OK(CreateDB(/* colocated */ true));
-  RunSimpleTests();
-}
-
-TEST_F(PgFastBackwardScanTest, SimpleColocatedWithPackedRow) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row_for_colocated_table) = true;
+TEST_P(PgFastBackwardScanTest, SimpleColocated) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_sst_files_soft_limit) = 256;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_sst_files_hard_limit) = 256;
 

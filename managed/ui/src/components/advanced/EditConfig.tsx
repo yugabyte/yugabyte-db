@@ -8,6 +8,7 @@ import { YBFormInput, YBToggle } from '../common/forms/fields';
 import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '../../actions/customers';
 import { RunTimeConfigData, RunTimeConfigScope } from '../../redesign/utils/dtos';
 import { isEmptyObject } from '../../utils/ObjectUtils';
+import { RuntimeConfigKey } from '../../redesign/helpers/constants';
 
 const CONFIG_DATA_TYPE_TO_TOOLTIP_MESSAGE = {
   Bytes: 'BytesTooltipMessage',
@@ -18,9 +19,12 @@ const CONFIG_DATA_TYPE_TO_TOOLTIP_MESSAGE = {
   'String List': 'StringListTooltipMessage'
 };
 
+const STRING_CONVERSION_NEEDED = ['Boolean', 'Tags List'];
+
 interface EditConfigData {
   configData: RunTimeConfigData;
   onHide: () => void;
+  fetchUiTagFilter: () => void;
   setRuntimeConfig: (key: string, value: string, scope?: string) => void;
   scope?: string;
   universeUUID?: string;
@@ -32,6 +36,7 @@ export const EditConfig: FC<EditConfigData> = ({
   configData,
   onHide,
   setRuntimeConfig,
+  fetchUiTagFilter,
   scope,
   universeUUID,
   providerUUID,
@@ -60,9 +65,14 @@ export const EditConfig: FC<EditConfigData> = ({
         configScope = customerUUID!;
       }
 
-      const configValue =
-        configData.type === 'Boolean' ? values.config_value.toString() : values.config_value;
+      const configValue = STRING_CONVERSION_NEEDED.includes(configData.type)
+        ? values.config_value.toString()
+        : values.config_value;
       await setRuntimeConfig(configData.configKey, configValue, configScope);
+      // Refetch the conf tags to filter runtime config flags accordingly
+      if (configData.configKey === RuntimeConfigKey.UI_TAG_FILTER) {
+        fetchUiTagFilter();
+      }
     }
     onHide();
   };

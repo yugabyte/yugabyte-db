@@ -11,6 +11,7 @@ import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonValue;
+import com.yugabyte.yw.forms.TableInfoForm.TableInfoResp;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import io.ebean.Finder;
@@ -116,27 +117,46 @@ public class XClusterTableConfig extends Model {
           "Validated, Running, Updating, Warning, Error, Bootstrapping, Failed, UnableToFetch")
   private Status status;
 
+  @Transient
+  @ApiModelProperty(value = "tableInfo from source universe", required = false)
+  private TableInfoResp sourceTableInfo;
+
+  @Transient
+  @ApiModelProperty(value = "tableInfo from target universe", required = false)
+  private TableInfoResp targetTableInfo;
+
   // Statuses are declared in reverse severity for showing tables in UI with specific order.
   public enum Status {
-    Failed("Failed"),
-    Error("Error"), // Not stored in YBA DB.
-    Warning("Warning"), // Not stored in YBA DB.
-    UnableToFetch("UnableToFetch"), // Not stored in YBA DB.
-    Updating("Updating"),
-    Bootstrapping("Bootstrapping"),
-    Validated("Validated"),
-    Running("Running");
+    Failed("Failed", -1),
+    Error("Error", -2), // Not stored in YBA DB.
+    Warning("Warning", -3), // Not stored in YBA DB.
+    UnableToFetch("UnableToFetch", -4), // Not stored in YBA DB.
+    Updating("Updating", 1),
+    Bootstrapping("Bootstrapping", 2),
+    Validated("Validated", 3),
+    Running("Running", 0),
+    DroppedFromSource("DroppedFromSource", -5), // Not stored in YBA DB.
+    DroppedFromTarget("DroppedFromTarget", -6), // Not stored in YBA DB.
+    ExtraTableOnSource("ExtraTableOnSource", -7), // Not stored in YBA DB.
+    ExtraTableOnTarget("ExtraTableOnTarget", -8), // Not stored in YBA DB.
+    ReplicationError("ReplicationError", -9); // Not stored in YBA DB.
 
     private final String status;
+    private final int code;
 
-    Status(String status) {
+    Status(String status, int code) {
       this.status = status;
+      this.code = code;
     }
 
     @Override
     @DbEnumValue
     public String toString() {
       return this.status;
+    }
+
+    public int getCode() {
+      return this.code;
     }
   }
 
@@ -168,8 +188,6 @@ public class XClusterTableConfig extends Model {
     }
   }
 
-  @Getter
-  @Setter
   @Transient
   @ApiModelProperty(value = "Short human readable replication status error messages")
   private Set<ReplicationStatusError> replicationStatusErrors = new HashSet<>();
@@ -183,16 +201,6 @@ public class XClusterTableConfig extends Model {
     this.setStatus(Status.Validated);
   }
 
-  public static Optional<XClusterTableConfig> maybeGetByStreamId(String streamId) {
-    XClusterTableConfig xClusterTableConfig =
-        find.query().fetch("tables").where().eq("stream_id", streamId).findOne();
-    if (xClusterTableConfig == null) {
-      log.info("Cannot find an xClusterTableConfig with streamId {}", streamId);
-      return Optional.empty();
-    }
-    return Optional.of(xClusterTableConfig);
-  }
-
   /**
    * Retrieves an XClusterTableConfig object based on the provided tableId.
    *
@@ -202,7 +210,7 @@ public class XClusterTableConfig extends Model {
    */
   public static Optional<XClusterTableConfig> maybeGetByTableId(String tableId) {
     XClusterTableConfig xClusterTableConfig =
-        find.query().fetch("tables").where().eq("table_id", tableId).findOne();
+        find.query().where().eq("table_id", tableId).findOne();
     if (xClusterTableConfig == null) {
       log.info("Cannot find an xClusterTableConfig with tableId {}", tableId);
       return Optional.empty();

@@ -45,11 +45,11 @@ Make sure that the **Enable DNS resolution** and **Enable DNS hostnames** DNS se
 
 To use AWS PrivateLink to connect your cluster to a VPC in AWS that hosts your application, first create a private service endpoint (PSE) for each region of your cluster, then create corresponding interface VPC endpoints in AWS.
 
-## Create a PSE in YugabyteDB Managed
+## Create a PSE in YugabyteDB Aeon
 
 You create the PSEs (one for each region) for your cluster on the cluster **Settings** tab, or using [ybm CLI](../../../managed-automation/managed-cli/).
 
-### Use YugabyteDB Managed
+### Use YugabyteDB Aeon
 
 To create or edit a PSE, do the following:
 
@@ -151,6 +151,8 @@ To create an interface endpoint to connect to your cluster PSE, do the following
 
     ![AWS Create endpoint](/images/yb-cloud/managed-endpoint-aws-2.png)
 
+    Make sure the security groups in your application VPC allow internal connectivity. Otherwise, your application may not be able to reach the endpoint.
+
 1. Click **Create endpoint**.
 
     The endpoint is added to the Endpoints in AWS.
@@ -190,7 +192,7 @@ aws ec2 modify-vpc-attribute \
 
 #### Create a security group for the endpoint
 
-Create a separate security group for the interface endpoint to simplify security management (by default, AWS creates the endpoint in the default security group) and add a rule to allow traffic to the YBM PSE. Note that the rule may take a few minutes to propagate to the endpoint NICs in the security group.
+Create a separate security group for the interface endpoint to simplify security management (by default, AWS creates the endpoint in the default security group) and add a rule to allow traffic to the YugabyteDB Aeon PSE. Note that the rule may take a few minutes to propagate to the endpoint NICs in the security group.
 
 ```sh
 aws ec2 create-security-group \

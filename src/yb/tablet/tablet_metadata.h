@@ -275,6 +275,7 @@ struct RaftGroupMetadataData {
   bool colocated = false;
   std::vector<SnapshotScheduleId> snapshot_schedules;
   std::unordered_set<StatefulServiceKind> hosted_services;
+  std::vector<TableInfoPtr> colocated_tables_infos = {};
 };
 
 // At startup, the TSTabletManager will load a RaftGroupMetadata for each
@@ -312,6 +313,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   Result<TableInfoPtr> GetTableInfo(ColocationId colocation_id) const;
   Result<TableInfoPtr> GetTableInfoUnlocked(ColocationId colocation_id) const REQUIRES(data_mutex_);
+
+  std::vector<TableInfoPtr> GetColocatedTableInfos() const;
 
   const RaftGroupId& raft_group_id() const {
     DCHECK_NE(state_, kNotLoadedYet);

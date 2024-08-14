@@ -114,6 +114,7 @@ set(MASTER_SRCS
   mini_master.cc
   master_snapshot_coordinator.cc
   multi_step_monitored_task.cc
+  object_lock.cc
   post_tablet_create_task_base.cc
   restoration_state.cc
   restore_sys_catalog_state.cc
@@ -138,6 +139,7 @@ set(MASTER_SRCS
   xcluster/add_table_to_xcluster_source_task.cc
   xcluster/add_table_to_xcluster_target_task.cc
   xcluster/master_xcluster_util.cc
+  xcluster/xcluster_bootstrap_helper.cc
   xcluster/xcluster_catalog_entity.cc
   xcluster/xcluster_config.cc
   xcluster/xcluster_consumer_metrics.cc
@@ -148,6 +150,8 @@ set(MASTER_SRCS
   xcluster/xcluster_safe_time_service.cc
   xcluster/xcluster_source_manager.cc
   xcluster/xcluster_target_manager.cc
+  xcluster/xcluster_universe_replication_alter_helper.cc
+  xcluster/xcluster_universe_replication_setup_helper.cc
   xrepl_catalog_manager.cc
   yql_aggregates_vtable.cc
   yql_auth_resource_role_permissions_index.cc
@@ -220,7 +224,8 @@ ADD_YB_LIBRARY(master_error
   DEPS ${MASTER_RPC_LIBS})
 
 set(MASTER_UTIL_SRCS
-  master_util.cc)
+  master_util.cc
+  catalog_entity_parser.cc)
 ADD_YB_LIBRARY(master_util
   SRCS ${MASTER_UTIL_SRCS}
   DEPS master_error ${MASTER_RPC_LIBS})
@@ -228,7 +233,8 @@ ADD_YB_LIBRARY(master_util
 # A library with common code shared between master tests.
 set(MASTER_TEST_COMMON_SRCS
   master-test_base.cc
-  master-test-util.cc)
+  master-test-util.cc
+  ts_descriptor_test_util.cc)
 add_library(master_test_common ${MASTER_TEST_COMMON_SRCS})
 target_link_libraries(master_test_common
   master ${MASTER_PROTO_LIBS} yb_client ${YB_MIN_TEST_LIBS})
@@ -260,6 +266,7 @@ ADD_YB_TEST(table_index_test)
 ADD_YB_TEST(tablet_creation_limits_test)
 ADD_YB_TEST(xcluster/xcluster_safe_time_service-test)
 ADD_YB_TEST(xcluster/xcluster_outbound_replication_group-test)
+YB_TEST_TARGET_LINK_LIBRARIES(xcluster/xcluster_outbound_replication_group-test yb_client_mock)
 
 # Actual master executable. In LTO mode, can also act as the tablet server if executed through a
 # symlink named as the tablet server executable.

@@ -2,9 +2,9 @@
 title: Security architecture overview
 headerTitle: Security architecture overview
 linkTitle: Security architecture
-description: Review and overview of the YugabyteDB Managed database security architecture and shared responsibility model.
+description: Review and overview of the YugabyteDB Aeon database security architecture and shared responsibility model.
 image: /images/section_icons/index/secure.png
-headcontent: YugabyteDB Managed security architecture and shared responsibility model
+headcontent: YugabyteDB Aeon security architecture and shared responsibility model
 menu:
   preview_yugabyte-cloud:
     parent: yugabytedb-managed
@@ -13,11 +13,11 @@ weight: 800
 type: indexpage
 ---
 
-YugabyteDB Managed is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on public cloud providers such as Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP).
+YugabyteDB Aeon is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on public cloud providers such as Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP).
 
-YugabyteDB Managed uses a shared responsibility model, where security and compliance is a shared responsibility between public cloud providers, Yugabyte, and YugabyteDB Managed customers.
+YugabyteDB Aeon uses a shared responsibility model, where security and compliance is a shared responsibility between public cloud providers, Yugabyte, and YugabyteDB Aeon customers.
 
-The YugabyteDB Managed architecture is secure by default, and uses the following features to protect clusters and communication between clients and databases:
+The YugabyteDB Aeon architecture is secure by default, and uses the following features to protect clusters and communication between clients and databases:
 
 - encryption in transit
 - encryption at rest
@@ -25,31 +25,20 @@ The YugabyteDB Managed architecture is secure by default, and uses the following
 - authentication
 - role-based access control for authorization
 
-For information on how to configure the security features of clusters in YugabyteDB Managed, refer to [Secure clusters in YugabyteDB Managed](../cloud-secure-clusters/).
+For information on how to configure the security features of clusters in YugabyteDB Aeon, refer to [Secure clusters in YugabyteDB Aeon](../cloud-secure-clusters/).
 
-<div class="row">
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="cloud-security-features/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/checklist.png" aria-hidden="true" />
-        <div class="title">Security architecture</div>
-      </div>
-      <div class="body">
-        Learn about the YugabyteDB Managed security architecture.
-      </div>
-    </a>
-  </div>
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="shared-responsibility/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/grant-permissions.png" aria-hidden="true" />
-        <div class="title">Shared responsibility model</div>
-      </div>
-      <div class="body">
-        The YugabyteDB Managed shared responsibility model for security.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Security architecture"
+    body="Learn about the YugabyteDB Aeon security architecture."
+    href="cloud-security-features/"
+    icon="/images/section_icons/secure/checklist.png">}}
 
-</div>
+  {{<index/item
+    title="Shared responsibility model"
+    body="The YugabyteDB Aeon shared responsibility model for security."
+    href="shared-responsibility/"
+    icon="/images/section_icons/secure/grant-permissions.png">}}
+
+{{</index/block>}}

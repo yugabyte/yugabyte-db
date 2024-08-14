@@ -3948,6 +3948,52 @@ TEST_F(PgLibPqTest, CatalogCacheMemoryLeak) {
   }
 }
 
+static int GetCacheMissCount(const string& metric_instance) {
+  auto begin = metric_instance.find("} ");
+  int count;
+  std::istringstream(metric_instance.substr(begin + 2)) >> count;
+  return count;
+}
+
+TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  // Make a new connection to see more cache misses (by default we will only
+  // preload the catalog caches for the first connection).
+  conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT, value TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO t (key, value) VALUES (1, 'hello')"));
+  auto result = ASSERT_RESULT(conn.Fetch("SELECT * FROM t"));
+  ExternalTabletServer* ts = cluster_->tablet_server(0);
+  auto hostport = Format("$0:$1", ts->bind_host(), ts->pgsql_http_port());
+  auto pg_metrics_url = Substitute(
+      "http://$0/prometheus-metrics?reset_histograms=false&show_help=false",
+      hostport);
+  EasyCurl c;
+  faststring buf;
+  ASSERT_OK(c.FetchURL(pg_metrics_url, &buf));
+  string page_content = buf.ToString();
+  auto cache_miss_metric =
+    "handler_latency_yb_ysqlserver_SQLProcessor_CatalogCacheMisses_count";
+  auto begin = page_content.find(cache_miss_metric);
+  auto end = page_content.find("\n", begin);
+  auto expected = GetCacheMissCount(page_content.substr(begin, end - begin));
+  ASSERT_GT(expected, 0);
+  LOG(INFO) << "Expected total cache misses: " << expected;
+  int total_cache_misses = 0;
+  while (true) {
+    auto cache_id_miss_metric = "handler_latency_yb_ysqlserver_SQLProcessor_CatalogCacheMisses_";
+    begin = page_content.find(cache_id_miss_metric, end);
+    if (begin == std::string::npos) {
+      break;
+    }
+    end = page_content.find("\n", begin);
+    auto cache_misses = GetCacheMissCount(page_content.substr(begin, end - begin));
+    ASSERT_GE(cache_misses, 0);
+    total_cache_misses += cache_misses;
+  }
+  ASSERT_EQ(total_cache_misses, expected);
+}
+
 class PgLibPqCreateSequenceNamespaceRaceTest : public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.push_back(

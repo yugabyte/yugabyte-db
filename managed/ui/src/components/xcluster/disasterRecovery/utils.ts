@@ -1,6 +1,6 @@
 import { UnavailableUniverseStates } from '../../../redesign/helpers/constants';
 import { getUniverseStatus } from '../../universes/helpers/universeHelpers';
-import { DrConfigActions } from './constants';
+import { DrConfigActions, DurationUnit } from './constants';
 import { assertUnreachableCase } from '../../../utils/errorHandlingUtils';
 import { XClusterConfigType } from '../constants';
 
@@ -53,6 +53,16 @@ export const getNamespaceIdSafetimeEpochUsMap = (
     namespaceIdSafetimeEpochUsMap[namespace.namespaceId] = namespace.safetimeEpochUs;
     return namespaceIdSafetimeEpochUsMap;
   }, {});
+
+/**
+ * YBA prescribes a 5 minute minimum for PITR retention period/
+ */
+export const getPitrRetentionPeriodMinValue = (pitrRetentionPeriodUnit: DurationUnit | undefined) =>
+  pitrRetentionPeriodUnit === DurationUnit.SECOND
+    ? 5 * 60
+    : pitrRetentionPeriodUnit === DurationUnit.MINUTE
+    ? 5
+    : 1;
 
 /**
  * Extract an XClusterConfig object from the fields of the provided DrConfig object.

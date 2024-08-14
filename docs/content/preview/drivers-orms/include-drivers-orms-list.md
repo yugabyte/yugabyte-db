@@ -11,7 +11,7 @@ private = true
 |            | Version | Support Level | Example apps |
 | :--------- | :------ | :------------ | :----------- |
 | **Drivers** | | | |
-| YugabyteDB JDBC Smart Driver<br/>[Recommended] | [42.3.5-yb-3](https://mvnrepository.com/artifact/com.yugabyte/jdbc-yugabytedb/42.3.5-yb-3) | Full | [CRUD](/preview/drivers-orms/java/yugabyte-jdbc/) |
+| YugabyteDB JDBC Smart Driver<br/>[Recommended] | [42.3.5-yb-5](https://mvnrepository.com/artifact/com.yugabyte/jdbc-yugabytedb/42.3.5-yb-5) | Full | [CRUD](/preview/drivers-orms/java/yugabyte-jdbc/) |
 | YugabyteDB R2DBC Smart Driver | [1.1.0-yb-1-ea](https://mvnrepository.com/artifact/com.yugabyte/r2dbc-postgresql) | Full | [CRUD](/preview/drivers-orms/java/yb-r2dbc/) |
 | PostgreSQL JDBC Driver  | [42.3.4](https://mvnrepository.com/artifact/org.postgresql/postgresql/42.3.4) | Full | [CRUD](/preview/drivers-orms/java/postgres-jdbc/) |
 | Vert.x Pg Client       | [4.3.2](https://mvnrepository.com/artifact/io.vertx/vertx-core/4.3.2) | Full | [CRUD](/preview/drivers-orms/java/ysql-vertx-pg-client/) |
@@ -69,6 +69,17 @@ private = true
 | **ORMs** | | | |
 | Sequelize | 6.6.5 | Full | [CRUD](/preview/drivers-orms/nodejs/sequelize/) |
 | Prisma    | 3.14  | Full | [CRUD](/preview/drivers-orms/nodejs/prisma/) |
+
+  {{% /tab %}}
+
+  {{% tab header="Elixir" lang="elixir" %}}
+
+|            | Version | Support Level | Example apps |
+| :--------- | :------ | :------------ | :----------- |
+| **Drivers** | | | |
+| Postgrex Driver | [0.18.0](https://github.com/elixir-ecto/postgrex) | Full | [CRUD](/preview/tutorials/build-apps/elixir/cloud-ysql-elixir/) |
+| **ORMs** | | | |
+| Phoenix with Ecto | [1.7.14](https://www.phoenixframework.org) | Full | [CRUD](/preview/drivers-orms/elixir/phoenix/) |
 
   {{% /tab %}}
 

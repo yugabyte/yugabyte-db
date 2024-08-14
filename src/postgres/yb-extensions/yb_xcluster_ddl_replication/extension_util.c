@@ -23,7 +23,7 @@
 #include "utils/relcache.h"
 
 const char *kManualReplicationErrorMsg =
-    "To manually replicate, run DDL with "
+    "To manually replicate, run DDL on the source followed by the target with "
     "SET yb_xcluster_ddl_replication.enable_manual_ddl_replication = true";
 
 int64

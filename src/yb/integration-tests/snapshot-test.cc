@@ -25,9 +25,11 @@
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
+#include "yb/master/async_snapshot_tasks.h"
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.proxy.h"
@@ -178,9 +180,6 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
     LOG(INFO) << "Number of snapshots: " << list_resp.snapshots_size();
     ASSERT_EQ(list_resp.snapshots_size(), snapshot_info.size());
 
-    // Current snapshot is available for non-transaction aware snapshots only.
-    ASSERT_FALSE(list_resp.has_current_snapshot_id());
-
     for (int i = 0; i < list_resp.snapshots_size(); ++i) {
       LOG(INFO) << "Snapshot " << i << ": " << list_resp.snapshots(i).DebugString();
       auto id = ASSERT_RESULT(FullyDecodeTxnSnapshotId(list_resp.snapshots(i).id()));
@@ -268,7 +267,6 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
       std::optional<bool> imported = std::nullopt) {
     CreateSnapshotRequestPB req;
     CreateSnapshotResponsePB resp;
-    req.set_transaction_aware(true);
     TableIdentifierPB* const table = req.mutable_tables()->Add();
     table->set_table_name(kTableName.table_name());
     table->mutable_namespace_()->set_name(kTableName.namespace_name());
@@ -301,13 +299,30 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
     return snapshot_id;
   }
 
-  void DeleteSnapshot(const TxnSnapshotId& snapshot_id) {
+  Status DeleteSnapshot(const TxnSnapshotId& snapshot_id) {
     master::DeleteSnapshotResponsePB resp;
-    ASSERT_OK(client_->DeleteSnapshot(snapshot_id, &resp));
+    auto s = client_->DeleteSnapshot(snapshot_id, &resp);
+    if (s.ok() && resp.has_error()) {
+      s = StatusFromPB(resp.error().status());
+    }
+    return s;
+  }
+
+  Result<TxnSnapshotRestorationId> RestoreSnapshot(const TxnSnapshotId& snapshot_id) {
+    RestoreSnapshotRequestPB req;
+    RestoreSnapshotResponsePB resp;
+    req.set_snapshot_id(snapshot_id.AsSlice().ToBuffer());
+    RETURN_NOT_OK(proxy_backup_->RestoreSnapshot(req, &resp, ResetAndGetController()));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    return TryFullyDecodeTxnSnapshotRestorationId(resp.restoration_id());
+  }
+
+  Status DeleteSnapshotAndWait(const TxnSnapshotId& snapshot_id) {
+    RETURN_NOT_OK(DeleteSnapshot(snapshot_id));
     LOG(INFO) << "Started snapshot deletion " << snapshot_id;
-    // Check the snapshot creation is complete.
-    EXPECT_OK(WaitForSnapshotOpDone("IsSnapshotDeleted", snapshot_id));
-    LOG(INFO) << "Snapshot id " << snapshot_id << " is deleted";
+    return WaitForSnapshotOpDone("IsSnapshotDeleted", snapshot_id);
   }
 
   void VerifySnapshotFiles(const TxnSnapshotId& snapshot_id) {
@@ -384,13 +399,18 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
     }
   }
 
-  TestWorkload SetupWorkload() {
+  TestWorkload CreateDefaultWorkload() {
     TestWorkload workload(cluster_.get());
     workload.set_table_name(kTableName);
     workload.set_sequential_write(true);
     workload.set_insert_failures_allowed(false);
     workload.set_num_write_threads(1);
     workload.set_write_batch_size(10);
+    return workload;
+  }
+
+  TestWorkload SetupWorkload() {
+    auto workload = CreateDefaultWorkload();
     workload.Setup();
     return workload;
   }
@@ -401,7 +421,7 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
     auto master_leader = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
     auto table = VERIFY_RESULT(master_leader->catalog_manager_impl().FindTableById(table_id));
     LOG(INFO) << "Table info " << table->id();
-    if (!table->AreAllTabletsHidden()) {
+    if (!VERIFY_RESULT(table->AreAllTabletsHidden())) {
       return STATUS_FORMAT(IllegalState, "Tablets of table $0 not hidden on master", table_id);
     }
     if (!table->LockForRead()->is_hidden()) {
@@ -431,7 +451,7 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
     auto master_leader = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
     auto table = VERIFY_RESULT(master_leader->catalog_manager_impl().FindTableById(table_id));
     LOG(INFO) << "Table info " << table->id();
-    if (!table->AreAllTabletsDeleted()) {
+    if (!VERIFY_RESULT(table->AreAllTabletsDeleted())) {
       return false;
     }
     if (!table->LockForRead()->is_deleted()) {
@@ -455,9 +475,9 @@ class SnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
       const TxnSnapshotId& snapshot_id, const TableId& table_id) {
     auto master_leader = VERIFY_RESULT(cluster_->GetLeaderMiniMaster());
     auto table = VERIFY_RESULT(master_leader->catalog_manager_impl().GetTableById(table_id));
-    auto tablets = table->GetTablets(master::IncludeInactive::kTrue);
+    auto tablets = VERIFY_RESULT(table->GetTablets(master::IncludeInactive::kTrue));
     auto* coordinator = down_cast<master::MasterSnapshotCoordinator*>(
-        &master_leader->catalog_manager_impl().snapshot_coordinator());
+        &master_leader->master()->snapshot_coordinator());
     for (const auto& tablet : tablets) {
       if (!coordinator->TEST_IsTabletCoveredBySnapshot(tablet->id(), snapshot_id)) {
         return STATUS_FORMAT(
@@ -536,7 +556,7 @@ TEST_F(SnapshotTest, HideTablesCoveredBySnapshot) {
   ASSERT_OK(cluster_->RestartSync());
   ASSERT_OK(TableHidden(table->id()));
   // Delete the snapshot and verify that the table gets eventually deleted.
-  DeleteSnapshot(snapshot_id);
+  ASSERT_OK(DeleteSnapshotAndWait(snapshot_id));
   // The cover should be removed.
   ASSERT_NOK(SnapshotCoversTablets(snapshot_id, table->id()));
   ASSERT_OK(WaitFor(
@@ -591,7 +611,7 @@ TEST_P(SnapshotTestImported, SnapshotTtlBasic) {
     return Status::OK();
   };
   ASSERT_OK(expiry_equals_cb(snapshot_id, 5));
-  DeleteSnapshot(snapshot_id);
+  ASSERT_OK(DeleteSnapshotAndWait(snapshot_id));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_default_snapshot_retention_hours) = 12;
   // Default value controlled by gflag should be set.
   snapshot_id = CreateSnapshot(
@@ -853,7 +873,7 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
   }
 
   LOG(INFO) << "Deleting table & namespace: " << kTableName.ToString();
-  DeleteSnapshot(snapshot_id);
+  ASSERT_OK(DeleteSnapshotAndWait(snapshot_id));
   ASSERT_OK(client_->DeleteTable(kTableName));
   ASSERT_OK(client_->DeleteNamespace(kTableName.namespace_name()));
 
@@ -899,7 +919,7 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
       scoped_refptr<TableInfo> info = cluster_->mini_master()->catalog_manager().
           GetTableInfo(table_pair.new_id());
       ASSERT_EQ(old_table_name, info->name());
-      auto tablets = info->GetTablets();
+      auto tablets = ASSERT_RESULT(info->GetTablets());
       ASSERT_EQ(old_table_num_tablets, tablets.size());
 
       const RepeatedPtrField<IdPairPB>& tablets_map = table_meta.tablets_ids();
@@ -923,6 +943,64 @@ TEST_F(SnapshotTest, ImportSnapshotMeta) {
   ASSERT_TRUE(result_exist.get());
 
   LOG(INFO) << "Test ImportSnapshotMeta finished.";
+}
+
+class RestoreAndDeleteValidationTest : public SnapshotTest {
+ public:
+  TxnSnapshotId CreateTableAndSnapshotDuringWrites(int insertions = 100) {
+    auto workload = CreateDefaultWorkload();
+    workload.Setup();
+    workload.Start();
+    workload.WaitInserted(insertions);
+    const auto snapshot_id = CreateSnapshot();
+    int64_t max_inserted = workload.rows_inserted();
+    workload.WaitInserted(max_inserted + insertions);
+    workload.StopAndJoin();
+    return snapshot_id;
+  }
+};
+
+TEST_F(RestoreAndDeleteValidationTest, DeleteDuringRestore) {
+  auto snapshot_id = CreateTableAndSnapshotDuringWrites();
+  // Pause before sending tablet restore ops to tservers.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_issuing_tserver_snapshot_requests) = true;
+  TxnSnapshotRestorationId restoration_id = ASSERT_RESULT(RestoreSnapshot(snapshot_id));
+  auto s = DeleteSnapshot(snapshot_id);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_issuing_tserver_snapshot_requests) = false;
+  ASSERT_TRUE(s.IsInvalidArgument())
+      << "Expected invalid argument from deleting snapshot, instead got: " << s;
+  ASSERT_STR_CONTAINS(s.ToString(), Format("restoration $0 is in progress", restoration_id));
+  ASSERT_OK(WaitForSnapshotRestorationDone(restoration_id));
+}
+
+TEST_F(RestoreAndDeleteValidationTest, DeleteAfterRestore) {
+  auto snapshot_id = CreateTableAndSnapshotDuringWrites();
+  TxnSnapshotRestorationId restoration_id = ASSERT_RESULT(RestoreSnapshot(snapshot_id));
+  ASSERT_OK(WaitForSnapshotRestorationDone(restoration_id));
+  // Should be able to delete the snapshot now that the restore is complete.
+  ASSERT_OK(DeleteSnapshot(snapshot_id));
+}
+
+TEST_F(RestoreAndDeleteValidationTest, RestoreDuringDelete) {
+  auto snapshot_id = CreateTableAndSnapshotDuringWrites();
+  // Pause before sending tablet deletion ops to tservers.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_issuing_tserver_snapshot_requests) = true;
+  ASSERT_OK(DeleteSnapshot(snapshot_id));
+  auto result = RestoreSnapshot(snapshot_id);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_issuing_tserver_snapshot_requests) = false;
+  ASSERT_TRUE(!result.ok() && result.status().IsIllegalState())
+      << "Expected illegal state from restoring deleted snapshot, instead got: "
+      << (!result.ok() ? result.status() : Status::OK());
+  ASSERT_STR_CONTAINS(result.status().ToString(), "The snapshot has started deleting");
+}
+
+TEST_F(RestoreAndDeleteValidationTest, RestoreAfterDelete) {
+  auto snapshot_id = CreateTableAndSnapshotDuringWrites();
+  ASSERT_OK(DeleteSnapshotAndWait(snapshot_id));
+  auto result = RestoreSnapshot(snapshot_id);
+  ASSERT_TRUE(!result.ok() && result.status().IsIllegalState())
+      << "Expected illegal state from restoring deleted snapshot, instead got: "
+      << (!result.ok() ? result.status() : Status::OK());
 }
 
 } // namespace yb

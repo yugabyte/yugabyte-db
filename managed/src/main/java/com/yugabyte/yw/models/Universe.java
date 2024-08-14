@@ -98,7 +98,6 @@ public class Universe extends Model {
 
   // Key to indicate if a universe cert is hot reloadable
   public static final String KEY_CERT_HOT_RELOADABLE = "cert_hot_reloadable";
-  public static final String USE_USER_LEVEL_NODE_EXPORTER = "use_user_level_node_exporter";
 
   public static Universe getOrBadRequest(UUID universeUUID, Customer customer) {
     Universe universe = getOrBadRequest(universeUUID);
@@ -631,6 +630,17 @@ public class Universe extends Model {
   }
 
   /**
+   * Return the list of tservers for this universe in a given cluster.
+   *
+   * @return a list of tserver nodes
+   */
+  public List<NodeDetails> getTserversInCluster(UUID clusterUUID) {
+    return getServers(ServerType.TSERVER).stream()
+        .filter(server -> server.isInPlacement(clusterUUID))
+        .collect(Collectors.toList());
+  }
+
+  /**
    * Return the list of TServers in the primary cluster for this universe. E.g. the TServers in a
    * read replica will not be included.
    *
@@ -761,6 +771,15 @@ public class Universe extends Model {
       }
     }
     return true;
+  }
+
+  /** Verify all nodes are considered running. */
+  public boolean verifyTserverRunningOnNodes() {
+    return !(getTServers().stream()
+        .filter(nD -> nD.cloudInfo != null && nD.cloudInfo.private_ip != null)
+        .filter(nD -> !nD.isConsideredRunning())
+        .findAny()
+        .isPresent());
   }
 
   public String getKubernetesMasterAddresses() {

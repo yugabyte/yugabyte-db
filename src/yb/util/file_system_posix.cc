@@ -278,6 +278,17 @@ Status PosixRandomAccessFile::InvalidateCache(size_t offset, size_t length) {
 #endif
 }
 
+void PosixRandomAccessFile::Readahead(size_t offset, size_t length) {
+#ifdef __linux__
+  auto ret = readahead(fd_, implicit_cast<off64_t>(offset), length);
+  if (ret == 0) {
+    return;
+  }
+  YB_LOG_EVERY_N_SECS(ERROR, 60) << "Readahead error for " << filename_ << " at " << offset
+                                 << ", length=" << length << ": " << ErrnoToString(errno);
+#endif
+}
+
 } // namespace yb
 
 namespace rocksdb {

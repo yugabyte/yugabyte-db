@@ -37,7 +37,7 @@ using SplitsToScheduleMap = std::unordered_map<TabletId, std::optional<uint64_t>
 class TabletSplitManager {
  public:
   TabletSplitManager(
-      CatalogManagerIf& catalog_manager,
+      Master& master,
       const scoped_refptr<MetricEntity>& master_metrics,
       const scoped_refptr<MetricEntity>& cluster_metrics);
 
@@ -57,7 +57,8 @@ class TabletSplitManager {
       const LeaderEpoch& epoch);
 
   Status ProcessSplitTabletResult(
-      const TableId& split_table_id, const SplitTabletIds& split_tablet_ids);
+      const TableId& split_table_id, const SplitTabletIds& split_tablet_ids,
+      const LeaderEpoch& epoch);
 
   // Table-level checks for splitting that are checked not only as a best-effort
   // filter, but also after acquiring the table/tablet locks in CatalogManager::DoSplit.
@@ -117,6 +118,7 @@ class TabletSplitManager {
   Status ValidateTabletAgainstDisabledList(const TabletId& tablet_id);
   Status ValidatePartitioningVersion(const TableInfo& table);
 
+  Master& master_;
   CatalogManagerIf& catalog_manager_;
 
   // This mutex is acquired in each tablet splitting manager run.

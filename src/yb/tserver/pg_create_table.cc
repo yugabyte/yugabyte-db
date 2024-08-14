@@ -198,6 +198,10 @@ Status PgCreateTable::Exec(
     }
   }
 
+  if (xcluster_source_table_id_.IsValid()) {
+    table_creator->xcluster_source_table_id(xcluster_source_table_id_.GetYbTableId());
+  }
+
   if (transaction_metadata) {
     table_creator->part_of_transaction(transaction_metadata);
   }
@@ -352,6 +356,10 @@ Result<std::vector<std::string>> PgCreateTable::BuildSplitRows(const client::YBS
 
 size_t PgCreateTable::PrimaryKeyRangeColumnCount() const {
   return range_columns_.size();
+}
+
+void PgCreateTable::SetXClusterSourceTableId(const PgObjectId& xcluster_source_table_id) {
+  xcluster_source_table_id_ = xcluster_source_table_id;
 }
 
 Status CreateSequencesDataTable(client::YBClient* client, CoarseTimePoint deadline) {

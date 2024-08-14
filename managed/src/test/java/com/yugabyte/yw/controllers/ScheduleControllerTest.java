@@ -8,6 +8,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -96,7 +97,6 @@ public class ScheduleControllerTest extends FakeDBApplication {
     String authToken = defaultUser.createAuthToken();
     String method = "PUT";
     String url = "/api/customers/" + customerUUID + "/schedules/" + scheduleUUID;
-
     return doRequestWithAuthTokenAndBody(method, url, authToken, body);
   }
 
@@ -428,8 +428,7 @@ public class ScheduleControllerTest extends FakeDBApplication {
             () ->
                 editSchedule(
                     defaultSchedule.getScheduleUUID(), defaultCustomer.getUuid(), requestJson));
-    assertBadRequest(
-        result, "State paused is an internal state and cannot be specified by the user");
+    assertBadRequest(result, "{\"status\":[\"must be any of [Active, Stopped]\"]}");
   }
 
   @Test
@@ -648,4 +647,144 @@ public class ScheduleControllerTest extends FakeDBApplication {
     response = (ArrayNode) schedulesJson.get("entities");
     assertEquals(0, response.size());
   }
+
+  /* Async APIs test */
+
+  private Result toggleSchedule(
+      UUID scheduleUUID, UUID customerUUID, UUID universeUUID, JsonNode body) {
+    String authToken = defaultUser.createAuthToken();
+    String method = "PUT";
+    String url =
+        "/api/customers/"
+            + customerUUID
+            + "/universes/"
+            + universeUUID
+            + "/schedules/"
+            + scheduleUUID
+            + "/pause_resume";
+    return doRequestWithAuthTokenAndBody(method, url, authToken, body);
+  }
+
+  @Test
+  public void testToggleScheduleStopSuccess() {
+    Schedule schedule =
+        ModelFactory.createScheduleBackup(
+            defaultCustomer.getUuid(),
+            defaultUniverse.getUniverseUUID(),
+            customerConfig.getConfigUUID());
+    assertEquals(schedule.getStatus(), State.Active);
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("status", "Stopped");
+    Result result =
+        toggleSchedule(
+            schedule.getScheduleUUID(),
+            defaultCustomer.getUuid(),
+            defaultUniverse.getUniverseUUID(),
+            bodyJson);
+    assertOk(result);
+    schedule = Schedule.getOrBadRequest(defaultCustomer.getUuid(), schedule.getScheduleUUID());
+    assertEquals(schedule.getStatus(), State.Stopped);
+  }
+
+  @Test
+  public void testToggleScheduleStopOnRunningFail() {
+    Schedule schedule =
+        ModelFactory.createScheduleBackup(
+            defaultCustomer.getUuid(),
+            defaultUniverse.getUniverseUUID(),
+            customerConfig.getConfigUUID());
+    UUID scheduleUUID = schedule.getScheduleUUID();
+    schedule =
+        Schedule.modifyScheduleRunningAndSave(
+            defaultCustomer.getUuid(), schedule.getScheduleUUID(), true /* isRunning */);
+    assertEquals(schedule.getStatus(), State.Active);
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("status", "Stopped");
+    RuntimeException ex =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                toggleSchedule(
+                    scheduleUUID,
+                    defaultCustomer.getUuid(),
+                    defaultUniverse.getUniverseUUID(),
+                    bodyJson));
+    assertEquals(ex.getMessage(), "Schedule is currently locked");
+    schedule = Schedule.getOrBadRequest(defaultCustomer.getUuid(), schedule.getScheduleUUID());
+    assertEquals(schedule.getStatus(), State.Active);
+  }
+
+  @Test
+  public void testToggleScheduleActiveSuccess() {
+    Schedule schedule =
+        ModelFactory.createScheduleBackup(
+            defaultCustomer.getUuid(),
+            defaultUniverse.getUniverseUUID(),
+            customerConfig.getConfigUUID());
+    schedule =
+        Schedule.updateStatusAndSave(
+            defaultCustomer.getUuid(), schedule.getScheduleUUID(), State.Stopped);
+    assertEquals(schedule.getStatus(), State.Stopped);
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("status", "Active");
+    Result result =
+        toggleSchedule(
+            schedule.getScheduleUUID(),
+            defaultCustomer.getUuid(),
+            defaultUniverse.getUniverseUUID(),
+            bodyJson);
+    assertOk(result);
+    schedule = Schedule.getOrBadRequest(defaultCustomer.getUuid(), schedule.getScheduleUUID());
+    assertEquals(schedule.getStatus(), State.Active);
+  }
+
+  @Test
+  public void testToggleScheduleAlreadyActiveFail() {
+    Schedule schedule =
+        ModelFactory.createScheduleBackup(
+            defaultCustomer.getUuid(),
+            defaultUniverse.getUniverseUUID(),
+            customerConfig.getConfigUUID());
+    UUID scheduleUUID = schedule.getScheduleUUID();
+    assertEquals(schedule.getStatus(), State.Active);
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("status", "Active");
+    Result result =
+        assertPlatformException(
+            () ->
+                toggleSchedule(
+                    scheduleUUID,
+                    defaultCustomer.getUuid(),
+                    defaultUniverse.getUniverseUUID(),
+                    bodyJson));
+    assertBadRequest(result, "Schedule is already in Active state.");
+    schedule = Schedule.getOrBadRequest(defaultCustomer.getUuid(), schedule.getScheduleUUID());
+    assertEquals(schedule.getStatus(), State.Active);
+  }
+
+  @Test
+  public void testToggleScheduleWrongState() {
+    Schedule schedule =
+        ModelFactory.createScheduleBackup(
+            defaultCustomer.getUuid(),
+            defaultUniverse.getUniverseUUID(),
+            customerConfig.getConfigUUID());
+    UUID scheduleUUID = schedule.getScheduleUUID();
+    assertEquals(schedule.getStatus(), State.Active);
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("status", "Editing");
+    Result result =
+        assertPlatformException(
+            () ->
+                toggleSchedule(
+                    scheduleUUID,
+                    defaultCustomer.getUuid(),
+                    defaultUniverse.getUniverseUUID(),
+                    bodyJson));
+    assertBadRequest(result, "{\"status\":[\"must be any of [Active, Stopped]\"]}");
+    schedule = Schedule.getOrBadRequest(defaultCustomer.getUuid(), schedule.getScheduleUUID());
+    assertEquals(schedule.getStatus(), State.Active);
+  }
+
+  /* Async APIs test end */
 }

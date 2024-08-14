@@ -15,12 +15,10 @@ import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterNamespaceConfig;
 import com.yugabyte.yw.models.XClusterTableConfig;
-import java.io.File;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -71,30 +69,17 @@ public class EditXClusterConfig extends CreateXClusterConfig {
           String oldReplicationGroupName = xClusterConfig.getReplicationGroupName();
           // If TLS root certificates are different, create a directory containing the source
           // universe root certs with the new name.
-          Optional<File> sourceCertificate =
-              getSourceCertificateIfNecessary(sourceUniverse, targetUniverse);
-          sourceCertificate.ifPresent(
-              cert ->
-                  createTransferXClusterCertsCopyTasks(
-                      xClusterConfig,
-                      targetUniverse.getNodes(),
-                      xClusterConfig.getNewReplicationGroupName(
-                          xClusterConfig.getSourceUniverseUUID(), editFormData.name),
-                      cert,
-                      targetUniverse.getUniverseDetails().getSourceRootCertDirPath()));
+          createTransferXClusterCertsCopyTasks(
+              xClusterConfig,
+              xClusterConfig.getNewReplicationGroupName(
+                  xClusterConfig.getSourceUniverseUUID(), editFormData.name));
 
           createXClusterConfigRenameTask(xClusterConfig, editFormData.name)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
           // Delete the old directory if it created a new one. When the old directory is removed
           // because of renaming, the directory for transactional replication must not be deleted.
-          sourceCertificate.ifPresent(
-              cert ->
-                  createTransferXClusterCertsRemoveTasks(
-                      xClusterConfig,
-                      oldReplicationGroupName,
-                      targetUniverse.getUniverseDetails().getSourceRootCertDirPath(),
-                      false /* ignoreErrors */));
+          createTransferXClusterCertsRemoveTasks(xClusterConfig, oldReplicationGroupName);
         } else if (editFormData.status != null) {
           createSetReplicationPausedTask(xClusterConfig, editFormData.status)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
@@ -154,7 +139,16 @@ public class EditXClusterConfig extends CreateXClusterConfig {
             throw new IllegalArgumentException(
                 "The databases must be provided only for DB scoped replication");
           }
-          addSubtasksToAddDatabasesToXClusterConfig(xClusterConfig, editFormData.databases);
+          Set<String> databaseIdsToAdd = taskParams().getDatabaseIdsToAdd();
+          Set<String> databaseIdsToRemove = taskParams().getDatabaseIdsToRemove();
+          log.info("The databases to remove are {}", databaseIdsToRemove);
+          if (!databaseIdsToAdd.isEmpty()) {
+            addSubtasksToAddDatabasesToXClusterConfig(xClusterConfig, databaseIdsToAdd);
+          }
+          if (!databaseIdsToRemove.isEmpty()) {
+            addSubtasksToRemoveDatabasesFromXClusterConfig(xClusterConfig, databaseIdsToRemove);
+          }
+
         } else {
           throw new RuntimeException("No edit operation was specified in editFormData");
         }
@@ -269,7 +263,7 @@ public class EditXClusterConfig extends CreateXClusterConfig {
                 tableIdsNeedBootstrap.addAll(getTableIds(tablesInfo));
               } else {
                 groupByNamespaceName(requestedTableInfoList).get(namespaceName).stream()
-                    .map(tableInfo -> getTableId(tableInfo))
+                    .map(XClusterConfigTaskBase::getTableId)
                     .forEach(tableIdsNeedBootstrap::add);
               }
             }
@@ -357,6 +351,7 @@ public class EditXClusterConfig extends CreateXClusterConfig {
             xClusterConfig,
             taskParams().getBootstrapParams(),
             dbToTablesInfoMapNeedBootstrap,
+            null /* sourceDbIds */,
             true /* isReplicationConfigCreated */,
             taskParams().getPitrParams());
 
@@ -378,10 +373,31 @@ public class EditXClusterConfig extends CreateXClusterConfig {
   protected void addSubtasksToAddDatabasesToXClusterConfig(
       XClusterConfig xClusterConfig, Set<String> databases) {
 
+    addSubtasksForTablesNeedBootstrap(
+        xClusterConfig,
+        taskParams().getBootstrapParams(),
+        null,
+        databases,
+        true /* isReplicationConfigCreated */,
+        taskParams().getPitrParams());
+
+    if (xClusterConfig.isUsedForDr()) {
+      createSetDrStatesTask(
+              xClusterConfig,
+              State.Replicating,
+              SourceUniverseState.ReplicatingData,
+              TargetUniverseState.ReceivingData,
+              null /* keyspacePending */)
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+    }
+  }
+
+  protected void addSubtasksToRemoveDatabasesFromXClusterConfig(
+      XClusterConfig xClusterConfig, Set<String> databases) {
+
     for (String dbId : databases) {
-      xClusterConfig.updateStatusForNamespace(dbId, XClusterNamespaceConfig.Status.Updating);
-      createXClusterAddNamespaceToOutboundReplicationGroupTask(xClusterConfig, dbId);
-      createAddNamespaceToXClusterReplicationTask(xClusterConfig, dbId);
+      createXClusterRemoveNamespaceFromTargetUniverseTask(xClusterConfig, dbId);
+      createXClusterRemoveNamespaceFromOutboundReplicationGroupTask(xClusterConfig, dbId);
     }
 
     if (xClusterConfig.isUsedForDr()) {

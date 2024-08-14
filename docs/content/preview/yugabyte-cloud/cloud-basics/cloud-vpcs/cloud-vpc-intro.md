@@ -1,8 +1,8 @@
 ---
-title: VPCs in YugabyteDB Managed
+title: VPCs in YugabyteDB Aeon
 headerTitle: VPC network overview
 linkTitle: Overview
-description: Requirements and considerations for setting up a VPC network in YugabyteDB Managed.
+description: Requirements and considerations for setting up a VPC network in YugabyteDB Aeon.
 headcontent: What you need to know before creating VPCs
 menu:
   preview_yugabyte-cloud:
@@ -19,7 +19,7 @@ A VPC is defined by a block of [private IP addresses](#private-ip-address-ranges
 - Peered application VPCs.
   - Your applications reside in one or more VPCs on the same cloud provider, and are connected to your cluster VPC using [peering connections](../cloud-add-peering/).
   - AWS and GCP only.
-  - Required for smart load balancing features of [YugabyteDB smart drivers](../../../../drivers-orms/smart-drivers/#using-smart-drivers-with-yugabytedb-managed).
+  - Required for smart load balancing features of [YugabyteDB smart drivers](../../../../drivers-orms/smart-drivers/#using-smart-drivers-with-yugabytedb-aeon).
   - You need to add the IP address of your peered application VPC to the cluster [IP allow list](../../../cloud-secure-clusters/add-connections/).
 - Privately linked services.
   - Your applications reside in one or more VPCs on the same cloud provider, and are connected to your cluster over a private link to a [private service endpoint](../cloud-add-endpoint/).
@@ -27,7 +27,7 @@ A VPC is defined by a block of [private IP addresses](#private-ip-address-ranges
   - Smart load balancing features aren't supported. Smart driver falls back to upstream driver connection instead.
   - No need to add the IP address of your application to the cluster IP allow list.
 
-|  | Provider | Secure private network | [Add IPs to allow list](../../../cloud-secure-clusters/add-connections/) | [Smart driver load balancing](../../../../drivers-orms/smart-drivers/#using-smart-drivers-with-yugabytedb-managed) |
+|  | Provider | Secure private network | [Add IPs to allow list](../../../cloud-secure-clusters/add-connections/) | [Smart driver load balancing](../../../../drivers-orms/smart-drivers/#using-smart-drivers-with-yugabytedb-aeon) |
 | :--- | :--- | :--- | :--- | :--- |
 | Peering | AWS, GCP | Yes | Yes | Yes |
 | Private link | AWS, Azure | Yes | No | No |
@@ -38,7 +38,7 @@ Deploying your cluster in a VPC has the following advantages:
 
 - Lower network latency. Traffic uses only internal addresses, which provides lower latency than connectivity that uses external addresses.
 - Better security. Your services are never exposed to the public Internet.
-- Lower data transfer costs. By staying in the provider's network, you won't have any Internet data transfer traffic. (Same region and cross region overages may still apply. Refer to [Data transfer costs](../../../cloud-admin/cloud-billing-costs/#data-transfer-costs).)
+- Lower data transfer costs. By staying in the provider's network, you won't have any Internet data transfer traffic. (Same region and cross region costs may still apply. Refer to [Data transfer costs](../../../cloud-admin/cloud-billing-costs/#data-transfer-costs).)
 
 ## Pricing
 
@@ -66,9 +66,9 @@ When creating a VPC, you need to determine the following:
 
 ### Choose the region for your VPC
 
-For GCP, you have the choice of selecting all regions automatically, or defining a custom set of regions. If you use automated region selection, the VPC is created globally and assigned to all regions supported by YugabyteDB Managed. If you use custom region selection, you can choose one or more regions, and specify unique CIDR ranges for each; you can also add regions at a later date.
+For AWS and Azure, you define a single region per VPC.
 
-For AWS, you can only define a single region per VPC.
+For GCP, you have the choice of selecting all regions automatically, or defining a custom set of regions. If you use automated region selection, the VPC is created globally and assigned to all regions supported by YugabyteDB Aeon. If you use custom region selection, you can choose one or more regions, and specify unique CIDR ranges for each; you can also add regions at a later date.
 
 To avoid cross-region data transfer costs, deploy your VPC and cluster in the same region as the application VPC you intend peer or link.
 
@@ -76,9 +76,10 @@ To avoid cross-region data transfer costs, deploy your VPC and cluster in the sa
 
 Each region in multi-region clusters must be deployed in a VPC. Depending on the cloud provider, you set up your VPCs in different configurations.
 
-| Provider | Regional VPC setup
+| Provider | Regional VPC setup |
 | :--- | :--- |
-| AWS | You need to create a VPC in each region where the cluster is to be deployed.<br/>To deploy a multi-region cluster into those regional VPCs, ensure that the CIDRs of the VPCs do not overlap.<br/>If you intend to peer different VPCs to the same application VPC, ensure that the CIDRs of the VPCs do not overlap. |
+| AWS | You need to create a VPC in each region where the cluster is to be deployed.<br/>To deploy a multi-region cluster into those regional VPCs, ensure that the CIDRs of the VPCs do not overlap.<br/>If you intend to peer different VPCs to the same application VPC, ensure that the CIDRs of the VPCs do not overlap. See [Restrictions](#restrictions). |
+| Azure | You need to create a VPC in each region where the cluster is to be deployed.<br/>Azure assigns the CIDR automatically. |
 | GCP Custom region selection | When creating the VPC, you provide network blocks for each region where you intend to deploy the cluster; each region of the cluster is deployed in the same VPC.<br/>If you plan to expand your cluster into new regions in the future, add those regions to the VPC when you create the VPC; _you can not expand into new regions after the VPC is created_. |
 | GCP Automated region selection | Create a single global VPC and let GCP assign network blocks to every region; each region of the cluster is deployed in the same VPC.<br/>GCP does not recommend auto mode VPC networks for production; refer to [Considerations for auto mode VPC networks](https://cloud.google.com/vpc/docs/vpc#auto-mode-considerations). |
 
@@ -92,7 +93,7 @@ In AWS and GCP, because you can't resize a VPC once it is created, you need to d
 
 Ideally, you want the network to be as small as possible while accommodating potential growth. Calculate how many applications will be connecting to it, and estimate how that is expected to grow over time. Although you may want to create a large network to cover all contingencies, an over-sized network can impact network performance. If your traffic experiences spikes, you'll need to take that into account.
 
-When entering the range for your VPC in YugabyteDB Managed, the size of the network is determined by the prefix length (the number after the `/`). YugabyteDB Managed supports network sizes from `/26` to `/16`. For typical applications, `/25` is sufficient.
+When entering the range for your VPC in YugabyteDB Aeon, the size of the network is determined by the prefix length (the number after the `/`). YugabyteDB Aeon supports network sizes from `/26` to `/16`. For typical applications, `/25` is sufficient.
 
 The number of available addresses and sizing recommendation depends on the cloud provider where you are deploying.
 
@@ -158,12 +159,12 @@ If you are using VPC peering, addresses have the following additional restrictio
 
   ![VPCs peering with the same application VPC can't overlap](/images/yb-cloud/managed-vpc-overlap-cidr.png)
 
-  YugabyteDB Managed warns you when you enter an overlapping range.
+  YugabyteDB Aeon warns you when you enter an overlapping range.
 - Addresses can't overlap with the CIDR of the application VPC you intend to peer with.
 
   ![VPC CIDR can't overlap application CIDR](/images/yb-cloud/managed-vpc-overlap-app.png)
 
-YugabyteDB Managed reserves the following ranges for internal operations.
+YugabyteDB Aeon reserves the following ranges for internal operations.
 
 | Provider | Range |
 | :--- | :--- |

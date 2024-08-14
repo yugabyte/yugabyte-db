@@ -34,7 +34,8 @@ bool YbCanSkipFetchingTargetTupleForModifyTable(ModifyTable *modifyTable);
 
 bool YBCAllPrimaryKeysProvided(Relation rel, Bitmapset *attrs);
 
-bool is_index_only_refs(List *colrefs, IndexOptInfo *indexinfo, bool bitmapindex);
+bool is_index_only_attribute_nums(List *colrefs, IndexOptInfo *indexinfo,
+								  bool bitmapindex);
 
 void extract_pushdown_clauses(List *restrictinfo_list,
 							  IndexOptInfo *indexinfo,
@@ -44,3 +45,17 @@ void extract_pushdown_clauses(List *restrictinfo_list,
 							  List **rel_colrefs,
 							  List **idx_remote_quals,
 							  List **idx_colrefs);
+
+/* YbSkippableEntities helper functions*/
+extern YbSkippableEntities *YbInitSkippableEntities(List *no_update_index_list);
+extern void YbCopySkippableEntities(YbSkippableEntities *dst,
+									const YbSkippableEntities *src);
+extern void YbAddEntityToSkipList(YbSkippableEntityType etype, Oid oid,
+								  YbSkippableEntities *skip_entities);
+extern void YbClearSkippableEntities(YbSkippableEntities *skip_entities);
+
+
+extern struct YbUpdateAffectedEntities *
+YbComputeAffectedEntitiesForRelation(ModifyTable *modifyTable,
+									 const Relation rel,
+									 Bitmapset *update_attrs);

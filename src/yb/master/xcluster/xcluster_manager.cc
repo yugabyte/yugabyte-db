@@ -29,7 +29,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 
-DEFINE_RUNTIME_PREVIEW_bool(enable_xcluster_api_v2, false,
+DEFINE_RUNTIME_AUTO_bool(enable_xcluster_api_v2, kExternal, false, true,
     "Allow the usage of v2 xCluster APIs that support DB Scoped replication groups");
 
 DEFINE_RUNTIME_bool(disable_xcluster_db_scoped_new_table_processing, false,
@@ -37,10 +37,31 @@ DEFINE_RUNTIME_bool(disable_xcluster_db_scoped_new_table_processing, false,
     "table to inbound replication group on target");
 TAG_FLAG(disable_xcluster_db_scoped_new_table_processing, advanced);
 
+DEFINE_RUNTIME_AUTO_bool(enable_tablet_split_of_xcluster_replicated_tables, kExternal, false, true,
+    "When set, it enables automatic tablet splitting for tables that are part of an "
+    "xCluster replication setup");
+
 #define LOG_FUNC_AND_RPC \
   LOG_WITH_FUNC(INFO) << req->ShortDebugString() << ", from: " << RequestorString(rpc)
 
 namespace yb::master {
+
+namespace {
+
+template <typename RequestType>
+Status ValidateUniverseUUID(const RequestType& req, CatalogManager& catalog_manager) {
+  if (req->has_universe_uuid() && !req->universe_uuid().empty()) {
+    auto universe_uuid = catalog_manager.GetUniverseUuidIfExists();
+    SCHECK(
+        universe_uuid && universe_uuid->ToString() == req->universe_uuid(), InvalidArgument,
+        "Invalid Universe UUID $0. Expected $1", req->universe_uuid(),
+        (universe_uuid ? universe_uuid->ToString() : "empty"));
+  }
+
+  return Status::OK();
+}
+
+}  // namespace
 
 XClusterManager::XClusterManager(
     Master& master, CatalogManager& catalog_manager, SysCatalogTable& sys_catalog)
@@ -316,13 +337,28 @@ Status XClusterManager::GetXClusterStreams(
   LOG_FUNC_AND_RPC;
   SCHECK_PB_FIELDS_NOT_EMPTY(*req, replication_group_id, namespace_id);
 
-  std::vector<std::pair<TableName, PgSchemaName>> table_names;
-  for (const auto& table_name : req->table_infos()) {
-    table_names.emplace_back(table_name.table_name(), table_name.pg_schema_name());
-  }
+  // Only one of these fields should be set (or neither).
+  SCHECK(
+      req->table_infos().empty() || req->source_table_ids().empty(), InvalidArgument,
+      "Only one of table_infos or table_ids should be set");
 
-  auto ns_info = VERIFY_RESULT(XClusterSourceManager::GetXClusterStreams(
-      xcluster::ReplicationGroupId(req->replication_group_id()), req->namespace_id(), table_names));
+  std::optional<yb::master::NamespaceCheckpointInfo> ns_info;
+  if (!req->source_table_ids().empty()) {
+    // Handle the table_ids case.
+    std::vector<TableId> table_ids(req->source_table_ids().begin(), req->source_table_ids().end());
+    ns_info = VERIFY_RESULT(XClusterSourceManager::GetXClusterStreamsForTableIds(
+        xcluster::ReplicationGroupId(req->replication_group_id()), req->namespace_id(), table_ids));
+  } else {
+    // Handle the table_info case and the empty (all tables) case.
+    std::vector<std::pair<TableName, PgSchemaName>> table_names;
+    for (const auto& table_name : req->table_infos()) {
+      table_names.emplace_back(table_name.table_name(), table_name.pg_schema_name());
+    }
+
+    ns_info = VERIFY_RESULT(XClusterSourceManager::GetXClusterStreams(
+        xcluster::ReplicationGroupId(req->replication_group_id()), req->namespace_id(),
+        table_names));
+  }
 
   if (!ns_info.has_value()) {
     resp->set_not_ready(true);
@@ -477,6 +513,8 @@ Status XClusterManager::GetXClusterOutboundReplicationGroupInfo(
 Status XClusterManager::GetUniverseReplications(
     const GetUniverseReplicationsRequestPB* req, GetUniverseReplicationsResponsePB* resp,
     rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+
   const auto& namespace_filter = req->namespace_id();
 
   const auto replication_groups = XClusterTargetManager::GetUniverseReplications(namespace_filter);
@@ -487,9 +525,18 @@ Status XClusterManager::GetUniverseReplications(
   return Status::OK();
 }
 
+Status XClusterManager::GetReplicationStatus(
+    const GetReplicationStatusRequestPB* req, GetReplicationStatusResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  LOG_FUNC_AND_RPC;
+
+  return XClusterTargetManager::GetReplicationStatus(req, resp);
+}
+
 Status XClusterManager::GetUniverseReplicationInfo(
     const GetUniverseReplicationInfoRequestPB* req, GetUniverseReplicationInfoResponsePB* resp,
     rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
   SCHECK_PB_FIELDS_NOT_EMPTY(*req, replication_group_id);
 
   const auto replication_info = VERIFY_RESULT(XClusterTargetManager::GetUniverseReplicationInfo(
@@ -515,6 +562,19 @@ Status XClusterManager::GetUniverseReplicationInfo(
   }
 
   return Status::OK();
+}
+
+Status XClusterManager::XClusterReportNewAutoFlagConfigVersion(
+    const XClusterReportNewAutoFlagConfigVersionRequestPB* req,
+    XClusterReportNewAutoFlagConfigVersionResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+
+  const xcluster::ReplicationGroupId replication_group_id(req->replication_group_id());
+  const auto new_version = req->auto_flag_config_version();
+
+  return XClusterTargetManager::ReportNewAutoFlagConfigVersion(
+      replication_group_id, new_version, epoch);
 }
 
 std::vector<std::shared_ptr<PostTabletCreateTaskBase>> XClusterManager::GetPostTabletCreateTasks(
@@ -545,6 +605,175 @@ Status XClusterManager::MarkIndexBackfillCompleted(
 std::unordered_set<xcluster::ReplicationGroupId>
 XClusterManager::GetInboundTransactionalReplicationGroups() const {
   return XClusterTargetManager::GetTransactionalReplicationGroups();
+}
+
+Status XClusterManager::ClearXClusterSourceTableId(
+    TableInfoPtr table_info, const LeaderEpoch& epoch) {
+  return XClusterTargetManager::ClearXClusterSourceTableId(table_info, epoch);
+}
+
+void XClusterManager::NotifyAutoFlagsConfigChanged() {
+  XClusterTargetManager::NotifyAutoFlagsConfigChanged();
+}
+
+void XClusterManager::StoreConsumerReplicationStatus(
+    const XClusterConsumerReplicationStatusPB& consumer_replication_status) {
+  XClusterTargetManager::StoreReplicationStatus(consumer_replication_status);
+}
+
+void XClusterManager::SyncConsumerReplicationStatusMap(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const google::protobuf::Map<std::string, cdc::ProducerEntryPB>& producer_map) {
+  XClusterTargetManager::SyncReplicationStatusMap(replication_group_id, producer_map);
+}
+
+Result<bool> XClusterManager::HasReplicationGroupErrors(
+    const xcluster::ReplicationGroupId& replication_group_id) {
+  return XClusterTargetManager::HasReplicationGroupErrors(replication_group_id);
+}
+
+void XClusterManager::RecordTableConsumerStream(
+    const TableId& table_id, const xcluster::ReplicationGroupId& replication_group_id,
+    const xrepl::StreamId& stream_id) {
+  XClusterTargetManager::RecordTableStream(table_id, replication_group_id, stream_id);
+}
+
+void XClusterManager::RemoveTableConsumerStream(
+    const TableId& table_id, const xcluster::ReplicationGroupId& replication_group_id) {
+  XClusterTargetManager::RemoveTableStream(table_id, replication_group_id);
+}
+
+void XClusterManager::RemoveTableConsumerStreams(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const std::set<TableId>& tables_to_clear) {
+  XClusterTargetManager::RemoveTableStreams(replication_group_id, tables_to_clear);
+}
+
+Result<TableId> XClusterManager::GetConsumerTableIdForStreamId(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const xrepl::StreamId& stream_id) const {
+  return XClusterTargetManager::GetTableIdForStreamId(replication_group_id, stream_id);
+}
+
+bool XClusterManager::IsTableReplicationConsumer(const TableId& table_id) const {
+  return XClusterTargetManager::IsTableReplicated(table_id);
+}
+
+bool XClusterManager::IsTableReplicated(const TableId& table_id) const {
+  return XClusterSourceManager::IsTableReplicated(table_id) ||
+         XClusterTargetManager::IsTableReplicated(table_id);
+}
+
+Status XClusterManager::HandleTabletSplit(
+    const TableId& consumer_table_id, const SplitTabletIds& split_tablet_ids,
+    const LeaderEpoch& epoch) {
+  return XClusterTargetManager::HandleTabletSplit(consumer_table_id, split_tablet_ids, epoch);
+}
+
+Status XClusterManager::ValidateNewSchema(
+    const TableInfo& table_info, const Schema& consumer_schema) const {
+  return XClusterTargetManager::ValidateNewSchema(table_info, consumer_schema);
+}
+
+Status XClusterManager::ValidateSplitCandidateTable(const TableId& table_id) const {
+  if (!FLAGS_enable_tablet_split_of_xcluster_replicated_tables && IsTableReplicated(table_id)) {
+    return STATUS_FORMAT(
+        NotSupported,
+        "Tablet splitting is not supported for table $0 since it is part of xCluster replication",
+        table_id);
+  }
+
+  RETURN_NOT_OK(XClusterSourceManager::ValidateSplitCandidateTable(table_id));
+
+  return Status::OK();
+}
+
+Status XClusterManager::HandleTabletSchemaVersionReport(
+    const TableInfo& table_info, SchemaVersion consumer_schema_version, const LeaderEpoch& epoch) {
+  return XClusterTargetManager::ResumeStreamsAfterNewSchema(
+      table_info, consumer_schema_version, epoch);
+}
+
+Status XClusterManager::SetupUniverseReplication(
+    const SetupUniverseReplicationRequestPB* req, SetupUniverseReplicationResponsePB* resp,
+    rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+
+  return XClusterTargetManager::SetupUniverseReplication(req, resp, epoch);
+}
+
+/*
+ * Checks if the universe replication setup has completed.
+ * Returns Status::OK() if this call succeeds, and uses resp->done() to determine if the setup has
+ * completed (either failed or succeeded). If the setup has failed, then resp->replication_error()
+ * is also set. If it succeeds, replication_error() gets set to OK.
+ */
+Status XClusterManager::IsSetupUniverseReplicationDone(
+    const IsSetupUniverseReplicationDoneRequestPB* req,
+    IsSetupUniverseReplicationDoneResponsePB* resp, rpc::RpcContext* rpc) {
+  LOG_FUNC_AND_RPC;
+
+  SCHECK_PB_FIELDS_NOT_EMPTY(*req, replication_group_id);
+
+  auto is_operation_done = VERIFY_RESULT(XClusterTargetManager::IsSetupUniverseReplicationDone(
+      xcluster::ReplicationGroupId(req->replication_group_id())));
+
+  resp->set_done(is_operation_done.done());
+  StatusToPB(is_operation_done.status(), resp->mutable_replication_error());
+  return Status::OK();
+}
+
+Status XClusterManager::SetupNamespaceReplicationWithBootstrap(
+    const SetupNamespaceReplicationWithBootstrapRequestPB* req,
+    SetupNamespaceReplicationWithBootstrapResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+
+  return XClusterTargetManager::SetupNamespaceReplicationWithBootstrap(req, resp, epoch);
+}
+
+Status XClusterManager::IsSetupNamespaceReplicationWithBootstrapDone(
+    const IsSetupNamespaceReplicationWithBootstrapDoneRequestPB* req,
+    IsSetupNamespaceReplicationWithBootstrapDoneResponsePB* resp, rpc::RpcContext* rpc) {
+  LOG_FUNC_AND_RPC;
+
+  SCHECK_PB_FIELDS_NOT_EMPTY(*req, replication_group_id);
+
+  *resp = VERIFY_RESULT(XClusterTargetManager::IsSetupNamespaceReplicationWithBootstrapDone(
+      xcluster::ReplicationGroupId(req->replication_group_id())));
+
+  return Status::OK();
+}
+
+Status XClusterManager::AlterUniverseReplication(
+    const AlterUniverseReplicationRequestPB* req, AlterUniverseReplicationResponsePB* resp,
+    rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+
+  SCHECK_PB_FIELDS_NOT_EMPTY(*req, replication_group_id);
+
+  RETURN_NOT_OK(ValidateUniverseUUID(req, catalog_manager_));
+
+  return XClusterTargetManager::AlterUniverseReplication(req, resp, epoch);
+}
+
+Status XClusterManager::DeleteUniverseReplication(
+    const DeleteUniverseReplicationRequestPB* req, DeleteUniverseReplicationResponsePB* resp,
+    rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+
+  SCHECK_PB_FIELDS_NOT_EMPTY(*req, replication_group_id);
+
+  RETURN_NOT_OK(ValidateUniverseUUID(req, catalog_manager_));
+
+  RETURN_NOT_OK(XClusterTargetManager::DeleteUniverseReplication(
+      xcluster::ReplicationGroupId(req->replication_group_id()), req->ignore_errors(),
+      req->skip_producer_stream_deletion(), resp, epoch));
+
+  LOG(INFO) << "Successfully completed DeleteUniverseReplication request from "
+            << RequestorString(rpc);
+
+  return Status::OK();
 }
 
 }  // namespace yb::master

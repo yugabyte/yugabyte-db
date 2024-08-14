@@ -38,7 +38,10 @@ import { FailoverIcon } from '../icons/FailoverIcon';
 import { RepairDrConfigModal } from './repairConfig/RepairDrConfigModal';
 import { DrConfigOverview } from './drConfig/DrConfigOverview';
 import { DrBannerSection } from './DrBannerSection';
-import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import {
+  hasNecessaryPerm,
+  RbacValidator
+} from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { getUniverseStatus, UniverseState } from '../../universes/helpers/universeHelpers';
 import { EditConfigModal } from './editConfig/EditConfigModal';
@@ -148,12 +151,12 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
   const { primaryUniverseUuid: sourceUniverseUuid, drReplicaUniverseUuid: targetUniverseUuid } =
     drConfigQuery.data ?? {};
   // For DR, the currentUniverseUuid is not guaranteed to be the sourceUniverseUuid.
-  const participantUniveresUuid =
+  const participantUniverseUuid =
     currentUniverseUuid !== targetUniverseUuid ? targetUniverseUuid : sourceUniverseUuid;
   const participantUniverseQuery = useQuery(
-    universeQueryKey.detail(participantUniveresUuid),
-    () => api.fetchUniverse(participantUniveresUuid),
-    { enabled: !!participantUniveresUuid }
+    universeQueryKey.detail(participantUniverseUuid),
+    () => api.fetchUniverse(participantUniverseUuid),
+    { enabled: !!participantUniverseUuid }
   );
 
   const [sourceUniverse, targetUniverse] =
@@ -182,12 +185,15 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
       queryClient.invalidateQueries(drConfigQueryKey.detail(drConfigUuid));
     }
   }, PollingIntervalMs.DR_CONFIG_STATE_TRANSITIONS);
+  useInterval(() => {
+    queryClient.invalidateQueries(drConfigQueryKey.detail(drConfigUuid));
+  }, PollingIntervalMs.DR_CONFIG);
 
   if (currentUniverseQuery.isError || participantUniverseQuery.isError) {
     return (
       <YBErrorIndicator
         customErrorMessage={t('error.failToFetchUniverse', {
-          universeUuid: currentUniverseQuery.isError ? currentUniverseUuid : participantUniveresUuid
+          universeUuid: currentUniverseQuery.isError ? currentUniverseUuid : participantUniverseUuid
         })}
       />
     );
@@ -226,6 +232,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
         <EnableDrPrompt
           onConfigureDrButtonClick={openCreateConfigModal}
           isDisabled={isDrCreationDisabled}
+          universeUUID={currentUniverseUuid}
         />
         {isCreateConfigModalOpen && (
           <CreateConfigModal
@@ -285,9 +292,23 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
     targetUniverse,
     drConfig.state
   );
+
   return (
     <>
-      <RbacValidator accessRequiredOn={ApiPermissionMap.GET_DR_CONFIG}>
+      <RbacValidator
+        customValidateFunction={() => {
+          return (
+            hasNecessaryPerm({
+              ...ApiPermissionMap.GET_DR_CONFIG,
+              onResource: xClusterConfig.sourceUniverseUUID
+            }) &&
+            hasNecessaryPerm({
+              ...ApiPermissionMap.GET_DR_CONFIG,
+              onResource: xClusterConfig.targetUniverseUUID
+            })
+          );
+        }}
+      >
         <DrBannerSection
           drConfig={drConfig}
           openRepairConfigModal={openRepairConfigModal}
@@ -296,7 +317,21 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
         <div className={classes.header}>
           <Typography variant="h3">{t('heading')}</Typography>
           <div className={classes.actionButtonContainer}>
-            <RbacValidator accessRequiredOn={ApiPermissionMap.DR_CONFIG_SWITCHOVER} isControl>
+            <RbacValidator
+              customValidateFunction={() => {
+                return (
+                  hasNecessaryPerm({
+                    ...ApiPermissionMap.DR_CONFIG_SWITCHOVER,
+                    onResource: xClusterConfig.sourceUniverseUUID
+                  }) &&
+                  hasNecessaryPerm({
+                    ...ApiPermissionMap.DR_CONFIG_SWITCHOVER,
+                    onResource: xClusterConfig.targetUniverseUUID
+                  })
+                );
+              }}
+              isControl
+            >
               <YBButton
                 variant="primary"
                 size="large"
@@ -321,7 +356,18 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
                 mainMenu={(showSubmenu) => (
                   <>
                     <RbacValidator
-                      accessRequiredOn={ApiPermissionMap.DR_CONFIG_SET_TABLES}
+                      customValidateFunction={() => {
+                        return (
+                          hasNecessaryPerm({
+                            ...ApiPermissionMap.DR_CONFIG_SET_TABLES,
+                            onResource: xClusterConfig.sourceUniverseUUID
+                          }) &&
+                          hasNecessaryPerm({
+                            ...ApiPermissionMap.DR_CONFIG_SET_TABLES,
+                            onResource: xClusterConfig.targetUniverseUUID
+                          })
+                        );
+                      }}
                       overrideStyle={{ display: 'block' }}
                       isControl
                     >
@@ -339,7 +385,18 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
                       </MenuItem>
                     </RbacValidator>
                     <RbacValidator
-                      accessRequiredOn={ApiPermissionMap.DR_CONFIG_EDIT}
+                      customValidateFunction={() => {
+                        return (
+                          hasNecessaryPerm({
+                            ...ApiPermissionMap.DR_CONFIG_EDIT,
+                            onResource: xClusterConfig.sourceUniverseUUID
+                          }) &&
+                          hasNecessaryPerm({
+                            ...ApiPermissionMap.DR_CONFIG_EDIT,
+                            onResource: xClusterConfig.targetUniverseUUID
+                          })
+                        );
+                      }}
                       overrideStyle={{ display: 'block' }}
                       isControl
                     >
@@ -355,7 +412,18 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
                       </MenuItem>
                     </RbacValidator>
                     <RbacValidator
-                      accessRequiredOn={ApiPermissionMap.DR_CONFIG_REPLACE_REPLICA}
+                      customValidateFunction={() => {
+                        return (
+                          hasNecessaryPerm({
+                            ...ApiPermissionMap.DR_CONFIG_REPLACE_REPLICA,
+                            onResource: xClusterConfig.sourceUniverseUUID
+                          }) &&
+                          hasNecessaryPerm({
+                            ...ApiPermissionMap.DR_CONFIG_REPLACE_REPLICA,
+                            onResource: xClusterConfig.targetUniverseUUID
+                          })
+                        );
+                      }}
                       overrideStyle={{ display: 'block' }}
                       isControl
                     >
@@ -386,7 +454,18 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
                     </MenuItem>
                     <MenuItem divider />
                     <RbacValidator
-                      accessRequiredOn={ApiPermissionMap.DR_CONFIG_SWITCHOVER}
+                      customValidateFunction={() => {
+                        return (
+                          hasNecessaryPerm({
+                            ...ApiPermissionMap.DR_CONFIG_SWITCHOVER,
+                            onResource: xClusterConfig.sourceUniverseUUID
+                          }) &&
+                          hasNecessaryPerm({
+                            ...ApiPermissionMap.DR_CONFIG_SWITCHOVER,
+                            onResource: xClusterConfig.targetUniverseUUID
+                          })
+                        );
+                      }}
                       overrideStyle={{ display: 'block' }}
                       isControl
                     >
@@ -408,7 +487,18 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
                       </MenuItem>
                     </RbacValidator>
                     <RbacValidator
-                      accessRequiredOn={ApiPermissionMap.DR_CONFIG_FAILOVER}
+                      customValidateFunction={() => {
+                        return (
+                          hasNecessaryPerm({
+                            ...ApiPermissionMap.DR_CONFIG_FAILOVER,
+                            onResource: xClusterConfig.sourceUniverseUUID
+                          }) &&
+                          hasNecessaryPerm({
+                            ...ApiPermissionMap.DR_CONFIG_FAILOVER,
+                            onResource: xClusterConfig.targetUniverseUUID
+                          })
+                        );
+                      }}
                       overrideStyle={{ display: 'block' }}
                       isControl
                     >
@@ -431,7 +521,18 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
                     </RbacValidator>
                     <MenuItem divider />
                     <RbacValidator
-                      accessRequiredOn={ApiPermissionMap.DELETE_DR_CONFIG}
+                      customValidateFunction={() => {
+                        return (
+                          hasNecessaryPerm({
+                            ...ApiPermissionMap.DELETE_DR_CONFIG,
+                            onResource: xClusterConfig.sourceUniverseUUID
+                          }) &&
+                          hasNecessaryPerm({
+                            ...ApiPermissionMap.DELETE_DR_CONFIG,
+                            onResource: xClusterConfig.targetUniverseUUID
+                          })
+                        );
+                      }}
                       overrideStyle={{ display: 'block' }}
                       isControl
                     >
@@ -459,7 +560,18 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
                         />
                       </MenuItem>
                       <RbacValidator
-                        accessRequiredOn={ApiPermissionMap.DR_CONFIG_RESTART}
+                        customValidateFunction={() => {
+                          return (
+                            hasNecessaryPerm({
+                              ...ApiPermissionMap.DR_CONFIG_RESTART,
+                              onResource: xClusterConfig.sourceUniverseUUID
+                            }) &&
+                            hasNecessaryPerm({
+                              ...ApiPermissionMap.DR_CONFIG_RESTART,
+                              onResource: xClusterConfig.targetUniverseUUID
+                            })
+                          );
+                        }}
                         overrideStyle={{ display: 'block' }}
                         isControl
                       >
@@ -477,7 +589,18 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
                         </MenuItem>
                       </RbacValidator>
                       <RbacValidator
-                        accessRequiredOn={ApiPermissionMap.DR_CONFIG_SYNC}
+                        customValidateFunction={() => {
+                          return (
+                            hasNecessaryPerm({
+                              ...ApiPermissionMap.DR_CONFIG_SYNC,
+                              onResource: xClusterConfig.sourceUniverseUUID
+                            }) &&
+                            hasNecessaryPerm({
+                              ...ApiPermissionMap.DR_CONFIG_SYNC,
+                              onResource: xClusterConfig.targetUniverseUUID
+                            })
+                          );
+                        }}
                         overrideStyle={{ display: 'block' }}
                         isControl
                       >
@@ -542,7 +665,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
         )}
         {isEditTablesModalOpen && (
           <EditTablesModal
-            xClusterConfig={xClusterConfig}
+            xClusterConfigUuid={xClusterConfig.uuid}
             isDrInterface={true}
             drConfigUuid={drConfig.uuid}
             storageConfigUuid={drConfig.bootstrapParams?.backupRequestParams?.storageConfigUUID}
@@ -562,7 +685,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
             drConfig={drConfig}
             isVisible={isRestartConfigModalOpen}
             onHide={closeRestartConfigModal}
-            xClusterConfig={xClusterConfig}
+            xClusterConfigUuid={xClusterConfig.uuid}
           />
         )}
         {isDbSyncModalOpen && (

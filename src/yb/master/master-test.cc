@@ -366,6 +366,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
   TSRegistrationPB fake_reg;
   MakeHostPortPB("localhost", 1000, fake_reg.mutable_common()->add_private_rpc_addresses());
   MakeHostPortPB("localhost", 2000, fake_reg.mutable_common()->add_http_addresses());
+  *fake_reg.mutable_resources() = master::ResourcesPB();
 
   {
     TSHeartbeatRequestPB req;
@@ -382,8 +383,9 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
 
   descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
   ASSERT_EQ(1, descs.size()) << "Should have registered the TS";
-  TSRegistrationPB reg = descs[0]->GetRegistration();
-  ASSERT_EQ(fake_reg.DebugString(), reg.DebugString()) << "Master got different registration";
+  auto reg = descs[0]->GetTSRegistrationPB();
+  ASSERT_EQ(fake_reg.DebugString(), reg.DebugString())
+      << "Master got different registration";
 
   ASSERT_TRUE(mini_master_->master()->ts_manager()->LookupTSByUUID(kTsUUID, &ts_desc));
   ASSERT_EQ(ts_desc, descs[0]);
@@ -928,7 +930,7 @@ TEST_F(MasterTest, TestParentBasedTableToTabletMappingFlag) {
 
   auto tables = mini_master_->catalog_manager_impl().GetTables(GetTablesMode::kAll);
   for (const auto& table : tables) {
-    for (const auto& tablet : table->GetTablets(IncludeInactive::kTrue)) {
+    for (const auto& tablet : ASSERT_RESULT(table->GetTablets(IncludeInactive::kTrue))) {
       if (table->is_system() &&
           tablet->LockForRead().data().pb.hosted_tables_mapped_by_parent_id()) {
         FAIL() << Format(
@@ -952,14 +954,14 @@ TEST_F(MasterTest, TestParentBasedTableToTabletMappingFlag) {
     return tablet_info->LockForRead().data().pb.hosted_tables_mapped_by_parent_id();
   };
 
-  const auto new_schema_tablets =
-      ASSERT_RESULT(find_table(kNewSchemaTableName))->GetTablets(IncludeInactive::kTrue);
+  const auto new_schema_tablets = ASSERT_RESULT(
+      ASSERT_RESULT(find_table(kNewSchemaTableName))->GetTablets(IncludeInactive::kTrue));
   EXPECT_TRUE(
       std::all_of(new_schema_tablets.begin(), new_schema_tablets.end(), tablet_uses_new_schema));
   EXPECT_GT(new_schema_tablets.size(), 0);
 
-  auto old_schema_tablets =
-      ASSERT_RESULT(find_table(kOldSchemaTableName))->GetTablets(IncludeInactive::kTrue);
+  auto old_schema_tablets = ASSERT_RESULT(
+      ASSERT_RESULT(find_table(kOldSchemaTableName))->GetTablets(IncludeInactive::kTrue));
   EXPECT_TRUE(
       std::none_of(old_schema_tablets.begin(), old_schema_tablets.end(), tablet_uses_new_schema));
   EXPECT_GT(old_schema_tablets.size(), 0);
@@ -1159,7 +1161,7 @@ TEST_F(MasterTest, GetNumTabletReplicasChecksTablespace) {
       table, &num_live_replicas, &num_read_replicas);
   ASSERT_EQ(num_live_replicas + num_read_replicas, kNumTableLiveReplicas);
 
-  for (auto& tablet : table->GetTablets()) {
+  for (auto& tablet : ASSERT_RESULT(table->GetTablets())) {
     num_live_replicas = 0, num_read_replicas = 0;
     ASSERT_OK(mini_master_->catalog_manager_impl().GetExpectedNumberOfReplicasForTablet(
         tablet->id(), &num_live_replicas, &num_read_replicas));
@@ -1209,7 +1211,7 @@ TEST_F(MasterTest, GetNumTabletReplicasDefaultsToClusterConfig) {
       table, &num_live_replicas, &num_read_replicas);
   ASSERT_EQ(num_live_replicas + num_read_replicas, kNumClusterLiveReplicas);
 
-  for (auto& tablet : table->GetTablets()) {
+  for (auto& tablet : ASSERT_RESULT(table->GetTablets())) {
     num_live_replicas = 0, num_read_replicas = 0;
     ASSERT_OK(mini_master_->catalog_manager_impl().GetExpectedNumberOfReplicasForTablet(
         tablet->id(), &num_live_replicas, &num_read_replicas));

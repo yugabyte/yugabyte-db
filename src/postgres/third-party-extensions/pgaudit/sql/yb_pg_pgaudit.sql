@@ -609,22 +609,14 @@ ALTER TABLE public.test
 
 ALTER TABLE public.test2
 	SET SCHEMA test;
--- YB note: bump audit number to stay same with upstream.
-SELECT 'yb';
 
 ALTER TABLE test.test2
 	ADD COLUMN description TEXT;
--- YB note: bump audit number to stay same with upstream.
-SELECT 'yb';
 
 ALTER TABLE test.test2
 	DROP COLUMN description;
--- YB note: bump audit number to stay same with upstream.
-SELECT 'yb';
 
 DROP TABLE test.test2;
--- YB note: bump audit number to stay same with upstream.
-SELECT 'yb';
 
 --
 -- Test multiple statements with one semi-colon

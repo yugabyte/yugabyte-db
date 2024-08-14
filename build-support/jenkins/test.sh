@@ -215,13 +215,14 @@ fi
 ybc_dest="$YB_SRC_ROOT/build/ybc"
 if [[ -n ${ybc_tar} ]]; then
   log "Unpacking ${ybc_tar} binaries to ${ybc_dest}/"
-  log "  and setting YB_TEST_YB_CONTROLLER=1"
   mkdir -p "${ybc_dest}"
   tar xf "$ybc_tar"
   cp ./ybc-*/bin/* "${ybc_dest}/"
   ( set -x; ls -l "${ybc_dest}/")
   export YB_TEST_YB_CONTROLLER=${YB_TEST_YB_CONTROLLER:-1}
+  log "Setting YB_TEST_YB_CONTROLLER=$YB_TEST_YB_CONTROLLER"
   export YB_DISABLE_MINICLUSTER_BACKUP_TESTS=1
+  log "Setting YB_DISABLE_MINICLUSTER_BACKUP_TESTS=$YB_DISABLE_MINICLUSTER_BACKUP_TESTS"
 else
   log "Did not find YBC tarfile. Not setting YB_TEST_YB_CONTROLLER."
 fi

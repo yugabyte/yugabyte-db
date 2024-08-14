@@ -188,6 +188,8 @@ bool CanAbortTransaction(const Status& status,
     return txn_err.value() != TransactionErrorCode::kReadRestartRequired &&
            txn_err.value() != TransactionErrorCode::kConflict;
   }
+  // For other situations, we can safely abort the transaction. Even if the error is retriable, it
+  // will be retried by starting a new transaction (done by the query layer).
   return true;
 }
 

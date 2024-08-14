@@ -422,7 +422,9 @@ class RemoteDeadlockResolver : public std::enable_shared_from_this<RemoteDeadloc
     req.set_transaction_id(id.data(), id.size());
     StatusToPB(
         STATUS_EC_FORMAT(
-            Expired, TransactionError(TransactionErrorCode::kDeadlock), err_msg),
+            Expired, TransactionError(TransactionErrorCode::kDeadlock),
+            err_msg).CloneAndAddErrorCode(
+                PgsqlError(YBPgErrorCode::YB_PG_T_R_DEADLOCK_DETECTED)),
         req.mutable_deadlock_reason());
     rpcs_->RegisterAndStart(
         AbortTransaction(

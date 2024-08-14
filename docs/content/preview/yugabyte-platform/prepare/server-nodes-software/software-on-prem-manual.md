@@ -4,6 +4,8 @@ headerTitle: Provisioning on-premises nodes
 linkTitle: Provision nodes
 description: Software requirements for on-premises provider nodes.
 headContent: How to meet the software prerequisites with fully manual provisioning
+aliases:
+    - /preview/yugabyteplatform/prepare/server-nodes-software/software-on-premmanual/
 menu:
   preview_yugabyte-platform:
     identifier: software-on-prem-3-manual
@@ -11,6 +13,10 @@ menu:
     weight: 10
 type: docs
 ---
+
+{{<tip title="v2.20 and earlier">}}
+For instructions on preparing nodes for on-premises configurations in v2.20 and earlier, see [Create on-premises provider configuration](/v2.20/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/).
+{{</tip>}}
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
@@ -39,7 +45,7 @@ In this mode, you manually install each prerequisite software component. Use thi
 
 Your responsibility now (to meet prerequisites) is to provide a VM with the following pre-installed:
 
-- [Supported Linux OS](../#linux-os) with an SSH-enabled, root-privileged user. YBA uses this user to automatically perform additional Linux configuration, such as creating the `yugabyte` user, updating the file descriptor settings via ulimits, and so on.
+- [Supported Linux OS](../#linux-os) with an SSH-enabled, root-privileged user. YugabyteDB Anywhere (YBA) uses this user to automatically perform additional Linux configuration, such as creating the `yugabyte` user, updating the file descriptor settings via ulimits, and so on.
 - [Additional software](../#additional-software)
 - [Additional software for airgapped](../#additional-software-for-airgapped-deployment)
 
@@ -234,7 +240,7 @@ Physical nodes (or cloud instances) are installed with a standard AlmaLinux 8 se
 
 ## Install Prometheus Node Exporter
 
-Download the 1.3.1 version of the Prometheus Node Exporter, as follows:
+Download the Prometheus Node Exporter, as follows:
 
 ```sh
 wget https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.0.linux-amd64.tar.gz

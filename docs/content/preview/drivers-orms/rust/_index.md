@@ -3,12 +3,12 @@ title: Rust
 headerTitle: Rust
 linkTitle: Rust
 description: Rust Drivers and ORMs support for YugabyteDB.
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
+image: fa-brands fa-rust
 menu:
   preview:
     identifier: rust-drivers
     parent: drivers-orms
-    weight: 580
+    weight: 600
 type: indexpage
 showRightNav: true
 ---
@@ -48,7 +48,7 @@ To develop Rust applications for YugabyteDB, you need the following:
   This creates the project as `HelloWorld-rust` which consists of a `Cargo.toml` file (project metadata) and a `src` directory containing the main code file, `main.rs`.
 
 - **YugabyteDB cluster**
-  - Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Refer to [Use a cloud cluster](../../quick-start-yugabytedb-managed/). Note that YugabyteDB Managed requires SSL.
+  - Create a free cluster on YugabyteDB Aeon. Refer to [Use a cloud cluster](../../quick-start-yugabytedb-managed/). Note that YugabyteDB Aeon requires SSL.
   - Alternatively, set up a standalone YugabyteDB cluster by following the steps in [Install YugabyteDB](../../quick-start/).
 
 ## Next step

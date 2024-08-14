@@ -55,6 +55,8 @@ const javaBinaryGlob = "yba_installer-*linux*/OpenJDK17U-jre_x64_linux_*.tar.gz"
 
 const tarTemplateDirGlob = "yba_installer-*linux*/" + ConfigDir
 
+const BackupRegex = `^backup_\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.tgz$`
+
 // IndexOf returns the index in arr where val is present, -1 otherwise.
 func IndexOf(arr []string, val string) int {
 
@@ -701,6 +703,16 @@ func SetYamlValue(filePath string, yamlPath string, value interface{}) error {
 		return fmt.Errorf("unable to parse config file %s: %s", filePath, err.Error())
 	}
 
+	// handle case where we read empty file, initialize to blank document
+	if root.Kind == 0 {
+		root = yaml.Node{
+			Kind: yaml.DocumentNode,
+			Content: []*yaml.Node{&yaml.Node{
+					Kind: yaml.MappingNode,
+			}},
+		}
+	}
+
 	before, after, _ := strings.Cut(yamlPath, ".")
 	err = setYamlValue(&root, before, after, value)
 	if err != nil {
@@ -896,12 +908,7 @@ func AbsoluteBundlePath(fp string) string {
 	return filepath.Join(rootDir, fp)
 }
 
-func FindRecentBackup(dir string) string {
-	files, err := os.ReadDir(dir)
-	if err != nil {
-		log.Fatal(fmt.Sprintf("error reading directory %s: %s", dir, err.Error()))
-	}
-	// Looks for most recent backup first.
+func sortFilesDescending(files []fs.DirEntry) {
 	sort.Slice(files, func(i, j int) bool {
 		iinfo, e1 := files[i].Info()
 		jinfo, e2 := files[j].Info()
@@ -910,9 +917,18 @@ func FindRecentBackup(dir string) string {
 		}
 		return iinfo.ModTime().After(jinfo.ModTime())
 	})
+}
+
+func FindRecentBackup(dir string) string {
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		log.Fatal(fmt.Sprintf("error reading directory %s: %s", dir, err.Error()))
+	}
+
+	sortFilesDescending(files)
 	// Find the old backup.
 	for _, file := range files {
-		match, _ := regexp.MatchString(`^backup_\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.tgz$`, file.Name())
+		match, _ := regexp.MatchString(BackupRegex, file.Name())
 		if match {
 			input := fmt.Sprintf("%s/%s", dir, file.Name())
 			log.Info(fmt.Sprintf("Found backup file %s", input))
@@ -921,4 +937,39 @@ func FindRecentBackup(dir string) string {
 	}
 	log.Fatal("Could not find backup file in " + dir)
 	return ""
+}
+
+// KeepMostRecentFiles looks inside of a folderPath and finds all files matching regexPattern
+// sorts the files by modification time and only keeps the toKeep most recent ones
+func KeepMostRecentFiles(folderPath string, regexPattern string, toKeep int) error {
+	files, err := os.ReadDir(folderPath)
+	if err != nil {
+		return fmt.Errorf("failed to read directory: %v", err)
+	}
+
+	var matchingFiles []os.DirEntry
+	re := regexp.MustCompile(regexPattern)
+
+	for _, file := range files {
+		if !file.Type().IsDir() && re.MatchString(file.Name()) {
+			matchingFiles = append(matchingFiles, file)
+		}
+	}
+
+	if len(matchingFiles) <= toKeep {
+		// No need to delete any files
+		return nil
+	}
+
+	sortFilesDescending(matchingFiles)
+
+	// Delete all but the two most recent files
+	for _, file := range matchingFiles[toKeep:] {
+		filePath := filepath.Join(folderPath, file.Name())
+		if err := os.Remove(filePath); err != nil {
+			return fmt.Errorf("failed to delete file: %v", err)
+		}
+	}
+
+	return nil
 }

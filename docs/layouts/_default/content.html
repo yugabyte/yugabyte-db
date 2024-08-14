@@ -7,7 +7,10 @@
 
   {{- if and (.Site.Params.yb.heading_icons) (.Params.image) (not .Params.hideHeadingIcon) -}}
     {{- if in .Params.image "/" -}}
-      {{- $headingImage = true -}}
+      {{ $checkImagePath := printf "public%s" .Params.image }}
+      {{- if fileExists $checkImagePath }}
+        {{- $headingImage = true -}}
+      {{- end -}}
     {{- else -}}
       {{- $headingIcon = true -}}
     {{- end -}}
@@ -31,7 +34,9 @@
     </div>
   </div>
 
-  {{ partial "contribute_list" . }}
+  {{- if eq .Params.showRightNav false -}}
+    {{- partial "contribute_list" . -}}
+  {{- end -}}
 	<header class="article-meta">
 		{{ partial "taxonomy_terms_article_wrapper.html" . }}
 		{{ if (and (not .Params.hide_readingtime) (.Site.Params.ui.readingtime.enable)) }}

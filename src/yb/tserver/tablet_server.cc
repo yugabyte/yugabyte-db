@@ -231,7 +231,13 @@ DEFINE_RUNTIME_uint32(ysql_min_new_version_ignored_count, 10,
     "Minimum consecutive number of times that a tserver is allowed to ignore an older catalog "
     "version that is retrieved from a tserver-master heartbeat response.");
 
+DEFINE_test_flag(bool, enable_object_locking_for_table_locks, false,
+                 "The test flag enables a mechanism using which a tserver could serve an object "
+                 "lock request by acquiring corresponding locks at the local TSLocalLockManager.");
+
 DECLARE_bool(enable_pg_cron);
+
+DEFINE_test_flag(bool, enable_pg_client_mock, false, "Enable mocking of PgClient service in tests");
 
 namespace yb::tserver {
 
@@ -244,40 +250,48 @@ uint16_t GetPostgresPort() {
   return postgres_address.port();
 }
 
-void PostgresAndYsqlConnMgrPortValidator() {
+bool PostgresAndYsqlConnMgrPortValidator(const char* flag_name, uint32 value) {
+  // This validation depends on the value of other flag(s): enable_ysql_conn_mgr,
+  // pgsql_proxy_bind_address.
+  DELAY_FLAG_VALIDATION_ON_STARTUP(flag_name);
+
   if (!FLAGS_enable_ysql_conn_mgr) {
-    return;
+    return true;
   }
   const auto pg_port = GetPostgresPort();
-  if (FLAGS_ysql_conn_mgr_port == pg_port) {
+  if (value == pg_port) {
     if (pg_port != pgwrapper::PgProcessConf::kDefaultPort) {
-      LOG(FATAL) << "Postgres port (pgsql_proxy_bind_address: " << pg_port
-                 << ") and Ysql Connection Manager port (ysql_conn_mgr_port:"
-                 << FLAGS_ysql_conn_mgr_port << ") cannot be the same.";
+      LOG_FLAG_VALIDATION_ERROR(flag_name, value)
+          << "Must be different from the Postgres port pgsql_proxy_bind_address (" << pg_port
+          << ")";
+      return false;
     } else {
       // Ignore. t-server will resolve the conflict in SetProxyAddresses.
     }
   }
+
+  return true;
 }
 
-// Normally we would have used DEFINE_validator. But this validation depends on the value of another
-// flag (pgsql_proxy_bind_address). On process startup flag validations are run as each flag
-// gets parsed from the command line parameter. So this would impose a restriction on the user to
-// pass the flags in a particular obscure order via command line. YBA has no guarantees on the order
-// it uses as well. So, instead we use a Callback with LOG(FATAL) since at startup Callbacks are run
-// after all the flags have been parsed.
-REGISTER_CALLBACK(ysql_conn_mgr_port, "PostgresAndYsqlConnMgrPortValidator",
-    &PostgresAndYsqlConnMgrPortValidator);
+DEFINE_validator(ysql_conn_mgr_port, &PostgresAndYsqlConnMgrPortValidator);
 
-void ValidateEnableYsqlConnMgr() {
-  if (FLAGS_enable_ysql_conn_mgr && !(FLAGS_start_pgsql_proxy || FLAGS_enable_ysql)) {
-    LOG(FATAL) << "Cannot start Ysql Connection Manager (YSQL is not enabled)";
-    return;
+bool ValidateEnableYsqlConnMgr(const char* flag_name, bool value) {
+  if (!value) {
+    return true;
   }
-  return;
+
+  // This validation depends on the value of other flag(s): start_pgsql_proxy, enable_ysql.
+  DELAY_FLAG_VALIDATION_ON_STARTUP(flag_name);
+
+  if (!FLAGS_start_pgsql_proxy && !FLAGS_enable_ysql) {
+    LOG_FLAG_VALIDATION_ERROR(flag_name, value)
+        << "YSQL must be enabled to start the YSQL connection manager.";
+    return false;
+  }
+  return true;
 }
 
-REGISTER_CALLBACK(enable_ysql_conn_mgr, "ValidateEnableYsqlConnMgr", &ValidateEnableYsqlConnMgr);
+DEFINE_validator(enable_ysql_conn_mgr, &ValidateEnableYsqlConnMgr);
 
 class CDCServiceContextImpl : public cdc::CDCServiceContext {
  public:
@@ -296,13 +310,6 @@ class CDCServiceContextImpl : public cdc::CDCServiceContext {
   }
 
   const std::string& permanent_uuid() const override { return tablet_server_.permanent_uuid(); }
-
-  std::unique_ptr<client::AsyncClientInitializer> MakeClientInitializer(
-      const std::string& client_name, MonoDelta default_timeout) const override {
-    return std::make_unique<client::AsyncClientInitializer>(
-        client_name, default_timeout, tablet_server_.permanent_uuid(), &tablet_server_.options(),
-        tablet_server_.metric_entity(), tablet_server_.mem_tracker(), tablet_server_.messenger());
-  }
 
   Result<uint32> GetAutoFlagsConfigVersion() const override {
     return tablet_server_.ValidateAndGetAutoFlagsConfigVersion();
@@ -329,6 +336,9 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
     ysql_db_catalog_version_index_used_ =
       std::make_unique<std::array<bool, TServerSharedData::kMaxNumDbCatalogVersions>>();
     ysql_db_catalog_version_index_used_->fill(false);
+  }
+  if (PREDICT_FALSE(FLAGS_TEST_enable_object_locking_for_table_locks)) {
+    ts_local_lock_manager_ = std::make_unique<tablet::TSLocalLockManager>();
   }
   LOG(INFO) << "yb::tserver::TabletServer created at " << this;
   LOG(INFO) << "yb::tserver::TSTabletManager created at " << tablet_manager_.get();
@@ -519,10 +529,10 @@ Status TabletServer::Init() {
   return Status::OK();
 }
 
-Status TabletServer::InitAutoFlags(rpc::Messenger* messenger) {
+Status TabletServer::InitFlags(rpc::Messenger* messenger) {
   RETURN_NOT_OK(auto_flags_manager_->Init(messenger, *opts_.GetMasterAddresses()));
 
-  return RpcAndWebServerBase::InitAutoFlags(messenger);
+  return RpcAndWebServerBase::InitFlags(messenger);
 }
 
 Result<std::unordered_set<std::string>> TabletServer::GetAvailableAutoFlagsForServer() const {
@@ -531,6 +541,10 @@ Result<std::unordered_set<std::string>> TabletServer::GetAvailableAutoFlagsForSe
 
 uint32_t TabletServer::GetAutoFlagConfigVersion() const {
   return auto_flags_manager_->GetConfigVersion();
+}
+
+Result<std::unordered_set<std::string>> TabletServer::GetFlagsForServer() const {
+  return yb::GetFlagNamesFromXmlFile("tserver_flags.xml");
 }
 
 void TabletServer::HandleMasterHeartbeatResponse(
@@ -580,7 +594,8 @@ Status TabletServer::RegisterServices() {
 #endif
 
   cdc_service_ = std::make_shared<cdc::CDCServiceImpl>(
-      std::make_unique<CDCServiceContextImpl>(this), metric_entity(), metric_registry());
+      std::make_unique<CDCServiceContextImpl>(this), metric_entity(), metric_registry(),
+      client_future());
 
   RETURN_NOT_OK(RegisterService(
       FLAGS_ts_backup_svc_queue_length,
@@ -613,13 +628,25 @@ Status TabletServer::RegisterServices() {
     remote_bootstrap_service.get();
   RETURN_NOT_OK(RegisterService(
       FLAGS_ts_remote_bootstrap_svc_queue_length, std::move(remote_bootstrap_service)));
-  auto pg_client_service = std::make_shared<PgClientServiceImpl>(
-      *this, tablet_manager_->client_future(), clock(),
-      std::bind(&TabletServer::TransactionPool, this), mem_tracker(), metric_entity(), messenger(),
-      permanent_uuid(), &options(), xcluster_context_.get(), &pg_node_level_mutation_counter_);
-  pg_client_service_ = pg_client_service;
-  LOG(INFO) << "yb::tserver::PgClientServiceImpl created at " << pg_client_service.get();
-  RETURN_NOT_OK(RegisterService(FLAGS_pg_client_svc_queue_length, std::move(pg_client_service)));
+
+  auto pg_client_service_holder = std::make_shared<PgClientServiceHolder>(
+        *this, tablet_manager_->client_future(), clock(),
+        std::bind(&TabletServer::TransactionPool, this), mem_tracker(), metric_entity(),
+        messenger(), permanent_uuid(), &options(), xcluster_context_.get(),
+        &pg_node_level_mutation_counter_);
+  PgClientServiceIf* pg_client_service_if = &pg_client_service_holder->impl;
+  LOG(INFO) << "yb::tserver::PgClientServiceImpl created at " << pg_client_service_if;
+
+  if (PREDICT_FALSE(FLAGS_TEST_enable_pg_client_mock)) {
+    pg_client_service_holder->mock.emplace(metric_entity(), pg_client_service_if);
+    pg_client_service_if = &pg_client_service_holder->mock.value();
+    LOG(INFO) << "Mock created for yb::tserver::PgClientServiceImpl";
+  }
+
+  pg_client_service_ = pg_client_service_holder;
+  RETURN_NOT_OK(RegisterService(
+      FLAGS_pg_client_svc_queue_length, std::shared_ptr<PgClientServiceIf>(
+          std::move(pg_client_service_holder), pg_client_service_if)));
 
   if (FLAGS_TEST_echo_service_enabled) {
     auto test_echo_service = std::make_unique<stateful_service::TestEchoService>(
@@ -630,8 +657,14 @@ Status TabletServer::RegisterServices() {
     RETURN_NOT_OK(RegisterService(FLAGS_TEST_echo_svc_queue_length, std::move(test_echo_service)));
   }
 
+  auto connect_to_pg = [this](const std::string& database_name) {
+    return pgwrapper::CreateInternalPGConnBuilder(pgsql_proxy_bind_address(), database_name,
+                                                  GetSharedMemoryPostgresAuthKey(),
+                                                  std::nullopt).Connect();
+  };
   auto pg_auto_analyze_service =
-      std::make_shared<stateful_service::PgAutoAnalyzeService>(metric_entity(), client_future());
+      std::make_shared<stateful_service::PgAutoAnalyzeService>(metric_entity(), client_future(),
+                                                               connect_to_pg);
   LOG(INFO) << "yb::tserver::stateful_service::PgAutoAnalyzeService created at "
             << pg_auto_analyze_service.get();
   RETURN_NOT_OK(pg_auto_analyze_service->Init(tablet_manager_.get()));
@@ -1115,14 +1148,12 @@ void TabletServer::SetYsqlDBCatalogVersions(
 
 void TabletServer::WriteServerMetaCacheAsJson(JsonWriter* writer) {
   writer->StartObject();
+
   DbServerBase::WriteMainMetaCacheAsJson(writer);
   if (auto xcluster_consumer = GetXClusterConsumer()) {
-    auto clients = xcluster_consumer->GetYbClientsList();
-    for (auto client : clients) {
-      writer->String(client->client_name());
-      client->AddMetaCacheInfo(writer);
-    }
+    xcluster_consumer->WriteServerMetaCacheAsJson(*writer);
   }
+
   writer->EndObject();
 }
 
@@ -1218,10 +1249,12 @@ Status TabletServer::ListMasterServers(const ListMasterServersRequestPB* req,
 
 void TabletServer::InvalidatePgTableCache() {
   auto pg_client_service = pg_client_service_.lock();
-  if (pg_client_service) {
-    LOG(INFO) << "Invalidating all PgTableCache caches since catalog version incremented";
-    pg_client_service->InvalidateTableCache();
+  if (!pg_client_service) {
+    return;
   }
+
+  LOG(INFO) << "Invalidating the entire PgTableCache cache since catalog version incremented";
+  pg_client_service->impl.InvalidateTableCache();
 }
 
 void TabletServer::InvalidatePgTableCache(
@@ -1237,7 +1270,7 @@ void TabletServer::InvalidatePgTableCache(
       msg += Format("databases $0 are removed", yb::ToString(db_oids_deleted));
     }
     LOG(INFO) << msg;
-    pg_client_service->InvalidateTableCache(db_oids_updated, db_oids_deleted);
+    pg_client_service->impl.InvalidateTableCache(db_oids_updated, db_oids_deleted);
   }
 }
 Status TabletServer::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
@@ -1317,10 +1350,7 @@ Status TabletServer::XClusterHandleMasterHeartbeatResponse(
 
   if (xcluster_consumer) {
     int32_t cluster_config_version = -1;
-    if (!resp.has_cluster_config_version()) {
-      YB_LOG_EVERY_N_SECS(WARNING, 30)
-          << "Invalid heartbeat response without a cluster config version";
-    } else {
+    if (resp.has_cluster_config_version()) {
       cluster_config_version = resp.cluster_config_version();
     }
 
@@ -1442,7 +1472,7 @@ Status TabletServer::SetCDCServiceEnabled() {
   return Status::OK();
 }
 
-const TserverXClusterContextIf& TabletServer::GetXClusterContext() const {
+TserverXClusterContextIf& TabletServer::GetXClusterContext() const {
   return *xcluster_context_;
 }
 

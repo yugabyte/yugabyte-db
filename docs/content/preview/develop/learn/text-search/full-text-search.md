@@ -4,6 +4,7 @@ headerTitle: Full-text search
 linkTitle: Full-text search
 headcontent: Learn how to do full-text search in YSQL
 description: Learn how to do full-text search in YSQL
+badges: ysql
 menu:
   preview:
     identifier: full-text-search-ysql

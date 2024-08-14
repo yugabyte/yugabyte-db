@@ -12,22 +12,17 @@
 //
 
 #include "yb/cdc/xcluster_types.h"
-#include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/common/common_types.pb.h"
+#include "yb/integration-tests/xcluster/xcluster_ddl_replication_test_base.h"
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
-#include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
-#include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
-#include "yb/tserver/mini_tablet_server.h"
-#include "yb/util/backoff_waiter.h"
+#include "yb/util/tsan_util.h"
 
+DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
 DECLARE_uint32(xcluster_consistent_wal_safe_time_frequency_ms);
 
-DECLARE_bool(enable_xcluster_api_v2);
-DECLARE_bool(TEST_xcluster_enable_ddl_replication);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_end);
-DECLARE_bool(TEST_xcluster_ddl_queue_handler_log_queries);
 
 using namespace std::chrono_literals;
 
@@ -35,106 +30,7 @@ namespace yb {
 
 const MonoDelta kTimeout = 60s * kTimeMultiplier;
 
-class XClusterDDLReplicationTest : public XClusterYsqlTestBase {
- public:
-  struct SetupParams {
-    // By default start with no consumer or producer tables.
-    std::vector<uint32_t> num_consumer_tablets = {};
-    std::vector<uint32_t> num_producer_tablets = {};
-    uint32_t replication_factor = 3;
-    uint32_t num_masters = 1;
-    bool ranged_partitioned = false;
-  };
-
-  XClusterDDLReplicationTest() = default;
-  ~XClusterDDLReplicationTest() = default;
-
-  virtual void SetUp() override {
-    XClusterYsqlTestBase::SetUp();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_xcluster_api_v2) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_enable_ddl_replication) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_log_queries) = true;
-  }
-
-  Status SetUpClusters() {
-    static const SetupParams kDefaultParams;
-    return SetUpClusters(kDefaultParams);
-  }
-
-  Status SetUpClusters(const SetupParams& params) {
-    return XClusterYsqlTestBase::SetUpWithParams(
-        params.num_consumer_tablets, params.num_producer_tablets, params.replication_factor,
-        params.num_masters, params.ranged_partitioned);
-  }
-
-  Status EnableDDLReplicationExtension() {
-    // TODO(#19184): This will be done as part of creating the replication groups.
-    auto p_conn = VERIFY_RESULT(producer_cluster_.Connect());
-    RETURN_NOT_OK(p_conn.ExecuteFormat("CREATE EXTENSION $0", xcluster::kDDLQueuePgSchemaName));
-    RETURN_NOT_OK(p_conn.ExecuteFormat(
-        "ALTER DATABASE $0 SET $1.replication_role = SOURCE", namespace_name,
-        xcluster::kDDLQueuePgSchemaName));
-    auto c_conn = VERIFY_RESULT(consumer_cluster_.Connect());
-    RETURN_NOT_OK(c_conn.ExecuteFormat("CREATE EXTENSION $0", xcluster::kDDLQueuePgSchemaName));
-    RETURN_NOT_OK(c_conn.ExecuteFormat(
-        "ALTER DATABASE $0 SET $1.replication_role = TARGET", namespace_name,
-        xcluster::kDDLQueuePgSchemaName));
-
-    // Ensure that tables are properly created with only one tablet each.
-    RETURN_NOT_OK(RunOnBothClusters([&](Cluster* cluster) -> Status {
-      for (const auto& table_name :
-           {xcluster::kDDLQueueTableName, xcluster::kDDLReplicatedTableName}) {
-        auto yb_table_name = VERIFY_RESULT(
-            GetYsqlTable(cluster, namespace_name, xcluster::kDDLQueuePgSchemaName, table_name));
-        std::shared_ptr<client::YBTable> table;
-        RETURN_NOT_OK(producer_client()->OpenTable(yb_table_name, &table));
-        SCHECK_EQ(table->GetPartitionCount(), 1, IllegalState, "Expected 1 tablet");
-      }
-      return Status::OK();
-    }));
-    return Status::OK();
-  }
-
-  Result<std::shared_ptr<client::YBTable>> GetProducerTable(
-      const client::YBTableName& producer_table_name) {
-    std::shared_ptr<client::YBTable> producer_table;
-    RETURN_NOT_OK(producer_client()->OpenTable(producer_table_name, &producer_table));
-    return producer_table;
-  }
-
-  Result<std::shared_ptr<client::YBTable>> GetConsumerTable(
-      const client::YBTableName& producer_table_name) {
-    auto consumer_table_name = VERIFY_RESULT(GetYsqlTable(
-        &consumer_cluster_, producer_table_name.namespace_name(),
-        producer_table_name.pgschema_name(), producer_table_name.table_name()));
-    std::shared_ptr<client::YBTable> consumer_table;
-    RETURN_NOT_OK(consumer_client()->OpenTable(consumer_table_name, &consumer_table));
-    return consumer_table;
-  }
-
-  void InsertRowsIntoProducerTableAndVerifyConsumer(
-      const client::YBTableName& producer_table_name) {
-    std::shared_ptr<client::YBTable> producer_table =
-        ASSERT_RESULT(GetProducerTable(producer_table_name));
-    ASSERT_OK(InsertRowsInProducer(0, 50, producer_table));
-
-    // Once the safe time advances, the target should have the new table and its rows.
-    ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
-
-    std::shared_ptr<client::YBTable> consumer_table =
-        ASSERT_RESULT(GetConsumerTable(producer_table_name));
-
-    // Verify that universe was setup on consumer.
-    master::GetUniverseReplicationResponsePB resp;
-    ASSERT_OK(VerifyUniverseReplication(&resp));
-    ASSERT_EQ(resp.entry().replication_group_id(), kReplicationGroupId);
-    ASSERT_TRUE(std::any_of(
-        resp.entry().tables().begin(), resp.entry().tables().end(),
-        [&](const std::string& table) { return table == producer_table_name.table_id(); }));
-
-    ASSERT_OK(VerifyWrittenRecords(producer_table, consumer_table));
-  }
-};
+class XClusterDDLReplicationTest : public XClusterDDLReplicationTestBase {};
 
 TEST_F(XClusterDDLReplicationTest, DisableSplitting) {
   // Ensure that splitting of xCluster DDL Replication tables is disabled on both sides.
@@ -352,6 +248,42 @@ TEST_F(XClusterDDLReplicationTest, ExactlyOnceReplication) {
   for (int i = 0; i < kNumTables; ++i) {
     InsertRowsIntoProducerTableAndVerifyConsumer(producer_table_names[i]);
   }
+}
+
+TEST_F(XClusterDDLReplicationTest, DuplicateTableNames) {
+  // TODO(#23078) Can use pause resume in this test to check different cases, but that requires
+  // skipping schema checks and allowing replication on hidden tables.
+
+  // Disable the background hidden table deletion task, that way the producer table stays hidden.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = -1;
+
+  const int kNumTablets = 3;
+  ASSERT_OK(SetUpClusters());
+  ASSERT_OK(EnableDDLReplicationExtension());
+  ASSERT_OK(CheckpointReplicationGroup());
+  ASSERT_OK(CreateReplicationFromCheckpoint());
+
+  // Create a table on the producer.
+  auto producer_table_name = ASSERT_RESULT(CreateYsqlTable(
+      /*idx=*/1, kNumTablets, &producer_cluster_));
+  InsertRowsIntoProducerTableAndVerifyConsumer(producer_table_name);
+
+  // Drop the table with manual replication, it should move to HIDDEN state.
+  // TODO: remove manual replication restriction once we support DROPs.
+
+  // Delete first on the producer so that the table is hidden.
+  for (Cluster* cluster : {&producer_cluster_, &consumer_cluster_}) {
+    auto conn = ASSERT_RESULT(cluster->Connect());
+    ASSERT_OK(
+        conn.ExecuteFormat("SET yb_xcluster_ddl_replication.enable_manual_ddl_replication=1"));
+    ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", producer_table_name.table_name()));
+  }
+
+  // Create a new table with the same name.
+  auto producer_table_name2 = ASSERT_RESULT(CreateYsqlTable(
+      /*idx=*/1, kNumTablets, &producer_cluster_));
+  // Ensure that replication is correctly set up on this new table.
+  InsertRowsIntoProducerTableAndVerifyConsumer(producer_table_name2);
 }
 
 }  // namespace yb

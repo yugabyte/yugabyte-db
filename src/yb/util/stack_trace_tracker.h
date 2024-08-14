@@ -36,6 +36,8 @@ void TrackStackTrace(
 
 void ResetTrackedStackTraces();
 
+MonoTime GetLastStackTraceTrackerResetTime();
+
 std::vector<StackTraceEntry> GetTrackedStackTraces();
 
 void DumpTrackedStackTracesToLog(StackTraceTrackingGroup group);

@@ -1,0 +1,11 @@
+title: JobInstanceApiFilter
+description: API filter for job instance that is a part of JobInstancePagedQuerySpec.
+type: object
+properties:
+  start_window_secs:
+    description: Filter by start time falling within the time window from now.
+    type: integer
+    format: int64
+  state:
+    description: Filter by state of the job instance.
+    $ref: "./JobInstanceState.yaml"

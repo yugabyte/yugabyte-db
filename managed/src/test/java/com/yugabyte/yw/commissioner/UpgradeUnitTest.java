@@ -9,6 +9,7 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.config.ConfKeyInfo;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.forms.RollMaxBatchSize;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -50,7 +51,8 @@ public class UpgradeUnitTest {
 
     List<NodeDetails> nodes = nodeListBuilder.nodes;
     List<List<NodeDetails>> split =
-        UpgradeTaskBase.splitNodes(confGetter, universe, nodes, true, NodeDetails::getAllProcesses);
+        UpgradeTaskBase.splitNodes(
+            universe, nodes, NodeDetails::getAllProcesses, new RollMaxBatchSize());
     assertSplit(
         Arrays.asList(
             Arrays.asList(nodes.get(0)),
@@ -85,7 +87,7 @@ public class UpgradeUnitTest {
     // Assert no split for inactive role
     List<List<NodeDetails>> split =
         UpgradeTaskBase.splitNodes(
-            confGetter, universe, nodes, false, NodeDetails::getAllProcesses);
+            universe, nodes, NodeDetails::getAllProcesses, new RollMaxBatchSize());
     assertSplit(
         Arrays.asList(
             Arrays.asList(nodes.get(0)),
@@ -101,8 +103,12 @@ public class UpgradeUnitTest {
             Arrays.asList(nodes.get(10))),
         split);
 
+    RollMaxBatchSize rollMaxBatchSize = new RollMaxBatchSize();
+    rollMaxBatchSize.setPrimaryBatchSize(2);
+    rollMaxBatchSize.setReadReplicaBatchSize(3);
+
     split =
-        UpgradeTaskBase.splitNodes(confGetter, universe, nodes, true, NodeDetails::getAllProcesses);
+        UpgradeTaskBase.splitNodes(universe, nodes, NodeDetails::getAllProcesses, rollMaxBatchSize);
     assertSplit(
         Arrays.asList(
             Arrays.asList(nodes.get(0)), // Masters separately
@@ -112,8 +118,7 @@ public class UpgradeUnitTest {
             Arrays.asList(nodes.get(5)),
             Arrays.asList(nodes.get(6)),
             Arrays.asList(nodes.get(7)),
-            Arrays.asList(nodes.get(8), nodes.get(9)),
-            Arrays.asList(nodes.get(10))),
+            Arrays.asList(nodes.get(8), nodes.get(9), nodes.get(10))),
         split);
   }
 
@@ -180,15 +185,10 @@ public class UpgradeUnitTest {
         .thenAnswer(
             inv -> {
               ConfKeyInfo keyInfo = inv.getArgument(1);
-              if (keyInfo.getKey().equals(UniverseConfKeys.stopMultipleNodesInAZEnabled.getKey())) {
+              if (keyInfo.getKey().equals(UniverseConfKeys.upgradeBatchRollEnabled.getKey())) {
                 return splitEnabled;
-              } else if (keyInfo
-                  .getKey()
-                  .equals(UniverseConfKeys.simultaneousStopsInUpgradePercent.getKey())) {
-                return percent;
-              } else {
-                return maxAbs;
               }
+              return null;
             });
     return confGetter;
   }

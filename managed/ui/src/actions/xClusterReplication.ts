@@ -46,7 +46,7 @@ export interface CreateXClusterConfigRequest {
 
   bootstrapParams?: {
     tables: string[];
-    allowBootstrapping: boolean;
+    allowBootstrap: boolean;
     backupRequestParams: {
       storageConfigUUID: string;
     };
@@ -59,7 +59,7 @@ export interface EditXClusterConfigTablesRequest {
   autoIncludeIndexTables?: boolean;
   bootstrapParams?: {
     tables: string[];
-    allowBootstrapping: boolean;
+    allowBootstrap: boolean;
     backupRequestParams: {
       storageConfigUUID: string;
     };
@@ -79,7 +79,12 @@ export function createXClusterConfig(createxClusterConfigRequest: CreateXCluster
 export function restartXClusterConfig(
   xClusterUUID: string,
   tables: string[],
-  bootstrapParams: { backupRequestParams: any }
+  bootstrapParams: {
+    allowBootstrap: boolean;
+    backupRequestParams: {
+      storageConfigUUID: string;
+    };
+  }
 ) {
   const customerId = localStorage.getItem('customerId');
   return axios
@@ -178,15 +183,23 @@ export function deleteXclusterConfig(uuid: string, isForceDelete: boolean) {
  * The purpose of the sync API is to reconcile changes to an xCluster config as a
  * result of yb-admin commands.
  */
-export function syncXClusterConfigWithDB(replicationGroupName: string, targetUniverseUUID: string) {
+export function syncXClusterConfigWithDB(
+  xClusterConfigUuid: string,
+  replicationGroupName: string,
+  targetUniverseUUID: string
+) {
   const customerUUID = localStorage.getItem('customerId');
   return axios
-    .post<YBPTask>(`${ROOT_URL}/customers/${customerUUID}/xcluster_configs/sync`, {
-      replicationGroupName: replicationGroupName,
-      targetUniverseUUID: targetUniverseUUID
-    })
+    .post<YBPTask>(
+      `${ROOT_URL}/customers/${customerUUID}/xcluster_configs/${xClusterConfigUuid}/sync`,
+      {
+        replicationGroupName: replicationGroupName,
+        targetUniverseUUID: targetUniverseUUID
+      }
+    )
     .then((response) => response.data);
 }
+
 
 export function queryLagMetricsForUniverse(
   nodePrefix: string | undefined,
@@ -243,7 +256,7 @@ interface TableReplicationLagQueryParams {
 }
 interface ConfigReplicationLagQueryParms {
   nodePrefix: string | undefined;
-  replicationUuid: string;
+  xClusterConfigUuid: string;
 
   start?: string;
   end?: string;

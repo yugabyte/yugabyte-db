@@ -82,6 +82,11 @@
       SCHECK_LE(var1, rbound, status_type, msg); \
     } while(false)
 
+#define SCHECK_STR_CONTAINS(str, substr) \
+  SCHECK_NE( \
+      str.find(substr), std::string::npos, NotFound, \
+      Format("'$0' does not contain '$1'", str, substr))
+
 #ifndef NDEBUG
 
 // Debug mode ("not defined NDEBUG (non-debug-mode)" means "debug mode").

@@ -71,7 +71,7 @@ $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git && cd orm-exa
 - Add a dependency in `build.sbt` for the YugabyteDB JDBC driver.
 
   ```sh
-  libraryDependencies += "com.yugabyte" % "jdbc-yugabytedb" % "42.3.0"
+  libraryDependencies += "com.yugabyte" % "jdbc-yugabytedb" % "42.3.5-yb-5"
   ```
 
 - From your local YugabyteDB installation directory, connect to the [YSQL](../../../../admin/ysqlsh/) shell using:

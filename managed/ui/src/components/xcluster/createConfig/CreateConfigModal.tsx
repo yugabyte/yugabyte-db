@@ -14,11 +14,7 @@ import {
   fetchUniverseDiskUsageMetric
 } from '../../../actions/xClusterReplication';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
-import {
-  formatUuidForXCluster,
-  getTablesForBootstrapping,
-  parseFloatIfDefined
-} from '../ReplicationUtils';
+import { getTablesForBootstrapping, parseFloatIfDefined } from '../ReplicationUtils';
 import { assertUnreachableCase, handleServerError } from '../../../utils/errorHandlingUtils';
 import {
   api,
@@ -49,7 +45,7 @@ interface CreateConfigModalProps {
 
 export interface CreateXClusterConfigFormValues {
   configName: string;
-  targetUniverse: { label: string; value: Universe };
+  targetUniverse: { label: string; value: Universe; isDisabled: boolean; disabledReason?: string };
   tableType: { label: string; value: XClusterTableType };
   isTransactionalConfig: boolean;
   namespaceUuids: string[];
@@ -124,13 +120,13 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
         configType: formValues.isTransactionalConfig
           ? XClusterConfigType.TXN
           : XClusterConfigType.BASIC,
-        tables: formValues.tableUuids.map(formatUuidForXCluster),
+        tables: formValues.tableUuids,
 
         ...(!skipBootstrapping &&
           bootstrapRequiredTableUUIDs.length > 0 && {
             bootstrapParams: {
               tables: bootstrapRequiredTableUUIDs,
-              allowBootstrapping: true,
+              allowBootstrap: true,
 
               backupRequestParams: {
                 storageConfigUUID: formValues.storageConfig.value.uuid
@@ -405,7 +401,7 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
           if (bootstrapTableUuids?.length && bootstrapTableUuids?.length > 0) {
             setBootstrapRequiredTableUUIDs(bootstrapTableUuids);
 
-            // Validate that the source universe has at least the recommeneded amount of
+            // Validate that the source universe has at least the recommended amount of
             // disk space if bootstrapping is required.
             const currentUniverseNodePrefix = sourceUniverse.universeDetails.nodePrefix;
             const diskUsageMetric = await fetchUniverseDiskUsageMetric(currentUniverseNodePrefix);
@@ -443,8 +439,9 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
       case FormStep.CONFIGURE_BOOTSTRAP:
         setCurrentFormStep(FormStep.CONFIRM_ALERT);
         return;
-      case FormStep.CONFIRM_ALERT:
+      case FormStep.CONFIRM_ALERT: {
         return xClusterConfigMutation.mutateAsync(formValues);
+      }
       default:
         return assertUnreachableCase(currentFormStep);
     }

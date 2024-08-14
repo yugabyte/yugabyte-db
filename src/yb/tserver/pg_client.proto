@@ -173,6 +173,7 @@ message PgRenameColumnPB {
 message PgRenameTablePB {
   string database_name = 1;
   string table_name = 2;
+  string schema_name = 3;
 }
 
 // Available replica identity modes for use in CDC
@@ -224,6 +225,8 @@ message PgCreateDatabaseRequestPB {
   bool colocated = 7;
   fixed64 clone_time = 8;
   string source_database_name = 9;
+  string source_owner = 10;
+  string target_owner = 11;
 }
 
 message PgCreateDatabaseResponsePB {
@@ -540,6 +543,7 @@ message PgOpenTableRequestPB {
   string table_id = 1;
   bool reopen = 2;
   fixed64 invalidate_cache_time_us = 3;
+  bool include_inactive = 4;
 }
 
 message PgTablePartitionsPB {
@@ -862,6 +866,7 @@ message PgCancelTransactionResponsePB {
 }
 
 message PgActiveSessionHistoryRequestPB {
+  uint32 sample_size = 7;
   bool fetch_tserver_states = 1;
   bool fetch_flush_and_compaction_states = 2;
   bool fetch_cql_states = 3;
@@ -873,13 +878,16 @@ message PgActiveSessionHistoryRequestPB {
 message WaitStatesPB {
   repeated WaitStateInfoPB wait_states = 1;
   uint32 component = 2;
+  float sample_weight = 3;
 }
 
 message PgActiveSessionHistoryResponsePB {
   AppStatusPB status = 1;
   WaitStatesPB tserver_wait_states = 2;
-  WaitStatesPB flush_and_compaction_wait_states = 3;
-  WaitStatesPB raft_log_appender_wait_states = 4;
+  // flush_and_compaction_wait_states and raft_log_appender_wait_states
+  // are included in tserver_wait_states
+  WaitStatesPB DEPRECATED_flush_and_compaction_wait_states = 3;
+  WaitStatesPB DEPRECATED_raft_log_appender_wait_states = 4;
   WaitStatesPB cql_wait_states = 5;
 }
 
@@ -903,7 +911,6 @@ message PgGetTableKeyRangesRequestPB {
   uint64 range_size_bytes = 6;
   bool is_forward = 7;
   uint32 max_key_length = 8;
-  uint64 read_time_serial_no = 9;
 }
 
 message PgGetTableKeyRangesResponsePB {

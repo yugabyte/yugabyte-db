@@ -41,7 +41,9 @@
 #include "yb/master/master.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_error.h"
+#include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/snapshot_state.h"
+#include "yb/master/tablet_split_manager.h"
 #include "yb/master/ysql_tablegroup_manager.h"
 
 #include "yb/client/client-internal.h"
@@ -126,10 +128,7 @@ using strings::Substitute;
 
 DECLARE_int32(master_rpc_timeout_ms);
 
-DEFINE_RUNTIME_bool(enable_transaction_snapshots, true,
-    "The flag enables usage of transaction aware snapshots.");
-TAG_FLAG(enable_transaction_snapshots, hidden);
-TAG_FLAG(enable_transaction_snapshots, advanced);
+DEPRECATE_FLAG(bool, enable_transaction_snapshots, "08_2024");
 
 DEPRECATE_FLAG(bool, allow_consecutive_restore, "10_2022");
 
@@ -227,13 +226,9 @@ Status CatalogManager::DoCreateSnapshot(const CreateSnapshotRequestPB* req,
                                         CoarseTimePoint deadline, const LeaderEpoch& epoch) {
   LOG(INFO) << "Servicing CreateSnapshot request: " << req->ShortDebugString();
 
-  if (FLAGS_enable_transaction_snapshots && req->transaction_aware()) {
-    return CreateTransactionAwareSnapshot(*req, resp, deadline);
-  }
-
   if (req->has_schedule_id()) {
     auto schedule_id = VERIFY_RESULT(FullyDecodeSnapshotScheduleId(req->schedule_id()));
-    auto snapshot_id = snapshot_coordinator_.CreateForSchedule(
+    auto snapshot_id = master_->snapshot_coordinator().CreateForSchedule(
         schedule_id, leader_ready_term(), deadline);
     if (!snapshot_id.ok()) {
       LOG(INFO) << "Create snapshot failed: " << snapshot_id.status();
@@ -243,88 +238,7 @@ Status CatalogManager::DoCreateSnapshot(const CreateSnapshotRequestPB* req,
     return Status::OK();
   }
 
-  return CreateNonTransactionAwareSnapshot(req, resp, epoch);
-}
-
-Status CatalogManager::CreateNonTransactionAwareSnapshot(
-    const CreateSnapshotRequestPB* req,
-    CreateSnapshotResponsePB* resp,
-    const LeaderEpoch& epoch) {
-  SnapshotId snapshot_id;
-  {
-    LockGuard lock(mutex_);
-    TRACE("Acquired catalog manager lock");
-
-    // Verify that the system is not in snapshot creating/restoring state.
-    if (!current_snapshot_id_.empty()) {
-      return STATUS(IllegalState,
-                    Format(
-                        "Current snapshot id: $0. Parallel snapshot operations are not supported"
-                        ": $1", current_snapshot_id_, req),
-                    MasterError(MasterErrorPB::PARALLEL_SNAPSHOT_OPERATION));
-    }
-
-    // Create a new snapshot UUID.
-    snapshot_id = GenerateIdUnlocked(SysRowEntryType::SNAPSHOT);
-  }
-
-  vector<scoped_refptr<TabletInfo>> all_tablets;
-
-  // Create in memory snapshot data descriptor.
-  scoped_refptr<SnapshotInfo> snapshot(new SnapshotInfo(snapshot_id));
-  snapshot->mutable_metadata()->StartMutation();
-  snapshot->mutable_metadata()->mutable_dirty()->pb.set_state(SysSnapshotEntryPB::CREATING);
-
-  auto tables = VERIFY_RESULT(CollectTables(req->tables(),
-                                            req->add_indexes(),
-                                            true /* include_parent_colocated_table */));
-  unordered_set<NamespaceId> added_namespaces;
-  SysSnapshotEntryPB& pb = snapshot->mutable_metadata()->mutable_dirty()->pb;
-  // Note: SysSnapshotEntryPB includes PBs for stored (1) namespaces (2) tables (3) tablets.
-  RETURN_NOT_OK(AddNamespaceEntriesToPB(tables, pb.mutable_entries(), &added_namespaces));
-  RETURN_NOT_OK(AddTableAndTabletEntriesToPB(
-      tables, pb.mutable_entries(), pb.mutable_tablet_snapshots(), &all_tablets));
-
-  VLOG(1) << "Snapshot " << snapshot->ToString()
-          << ": PB=" << snapshot->mutable_metadata()->mutable_dirty()->pb.DebugString();
-
-  // Write the snapshot data descriptor to the system catalog (in "creating" state).
-  RETURN_NOT_OK(CheckLeaderStatus(
-      sys_catalog_->Upsert(leader_ready_term(), snapshot),
-      "inserting snapshot into sys-catalog"));
-  TRACE("Wrote snapshot to system catalog");
-
-  // Commit in memory snapshot data descriptor.
-  snapshot->mutable_metadata()->CommitMutation();
-
-  // Put the snapshot data descriptor to the catalog manager.
-  {
-    LockGuard lock(mutex_);
-    TRACE("Acquired catalog manager lock");
-
-    // Verify that the snapshot does not exist.
-    auto inserted = non_txn_snapshot_ids_map_.emplace(snapshot_id, snapshot).second;
-    RSTATUS_DCHECK(inserted, IllegalState, Format("Snapshot already exists: $0", snapshot_id));
-    current_snapshot_id_ = snapshot_id;
-  }
-
-  // Send CreateSnapshot requests to all TServers (one tablet - one request).
-  for (const scoped_refptr<TabletInfo>& tablet : all_tablets) {
-    TRACE("Locking tablet");
-    auto l = tablet->LockForRead();
-
-    LOG(INFO) << "Sending CreateTabletSnapshot to tablet: " << tablet->ToString();
-
-    // Send Create Tablet Snapshot request to each tablet leader.
-    auto call = CreateAsyncTabletSnapshotOp(
-        tablet, snapshot_id, tserver::TabletSnapshotOpRequestPB::CREATE_ON_TABLET,
-        epoch, TabletSnapshotOperationCallback());
-    ScheduleTabletSnapshotOp(call);
-  }
-
-  resp->set_snapshot_id(snapshot_id);
-  LOG(INFO) << "Successfully started snapshot " << snapshot_id << " creation";
-  return Status::OK();
+  return CreateTransactionAwareSnapshot(*req, resp, deadline);
 }
 
 Status CatalogManager::Submit(std::unique_ptr<tablet::Operation> operation, int64_t leader_term) {
@@ -398,7 +312,7 @@ Status CatalogManager::AddTableAndTabletEntriesToPB(
     const vector<TableDescription>& tables,
     google::protobuf::RepeatedPtrField<SysRowEntry>* out,
     google::protobuf::RepeatedPtrField<SysSnapshotEntryPB::TabletSnapshotPB>* tablet_snapshot_info,
-    vector<scoped_refptr<TabletInfo>>* all_tablets) {
+    vector<TabletInfoPtr>* all_tablets) {
   unordered_set<TabletId> added_tablets;
   for (const TableDescription& table : tables) {
     // Add table entry.
@@ -406,7 +320,7 @@ Status CatalogManager::AddTableAndTabletEntriesToPB(
     AddInfoEntryToPB(table.table_info.get(), out);
 
     // Add tablet entries.
-    for (const scoped_refptr<TabletInfo>& tablet : table.tablet_infos) {
+    for (const TabletInfoPtr& tablet : table.tablet_infos) {
       // For colocated tables there could be duplicate tablets, so insert them only once.
       if (added_tablets.insert(tablet->id()).second) {
         TRACE("Locking tablet");
@@ -504,7 +418,7 @@ Status CatalogManager::CreateTransactionAwareSnapshot(
   int32_t retention_duration_hours = req.has_retention_duration_hours() ?
       req.retention_duration_hours() : GetAtomicFlag(&FLAGS_default_snapshot_retention_hours);
 
-  auto snapshot_id = VERIFY_RESULT(snapshot_coordinator_.Create(
+  auto snapshot_id = VERIFY_RESULT(master_->snapshot_coordinator().Create(
       entries, req.imported(), leader_ready_term(), deadline,
       retention_duration_hours));
   resp->set_snapshot_id(snapshot_id.data(), snapshot_id.size());
@@ -514,47 +428,12 @@ Status CatalogManager::CreateTransactionAwareSnapshot(
 Status CatalogManager::ListSnapshots(const ListSnapshotsRequestPB* req,
                                      ListSnapshotsResponsePB* resp) {
   auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(req->snapshot_id());
-  {
-    SharedLock lock(mutex_);
-    TRACE("Acquired catalog manager lock");
-
-    if (!current_snapshot_id_.empty()) {
-      resp->set_current_snapshot_id(current_snapshot_id_);
-    }
-
-    auto setup_snapshot_pb_lambda = [resp](scoped_refptr<SnapshotInfo> snapshot_info) {
-      auto snapshot_lock = snapshot_info->LockForRead();
-
-      SnapshotInfoPB* const snapshot = resp->add_snapshots();
-      snapshot->set_id(snapshot_info->id());
-      *snapshot->mutable_entry() = snapshot_info->metadata().state().pb;
-    };
-
-    if (req->has_snapshot_id()) {
-      if (!txn_snapshot_id) {
-        TRACE("Looking up snapshot");
-        scoped_refptr<SnapshotInfo> snapshot_info =
-            FindPtrOrNull(non_txn_snapshot_ids_map_, req->snapshot_id());
-        if (snapshot_info == nullptr) {
-          return STATUS(InvalidArgument, "Could not find snapshot", req->snapshot_id(),
-                        MasterError(MasterErrorPB::SNAPSHOT_NOT_FOUND));
-        }
-
-        setup_snapshot_pb_lambda(snapshot_info);
-      }
-    } else {
-      for (const SnapshotInfoMap::value_type& entry : non_txn_snapshot_ids_map_) {
-        setup_snapshot_pb_lambda(entry.second);
-      }
-    }
-  }
-
-  if (req->prepare_for_backup() && (!req->has_snapshot_id() || !txn_snapshot_id)) {
+  if (req->prepare_for_backup() && !txn_snapshot_id) {
     return STATUS(
         InvalidArgument, "Request must have correct snapshot_id", (req->has_snapshot_id() ?
         req->snapshot_id() : "None"), MasterError(MasterErrorPB::SNAPSHOT_FAILED));
   }
-  RETURN_NOT_OK(snapshot_coordinator_.ListSnapshots(
+  RETURN_NOT_OK(master_->snapshot_coordinator().ListSnapshots(
       txn_snapshot_id, req->list_deleted_snapshots(), req->detail_options(), resp));
   if (req->prepare_for_backup()) {
     RETURN_NOT_OK(RepackSnapshotsForBackup(resp));
@@ -657,88 +536,21 @@ Status CatalogManager::ListSnapshotRestorations(const ListSnapshotRestorationsRe
     snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(req->snapshot_id()));
   }
 
-  return snapshot_coordinator_.ListRestorations(restoration_id, snapshot_id, resp);
+  return master_->snapshot_coordinator().ListRestorations(restoration_id, snapshot_id, resp);
 }
 
 Status CatalogManager::RestoreSnapshot(
     const RestoreSnapshotRequestPB* req, RestoreSnapshotResponsePB* resp, rpc::RpcContext* rpc,
     const LeaderEpoch& epoch) {
   LOG(INFO) << "Servicing RestoreSnapshot request: " << req->ShortDebugString();
-
-  auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(req->snapshot_id());
-  if (txn_snapshot_id) {
-    HybridTime ht;
-    if (req->has_restore_ht()) {
-      ht = HybridTime(req->restore_ht());
-    }
-    TxnSnapshotRestorationId id =
-        VERIFY_RESULT(snapshot_coordinator_.Restore(txn_snapshot_id, ht, epoch.leader_term));
-    resp->set_restoration_id(id.data(), id.size());
-    return Status::OK();
+  auto txn_snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(req->snapshot_id()));
+  HybridTime ht;
+  if (req->has_restore_ht()) {
+    ht = HybridTime(req->restore_ht());
   }
-
-  return RestoreNonTransactionAwareSnapshot(req->snapshot_id(), epoch);
-}
-
-Status CatalogManager::RestoreNonTransactionAwareSnapshot(
-    const string& snapshot_id, const LeaderEpoch& epoch) {
-  LockGuard lock(mutex_);
-  TRACE("Acquired catalog manager lock");
-
-  if (!current_snapshot_id_.empty()) {
-    return STATUS(
-        IllegalState,
-        Format(
-            "Current snapshot id: $0. Parallel snapshot operations are not supported: $1",
-            current_snapshot_id_, snapshot_id),
-        MasterError(MasterErrorPB::PARALLEL_SNAPSHOT_OPERATION));
-  }
-
-  TRACE("Looking up snapshot");
-  scoped_refptr<SnapshotInfo> snapshot = FindPtrOrNull(non_txn_snapshot_ids_map_, snapshot_id);
-  if (snapshot == nullptr) {
-    return STATUS(InvalidArgument, "Could not find snapshot", snapshot_id,
-                  MasterError(MasterErrorPB::SNAPSHOT_NOT_FOUND));
-  }
-
-  auto snapshot_lock = snapshot->LockForWrite();
-
-  if (snapshot_lock->started_deleting()) {
-    return STATUS(NotFound, "The snapshot was deleted", snapshot_id,
-                  MasterError(MasterErrorPB::SNAPSHOT_NOT_FOUND));
-  }
-
-  if (!snapshot_lock->is_complete()) {
-    return STATUS(IllegalState, "The snapshot state is not complete", snapshot_id,
-                  MasterError(MasterErrorPB::SNAPSHOT_IS_NOT_READY));
-  }
-
-  TRACE("Updating snapshot metadata on disk");
-  SysSnapshotEntryPB& snapshot_pb = snapshot_lock.mutable_data()->pb;
-  snapshot_pb.set_state(SysSnapshotEntryPB::RESTORING);
-
-  // Update tablet states.
-  SetTabletSnapshotsState(SysSnapshotEntryPB::RESTORING, &snapshot_pb);
-
-  // Update sys-catalog with the updated snapshot state.
-  // The mutation will be aborted when 'l' exits the scope on early return.
-  RETURN_NOT_OK(CheckLeaderStatus(
-      sys_catalog_->Upsert(leader_ready_term(), snapshot),
-      "updating snapshot in sys-catalog"));
-
-  // CatalogManager lock 'lock_' is still locked here.
-  current_snapshot_id_ = snapshot_id;
-
-  // Restore all entries.
-  for (const SysRowEntry& entry : snapshot_pb.entries()) {
-    RETURN_NOT_OK(RestoreEntry(entry, snapshot_id, epoch));
-  }
-
-  // Commit in memory snapshot data descriptor.
-  TRACE("Committing in-memory snapshot state");
-  snapshot_lock.Commit();
-
-  LOG(INFO) << "Successfully started snapshot " << snapshot->ToString() << " restoring";
+  TxnSnapshotRestorationId id = VERIFY_RESULT(
+      master_->snapshot_coordinator().Restore(txn_snapshot_id, ht, epoch.leader_term));
+  resp->set_restoration_id(id.data(), id.size());
   return Status::OK();
 }
 
@@ -773,7 +585,7 @@ Status CatalogManager::RestoreEntry(
     }
     case SysRowEntryType::TABLET: { // Restore TABLETS.
       TRACE("Looking up tablet");
-      scoped_refptr<TabletInfo> tablet = FindPtrOrNull(*tablet_map_, entry.id());
+      TabletInfoPtr tablet = FindPtrOrNull(*tablet_map_, entry.id());
       if (tablet == nullptr) {
         // Restore Tablet.
         // TODO: implement
@@ -811,7 +623,7 @@ Status CatalogManager::AbortSnapshotRestore(
     LOG(INFO) << Substitute(
         "Servicing AbortSnapshotRestore request. restoration id: $0, request: $1",
         txn_restoration_id.ToString(), req->ShortDebugString());
-    return snapshot_coordinator_.AbortRestore(
+    return master_->snapshot_coordinator().AbortRestore(
         txn_restoration_id, leader_ready_term(), rpc->GetClientDeadline());
   }
 
@@ -824,82 +636,11 @@ Status CatalogManager::DeleteSnapshot(
     DeleteSnapshotResponsePB* resp,
     rpc::RpcContext* rpc,
     const LeaderEpoch& epoch) {
-  auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(req->snapshot_id());
-  if (txn_snapshot_id) {
-    LOG(INFO) << "Servicing DeleteSnapshot request. id: " << txn_snapshot_id
-              << ", request: " << req->ShortDebugString();
-    return snapshot_coordinator_.Delete(
-        txn_snapshot_id, epoch.leader_term, rpc->GetClientDeadline());
-  }
-  LOG(INFO) << "Servicing DeleteSnapshot request: " << req->ShortDebugString();
-  return DeleteNonTransactionAwareSnapshot(req->snapshot_id(), epoch);
-}
-
-Status CatalogManager::DeleteNonTransactionAwareSnapshot(
-    const SnapshotId& snapshot_id, const LeaderEpoch& epoch) {
-  LockGuard lock(mutex_);
-  TRACE("Acquired catalog manager lock");
-
-  TRACE("Looking up snapshot");
-  scoped_refptr<SnapshotInfo> snapshot = FindPtrOrNull(
-      non_txn_snapshot_ids_map_, snapshot_id);
-  if (snapshot == nullptr) {
-    return STATUS(InvalidArgument, "Could not find snapshot", snapshot_id,
-                  MasterError(MasterErrorPB::SNAPSHOT_NOT_FOUND));
-  }
-
-  auto snapshot_lock = snapshot->LockForWrite();
-
-  if (snapshot_lock->started_deleting()) {
-    return STATUS(NotFound, "The snapshot was deleted", snapshot_id,
-                  MasterError(MasterErrorPB::SNAPSHOT_NOT_FOUND));
-  }
-
-  if (snapshot_lock->is_restoring()) {
-    return STATUS(InvalidArgument, "The snapshot is being restored now", snapshot_id,
-                  MasterError(MasterErrorPB::PARALLEL_SNAPSHOT_OPERATION));
-  }
-
-  TRACE("Updating snapshot metadata on disk");
-  SysSnapshotEntryPB& snapshot_pb = snapshot_lock.mutable_data()->pb;
-  snapshot_pb.set_state(SysSnapshotEntryPB::DELETING);
-
-  // Update tablet states.
-  SetTabletSnapshotsState(SysSnapshotEntryPB::DELETING, &snapshot_pb);
-
-  // Update sys-catalog with the updated snapshot state.
-  // The mutation will be aborted when 'l' exits the scope on early return.
-  RETURN_NOT_OK(CheckStatus(
-      sys_catalog_->Upsert(leader_ready_term(), snapshot),
-      "updating snapshot in sys-catalog"));
-
-  // Send DeleteSnapshot requests to all TServers (one tablet - one request).
-  for (const SysRowEntry& entry : snapshot_pb.entries()) {
-    if (entry.type() == SysRowEntryType::TABLET) {
-      TRACE("Looking up tablet");
-      scoped_refptr<TabletInfo> tablet = FindPtrOrNull(*tablet_map_, entry.id());
-      if (tablet == nullptr) {
-        LOG(WARNING) << "Deleting tablet not found " << entry.id();
-      } else {
-        TRACE("Locking tablet");
-        auto l = tablet->LockForRead();
-
-        LOG(INFO) << "Sending DeleteTabletSnapshot to tablet: " << tablet->ToString();
-        // Send DeleteSnapshot requests to all TServers (one tablet - one request).
-        auto task = CreateAsyncTabletSnapshotOp(
-            tablet, snapshot_id, tserver::TabletSnapshotOpRequestPB::DELETE_ON_TABLET,
-            epoch, TabletSnapshotOperationCallback());
-        ScheduleTabletSnapshotOp(task);
-      }
-    }
-  }
-
-  // Commit in memory snapshot data descriptor.
-  TRACE("Committing in-memory snapshot state");
-  snapshot_lock.Commit();
-
-  LOG(INFO) << "Successfully started snapshot " << snapshot->ToString() << " deletion";
-  return Status::OK();
+  auto txn_snapshot_id = VERIFY_RESULT(FullyDecodeTxnSnapshotId(req->snapshot_id()));
+  LOG(INFO) << "Servicing DeleteSnapshot request. id: " << txn_snapshot_id
+            << ", request: " << req->ShortDebugString();
+  return master_->snapshot_coordinator().Delete(
+      txn_snapshot_id, epoch.leader_term, rpc->GetClientDeadline());
 }
 
 Status CatalogManager::DoImportSnapshotMeta(
@@ -1005,6 +746,7 @@ Status CatalogManager::ImportSnapshotPreprocess(
       case SysRowEntryType::UNIVERSE_REPLICATION_BOOTSTRAP: FALLTHROUGH_INTENDED;
       case SysRowEntryType::XCLUSTER_OUTBOUND_REPLICATION_GROUP: FALLTHROUGH_INTENDED;
       case SysRowEntryType::CLONE_STATE: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::TSERVER_REGISTRATION: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNKNOWN:
         FATAL_INVALID_ENUM_VALUE(SysRowEntryType, entry.type());
     }
@@ -1370,12 +1112,13 @@ CatalogManager::GenerateSnapshotInfoFromScheduleForClone(
       snapshot_schedule_id, read_time);
 
   // Find or create a snapshot that covers read_time.
-  auto snapshot_id = VERIFY_RESULT(snapshot_coordinator_.GetSuitableSnapshotForRestore(
+  auto snapshot_id = VERIFY_RESULT(master_->snapshot_coordinator().GetSuitableSnapshotForRestore(
       snapshot_schedule_id, read_time, LeaderTerm(), deadline));
   LOG(INFO) << Format("Found suitable snapshot for restore: $0", snapshot_id);
 
   ListSnapshotSchedulesResponsePB resp;
-  RETURN_NOT_OK(snapshot_coordinator_.ListSnapshotSchedules(snapshot_schedule_id, &resp));
+  RETURN_NOT_OK(master_->snapshot_coordinator().ListSnapshotSchedules(
+      snapshot_schedule_id, &resp));
   const auto& filter = resp.schedules(0).options().filter().tables().tables();
   if (filter.empty() || filter.begin()->namespace_().id().empty()) {
     return STATUS_FORMAT(
@@ -1489,8 +1232,7 @@ Result<RepeatedPtrField<BackupRowEntryPB>> CatalogManager::GetBackupEntriesAsOfT
         return Status::OK();
       }));
 
-  // Pass 3: Get all the SysTabletsEntry that are in a running state as of read_time and belongs to
-  // the running tables from pass 2.
+  // Pass 3: Get all active (not split) tablets that belong to the tables from pass 2.
   docdb::DocRowwiseIterator tablets_iter = docdb::DocRowwiseIterator(
       projection, doc_read_cntxt, TransactionOperationContext(), doc_db,
       docdb::ReadOperationData::FromSingleReadTime(read_time), db_pending_op);
@@ -1498,10 +1240,7 @@ Result<RepeatedPtrField<BackupRowEntryPB>> CatalogManager::GetBackupEntriesAsOfT
       &tablets_iter, doc_read_cntxt.schema(), SysRowEntryType::TABLET,
       [&tables_to_tablets](const Slice& id, const Slice& data) -> Status {
         auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<SysTabletsEntryPB>(data));
-        // TODO(Yamen): handle tablet splitting cases by either keeping the parent or the children
-        // according to their state.
-        if (tables_to_tablets.contains(pb.table_id()) && pb.state() == SysTabletsEntryPB::RUNNING &&
-            pb.hide_hybrid_time() == 0) {
+        if (tables_to_tablets.contains(pb.table_id()) && pb.split_tablet_ids_size() == 0) {
           VLOG_WITH_FUNC(1) << "Found SysTabletsEntryPB: " << pb.ShortDebugString();
           tables_to_tablets[pb.table_id()].tablets_entries.push_back(
               std::make_pair(id.ToBuffer(), pb));
@@ -1954,8 +1693,8 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
 
   // Change TableInfo to point to the new tablets.
   string deletion_msg;
-  vector<scoped_refptr<TabletInfo>> new_tablets;
-  vector<scoped_refptr<TabletInfo>> old_tablets;
+  vector<TabletInfoPtr> new_tablets;
+  vector<TabletInfoPtr> old_tablets;
   {
     // Acquire the TableInfo pb write lock. Although it is not required for some of the individual
     // steps, we want to hold it through so that we guarantee the state does not change during the
@@ -1979,8 +1718,9 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
               SysTablesEntryPB_State_Name(table->old_pb().state()));
       }
       // Make sure the table's tablets can be deleted.
-      RETURN_NOT_OK_PREPEND(CheckIfForbiddenToDeleteTabletOf(table),
-                            Format("Cannot repartition table $0", table->id()));
+      RETURN_NOT_OK_PREPEND(
+          CheckIfForbiddenToDeleteTabletOf(table),
+          Format("Cannot repartition table $0", table->id()));
 
       // Create and mark new tablets for creation.
 
@@ -2020,7 +1760,7 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
     ScopedInfoCommitter<TabletInfo> unlocker_new(&new_tablets);
 
     // Mark old tablets for deletion.
-    old_tablets = table->GetTablets(IncludeInactive::kTrue);
+    old_tablets = VERIFY_RESULT(table->GetTablets(IncludeInactive::kTrue));
     // Sort so that locking can be done in a deterministic order.
     std::sort(old_tablets.begin(), old_tablets.end(), [](const auto& lhs, const auto& rhs) {
       return lhs->tablet_id() < rhs->tablet_id();
@@ -2031,6 +1771,11 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
       old_tablet->mutable_metadata()->StartMutation();
       old_tablet->mutable_metadata()->mutable_dirty()->set_state(
           SysTabletsEntryPB::DELETED, deletion_msg);
+      if (table->colocated()) {
+        // Remove the table_id from the old colocated tablet. This avoids reloading the deleted
+        // tablet in memory in case of master failover.
+        old_tablet->mutable_metadata()->mutable_dirty()->pb.set_table_id("");
+      }
     }
     VLOG_WITH_FUNC(3) << "Prepared deletion of " << old_tablets.size() << " old tablets for table "
                       << table->id();
@@ -2045,10 +1790,10 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
     table_pb.set_partition_list_version(table_pb.partition_list_version() + 1);
 
     // Remove old tablets from TableInfo.
-    table->RemoveTablets(old_tablets);
+    VERIFY_RESULT(table->RemoveTablets(old_tablets));
     // Add new tablets to TableInfo. This must be done after removing tablets because
     // TableInfo::partitions_ has key PartitionKey, which old and new tablets may conflict on.
-    table->AddTablets(new_tablets);
+    RETURN_NOT_OK(table->AddTablets(new_tablets));
     // Since we have added a new set of tablets move the table back to a PREPARING state. It will
     // get marked to RUNNING once all the new tablets have been created.
     table_pb.set_state(SysTablesEntryPB::PREPARING);
@@ -2070,7 +1815,7 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
 
   // Finally, now that everything is committed, send the delete tablet requests.
   for (auto& old_tablet : old_tablets) {
-    DeleteTabletReplicas(old_tablet.get(), deletion_msg, HideOnly::kFalse, KeepData::kFalse, epoch);
+    DeleteTabletReplicas(old_tablet, deletion_msg, HideOnly::kFalse, KeepData::kFalse, epoch);
   }
   VLOG_WITH_FUNC(2) << "Sent delete tablet requests for " << old_tablets.size() << " old tablets"
                     << " of table " << table->id();
@@ -2335,9 +2080,13 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
     return STATUS(InternalError, msg, MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
   }
 
+  std::optional<int> schema_version;
+
   // Don't do schema validation/column updates on the parent colocated table.
   // However, still do the validation for regular colocated tables.
-  if (!is_parent_colocated_table) {
+  // For clone, only the parent colocated table must go through the repartition path.
+  if (is_clone || !is_parent_colocated_table) {
+    // Schema validation and repartitioning checks. TODO: Refactor this code path.
     Schema persisted_schema;
     size_t new_num_tablets = 0;
     {
@@ -2403,6 +2152,12 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
       }
     }
 
+    if (is_clone && table->IsColocatedUserTable()) {
+      // For colocated tables that are not the parent table, update their info to point to the newly
+      // recreated parent tablet.
+      RETURN_NOT_OK(UpdateColocatedUserTableInfoForClone(table, table_data, epoch));
+    }
+
     // Table schema update depending on different conditions.
     bool notify_ts_for_schema_change = false;
 
@@ -2464,7 +2219,6 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
     // found in the snapshotInfo if the latter is greater. This is because it is guaranteed that the
     // schema version found in snapshotInfo is the maximum schema version that can be found in the
     // snapshot at backup creation time.
-    std::optional<int> schema_version;
     if (is_clone) {
       // The Source table should be found as we are cloning from it.
       TRACE("Looking up source table");
@@ -2507,10 +2261,10 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
   {
     TRACE("Locking table");
     auto table_lock = table->LockForRead();
-    new_tablets = table->GetTablets();
+    new_tablets = VERIFY_RESULT(table->GetTablets());
   }
 
-  for (const scoped_refptr<TabletInfo>& tablet : new_tablets) {
+  for (const TabletInfoPtr& tablet : new_tablets) {
     auto tablet_lock = tablet->LockForRead();
     const PartitionPB& partition_pb = tablet->metadata().state().pb.partition();
     const ExternalTableSnapshotData::PartitionKeys key(
@@ -2525,7 +2279,7 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
   IdPairPB* const table_ids = table_data->table_meta->mutable_table_ids();
   table_ids->set_new_id(table_data->new_table_id);
   table_ids->set_old_id(table_data->old_table_id);
-
+  table_data->new_table_schema_version = schema_version;
   // Recursively collect ids for used user-defined types.
   unordered_set<UDTypeId> type_ids;
   for (size_t i = 0; i < schema.num_columns(); ++i) {
@@ -2546,6 +2300,36 @@ Status CatalogManager::ImportTableEntry(const NamespaceMap& namespace_map,
     udt_ids->set_old_id(udt_id);
   }
 
+  return Status::OK();
+}
+
+Status CatalogManager::UpdateColocatedUserTableInfoForClone(
+    scoped_refptr<TableInfo> table, ExternalTableSnapshotData* table_data,
+    const LeaderEpoch& epoch) {
+  RSTATUS_DCHECK(
+      table->IsColocatedUserTable(), InvalidArgument,
+      Format("table: $0 is not a colocated user table", table->id()));
+  // Remove old colocated tablet from TableInfo.
+  auto old_tablet = VERIFY_RESULT(table->GetTablets())[0];
+  auto old_colocated_tablet_lock = old_tablet->LockForWrite();
+  RETURN_NOT_OK(table->RemoveTablet(old_tablet->tablet_id()));
+  // Add new colocated tablet to TableInfo.
+  TableInfoPtr parent_table =
+      VERIFY_RESULT(FindTableById(VERIFY_RESULT(GetParentTableIdForColocatedTable(table))));
+  auto tablets = VERIFY_RESULT(parent_table->GetTablets());
+
+  RSTATUS_DCHECK(
+      tablets.size() == 1, NotFound,
+      Format("Wrong number of parent tablet of colocated database:$1", tablets.size()));
+  auto new_tablet_lock = tablets[0]->LockForWrite();
+  RETURN_NOT_OK(table->AddTablet(tablets[0]));
+  VLOG(1) << Format(
+      "Modifying the parent tablet of the colocated table: $0. The new Tablet is: $1",
+      table_data->new_table_id, VERIFY_RESULT(table->GetTablets())[0]->tablet_id());
+  tablets[0]->AddTableId(table_data->new_table_id);
+
+  new_tablet_lock.Commit();
+  old_colocated_tablet_lock.Commit();
   return Status::OK();
 }
 
@@ -2618,9 +2402,7 @@ Status CatalogManager::ImportTabletEntry(const SysRowEntry& entry,
   if (table_data.new_table_id == table_data.old_table_id) {
     TRACE("Looking up tablet");
     SharedLock lock(mutex_);
-    scoped_refptr<TabletInfo> tablet = FindPtrOrNull(*tablet_map_, entry.id());
-
-    if (tablet != nullptr) {
+    if (tablet_map_->contains(entry.id())) {
       IdPairPB* const pair = table_data.table_meta->add_tablets_ids();
       pair->set_old_id(entry.id());
       pair->set_new_id(entry.id());
@@ -2669,10 +2451,10 @@ Result<std::map<std::string, KeyRange>> CatalogManager::GetTableKeyRanges(const 
   auto lock = table->LockForRead();
   RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(lock));
 
-  auto tablets = table->GetTablets();
+  auto tablets = VERIFY_RESULT(table->GetTablets());
 
   std::map<std::string, KeyRange> result;
-  for (const scoped_refptr<TabletInfo>& tablet : tablets) {
+  for (const auto& tablet : tablets) {
     auto tablet_lock = tablet->LockForRead();
     const auto& partition = tablet_lock->pb.partition();
     result[tablet->tablet_id()].start_key = partition.partition_key_start();
@@ -2759,7 +2541,7 @@ Status CatalogManager::RestoreSysCatalogCommon(
   // This is to persist the restoration so that on restarts the RESTORE_ON_TABLET
   // rpcs can be retried.
   *restore_kv = VERIFY_RESULT(
-      snapshot_coordinator_.UpdateRestorationAndGetWritePair(restoration));
+      master_->snapshot_coordinator().UpdateRestorationAndGetWritePair(restoration));
 
   return Status::OK();
 }
@@ -2999,7 +2781,7 @@ void CatalogManager::RemoveHiddenColocatedTableFromTablet(
   if (!tablet_info) {
     return;
   }
-  if (snapshot_coordinator_.ShouldRetainHiddenColocatedTable(
+  if (master_->snapshot_coordinator().ShouldRetainHiddenColocatedTable(
           *table, *tablet_info, schedule_min_restore_time)) {
     return;
   }
@@ -3031,8 +2813,12 @@ void CatalogManager::CleanupHiddenTables(
       // tablet's metadata first.
       RemoveHiddenColocatedTableFromTablet(table, schedule_min_restore_time, epoch);
     }
-    if (table->IsHiddenButNotDeleting() && table->AreAllTabletsDeleted()) {
-      expired_tables.push_back(std::move(table));
+
+    if (table->IsHiddenButNotDeleting()) {
+      auto tablets_deleted_result = table->AreAllTabletsDeleted();
+      if (tablets_deleted_result.ok() && *tablets_deleted_result) {
+        expired_tables.push_back(std::move(table));
+      }
     }
   }
   // Sort the expired tables so we acquire write locks in id order. This is the required lock
@@ -3086,224 +2872,6 @@ int64_t CatalogManager::LeaderTerm() {
   return consensus_result.get()->GetLeaderState(/* allow_stale= */ true).term;
 }
 
-void CatalogManager::HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool error) {
-  LOG(INFO) << "Handling Create Tablet Snapshot Response for tablet "
-            << DCHECK_NOTNULL(tablet)->ToString() << (error ? "  ERROR" : "  OK");
-
-  // Get the snapshot data descriptor from the catalog manager.
-  scoped_refptr<SnapshotInfo> snapshot;
-  {
-    LockGuard lock(mutex_);
-    TRACE("Acquired catalog manager lock");
-
-    if (current_snapshot_id_.empty()) {
-      return;
-    }
-
-    snapshot = FindPtrOrNull(non_txn_snapshot_ids_map_, current_snapshot_id_);
-
-    if (!snapshot) {
-      LOG(WARNING) << "Snapshot not found: " << current_snapshot_id_;
-      return;
-    }
-  }
-
-  if (!snapshot->IsCreateInProgress()) {
-    LOG(WARNING) << "Snapshot is not in creating state: " << snapshot->id();
-    return;
-  }
-
-  auto tablet_l = tablet->LockForRead();
-  auto l = snapshot->LockForWrite();
-  auto* tablet_snapshots = l.mutable_data()->pb.mutable_tablet_snapshots();
-  int num_tablets_complete = 0;
-
-  for (int i = 0; i < tablet_snapshots->size(); ++i) {
-    SysSnapshotEntryPB_TabletSnapshotPB* tablet_info = tablet_snapshots->Mutable(i);
-
-    if (tablet_info->id() == tablet->id()) {
-      tablet_info->set_state(error ? SysSnapshotEntryPB::FAILED : SysSnapshotEntryPB::COMPLETE);
-    }
-
-    if (tablet_info->state() == SysSnapshotEntryPB::COMPLETE) {
-      ++num_tablets_complete;
-    }
-  }
-
-  // Finish the snapshot.
-  bool finished = true;
-  if (error) {
-    l.mutable_data()->pb.set_state(SysSnapshotEntryPB::FAILED);
-    LOG(WARNING) << "Failed snapshot " << snapshot->id() << " on tablet " << tablet->id();
-  } else if (num_tablets_complete == tablet_snapshots->size()) {
-    l.mutable_data()->pb.set_state(SysSnapshotEntryPB::COMPLETE);
-    LOG(INFO) << "Completed snapshot " << snapshot->id();
-  } else {
-    finished = false;
-  }
-
-  if (finished) {
-    LockGuard lock(mutex_);
-    TRACE("Acquired catalog manager lock");
-    current_snapshot_id_ = "";
-  }
-
-  VLOG(1) << "Snapshot: " << snapshot->id()
-          << " PB: " << l.mutable_data()->pb.DebugString()
-          << " Complete " << num_tablets_complete << " tablets from " << tablet_snapshots->size();
-
-  const Status s = sys_catalog_->Upsert(leader_ready_term(), snapshot);
-
-  l.CommitOrWarn(s, "updating snapshot in sys-catalog");
-}
-
-void CatalogManager::HandleRestoreTabletSnapshotResponse(TabletInfo *tablet, bool error) {
-  LOG(INFO) << "Handling Restore Tablet Snapshot Response for tablet "
-            << DCHECK_NOTNULL(tablet)->ToString() << (error ? "  ERROR" : "  OK");
-
-  // Get the snapshot data descriptor from the catalog manager.
-  scoped_refptr<SnapshotInfo> snapshot;
-  {
-    LockGuard lock(mutex_);
-    TRACE("Acquired catalog manager lock");
-
-    if (current_snapshot_id_.empty()) {
-      LOG(WARNING) << "No restoring snapshot: " << current_snapshot_id_;
-      return;
-    }
-
-    snapshot = FindPtrOrNull(non_txn_snapshot_ids_map_, current_snapshot_id_);
-
-    if (!snapshot) {
-      LOG(WARNING) << "Restoring snapshot not found: " << current_snapshot_id_;
-      return;
-    }
-  }
-
-  if (!snapshot->IsRestoreInProgress()) {
-    LOG(WARNING) << "Snapshot is not in restoring state: " << snapshot->id();
-    return;
-  }
-
-  auto tablet_l = tablet->LockForRead();
-  auto l = snapshot->LockForWrite();
-  auto* tablet_snapshots = l.mutable_data()->pb.mutable_tablet_snapshots();
-  int num_tablets_complete = 0;
-
-  for (int i = 0; i < tablet_snapshots->size(); ++i) {
-    SysSnapshotEntryPB_TabletSnapshotPB* tablet_info = tablet_snapshots->Mutable(i);
-
-    if (tablet_info->id() == tablet->id()) {
-      tablet_info->set_state(error ? SysSnapshotEntryPB::FAILED : SysSnapshotEntryPB::COMPLETE);
-    }
-
-    if (tablet_info->state() == SysSnapshotEntryPB::COMPLETE) {
-      ++num_tablets_complete;
-    }
-  }
-
-  // Finish the snapshot.
-  if (error || num_tablets_complete == tablet_snapshots->size()) {
-    if (error) {
-      l.mutable_data()->pb.set_state(SysSnapshotEntryPB::FAILED);
-      LOG(WARNING) << "Failed restoring snapshot " << snapshot->id()
-                   << " on tablet " << tablet->id();
-    } else {
-      LOG_IF(DFATAL, num_tablets_complete != tablet_snapshots->size())
-          << "Wrong number of tablets";
-      l.mutable_data()->pb.set_state(SysSnapshotEntryPB::COMPLETE);
-      LOG(INFO) << "Restored snapshot " << snapshot->id();
-    }
-
-    LockGuard lock(mutex_);
-    TRACE("Acquired catalog manager lock");
-    current_snapshot_id_ = "";
-  }
-
-  VLOG(1) << "Snapshot: " << snapshot->id()
-          << " PB: " << l.mutable_data()->pb.DebugString()
-          << " Complete " << num_tablets_complete << " tablets from " << tablet_snapshots->size();
-
-  const Status s = sys_catalog_->Upsert(leader_ready_term(), snapshot);
-
-  l.CommitOrWarn(s, "updating snapshot in sys-catalog");
-}
-
-void CatalogManager::HandleDeleteTabletSnapshotResponse(
-    const SnapshotId& snapshot_id, TabletInfo *tablet, bool error) {
-  LOG(INFO) << "Handling Delete Tablet Snapshot Response for tablet "
-            << DCHECK_NOTNULL(tablet)->ToString() << (error ? "  ERROR" : "  OK");
-
-  // Get the snapshot data descriptor from the catalog manager.
-  scoped_refptr<SnapshotInfo> snapshot;
-  {
-    LockGuard lock(mutex_);
-    TRACE("Acquired catalog manager lock");
-
-    snapshot = FindPtrOrNull(non_txn_snapshot_ids_map_, snapshot_id);
-
-    if (!snapshot) {
-      LOG(WARNING) << __func__ << " Snapshot not found: " << snapshot_id;
-      return;
-    }
-  }
-
-  if (!snapshot->IsDeleteInProgress()) {
-    LOG(WARNING) << "Snapshot is not in deleting state: " << snapshot->id();
-    return;
-  }
-
-  auto tablet_l = tablet->LockForRead();
-  auto l = snapshot->LockForWrite();
-  auto* tablet_snapshots = l.mutable_data()->pb.mutable_tablet_snapshots();
-  int num_tablets_complete = 0;
-
-  for (int i = 0; i < tablet_snapshots->size(); ++i) {
-    SysSnapshotEntryPB_TabletSnapshotPB* tablet_info = tablet_snapshots->Mutable(i);
-
-    if (tablet_info->id() == tablet->id()) {
-      tablet_info->set_state(error ? SysSnapshotEntryPB::FAILED : SysSnapshotEntryPB::DELETED);
-    }
-
-    if (tablet_info->state() != SysSnapshotEntryPB::DELETING) {
-      ++num_tablets_complete;
-    }
-  }
-
-  if (num_tablets_complete == tablet_snapshots->size()) {
-    // Delete the snapshot.
-    l.mutable_data()->pb.set_state(SysSnapshotEntryPB::DELETED);
-    LOG(INFO) << "Deleted snapshot " << snapshot->id();
-
-    const Status s = sys_catalog_->Delete(leader_ready_term(), snapshot);
-
-    LockGuard lock(mutex_);
-    TRACE("Acquired catalog manager lock");
-
-    if (current_snapshot_id_ == snapshot_id) {
-      current_snapshot_id_ = "";
-    }
-
-    // Remove it from the maps.
-    TRACE("Removing from maps");
-    if (non_txn_snapshot_ids_map_.erase(snapshot_id) < 1) {
-      LOG(WARNING) << "Could not remove snapshot " << snapshot_id << " from map";
-    }
-
-    l.CommitOrWarn(s, "deleting snapshot from sys-catalog");
-  } else if (error) {
-    l.mutable_data()->pb.set_state(SysSnapshotEntryPB::FAILED);
-    LOG(WARNING) << "Failed snapshot " << snapshot->id() << " deletion on tablet " << tablet->id();
-
-    const Status s = sys_catalog_->Upsert(leader_ready_term(), snapshot);
-    l.CommitOrWarn(s, "updating snapshot in sys-catalog");
-  }
-
-  VLOG(1) << "Deleting snapshot: " << snapshot->id()
-          << " PB: " << l.mutable_data()->pb.DebugString()
-          << " Complete " << num_tablets_complete << " tablets from " << tablet_snapshots->size();
-}
-
 Status CatalogManager::CreateSnapshotSchedule(const CreateSnapshotScheduleRequestPB* req,
                                               CreateSnapshotScheduleResponsePB* resp,
                                               rpc::RpcContext* rpc) {
@@ -3332,7 +2900,7 @@ Status CatalogManager::CreateSnapshotSchedule(const CreateSnapshotScheduleReques
     LOG_WITH_FUNC(INFO) << "Modified request " << req_with_ns_id.ShortDebugString();
   }
 
-  auto id = VERIFY_RESULT(snapshot_coordinator_.CreateSchedule(
+  auto id = VERIFY_RESULT(master_->snapshot_coordinator().CreateSchedule(
       req_with_ns_id, leader_ready_term(), rpc->GetClientDeadline()));
   resp->set_snapshot_schedule_id(id.data(), id.size());
   return Status::OK();
@@ -3343,7 +2911,7 @@ Status CatalogManager::ListSnapshotSchedules(const ListSnapshotSchedulesRequestP
                                              rpc::RpcContext* rpc) {
   auto snapshot_schedule_id = TryFullyDecodeSnapshotScheduleId(req->snapshot_schedule_id());
 
-  return snapshot_coordinator_.ListSnapshotSchedules(snapshot_schedule_id, resp);
+  return master_->snapshot_coordinator().ListSnapshotSchedules(snapshot_schedule_id, resp);
 }
 
 Status CatalogManager::DeleteSnapshotSchedule(const DeleteSnapshotScheduleRequestPB* req,
@@ -3351,7 +2919,7 @@ Status CatalogManager::DeleteSnapshotSchedule(const DeleteSnapshotScheduleReques
                                               rpc::RpcContext* rpc) {
   auto snapshot_schedule_id = TryFullyDecodeSnapshotScheduleId(req->snapshot_schedule_id());
 
-  return snapshot_coordinator_.DeleteSnapshotSchedule(
+  return master_->snapshot_coordinator().DeleteSnapshotSchedule(
       snapshot_schedule_id, leader_ready_term(), rpc->GetClientDeadline());
 }
 
@@ -3360,7 +2928,7 @@ Status CatalogManager::EditSnapshotSchedule(
     EditSnapshotScheduleResponsePB* resp,
     rpc::RpcContext* rpc) {
   auto id = TryFullyDecodeSnapshotScheduleId(req->snapshot_schedule_id());
-  *resp->mutable_schedule() = VERIFY_RESULT(snapshot_coordinator_.EditSnapshotSchedule(
+  *resp->mutable_schedule() = VERIFY_RESULT(master_->snapshot_coordinator().EditSnapshotSchedule(
       id, *req, leader_ready_term(), rpc->GetClientDeadline()));
   return Status::OK();
 }
@@ -3374,9 +2942,10 @@ Status CatalogManager::RestoreSnapshotSchedule(
   HybridTime ht = HybridTime(req->restore_ht());
   auto deadline = rpc->GetClientDeadline();
 
-  RETURN_NOT_OK(tablet_split_manager_.PrepareForPitr(deadline));
+  RETURN_NOT_OK(master_->tablet_split_manager().PrepareForPitr(deadline));
 
-  return snapshot_coordinator_.RestoreSnapshotSchedule(id, ht, resp, epoch.leader_term, deadline);
+  return master_->snapshot_coordinator().RestoreSnapshotSchedule(
+      id, ht, resp, epoch.leader_term, deadline);
 }
 
 template <typename Registry, typename Mutex>
@@ -3396,21 +2965,21 @@ bool ShouldResendRegistry(
   return should_resend_registry;
 }
 
-Status CatalogManager::FillHeartbeatResponse(const TSHeartbeatRequestPB* req,
+Status CatalogManager::FillHeartbeatResponse(const TSHeartbeatRequestPB& req,
                                              TSHeartbeatResponsePB* resp) {
   SysClusterConfigEntryPB cluster_config = VERIFY_RESULT(GetClusterConfig());
   RETURN_NOT_OK(FillHeartbeatResponseEncryption(cluster_config, req, resp));
-  RETURN_NOT_OK(snapshot_coordinator_.FillHeartbeatResponse(resp));
+  RETURN_NOT_OK(master_->snapshot_coordinator().FillHeartbeatResponse(resp));
   return FillHeartbeatResponseCDC(cluster_config, req, resp);
 }
 
 Status CatalogManager::FillHeartbeatResponseEncryption(
     const SysClusterConfigEntryPB& cluster_config,
-    const TSHeartbeatRequestPB* req,
+    const TSHeartbeatRequestPB& req,
     TSHeartbeatResponsePB* resp) {
-  const auto& ts_uuid = req->common().ts_instance().permanent_uuid();
+  const auto& ts_uuid = req.common().ts_instance().permanent_uuid();
   if (!cluster_config.has_encryption_info() ||
-      !ShouldResendRegistry(ts_uuid, req->has_registration(), &should_send_universe_key_registry_,
+      !ShouldResendRegistry(ts_uuid, req.has_registration(), &should_send_universe_key_registry_,
                             &should_send_universe_key_registry_mutex_)) {
     return Status::OK();
   }
@@ -3529,11 +3098,11 @@ Result<RemoteTabletServer *> CatalogManager::GetLeaderTServer(
 }
 
 Result<bool> CatalogManager::IsTableUndergoingPitrRestore(const TableInfo& table_info) {
-  return snapshot_coordinator_.IsTableUndergoingPitrRestore(table_info);
+  return master_->snapshot_coordinator().IsTableUndergoingPitrRestore(table_info);
 }
 
 bool CatalogManager::IsPitrActive() {
-  return snapshot_coordinator_.IsPitrActive();
+  return master_->snapshot_coordinator().IsPitrActive();
 }
 
 Result<size_t> CatalogManager::GetNumLiveTServersForActiveCluster() {
@@ -3555,7 +3124,7 @@ void CatalogManager::PrepareRestore() {
 
 docdb::HistoryCutoff CatalogManager::AllowedHistoryCutoffProvider(
     tablet::RaftGroupMetadata* metadata) {
-  return snapshot_coordinator_.AllowedHistoryCutoffProvider(metadata);
+  return master_->snapshot_coordinator().AllowedHistoryCutoffProvider(metadata);
 }
 
 }  // namespace master

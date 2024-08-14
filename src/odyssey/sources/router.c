@@ -10,6 +10,19 @@
 #include <odyssey.h>
 #include <time.h>
 
+static void clear_stats(struct ConnectionStats *yb_stats) {
+    for (int i = 1; i < YSQL_CONN_MGR_MAX_POOLS; i++) {
+        yb_stats[i].active_clients = 0;
+		yb_stats[i].queued_clients = 0;
+		yb_stats[i].waiting_clients = 0;
+		yb_stats[i].active_servers = 0;
+		yb_stats[i].idle_servers = 0;
+		yb_stats[i].query_rate = 0;
+		yb_stats[i].transaction_rate = 0;
+		yb_stats[i].avg_wait_time_ns = 0;
+    }
+}
+
 void od_router_init(od_router_t *router, od_global_t *global)
 {
 	pthread_mutex_init(&router->lock, NULL);
@@ -340,6 +353,8 @@ void od_router_stat(od_router_t *router, uint64_t prev_time_us,
 		    od_route_pool_stat_cb_t callback, void **argv)
 {
 	od_router_lock(router);
+	od_instance_t *instance = argv[0];
+	clear_stats(instance->yb_stats);
 	od_route_pool_stat(&router->route_pool, prev_time_us,
 #ifdef PROM_FOUND
 			   metrics,
@@ -584,11 +599,27 @@ od_router_status_t od_router_attach(od_router_t *router,
 	od_server_t *server;
 	int busyloop_sleep = 0;
 	int busyloop_retry = 0;
+	const char *is_warmup_needed = getenv("YB_YSQL_CONN_MGR_DOWARMUP_ALL_POOLS_RANDOM_ATTACH");
+	bool enable_warmup_and_random_allot = false;
+	if (is_warmup_needed != NULL && strcmp(is_warmup_needed, "true") == 0)
+		enable_warmup_and_random_allot = true;
+
 	for (;;) {
-		server = od_pg_server_pool_next(&route->server_pool,
+
+		if (enable_warmup_and_random_allot)
+		{
+			server = od_server_pool_idle_random(&route->server_pool);
+			if (server &&
+				(od_server_pool_total(&route->server_pool) >= route->rule->min_pool_size))
+				goto attach;
+		}
+		else
+		{
+			server = od_pg_server_pool_next(&route->server_pool,
 						OD_SERVER_IDLE);
-		if (server)
-			goto attach;
+			if (server)
+				goto attach;
+		}
 
 		if (wait_for_idle) {
 			/* special case, when we are interested only in an idle connection
@@ -659,13 +690,33 @@ od_router_status_t od_router_attach(od_router_t *router,
 	od_route_unlock(route);
 
 	/* create new server object */
-	server = od_server_allocate(
+	bool created_atleast_one = false;
+	while (enable_warmup_and_random_allot &&
+		  (od_server_pool_total(&route->server_pool) < route->rule->min_pool_size))
+	{
+		server = od_server_allocate(
 		route->rule->pool->reserve_prepared_statement);
-	if (server == NULL)
-		return OD_ROUTER_ERROR;
-	od_id_generate(&server->id, "s");
-	server->global = client_for_router->global;
-	server->route = route;
+		if (server == NULL)
+			return OD_ROUTER_ERROR;
+		od_id_generate(&server->id, "s");
+		server->global = client_for_router->global;
+		server->route = route;
+		server->client = NULL;
+		od_pg_server_pool_set(&route->server_pool, server,
+						OD_SERVER_IDLE);
+		created_atleast_one = true;
+	}
+
+	if (!created_atleast_one)
+	{
+		server = od_server_allocate(
+		route->rule->pool->reserve_prepared_statement);
+		if (server == NULL)
+			return OD_ROUTER_ERROR;
+		od_id_generate(&server->id, "s");
+		server->global = client_for_router->global;
+		server->route = route;
+	}
 
 	od_route_lock(route);
 
@@ -724,9 +775,25 @@ void od_router_detach(od_router_t *router, od_client_t *client)
 	 * 	   As of D26669, these queries are:
 	 * 			a. Creating TEMP TABLES.
 	 * 			b. Use of WITH HOLD CURSORS.
+	 *  c. Client connection is a logical or physical replication connection
+	 *  d. It took too long to reset state on the server.
 	 */
-	if (od_likely(!server->offline) && server->yb_sticky_connection == false) {
-		od_pg_server_pool_set(&route->server_pool, server, OD_SERVER_IDLE);
+	if (od_likely(!server->offline) &&
+		!server->yb_sticky_connection &&
+		!server->reset_timeout) {
+		od_instance_t *instance = server->global->instance;
+		if (route->id.physical_rep || route->id.logical_rep) {
+			od_debug(&instance->logger, "expire-replication", NULL,
+				 server, "closing replication connection");
+			server->route = NULL;
+			od_backend_close_connection(server);
+			od_pg_server_pool_set(&route->server_pool, server,
+					      OD_SERVER_UNDEF);
+			od_backend_close(server);
+		} else {
+			od_pg_server_pool_set(&route->server_pool, server,
+					      OD_SERVER_IDLE);
+		}
 	} else {
 		od_instance_t *instance = server->global->instance;
 		od_debug(&instance->logger, "expire", NULL, server,

@@ -394,7 +394,6 @@ class Tablet : public AbstractTablet,
 
   Status DoHandlePgsqlReadRequest(
       ScopedRWOperation* scoped_read_operation,
-      docdb::DocDBStatistics* statistics,
       TabletMetrics* metrics,
       const docdb::ReadOperationData& read_operation_data,
       bool is_explicit_request_read_time,

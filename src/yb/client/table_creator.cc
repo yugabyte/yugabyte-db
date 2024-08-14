@@ -140,6 +140,11 @@ YBTableCreator& YBTableCreator::is_truncate(bool is_truncate) {
   return *this;
 }
 
+YBTableCreator& YBTableCreator::xcluster_source_table_id(const TableId& source_table_id) {
+  xcluster_source_table_id_ = source_table_id;
+  return *this;
+}
+
 YBTableCreator& YBTableCreator::schema(const YBSchema* schema) {
   schema_ = schema;
   return *this;
@@ -313,6 +318,10 @@ Status YBTableCreator::Create() {
 
   if (is_truncate_) {
     req.set_is_truncate(*is_truncate_);
+  }
+
+  if (!xcluster_source_table_id_.empty()) {
+    req.set_xcluster_source_table_id(xcluster_source_table_id_);
   }
 
   // Note that the check that the sum of min_num_replicas for each placement block being less or

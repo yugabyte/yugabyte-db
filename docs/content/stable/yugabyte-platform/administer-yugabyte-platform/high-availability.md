@@ -131,11 +131,17 @@ To confirm communication between the active and standby, you can do the followin
 
     ![Verify Prometheus](/images/yp/high-availability/ha-prometheus.png)
 
+    {{<note title="Metrics availability on the standby">}}
+Metrics on the standby are only available from the time the standby was activated. The standby begins collecting metrics from the active instance when activated; no historical metrics are copied from the active instance at that time.
+
+For example, if your metrics retention is 14 days on your active instance, and you activated your standby 7 days ago, you will not see metrics for the 7 days prior to standby activation. After the standby has been active for 14 days, you will see the same metrics on both.
+    {{</note>}}
+
 ### Enable certificate validation
 
 After HA is operational, it is recommended that you enable certificate validation to improve security of communication between the active and any standby instances. Enable certificate validation as follows:
 
-1. Add certificates for the active and all standbys to the active instance [trust store](../../security/enable-encryption-in-transit/#add-certificates-to-your-trust-store).
+1. Add certificates for the active and all standbys to the active instance [trust store](../../security/enable-encryption-in-transit/trust-store/).
 
     - If YBA was set up to use a custom server certificate, locate the corresponding Certificate Authority (CA) certificate.
     - If YBA was set up to use automatically generated self-signed certificates and you installed YBA using YBA Installer, locate the CA certificate at `/opt/yugabyte/data/yba-installer/certs/ca_cert.pem` on both the YBA active and standby instances. (If you configured a custom install root, replace `/opt/yugabyte` with the path you configured.)

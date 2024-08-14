@@ -25,7 +25,7 @@ namespace yb {
 class IsOperationDoneResult;
 
 namespace client {
-class XClusterRemoteClient;
+class XClusterRemoteClientHolder;
 }  // namespace client
 
 namespace master {
@@ -101,6 +101,11 @@ class XClusterOutboundReplicationGroup
       const NamespaceId& namespace_id,
       const std::vector<TableSchemaNamePair>& table_names = {}) const EXCLUDES(mutex_);
 
+  // Returns std::nullopt if the namespace is not yet ready.
+  Result<std::optional<NamespaceCheckpointInfo>> GetNamespaceCheckpointInfoForTableIds(
+      const NamespaceId& namespace_id, const std::vector<TableId>& source_table_ids) const
+      EXCLUDES(mutex_);
+
   Status CreateXClusterReplication(
       const std::vector<HostPort>& source_master_addresses,
       const std::vector<HostPort>& target_master_addresses, const LeaderEpoch& epoch)
@@ -162,7 +167,7 @@ class XClusterOutboundReplicationGroup
       const LeaderEpoch& epoch, const NamespaceId& namespace_id,
       const SysXClusterOutboundReplicationGroupEntryPB& pb) REQUIRES(mutex_);
 
-  virtual Result<std::shared_ptr<client::XClusterRemoteClient>> GetRemoteClient(
+  virtual Result<std::shared_ptr<client::XClusterRemoteClientHolder>> GetRemoteClient(
       const std::vector<HostPort>& remote_masters) const;
 
   // Checks if the namespace is part of this replication group. Caller must hold the read or write

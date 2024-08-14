@@ -155,7 +155,11 @@ TEST_F(SysCatalogTest, TestSysCatalogTablesOperations) {
 
   // Delete the table
   loader->Reset();
-  ASSERT_OK(sys_catalog_->Delete(epoch, table));
+  {
+    auto l = table->LockForWrite();
+    ASSERT_OK(sys_catalog_->Delete(epoch, table));
+    l.Commit();
+  }
   ASSERT_OK(sys_catalog_->Visit(loader.get()));
   ASSERT_EQ(kNumSystemTables, loader->tables.size());
 }
@@ -165,9 +169,9 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
   scoped_refptr<TableInfo> table(
       master_->catalog_manager()->NewTableInfo("abc", /* colocated */ false));
   // This leaves all three in StartMutation.
-  scoped_refptr<TabletInfo> tablet1(CreateUncommittedTablet(table.get(), "123", "a", "b"));
-  scoped_refptr<TabletInfo> tablet2(CreateUncommittedTablet(table.get(), "456", "b", "c"));
-  scoped_refptr<TabletInfo> tablet3(CreateUncommittedTablet(table.get(), "789", "c", "d"));
+  TabletInfoPtr tablet1(CreateUncommittedTablet(table.get(), "123", "a", "b"));
+  TabletInfoPtr tablet2(CreateUncommittedTablet(table.get(), "456", "b", "c"));
+  TabletInfoPtr tablet3(CreateUncommittedTablet(table.get(), "789", "c", "d"));
 
   unique_ptr<TestTabletLoader> loader(new TestTabletLoader());
   ASSERT_OK(sys_catalog_->Visit(loader.get()));
@@ -187,8 +191,8 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
 
     ASSERT_OK(sys_catalog_->Visit(loader.get()));
     ASSERT_EQ(2 + kNumSystemTables, loader->tablets.size());
-    ASSERT_METADATA_EQ(tablet1.get(), loader->tablets[tablet1->id()]);
-    ASSERT_METADATA_EQ(tablet2.get(), loader->tablets[tablet2->id()]);
+    ASSERT_METADATA_EQ(tablet1.get(), loader->tablets[tablet1->id()].get());
+    ASSERT_METADATA_EQ(tablet2.get(), loader->tablets[tablet2->id()].get());
   }
 
   // Update tablet1
@@ -204,8 +208,8 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
     loader->Reset();
     ASSERT_OK(sys_catalog_->Visit(loader.get()));
     ASSERT_EQ(2 + kNumSystemTables, loader->tablets.size());
-    ASSERT_METADATA_EQ(tablet1.get(), loader->tablets[tablet1->id()]);
-    ASSERT_METADATA_EQ(tablet2.get(), loader->tablets[tablet2->id()]);
+    ASSERT_METADATA_EQ(tablet1.get(), loader->tablets[tablet1->id()].get());
+    ASSERT_METADATA_EQ(tablet2.get(), loader->tablets[tablet2->id()].get());
   }
 
   // Add tablet3 and Update tablet1 and tablet2
@@ -232,9 +236,9 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
 
     ASSERT_OK(sys_catalog_->Visit(loader.get()));
     ASSERT_EQ(3 + kNumSystemTables, loader->tablets.size());
-    ASSERT_METADATA_EQ(tablet1.get(), loader->tablets[tablet1->id()]);
-    ASSERT_METADATA_EQ(tablet2.get(), loader->tablets[tablet2->id()]);
-    ASSERT_METADATA_EQ(tablet3.get(), loader->tablets[tablet3->id()]);
+    ASSERT_METADATA_EQ(tablet1.get(), loader->tablets[tablet1->id()].get());
+    ASSERT_METADATA_EQ(tablet2.get(), loader->tablets[tablet2->id()].get());
+    ASSERT_METADATA_EQ(tablet3.get(), loader->tablets[tablet3->id()].get());
   }
 
   // Delete tablet1 and tablet3 tablets
@@ -244,10 +248,16 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
     tablets.push_back(tablet3.get());
 
     loader->Reset();
-    ASSERT_OK(sys_catalog_->Delete(epoch, tablets));
+    {
+      auto l1 = tablet1->LockForWrite();
+      auto l3 = tablet3->LockForWrite();
+      ASSERT_OK(sys_catalog_->Delete(epoch, tablets));
+      l1.Commit();
+      l3.Commit();
+    }
     ASSERT_OK(sys_catalog_->Visit(loader.get()));
     ASSERT_EQ(1 + kNumSystemTables, loader->tablets.size());
-    ASSERT_METADATA_EQ(tablet2.get(), loader->tablets[tablet2->id()]);
+    ASSERT_METADATA_EQ(tablet2.get(), loader->tablets[tablet2->id()].get());
   }
 }
 
@@ -417,7 +427,11 @@ TEST_F(SysCatalogTest, TestSysCatalogNamespacesOperations) {
 
   // 4. CHECK DELETE_NAMESPACE
   // Delete the namespace
-  ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, ns));
+  {
+    auto l = ns->LockForWrite();
+    ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, ns));
+    l.Commit();
+  }
 
   // Verify the result.
   loader->Reset();
@@ -497,7 +511,11 @@ TEST_F(SysCatalogTest, TestSysCatalogRedisConfigOperations) {
     ASSERT_METADATA_EQ(rci2.get(), loader->config_entries[1]);
 
     // 2. CHECK DELETE RedisConfig
-    ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, rci2));
+    {
+      auto l = rci2->LockForWrite();
+      ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, rci2));
+      l.Commit();
+    }
 
     // Verify the result.
     loader->Reset();
@@ -505,7 +523,11 @@ TEST_F(SysCatalogTest, TestSysCatalogRedisConfigOperations) {
     ASSERT_EQ(1, loader->config_entries.size());
   }
   // 2. CHECK DELETE RedisConfig
-  ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, rci));
+  {
+    auto l = rci->LockForWrite();
+    ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, rci));
+    l.Commit();
+  }
 
   // Verify the result.
   loader->Reset();
@@ -569,7 +591,11 @@ TEST_F(SysCatalogTest, TestSysCatalogSysConfigOperations) {
   ASSERT_METADATA_EQ(ysql_catalog_config.get(), loader->sys_configs[3]);
 
   // 2. Remove the SysConfigEntry and verify that it got removed.
-  ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, test_config));
+  {
+    auto l = test_config->LockForWrite();
+    ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, test_config));
+    l.Commit();
+  }
   loader->Reset();
   ASSERT_OK(sys_catalog_->Visit(loader.get()));
   ASSERT_EQ(3, loader->sys_configs.size());
@@ -640,7 +666,11 @@ TEST_F(SysCatalogTest, TestSysCatalogRoleOperations) {
   ASSERT_METADATA_EQ(rl.get(), loader->roles[1]);
 
   // 2. CHECK DELETE Role
-  ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, rl));
+  {
+    auto l = rl->LockForWrite();
+    ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, rl));
+    l.Commit();
+  }
 
   // Verify the result.
   loader->Reset();
@@ -672,7 +702,11 @@ TEST_F(SysCatalogTest, TestSysCatalogUDTypeOperations) {
   ASSERT_METADATA_EQ(tp.get(), loader->udtypes[0]);
 
   // 2. CHECK DELETE_UDTYPE
-  ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, tp));
+  {
+    auto l = tp->LockForWrite();
+    ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, tp));
+    l.Commit();
+  }
 
   // Verify the result.
   loader->Reset();
@@ -708,7 +742,7 @@ TEST_F(SysCatalogTest, TestOrphanedTabletsDeleted) {
     for (auto& p : state_to_id) {
       auto in_mem_tablet =
           VERIFY_RESULT(master_->catalog_manager()->GetTabletInfo(p.second /* tablet_id */));
-      auto* persisted_tablet = loader.tablets[p.second /* tablet_id */];
+      const auto& persisted_tablet = loader.tablets[p.second /* tablet_id */];
 
       if ((in_mem_tablet->LockForRead()->pb.state() != SysTabletsEntryPB_State_DELETED) ||
           (persisted_tablet->LockForRead()->pb.state() != SysTabletsEntryPB_State_DELETED)) {
@@ -739,7 +773,7 @@ TEST_F(SysCatalogTest, TestTableIdsHasAtLeastOneTable) {
     TestTabletLoader loader;
     RETURN_NOT_OK(sys_catalog_->Visit(&loader));
     auto in_mem_tablet = VERIFY_RESULT(master_->catalog_manager()->GetTabletInfo(tablet_id));
-    auto* persisted_tablet = loader.tablets[tablet_id];
+    const auto& persisted_tablet = loader.tablets[tablet_id];
 
     if ((in_mem_tablet->LockForRead()->pb.table_ids_size() != 1) ||
         (in_mem_tablet->LockForRead()->pb.table_ids(0) != table_id) ||
@@ -778,7 +812,7 @@ TEST_F(SysCatalogTest, TestCatalogManagerTasksTracker) {
 
   // Add tasks to the table (more than can fit in the cbuf).
   for (int task_id = 0; task_id < FLAGS_tasks_tracker_num_tasks + 10; ++task_id) {
-    scoped_refptr<TabletInfo> tablet(new TabletInfo(table, kSysCatalogTableId));
+    auto tablet = std::make_shared<TabletInfo>(table, kSysCatalogTableId);
     auto task = std::make_shared<AsyncTruncate>(
         master_, master_->catalog_manager()->AsyncTaskPool(), tablet, epoch);
     table->AddTask(task);

@@ -121,7 +121,7 @@ const VALIDATION_SCHEMA = object().shape({
     .required('Azure Client ID is required.')
     .matches(
       UUID_REGEX,
-      "UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)"
+      'UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)'
     ),
   azuClientSecret: mixed().when('providerCredentialType', {
     is: AzuProviderCredentialType.SPECIFIED_SERVICE_PRINCIPAL,
@@ -131,19 +131,19 @@ const VALIDATION_SCHEMA = object().shape({
     .required('Azure Resource Group is required.')
     .matches(
       RG_REGEX,
-      "Resource group names can only include alphanumeric, underscore, parentheses, hyphen, period (except at end)"
+      'Resource group names can only include alphanumeric, underscore, parentheses, hyphen, period (except at end)'
     ),
   azuSubscriptionId: string()
     .required('Azure Subscription ID is required.')
     .matches(
       UUID_REGEX,
-      "UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)"
+      'UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)'
     ),
   azuTenantId: string()
     .required('Azure Tenant ID is required.')
     .matches(
       UUID_REGEX,
-      "UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)"
+      'UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)'
     ),
   sshPrivateKeyContent: mixed().when('sshKeypairManagement', {
     is: KeyPairManagement.SELF_MANAGED,
@@ -164,16 +164,16 @@ const VALIDATION_SCHEMA = object().shape({
     )
   }),
   regions: array().min(1, 'Provider configurations must contain at least one region.'),
-  azuNetworkRG: string()
-    .matches(
-      RG_REGEX,
-      "Resource group names can only include alphanumeric, underscore, parentheses, hyphen, period (except at end)")
-  ,
-  azuNetworkSubscriptionId: string()
-    .matches(
-      UUID_REGEX,
-      "UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)"
-    )
+  azuNetworkRG: string().matches(RG_REGEX, {
+    message:
+      'Resource group names can only include alphanumeric, underscore, parentheses, hyphen, period (except at end)',
+    excludeEmptyString: true
+  }),
+  azuNetworkSubscriptionId: string().matches(UUID_REGEX, {
+    message:
+      'UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, where each x is a hexadecimal digit (0-9, a-f, A-F)',
+    excludeEmptyString: true
+  })
 });
 
 const FORM_NAME = 'AZUProviderCreateForm';
@@ -679,6 +679,12 @@ const constructProviderPayload = async (
             }),
             ...(regionFormValues.ybImage && {
               ybImage: regionFormValues.ybImage
+            }),
+            ...(regionFormValues.azuNetworkRGOverride && {
+              azuNetworkRGOverride: regionFormValues.azuNetworkRGOverride
+            }),
+            ...(regionFormValues.azuRGOverride && {
+              azuRGOverride: regionFormValues.azuRGOverride
             })
           }
         }

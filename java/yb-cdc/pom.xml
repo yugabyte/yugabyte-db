@@ -5,9 +5,8 @@
   <parent>
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
-    <version>0.8.89-SNAPSHOT</version>
+    <version>0.8.93-SNAPSHOT</version>
   </parent>
-  <groupId>org.yb</groupId>
   <artifactId>yb-cdc</artifactId>
   <name>YB CDC Connector</name>
   <description>
@@ -43,12 +42,10 @@
     <dependency>
       <groupId>org.yb</groupId>
       <artifactId>yb-client</artifactId>
-      <version>0.8.89-SNAPSHOT</version>
     </dependency>
     <dependency>
       <groupId>org.yb</groupId>
       <artifactId>yb-client</artifactId>
-      <version>0.8.89-SNAPSHOT</version>
       <type>test-jar</type>
       <scope>test</scope>
     </dependency>

@@ -55,8 +55,6 @@ other useful data.`,
 			common.YbactlLogFile(),
 			filepath.Join(common.YbactlInstallDir(), ybactlstate.StateFileName),
 			filepath.Join(common.YbactlInstallDir(), common.VersionMetadataJSON),
-			common.YbaInstalledMarker(),
-			common.YbaInstallingMarker(),
 			common.LicenseFile(),
 			filepath.Join(common.YbactlInstallDir(), common.GoBinaryName),
 

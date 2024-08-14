@@ -10,6 +10,11 @@ GET     /api                        api.controllers.ApiDocController.api
 # Functions for {{{baseName}}} API
 {{#operations}}
 {{#operation}}
+{{#vendorExtensions.x-yba-api-audit}}
+{{#noAudit}}
++ forceNoAudit
+{{/noAudit}}
+{{/vendorExtensions.x-yba-api-audit}}
 {{httpMethod}}     {{{contextPath}}}{{{path}}}                     {{apiPackage}}.{{classname}}Controller.{{operationId}}(request: Request{{#hasPathParams}}, {{/hasPathParams}}{{#pathParams}}{{paramName}}: {{#isUuid}}java.util.UUID{{/isUuid}}{{^isUuid}}{{{dataType}}}{{/isUuid}}{{^-last}}, {{/-last}}{{/pathParams}})
 {{/operation}}
 {{/operations}}

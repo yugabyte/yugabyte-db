@@ -73,18 +73,21 @@ PgCreateDatabase::PgCreateDatabase(PgSession::ScopedRefPtr pg_session,
                                    const char *database_name,
                                    const PgOid database_oid,
                                    const PgOid source_database_oid,
-                                   const char* source_database_name,
                                    const PgOid next_oid,
-                                   const int64_t clone_time,
+                                   YbCloneInfo *yb_clone_info,
                                    const bool colocated)
     : PgDdl(std::move(pg_session)) {
   req_.set_database_name(database_name);
   req_.set_database_oid(database_oid);
   req_.set_source_database_oid(source_database_oid);
-  req_.set_source_database_name(source_database_name);
   req_.set_next_oid(next_oid);
   req_.set_colocated(colocated);
-  req_.set_clone_time(clone_time);
+  if (yb_clone_info) {
+    req_.set_source_database_name(yb_clone_info->src_db_name);
+    req_.set_clone_time(yb_clone_info->clone_time);
+    req_.set_source_owner(yb_clone_info->src_owner);
+    req_.set_target_owner(yb_clone_info->tgt_owner);
+  }
 }
 
 PgCreateDatabase::~PgCreateDatabase() {
@@ -429,6 +432,12 @@ Status PgAlterTable::IncrementSchemaVersion() {
 
 Status PgAlterTable::SetTableId(const PgObjectId& table_id) {
   table_id.ToPB(req_.mutable_table_id());
+  return Status::OK();
+}
+
+Status PgAlterTable::SetSchema(const char *schema_name) {
+  auto& rename = *req_.mutable_rename_table();
+  rename.set_schema_name(schema_name);
   return Status::OK();
 }
 

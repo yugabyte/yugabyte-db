@@ -37,8 +37,8 @@
 /*  Database Functions -------------------------------------------------------------------------- */
 
 extern void YBCCreateDatabase(
-	Oid dboid, const char *dbname, Oid src_dboid, const char *src_dbname, Oid next_oid,
-	bool colocated, bool *retry_on_oid_collision, int64 clone_time);
+	Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid,
+	bool colocated, bool *retry_on_oid_collision, YbCloneInfo *yb_clone_info);
 
 extern void YBCDropDatabase(Oid dboid, const char *dbname);
 
@@ -104,6 +104,8 @@ extern void YBCExecAlterTable(YBCPgStatement handle, Oid relationId);
 
 extern void YBCRename(RenameStmt* stmt, Oid relationId);
 
+extern void YBCAlterTableNamespace(Form_pg_class classForm, Oid relationId);
+
 extern void YbBackfillIndex(BackfillIndexStmt *stmt, DestReceiver *dest);
 
 extern TupleDesc YbBackfillIndexResultDesc(BackfillIndexStmt *stmt);
@@ -143,9 +145,12 @@ extern void YBCUpdatePublicationTableList(const char *stream_id,
 extern void YBCDestroyVirtualWalForCDC();
 
 extern void YBCGetCDCConsistentChanges(const char *stream_id,
-									   YBCPgChangeRecordBatch **record_batch);
+									   YBCPgChangeRecordBatch **record_batch,
+									   YBCTypeEntityProvider type_entity_provider);
 
 extern void YBCUpdateAndPersistLSN(const char *stream_id,
 								   XLogRecPtr restart_lsn_hint,
 								   XLogRecPtr confirmed_flush,
 								   YBCPgXLogRecPtr *restart_lsn);
+
+extern void YBCDropColumn(Relation rel, AttrNumber attnum);

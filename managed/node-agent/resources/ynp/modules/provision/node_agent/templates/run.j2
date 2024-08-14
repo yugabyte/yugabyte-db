@@ -1,0 +1,288 @@
+# Define the variables
+yba_url={{ url }}
+customer_uuid={{ customer_uuid }}
+token={{ api_key }}
+provider_id={{ provider_id }}
+
+_create_provider_url() {
+    local yba_url=$1
+    local customer_uuid=$2
+    echo "${yba_url}/api/v1/customers/${customer_uuid}/providers"
+}
+
+_get_provider_url() {
+    local yba_url=$1
+    local customer_uuid=$2
+    local provider_uuid=$3
+    echo "${yba_url}/api/v1/customers/${customer_uuid}/providers/${provider_uuid}"
+}
+
+_instance_create_url() {
+    local yba_url=$1
+    local customer_uuid=$2
+    local provider_uuid=$3
+    echo "${yba_url}/api/v1/customers/${customer_uuid}/providers/${provider_uuid}/instance_types"
+}
+
+_update_provider_url() {
+    local yba_url=$1
+    local customer_uuid=$2
+    local provider_uuid=$3
+    echo "${yba_url}/api/v1/customers/${customer_uuid}/providers/${provider_uuid}/edit"
+}
+
+_add_node_to_provider() {
+    local yba_url=$1
+    local customer_uuid=$2
+    local zone_uuid=$3
+    echo "${yba_url}/api/v1/customers/${customer_uuid}/zones/${zone_uuid}/nodes"
+}
+
+_get_nodes_in_provider() {
+    local yba_url=$1
+    local customer_uuid=$2
+    local provider_uuid=$3
+    echo "${yba_url}/api/v1/customers/${customer_uuid}/providers/${provider_uuid}/nodes/list"
+}
+
+_get_headers() {
+    local token=$1
+    echo "Accept: application/json"
+    echo "X-AUTH-YW-API-TOKEN: ${token}"
+    echo "Content-Type: application/json"
+}
+
+# Function to determine if TLS verification should be skipped
+skip_tls_verify() {
+    local yba_url=$1
+    if [[ "$yba_url" == https* ]]; then
+        echo "--insecure"
+    else
+        echo ""
+    fi
+}
+
+tls_verify_option=$(skip_tls_verify "$yba_url")
+
+readarray -t headers <<< "$(_get_headers "$token")"
+header_options=()
+for header in "${headers[@]}"; do
+    header_options+=(-H "$header")
+done
+
+# Function calls to get URL and headers
+if test -f "{{ tmp_directory }}/create_provider.json"; then
+    create_provider_endpoint=$(_create_provider_url $yba_url $customer_uuid)
+
+    # Create the provider in case the provider create payload exists.
+    provider_data=$(cat "{{ tmp_directory }}/create_provider.json")
+    response=$(curl -s -w "%{http_code}" -o response.txt -X POST "${header_options[@]}" -d "$provider_data" $tls_verify_option "$create_provider_endpoint")
+    http_status="${response:(-3)}"
+    response_body=$(<response.txt)
+
+    # Check if HTTP status code indicates success (2xx range)
+    if [ $http_status -ge 200 ] && [ $http_status -lt 300 ]; then
+        # Extract JSON data from response
+        provider_id=$(echo "$response_body" | grep -oP '"resourceUUID":\s*"\K[^"]+')
+        
+        # Sleep for 30 seconds (or implement retry mechanism)
+        sleep 30
+        get_provider_endpoint=$(_get_provider_url $yba_url $customer_uuid $provider_id)
+        
+        # Perform GET request to fetch provider data by UUID
+        response=$(curl -s -w "%{http_code}" -o response.txt -X GET "${header_options[@]}" $tls_verify_option "$get_provider_endpoint")
+        http_status="${response:(-3)}"
+        response_body=$(<response.txt)
+
+        # Check if HTTP status code indicates success (2xx range)
+        if [ $http_status -ge 200 ] && [ $http_status -lt 300 ]; then
+            # Extract JSON data from response
+            usability_state=$(echo "$response_body" | grep -oP '"usabilityState":\s*"\K[^"]+')
+
+            # Check if provider creation failed
+            if [ "$usability_state" != "READY" ]; then
+                echo "Provider Creation failed"
+                exit 1
+            fi
+        else
+            echo "Error: GET request failed with HTTP status $http_status"
+            exit 1
+        fi
+    else
+        echo "Error: POST request failed with HTTP status $http_status"
+        exit 1
+    fi
+    echo "Provider created successfully"
+fi
+
+if test -f "{{ tmp_directory }}/update_provider.json"; then
+    # Update the provider
+    update_provider_endpoint=$(_update_provider_url $yba_url $customer_uuid $provider_id)
+
+    # Create the provider in case the provider create payload exists.
+    provider_data=$(cat "{{ tmp_directory }}/update_provider.json")
+    response=$(curl -s -w "%{http_code}" -o response.txt -X PUT "${header_options[@]}" -d "$provider_data" $tls_verify_option "$update_provider_endpoint")
+    http_status="${response:(-3)}"
+    response_body=$(<response.txt)
+
+    # Check if HTTP status code indicates success (2xx range)
+    if [ $http_status -ge 200 ] && [ $http_status -lt 300 ]; then
+        # Extract JSON data from response
+        provider_id=$(echo "$response_body" | grep -oP '"resourceUUID":\s*"\K[^"]+')
+        
+        # Sleep for 30 seconds (or implement retry mechanism)
+        sleep 30
+        get_provider_endpoint=$(_get_provider_url $yba_url $customer_uuid $provider_id)
+        
+        # Perform GET request to fetch provider data by UUID
+        response=$(curl -s -w "%{http_code}" -o response.txt -X GET "${header_options[@]}" $tls_verify_option "$get_provider_endpoint")
+        http_status="${response:(-3)}"
+        response_body=$(<response.txt)
+
+        # Check if HTTP status code indicates success (2xx range)
+        if [ $http_status -ge 200 ] && [ $http_status -lt 300 ]; then
+            # Extract JSON data from response
+            usability_state=$(echo "$response_body" | grep -oP '"usabilityState":\s*"\K[^"]+')
+
+            # Check if provider creation failed
+            if [ "$usability_state" != "READY" ]; then
+                echo "Provider Creation failed"
+                exit 1
+            fi
+        else
+            echo "Error: GET request failed with HTTP status $http_status"
+            exit 1
+        fi
+    else
+        echo "Error: PUT request failed with HTTP status $http_status"
+        exit 1
+    fi
+    echo "Provider updated successfully"
+fi
+
+if test -f "{{ tmp_directory }}/create_instance.json"; then
+    # Create the instance type
+    instance_data=$(cat "{{ tmp_directory }}/create_instance.json")
+    instance_data=$(echo "$instance_data" | sed "s/\\\$provider_id/$provider_id/")
+
+    create_instance_url=$(_instance_create_url $yba_url $customer_uuid $provider_id)
+    response=$(curl -s -w "%{http_code}" -o response.txt -X POST "${header_options[@]}" -d "$instance_data" $tls_verify_option "$create_instance_url")
+    http_status="${response:(-3)}"
+
+    if [ $http_status -ge 200 ] && [ $http_status -lt 300 ]; then
+        echo "Instance created successfully"
+    else
+        echo "Error: POST request failed with HTTP status $http_status"
+        exit 1
+    fi
+fi
+
+# Call out the node_agent installer script with the desired parameters
+{% if is_airgap == 'True' %}
+airgap_flag="--airgap"
+{% else %}
+airgap_flag=""
+{% endif %}
+
+installer_dir="{{ ynp_dir }}/../../bin"
+su - {{ yb_user }} -c "\"$installer_dir/node-agent-installer.sh\" -c install -u {{ url }} -t {{ api_key }} --provider_id $provider_id  --instance_type {{ instance_type_name }} --zone_name {{ provider_region_zone_name }} --node_name {{ node_name }} --node_ip {{ node_ip }} --silent --skip_verify_cert $airgap_flag"
+
+# install node_agent service
+"$installer_dir/node-agent-installer.sh" -c install_service --user yugabyte
+
+if test -f "{{ tmp_directory }}/add_node_to_provider.json"; then
+    get_nodes_in_provider=$(_get_nodes_in_provider $yba_url $customer_uuid $provider_id)
+    # Perform GET request to fetch all the nodes associated with provider
+    response=$(curl -s -w "%{http_code}" -o response.txt -X GET "${header_options[@]}" $tls_verify_option "$get_nodes_in_provider")
+    http_status="${response:(-3)}"
+    response_body=$(<response.txt)
+    matched=false
+    # Check if HTTP status code indicates success (2xx range)
+    if [ "$http_status" -ge 200 ] && [ "$http_status" -lt 300 ]; then
+        echo "HTTP GET request successful. Processing response..."
+
+        # Extract IPs using sed and grep
+        ips=$(echo "$response_body" | sed -n 's/.*"ip":"\([^"]*\)".*/\1/p')
+        for ip in $ips; do
+            if [[ "$ip" == "{{ node_ip }}" ]]; then
+                matched=true
+                break
+            fi
+        done
+    else
+        echo "Error: GET request failed with HTTP status $http_status"
+        exit 1
+    fi
+
+    if [[ "$matched" == false ]]; then
+        get_provider_endpoint=$(_get_provider_url $yba_url $customer_uuid $provider_id)
+        # Perform GET request to fetch provider data by UUID
+        response=$(curl -s -w "%{http_code}" -o response.txt -X GET "${header_options[@]}" $tls_verify_option "$get_provider_endpoint")
+        http_status="${response:(-3)}"
+        response_body=$(<response.txt)
+
+        # Check if HTTP status code indicates success (2xx range)
+        if [ "$http_status" -ge 200 ] && [ "$http_status" -lt 300 ]; then
+            echo "HTTP GET request successful. Processing response..."
+
+            # Initialize zone_uuid as empty
+            zone_uuid=""
+
+            # Save the response to a temporary file
+            echo "$response_body" > temp_response.txt
+
+            # Use a while loop with a file to avoid subshell
+            while read -r zone; do
+                zone_code=$(echo "$zone" | grep -oP '"code":\s*"\K[^"]+')
+                uuid=$(echo "$zone" | grep -oP '"uuid":\s*"\K[^"]+')
+
+                if [ "$zone_code" == "{{ provider_region_zone_name }}" ]; then
+                    zone_uuid="$uuid"
+                    echo "Match found: Zone Code = $zone_code, UUID = $zone_uuid"
+                    break
+                fi
+            done < <(grep -oP '"zones":\s*\[[^]]*\]' temp_response.txt | grep -oP '{[^}]*}')
+
+            # Check if zone_uuid was found
+            if [ -z "$zone_uuid" ]; then
+                echo "Zone with code {{ provider_region_zone_name }} not found"
+                exit 1
+            fi
+
+            add_node_data=$(cat "{{ tmp_directory }}/add_node_to_provider.json")
+            add_node_url=$(_add_node_to_provider $yba_url $customer_uuid $zone_uuid)
+            response=$(curl -s -w "%{http_code}" -o response.txt -X POST "${header_options[@]}" -d "$add_node_data" $tls_verify_option "$add_node_url")
+            http_status="${response:(-3)}"
+
+            if [ $http_status -ge 200 ] && [ $http_status -lt 300 ]; then
+                echo "Node added successfully"
+            else
+                echo "Error: POST request failed with HTTP status $http_status"
+                exit 1
+            fi
+        else
+            echo "Error: POST request failed with HTTP status $http_status"
+            exit 1
+        fi
+    fi
+fi
+
+function cleanup() {
+    if test -f "{{ tmp_directory }}/create_provider.json"; then
+        rm "{{ tmp_directory }}/create_provider.json"
+    fi
+
+    if test -f "{{ tmp_directory }}/update_provider.json"; then
+        rm "{{ tmp_directory }}/update_provider.json"
+    fi
+
+    if test -f "{{ tmp_directory }}/create_instance.json"; then
+        rm "{{ tmp_directory }}/create_instance.json"
+    fi
+
+    if test -f "{{ tmp_directory }}/add_node_to_provider.json"; then
+        rm "{{ tmp_directory }}/add_node_to_provider.json"
+    fi
+}
+
+trap cleanup EXIT

@@ -26,9 +26,9 @@
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/shared_lock_manager_fwd.h"
 #include "yb/dockv/doc_path.h"
 #include "yb/docdb/doc_write_batch.h"
+#include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/lock_batch.h"
@@ -157,6 +157,20 @@ Status EnumerateIntents(
     const dockv::EnumerateIntentsCallback& functor,
     dockv::PartialRangeKeyIntents partial_range_key_intents);
 
+// With the exception of table-locks/object-locks, type T below always takes value 'RefCntPrefix'.
+// The TSLocalLockManager instantiates an ObjectLockManager that uses LockManagerImpl with
+// 'ObjectLockPrefix' type and the relevant locking codepath uses DetermineKeysToLockResult struct
+// with type 'ObjectLockPrefix'.
+template <typename T>
+struct DetermineKeysToLockResult {
+  LockBatchEntries<T> lock_batch;
+  bool need_read_snapshot;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(lock_batch, need_read_snapshot);
+  }
+};
+
 // replicated_batches_state format does not matter at this point, because it is just
 // appended to appropriate value.
 void PrepareTransactionWriteBatch(
@@ -260,6 +274,22 @@ void CombineExternalIntents(
     const TransactionId& txn_id,
     SubTransactionId subtransaction_id,
     ExternalIntentsProvider* provider);
+
+// We achieve the same table lock conflict matrix as that of pg documented here,
+// https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-TABLES
+//
+// We only have 4 lock/intent modes kWeak/kStrong Read/Write, but to generate the above conflict
+// matrix, we would need more lock types. Instead of introducing additional lock types, we use two
+// KeyEntryType values and associate a list of <KeyEntryType, IntentTypeSet> to each table lock.
+// Since our conflict detection mechanism checks conflicts against each key, we indirectly achieve
+// the exact same conflict matrix. Refer comments on the function definition for more details.
+const std::vector<std::pair<dockv::KeyEntryType, dockv::IntentTypeSet>>&
+    GetEntriesForLockType(TableLockType lock);
+
+// Returns DetermineKeysToLockResult<ObjectLockPrefix> which can further be passed to
+// ObjectLockManager to acquire locks against the required objects with the given lock type.
+Result<DetermineKeysToLockResult<ObjectLockPrefix>> DetermineObjectsToLock(
+    const google::protobuf::RepeatedPtrField<ObjectLockPB>& objects_to_lock);
 
 }  // namespace docdb
 }  // namespace yb

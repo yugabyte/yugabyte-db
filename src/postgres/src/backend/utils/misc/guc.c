@@ -98,6 +98,7 @@
 #include "utils/xml.h"
 #include "pg_yb_utils.h"
 #include "yb_ash.h"
+#include "yb_query_diagnostics.h"
 
 #ifndef PG_KRB_SRVTAB
 #define PG_KRB_SRVTAB ""
@@ -2092,7 +2093,23 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&yb_read_from_followers,
 		false,
-		check_follower_reads, NULL, NULL
+		check_follower_reads, assign_follower_reads, NULL
+	},
+
+	{
+		{"yb_follower_reads_behavior_before_fixing_20482", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Controls whether ysql follower reads that is enabled "
+						 "inside a transaction block should take effect in the same "
+						 "transaction or not. Prior to fixing #20482 the behavior was that "
+						 "the change does not affect the current transaction but only "
+						 "affects subsequent transactions. The flag is intended to be used if "
+						 "there is a customer who relies on the old behavior."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_follower_reads_behavior_before_fixing_20482,
+		false,
+		NULL, NULL, NULL
 	},
 
 	{
@@ -2166,12 +2183,12 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_replication_commands,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 
 	{
-		{"TEST_enable_replication_slot_consumption", PGC_USERSET, DEVELOPER_OPTIONS,
+		{"yb_enable_replication_slot_consumption", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enable consumption of changes via replication slots. "
 						 "This feature is currently in active development and "
 						 "should not be enabled."),
@@ -2179,7 +2196,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE,
 		},
 		&yb_enable_replication_slot_consumption,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -2190,7 +2207,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_replica_identity,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -4010,7 +4027,7 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&yb_follower_read_staleness_ms,
 		30000, 0, INT_MAX,
-		check_follower_read_staleness_ms, NULL, NULL
+		check_follower_read_staleness_ms, assign_follower_read_staleness_ms, NULL
 	},
 
 	{
@@ -4075,6 +4092,31 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"yb_update_num_cols_to_compare", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Maximum number of columns whose data is to be"
+						 " compared while seeking to optimize updates."
+						 " If set to 0, all applicable columns in the table"
+						 " will be compared."),
+			NULL
+		},
+		&yb_update_optimization_options.num_cols_to_compare,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_update_max_cols_size_to_compare", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Maximum size in bytes of columns whose data is to be"
+						 " compared while seeking to optimize updates."
+						 " If set to 0, no size limit is applied."),
+			NULL, GUC_UNIT_BYTE
+		},
+		&yb_update_optimization_options.max_cols_size_to_compare,
+		10 * 1024, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_parallel_range_rows", PGC_USERSET, QUERY_TUNING,
 			gettext_noop("The number of rows to plan per parallel worker"),
 			NULL
@@ -4109,7 +4151,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_KB
 		},
 		&yb_ash_circular_buffer_size,
-		16 * 1024, 0, INT_MAX,
+		16 * 1024, 1, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -4152,6 +4194,17 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&yb_parallel_range_size,
 		1024 * 1024, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_query_diagnostics_bg_worker_interval_ms", PGC_POSTMASTER, STATS_MONITORING,
+			gettext_noop("Time (in milliseconds) for which the query diagnostic's background worker sleeps"),
+			NULL,
+			GUC_UNIT_MS
+		},
+		&yb_query_diagnostics_bg_worker_interval_ms,
+		1000, 1, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -7741,7 +7794,7 @@ set_config_option(const char *name, const char *value,
 	if (source == YSQL_CONN_MGR)
 		Assert(YbIsClientYsqlConnMgr());
 
-	/* 
+	/*
 	 * role_oid and session_authorization_oid are provisions made for YSQL
 	 * Connection Manager to handle scenarios around "ALTER ROLE RENAME"
 	 * queries as it only caches the previously used role by that client.
@@ -12973,6 +13026,14 @@ yb_check_no_txn(int *newVal, void **extra, GucSource source)
 		GUC_check_errdetail("Cannot be set within a txn block.");
 		return false;
 	}
+
+	/*
+	 * If YSQL Connection Manager is enabled, make the connection sticky
+	 * for any variables that can only be set outside the context of an
+	 * explicit transaction block.
+	 */
+	if (YbIsClientYsqlConnMgr())
+		yb_ysql_conn_mgr_sticky_guc = true;
 	return true;
 }
 

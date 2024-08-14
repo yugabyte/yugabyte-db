@@ -79,13 +79,13 @@ class ColumnDecoderFactory : public PackedRowDecoderFactory {
   }
 
   PackedColumnDecoderEntry GetColumnDecoderV1(
-      size_t projection_index, ssize_t packed_index, bool last) override {
+      size_t projection_index, ssize_t packed_index, bool last) const override {
     return PgTableRow::GetPackedColumnDecoderV1(
         last, projection_.columns[projection_index].data_type, packed_index);
   }
 
   PackedColumnDecoderEntry GetColumnDecoderV2(
-      size_t projection_index, ssize_t packed_index, bool last) override {
+      size_t projection_index, ssize_t packed_index, bool last) const override {
     return PgTableRow::GetPackedColumnDecoderV2(
         last, projection_.columns[projection_index].data_type, packed_index);
   }
@@ -104,7 +104,7 @@ void RunPackedRowDecode(
   PackedRowDecoder decoder;
   {
     ColumnDecoderFactory factory(projection);
-    decoder.Init(version, projection, schema_packing, &factory, schema);
+    decoder.Init(version, projection, schema_packing, factory, schema);
   }
 
   for (int i = 0; i != kNumIterations; ++i) {

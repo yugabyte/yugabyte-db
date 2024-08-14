@@ -70,6 +70,7 @@ YB_DEFINE_ENUM(MonitoredTaskType,
   (kCloneTablet)
   (kCreateReplica)
   (kDeleteReplica)
+  (kEnableDbConns)
   (kFlushTablets)
   (kGetSafeTime)
   (kGetTabletSplitKey)
@@ -90,7 +91,8 @@ YB_DEFINE_ENUM(MonitoredTaskType,
   (kAddTableToXClusterSource)
   (kAddNamespaceToXClusterSource)
   (kNamespaceVerification)
-  (TableSchemaVerification));
+  (TableSchemaVerification)
+  (kObjectLock));
 
 class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
  public:

@@ -123,8 +123,8 @@ If using a service account, record the following two pieces of information about
 
 | Save for later | To configure |
 | :--- | :--- |
-| Access key ID | [AWS cloud provider](../../../configure-yugabyte-platform/aws/) |
-| Secret Access Key | [AWS cloud provider](../../../configure-yugabyte-platform/aws/) |
+| Access key ID | [AWS provider configuration](../../../configure-yugabyte-platform/aws/) |
+| Secret Access Key | |
 
 ### IAM role
 
@@ -178,4 +178,4 @@ If you will be using your own custom SSH keys, then ensure that you have them wh
 
 | Save for later | To configure |
 | :--- | :--- |
-| Custom SSH keys | [AWS provider](../../../configure-yugabyte-platform/kubernetes/) |
+| Custom SSH keys | [AWS provider configuration](../../../configure-yugabyte-platform/kubernetes/) |

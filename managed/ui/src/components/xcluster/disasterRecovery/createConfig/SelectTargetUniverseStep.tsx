@@ -1,4 +1,4 @@
-import { makeStyles, Typography, useTheme } from '@material-ui/core';
+import { makeStyles, Typography } from '@material-ui/core';
 import { useFormContext } from 'react-hook-form';
 import { useQuery } from 'react-query';
 import { Trans, useTranslation } from 'react-i18next';
@@ -14,6 +14,8 @@ import { getPrimaryCluster } from '../../../../utils/universeUtilsTyped';
 import InfoIcon from '../../../../redesign/assets/info-message.svg';
 import { YBTooltip } from '../../../../redesign/components';
 import { INPUT_FIELD_WIDTH_PX } from '../../constants';
+import { hasNecessaryPerm } from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 import { Universe } from '../../../../redesign/helpers/dtos';
 
@@ -92,9 +94,15 @@ export const SelectTargetUniverseStep = ({
         !UnavailableUniverseStates.includes(getUniverseStatus(universe).state)
     )
     .map((universe) => {
+      const isDisabled = !hasNecessaryPerm({
+        ...ApiPermissionMap.CREATE_DR_CONFIG,
+        onResource: universe.universeUUID
+      });
       return {
         label: universe.name,
-        value: universe
+        value: universe,
+        isDisabled: isDisabled,
+        disabledReason: isDisabled ? t('missingPermissionOnUniverse') : ''
       };
     });
 

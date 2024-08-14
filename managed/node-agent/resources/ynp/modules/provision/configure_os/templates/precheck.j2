@@ -1,0 +1,127 @@
+check_ulimit() {
+    local resource=$1
+    local expected_value=$2
+    local current_value
+
+    # Get the current ulimit value for the resource
+    current_value=$(ulimit -a | grep "$resource" | awk '{print $NF}')
+
+    # Use a large number for comparison if the value is 'unlimited'
+    local unlimited_value=1000000000
+
+    if [ "$expected_value" == "unlimited" ]; then
+        expected_value=$unlimited_value
+    fi
+
+    if [ "$current_value" == "unlimited" ]; then
+        current_value=$unlimited_value
+    fi
+
+    # Check if current value is greater than or equal to the expected value
+    if [ "$current_value" -ge "$expected_value" ]; then
+        echo "[PASS] $resource is set to $current_value (expected: $expected_value or higher)"
+        add_result "$resource" "PASS" "$resource is set to $current_value (expected: $expected_value or higher)"
+    else
+        echo "[FAIL] $resource is set to $current_value (expected: $expected_value or higher)"
+        add_result "$resource" "FAIL" "$resource is set to $current_value (expected: $expected_value or higher)"
+    fi
+}
+
+
+verify_systemd_conf() {
+    local file=$1
+    local setting=$2
+    if grep -q "$setting" "$file"; then
+        echo "[PASS] $setting is set in $file"
+        add_result "$setting in $file" "PASS" "$setting is set in $file"
+    else
+        echo "[FAIL] $setting is not set in $file"
+        add_result "$setting in $file" "FAIL" "$setting is not set in $file"
+    fi
+}
+
+
+verify_sysctl() {
+    local param=$1
+    local expected_value=$2
+    local current_value
+
+    current_value=$(sysctl -n "$param")
+
+    if [ "$current_value" -eq "$expected_value" ]; then
+        echo "[PASS] $param is set to $current_value (expected: $expected_value)"
+        add_result "$param" "PASS" "$param is set to $current_value (expected: $expected_value)"
+    else
+        echo "[FAIL] $param is set to $current_value (expected: $expected_value)"
+        add_result "$param" "FAIL" "$param is set to $current_value (expected: $expected_value)"
+    fi
+}
+
+# Verify ulimit settings
+for key in "${!limits[@]}"; do
+    local key_name="$key"
+    check_ulimit "$key_name" "${limits[$key]}"
+done
+
+# Determine the PLATFORM_ID
+platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"')
+
+if [[ "$platform_id" == "platform:el8" ]]; then
+    # Verify DefaultLimitNOFILE in systemd configuration files
+    verify_systemd_conf /etc/systemd/system.conf "DefaultLimitNOFILE={{ fd_limit }}"
+    verify_systemd_conf /etc/systemd/user.conf "DefaultLimitNOFILE={{ fd_limit }}"
+fi
+
+# Verify sysctl settings
+verify_sysctl "vm.swappiness" "{{ vm_swappiness }}"
+verify_sysctl "vm.max_map_count" "{{ vm_max_map_count }}"
+
+# Verify kernel core pattern
+kernel_core_pattern_value=$(sysctl -n kernel.core_pattern)
+if [ "$kernel_core_pattern_value" == "{{ kernel_core_pattern }}" ]; then
+    echo "[PASS] kernel.core_pattern is set to $kernel_core_pattern_value"
+    add_result "kernel.core_pattern" "PASS" "kernel.core_pattern is set to $kernel_core_pattern_value"
+else
+    echo "[FAIL] kernel.core_pattern is set to $kernel_core_pattern_value \
+          (expected: {{ kernel_core_pattern }})"
+    add_result "kernel.core_pattern" "FAIL" "kernel.core_pattern is set to $kernel_core_pattern_value (expected: {{ kernel_core_pattern }})"
+fi
+
+threshold=49 #Gigabytes
+# Convert the space-separated string to an array in bash
+IFS=' ' read -r -a mount_points_array <<< {{ mount_points }}
+# Verify each mount point
+for mount_point in "${mount_point_array[@]}"; do
+    if [ -d "$mount_point" ]; then
+        if [ -w "$mount_point" ] && [ $(( $(stat -c %a "$mount_point") % 10 & 2 )) -ne 0 ]; then
+            result="PASS"
+            message="Directory $mount_point exists and is world-writable."
+            echo "[PASS] $message"
+        else
+            result="FAIL"
+            message="Directory $mount_point exists but is not world-writable."
+            echo "[FAIL] $message"
+            any_fail=1
+        fi
+    else
+        result="FAIL"
+        message="Directory $mount_point does not exist."
+        echo "[FAIL] $message"
+        any_fail=1
+    fi
+    add_result "$mount_point Check" "$result" "$message"
+
+    # Get the available disk space in gigabytes.
+    free_space_gb=$(df -BG --output=avail "$MOUNT_POINT" | tail -n 1 | tr -d 'G ')
+    if [ "$free_space_gb" -gt "$threshold" ]; then
+        result="PASS"
+        message="Sufficient disk space available: ${AVAILABLE}G"
+        echo "[PASS] $message"
+    else
+        result="FAIL"
+        message="Insufficient disk space: ${free_space_gb}G available, ${threshold}G required"
+        echo "[FAIL] $message"
+        any_fail=1
+    fi
+    add_result "$mount_point Free space check" "$result" "$message"
+done

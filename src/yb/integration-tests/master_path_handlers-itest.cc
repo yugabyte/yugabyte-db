@@ -650,7 +650,7 @@ TEST_F_EX(MasterPathHandlersItest, ShowDeletedTablets, TabletSplitMasterPathHand
   InsertRows(table, /* num_rows_to_insert = */ 500);
 
   auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-  auto tablet = catalog_manager.GetTableInfo(table->id())->GetTablets()[0];
+  auto tablet = ASSERT_RESULT(catalog_manager.GetTableInfo(table->id())->GetTablets())[0];
 
   const auto webpage_shows_deleted_tablets =
       [this, &table](const bool should_show_deleted) -> Result<bool> {
@@ -694,7 +694,7 @@ TEST_F_EX(
   InsertRows(table, /* num_rows_to_insert = */ 500);
 
   auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-  auto tablet = catalog_manager.GetTableInfo(table->id())->GetTablets()[0];
+  auto tablet = ASSERT_RESULT(catalog_manager.GetTableInfo(table->id())->GetTablets())[0];
 
   auto snapshot_util = std::make_unique<client::SnapshotTestUtil>();
   snapshot_util->SetProxy(&client_->proxy_cache());
@@ -738,7 +738,7 @@ TEST_F_EX(
   InsertRows(table, /* num_rows_to_insert = */ 500);
 
   auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
-  auto tablet = catalog_manager.GetTableInfo(table->id())->GetTablets()[0];
+  auto tablet = ASSERT_RESULT(catalog_manager.GetTableInfo(table->id())->GetTablets())[0];
 
   ASSERT_OK(yb_admin_client_->FlushTables(
       {table_name}, false /* add_indexes */, 30 /* timeout_secs */, false /* is_compaction */));
@@ -1333,7 +1333,7 @@ TEST_F(MasterPathHandlersItest, TestLeaderlessDeletedTablet) {
 
   auto& catalog_mgr = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
   auto table_info = catalog_mgr.GetTableInfo(table->id());
-  auto tablets = table_info->GetTablets();
+  auto tablets = ASSERT_RESULT(table_info->GetTablets());
   ASSERT_EQ(tablets.size(), kNumTablets);
 
   // Make all tablets leaderless.
@@ -1379,8 +1379,8 @@ TEST_F(MasterPathHandlersItest, TestVarzAutoFlag) {
   static const auto kUnExpectedFlag = "TEST_assert_local_op";
 
   // Test the HTML endpoint.
-  static const auto kAutoFlagsStart = "<h2>Auto Flags</h2>";
-  static const auto kAutoFlagsEnd = "<h2>Default Flags</h2>";
+  static const auto kAutoFlagsStart = ">Auto Flags<";
+  static const auto kAutoFlagsEnd = ">Default Flags<";
   faststring result;
   ASSERT_OK(GetUrl("/varz", &result));
   auto result_str = result.ToString();

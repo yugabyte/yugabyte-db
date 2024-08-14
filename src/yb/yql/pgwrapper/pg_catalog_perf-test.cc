@@ -22,6 +22,10 @@
 
 #include "yb/master/master.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/sys_catalog.h"
+
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/mini_tablet_server.h"
@@ -733,6 +737,53 @@ TEST_F_EX(PgCatalogPerfTest,
   })).cache.disable_calls;
   // Check that response cache has not been invalidated while temp namespace reusing.
   ASSERT_EQ(disable_calls, 0);
+}
+
+TEST_F_EX(PgCatalogPerfTest,
+          OnDemandLoadingAfterCatalogCacheRefresh,
+          PgCatalogWithUnlimitedCachePerfTest) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  {
+    auto aux_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(aux_conn.Execute("CREATE TABLE t(k INT PRIMARY KEY)"));
+    ASSERT_OK(aux_conn.Execute(
+        "CREATE FUNCTION my_func(v int) RETURNS int AS $$ "
+        "BEGIN return v; END; $$ LANGUAGE plpgsql"));
+
+    ASSERT_OK(IncrementAllDBCatalogVersions(aux_conn));
+  }
+
+  {
+    // Fill response cache with fresh catalog data after catalog version increment
+    auto aux_conn = ASSERT_RESULT(Connect());
+  }
+
+  // Sleep for a while to make a little time gap between read time in response cache and allowed
+  // read time due to history cutoff
+  std::this_thread::sleep_for(1s);
+
+  {
+    // Cutoff catalog history for current time to avoid reading with old read time
+    auto* tablet = cluster_->mini_master(0)->master()->catalog_manager()->tablet_peer()->tablet();
+    auto* policy = tablet->RetentionPolicy();
+    auto cutoff = policy->GetRetentionDirective().history_cutoff;
+    cutoff.primary_cutoff_ht = HybridTime::FromMicros(
+        implicit_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count()));
+    policy->UpdateCommittedHistoryCutoff(cutoff);
+  }
+
+  // Sleep for a while to make sure that new reads from catalog will use read time
+  // after cuttoff bound
+  std::this_thread::sleep_for(1s);
+
+  // It is expected that next statement will refresh the cache due to catalog version bumping.
+  // All the catalog data will be loaded from the response cache, because it already has data for
+  // required catalog version. Also the statement will perform on-demand loading of some cache entry
+  // required for usage of `my_func`. On-demand loading must use empty read time.
+  // Otherwise statement will fail due to `Snapshot too old` error.
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (my_func(1))"));
 }
 
 } // namespace yb::pgwrapper

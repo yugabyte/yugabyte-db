@@ -43,15 +43,17 @@ public class TransferXClusterCerts extends NodeTaskBase {
 
   // Additional parameters for this task.
   public static class Params extends NodeTaskParams {
-    // The target universe UUID must be stored in universeUUID field.
+    // The universe UUID of where the certificate will be copied to must be stored in universeUUID
+    // field.
     // The name of the node to copy the certificate to must be stored in nodeName field.
-    // The path to the source root certificate on the Platform host.
+    // The path to the root certificate to copy on the Platform host.
     public File rootCertPath;
     // The replication group name used in the coreDB. It must have
     // <srcUniverseUuid>_<configName> format.
     public String replicationGroupName;
-    // The target universe will look into this directory for source root certificates.
-    public File producerCertsDirOnTarget;
+    // The destination universe will look into this directory for origin univere's root
+    // certificates.
+    public File destinationCertsDir;
     // Whether ignore errors while doing transfer cert operation.
     public boolean ignoreErrors;
 
@@ -78,13 +80,13 @@ public class TransferXClusterCerts extends NodeTaskBase {
   @Override
   public String getName() {
     return String.format(
-        "%s(action=%s,replicationGroupName=%s,rootCertPath=%s,producerCertsDirOnTarget=%s,"
+        "%s(action=%s,replicationGroupName=%s,rootCertPath=%s,destinationCertsDir=%s,"
             + "ignoreErrors=%b)",
         super.getName(),
         taskParams().action,
         taskParams().replicationGroupName,
         taskParams().rootCertPath,
-        taskParams().producerCertsDirOnTarget,
+        taskParams().destinationCertsDir,
         taskParams().ignoreErrors);
   }
 
@@ -94,17 +96,19 @@ public class TransferXClusterCerts extends NodeTaskBase {
 
     try {
       // Check that task parameters are valid.
-      if (taskParams().action == Params.Action.COPY && taskParams().rootCertPath == null) {
-        throw new IllegalArgumentException("taskParams().rootCertPath must not be null");
-      }
-      if (taskParams().action == Params.Action.COPY && !taskParams().rootCertPath.exists()) {
-        throw new IllegalArgumentException(
-            String.format("file \"%s\" does not exist", taskParams().rootCertPath));
+      if (taskParams().action == Params.Action.COPY) {
+        if (taskParams().rootCertPath == null) {
+          throw new IllegalArgumentException("taskParams().rootCertPath must not be null");
+        }
+
+        if (!taskParams().rootCertPath.exists()) {
+          throw new IllegalArgumentException(
+              String.format("file \"%s\" does not exist", taskParams().rootCertPath));
+        }
       }
 
-      if (taskParams().producerCertsDirOnTarget == null) {
-        throw new IllegalArgumentException(
-            "taskParams().producerCertsDirOnTarget must not be null");
+      if (taskParams().destinationCertsDir == null) {
+        throw new IllegalArgumentException("taskParams().destinationCertsDir must not be null");
       }
 
       if (StringUtils.isBlank(taskParams().replicationGroupName)) {
@@ -132,13 +136,14 @@ public class TransferXClusterCerts extends NodeTaskBase {
 
   private void transferXClusterCertUsingNodeUniverseManager() {
     // Find the specified universe and node.
-    Optional<Universe> targetUniverseOptional = Universe.maybeGet(taskParams().getUniverseUUID());
-    if (!targetUniverseOptional.isPresent()) {
+    Optional<Universe> destinationUniverseOptional =
+        Universe.maybeGet(taskParams().getUniverseUUID());
+    if (destinationUniverseOptional.isEmpty()) {
       throw new IllegalArgumentException(
           String.format("No universe with UUID %s found", taskParams().getUniverseUUID()));
     }
-    Universe targetUniverse = targetUniverseOptional.get();
-    NodeDetails node = targetUniverse.getNode(taskParams().nodeName);
+    Universe destinationUniverse = destinationUniverseOptional.get();
+    NodeDetails node = destinationUniverse.getNode(taskParams().nodeName);
     if (node == null) {
       throw new IllegalArgumentException(
           String.format(
@@ -146,42 +151,37 @@ public class TransferXClusterCerts extends NodeTaskBase {
               taskParams().nodeName, taskParams().getUniverseUUID()));
     }
 
-    String sourceCertificateDirPath =
-        Paths.get(
-                taskParams().producerCertsDirOnTarget.toString(), taskParams().replicationGroupName)
+    String destinationCertsDirPath =
+        Paths.get(taskParams().destinationCertsDir.toString(), taskParams().replicationGroupName)
             .toString();
-    String sourceCertificatePath =
-        Paths.get(sourceCertificateDirPath, XClusterConfigTaskBase.SOURCE_ROOT_CERTIFICATE_NAME)
+    String destinationCertPath =
+        Paths.get(destinationCertsDirPath, XClusterConfigTaskBase.XCLUSTER_ROOT_CERTIFICATE_NAME)
             .toString();
-    if (taskParams().action.equals(Params.Action.COPY)) {
+    if (taskParams().action == Params.Action.COPY) {
       log.info(
           "Moving server cert located at {} to {}:{} in universe {}",
           taskParams().rootCertPath,
           taskParams().nodeName,
-          sourceCertificatePath,
+          destinationCertPath,
           taskParams().getUniverseUUID());
 
       // Create the parent directory for the certificate file.
       nodeUniverseManager
           .runCommand(
-              node, targetUniverse, ImmutableList.of("mkdir", "-p", sourceCertificateDirPath))
+              node, destinationUniverse, ImmutableList.of("mkdir", "-p", destinationCertsDirPath))
           .processErrors("Making certificate parent directory failed");
 
       // The permission for the certs used to be set to `400` which could be problematic in the case
       // that we want to overwrite the certificate.
-      if (!targetUniverse
-          .getUniverseDetails()
-          .getPrimaryCluster()
-          .userIntent
-          .providerType
-          .equals(CloudType.kubernetes)) {
+      if (destinationUniverse.getUniverseDetails().getPrimaryCluster().userIntent.providerType
+          != CloudType.kubernetes) {
         nodeUniverseManager
             .runCommand(
                 node,
-                targetUniverse,
+                destinationUniverse,
                 ImmutableList.of(
                     "find",
-                    sourceCertificateDirPath,
+                    destinationCertsDirPath,
                     "-type",
                     "f",
                     "-exec",
@@ -194,30 +194,34 @@ public class TransferXClusterCerts extends NodeTaskBase {
 
       // Copy the certificate file to the node.
       nodeUniverseManager.uploadFileToNode(
-          node, targetUniverse, taskParams().rootCertPath.toString(), sourceCertificatePath, "600");
+          node,
+          destinationUniverse,
+          taskParams().rootCertPath.toString(),
+          destinationCertPath,
+          "600");
     } else if (taskParams().action.equals(Params.Action.REMOVE)) {
       log.info(
           "Removing server cert located at {} from node {} in universe {}",
-          sourceCertificatePath,
+          destinationCertPath,
           taskParams().nodeName,
           taskParams().getUniverseUUID());
 
       // Remove the certificate file.
       verifyRmCommandShellResponse(
           nodeUniverseManager.runCommand(
-              node, targetUniverse, ImmutableList.of("rm", sourceCertificatePath)));
+              node, destinationUniverse, ImmutableList.of("rm", destinationCertPath)));
 
       // Remove the directory only if it is empty.
       verifyRmCommandShellResponse(
           nodeUniverseManager.runCommand(
-              node, targetUniverse, ImmutableList.of("rm", "-d", sourceCertificateDirPath)));
+              node, destinationUniverse, ImmutableList.of("rm", "-d", destinationCertsDirPath)));
 
       // Remove the directory only if it is empty. No need to check whether it succeeded because
       // this directory should be deleted only if there are no other xCluster configs.
       nodeUniverseManager.runCommand(
           node,
-          targetUniverse,
-          ImmutableList.of("rm", "-d", taskParams().producerCertsDirOnTarget.toString()));
+          destinationUniverse,
+          ImmutableList.of("rm", "-d", taskParams().destinationCertsDir.toString()));
     } else {
       throw new IllegalArgumentException(String.format("Action %s not found", taskParams().action));
     }

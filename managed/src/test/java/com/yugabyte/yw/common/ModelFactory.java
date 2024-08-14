@@ -82,6 +82,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -327,6 +328,10 @@ public class ModelFactory {
     params.nodePrefix = Util.getNodePrefix(customerId, universeName);
     params.upsertPrimaryCluster(userIntent, pi);
     Universe u = Universe.create(params, customerId);
+    Map<String, String> config = new HashMap<>();
+    config.put(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString());
+    u.setConfig(config);
+    u.update();
     return addNodesToUniverse(u.getUniverseUUID(), 3);
   }
 
@@ -344,6 +349,7 @@ public class ModelFactory {
               NodeDetails node = new NodeDetails();
               node.cloudInfo = new CloudSpecificInfo();
               node.state = NodeState.Live;
+              node.isTserver = true;
               node.placementUuid = params.getPrimaryCluster().uuid;
               node.cloudInfo.private_ip = "127.0.0." + Integer.toString(i);
               params.nodeDetailsSet.add(node);
@@ -599,6 +605,8 @@ public class ModelFactory {
       Customer customer, Universe universe, AlertDefinition definition, Consumer<Alert> modifier) {
     AlertTemplateService alertTemplateService =
         StaticInjectorHolder.injector().instanceOf(AlertTemplateService.class);
+    RuntimeConfGetter runtimeConfGetter =
+        StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
     Alert alert =
         new Alert()
             .setCustomerUUID(customer.getUuid())
@@ -625,7 +633,11 @@ public class ModelFactory {
     List<AlertLabel> labels =
         definition
             .getEffectiveLabels(
-                alertTemplateDescription, configuration, null, AlertConfiguration.Severity.SEVERE)
+                alertTemplateDescription,
+                configuration,
+                null,
+                AlertConfiguration.Severity.SEVERE,
+                runtimeConfGetter)
             .stream()
             .map(l -> new AlertLabel(l.getName(), l.getValue()))
             .collect(Collectors.toList());

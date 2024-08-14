@@ -70,7 +70,7 @@ const useStyles = makeStyles<Theme, Partial<YBModalProps>>((theme) => ({
     minHeight: '100%'
   },
   sidePanel: {
-    width: 736,
+    maxWidth: 900,
     height: '100%',
     maxHeight: '100%',
     margin: '0 0 0 auto',

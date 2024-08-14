@@ -3,6 +3,7 @@ title: Get query statistics using ycql_stat_statements
 linkTitle: Get query statistics
 description: Track planning and execution statistics for all YCQL statements executed by a server.
 headerTitle: Get query statistics using ycql_stat_statements
+badges: tp
 menu:
   preview:
     identifier: ycql-stat-statements
@@ -16,11 +17,11 @@ type: docs
 {{<tabitem href="../ycql-stat-statements/" text="YCQL" icon="cassandra" active="true" >}}
 {{</tabs>}}
 
-Databases can be resource-intensive, consuming a lot of memory, CPU, IO, and network resources. By optimizing your CQL, you can minimize resource use. The `ycql_stat_statements` module helps you track planning and execution statistics for all the YCQL statements executed by a server.
+Databases can be resource-intensive, consuming a lot of memory, CPU, IO, and network resources. By optimizing your YCQL, you can minimize resource use. The `ycql_stat_statements` module helps you track execution statistics for all the YCQL statements executed by a server.
 
-This view provides YCQL statement metrics (similar to pg_stat_statements) that are also present on `<yb-tserver-ip>:12000/statements`, accessible via YSQL. The view can be joined with YCQL wait events in the [yb_active_session_history](../../observability/active-session-history/#yb-active-session-history) view using the query ID.
+This view is accessible only via YSQL and provides YCQL statement metrics (similar to pg_stat_statements) that are also present on `<yb-tserver-ip>:12000/statements`. The view can be joined with YCQL wait events in the [yb_active_session_history](../../observability/active-session-history/#yb-active-session-history) view on the query ID.
 
-This view is added in an extension `yb_ycql_utils`, which is not enabled by default.
+This view is added in a YSQL extension `yb_ycql_utils`, which is not enabled by default.
 
 The columns of the `ycql_stat_statements` view are described in the following table.
 
@@ -28,7 +29,7 @@ The columns of the `ycql_stat_statements` view are described in the following ta
 | :----- | :--- | :---------- |
 | queryid | int8 | Hash code to identify identical normalized queries. |
 | query | text | Text of a representative statement. |
-| is_prepared  | bool | Indicates whether the statement is a prepared statement or an unprepared query. |
+| is_prepared  | bool | Indicates whether the query is prepared or unprepared. |
 | calls | int8 | Number of times the statement is executed.|
 | total_time | float8 | Total time spent executing the statement, in milliseconds. |
 | min_time | float8 | Minimum time spent executing the statement, in milliseconds. |
@@ -38,7 +39,7 @@ The columns of the `ycql_stat_statements` view are described in the following ta
 
 ## Examples
 
-{{% explore-setup-single %}}
+{{% setup/local %}}
 
 Note that as this view is accessible via YSQL, run your examples using [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh).
 
@@ -74,8 +75,6 @@ Note that as this view is accessible via YSQL, run your examples using [ysqlsh](
 ### Get basic information
 
 The following example uses a [YCQL workload generator](../../../benchmark/key-value-workload-ycql/) to run YCQL queries in the background and then uses YSQL to query `ycql_stat_statements`.
-
-Note that there is no need to create the extension before running the queries, as the view directly fetches the data from YB–TServer.
 
 ```sql
 yugabyte=# SELECT * FROM ycql_stat_statements;

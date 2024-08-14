@@ -19,9 +19,14 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
 
+import java.util.ArrayList;
 import java.util.Collections;
-import java.util.concurrent.TimeUnit;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -76,14 +81,16 @@ public class TestYbAsh extends BasePgSQLTest {
   /**
    * The circular buffer should be empty if the cluster is idle. The query to check
    * that the circular buffer is empty might get sampled and put in the buffer, so
-   * we exclude those samples.
+   * we exclude those samples. We also exlude constant query_ids which can mean that
+   * these are background tasks, or query_id before the actual query_id is set.
    */
   @Test
   public void testEmptyCircularBuffer() throws Exception {
     setAshConfigAndRestartCluster(ASH_SAMPLING_INTERVAL, ASH_SAMPLE_SIZE);
     try (Statement statement = connection.createStatement()) {
       String query = "SELECT COUNT(*) FROM " + ASH_VIEW + " JOIN pg_stat_statements "
-          + "ON query_id = queryid WHERE query NOT LIKE '%" + ASH_VIEW + "%'";
+          + "ON query_id = queryid WHERE query NOT LIKE '%" + ASH_VIEW + "%' AND query_id < 0 "
+          + "AND query_id > 6";
       assertOneRow(statement, query, 0);
       Thread.sleep(2 * ASH_SAMPLING_INTERVAL);
       assertOneRow(statement, query, 0);
@@ -278,6 +285,81 @@ public class TestYbAsh extends BasePgSQLTest {
           " WHERE query_id = " + catalog_request_query_id + " OR " +
           "wait_event = '" + catalog_read_wait_event + "'").getLong(0).intValue();
       assertGreaterThan(res1, 0);
+    }
+  }
+
+  /**
+   * Test that we don't capture more than 'ysql_yb_ash_sample_size' number of samples
+   */
+  @Test
+  public void testSampleSize() throws Exception {
+    final int sample_size = 3;
+    setAshConfigAndRestartCluster(ASH_SAMPLING_INTERVAL, sample_size);
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE test_table(k INT, v TEXT)");
+    }
+    final int NUM_THREADS = 5;
+    final int NUM_INSERTS_PER_THREAD = 100;
+    ExecutorService ecs = Executors.newFixedThreadPool(NUM_THREADS);
+    List<Future<?>> futures = new ArrayList<>();
+    for (int i = 1; i <= NUM_THREADS; ++i) {
+      final int threadIndex = i;
+      Future<?> future = ecs.submit(() -> {
+        try (Statement statement = connection.createStatement()) {
+          for (int j = 0; j < NUM_INSERTS_PER_THREAD; ++j) {
+            statement.execute(String.format("INSERT INTO test_table VALUES(%d, 'v-%d')",
+                threadIndex, j));
+          }
+        } catch (Exception e) {
+          fail(e.getMessage());
+        }
+      });
+      futures.add(future);
+    }
+    for (Future<?> future : futures) {
+      future.get();
+    }
+    ecs.shutdown();
+    ecs.awaitTermination(30, TimeUnit.SECONDS);
+    try (Statement statement = connection.createStatement()) {
+      ResultSet rs = statement.executeQuery("SELECT sample_time, wait_event_component, " +
+          "count(*) FROM " + ASH_VIEW + " GROUP BY sample_time, wait_event_component");
+      while (rs.next()) {
+        assertLessThanOrEqualTo(rs.getLong("count"), Long.valueOf(sample_size));
+      }
+      rs = statement.executeQuery("SELECT sample_weight FROM " + ASH_VIEW);
+      while (rs.next()) {
+        assertGreaterThanOrEqualTo(rs.getDouble("sample_weight"), Double.valueOf(1.0));
+      }
+    }
+  }
+
+  /**
+   * Verify that we see the YSQL backend's pid in ASH
+   */
+  @Test
+  public void testYsqlPids() throws Exception {
+    setAshConfigAndRestartCluster(100, ASH_SAMPLE_SIZE);
+
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE test_table(k INT, v TEXT)");
+      for (int i = 0; i < 100; ++i) {
+        statement.execute(String.format("INSERT INTO test_table VALUES(%d, 'v-%d')", i, i));
+      }
+      int pid = getSingleRow(statement, "SELECT pg_backend_pid()").getInt(0);
+      int res = getSingleRow(statement, "SELECT COUNT(*) FROM " + ASH_VIEW +
+          " WHERE pid = " + pid).getLong(0).intValue();
+      assertGreaterThan(res, 0);
+    }
+
+    try (Statement statement = connection.createStatement()) {
+      for (int i = 0; i < 100; ++i) {
+        statement.execute(String.format("SELECT * FROM test_table WHERE k = %d", i));
+      }
+      int pid = getSingleRow(statement, "SELECT pg_backend_pid()").getInt(0);
+      int res = getSingleRow(statement, "SELECT COUNT(*) FROM " + ASH_VIEW +
+          " WHERE pid = " + pid).getLong(0).intValue();
+      assertGreaterThan(res, 0);
     }
   }
 }

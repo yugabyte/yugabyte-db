@@ -184,9 +184,9 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
                          ListMasterServersResponsePB* resp,
                          rpc::RpcContext context) override;
 
-void ClearUniverseUuid(const ClearUniverseUuidRequestPB* req,
-                       ClearUniverseUuidResponsePB* resp,
-                       rpc::RpcContext context) override;
+  void ClearUniverseUuid(const ClearUniverseUuidRequestPB* req,
+                         ClearUniverseUuidResponsePB* resp,
+                         rpc::RpcContext context) override;
 
   void GetLockStatus(const GetLockStatusRequestPB* req,
                      GetLockStatusResponsePB* resp,
@@ -213,6 +213,14 @@ void ClearUniverseUuid(const ClearUniverseUuidRequestPB* req,
 
   void ClearAllMetaCachesOnServer(
       const ClearAllMetaCachesOnServerRequestPB* req, ClearAllMetaCachesOnServerResponsePB* resp,
+      rpc::RpcContext context) override;
+
+  void AcquireObjectLocks(
+      const AcquireObjectLockRequestPB* req, AcquireObjectLockResponsePB* resp,
+      rpc::RpcContext context) override;
+
+  void ReleaseObjectLocks(
+      const ReleaseObjectLockRequestPB* req, ReleaseObjectLockResponsePB* resp,
       rpc::RpcContext context) override;
 
   void Shutdown() override;
@@ -322,6 +330,10 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
       const ClonePgSchemaRequestPB* req, ClonePgSchemaResponsePB* resp,
       rpc::RpcContext context) override;
 
+  void EnableDbConns(
+      const EnableDbConnsRequestPB* req, EnableDbConnsResponsePB* resp,
+      rpc::RpcContext context) override;
+
   void TestRetry(
       const TestRetryRequestPB* req, TestRetryResponsePB* resp, rpc::RpcContext context) override;
 
@@ -331,7 +343,12 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
   Status DoCreateTablet(
       const CreateTabletRequestPB* req, CreateTabletResponsePB* resp, const MonoDelta& timeout);
 
+  Result<HostPort> GetLocalPgHostPort();
+
   Status DoClonePgSchema(const ClonePgSchemaRequestPB* req, ClonePgSchemaResponsePB* resp);
+
+  Status DoEnableDbConns(
+      const EnableDbConnsRequestPB* req, EnableDbConnsResponsePB* resp);
 
   Status SetupCDCSDKRetention(
       const tablet::ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,

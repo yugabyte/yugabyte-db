@@ -383,7 +383,7 @@ bool yb_pushdown_walker(Node *node, List **colrefs)
 			{
 				/* Check if DocDB can deconstruct the array */
 				Oid elmtype = get_element_type(exprType(lsecond(saop_expr->args)));
-				int elmlen;
+				int16_t elmlen;
 				bool elmbyval;
 				char elmalign;
 				if (!YbTypeDetails(elmtype, &elmlen, &elmbyval, &elmalign))
@@ -513,7 +513,6 @@ bool yb_transactional_walker(Node *node, void *context)
 		 * expression_tree_walker function and selecting those looking like they
 		 * do suspiciously transactional thing like running a subquery.
 		 */
-		case T_NextValueExpr:
 		case T_RangeTblRef:
 		case T_SubLink:
 		case T_SubPlan:

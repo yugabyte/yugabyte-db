@@ -459,6 +459,17 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+   * Get the load balancer state.
+   *
+   * @return the response of the operation.
+   */
+  public GetLoadBalancerStateResponse getLoadBalancerState()
+      throws Exception {
+    Deferred<GetLoadBalancerStateResponse> d = asyncClient.getLoadBalancerState();
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
    * Get the tablet load move completion percentage for blacklisted nodes, if any.
    *
    * @return the response with percent load completed.
@@ -2141,10 +2152,26 @@ public class YBClient implements AutoCloseable {
     return deleteUniverseReplication(replicationGroupName, false /* ignoreErrors */);
   }
 
-  public GetUniverseReplicationResponse getUniverseReplication(String replicationGrouopName)
+  public GetUniverseReplicationResponse getUniverseReplication(String replicationGroupName)
       throws Exception {
     Deferred<GetUniverseReplicationResponse> d =
-        asyncClient.getUniverseReplication(replicationGrouopName);
+        asyncClient.getUniverseReplication(replicationGroupName);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /** @see {@link AsyncYBClient#getUniverseReplicationInfo(String)} */
+  public GetUniverseReplicationInfoResponse getUniverseReplicationInfo(String replicationGroupName)
+    throws Exception {
+    Deferred<GetUniverseReplicationInfoResponse> d =
+      asyncClient.getUniverseReplicationInfo(replicationGroupName);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /** @see {@link AsyncYBClient#getXClusterOutboundReplicationGroupInfo(String)} */
+  public GetXClusterOutboundReplicationGroupInfoResponse getXClusterOutboundReplicationGroupInfo(
+      String replicationGroupName) throws Exception {
+    Deferred<GetXClusterOutboundReplicationGroupInfoResponse> d =
+        asyncClient.getXClusterOutboundReplicationGroupInfo(replicationGroupName);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
@@ -2305,6 +2332,30 @@ public class YBClient implements AutoCloseable {
           throws Exception {
     Deferred<XClusterAddNamespaceToOutboundReplicationGroupResponse> d =
         asyncClient.xClusterAddNamespaceToOutboundReplicationGroup(replicationGroupId, namespaceId);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * @see AsyncYBClient#xClusterRemoveNamespaceFromOutboundReplicationGroup(String, String)
+   */
+  public XClusterRemoveNamespaceFromOutboundReplicationGroupResponse
+      xClusterRemoveNamespaceFromOutboundReplicationGroup(
+        String replicationGroupId, String namespaceId)
+          throws Exception {
+    Deferred<XClusterRemoveNamespaceFromOutboundReplicationGroupResponse> d =
+        asyncClient.xClusterRemoveNamespaceFromOutboundReplicationGroup(
+          replicationGroupId, namespaceId);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * @see AsyncYBClient#alterUniverseReplication(String, String)
+   */
+  public AlterUniverseReplicationResponse
+      alterUniverseReplicationRemoveNamespace(String replicationGroupId, String namespaceId)
+          throws Exception {
+    Deferred<AlterUniverseReplicationResponse> d =
+        asyncClient.alterUniverseReplicationRemoveNamespace(replicationGroupId, namespaceId);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 

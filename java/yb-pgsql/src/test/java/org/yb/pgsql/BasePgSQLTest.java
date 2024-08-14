@@ -143,6 +143,15 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         " connections will share the same physical connection in a single threaded test if" +
         " no active transactions are there on the first connection";
 
+  protected static final String CANNOT_GURANTEE_EXPECTED_PHYSICAL_CONN_FOR_CACHE =
+      "Test is designed in a way which requires every logical connection to have a dedicated " +
+      "physical connection. In the test backends are loaded with meta data of the object " +
+      "(tables) on executing DML with the premise (a) when withCachedMetadata is true, then " +
+      "the same backend processes the queries in a session (b) when withCachedMetadata is " +
+      "false, a new backend processes queries for a new connection (session). in both these " +
+      "cases the premise cannot be guaranteed when run with Connection Manager, hence skipping " +
+      "the tests with connection manager";
+
   protected static final String LESSER_PHYSICAL_CONNS =
       "Skipping this test with Ysql Connection Manager as logical connections " +
         "created are lesser than physical connections and the real maximum limit for creating " +
@@ -178,6 +187,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected File pgBinDir;
 
   protected static final int DEFAULT_STATEMENT_TIMEOUT_MS = 30000;
+
+  // Assuming maximum control connection created will be 3 in any test where config reload is
+  // required.
+  protected static final int MAX_ATTEMPTS_TO_DESTROY_CONTROL_CONN = 3;
 
   protected static Map<String, String> FailOnConflictTestGflags = new HashMap<String, String>()
     {
@@ -294,6 +307,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       builder.enableYsqlConnMgr(true);
       builder.addCommonTServerFlag("ysql_conn_mgr_stats_interval",
         Integer.toString(CONNECTIONS_STATS_UPDATE_INTERVAL_SECS));
+      builder.addCommonTServerFlag(
+        "TEST_ysql_conn_mgr_dowarmup_all_pools_random_attach", "true");
     }
   }
 
@@ -541,6 +556,34 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   protected boolean isTestRunningWithConnectionManager() {
     return ConnectionEndpoint.DEFAULT == ConnectionEndpoint.YSQL_CONN_MGR;
+  }
+
+  /*
+   * On setting up a GUC variable using yb-ts-cli, it leads to reloading postgres config file at
+   * run time which is not supported with Ysql Connection Manager. In order to make a successfull
+   * connection, make as many connection attempts as there are control connections before setting
+   * GUC variable. The goal is to avoid using any control connection (for authentication) created
+   * before setting up a GUC variabe as it will be config reload prone. Therefore with every
+   * attempt a control connection will be destroyed and client connection will fail.
+   * Once all existing control connections are exhausted, any further attempt will lead to a
+   * successful connection as new control connection will be created with updated config
+   * file.
+   */
+
+  protected void closeControlConnOnReloadConfig(int attempts) {
+    assert(isTestRunningWithConnectionManager());
+
+    for (int i = 0;i < attempts;i++) {
+      try (Connection initialConnection = getConnectionBuilder().withUser(DEFAULT_PG_USER)
+                                                                .connect()) {
+        LOG.info("After few fail attempts, able to create connection with a new control " +
+                "connection created");
+        return;
+      }
+      catch (Exception e) {
+        LOG.info ("expected to fail");
+      }
+    }
   }
 
   protected void recreateWithYsqlVersion(YsqlSnapshotVersion version) throws Exception {
@@ -2231,6 +2274,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
                "-force",
                flag,
                value);
+    if (isTestRunningWithConnectionManager())
+      closeControlConnOnReloadConfig(MAX_ATTEMPTS_TO_DESTROY_CONTROL_CONN);
   }
 
   /*

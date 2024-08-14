@@ -42,7 +42,7 @@
 
 #include <boost/date_time/posix_time/time_formatters.hpp>
 
-#include "yb/cdc/xcluster_util.h"
+#include "yb/common/xcluster_util.h"
 
 #include "yb/common/common_types_util.h"
 #include "yb/common/hybrid_time.h"
@@ -378,8 +378,8 @@ namespace {
 
 bool TabletServerComparator(
     const std::shared_ptr<TSDescriptor>& a, const std::shared_ptr<TSDescriptor>& b) {
-  auto a_cloud_info = a->GetRegistration().common().cloud_info();
-  auto b_cloud_info = b->GetRegistration().common().cloud_info();
+  auto a_cloud_info = a->GetRegistration().cloud_info();
+  auto b_cloud_info = b->GetRegistration().cloud_info();
 
   if (a_cloud_info.placement_cloud() == b_cloud_info.placement_cloud()) {
     if (a_cloud_info.placement_region() == b_cloud_info.placement_region()) {
@@ -460,14 +460,14 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
         continue;
       }
       const string time_since_hb = StringPrintf("%.1fs", desc->TimeSinceHeartbeat().ToSeconds());
-      TSRegistrationPB reg = desc->GetRegistration();
-      string host_port = GetHttpHostPortFromServerRegistration(reg.common());
+      auto reg = desc->GetRegistration();
+      string host_port = GetHttpHostPortFromServerRegistration(reg);
       *output << "  <tr>\n";
-      *output << "  <td>" << RegistrationToHtml(reg.common(), host_port) << "</br>";
+      *output << "  <td>" << RegistrationToHtml(reg, host_port) << "</br>";
       *output << "  " << desc->permanent_uuid();
 
       if (viewType == TServersViewType::kTServersDefaultView) {
-        auto ci = reg.common().cloud_info();
+        auto ci = reg.cloud_info();
         for (size_t i = 0; i < affinitized_zones.size(); i++) {
           if (affinitized_zones[i].find(ci) != affinitized_zones[i].end()) {
             *output << "</br>  Leader preference priority: " << i + 1;
@@ -531,11 +531,11 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
         *output << "    <td>" << desc->write_ops_per_sec() << "</td>";
       }
 
-      *output << "    <td>" << EscapeForHtmlToString(reg.common().cloud_info().placement_cloud())
+      *output << "    <td>" << EscapeForHtmlToString(reg.cloud_info().placement_cloud())
               << "</td>";
-      *output << "    <td>" << EscapeForHtmlToString(reg.common().cloud_info().placement_region())
+      *output << "    <td>" << EscapeForHtmlToString(reg.cloud_info().placement_region())
               << "</td>";
-      *output << "    <td>" << EscapeForHtmlToString(reg.common().cloud_info().placement_zone())
+      *output << "    <td>" << EscapeForHtmlToString(reg.cloud_info().placement_zone())
               << "</td>";
 
       if (viewType == TServersViewType::kTServersDefaultView) {
@@ -679,7 +679,7 @@ MasterPathHandlers::ZoneTabletCounts::CloudTree MasterPathHandlers::CalculateTab
   ZoneTabletCounts::CloudTree cloud_tree;
 
   for (const auto& descriptor : descriptors) {
-    CloudInfoPB cloud_info = descriptor->GetRegistration().common().cloud_info();
+    CloudInfoPB cloud_info = descriptor->GetRegistration().cloud_info();
     std::string cloud = cloud_info.placement_cloud();
     std::string region = cloud_info.placement_region();
     std::string zone = cloud_info.placement_zone();
@@ -747,7 +747,12 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
 
   // Get user and system tablet leader and follower counts for each TabletServer
   TabletCountMap tablet_map;
-  CalculateTabletMap(&tablet_map);
+  auto s = CalculateTabletMap(&tablet_map);
+  if (!s.ok()) {
+    *output << "<div class=\"alert alert-warning\">"
+            << EscapeForHtmlToString(s.ToString()) << "</div>";
+    return;
+  }
 
   std::unordered_set<string> read_replica_uuids;
   for (auto desc : descs) {
@@ -820,7 +825,12 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
   auto descs = master_->ts_manager()->GetAllDescriptors();
   // Get user and system tablet leader and follower counts for each TabletServer.
   TabletCountMap tablet_map;
-  CalculateTabletMap(&tablet_map);
+  auto s = CalculateTabletMap(&tablet_map);
+  if (!s.ok()) {
+    jw.StartObject();
+    jw.String("error");
+    jw.String(Format("Couldn't get tablets: $0", s));
+  }
 
   std::unordered_set<string> cluster_uuids;
   auto primary_uuid = cluster_config_result->replication_info().live_replicas().placement_uuid();
@@ -835,8 +845,8 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
     jw.StartObject();
     for (auto desc : descs) {
       if (desc->placement_uuid() == cur_uuid) {
-        TSRegistrationPB reg = desc->GetRegistration();
-        string host_port = GetHttpHostPortFromServerRegistration(reg.common());
+        auto reg = desc->GetRegistration();
+        string host_port = GetHttpHostPortFromServerRegistration(reg);
         jw.String(host_port);
 
         jw.StartObject();
@@ -929,7 +939,7 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
         jw.String("active_tablets");
         jw.Int(active_tablets);
 
-        CloudInfoPB cloud_info = reg.common().cloud_info();
+        const auto& cloud_info = reg.cloud_info();
 
         jw.String("cloud");
         jw.String(cloud_info.placement_cloud());
@@ -939,6 +949,9 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
 
         jw.String("zone");
         jw.String(cloud_info.placement_zone());
+
+        jw.String("permanent_uuid");
+        jw.String(desc->permanent_uuid());
 
         jw.EndObject();
       }
@@ -979,6 +992,7 @@ void MasterPathHandlers::HandleHealthCheck(
   uint64_t most_recent_uptime = std::numeric_limits<uint64_t>::max();
 
   jw.StartObject();
+  std::vector<TableId> skipped_tables;
   {
     // Iterate TabletServers, looking for health anomalies.
     for (const auto & desc : descs) {
@@ -1029,7 +1043,12 @@ void MasterPathHandlers::HandleHealthCheck(
         continue;
       }
 
-      TabletInfos tablets = table->GetTablets();
+      auto tablets_result = table->GetTablets();
+      if (!tablets_result) {
+        skipped_tables.push_back(table->id());
+        continue;
+      }
+      auto tablets = *tablets_result;
 
       for (const auto& tablet : tablets) {
         auto replication_locations = tablet->GetReplicaLocations();
@@ -1070,6 +1089,17 @@ void MasterPathHandlers::HandleHealthCheck(
                                               IsLoadBalancerIdleResponsePB* resp);
      */
     // 5. do any of the TS have tablets they were not able to start up
+  }
+  if (!skipped_tables.empty()) {
+    jw.String("error");
+    jw.StartObject();
+    jw.String("skipped tables");
+    jw.StartArray();
+    for (const auto& table : skipped_tables) {
+      jw.String(table);
+    }
+    jw.EndArray();
+    jw.EndObject();
   }
   jw.EndObject();
 }
@@ -1184,9 +1214,10 @@ void MasterPathHandlers::HandleAllTables(
     // System tables and colocated user tables do not have size info
     if (table_cat != kSystemTable && !table->IsColocatedUserTable()) {
       TabletReplicaDriveInfo aggregated_drive_info;
-      auto tablets = table->GetTablets();
+      auto tablets_result = table->GetTablets();
+      if (!tablets_result) continue;
       bool table_has_missing_size = false;
-      for (const auto& tablet : tablets) {
+      for (const auto& tablet : *tablets_result) {
         auto drive_info = tablet->GetLeaderReplicaDriveInfo();
         if (drive_info.ok()) {
           aggregated_drive_info.wal_files_size += drive_info.get().wal_files_size;
@@ -1366,9 +1397,10 @@ void MasterPathHandlers::HandleAllTablesJSON(
     // System tables and colocated user tables do not have size info.
     if (table_cat != kSystemTable && !table->IsColocatedUserTable()) {
       TabletReplicaDriveInfo aggregated_drive_info;
-      auto tablets = table->GetTablets();
+      auto tablets_result = table->GetTablets();
+      if (!tablets_result) continue;
       bool table_has_missing_size = false;
-      for (const auto& tablet : tablets) {
+      for (const auto& tablet : *tablets_result) {
         auto drive_info = tablet->GetLeaderReplicaDriveInfo();
         if (drive_info.ok()) {
           aggregated_drive_info.wal_files_size += drive_info.get().wal_files_size;
@@ -1730,7 +1762,12 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
       *output << "Unable to decode partition schema: " << EscapeForHtmlToString(s.ToString());
       return;
     }
-    tablets = table->GetTablets(IncludeInactive::kTrue);
+    Result<TabletInfos> tablets_result = table->GetTablets(IncludeInactive::kTrue);
+    if (!tablets_result) {
+      *output << "Unable to fetch tablets for table: " << EscapeForHtmlToString(s.ToString());
+      return;
+    }
+    tablets = *tablets_result;
   }
 
   server::HtmlOutputSchemaTable(schema, output);
@@ -1758,7 +1795,7 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
   *output << "<table class='table table-striped'>\n";
   *output << "  <tr><th>Tablet ID</th><th>Partition</th><th>SplitDepth</th><th>State</th>"
              "<th>Hidden</th><th>Message</th><th>RaftConfig</th></tr>\n";
-  for (const scoped_refptr<TabletInfo>& tablet : tablets) {
+  for (const auto& tablet : tablets) {
     if (!show_deleted_tablets && tablet->LockForRead()->is_deleted()) {
       continue;
     }
@@ -1845,9 +1882,9 @@ void JsonOutputSchemaTable(const Schema& schema, JsonWriter* jw) {
 
 string TSDescriptorToJson(const TSDescriptor& desc,
                           const std::string& tablet_id) {
-  TSRegistrationPB reg = desc.GetRegistration();
+  auto reg = desc.GetRegistration();
 
-  auto public_http_hp = GetPublicHttpHostPort(reg.common());
+  auto public_http_hp = GetPublicHttpHostPort(reg);
   if (public_http_hp) {
     return Format(
         "$0://$1/tablet?id=$2",
@@ -2023,18 +2060,26 @@ void MasterPathHandlers::HandleTablePageJSON(const Webserver::WebRequest& req,
       s = dockv::PartitionSchema::FromPB(l->pb.partition_schema(), schema, &partition_schema);
     }
     if (!s.ok()) {
+      jw.String("error");
       jw.String("Unable to decode partition schema: " + s.ToString());
       jw.EndObject();
       return;
     }
-    tablets = table->GetTablets(IncludeInactive::kTrue);
+    auto tablets_result = table->GetTablets(IncludeInactive::kTrue);
+    if (!tablets_result) {
+      jw.String("error");
+      jw.String("Unable to fetch tablets: " + s.ToString());
+      jw.EndObject();
+      return;
+    }
+    tablets = *tablets_result;
   }
 
   JsonOutputSchemaTable(schema, &jw);
 
   jw.String("tablets");
   jw.StartArray();
-  for (const scoped_refptr<TabletInfo>& tablet : tablets) {
+  for (const TabletInfoPtr& tablet : tablets) {
     auto locations = tablet->GetReplicaLocations();
     vector<TabletReplica> sorted_locations;
     AppendValuesFromMap(*locations, &sorted_locations);
@@ -2123,7 +2168,7 @@ void MasterPathHandlers::HandleTasksPage(const Webserver::WebRequest& req,
   *output << "</table>\n";
 }
 
-std::vector<TabletInfoPtr> MasterPathHandlers::GetNonSystemTablets() {
+Result<std::vector<TabletInfoPtr>> MasterPathHandlers::GetNonSystemTablets() {
   std::vector<TabletInfoPtr> nonsystem_tablets;
 
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
@@ -2134,19 +2179,20 @@ std::vector<TabletInfoPtr> MasterPathHandlers::GetNonSystemTablets() {
     if (master_->catalog_manager()->IsSystemTable(*table.get())) {
       continue;
     }
-    TabletInfos ts = table->GetTablets(IncludeInactive::kTrue);
-
-    for (TabletInfoPtr t : ts) {
-      nonsystem_tablets.push_back(t);
-    }
+    TabletInfos ts = VERIFY_RESULT(table->GetTablets(IncludeInactive::kTrue));
+    nonsystem_tablets.insert(
+        nonsystem_tablets.end(), std::make_move_iterator(ts.begin()),
+        std::make_move_iterator(ts.end()));
   }
   return nonsystem_tablets;
 }
 
-std::vector<std::pair<TabletInfoPtr, std::string>> MasterPathHandlers::GetLeaderlessTablets() {
+Result<std::vector<std::pair<TabletInfoPtr, std::string>>>
+MasterPathHandlers::GetLeaderlessTablets() {
   std::vector<std::pair<TabletInfoPtr, std::string>> leaderless_tablets;
 
-  auto nonsystem_tablets = GetNonSystemTablets();
+  auto nonsystem_tablets = VERIFY_RESULT(GetNonSystemTablets());
+
   for (TabletInfoPtr t : nonsystem_tablets) {
     if (t.get()->LockForRead()->is_deleted()) {
       continue;
@@ -2257,7 +2303,7 @@ Result<vector<pair<TabletInfoPtr, vector<string>>>>
       continue;
     }
     auto replication_info = VERIFY_RESULT(catalog_mgr->GetTableReplicationInfo(table));
-    for (TabletInfoPtr tablet : table->GetTablets()) {
+    for (TabletInfoPtr tablet : VERIFY_RESULT(table->GetTablets())) {
       auto underreplicated_placements =
           GetTabletUnderReplicatedPlacements(tablet, replication_info);
       if (!underreplicated_placements.empty()) {
@@ -2276,12 +2322,17 @@ void MasterPathHandlers::HandleTabletReplicasPage(const Webserver::WebRequest& r
   auto leaderless_tablets = GetLeaderlessTablets();
   auto underreplicated_tablets = GetUnderReplicatedTablets();
 
+  if (!leaderless_tablets || !underreplicated_tablets) {
+    *output << "<h2>Cannot calculate tablet replicas. Try again.</h2>\n";
+    return;
+  }
+
   *output << "<h3>Leaderless Tablets</h3>\n";
   *output << "<table class='table table-striped'>\n";
   *output << "  <tr><th>Table Name</th><th>Table UUID</th><th>Tablet ID</th>"
              "<th>Leaderless Reason</th></tr>\n";
 
-  for (const std::pair<TabletInfoPtr, string>& t : leaderless_tablets) {
+  for (const std::pair<TabletInfoPtr, string>& t : *leaderless_tablets) {
     *output << Format(
         "<tr><td><a href=\"/table?id=$0\">$1</a></td><td>$2</td><td>$3</td><td>$4</td></tr>\n",
         UrlEncodeToString(t.first->table()->id()),
@@ -2290,7 +2341,6 @@ void MasterPathHandlers::HandleTabletReplicasPage(const Webserver::WebRequest& r
         EscapeForHtmlToString(t.first.get()->tablet_id()),
         EscapeForHtmlToString(t.second));
   }
-
   *output << "</table>\n";
 
   if (!underreplicated_tablets.ok()) {
@@ -2331,12 +2381,19 @@ void MasterPathHandlers::HandleGetReplicationStatus(const Webserver::WebRequest&
   JsonWriter jw(output, JsonWriter::COMPACT);
 
   auto leaderless_ts = GetLeaderlessTablets();
+  if (!leaderless_ts) {
+    jw.StartObject();
+    jw.String("error");
+    jw.String(leaderless_ts.status().ToString());
+    jw.EndObject();
+    return;
+  }
 
   jw.StartObject();
   jw.String("leaderless_tablets");
   jw.StartArray();
 
-  for (const std::pair<TabletInfoPtr, std::string>& t : leaderless_ts) {
+  for (const std::pair<TabletInfoPtr, std::string>& t : *leaderless_ts) {
     jw.StartObject();
     jw.String("table_uuid");
     jw.String(t.first->table()->id());
@@ -2360,7 +2417,7 @@ void MasterPathHandlers::HandleGetUnderReplicationStatus(const Webserver::WebReq
 
   if (!underreplicated_tablets.ok()) {
     jw.StartObject();
-    jw.String("Error");
+    jw.String("error");
     jw.String(underreplicated_tablets.status().ToString());
     jw.EndObject();
     return;
@@ -3156,13 +3213,13 @@ void MasterPathHandlers::HandlePrettyLB(
       *output << Format("<div class='panel $0' style='margin-bottom: 0px'>\n", panel_type);
 
       // Point to the tablet servers link.
-      TSRegistrationPB reg = desc->GetRegistration();
+      auto reg = desc->GetRegistration();
       *output << Format("<div class='panel-heading'>"
                             "<h6 class='panel-title'><a href='$0://$1'>TServer - $1    "
                             "<i class='fa $2'></i></a></h6></div>\n",
                             GetProtocol(),
                             EscapeForHtmlToString(
-                                GetHttpHostPortFromServerRegistration(reg.common())),
+                                GetHttpHostPortFromServerRegistration(reg)),
                             icon_type);
 
       *output << "<table class='table table-borderless table-hover'>\n";
@@ -3256,11 +3313,11 @@ void MasterPathHandlers::HandleStatefulServices(
       "stateful_services", {"Service Name", "Hosting server", "Table Id", "Tablet ID"});
 
   for (const auto& service : *stateful_service_result) {
-    const auto& reg = service.hosting_node->GetRegistration();
-    const auto& host_port = GetHttpHostPortFromServerRegistration(reg.common());
-    const auto& cloud_info = reg.common().cloud_info();
+    auto reg = service.hosting_node->GetRegistration();
+    const auto& host_port = GetHttpHostPortFromServerRegistration(reg);
+    const auto& cloud_info = reg.cloud_info();
     const auto& host_server = Format(
-        "$0<br/>$1<br/>$2", RegistrationToHtml(reg.common(), host_port),
+        "$0<br/>$1<br/>$2", RegistrationToHtml(reg, host_port),
         service.hosting_node->permanent_uuid(),
         EscapeForHtmlToString(Format(
             "$0.$1.$2", cloud_info.placement_cloud(), cloud_info.placement_region(),
@@ -3457,9 +3514,9 @@ string MasterPathHandlers::RaftConfigToHtml(const std::vector<TabletReplica>& lo
 
 string MasterPathHandlers::TSDescriptorToHtml(const TSDescriptor& desc,
                                               const std::string& tablet_id) const {
-  TSRegistrationPB reg = desc.GetRegistration();
+  auto reg = desc.GetRegistration();
 
-  auto public_http_hp = GetPublicHttpHostPort(reg.common());
+  auto public_http_hp = GetPublicHttpHostPort(reg);
   if (public_http_hp) {
     return Format(
         "<a href=\"$0://$1/tablet?id=$2\">$3</a>",
@@ -3492,7 +3549,7 @@ string MasterPathHandlers::RegistrationToHtml(
   return link_html.str();
 }
 
-void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
+Status MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
   auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kRunning);
   for (const auto& table : tables) {
     if (table->IsColocatedUserTable()) {
@@ -3500,7 +3557,7 @@ void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
       continue;
     }
 
-    TabletInfos tablets = table->GetTablets(IncludeInactive::kTrue);
+    TabletInfos tablets = VERIFY_RESULT(table->GetTablets(IncludeInactive::kTrue));
     bool is_user_table = master_->catalog_manager()->IsUserCreatedTable(*table);
     for (const auto& tablet : tablets) {
       auto replication_locations = tablet->GetReplicaLocations();
@@ -3525,6 +3582,7 @@ void MasterPathHandlers::CalculateTabletMap(TabletCountMap* tablet_map) {
       }
     }
   }
+  return Status::OK();
 }
 
 Result<MasterPathHandlers::TServerTree> MasterPathHandlers::CalculateTServerTree(
@@ -3555,7 +3613,7 @@ Result<MasterPathHandlers::TServerTree> MasterPathHandlers::CalculateTServerTree
       continue;
     }
 
-    TabletInfos tablets = table->GetTablets(IncludeInactive::kTrue);
+    TabletInfos tablets = VERIFY_RESULT(table->GetTablets(IncludeInactive::kTrue));
 
     for (const auto& tablet : tablets) {
       auto replica_locations = tablet->GetReplicaLocations();
@@ -3586,10 +3644,10 @@ void MasterPathHandlers::RenderLoadBalancerViewPanel(
   *output << "<tr><th rowspan='2'>Keyspace</th><th rowspan='2'>Table Name</th><th "
              "rowspan='2'>Tablet Count</th>";
   for (const auto& desc : descs) {
-    const auto& reg = desc->GetRegistration();
+    auto reg = desc->GetRegistration();
     *output << Format(
         "<th>$0<br>$1</th>",
-        RegistrationToHtml(reg.common(), GetHttpHostPortFromServerRegistration(reg.common())),
+        RegistrationToHtml(reg, GetHttpHostPortFromServerRegistration(reg)),
         desc->permanent_uuid());
   }
   *output << "</tr>";
@@ -3617,7 +3675,7 @@ void MasterPathHandlers::RenderLoadBalancerViewPanel(
     }
     const string& table_name = table_locked->name();
     const string& table_id = table->id();
-    auto tablet_count = table->GetTablets(IncludeInactive::kTrue).size();
+    auto tablet_count = table->TabletCount(IncludeInactive::kTrue);
 
     *output << Format(
         "<tr>"

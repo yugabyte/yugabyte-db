@@ -53,6 +53,16 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_ash, false,
     "and various background activities. This does nothing if "
     "ysql_yb_enable_ash_infra is disabled.");
 
+DEFINE_NON_RUNTIME_PG_FLAG(int32, yb_ash_circular_buffer_size, 16 * 1024,
+    "Size (in KiBs) of ASH circular buffer that stores the samples");
+
+DEFINE_RUNTIME_PG_FLAG(int32, yb_ash_sampling_interval_ms, 1000,
+    "Time (in milliseconds) between two consecutive sampling events");
+DEPRECATE_FLAG(int32, ysql_yb_ash_sampling_interval, "2024_03");
+
+DEFINE_RUNTIME_PG_FLAG(int32, yb_ash_sample_size, 500,
+    "Number of samples captured from each component per sampling event");
+
 DEFINE_test_flag(bool, export_wait_state_names, yb::kIsDebug,
     "Exports wait-state name as a human understandable string.");
 DEFINE_test_flag(bool, trace_ash_wait_code_updates, yb::kIsDebug,
@@ -129,7 +139,7 @@ void AshMetadata::set_client_host_port(const HostPort &host_port) {
 
 std::string AshMetadata::ToString() const {
   return YB_STRUCT_TO_STRING(
-      yql_endpoint_tserver_uuid, root_request_id, query_id, session_id, database_id,
+      yql_endpoint_tserver_uuid, root_request_id, query_id, database_id,
       rpc_request_id, client_host_port);
 }
 
@@ -200,16 +210,6 @@ void WaitStateInfo::set_query_id(uint64_t query_id) {
 uint64_t WaitStateInfo::query_id() {
   std::lock_guard lock(mutex_);
   return metadata_.query_id;
-}
-
-void WaitStateInfo::set_session_id(uint64_t session_id) {
-  std::lock_guard lock(mutex_);
-  metadata_.session_id = session_id;
-}
-
-uint64_t WaitStateInfo::session_id() {
-  std::lock_guard lock(mutex_);
-  return metadata_.session_id;
 }
 
 void WaitStateInfo::set_client_host_port(const HostPort &host_port) {

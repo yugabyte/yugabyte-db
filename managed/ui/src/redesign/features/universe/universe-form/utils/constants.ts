@@ -52,6 +52,7 @@ export const CUSTOMIZE_PORT_FIELD = 'advancedConfig.customizePort';
 export const ACCESS_KEY_FIELD = 'advancedConfig.accessKeyCode';
 export const SOFTWARE_VERSION_FIELD = 'advancedConfig.ybSoftwareVersion';
 export const COMMUNICATION_PORTS_FIELD = 'advancedConfig.communicationPorts';
+export const PG_COMPATIBILITY_FIELD = 'advancedConfig.enablePGCompatibitilty';
 
 //Gflags
 export const GFLAGS_FIELD = 'gFlags';
@@ -176,3 +177,5 @@ export const INHERITED_FIELDS_FROM_PRIMARY = [
 export const PASSWORD_REGEX = /^(?=.*[0-9])(?=.*[!@#$%^&*])(?=.*[a-z])(?=.*[A-Z])[a-zA-Z0-9!@#$%^&*]{8,256}$/;
 
 export const TOAST_AUTO_DISMISS_INTERVAL = 3000;
+
+export const DEFAULT_SLEEP_INTERVAL_IN_MS = 180000;

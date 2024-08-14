@@ -65,6 +65,7 @@ DECLARE_bool(TEST_ash_fetch_wait_states_for_raft_log);
 DECLARE_bool(TEST_ash_fetch_wait_states_for_rocksdb_flush_and_compaction);
 DECLARE_bool(TEST_export_wait_state_names);
 DECLARE_bool(ysql_enable_db_catalog_version_mode);
+DECLARE_int32(ysql_yb_ash_sample_size);
 
 extern int yb_locks_min_txn_age;
 extern int yb_locks_max_transactions;
@@ -156,12 +157,12 @@ void AshMetadataToPB(const YBCPgAshConfig& ash_config, tserver::PgPerformOptions
     return;
   }
 
-  // session_id is not set here as it's already set in PgPerformRequestPB
   auto* ash_metadata = options->mutable_ash_metadata();
   const auto* pg_metadata = ash_config.metadata;
   ash_metadata->set_yql_endpoint_tserver_uuid(ash_config.yql_endpoint_tserver_uuid, 16);
   ash_metadata->set_root_request_id(pg_metadata->root_request_id, 16);
   ash_metadata->set_query_id(pg_metadata->query_id);
+  ash_metadata->set_pid(pg_metadata->pid);
   ash_metadata->set_database_id(pg_metadata->database_id);
 
   uint8_t addr_family = pg_metadata->addr_family;
@@ -466,13 +467,15 @@ class PgClient::Impl : public BigDataFetcher {
   }
 
   Result<PgTableDescPtr> OpenTable(
-      const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time) {
+      const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time,
+      master::IncludeInactive include_inactive) {
     tserver::PgOpenTableRequestPB req;
     req.set_table_id(table_id.GetYbTableId());
     req.set_reopen(reopen);
     if (invalidate_cache_time != CoarseTimePoint()) {
       req.set_invalidate_cache_time_us(ToMicroseconds(invalidate_cache_time.time_since_epoch()));
     }
+    req.set_include_inactive(include_inactive);
     tserver::PgOpenTableResponsePB resp;
 
     RETURN_NOT_OK(proxy_->OpenTable(req, &resp, PrepareController()));
@@ -1018,10 +1021,10 @@ class PgClient::Impl : public BigDataFetcher {
     return Status::OK();
   }
 
-  Result<TableKeyRangesWithHt> GetTableKeyRanges(
+  Result<TableKeyRanges> GetTableKeyRanges(
       const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
       uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward,
-      uint32_t max_key_length, uint64_t read_time_serial_no) {
+      uint32_t max_key_length) {
     tserver::PgGetTableKeyRangesRequestPB req;
     tserver::PgGetTableKeyRangesResponsePB resp;
     req.set_session_id(session_id_);
@@ -1036,7 +1039,6 @@ class PgClient::Impl : public BigDataFetcher {
     req.set_range_size_bytes(range_size_bytes);
     req.set_is_forward(is_forward);
     req.set_max_key_length(max_key_length);
-    req.set_read_time_serial_no(read_time_serial_no);
 
     auto* controller = PrepareController();
 
@@ -1045,11 +1047,10 @@ class PgClient::Impl : public BigDataFetcher {
       return StatusFromPB(resp.status());
     }
 
-    TableKeyRangesWithHt result;
-    result.current_ht = HybridTime(resp.current_ht());
-
+    TableKeyRanges result;
+    result.reserve(controller->GetSidecarsCount());
     for (size_t i = 0; i < controller->GetSidecarsCount(); ++i) {
-      result.encoded_range_end_keys.push_back(VERIFY_RESULT(controller->ExtractSidecar(i)));
+      result.push_back(VERIFY_RESULT(controller->ExtractSidecar(i)));
     }
     return result;
   }
@@ -1132,6 +1133,7 @@ class PgClient::Impl : public BigDataFetcher {
     req.set_fetch_cql_states(true);
     req.set_ignore_ash_and_perform_calls(true);
     req.set_export_wait_state_code_as_string(FLAGS_TEST_export_wait_state_names);
+    req.set_sample_size(FLAGS_ysql_yb_ash_sample_size);
     tserver::PgActiveSessionHistoryResponsePB resp;
 
     RETURN_NOT_OK(proxy_->ActiveSessionHistory(req, &resp, PrepareController()));
@@ -1304,8 +1306,9 @@ void PgClient::SetTimeout(MonoDelta timeout) {
 uint64_t PgClient::SessionID() const { return impl_->SessionID(); }
 
 Result<PgTableDescPtr> PgClient::OpenTable(
-    const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time) {
-  return impl_->OpenTable(table_id, reopen, invalidate_cache_time);
+    const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time,
+    master::IncludeInactive include_inactive) {
+  return impl_->OpenTable(table_id, reopen, invalidate_cache_time, include_inactive);
 }
 
 Result<client::VersionedTablePartitionList> PgClient::GetTablePartitionList(
@@ -1462,13 +1465,12 @@ Result<bool> PgClient::IsObjectPartOfXRepl(const PgObjectId& table_id) {
   return impl_->IsObjectPartOfXRepl(table_id);
 }
 
-Result<TableKeyRangesWithHt> PgClient::GetTableKeyRanges(
+Result<TableKeyRanges> PgClient::GetTableKeyRanges(
     const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
-    uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length,
-    uint64_t read_time_serial_no) {
+    uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length) {
   return impl_->GetTableKeyRanges(
       table_id, lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes, is_forward,
-      max_key_length, read_time_serial_no);
+      max_key_length);
 }
 
 Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> PgClient::GetTserverCatalogVersionInfo(

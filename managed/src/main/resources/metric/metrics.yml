@@ -2776,6 +2776,25 @@ master_max_follower_lag:
       alias:
         "follower_lag_ms": "Max Follower Lag (ms)"
 
+
+master_load_balancer_stats:
+  metric: "tablets_in_wrong_placement|total_table_load_difference|blacklisted_leaders"
+  filters:
+    export_type: "master_export"
+  range: true
+  function: "max_over_time|max"
+  panel_group: "Master"
+  group_by: "saved_name"
+  layout:
+    title: "Master load balancer statistics"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "tablets_in_wrong_placement": "Tablets in wrong placement"
+        "total_table_load_difference": "Total table load difference"
+        "blacklisted_leaders": "Tablets with blacklisted leaders"
+
 tserver_max_follower_lag:
   metric: "follower_lag_ms"
   filters:

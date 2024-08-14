@@ -20,6 +20,7 @@ SKIP_VERIFY_CERT=""
 DISABLE_EGRESS="false"
 SILENT_INSTALL="false"
 AIRGAP_INSTALL="false"
+SKIP_PACKAGE_DOWNLOAD="false"
 CERT_DIR=""
 CUSTOMER_ID=""
 NODE_NAME=""
@@ -29,6 +30,7 @@ API_TOKEN=""
 PLATFORM_URL=""
 PROVIDER_ID=""
 INSTANCE_TYPE=""
+REGION_NAME=""
 ZONE_NAME=""
 COMMAND=""
 VERSION=""
@@ -64,11 +66,16 @@ run_as_super_user() {
 }
 
 export_path() {
+  set +euo pipefail
+  source "$INSTALL_USER_HOME"/.bashrc >/dev/null 2>&1
   if [[ ":$PATH:" != *":$1:"* ]]; then
-    PATH="$1${PATH:+":$PATH"}"
-    echo "PATH=$PATH" >> "$INSTALL_USER_HOME"/.bashrc
+    NEW_PATH="$1":\$PATH
+    PATH="$1":$PATH
+    echo "PATH=$NEW_PATH" >> "$INSTALL_USER_HOME"/.bashrc
+    echo "export PATH" >> "$INSTALL_USER_HOME"/.bashrc
     export PATH
   fi
+  set -euo pipefail
 }
 
 save_node_agent_home() {
@@ -392,6 +399,10 @@ main() {
           echo "Instance type is required."
           exit 1
         fi
+        if [ -z "$REGION_NAME" ]; then
+          echo "Region name is required."
+          exit 1
+        fi
         if [ -z "$ZONE_NAME" ]; then
           echo "Zone name is required."
           exit 1
@@ -402,7 +413,8 @@ main() {
       --node_port "$NODE_PORT" "${SKIP_VERIFY_CERT:+ "--skip_verify_cert"}")
       if [ "$SILENT_INSTALL" = "true" ]; then
         NODE_AGENT_CONFIG_ARGS+=(--silent --node_name "$NODE_NAME" --node_ip "$NODE_IP" \
-        --provider_id "$PROVIDER_ID" --instance_type "$INSTANCE_TYPE" --zone_name "$ZONE_NAME")
+        --provider_id "$PROVIDER_ID" --instance_type "$INSTANCE_TYPE" --region_name \
+        "$REGION_NAME" --zone_name "$ZONE_NAME")
       fi
     else
         # This path is hidden from usage.
@@ -520,6 +532,9 @@ while [[ $# -gt 0 ]]; do
     --airgap)
       AIRGAP_INSTALL="true"
     ;;
+    --skip_package_download)
+      SKIP_PACKAGE_DOWNLOAD="true"
+    ;;
     --node_name)
       NODE_NAME="$2"
       shift
@@ -530,6 +545,10 @@ while [[ $# -gt 0 ]]; do
     ;;
     --instance_type)
       INSTANCE_TYPE="$2"
+      shift
+    ;;
+    --region_name)
+      REGION_NAME="$2"
       shift
     ;;
     --zone_name)
@@ -559,7 +578,7 @@ while [[ $# -gt 0 ]]; do
     -p|--node_port)
       NODE_PORT=$2
       shift
-      ;;
+    ;;
     -t|--api_token)
       API_TOKEN="$2"
       shift

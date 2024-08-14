@@ -13,3 +13,4 @@ test: yb_dml_insert_conflict
 test: yb_dml_read_time
 test: yb_dml_pushdown
 test: yb_dml_scankey
+test: yb_dml

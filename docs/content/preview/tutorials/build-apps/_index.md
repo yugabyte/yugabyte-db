@@ -18,22 +18,17 @@ Applications connect to and interact with YugabyteDB using API client libraries 
 
 The tutorials in this section show how to connect applications to YugabyteDB using available [Drivers and ORMs](../../drivers-orms/).
 
-The tutorials assume you have deployed a YugabyteDB cluster in YugabyteDB Managed or locally. Refer to [Quick start](../../quick-start-yugabytedb-managed/).<br><br>
+The tutorials assume you have deployed a YugabyteDB cluster in YugabyteDB Aeon or locally. Refer to [Quick start](../../quick-start-yugabytedb-managed/).<br><br>
 
-<div class="row">
+{{<index/block>}}
 
-  <div class="col-12 col-md-12 col-lg-6 col-xl-6">
-  <a class="section-link icon-offset" href="cloud-add-ip/">
-    <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/checklist.png" aria-hidden="true" />
-      <div class="title">Before you begin</div>
-    </div>
-    <div class="body">
-      If your cluster is in YugabyteDB Managed, start here.
-    </div>
-  </a>
-  </div>
-</div>
+  {{<index/item
+    title="Before you begin"
+    body="If your cluster is in YugabyteDB Aeon, start here."
+    href="cloud-add-ip/"
+    icon="/images/section_icons/deploy/checklist.png">}}
+
+{{</index/block>}}
 
 ### Choose your language
 
@@ -64,6 +59,13 @@ The tutorials assume you have deployed a YugabyteDB cluster in YugabyteDB Manage
     <a href="nodejs/cloud-ysql-node/" class="orange">
       <i class="fa-brands fa-node-js"></i>
       Node.js
+    </a>
+  </li>
+
+  <li>
+    <a href="elixir/cloud-ysql-elixir/" class="orange">
+      <i class="fa-classic fa-droplet"></i>
+      Elixir
     </a>
   </li>
 

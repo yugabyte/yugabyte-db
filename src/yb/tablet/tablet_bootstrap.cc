@@ -136,6 +136,9 @@ DEFINE_RUNTIME_bool(skip_flushed_entries_in_first_replayed_segment, true,
             "If applicable, only replay entries that are not flushed to RocksDB or necessary "
             "to bootstrap retryable requests in the first replayed wal segment.");
 
+DEFINE_RUNTIME_bool(use_bootstrap_intent_ht_filter, false,
+                    "Use min running hybrid time filter for bootstrap.");
+
 DECLARE_int32(retryable_request_timeout_secs);
 
 DEFINE_UNKNOWN_uint64(transaction_status_tablet_log_segment_size_bytes, 4_MB,
@@ -502,7 +505,23 @@ class TabletBootstrap {
       VLOG_WITH_PREFIX(1) << "Tablet Metadata: " << super_block.DebugString();
     }
 
-    const bool has_blocks = VERIFY_RESULT(OpenTablet());
+    std::optional<consensus::TabletBootstrapStatePB> bootstrap_state_pb = std::nullopt;
+    HybridTime min_running_ht = HybridTime::kInvalid;
+    if (GetAtomicFlag(&FLAGS_enable_flush_retryable_requests) && data_.bootstrap_state_manager) {
+      auto result = data_.bootstrap_state_manager->LoadFromDisk();
+      if (result.ok()) {
+        bootstrap_state_pb = std::move(*result);
+
+        if (GetAtomicFlag(&FLAGS_use_bootstrap_intent_ht_filter)) {
+          const auto& bootstrap_state = data_.bootstrap_state_manager->bootstrap_state();
+          min_running_ht = bootstrap_state.GetMinRunningHybridTime();
+        }
+      } else if (!result.status().IsNotFound()) {
+        return result.status();
+      }
+    }
+
+    const bool has_blocks = VERIFY_RESULT(OpenTablet(min_running_ht));
 
     if (data_.retryable_requests) {
       const auto retryable_request_timeout_secs = meta_->IsSysCatalog()
@@ -513,15 +532,8 @@ class TabletBootstrap {
     }
 
     // Load retryable requests after metrics entity has been instantiated.
-    if (GetAtomicFlag(&FLAGS_enable_flush_retryable_requests) &&
-          data_.bootstrap_retryable_requests && data_.retryable_requests &&
-          data_.bootstrap_state_manager) {
-      auto result = data_.bootstrap_state_manager->LoadFromDisk();
-      if (result.ok()) {
-        data_.retryable_requests->FromPB(*result);
-      } else if (!result.status().IsNotFound()) {
-        return result.status();
-      }
+    if (bootstrap_state_pb && data_.bootstrap_retryable_requests && data_.retryable_requests) {
+      data_.retryable_requests->FromPB(*bootstrap_state_pb);
     }
 
     if (FLAGS_TEST_dump_docdb_before_tablet_bootstrap) {
@@ -611,7 +623,7 @@ class TabletBootstrap {
   }
 
   // Sets result to true if there was any data on disk for this tablet.
-  Result<bool> OpenTablet() {
+  Result<bool> OpenTablet(HybridTime min_running_ht) {
     CleanupSnapshots();
     // Use operator new instead of make_shared for creating the shared_ptr. That way, we would have
     // the shared_ptr's control block hold a raw pointer to the Tablet object as opposed to the
@@ -622,6 +634,12 @@ class TabletBootstrap {
     // reference count drops to 0. With make_shared, there's a risk of a leaked weak_ptr holding up
     // the object's memory even after all shared_ptrs go out of scope.
     std::shared_ptr<Tablet> tablet(new Tablet(data_.tablet_init_data));
+
+    auto participant = tablet->transaction_participant();
+    if (participant) {
+      participant->SetMinRunningHybridTimeLowerBound(min_running_ht);
+    }
+
     // Doing nothing for now except opening a tablet locally.
     LOG_TIMING_PREFIX(INFO, LogPrefix(), "opening tablet") {
       RETURN_NOT_OK(tablet->Open());
@@ -841,7 +859,6 @@ class TabletBootstrap {
         append_pool_,
         allocation_pool_,
         log_sync_pool_,
-        metadata.cdc_min_replicated_index(),
         &log_,
         data_.pre_log_rollover_callback,
         new_segment_allocation_callback,

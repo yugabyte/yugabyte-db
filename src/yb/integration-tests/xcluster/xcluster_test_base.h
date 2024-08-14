@@ -200,12 +200,6 @@ class XClusterTestBase : public YBTest {
       const std::vector<xrepl::StreamId>& bootstrap_ids = {},
       SetupReplicationOptions opts = SetupReplicationOptions());
 
-  Status SetupNSUniverseReplication(
-      MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
-      const xcluster::ReplicationGroupId& replication_group_id, const std::string& producer_ns_name,
-      const YQLDatabase& producer_ns_type,
-      SetupReplicationOptions opts = SetupReplicationOptions());
-
   Status VerifyUniverseReplication(master::GetUniverseReplicationResponsePB* resp);
 
   Status VerifyUniverseReplication(
@@ -216,10 +210,6 @@ class XClusterTestBase : public YBTest {
       MiniCluster* consumer_cluster, YBClient* consumer_client,
       const xcluster::ReplicationGroupId& replication_group_id,
       master::GetUniverseReplicationResponsePB* resp);
-
-  Status VerifyNSUniverseReplication(
-      MiniCluster* consumer_cluster, YBClient* consumer_client,
-      const xcluster::ReplicationGroupId& replication_group_id, int num_expected_table);
 
   Status ToggleUniverseReplication(
       MiniCluster* consumer_cluster, YBClient* consumer_client,
@@ -331,6 +321,9 @@ class XClusterTestBase : public YBTest {
     return output;
   }
 
+  // Run ysql_dump on a database for the given cluster.
+  Result<std::string> RunYSQLDump(Cluster& cluster, const std::string& database_name = "yugabyte");
+
   // Wait for the xcluster safe time to advance to the given time on all TServers.
   Status WaitForSafeTime(const NamespaceId& namespace_id, const HybridTime& min_safe_time);
 
@@ -339,7 +332,7 @@ class XClusterTestBase : public YBTest {
 
   Status VerifyReplicationError(
       const std::string& consumer_table_id, const xrepl::StreamId& stream_id,
-      const std::optional<ReplicationErrorPb> expected_replication_error);
+      const std::optional<ReplicationErrorPb> expected_replication_error, int timeout_secs = 30);
 
   Result<xrepl::StreamId> GetCDCStreamID(const TableId& producer_table_id);
 

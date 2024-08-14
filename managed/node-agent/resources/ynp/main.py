@@ -19,6 +19,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description="YNP: Yugabyte Node Provisioning Tool")
     parser.add_argument('--command', default="provision", required=False, help='Command to execute')
     parser.add_argument('--config_file', default="./node-agent-provision.yaml", help='Path to the ynp configuration file')
+    parser.add_argument('--preflight_check', action="store_true", help='Execute the pre-flight check on the node')
     return parser.parse_args()
 
 def log_installed_packages(logger):

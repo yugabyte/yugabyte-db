@@ -74,7 +74,7 @@ public class XClusterAddNamespaceToOutboundReplicationGroup extends XClusterConf
       if (createResponse.hasError()) {
         throw new RuntimeException(
             String.format(
-                "AddNamespaceToOutboundReplicationGroup rpc failed with error: %s",
+                "XClusterAddNamespaceToOutboundReplicationGroup rpc failed with error: %s",
                 createResponse.errorMessage()));
       }
 
@@ -130,8 +130,8 @@ public class XClusterAddNamespaceToOutboundReplicationGroup extends XClusterConf
                 return false;
               }
               log.debug(
-                  "Checkpointing status is complete: {}, for universe: {}, xClusterConfig: {},"
-                      + " dbId: {}",
+                  "AddNamespaceToOutboundReplicationGroup, Checkpointing status is complete: {},"
+                      + " for universe: {}, xClusterConfig: {}, dbId: {}",
                   !completionResponse.isNotReady(),
                   sourceUniverse.getUniverseUUID(),
                   xClusterConfig.getName(),

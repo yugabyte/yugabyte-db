@@ -39,6 +39,8 @@
 
 #include "yb/tablet/tablet_fwd.h"
 
+#include "yb/tserver/tserver.pb.h"
+
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 
@@ -69,11 +71,11 @@ class CatalogManagerIf {
   virtual void CheckTableDeleted(const TableInfoPtr& table, const LeaderEpoch& epoch) = 0;
 
   virtual void DeleteTabletReplicas(
-      TabletInfo* tablet, const std::string& msg, HideOnly hide_only, KeepData keep_data,
+      const TabletInfoPtr& tablet, const std::string& msg, HideOnly hide_only, KeepData keep_data,
       const LeaderEpoch& epoch) = 0;
 
   virtual void NotifyPrepareDeleteTransactionTabletFinished(
-      const scoped_refptr<TabletInfo>& tablet, const std::string& msg, HideOnly hide_only,
+      const TabletInfoPtr& tablet, const std::string& msg, HideOnly hide_only,
       const LeaderEpoch& epoch) = 0;
 
   virtual void NotifyTabletDeleteFinished(
@@ -193,7 +195,7 @@ class CatalogManagerIf {
       IncludeInactive include_inactive = IncludeInactive::kFalse) = 0;
 
   virtual Status GetTabletLocations(
-      scoped_refptr<TabletInfo> tablet_info,
+      const TabletInfoPtr& tablet_info,
       TabletLocationsPB* locs_pb,
       IncludeInactive include_inactive = IncludeInactive::kFalse) = 0;
 
@@ -220,13 +222,6 @@ class CatalogManagerIf {
       const SnapshotScheduleId& snapshot_schedule_id, HybridTime export_time,
       CoarseTimePoint deadline) = 0;
 
-  virtual void HandleCreateTabletSnapshotResponse(TabletInfo *tablet, bool error) = 0;
-
-  virtual void HandleRestoreTabletSnapshotResponse(TabletInfo *tablet, bool error) = 0;
-
-  virtual void HandleDeleteTabletSnapshotResponse(
-      const SnapshotId& snapshot_id, TabletInfo *tablet, bool error) = 0;
-
   virtual Status GetTableLocations(const GetTableLocationsRequestPB* req,
                                            GetTableLocationsResponsePB* resp) = 0;
 
@@ -250,7 +245,7 @@ class CatalogManagerIf {
 
   virtual LeaderEpoch GetLeaderEpochInternal() const = 0;
 
-  virtual Result<scoped_refptr<TabletInfo>> GetTabletInfo(const TabletId& tablet_id) = 0;
+  virtual Result<TabletInfoPtr> GetTabletInfo(const TabletId& tablet_id) = 0;
 
   virtual bool AreTablesDeletingOrHiding() = 0;
 
@@ -273,7 +268,7 @@ class CatalogManagerIf {
   virtual Status IsInitDbDone(
       const IsInitDbDoneRequestPB* req, IsInitDbDoneResponsePB* resp) = 0;
 
-  virtual void DumpState(std::ostream* out, bool on_disk_dump = false) const = 0;
+  virtual Status DumpState(std::ostream* out, bool on_disk_dump = false) const = 0;
 
   virtual scoped_refptr<TableInfo> NewTableInfo(TableId id, bool colocated) = 0;
 
@@ -282,7 +277,7 @@ class CatalogManagerIf {
       const TabletId& tablet_id, ManualSplit is_manual_split, const LeaderEpoch& epoch) = 0;
 
   virtual Status TEST_SplitTablet(
-      const scoped_refptr<TabletInfo>& source_tablet_info, docdb::DocKeyHash split_hash_code) = 0;
+      const TabletInfoPtr& source_tablet_info, docdb::DocKeyHash split_hash_code) = 0;
 
   virtual Status TEST_SplitTablet(
       const TabletId& tablet_id, const std::string& split_encoded_key,
@@ -300,10 +295,6 @@ class CatalogManagerIf {
 
   virtual ClusterLoadBalancer* load_balancer() = 0;
 
-  virtual TabletSplitManager* tablet_split_manager() = 0;
-
-  virtual CloneStateManager* clone_state_manager() = 0;
-
   virtual XClusterManagerIf* GetXClusterManager() = 0;
 
   virtual XClusterManager* GetXClusterManagerImpl() = 0;
@@ -313,8 +304,6 @@ class CatalogManagerIf {
   virtual intptr_t tablets_version() const = 0;
 
   virtual intptr_t tablet_locations_version() const = 0;
-
-  virtual MasterSnapshotCoordinator& snapshot_coordinator() = 0;
 
   virtual Status UpdateLastFullCompactionRequestTime(
       const TableId& table_id, const LeaderEpoch& epoch) = 0;
@@ -343,9 +332,6 @@ class CatalogManagerIf {
       CoarseTimePoint deadline) = 0;
 
   virtual Status XReplValidateSplitCandidateTable(const TableId& table_id) const = 0;
-
-  virtual Status UpdateXClusterConsumerOnTabletSplit(
-      const TableId& consumer_table_id, const SplitTabletIds& split_tablet_ids) = 0;
 
   virtual Status UpdateCDCProducerOnTabletSplit(
       const TableId& producer_table_id, const SplitTabletIds& split_tablet_ids) = 0;

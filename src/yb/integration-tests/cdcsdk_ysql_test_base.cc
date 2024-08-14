@@ -1258,8 +1258,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
   void CDCSDKYsqlTest::EnableCDCServiceInAllTserver(uint32_t num_tservers) {
     for (uint32_t i = 0; i < num_tservers; ++i) {
       const auto& tserver = test_cluster()->mini_tablet_server(i)->server();
-      auto cdc_service = dynamic_cast<CDCServiceImpl*>(
-          tserver->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+      auto cdc_service = CDCService(tserver);
       cdc_service->SetCDCServiceEnabled();
     }
   }
@@ -1270,8 +1269,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     // check the CDC Service Cache of all the tservers.
     for (uint32_t i = 0; i < num_tservers; ++i) {
       const auto& tserver = test_cluster()->mini_tablet_server(i)->server();
-      auto cdc_service = dynamic_cast<CDCServiceImpl*>(
-          tserver->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+      auto cdc_service = CDCService(tserver);
       auto status = cdc_service->TEST_GetTabletInfoFromCache({stream_id, tablet_id});
       if (status.ok()) {
         count += 1;
@@ -1556,6 +1554,11 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
             status = StatusFromPB(change_resp.error().status());
             if (status.IsNotFound() || status.IsInvalidArgument()) {
               RETURN_NOT_OK(status);
+            } else if (status.IsInternalError()) {
+              auto err_msg = status.message().ToBuffer();
+              if ((err_msg.find("expired for Tablet") ||
+                   err_msg.find("CDCSDK Trying to fetch already GCed intents")))
+                RETURN_NOT_OK(status);
             }
           }
 
@@ -1981,7 +1984,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     if (init_virtual_wal) {
       Status s = InitVirtualWAL(stream_id, table_ids, session_id);
       if (!s.ok()) {
-        LOG(ERROR) << "Error while trying to initialize virtual WAL";
+        LOG(ERROR) << "Error while trying to initialize virtual WAL: " << s;
         RETURN_NOT_OK(s);
       }
     }
@@ -2246,7 +2249,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
         test_client()->GetTablets(table, 0, &tablets, /* partition_list_version = */ nullptr));
 
     TabletId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
-    xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
+    xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(checkpoint_type));
     auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
     ASSERT_FALSE(resp.has_error());
 
@@ -2742,7 +2745,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
           return (tablets_after_split.size() == expected_num_tablets);
         },
-        MonoDelta::FromSeconds(120), "Tabelt Split not succesful"));
+        MonoDelta::FromSeconds(120), "Tablet Split not succesful"));
   }
 
   void CDCSDKYsqlTest::CheckTabletsInCDCStateTable(
@@ -3855,6 +3858,8 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
       case RowMessage::COMMIT:
         record_count[7]++;
         break;
+      case RowMessage::SAFEPOINT:
+        break;
       default:
         ASSERT_FALSE(true);
         break;
@@ -4499,6 +4504,54 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
       oss << pub_refresh_times[i];
     }
     return oss.str();
+  }
+
+  Status CDCSDKYsqlTest::ExecuteYBAdminCommand(
+      const std::string& command_name, const std::vector<string>& command_args) {
+    string tool_path = GetToolPath("../bin", "yb-admin");
+    vector<string> argv;
+    argv.push_back(tool_path);
+    argv.push_back("--master_addresses");
+    argv.push_back(AsString(test_cluster_.mini_cluster_->GetMasterAddresses()));
+    argv.push_back(command_name);
+    for (const auto& command_arg : command_args) {
+      argv.push_back(command_arg);
+    }
+
+    RETURN_NOT_OK(Subprocess::Call(argv));
+
+    return Status::OK();
+  }
+
+  Status CDCSDKYsqlTest::DisableDynamicTableAdditionOnCDCSDKStream(
+      const xrepl::StreamId& stream_id) {
+    std::string yb_admin_command = "disable_dynamic_table_addition_on_change_data_stream";
+    vector<string> command_args;
+    command_args.push_back(stream_id.ToString());
+    RETURN_NOT_OK(ExecuteYBAdminCommand(yb_admin_command, command_args));
+    return Status::OK();
+  }
+
+  Status CDCSDKYsqlTest::RemoveUserTableFromCDCSDKStream(
+      const xrepl::StreamId& stream_id, const TableId& table_id) {
+    std::string yb_admin_command = "remove_user_table_from_change_data_stream";
+    vector<string> command_args;
+    command_args.push_back(stream_id.ToString());
+    command_args.push_back(table_id);
+    RETURN_NOT_OK(ExecuteYBAdminCommand(yb_admin_command, command_args));
+
+    return Status::OK();
+  }
+
+  Status CDCSDKYsqlTest::ValidateAndSyncCDCStateEntriesForCDCSDKStream(
+      const xrepl::StreamId& stream_id) {
+    std::string yb_admin_command =
+        "validate_and_sync_cdc_state_table_entries_on_change_data_stream";
+    vector<string> command_args;
+    command_args.push_back(stream_id.ToString());
+    RETURN_NOT_OK(ExecuteYBAdminCommand(yb_admin_command, command_args));
+
+    return Status::OK();
   }
 
 } // namespace cdc

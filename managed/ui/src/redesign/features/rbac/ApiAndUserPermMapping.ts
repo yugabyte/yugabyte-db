@@ -469,6 +469,10 @@ export const ApiPermissionMap = {
         requestType: ApiRequestType.DELETE,
         endpoint: '/releases/$name<[^/]+>'
     },
+    GET_YBDB_RELEASES: { requestType: ApiRequestType.GET, endpoint: '/ybdb_release' },
+    CREATE_YBDB_RELEASE: { requestType: ApiRequestType.POST, endpoint: '/ybdb_release' },
+    MODIFY_YBDB_RELEASE: { requestType: ApiRequestType.PUT, endpoint: '/ybdb_release/$rUUID<[^/]+>' },
+    DELETE_YBDB_RELEASE: { requestType: ApiRequestType.DELETE, endpoint: '/ybdb_release/$rUUID<[^/]+>' },
     RESTORE_BACKUP: { requestType: ApiRequestType.POST, endpoint: '/restore' },
     GET_RESTORES_BY_PAGE: { requestType: ApiRequestType.POST, endpoint: '/restore/page' },
     GET_RESTORE_PREFLIGHT_CHECK: {
@@ -933,9 +937,9 @@ export const ApiPermissionMap = {
         requestType: ApiRequestType.POST,
         endpoint: '/xcluster_configs/$xccUUID<[^/]+>/need_bootstrap'
     },
-    SYNC_XCLUSTER_REQUIREMENT: {
+    SYNC_XCLUSTER: {
         requestType: ApiRequestType.POST,
-        endpoint: '/xcluster_configs/sync'
+        endpoint: '/xcluster_configs/$xccUUID<[^/]+>/sync'
     },
     CREATE_NODES_IN_ZONE: {
         requestType: ApiRequestType.POST,
@@ -1123,5 +1127,25 @@ export const ApiPermissionMap = {
     GET_DR_CONFIG_SAFETIME: {
         requestType: ApiRequestType.GET,
         endpoint: '/dr_configs/$drUUID<[^/]+>/safetime'
+    },
+    ENABLE_AUDITLOG_CONFIG : {
+        requestType : ApiRequestType.POST,
+        endpoint : '/universes/$uniUUID<[^/]+>/audit_log_config'
+    },
+    GET_ALL_TELEMETRY_PROVIDERS : {
+        requestType : ApiRequestType.GET,
+        endpoint : '/telemetry_provider'
+    },
+    GET_TELEMETRY_PROVIDER_BY_ID : {
+        requestType : ApiRequestType.GET,
+        endpoint : '/telemetry_provider/$intUUID<[^/]+>'
+    },
+    CREATE_TELEMETRY_PROVIDER : {
+        requestType : ApiRequestType.POST,
+        endpoint : '/telemetry_provider'
+    },
+    DELETE_TELEMETRY_PROVIDER_BY_ID : {
+        requestType : ApiRequestType.DELETE,
+        endpoint : '/telemetry_provider/$intUUID<[^/]+>'
     }
 } satisfies ApiPermissionMapType;

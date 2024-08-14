@@ -204,6 +204,8 @@ typedef struct TransactionStateData
 	int			ybUncommittedStickyObjectCount;	/* Count of objects that require stickiness
 									 		 * within a certain transaction (e.g. TEMP
 									 		 * TABLES/WITH HOLD CURSORS)*/
+	bool		ybIsInternalRcSubTransaction; /* Whether this sub transaction was started internally for
+																				* READ COMMITTED isolation */
 } TransactionStateData;
 
 typedef TransactionStateData *TransactionState;
@@ -239,6 +241,7 @@ static TransactionStateData TopTransactionStateData = {
 	false,						/* ybDataSentForCurrQuery */
 	false,						/* isYBTxnWithPostgresRel */
 	NULL,						/* YBPostponedDdlOps */
+	false,					/* ybIsInternalRcSubTransaction */
 };
 
 /*
@@ -1901,6 +1904,7 @@ YBUpdateActiveSubTransaction(TransactionState s) {
 static void
 YBStartTransaction(TransactionState s)
 {
+	elog(DEBUG2, "YBStartTransaction");
 	s->isYBTxnWithPostgresRel = !IsYugaByteEnabled();
 	s->ybDataSent             = false;
 	s->ybDataSentForCurrQuery = false;
@@ -1943,7 +1947,8 @@ YBInitializeTransaction(void)
 
 		HandleYBStatus(
 			YBCPgSetTransactionIsolationLevel(YBGetEffectivePggateIsolationLevel()));
-		HandleYBStatus(YBCPgEnableFollowerReads(YBReadFromFollowersEnabled(), YBFollowerReadStalenessMs()));
+		HandleYBStatus(YBCPgUpdateFollowerReadsConfig(
+			YBReadFromFollowersEnabled(), YBFollowerReadStalenessMs()));
 		HandleYBStatus(YBCPgSetTransactionReadOnly(XactReadOnly));
 		HandleYBStatus(YBCPgSetEnableTracing(YBEnableTracing()));
 		HandleYBStatus(YBCPgSetTransactionDeferrable(XactDeferrable));
@@ -3036,6 +3041,7 @@ StartTransactionCommandInternal(bool yb_skip_read_committed_handling)
 void
 StartTransactionCommand(void)
 {
+	elog(DEBUG2, "StartTransactionCommand");
 	StartTransactionCommandInternal(false /* yb_skip_read_committed_handling */);
 }
 
@@ -3066,6 +3072,7 @@ IsCurrentTxnWithPGRel(void)
 void
 CommitTransactionCommand(void)
 {
+	elog(DEBUG2, "CommitTransactionCommand");
 	TransactionState s = CurrentTransactionState;
 	TBlockState prevState = s->blockState;
 
@@ -3774,6 +3781,7 @@ CallSubXactCallbacks(SubXactEvent event,
 void
 BeginTransactionBlock(void)
 {
+	elog(DEBUG2, "BeginTransactionBlock");
 	TransactionState s = CurrentTransactionState;
 
 	switch (s->blockState)
@@ -4625,6 +4633,7 @@ BeginInternalSubTransactionForReadCommittedStatement() {
 
 	StartSubTransaction();
 	s->blockState = TBLOCK_SUBINPROGRESS;
+	s->ybIsInternalRcSubTransaction = true;
 }
 
 /*
@@ -4745,6 +4754,7 @@ RollbackAndReleaseCurrentSubTransaction(void)
 void
 AbortOutOfAnyTransaction(void)
 {
+	elog(DEBUG2, "AbortOutOfAnyTransaction");
 	TransactionState s = CurrentTransactionState;
 
 	/* Ensure we're not running in a doomed memory context */
@@ -5288,6 +5298,8 @@ CleanupSubTransaction(void)
 static void
 PushTransaction(void)
 {
+	elog(DEBUG2, "PushTransaction increment sub-txn id from %d -> %d",
+			 currentSubTransactionId, currentSubTransactionId+1);
 	TransactionState p = CurrentTransactionState;
 	TransactionState s;
 
@@ -5350,6 +5362,7 @@ PushTransaction(void)
 static void
 PopTransaction(void)
 {
+	elog(DEBUG2, "PopTransaction sub-txn id %d", currentSubTransactionId);
 	TransactionState s = CurrentTransactionState;
 
 	if (s->state != TRANS_DEFAULT)
@@ -6305,6 +6318,22 @@ void YbClearCurrentTransactionId()
 }
 
 /*
+ * YbClearParallelContexts
+ * Clean up parallel contexts as a part of transparent query restart.
+ */
+void
+YbClearParallelContexts()
+{
+	TransactionState s = CurrentTransactionState;
+	Assert(IsInParallelMode());
+	if (s->subTransactionId == InvalidSubTransactionId)
+		AtEOXact_Parallel(false);
+	else
+		AtEOSubXact_Parallel(false, s->subTransactionId);
+	ExitParallelMode();
+}
+
+/*
  * ```increment_sticky_object_count()``` is called when any database object which requires
  * stickiness is created.
  */
@@ -6320,4 +6349,18 @@ void increment_sticky_object_count()
 void decrement_sticky_object_count()
 {
 	CurrentTransactionState->ybUncommittedStickyObjectCount--;
+}
+
+/*
+ * Check if all sub transactions are internal ones started before each statement for READ COMMITTED
+ * isolation level.
+ */
+bool YbHasOnlyInternalRcSubTransactions()
+{
+	for (TransactionState s = CurrentTransactionState; s != NULL; s = s->parent)
+	{
+		if (s->nestingLevel >= 2 && !s->ybIsInternalRcSubTransaction)
+			return false;
+	}
+	return true;
 }

@@ -33,8 +33,6 @@ import lombok.extern.slf4j.Slf4j;
 @Singleton
 @Slf4j
 public class LocalNodeUniverseManager {
-
-  private static final String YSQL_PASSWORD = "Pass@123";
   @Inject LocalNodeManager localNodeManager;
 
   public ShellResponse runYsqlCommand(
@@ -49,6 +47,17 @@ public class LocalNodeUniverseManager {
       String ysqlCommand,
       long timeoutSec,
       boolean authEnabled) {
+    return runYsqlCommand(node, universe, dbName, ysqlCommand, timeoutSec, authEnabled, false);
+  }
+
+  public ShellResponse runYsqlCommand(
+      NodeDetails node,
+      Universe universe,
+      String dbName,
+      String ysqlCommand,
+      long timeoutSec,
+      boolean authEnabled,
+      boolean escaped) {
     UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
     LocalCloudInfo cloudInfo = LocalNodeManager.getCloudInfo(node, universe);
     List<String> bashCommand = new ArrayList<>();
@@ -72,7 +81,9 @@ public class LocalNodeUniverseManager {
     bashCommand.add("-d");
     bashCommand.add(dbName);
     bashCommand.add("-c");
-    ysqlCommand = ysqlCommand.replace("\"", "");
+    if (!escaped) {
+      ysqlCommand = ysqlCommand.replace("\"", "");
+    }
     bashCommand.add(ysqlCommand);
 
     ProcessBuilder processBuilder =

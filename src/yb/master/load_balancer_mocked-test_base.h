@@ -50,16 +50,19 @@ class LoadBalancerMockedBase : public YBTest {
         replication_info_(cb_.replication_info_),
         pending_add_replica_tasks_(cb_.pending_add_replica_tasks_),
         pending_remove_replica_tasks_(cb_.pending_remove_replica_tasks_),
-        pending_stepdown_leader_tasks_(cb_.pending_stepdown_leader_tasks_) {
+        pending_stepdown_leader_tasks_(cb_.pending_stepdown_leader_tasks_) {}
+
+  void SetUp() override {
+    YBTest::SetUp();
     scoped_refptr<TableInfo> table(new TableInfo(kTableId, /* colocated */ false));
-    std::vector<scoped_refptr<TabletInfo>> tablets;
+    std::vector<TabletInfoPtr> tablets;
 
     // Generate 12 tablets total: 4 splits and 3 replicas each.
     std::vector<std::string> splits = {"a", "b", "c"};
     const int num_replicas = 3;
     total_num_tablets_ = narrow_cast<int>(num_replicas * (splits.size() + 1));
 
-    CreateTable(splits, num_replicas, false, table.get(), &tablets);
+    ASSERT_OK(CreateTable(splits, num_replicas, false, table.get(), &tablets));
 
     tablets_ = std::move(tablets);
     cur_table_uuid_ = kTableId;
@@ -99,10 +102,12 @@ class LoadBalancerMockedBase : public YBTest {
   }
 
   void StopTsHeartbeat(std::shared_ptr<TSDescriptor> ts_desc) {
+    std::lock_guard l(ts_desc->mutex_);
     ts_desc->last_heartbeat_ = MonoTime();
   }
 
   void ResumeTsHeartbeat(std::shared_ptr<TSDescriptor> ts_desc) {
+    std::lock_guard l(ts_desc->mutex_);
     ts_desc->last_heartbeat_ = MonoTime::Now();
   }
 
@@ -303,7 +308,7 @@ class LoadBalancerMockedBase : public YBTest {
   ClusterLoadBalancerMocked cb_;
 
   int total_num_tablets_;
-  std::vector<scoped_refptr<TabletInfo>> tablets_;
+  std::vector<TabletInfoPtr> tablets_;
   BlacklistPB& blacklist_;
   BlacklistPB& leader_blacklist_;
   TableId cur_table_uuid_;

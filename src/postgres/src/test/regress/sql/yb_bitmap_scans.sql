@@ -206,6 +206,38 @@ SELECT * FROM multi WHERE a < 1000 OR (b > 0 AND (c < 15000 OR c > 27000)) ORDER
 /*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 SELECT * FROM multi WHERE a < 1000 OR (b > 0 AND (c < 3000 OR c > 15000)) ORDER BY a;
 
+-- check aggregate pushdown
+SET yb_enable_expression_pushdown = true;
+SET yb_enable_index_aggregate_pushdown = true;
+/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT COUNT(*) FROM multi WHERE a > 10;
+/*+ BitmapScan(multi) */
+SELECT COUNT(*) FROM multi WHERE a > 10;
+
+SET yb_enable_expression_pushdown = false;
+SET yb_enable_index_aggregate_pushdown = true;
+/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT COUNT(*) FROM multi WHERE a > 10;
+/*+ BitmapScan(multi) */
+SELECT COUNT(*) FROM multi WHERE a > 10;
+
+SET yb_enable_expression_pushdown = false;
+SET yb_enable_index_aggregate_pushdown = false;
+/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT COUNT(*) FROM multi WHERE a > 10;
+/*+ BitmapScan(multi) */
+SELECT COUNT(*) FROM multi WHERE a > 10;
+
+SET yb_enable_expression_pushdown = true;
+SET yb_enable_index_aggregate_pushdown = false;
+/*+ BitmapScan(multi) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT COUNT(*) FROM multi WHERE a > 10;
+/*+ BitmapScan(multi) */
+SELECT COUNT(*) FROM multi WHERE a > 10;
+
+RESET yb_enable_index_aggregate_pushdown;
+RESET yb_enable_expression_pushdown;
+
 RESET work_mem;
 
 --
@@ -279,7 +311,7 @@ SELECT * FROM test_recheck_text AS t WHERE a = 'i' AND a < 'j';
 --
 -- test recheck index conditions
 --
-create table recheck_test (col int);
+create table recheck_test (col int4);
 create index on recheck_test (col ASC);
 
 insert into recheck_test select i from generate_series(1, 10) i;
@@ -293,6 +325,84 @@ explain (analyze, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
 SELECT * FROM recheck_test t WHERE t.col < 3 AND t.col = 5;
 explain (analyze, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
 SELECT * FROM recheck_test t WHERE t.col = 5 AND t.col < 3;
+
+-- also test aggregates
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
+SELECT COUNT(*) FROM recheck_test t WHERE t.col < 3 AND t.col IN (2, 5, 6);
+ /*+ BitmapScan(t) */
+SELECT COUNT(*) FROM recheck_test t WHERE t.col < 3 AND t.col IN (2, 5, 6);
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
+SELECT COUNT(*) FROM recheck_test t WHERE t.col IN (2, 5, 6) AND t.col < 3;
+/*+ BitmapScan(t) */
+SELECT COUNT(*) FROM recheck_test t WHERE t.col IN (2, 5, 6) AND t.col < 3;
+
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
+SELECT COUNT(*) FROM recheck_test t WHERE t.col < 3 AND t.col = 5;
+/*+ BitmapScan(t) */
+SELECT COUNT(*) FROM recheck_test t WHERE t.col < 3 AND t.col = 5;
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(t) */
+SELECT COUNT(*) FROM recheck_test t WHERE t.col = 5 AND t.col < 3;
+/*+ BitmapScan(t) */
+SELECT COUNT(*) FROM recheck_test t WHERE t.col = 5 AND t.col < 3;
+
+--
+-- test where casting may cause us to require recheck
+--
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
+SELECT * FROM recheck_test t WHERE col = 2147483647;
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
+SELECT * FROM recheck_test t WHERE col = 2147483648;
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
+SELECT COUNT(*) FROM recheck_test t WHERE col = 2147483647;
+/*+ BitmapScan(t) */
+SELECT COUNT(*) FROM recheck_test t WHERE col = 2147483647;
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
+SELECT COUNT(*) FROM recheck_test t WHERE col = 2147483648;
+/*+ BitmapScan(t) */
+SELECT COUNT(*) FROM recheck_test t WHERE col = 2147483648;
+
+-- create a table with a bigint column to test casting of different column types
+CREATE TABLE recheck_test_bigint (b bigint);
+INSERT INTO recheck_test_bigint VALUES (5), (2147483647), (2147483648);
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF)  /*+ NestLoop(s t) BitmapScan(t) Set(yb_bnl_batch_size 1) */
+SELECT * FROM recheck_test_bigint s JOIN recheck_test t ON s.b = t.col;
+
+--
+-- test where casting may cause us to require recheck (with expression pushdown disabled)
+--
+SET yb_enable_expression_pushdown = false;
+
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
+SELECT * FROM recheck_test t WHERE col = 2147483647;
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
+SELECT * FROM recheck_test t WHERE col = 2147483648;
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
+SELECT COUNT(*) FROM recheck_test t WHERE col = 2147483647;
+/*+ BitmapScan(t) */
+SELECT COUNT(*) FROM recheck_test t WHERE col = 2147483647;
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) /*+ BitmapScan(t) */
+SELECT COUNT(*) FROM recheck_test t WHERE col = 2147483648;
+/*+ BitmapScan(t) */
+SELECT COUNT(*) FROM recheck_test t WHERE col = 2147483648;
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF)  /*+ NestLoop(s t) BitmapScan(t) Set(yb_bnl_batch_size 1) */
+SELECT * FROM recheck_test_bigint s JOIN recheck_test t ON s.b = t.col;
+
+RESET yb_enable_expression_pushdown;
+
+--
+-- #22065: test pushdowns on Subplans
+--
+CREATE TABLE text_pushdown_test (a text, b text);
+CREATE INDEX ON text_pushdown_test (a ASC);
+CREATE INDEX ON text_pushdown_test (b ASC);
+INSERT INTO text_pushdown_test VALUES ('hi', 'hello');
+
+/*+ BitmapScan(text_pushdown_test) */
+SELECT * FROM text_pushdown_test WHERE a = 'hi' AND a <> (SELECT a FROM text_pushdown_test WHERE b = 'hello');
+EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF) /*+ BitmapScan(text_pushdown_test) */
+SELECT * FROM text_pushdown_test WHERE a = 'hi' AND a <> (SELECT a FROM text_pushdown_test WHERE b = 'hello');
 
 --
 -- #22622: test local recheck of condition for a column that is not a target
@@ -309,6 +419,17 @@ select k1 from local_recheck_test t where k2 like 'a%' AND k2 IN ('a', 'b', 'c')
 -- the first condition is rechecked locally, so k2 must be fetched.
 /*+ BitmapScan(t) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
 select k1 from local_recheck_test t where k2 like 'a%' AND k2 IN ('a', 'b', 'c');
+
+-- also check for aggregate pushdowns
+
+/*+ IndexScan(t) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT COUNT(*) FROM local_recheck_test t WHERE k2 LIKE 'a%' AND k2 IN ('a', 'b', 'c');
+/*+ IndexScan(t) */
+SELECT COUNT(*) FROM local_recheck_test t WHERE k2 LIKE 'a%' AND k2 IN ('a', 'b', 'c');
+/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, COSTS OFF, SUMMARY OFF)
+SELECT COUNT(*) FROM local_recheck_test t WHERE k2 LIKE 'a%' AND k2 IN ('a', 'b', 'c');
+/*+ BitmapScan(t) */
+SELECT COUNT(*) FROM local_recheck_test t WHERE k2 LIKE 'a%' AND k2 IN ('a', 'b', 'c');
 
 --
 -- test pk of different types
@@ -395,6 +516,13 @@ SELECT * FROM test_crash_row_comp AS t WHERE (a, a) <= (10, 1) OR a IS NULL;
 /*+ BitmapScan(t) */
 SELECT * FROM test_crash_row_comp AS t WHERE (a, a) <= (10, 1) OR a IS NULL;
 
+--
+-- #22062: variable not found in subplan target list
+--
+CREATE TABLE t2 (k1 INT, k2 INT);
+CREATE INDEX ON t2 (k1 ASC);
+CREATE INDEX ON t2 (k2 ASC);
+EXPLAIN (COSTS OFF) /*+ BitmapScan(t2) */ SELECT * FROM t2 AS a JOIN t2 AS b ON a.k1 = b.k1 OR (a.k2 = b.k1 AND a.k1 = 1);
 
 RESET yb_explain_hide_non_deterministic_fields;
 RESET enable_bitmapscan;

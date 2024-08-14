@@ -37,7 +37,16 @@
       "seconds": "Seconds",
       "startDate": "Start Date",
       "endDate": "End Date",
-      "dot": "."
+      "dot": ".",
+      "and": "and",
+      "learnMore": "Learn more",
+      "clear": "Clear",
+      "duration": {
+        "seconds": "Seconds",
+        "minutes": "Minutes",
+        "hours": "Hours",
+        "days": "Days"
+      }
     },
     "imgAltText": {
       "infoIcon": "Information Icon"
@@ -46,7 +55,7 @@
       "viewDetails": "View Details"
     },
     "queryError": {
-      "failedToFetchUniverselist": "Error fetching universe list.",
+      "failedToFetchUniverseList": "Error fetching universe list.",
       "failedToFetchCustomerRuntimeConfig": "Failed to fetch runtime configurations for the current customer.",
       "failedToFetchUniverseRuntimeConfig": "Failed to fetch runtime configurations for the current universe.",
       "failedToFetchCurrentUniverse": "Unable to fetch universe details for the current universe.",
@@ -60,6 +69,7 @@
       "failedToFetchDrReplicaNamespaces": "Unable to fetch namespaces for DR replica universe UUID: {{universeUuid}}",
       "failedToFetchSourceUniverseTables": "Unable to fetch tables for source universe UUID: {{universeUuid}}",
       "failedToFetchDrPrimaryTables": "Unable to fetch tables for DR primary universe UUID: {{universeUuid}}",
+      "failedToFetchXClusterConfig": "Unable to fetch xCluster config UUID: {{xClusterConfigUuid}}",
       "failedToFetchMetrics": "Failed to fetch metrics.",
       "failedToFetchAlertTemplates": "Failed to fetch alert templates.",
       "failedToFetchAlertConfigs": "Failed to fetch alert configurations.",
@@ -71,6 +81,11 @@
       "consumer_safe_time_skew": "Consumer Safe Time Skew"
     },
     "universeActions": {
+      "lbState": {
+        "loadBalancerEnabled": "Tablet Load Balancer",
+        "loadIsBalanced": "Tablet load is balanced",
+        "loadBalanceInProgress": "Tablet load balancing in progress"
+      },
       "encryptionAtRest": {
         "title": "Manage encryption at-Rest",
         "enableEAR": "Enable encryption at-Rest for this Universe",
@@ -199,6 +214,15 @@
           "finalizingTooltip": "Finalizing v{{version}}",
           "upgradingTooltip": "Upgrading to v{{version}}"
         }
+      },
+      "pgCompatibility": {
+        "modalTitle": "Edit Enhanced Postgres Compatibility",
+        "toggleLabel": "Enhanced Postgres Compatibility",
+        "subText": "Configure YSQL for maximum Postgres compatibility by enabling early access features.",
+        "enableWarning": "<strong>Note!</strong> Enabling enhanced Postgres compatibility requires a <strong>rolling restart</strong> of <strong>{{universeName}}</strong>. The universe will remain online and available throughout.",
+        "disableWarning1": "<strong>Note!</strong> Disabling enhanced Postgres compatibility:",
+        "disableWarning2": "Requires a <strong>rolling restart</strong> of <strong>{{universeName}}</strong>. The universe will remain online and available throughout.",
+        "disableWarning3": "May impact performance."
       }
     },
     "commonErrors": {
@@ -258,7 +282,11 @@
         "yqlServerHttpPort": "YCQL HTTP Port",
         "yqlServerRpcPort": "YCQL RPC Port",
         "ysqlServerHttpPort": "YSQL HTTP Port",
-        "ysqlServerRpcPort": "YSQL RPC Port"
+        "ysqlServerRpcPort": "YSQL RPC Port",
+        "enhancePGCompatibility": "Enhanced Postgres Compatibility",
+        "earlyAccess": "Early Access",
+        "pgSubText": "Configure YSQL for maximum Postgres compatibility by enabling<br /> early access features.",
+        "pgTooltip": "Access to enhanced Postgres compatible features is only available for database version 2024.2 or later."
       },
       "cloudConfig": {
         "addZoneButton": "Add Zone",
@@ -379,7 +407,8 @@
         "flagsModifiedModalBody1": "The Gflags has been modified in another tab/browser/device.",
         "flagsModifiedModalBody2": "If you don't want to lose modified flags, please reload the page.",
         "flagsModifiedModalLine1": "Do you want to reload ?",
-        "flagsModifiedModalLine2": "Note that current changes will be lost."
+        "flagsModifiedModalLine2": "Note that current changes will be lost.",
+        "pgGroupWarning": "You can't change this flag because it was set using the Enhanced Postgres Compatibility option"
       },
       "helmOverrides": {
         "addK8sOverrides": "Add Kubernetes Overrides",
@@ -399,6 +428,7 @@
         "dedicatedNodesHelper": "Place tserver and master processes on separate nodes.",
         "ebs": "EBS Type",
         "ephemeralStorage": "! Selected instance type is with ephemeral storage, If you will pause this universe your data will get lost.",
+        "premiumv2Storage": "! Selected storage type is only available in select regions. Your creation will fail if you choose incorrect region.",
         "instanceType": "Instance Type",
         "k8NumCores": "Number of Cores",
         "k8Memory": "Memory (Gib)",
@@ -420,7 +450,7 @@
         "aarch64": "AArch6 (ARM)",
         "linuxVersion": "Linux Version",
         "showRetired": "Show retired recommendations",
-        "cooldownHours": "Disk can be resized after a cooldown period of 6 hours"
+        "cooldownHours": "Resizing device within cooldown period of 6 hours causes resize to happen only by moving to different nodes"
       },
       "securityConfig": {
         "title": "Security Configurations",
@@ -540,6 +570,9 @@
         "tpServiceUrlLabel": "Troubleshooting Platform Service URL",
         "ybPlatformServiceUrlLabel": "Yugabyte Platform Service URL",
         "ybPlatformMetricsUrlLabel": "Yugabyte Platform Metrics URL",
+        "apiTokenLabel": "API Token",
+        "metricsScrapePeriodSecLabel": "Metrics Scrape Period (in seconds)",
+        "metricsScrapePeriodSecRequired": "Metrics Scrape Period is required",
         "registerButton": "Register",
         "urlPlaceholder": "http(s)://<ip>:<port>",
         "universeDetailsErrorMessage": "Failed to fetch universe details",
@@ -547,6 +580,11 @@
         "configTabTitle": "Configuration",
         "universesTabTitle": "Universes",
         "urlRequired": "Platform Url required",
+        "apiTokenRequired": "API Token required",
+        "monitorUniverseSuccess": "Successfully started monitoring the universe",
+        "monitorUniverseFailure": "Failed to monitor universe",
+        "startMonitoring": "Start monitoring the universe.",
+        "monitor": "Monitor",
         "editDialog": {
           "title": "Update Troubleshooting Platform Configuration",
           "updateButton": "Update",
@@ -799,7 +837,9 @@
               "label": "Metrics",
               "metricsUnavailableDuringFailover": "Metrics are unavailable during failover."
             },
-            "tables": { "label": "Tables" }
+            "tables": {
+              "label": "Tables"
+            }
           },
           "status": {
             "Initializing": "Initializing",
@@ -855,6 +895,7 @@
                 "submitButton": "Next: Select Databases",
                 "drReplica": "DR Replica Universe",
                 "drReplicaSelectionHelpText": "Make sure the DR replica has the right <drReplicaPrerequisiteDocsLink>prerequisites</drReplicaPrerequisiteDocsLink> for disaster recovery.",
+                "missingPermissionOnUniverse": "This user does not have permission to set up xCluster DR with this universe.",
                 "error": {
                   "targetUniverseRequired": "Required.",
                   "mismatchedNodeToNodeEncryption": "The source and target universe must have matching TLS enable/disable setting."
@@ -869,13 +910,26 @@
               "configureBootstrap": {
                 "instruction": "Choose the storage config to use for performing the initial copy",
                 "infoText": "Initial full copy is required when the database contains data. Performing an initial full copy requires a backup storage config as an intermediate third party storage, and is time and resource intensive. This is also referred to as bootstrapping or initial seeding.",
-                "submitButton": "Next: Confirm Alert Threshold",
+                "submitButton": "Next: Configure PITR Settings",
                 "backupStorageConfig": {
                   "label": "Backup Storage Config",
                   "tooltip": "<paragraph>Ensure that the backup storage config <bold>can be accessed from both source and target universe.</bold></paragraph><paragraph>Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions.</paragraph>"
                 },
                 "error": {
                   "backupStorageConfigRequired": "Required."
+                }
+              },
+              "configurePitr": {
+                "instruction": "Configure point-in-time recovery (PITR) settings",
+                "submitButton": "Next: Confirm Alert Threshold",
+                "retentionPeriodSeconds": {
+                  "label": "Snapshot Retention Period",
+                  "tooltip": "A longer snapshot retention period requires more disk space."
+                },
+                "error": {
+                  "pitrRetentionPeriodValueRequired": "Required.",
+                  "pitrRetentionPeriodValueMinimum": "Minimum 5 minutes.",
+                  "pitrRetentionPeriodUnitRequired": "Required."
                 }
               },
               "confirmAlert": {
@@ -931,6 +985,7 @@
               "selectTargetUniverse": {
                 "drReplica": "DR Replica Universe",
                 "nextButton": "Next: Confirm Full Copy",
+                "missingPermissionOnUniverse": "This user does not have permission to set up xCluster DR with this universe.",
                 "error": {
                   "targetUniverseRequired": "Required."
                 }
@@ -1020,7 +1075,12 @@
             "Validated": "Validated",
             "Bootstrapping": "Bootstrapping",
             "UnableToFetch": "Unable to Fetch",
-            "Dropped": "Dropped from DB"
+            "Dropped": "Dropped from DB",
+            "ExtraTableOnSource": "Extra Table On Source",
+            "ExtraTableOnTarget": "Extra Table on Target",
+            "DroppedFromSource": "Dropped From Source",
+            "DroppedFromTarget": "Dropped From Target",
+            "ReplicationError": "Replication Error"
           }
         },
         "createConfigModal": {
@@ -1040,6 +1100,7 @@
                 "tableType": "Table Type",
                 "isTransactionalConfig": "Enable transactional atomicity"
               },
+              "missingPermissionOnUniverse": "This user does not have permission to set up xCluster replication with this universe.",
               "isTransactionalConfigTooltip": "<paragraph>YBA support for transactional atomicity has the following constraints:<orderedList><listItem>The minimum YBDB version that supports transactional atomicity is 2.18.1.0-b1.</listItem><listItem>PITR must be enabled on the target universe.</listItem><listItem>Neither the source universe nor the target universe is a participant in any other xCluster configuration.</listItem></orderedList>You may find further information on this feature on our<xClusterDocLink> public docs.</xClusterDocLink></paragraph>",
               "backupStorageConfigNote": "<paragraph><bold>Note!</bold> If the tables to replicate are not empty on this source universe, ensure that the <bold> backup storage config can be accessed from both source and target universe </bold> for creating an initial full copy. Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions. In that case, refer to the <ybAdminDocsLink>documentation for creating replication using yb-admin</ybAdminDocsLink>.</paragraph>",
               "fullCopyNote": "<bold>What is a full copy?</bold><paragraph>A full copy of your source universe is created to bring the target universe to the same checkpoint before turning on async replication. First, YBAnywhere creates a backup of the source universe. Then it restores the backup to the target universe. Hence the need to ensure the backup storage config is accessible from both source &amp; target universe. If the tables selected for xcluster replication are empty on the source universe, no full copy creation is required.</paragraph>",
@@ -1105,6 +1166,8 @@
           }
         },
         "selectTable": {
+          "tablesSearchBarPlaceholder": "Search tables...",
+          "selectUnreplicatedTablesButton": "Select Unreplicated Tables",
           "selectionDescriptorDr": "List of databases and tables in the DR primary universe.",
           "selectionDescriptorXCluster": "List of databases and tables in the source universe.",
           "tableSelectionCount": "{{selectedTableCount}} out of {{availableTableCount}} table(s) selected",
@@ -1113,6 +1176,13 @@
           "droppedTablesInfoTextXCluster": "<bold>{{droppedTableCount}}</bold> table(s) in the xCluster replication configuration have been dropped on the source universe. These tables will be removed from the configuration upon submission of this select table request.",
           "matchingTableNoteDr": "<bold>Note!</bold> To avoid creating unnecessary full copies for selected databases, ensure the corresponding databases on the DR replica contain the same tables as in the DR primary.",
           "matchingTableNoteXCluster": "<bold>Note!</bold> To avoid creating unnecessary full copies for selected databases, ensure the corresponding databases on the target universe contain the same tables as in the source universe.",
+          "tablePill": {
+            "unreplicatedTableInReplicatedNamespace": "Unreplicated",
+            "droppedOnTarget": "Dropped on Target",
+            "eligible": "Eligible",
+            "inCurrentConfig": "In Current Config",
+            "inUse": "In Use - Not Available"
+          },
           "error": {
             "failedToFetchIsBootstrapRequired": {
               "title": "Table full copy verification failed.",
@@ -1134,6 +1204,24 @@
             }
           }
         },
+        "metrics": {
+          "showAlertThresholdReferenceLine": {
+            "label": "Show Alert Threshold",
+            "disabledTooltip": "No replication lag alert thresholds found. Set up a replication lag alert thresholds by creating an alert policy on the DR primary/source universe."
+          },
+          "lowestReplicationLagAlertThresholdLabel": "Lowest Replication Lag Alert Threshold"
+        },
+        "tableLevelMetricModal": {
+          "title": "Table Replication Lag",
+          "label": {
+            "table": "Table",
+            "schema": "Schema",
+            "database": "Database"
+          },
+          "graphTitle": {
+            "asyncReplicationSentLag": "Async Replication Lag"
+          }
+        },
         "metricsPanel": {
           "graphFilter": {
             "nodeAggregation": {
@@ -1153,16 +1241,11 @@
               "bottom": "Bottom K"
             }
           },
-          "showAlertThresholdReferenceLine": {
-            "label": "Show Alert Threshold",
-            "disabledTooltip": "No replication lag alert thresholds found. Set up a replication lag alert thresholds by creating an alert policy on the DR primary/source universe."
-          },
           "graphTitle": {
             "asyncReplicationSentLag": "Async Replication Lag",
             "consumerSafeTimeLag": "Consumer Safe Time Lag",
             "consumerSafeTimeSkew": "Consumer Safe Time Skew"
-          },
-          "lowestReplicationLagAlertThresholdLabel": "Lowest Replication Lag Alert Threshold"
+          }
         },
         "error": {
           "undefinedXClusterTableType": "Unable to determine the table type of the current xCluster configuration. Please ensure the source universe is reachable and contains at least one table among those configured for xCluster replication.",
@@ -1242,14 +1325,14 @@
       }
     },
     "cdc": {
-      "emptyContainerTitle": "Replication Slots",
+      "emptyContainerTitle": "CDC Replication Slots",
       "emptyContainerSubtitle": "Use Change Data Capture (CDC) replication slots to capture and emit database change events.",
       "emptyContainerLink": "Learn how to use CLI to create and manage CDC replication slots",
       "name": "Name",
       "status": "Status",
       "database": "Database",
       "currentLag": "Current Lag",
-      "replicationSlots": "Replication Slots",
+      "replicationSlots": "CDC Replication Slots",
       "timeToExpiry": "Time to expiry",
       "replicationStatus": "Replication slot status",
       "replicationSlot": "Replication Slot",
@@ -1691,6 +1774,52 @@
           "includeFutureUniverse": "Include future Universes",
           "disabledOnUniverseCreatePerm": "Universe selection is not allowed for role with \"Create Universe\" permission"
         }
+      },
+      "groups": {
+        "list": {
+          "rowsCount": "{{count}} Groups",
+          "createGroup": "Add Group",
+          "search": "Search Group Name",
+          "inactive": "Inactive",
+          "table": {
+            "name": "Group Name",
+            "authProvider": "Auth Provider",
+            "roles": "Roles",
+            "createdAt": "Created At",
+            "actions": "Actions",
+            "moreActions": {
+              "editGroup": "Edit Group",
+              "deleteGroup": "Delete Group"
+            }
+          },
+          "groupDisabled": "This group will become active once {{auth_provider}} is enabled."
+        },
+        "create": {
+          "title": "Add Group",
+          "editGroup": "Edit Group",
+          "authProvider": "Group Authentication Provider",
+          "groupName": "Group DN (Name)",
+          "groupNamePlaceholder": "Example:  cn = eng , ou = backend, dc = Yugabyte, dc = com",
+          "groupRolesTitle": "Group Roles",
+          "authProviderDisabled": "You need to first configure {{auth_provider}} before you can add its user groups.",
+          "configureLDAPRoleSettings": "<b>Note!</b> You need to <a>configure LDAP role settings for membership lookup</a> before adding its user groups.",
+          "groupInactive": "<b>Note!</b> This group is currently inactive.  Any change to the group will take effect once {{auth_provider}} is enabled.",
+          "createSuccess": "Group added successfully",
+          "updateSuccess": "Group updated successfully",
+          "groupNameRequired": "Group name is required"
+        },
+        "delete": {
+          "groupName": "Group Name",
+          "groupNamePlaceholder": "Enter Group Name",
+          "title": "Delete Group",
+          "errMsg": "This operation will delete the following group:<br/><bold>“{{group_name}}”</bold><br/>Enter the group name to continue.",
+          "successMsg": "\"{{group_name}}\" group was deleted successfully"
+        },
+        "empty": {
+          "addGroup": "Add Group",
+          "addGroupHelpText": "Add user groups configured in your user authentication provider.",
+          "noAuthConfigured": "<b>Note!</b> You need to <a>configure a user authentication provider</a> before you can add its user groups."
+        }
       }
     },
     "restore": {
@@ -1772,7 +1901,8 @@
         "submitLabel": "Upgrade",
         "restartAfterInSecond": "Rolling Restart Delay Between Servers (secs)",
         "successMsg": "Success. Click <0>here</0> for task details",
-        "sameVersionErrMsg": "Universe is already using the imageBundle \"{{image_name}}\". Performing OS patching using it will result in no operation."
+        "sameVersionErrMsg": "Universe is already using the imageBundle \"{{image_name}}\". Performing OS patching using it will result in no operation.",
+        "verifyImageText": "It is recommended to <b>verify that the selected image can boot successfully</b> on a standalone VM with the same instance type as the universe before initiating the upgrade."
       },
       "deleteModal": {
         "title": "Delete Linux Version",
@@ -1903,6 +2033,78 @@
         "helperText": "YugabyteDB Anywhere will use this URL to retrieve the installation file during deployment and upgrades."
       }
     },
+    "taskDetails": {
+      "header": {
+        "title": "Operation Details"
+      },
+      "taskNotfound": "Task not found!",
+      "actions": {
+        "retry": "Retry",
+        "abort": "Abort",
+        "diffs": {
+          "Update": "View Universe Changes",
+          "SoftwareUpgrade": "View Software Upgrade Changes",
+          "GFlagsUpgrade": "View GFlags Changes"
+        },
+        "messages": {
+          "abortConfirmTitle": "Abort Running Task ?",
+          "abortConfirmMsg": "Do you really want to abort this task?",
+          "retryConfirmTitle": "Retry Task ?",
+          "retryConfirmMsg": "Do you really want to retry this task?",
+          "taskAbortSuccess": "Task abort started",
+          "taskAbortFailed": "Task abort failed",
+          "taskRetrySuccess": "Task retry started",
+          "taskRetryFailed": "Task retry failed"
+        }
+      },
+      "info": {
+        "task": "Task",
+        "type": "Type",
+        "target": "Target",
+        "status": "Status",
+        "startTime": "Start Time",
+        "endTime": "End time",
+        "startVersion": "Start Version",
+        "targetVersion": "Target Version",
+        "Failure": "Failed",
+        "Success": "Completed",
+        "Running": "In Progress"
+      },
+      "progress": {
+        "title": "Progress",
+        "complete": "{{progress}}% Completed",
+        "expand": "Expand",
+        "showLog": "YugaWare Log"
+      },
+      "banner": {
+        "viewDetails": "View Details",
+        "taskProgress": "{{percent}}%",
+        "opNotAvailable": "Some operations are not available while the current operation is in progress"
+      },
+      "simple": {
+        "viewDetails": "View Details"
+      },
+      "diffModal": {
+        "title": "Universe Changes",
+        "expandAll": "Expand All",
+        "diffDetailsNotFound": "Unable to find diff details",
+        "alerts": {
+          "inProgress": "This operation intends to modify the following {{count}} value(s). ",
+          "failed": "<b>Changes haven't been fully implemented</b> due to the failure of the task."
+        },
+        "titles": {
+          "Update": "Universe Changes",
+          "SoftwareUpgrade": "Software Upgrade Changes",
+          "GFlagsUpgrade": " GFlags Upgrade Changes"
+        },
+        "universeDiff": {
+          "region": "Region",
+          "availabilityZone": "Availability Zone",
+          "nodes": "nodes",
+          "preferred": "preferred"
+        }
+      }
+    },
     "ha": {
       "config": {
         "globalState": {
@@ -1921,6 +2123,246 @@
           "Disconnected": "Disconnected"
         }
       }
+    },
+    "dbAuitLog": {
+      "header": "Database Audit Log",
+      "enableDatabaseLog": "Enable Database Audit Logging",
+      "emptyMsg1": "Capture session database audit logs to comply with government, financial, or ISO certification.",
+      "emptyMsg2": "Additionally, export the logs to a 3rd party monitoring tool or download them usingthe API.",
+      "learnMoreLog": "Learn more about <1>datbase audit logging</1> and exporting audit log",
+      "learnMore": "Learn more about ",
+      "auditLogLink": "datbase audit logging",
+      "exportLink": "exporting audit log",
+      "noteMsg": "<strong>Note : </strong>Audit logging adds performance overhead, especially for verbose audit logging.",
+      "editMenuTitle": "Edit",
+      "editLogAndExport": "Edit Audit Logging and Export",
+      "disableAuditExport": "Disable Audit Log Export",
+      "disableAuditLog": "Disable Audit Logging",
+      "auditLogCardTitle": "YSQL Audit Log",
+      "auditLogCardStatus": "YSQL AUDIT LOG STATUS",
+      "auditLogCardLocation": "YSQL AUDIT LOG LOCATION",
+      "auditExportCardTitle": "Audit Log Export",
+      "auditExportCardStatus": "EXPORT STATUS",
+      "auditExportName": "EXPORT CONFIGURATION NAME",
+      "auditExportingTo": "EXPORTING TO",
+      "exportButton": "Export Audit Log",
+      "emptyExportLine1": "Export audit log to a third party log management tool.",
+      "emptyExportLine2": "Learn more about exporting audit log and downloading your audit log using API",
+      "configuring": "Configuring",
+      "disableLogTitle": "Disable Database Audit Logging",
+      "disableLogSubmitLabel": "Disable Database Audit Logging",
+      "disableLogWarning": "Are you sure you want to disable database audit logging?",
+      "disableLogMessage": "<strong>Note!</strong> Disabling database audit logging requires a <strong>rolling restart</strong> of universe <strong>{{universeName}}</strong>. The universe will remain online and available throughout.",
+      "disableExportTitle": "Disable Database Audit Log Export",
+      "disableExportSubmitLabel": "Disable Database Audit Log Export",
+      "disableExportWarning": "Are you sure you want to disable database audit log export?",
+      "disableExportMessage": "<strong>Note!</strong> Disabling database audit log export requires a <strong>rolling restart</strong> of universe <strong>{{universeName}}</strong>. The universe will remain online and available throughout.",
+      "settingsModal": {
+        "configureDBLog": "Configure Database Audit Logging",
+        "submitLabel": "Enable and Export Database Audit Log",
+        "title": "YSQL audit log",
+        "mainMsg": "Customize the YSQL statements, relations, and log settings logged using PostgreSQL Audit Extension (<1>pgAudit</1>). Database audit logging will add performance overhead, especially for verbose logs. <2>Learn more about YSQL audit logging</2>.",
+        "line1": "Customize the YSQL statements, relations, and log settings logged using PostgreSQL Audit Extension",
+        "line2": "Database audit logging will add performance overhead, especially for verbose logs.",
+        "pgAuditLink": "pgAudit",
+        "learnMoreYSQlLog": "Learn more about YSQL audit logging.",
+        "ysqlStatementTitle": "1. Select YSQL statements and relations to log",
+        "ysqlLogSettingsTitle": "2. Configure YSQL audit log settings",
+        "exportLogTitle": "3. Select a destination for the logs",
+        "logExportConfig": "Log Export Configuration",
+        "createExportConfig": "Create Export Configuration",
+        "editAuditLog": "Edit Database Audit Logging",
+        "confirmationDialogMsg": "{{typeVal}} database audit logging requires a <strong>rolling restart</strong> of a universe <strong>{{universeName}}</strong>. The universe will remain online and available throughout.",
+        "leavePageModalTitle": "You are about to leave this page",
+        "leaveModalSubmit": "Navigate to Integrations > Log Export"
+      },
+      "tooltips": {
+        "logCatalog": "Log statements for the PostgreSQL system catalog relations in pg_catalog. Disable this option to reduce noise in the log.",
+        "logClient": "Log messages directly to clients such as ysqlsh and psql for debugging. When enabled, you can set the level of logs that are output using pgaudit.log_client.",
+        "logLevel": "Set the severity level of logs displayed in clients when pgaudit.log_client is on.",
+        "logParameter": "Include parameters passed with the statement. Parameters are provided in .csv format after the statement text.",
+        "logParameterMaxSize": "Maximum size, in bytes, of parameters to include. Parameters longer than this value are replaced with <long param suppressed>.",
+        "logRelation": "Create separate log entries for each relation (TABLE, VIEW, etc.) referenced in a SELECT or DML statement. This is a shortcut for exhaustive logging without using object audit logging.",
+        "logStatement": "Include the statement text and parameters.",
+        "logStatementOnce": "Statement text (and, if enabled, parameters) are included with every log entry. Enable this option to only include them with the first log entry for a statement or sub-statement combination. This results in less verbose logging, but can make it more difficult to determine the statement that generated a log entry.",
+        "logRow": "Include the rows retrieved or affected by a statement.",
+        "exportLog": "Forward audit log to your preferred 3rd party log management tool such as Datadog, Splunk, AWS CloudWatch, or GCP Cloud Logging. The audit logs are always available for download using the API regardless of whether export is enabled or otherwise."
+      },
+      "exportNavDialogMsg": "To create an export configuration for logs, navigate to <strong>Integrations > Log Export</strong>.",
+      "exportNavLink": "<strong>Note!</strong> To export database audit logs to a third party tool, you need an export configuration in <1>Integrations > Log export</1>."
+    },
+    "exportAuditLog": {
+      "exportConfigForLogs": "Export Configurations for Logs",
+      "createExport": "Create Export Configuration",
+      "emptyMsg1": "Export logs and/or metrics to your preferred 3rd party monitoring tool.",
+      "learnExport": "Learn more about <1>exporting logs</1>.",
+      "emptyExportNote": "<strong>Note:</strong> Audit logging requires additional resources and will impose performance overhead, especially for verbose audit logging. ",
+      "addConfiguration": "Add Configuration",
+      "deleteConfiguration": "Delete Configuration",
+      "exportName": "Export Configuration name",
+      "exportTo": "Export to",
+      "usageHeader": "Usage",
+      "inUse": "In Use",
+      "notInUse": "Not in Use",
+      "assignedUniverses": "Assigned Universes",
+      "modalTitle": "Create Export Configuration for Logs",
+      "submitLabel": "Validate and Create Configuration",
+      "dataDogApiKey": "Datadog API Key",
+      "dataDogURLPlaceholder": "Custom Datadog URL",
+      "dataDogSite": "Datadog Site",
+      "siteURL": "Site URL",
+      "splunkToken": "Splunk Access Token",
+      "endpointURL": "Endpoint URL",
+      "source": "Source (Optional)",
+      "sourceType": "Source Type (Optional)",
+      "splunkIndex": "Index (Optional)",
+      "awsAccessKey": "AWS Access Key",
+      "awsSecretKey": "AWS Secret Access Key",
+      "logGroup": "Log group",
+      "logStream": "Log Stream",
+      "awsRegion": "Region",
+      "awsRoleARN": "Role ARN (Optional)",
+      "awsEndpoint": "Endpoint (Optional)",
+      "gcpProject": "Project (Optional)",
+      "uploadGCPCredentails": "Upload GCP credentails",
+      "gcpDescription": "Only JSON Files allowed. <br /><br />Find your GCP service account key under Service Accounts<br /> in Google Cloud console.",
+      "deleteModalTitle": "Delete Export Configuration",
+      "deleteModalMsg": "Are you sure you want to delete <strong>{{name}}</strong> ?",
+      "deleteModalSubmitLabel": "Delete Export Configuration",
+      "deleteConfirmMsg": "{{name}} export configuration got deleted succesfully",
+      "deleteConfig": "Delete Configuration"
+    },
+    "userAuth": {
+      "disableModal": {
+        "title": "Disable {{type}}",
+        "content": "<b>Note! </b>By disabling {{type}} users won't be able to login with your current authentication provider. Are you sure?"
+      },
+      "OIDC": {
+        "title": "OIDC Configuration",
+        "oidcEnabled": "OIDC Enabled",
+        "oidcDisabled": "OIDC Disabled",
+        "clientID": "Client ID",
+        "clientSecret": "Client Secret",
+        "airGapped": "Airgapped",
+        "open": "Connected to the Internet",
+        "yugabyteConnectionMode": "YugabyteDB Anywhere is",
+        "discoveryURL": "Discovery URL",
+        "scope": "Scope",
+        "emailAttribute": "Email Attribute",
+        "refreshTokenURL": "Refresh Token URL",
+        "displayJWTToken": "Display JWT token on login",
+        "oidcProviderConfig": "Add OIDC Provider configuration ",
+        "roles": {
+          "title": "Role Settings",
+          "userRoleSettings": "User Role Settings",
+          "userDefaultRole": "User Default Role",
+          "connectOnly": "Connect Only",
+          "readOnly": "Read Only",
+          "alertText": "Assign roles to groups under <a>Groups tab</a>."
+        },
+        "messages": {
+          "oidcEnabled": "OIDC authentication is enabled",
+          "oidcDisabled": "OIDC authentication is disabled",
+          "oidcSaveFailed": "Failed to update OIDC configuration: {{key}}`",
+          "oidcSaveSuccess": "OIDC configuration updated successfully",
+          "discoveryURLRequired": "Discovery URL is required",
+          "clientIDRequired": "Client ID is required",
+          "clientSecretRequired": "Client Secret is required"
+        },
+        "OIDCMetadataModal": {
+          "title": "Add OIDC Provider Configuration",
+          "helpText": "Paste the content of your identity <b>provider's OIDC configuration document</b> (in JSON format) into the field below.<br/><br/>The document contains key-value pairs with details about the OIDC provider's configuration, including all necessary endpoints and public key location information. <a>Learn More</a>"
+        },
+        "infos": {
+          "oidcEnabled": "Enable or Disable OIDC Authentication",
+          "clientID": "The unique identifier of your manually created client application in the Identity Provider",
+          "clientSecret": "The password or secret for authenticating your Yugabyte client application with your Identity Provider",
+          "discoveryURL": "Endpoint that validates all authorization requests. This can be found in discovery document",
+          "scope": "Identity provider scope",
+          "emailAttribute": "Scope containing email ID of the user",
+          "refreshTokenURL": "Provide the endpoint that will be used for re-fetching the access token",
+          "connectOnly": "Users with ConnectOnly role cannot see any information other than their own profile information",
+          "jwtTokenURL": "Option to display button to retrieve the JWT token"
+        }
+      },
+      "LDAP": {
+        "title": "LDAP Configuration",
+        "ldapEnabled": "LDAP Enabled",
+        "ldapDisabled": "LDAP Disabled",
+        "ldapURL": "LDAP URL",
+        "ldapSecurity": "Security Protocol",
+        "tlsProtocol": "TLS Protocol Version",
+        "ldapBaseDN": "LDAP Base DN",
+        "ldapDNPrefix": "LDAP DN Prefix (Optional)",
+        "customerUUID": "LDAP Customer UUID (Optional)",
+        "searchAndBind": "Binding Mechanism",
+        "searchAttribute": "Search Attribute",
+        "searchFilter": "Search Filter",
+        "serviceAccountName": "Bind DN",
+        "serviceAccountPassword": "Password",
+        "useQuery": "Configure membership lookup",
+        "groupMemeberAttribute": " Attribute that will be used to find the list of groups that is a member of",
+        "groupSearchFilter": "Filter to find all groups that a user belongs to",
+        "groupSearchBaseDN": "Group Search Base DN",
+        "ldapGroupSearchScope": "Select Scope",
+        "addServiceAccountDetails": "Add Service Account Details",
+        "infos": {
+          "ldapEnabled": "Enable or Disable LDAP Authentication",
+          "ldapURL": "LDAP URL must be a valid URL with port number, Ex:- 0.0.0.0:0000",
+          "ldapSecurity": "Configure the LDAP server connection to use LDAPS (SSL) or LDAP with StartTLS (TLS) encryption",
+          "tlsProtocol": "Configure the TLS Protocol Version to be used in case of StartTLS or LDAPS",
+          "ldapBaseDN": "Base of the DN for LDAP queries. Will be appended to the user name at login time to query the LDAP server",
+          "ldapDNPrefix": "LDAP DN Prefix will be set to CN= by default if not provided",
+          "customerUUID": "Unique ID of the customer in case of multi-tenant platform",
+          "searchAndBind": "Mechanism used to bind to the LDAP server",
+          "searchAttribute": "Attribute that will be used to search for the user in the LDAP server",
+          "searchFilter": "Filter that will be used to narrow down the search for the user inside specific LDAP groups. Either search attribute or filter should be specified.",
+          "serviceAccountName": "Bind DN will be used to login to the service account",
+          "serviceAccountPassword": "Password for Service Account",
+          "connectOnly": "Users with ConnectOnly role cannot see any information other than their own profile information",
+          "groupSearchFilter": "<b>Use {username} to refer to the user CN</b><br/>Example: (&(objectClass=group)(member=CN={username},OU=Users,DC=yugabyte,DC=com)",
+          "groupSearchBaseDN": "Base DN used to search for user group membership",
+          "serviceAccountNameHelpText": "Format : {{DN prefix}} + {{LDAP user username/service account username }}+ {{LDAP base DN}}"
+        },
+        "roles": {
+          "title": "Role Settings",
+          "userRoleSettings": "User Role Settings",
+          "userDefaultRole": "User Default Role",
+          "connectOnly": "Connect Only",
+          "readOnly": "Read Only",
+          "alertText": "Assign roles to groups under <a>Groups tab</a>."
+        },
+        "group": {
+          "title": "Group Role Settings",
+          "helpText": "This is required if you want to assign YugabyteDB Anywhere roles to your LDAP Groups. "
+        },
+        "messages": {
+          "ldapEnabled": "LDAP authentication is enabled",
+          "ldapDisabled": "LDAP authentication is disabled",
+          "ldapSaveFailed": "Failed to update LDAP configuration: {{key}}`",
+          "ldapSaveSuccess": "LDAP configuration updated successfully",
+          "ldapURL": "LDAP URL is required",
+          "ldapURLPortNo": "LDAP URL must be a valid URL with port number",
+          "ldapSecurity": "Connection security is required",
+          "password": "Password is required",
+          "searchAttributeOrFilter": "Either search attribute or filter should be specified",
+          "userAttribute": "User attribute is required",
+          "searchFilter": "Search Filter is Required",
+          "groupSearchBN": "Group Search Base DN is Required",
+          "bindDN": "Bind DN is Required",
+          "tlsVersion": "TLS Version is required",
+          "baseDN": "Base DN is required"
+        }
+      }
+    },
+    "footer": {
+      "platformVersion": "Platform Version",
+      "platformHostUrl": "Platform Host URL",
+      "joinUsOn": "Join us on",
+      "starUsOn": "Star us on",
+      "github": "GitHub",
+      "freeTShirtAt": "Free t-shirt at",
+      "yugabyteInc": "Yugabyte, Inc."
     }
   }
 }

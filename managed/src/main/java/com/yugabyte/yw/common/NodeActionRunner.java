@@ -12,7 +12,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -46,15 +45,8 @@ public class NodeActionRunner {
    */
   public ShellResponse runCommand(
       NodeAgent nodeAgent, List<String> command, ShellProcessContext context) {
-    List<String> shellCommand = new ArrayList<>();
-    shellCommand.add("bash");
-    shellCommand.add("-c");
-    // Same join as in rpc.py of node agent.
-    shellCommand.add(
-        command.stream()
-            .map(part -> part.contains(" ") ? "'" + part + "'" : part)
-            .collect(Collectors.joining(" ")));
-    ShellResponse response = nodeAgentClient.executeCommand(nodeAgent, shellCommand, context);
+    ShellResponse response =
+        nodeAgentClient.executeCommand(nodeAgent, command, context, true /* use bash */);
     if (response.getCode() == 0) {
       // Prefix is added to make the output same as that of run_node_action.py.
       response.message = ShellResponse.RUN_COMMAND_OUTPUT_PREFIX + response.message;

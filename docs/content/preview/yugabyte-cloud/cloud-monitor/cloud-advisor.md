@@ -1,5 +1,5 @@
 ---
-title: YugabyteDB Managed Performance Advisor
+title: YugabyteDB Aeon Performance Advisor
 headerTitle: Performance Advisor
 linkTitle: Performance Advisor
 description: Scan your cluster to discover performance optimizations.
@@ -14,7 +14,7 @@ type: docs
 
 Use Performance Advisor to scan your cluster for potential optimizations.
 
-{{< youtube id="8df1leHBLIQ" title="Optimize YugabyteDB Managed clusters with Performance Monitor" >}}
+{{< youtube id="8df1leHBLIQ" title="Optimize YugabyteDB Aeon clusters with Performance Monitor" >}}
 
 For meaningful results, run your workload for at least an hour before running the advisor.
 
@@ -86,7 +86,7 @@ Connections should be distributed equally across all the nodes in the cluster. U
 
 **Fix the problem**
 
-- If a load balancer is used to distribute connections among nodes of cluster, review the configuration of the load balancer. If you are using the YugabyteDB Managed load balancer, contact {{% support-cloud %}}.
+- If a load balancer is used to distribute connections among nodes of cluster, review the configuration of the load balancer. If you are using the YugabyteDB Aeon load balancer, contact {{% support-cloud %}}.
 - If you are load balancing in your application or client, review your implementation.
 
 ### Query load skew

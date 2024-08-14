@@ -33,6 +33,7 @@
 
 #include <memory>
 
+#include "yb/master/clone/clone_state_manager.h"
 #include "yb/master/cluster_balance.h"
 #include "yb/master/master.h"
 #include "yb/master/ts_descriptor.h"
@@ -65,12 +66,6 @@ DEFINE_RUNTIME_bool(sys_catalog_respect_affinity_task, true,
             "Whether the master sys catalog tablet respects cluster config preferred zones "
             "and sends step down requests to a preferred leader.");
 
-DEFINE_RUNTIME_bool(ysql_enable_auto_analyze_service, false,
-                    "Enable the Auto Analyze service which automatically triggers ANALYZE to "
-                    "update table statistics for tables which have changed more than a "
-                    "configurable threshold.");
-TAG_FLAG(ysql_enable_auto_analyze_service, experimental);
-
 DEFINE_test_flag(bool, pause_catalog_manager_bg_loop_start, false,
                  "Pause the bg tasks thread at the beginning of the loop.");
 
@@ -82,20 +77,23 @@ DEFINE_test_flag(bool, cdcsdk_skip_processing_dynamic_table_addition, false,
 
 DECLARE_bool(enable_ysql);
 DECLARE_bool(TEST_echo_service_enabled);
+DECLARE_bool(cdcsdk_enable_cleanup_of_non_eligible_tables_from_stream);
+DECLARE_bool(ysql_enable_auto_analyze_service);
 
 namespace yb {
 namespace master {
 
 typedef std::unordered_map<TableId, std::list<CDCStreamInfoPtr>> TableStreamIdsMap;
 
-CatalogManagerBgTasks::CatalogManagerBgTasks(CatalogManager *catalog_manager)
+CatalogManagerBgTasks::CatalogManagerBgTasks(Master* master)
     : closing_(false),
       pending_updates_(false),
       cond_(&lock_),
       thread_(nullptr),
-      catalog_manager_(catalog_manager),
+      master_(master),
+      catalog_manager_(master->catalog_manager_impl()),
       load_balancer_duration_(METRIC_load_balancer_duration.Instantiate(
-          catalog_manager->master_->metric_entity())) {
+          master_->metric_entity())) {
 }
 
 void CatalogManagerBgTasks::Wake() {
@@ -152,8 +150,15 @@ void CatalogManagerBgTasks::TryResumeBackfillForTables(
     const auto& table_info = *table_info_result;
     // Get schema version.
     uint32_t version = table_info->LockForRead()->pb.version();
-    const auto& tablets = table_info->GetTablets();
-    for (const auto& tablet : tablets) {
+    const auto tablets_result = table_info->GetTablets();
+    if (!tablets_result) {
+      LOG(WARNING) << Format(
+          "PITR: Cannot resume backfill for table, backing TabletInfo objects have been freed. "
+          "Table id: $0",
+          table_info->id());
+      return;
+    }
+    for (const auto& tablet : *tablets_result) {
       LOG(INFO) << "PITR: Try resuming backfill for tablet " << tablet->id()
                 << ". If it is not a table for which backfill needs to be resumed"
                 << " then this is a NO-OP";
@@ -167,7 +172,7 @@ void CatalogManagerBgTasks::TryResumeBackfillForTables(
 }
 
 void CatalogManagerBgTasks::ClearDeadTServerMetrics() const {
-  auto descs = catalog_manager_->master_->ts_manager()->GetAllDescriptors();
+  auto descs = master_->ts_manager()->GetAllDescriptors();
   for (auto& ts_desc : descs) {
     if (!ts_desc->IsLive()) {
       ts_desc->ClearMetrics();
@@ -206,6 +211,9 @@ void CatalogManagerBgTasks::Run() {
       // Cleanup old tasks from tracker.
       catalog_manager_->tasks_tracker_->CleanupOldTasks();
 
+      // Mark unresponsive tservers.
+      catalog_manager_->master_->ts_manager()->MarkUnresponsiveTServers();
+
       TabletInfos to_delete;
       TableToTabletInfos to_process;
 
@@ -216,20 +224,22 @@ void CatalogManagerBgTasks::Run() {
       if (!to_process.empty()) {
         // For those tablets which need to be created in this round, assign replicas.
         TSDescriptorVector ts_descs = catalog_manager_->GetAllLiveNotBlacklistedTServers();
-        CMGlobalLoadState global_load_state;
-        catalog_manager_->InitializeGlobalLoadState(ts_descs, &global_load_state);
-        // Transition tablet assignment state from preparing to creating, send
-        // and schedule creation / deletion RPC messages, etc.
-        // This is done table by table.
-        for (const auto& entries : to_process) {
-          LOG(INFO) << "Processing pending assignments for table: " << entries.first;
-          Status s = catalog_manager_->ProcessPendingAssignmentsPerTable(
-              entries.first, entries.second, l.epoch(), &global_load_state);
-          WARN_NOT_OK(s, "Assignment failed");
-          // Set processed_tablets as true if the call succeeds for at least one table.
-          processed_tablets = processed_tablets || s.ok();
-          // TODO Add tests for this in the revision that makes
-          // create/alter fault tolerant.
+        auto global_load_state_result = catalog_manager_->InitializeGlobalLoadState(ts_descs);
+        if (global_load_state_result.ok()) {
+          auto global_load_state = *global_load_state_result;
+          // Transition tablet assignment state from preparing to creating, send
+          // and schedule creation / deletion RPC messages, etc.
+          // This is done table by table.
+          for (const auto& [table_id, tablets] : to_process) {
+            LOG(INFO) << "Processing pending assignments for table: " << table_id;
+            Status s = catalog_manager_->ProcessPendingAssignmentsPerTable(
+                table_id, tablets, l.epoch(), &global_load_state);
+            WARN_NOT_OK(s, "Assignment failed");
+            // Set processed_tablets as true if the call succeeds for at least one table.
+            processed_tablets = processed_tablets || s.ok();
+            // TODO Add tests for this in the revision that makes
+            // create/alter fault tolerant.
+          }
         }
       }
 
@@ -259,10 +269,10 @@ void CatalogManagerBgTasks::Run() {
         tables = std::vector(std::begin(tables_it), std::end(tables_it));
         tablet_info_map = *catalog_manager_->tablet_map_;
       }
-      catalog_manager_->tablet_split_manager()->MaybeDoSplitting(
+      master_->tablet_split_manager().MaybeDoSplitting(
           tables, tablet_info_map, l.epoch());
 
-      WARN_NOT_OK(catalog_manager_->clone_state_manager()->Run(),
+      WARN_NOT_OK(master_->clone_state_manager().Run(),
           "Failed to run CloneStateManager: ");
 
       if (!to_delete.empty() || catalog_manager_->AreTablesDeletingOrHiding()) {
@@ -295,6 +305,31 @@ void CatalogManagerBgTasks::Run() {
         }
       }
 
+      {
+        if (FLAGS_cdcsdk_enable_cleanup_of_non_eligible_tables_from_stream) {
+          // Find if there are any non eligible tables (indexes, mat views) present in cdcsdk
+          // stream that are not associated with a replication slot.
+          TableStreamIdsMap non_user_tables_to_streams_map;
+          // In case of master leader restart or leadership changes, we would have scanned all
+          // streams (without replication slot) in ACTIVE/DELETING METADATA state for non eligible
+          // tables and marked such tables for removal in
+          // namespace_to_cdcsdk_non_eligible_table_map_.
+          Status s = catalog_manager_->FindCDCSDKStreamsForNonEligibleTables(
+              &non_user_tables_to_streams_map);
+
+          if (s.ok() && !non_user_tables_to_streams_map.empty()) {
+            s = catalog_manager_->RemoveNonEligibleTablesFromCDCSDKStreams(
+                non_user_tables_to_streams_map, l.epoch());
+          }
+          if (!s.ok()) {
+            YB_LOG_EVERY_N(WARNING, 10)
+                << "Encountered failure while trying to remove non eligible "
+                   "tables from cdc_state table: "
+                << s.ToString();
+          }
+        }
+      }
+
       // Ensure the master sys catalog tablet follows the cluster's affinity specification.
       if (FLAGS_sys_catalog_respect_affinity_task) {
         Status s = catalog_manager_->SysCatalogRespectLeaderAffinity();
@@ -317,7 +352,7 @@ void CatalogManagerBgTasks::Run() {
       catalog_manager_->GetXClusterManager()->RunBgTasks(l.epoch());
 
       // Abort inactive YSQL BackendsCatalogVersionJob jobs.
-      catalog_manager_->master_->ysql_backends_manager()->AbortInactiveJobs();
+      master_->ysql_backends_manager()->AbortInactiveJobs();
 
       // Set the universe_uuid field in the cluster config if not already set.
       WARN_NOT_OK(catalog_manager_->SetUniverseUuidIfNeeded(l.epoch()),
@@ -331,7 +366,7 @@ void CatalogManagerBgTasks::Run() {
         load_balancer_duration_->Reset();
         catalog_manager_->ResetMetrics();
         catalog_manager_->ResetTasksTrackers();
-        catalog_manager_->master_->ysql_backends_manager()->AbortAllJobs();
+        master_->ysql_backends_manager()->AbortAllJobs();
         was_leader_ = false;
       }
     }

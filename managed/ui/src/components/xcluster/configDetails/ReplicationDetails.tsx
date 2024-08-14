@@ -18,7 +18,6 @@ import {
 import { YBButton } from '../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { YBTabsPanel } from '../../panels';
-import { ReplicationContainer } from '../../tables';
 import {
   XClusterConfigAction,
   TRANSITORY_XCLUSTER_CONFIG_STATUSES,
@@ -60,6 +59,7 @@ import {
 } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { EditTablesModal } from '../disasterRecovery/editTables/EditTablesModal';
+import { XClusterMetrics } from '../sharedComponents/XClusterMetrics/XClusterMetrics';
 
 import { XClusterConfig } from '../dtos';
 import { MetricsQueryParams } from '../../../redesign/helpers/dtos';
@@ -486,9 +486,17 @@ export function ReplicationDetails({
                               </YBLabelWithIcon>
                             </MenuItem>
                             <RbacValidator
-                              accessRequiredOn={{
-                                ...ApiPermissionMap.SYNC_XCLUSTER_REQUIREMENT,
-                                onResource: xClusterConfig.targetUniverseUUID
+                              customValidateFunction={() => {
+                                return (
+                                  hasNecessaryPerm({
+                                    ...ApiPermissionMap.SYNC_XCLUSTER,
+                                    onResource: xClusterConfig.sourceUniverseUUID
+                                  }) &&
+                                  hasNecessaryPerm({
+                                    ...ApiPermissionMap.SYNC_XCLUSTER,
+                                    onResource: xClusterConfig.targetUniverseUUID
+                                  })
+                                );
                               }}
                               isControl
                             >
@@ -532,17 +540,33 @@ export function ReplicationDetails({
                     numTablesRequiringBootstrap > 1 ? 'tables' : 'table'
                   } and replication restart is
                 required.`}
-                  <YBButton
-                    className="restart-replication-button"
-                    btnIcon="fa fa-refresh"
-                    btnText="Restart Replication"
-                    onClick={() => {
-                      if (_.includes(enabledConfigActions, XClusterConfigAction.RESTART)) {
-                        dispatch(openDialog(XClusterModalName.RESTART_CONFIG));
-                      }
+                  <RbacValidator
+                    customValidateFunction={() => {
+                      return (
+                        hasNecessaryPerm({
+                          ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
+                          onResource: xClusterConfig.sourceUniverseUUID
+                        }) &&
+                        hasNecessaryPerm({
+                          ...ApiPermissionMap.MODIFY_XCLUSTER_REPLICATION,
+                          onResource: xClusterConfig.targetUniverseUUID
+                        })
+                      );
                     }}
-                    disabled={!_.includes(enabledConfigActions, XClusterConfigAction.RESTART)}
-                  />
+                    isControl
+                  >
+                    <YBButton
+                      className="restart-replication-button"
+                      btnIcon="fa fa-refresh"
+                      btnText="Restart Replication"
+                      onClick={() => {
+                        if (_.includes(enabledConfigActions, XClusterConfigAction.RESTART)) {
+                          dispatch(openDialog(XClusterModalName.RESTART_CONFIG));
+                        }
+                      }}
+                      disabled={!_.includes(enabledConfigActions, XClusterConfigAction.RESTART)}
+                    />
+                  </RbacValidator>
                 </div>
               </YBBanner>
             )}
@@ -620,11 +644,7 @@ export function ReplicationDetails({
                   />
                 </Tab>
                 <Tab eventKey={'metrics'} title="Metrics" id="universe-tab-panel">
-                  <ReplicationContainer
-                    sourceUniverseUUID={xClusterConfig.sourceUniverseUUID}
-                    hideHeader={true}
-                    replicationUUID={xClusterConfigUuid}
-                  />
+                  <XClusterMetrics xClusterConfig={xClusterConfig} isDrInterface={false} />
                 </Tab>
               </YBTabsPanel>
             </Col>
@@ -632,7 +652,7 @@ export function ReplicationDetails({
         </div>
         {isEditTableModalVisible && (
           <EditTablesModal
-            xClusterConfig={xClusterConfig}
+            xClusterConfigUuid={xClusterConfig.uuid}
             isDrInterface={false}
             modalProps={{ open: isEditTableModalVisible, onClose: hideModal }}
           />
@@ -655,7 +675,7 @@ export function ReplicationDetails({
             allowedTasks={allowedTasks!}
             isVisible={isRestartConfigModalVisible}
             onHide={hideModal}
-            xClusterConfig={xClusterConfig}
+            xClusterConfigUuid={xClusterConfig.uuid}
           />
         )}
         {isSyncConfigModalVisible && (

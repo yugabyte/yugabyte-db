@@ -17,6 +17,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
+import com.nimbusds.oauth2.sdk.util.MapUtils;
 import com.yugabyte.operator.OperatorConfig;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
@@ -36,6 +37,7 @@ import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.certmgmt.providers.CertificateProviderInterface;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -47,6 +49,7 @@ import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -57,6 +60,7 @@ import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
@@ -231,6 +235,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     public String azCode = null;
     public String pvcName = null;
     public int newPlacementAzMasterCount = 0;
+    public Map<ServerType, String> previousGflagsChecksumMap = new HashMap<>();
+    public boolean usePreviousGflagsChecksum = false;
   }
 
   protected KubernetesCommandExecutor.Params taskParams() {
@@ -675,6 +681,17 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     return defaultValue;
   }
 
+  private void populatePreviousGflagsChecksum() {
+    if (taskParams().usePreviousGflagsChecksum
+        && MapUtils.isEmpty(taskParams().previousGflagsChecksumMap)) {
+      taskParams().previousGflagsChecksumMap =
+          kubernetesManagerFactory
+              .getManager()
+              .getServerTypeGflagsChecksumMap(
+                  taskParams().namespace, taskParams().helmReleaseName, taskParams().config);
+    }
+  }
+
   private String generateHelmOverride() {
     Map<String, Object> overrides = new HashMap<String, Object>();
     Yaml yaml = new Yaml();
@@ -719,6 +736,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     String placementCloud = null;
     String placementRegion = null;
     String placementZone = null;
+    AvailabilityZone azByCode =
+        (taskParams().azCode != null)
+            ? AvailabilityZone.getByCode(provider, taskParams().azCode)
+            : null;
 
     // This is true always now.
     boolean isMultiAz = (taskParams().masterAddresses != null) ? true : false;
@@ -758,7 +779,6 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           if (region.azList.size() != 0) {
             PlacementInfo.PlacementAZ zone = null;
             if (isMultiAz && taskParams().azCode != null) {
-              AvailabilityZone azByCode = AvailabilityZone.getByCode(provider, taskParams().azCode);
               if (azByCode == null) {
                 throw new PlatformServiceException(
                     BAD_REQUEST,
@@ -1098,10 +1118,11 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
 
     UUID placementUuid = cluster.uuid;
+    UUID azUUID = azByCode != null ? azByCode.getUuid() : null;
     Map<String, Object> gflagOverrides = new HashMap<>();
     // Go over master flags.
     Map<String, String> masterGFlags =
-        GFlagsUtil.getBaseGFlags(ServerType.MASTER, cluster, taskUniverseDetails.clusters);
+        GFlagsUtil.getGFlagsForAZ(azUUID, ServerType.MASTER, cluster, taskUniverseDetails.clusters);
     if (placementCloud != null && masterGFlags.get("placement_cloud") == null) {
       masterGFlags.put("placement_cloud", placementCloud);
     }
@@ -1116,7 +1137,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
     if (taskUniverseDetails.xClusterInfo.isSourceRootCertDirPathGflagConfigured()) {
       masterGFlags.put(
-          XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG,
+          XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG,
           taskUniverseDetails.xClusterInfo.sourceRootCertDirPath);
     }
     if (!masterGFlags.isEmpty()) {
@@ -1125,7 +1146,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
     // Go over tserver flags.
     Map<String, String> tserverGFlags =
-        GFlagsUtil.getBaseGFlags(ServerType.TSERVER, cluster, taskUniverseDetails.clusters);
+        GFlagsUtil.getGFlagsForAZ(
+            azUUID, ServerType.TSERVER, cluster, taskUniverseDetails.clusters);
     if (!primaryClusterIntent
         .enableYSQL) { // In the UI, we can choose not to show these entries for read replica.
       tserverGFlags.put("enable_ysql", "false");
@@ -1175,15 +1197,50 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
     if (taskUniverseDetails.xClusterInfo.isSourceRootCertDirPathGflagConfigured()) {
       tserverGFlags.put(
-          XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG,
+          XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG,
           taskUniverseDetails.xClusterInfo.sourceRootCertDirPath);
     }
+    // timestamp_history_retention_sec gflag final value
+    Duration timestampHistoryRetentionPlatform =
+        Schedule.getMaxBackupIntervalInUniverseForPITRestore(
+            universeFromDB.getUniverseUUID(), true /* includeIntermediate */);
+    if (timestampHistoryRetentionPlatform.toSeconds() > 0L) {
+      long historyRetentionBufferSecs =
+          confGetter.getConfForScope(
+              universeFromDB, UniverseConfKeys.pitEnabledBackupsRetentionBufferTimeSecs);
+      Map<String, String> TIMESTAMP_HISTORY_RETENTION_GFLAG_MAP =
+          Collections.singletonMap(
+              GFlagsUtil.TIMESTAMP_HISTORY_RETENTION_INTERVAL_SEC,
+              Long.toString(
+                  timestampHistoryRetentionPlatform.toSeconds() + historyRetentionBufferSecs));
+      GFlagsUtil.processTimestampHistoryRetentionSecGflagIfRequired(
+          tserverGFlags, TIMESTAMP_HISTORY_RETENTION_GFLAG_MAP);
+    }
+
     if (!tserverGFlags.isEmpty()) {
       gflagOverrides.put("tserver", tserverGFlags);
     }
 
     if (!gflagOverrides.isEmpty()) {
       overrides.put("gflags", gflagOverrides);
+    }
+
+    // Gflags checksum override
+    if (taskParams().usePreviousGflagsChecksum) {
+      if (MapUtils.isEmpty(taskParams().previousGflagsChecksumMap)) {
+        populatePreviousGflagsChecksum();
+      }
+      String masterGflagsChecksum =
+          taskParams().previousGflagsChecksumMap.getOrDefault(ServerType.MASTER, "");
+      String tserverGflagsChecksum =
+          taskParams().previousGflagsChecksumMap.getOrDefault(ServerType.TSERVER, "");
+      Map<String, Object> masterOverrides = new HashMap<>();
+      masterOverrides.put("gflagsChecksum", masterGflagsChecksum);
+      overrides.put("master", masterOverrides);
+
+      Map<String, Object> tserverOverrides = new HashMap<>();
+      tserverOverrides.put("gflagsChecksum", tserverGflagsChecksum);
+      overrides.put("tserver", tserverOverrides);
     }
 
     String kubeDomain =
