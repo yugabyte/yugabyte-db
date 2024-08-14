@@ -1037,14 +1037,14 @@ void PgWrapper::SetCommonEnv(Subprocess* proc, bool yb_enabled) {
 
     proc->SetEnv("YB_PG_TRANSACTIONS_ENABLED", FLAGS_pg_transactions_enabled ? "1" : "0");
 
-#ifdef ADDRESS_SANITIZER
+#ifdef THREAD_SANITIZER
     // Disable reporting signal-unsafe behavior for PostgreSQL because it does a lot of work in
     // signal handlers on shutdown.
-
-    const char* asan_options = getenv("ASAN_OPTIONS");
+    static const std::string kTSANOptionsEnvName = "TSAN_OPTIONS";
+    const char* tsan_options = getenv(kTSANOptionsEnvName.c_str());
     proc->SetEnv(
-        "ASAN_OPTIONS",
-        std::string(asan_options ? asan_options : "") + " report_signal_unsafe=0");
+        kTSANOptionsEnvName,
+        std::string(tsan_options ? tsan_options : "") + " report_signal_unsafe=0");
 #endif
 
     // Pass non-default flags to the child process using FLAGS_... environment variables.
