@@ -67,9 +67,28 @@ jobs:
             postgresql-16-rum \
             && sudo rm -rf /var/lib/apt/lists/*
 
-      - name: Test Sudo without pass
+      - name: Create install_setup directory
         run: |
-          sudo ls /root
+          mkdir -p /tmp/install_setup
+          cp -r scripts/ /tmp/install_setup
+
+      - name: Install libbson
+        run: |
+          export CLEANUP_SETUP=1
+          export INSTALL_DEPENDENCIES_ROOT=/tmp/install_setup
+          sudo MAKE_PROGRAM=cmake /tmp/install_setup/install_setup_libbson.sh
+
+      - name: Install pcre2
+        run: |
+          export CLEANUP_SETUP=1
+          export INSTALL_DEPENDENCIES_ROOT=/tmp/install_setup
+          sudo /tmp/install_setup/install_setup_pcre2.sh
+
+      - name: Install Intel Decimal Math Library
+        run: |
+          export CLEANUP_SETUP=1
+          export INSTALL_DEPENDENCIES_ROOT=/tmp/install_setup
+          sudo /tmp/install_setup/install_setup_intel_decimal_math_lib.sh
 
       - name: Install Additional Libraries
         run: |
