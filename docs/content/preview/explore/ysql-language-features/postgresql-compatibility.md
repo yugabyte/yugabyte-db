@@ -109,7 +109,8 @@ To enable compatibility mode in YugabyteDB Anywhere v2024.2 or later:
 
 To enable compatibility mode in YugabyteDB Aeon:
 
-- When creating a cluster, choose the **Early Access** track; the **Enable Enhanced Postgres Compatibility** option is on by default.
+1. When creating a cluster, choose a track with database version 2024.1.0 or later.
+1. Select the **Enhanced Postgres Compatibility** option (on by default).
 
 You can also change the setting on the **Settings** tab for deployed clusters.
 
