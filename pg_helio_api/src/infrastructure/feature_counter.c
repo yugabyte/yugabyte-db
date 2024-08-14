@@ -194,6 +194,7 @@ static char FeatureMapping[MAX_FEATURE_COUNT][MAX_FEATURE_NAME_LENGTH] = {
 	[FEATURE_AGG_OPERATOR_TSINCREMENT] = "agg_operator_tsincrement",
 	[FEATURE_AGG_OPERATOR_TSSECOND] = "agg_operator_tssecond",
 	[FEATURE_AGG_OPERATOR_TYPE] = "agg_operator_type",
+	[FEATURE_AGG_OPERATOR_UNSETFIELD] = "agg_operator_unsetfield",
 	[FEATURE_AGG_OPERATOR_WEEK] = "agg_operator_week",
 	[FEATURE_AGG_OPERATOR_YEAR] = "agg_operator_year",
 	[FEATURE_AGG_OPERATOR_ZIP] = "agg_operator_zip",

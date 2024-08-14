@@ -408,6 +408,8 @@ static MongoOperatorExpression OperatorExpressions[] = {
 	{ "$tsSecond", NULL, &ParseDollarTsSecond, &HandlePreParsedDollarTsSecond,
 	  FEATURE_AGG_OPERATOR_TSSECOND },
 	{ "$type", &HandleDollarType, NULL, NULL, FEATURE_AGG_OPERATOR_TYPE },
+	{ "$unsetField", NULL, &ParseDollarUnsetField, &HandlePreParsedDollarUnsetField,
+	  FEATURE_AGG_OPERATOR_UNSETFIELD },
 	{ "$week", &HandleDollarWeek, NULL, NULL, FEATURE_AGG_OPERATOR_WEEK },
 	{ "$year", &HandleDollarYear, NULL, NULL, FEATURE_AGG_OPERATOR_YEAR },
 	{ "$zip", NULL, &ParseDollarZip, &HandlePreParsedDollarZip, FEATURE_AGG_OPERATOR_ZIP }

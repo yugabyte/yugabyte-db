@@ -144,7 +144,6 @@ ERROR:  $getField requires 'field' to evaluate to a constant, but got a non-cons
 -- field is a path
 SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {"field": "$a", "input": {"a": { "b": 3 }}}}}}');
 ERROR:  A field path reference which is not allowed in this context. Did you mean {$literal: '$a'}?
-HINT:  A field path reference which is not allowed in this context. Did you mean {$literal: '$a'}?
 -- shorthand expression
 -- field must be a string
 SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": []}}}');
@@ -152,3 +151,87 @@ ERROR:  $getField requires 'field' to evaluate to a constant, but got a non-cons
 -- field is an operator
 SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": { "$add": [2, 3 ]}}}}');
 ERROR:  $getField requires 'field' to evaluate to a constant, but got a non-constant argument
+-- $unsetField
+-- postive cases
+-- null input
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": "a", "input": null}}}}');
+          bson_dollar_project           
+----------------------------------------
+ { "result" : { "fieldValue" : null } }
+(1 row)
+
+-- empty input
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": "a", "input": {}}}}}');
+          bson_dollar_project           
+----------------------------------------
+ { "result" : { "fieldValue" : {  } } }
+(1 row)
+
+-- remove from input argument not current document
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": "a", "input": {"a": 1, "b": 2}}}}}');
+                        bson_dollar_project                         
+--------------------------------------------------------------------
+ { "result" : { "fieldValue" : { "b" : { "$numberInt" : "2" } } } }
+(1 row)
+
+-- won't traverse objects automatically with dotted field
+SELECT * FROM helio_api_catalog.bson_dollar_project('{"a": {"b": 1}, "a.b": 2}', '{"result": { "fieldValue": {"$unsetField": {"field": "a.b", "input": "$$ROOT"}}}}');
+                             bson_dollar_project                              
+------------------------------------------------------------------------------
+ { "result" : { "fieldValue" : { "a" : { "b" : { "$numberInt" : "1" } } } } }
+(1 row)
+
+-- field name starts with $
+SELECT * FROM helio_api_catalog.bson_dollar_project('{"$a": 1, "b": 2}', '{"result": { "fieldValue": {"$unsetField": {"field": { "$const": "$a" }, "input": "$$ROOT"}}}}');
+                        bson_dollar_project                         
+--------------------------------------------------------------------
+ { "result" : { "fieldValue" : { "b" : { "$numberInt" : "2" } } } }
+(1 row)
+
+-- take specific path from current document
+SELECT * FROM helio_api_catalog.bson_dollar_project('{"a": {"b": 1, "c": 2}}', '{"result": { "fieldValue": {"$unsetField": {"field": "b", "input": "$a"}}}}');
+                        bson_dollar_project                         
+--------------------------------------------------------------------
+ { "result" : { "fieldValue" : { "c" : { "$numberInt" : "2" } } } }
+(1 row)
+
+-- cooperate with getField
+SELECT * FROM helio_api_catalog.bson_dollar_project('{"a": {"b": 1, "c": 2}}', '{"result": { "fieldValue": {"$unsetField": {"field": "b", "input": {"$getField": "a"}}}}}');
+                        bson_dollar_project                         
+--------------------------------------------------------------------
+ { "result" : { "fieldValue" : { "c" : { "$numberInt" : "2" } } } }
+(1 row)
+
+-- unset an array
+SELECT * FROM helio_api_catalog.bson_dollar_project('{"a": {"b": 1, "c": 2}, "d": [2, 3]}', '{"result": { "fieldValue": {"$unsetField": {"field": "d", "input": "$$ROOT"}}}}');
+                                            bson_dollar_project                                             
+------------------------------------------------------------------------------------------------------------
+ { "result" : { "fieldValue" : { "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } } } }
+(1 row)
+
+-- negative cases
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": 1}}}');
+ERROR:  $unsetField only supports an object as its argument
+HINT:  $unsetField only supports an object as its argument
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": "a"}}}}');
+ERROR:  $unsetField requires 'input' to be specified
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"input": null}}}}');
+ERROR:  $unsetField requires 'field' to be specified
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": "a", "input": null, "value": 1}}}}');
+ERROR:  $unsetField found an unknown argument: value
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": {"$add": [2, 3]}, "input": null}}}}');
+ERROR:  $unsetField requires 'field' to evaluate to a constant, but got a non-constant argument
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": "$a", "input": null}}}}');
+ERROR:  A field path reference which is not allowed in this context. Did you mean {$literal: '$a'}?
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": 5, "input": null}}}}');
+ERROR:  $unsetField requires 'field' to evaluate to type String, but got int
+HINT:  $unsetField requires 'field' to evaluate to type String, but got int
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": ["a"], "input": null}}}}');
+ERROR:  $unsetField requires 'field' to evaluate to a constant, but got a non-constant argument
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": null, "input": null}}}}');
+ERROR:  $unsetField requires 'field' to evaluate to type String, but got null
+HINT:  $unsetField requires 'field' to evaluate to type String, but got null
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": "a", "input": 3}}}}');
+ERROR:  $unsetField requires 'input' to evaluate to type Object
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": "a", "input": {"$add": [2, 3]}}}}}');
+ERROR:  $unsetField requires 'input' to evaluate to type Object

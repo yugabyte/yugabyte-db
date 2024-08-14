@@ -4,7 +4,6 @@ SET helio_api.next_collection_id TO 3600;
 SET helio_api.next_collection_index_id TO 3600;
 
 -- $getField operator
-
 -- positive cases
 -- entire expression
 -- field parsed from $literal
@@ -57,3 +56,36 @@ SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldVa
 SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": []}}}');
 -- field is an operator
 SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": { "$add": [2, 3 ]}}}}');
+
+
+-- $unsetField
+-- postive cases
+-- null input
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": "a", "input": null}}}}');
+-- empty input
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": "a", "input": {}}}}}');
+-- remove from input argument not current document
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": "a", "input": {"a": 1, "b": 2}}}}}');
+-- won't traverse objects automatically with dotted field
+SELECT * FROM helio_api_catalog.bson_dollar_project('{"a": {"b": 1}, "a.b": 2}', '{"result": { "fieldValue": {"$unsetField": {"field": "a.b", "input": "$$ROOT"}}}}');
+-- field name starts with $
+SELECT * FROM helio_api_catalog.bson_dollar_project('{"$a": 1, "b": 2}', '{"result": { "fieldValue": {"$unsetField": {"field": { "$const": "$a" }, "input": "$$ROOT"}}}}');
+-- take specific path from current document
+SELECT * FROM helio_api_catalog.bson_dollar_project('{"a": {"b": 1, "c": 2}}', '{"result": { "fieldValue": {"$unsetField": {"field": "b", "input": "$a"}}}}');
+-- cooperate with getField
+SELECT * FROM helio_api_catalog.bson_dollar_project('{"a": {"b": 1, "c": 2}}', '{"result": { "fieldValue": {"$unsetField": {"field": "b", "input": {"$getField": "a"}}}}}');
+-- unset an array
+SELECT * FROM helio_api_catalog.bson_dollar_project('{"a": {"b": 1, "c": 2}, "d": [2, 3]}', '{"result": { "fieldValue": {"$unsetField": {"field": "d", "input": "$$ROOT"}}}}');
+
+-- negative cases
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": 1}}}');
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": "a"}}}}');
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"input": null}}}}');
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": "a", "input": null, "value": 1}}}}');
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": {"$add": [2, 3]}, "input": null}}}}');
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": "$a", "input": null}}}}');
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": 5, "input": null}}}}');
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": ["a"], "input": null}}}}');
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": null, "input": null}}}}');
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": "a", "input": 3}}}}');
+SELECT * FROM helio_api_catalog.bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": "a", "input": {"$add": [2, 3]}}}}}');

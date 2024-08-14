@@ -30,15 +30,31 @@ typedef struct DollarGetFieldArguments
 /* Struct that represents the parsed arguments to a $setField expression. */
 typedef struct DollarSetFieldArguments
 {
-	/* The array input to the $filter expression. */
+	/* The input object to the $setField expression. */
 	AggregationExpressionData input;
 
-	/* The field condition to evaluate against every element in the input array. */
+	/* The field in the input object for which you want to set value */
 	AggregationExpressionData field;
 
-	/* Optional: The variable value (for unsetField) but required for setField */
+	/* The variable value required for $setField (not for $unsetField) */
 	AggregationExpressionData value;
 } DollarSetFieldArguments;
+
+/* internal defined type represents validation result for field argument in $getField, $setField and $unsetField */
+typedef enum
+{
+	/* valid field argument */
+	VALID_ARGUMENT,
+
+	/* field is a path (start with `$`) */
+	PATH_IS_NOT_ALLOWED,
+
+	/* field is a document or array, but not evaluated from $const or $literal */
+	NON_CONSTANT_ARGUMENT,
+
+	/* field is a constant other than string */
+	NON_STRING_CONSTANT
+} FieldArgumentValidationCode;
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
@@ -47,19 +63,29 @@ static void AppendDocumentForMergeObjects(pgbson *sourceDocument, const
 										  bson_value_t *value,
 										  BsonIntermediatePathNode *tree,
 										  ExpressionResult *parent);
-static bson_value_t ProcessResultForDollarGetField(bson_value_t field, bson_value_t
-												   input);
+static void HandlePreParsedDollarSetFieldOrUnsetFieldCore(pgbson *doc, void *arguments,
+														  ExpressionResult *
+														  expressionResult, bool
+														  isSetField);
 static bool IsAggregationExpressionEvaluatesToNull(
 	AggregationExpressionData *expressionData);
-static AggregationExpressionData * PerformConstantFolding(
-	AggregationExpressionData *expressionData, const bson_value_t *value,
-	ParseAggregationExpressionContext
-	*context);
-static void ParseFieldExpressionForDollarGetField(const bson_value_t *field,
-												  AggregationExpressionData *
-												  fieldExpression,
-												  ParseAggregationExpressionContext *
-												  context);
+static FieldArgumentValidationCode
+ParseFieldExpressionForDollarGetFieldAndSetFieldAndUnsetField(const bson_value_t *field,
+															  AggregationExpressionData
+															  *
+															  fieldExpression,
+															  ParseAggregationExpressionContext
+															  *
+															  context);
+static void ParseDollarSetFieldOrUnsetFieldCore(const bson_value_t *argument,
+												AggregationExpressionData *data, bool
+												isSetField,
+												ParseAggregationExpressionContext *context);
+static bson_value_t ProcessResultForDollarGetField(bson_value_t field, bson_value_t
+												   input);
+static bson_value_t ProcessResultForDollarSetFieldOrUnsetField(bson_value_t field,
+															   bson_value_t input,
+															   bson_value_t value);
 
 /*
  * Evaluates the output of an $mergeObjects expression.
@@ -255,119 +281,9 @@ void
 HandlePreParsedDollarSetField(pgbson *doc, void *arguments,
 							  ExpressionResult *expressionResult)
 {
-	DollarSetFieldArguments *setFieldArguments = (DollarSetFieldArguments *) arguments;
-
-	bool isNullOnEmpty = false;
-
-	/* When input.value is "$$REMOVE", we remove the entry in the input document.
-	 * As an implementation note:  we eval $$REMOVE to EOD  and that is handled below as remove.
-	 * And if the value is a constant and 'value.value_type == BSON_TYPE_EOD' that means the $$REMOVE,
-	 * as when we eval $$REMOVE in some other construct, it will eval to its default state for free.
-	 * TODO NOTE: if any other special variable uses 'value_type == BSON_TYPE_EOD' as a default value, we
-	 * will need to differentiate which is $$REMOVE.
-	 */
-	bool removeOperation = false;
-
-	/* if value is a string provide a simple alias viewport */
-	StringView fieldAsString = {
-		.length = 0,
-		.string = ""
-	};
-
-	ExpressionResult fieldExpression = ExpressionResultCreateChild(expressionResult);
-
-	EvaluateAggregationExpressionData(&setFieldArguments->field, doc, &fieldExpression,
-									  isNullOnEmpty);
-	bson_value_t evaluatedFieldArg = fieldExpression.value;
-
-	ExpressionResult inputExpression = ExpressionResultCreateChild(expressionResult);
-	EvaluateAggregationExpressionData(&setFieldArguments->input, doc, &inputExpression,
-									  isNullOnEmpty);
-	bson_value_t evaluatedInputArg = inputExpression.value;
-
-	ExpressionResult valueExpression = ExpressionResultCreateChild(expressionResult);
-	EvaluateAggregationExpressionData(&setFieldArguments->value, doc,
-									  &valueExpression,
-									  isNullOnEmpty);
-	bson_value_t evaluatedValue = valueExpression.value;
-
-	if (IsExpressionResultNullOrUndefined(&evaluatedInputArg))
-	{
-		/* return null rewrite, BSON_TYPE_NULL as a generated constant */
-		bson_value_t value = (bson_value_t) {
-			.value_type = BSON_TYPE_NULL
-		};
-		ExpressionResultSetValue(expressionResult, &value);
-		return;
-	}
-
-	if (evaluatedInputArg.value_type != BSON_TYPE_DOCUMENT)
-	{
-		ereport(ERROR, (errcode(MongoDollarSetFieldRequiresObject), errmsg(
-							"$setField requires 'input' to evaluate to type Object")));
-	}
-
-	/* When $$REMOVE is evaluated in the current expression resolution process the
-	 * system variable will resolve to EOD which we take advantage of as in mongo
-	 * if you had a "value" field that was null, then we are to act as remove requested.
-	 * So both are able to be processed by compare with EOD. */
-	if (evaluatedValue.value_type == BSON_TYPE_EOD)
-	{
-		removeOperation = true;  /* mongodb will have a unknown/null $var remove the value */
-	}
-
-	/* If field is a variable reference like $foo.bar we should give error:
-	 * Location4161108, error code 4161108 with message of:
-	 * field path must not be a path reference, did you mean... or
-	 * $foo.bar a field path reference which is not allowed in this context.
-	 * Did you mean {$literal: $foo.bar} but to support that error we need
-	 * to catch it during the expression eval which happens before any
-	 * operator handling is done.
-	 * Mongodb's parser knows the context.  When helioapi parses we ignore context.
-	 */
-	fieldAsString.length = evaluatedFieldArg.value.v_utf8.len;
-	fieldAsString.string = evaluatedFieldArg.value.v_utf8.str;
-
-	pgbson_element_writer *elementWriter =
-		ExpressionResultGetElementWriter(expressionResult);
-
-	pgbson_writer childObjectWriter;
-	PgbsonElementWriterStartDocument(elementWriter,
-									 &childObjectWriter);
-
-	bson_iter_t inputIter;    /* We loop over the "input" document... */
-	BsonValueInitIterator(&evaluatedInputArg, &inputIter);
-
-	bool fieldAlreadyPresentInInput = false;
-	while (bson_iter_next(&inputIter))
-	{
-		const char *key = bson_iter_key(&inputIter);
-		const bson_value_t *val = bson_iter_value(&inputIter);
-		if (strcmp(key, fieldAsString.string) == 0)
-		{
-			if (removeOperation)
-			{
-				continue;
-			}
-			else
-			{
-				fieldAlreadyPresentInInput = true;
-				val = &evaluatedValue;    /* use the supplied "value" to overwrite field */
-			}
-		}
-
-		PgbsonWriterAppendValue(&childObjectWriter, key, -1,
-								val);
-	}
-
-	if (!removeOperation && !fieldAlreadyPresentInInput)
-	{
-		PgbsonWriterAppendValue(&childObjectWriter, fieldAsString.string, -1,
-								&evaluatedValue);
-	}
-
-	PgbsonElementWriterEndDocument(elementWriter, &childObjectWriter);
-	ExpressionResultSetValueFromWriter(expressionResult);
+	bool isSetField = true;
+	HandlePreParsedDollarSetFieldOrUnsetFieldCore(doc, arguments, expressionResult,
+												  isSetField);
 }
 
 
@@ -378,187 +294,35 @@ void
 ParseDollarSetField(const bson_value_t *argument, AggregationExpressionData *data,
 					ParseAggregationExpressionContext *context)
 {
-	bson_value_t input = { 0 };
-	bson_value_t field = { 0 };
-	bson_value_t value = { 0 };
+	bool isSetField = true;
+	ParseDollarSetFieldOrUnsetFieldCore(argument, data, isSetField, context);
+}
 
-	bool expressionHasNullArgument = false;
 
-	data->operator.returnType = BSON_TYPE_DOCUMENT;
+/*
+ * Evaluates the output of a $unsetField expression.
+ * $unsetField is expressed as:
+ * $unsetField { "field": <const expression>, "input": <document> can also be "$$ROOT" } }
+ */
+void
+HandlePreParsedDollarUnsetField(pgbson *doc, void *arguments,
+								ExpressionResult *expressionResult)
+{
+	bool isSetField = false;
+	HandlePreParsedDollarSetFieldOrUnsetFieldCore(doc, arguments, expressionResult,
+												  isSetField);
+}
 
-	if (argument->value_type != BSON_TYPE_DOCUMENT)
-	{
-		ereport(ERROR, (errcode(MongoDollarSetFieldRequiresObject), errmsg(
-							"$setField only supports an object as its argument")));
-	}
 
-	bson_iter_t docIter;
-	BsonValueInitIterator(argument, &docIter);
-
-	while (bson_iter_next(&docIter))
-	{
-		const char *key = bson_iter_key(&docIter);
-		if (strcmp(key, "input") == 0)
-		{
-			input = *bson_iter_value(&docIter);
-		}
-		else if (strcmp(key, "field") == 0)
-		{
-			field = *bson_iter_value(&docIter);
-		}
-		else if (strcmp(key, "value") == 0)
-		{
-			value = *bson_iter_value(&docIter);
-		}
-		else
-		{
-			ereport(ERROR, (errcode(MongoDollarSetFieldUnknownArgument), errmsg(
-								"$setField found an unknown argument: %s", key)));
-		}
-	}
-
-	/* field.value_type == BSON_TYPE_NULL || field.value_type == BSON_TYPE_BOOL; in these cases mongodb will give different err */
-	if (field.value_type == BSON_TYPE_EOD)
-	{
-		ereport(ERROR, (errcode(MongoLocation4161102),
-						errmsg(
-							"$setField requires 'field' to be specified")));
-	}
-
-	/* TODO value for $unsetField would be missing, so might be optional, later
-	 * we will refactor into a common parsing function that knows if value
-	 * should be required
-	 */
-	if (value.value_type == BSON_TYPE_EOD)
-	{
-		ereport(ERROR, (errcode(MongoLocation4161103),
-						errmsg(
-							"$setField requires 'value' to be specified")));
-	}
-
-	if (input.value_type == BSON_TYPE_EOD)
-	{
-		ereport(ERROR, (errcode(MongoLocation4161109),
-						errmsg(
-							"$setField requires 'input' to be specified")));
-	}
-
-	if (input.value_type == BSON_TYPE_NULL)
-	{
-		expressionHasNullArgument = true;
-	}
-
-	/* If field is a variable reference like $foo.bar we should give error:
-	 * Location4161108, error code 4161108 with message of:
-	 * field path must not be a path reference, did you me
-	 * $foo.bar a field path reference which is not allowed in this context.
-	 * Did you mean {$literal: $foo.bar} but to support that error we need
-	 * to catch it during the expression eval which happens before any
-	 * operator handling is done
-	 */
-
-	DollarSetFieldArguments *arguments = palloc0(sizeof(DollarSetFieldArguments));
-
-	/* Optimize, if input, field and value are constants, we can calculate the result at this parse phase,
-	 * and have resolved already if the input was null to a return NULL expression as a rewrite. */
-
-	ParseAggregationExpressionData(&arguments->field, &field, context);
-	ParseAggregationExpressionData(&arguments->value, &value, context);
-
-	/* The following will Constant Fold expressions... */
-	PerformConstantFolding(&arguments->value, &value, context);
-	PerformConstantFolding(&arguments->field, &field, context);
-
-	ParseAggregationExpressionData(&arguments->input, &input, context);
-
-	/* The following will optimize out NULL as Constant Fold expressions... */
-	if (expressionHasNullArgument ||
-		IsAggregationExpressionEvaluatesToNull(&arguments->input))
-	{
-		data->value = (bson_value_t) {
-			.value_type = BSON_TYPE_NULL
-		};
-
-		data->kind = AggregationExpressionKind_Constant;
-		return;
-	}
-
-	data->operator.arguments = arguments;
-	data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
-
-	/* Here we expect param field's ultimate data value to be .value_type == BSON_TYPE_UTF8
-	 * handle path variable (path-var  ref: "$$id")  "$a"   "$$a" */
-	if (!(IsAggregationExpressionConstant(&arguments->field) ||
-		  arguments->field.kind == AggregationExpressionKind_Operator))
-	{
-		/* Mongo error codes check for a few datatypes, they also check for non-constant arg to some
-		 * operator parameters.
-		 * If not a kind var => let it pass
-		 *         if system variable : fail w/ error code 4161108, and instead if,
-		 *         path expression: fail w/ different 4161108.
-		 */
-		ereport(ERROR, (errcode(
-							MongoLocation4161106),
-						errmsg(
-							"$setField requires 'field' to evaluate to a constant, but got a non-constant argument %s",
-							BsonTypeName(arguments->field.value.value_type)),
-						errhint(
-							"$setField requires 'field' to evaluate to a constant, but got a non-constant argument %s",
-							BsonTypeName(arguments->field.value.value_type))));
-	}
-	else if (arguments->field.kind == AggregationExpressionKind_Operator)
-	{
-		/* continue, as the operator expression may generate a string */
-	}
-	else if (arguments->field.value.value_type != BSON_TYPE_UTF8)
-	{
-		/* Anything other than a string, is an error */
-
-		if (arguments->field.value.value_type == BSON_TYPE_DOCUMENT)
-		{
-			ereport(ERROR, (errcode(
-								MongoLocation4161106),
-							errmsg(
-								"$setField requires 'field' to evaluate to type String, but got %s",
-								BsonTypeName(
-									arguments->field.value.value_type)),
-							errhint(
-								"$setField requires 'field' to evaluate to type String, but got %s",
-								BsonTypeName(
-									arguments->field.value.value_type))));
-		}
-
-		ereport(ERROR, (errcode(
-							MongoLocation4161107),
-						errmsg(
-							"$setField requires 'field' to evaluate to type String, but got %s",
-							BsonTypeName(arguments->field.value.value_type)),
-						errhint(
-							"$setField requires 'field' to evaluate to type String, but got %s",
-							BsonTypeName(arguments->field.value.value_type))));
-	}
-
-	if (arguments->input.kind == AggregationExpressionKind_Constant &&
-		arguments->input.value.value_type != BSON_TYPE_DOCUMENT)
-	{
-		if (arguments->input.value.value_type == BSON_TYPE_NULL)
-		{
-			/* BSON_TYPE_NULL as a generated constant */
-			data->value = (bson_value_t) {
-				.value_type = BSON_TYPE_NULL
-			};
-
-			data->kind = AggregationExpressionKind_Constant;
-			return;
-		}
-
-		/* If a system variable, it is most likely $$ROOT, we process $$ROOT when we evalute on a specific document, otherwise
-		 * we expect a document as the 'input' value which we operate upon. */
-		ereport(ERROR, (errcode(
-							MongoLocation4161105),
-						errmsg(
-							"$setField requires 'input' to evaluate to type Object")));
-	}
+/* Parses the $unsetField expression specified in the bson_value_t and stores it in the data argument.
+ * $unsetField { "field": <const expression>, "input": <document> can also be "$$ROOT" } }
+ */
+void
+ParseDollarUnsetField(const bson_value_t *argument, AggregationExpressionData *data,
+					  ParseAggregationExpressionContext *context)
+{
+	bool isSetField = false;
+	ParseDollarSetFieldOrUnsetFieldCore(argument, data, isSetField, context);
 }
 
 
@@ -697,7 +461,35 @@ ParseDollarGetField(const bson_value_t *argument, AggregationExpressionData *dat
 	data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
 
 	/* Parse field */
-	ParseFieldExpressionForDollarGetField(&field, &arguments->field, context);
+	FieldArgumentValidationCode validationCode =
+		ParseFieldExpressionForDollarGetFieldAndSetFieldAndUnsetField(&field,
+																	  &arguments->field,
+																	  context);
+	if (validationCode == PATH_IS_NOT_ALLOWED)
+	{
+		ereport(ERROR, (errcode(MongoLocation5654600),
+						errmsg(
+							"A field path reference which is not allowed in this context. Did you mean {$literal: '%s'}?",
+							arguments->field.value.value.v_utf8.str)));
+	}
+	else if (validationCode == NON_CONSTANT_ARGUMENT)
+	{
+		ereport(ERROR, (errcode(
+							MongoLocation5654601),
+						errmsg(
+							"$getField requires 'field' to evaluate to a constant, but got a non-constant argument")));
+	}
+	else if (validationCode == NON_STRING_CONSTANT)
+	{
+		ereport(ERROR, (errcode(
+							MongoLocation5654602),
+						errmsg(
+							"$getField requires 'field' to evaluate to type String, but got %s",
+							BsonTypeName(arguments->field.value.value_type)),
+						errhint(
+							"$getField requires 'field' to evaluate to type String, but got %s",
+							BsonTypeName(arguments->field.value.value_type))));
+	}
 
 	/* Parse input */
 	ParseAggregationExpressionData(&arguments->input, &input, context);
@@ -719,134 +511,247 @@ ParseDollarGetField(const bson_value_t *argument, AggregationExpressionData *dat
 }
 
 
-/* Function verifies if we can simplify expressions by constant folding, especially during parse time
- * so that later when we handle the pre-parsed tree during document procession, we make it as fast
- * as possible. Some notes: to make the input to $setField expression, is such that the expression result will
- * short circuit to null by definitions; for field and value we look for constants to fold. */
-static AggregationExpressionData *
-PerformConstantFolding(AggregationExpressionData *expressionData,
-					   const bson_value_t *value,
-					   ParseAggregationExpressionContext *context)
+/*
+ * Evaluates the output of a $setField and $unsetField expression.
+ * $setField is expressed as:
+ * $setField { "field": <const expression>, "input": <document> can also be "$$ROOT", "value": <expression> can also be "$$REMOVE" } }
+ * We evalute the value and add the field/value into the "input" document.  If the value is a special term "$$REMOVE", we remove instead.
+ *
+ * $unsetField is expressed as:
+ * $unsetField { "field": <const expression>, "input": <document> can also be "$$ROOT" } }
+ */
+static void
+HandlePreParsedDollarSetFieldOrUnsetFieldCore(pgbson *doc, void *arguments,
+											  ExpressionResult *expressionResult, bool
+											  isSetField)
 {
-	switch (expressionData->kind)
+	const char *operatorName = isSetField ? "$setField" : "$unsetField";
+	DollarSetFieldArguments *setFieldArguments = (DollarSetFieldArguments *) arguments;
+
+	bool isNullOnEmpty = false;
+
+	ExpressionResult fieldExpression = ExpressionResultCreateChild(expressionResult);
+
+	EvaluateAggregationExpressionData(&setFieldArguments->field, doc, &fieldExpression,
+									  isNullOnEmpty);
+	bson_value_t evaluatedFieldArg = fieldExpression.value;
+
+	ExpressionResult inputExpression = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(&setFieldArguments->input, doc, &inputExpression,
+									  isNullOnEmpty);
+	bson_value_t evaluatedInputArg = inputExpression.value;
+
+	bson_value_t evaluatedValueArg = { 0 };
+	if (isSetField)
 	{
-		case AggregationExpressionKind_Array:
-		{
-			return expressionData;
-		}
-
-		case AggregationExpressionKind_Operator:
-		{
-			/* ExpressionResult expressionResult = { 0 }; results in gcc bug on centos */
-			ExpressionResult expressionResult;
-			memset(&expressionResult, 0, sizeof(ExpressionResult));
-			ExpressionResult childExpression = ExpressionResultCreateChild(
-				&expressionResult);
-			bool isNullOnEmpty = true;
-			pgbson *doc = PgbsonInitEmpty();
-
-			ExpressionResultReset(&childExpression);
-			EvaluateAggregationExpressionData(expressionData, doc, &childExpression,
-											  isNullOnEmpty);
-			bson_value_t evaluatedInputArg = childExpression.value;
-
-			if (IsExpressionResultNullOrUndefined(&evaluatedInputArg))
-			{
-				bson_value_t valueLiteral = (bson_value_t) {
-					.value_type = BSON_TYPE_NULL
-				};
-
-				ParseAggregationExpressionData(expressionData, &valueLiteral, context);
-			}
-			else
-			{
-				ParseAggregationExpressionData(expressionData, &evaluatedInputArg,
-											   context);
-			}
-
-			return expressionData;
-		}
-
-		case AggregationExpressionKind_SystemVariable:
-		{
-			if (expressionData->systemVariable.kind ==
-				AggregationExpressionSystemVariableKind_Root)
-			{
-				if (expressionData->value.value_type == BSON_TYPE_DOCUMENT)
-				{
-					return expressionData;
-				}
-
-				if (expressionData->value.value_type == BSON_TYPE_NULL)
-				{
-					return expressionData;
-				}
-
-				return expressionData;
-			}
-
-			return expressionData;
-		}
-
-		/* paths and variables are not supported for const folding */
-		case AggregationExpressionKind_Variable:
-		case AggregationExpressionKind_Path:
-		case AggregationExpressionKind_Document:
-		{
-			return expressionData;
-		}
-
-		case AggregationExpressionKind_Constant:
-		{
-			bson_value_t *value = &expressionData->value;
-			bool isNull = value->value_type == BSON_TYPE_NULL || value->value_type ==
-						  BSON_TYPE_UNDEFINED || value->value_type == BSON_TYPE_EOD;
-			if (isNull)
-			{
-				return expressionData;
-			}
-			break;
-		}
-
-		default:
-		{
-			ereport(ERROR, (errmsg(
-								"PerformConstantFolding: Unexpected aggregation expression kind %d",
-								expressionData->kind)),
-					(errhint(
-						 "PerformConstantFolding: Unexpected aggregation expression kind %d",
-						 expressionData->kind)));
-		}
+		ExpressionResult valueExpression = ExpressionResultCreateChild(expressionResult);
+		EvaluateAggregationExpressionData(&setFieldArguments->value, doc,
+										  &valueExpression, isNullOnEmpty);
+		evaluatedValueArg = valueExpression.value;
+	}
+	else
+	{
+		evaluatedValueArg.value_type = BSON_TYPE_EOD;
 	}
 
-	return expressionData;
+	if (IsExpressionResultNullOrUndefined(&evaluatedInputArg))
+	{
+		/* return null rewrite, BSON_TYPE_NULL as a generated constant */
+		bson_value_t value = (bson_value_t) {
+			.value_type = BSON_TYPE_NULL
+		};
+		ExpressionResultSetValue(expressionResult, &value);
+		return;
+	}
+
+	if (evaluatedInputArg.value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(MongoDollarSetFieldRequiresObject), errmsg(
+							"%s requires 'input' to evaluate to type Object",
+							operatorName)));
+	}
+
+	bson_value_t result = ProcessResultForDollarSetFieldOrUnsetField(evaluatedFieldArg,
+																	 evaluatedInputArg,
+																	 evaluatedValueArg);
+	ExpressionResultSetValue(expressionResult, &result);
 }
 
 
-/* Function parses field argument for $getField
+/* Parses the $setField and $unsetField expression specified in the bson_value_t and stores it in the data argument.
+ * $setField { "field": <const expression>, "input": <document> can also be "$$ROOT", "value": <expression> can also be "$$REMOVE" } }
+ * $unsetField { "field": <const expression>, "input": <document> can also be "$$ROOT" } }
+ */
+static void
+ParseDollarSetFieldOrUnsetFieldCore(const bson_value_t *argument,
+									AggregationExpressionData *data,
+									bool isSetField,
+									ParseAggregationExpressionContext *context)
+{
+	bson_value_t input = { 0 };
+	bson_value_t field = { 0 };
+	bson_value_t value = { 0 };
+
+	const char *operatorName = isSetField ? "$setField" : "$unsetField";
+
+	data->operator.returnType = BSON_TYPE_DOCUMENT;
+
+	if (argument->value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(MongoDollarSetFieldRequiresObject), errmsg(
+							"%s only supports an object as its argument", operatorName),
+						errhint("%s only supports an object as its argument",
+								operatorName)));
+	}
+
+	bson_iter_t docIter;
+	BsonValueInitIterator(argument, &docIter);
+
+	while (bson_iter_next(&docIter))
+	{
+		const char *key = bson_iter_key(&docIter);
+		if (strcmp(key, "input") == 0)
+		{
+			input = *bson_iter_value(&docIter);
+		}
+		else if (strcmp(key, "field") == 0)
+		{
+			field = *bson_iter_value(&docIter);
+		}
+		else if (isSetField && strcmp(key, "value") == 0)
+		{
+			value = *bson_iter_value(&docIter);
+		}
+		else
+		{
+			ereport(ERROR, (errcode(MongoDollarSetFieldUnknownArgument), errmsg(
+								"%s found an unknown argument: %s", operatorName, key)));
+		}
+	}
+
+	if (field.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(MongoLocation4161102),
+						errmsg(
+							"%s requires 'field' to be specified", operatorName)));
+	}
+
+	if (isSetField && value.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(MongoLocation4161103),
+						errmsg(
+							"$setField requires 'value' to be specified")));
+	}
+
+	if (input.value_type == BSON_TYPE_EOD)
+	{
+		ereport(ERROR, (errcode(MongoLocation4161109),
+						errmsg(
+							"%s requires 'input' to be specified", operatorName)));
+	}
+
+	DollarSetFieldArguments *arguments = palloc0(sizeof(DollarSetFieldArguments));
+
+	/* parse field argument */
+	FieldArgumentValidationCode validationCode =
+		ParseFieldExpressionForDollarGetFieldAndSetFieldAndUnsetField(&field,
+																	  &arguments->field,
+																	  context);
+
+	/* throw errors according to field validation result */
+	if (validationCode == NON_CONSTANT_ARGUMENT)
+	{
+		ereport(ERROR, (errcode(
+							MongoLocation4161106),
+						errmsg(
+							"%s requires 'field' to evaluate to a constant, but got a non-constant argument",
+							operatorName)));
+	}
+	else if (validationCode == NON_STRING_CONSTANT)
+	{
+		ereport(ERROR, (errcode(
+							MongoLocation4161107),
+						errmsg(
+							"%s requires 'field' to evaluate to type String, but got %s",
+							operatorName,
+							BsonTypeName(arguments->field.value.value_type)),
+						errhint(
+							"%s requires 'field' to evaluate to type String, but got %s",
+							operatorName,
+							BsonTypeName(arguments->field.value.value_type))));
+	}
+	else if (validationCode == PATH_IS_NOT_ALLOWED)
+	{
+		ereport(ERROR, (errcode(MongoLocation4161108),
+						errmsg(
+							"A field path reference which is not allowed in this context. Did you mean {$literal: '%s'}?",
+							arguments->field.value.value.v_utf8.str)));
+	}
+
+	ParseAggregationExpressionData(&arguments->value, &value, context);
+	ParseAggregationExpressionData(&arguments->input, &input, context);
+
+	data->operator.arguments = arguments;
+	data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
+
+
+	/* Optimize, if input, field and value are constants, we can calculate the result at this parse phase,
+	 * or if the input was null then return NULL expression. */
+	if (IsAggregationExpressionEvaluatesToNull(&arguments->input) ||
+		(IsAggregationExpressionConstant(&arguments->input) && (!isSetField ||
+																IsAggregationExpressionConstant(
+																	&arguments->value))))
+	{
+		if (IsExpressionResultNull(&arguments->input.value) ||
+			arguments->input.value.value_type == BSON_TYPE_DOCUMENT)
+		{
+			bson_value_t result = ProcessResultForDollarSetFieldOrUnsetField(
+				arguments->field.value,
+				arguments->
+				input.value,
+				arguments->
+				value.value);
+			data->value = result;
+			data->kind = AggregationExpressionKind_Constant;
+			return;
+		}
+		else
+		{
+			ereport(ERROR, (errcode(
+								MongoLocation4161105),
+							errmsg(
+								"%s requires 'input' to evaluate to type Object",
+								operatorName)));
+		}
+	}
+}
+
+
+/* Function parses field argument for $getField, $setField and $unsetField
  * validation cases:
  * 1. if field is EOD, throw error missing required key 'field'
  * 2. if field is a document, check if it is a valid $const or $literal expression, update flag and store evaluated result
  * 3. If field not a $const or $literal expression:
- *      3.1 If it's a path/system variable, throw error 5654600
- *      3.2 Else if it's a document/array, throw error 5654601
- *      3.3 Else if it's value type is not utf-8, throw error 5654602
- * 4. Else if the type of evaluated result is not utf-8 throw error 5654602
- * 5. Then it is a valid field argument, and the value has been updated */
-static void
-ParseFieldExpressionForDollarGetField(const bson_value_t *field,
-									  AggregationExpressionData *
-									  fieldExpression,
-									  ParseAggregationExpressionContext *context)
+ *      3.1 If it's a path/system variable, throw error PATH_IS_NOT_ALLOWED
+ *      3.2 Else if it's a document/array, throw error NON_CONSTANT_ARGUMENT
+ *      3.3 Else if it's value type is not utf-8, throw error NON_STRING_CONSTANT
+ * 4. Else if the type of evaluated result is not utf-8 throw error NON_STRING_CONSTANT
+ * 5. Then it is a valid field argument, and the value has been updated, return VALID_ARGUMENT */
+static FieldArgumentValidationCode
+ParseFieldExpressionForDollarGetFieldAndSetFieldAndUnsetField(const bson_value_t *field,
+															  AggregationExpressionData *
+															  fieldExpression,
+															  ParseAggregationExpressionContext
+															  *context)
 {
 	bool isConstOrLiteralExpression = false;
 
 	/* Parse the expression first */
 	/* If there are more than one key, throw error */
-	/*      example: {"$getField": {$unknown: "a", "b": "c"}} */
+	/*      example: {"$getField": {"$unknown": "a", "b": "c"}} */
 	/*      throw error: An object representing an expression must have exactly one field... */
 	/* If the first key is not a recognized operator, throw error */
-	/*      example: {"$getField": {$unknown: "a"}} */
+	/*      example: {"$getField": {"$unknown": "a"}} */
 	/*      throw error: Unrecognized expression '$unknown' */
 	ParseAggregationExpressionData(fieldExpression, field, context);
 
@@ -875,39 +780,25 @@ ParseFieldExpressionForDollarGetField(const bson_value_t *field,
 		if (fieldExpression->kind == AggregationExpressionKind_Path ||
 			fieldExpression->kind == AggregationExpressionKind_SystemVariable)
 		{
-			ereport(ERROR, (errcode(MongoLocation5654600),
-							errmsg(
-								"A field path reference which is not allowed in this context. Did you mean {$literal: '%s'}?",
-								fieldExpression->value.value.v_utf8.str),
-							errhint(
-								"A field path reference which is not allowed in this context. Did you mean {$literal: '%s'}?",
-								fieldExpression->value.value.v_utf8.str)));
+			return PATH_IS_NOT_ALLOWED;
 		}
 		else if (field->value_type == BSON_TYPE_DOCUMENT ||
 				 field->value_type == BSON_TYPE_ARRAY)
 		{
-			ereport(ERROR, (errcode(
-								MongoLocation5654601),
-							errmsg(
-								"$getField requires 'field' to evaluate to a constant, but got a non-constant argument")));
+			return NON_CONSTANT_ARGUMENT;
 		}
 	}
 
 	/* if the field is a $const or $literal expression, or any constant value, we should check if the value type is utf-8 */
 	if (fieldExpression->value.value_type != BSON_TYPE_UTF8)
 	{
-		ereport(ERROR, (errcode(
-							MongoLocation5654602),
-						errmsg(
-							"$getField requires 'field' to evaluate to type String, but got %s",
-							BsonTypeName(fieldExpression->value.value_type)),
-						errhint(
-							"$getField requires 'field' to evaluate to type String, but got %s",
-							BsonTypeName(fieldExpression->value.value_type))));
+		return NON_STRING_CONSTANT;
 	}
+	return VALID_ARGUMENT;
 }
 
 
+/* Process result for $getField */
 static bson_value_t
 ProcessResultForDollarGetField(bson_value_t field, bson_value_t input)
 {
@@ -934,5 +825,76 @@ ProcessResultForDollarGetField(bson_value_t field, bson_value_t input)
 			result = *val;
 		}
 	}
+	return result;
+}
+
+
+/* Process result for $setField and $unsetField */
+static bson_value_t
+ProcessResultForDollarSetFieldOrUnsetField(bson_value_t field, bson_value_t input,
+										   bson_value_t value)
+{
+	bson_value_t result = { 0 };
+
+	/* When input.value is "$$REMOVE", we remove the entry in the input document.
+	 * As an implementation note:  we eval $$REMOVE to EOD  and that is handled below as remove.
+	 * And if the value is a constant and 'value.value_type == BSON_TYPE_EOD' that means the $$REMOVE,
+	 * as when we eval $$REMOVE in some other construct, it will eval to its default state for free.
+	 * TODO NOTE: if any other special variable uses 'value_type == BSON_TYPE_EOD' as a default value, we
+	 * will need to differentiate which is $$REMOVE.
+	 */
+	bool removeOperation = false;
+
+	/* When $$REMOVE is evaluated in the current expression resolution process the
+	 * system variable will resolve to EOD which we take advantage of as in mongo
+	 * if you had a "value" field that was null, then we are to act as remove requested.
+	 * So both are able to be processed by compare with EOD. */
+	if (value.value_type == BSON_TYPE_EOD)
+	{
+		removeOperation = true;  /* mongodb will have a unknown/null $var remove the value */
+	}
+
+	/* if input is null, return null */
+	if (IsExpressionResultNull(&input))
+	{
+		return (bson_value_t) {
+				   .value_type = BSON_TYPE_NULL
+		};
+	}
+
+	pgbson_writer writer;
+	PgbsonWriterInit(&writer);
+	bson_iter_t inputIter;
+	BsonValueInitIterator(&input, &inputIter);
+
+	bool fieldAlreadyPresentInInput = false;
+	while (bson_iter_next(&inputIter))
+	{
+		const char *key = bson_iter_key(&inputIter);
+		const bson_value_t *val = bson_iter_value(&inputIter);
+
+		if (strcmp(key, field.value.v_utf8.str) == 0)
+		{
+			if (removeOperation)
+			{
+				continue;
+			}
+			else
+			{
+				fieldAlreadyPresentInInput = true;
+				val = &value;    /* use the supplied "value" to overwrite field */
+			}
+		}
+		PgbsonWriterAppendValue(&writer, key, -1, val);
+	}
+
+	if (!removeOperation && !fieldAlreadyPresentInInput)
+	{
+		PgbsonWriterAppendValue(&writer, field.value.v_utf8.str, -1, &value);
+	}
+
+	pgbson *pgbsonResult = PgbsonWriterGetPgbson(&writer);
+	result = ConvertPgbsonToBsonValue(pgbsonResult);
+
 	return result;
 }

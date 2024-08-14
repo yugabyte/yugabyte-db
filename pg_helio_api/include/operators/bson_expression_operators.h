@@ -520,6 +520,8 @@ void HandlePreParsedDollarTsIncrement(pgbson *doc, void *arguments,
 									  ExpressionResult *expressionResult);
 void HandlePreParsedDollarTsSecond(pgbson *doc, void *arguments,
 								   ExpressionResult *expressionResult);
+void HandlePreParsedDollarUnsetField(pgbson *doc, void *arguments,
+									 ExpressionResult *expressionResult);
 void HandlePreParsedDollarZip(pgbson *doc, void *arguments,
 							  ExpressionResult *ExpressionResult);
 void ParseDollarAcos(const bson_value_t *argument, AggregationExpressionData *data,
@@ -665,6 +667,8 @@ void ParseDollarTsSecond(const bson_value_t *argument, AggregationExpressionData
 void ParseDollarTsIncrement(const bson_value_t *argument,
 							AggregationExpressionData *data,
 							ParseAggregationExpressionContext *context);
+void ParseDollarUnsetField(const bson_value_t *argument, AggregationExpressionData *data,
+						   ParseAggregationExpressionContext *context);
 void ParseDollarZip(const bson_value_t *argument, AggregationExpressionData *data,
 					ParseAggregationExpressionContext *context);
 
