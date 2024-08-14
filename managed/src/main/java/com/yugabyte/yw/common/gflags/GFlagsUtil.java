@@ -615,6 +615,8 @@ public class GFlagsUtil {
             ? taskParam.communicationPorts.redisServerRpcPort
             : node.redisServerRpcPort;
 
+    gflags.putAll(universe.getNewInstallGFlags(ServerType.TSERVER));
+
     if (useHostname) {
       gflags.put(SERVER_BROADCAST_ADDRESSES, String.format("%s:%s", privateIp, tserverRpcPort));
       gflags.put(USE_NODE_HOSTNAME_FOR_LOCAL_TSERVER, "true");
@@ -966,6 +968,8 @@ public class GFlagsUtil {
         taskParam.overrideNodePorts
             ? taskParam.communicationPorts.masterHttpPort
             : node.masterHttpPort;
+
+    gflags.putAll(universe.getNewInstallGFlags(ServerType.MASTER));
 
     if (useHostname) {
       gflags.put(
