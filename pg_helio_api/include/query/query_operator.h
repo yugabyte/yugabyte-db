@@ -109,23 +109,6 @@ List * CreateQualsFromQueryDocIterator(bson_iter_t *queryDocIterator,
 									   BsonQueryOperatorContext *context);
 Node * EvaluateBoundParameters(Node *expression, ParamListInfo boundParams);
 
-
-void ValidateCosmosSearchQuerySpec(pgbson *specIter, char **queryVectorPath,
-								   int32_t *resultCount,
-								   int32_t *queryVectorLength,
-								   pgbson **searchParamPgbson,
-								   bson_value_t *filterBson);
-
-void ValidateKnnBetaQuerySpec(pgbson *specIter, char **queryVectorPath,
-							  int32_t *resultCount,
-							  int32_t *queryVectorLength);
-
-bool IsMatchingVectorIndex(Relation indexRelation, const char *queryVectorPath,
-						   FuncExpr **vectorExtractorFunc);
-Expr * GenerateVectorSortExpr(const char *queryVectorPath,
-							  FuncExpr *vectorCastFunc, Relation indexRelation,
-							  Node *documentExpr, Node *vectorQuerySpecNode);
-
 List * CreateQualsForBsonValueTopLevelQuery(const pgbson *query);
 Expr * CreateQualForBsonValueExpression(const bson_value_t *expression);
 Expr * CreateQualForBsonValueArrayExpression(const bson_value_t *expression);

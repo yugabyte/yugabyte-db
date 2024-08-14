@@ -8,72 +8,39 @@
  *-------------------------------------------------------------------------
  */
 #include <postgres.h>
-#include <math.h>
-#include <miscadmin.h>
-#include <fmgr.h>
-#include <string.h>
-#include <utils/builtins.h>
-#include <access/reloptions.h>
-#include <tsearch/ts_utils.h>
-#include <tsearch/ts_type.h>
-#include <tsearch/ts_cache.h>
-#include <catalog/namespace.h>
-#include <utils/array.h>
+#include <catalog/pg_operator.h>
+#include <catalog/pg_type.h>
 #include <nodes/makefuncs.h>
-#include <utils/relcache.h>
+#include <utils/array.h>
+#include <utils/builtins.h>
 #include <utils/rel.h>
-#include <utils/guc.h>
-#include <utils/guc_utils.h>
+#include <utils/syscache.h>
+#include <commands/defrem.h>
 
 #include "io/helio_bson_core.h"
-#include "opclass/helio_gin_common.h"
-#include "opclass/helio_gin_index_mgmt.h"
-#include "opclass/helio_bson_gin_private.h"
 #include "utils/mongo_errors.h"
-#include "opclass/helio_bson_text_gin.h"
 #include "metadata/metadata_cache.h"
-
-#include "access/attnum.h"
-#include "access/htup.h"
-#include "utils/syscache.h"
-#include "catalog/pg_type.h"
-#include "catalog/pg_operator.h"
-#include "utils/lsyscache.h"
-#include <vector/vector_utilities.h>
-#include "executor/executor.h"
 #include "vector/bson_extract_vector.h"
 #include "vector/vector_common.h"
 #include "vector/vector_planner.h"
+#include "vector/vector_utilities.h"
+#include "vector/vector_spec.h"
 
-
-/* IVFFlat index options
- * Copy of VectorOptions for IVFFlat from PGVector
- * CodeSync: Keep in sync with pgvector.
- */
-typedef struct PgVectorIvfflatOptions
-{
-	int32 vl_len_;              /* varlena header (do not touch directly!) */
-	int lists;                  /* number of lists */
-} PgVectorIvfflatOptions;
-
-
-typedef struct PgVectorHnswOptions
-{
-	int32 vl_len_;              /* varlena header (do not touch directly!) */
-	int m;                      /* number of connections */
-	int efConstruction;         /* size of dynamic candidate list */
-} PgVectorHnswOptions;
-
+/* --------------------------------------------------------- */
+/* Data-types */
+/* --------------------------------------------------------- */
 
 extern SearchQueryEvalDataWorker *VectorEvaluationData;
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
 /* --------------------------------------------------------- */
-static void ParseVectorIndexRelOptions(Oid indexRelam, Relation indexRelation,
-									   int *numLists, int *efConstruction);
-static void TryParseNumListsAndEFConstruction(Oid indexRelam, Oid relOid, int *numLists,
-											  int *efConstruction);
+static Oid GetSimilarityOperatorOidByFamilyOid(Oid operatorFamilyOid, Oid
+											   accessMethodOid);
+
+/* --------------------------------------------------------- */
+/* Top level exports */
+/* --------------------------------------------------------- */
 
 /*
  * This function creates a FunctionCallInfoBaseData for calling to the
@@ -197,118 +164,6 @@ EvaluateMetaSearchScore(pgbson *document)
 
 
 /*
- * This function parses the user specified filters and returns the filters that are not
- * 1. mongo_catalog.bson_extract_vector(document, 'v'::text) IS NOT NULL
- * 2. shard_key_value OPERATOR(pg_catalog.=) ::bigint
- * 3. mongo_catalog.bson_search_param(document, '{ "efSearch" : { "$numberInt" : "100" } }'::mongo_catalog.bson))
- *  Example query:
- *		 SELECT document FROM ...
- *		    WHERE
- *				((document OPERATOR(mongo_catalog.#=) '{ "meta.a" : [ { "b" : { "$numberInt" : "3" } } ] }'::mongo_catalog.bson)
- *				AND ((shard_key_value OPERATOR(pg_catalog.=) '4112'::bigint)
- *				AND mongo_catalog.bson_search_param(document, '{ "efSearch" : { "$numberInt" : "100" } }'::mongo_catalog.bson))
- *				AND (mongo_catalog.bson_extract_vector(document, 'v'::text) IS NOT NULL))
- *			ORDER BY (...)
- *			LIMIT ...
- */
-List *
-TryParseUserFilterClause(RelOptInfo *rel)
-{
-	List *userFilters = NIL;
-	ListCell *cell;
-	foreach(cell, rel->baserestrictinfo)
-	{
-		RestrictInfo *rinfo = lfirst(cell);
-
-		if (IsA(rinfo->clause, NullTest))
-		{
-			/* Skip: mongo_catalog.bson_extract_vector(document, 'v'::text) IS NOT NULL */
-			continue;
-		}
-
-		if (IsA(rinfo->clause, OpExpr))
-		{
-			/* Skip: shard_key_value OPERATOR(pg_catalog.=)::bigint */
-			OpExpr *opExpr = (OpExpr *) rinfo->clause;
-			if (opExpr->opno == BigintEqualOperatorId())
-			{
-				continue;
-			}
-		}
-
-		if (IsA(rinfo->clause, FuncExpr))
-		{
-			/* Skip: mongo_catalog.bson_search_param(document, '{ "efSearch" : { "$numberInt" : "100" } }'::mongo_catalog.bson)) */
-			FuncExpr *funcExpr = (FuncExpr *) rinfo->clause;
-			if (funcExpr->funcid == ApiBsonSearchParamFunctionId())
-			{
-				continue;
-			}
-		}
-
-		/* Filters specified in the search - track them */
-		userFilters = lappend(userFilters, rinfo->clause);
-	}
-
-	return userFilters;
-}
-
-
-/*
- * This function parses the index options and returns the numLists and efConstruction
- * for the index.
- */
-static void
-ParseVectorIndexRelOptions(Oid indexRelam, Relation indexRelation, int *numLists,
-						   int *efConstruction)
-{
-	if (indexRelam == PgVectorIvfFlatIndexAmId())
-	{
-		if (indexRelation->rd_options == NULL)
-		{
-			*numLists = IVFFLAT_DEFAULT_LISTS;
-		}
-		else
-		{
-			PgVectorIvfflatOptions *options =
-				(PgVectorIvfflatOptions *) indexRelation->rd_options;
-			*numLists = options->lists;
-		}
-	}
-	else if (indexRelam == PgVectorHNSWIndexAmId())
-	{
-		if (indexRelation->rd_options == NULL)
-		{
-			*efConstruction = HNSW_DEFAULT_EF_CONSTRUCTION;
-		}
-		else
-		{
-			PgVectorHnswOptions *options =
-				(PgVectorHnswOptions *) indexRelation->rd_options;
-			*efConstruction = options->efConstruction;
-		}
-	}
-}
-
-
-/*
- * This function parses the index options and returns the default number of probes and efSearch
- * for the index, if the index options are not set, it would not change the input parameters.
- */
-static void
-TryParseNumListsAndEFConstruction(Oid indexRelam, Oid relOid, int *numLists,
-								  int *efConstruction)
-{
-	Relation indexRelation = RelationIdGetRelation(relOid);
-	if (indexRelation->rd_options != NULL)
-	{
-		ParseVectorIndexRelOptions(indexRelam, indexRelation, numLists, efConstruction);
-	}
-	RelationClose(indexRelation);
-}
-
-
-/*
  * This function calculates the default number of probes and efSearch for the index.
  * The default nProbes and efSearch are dynamically calculated based on the number of rows in the collection.
  * 1. If the index is IVFFlat:
@@ -319,64 +174,213 @@ TryParseNumListsAndEFConstruction(Oid indexRelam, Oid relOid, int *numLists,
  *  a. If the number of rows is less than 10K, the default efSearch is the efConstruction in the index.
  *  b. If the number of rows is greater than 10K, the default efSearch is HNSW_DEFAULT_EF_SEARCH.
  */
-void
-CalculateDefaultNumProbesAndSearch(IndexPath *vectorSearchPath, double indexRows,
-								   int *defaultNumProbes, int *defaultEfSearch)
+pgbson *
+CalculateSearchParamBsonForIndexPath(IndexPath *vectorSearchPath)
 {
 	IndexPath *indexPath = (IndexPath *) vectorSearchPath;
-
-	int numLists = -1;
-	int efConstruction = -1;
 	Oid indexRelam = indexPath->indexinfo->relam;
+	pgbson *searchParamBson = NULL;
 
-	TryParseNumListsAndEFConstruction(
-		indexRelam,
-		indexPath->indexinfo->indexoid, &numLists, &efConstruction);
-
-	if (indexRelam == PgVectorIvfFlatIndexAmId())
+	/* Get rows in the index */
+	Cardinality indexRows = indexPath->indexinfo->tuples;
+	if (indexRows <= 1)
 	{
-		if (numLists < 0)
+		indexRows = indexPath->indexinfo->rel->tuples;
+	}
+
+	const VectorIndexDefinition *definition = GetVectorIndexDefinitionByIndexAmOid(
+		indexRelam);
+	if (definition != NULL)
+	{
+		Oid indexOid = indexPath->indexinfo->indexoid;
+		Relation indexRelation = RelationIdGetRelation(indexOid);
+		if (indexRelation->rd_options != NULL)
 		{
-			*defaultNumProbes = IVFFLAT_DEFAULT_NPROBES;
+			searchParamBson = definition->calculateSearchParamBsonFunc(
+				indexRelation->rd_options, indexRows);
 		}
-		else
+
+		RelationClose(indexRelation);
+	}
+
+	if (searchParamBson == NULL)
+	{
+		ereport(ERROR, (errcode(MongoInternalError),
+						errmsg(
+							"The vector index type is not supported for dynamic calculation of search parameters."),
+						errhint(
+							"The vector index type %d does not support dynamic calculation of search parameters",
+							indexRelam)));
+	}
+
+	return searchParamBson;
+}
+
+
+/*
+ * Generates the Index expression for the vector index column
+ */
+char *
+GenerateVectorIndexExprStr(const char *keyPath,
+						   const CosmosSearchOptions *searchOptions)
+{
+	StringInfo indexExprStr = makeStringInfo();
+
+	char *options;
+	switch (searchOptions->commonOptions.distanceMetric)
+	{
+		case VectorIndexDistanceMetric_IPDistance:
 		{
-			/* nProbes
-			 *  < 10000 rows: numLists
-			 *  < 1M rows: rows / 1000
-			 *  >= 1M rows: sqrt(rows) */
-			if (indexRows < VECTOR_SEARCH_SMALL_COLLECTION_ROWS)
-			{
-				*defaultNumProbes = numLists;
-			}
-			else if (indexRows < VECTOR_SEARCH_1M_COLLECTION_ROWS)
-			{
-				*defaultNumProbes = indexRows / 1000;
-			}
-			else
-			{
-				*defaultNumProbes = sqrt(indexRows);
-			}
+			options = "vector_ip_ops";
+			break;
+		}
+
+		case VectorIndexDistanceMetric_CosineDistance:
+		{
+			options = "vector_cosine_ops";
+			break;
+		}
+
+		case VectorIndexDistanceMetric_L2Distance:
+		default:
+		{
+			options = "vector_l2_ops";
+			break;
 		}
 	}
-	else if (indexRelam == PgVectorHNSWIndexAmId())
+
+	appendStringInfo(indexExprStr,
+					 "CAST(%s.bson_extract_vector(document, %s::text) AS public.vector(%d)) public.%s",
+					 ApiCatalogSchemaName, quote_literal_cstr(keyPath),
+					 searchOptions->commonOptions.numDimensions,
+					 options);
+	return indexExprStr->data;
+}
+
+
+/*
+ * Checks if a query path matches a vector index and returns the index
+ * expression function of the vector index.
+ */
+bool
+IsMatchingVectorIndex(Relation indexRelation, const char *queryVectorPath,
+					  FuncExpr **vectorExtractorFunc)
+{
+	if (indexRelation->rd_index->indnkeyatts != 1)
 	{
-		if (efConstruction < 0)
-		{
-			*defaultEfSearch = HNSW_DEFAULT_EF_SEARCH;
-		}
-		else
-		{
-			if (indexRows < VECTOR_SEARCH_SMALL_COLLECTION_ROWS)
-			{
-				*defaultEfSearch = efConstruction;
-			}
-			else
-			{
-				*defaultEfSearch = HNSW_DEFAULT_EF_SEARCH;
-			}
-		}
+		/* vector indexes has only one key attributes */
+		return false;
 	}
+
+	List *indexprs;
+	if (indexRelation->rd_indexprs)
+	{
+		indexprs = indexRelation->rd_indexprs;
+	}
+	else
+	{
+		indexprs = RelationGetIndexExpressions(indexRelation);
+	}
+
+	/*  rd_index is contains the index information for an Index relation. indkey allows one to access the
+	 * indexed colums as an array of column ids. In case of a vector index this is set to 0.*/
+	if (indexRelation->rd_index->indkey.values[0] != 0)
+	{
+		return false;
+	}
+
+	if (!IsA(linitial(indexprs), FuncExpr))
+	{
+		return false;
+	}
+
+	FuncExpr *verctorCtrExpr = (FuncExpr *) linitial(indexprs);
+	if (verctorCtrExpr->funcid != VectorAsVectorFunctionOid())
+	{
+		/* Any other index with function expression is not valid vector index */
+		return false;
+	}
+
+	*vectorExtractorFunc = verctorCtrExpr;
+	FuncExpr *vectorSimilarityIndexFuncExpr = (FuncExpr *) linitial(
+		verctorCtrExpr->args);                                                 /* First argument */
+	Expr *vectorSimilarityIndexPathExpr = (Expr *) lsecond(
+		vectorSimilarityIndexFuncExpr->args);
+	Assert(IsA(vectorSimilarityIndexPathExpr, Const));
+	Const *vectorSimilarityIndexPathConst =
+		(Const *) vectorSimilarityIndexPathExpr;
+
+	char *similarityIndexPathName =
+		text_to_cstring(DatumGetTextP(vectorSimilarityIndexPathConst->constvalue));
+
+	return queryVectorPath != NULL &&
+		   strcmp(queryVectorPath, similarityIndexPathName) == 0;
+}
+
+
+/*
+ * Given a vector query path (path that is indexed by a vector index),
+ * A predefined "Cast" function that the index uses, and a pointer to the
+ * PG index, generates a vector sort Operator that can be pushed down to
+ * that specified index.
+ */
+Expr *
+GenerateVectorSortExpr(const char *queryVectorPath,
+					   FuncExpr *vectorCastFunc, Relation indexRelation,
+					   Node *documentExpr, Node *vectorQuerySpecNode)
+{
+	Datum queryVectorPathDatum = CStringGetTextDatum(queryVectorPath);
+	Const *vectorSimilarityIndexPathConst = makeConst(
+		TEXTOID, -1, InvalidOid, -1, queryVectorPathDatum,
+		false, false);
+
+	/* ApiCatalogSchemaName.bson_extract_vector(document, 'elem') */
+	List *args = list_make2(documentExpr, vectorSimilarityIndexPathConst);
+	Expr *vectorExractionFunc = (Expr *) makeFuncExpr(
+		ApiCatalogBsonExtractVectorFunctionId(), VectorTypeId(),
+		args, InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+
+	List *castArgsLeft = list_make3(vectorExractionFunc,
+									lsecond(vectorCastFunc->args),
+									lthird(vectorCastFunc->args));
+	Expr *vectorExractionFuncWithCast = (Expr *) makeFuncExpr(
+		vectorCastFunc->funcid, vectorCastFunc->funcresulttype, castArgsLeft,
+		InvalidOid, InvalidOid, COERCE_EXPLICIT_CALL);
+
+	/* ApiCatalogSchemaName.bson_extract_vector('{ "path" : "myname", "vector": [8.0, 1.0, 9.0], "k": 10 }', 'vector') */
+	Datum const_value = CStringGetTextDatum("vector");
+
+	Const *queryText = makeConst(TEXTOID, -1, /*typemod value*/ InvalidOid,
+								 -1, /* length of the pointer type*/
+								 const_value, false /*constisnull*/,
+								 false /* constbyval*/);
+	List *queryArgs = list_make2(vectorQuerySpecNode, queryText);
+	Expr *vectorExractionFromQueryFunc =
+		(Expr *) makeFuncExpr(
+			ApiCatalogBsonExtractVectorFunctionId(),
+			VectorTypeId(),
+			queryArgs,
+			InvalidOid, InvalidOid,
+			COERCE_EXPLICIT_CALL);
+
+	List *castArgsRight = list_make3(
+		vectorExractionFromQueryFunc,
+		lsecond(vectorCastFunc->args),
+		lthird(vectorCastFunc->args));
+	Expr *vectorExractionFromQueryFuncWithCast =
+		(Expr *) makeFuncExpr(vectorCastFunc->funcid, vectorCastFunc->funcresulttype,
+							  castArgsRight, InvalidOid,
+							  InvalidOid,
+							  COERCE_EXPLICIT_CALL);
+
+	Oid similaritySearchOpOid = GetSimilarityOperatorOidByFamilyOid(
+		indexRelation->rd_opfamily[0], indexRelation->rd_rel->relam);
+
+	OpExpr *opExpr = (OpExpr *) make_opclause(
+		similaritySearchOpOid, FLOAT8OID,
+		false, vectorExractionFuncWithCast, vectorExractionFromQueryFuncWithCast,
+		InvalidOid, InvalidOid);
+	return (Expr *) opExpr;
 }
 
 
@@ -384,42 +388,18 @@ CalculateDefaultNumProbesAndSearch(IndexPath *vectorSearchPath, double indexRows
  * This function parses the user specified search parameters and set the corresponding GUCs.
  */
 void
-SetSearchParametersToGUC(pgbson *searchParamBson)
+SetSearchParametersToGUC(Oid vectorAccessMethodOid, pgbson *searchParamBson)
 {
-	if (searchParamBson != NULL)
+	if (searchParamBson == NULL)
 	{
-		bson_iter_t documentIterator;
-		PgbsonInitIterator(searchParamBson, &documentIterator);
-		while (bson_iter_next(&documentIterator))
-		{
-			const char *key = bson_iter_key(&documentIterator);
-			if (strcmp(key, VECTOR_PARAMETER_NAME_IVF_NPROBES) == 0)
-			{
-				int32_t nProbes = BsonValueAsInt32(bson_iter_value(
-													   &documentIterator));
+		return;
+	}
 
-				/*
-				 * set nProbes to local GUC ivfflat.probes
-				 */
-				char nProbesStr[20];
-				snprintf(nProbesStr, sizeof(nProbesStr), "%d",
-						 nProbes);
-				SetGUCLocally("ivfflat.probes", nProbesStr);
-			}
-			else if (strcmp(key, VECTOR_PARAMETER_NAME_HNSW_EF_SEARCH) == 0)
-			{
-				int32_t efSearch = BsonValueAsInt32(bson_iter_value(
-														&documentIterator));
-
-				/*
-				 * set efSearch to local GUC hnsw.ef_search
-				 */
-				char efSearchStr[20];
-				snprintf(efSearchStr, sizeof(efSearchStr), "%d",
-						 efSearch);
-				SetGUCLocally("hnsw.ef_search", efSearchStr);
-			}
-		}
+	const VectorIndexDefinition *definition = GetVectorIndexDefinitionByIndexAmOid(
+		vectorAccessMethodOid);
+	if (definition != NULL)
+	{
+		definition->setSearchParametersToGUCFunc(searchParamBson);
 	}
 }
 
@@ -435,26 +415,46 @@ TrySetDefaultSearchParamForCustomScan(SearchQueryEvalData *querySearchData)
 	{
 		searchInput = DatumGetPgBson(querySearchData->SearchParamBson);
 	}
+
 	if (searchInput == NULL || IsPgbsonEmptyDocument(searchInput))
 	{
-		pgbson_writer optionsWriter;
-		PgbsonWriterInit(&optionsWriter);
-
-		if (querySearchData->VectorAccessMethodOid == PgVectorIvfFlatIndexAmId())
+		const VectorIndexDefinition *definition = GetVectorIndexDefinitionByIndexAmOid(
+			querySearchData->VectorAccessMethodOid);
+		if (definition != NULL)
 		{
-			PgbsonWriterAppendInt32(&optionsWriter, VECTOR_PARAMETER_NAME_IVF_NPROBES,
-									VECTOR_PARAMETER_NAME_IVF_NPROBES_STR_LEN,
-									IVFFLAT_DEFAULT_NPROBES);
+			querySearchData->SearchParamBson = PointerGetDatum(
+				definition->getDefaultSearchParamBsonFunc());
 		}
-		else if (querySearchData->VectorAccessMethodOid == PgVectorHNSWIndexAmId())
-		{
-			PgbsonWriterAppendInt32(&optionsWriter,
-									VECTOR_PARAMETER_NAME_HNSW_EF_SEARCH,
-									VECTOR_PARAMETER_NAME_HNSW_EF_SEARCH_STR_LEN,
-									HNSW_DEFAULT_EF_SEARCH);
-		}
-
-		querySearchData->SearchParamBson = PointerGetDatum(
-			PgbsonWriterGetPgbson(&optionsWriter));
 	}
+}
+
+
+/* --------------------------------------------------------- */
+/* Private methods */
+/* --------------------------------------------------------- */
+
+static Oid
+GetSimilarityOperatorOidByFamilyOid(Oid operatorFamilyOid, Oid accessMethodOid)
+{
+	Oid operatorOid = InvalidOid;
+
+	const VectorIndexDefinition *definition = GetVectorIndexDefinitionByIndexAmOid(
+		accessMethodOid);
+
+	if (definition != NULL)
+	{
+		operatorOid = definition->getSimilarityOpOidByFamilyOidFunc(operatorFamilyOid);
+	}
+
+	if (operatorOid == InvalidOid)
+	{
+		const char *accessMethodName = get_am_name(accessMethodOid);
+		ereport(ERROR, (errcode(MongoInternalError),
+						errmsg("Unsupported vector search operator"),
+						errhint(
+							"Unsupported vector index type: %s, operatorFamilyOid: %u",
+							accessMethodName, operatorFamilyOid)));
+	}
+
+	return operatorOid;
 }

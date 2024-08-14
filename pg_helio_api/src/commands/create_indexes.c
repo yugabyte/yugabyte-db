@@ -60,6 +60,7 @@
 #include "utils/index_utils.h"
 #include "utils/version_utils.h"
 #include "vector/vector_common.h"
+#include "vector/vector_utilities.h"
 
 
 #define MAX_INDEX_OPTIONS_LENGTH 1500
@@ -349,8 +350,6 @@ static char * GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexD
 								   bool enableLargeIndexKeys);
 static char * Generate2dsphereIndexExprStr(const IndexDefKey *indexDefKey);
 static char * Generate2dsphereSparseExprStr(const IndexDefKey *indexDefKey);
-static char * GenerateVectorIndexExprStr(IndexDefKey *indexDefKey,
-										 const CosmosSearchOptions *searchOptions);
 static char * GenerateIndexFilterStr(uint64 collectionId, Expr *indexDefPartFilterExpr);
 static char * DeparseSimpleExprForDocument(uint64 collectionId, Expr *expr);
 static void TryDropCollectionIndexes(uint64 collectionId, List *indexIdList,
@@ -2625,6 +2624,7 @@ ParseCosmosSearchOptionsDoc(const bson_iter_t *indexDefDocIter)
 {
 	ReportFeatureUsage(FEATURE_CREATE_INDEX_VECTOR);
 	CosmosSearchOptions *cosmosSearchOptions = palloc0(sizeof(CosmosSearchOptions));
+	const VectorIndexDefinition *definition = NULL;
 
 	bson_iter_t cosmosSearchIter;
 	bson_iter_recurse(indexDefDocIter, &cosmosSearchIter);
@@ -2642,129 +2642,20 @@ ParseCosmosSearchOptionsDoc(const bson_iter_t *indexDefDocIter)
 									   BsonTypeName(bson_iter_type(&cosmosSearchIter)))));
 			}
 
-			StringView str = {
+			StringView kindStr = {
 				.string = keyValue->value.v_utf8.str, .length = keyValue->value.v_utf8.len
 			};
-			if (StringViewEqualsCString(&str, "vector-ivf"))
+
+			definition = GetVectorIndexDefinitionByIndexKindName(&kindStr);
+			if (definition != NULL)
 			{
-				ReportFeatureUsage(FEATURE_CREATE_INDEX_VECTOR_TYPE_IVFFLAT);
-				cosmosSearchOptions->indexKind = MongoCdbIndexKind_VectorSearch_Ivf;
-			}
-			else if (StringViewEqualsCString(&str, "vector-hnsw"))
-			{
-				if (!EnableVectorHNSWIndex)
-				{
-					/* Safe guard against the helio_api.enableVectorHNSWIndex GUC */
-					ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-									errmsg(
-										"hnsw index is not supported for this cluster tier")));
-				}
-				ReportFeatureUsage(FEATURE_CREATE_INDEX_VECTOR_TYPE_HNSW);
-				cosmosSearchOptions->indexKind = MongoCdbIndexKind_VectorSearch_Hnsw;
+				cosmosSearchOptions->indexKindStr = definition->kindName;
 			}
 			else
 			{
 				ereport(ERROR, (errcode(MongoCannotCreateIndex),
 								errmsg("Invalid search index kind %s",
-									   str.string)));
-			}
-		}
-		else if (strcmp(searchOptionsIterKey, VECTOR_PARAMETER_NAME_IVF_NLISTS) == 0)
-		{
-			if (!BsonValueIsNumber(keyValue))
-			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
-								errmsg("%s must be a number not %s",
-									   VECTOR_PARAMETER_NAME_IVF_NLISTS,
-									   BsonTypeName(bson_iter_type(&cosmosSearchIter)))));
-			}
-
-			cosmosSearchOptions->vectorOptions.numLists = BsonValueAsInt32(keyValue);
-
-			if (cosmosSearchOptions->vectorOptions.numLists < IVFFLAT_MIN_LISTS)
-			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
-								errmsg(
-									"%s must be greater than or equal to %d not %d",
-									VECTOR_PARAMETER_NAME_IVF_NLISTS,
-									IVFFLAT_MIN_LISTS,
-									cosmosSearchOptions->vectorOptions.numLists)));
-			}
-
-			if (cosmosSearchOptions->vectorOptions.numLists > IVFFLAT_MAX_LISTS)
-			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
-								errmsg(
-									"%s must be less or equal than or equal to %d not %d",
-									VECTOR_PARAMETER_NAME_IVF_NLISTS,
-									IVFFLAT_MAX_LISTS,
-									cosmosSearchOptions->vectorOptions.numLists)));
-			}
-		}
-		else if (strcmp(searchOptionsIterKey, VECTOR_PARAMETER_NAME_HNSW_M) == 0)
-		{
-			if (!BsonValueIsNumber(keyValue))
-			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
-								errmsg("%s must be a number not %s",
-									   VECTOR_PARAMETER_NAME_HNSW_M,
-									   BsonTypeName(bson_iter_type(&cosmosSearchIter)))));
-			}
-
-			cosmosSearchOptions->vectorOptions.m = BsonValueAsInt32(keyValue);
-
-			if (cosmosSearchOptions->vectorOptions.m < HNSW_MIN_M)
-			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
-								errmsg("%s must be greater than or equal to %d not %d",
-									   VECTOR_PARAMETER_NAME_HNSW_M,
-									   HNSW_MIN_M,
-									   cosmosSearchOptions->vectorOptions.m)));
-			}
-
-			if (cosmosSearchOptions->vectorOptions.m > HNSW_MAX_M)
-			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
-								errmsg("%s must be less than or equal to %d not %d",
-									   VECTOR_PARAMETER_NAME_HNSW_M,
-									   HNSW_MAX_M,
-									   cosmosSearchOptions->vectorOptions.m)));
-			}
-		}
-		else if (strcmp(searchOptionsIterKey,
-						VECTOR_PARAMETER_NAME_HNSW_EF_CONSTRUCTION) == 0)
-		{
-			if (!BsonValueIsNumber(keyValue))
-			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
-								errmsg("%s must be a number not %s",
-									   VECTOR_PARAMETER_NAME_HNSW_EF_CONSTRUCTION,
-									   BsonTypeName(bson_iter_type(&cosmosSearchIter)))));
-			}
-
-			cosmosSearchOptions->vectorOptions.efConstruction = BsonValueAsInt32(
-				keyValue);
-
-			if (cosmosSearchOptions->vectorOptions.efConstruction <
-				HNSW_MIN_EF_CONSTRUCTION)
-			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
-								errmsg(
-									"%s must be greater than or equal to %d not %d",
-									VECTOR_PARAMETER_NAME_HNSW_EF_CONSTRUCTION,
-									HNSW_MIN_EF_CONSTRUCTION,
-									cosmosSearchOptions->vectorOptions.efConstruction)));
-			}
-
-			if (cosmosSearchOptions->vectorOptions.efConstruction >
-				HNSW_MAX_EF_CONSTRUCTION)
-			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
-								errmsg(
-									"%s must be less than or equal to %d not %d",
-									VECTOR_PARAMETER_NAME_HNSW_EF_CONSTRUCTION,
-									HNSW_MAX_EF_CONSTRUCTION,
-									cosmosSearchOptions->vectorOptions.efConstruction)));
+									   kindStr.string)));
 			}
 		}
 		else if (strcmp(searchOptionsIterKey, "similarity") == 0)
@@ -2783,19 +2674,19 @@ ParseCosmosSearchOptionsDoc(const bson_iter_t *indexDefDocIter)
 			if (StringViewEqualsCString(&str, "L2"))
 			{
 				ReportFeatureUsage(FEATURE_CREATE_INDEX_VECTOR_L2);
-				cosmosSearchOptions->vectorOptions.distanceMetric =
+				cosmosSearchOptions->commonOptions.distanceMetric =
 					VectorIndexDistanceMetric_L2Distance;
 			}
 			else if (StringViewEqualsCString(&str, "IP"))
 			{
 				ReportFeatureUsage(FEATURE_CREATE_INDEX_VECTOR_IP);
-				cosmosSearchOptions->vectorOptions.distanceMetric =
+				cosmosSearchOptions->commonOptions.distanceMetric =
 					VectorIndexDistanceMetric_IPDistance;
 			}
 			else if (StringViewEqualsCString(&str, "COS"))
 			{
 				ReportFeatureUsage(FEATURE_CREATE_INDEX_VECTOR_COS);
-				cosmosSearchOptions->vectorOptions.distanceMetric =
+				cosmosSearchOptions->commonOptions.distanceMetric =
 					VectorIndexDistanceMetric_CosineDistance;
 			}
 			else
@@ -2814,103 +2705,37 @@ ParseCosmosSearchOptionsDoc(const bson_iter_t *indexDefDocIter)
 									   BsonTypeName(bson_iter_type(&cosmosSearchIter)))));
 			}
 
-			cosmosSearchOptions->vectorOptions.numDimensions = BsonValueAsInt32(keyValue);
-		}
-		else
-		{
-			ereport(ERROR, (errcode(MongoUnknownBsonField),
-							errmsg("BSON field 'createIndexes.cosmosSearch.%s' is an "
-								   "unknown field", searchOptionsIterKey)));
+			cosmosSearchOptions->commonOptions.numDimensions = BsonValueAsInt32(keyValue);
 		}
 	}
 
-	if (cosmosSearchOptions->indexKind == MongoCdbIndexKind_Unknown)
+	/* Check the common required options */
+	if (cosmosSearchOptions->indexKindStr == NULL)
 	{
 		ereport(ERROR, (errcode(MongoCannotCreateIndex),
 						errmsg("cosmosSearch index kind must be specified")));
 	}
 
-	/* Check search option for ivf */
-	if (cosmosSearchOptions->vectorOptions.numLists > 0 &&
-		cosmosSearchOptions->indexKind != MongoCdbIndexKind_VectorSearch_Ivf)
+	if (cosmosSearchOptions->commonOptions.numDimensions <= 1)
 	{
 		ereport(ERROR, (errcode(MongoCannotCreateIndex),
 						errmsg(
-							"%s must be specified only for vector-ivf indexes",
-							VECTOR_PARAMETER_NAME_IVF_NLISTS)));
+							"vector index must specify dimensions greater than 1")));
 	}
 
-	/* Set default numLists for ivfflat */
-	if (cosmosSearchOptions->vectorOptions.numLists == 0 &&
-		cosmosSearchOptions->indexKind == MongoCdbIndexKind_VectorSearch_Ivf)
-	{
-		cosmosSearchOptions->vectorOptions.numLists = IVFFLAT_DEFAULT_LISTS;
-	}
-
-	/* Check search option for hnsw */
-	if (cosmosSearchOptions->vectorOptions.m > 0 &&
-		cosmosSearchOptions->indexKind != MongoCdbIndexKind_VectorSearch_Hnsw)
+	if (cosmosSearchOptions->commonOptions.distanceMetric ==
+		VectorIndexDistanceMetric_Unknown)
 	{
 		ereport(ERROR, (errcode(MongoCannotCreateIndex),
 						errmsg(
-							"%s must be specified only for vector-hnsw indexes",
-							VECTOR_PARAMETER_NAME_HNSW_M)));
+							"vector index must specify similarity metric")));
 	}
 
-	/* Set default m for hnsw */
-	if (cosmosSearchOptions->vectorOptions.m == 0 &&
-		cosmosSearchOptions->indexKind == MongoCdbIndexKind_VectorSearch_Hnsw)
-	{
-		cosmosSearchOptions->vectorOptions.m = HNSW_DEFAULT_M;
-	}
-
-	if (cosmosSearchOptions->vectorOptions.efConstruction > 0 &&
-		cosmosSearchOptions->indexKind != MongoCdbIndexKind_VectorSearch_Hnsw)
-	{
-		ereport(ERROR, (errcode(MongoCannotCreateIndex),
-						errmsg(
-							"%s must be specified only for vector-hnsw indexes",
-							VECTOR_PARAMETER_NAME_HNSW_EF_CONSTRUCTION)));
-	}
-
-	/* Set default efConstruction for hnsw */
-	if (cosmosSearchOptions->vectorOptions.efConstruction == 0 &&
-		cosmosSearchOptions->indexKind == MongoCdbIndexKind_VectorSearch_Hnsw)
-	{
-		cosmosSearchOptions->vectorOptions.efConstruction = HNSW_DEFAULT_EF_CONSTRUCTION;
-	}
-
-	/* Check efConstruction is greater than or equal to m * 2 */
-	if ((cosmosSearchOptions->vectorOptions.efConstruction <
-		 cosmosSearchOptions->vectorOptions.m * 2) &&
-		cosmosSearchOptions->indexKind == MongoCdbIndexKind_VectorSearch_Hnsw)
-	{
-		ereport(ERROR, (errcode(MongoCannotCreateIndex),
-						errmsg(
-							"%s must be greater than or equal to 2 * m for vector-hnsw indexes",
-							VECTOR_PARAMETER_NAME_HNSW_EF_CONSTRUCTION)));
-	}
-
-	if (cosmosSearchOptions->vectorOptions.distanceMetric !=
-		VectorIndexDistanceMetric_Unknown &&
-		cosmosSearchOptions->indexKind != MongoCdbIndexKind_VectorSearch_Ivf &&
-		cosmosSearchOptions->indexKind != MongoCdbIndexKind_VectorSearch_Hnsw)
-	{
-		ereport(ERROR, (errcode(MongoCannotCreateIndex),
-						errmsg(
-							"similarity metric must be specified only for vector indexes")));
-	}
-
-	if ((cosmosSearchOptions->indexKind == MongoCdbIndexKind_VectorSearch_Ivf ||
-		 cosmosSearchOptions->indexKind == MongoCdbIndexKind_VectorSearch_Hnsw) &&
-		(cosmosSearchOptions->vectorOptions.numDimensions <= 1 ||
-		 cosmosSearchOptions->vectorOptions.distanceMetric ==
-		 VectorIndexDistanceMetric_Unknown))
-	{
-		ereport(ERROR, (errcode(MongoCannotCreateIndex),
-						errmsg(
-							"vector index must specify dimensions greater than 1 and similarity metric")));
-	}
+	/* Parse the kind specific options */
+	bson_iter_t vectorOptionsIter;
+	bson_iter_recurse(indexDefDocIter, &vectorOptionsIter);
+	definition->parseIndexCreationSpecFunc(&vectorOptionsIter,
+										   cosmosSearchOptions);
 
 	return cosmosSearchOptions;
 }
@@ -4569,71 +4394,32 @@ CreatePostgresIndexCreationCmd(uint64 collectionId, IndexDef *indexDef, int inde
 	}
 	else if (indexDef->cosmosSearchOptions != NULL)
 	{
-		if (indexDef->cosmosSearchOptions->indexKind ==
-			MongoCdbIndexKind_VectorSearch_Ivf)
-		{
-			int numLists = indexDef->cosmosSearchOptions->vectorOptions.numLists;
+		StringView kindNameView = CreateStringViewFromString(
+			indexDef->cosmosSearchOptions->indexKindStr);
+		const VectorIndexDefinition *definition = GetVectorIndexDefinitionByIndexKindName(
+			&kindNameView);
 
-			/* Limitation/Todo: pgvector does not support concurrent index creation */
-			/* It currently fails if we try to create index concurrently when the collection has data. */
-			appendStringInfo(cmdStr,
-							 "CREATE INDEX " MONGO_DATA_TABLE_INDEX_NAME_FORMAT
-							 " ON %s." MONGO_DATA_TABLE_NAME_FORMAT
-							 " USING ivfflat(%s) WITH (lists = %d)",
-							 indexId, ApiDataSchemaName, collectionId,
-							 GenerateVectorIndexExprStr(indexDef->key,
-														indexDef->cosmosSearchOptions),
-							 numLists);
+		/* Parse the kind specific options */
+		IndexDefKeyPath *indexKeyPath = (IndexDefKeyPath *) linitial(
+			indexDef->key->keyPathList);
+		char *keyPath = (char *) indexKeyPath->path;
 
-			/* Add WHERE bson_extract_vector(document, path) IS NOT NULL predicate to allow search queries with the same clause to use the index */
-			IndexDefKeyPath *indexKeyPath = (IndexDefKeyPath *) linitial(
-				indexDef->key->keyPathList);
-			char *keyPath = (char *) indexKeyPath->path;
+		CosmosSearchOptions *cosmosSearchOptions =
+			indexDef->cosmosSearchOptions;
+		appendStringInfo(cmdStr,
+						 "CREATE INDEX " MONGO_DATA_TABLE_INDEX_NAME_FORMAT
+						 " ON %s." MONGO_DATA_TABLE_NAME_FORMAT
+						 " USING %s(%s) WITH (%s)",
+						 indexId, ApiDataSchemaName, collectionId,
+						 definition->indexAccessMethodName,
+						 GenerateVectorIndexExprStr(keyPath,
+													cosmosSearchOptions),
+						 definition->generateIndexParamStrFunc(cosmosSearchOptions));
 
-			appendStringInfo(cmdStr,
-							 " WHERE %s.bson_extract_vector(document, %s::text) IS NOT NULL",
-							 ApiCatalogSchemaName, quote_literal_cstr(keyPath));
-		}
-		else if (indexDef->cosmosSearchOptions->indexKind ==
-				 MongoCdbIndexKind_VectorSearch_Hnsw)
-		{
-			int m = indexDef->cosmosSearchOptions->vectorOptions.m;
-			int efConstruction =
-				indexDef->cosmosSearchOptions->vectorOptions.efConstruction;
-
-			appendStringInfo(cmdStr,
-							 "CREATE INDEX " MONGO_DATA_TABLE_INDEX_NAME_FORMAT
-							 " ON %s." MONGO_DATA_TABLE_NAME_FORMAT
-							 " USING hnsw(%s) WITH (m = %d, ef_construction = %d)",
-							 indexId, ApiDataSchemaName, collectionId,
-							 GenerateVectorIndexExprStr(indexDef->key,
-														indexDef->cosmosSearchOptions),
-							 m, efConstruction);
-
-			/* Add WHERE bson_extract_vector(document, path) IS NOT NULL predicate to allow search queries with the same clause to use the index */
-			IndexDefKeyPath *indexKeyPath = (IndexDefKeyPath *) linitial(
-				indexDef->key->keyPathList);
-			char *keyPath = (char *) indexKeyPath->path;
-
-			appendStringInfo(cmdStr,
-							 " WHERE %s.bson_extract_vector(document, %s::text) IS NOT NULL",
-							 ApiCatalogSchemaName, quote_literal_cstr(keyPath));
-		}
-		else
-		{
-			if (!EnableVectorHNSWIndex)
-			{
-				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								errmsg(
-									"cosmosSearch index only supports 'vector-ivf'")));
-			}
-			else
-			{
-				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								errmsg(
-									"cosmosSearch index only supports 'vector-ivf' or 'vector-hnsw'")));
-			}
-		}
+		/* Add WHERE bson_extract_vector(document, path) IS NOT NULL predicate to allow search queries with the same clause to use the index */
+		appendStringInfo(cmdStr,
+						 " WHERE %s.bson_extract_vector(document, %s::text) IS NOT NULL",
+						 ApiCatalogSchemaName, quote_literal_cstr(keyPath));
 	}
 	else if (indexDef->key->has2dIndex)
 	{
@@ -5042,51 +4828,6 @@ ResolveWPPathOpsFromTreeInternal(const BsonIntermediatePathNode *treeParentNode,
 			}
 		}
 	}
-}
-
-
-/*
- * Generates the Index expression for the vector index column
- */
-static char *
-GenerateVectorIndexExprStr(IndexDefKey *indexDefKey,
-						   const CosmosSearchOptions *searchOptions)
-{
-	StringInfo indexExprStr = makeStringInfo();
-
-	IndexDefKeyPath *indexKeyPath = (IndexDefKeyPath *) linitial(
-		indexDefKey->keyPathList);
-	char *keyPath = (char *) indexKeyPath->path;
-
-	char *options;
-	switch (searchOptions->vectorOptions.distanceMetric)
-	{
-		case VectorIndexDistanceMetric_IPDistance:
-		{
-			options = "vector_ip_ops";
-			break;
-		}
-
-		case VectorIndexDistanceMetric_CosineDistance:
-		{
-			options = "vector_cosine_ops";
-			break;
-		}
-
-		case VectorIndexDistanceMetric_L2Distance:
-		default:
-		{
-			options = "vector_l2_ops";
-			break;
-		}
-	}
-
-	appendStringInfo(indexExprStr,
-					 "CAST(%s.bson_extract_vector(document, %s::text) AS public.vector(%d)) public.%s",
-					 ApiCatalogSchemaName, quote_literal_cstr(keyPath),
-					 searchOptions->vectorOptions.numDimensions,
-					 options);
-	return indexExprStr->data;
 }
 
 

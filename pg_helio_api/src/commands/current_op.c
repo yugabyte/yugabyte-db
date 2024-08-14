@@ -1012,6 +1012,9 @@ GetIndexSpecForShardedCreateIndexQuery(SingleWorkerActivity *activity)
 	indexAmIdsDatum[1] = PgVectorHNSWIndexAmId();
 	indexAmIdsDatum[2] = PgVectorIvfFlatIndexAmId();
 	indexAmIdsDatum[3] = GIST_AM_OID;
+
+	/* TODO - Add diskann index am id */
+
 	indexAmIdsArray = construct_array(indexAmIdsDatum, arraySize, OIDOID,
 									  sizeof(Oid), true,
 									  TYPALIGN_INT);

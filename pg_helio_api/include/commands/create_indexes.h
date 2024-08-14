@@ -17,6 +17,7 @@
 #include "metadata/index.h"
 #include "io/helio_bson_core.h"
 #include "operators/bson_expression.h"
+#include "vector/vector_spec.h"
 
 /*
  * Should be used together with MongoIndexBuildAborted errcode.
@@ -26,46 +27,6 @@
 	"collection dropped/re-created concurrently"
 
 extern int32 MaxIndexesPerCollection;
-
-/*
- * Different index kinds for CDB index
- * (Similar the Atlas search index).
- */
-typedef enum MongoCdbIndexKind
-{
-	/*
-	 * An unknown index kind.
-	 */
-	MongoCdbIndexKind_Unknown = 0,
-
-	/*
-	 * A Vector ivfflat index.
-	 */
-	MongoCdbIndexKind_VectorSearch_Ivf = 1,
-
-	/*
-	 * A Vector HNSW index.
-	 */
-	MongoCdbIndexKind_VectorSearch_Hnsw = 2
-} MongoCdbIndexKind;
-
-
-/*
- * The distance metric for a vector based index.
- */
-typedef enum VectorIndexDistanceMetric
-{
-	VectorIndexDistanceMetric_Unknown = 0,
-
-	/* Use basic linear vector distance */
-	VectorIndexDistanceMetric_L2Distance = 1,
-
-	/* Use vector inner product distance */
-	VectorIndexDistanceMetric_IPDistance = 2,
-
-	/* Use inner product cosine distance. */
-	VectorIndexDistanceMetric_CosineDistance = 3,
-} VectorIndexDistanceMetric;
 
 
 typedef struct
@@ -107,44 +68,6 @@ typedef struct
 	List *keyPathList;
 } IndexDefKey;
 
-
-/*
- * Options associated with vector based Cosmos Search indexes
- */
-typedef struct VectorOptions
-{
-	/* The number of lists for the ivfflat blocks */
-	int32_t numLists;
-
-	/* The type of distance for the vector distance */
-	VectorIndexDistanceMetric distanceMetric;
-
-	/* The number of dimensions of the vector */
-	int32_t numDimensions;
-
-	/* The m for the HNSW blocks */
-	int32_t m;
-
-	/* The efConstruction for the HNSW blocks */
-	int32_t efConstruction;
-} VectorOptions;
-
-
-/*
- * Options specific to Cosmos specific indexing
- * for vector and text search support.
- */
-typedef struct
-{
-	/* The raw pgbson for the cosmosSearchOptions. */
-	pgbson *searchOptionsDoc;
-
-	/* The index kind for the cosmosSearch index. */
-	MongoCdbIndexKind indexKind;
-
-	/* Options for a vector search */
-	VectorOptions vectorOptions;
-} CosmosSearchOptions;
 
 typedef struct
 {

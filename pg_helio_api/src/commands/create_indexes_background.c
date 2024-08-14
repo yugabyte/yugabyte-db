@@ -95,6 +95,7 @@ extern bool EnableIndexBuildBackground;
 static const SkippableError SkippableErrors[] = {
 	{ 16908482 /* Postgres ERRCODE_EXCLUSION_VIOLATION */, NULL },
 	{ 2600, "column cannot have more than 2000 dimensions for ivfflat index" },
+	{ 2600, "column cannot have more than 2000 dimensions for hnsw index" },
 	{ 261 /* Postgres ERRCODE_PROGRAM_LIMIT_EXCEEDED */, "index row size " },
 	{ 261 /* ERRCODE_PROGRAM_LIMIT_EXCEEDED */, "memory required is " },
 	{ 687865923, "unsupported language: " },

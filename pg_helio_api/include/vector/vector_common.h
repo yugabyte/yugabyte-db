@@ -10,6 +10,8 @@
 #ifndef VECTOR_COMMON__H
 #define VECTOR_COMMON__H
 
+#define VECTOR_MAX_DIMENSIONS 2000
+
 /* ivfflat parameters */
 #define IVFFLAT_DEFAULT_NPROBES 1
 #define IVFFLAT_MIN_NPROBES 1

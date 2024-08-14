@@ -34,6 +34,7 @@
 #include "commands/cursor_common.h"
 #include "vector/vector_planner.h"
 #include "vector/vector_common.h"
+#include "vector/vector_spec.h"
 #include "utils/mongo_errors.h"
 #include "customscan/helio_custom_scan_private.h"
 
@@ -333,14 +334,14 @@ AddCustomPathForVectorCore(PlannerInfo *planner, List *pathList, RelOptInfo *rel
 		if (IsA(inputPath, IndexPath))
 		{
 			IndexPath *indexPath = (IndexPath *) inputPath;
-			if (indexPath->indexinfo->relam != PgVectorHNSWIndexAmId() &&
-				indexPath->indexinfo->relam != PgVectorIvfFlatIndexAmId())
-			{
-				continue;
-			}
 
-			vectorSearchPath = inputPath;
-			break;
+			const VectorIndexDefinition *indexDef = GetVectorIndexDefinitionByIndexAmOid(
+				indexPath->indexinfo->relam);
+			if (indexDef != NULL)
+			{
+				vectorSearchPath = inputPath;
+				break;
+			}
 		}
 	}
 
@@ -367,34 +368,9 @@ AddCustomPathForVectorCore(PlannerInfo *planner, List *pathList, RelOptInfo *rel
 	{
 		IndexPath *indexPath = (IndexPath *) vectorSearchPath;
 
-		/* Get rows in the index */
-		double indexRows = indexPath->indexinfo->tuples;
-		if (indexRows <= 1)
-		{
-			indexRows = rel->tuples;
-		}
+		pgbson *defaultSearchParam = CalculateSearchParamBsonForIndexPath(indexPath);
 
-		int defaultNumProbes = -1, defaultEfSearch = -1;
-		CalculateDefaultNumProbesAndSearch(indexPath, indexRows, &defaultNumProbes,
-										   &defaultEfSearch);
-
-		/* Set the default params into the query state */
-		pgbson_writer optionsWriter;
-		PgbsonWriterInit(&optionsWriter);
-		if (defaultNumProbes != -1)
-		{
-			PgbsonWriterAppendInt32(&optionsWriter, VECTOR_PARAMETER_NAME_IVF_NPROBES,
-									VECTOR_PARAMETER_NAME_IVF_NPROBES_STR_LEN,
-									defaultNumProbes);
-		}
-		if (defaultEfSearch != -1)
-		{
-			PgbsonWriterAppendInt32(&optionsWriter, VECTOR_PARAMETER_NAME_HNSW_EF_SEARCH,
-									VECTOR_PARAMETER_NAME_HNSW_EF_SEARCH_STR_LEN,
-									defaultEfSearch);
-		}
-		queryState->querySearchData.SearchParamBson = PointerGetDatum(
-			PgbsonWriterGetPgbson(&optionsWriter));
+		queryState->querySearchData.SearchParamBson = PointerGetDatum(defaultSearchParam);
 	}
 
 	/* wrap the path in a custom path */
@@ -569,7 +545,9 @@ ExtensionQueryScanBeginCustomScan(CustomScanState *node, EState *estate,
 
 		if (searchParamBson != NULL)
 		{
-			SetSearchParametersToGUC(searchParamBson);
+			SetSearchParametersToGUC(
+				queryScanState->inputState->querySearchData.VectorAccessMethodOid,
+				searchParamBson);
 		}
 	}
 

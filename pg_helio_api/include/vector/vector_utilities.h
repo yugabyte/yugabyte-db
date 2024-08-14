@@ -13,6 +13,8 @@
 #include <io/helio_bson_core.h>
 #include <fmgr.h>
 
+#include "vector/vector_spec.h"
+
 
 /*
  * Type that holds data needed for
@@ -72,5 +74,15 @@ typedef struct SearchQueryEvalDataWorker
 FunctionCallInfoBaseData * CreateFCInfoForScoreCalculation(const SearchQueryEvalData
 														   *queryEvalData);
 double EvaluateMetaSearchScore(pgbson *document);
+
+char * GenerateVectorIndexExprStr(const char *keyPath,
+								  const CosmosSearchOptions *searchOptions);
+
+Expr * GenerateVectorSortExpr(const char *queryVectorPath,
+							  FuncExpr *vectorCastFunc, Relation indexRelation,
+							  Node *documentExpr, Node *vectorQuerySpecNode);
+
+bool IsMatchingVectorIndex(Relation indexRelation, const char *queryVectorPath,
+						   FuncExpr **vectorExtractorFunc);
 
 #endif

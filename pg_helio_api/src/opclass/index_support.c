@@ -32,6 +32,7 @@
 #include "metadata/metadata_cache.h"
 #include "utils/mongo_errors.h"
 #include "vector/vector_utilities.h"
+#include "vector/vector_spec.h"
 #include "utils/version_utils.h"
 #include "query/helio_bson_compare.h"
 
@@ -933,11 +934,13 @@ ReplaceFunctionOperatorsInPlanPath(PlannerInfo *root, RelOptInfo *rel, Path *pat
 	else if (IsA(path, IndexPath))
 	{
 		IndexPath *indexPath = (IndexPath *) path;
-		bool hasVectorSearch = indexPath->indexinfo->relam ==
-							   PgVectorIvfFlatIndexAmId() ||
-							   indexPath->indexinfo->relam == PgVectorHNSWIndexAmId();
-		context->hasVectorSearchQuery = context->hasVectorSearchQuery ||
-										hasVectorSearch;
+		const VectorIndexDefinition *vectorDefinition =
+			GetVectorIndexDefinitionByIndexAmOid(
+				indexPath->indexinfo->relam);
+		if (vectorDefinition != NULL)
+		{
+			context->hasVectorSearchQuery = true;
+		}
 
 		/* Ignore primary key lookup paths parented in a bitmap scan:
 		 * This can happen because a RUM index lookup can produce a 0 cost query as well
@@ -949,7 +952,7 @@ ReplaceFunctionOperatorsInPlanPath(PlannerInfo *root, RelOptInfo *rel, Path *pat
 		{
 			context->primaryKeyLookupPath = indexPath;
 		}
-		else if (hasVectorSearch)
+		else if (vectorDefinition != NULL)
 		{
 			/*
 			 *  indexPath->indexorderbys contains a list of order by expressions. For vector search, it is of the following form.

@@ -21,6 +21,7 @@
 #include "commands/connection_management.h"
 #include "utils/feature_counter.h"
 #include "utils/version_utils.h"
+#include "vector/vector_spec.h"
 
 /* --------------------------------------------------------- */
 /* Data Types & Enum values */

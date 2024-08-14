@@ -17,13 +17,9 @@
 #include "vector/vector_utilities.h"
 
 
-void CalculateDefaultNumProbesAndSearch(IndexPath *vectorSearchPath, double
-										indexRows, int *defaultNumProbes,
-										int *defaultEfSearch);
+pgbson * CalculateSearchParamBsonForIndexPath(IndexPath *vectorSearchPath);
 
-List * TryParseUserFilterClause(RelOptInfo *rel);
-
-void SetSearchParametersToGUC(pgbson *searchParamBson);
+void SetSearchParametersToGUC(Oid vectorAccessMethodOid, pgbson *searchParamBson);
 
 void TrySetDefaultSearchParamForCustomScan(SearchQueryEvalData *querySearchData);
 
