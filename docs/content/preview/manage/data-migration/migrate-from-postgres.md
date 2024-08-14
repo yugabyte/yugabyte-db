@@ -297,7 +297,7 @@ For more information, see [Verify migration](../verify-migration-ysql/).
 Regularly monitor the target database to ensure it is performing efficiently. This includes tracking metrics such as query execution times, CPU usage, memory consumption, and disk I/O. Pay close attention to any errors or warnings that arise, as they can indicate potential issues with the database configuration, queries, or underlying infrastructure.
 
 {{<lead link="../../../launch-and-manage/monitor-and-alert/metrics/">}}
-To learn more about the various useful metrics that can be monitored, see [Metrics](../../../launch-and-manage/monitor-and-alert/metrics/)
+To learn more about the various useful metrics that can be monitored, see [Metrics](../../../launch-and-manage/monitor-and-alert/metrics/).
 {{</lead>}}
 
 ### Tune performance
@@ -322,7 +322,7 @@ Establish a comprehensive backup strategy that includes full, incremental, and d
 You should schedule backups to run at regular intervals, ideally during off-peak hours, to minimize the impact on system performance. The frequency of backups should be based on how often the data changes and the criticality of the information.
 
 {{<lead link="../../backup-restore/">}}
-To understand the various schemes of backup, see [Backup and restore](../../backup-restore/)
+To understand the various schemes of backup, see [Backup and restore](../../backup-restore/).
 {{</lead>}}
 
 ### Decommissioning
