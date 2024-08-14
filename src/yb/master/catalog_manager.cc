@@ -12218,14 +12218,6 @@ void CatalogManager::CheckTableDeleted(const TableInfoPtr& table, const LeaderEp
     if (!lock.locked()) {
       return;
     }
-    Status s = sys_catalog_->Upsert(epoch, table);
-    if (!s.ok()) {
-      LOG_WITH_PREFIX(WARNING)
-          << "Error marking table as "
-          << (lock.data().started_deleting() ? "DELETED" : "HIDDEN") << ": " << s;
-      return;
-    }
-    lock.Commit();
     // Clean up any DDL verification state that is waiting for this table to be deleted.
     auto res = table->LockForRead()->GetCurrentDdlTransactionId();
     WARN_NOT_OK(
@@ -12263,7 +12255,17 @@ void CatalogManager::CheckTableDeleted(const TableInfoPtr& table, const LeaderEp
       }
       VLOG(3) << "Check table deleted " << table->id();
       RemoveDdlTransactionState(table->id(), {res.get()});
+      lock.mutable_data()->pb.clear_ysql_ddl_txn_verifier_state();
+      lock.mutable_data()->pb.clear_transaction();
     }
+    Status s = sys_catalog_->Upsert(epoch, table);
+    if (!s.ok()) {
+      LOG_WITH_PREFIX(WARNING)
+          << "Error marking table as "
+          << (lock.data().started_deleting() ? "DELETED" : "HIDDEN") << ": " << s;
+      return;
+    }
+    lock.Commit();
   }), "Failed to submit update table task");
 }
 
