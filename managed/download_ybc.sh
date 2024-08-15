@@ -15,6 +15,7 @@ EOT
 
 #default_parameters
 config_file=""
+dest_dir="src/universal/ybc"
 should_copy_ybc="false"
 ignore_if_exists="false"
 
@@ -35,6 +36,11 @@ while [[ $# -gt 0 ]]; do
       ignore_if_exists="true"
       shift
       ;;
+    -d|--dest)
+      dest_dir="$2"
+      shift
+      shift
+      ;;
     -h|--help)
       print_help
       exit 0
@@ -51,24 +57,26 @@ while [[ $# -gt 0 ]]; do
 done
 
 ybc_version=$(
-  grep ybc -A2 ${config_file} |  grep stable_version | awk -F '= ' '{print $2}' | tr -d \"
+  grep ybc -A2 ${config_file} |  awk -F '= ' '/stable_version/ {print $2}' | tr -d \"
 )
 
-mkdir -p src/universal/ybc
+# Use http, so aws s3 command/credential setup is not required.
+s3_url="https://s3.us-west-2.amazonaws.com/releases.yugabyte.com/ybc"
+x86_file="ybc-${ybc_version}-linux-x86_64.tar.gz"
+aarch_file="ybc-${ybc_version}-el8-aarch64.tar.gz"
+
+mkdir -p "$dest_dir"
 
 if [ "$ignore_if_exists" = "false" ] ||
-   ! [ -f src/universal/ybc/ybc-${ybc_version}-linux-x86_64.tar.gz ] ||
-   ! [ -f src/universal/ybc/ybc-${ybc_version}-el8-aarch64.tar.gz ]; then
-  aws s3 cp \
-    s3://releases.yugabyte.com/ybc/${ybc_version}/ybc-${ybc_version}-linux-x86_64.tar.gz \
-    src/universal/ybc
-  aws s3 cp \
-    s3://releases.yugabyte.com/ybc/${ybc_version}/ybc-${ybc_version}-el8-aarch64.tar.gz \
-    src/universal/ybc
+   ! [ -f "${dest_dir}/${x86_file}" ] ||
+   ! [ -f "${dest_dir}/${aarch_file}" ]; then
+  rm -f "${dest_dir}/${x86_file}" "${dest_dir}/${aarch_file}"
+  curl -s -o "${dest_dir}/${x86_file}" "${s3_url}/${ybc_version}/${x86_file}"
+  curl -s -o "${dest_dir}/${aarch_file}" "${s3_url}/${ybc_version}/${aarch_file}"
 fi
 
 if [ "$should_copy_ybc" = "true" ]; then
   mkdir -p /opt/yugabyte/ybc/release
   mkdir -p /opt/yugabyte/ybc/releases
-  cp -a src/universal/ybc/*  /opt/yugabyte/ybc/release/
+  cp -a "$dest_dir"/*  /opt/yugabyte/ybc/release/
 fi
