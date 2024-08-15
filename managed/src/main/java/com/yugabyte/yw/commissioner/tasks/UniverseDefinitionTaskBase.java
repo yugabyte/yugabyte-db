@@ -1005,6 +1005,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Create read write test table tasks.
     checkAndCreateReadWriteTestTableTask(primaryCluster);
 
+    // Create consistency check table tasks.
+    checkAndCreateConsistencyCheckTableTask(primaryCluster);
+
     // Change admin password for Admin user, as specified.
     checkAndCreateChangeAdminPasswordTask(primaryCluster);
 

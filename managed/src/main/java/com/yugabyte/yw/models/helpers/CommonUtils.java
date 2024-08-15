@@ -782,6 +782,10 @@ public class CommonUtils {
   }
 
   public static NodeDetails getServerToRunYsqlQuery(Universe universe) {
+    return getServerToRunYsqlQuery(universe, false);
+  }
+
+  public static NodeDetails getServerToRunYsqlQuery(Universe universe, boolean useToBeRemoved) {
     // Prefer the master leader since that will result in a faster query.
     // If the master leader is not a tserver - prefer tserver in the same region.
     // If no tserver in the same region either - use random live tserver.
@@ -797,11 +801,19 @@ public class CommonUtils {
           universe.getUniverseDetails().getNodesInCluster(primaryCluster.uuid).stream()
               .filter(n -> n.getRegion().equals(masterLeader.getRegion()))
               .toList();
-      NodeDetails sameRegionTServer = getARandomLiveTServer(sameRegionNodes);
+      NodeDetails sameRegionTServer;
+      if (useToBeRemoved) {
+        sameRegionTServer = getARandomLiveOrRemovedTServer(sameRegionNodes);
+      } else {
+        sameRegionTServer = getARandomLiveTServer(sameRegionNodes);
+      }
       if (sameRegionTServer != null) {
         // Live TServer present in master leader region - use that.
         return sameRegionTServer;
       }
+    }
+    if (useToBeRemoved) {
+      return getARandomLiveOrRemovedTServer(universe);
     }
     return getARandomLiveTServer(universe);
   }
@@ -812,6 +824,35 @@ public class CommonUtils {
             .filter(nodeDetails -> nodeDetails.isTserver)
             .filter(nodeDetails -> nodeDetails.state == NodeState.Live)
             .collect(Collectors.toList());
+    if (tserverLiveNodes.isEmpty()) {
+      return null;
+    }
+    return tserverLiveNodes.get(new Random().nextInt(tserverLiveNodes.size()));
+  }
+
+  public static NodeDetails getARandomLiveOrRemovedTServer(Universe universe) {
+    NodeDetails randomLiveOrRemovedTServer =
+        getARandomLiveOrRemovedTServer(universe.getTServersInPrimaryCluster());
+    if (randomLiveOrRemovedTServer == null) {
+      throw new IllegalStateException(
+          "No live or toBeRemoved TServers found for Universe UUID: " + universe.getUniverseUUID());
+    }
+    return randomLiveOrRemovedTServer;
+  }
+
+  private static NodeDetails getARandomLiveOrRemovedTServer(Collection<NodeDetails> nodes) {
+    List<NodeDetails> tserverLiveNodes =
+        nodes.stream()
+            .filter(nodeDetails -> nodeDetails.isTserver)
+            .filter(nodeDetails -> nodeDetails.state == NodeState.Live)
+            .collect(Collectors.toList());
+    if (tserverLiveNodes.isEmpty()) {
+      tserverLiveNodes =
+          nodes.stream()
+              .filter(nodeDetails -> nodeDetails.isTserver)
+              .filter(nodeDetails -> nodeDetails.state == NodeState.ToBeRemoved)
+              .collect(Collectors.toList());
+    }
     if (tserverLiveNodes.isEmpty()) {
       return null;
     }

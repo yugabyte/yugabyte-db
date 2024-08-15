@@ -1014,6 +1014,8 @@ public enum TaskType {
 
   UpdateUniverseIntent(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseIntent.class),
 
+  UpdateConsistencyCheck(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateConsistencyCheck.class),
+
   FreezeUniverse(com.yugabyte.yw.commissioner.tasks.subtasks.FreezeUniverse.class),
 
   QueryLdapServer(com.yugabyte.yw.commissioner.tasks.subtasks.ldapsync.QueryLdapServer.class),

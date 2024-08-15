@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.TableManagerYb;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -87,6 +88,7 @@ public abstract class AbstractTaskBase implements ITask {
   protected final NodeUIApiHelper nodeUIApiHelper;
   protected final ImageBundleUtil imageBundleUtil;
   protected final ReleaseManager releaseManager;
+  protected final YsqlQueryExecutor ysqlQueryExecutor;
 
   @Inject
   protected AbstractTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -112,6 +114,7 @@ public abstract class AbstractTaskBase implements ITask {
     this.nodeUIApiHelper = baseTaskDependencies.getNodeUIApiHelper();
     this.imageBundleUtil = baseTaskDependencies.getImageBundleUtil();
     this.releaseManager = baseTaskDependencies.getReleaseManager();
+    this.ysqlQueryExecutor = baseTaskDependencies.getYsqlQueryExecutor();
   }
 
   protected ITaskParams taskParams() {
