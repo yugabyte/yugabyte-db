@@ -81,8 +81,8 @@ class QLRocksDBStorage : public YQLStorageIf {
       std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
       const ReadOperationData& read_operation_data,
-      const QLValuePB& min_ybctid,
-      const QLValuePB& max_ybctid,
+      const Slice& min_ybctid,
+      const Slice& max_ybctid,
       std::reference_wrapper<const ScopedRWOperation> pending_op,
       YQLRowwiseIteratorIf::UniPtr* iter,
       SkipSeek skip_seek = SkipSeek::kFalse) const override;
