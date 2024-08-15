@@ -1035,6 +1035,7 @@ stmt:
 			| AlterRoleSetStmt
 			| AlterRoleStmt
 			| AlterSeqStmt
+			| AlterStatsStmt
 			| AlterTableStmt
 			| AlterTypeStmt
 			| BackfillIndexStmt
@@ -1138,7 +1139,6 @@ stmt:
 			| AlterSystemStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterTblSpcStmt { parser_ybc_signal_unsupported(@1, "This statement", 1153); }
 			| AlterCompositeTypeStmt { parser_ybc_not_support(@1, "This statement"); }
-			| AlterStatsStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterTSDictionaryStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ClusterStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -10479,7 +10479,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER STATISTICS any_name RENAME TO name
 				{
-					parser_ybc_not_support(@1, "ALTER STATISTICS");
 					RenameStmt *n = makeNode(RenameStmt);
 
 					n->renameType = OBJECT_STATISTIC_EXT;
@@ -10788,7 +10787,6 @@ AlterObjectSchemaStmt:
 				}
 			| ALTER STATISTICS any_name SET SCHEMA name
 				{
-					parser_ybc_not_support(@1, "ALTER STATISTICS SET SCHEMA");
 					AlterObjectSchemaStmt *n = makeNode(AlterObjectSchemaStmt);
 
 					n->objectType = OBJECT_STATISTIC_EXT;
