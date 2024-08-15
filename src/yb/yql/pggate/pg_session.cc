@@ -476,8 +476,10 @@ PgSession::PgSession(
       pg_callbacks_(pg_callbacks),
       wait_starter_(pg_callbacks_.PgstatReportWaitStart),
       buffer_(
-          [this](BufferableOperations&& ops, bool transactional) {
-            return FlushOperations(std::move(ops), transactional);
+          [this](BufferableOperations&& ops, bool transactional)
+              -> Result<PgOperationBuffer::PerformFutureEx> {
+            return PgOperationBuffer::PerformFutureEx{
+                VERIFY_RESULT(FlushOperations(std::move(ops), transactional)), this};
           },
           &metrics_, wait_starter_, buffering_settings_) {
   Update(&buffering_settings_);
@@ -858,7 +860,7 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   DCHECK(!options.has_read_time() || options.isolation() != IsolationLevel::SERIALIZABLE_ISOLATION);
 
   auto future = pg_client_.PerformAsync(&options, &ops.operations);
-  return PerformFuture(std::move(future), this, std::move(ops.relations));
+  return PerformFuture(std::move(future), std::move(ops.relations));
 }
 
 Result<bool> PgSession::ForeignKeyReferenceExists(const LightweightTableYbctid& key,
