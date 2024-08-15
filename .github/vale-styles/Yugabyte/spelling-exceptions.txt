@@ -332,6 +332,7 @@ Kerberos
 Keycloak
 keyset
 keyspace
+keyspaces
 keytab
 keytabs
 Kibana

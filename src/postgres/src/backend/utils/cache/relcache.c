@@ -2534,6 +2534,7 @@ YbRunWithPrefetcherImpl(
 		return NULL;
 
 	YBCStopSysTablePrefetching();
+	YBCPgResetCatalogReadTime();
 
 	if (result && YBCStatusIsNotFound(result))
 		YbRaiseInvalidDBConnectionError();
@@ -5686,11 +5687,11 @@ RelationBuildLocalRelation(const char *relname,
 			}
 			else
 			{
-				/* 
-				 * This should never happen since we check the guc value in 
+				/*
+				 * This should never happen since we check the guc value in
 				 * check_default_replica_identity.
 				 */
-				Assert(false);	
+				Assert(false);
 			}
 			rel->rd_rel->relreplident = replica_identity;
 		}

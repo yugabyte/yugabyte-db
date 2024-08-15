@@ -80,7 +80,7 @@ var listBackupCmd = &cobra.Command{
 				if util.IsOutputType("table") {
 					logrus.Infoln("No backups found\n")
 				} else {
-					logrus.Infoln("{}\n")
+					logrus.Infoln("[]\n")
 				}
 				return
 			}

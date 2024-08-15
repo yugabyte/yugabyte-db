@@ -107,7 +107,8 @@ public class ThirdPartyLoginHandler {
           BAD_REQUEST, "SSO login not supported on multi tenant environment");
     }
     UUID custUUID = Customer.find.query().findOne().getUuid();
-    Set<UUID> rolesSet = getRolesFromGroupMemberships(request, custUUID);
+    Set<UUID> groupMemberships = new HashSet<>();
+    Set<UUID> rolesSet = getRolesFromGroupMemberships(request, groupMemberships, custUUID);
     Users.Role userRole = null;
 
     // calculate final system role to be assigned to user
@@ -136,6 +137,7 @@ public class ThirdPartyLoginHandler {
       roleBindingUtil.createRoleBindingsForSystemRole(user);
     }
 
+    user.setGroupMemberships(groupMemberships);
     user.save();
     return user;
   }
@@ -145,7 +147,8 @@ public class ThirdPartyLoginHandler {
    *
    * @return List of role UUIDs
    */
-  private Set<UUID> getRolesFromGroupMemberships(Request request, UUID custUUID) {
+  private Set<UUID> getRolesFromGroupMemberships(
+      Request request, Set<UUID> groupMemberships, UUID custUUID) {
     Set<UUID> roles = new HashSet<>();
     try {
       OidcProfile profile = (OidcProfile) getProfile(request);
@@ -179,6 +182,7 @@ public class ThirdPartyLoginHandler {
                 .findOne();
         if (entity != null) {
           roles.add(entity.getRoleUUID());
+          groupMemberships.add(entity.getGroupUUID());
         }
       }
     } catch (Exception e) {

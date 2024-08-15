@@ -338,7 +338,7 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
     ysql_db_catalog_version_index_used_->fill(false);
   }
   if (PREDICT_FALSE(FLAGS_TEST_enable_object_locking_for_table_locks)) {
-    ts_local_lock_maganer_ = std::make_unique<tablet::TSLocalLockManager>();
+    ts_local_lock_manager_ = std::make_unique<tablet::TSLocalLockManager>();
   }
   LOG(INFO) << "yb::tserver::TabletServer created at " << this;
   LOG(INFO) << "yb::tserver::TSTabletManager created at " << tablet_manager_.get();

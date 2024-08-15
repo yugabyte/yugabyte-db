@@ -114,6 +114,7 @@ set(MASTER_SRCS
   mini_master.cc
   master_snapshot_coordinator.cc
   multi_step_monitored_task.cc
+  object_lock.cc
   post_tablet_create_task_base.cc
   restoration_state.cc
   restore_sys_catalog_state.cc

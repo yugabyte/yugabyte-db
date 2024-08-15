@@ -67,8 +67,7 @@ class CloneStateManager {
 
   Result<CloneStateInfoPtr> CreateCloneState(
       const LeaderEpoch& epoch,
-      uint32_t seq_no,
-      const NamespaceId& source_namespace_id,
+      const NamespaceInfoPtr& source_namespace,
       YQLDatabase database_type,
       const std::string& target_namespace_name,
       const HybridTime& restore_time);

@@ -796,6 +796,14 @@ typedef struct YbCloneInfo {
   const char* tgt_owner;
 } YbCloneInfo;
 
+// A thread-safe way to cache compiled regexes.
+typedef struct PgThreadLocalRegexpCache {
+  int num;
+  void* array;
+} YBCPgThreadLocalRegexpCache;
+
+typedef void (*YBCPgThreadLocalRegexpCacheCleanup)(YBCPgThreadLocalRegexpCache*);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

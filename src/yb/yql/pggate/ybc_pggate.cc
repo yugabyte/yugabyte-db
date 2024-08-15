@@ -2083,6 +2083,15 @@ void YBCPgSetThreadLocalStrTokPtr(char *new_pg_strtok_ptr) {
   PgSetThreadLocalStrTokPtr(new_pg_strtok_ptr);
 }
 
+YBCPgThreadLocalRegexpCache* YBCPgGetThreadLocalRegexpCache() {
+  return PgGetThreadLocalRegexpCache();
+}
+
+YBCPgThreadLocalRegexpCache* YBCPgInitThreadLocalRegexpCache(
+    size_t buffer_size, YBCPgThreadLocalRegexpCacheCleanup cleanup) {
+  return PgInitThreadLocalRegexpCache(buffer_size, cleanup);
+}
+
 void* YBCPgSetThreadLocalJumpBuffer(void* new_buffer) {
   return PgSetThreadLocalJumpBuffer(new_buffer);
 }

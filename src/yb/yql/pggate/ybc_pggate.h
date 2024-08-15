@@ -800,6 +800,11 @@ void* YBCPgSetThreadLocalErrStatus(void* new_status);
 
 void* YBCPgGetThreadLocalErrStatus();
 
+YBCPgThreadLocalRegexpCache* YBCPgGetThreadLocalRegexpCache();
+
+YBCPgThreadLocalRegexpCache* YBCPgInitThreadLocalRegexpCache(
+    size_t buffer_size, YBCPgThreadLocalRegexpCacheCleanup cleanup);
+
 void YBCPgResetCatalogReadTime();
 
 YBCStatus YBCNewGetLockStatusDataSRF(YBCPgFunction *handle);
