@@ -44,4 +44,10 @@ Unlike traditional single-instance databases, YugabyteDB is designed for fault t
     href="point-in-time-recovery/"
     icon="/images/section_icons/manage/pitr.png">}}
 
+  {{<index/item
+    title="Lightweight database clone"
+    body="Clone your database in YugabyteDB for data recovery, development, and testing purposes."
+    href="lightweight-db-clone/"
+    icon="fa-solid fa-clone">}}
+
 {{</index/block>}}

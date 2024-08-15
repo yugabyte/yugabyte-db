@@ -2,7 +2,7 @@
 title: Lightweight database clone
 headerTitle: Lightweight database clone
 linkTitle: Lightweight database clone
-description: Restore data to a specific point in time in YugabyteDB
+description: Clone your database in YugabyteDB for data recovery, development, and testing.
 badges: tp
 menu:
   preview:
@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-Database cloning in YugabyteDB allows you to quickly create an independent copy of your database for data recovery, development and testing. The process is efficient because the clone starts by using the same data files as the original database. After the initial creation, the cloned database serves reads and writes independently,  creates and maintains its own changes as delta files, separately from the original database.
+Database cloning in YugabyteDB allows you to quickly create an independent copy of your database for data recovery, development, and testing. The process is efficient because the clone starts by using the same data files as the original database. After the initial creation, the cloned database serves reads and writes independently, creates and maintains its own changes as delta files, separately from the original database.
 
 The two databases are completely isolated, meaning you can experiment with the cloned database, perform DDL operations, read and write data, and even delete the clone without impacting the original database.
 
