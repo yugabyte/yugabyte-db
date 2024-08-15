@@ -931,8 +931,9 @@
                   "tooltip": "A longer snapshot retention period requires more disk space."
                 },
                 "error": {
-                  "pitrRetentionPeriodValueRequired": "Required.",
+                  "pitrRetentionPeriodValueRequired": "Please enter a positive integer.",
                   "pitrRetentionPeriodValueMinimum": "Minimum 5 minutes.",
+                  "pitrRetentionPeriodValueIntegerValidation": "Please enter a positive integer.",
                   "pitrRetentionPeriodUnitRequired": "Required."
                 }
               },
