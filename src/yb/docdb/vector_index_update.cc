@@ -39,7 +39,9 @@ void VectorIndexUpdate<CoordinateType>::SetNeighbors(
       dockv::PrimitiveValue::Encoded(
           UInt64Vector{new_neighbors.begin(), new_neighbors.end()}).AsSlice());
 
-  GetLevel(id, level).neighbors = std::move(new_neighbors);
+  auto& level_info = GetLevel(id, level);
+  level_info.overwrite = true;
+  level_info.neighbors = std::move(new_neighbors);
 }
 
 template <class CoordinateType>
@@ -47,9 +49,9 @@ void VectorIndexUpdate<CoordinateType>::AddDirectedEdge(
     VertexId a, VertexId b, VectorIndexLevel level) {
   write_batch_.Put(MakeKey(a, level, b), dockv::PrimitiveValue::NullSlice());
 
-  auto& vector_info = GetLevel(a, level);
-  vector_info.neighbors.insert(b);
-  vector_info.deleted_neighbors.erase(b);
+  auto& level_info = GetLevel(a, level);
+  level_info.neighbors.insert(b);
+  level_info.deleted_neighbors.erase(b);
 }
 
 template <class CoordinateType>
@@ -57,9 +59,9 @@ void VectorIndexUpdate<CoordinateType>::DeleteDirectedEdge(
     VertexId a, VertexId b, VectorIndexLevel level) {
   write_batch_.Put(MakeKey(a, level, b), dockv::PrimitiveValue::TombstoneSlice());
 
-  auto& vector_info = GetLevel(a, level);
-  vector_info.neighbors.erase(b);
-  vector_info.deleted_neighbors.insert(b);
+  auto& level_info = GetLevel(a, level);
+  level_info.neighbors.erase(b);
+  level_info.deleted_neighbors.insert(b);
 }
 
 template <class CoordinateType>
@@ -82,6 +84,55 @@ dockv::KeyBytes VectorIndexUpdate<CoordinateType>::MakeKey(VertexId id, Subkeys&
   doc_ht_.IncrementWriteId();
 
   return key;
+}
+
+template <class CoordinateType>
+auto VectorIndexUpdate<CoordinateType>::GetVector(
+    const ReadOperationData& read_operation_data, VertexId id) ->
+    Result<typename VectorIndexUpdate<CoordinateType>::IndexedVector> {
+  auto it = nodes_.find(id);
+  if (it != nodes_.end()) {
+    auto& info = it->second;
+    if (info.tombstone) {
+      return IndexedVector{};
+    }
+    if (!info.vector.empty()) {
+      return info.vector;
+    }
+  }
+
+  return fetcher_.GetVector(read_operation_data, id);
+}
+
+template <class CoordinateType>
+Result<VectorNodeNeighbors> VectorIndexUpdate<CoordinateType>::GetNeighbors(
+    const ReadOperationData& read_operation_data, VertexId id, VectorIndexLevel level) {
+  auto it = nodes_.find(id);
+  if (it == nodes_.end()) {
+    return fetcher_.GetNeighbors(read_operation_data, id, level);
+  }
+  auto& info = it->second;
+  if (info.tombstone) {
+    return VectorNodeNeighbors{};
+  }
+  if (info.levels.size() <= level) {
+    return fetcher_.GetNeighbors(read_operation_data, id, level);
+  }
+  auto& level_info = info.levels[level];
+  if (level_info.overwrite) {
+    return level_info.neighbors;
+  }
+  if (level_info.neighbors.empty() && level_info.deleted_neighbors.empty()) {
+    return fetcher_.GetNeighbors(read_operation_data, id, level);
+  }
+  auto neighbors = VERIFY_RESULT(fetcher_.GetNeighbors(read_operation_data, id, level));
+  for (auto& neighbor : level_info.neighbors) {
+    neighbors.insert(neighbor);
+  }
+  for (auto& neighbor : level_info.deleted_neighbors) {
+    neighbors.erase(neighbor);
+  }
+  return neighbors;
 }
 
 template class VectorIndexUpdate<float>;
