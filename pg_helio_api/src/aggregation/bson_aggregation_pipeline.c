@@ -4742,11 +4742,9 @@ GenerateBaseTableQuery(Datum databaseDatum, const StringView *collectionNameView
 	Datum collectionNameDatum = PointerGetDatum(
 		cstring_to_text_with_len(collectionNameView->string, collectionNameView->length));
 
-	MongoCollection *collection = context->allowShardBaseTable ?
-								  GetMongoCollectionOrViewByNameDatumWithLocalShard(
-		databaseDatum, collectionNameDatum, AccessShareLock) :
-								  GetMongoCollectionOrViewByNameDatum(
-		databaseDatum, collectionNameDatum, AccessShareLock);
+	MongoCollection *collection = GetMongoCollectionOrViewByNameDatum(databaseDatum,
+																	  collectionNameDatum,
+																	  AccessShareLock);
 
 	/* CollectionUUID mismatch when collection doesn't exist */
 	if (collectionUuid != NULL)

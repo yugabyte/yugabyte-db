@@ -28,6 +28,9 @@ typedef struct QueryKey
 
 	/* identifier defining different query variants */
 	uint64 queryId;
+
+	/* The local shard (or NULL if not specified) to key off of */
+	char shardTableName[NAMEDATALEN];
 } QueryKey;
 
 typedef struct QueryPlanCacheEntry
@@ -103,13 +106,35 @@ SPIPlanPtr
 GetSPIQueryPlan(uint64 collectionId, uint64 queryId,
 				const char *query, Oid *argTypes, int argCount)
 {
+	const char *shardTableName = NULL;
+	return GetSPIQueryPlanWithLocalShard(collectionId, shardTableName, queryId, query,
+										 argTypes, argCount);
+}
+
+
+/*
+ * GetSPIQueryPlan gets the query plan for a given query for a specified
+ * collectionId. If a shard is specified also considers the shard in the queryKey
+ * and purges the oldest entry from the LRU queue if the cache exceeds the size limit.
+ */
+SPIPlanPtr
+GetSPIQueryPlanWithLocalShard(uint64 collectionId, const char *shardTableName, uint64
+							  queryId,
+							  const char *query, Oid *argTypes, int argCount)
+{
 	InitializeQueryPlanCache();
 
 	bool foundInCache = false;
 	QueryKey queryKey = {
 		.collectionId = collectionId,
-		.queryId = queryId
+		.queryId = queryId,
+		.shardTableName = { 0 }
 	};
+
+	if (shardTableName != NULL)
+	{
+		strcpy(queryKey.shardTableName, shardTableName);
+	}
 
 	QueryPlanCacheEntry *entry = hash_search(QueryPlanHash,
 											 &queryKey,

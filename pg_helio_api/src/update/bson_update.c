@@ -33,6 +33,9 @@
 CreateBsonUpdateTracker_HookType create_update_tracker_hook = NULL;
 BuildUpdateDescription_HookType build_update_description_hook = NULL;
 
+/* TODO: This is a hack - in reality we should remove updateDesc and rewrite the query to be better */
+int NumBsonDocumentsUpdated = 0;
+
 /*
  * Metadata pertaining to update processing
  * that can be cached and reused across executions
@@ -216,6 +219,7 @@ bson_update_document(PG_FUNCTION_ARGS)
 
 	if (document != NULL)
 	{
+		NumBsonDocumentsUpdated++;
 		LastBsonUpdateReturnedNewValue = true;
 		values[0] = PointerGetDatum(document);
 		nulls[1] = true;

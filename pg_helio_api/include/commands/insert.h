@@ -15,7 +15,7 @@
 
 MongoCollection * CreateCollectionForInsert(Datum databaseNameDatum,
 											Datum collectionNameDatum);
-bool InsertDocument(uint64 collectionId, int64 shardKeyValue,
+bool InsertDocument(uint64 collectionId, const char *shardTableName, int64 shardKeyValue,
 					pgbson *objectId, pgbson *document);
 
 bool InsertDocumentToTempCollection(MongoCollection *collection, int64 shardKeyValue,

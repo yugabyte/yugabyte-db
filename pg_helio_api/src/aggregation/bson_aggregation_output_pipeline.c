@@ -442,10 +442,10 @@ HandleMerge(const bson_value_t *existingValue, Query *query,
 	Datum databaseNameDatum = StringViewGetTextDatum(&mergeArgs.targetDB);
 	Datum collectionNameDatum = StringViewGetTextDatum(&mergeArgs.targetCollection);
 
-	MongoCollection *targetCollection =
-		GetMongoCollectionOrViewByNameDatumWithLocalShard(databaseNameDatum,
-														  collectionNameDatum,
-														  RowExclusiveLock);
+	MongoCollection *targetCollection = GetMongoCollectionOrViewByNameDatum(
+		databaseNameDatum,
+		collectionNameDatum,
+		RowExclusiveLock);
 
 	/* if target collection not exist create one */
 	if (targetCollection == NULL)

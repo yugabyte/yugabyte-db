@@ -74,6 +74,7 @@
 #include "lib/stringinfo.h"
 #include "utils/builtins.h"
 #include "utils/typcache.h"
+#include "utils/lsyscache.h"
 
 #include "io/helio_bson_core.h"
 #include "aggregation/bson_project.h"
@@ -99,6 +100,8 @@
 /* from tid.c */
 #define DatumGetItemPointer(X) ((ItemPointer) DatumGetPointer(X))
 #define ItemPointerGetDatum(X) PointerGetDatum(X)
+
+extern int NumBsonDocumentsUpdated;
 
 /*
  * UpdateSpec describes a single update operation.
@@ -245,6 +248,8 @@ typedef struct
 } WorkerUpdateParam;
 
 
+extern bool UseLocalExecutionShardQueries;
+
 static BatchUpdateSpec * BuildBatchUpdateSpec(bson_iter_t *updateCommandIter,
 											  pgbsonsequence *updateDocs);
 static List * BuildUpdateSpecList(bson_iter_t *updateArrayIter, bool *hasUpsert);
@@ -273,19 +278,21 @@ static UpdateAllMatchingDocsResult UpdateAllMatchingDocuments(MongoCollection *c
 static void CallUpdateOne(MongoCollection *collection, UpdateOneParams *updateOneParams,
 						  int64 shardKeyHash, text *transactionId,
 						  UpdateOneResult *result, bool forceInlineWrites);
-static void UpdateOneInternal(uint64 collectionId, UpdateOneParams *updateOneParams,
-							  pgbson *shardKeyBson, int64 shardKeyHash,
-							  UpdateOneResult *result);
-static void UpdateOneInternalWithRetryRecord(uint64 collectionId, int64 shardKeyHash,
+static void UpdateOneInternal(MongoCollection *collectionId,
+							  UpdateOneParams *updateOneParams,
+							  int64 shardKeyHash, UpdateOneResult *result);
+static void UpdateOneInternalWithRetryRecord(MongoCollection *collection, int64
+											 shardKeyHash,
 											 text *transactionId,
-											 pgbson *shardKeyBson,
 											 UpdateOneParams *updateOneParams,
 											 UpdateOneResult *result);
-static bool SelectUpdateCandidate(uint64 collectionId, int64 shardKeyHash, pgbson *query,
+static bool SelectUpdateCandidate(uint64 collectionId, const char *shardTableName, int64
+								  shardKeyHash, pgbson *query,
 								  pgbson *update, pgbson *arrayFilters, pgbson *sort,
 								  UpdateCandidate *updateCandidate,
 								  bool getOriginalDocument);
-static bool UpdateDocumentByTID(uint64 collectionId, int64 shardKeyHash,
+static bool UpdateDocumentByTID(uint64 collectionId, const char *shardTableName, int64
+								shardKeyHash,
 								ItemPointer tid, pgbson *updatedDocument);
 static bool DeleteDocumentByTID(uint64 collectionId, int64 shardKeyHash,
 								ItemPointer tid);
@@ -311,8 +318,9 @@ static pgbson * SerializeUnshardedUpdateParams(const bson_value_t *updateSpec,
 static Datum CallUpdateWorker(MongoCollection *collection, pgbson *serializedSpec,
 							  pgbsonsequence *updateDocs, int64 shardKeyHash,
 							  text *transactionId);
-static pgbson * ProcessUnshardedUpdateBatchWorker(List *updates, bool isOrdered, uint64_t
-												  collectionId, int64 shardKeyHash,
+static pgbson * ProcessUnshardedUpdateBatchWorker(MongoCollection *collection,
+												  List *updates, bool isOrdered,
+												  int64 shardKeyHash,
 												  text *transactionId);
 static void CallUpdateWorkerForUpdateOne(MongoCollection *collection,
 										 UpdateOneParams *updateOneParams,
@@ -1037,9 +1045,11 @@ ProcessBatchUpdate(MongoCollection *collection, BatchUpdateSpec *batchSpec,
 	/* Check if we can inline the updates */
 	if (transactionId == NULL && collection->shardKey == NULL)
 	{
-		/* Share Lock is okay here since we use SPI internally for the updates */
+		/* Technically ShareLock is okay here since we use SPI internally for the updates
+		 * However, if we end up building the AST directly, then easier to use RowExclusiveLock.
+		 */
 		batchSpec->shardTableOid = TryGetCollectionShardTable(collection,
-															  AccessShareLock);
+															  RowExclusiveLock);
 	}
 
 	/* We are in sharded scenario so we need to go through the planner to do the writes and then call the worker. */
@@ -1195,10 +1205,13 @@ UpdateAllMatchingDocuments(MongoCollection *collection, pgbson *queryDoc,
 	pgbson *objectIdFilter = GetObjectIdFilterFromQueryDocument(queryDoc);
 
 	const char *tableName = collection->tableName;
+	bool isLocalShardQuery = false;
 	if (collection->shardTableName[0] != '\0')
 	{
 		/* If we can push down to the local shard, then prefer that. */
 		tableName = collection->shardTableName;
+		isLocalShardQuery = true;
+		NumBsonDocumentsUpdated = 0;
 	}
 
 	StringInfoData updateQuery;
@@ -1343,6 +1356,11 @@ UpdateAllMatchingDocuments(MongoCollection *collection, pgbson *queryDoc,
 
 	SPI_finish();
 
+	if (isLocalShardQuery && result.rowsUpdated == 0)
+	{
+		result.rowsUpdated = NumBsonDocumentsUpdated;
+	}
+
 	return result;
 }
 
@@ -1372,8 +1390,8 @@ UpdateOne(MongoCollection *collection, UpdateOneParams *updateOneParams,
 		/* extract object ID */
 		pgbson *objectId = PgbsonGetDocumentId(result->reinsertDocument);
 
-		InsertDocument(collection->collectionId, newShardKeyHash, objectId,
-					   result->reinsertDocument);
+		InsertDocument(collection->collectionId, collection->shardTableName,
+					   newShardKeyHash, objectId, result->reinsertDocument);
 	}
 }
 
@@ -1393,15 +1411,13 @@ CallUpdateOne(MongoCollection *collection, UpdateOneParams *updateOneParams,
 	{
 		if (transactionId != NULL)
 		{
-			UpdateOneInternalWithRetryRecord(collection->collectionId, shardKeyHash,
-											 transactionId,
-											 collection->shardKey, updateOneParams,
+			UpdateOneInternalWithRetryRecord(collection, shardKeyHash,
+											 transactionId, updateOneParams,
 											 result);
 		}
 		else
 		{
-			UpdateOneInternal(collection->collectionId, updateOneParams,
-							  collection->shardKey,
+			UpdateOneInternal(collection, updateOneParams,
 							  shardKeyHash, result);
 		}
 	}
@@ -1500,15 +1516,15 @@ CallUpdateWorkerForUpdateOne(MongoCollection *collection,
 
 
 static void
-UpdateOneInternalWithRetryRecord(uint64 collectionId, int64 shardKeyHash,
-								 text *transactionId,
-								 pgbson *shardKeyBson, UpdateOneParams *updateOneParams,
+UpdateOneInternalWithRetryRecord(MongoCollection *collection, int64 shardKeyHash,
+								 text *transactionId, UpdateOneParams *updateOneParams,
 								 UpdateOneResult *result)
 {
 	RetryableWriteResult writeResult;
 
 	/* if a retry record exists, delete it since only a single retry is allowed */
-	if (DeleteRetryRecord(collectionId, shardKeyHash, transactionId, &writeResult))
+	if (DeleteRetryRecord(collection->collectionId, shardKeyHash, transactionId,
+						  &writeResult))
 	{
 		/* get rows affected from the retry record */
 		result->isRowUpdated = writeResult.rowsAffected;
@@ -1527,7 +1543,7 @@ UpdateOneInternalWithRetryRecord(uint64 collectionId, int64 shardKeyHash,
 	else
 	{
 		/* no retry record exists, update the row and get the object ID */
-		UpdateOneInternal(collectionId, updateOneParams, shardKeyBson, shardKeyHash,
+		UpdateOneInternal(collection, updateOneParams, shardKeyHash,
 						  result);
 
 		pgbson *objectId = NULL;
@@ -1542,7 +1558,7 @@ UpdateOneInternalWithRetryRecord(uint64 collectionId, int64 shardKeyHash,
 		 * Remember that we performed a retryable write with the given
 		 * transaction ID.
 		 */
-		InsertRetryRecord(collectionId, shardKeyHash, transactionId,
+		InsertRetryRecord(collection->collectionId, shardKeyHash, transactionId,
 						  objectId, result->isRowUpdated, result->resultDocument);
 	}
 }
@@ -1554,145 +1570,7 @@ UpdateOneInternalWithRetryRecord(uint64 collectionId, int64 shardKeyHash,
 Datum
 command_update_one(PG_FUNCTION_ARGS)
 {
-	if (PG_ARGISNULL(0))
-	{
-		ereport(ERROR, (errmsg("p_collection_id cannot be NULL")));
-	}
-	uint64 collectionId = PG_GETARG_INT64(0);
-
-	if (PG_ARGISNULL(1))
-	{
-		ereport(ERROR, (errmsg("p_shard_key_value cannot be NULL")));
-	}
-	int64 shardKeyHash = PG_GETARG_INT64(1);
-
-	if (PG_ARGISNULL(2))
-	{
-		ereport(ERROR, (errmsg("p_query cannot be NULL")));
-	}
-	pgbson *query = PG_GETARG_PGBSON(2);
-
-	if (PG_ARGISNULL(3))
-	{
-		ereport(ERROR, (errmsg("p_update cannot be NULL")));
-	}
-	pgbson *update = PG_GETARG_PGBSON(3);
-
-	/* create tuple descriptor for return value */
-	TupleDesc resultDescriptor;
-	TypeFuncClass resultTypeClass =
-		get_call_result_type(fcinfo, NULL, &resultDescriptor);
-
-	if (resultTypeClass != TYPEFUNC_COMPOSITE)
-	{
-		ereport(ERROR, (errmsg("return type must be a row type")));
-	}
-
-	pgbson *shardKeyBson = !PG_ARGISNULL(4) ? PG_GETARG_PGBSON(4) : NULL;
-	bool isUpsert = PG_GETARG_BOOL(5);
-	pgbson *sort = !PG_ARGISNULL(6) ? PG_GETARG_PGBSON(6) : NULL;
-
-	/*
-	 * NULL -> do not return
-	 * false -> return old document
-	 * true -> return new document
-	 */
-	UpdateReturnValue returnDocument =
-		PG_ARGISNULL(7) ? UPDATE_RETURNS_NONE :
-		(PG_GETARG_BOOL(7) ? UPDATE_RETURNS_NEW : UPDATE_RETURNS_OLD);
-
-	pgbson *returnFields = !PG_ARGISNULL(8) ? PG_GETARG_PGBSON(8) : NULL;
-
-	if (returnFields != NULL && returnDocument == UPDATE_RETURNS_NONE)
-	{
-		ereport(ERROR, (errmsg("returnFields was given but neither old or new "
-							   "document was requested")));
-	}
-
-	pgbson *arrayFilters = !PG_ARGISNULL(9) ? PG_GETARG_PGBSON(9) : NULL;
-
-	UpdateOneResult result;
-	memset(&result, 0, sizeof(result));
-
-	UpdateOneParams updateOneParams = {
-		.query = query,
-		.update = update,
-		.isUpsert = isUpsert,
-		.sort = sort,
-		.returnDocument = returnDocument,
-		.returnFields = returnFields,
-		.arrayFilters = arrayFilters,
-	};
-
-	if (!PG_ARGISNULL(10))
-	{
-		/* transaction ID specified, use retryable write path */
-		text *transactionId = PG_GETARG_TEXT_P(10);
-		UpdateOneInternalWithRetryRecord(collectionId, shardKeyHash, transactionId,
-										 shardKeyBson,
-										 &updateOneParams, &result);
-	}
-	else
-	{
-		/* no transaction ID specified, do regular update */
-		UpdateOneInternal(collectionId, &updateOneParams, shardKeyBson,
-						  shardKeyHash, &result);
-	}
-
-	/* prepare result tuple */
-	Datum values[6];
-	bool isNulls[6];
-
-	/* o_is_row_updated */
-	values[0] = BoolGetDatum(result.isRowUpdated);
-	isNulls[0] = false;
-
-	/* o_update_skipped */
-	values[1] = BoolGetDatum(result.updateSkipped);
-	isNulls[1] = false;
-
-	/* o_is_retry */
-	values[2] = BoolGetDatum(result.isRetry);
-	isNulls[2] = false;
-
-	/* o_reinsert_document */
-	if (result.reinsertDocument != NULL)
-	{
-		values[3] = PointerGetDatum(result.reinsertDocument);
-		isNulls[3] = false;
-	}
-	else
-	{
-		values[3] = 0;
-		isNulls[3] = true;
-	}
-
-	/* o_upserted_object_id */
-	if (result.upsertedObjectId != NULL)
-	{
-		values[4] = PointerGetDatum(result.upsertedObjectId);
-		isNulls[4] = false;
-	}
-	else
-	{
-		values[4] = 0;
-		isNulls[4] = true;
-	}
-
-	/* o_result_document */
-	if (result.resultDocument != NULL)
-	{
-		values[5] = PointerGetDatum(result.resultDocument);
-		isNulls[5] = false;
-	}
-	else
-	{
-		values[5] = 0;
-		isNulls[5] = true;
-	}
-
-	HeapTuple resultTuple = heap_form_tuple(resultDescriptor, values, isNulls);
-	PG_RETURN_DATUM(HeapTupleGetDatum(resultTuple));
+	ereport(ERROR, (errmsg("This function is deprecated and should not be called")));
 }
 
 
@@ -1729,6 +1607,23 @@ command_update_worker(PG_FUNCTION_ARGS)
 	memset(&params, 0, sizeof(WorkerUpdateParam));
 	DeserializeUpdateWorkerSpec(updateInternalSpec, &params);
 
+	const char *shardTableName = NULL;
+	if (shardOid != InvalidOid && UseLocalExecutionShardQueries)
+	{
+		shardTableName = get_rel_name(shardOid);
+	}
+
+	MongoCollection mongoCollection = { 0 };
+	mongoCollection.collectionId = collectionId;
+	mongoCollection.shardKey = params.shardKeyBson;
+
+	if (shardTableName != NULL)
+	{
+		strcpy(mongoCollection.shardTableName, shardTableName);
+	}
+
+	snprintf(mongoCollection.tableName, NAMEDATALEN, MONGO_DATA_TABLE_NAME_FORMAT,
+			 collectionId);
 	if (params.isUpdateOne)
 	{
 		UpdateOneResult result;
@@ -1737,14 +1632,14 @@ command_update_worker(PG_FUNCTION_ARGS)
 		if (transactionId != NULL)
 		{
 			/* transaction ID specified, use retryable write path */
-			UpdateOneInternalWithRetryRecord(collectionId, shardKeyHash, transactionId,
-											 params.shardKeyBson,
+			UpdateOneInternalWithRetryRecord(&mongoCollection, shardKeyHash,
+											 transactionId,
 											 &params.param.updateOne, &result);
 		}
 		else
 		{
 			/* no transaction ID specified, do regular update */
-			UpdateOneInternal(collectionId, &params.param.updateOne, params.shardKeyBson,
+			UpdateOneInternal(&mongoCollection, &params.param.updateOne,
 							  shardKeyHash, &result);
 		}
 
@@ -1766,8 +1661,9 @@ command_update_worker(PG_FUNCTION_ARGS)
 		updates = BuildUpdateSpecList(&arrayIter, &hasUpsertIgnore);
 	}
 
-	pgbson *result = ProcessUnshardedUpdateBatchWorker(updates, params.isOrdered,
-													   collectionId, shardKeyHash,
+	pgbson *result = ProcessUnshardedUpdateBatchWorker(&mongoCollection,
+													   updates, params.isOrdered,
+													   shardKeyHash,
 													   transactionId);
 	PG_RETURN_POINTER(result);
 }
@@ -1778,7 +1674,8 @@ command_update_worker(PG_FUNCTION_ARGS)
  * and iterates the list of update specs, applies them and serializes and returns the batch update result to send back to the coordinator.
  */
 static pgbson *
-ProcessUnshardedUpdateBatchWorker(List *updates, bool isOrdered, uint64_t collectionId,
+ProcessUnshardedUpdateBatchWorker(MongoCollection *collection, List *updates, bool
+								  isOrdered,
 								  int64 shardKeyHash, text *transactionId)
 {
 	int updateCount = list_length(updates);
@@ -1791,17 +1688,12 @@ ProcessUnshardedUpdateBatchWorker(List *updates, bool isOrdered, uint64_t collec
 								"Got %d operations.", MaxWriteBatchSize, updateCount)));
 	}
 
-	/* MongoCollection *mongoCollection = GetMongoCollectionByColId(collectionId, NoLock); */
-	MongoCollection mongoCollection = { .collectionId = collectionId, .shardKey = NULL };
-	snprintf(mongoCollection.tableName, NAMEDATALEN, MONGO_DATA_TABLE_NAME_FORMAT,
-			 collectionId);
-
 	/* we're unsharded and at the worker so we can force inlining the writes when processing the batch. */
 	bool forceInlineWrites = true;
 
 	BatchUpdateResult batchUpdateResult;
 	memset(&batchUpdateResult, 0, sizeof(BatchUpdateResult));
-	ProcessBatchUpdateCore(&mongoCollection, updates, transactionId, &batchUpdateResult,
+	ProcessBatchUpdateCore(collection, updates, transactionId, &batchUpdateResult,
 						   isOrdered, forceInlineWrites);
 
 	return SerializeBatchUpdateResult(&batchUpdateResult);
@@ -2109,9 +2001,8 @@ DeserializeUpdateOneResult(pgbson *resultBson, UpdateOneResult *result)
  * whether reinsertion will be required (due to shard key value change).
  */
 static void
-UpdateOneInternal(uint64 collectionId, UpdateOneParams *updateOneParams,
-				  pgbson *shardKeyBson, int64 shardKeyHash,
-				  UpdateOneResult *result)
+UpdateOneInternal(MongoCollection *collection, UpdateOneParams *updateOneParams,
+				  int64 shardKeyHash, UpdateOneResult *result)
 {
 	/* initialize result */
 	result->isRowUpdated = false;
@@ -2125,7 +2016,9 @@ UpdateOneInternal(uint64 collectionId, UpdateOneParams *updateOneParams,
 
 	bool getExistingDoc = updateOneParams->returnDocument != UPDATE_RETURNS_NONE ||
 						  updateOneParams->returnFields != NULL;
-	bool foundDocument = SelectUpdateCandidate(collectionId, shardKeyHash,
+	bool foundDocument = SelectUpdateCandidate(collection->collectionId,
+											   collection->shardTableName,
+											   shardKeyHash,
 											   updateOneParams->query,
 											   updateOneParams->update,
 											   updateOneParams->arrayFilters,
@@ -2147,13 +2040,14 @@ UpdateOneInternal(uint64 collectionId, UpdateOneParams *updateOneParams,
 			pgbson *objectId = PgbsonGetDocumentId(newDoc);
 
 			int64 newShardKeyHash =
-				ComputeShardKeyHashForDocument(shardKeyBson, collectionId, newDoc);
+				ComputeShardKeyHashForDocument(collection->shardKey,
+											   collection->collectionId, newDoc);
 
 			if (newShardKeyHash == shardKeyHash)
 			{
 				/* shard key unchanged, upsert now */
-				InsertDocument(collectionId, newShardKeyHash, objectId,
-							   newDoc);
+				InsertDocument(collection->collectionId, collection->shardTableName,
+							   newShardKeyHash, objectId, newDoc);
 
 				result->reinsertDocument = NULL;
 			}
@@ -2189,8 +2083,8 @@ UpdateOneInternal(uint64 collectionId, UpdateOneParams *updateOneParams,
 		{
 			pgbson *updatedPgbson = DatumGetPgBson(updateCandidate.updatedDocument);
 			int64 newShardKeyHash =
-				ComputeShardKeyHashForDocument(shardKeyBson,
-											   collectionId,
+				ComputeShardKeyHashForDocument(collection->shardKey,
+											   collection->collectionId,
 											   updatedPgbson);
 
 			if (newShardKeyHash == shardKeyHash)
@@ -2200,7 +2094,9 @@ UpdateOneInternal(uint64 collectionId, UpdateOneParams *updateOneParams,
 				 * (in the same shard placement).
 				 */
 				result->isRowUpdated =
-					UpdateDocumentByTID(collectionId, shardKeyHash, updateCandidate.tid,
+					UpdateDocumentByTID(collection->collectionId,
+										collection->shardTableName,
+										shardKeyHash, updateCandidate.tid,
 										updatedPgbson);
 
 				result->reinsertDocument = NULL;
@@ -2212,7 +2108,8 @@ UpdateOneInternal(uint64 collectionId, UpdateOneParams *updateOneParams,
 				 * reinsertion.
 				 */
 				result->isRowUpdated =
-					DeleteDocumentByTID(collectionId, shardKeyHash, updateCandidate.tid);
+					DeleteDocumentByTID(collection->collectionId, shardKeyHash,
+										updateCandidate.tid);
 
 				result->reinsertDocument = updatedPgbson;
 			}
@@ -2262,7 +2159,8 @@ UpdateOneInternal(uint64 collectionId, UpdateOneParams *updateOneParams,
  * and returns whether a document was found.
  */
 static bool
-SelectUpdateCandidate(uint64 collectionId, int64 shardKeyHash, pgbson *query,
+SelectUpdateCandidate(uint64 collectionId, const char *shardTableName, int64 shardKeyHash,
+					  pgbson *query,
 					  pgbson *update, pgbson *arrayFilters, pgbson *sort,
 					  UpdateCandidate *updateCandidate, bool getOriginalDocument)
 {
@@ -2286,11 +2184,22 @@ SelectUpdateCandidate(uint64 collectionId, int64 shardKeyHash, pgbson *query,
 	SPI_connect();
 
 	initStringInfo(&updateQuery);
+
+	appendStringInfo(&updateQuery, "SELECT ctid, object_id, document FROM");
+
+	if (shardTableName != NULL && shardTableName[0] != '\0')
+	{
+		appendStringInfo(&updateQuery, " %s.%s", ApiDataSchemaName, shardTableName);
+	}
+	else
+	{
+		appendStringInfo(&updateQuery, " %s.documents_" UINT64_FORMAT, ApiDataSchemaName,
+						 collectionId);
+	}
+
 	appendStringInfo(&updateQuery,
-					 "SELECT ctid, object_id, document FROM %s.documents_" UINT64_FORMAT
 					 " WHERE shard_key_value = $1 AND "
 					 "document OPERATOR(%s.@@) $2::%s",
-					 ApiDataSchemaName, collectionId,
 					 ApiCatalogSchemaName, FullBsonTypeName);
 
 	if (objectIdFilter != NULL)
@@ -2421,7 +2330,8 @@ SelectUpdateCandidate(uint64 collectionId, int64 shardKeyHash, pgbson *query,
  * The TID must be obtained via SelectUpdateCandidate in the current transaction.
  */
 static bool
-UpdateDocumentByTID(uint64 collectionId, int64 shardKeyHash, ItemPointer tid,
+UpdateDocumentByTID(uint64 collectionId, const char *shardTableName,
+					int64 shardKeyHash, ItemPointer tid,
 					pgbson *updatedDocument)
 {
 	StringInfoData updateQuery;
@@ -2435,11 +2345,22 @@ UpdateDocumentByTID(uint64 collectionId, int64 shardKeyHash, ItemPointer tid,
 	SPI_connect();
 
 	initStringInfo(&updateQuery);
+
+	appendStringInfo(&updateQuery, "UPDATE ");
+
+	if (shardTableName != NULL && shardTableName[0] != '\0')
+	{
+		appendStringInfo(&updateQuery, "%s.%s", ApiDataSchemaName, shardTableName);
+	}
+	else
+	{
+		appendStringInfo(&updateQuery, "%s.documents_" UINT64_FORMAT,
+						 ApiDataSchemaName, collectionId);
+	}
+
 	appendStringInfo(&updateQuery,
-					 "UPDATE %s.documents_" UINT64_FORMAT
 					 " SET document = $3::%s"
 					 " WHERE ctid = $2 AND shard_key_value = $1",
-					 ApiDataSchemaName, collectionId,
 					 FullBsonTypeName);
 
 	argTypes[0] = INT8OID;
@@ -2455,8 +2376,9 @@ UpdateDocumentByTID(uint64 collectionId, int64 shardKeyHash, ItemPointer tid,
 	bool readOnly = false;
 	long maxTupleCount = 0;
 
-	SPIPlanPtr plan = GetSPIQueryPlan(collectionId, QUERY_ID_UPDATE_BY_TID,
-									  updateQuery.data, argTypes, argCount);
+	SPIPlanPtr plan = GetSPIQueryPlanWithLocalShard(collectionId, shardTableName,
+													QUERY_ID_UPDATE_BY_TID,
+													updateQuery.data, argTypes, argCount);
 
 	SPI_execute_plan(plan, argValues, argNulls, readOnly, maxTupleCount);
 	Assert(SPI_processed == 1);
@@ -2614,7 +2536,8 @@ UpsertDocument(MongoCollection *collection, pgbson *update,
 
 	pgbson *objectId = PgbsonGetDocumentId(newDoc);
 
-	InsertDocument(collection->collectionId, newShardKeyHash, objectId, newDoc);
+	InsertDocument(collection->collectionId, collection->shardTableName, newShardKeyHash,
+				   objectId, newDoc);
 
 	return objectId;
 }

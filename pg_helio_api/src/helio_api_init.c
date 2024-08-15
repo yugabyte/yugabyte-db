@@ -70,7 +70,7 @@ extern bool EnableCreateCollectionOnInsert;
 /* In single node mode, we always inline write operations */
 bool DefaultInlineWriteOperations = true;
 
-#define DEFAULT_USE_LOCAL_EXECUTION_SHARD_QUERIES false
+#define DEFAULT_USE_LOCAL_EXECUTION_SHARD_QUERIES true
 bool UseLocalExecutionShardQueries = DEFAULT_USE_LOCAL_EXECUTION_SHARD_QUERIES;
 
 

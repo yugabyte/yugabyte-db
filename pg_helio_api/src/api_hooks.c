@@ -253,7 +253,7 @@ TryGetShardNameForUnshardedCollection(Oid relationOid, uint64 collectionId, cons
 																tableName);
 	}
 
-	return InvalidOid;
+	return NULL;
 }
 
 

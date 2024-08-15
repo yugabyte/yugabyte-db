@@ -1291,7 +1291,7 @@ ProcessWorkerWriteQueryPath(PlannerInfo *root, RelOptInfo *rel, Index rti,
 	/* It's a shard query for a update worker projector
 	 * Transform this query into a FuncRTE with a Var projector
 	 */
-	entry->expr = (Expr *) makeVar(1, 1, HelioCoreBsonTypeId(), -1,
+	entry->expr = (Expr *) makeVar(rti, 1, HelioCoreBsonTypeId(), -1,
 								   InvalidOid, 0);
 	rte->rtekind = RTE_FUNCTION;
 	RangeTblFunction *func = makeNode(RangeTblFunction);

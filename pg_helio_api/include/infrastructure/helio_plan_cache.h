@@ -43,4 +43,8 @@ void InitializeQueryPlanCache(void);
 SPIPlanPtr GetSPIQueryPlan(uint64 collectionId, uint64 queryId,
 						   const char *query, Oid *argTypes, int argCount);
 
+SPIPlanPtr GetSPIQueryPlanWithLocalShard(uint64 collectionId, const char *shardTableName,
+										 uint64 queryId,
+										 const char *query, Oid *argTypes, int argCount);
+
 #endif

@@ -361,61 +361,38 @@ SELECT 1 FROM helio_api.insert_one('update', 'test_sort_returning', '{"_id":2,"a
 SELECT 1 FROM helio_api.insert_one('update', 'test_sort_returning', '{"_id":3,"a":1,"b":6}');
 
 -- sort in ascending order and project & return old document
-WITH test_sort_returning AS (
-    SELECT * FROM helio_api_catalog.collections WHERE database_name = 'update' AND collection_name = 'test_sort_returning'
-)
-SELECT result.* FROM test_sort_returning, helio_api_internal.update_one(
-    p_collection_id=>test_sort_returning.collection_id,
-    p_shard_key_value=>test_sort_returning.collection_id,
-    p_query=>'{"a": {"$gte": 1}}'::bson,
-    p_update=>'{"": {"c": 3}}'::bson,
-    p_shard_key=>null::bson,
-    p_is_upsert=>false,
-    p_sort=>'{"b": 1}'::bson,
-    p_return_old_or_new=>false,
-    p_return_fields=>'{"_id": 0, "b": 1}'::bson,
-    p_array_filters=>null::bson,
+SELECT collection_id AS test_sort_returning FROM helio_api_catalog.collections WHERE database_name = 'update' AND collection_name = 'test_sort_returning' \gset
+SELECT helio_api_internal.update_worker(
+    p_collection_id=>:test_sort_returning,
+    p_shard_key_value=>:test_sort_returning,
+    p_shard_oid => 0,
+    p_update_internal_spec => '{ "updateOne": { "query": { "a": {"$gte": 1} }, "update": { "": { "c": 3 } }, "isUpsert": false, "sort": { "b": 1 }, "returnDocument": 1, "returnFields": { "_id": 0, "b": 1 } } }'::bson,
+    p_update_internal_docs=>null::bsonsequence,
     p_transaction_id=>null::text
-) result;
+) FROM helio_api.collection('update', 'test_sort_returning');
 
 -- sort by multiple fields (i) and project & return new document
 BEGIN;
-    WITH test_sort_returning AS (
-    SELECT * FROM helio_api_catalog.collections WHERE database_name = 'update' AND collection_name = 'test_sort_returning'
-    )
-    SELECT result.* FROM test_sort_returning, helio_api_internal.update_one(
-        p_collection_id=>test_sort_returning.collection_id,
-        p_shard_key_value=>test_sort_returning.collection_id,
-        p_query=>'{"a": {"$gte": 1}}'::bson,
-        p_update=>'{"": {"c": 4}}'::bson,
-        p_shard_key=>null::bson,
-        p_is_upsert=>false,
-        p_sort=>'{"b": -1, "a": 1}'::bson,
-        p_return_old_or_new=>true,
-        p_return_fields=>null::bson,
-        p_array_filters=>null::bson,
+    SELECT helio_api_internal.update_worker(
+        p_collection_id=>:test_sort_returning,
+        p_shard_key_value=>:test_sort_returning,
+        p_shard_oid => 0,
+        p_update_internal_spec => '{ "updateOne": { "query": { "a": {"$gte": 1} }, "update": { "": { "c": 4 } }, "isUpsert": false, "sort": { "b": -1, "a": 1 }, "returnDocument": 2 } }'::bson,
+        p_update_internal_docs=>null::bsonsequence,
         p_transaction_id=>null::text
-    ) result;
+    ) FROM helio_api.collection('update', 'test_sort_returning');
 
     SELECT document FROM helio_api.collection('update', 'test_sort_returning') ORDER BY 1;
 ROLLBACK;
 
-WITH test_sort_returning AS (
-    SELECT * FROM helio_api_catalog.collections WHERE database_name = 'update' AND collection_name = 'test_sort_returning'
-)
-SELECT result.* FROM test_sort_returning, helio_api_internal.update_one(
-    p_collection_id=>test_sort_returning.collection_id,
-    p_shard_key_value=>test_sort_returning.collection_id,
-    p_query=>'{"a": {"$gte": 1}}'::bson,
-    p_update=>'{"": {"c": 4}}'::bson,
-    p_shard_key=>null::bson,
-    p_is_upsert=>false,
-    p_sort=>'{"a": 1, "b": -1}'::bson,
-    p_return_old_or_new=>true,
-    p_return_fields=>null::bson,
-    p_array_filters=>null::bson,
+SELECT helio_api_internal.update_worker(
+    p_collection_id=>:test_sort_returning,
+    p_shard_key_value=>:test_sort_returning,
+    p_shard_oid => 0,
+    p_update_internal_spec => '{ "updateOne": { "query": { "a": {"$gte": 1} }, "update": { "": { "c": 4 } }, "isUpsert": false, "sort": { "a": 1, "b": -1 }, "returnDocument": 2 } }'::bson,
+    p_update_internal_docs=>null::bsonsequence,
     p_transaction_id=>null::text
-) result;
+    ) FROM helio_api.collection('update', 'test_sort_returning');
 
 SELECT document FROM helio_api.collection('update', 'test_sort_returning') ORDER BY 1;
 

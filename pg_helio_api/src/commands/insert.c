@@ -21,6 +21,7 @@
 #include <utils/snapmgr.h>
 #include <catalog/pg_class.h>
 #include <parser/parse_relation.h>
+#include <utils/lsyscache.h>
 
 #include "access/xact.h"
 #include "executor/spi.h"
@@ -103,8 +104,9 @@ static Query * CreateInsertQuery(MongoCollection *collection, Oid shardOid,
 static pgbson * PreprocessInsertionDoc(const bson_value_t *docValue,
 									   MongoCollection *collection,
 									   int64 *shardKeyHash, pgbson **objectId);
-static uint64 InsertOneWithTransactionCore(uint64 collectionId, int64 shardKeyValue,
-										   text *transactionId,
+static uint64 InsertOneWithTransactionCore(uint64 collectionId, const
+										   char *shardTableName,
+										   int64 shardKeyValue, text *transactionId,
 										   pgbson *objectId, pgbson *document);
 static uint64 CallInsertWorkerForInsertOne(MongoCollection *collection, int64
 										   shardKeyHash,
@@ -115,7 +117,7 @@ static uint64 CallInsertWorkerForInsertOne(MongoCollection *collection, int64
  * an insert into a non-existent collection should create a collection.
  */
 bool EnableCreateCollectionOnInsert = true;
-
+extern bool UseLocalExecutionShardQueries;
 
 /*
  * command_insert implements the insert command.
@@ -933,8 +935,10 @@ TryInsertOne(MongoCollection *collection, pgbson *document, int64 shardKeyHash, 
 		}
 		else
 		{
-			rowsInserted = InsertDocument(collection->collectionId, shardKeyHash,
-										  PgbsonGetDocumentId(document), document);
+			rowsInserted = InsertDocument(collection->collectionId,
+										  collection->shardTableName,
+										  shardKeyHash, PgbsonGetDocumentId(document),
+										  document);
 		}
 		ReleaseCurrentSubTransaction();
 		MemoryContextSwitchTo(oldContext);
@@ -970,30 +974,13 @@ TryInsertOne(MongoCollection *collection, pgbson *document, int64 shardKeyHash, 
 Datum
 command_insert_one(PG_FUNCTION_ARGS)
 {
-	uint64 collectionId = PG_GETARG_INT64(0);
-	int64 shardKeyValue = PG_GETARG_INT64(1);
-	pgbson *document = PG_GETARG_PGBSON(2);
-	pgbson *objectId = PgbsonGetDocumentId(document);
-
-	if (PG_ARGISNULL(3))
-	{
-		ereport(ERROR, (errcode(MongoInternalError),
-						errmsg(
-							"insert_one should only be called with a transaction id")));
-	}
-
-	text *transactionId = PG_GETARG_TEXT_P(3);
-
-	InsertOneWithTransactionCore(collectionId, shardKeyValue, transactionId, objectId,
-								 document);
-
-	PG_RETURN_UINT64(1);
+	ereport(ERROR, (errmsg("insert_one is deprecated and should not be called")));
 }
 
 
 static uint64
-InsertOneWithTransactionCore(uint64 collectionId, int64 shardKeyValue,
-							 text *transactionId,
+InsertOneWithTransactionCore(uint64 collectionId, const char *shardTableName,
+							 int64 shardKeyValue, text *transactionId,
 							 pgbson *objectId, pgbson *document)
 {
 	RetryableWriteResult writeResult;
@@ -1006,7 +993,7 @@ InsertOneWithTransactionCore(uint64 collectionId, int64 shardKeyValue,
 	else
 	{
 		/* no retry record exists, insert the document */
-		InsertDocument(collectionId, shardKeyValue, objectId, document);
+		InsertDocument(collectionId, shardTableName, shardKeyValue, objectId, document);
 
 		/* we always insert 1 row */
 		bool rowsAffected = true;
@@ -1049,9 +1036,16 @@ command_insert_worker(PG_FUNCTION_ARGS)
 							"Only insertOne with a single document on the worker is supported currently")));
 	}
 
+	const char *localShardTable = NULL;
+	if (UseLocalExecutionShardQueries)
+	{
+		localShardTable = get_rel_name(shardOid);
+	}
+
 	pgbson *document = PgbsonInitFromDocumentBsonValue(&element.bsonValue);
 	pgbson *objectId = PgbsonGetDocumentId(document);
-	InsertOneWithTransactionCore(collectionId, shardKeyValue, transactionId, objectId,
+	InsertOneWithTransactionCore(collectionId, localShardTable, shardKeyValue,
+								 transactionId, objectId,
 								 document);
 	PG_RETURN_POINTER(PgbsonInitEmpty());
 }
@@ -1061,7 +1055,8 @@ command_insert_worker(PG_FUNCTION_ARGS)
  * InsertDocument inserts a document into a collection.
  */
 bool
-InsertDocument(uint64 collectionId, int64 shardKeyValue, pgbson *objectId,
+InsertDocument(uint64 collectionId, const char *shardTableName,
+			   int64 shardKeyValue, pgbson *objectId,
 			   pgbson *document)
 {
 	StringInfoData query;
@@ -1073,12 +1068,20 @@ InsertDocument(uint64 collectionId, int64 shardKeyValue, pgbson *objectId,
 	SPI_connect();
 
 	initStringInfo(&query);
-	appendStringInfo(&query,
-					 "INSERT INTO %s.documents_" UINT64_FORMAT
-					 " (shard_key_value, object_id, document) "
-					 " VALUES ($1, %s.bson_from_bytea($2), "
-					 "%s.bson_from_bytea($3))",
-					 ApiDataSchemaName, collectionId,
+	appendStringInfo(&query, "INSERT INTO %s.", ApiDataSchemaName);
+
+	if (shardTableName != NULL && shardTableName[0] != '\0')
+	{
+		appendStringInfoString(&query, shardTableName);
+	}
+	else
+	{
+		appendStringInfo(&query, "documents_" UINT64_FORMAT, collectionId);
+	}
+
+	appendStringInfo(&query, " (shard_key_value, object_id, document) "
+							 " VALUES ($1, %s.bson_from_bytea($2), "
+							 "%s.bson_from_bytea($3))",
 					 CoreSchemaName, CoreSchemaName);
 
 	argTypes[0] = INT8OID;
@@ -1088,8 +1091,9 @@ InsertDocument(uint64 collectionId, int64 shardKeyValue, pgbson *objectId,
 	argTypes[2] = BYTEAOID;
 	argValues[2] = PointerGetDatum(CastPgbsonToBytea(document));
 
-	SPIPlanPtr plan = GetSPIQueryPlan(collectionId, QUERY_ID_INSERT,
-									  query.data, argTypes, argCount);
+	SPIPlanPtr plan = GetSPIQueryPlanWithLocalShard(collectionId, shardTableName,
+													QUERY_ID_INSERT, query.data, argTypes,
+													argCount);
 
 	spiStatus = SPI_execute_plan(plan, argValues, NULL, false, 1);
 	pfree(query.data);
