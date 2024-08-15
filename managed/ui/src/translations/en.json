@@ -1113,7 +1113,8 @@
               },
               "error": {
                 "requiredField": "Required.",
-                "mismatchedNodeToNodeEncryption": "The source and target universe must have matching TLS enable/disable setting."
+                "mismatchedNodeToNodeEncryption": "The source and target universe must have matching TLS enable/disable setting.",
+                "illegalCharactersInConfigName": "The name of the replication configuration cannot contain any characters in [SPACE '_' '*' '<' '>' '?' '|' '\"' NULL])"
               }
             },
             "selectTables": {
