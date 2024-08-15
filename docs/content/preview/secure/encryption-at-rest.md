@@ -135,7 +135,6 @@ You can disable cluster-wide encryption as follows:
 
 {{< note title="Note" >}}
 
-When taking snapshots, you will have to separately track the decryption key(s) that were used on the cluster. 
-When restoring the snapshot, you will need to add these keys to the cluster so the data can be decrypted. This is automated in YugabyteDB Anywhere.
-
+Store your keys securely, including those that have been rotated. If you want to restore distributed snapshots of an encrypted cluster to a new cluster, 
+you need to copy the keys used for encryption (including rotated keys) to the new cluster. (Backup, restore, and key management are automated in YugabyteDB Anywhere.)
 {{< /note >}}
