@@ -2338,7 +2338,7 @@ void PgApiImpl::StartSysTablePrefetching(const PrefetcherOptions& options) {
     LOG(DFATAL) << "Sys table prefetching was started already";
   }
 
-  CHECK(!pg_session_->catalog_read_time());
+  ResetCatalogReadTime();
   pg_sys_table_prefetcher_.emplace(options);
 }
 
@@ -2347,6 +2347,7 @@ void PgApiImpl::StopSysTablePrefetching() {
     LOG(DFATAL) << "Sys table prefetching was not started yet";
   } else {
     pg_sys_table_prefetcher_.reset();
+    ResetCatalogReadTime();
   }
 }
 
