@@ -21,7 +21,7 @@ Ensure the universes have the following characteristics:
 - Both universes are running the same version of YugabyteDB (v2.18.0.0 or later).
 - Both universes have the same [encryption in transit](../../../security/enable-encryption-in-transit/) settings. Encryption in transit is recommended, and you should create the source and target universes with TLS enabled.
 
-    If you rotate the CA certificate on the source universe, you need to restart the replication so that the target nodes get the new root certificate for TLS verifications.
+    If you [rotate the CA certificate](../../../security/enable-encryption-in-transit/rotate-certificates/) on the source universe, you need to restart the replication so that the target nodes get the new root certificate for TLS verifications.
 
 - They can be backed up and restored using the same [storage configuration](../../../back-up-restore-universes/configure-backup-storage/).
 
@@ -33,7 +33,7 @@ Ensure the universes have the following characteristics:
 
     In addition, during xCluster replication setup, the source universe retains WAL logs and increases in size. The setup (including copying data from source to target) is not aborted if the source universe runs out of space. Instead, a warning is displayed notifying that the source universe has less than 100 GB of space remaining. Ensure that there is enough space available on the source universe before attempting to set up the replication. A recommended approach would be to estimate that the available disk space on the source universe is the same as the used disk space.
 
-- They have network connectivity; see [Networking for xCluster](../../../prepare/networking/#networking-for-xcluster). If the source and target universe Master TServer nodes use DNS addresses, those addresses must be resolvable on all nodes.
+- They have network connectivity; see [Networking for xCluster](../../../prepare/networking/#networking-for-xcluster). If the source and target universe Master and TServer nodes use DNS addresses, those addresses must be resolvable on all nodes.
 
 Prepare your database and tables on the source. The source can be empty or have data. If the source has a lot of data, setup will take longer because the [data must be copied in full to the target](#full-copy-during-xcluster-setup) before on-going asynchronous replication starts.
 
