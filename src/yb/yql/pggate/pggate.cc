@@ -14,6 +14,7 @@
 
 #include "yb/yql/pggate/pggate.h"
 
+#include <algorithm>
 #include <list>
 #include <memory>
 #include <string>
@@ -185,16 +186,16 @@ class PrecastRequestSender {
 
  public:
   Result<PgDocResponse> Send(
-      PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-      HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable) {
+      PgSession& session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
+      HybridTime in_txn_limit) {
     if (!collecting_mode_) {
-      auto future = VERIFY_RESULT(session->RunAsync(
-          ops, ops_count, table, in_txn_limit, force_non_bufferable));
-      return PgDocResponse(std::move(future));
+      return PgDocOp::DefaultSender(
+          &session, ops, ops_count, table, in_txn_limit,
+          ForceNonBufferable::kFalse, IsForWritePgDoc::kFalse);
     }
     // For now PrecastRequestSender can work only with a new in txn limit set to the current time
     // for each batch of ops. It doesn't use a single in txn limit for all read ops in a statement.
-    // TODO: Expalin why is this the case because it differs from requirement 1 in
+    // TODO: Explain why is this the case because it differs from requirement 1 in
     // src/yb/yql/pggate/README
     RSTATUS_DCHECK(!in_txn_limit, IllegalState, "Only zero is expected");
     for (auto end = ops + ops_count; ops != end; ++ops) {
@@ -206,7 +207,7 @@ class PrecastRequestSender {
     return PgDocResponse(std::make_unique<ResponseProvider>(provider_state_));
   }
 
-  Status TransmitCollected(PgSession* session) {
+  Status TransmitCollected(PgSession& session) {
     auto res = DoTransmitCollected(session);
     ops_.clear();
     provider_state_.reset();
@@ -219,9 +220,9 @@ class PrecastRequestSender {
   }
 
  private:
-  Status DoTransmitCollected(PgSession* session) {
+  Status DoTransmitCollected(PgSession& session) {
     auto i = ops_.begin();
-    auto perform_future = VERIFY_RESULT(session->RunAsync(make_lw_function(
+    PgDocResponse response(VERIFY_RESULT(session.RunAsync(make_lw_function(
         [&i, end = ops_.end()] {
           using TO = PgSession::TableOperation<PgsqlOpPtr>;
           if (i == end) {
@@ -229,8 +230,9 @@ class PrecastRequestSender {
           }
           auto& info = *i++;
           return TO{.operation = &info.operation, .table = info.table};
-        }), HybridTime()));
-    *provider_state_ = VERIFY_RESULT(perform_future.Get());
+        }), HybridTime())),
+        {TableType::USER, IsForWritePgDoc::kFalse});
+    *provider_state_ = VERIFY_RESULT(response.Get(session));
     return Status::OK();
   }
 
@@ -254,9 +256,10 @@ Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
   boost::container::small_vector<std::unique_ptr<PgDocReadOp>, 16> doc_ops;
   auto request_sender = [&precast_sender](
       PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-      HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable) {
-    return precast_sender.Send(
-        session, ops, ops_count, table, in_txn_limit, force_non_bufferable);
+      HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable, IsForWritePgDoc is_write) {
+    DCHECK(!force_non_bufferable);
+    DCHECK(!is_write);
+    return precast_sender.Send(*session, ops, ops_count, table, in_txn_limit);
   };
   // Start all the doc_ops to read from docdb in parallel, one doc_op per table ID.
   // Each doc_op will use request_sender to send all the requests with single perform RPC.
@@ -284,7 +287,7 @@ Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
     RETURN_NOT_OK(doc_op.Execute());
   }
 
-  RETURN_NOT_OK(precast_sender.TransmitCollected(session.get()));
+  RETURN_NOT_OK(precast_sender.TransmitCollected(*session));
   // Disable further request collecting as in the vast majority of cases new requests will not be
   // initiated because requests for all ybctids has already been sent. But in case of dynamic
   // splitting new requests might be sent. They will be sent and processed as usual (i.e. request
