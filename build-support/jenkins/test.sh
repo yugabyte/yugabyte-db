@@ -208,23 +208,14 @@ THIRDPARTY_BIN=$YB_SRC_ROOT/thirdparty/installed/bin
 export PPROF_PATH=$THIRDPARTY_BIN/pprof
 
 # Check for available YBC
-ybc_tar=""
-if [[ -d /opt/yb-build/ybc ]]; then
-  ybc_tar=$(find /opt/yb-build/ybc/ -type f | sort -V | tail -1)
-fi
-ybc_dest="$YB_SRC_ROOT/build/ybc"
-if [[ -n ${ybc_tar} ]]; then
-  log "Unpacking ${ybc_tar} binaries to ${ybc_dest}/"
-  mkdir -p "${ybc_dest}"
-  tar xf "$ybc_tar"
-  cp ./ybc-*/bin/* "${ybc_dest}/"
-  ( set -x; ls -l "${ybc_dest}/")
+prep_ybc_testing
+if [[ -d "$YB_SRC_ROOT/build/ybc" ]]; then
   export YB_TEST_YB_CONTROLLER=${YB_TEST_YB_CONTROLLER:-1}
   log "Setting YB_TEST_YB_CONTROLLER=$YB_TEST_YB_CONTROLLER"
   export YB_DISABLE_MINICLUSTER_BACKUP_TESTS=1
   log "Setting YB_DISABLE_MINICLUSTER_BACKUP_TESTS=$YB_DISABLE_MINICLUSTER_BACKUP_TESTS"
 else
-  log "Did not find YBC tarfile. Not setting YB_TEST_YB_CONTROLLER."
+  log "Did not find YBC binaries. Not setting YB_TEST_YB_CONTROLLER."
 fi
 
 cd "$BUILD_ROOT"

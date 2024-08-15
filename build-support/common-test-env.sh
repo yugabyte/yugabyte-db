@@ -2088,6 +2088,28 @@ run_cmake_unit_tests() {
   cd "$old_dir"
 }
 
+prep_ybc_testing() {
+  # YBC is supported only on linux.
+  if is_linux; then
+    ybc_dest="$YB_SRC_ROOT/build/ybc"
+    if [[ -d "${ybc_dest}" ]]; then
+      log "Found existing $ybc_dest directory, skipping YBC prep."
+    else
+      ybc_tarball_dir="/opt/yb-build/ybc"
+      config_file="$YB_SRC_ROOT/managed/src/main/resources/reference.conf"
+      # check that current version is downloaded
+      "$YB_SRC_ROOT"/managed/download_ybc.sh -i -c "$config_file" -d "$ybc_tarball_dir"
+      # Extract version the same way as download_ybc.sh does.
+      ybc_version=$(grep ybc -A2 "${config_file}" |
+                    awk -F '= ' '/stable_version/ {print $2}' | tr -d \")
+      ybc_tar=$(compgen -G "${ybc_tarball_dir}/ybc-${ybc_version}-*-${YB_TARGET_ARCH}.tar.gz")
+      log "Unpacking ${ybc_tar} bin/ binaries to ${ybc_dest}/"
+      mkdir -p "${ybc_dest}"
+      tar -x -f "${ybc_tar}" -C "${ybc_dest}" --strip-components=2 'yb*/bin/*'
+    fi
+  fi
+}
+
 # -------------------------------------------------------------------------------------------------
 # Initialization
 # -------------------------------------------------------------------------------------------------
