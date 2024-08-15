@@ -90,9 +90,15 @@ Video: [YFTT - Transactional xCluster](https://www.youtube.com/watch?lI6gw7ncBs8
 
 - You can set up change data capture on a source universe in xCluster replication, but not a target.
 
+- xCluster replication is not supported for materialized views.
+
 ## Upgrading universes in xCluster replication
 
+Use the same version of YugabyteDB on both the source and target.
+
 When [upgrading universes](../../manage-deployments/upgrade-software-install/) in xCluster replication, you should upgrade and finalize the target before upgrading and finalizing the source.
+
+If you upgrade and finalize the source universe first, replication may be paused automatically until both universes are finalized to the same software version.
 
 ## xCluster DR vs xCluster Replication
 

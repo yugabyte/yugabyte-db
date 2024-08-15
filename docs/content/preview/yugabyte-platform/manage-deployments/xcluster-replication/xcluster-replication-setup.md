@@ -33,6 +33,8 @@ Ensure the universes have the following characteristics:
 
     In addition, during xCluster replication setup, the source universe retains WAL logs and increases in size. The setup (including copying data from source to target) is not aborted if the source universe runs out of space. Instead, a warning is displayed notifying that the source universe has less than 100 GB of space remaining. Ensure that there is enough space available on the source universe before attempting to set up the replication. A recommended approach would be to estimate that the available disk space on the source universe is the same as the used disk space.
 
+- They have network connectivity; see [Networking for xCluster](../../../prepare/networking/#networking-for-xcluster). If the source and target universe Master TServer nodes use DNS addresses, those addresses must be resolvable on all nodes.
+
 Prepare your database and tables on the source. The source can be empty or have data. If the source has a lot of data, setup will take longer because the [data must be copied in full to the target](#full-copy-during-xcluster-setup) before on-going asynchronous replication starts.
 
 During initial setup, you don't need to create objects on the target. YugabyteDB Anywhere performs a full copy of the data to be replicated on the source, and automatically creates tables and objects, and restores data on the target from the source.
