@@ -34,7 +34,7 @@ You can use YugabyteDB Anywhere to set up xCluster replication, monitor the stat
 
 ## xCluster configurations
 
-YugabyteDB Anywhere supports the following replication configurations:
+xCluster Replication supports the following replication configurations:
 
 - Transactional YSQL
 - Non-transactional YCQL/YSQL
@@ -46,9 +46,9 @@ For YCQL databases, only non-transactional replication is supported.
 
 Bidirectional replication refers to setting up xCluster replication between two YSQL databases or YCQL tables on different universes in both directions, so that writes on either database or table can be replicated to the other database or table. Certain xCluster management operations need special attention in this case. See [Bidirectional replication](bidirectional-replication/).
 
-- For more information about transactional and non-transactional modes, see [Asynchronous replication modes](../../../architecture/docdb-replication/async-replication/#asynchronous-replication-modes).
+For more information about transactional and non-transactional modes, see [Asynchronous replication modes](../../../architecture/docdb-replication/async-replication/#asynchronous-replication-modes).
 
-{{<lead link="#">}}
+{{<lead link="https://www.yugabyte.com/blog/distributed-database-transactional-consistency-async-standby">}}
 Blog: [Can Distributed Databases Achieve Transactional Consistency on Async Standbys? Yes, They Can](https://www.yugabyte.com/blog/distributed-database-transactional-consistency-async-standby/)
 {{</lead>}}
 
@@ -126,7 +126,7 @@ For example, use xCluster replication for the following:
 - Non-transactional SQL. That is, SQL without write-order guarantees and without transactional atomicity guarantees.
 - CQL deployments.
 
-Note that a universe configured for xCluster DR cannot be used for xCluster replication, and vice versa. Although xCluster DR uses xCluster replication under the hood, xCluster DR replication is managed exclusively from the **xCluster Disaster Recovery** tab, and not on the **xCluster Replication** tab.
+Note that a universe configured for xCluster DR cannot be used for xCluster Replication, and vice versa. Although xCluster DR uses xCluster replication under the hood, xCluster DR replication is managed exclusively from the **xCluster Disaster Recovery** tab, and not on the **xCluster Replication** tab.
 
 (As an alternative to xCluster DR, you can perform setup, failover, and switchover manually. Refer to [Set up transactional xCluster replication](../../../deploy/multi-dc/async-replication/async-transactional-setup/).)
 
