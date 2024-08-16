@@ -1319,8 +1319,11 @@ heap_create_with_catalog(const char *relname,
 	 */
 	if (!OidIsValid(relid))
 	{
+		bool heap_pg_class_oids_supplied = IsBinaryUpgrade && !yb_binary_restore;
+		if (yb_binary_restore && !yb_ignore_heap_pg_class_oids)
+			heap_pg_class_oids_supplied = true;
 		/* Use binary-upgrade override for pg_class.oid and relfilenode */
-		if (IsBinaryUpgrade || yb_binary_restore)
+		if (heap_pg_class_oids_supplied)
 		{
 			/*
 			 * Indexes are not supported here; they use

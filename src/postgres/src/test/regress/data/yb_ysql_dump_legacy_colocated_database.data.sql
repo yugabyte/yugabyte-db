@@ -6,6 +6,7 @@
 -- Dumped by ysql_dump version 15.2-YB-2.23.1.1505-b0
 
 SET yb_binary_restore = true;
+SET yb_ignore_heap_pg_class_oids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
