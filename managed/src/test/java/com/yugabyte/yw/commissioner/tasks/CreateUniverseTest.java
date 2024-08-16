@@ -75,6 +75,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.SwamperTargetsFileUpdate,
           TaskType.CreateAlertDefinitions,
           TaskType.CreateTable,
+          TaskType.UpdateConsistencyCheck,
           TaskType.ChangeAdminPassword,
           TaskType.UniverseUpdateSucceeded);
 
@@ -96,6 +97,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.SwamperTargetsFileUpdate,
           TaskType.CreateAlertDefinitions,
           TaskType.CreateTable,
+          TaskType.UpdateConsistencyCheck,
           TaskType.ChangeAdminPassword,
           TaskType.UniverseUpdateSucceeded);
 

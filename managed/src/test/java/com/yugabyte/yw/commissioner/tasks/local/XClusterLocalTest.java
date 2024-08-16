@@ -9,7 +9,6 @@ import static org.junit.Assert.assertTrue;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.common.LocalNodeManager;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
@@ -21,6 +20,7 @@ import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.HashSet;
 import java.util.List;
@@ -96,7 +96,7 @@ public class XClusterLocalTest extends XClusterLocalTestBase {
         localNodeUniverseManager.runYsqlCommand(
             details, target, YUGABYTE_DB, "select count(*) from some_table", 10);
     assertTrue(ysqlResponse.isSuccess());
-    assertEquals("5", LocalNodeManager.getRawCommandOutput(ysqlResponse.getMessage()));
+    assertEquals("5", CommonUtils.extractJsonisedSqlResponse(ysqlResponse).trim());
     verifyPayload();
   }
 
@@ -198,7 +198,7 @@ public class XClusterLocalTest extends XClusterLocalTestBase {
         localNodeUniverseManager.runYsqlCommand(
             targetNodeDetails, target, YUGABYTE_DB, "select count(*) from x_cluster", 10);
     assertTrue(ysqlResponse.isSuccess());
-    assertEquals("2", LocalNodeManager.getRawCommandOutput(ysqlResponse.getMessage()));
+    assertEquals("2", CommonUtils.extractJsonisedSqlResponse(ysqlResponse).trim());
     verifyPayload();
   }
 }

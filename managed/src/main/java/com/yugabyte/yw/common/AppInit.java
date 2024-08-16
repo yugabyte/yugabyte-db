@@ -233,6 +233,7 @@ public class AppInit {
         // Handle incomplete tasks
         taskManager.handleAllPendingTasks();
         taskManager.updateUniverseSoftwareUpgradeStateSet();
+        taskManager.handlePendingConsistencyTasks();
 
         // Fail all incomplete support bundle creations.
         supportBundleCleanup.markAllRunningSupportBundlesFailed();

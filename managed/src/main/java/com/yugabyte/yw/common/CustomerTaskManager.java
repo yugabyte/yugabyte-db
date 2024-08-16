@@ -18,6 +18,7 @@ import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
 import com.yugabyte.yw.commissioner.tasks.ReprovisionNode;
 import com.yugabyte.yw.commissioner.tasks.params.IProviderTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.YsqlQueryExecutor.ConsistencyInfoResp;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.AbstractTaskParams;
@@ -46,6 +47,7 @@ import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
+import com.yugabyte.yw.models.PendingConsistencyCheck;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.RestoreKeyspace;
 import com.yugabyte.yw.models.Schedule;
@@ -83,6 +85,7 @@ public class CustomerTaskManager {
   private Commissioner commissioner;
   private YBClientService ybService;
   private YbcManager ybcManager;
+  private YsqlQueryExecutor ysqlQueryExecutor;
 
   public static final Logger LOG = LoggerFactory.getLogger(CustomerTaskManager.class);
   private static final List<TaskType> LOAD_BALANCER_TASK_TYPES =
@@ -95,10 +98,14 @@ public class CustomerTaskManager {
 
   @Inject
   public CustomerTaskManager(
-      YBClientService ybService, Commissioner commissioner, YbcManager ybcManager) {
+      YBClientService ybService,
+      Commissioner commissioner,
+      YbcManager ybcManager,
+      YsqlQueryExecutor ysqlQueryExecutor) {
     this.ybService = ybService;
     this.commissioner = commissioner;
     this.ybcManager = ybcManager;
+    this.ysqlQueryExecutor = ysqlQueryExecutor;
   }
 
   // Invoked if the task is in incomplete state.
@@ -708,5 +715,33 @@ public class CustomerTaskManager {
       return "Validation " + baseName;
     }
     return currentCustomTaskName;
+  }
+
+  public void handlePendingConsistencyTasks() {
+    List<PendingConsistencyCheck> pendings = PendingConsistencyCheck.getAll();
+
+    for (PendingConsistencyCheck pending : pendings) {
+      try {
+        Universe universe = Universe.getOrBadRequest(pending.getUniverse().getUniverseUUID());
+        ConsistencyInfoResp response = ysqlQueryExecutor.getConsistencyInfo(universe);
+        if (response != null) {
+          UUID dbTaskUuid = response.getTaskUuid();
+          int dbSeqNum = response.getSeqNum();
+          if (dbTaskUuid.equals(pending.getTaskUuid())) {
+            // Updated on DB side before crash, set ourselves to whatever is in the DB
+            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+            universeDetails.sequenceNumber = dbSeqNum;
+            universe.setUniverseDetails(universeDetails);
+            universe.save(false);
+          } else if (dbSeqNum > universe.getUniverseDetails().sequenceNumber) {
+            LOG.warn("Found pending task on a universe that appears stale.");
+          }
+        }
+      } catch (Exception e) {
+        LOG.warn("Exception handling WAL tasks: " + e.getMessage());
+      } finally {
+        pending.delete();
+      }
+    }
   }
 }

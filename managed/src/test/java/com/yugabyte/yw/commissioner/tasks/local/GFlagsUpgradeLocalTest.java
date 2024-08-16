@@ -253,6 +253,60 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
   }
 
   @Test
+  // Roll a 6 node cluster in batches of 2 per AZ
+  public void testStopMultipleNodesInAZRuntimeConf() throws InterruptedException {
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.numNodes = 6;
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.nodePrefix = "univConfCreate";
+    taskParams.upsertPrimaryCluster(userIntent, null);
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams, customer.getId(), taskParams.getPrimaryCluster().uuid, CREATE);
+
+    taskParams.expectedUniverseVersion = -1;
+    UniverseResp universeResp = universeCRUDHandler.createUniverse(customer, taskParams);
+    TaskInfo taskInfo = waitForTask(universeResp.taskUUID);
+    Universe universe = Universe.getOrBadRequest(universeResp.universeUUID);
+    verifyUniverseTaskSuccess(taskInfo);
+
+    RuntimeConfigEntry.upsertGlobal(UniverseConfKeys.upgradeBatchRollEnabled.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(
+        UniverseConfKeys.nodesAreSafeToTakeDownCheckTimeout.getKey(), "30s");
+
+    SpecificGFlags specificGFlags =
+        SpecificGFlags.construct(
+            Collections.singletonMap("max_log_size", "1805"),
+            Collections.singletonMap("log_max_seconds_to_retain", "86333"));
+    RuntimeConfigEntry.upsertGlobal(UniverseConfKeys.upgradeBatchRollAutoNumber.getKey(), "2");
+    taskInfo =
+        doGflagsUpgrade(
+            universe,
+            UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE,
+            specificGFlags,
+            null,
+            TaskInfo.State.Success,
+            null,
+            null);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        taskInfo.getSubTasks().stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+    boolean foundTasks = false;
+    for (List<TaskInfo> group : subTasksByPosition.values()) {
+      if (group.get(0).getTaskType() == TaskType.AnsibleClusterServerCtl) {
+        String process = group.get(0).getTaskParams().get("process").asText();
+        if (process.equals("tserver")) {
+          // Verifying that there are 2 simultaneous stops/starts for tservers.
+          assertEquals(2, group.size());
+          foundTasks = true;
+        }
+      }
+    }
+    assertTrue(foundTasks);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    compareGFlags(universe);
+  }
+
+  @Test
   public void testStopMultipleNodesInAZFallback() throws InterruptedException {
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
     userIntent.numNodes = 6;

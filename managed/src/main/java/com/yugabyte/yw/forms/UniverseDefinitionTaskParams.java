@@ -221,6 +221,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @ApiModelProperty(hidden = true)
   public boolean overridePrebuiltAmiDBVersion = false;
 
+  // local value for sequence number
+  @ApiModelProperty(hidden = true)
+  public int sequenceNumber = -1;
+
   // if we want to use a different SSH_USER instead of  what is defined in the accessKey
   // Use imagebundle to overwrite the sshPort
   @Nullable @ApiModelProperty @Deprecated public String sshUserOverride;

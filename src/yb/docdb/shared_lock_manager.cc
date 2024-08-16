@@ -157,13 +157,6 @@ const IntentTypeSetMap kIntentTypeSetAdd = GenerateLockStatesWithCount(1);
 // be used to extract a LockState corresponding to having only that set's elements counts present.
 const IntentTypeSetMap kIntentTypeSetMask = GenerateLockStatesWithCount(kFirstIntentTypeMask);
 
-inline size_t hash_value(const docdb::ObjectLockPrefix& object) noexcept {
-  size_t seed = 0;
-  boost::hash_combine(seed, object.first);
-  boost::hash_combine(seed, object.second);
-  return seed;
-}
-
 bool IntentTypeSetsConflict(IntentTypeSet lhs, IntentTypeSet rhs) {
   for (auto intent1 : lhs) {
     for (auto intent2 : rhs) {

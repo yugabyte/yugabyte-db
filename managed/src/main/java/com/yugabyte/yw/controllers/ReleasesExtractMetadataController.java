@@ -74,7 +74,7 @@ public class ReleasesExtractMetadataController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
-  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2024.2.0.0")
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2024.1.3.0")
   public Result extract_metadata(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     ExtractMetadata em =
@@ -127,7 +127,7 @@ public class ReleasesExtractMetadataController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
-  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2024.2.0.0")
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2024.1.3.0")
   public Result getMetadata(UUID customerUUID, UUID metadataUUID, Http.Request request) {
     ResponseExtractMetadata metadata = metadataMap.get(metadataUUID);
     Customer.getOrBadRequest(customerUUID);

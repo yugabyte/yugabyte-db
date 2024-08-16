@@ -237,6 +237,9 @@ YB_PROCESS_MEMORY_KB = MetricDefinition(
 YB_PROCESS_IO_KB_TOTAL = MetricDefinition(
     "yb_process_io_kb_total",
     "Check io bytes per process and its subprocesses")
+YB_PROCESS_OPEN_FILES = MetricDefinition(
+    "yb_process_open_files",
+    "Check number of open files per process and its subprocesses")
 
 ###################################################################################################
 # Reporting
@@ -528,7 +531,7 @@ class NodeChecker():
                  ysql_server_http_port, node_version, is_ybc_enabled, ybc_port,
                  time_drift_wrn_threshold, time_drift_err_threshold, otel_enabled,
                  temp_output_file, ddl_atomicity_check, master_leader_url,
-                 master_rpc_port, tserver_rpc_port):
+                 master_rpc_port, tserver_rpc_port, verbose):
         self.node = node
         self.node_name = node_name
         self.node_identifier = node_identifier
@@ -564,6 +567,7 @@ class NodeChecker():
         self.master_leader_url = master_leader_url
         self.prev_process_results = self._load_previous_per_process_results(temp_output_file)
         self.current_process_results = {}
+        self.verbose = verbose
 
     def _load_previous_per_process_results(self, temp_output_file):
         try:
@@ -1696,7 +1700,8 @@ class NodeChecker():
     def check_process_stats(self, process_name):
         metrics = [Metric.from_definition(YB_PROCESS_CPU_SECONDS_TOTAL),
                    Metric.from_definition(YB_PROCESS_MEMORY_KB),
-                   Metric.from_definition(YB_PROCESS_IO_KB_TOTAL)]
+                   Metric.from_definition(YB_PROCESS_IO_KB_TOTAL),
+                   Metric.from_definition(YB_PROCESS_OPEN_FILES)]
 
         e = self._new_metric_entry("Per-process check", process_name)
         process = Label("process", process_name)
@@ -1720,6 +1725,7 @@ class NodeChecker():
                                                                  Label('type', 'write')])
             metrics[2].add_value(stat['io_read_kb'], labels=[process,
                                                                 Label('type', 'read')])
+            metrics[3].add_value(stat['open_files'], labels=[process])
             return e.fill_and_return_entry([], has_error=False, metrics=metrics)
         except Exception as ex:
             return e.fill_and_return_entry(["Failed to parse process stats: {}".format(str(ex))],
@@ -1744,13 +1750,14 @@ class NodeChecker():
         if process_name in self.prev_process_results.keys():
             prev_process_map = self.prev_process_results[process_name]['process_map']
             total_stat = self.prev_process_results[process_name]['total_stat']
+            self.verbose_log("Previous total stats {}".format(total_stat))
             self._clear_gauge_stats(total_stat)
 
         process_map = {}
         for cur_pid in pid_list:
             stat = self._get_process_stats_by_pid(cur_pid)
             # Calculating the sum with current state
-            total_stat = self._merge_proc_results(total_stat, stat)
+            total_stat = self._merge_proc_results(stat, total_stat)
             # We need to substract pid stats from prev run
             if cur_pid in prev_process_map:
                 prev_stat = prev_process_map[cur_pid]['stats']
@@ -1761,7 +1768,7 @@ class NodeChecker():
                 'is_root': cur_pid == root_pid,
                 'stats': stat
             }
-        logging.info("Collected {} stats for {}".format(total_stat, process_name))
+        self.verbose_log("Collected {} stats for {}".format(total_stat, process_name))
         return {
             'process_map': process_map,
             'total_stat': total_stat
@@ -1785,6 +1792,7 @@ class NodeChecker():
             'resident_memory_kb': 0,
             'proportional_memory_kb': 0,
             'virtual_memory_kb': 0,
+            'open_files': 0
         }
 
     def _invert_prev_pid_stats(self, stat):
@@ -1793,13 +1801,17 @@ class NodeChecker():
             stat[key] = -stat[key]
 
     def _clear_gauge_stats(self, stat):
-        for k in ['resident_memory_kb', 'virtual_memory_kb', 'proportional_memory_kb']:
+        for k in ['resident_memory_kb', 'virtual_memory_kb', 'proportional_memory_kb',
+                  'open_files']:
             stat[k] = 0
 
     def _merge_proc_results(self, stat1, stat2):
         res = {}
         for key in stat1.keys():
-            res[key] = stat1[key] + stat2[key]
+            if key in stat2.keys():
+                res[key] = stat1[key] + stat2[key]
+            else:
+                res[key] = stat1[key]
         return res
 
     def _get_process_stats_by_pid(self, pid):
@@ -1831,9 +1843,17 @@ class NodeChecker():
                 res['io_read_kb'] = int(lst.split(" ")[1]) // 1024
             if "write_bytes:" in lst:
                 res['io_write_kb'] = int(lst.split(" ")[1]) // 1024
-        logging.info("stats for {} pid are {}".format(pid, res))
+
+        cmd = 'ls /proc/{}/fd/ | wc -l'.format(pid)
+        stat = self._check_output(cmd).strip()
+        if stat.isdigit():
+            res['open_files'] = int(stat)
+        self.verbose_log("stats for {} pid are {}".format(pid, res))
         return res
 
+    def verbose_log(self, message):
+        if self.verbose:
+            logging.info(message)
 
 ###################################################################################################
 # Utility functions
@@ -2059,6 +2079,8 @@ def main():
                         help='In case we want to get only metrics as an output.')
     parser.add_argument('--master_leader_url', type=str, default="", required=False,
                         help='Master leader URL.')
+    parser.add_argument('--verbose', type=bool, default=False, required=False,
+                        help='Add verbose output')
 
     args = parser.parse_args()
 
@@ -2084,7 +2106,7 @@ def main():
         n.ysql_server_http_port, n.yb_version, n.is_ybc_enabled, n.ybc_port,
         n.time_drift_wrn_threshold, n.time_drift_err_threshold, n.otel_enabled,
         args.temp_output_file, args.ddl_atomicity_check, args.master_leader_url,
-        n.master_rpc_port, n.tserver_rpc_port)
+        n.master_rpc_port, n.tserver_rpc_port, args.verbose)
 
     coordinator.add_precheck(checker, "check_openssl_availability")
 
