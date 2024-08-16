@@ -225,9 +225,9 @@ macro(yb_find_third_party_dependencies)
       SHARED_LIB "${ABSEIL_SHARED_LIB}")
     ADD_CXX_FLAGS("-DYB_ABSL_ENABLED")
   endif()
-  # -------------------------------------------------------------------------------------------------
+  # ------------------------------------------------------------------------------------------------
   # Deciding whether to use tcmalloc
-  # -------------------------------------------------------------------------------------------------
+  # ------------------------------------------------------------------------------------------------
 
   # Do not use tcmalloc for ASAN/TSAN.
   if ("${YB_TCMALLOC_ENABLED}" STREQUAL "")
@@ -276,7 +276,7 @@ macro(yb_find_third_party_dependencies)
   endif()
 
   #
-  # -------------------------------------------------------------------------------------------------
+  # ------------------------------------------------------------------------------------------------
 
   ## curl
   find_package(CURL REQUIRED)
@@ -317,8 +317,8 @@ macro(yb_find_third_party_dependencies)
   set(Boost_NO_SYSTEM_PATHS ON)
 
   if("${YB_COMPILER_TYPE}" MATCHES "^gcc[0-9]+$")
-    # TODO: display this only if using a devtoolset compiler on CentOS, and ideally only if the error
-    # actually happens.
+    # TODO: display this only if using a devtoolset compiler on CentOS, and ideally only if the
+    # error actually happens.
     message("Note: if Boost fails to find Threads, you might need to install the "
             "gcc-toolset-N-libatomic-devel package, or devtoolset-N-libatomic-devel package for "
             "older RedHat/CentOS versions, where N is the toolset version number.")
@@ -396,4 +396,12 @@ macro(yb_find_third_party_dependencies)
   find_package(HdrHistogram REQUIRED)
   include_directories(SYSTEM ${LIBHDR__HISTOGRAM_INCLUDE_DIR})
   ADD_THIRDPARTY_LIB(hdr_histogram STATIC_LIB "${LIBHDR_HISTOGRAM_STATIC_LIB}")
+
+  ## AWS clockbound
+  find_package(Clockbound REQUIRED)
+  # Adding the include directory using target_include_directories since
+  # include_directories does not work here for some odd reason.
+  ADD_THIRDPARTY_LIB(clockbound
+    STATIC_LIB ${CLOCKBOUND_STATIC_LIB}
+    INCLUDE_DIRS ${CLOCKBOUND_INCLUDE_DIR})
 endmacro()

@@ -124,6 +124,9 @@ PREREQS_ERROR_MSGS = {
             ' please free the port and restart the node.',
     'ycql_metric_port': 'YCQL metrics port {} is already in use. For accessing the YCQL metrics,' \
             ' please free the port and restart the node.',
+    'clockbound': 'Clockbound is recommended on AWS clusters. It can reduce read restart errors' \
+        ' significantly in concurrent workloads.' \
+        ' Relevant flag: --enhance_time_sync_via_clockbound.',
 }
 QUICK_START_LINKS = {
     'mac' : 'https://docs.yugabyte.com/preview/quick-start/',
@@ -219,7 +222,9 @@ EXAMPLE = {
               "that are part of the same cluster:\n" +
               "yugabyted start --join=host:port,[host:port]\n\n" +
               "# Create a secure cluster:\n" +
-              "yugabyted start --secure --certs_dir=<path_to_certs_dir>\n\n",
+              "yugabyted start --secure --certs_dir=<path_to_certs_dir>\n\n" +
+              "# Use precise clocks:\n" +
+              "yugabyted start --enhance_time_sync_via_clockbound\n\n",
     'stop' : "",
     'destroy' : "",
     'status' : "",
@@ -661,6 +666,31 @@ def get_cli_title():
     cli_title += div_line
     return cli_title
 
+def has_aws_time_sync_service():
+    try:
+        # Run the chronyc sources command and capture the output
+        result = subprocess.run(['chronyc', 'sources'], capture_output=True, text=True, timeout=1)
+
+        # Check if 169.254.169.123 is in the output
+        if result.returncode == 0 and '169.254.169.123' in result.stdout:
+            return True
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return False
+
+    return False
+
+def is_phc_configured():
+    try:
+        # Run the chronyc sources command and capture the output
+        result = subprocess.run(['systemctl', 'status', 'clockbound'],
+                                capture_output=True, text=True, timeout=1)
+
+        # Check if PHC is in the output
+        if result.returncode == 0 and 'PHC' in result.stdout:
+            return True
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return False
+
 class ControlScript(object):
     def __init__(self):
         self.configs = None
@@ -689,6 +719,9 @@ class ControlScript(object):
         self.set_signals(self.kill_children)
         atexit.register(self.kill_children)
         Output.script_exit_func = self.kill_children
+
+        if self.configs.temp_data.get("enhance_time_sync_via_clockbound"):
+            self.assert_system_configured_for_clockbound()
 
         if self.configs.saved_data.get("read_replica"):
             self.start_rr_process()
@@ -2761,6 +2794,12 @@ class ControlScript(object):
             prereqs_warn.add('ntp/chrony')
             prereqs_warn_flag = True
 
+        # Configuring clockbound is strongly recommended for AWS clusters.
+        if has_aws_time_sync_service() and not self.configs.temp_data[
+                "enhance_time_sync_via_clockbound"]:
+            prereqs_warn.add('clockbound')
+            prereqs_warn_flag = True
+
         (failed_ports, warning_ports, mandatory_port_available,
         recommended_port_available) = self.check_ports()
 
@@ -3559,6 +3598,45 @@ class ControlScript(object):
 
         return common_gflags
 
+    # Returns value of flag_name in flags.
+    # Returns None is none exists.
+    def get_flag_value(self, flags, flag_name):
+        for flag in flags.split(','):
+            if flag.startswith(flag_name):
+                return flag.split("=")[1]
+        return None
+
+    # Requires that flag_name not already be in flags.
+    # Returns flag_name=flag_value appended to flags.
+    def append_flag(self, flags, flag_name, flag_value):
+        if flags:
+            flags += ','
+        return flags + f"{flag_name}={flag_value}"
+
+    def config_time_source_clockbound(self, flags):
+        # Configure tserver flag time_source=clockbound
+        # when --enhance_time_sync_via_clockbound is set.
+        if self.configs.temp_data["enhance_time_sync_via_clockbound"]:
+            # Check database configuration.
+            time_source = self.get_flag_value(flags, "time_source")
+            if time_source and time_source != "clockbound":
+                raise ValueError(
+                    "Cannot configure time_source with"
+                    " --enhance_time_sync_via_clockbound.")
+
+            # Configure time_source=clockbound if not already.
+            if not time_source:
+                flags = self.append_flag(flags, "time_source", "clockbound")
+
+            # 100us clock error is a good estimate for PTP configurations.
+            if is_phc_configured():
+                clock_error_estimate = self.get_flag_value(
+                    flags, "clockbound_clock_error_estimate_usec")
+                if not clock_error_estimate:
+                    flags = self.append_flag(flags,
+                        "clockbound_clock_error_estimate_usec", 100)
+
+        return flags
 
     def get_master_cmd(self, common_flags):
         advertise_ip = self.advertise_ip()
@@ -3611,6 +3689,9 @@ class ControlScript(object):
 
             # Update the master_flags in self.configs.saved_data with pg_parity flags
             self.configs.saved_data["master_flags"] = master_flags
+
+        master_flags = self.config_time_source_clockbound(master_flags)
+        self.configs.saved_data["master_flags"] = master_flags
 
         if master_flags:
             # This will split the simple and complex flags
@@ -3766,6 +3847,9 @@ class ControlScript(object):
 
             # Update the tserver_flags in self.configs.saved_data with pg_parity flags
             self.configs.saved_data["tserver_flags"] = tserver_flags
+
+        tserver_flags = self.config_time_source_clockbound(tserver_flags)
+        self.configs.saved_data["tserver_flags"] = tserver_flags
 
         if tserver_flags:
             # This will split the simple and complex flags
@@ -3996,6 +4080,23 @@ class ControlScript(object):
     def set_env_vars(self):
         # Sets YW metrics to use local database.
         os.environ["USE_NATIVE_METRICS"] = "true"
+
+    def assert_system_configured_for_clockbound(self):
+        Output.init_animation("Validating system config for clockbound...")
+        configure_clockbound_path = find_binary_location("configure_clockbound.sh")
+        cmd = ["bash", configure_clockbound_path, "--validate"]
+        try:
+            subprocess.check_call(cmd)
+            Output.update_animation("Clockbound configured successfully.")
+        except subprocess.CalledProcessError as e:
+            exit_code = e.returncode
+            Output.update_animation("Failed to validate clockbound configuration.",
+                                    status=Output.ANIMATION_FAIL)
+            Output.log_error_and_exit(
+                Output.make_red("ERROR") + f": Exit code: {exit_code}."
+                " Did you run configure_clockbound.sh script?"
+            )
+
 
     # Runs post_install script for linux computers.
     def post_install_yb(self):
@@ -7658,6 +7759,8 @@ class ControlScript(object):
             self.configs.saved_data["ui"] = args.ui
             self.configs.saved_data["backup_daemon"] = args.backup_daemon
             self.configs.temp_data["initial_scripts_dir"] = args.initial_scripts_dir
+            self.configs.temp_data[
+                "enhance_time_sync_via_clockbound"] = args.enhance_time_sync_via_clockbound
 
         if has_errors:
             sys.exit(1)
@@ -8212,6 +8315,10 @@ class ControlScript(object):
             cur_parser.add_argument(
                 "--enable_pg_parity_early_access", help="Enable PostgreSQL compatibility features."
                 " Default value is False.", action="store_true", default=False)
+            cur_parser.add_argument(
+                "--enhance_time_sync_via_clockbound",
+                help="Enable clock bound for the node. Default value is False.",
+                action="store_true", default=False)
 
             # Hidden commands for development/advanced users
             cur_parser.add_argument(
@@ -8413,6 +8520,7 @@ class Configs(object):
             "xcluster_databases": "",
             "xcluster_target_addresses": "",
             "xcluster_bootstrap_done": "",
+            "enhance_time_sync_via_clockbound": False,
         }
         self.config_file = config_file
 
