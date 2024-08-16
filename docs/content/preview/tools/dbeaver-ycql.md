@@ -53,7 +53,7 @@ You can create a connection as follows:
 
     ![DBeaver Test Connection](/images/develop/tools/dbeaver/dbeaver-test-conn-ycql.png)
 
-DBeaver's **Database Navigator** should display system.
+The **Database Navigator** should display "system".
 
 You can expand the list to see all keyspaces available in YugabyteDB cluster, as shown in the following illustration:
 
