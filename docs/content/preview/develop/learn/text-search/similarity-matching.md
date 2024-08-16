@@ -76,7 +76,7 @@ The Levenshtein scoring for `warehoused` is `1` because it has one more characte
 
 ## Trigrams
 
-A trigram is a group of three consecutive characters taken from a string. You can measure the similarity of two strings by counting the number of trigrams they share. The [pg_trgm](https://www.postgresql.org/docs/15/pgtrgm.html) extension provides multiple functions like `show_trgm` and `similarity`, which provide a score of how similar two strings are.
+A trigram is a group of three consecutive characters taken from a string.  You can measure the similarity of two strings by counting the number of trigrams they share. The [pg_trgm](https://www.postgresql.org/docs/15/pgtrgm.html) extension provides multiple functions like `show_trgm` and `similarity`, which provide a score of how similar two strings are.
 
 For example, the trigrams for `warehouse` would be as follows:
 
@@ -119,6 +119,22 @@ SELECT strict_word_similarity('word', 'two words'), similarity('word', 'two word
 ```
 
 The `strict_word_similarity` is higher than the `similarity` as it gave higher importance to the presence of the exact term `word` in both strings.
+
+`pg_trgm` supports the `gin_trgm_ops` an operator class that is specifically designed for [GIN (Generalized Inverted Index)](../../../explore/ysql-language-features/indexes-constraints/gin) indexes to efficiently handle trigram-based similarity searches. With this, you can improve the performance of your `LIKE` and `ILIKE` queries as the `gin_trgm_ops` extracts the trigrams and indexes them in the GIN index. For example, creating an index like
+
+```sql
+CREATE INDEX idx_gin_trgm ON my_table USING gin (my_column gin_trgm_ops);
+```
+
+will improve the performance of the query,
+
+```sql
+SELECT * FROM my_table WHERE my_column LIKE '%search_term%';
+```
+
+{{<tip>}}
+If your application frequently requires exact matches or searches for substrings within larger text fields, `gin_trgm_ops` is a good choice.
+{{</tip>}}
 
 ## Learn more
 
