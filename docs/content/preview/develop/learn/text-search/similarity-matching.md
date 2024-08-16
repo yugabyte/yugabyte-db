@@ -141,3 +141,4 @@ If your application frequently requires exact matches or searches for substrings
 - [Understand GIN indexes](../../../../explore/ysql-language-features/indexes-constraints/gin/)
 - [Advanced fuzzy matching in YugabyteDB](https://www.yugabyte.com/blog/fuzzy-matching-in-yugabytedb/)
 - [Optimizing LIKE/ILIKE with indexes](https://www.yugabyte.com/blog/postgresql-like-query-performance-variations/)
+- [Range indexes for LIKE queries](https://dev.to/yugabyte/range-indexes-for-like-queries-in-yugabytedb-10kd)
