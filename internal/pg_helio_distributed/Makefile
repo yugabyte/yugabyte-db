@@ -1,4 +1,4 @@
-EXTENSION = pg_helio_api
+EXTENSION = pg_helio_distributed
 
 SQL_DEPDIR=.deps/sql
 SQL_BUILDDIR=build/sql
@@ -8,29 +8,26 @@ generated_sql_files = $(patsubst %,build/%,$(template_sql_files))
 DATA_built = $(generated_sql_files)
 sql_file_inputs = $(wildcard sql/**/*.sql)
 
-BUILD_SCRIPT_DIR = ../
-OSS_SRC_DIR = ../
+BUILD_SCRIPT_DIR = ../../
+OSS_SRC_DIR = ../../
 OSS_COMMON_SQL_HEADER = $(wildcard $(OSS_SRC_DIR)/common_header.sql)
 
 # Extension defines
+POSTGIS_SCHEMA_NAME=public
 API_SCHEMA_NAME=helio_api
 API_SCHEMA_INTERNAL_NAME=helio_api_internal
 API_CATALOG_SCHEMA_NAME=helio_api_catalog
 CORE_SCHEMA_NAME=helio_core
 API_DATA_SCHEMA_NAME=helio_data
 API_ADMIN_ROLE=helio_admin_role
-POSTGIS_SCHEMA_NAME=public
 EXTENSION_OBJECT_PREFIX=helio
 
 # compilation configuration
 MODULE_big = $(EXTENSION)
 
-# TODO: Need to remove this with PG16 and expose only valid exports
-ALLOW_DEFAULT_VISIBILITY=yes
-
 include $(OSS_SRC_DIR)/Makefile.cflags
 
-PG_CPPFLAGS += -I$(OSS_SRC_DIR)/pg_helio_core/include/
+PG_CPPFLAGS += -I$(OSS_SRC_DIR)/pg_helio_core/include/ -I$(OSS_SRC_DIR)/pg_helio_api/include/
 
 SOURCES = $(wildcard src/*.c) $(wildcard src/**/*.c)
 
@@ -90,6 +87,3 @@ $(generated_sql_files): build/%: %
 	@# `man cpp` for further information
 	cpp -undef -w $(SQL_DEFINES) -imacros $(OSS_COMMON_SQL_HEADER) -P -MMD -MP -MF$(SQL_DEPDIR)/$(*F).Po -MT$@ $< > $@
 
-include $(OSS_SRC_DIR)/Makefile.versions
-
-src/helio_api_extension_version.o : build/include/metadata/extension_version.h

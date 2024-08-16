@@ -1,0 +1,6 @@
+comment = 'Multi-Node API surface for HelioDB'
+default_version = '1.21-0'
+module_pathname = '$libdir/pg_helio_distributed'
+relocatable = false
+superuser = true
+requires = 'pg_helio_core, pg_helio_api, citus'

@@ -27,6 +27,7 @@ for f in $repoScriptDir/../pg_helio_core/include/**/*; do
         exit 1;
     fi
     headerMap[$subPath]=1;
+
 done;
 
 for f in $repoScriptDir/../pg_helio_api/include/**/*; do
@@ -53,6 +54,25 @@ do
     exit 1;
   fi
 done
+
+hasInvalidHeaders="0"
+
+for f in $(grep -R "include <server" --include \*.h --include \*.c oss)
+do
+  echo "Invalid header file found $f do not reference header files via 'server'"
+  hasInvalidHeaders="1"
+done
+
+for f in $(grep -R "include \"server" --include \*.h --include \*.c oss)
+do
+  echo "Invalid header file found $f do not reference header files via 'server'"
+  hasInvalidHeaders="1"
+done
+
+if [ "$hasInvalidHeaders" == "1" ]; then
+   exit 1;
+fi
+
 
 echo "Total headers checked ${#headerMap[@]}"
 

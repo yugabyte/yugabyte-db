@@ -66,6 +66,11 @@ typedef struct HelioRumCustomJoinScanState
 } HelioRumCustomJoinScanState;
 
 extern bool EnableMultiIndexRumJoin;
+
+/* Whether or not to check for the validity of custom rum functions
+ * This is off for the public rum release.
+ */
+bool HasCustomRumFunctions = false;
 static int64 (*MultiAndGetBitmapFunc) (IndexScanDesc *, int32, TIDBitmap *) = NULL;
 
 /* --------------------------------------------------------- */
@@ -143,7 +148,7 @@ static const ExtensibleNodeMethods InputQueryStateMethods =
 void
 RegisterRumJoinScanNodes(void)
 {
-	bool missingOk = false;
+	bool missingOk = !HasCustomRumFunctions;
 	void **ignoreLibFileHandle = NULL;
 	MultiAndGetBitmapFunc =
 		load_external_function("$libdir/rum", "multiandgetbitmap", !missingOk,

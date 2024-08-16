@@ -17,7 +17,7 @@
 #include <catalog/pg_operator.h>
 #include <utils/guc.h>
 #include <utils/guc_utils.h>
-#include <server/miscadmin.h>
+#include <miscadmin.h>
 #include <utils/memutils.h>
 
 #include "io/helio_bson_core.h"

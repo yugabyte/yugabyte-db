@@ -9,7 +9,9 @@ Makefile:;
 .DEFAULT:
 	$(MAKE) -C pg_helio_core
 	$(MAKE) -C pg_helio_api
+	$(MAKE) -C internal/pg_helio_distributed
 
 %:
 	$(MAKE) -C pg_helio_core $@
 	$(MAKE) -C pg_helio_api $@
+	$(MAKE) -C internal/pg_helio_distributed $@

@@ -15,7 +15,7 @@
 #ifndef PG_BSON_WRITER_H
 #define PG_BSON_WRITER_H
 
-#include <server/datatype/timestamp.h>
+#include <datatype/timestamp.h>
 
 /* bson writer interface */
 typedef struct
