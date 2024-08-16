@@ -47,7 +47,16 @@ XClusterTargetManager::XClusterTargetManager(
 
 XClusterTargetManager::~XClusterTargetManager() {}
 
-void XClusterTargetManager::Shutdown() {
+void XClusterTargetManager::StartShutdown() {
+  {
+    std::lock_guard l(replication_setup_tasks_mutex_);
+    for (auto& [_, task] : replication_setup_tasks_) {
+      task->TryCancel();
+    }
+  }
+}
+
+void XClusterTargetManager::CompleteShutdown() {
   if (safe_time_service_) {
     safe_time_service_->Shutdown();
   }
@@ -235,11 +244,12 @@ XClusterTargetManager::GetPostTabletCreateTasks(
 }
 
 Status XClusterTargetManager::WaitForSetupUniverseReplicationToFinish(
-    const xcluster::ReplicationGroupId& replication_group_id, CoarseTimePoint deadline) {
+    const xcluster::ReplicationGroupId& replication_group_id, CoarseTimePoint deadline,
+    bool skip_health_check) {
   return Wait(
       [&]() -> Result<bool> {
         auto is_operation_done =
-            VERIFY_RESULT(IsSetupUniverseReplicationDone(replication_group_id));
+            VERIFY_RESULT(IsSetupUniverseReplicationDone(replication_group_id, skip_health_check));
 
         if (is_operation_done.done()) {
           RETURN_NOT_OK(is_operation_done.status());
@@ -1107,11 +1117,61 @@ Status XClusterTargetManager::ProcessPendingSchemaChanges(const LeaderEpoch& epo
 Status XClusterTargetManager::SetupUniverseReplication(
     const SetupUniverseReplicationRequestPB* req, SetupUniverseReplicationResponsePB* resp,
     const LeaderEpoch& epoch) {
-  return SetupUniverseReplicationHelper::Setup(master_, catalog_manager_, req, resp, epoch);
+  // We should set the universe uuid even if we fail with AlreadyPresent error.
+  {
+    auto universe_uuid = catalog_manager_.GetUniverseUuidIfExists();
+    if (universe_uuid) {
+      resp->set_universe_uuid(universe_uuid->ToString());
+    }
+  }
+
+  auto setup_replication_task =
+      VERIFY_RESULT(CreateSetupUniverseReplicationTask(master_, catalog_manager_, req, epoch));
+
+  {
+    std::lock_guard l(replication_setup_tasks_mutex_);
+    SCHECK(
+        !replication_setup_tasks_.contains(setup_replication_task->Id()), AlreadyPresent,
+        "Setup already running for xCluster ReplicationGroup $0", setup_replication_task->Id());
+    replication_setup_tasks_[setup_replication_task->Id()] = setup_replication_task;
+  }
+
+  setup_replication_task->StartSetup();
+
+  return Status::OK();
 }
 
 Result<IsOperationDoneResult> XClusterTargetManager::IsSetupUniverseReplicationDone(
-    const xcluster::ReplicationGroupId& replication_group_id) {
+    const xcluster::ReplicationGroupId& replication_group_id, bool skip_health_check) {
+  std::shared_ptr<XClusterInboundReplicationGroupSetupTaskIf> setup_replication_task;
+  {
+    SharedLock l(replication_setup_tasks_mutex_);
+    setup_replication_task = FindPtrOrNull(replication_setup_tasks_, replication_group_id);
+  }
+
+  if (setup_replication_task) {
+    auto is_done = setup_replication_task->DoneResult();
+    if (!is_done.done()) {
+      return is_done;
+    }
+
+    {
+      std::lock_guard l(replication_setup_tasks_mutex_);
+      // Forget about the task now that we've responded to the user.
+      replication_setup_tasks_.erase(replication_group_id);
+    }
+
+    if (!is_done.status().ok()) {
+      // Setup failed.
+      return is_done;
+    }
+  }
+
+  if (skip_health_check) {
+    return IsOperationDoneResult::Done();
+  }
+
+  // Setup completed successfully. Wait for the ReplicationGroup be become healthy.
   return master::IsSetupUniverseReplicationDone(replication_group_id, catalog_manager_);
 }
 
@@ -1170,6 +1230,24 @@ Status XClusterTargetManager::DeleteUniverseReplication(
     const xcluster::ReplicationGroupId& replication_group_id, bool ignore_errors,
     bool skip_producer_stream_deletion, DeleteUniverseReplicationResponsePB* resp,
     const LeaderEpoch& epoch) {
+  {
+    // If a setup is in progress, then cancel it.
+    std::lock_guard l(replication_setup_tasks_mutex_);
+    auto setup_helper = FindPtrOrNull(replication_setup_tasks_, replication_group_id);
+    if (setup_helper) {
+      replication_setup_tasks_.erase(replication_group_id);
+
+      if (setup_helper->TryCancel()) {
+        // Either we successfully cancelled the Setup or it already failed. There wont be any
+        // UniverseReplication to delete, so we succeeded.
+        return Status::OK();
+      }
+
+      // Setup already completed successfully, but IsSetupUniverseReplicationDone hasn't been
+      // called yet. Proceed with the delete.
+    }
+  }
+
   auto ri = catalog_manager_.GetUniverseReplication(replication_group_id);
   SCHECK(ri != nullptr, NotFound, "Universe replication $0 does not exist", replication_group_id);
 

@@ -87,10 +87,16 @@ class XClusterTabletSplitITestBase : public TabletSplitBase {
  protected:
   Status SetupReplication(const string& bootstrap_id = "") {
     SwitchToProducer();
-    VERIFY_RESULT(tools::RunAdminToolCommand(
-        consumer_cluster_->GetMasterAddresses(), "setup_universe_replication", kProducerClusterId,
-        TabletSplitBase::cluster_->GetMasterAddresses(), TabletSplitBase::table_->id(),
-        bootstrap_id));
+    if (!bootstrap_id.empty()) {
+      VERIFY_RESULT(tools::RunAdminToolCommand(
+          consumer_cluster_->GetMasterAddresses(), "setup_universe_replication", kProducerClusterId,
+          TabletSplitBase::cluster_->GetMasterAddresses(), TabletSplitBase::table_->id(),
+          bootstrap_id));
+    } else {
+      VERIFY_RESULT(tools::RunAdminToolCommand(
+          consumer_cluster_->GetMasterAddresses(), "setup_universe_replication", kProducerClusterId,
+          TabletSplitBase::cluster_->GetMasterAddresses(), TabletSplitBase::table_->id()));
+    }
     return Status::OK();
   }
 

@@ -295,7 +295,9 @@ TEST_F(XClusterYsqlColocatedTest, DatabaseReplication) { ASSERT_OK(TestDatabaseR
 
 TEST_F(XClusterYsqlColocatedTest, LegacyColocatedDatabaseReplication) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_legacy_colocated_database_creation) = true;
-  ASSERT_OK(TestDatabaseReplication());
+  ASSERT_NOK_STR_CONTAINS(
+      TestDatabaseReplication(),
+      "Pre GA colocated databases are not supported with xCluster replication");
 }
 
 TEST_F(XClusterYsqlColocatedTest, DatabaseReplicationWithPacked) {
@@ -311,12 +313,6 @@ TEST_F(XClusterYsqlColocatedTest, DatabaseReplicationWithPackedAndCompact) {
 TEST_F(XClusterYsqlColocatedTest, PackedDatabaseReplicationWithTransactions) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
   ASSERT_OK(TestDatabaseReplication(/* compact= */ true, /* use_transaction = */ true));
-}
-
-TEST_F(XClusterYsqlColocatedTest, LegacyColocatedDatabaseReplicationWithPacked) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_legacy_colocated_database_creation) = true;
-  ASSERT_OK(TestDatabaseReplication(/*compact=*/true));
 }
 
 TEST_F(XClusterYsqlColocatedTest, TestTablesReplicationWithLargeTableCount) {

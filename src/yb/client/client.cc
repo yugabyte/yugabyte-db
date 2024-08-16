@@ -836,18 +836,6 @@ Status YBClient::GetTablegroupSchemaById(const TablegroupId& tablegroup_id,
                                         callback);
 }
 
-Status YBClient::GetColocatedTabletSchemaByParentTableId(
-    const TableId& parent_colocated_table_id,
-    std::shared_ptr<std::vector<YBTableInfo>> info,
-    StatusCallback callback) {
-  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  return data_->GetColocatedTabletSchemaByParentTableId(this,
-                                                         parent_colocated_table_id,
-                                                         deadline,
-                                                         info,
-                                                         callback);
-}
-
 Result<IndexPermissions> YBClient::GetIndexPermissions(
     const TableId& table_id,
     const TableId& index_id) {

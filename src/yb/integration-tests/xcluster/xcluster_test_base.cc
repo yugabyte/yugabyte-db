@@ -15,6 +15,7 @@
 
 #include <string>
 
+#include "yb/client/xcluster_client.h"
 #include "yb/common/xcluster_util.h"
 
 #include "yb/client/client.h"
@@ -360,6 +361,10 @@ Status XClusterTestBase::SetupUniverseReplication(
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
 
   RETURN_NOT_OK(master_proxy->SetupUniverseReplication(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
   // Verify that replication was setup correctly.
   master::GetUniverseReplicationResponsePB verify_resp;
   RETURN_NOT_OK(VerifyUniverseReplication(
@@ -460,6 +465,9 @@ Result<master::GetUniverseReplicationResponsePB> XClusterTestBase::GetUniverseRe
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
 
   RETURN_NOT_OK(master_proxy->GetUniverseReplication(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
   return resp;
 }
 
@@ -506,6 +514,27 @@ Status XClusterTestBase::WaitForSetupUniverseReplication(
         return resp->has_done() && resp->done();
       },
       MonoDelta::FromSeconds(kRpcTimeout), "Is setup replication done");
+}
+
+Result<IsOperationDoneResult> XClusterTestBase::WaitForSetupUniverseReplication(
+    const xcluster::ReplicationGroupId& replication_group_id, MiniCluster* consumer_cluster,
+    YBClient* consumer_client) {
+  if (!consumer_cluster) {
+    consumer_cluster = consumer_cluster_.mini_cluster_.get();
+  }
+  if (!consumer_client) {
+    consumer_client = consumer_cluster_.client_.get();
+  }
+  master::IsSetupUniverseReplicationDoneResponsePB resp;
+  RETURN_NOT_OK(WaitForSetupUniverseReplication(
+      consumer_cluster, consumer_client, replication_group_id, &resp));
+
+  Status done_status;
+  if (resp.has_replication_error()) {
+    done_status = StatusFromPB(resp.replication_error());
+  }
+
+  return IsOperationDoneResult::Done(done_status);
 }
 
 Status XClusterTestBase::GetCDCStreamForTable(
@@ -591,7 +620,6 @@ Status XClusterTestBase::AlterUniverseReplication(
   RETURN_NOT_OK(WaitForSetupUniverseReplication(
       consumer_cluster(), consumer_client(), alter_replication_group_id, &setup_resp));
   SCHECK(!setup_resp.has_error(), IllegalState, alter_resp.ShortDebugString());
-  RETURN_NOT_OK(WaitForSetupUniverseReplicationCleanUp(alter_replication_group_id));
   master::GetUniverseReplicationResponsePB get_resp;
   return VerifyUniverseReplication(replication_group_id, &get_resp);
 }
