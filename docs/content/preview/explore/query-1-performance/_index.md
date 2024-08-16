@@ -85,7 +85,7 @@ Ensure that the threshold is high enough so that you don't flood the `postgres*l
 
 {{< /note >}}
 
-For more information on flags for configuring the YB-TServer server, refer to [YSQL Flags](../../reference/configuration/yb-tserver/#ysql-flags).
+For more information on flags for configuring the YB-TServer server, refer to [YSQL Flags](../../reference/configuration/yb-tserver/#ysql).
 
 ### Use a hint plan
 

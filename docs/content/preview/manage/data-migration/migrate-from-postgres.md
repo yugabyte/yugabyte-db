@@ -110,7 +110,7 @@ By default, all the rows of the table are distributed across multiple tablets an
 Choose colocation for tables with small tables that don't grow much; for example, less than 1 million rows, or smaller than 1 GB.
 
 {{<lead link="../../../architecture/docdb-sharding/colocated-tables/">}}
-For more information on when and how to create colocated tables, see [Colocated tables](../../../architecture/docdb-sharding/colocated-tables/").
+For more information on when and how to create colocated tables, see [Colocated tables](../../../architecture/docdb-sharding/colocated-tables/).
 {{</lead>}}
 
 ## Schema Migration

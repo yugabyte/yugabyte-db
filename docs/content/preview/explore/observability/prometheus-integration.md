@@ -23,7 +23,7 @@ You can monitor your local YugabyteDB cluster with a local instance of [Promethe
 
 ### Create a universe
 
-Follow the [setup instructions](../../../#set-up-yugabytedb-universe) to start a local multi-node universe.
+{{<setup/local>}}
 
 ### Run the YugabyteDB workload generator
 
