@@ -75,7 +75,7 @@ The Levenshtein scoring for `warehoused` is `1` because it has one more characte
 
 ## Trigrams
 
-A trigram is a group of three consecutive characters taken from a string. You can measure the similarity of two strings by counting the number of trigrams they share. The [pg_trgm](https://www.postgresql.org/docs/15/pgtrgm.html) extension provides multiple functions like `show_trgm` and `similarity`, which provide a score of how similar two strings are.
+A trigram is a group of three consecutive characters taken from a string.  You can measure the similarity of two strings by counting the number of trigrams they share. The [pg_trgm](https://www.postgresql.org/docs/15/pgtrgm.html) extension provides multiple functions like `show_trgm` and `similarity`, which provide a score of how similar two strings are.
 
 For example, the trigrams for `warehouse` would be as follows:
 
@@ -119,8 +119,27 @@ SELECT strict_word_similarity('word', 'two words'), similarity('word', 'two word
 
 The `strict_word_similarity` is higher than the `similarity` as it gave higher importance to the presence of the exact term `word` in both strings.
 
+`pg_trgm` supports the `gin_trgm_ops` operator class, which is specifically designed for [GIN (Generalized Inverted Index)](../../../../explore/ysql-language-features/indexes-constraints/gin) indexes to efficiently handle trigram-based similarity searches. `gin_trgm_ops` improves the performance of `LIKE` and `ILIKE` queries by extracting the trigrams and indexing them in the GIN index.
+
+For example, take the following query:
+
+```sql
+SELECT * FROM my_table WHERE my_column LIKE '%search_term%';
+```
+
+To improve its performance, create the following index:
+
+```sql
+CREATE INDEX idx_gin_trgm ON my_table USING gin (my_column gin_trgm_ops);
+```
+
+{{<tip>}}
+If your application frequently requires exact matches, or searches for substrings in larger text fields, `gin_trgm_ops` is a good choice.
+{{</tip>}}
+
 ## Learn more
 
 - [Understand GIN indexes](../../../../explore/ysql-language-features/indexes-constraints/gin/)
 - [Advanced fuzzy matching in YugabyteDB](https://www.yugabyte.com/blog/fuzzy-matching-in-yugabytedb/)
 - [Optimizing LIKE/ILIKE with indexes](https://www.yugabyte.com/blog/postgresql-like-query-performance-variations/)
+- [Range indexes for LIKE queries](https://dev.to/yugabyte/range-indexes-for-like-queries-in-yugabytedb-10kd)
