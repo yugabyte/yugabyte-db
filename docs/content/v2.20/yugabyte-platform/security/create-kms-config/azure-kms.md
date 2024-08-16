@@ -65,7 +65,7 @@ Note that YugabyteDB Anywhere does not manage the key vault and deleting the KMS
 
 You can create a KMS configuration that uses Azure Key Vault, as follows:
 
-1. Use the YugabyteDB Anywhere UI to navigate to **Configs > Security > Encryption At Rest** to access the list of existing configurations.
+1. Navigate to **Configs > Security > Encryption At Rest** to access the list of existing configurations.
 
 1. Click **Create New Config**.
 
@@ -93,7 +93,7 @@ You can create a KMS configuration that uses Azure Key Vault, as follows:
 
 You can modify an existing KMS configuration as follows:
 
-1. Using the YugabyteDB Anywhere UI, navigate to **Configs > Security > Encryption At Rest** to open a list of existing configurations.
+1. Navigate to **Configs > Security > Encryption At Rest** to open a list of existing configurations.
 
 1. Find the configuration you want to modify and click its corresponding **Actions > Edit Configuration**.
 
