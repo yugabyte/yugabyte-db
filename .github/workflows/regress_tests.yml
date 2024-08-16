@@ -30,7 +30,7 @@ jobs:
       - name: Install package dependencies
         run: |
           # Create the file repository configuration:
-          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main 15" > /etc/apt/sources.list.d/pgdg.list'
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main 16" > /etc/apt/sources.list.d/pgdg.list'
           # Import the repository signing key:
           wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
           sudo apt-get update
@@ -45,13 +45,13 @@ jobs:
           pkg-config \
           cmake \
           git \
-          postgresql-15 \
-          postgresql-server-dev-15 \
+          postgresql-16 \
+          postgresql-server-dev-16 \
           libpq-dev \
-          postgresql-15-cron \
-          postgresql-15-pgvector \
-          postgresql-15-postgis-3 \
-          postgresql-15-rum 
+          postgresql-16-cron \
+          postgresql-16-pgvector \
+          postgresql-16-postgis-3 \
+          postgresql-16-rum
           export CLEAN_SETUP=1
           export INSTALL_DEPENDENCIES_ROOT=/tmp/install_setup
           mkdir -p /tmp/install_setup
