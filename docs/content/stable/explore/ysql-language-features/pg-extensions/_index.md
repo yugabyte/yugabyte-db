@@ -16,7 +16,7 @@ type: indexpage
 
 PostgreSQL extensions provide a way to extend the functionality of a database by bundling SQL objects into a package and using them as a unit. YugabyteDB supports a variety of PostgreSQL extensions.
 
-Supported extensions are either pre-bundled with YugabyteDB, or require installation:
+Supported extensions are either pre-bundled with YugabyteDB or require installation:
 
 * **Pre-bundled** extensions are included in the standard YugabyteDB distribution and can be enabled in YSQL by running the [CREATE EXTENSION](../../../api/ysql/the-sql-language/statements/ddl_create_extension/) statement.
 * **Requires installation** - you must install these extensions manually before you can enable them using CREATE EXTENSION. Refer to [Install extensions](install-extensions/).

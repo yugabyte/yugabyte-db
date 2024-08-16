@@ -30,7 +30,7 @@ CREATE TABLE words (
 );
 ```
 
- Load some sample words into the table as follows:
+Load some sample words into the table as follows:
 
 ```sql
 INSERT INTO words(word) VALUES 
