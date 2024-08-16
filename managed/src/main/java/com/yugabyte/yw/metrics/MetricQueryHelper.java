@@ -14,10 +14,12 @@ import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.MetricQueryParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -38,6 +40,8 @@ import org.apache.commons.lang3.StringUtils;
 import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.client.GetXClusterOutboundReplicationGroupInfoResponse;
+import org.yb.master.MasterReplicationOuterClass.GetXClusterOutboundReplicationGroupInfoResponsePB.NamespaceInfoPB;
 import play.libs.Json;
 import play.libs.ws.WSClient;
 
@@ -91,23 +95,27 @@ public class MetricQueryHelper {
 
   private final PlatformExecutorFactory platformExecutorFactory;
 
+  private final YBClientService ybService;
+
   @Inject
   public MetricQueryHelper(
       Config appConfig,
       RuntimeConfGetter confGetter,
       WSClientRefresher wsClientRefresher,
       MetricUrlProvider metricUrlProvider,
-      PlatformExecutorFactory platformExecutorFactory) {
+      PlatformExecutorFactory platformExecutorFactory,
+      YBClientService ybService) {
     this.appConfig = appConfig;
     this.confGetter = confGetter;
     this.wsClientRefresher = wsClientRefresher;
     this.metricUrlProvider = metricUrlProvider;
     this.platformExecutorFactory = platformExecutorFactory;
+    this.ybService = ybService;
   }
 
   @VisibleForTesting
   public MetricQueryHelper() {
-    this(null, null, null, null, null);
+    this(null, null, null, null, null, null);
   }
 
   /**
@@ -305,9 +313,32 @@ public class MetricQueryHelper {
     if (metricQueryParams.getXClusterConfigUuid() != null) {
       XClusterConfig xClusterConfig =
           XClusterConfig.getOrBadRequest(metricQueryParams.getXClusterConfigUuid());
-      String tableIdRegex = String.join("|", xClusterConfig.getTableIds());
+
+      Set<String> tableIds = new HashSet<>();
+      Set<String> streamIds = new HashSet<>();
+      if (xClusterConfig.getType() == XClusterConfig.ConfigType.Db) {
+        try {
+          GetXClusterOutboundReplicationGroupInfoResponse rgInfo =
+              XClusterConfigTaskBase.getXClusterOutboundReplicationGroupInfo(
+                  ybService,
+                  Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID()),
+                  xClusterConfig.getReplicationGroupName());
+
+          for (NamespaceInfoPB namespaceInfo : rgInfo.getNamespaceInfos()) {
+            tableIds.addAll(namespaceInfo.getTableStreamsMap().keySet());
+            streamIds.addAll(namespaceInfo.getTableStreamsMap().values());
+          }
+
+        } catch (Exception e) {
+          LOG.error("Could not get outbound replication group info", e);
+        }
+      } else {
+        tableIds = xClusterConfig.getTableIds();
+        streamIds = xClusterConfig.getStreamIdsWithReplicationSetup();
+      }
+      String tableIdRegex = String.join("|", tableIds);
       filterJson.put("table_id", tableIdRegex);
-      String streamIdRegex = String.join("|", xClusterConfig.getStreamIdsWithReplicationSetup());
+      String streamIdRegex = String.join("|", streamIds);
       // We add `|` to the end of streamIdRegex for backward compatibility where a YBDB version
       // does not have stream id as a label matcher.
       filterJson.put("stream_id", streamIdRegex + "|");

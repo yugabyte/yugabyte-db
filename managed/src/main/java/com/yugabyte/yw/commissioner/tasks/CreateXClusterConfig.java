@@ -374,14 +374,9 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
             ? CommonTypes.TableType.PGSQL_TABLE_TYPE
             : requestedTableInfoList.get(0).getTableType();
 
-    if (xClusterConfig.getType() == ConfigType.Db) {
-      // Create checkpoints for dbs.
-      createCreateOutboundReplicationGroupTask(xClusterConfig, sourceDbIds);
-    } else {
-      // Create checkpoints for the tables.
-      createBootstrapProducerTask(xClusterConfig, tableIdsNotNeedBootstrap)
-          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingProducer);
-    }
+    // Create checkpoints for the tables.
+    createBootstrapProducerTask(xClusterConfig, tableIdsNotNeedBootstrap)
+        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingProducer);
 
     if (xClusterConfig.isUsedForDr()) {
       createSetDrStatesTask(
@@ -397,7 +392,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     if (xClusterConfig.getType() != ConfigType.Basic) {
       Set<MasterTypes.NamespaceIdentifierPB> namespaces;
       if (xClusterConfig.getType() == ConfigType.Db) {
-        namespaces = getNamespaces(sourceUniverse, sourceDbIds);
+        namespaces = getNamespaces(this.ybService, sourceUniverse, sourceDbIds);
         if (namespaces.size() != sourceDbIds.size()) {
           throw new RuntimeException(
               String.format(
@@ -490,13 +485,8 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
     } else {
       // Set up the replication config.
-      if (xClusterConfig.getType() == ConfigType.Db) {
-        createXClusterDbReplicationSetupTask(xClusterConfig)
-            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
-      } else {
-        createXClusterConfigSetupTask(xClusterConfig, tableIdsNotNeedBootstrap)
-            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
-      }
+      createXClusterConfigSetupTask(xClusterConfig, tableIdsNotNeedBootstrap)
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
     }
   }
 
@@ -515,7 +505,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     Map<String, String> dbNameToDbIdMap = new HashMap<>();
     if (xClusterConfig.getType() == ConfigType.Db) {
       Set<MasterTypes.NamespaceIdentifierPB> namespaces =
-          getNamespaces(sourceUniverse, sourceDbIds);
+          getNamespaces(this.ybService, sourceUniverse, sourceDbIds);
       for (MasterTypes.NamespaceIdentifierPB namespace : namespaces) {
         dbNameToDbIdMap.put(namespace.getName(), namespace.getId().toStringUtf8());
       }
@@ -783,6 +773,10 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
         if (xClusterConfig.getType() == ConfigType.Db) {
           createXClusterDbReplicationSetupTask(xClusterConfig)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+          createXClusterConfigSetStatusForNamespaceTask(
+              xClusterConfig,
+              Collections.singleton(namespaceId),
+              XClusterNamespaceConfig.Status.Running);
         } else {
           createXClusterConfigSetupTask(xClusterConfig, tableIdsNeedBootstrap)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);

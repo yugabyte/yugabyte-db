@@ -759,6 +759,10 @@ public enum TaskType {
   XClusterConfigSetStatusForTables(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetStatusForTables.class),
 
+  XClusterConfigSetStatusForNamespaces(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetStatusForNamespaces
+          .class),
+
   XClusterConfigModifyTables(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModifyTables.class),
 

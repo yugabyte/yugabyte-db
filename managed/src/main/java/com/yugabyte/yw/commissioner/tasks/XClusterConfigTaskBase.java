@@ -23,6 +23,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.WaitForReplicationDr
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterAddNamespaceToOutboundReplicationGroup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigRename;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetStatus;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetStatusForNamespaces;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetStatusForTables;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSync;
@@ -32,6 +33,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterRemoveNamesp
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.XClusterUtil;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
@@ -42,6 +44,7 @@ import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.handlers.UniverseTableHandler;
 import com.yugabyte.yw.forms.DrConfigTaskParams;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.forms.TableInfoForm.NamespaceInfoResp;
 import com.yugabyte.yw.forms.TableInfoForm.TableInfoResp;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
@@ -76,6 +79,8 @@ import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.yb.CommonTypes;
 import org.yb.CommonTypes.TableType;
 import org.yb.WireProtocol.AppStatusPB.ErrorCode;
@@ -85,12 +90,15 @@ import org.yb.cdc.CdcConsumer.StreamEntryPB;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.GetUniverseReplicationInfoResponse;
+import org.yb.client.GetXClusterOutboundReplicationGroupInfoResponse;
 import org.yb.client.IsSetupUniverseReplicationDoneResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
+import org.yb.master.MasterReplicationOuterClass.GetUniverseReplicationInfoResponsePB.DbScopedInfoPB;
+import org.yb.master.MasterReplicationOuterClass.GetXClusterOutboundReplicationGroupInfoResponsePB.NamespaceInfoPB;
 import org.yb.master.MasterReplicationOuterClass.ReplicationStatusErrorPB;
 import org.yb.master.MasterReplicationOuterClass.ReplicationStatusPB;
 import org.yb.master.MasterTypes;
@@ -339,6 +347,26 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     setStatusForTablesParams.desiredStatus = desiredStatus;
 
     XClusterConfigSetStatusForTables task = createTask(XClusterConfigSetStatusForTables.class);
+    task.initialize(setStatusForTablesParams);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createXClusterConfigSetStatusForNamespaceTask(
+      XClusterConfig xClusterConfig,
+      Set<String> namespaceIds,
+      XClusterNamespaceConfig.Status desiredStatus) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("XClusterConfigSetStatusForTables");
+    XClusterConfigSetStatusForNamespaces.Params setStatusForTablesParams =
+        new XClusterConfigSetStatusForNamespaces.Params();
+    setStatusForTablesParams.setUniverseUUID(xClusterConfig.getTargetUniverseUUID());
+    setStatusForTablesParams.xClusterConfig = xClusterConfig;
+    setStatusForTablesParams.dbs = namespaceIds;
+    setStatusForTablesParams.desiredStatus = desiredStatus;
+
+    XClusterConfigSetStatusForNamespaces task =
+        createTask(XClusterConfigSetStatusForNamespaces.class);
     task.initialize(setStatusForTablesParams);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -1771,8 +1799,6 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       return;
     }
 
-    setReplicationStatus(xClusterUniverseService, xClusterConfig, targetUniverseOptional.get());
-
     ReplicationClusterData replicationClusterData = null;
     try {
       replicationClusterData = collectReplicationClusterData(ybClientService, xClusterConfig);
@@ -1781,6 +1807,41 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
           "Error getting cluster details for xCluster config {}", xClusterConfig.getUuid(), e);
       return;
     }
+
+    if (xClusterConfig.getType() == ConfigType.Db) {
+      Set<String> sourceIndexTables =
+          replicationClusterData.getSourceTableInfoList().stream()
+              .filter(TableInfoUtil::isIndexTable)
+              .map(tableInfo -> tableInfo.getId().toStringUtf8())
+              .collect(Collectors.toSet());
+      if (replicationClusterData.getSourceUniverseReplicationInfo() != null) {
+        Set<XClusterTableConfig> tableConfigs = new HashSet<>();
+        for (NamespaceInfoPB namespaceInfo :
+            replicationClusterData.getSourceUniverseReplicationInfo().getNamespaceInfos()) {
+          String namespaceId = namespaceInfo.getNamespaceId();
+          Optional<XClusterNamespaceConfig> namespaceConfigOptional =
+              XClusterNamespaceConfig.maybeGetByNamespaceId(namespaceId);
+
+          Map<String, String> tableStreamMap = namespaceInfo.getTableStreamsMap();
+          for (String tableId : tableStreamMap.keySet()) {
+            XClusterTableConfig tableConfig = new XClusterTableConfig(xClusterConfig, tableId);
+            tableConfig.setStreamId(tableStreamMap.get(tableId));
+
+            tableConfig.setReplicationSetupDone(true);
+            tableConfig.setIndexTable(sourceIndexTables.contains(tableId));
+
+            if (namespaceConfigOptional.isPresent()) {
+              tableConfig.setStatus(
+                  XClusterUtil.dbStatusToTableStatus(namespaceConfigOptional.get().getStatus()));
+            }
+            tableConfigs.add(tableConfig);
+          }
+        }
+        xClusterConfig.setTables(tableConfigs);
+      }
+    }
+
+    setReplicationStatus(xClusterUniverseService, xClusterConfig, targetUniverseOptional.get());
 
     try {
       if (xClusterConfig.getTableType().equals(XClusterConfig.TableType.YSQL)
@@ -1809,6 +1870,13 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
           replicationClusterData.sourceTableInfoList,
           replicationClusterData.targetTableInfoList,
           replicationClusterData.clusterConfig);
+      if (xClusterConfig.getType() == XClusterConfig.ConfigType.Db) {
+        addSourceAndTargetDbInfo(
+            xClusterConfig,
+            replicationClusterData.getSourceNamespaceInfoList(),
+            replicationClusterData.getTargetNamespaceInfoList(),
+            replicationClusterData.getTargetUniverseReplicationInfo());
+      }
     } catch (Exception e) {
       log.error(
           "Error getting table details not in replication for xCluster config {}",
@@ -1927,6 +1995,55 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     }
   }
 
+  private static void addSourceAndTargetDbInfo(
+      XClusterConfig xClusterConfig,
+      Set<MasterTypes.NamespaceIdentifierPB> sourceNamespaceInfoList,
+      Set<MasterTypes.NamespaceIdentifierPB> targetNamespaceInfoList,
+      GetUniverseReplicationInfoResponse targetUniverseReplicationInfo) {
+    if (targetUniverseReplicationInfo == null) {
+      return;
+    }
+
+    Map<String, String> sourceToTargetNamespaceId =
+        targetUniverseReplicationInfo.getDbScopedInfos().stream()
+            .collect(
+                Collectors.toMap(
+                    DbScopedInfoPB::getSourceNamespaceId, DbScopedInfoPB::getTargetNamespaceId));
+
+    if (CollectionUtils.isNotEmpty(sourceNamespaceInfoList)) {
+      Map<String, NamespaceInfoResp> sourceDbIdToDbInfo =
+          sourceNamespaceInfoList.stream()
+              .map(NamespaceInfoResp::createFromNamespaceIdentifier)
+              .collect(Collectors.toMap(NamespaceInfoResp::getNamespaceId, Function.identity()));
+      xClusterConfig
+          .getNamespaceDetails()
+          .forEach(
+              namespaceConfig -> {
+                namespaceConfig.setSourceNamespaceInfo(
+                    sourceDbIdToDbInfo.getOrDefault(namespaceConfig.getSourceNamespaceId(), null));
+              });
+    }
+
+    if (CollectionUtils.isNotEmpty(targetNamespaceInfoList)) {
+      Map<String, NamespaceInfoResp> targetDbIdToDbInfo =
+          targetNamespaceInfoList.stream()
+              .map(NamespaceInfoResp::createFromNamespaceIdentifier)
+              .collect(Collectors.toMap(NamespaceInfoResp::getNamespaceId, Function.identity()));
+      xClusterConfig
+          .getNamespaceDetails()
+          .forEach(
+              namespaceConfig -> {
+                String targetNamespaceId =
+                    sourceToTargetNamespaceId.getOrDefault(
+                        namespaceConfig.getSourceNamespaceId(), null);
+                if (StringUtils.isNotEmpty(targetNamespaceId)) {
+                  namespaceConfig.setTargetNamespaceInfo(
+                      targetDbIdToDbInfo.getOrDefault(targetNamespaceId, null));
+                }
+              });
+    }
+  }
+
   /**
    * Collects replication cluster data for the given XClusterConfig.
    *
@@ -1981,10 +2098,77 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
               }
             });
 
+    CompletableFuture<Void> sourceUniverseNamespaceInfoFuture =
+        CompletableFuture.runAsync(
+            () -> {
+              if (xClusterConfig.getType() == XClusterConfig.ConfigType.Db) {
+                try {
+                  data.setSourceNamespaceInfoList(
+                      getNamespaces(ybClientService, sourceUniverse, null));
+                } catch (Exception e) {
+                  log.error("Error getting db info list for source universe {}", sourceUniverse, e);
+                }
+              }
+            });
+    CompletableFuture<Void> targetUniverseNamespaceInfoFuture =
+        CompletableFuture.runAsync(
+            () -> {
+              if (xClusterConfig.getType() == XClusterConfig.ConfigType.Db) {
+                try {
+                  data.setTargetNamespaceInfoList(
+                      getNamespaces(ybClientService, targetUniverse, null));
+                } catch (Exception e) {
+                  log.error("Error getting db info list for target universe {}", targetUniverse, e);
+                }
+              }
+            });
+
+    CompletableFuture<Void> targetUniverseReplicationInfoFuture =
+        CompletableFuture.runAsync(
+            () -> {
+              if (xClusterConfig.getType() == XClusterConfig.ConfigType.Db) {
+                try {
+                  data.setTargetUniverseReplicationInfo(
+                      getUniverseReplicationInfo(
+                          ybClientService,
+                          targetUniverse,
+                          xClusterConfig.getReplicationGroupName()));
+                } catch (Exception e) {
+                  log.error(
+                      "Error getting universe replication info for target universe {}",
+                      targetUniverse,
+                      e);
+                }
+              }
+            });
+
+    CompletableFuture<Void> sourceUniverseReplicationInfoFuture =
+        CompletableFuture.runAsync(
+            () -> {
+              if (xClusterConfig.getType() == XClusterConfig.ConfigType.Db) {
+                try {
+                  data.setSourceUniverseReplicationInfo(
+                      getXClusterOutboundReplicationGroupInfo(
+                          ybClientService,
+                          sourceUniverse,
+                          xClusterConfig.getReplicationGroupName()));
+                } catch (Exception e) {
+                  log.error(
+                      "Error getting universe replication info for source universe {}",
+                      sourceUniverse,
+                      e);
+                }
+              }
+            });
+
     CompletableFuture.allOf(
             sourceUniverseTableInfoFuture,
             targetUniverseTableInfoFuture,
-            targetUniverseClusterConfigFuture)
+            targetUniverseClusterConfigFuture,
+            sourceUniverseNamespaceInfoFuture,
+            targetUniverseNamespaceInfoFuture,
+            sourceUniverseReplicationInfoFuture,
+            targetUniverseReplicationInfoFuture)
         .join();
     return data;
   }
@@ -2247,11 +2431,16 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     return tableConfigNotInReplication;
   }
 
-  public Set<MasterTypes.NamespaceIdentifierPB> getNamespaces(
-      Universe universe, Set<String> dbIds) {
+  public static Set<MasterTypes.NamespaceIdentifierPB> getNamespaces(
+      YBClientService ybService, Universe universe, Set<String> dbIds) {
     try (YBClient client =
         ybService.getClient(universe.getMasterAddresses(), universe.getCertificateNodetoNode())) {
-      return client.getNamespacesList().getNamespacesList().stream()
+      List<MasterTypes.NamespaceIdentifierPB> namespaces =
+          client.getNamespacesList().getNamespacesList();
+      if (CollectionUtils.isEmpty(dbIds)) {
+        return new HashSet<MasterTypes.NamespaceIdentifierPB>(namespaces);
+      }
+      return namespaces.stream()
           .filter(db -> dbIds.contains(db.getId().toStringUtf8()))
           .collect(Collectors.toSet());
     } catch (Exception e) {
@@ -2341,12 +2530,27 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     }
   }
 
+  public static GetXClusterOutboundReplicationGroupInfoResponse
+      getXClusterOutboundReplicationGroupInfo(
+          YBClientService ybService, Universe universe, String replicationGroup) throws Exception {
+    String universeMasterAddresses = universe.getMasterAddresses();
+    String universeCertificate = universe.getCertificateNodetoNode();
+
+    try (YBClient client = ybService.getClient(universeMasterAddresses, universeCertificate)) {
+      return client.getXClusterOutboundReplicationGroupInfo(replicationGroup);
+    }
+  }
+
   /** Represents the data required for replication between clusters. */
   @Data
   public static class ReplicationClusterData {
     private List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList;
     private List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList;
     private CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig;
+    private Set<MasterTypes.NamespaceIdentifierPB> sourceNamespaceInfoList;
+    private Set<MasterTypes.NamespaceIdentifierPB> targetNamespaceInfoList;
+    private GetUniverseReplicationInfoResponse targetUniverseReplicationInfo;
+    private GetXClusterOutboundReplicationGroupInfoResponse sourceUniverseReplicationInfo;
   }
 
   // --------------------------------------------------------------------------------

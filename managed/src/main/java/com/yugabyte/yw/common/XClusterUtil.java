@@ -5,6 +5,8 @@ package com.yugabyte.yw.common;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.XClusterNamespaceConfig;
+import com.yugabyte.yw.models.XClusterTableConfig;
 
 public class XClusterUtil {
   public static final String MINIMUN_VERSION_DB_XCLUSTER_SUPPORT_STABLE = "2024.1.1.0-b49";
@@ -51,5 +53,27 @@ public class XClusterUtil {
 
     // TODO: Validate dbIds passed in exist on source universe.
     // TODO: Validate namespace names exist on both source and target universe.
+  }
+
+  public static XClusterTableConfig.Status dbStatusToTableStatus(
+      XClusterNamespaceConfig.Status namespaceStatus) {
+    switch (namespaceStatus) {
+      case Failed:
+        return XClusterTableConfig.Status.Failed;
+      case Error:
+        return XClusterTableConfig.Status.Error;
+      case Warning:
+        return XClusterTableConfig.Status.Warning;
+      case Updating:
+        return XClusterTableConfig.Status.Updating;
+      case Bootstrapping:
+        return XClusterTableConfig.Status.Bootstrapping;
+      case Validated:
+        return XClusterTableConfig.Status.Validated;
+      case Running:
+        return XClusterTableConfig.Status.Running;
+      default:
+        return XClusterTableConfig.Status.ReplicationError;
+    }
   }
 }
