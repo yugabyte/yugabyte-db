@@ -120,20 +120,20 @@ SELECT strict_word_similarity('word', 'two words'), similarity('word', 'two word
 
 The `strict_word_similarity` is higher than the `similarity` as it gave higher importance to the presence of the exact term `word` in both strings.
 
-`pg_trgm` supports the `gin_trgm_ops` an operator class that is specifically designed for [GIN (Generalized Inverted Index)](../../../explore/ysql-language-features/indexes-constraints/gin) indexes to efficiently handle trigram-based similarity searches. With this, you can improve the performance of your `LIKE` and `ILIKE` queries as the `gin_trgm_ops` extracts the trigrams and indexes them in the GIN index. For example, creating an index like
+`pg_trgm` supports the `gin_trgm_ops` operator class, which is specifically designed for [GIN (Generalized Inverted Index)](../../../explore/ysql-language-features/indexes-constraints/gin) indexes to efficiently handle trigram-based similarity searches. `gin_trgm_ops` improves the performance of `LIKE` and `ILIKE` queries by extracting the trigrams and indexing them in the GIN index. For example, creating the following index:
 
 ```sql
 CREATE INDEX idx_gin_trgm ON my_table USING gin (my_column gin_trgm_ops);
 ```
 
-will improve the performance of the query,
+Improves the performance of the query:
 
 ```sql
 SELECT * FROM my_table WHERE my_column LIKE '%search_term%';
 ```
 
 {{<tip>}}
-If your application frequently requires exact matches or searches for substrings within larger text fields, `gin_trgm_ops` is a good choice.
+If your application frequently requires exact matches, or searches for substrings in larger text fields, `gin_trgm_ops` is a good choice.
 {{</tip>}}
 
 ## Learn more
