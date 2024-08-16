@@ -1,29 +1,31 @@
 import React, { FC } from "react";
 import { Box, Typography, makeStyles } from "@material-ui/core";
 import { RefactoringTables } from "./RefactoringTables";
-import type { UnsupportedSqlInfo } from "@app/api/src";
+import type { SchemaAnalysisData } from "./SchemaAnalysis";
 
 const useStyles = makeStyles((theme) => ({
-  label: {
+  muted: {
     color: theme.palette.grey[500],
   },
 }));
 
-interface ReviewRecommendedTabProps {}
+interface ReviewRecommendedTabProps {
+  analysis: SchemaAnalysisData;
+}
 
-export const ReviewRecommendedTab: FC<ReviewRecommendedTabProps> = ({}) => {
+export const ReviewRecommendedTab: FC<ReviewRecommendedTabProps> = ({ analysis }) => {
   const classes = useStyles();
 
-  const unsupportedDataTypes: UnsupportedSqlInfo[] = [];
-  const unsupportedFeatures: UnsupportedSqlInfo[] = [];
-  const unsupportedFunctions: UnsupportedSqlInfo[] = [];
+  const unsupportedDataTypes = analysis.reviewRecomm.unsupportedDataTypes ?? [];
+  const unsupportedFeatures = analysis.reviewRecomm.unsupportedFeatures ?? [];
+  const unsupportedFunctions = analysis.reviewRecomm.unsupportedFunctions ?? [];
 
   return (
     <Box>
       {unsupportedDataTypes.length === 0 &&
       unsupportedFeatures.length === 0 &&
       unsupportedFunctions.length === 0 ? (
-        <Typography variant="body2" className={classes.label}>
+        <Typography variant="body2" className={classes.muted}>
           No recommendations available
         </Typography>
       ) : (

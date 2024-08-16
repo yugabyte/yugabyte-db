@@ -5,9 +5,9 @@ import type { UnsupportedSqlInfo } from "@app/api/src";
 import { MigrationAssessmentRefactoringTable } from "../assessment/AssessmentRefactoringTable";
 
 interface RefactoringTablesProps {
-  unsupportedDataTypes: UnsupportedSqlInfo[] | undefined;
-  unsupportedFeatures: UnsupportedSqlInfo[] | undefined;
-  unsupportedFunctions: UnsupportedSqlInfo[] | undefined;
+  unsupportedDataTypes?: UnsupportedSqlInfo[] | undefined;
+  unsupportedFeatures?: UnsupportedSqlInfo[] | undefined;
+  unsupportedFunctions?: UnsupportedSqlInfo[] | undefined;
 }
 
 export const RefactoringTables: FC<RefactoringTablesProps> = ({

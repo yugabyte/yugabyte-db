@@ -1097,6 +1097,7 @@
           "objectsToRefactorManually": "{{count}} objects to refactor manually",
           "tabSummary": "Summary",
           "tabReviewRecommended": "Review Recommended",
+          "tabSuggestedRefactoring": "Suggested Refactoring",
           "schemaImport": "Schema Import",
           "schemaImportDesc": "Import schema to target database.",
           "schemaImportLearn": "Learn how to import schema"

@@ -231,7 +231,7 @@ export const MigrationSchema: FC<MigrationSchemaProps> = ({
                   );
                 }
 
-                return <SchemaAnalysis />;
+                return <SchemaAnalysis migration={migration} schemaAPI={schemaAPI} />;
               }}
             </StepCard>
             <StepCard

@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { SummaryTab } from "./SummaryTab";
 import { ReviewRecommendedTab } from "./ReviewRecommendedTab";
 import clsx from "clsx";
+import type { SchemaAnalysisData } from "./SchemaAnalysis";
 
 const useStyles = makeStyles((theme) => ({
   fullWidth: {
@@ -11,12 +12,12 @@ const useStyles = makeStyles((theme) => ({
   },
   nmt: {
     marginTop: theme.spacing(-1),
-  }
+  },
 }));
 
 export interface ITabListItem {
   name: string;
-  component: ComponentType;
+  component: ComponentType<{ analysis: SchemaAnalysisData }>;
   testId: string;
 }
 
@@ -27,13 +28,17 @@ const tabList: ITabListItem[] = [
     testId: "MigrationSchemaTabList-Summary",
   },
   {
-    name: "tabReviewRecommended",
+    name: "tabSuggestedRefactoring",
     component: ReviewRecommendedTab,
-    testId: "MigrationSchemaTabList-ReviewRecommended",
+    testId: "MigrationSchemaTabList-SuggestedRefactoring",
   },
 ];
 
-export const SchemaAnalysisTabs: FC = () => {
+type SchemaAnalysisTabsProps = {
+  analysis: SchemaAnalysisData;
+};
+
+export const SchemaAnalysisTabs: FC<SchemaAnalysisTabsProps> = ({ analysis }) => {
   const classes = useStyles();
   const { t } = useTranslation();
 
@@ -63,7 +68,7 @@ export const SchemaAnalysisTabs: FC = () => {
         ))}
       </Tabs>
 
-      <Box mt={3}>{TabComponent && <TabComponent />}</Box>
+      <Box mt={3}>{TabComponent && <TabComponent analysis={analysis} />}</Box>
     </Box>
   );
 };

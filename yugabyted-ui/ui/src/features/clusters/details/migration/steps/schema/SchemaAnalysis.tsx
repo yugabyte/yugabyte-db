@@ -1,16 +1,26 @@
 import React, { FC } from "react";
-import {
-  Box,
-  makeStyles,
-  Paper,
-  Typography,
-  useTheme,
-} from "@material-ui/core";
+import { Box, makeStyles, Paper, Typography, useTheme } from "@material-ui/core";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
 import { useTranslation } from "react-i18next";
 import { YBAccordion } from "@app/components";
 import RestartIcon from "@app/assets/restart2.svg";
 import { SchemaAnalysisTabs } from "./SchemaAnalysisTabs";
+import type { Migration } from "../../MigrationOverview";
+import type { MigrateSchemaTaskInfo, RefactoringCount, UnsupportedSqlInfo } from "@app/api/src";
+
+export type SchemaAnalysisData = {
+  id: number;
+  completedOn?: string;
+  manualRefactorObjectsCount: number | undefined;
+  summary: {
+    graph: RefactoringCount[];
+  };
+  reviewRecomm: {
+    unsupportedDataTypes: UnsupportedSqlInfo[] | undefined;
+    unsupportedFeatures: UnsupportedSqlInfo[] | undefined;
+    unsupportedFunctions: UnsupportedSqlInfo[] | undefined;
+  };
+};
 
 const useStyles = makeStyles((theme) => ({
   paper: {
@@ -42,84 +52,47 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
-interface SchemaAnalysisProps {}
+interface SchemaAnalysisProps {
+  migration: Migration;
+  schemaAPI: MigrateSchemaTaskInfo;
+}
 
-export const SchemaAnalysis: FC<SchemaAnalysisProps> = ({}) => {
+export const SchemaAnalysis: FC<SchemaAnalysisProps> = ({ /* migration, */ schemaAPI }) => {
   const classes = useStyles();
   const theme = useTheme();
   const { t } = useTranslation();
 
-  const analysis = [
+  // Remove `as any` and ensure 'recommended_refactoring' is correct once we have the data models
+  const sqlObjects = (schemaAPI as any)?.recommended_refactoring as RefactoringCount[] | undefined;
+
+  const frequencyMap: { [key: string]: number } = {};
+  schemaAPI.suggestions_errors?.forEach((sugErr) => {
+    const type = sugErr.objectType || "";
+    frequencyMap[type] = (frequencyMap[type] || 0) + 1;
+  });
+
+  const unsupportedFeatures = Object.entries(frequencyMap).map(([unsupported_type, count]) => ({
+    unsupported_type,
+    count,
+  }));
+
+  const analysis: SchemaAnalysisData[] = [
+    // TODO: Append history once we have the data models
     {
+      // TODO: Replace id with the actual id from the API
       id: 1,
-      completedOn: "04/01/2024, 16:26 PDT",
-      refactorObjectsCount: 0,
+      completedOn: "",
+      manualRefactorObjectsCount: sqlObjects
+        ? sqlObjects.reduce((acc, { manual }) => acc + (manual ?? 0), 0)
+        : undefined,
       summary: {
-        automaticDDLImport: 183,
-        manualRefactoring: 13,
-        graph: [
-          {
-            type: "Type",
-            automaticDDLImport: 29,
-            manualRefactoring: 3,
-          },
-          {
-            type: "Table",
-            automaticDDLImport: 78,
-            manualRefactoring: 5,
-          },
-          {
-            type: "View",
-            automaticDDLImport: 32,
-            manualRefactoring: 2,
-          },
-          {
-            type: "Function",
-            automaticDDLImport: 27,
-            manualRefactoring: 8,
-          },
-          {
-            type: "Triggers",
-            automaticDDLImport: 29,
-            manualRefactoring: 5,
-          },
-        ],
+        graph: sqlObjects ?? [],
       },
-    },
-    {
-      id: 2,
-      completedOn: "05/01/2024, 16:26 PDT",
-      refactorObjectsCount: 22,
-      summary: {
-        automaticDDLImport: 183,
-        manualRefactoring: 13,
-        graph: [
-          {
-            type: "Type",
-            automaticDDLImport: 29,
-            manualRefactoring: 3,
-          },
-          {
-            type: "Table",
-            automaticDDLImport: 78,
-            manualRefactoring: 5,
-          },
-          {
-            type: "View",
-            automaticDDLImport: 32,
-            manualRefactoring: 2,
-          },
-          {
-            type: "Function",
-            automaticDDLImport: 27,
-            manualRefactoring: 8,
-          },
-          {
-            type: "Triggers",
-            automaticDDLImport: 29,
-            manualRefactoring: 5,
-          },
-        ],
+      reviewRecomm: {
+        // TODO: How do we determine datatype/feature/function from the current data model?
+        unsupportedDataTypes: [],
+        unsupportedFeatures: unsupportedFeatures,
+        unsupportedFunctions: [],
       },
     },
   ];
@@ -148,24 +121,30 @@ export const SchemaAnalysis: FC<SchemaAnalysisProps> = ({}) => {
               <Typography variant="body2" className={classes.accordionHeader}>
                 {t("clusterDetail.voyager.migrateSchema.analysis")}
                 <Box display="flex" alignItems="center" gridGap={theme.spacing(1)}>
-                  <Typography variant="body2" className={classes.completedTime}>
-                    {item.completedOn}
-                  </Typography>
-                  <YBBadge
-                    text={t("clusterDetail.voyager.migrateSchema.objectsToRefactorManually", {
-                      count: item.refactorObjectsCount,
-                    })}
-                    variant={
-                      item.refactorObjectsCount === 0 ? BadgeVariant.Success : BadgeVariant.Warning
-                    }
-                  />
+                  {item.completedOn && (
+                    <Typography variant="body2" className={classes.completedTime}>
+                      {item.completedOn}
+                    </Typography>
+                  )}
+                  {item.manualRefactorObjectsCount != null && (
+                    <YBBadge
+                      text={t("clusterDetail.voyager.migrateSchema.objectsToRefactorManually", {
+                        count: item.manualRefactorObjectsCount,
+                      })}
+                      variant={
+                        item.manualRefactorObjectsCount === 0
+                          ? BadgeVariant.Success
+                          : BadgeVariant.Warning
+                      }
+                    />
+                  )}
                 </Box>
               </Typography>
             }
-            defaultExpanded={index === analysis.length - 1}
+            defaultExpanded={index === 0}
             contentSeparator
           >
-            <SchemaAnalysisTabs />
+            <SchemaAnalysisTabs analysis={item} />
           </YBAccordion>
         ))}
       </Box>

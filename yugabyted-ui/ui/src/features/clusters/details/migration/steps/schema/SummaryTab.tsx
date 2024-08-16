@@ -3,6 +3,7 @@ import { Box, Grid, Typography, makeStyles } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
 import clsx from "clsx";
 import { RefactoringGraph } from "./RefactoringGraph";
+import type { SchemaAnalysisData } from "./SchemaAnalysis";
 
 const useStyles = makeStyles((theme) => ({
   stat: {
@@ -18,6 +19,9 @@ const useStyles = makeStyles((theme) => ({
     textTransform: "uppercase",
     textAlign: "left",
   },
+  muted: {
+    color: theme.palette.grey[500],
+  },
   statLabel: {
     marginBottom: theme.spacing(0.75),
   },
@@ -28,11 +32,25 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
-interface SummaryTabProps {}
+interface SummaryTabProps {
+  analysis: SchemaAnalysisData;
+}
 
-export const SummaryTab: FC<SummaryTabProps> = ({}) => {
+export const SummaryTab: FC<SummaryTabProps> = ({ analysis }) => {
   const classes = useStyles();
   const { t } = useTranslation();
+
+  const automaticDDLImport = analysis.summary.graph.reduce(
+    (prev, curr) => prev + (curr.automatic ?? 0),
+    0
+  );
+
+  const manualRefactoring = analysis.summary.graph.reduce(
+    (prev, curr) => prev + (curr.manual ?? 0),
+    0
+  );
+
+  const total = automaticDDLImport + manualRefactoring;
 
   return (
     <Box>
@@ -44,7 +62,7 @@ export const SummaryTab: FC<SummaryTabProps> = ({}) => {
                 {t("clusterDetail.voyager.migrateSchema.automaticDDLImport")}
               </Typography>
               <Typography variant="h4" className={classes.value}>
-                113
+                {automaticDDLImport}
               </Typography>
             </div>
 
@@ -53,7 +71,7 @@ export const SummaryTab: FC<SummaryTabProps> = ({}) => {
                 {t("clusterDetail.voyager.migrateSchema.manualRefactoring")}
               </Typography>
               <Typography variant="h4" className={classes.value}>
-                32
+                {manualRefactoring}
               </Typography>
             </div>
           </div>
@@ -63,25 +81,14 @@ export const SummaryTab: FC<SummaryTabProps> = ({}) => {
             {t("clusterDetail.voyager.migrateSchema.totalAnalyzed")}
           </Typography>
           <Typography variant="h4" className={classes.value}>
-            {113 + 32}
+            {total}
           </Typography>
         </div>
       </Grid>
 
-      <RefactoringGraph
-        sqlObjects={[
-          {
-            sql_object_type: "sql_type",
-            automatic: 14,
-            manual: 2,
-          },
-          {
-            sql_object_type: "table",
-            automatic: 21,
-            manual: 0,
-          },
-        ]}
-      />
+      {analysis.summary.graph.length > 0 && total > 0 && (
+        <RefactoringGraph sqlObjects={analysis.summary.graph} />
+      )}
     </Box>
   );
 };
