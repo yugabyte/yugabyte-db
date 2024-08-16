@@ -206,4 +206,6 @@ You can modify an existing KMS configuration as follows:
 
 To delete a KMS configuration, click its corresponding **Actions > Delete Configuration**.
 
-Note that a saved KMS configuration can only be deleted if it is not in use by any existing universes.
+{{<note title="Note">}}
+You can only delete a KMS configuration if it has never been used by any universes.
+{{</note>}}
