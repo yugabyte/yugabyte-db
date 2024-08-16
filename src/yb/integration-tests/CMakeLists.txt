@@ -55,6 +55,14 @@ file(COPY
 add_custom_target(
   xcluster_ddl_replication_sql DEPENDS ${CMAKE_BINARY_DIR}/test_xcluster_ddl_replication_sql)
 
+configure_file(
+  ${CMAKE_SOURCE_DIR}/src/yb/integration-tests/upgrade-tests/builds.xml
+  ${CMAKE_BINARY_DIR}/upgrade_test_builds/builds.xml
+  COPYONLY)
+
+add_custom_target(
+  upgrade_test_builds_tar DEPENDS ${CMAKE_BINARY_DIR}/upgrade_test_builds)
+
 ADD_YB_TEST_LIBRARY(
     cdc_test_util
     SRCS cdc_test_util.cc
@@ -68,6 +76,7 @@ set(INTEGRATION_TESTS_SRCS
   external_daemon.cc
   external_yb_controller.cc
   external_mini_cluster_fs_inspector.cc
+  external_mini_cluster-itest-base.cc
   external_mini_cluster_validator.cc
   load_balancer_test_util.cc
   load_generator.cc
@@ -88,6 +97,7 @@ set(INTEGRATION_TESTS_SRCS
   xcluster/xcluster_ysql_test_base.cc
   xcluster/xcluster_ycql_test_base.cc
   xcluster/xcluster_ddl_replication_test_base.cc
+  upgrade-tests/upgrade_test_base.cc
 )
 
 ADD_YB_TEST_LIBRARY(integration-tests SRCS ${INTEGRATION_TESTS_SRCS})
@@ -119,7 +129,8 @@ add_dependencies(integration-tests
   yb-ts-cli
   generate_test_certs
   fips_install
-  xcluster_ddl_replication_sql)
+  xcluster_ddl_replication_sql
+  upgrade_test_builds_tar)
 
 ADD_YB_TEST_LIBRARY(
     cql_test_util
@@ -249,6 +260,7 @@ ADD_YB_TEST(xcluster/xcluster-tablet-split-itest)
 ADD_YB_TEST(xcluster/xcluster-test)
 ADD_YB_TEST(xcluster/xcluster_outbound_replication_group-itest)
 ADD_YB_TEST(retryable_request-test)
+ADD_YB_TEST(upgrade-tests/basic_upgrade-test)
 
 set(YB_TEST_LINK_LIBS_SAVED ${YB_TEST_LINK_LIBS})
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS} cassandra)
