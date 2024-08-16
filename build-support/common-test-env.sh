@@ -2105,7 +2105,7 @@ prep_ybc_testing() {
       ybc_tar=$(compgen -G "${ybc_tarball_dir}/ybc-${ybc_version}-*-${YB_TARGET_ARCH}.tar.gz")
       log "Unpacking ${ybc_tar} bin/ binaries to ${ybc_dest}/"
       mkdir -p "${ybc_dest}"
-      tar -x -f "${ybc_tar}" -C "${ybc_dest}" --strip-components=2 'yb*/bin/*'
+      tar -x -f "${ybc_tar}" -C "${ybc_dest}" --strip-components=2 --wildcards 'yb*/bin/*'
     fi
   fi
 }
