@@ -42,7 +42,7 @@ INSERT INTO words(word) VALUES
 
 ## Levenshtein
 
-The [Levenshtein distance](https://en.wikipedia.org/wiki/Levenshtein_distance) is a measure of the difference between 2 strings. It calculates the difference by considering the number of edits (insertions, deletions, and substitutions) needed for one string to be transformed into another. This is particularly useful for spell-checks. This function is provided by the PostgreSQL extension [fuzzystrmatch](https://www.postgresql.org/docs/current/fuzzystrmatch.html).
+The [Levenshtein distance](https://en.wikipedia.org/wiki/Levenshtein_distance) is a measure of the difference between 2 strings. It calculates the difference by considering the number of edits (insertions, deletions, and substitutions) needed for one string to be transformed into another. This is particularly well suited to spell-checks. This function is provided by the PostgreSQL extension [fuzzystrmatch](https://www.postgresql.org/docs/current/fuzzystrmatch.html).
 
 To enable the Levenshtein function, activate the `fuzzystrmatch` extension as follows:
 
@@ -75,7 +75,7 @@ The Levenshtein scoring for `warehoused` is `1` because it has one more characte
 
 ## Trigrams
 
-A trigram is a group of three consecutive characters taken from a string.  You can measure the similarity of two strings by counting the number of trigrams they share. The [pg_trgm](https://www.postgresql.org/docs/15/pgtrgm.html) extension provides multiple functions like `show_trgm` and `similarity`, which provide a score of how similar two strings are.
+A trigram is a group of three consecutive characters taken from a string. You can measure the similarity of two strings by counting the number of trigrams they share. The [pg_trgm](https://www.postgresql.org/docs/15/pgtrgm.html) extension provides multiple functions like `show_trgm` and `similarity`, which provide a score of how similar two strings are.
 
 For example, the trigrams for `warehouse` would be as follows:
 

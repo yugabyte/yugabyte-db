@@ -76,7 +76,7 @@ The Levenshtein scoring for `warehoused` is `1` because it has one more characte
 
 ## Trigrams
 
-A trigram is a group of three consecutive characters taken from a string.  You can measure the similarity of two strings by counting the number of trigrams they share. The [pg_trgm](https://www.postgresql.org/docs/15/pgtrgm.html) extension provides multiple functions like `show_trgm` and `similarity`, which provide a score of how similar two strings are.
+A trigram is a group of three consecutive characters taken from a string. You can measure the similarity of two strings by counting the number of trigrams they share. The [pg_trgm](https://www.postgresql.org/docs/15/pgtrgm.html) extension provides multiple functions like `show_trgm` and `similarity`, which provide a score of how similar two strings are.
 
 For example, the trigrams for `warehouse` would be as follows:
 
