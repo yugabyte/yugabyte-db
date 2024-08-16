@@ -85,6 +85,13 @@ extern int ysql_max_in_flight_ops;
 extern bool yb_binary_restore;
 
 /*
+ * Guc variable for ignoring requests to set heap pg_class oids when yb_binary_restore is set.
+ *
+ * If true then calls to pg_catalog.binary_upgrade_set_next_heap_pg_class_oid will have no effect.
+ */
+extern bool yb_ignore_heap_pg_class_oids;
+
+/*
  * Set to true only for runs with EXPLAIN ANALYZE
  */
 extern bool yb_run_with_explain_analyze;

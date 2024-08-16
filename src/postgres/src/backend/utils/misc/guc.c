@@ -2237,6 +2237,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_ignore_heap_pg_class_oids", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Ignores requests to set heap pg_class OIDs in yb_binary_restore mode"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_ignore_heap_pg_class_oids,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"yb_test_system_catalogs_creation", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Relaxes some internal sanity checks for system "
 						 "catalogs to allow creating them."),

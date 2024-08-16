@@ -1268,8 +1268,11 @@ heap_create_with_catalog(const char *relname,
 	 */
 	if (!OidIsValid(relid))
 	{
+		bool heap_pg_class_oids_supplied = IsBinaryUpgrade && !yb_binary_restore;
+		if (yb_binary_restore && !yb_ignore_heap_pg_class_oids)
+			heap_pg_class_oids_supplied = true;
 		/* Use binary-upgrade override for pg_class.oid/relfilenode? */
-		if ((IsBinaryUpgrade || yb_binary_restore) &&
+		if (heap_pg_class_oids_supplied &&
 			(relkind == RELKIND_RELATION || relkind == RELKIND_SEQUENCE ||
 			 relkind == RELKIND_VIEW || relkind == RELKIND_MATVIEW ||
 			 relkind == RELKIND_COMPOSITE_TYPE || relkind == RELKIND_FOREIGN_TABLE ||
