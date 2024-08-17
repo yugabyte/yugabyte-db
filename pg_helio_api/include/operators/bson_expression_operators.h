@@ -222,8 +222,6 @@ void ExpressionResultSetConstantVariable(ExpressionResult *expressionResult, con
 										 StringView *variableName, const
 										 bson_value_t *value);
 
-void ValidateVariableName(StringView name);
-
 /* Operator handlers definition */
 void HandleDollarAbs(pgbson *doc, const bson_value_t *operatorValue,
 					 ExpressionResult *expressionResult);

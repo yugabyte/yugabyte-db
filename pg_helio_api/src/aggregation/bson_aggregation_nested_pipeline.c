@@ -258,7 +258,7 @@ static Query * BuildRecursiveGraphLookupQuery(QuerySource parentSource,
 											  CommonTableExpr *baseCteExpr, int levelsUp);
 static void ValidateUnionWithPipeline(const bson_value_t *pipeline, bool hasCollection);
 
-static void ValidateLetHasNoVariables(pgbson *let);
+static void ValidateLetHasNoVariables(AggregationExpressionData *parsedData);
 static void WalkQueryAndSetLevelsUp(Query *query, Var *varToCheck,
 									int varLevelsUpBase);
 static void WalkQueryAndSetCteLevelsUp(Query *query, const char *cteName,
@@ -2334,7 +2334,14 @@ OptimizeLookup(LookupArgs *lookupArgs,
 	{
 		if (leftQueryContext->variableSpec == NULL)
 		{
-			ValidateLetHasNoVariables(lookupArgs->let);
+			bson_value_t varsValue = ConvertPgbsonToBsonValue(lookupArgs->let);
+			ExpressionVariableContext *nullContext = NULL;
+
+			ParseAggregationExpressionContext parseContext = {
+				.validateParsedExpressionFunc = &ValidateLetHasNoVariables,
+			};
+
+			ParseVariableSpec(&varsValue, nullContext, &parseContext);
 		}
 
 		optimizationArgs->hasLet = true;
@@ -4279,38 +4286,19 @@ WalkQueryAndSetCteLevelsUp(Query *rightQuery, const char *cteName,
 }
 
 
+/* Function that is passed down to the expression tree when a let expression is found under a lookup to validate no variables are used to define other variables,
+ * We only do this if it is the first level let on lookup.
+ */
 static void
-ValidateLetHasNoVariables(pgbson *let)
+ValidateLetHasNoVariables(AggregationExpressionData *parsedExpression)
 {
-	StringView variablePrefix =
+	/* Only variables are disallowed in the variable spec, system variables are valid and should be considered at runtime
+	 * if it is available or not, i.e SEARCH_META is only available if a $search stage was defined. */
+	if (parsedExpression->kind == AggregationExpressionKind_Variable)
 	{
-		.length = 2,
-		.string = "$$"
-	};
-
-	bson_iter_t letIter;
-	PgbsonInitIterator(let, &letIter);
-	while (bson_iter_next(&letIter))
-	{
-		/* TODO: Use full variable validation. */
-		if (BSON_ITER_HOLDS_UTF8(&letIter))
-		{
-			StringView charView = { 0 };
-			charView.string = bson_iter_utf8(&letIter, &charView.length);
-
-			if (StringViewStartsWithStringView(&charView, &variablePrefix))
-			{
-				ereport(ERROR, (errcode(MongoLocation17276),
-								errmsg("Use of undefined variable: %s",
-									   CreateStringFromStringView(&charView))));
-			}
-		}
+		const char *nameWithoutPrefix = parsedExpression->value.value.v_utf8.str + 2;
+		ereport(ERROR, (errcode(MongoLocation17276),
+						errmsg("Use of undefined variable: %s",
+							   nameWithoutPrefix)));
 	}
-
-	bson_value_t varsValue = ConvertPgbsonToBsonValue(let);
-	ExpressionVariableContext *nullContext = NULL;
-
-	/* TODO: use parse context to validate. */
-	ParseAggregationExpressionContext parseContext = { 0 };
-	ParseVariableSpec(&varsValue, nullContext, &parseContext);
 }

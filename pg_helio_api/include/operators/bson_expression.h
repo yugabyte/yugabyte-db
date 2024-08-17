@@ -225,5 +225,8 @@ void ParseAggregationExpressionData(AggregationExpressionData *expressionData,
 void ParseVariableSpec(const bson_value_t *variableSpec,
 					   ExpressionVariableContext *variableContext,
 					   ParseAggregationExpressionContext *parseContext);
+void VariableContextSetVariableData(ExpressionVariableContext *variableContext, const
+									VariableData *variableData);
+void ValidateVariableName(StringView name);
 
 #endif

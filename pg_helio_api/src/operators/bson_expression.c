@@ -149,8 +149,6 @@ static bool ExpressionResultGetVariable(StringView variableName,
 static void InsertVariableToContextTable(const VariableData *variableElement,
 										 HTAB *hashTable);
 static bool IsOverridableSystemVariable(StringView *name);
-static void VariableContextSetVariableData(ExpressionVariableContext *variableContext,
-										   const VariableData *variableData);
 static void VariableContextSetVariableExpression(
 	ExpressionVariableContext *variableContext,
 	const StringView *name,
@@ -1381,7 +1379,7 @@ VariableContextSetVariableExpression(ExpressionVariableContext *variableContext,
 /*
  * Sets a variable into the expression result's variable context, with the given name and value.
  */
-static void
+void
 VariableContextSetVariableData(ExpressionVariableContext *variableContext, const
 							   VariableData *variableData)
 {
@@ -2887,7 +2885,12 @@ EvaluateAggregationExpressionVariable(const AggregationExpressionData *data,
 	expressionResult->isFieldPathExpression = isDottedExpression;
 	if (!isDottedExpression)
 	{
-		ExpressionResultSetValue(expressionResult, &variableValue);
+		/* Don't write empty variable values. */
+		if (variableValue.value_type != BSON_TYPE_EOD)
+		{
+			ExpressionResultSetValue(expressionResult, &variableValue);
+		}
+
 		return;
 	}
 

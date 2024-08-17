@@ -210,6 +210,9 @@ static bool CanInlineLookupStageMatch(const bson_value_t *stageValue, const
 static bool CheckFuncExprBsonDollarProjectGeonear(const FuncExpr *funcExpr);
 
 static void ValidateQueryTreeForMatchStage(const Query *query);
+static void DisallowExpressionsForTopLevelLet(
+	AggregationExpressionData *parsedExpression);
+static pgbson * ParseAndGetTopLevelVariableSpec(const bson_value_t *varSpec);
 
 #define COMPATIBLE_CHANGE_STREAM_STAGES_COUNT 8
 const char *CompatibleChangeStreamPipelineStages[COMPATIBLE_CHANGE_STREAM_STAGES_COUNT] =
@@ -1328,8 +1331,8 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 	{
 		if (EnableLetSupport && IsClusterVersionAtleastThis(1, 19, 0))
 		{
-			context.variableSpec = (Expr *) MakeBsonConst(PgbsonInitFromDocumentBsonValue(
-															  &let));
+			pgbson *parsedLet = ParseAndGetTopLevelVariableSpec(&let);
+			context.variableSpec = (Expr *) MakeBsonConst(parsedLet);
 		}
 		else if (!IgnoreLetOnQuerySupport)
 		{
@@ -1590,8 +1593,8 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 	{
 		if (EnableLetSupport && IsClusterVersionAtleastThis(1, 19, 0))
 		{
-			context.variableSpec = (Expr *) MakeBsonConst(PgbsonInitFromDocumentBsonValue(
-															  &let));
+			pgbson *parsedLet = ParseAndGetTopLevelVariableSpec(&let);
+			context.variableSpec = (Expr *) MakeBsonConst(parsedLet);
 		}
 		else if (!IgnoreLetOnQuerySupport)
 		{
@@ -2581,7 +2584,6 @@ PreCheckChangeStreamPipelineStages(const bson_value_t *pipelineValue,
 		{
 			continue;
 		}
-
 		/* Check the next stages to be one of the allowed stages. */
 		else if (!StringArrayContains(CompatibleChangeStreamPipelineStages,
 									  COMPATIBLE_CHANGE_STREAM_STAGES_COUNT,
@@ -5663,4 +5665,127 @@ HandleMatchAggregationStage(const bson_value_t *existingValue, Query *query,
 	query = HandleMatch(existingValue, query, context);
 	ValidateQueryTreeForMatchStage(query);
 	return query;
+}
+
+
+/* Call back function for top level command let parsing to disallow path expressions, CURRENT and ROOT for a top level variable spec. */
+static void
+DisallowExpressionsForTopLevelLet(AggregationExpressionData *parsedExpression)
+{
+	/* Path expressions, CURRENT and ROOT are not allowed in command level let. */
+	if (parsedExpression->kind == AggregationExpressionKind_Path ||
+		(parsedExpression->kind == AggregationExpressionKind_SystemVariable &&
+		 (parsedExpression->systemVariable.kind ==
+		  AggregationExpressionSystemVariableKind_Current ||
+		  parsedExpression->systemVariable.kind ==
+		  AggregationExpressionSystemVariableKind_Root)))
+	{
+		ereport(ERROR, errcode(MongoLocation4890500), errmsg(
+					"Command let Expression tried to access a field,"
+					" but this is not allowed because command let expressions"
+					" run before the query examines any documents."));
+	}
+}
+
+
+/*
+ * Parses a top level command let i.e: find or aggregate let spec.
+ * 1) Path expressions are not valid at this scope because there's no doc to evaluate against.
+ * 2) Variable references are valid only if they reference a variable that is defined previously in the same let spec, i.e: {a: 1, b: "$$a", c: {$add: ["$$a", "$$b"]}}
+ *
+ * Given these 2 rules, we evaluate every variable expression we find against an empty document, using the current variable spec we're building to evaluate it.
+ * As we evaluate expressions we rewrite the variable spec into a constant bson and return it.
+ * The example in item 2, would be rewritten to: { a: 1, b: 1, c: 2 }.
+ */
+static pgbson *
+ParseAndGetTopLevelVariableSpec(const bson_value_t *varSpec)
+{
+	ExpressionVariableContext varContext = { 0 };
+	ParseAggregationExpressionContext parseContext = {
+		.validateParsedExpressionFunc = &DisallowExpressionsForTopLevelLet,
+	};
+
+	/* Since path expressions are not allowed in this variable spec, we can evaluate them and transform
+	 * the spec to a constant bson. To evaluate them we use an empty document as the document we evaluate the expressions against. */
+	pgbson *emptyDoc = PgbsonInitEmpty();
+	StringView path = { .string = "", .length = 0 };
+	bool isNullOnEmpty = false;
+	pgbson_writer resultWriter;
+	PgbsonWriterInit(&resultWriter);
+
+	bson_iter_t varsIter;
+	BsonValueInitIterator(varSpec, &varsIter);
+	while (bson_iter_next(&varsIter))
+	{
+		StringView varName = bson_iter_key_string_view(&varsIter);
+		ValidateVariableName(varName);
+
+		const bson_value_t *varValue = bson_iter_value(&varsIter);
+
+		AggregationExpressionData expressionData = { 0 };
+		ParseAggregationExpressionData(&expressionData, varValue, &parseContext);
+
+		bson_value_t valueToWrite = { 0 };
+		if (expressionData.kind != AggregationExpressionKind_Constant)
+		{
+			pgbson_writer exprWriter;
+			PgbsonWriterInit(&exprWriter);
+			EvaluateAggregationExpressionDataToWriter(&expressionData, emptyDoc, path,
+													  &exprWriter, &varContext,
+													  isNullOnEmpty);
+
+			pgbson *evaluatedBson = PgbsonWriterGetPgbson(&exprWriter);
+
+			if (!IsPgbsonEmptyDocument(evaluatedBson))
+			{
+				pgbsonelement element = { 0 };
+				PgbsonToSinglePgbsonElement(evaluatedBson, &element);
+				valueToWrite = element.bsonValue;
+			}
+		}
+		else
+		{
+			valueToWrite = expressionData.value;
+		}
+
+		/* if it evaluates to an empty document let's convert to $$REMOVE so that we don't need to evaluate operators again and just treat it as EOD. */
+		if (valueToWrite.value_type == BSON_TYPE_EOD)
+		{
+			valueToWrite.value_type = BSON_TYPE_UTF8;
+			valueToWrite.value.v_utf8.str = "$$REMOVE";
+			valueToWrite.value.v_utf8.len = 8;
+			PgbsonWriterAppendValue(&resultWriter, varName.string, varName.length,
+									&valueToWrite);
+		}
+		else
+		{
+			/* To write it to the result we need to wrap all expressions around a $literal, so that when the spec is parsed down level they are treated as constants
+			 * if it encounters something that was a result of the expression that could be interpreted as non-constant. i.e $concat: ["$", "field"] -> "$field"
+			 * We should parse that as a literal $field down level, rather than a field expression.
+			 * However to insert it in the temp context, we should preserve the evaluated value to get correctnes if we have a case where a variable is used in operators within the same let.
+			 * i.e {"a": "2", "b": {"$sum": ["$$a", 2]}} we want sum to get "2" when it evaluates the variable $$a reference instead of getting { "$literal": "2" }. */
+			pgbson_writer literalWriter;
+			PgbsonWriterStartDocument(&resultWriter, varName.string, varName.length,
+									  &literalWriter);
+			PgbsonWriterAppendValue(&literalWriter, "$literal", 8, &valueToWrite);
+			PgbsonWriterEndDocument(&resultWriter, &literalWriter);
+		}
+
+		VariableData variableData = {
+			.name = varName,
+			.isConstant = true,
+			.bsonValue = valueToWrite,
+		};
+
+		VariableContextSetVariableData(&varContext, &variableData);
+	}
+
+	if (varContext.context.table != NULL && !varContext.hasSingleVariable)
+	{
+		hash_destroy(varContext.context.table);
+	}
+
+	pfree(emptyDoc);
+
+	return PgbsonWriterGetPgbson(&resultWriter);
 }

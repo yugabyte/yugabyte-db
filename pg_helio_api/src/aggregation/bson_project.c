@@ -250,11 +250,8 @@ bson_dollar_lookup_expression_eval_merge(PG_FUNCTION_ARGS)
 	pgbson *pathSpec = PG_GETARG_PGBSON(1);
 	pgbson *variableSpec = PG_GETARG_MAYBE_NULL_PGBSON(2);
 
-
 	BuildBsonPathTreeContext context = { 0 };
 	context.buildPathTreeFuncs = &DefaultPathTreeFuncs;
-
-	BsonIntermediatePathNode *variableTree = NULL;
 
 	/* First pass, take the parent variable spec and put it into the tree */
 	if (variableSpec == NULL)
@@ -262,59 +259,99 @@ bson_dollar_lookup_expression_eval_merge(PG_FUNCTION_ARGS)
 		variableSpec = PgbsonInitEmpty();
 	}
 
-	/* Here we presume the values are raw values: This is because the "variableSpec" in this case
-	 * comes from 2 sources:
-	 * 1) A top level command let which can only be constant values
-	 * 2) A parent $lookup which should have already evaluated the expressions into the constants.
-	 */
-	context.skipParseAggregationExpressions = true;
+	/* First project the input variable spec (pathSpec) to evaluate it's expressions using the current variable spec as a variable context in case
+	 * the current lookup spec has variable references to the parent lookup spec. */
+	context.skipParseAggregationExpressions = false;
 
 	bool hasFields;
 	bson_iter_t specIter;
-	PgbsonInitIterator(variableSpec, &specIter);
+	PgbsonInitIterator(pathSpec, &specIter);
 
 	bool forceLeafExpression = true;
-	variableTree = BuildBsonPathTree(&specIter, &context,
-									 forceLeafExpression, &hasFields);
+	BsonIntermediatePathNode *pathSpecTree = BuildBsonPathTree(&specIter, &context,
+															   forceLeafExpression,
+															   &hasFields);
 
-	/* Now add in the variable spec on top */
-	context.skipParseAggregationExpressions = false;
-	PgbsonInitIterator(pathSpec, &specIter);
-	MergeBsonPathTree(variableTree, &specIter, &context, forceLeafExpression,
-					  &hasFields);
-
+	ExpressionVariableContext variableContext = { 0 };
 	BsonProjectionQueryState queryState = { 0 };
 	queryState.hasExclusion = false;
 	queryState.hasInclusion = true;
-	queryState.root = variableTree;
+	queryState.root = pathSpecTree;
 	queryState.projectNonMatchingFields = false;
+	queryState.variableContext = &variableContext;
 
-	pgbson *resultDoc = ProjectDocumentWithState(document, &queryState);
+	ParseAggregationExpressionContext parseContext = { 0 };
+	bson_value_t variableSpecValue = ConvertPgbsonToBsonValue(variableSpec);
+	ParseVariableSpec(&variableSpecValue, queryState.variableContext, &parseContext);
 
-	/* Now validate if there's any undefined variables - if so we need to set them to null */
+	pgbson *evaluatedInputSpec = ProjectDocumentWithState(document, &queryState);
+
+	/* Now write the resulting variable spec:
+	 * For any variables that evaluated to EOD/empty, set them to $$REMOVE
+	 * For any other values wrap them up on a $literal expression so that we
+	 * honor the value when we evaluate their values and not treat them as expressions against the right doc.
+	 */
 	PgbsonInitIterator(pathSpec, &specIter);
 	pgbson_writer variableWriter;
 	PgbsonWriterInit(&variableWriter);
-	bool hasVariablesToAdd = false;
+	const char *removeVar = "$$REMOVE";
+	const char *literalKey = "$literal";
 	while (bson_iter_next(&specIter))
 	{
-		bson_iter_t iterUnused;
+		bson_iter_t innerIter;
 		const char *varKey = bson_iter_key(&specIter);
-		if (!PgbsonInitIteratorAtPath(resultDoc, varKey, &iterUnused))
+		if (!PgbsonInitIteratorAtPath(evaluatedInputSpec, varKey, &innerIter))
 		{
-			/* variable not found - need to add the original key with null */
-			PgbsonWriterAppendNull(&variableWriter, varKey, -1);
-			hasVariablesToAdd = true;
+			/* variable not found - need to add the original key with $$REMOVE so that it doesn't project */
+			PgbsonWriterAppendUtf8(&variableWriter, varKey, -1, removeVar);
+		}
+		else
+		{
+			pgbson_writer literalWriter;
+			PgbsonWriterStartDocument(&variableWriter, varKey, -1, &literalWriter);
+			PgbsonWriterAppendValue(&literalWriter, literalKey, -1, bson_iter_value(
+										&innerIter));
+			PgbsonWriterEndDocument(&variableWriter, &literalWriter);
 		}
 	}
 
-	if (hasVariablesToAdd)
+	evaluatedInputSpec = PgbsonWriterGetPgbson(&variableWriter);
+
+	pgbson *resultVariables = NULL;
+	if (!IsPgbsonEmptyDocument(variableSpec))
 	{
-		PgbsonWriterConcat(&variableWriter, resultDoc);
-		resultDoc = PgbsonWriterGetPgbson(&variableWriter);
+		/* Here we presume the values are raw values: This is because the "variableSpec" in this case
+		 * comes from 2 sources:
+		 * 1) A top level command let which can only be constant values
+		 * 2) A parent $lookup which should have already evaluated the expressions into the constants.
+		 */
+		context.skipParseAggregationExpressions = true;
+
+		BsonIntermediatePathNode *variableTree = NULL;
+		PgbsonInitIterator(variableSpec, &specIter);
+
+		variableTree = BuildBsonPathTree(&specIter, &context,
+										 forceLeafExpression, &hasFields);
+
+		/* Now add in the variable spec on top of the rewritten child variable spec (pathSpec). */
+		PgbsonInitIterator(evaluatedInputSpec, &specIter);
+		MergeBsonPathTree(variableTree, &specIter, &context, forceLeafExpression,
+						  &hasFields);
+
+		queryState.root = variableTree;
+		resultVariables = ProjectDocumentWithState(document, &queryState);
+	}
+	else
+	{
+		resultVariables = evaluatedInputSpec;
 	}
 
-	PG_RETURN_POINTER(resultDoc);
+	if (variableContext.context.table != NULL && !variableContext.hasSingleVariable)
+	{
+		hash_destroy(variableContext.context.table);
+	}
+
+	PG_RETURN_POINTER(resultVariables);
 }
 
 
