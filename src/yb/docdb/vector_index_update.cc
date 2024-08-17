@@ -37,7 +37,7 @@ void VectorIndexUpdate<CoordinateType>::SetNeighbors(
   write_batch_.Put(
       MakeKey(id, level),
       dockv::PrimitiveValue::Encoded(
-          dockv::UInt64Vector{new_neighbors.begin(), new_neighbors.end()}).AsSlice());
+          UInt64Vector{new_neighbors.begin(), new_neighbors.end()}).AsSlice());
 
   GetLevel(id, level).neighbors = std::move(new_neighbors);
 }
