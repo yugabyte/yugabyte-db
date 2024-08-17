@@ -21,8 +21,6 @@
 #include "utils/version_utils.h"
 #include "metadata/metadata_cache.h"
 
-#include <distributed/backend_data.h>
-
 #include "metadata/collection.h"
 #include "api_hooks_def.h"
 
@@ -34,6 +32,7 @@ extern bool UseLocalExecutionShardQueries;
 /* Cached value for the current Global PID - can cache once
  * Since nodeId, Pid are stable.
  */
+#define INVALID_CITUS_INTERNAL_BACKEND_GPID 0
 static uint64 HelioCitusGlobalPid = 0;
 
 /*
