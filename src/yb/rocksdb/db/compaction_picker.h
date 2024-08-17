@@ -390,3 +390,29 @@ CompressionType GetCompressionType(const ImmutableCFOptions& ioptions,
                                    const bool enable_compression = true);
 
 }  // namespace rocksdb
+
+// Add these new methods
+    uint64_t GetMetadataSize() const {
+      // Implementation depends on how metadata size is stored
+      return file->fd.GetMetadataSize();
+    }
+
+    uint64_t GetDataSize() const {
+      // Implementation depends on how data size is stored
+      return file->fd.GetDataSize();
+    }
+
+    void DumpSizeInfo(char* out_buf, size_t out_buf_size, bool print_path) const {
+      if (file != nullptr) {
+        snprintf(out_buf, out_buf_size,
+                 "file %" PRIu64 "[%s] "
+                 "size %" PRIu64 " : metadata size %" PRIu64 " : data size %" PRIu64,
+                 file->fd.GetNumber(),
+                 print_path ? file->fd.GetPathId().c_str() : "",
+                 file->fd.GetFileSize(),
+                 GetMetadataSize(),
+                 GetDataSize());
+      } else {
+        snprintf(out_buf, out_buf_size, "n/a");
+      }
+    }
