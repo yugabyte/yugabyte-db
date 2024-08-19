@@ -1582,9 +1582,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Result<SchemaVersion> GetTableSchemaVersion(const TableId& table_id);
 
-  Status GetTableGroupAndColocationInfo(
-      const TableId& table_id, TablegroupId& out_tablegroup_id, bool& out_colocated_database)
-      EXCLUDES(mutex_);
+  Result<TablegroupId> GetTablegroupId(const TableId& table_id) EXCLUDES(mutex_);
 
   void InsertNewUniverseReplication(UniverseReplicationInfo& replication_group) EXCLUDES(mutex_);
 

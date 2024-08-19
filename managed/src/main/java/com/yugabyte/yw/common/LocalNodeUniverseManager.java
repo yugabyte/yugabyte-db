@@ -73,7 +73,6 @@ public class LocalNodeUniverseManager {
     } else {
       bashCommand.add(node.cloudInfo.private_ip);
     }
-    bashCommand.add("-t");
     bashCommand.add("-p");
     bashCommand.add(String.valueOf(node.ysqlServerRpcPort));
     bashCommand.add("-U");

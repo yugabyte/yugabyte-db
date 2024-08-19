@@ -468,6 +468,8 @@ Status CatalogManager::YsqlDdlTxnAlterTableHelper(const YsqlTableDdlTxnState txn
 
 Status CatalogManager::YsqlDdlTxnDropTableHelper(
     const YsqlTableDdlTxnState txn_data, bool success) {
+  // TableInfo::ysql_ddl_txn_verifier_state and TableInfo::transaction are cleared once all tablets
+  // are deleted (in CheckTableDeleted).
   auto table = txn_data.table;
   txn_data.write_lock.Commit();
   DeleteTableRequestPB dtreq;

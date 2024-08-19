@@ -9,6 +9,7 @@ import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.TableType;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
+import com.yugabyte.yw.models.XClusterNamespaceConfig;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
@@ -158,6 +159,13 @@ public class DrConfigGetResp {
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.0.0")
   public Set<String> getDbs() {
     return xClusterConfig.getDbIds();
+  }
+
+  @ApiModelProperty(
+      value = "WARNING: This is a preview API that could change. List of db details in replication")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.0.0")
+  public Set<XClusterNamespaceConfig> getDbDetails() {
+    return xClusterConfig.getNamespaceDetails();
   }
 
   @ApiModelProperty(

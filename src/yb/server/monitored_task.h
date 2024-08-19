@@ -92,7 +92,9 @@ YB_DEFINE_ENUM(MonitoredTaskType,
   (kAddNamespaceToXClusterSource)
   (kNamespaceVerification)
   (TableSchemaVerification)
-  (kObjectLock));
+  (kObjectLock)
+  (kXClusterInboundReplicationGroupSetup)
+  (kXClusterTableSetup));
 
 class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
  public:

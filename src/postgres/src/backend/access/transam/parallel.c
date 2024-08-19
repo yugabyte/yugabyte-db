@@ -1475,10 +1475,7 @@ ParallelWorkerMain(Datum main_arg)
 	 * obtain it. Perhaps master scan should share the value it has.
 	 */
 	if (IsYugaByteEnabled())
-	{
 		YbUpdateCatalogCacheVersion(YbGetMasterCatalogVersion());
-		YBCPgResetCatalogReadTime();
-	}
 
 	/*
 	 * We've initialized all of our state now; nothing should change

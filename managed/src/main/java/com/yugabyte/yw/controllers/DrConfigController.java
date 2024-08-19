@@ -1186,14 +1186,14 @@ public class DrConfigController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drUUID);
 
+    XClusterConfig activeXClusterConfig = drConfig.getActiveXClusterConfig();
+    xClusterScheduler.syncXClusterConfig(activeXClusterConfig);
+    activeXClusterConfig.refresh();
+
     for (XClusterConfig xClusterConfig : drConfig.getXClusterConfigs()) {
       XClusterConfigTaskBase.updateReplicationDetailsFromDB(
           this.xClusterUniverseService, this.ybService, this.tableHandler, xClusterConfig);
     }
-
-    XClusterConfig activeXClusterConfig = drConfig.getActiveXClusterConfig();
-    xClusterScheduler.syncXClusterConfig(activeXClusterConfig);
-    activeXClusterConfig.refresh();
 
     DrConfigGetResp resp = new DrConfigGetResp(drConfig, activeXClusterConfig);
     return PlatformResults.withData(resp);

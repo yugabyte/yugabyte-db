@@ -368,6 +368,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.CreateAlertDefinitions,
           TaskType.CreateTable,
           TaskType.CreateTable,
+          TaskType.UpdateConsistencyCheck,
           TaskType.UniverseUpdateSucceeded);
 
   private static final ImmutableMap<String, String> EXPECTED_RESULT_FOR_CREATE_TABLE_TASK =
@@ -391,6 +392,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(EXPECTED_RESULT_FOR_CREATE_TABLE_TASK),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()));
   }
 
@@ -403,7 +405,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
   private List<Integer> getTaskCountPerPosition(int namespaceTasks, int parallelTasks) {
     return ImmutableList.of(
-        1, namespaceTasks, parallelTasks, parallelTasks, 0, 1, 1, 3, 1, 1, 1, 1, 1, 1, 1, 1);
+        1, namespaceTasks, parallelTasks, parallelTasks, 0, 1, 1, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1);
   }
 
   private void assertTaskSequence(
@@ -730,7 +732,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
                 + "yb-master-0.%s.svc.cluster.local:7100,"
                 + "yb-master-0.%s.svc.cluster.local:7100",
             ns1, ns2, ns3);
-    verify(mockYBClient, times(7)).getClient(masters, null);
+    verify(mockYBClient, times(8)).getClient(masters, null);
 
     long timeout = 300000;
     verify(mockClient, times(1))

@@ -946,7 +946,7 @@ The following example shows the value portion of a change event that the connect
         "name": "YugabyteDB_server.public.customers.Envelope" --> 4
     },
     "payload": { --> 5
-        "before": null, --> 6 
+        "before": null, --> 6
         "after": { --> 7
             "id": 1,
             "first_name": "Anne",
@@ -1352,7 +1352,7 @@ For Debezium to specify the capture configuration, the value of `publication.aut
 
 ### Configuring YugabyteDB to allow replication with the Debezium connector host
 
-To enable Debezium to replicate YugabyteDB data, you must configure the database to permit replication with the host that runs the YugabyteDB connector. To specify the clients that are permitted to replicate with the database, add entries to the YugabyteDB host-based authentication file, `ysql_hba.conf`. For more information about the pg_hba.conf file, see the [YugabyteDB documentation](../../../../secure/authentication/host-based-authentication#ysql_hbaconf-file).
+To enable Debezium to replicate YugabyteDB data, you must configure the database to permit replication with the host that runs the YugabyteDB connector. To specify the clients that are permitted to replicate with the database, add entries to the YugabyteDB host-based authentication file, `ysql_hba.conf`. For more information about the pg_hba.conf file, see the [YugabyteDB documentation](../../../../secure/authentication/host-based-authentication/#ysql-hba-conf-file).
 
 Procedure
 

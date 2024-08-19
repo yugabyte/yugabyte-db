@@ -1160,6 +1160,22 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Stop multiple nodes simultaneously in az during upgrade",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> upgradeBatchRollAutoPercent =
+      new ConfKeyInfo<>(
+          "yb.task.upgrade.batch_roll_auto_percent",
+          ScopeType.UNIVERSE,
+          "Percent of nodes to roll simultaneously during upgrade",
+          "Percent of nodes to roll simultaneously during upgrade",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> upgradeBatchRollAutoNumber =
+      new ConfKeyInfo<>(
+          "yb.task.upgrade.batch_roll_auto_number",
+          ScopeType.UNIVERSE,
+          "Number of nodes to roll simultaneously during upgrade",
+          "Number of nodes to roll simultaneously during upgrade",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Duration> autoMasterFailoverDetectionInterval =
       new ConfKeyInfo<>(
           "yb.auto_master_failover.detect_interval",
@@ -1260,4 +1276,13 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " accommodate backup upload times etc",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableConsistencyCheck =
+      new ConfKeyInfo<>(
+          "yb.universe.consistency_check_enabled",
+          ScopeType.UNIVERSE,
+          "Enable consistency check for universe",
+          "When enabled, all universe operations will attempt consistency check validation before"
+              + " proceeding. Turn off in disaster scenarios to force perform actions.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

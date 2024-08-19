@@ -17,8 +17,8 @@ export enum DiffOperation {
 }
 
 export interface DiffProps {
-  beforeData: UniverseDetails;
-  afterData: UniverseDetails;
+  beforeData: unknown;
+  afterData: unknown;
   operation?: DiffOperation;
   attribute?: string;
 }
@@ -32,3 +32,27 @@ export interface DiffApiResp extends DiffProps {
   uuid: string;
   parentUuid: string;
 }
+
+export type GFlagDiff = {
+  name: string;
+  old: string | null;
+  new: string | null;
+  default: string;
+}
+export interface GFlagsDiffProps {
+  gflags: {
+    master: GFlagDiff[],
+    tserver: GFlagDiff[]
+  }
+
+}
+export interface AuditLogProps {
+  customerUUID: string;
+  payload: UniverseDetails;
+  additionalDetails: UniverseDetails | GFlagsDiffProps;
+  target: string;
+  targetID: string;
+  action: string;
+  taskUUID: string;
+  auditID: number;
+};

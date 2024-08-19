@@ -8,6 +8,7 @@
 --
 -- First test, check and cascade
 --
+SET yb_explain_hide_non_deterministic_fields = true;
 CREATE TABLE ITABLE ( ptest1 int, ptest2 text );
 CREATE UNIQUE INDEX ITABLE_IDX ON ITABLE(ptest1);
 CREATE TABLE FKTABLE ( ftest1 int REFERENCES ITABLE(ptest1) MATCH FULL ON DELETE CASCADE ON UPDATE CASCADE, ftest2 int );
@@ -604,6 +605,23 @@ SELECT * FROM c ORDER BY k;
  1 |     1 |     1 |     1 |     1
  2 |     2 |     2 |     2 |     2
 (2 rows)
+
+-- check distributed storage counters in case of multiple foreign keys
+TRUNCATE c;
+EXPLAIN (ANALYZE ON, DIST ON, COSTS OFF)
+INSERT INTO c VALUES(1, 1, 1, 1, 1);
+                  QUERY PLAN
+----------------------------------------------
+ Insert on c (actual rows=0 loops=1)
+   ->  Result (actual rows=1 loops=1)
+         Storage Table Write Requests: 1
+ Trigger for constraint c_p2_fk_fkey: calls=1
+ Trigger for constraint c_p4_fk_fkey: calls=1
+ Storage Read Requests: 1
+ Storage Rows Scanned: 4
+ Storage Write Requests: 1
+ Storage Flush Requests: 1
+(9 rows)
 
 CREATE TABLE parent(k INT PRIMARY KEY, v INT UNIQUE);
 CREATE TABLE child_1(k INT PRIMARY KEY, v INT REFERENCES parent(k));

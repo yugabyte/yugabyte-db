@@ -15,6 +15,7 @@ import { CreateXClusterConfigFormValues } from './CreateConfigModal';
 import { YBCheckboxField, YBInputField, YBTooltip } from '../../../redesign/components';
 import {
   INPUT_FIELD_WIDTH_PX,
+  XCLUSTER_CONFIG_NAME_ILLEGAL_PATTERN,
   XCLUSTER_REPLICATION_DOCUMENTATION_URL,
   YB_ADMIN_XCLUSTER_DOCUMENTATION_URL
 } from '../constants';
@@ -187,6 +188,17 @@ export const SelectTargetUniverseStep = ({
                 control={control}
                 name="configName"
                 disabled={isFormDisabled}
+                rules={{
+                  validate: {
+                    required: (configName) => !!configName || t('error.requiredField'),
+                    noIllegalCharactersInConfigName: (configName: any) => {
+                      return (
+                        !XCLUSTER_CONFIG_NAME_ILLEGAL_PATTERN.test(configName) ||
+                        t('error.illegalCharactersInConfigName')
+                      );
+                    }
+                  }
+                }}
               />
             </div>
             <div>

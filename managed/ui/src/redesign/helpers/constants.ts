@@ -58,6 +58,8 @@ export const RuntimeConfigKey = {
   ENABLE_TROUBLESHOOTING: 'yb.ui.feature_flags.enable_troubleshooting',
   AWS_COOLDOWN_HOURS: 'yb.aws.disk_resize_cooldown_hours',
   BLOCK_K8_OPERATOR: 'yb.kubernetes.operator.block_api_operator_owned_resources',
+  BATCH_ROLLING_UPGRADE_FEATURE_FLAG: 'yb.task.upgrade.batch_roll_enabled',
+  SKIP_VERSION_CHECKS: 'yb.skip_version_checks',
   UI_TAG_FILTER: 'yb.runtime_conf_ui.tag_filter',
   ENABLE_AUDIT_LOG: 'yb.universe.audit_logging_enabled',
   AWS_DEFAULT_VOLUME_SIZE: 'yb.aws.default_volume_size_gb',
@@ -67,7 +69,7 @@ export const RuntimeConfigKey = {
   KUBERNETES_DEFAULT_VOLUME_SIZE: 'yb.kubernetes.default_volume_size_gb',
   AZURE_DEFAULT_VOLUME_SIZE: 'yb.azure.default_volume_size_gb',
   AZURE_DEFAULT_STORAGE_TYPE: 'yb.azure.storage.default_storage_type',
-  AZURE_PREMIUM_V2_STORAGE_TYPE: 'yb.azure.show_premiumv2_storage_type',
+  AZURE_PREMIUM_V2_STORAGE_TYPE: 'yb.azure.show_premiumv2_storage_type'
 } as const;
 
 /**

@@ -1906,9 +1906,17 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 		case REORDER_BUFFER_CHANGE_UPDATE:
 			/* Print the new tuple */
 #if	PG_VERSION_NUM >= 170000
+			/* YB Note: Since no before image will come for CHANGE, skip adding the trailing comma */
+			if (IsYugaByteEnabled())
+				columns_to_stringinfo(ctx, tupdesc, change->data.tp.newtuple, relation->rd_rel->relreplident != YB_REPLICA_IDENTITY_CHANGE, relation, change->data.tp.newtuple->yb_is_omitted);
+			else
 			columns_to_stringinfo(ctx, tupdesc, change->data.tp.newtuple, true, relation, change->data.tp.newtuple->yb_is_omitted);
 #else
-			columns_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, true, relation, change->data.tp.newtuple->yb_is_omitted);
+			/* YB Note: Since no before image will come for CHANGE, skip adding the trailing comma */
+			if (IsYugaByteEnabled())
+				columns_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, relation->rd_rel->relreplident != YB_REPLICA_IDENTITY_CHANGE, relation, change->data.tp.newtuple->yb_is_omitted);
+			else
+				columns_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, true, relation, change->data.tp.newtuple->yb_is_omitted);
 #endif
 
 #if	PG_VERSION_NUM >= 100000
@@ -1937,13 +1945,21 @@ pg_decode_change_v1(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 			if (change->data.tp.oldtuple == NULL)
 			{
 				elog(DEBUG1, "old tuple is null");
-
-				ribs = RelationGetIndexAttrBitmap(relation, INDEX_ATTR_BITMAP_IDENTITY_KEY);
+				/*
+				 * YB note: wal2json tries to populate the primary key
+				 * (identity) in the before image even when it has not changed.
+				 * However for Replica identity CHANGE we do not want any before
+				 * image to be populated.
+				 */
+				if (!IsYugaByteEnabled() || relation->rd_rel->relreplident != YB_REPLICA_IDENTITY_CHANGE)
+				{
+					ribs = RelationGetIndexAttrBitmap(relation, INDEX_ATTR_BITMAP_IDENTITY_KEY);
 #if	PG_VERSION_NUM >= 170000
-				identity_to_stringinfo(ctx, tupdesc, change->data.tp.newtuple, ribs, change->data.tp.newtuple->yb_is_omitted, relation);
+					identity_to_stringinfo(ctx, tupdesc, change->data.tp.newtuple, ribs, change->data.tp.newtuple->yb_is_omitted, relation);
 #else
-				identity_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, ribs, change->data.tp.newtuple->yb_is_omitted, relation);
+					identity_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, ribs, change->data.tp.newtuple->yb_is_omitted, relation);
 #endif
+				}
 			}
 			else
 			{
@@ -2361,8 +2377,11 @@ pg_decode_write_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn, Relat
 			{
 				if (!OidIsValid(relation->rd_replidindex) && relation->rd_rel->relreplident != REPLICA_IDENTITY_FULL)
 				{
-					elog(WARNING, "no tuple identifier for UPDATE in table \"%s\".\"%s\"", get_namespace_name(RelationGetNamespace(relation)), RelationGetRelationName(relation));
-					return;
+					if (!IsYugaByteEnabled() || relation->rd_rel->relreplident != YB_REPLICA_IDENTITY_CHANGE)
+					{
+						elog(WARNING,"no tuple identifier for UPDATE in table \"%s\".\"%s\"", get_namespace_name(RelationGetNamespace(relation)), RelationGetRelationName(relation));
+						return;
+					}
 				}
 			}
 			break;
@@ -2486,14 +2505,23 @@ pg_decode_write_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn, Relat
 			if (OidIsValid(relation->rd_replidindex))
 #endif
 			{
-				elog(DEBUG1, "REPLICA IDENTITY: obtain old tuple using new tuple");
-				appendStringInfoString(ctx->out, ",\"identity\":[");
+				/*
+				 * YB note: wal2json tries to populate the primary key
+				 * (identity) in the before image even when it has not changed.
+				 * However for Replica identity CHANGE we do not want any before
+				 * image to be populated.
+				 */
+				if (!IsYugaByteEnabled() || relation->rd_rel->relreplident != YB_REPLICA_IDENTITY_CHANGE)
+				{
+					elog(DEBUG1, "REPLICA IDENTITY: obtain old tuple using new tuple");
+					appendStringInfoString(ctx->out, ",\"identity\":[");
 #if PG_VERSION_NUM >= 170000
-				pg_decode_write_tuple(ctx, relation, change->data.tp.newtuple, PGOUTPUTJSON_IDENTITY, change->data.tp.newtuple->yb_is_omitted);
+					pg_decode_write_tuple(ctx, relation, change->data.tp.newtuple, PGOUTPUTJSON_IDENTITY, change->data.tp.newtuple->yb_is_omitted);
 #else
-				pg_decode_write_tuple(ctx, relation, &change->data.tp.newtuple->tuple, PGOUTPUTJSON_IDENTITY, change->data.tp.newtuple->yb_is_omitted);
+					pg_decode_write_tuple(ctx, relation, &change->data.tp.newtuple->tuple, PGOUTPUTJSON_IDENTITY, change->data.tp.newtuple->yb_is_omitted);
 #endif
-				appendStringInfoChar(ctx->out, ']');
+					appendStringInfoChar(ctx->out, ']');
+				}
 			}
 			else
 			{

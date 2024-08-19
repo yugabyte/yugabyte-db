@@ -546,7 +546,7 @@ class PgMiniAshTest : public PgMiniTestSingleNode {
   }
 };
 
-TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(Ash), PgMiniAshTest) {
+TEST_F_EX(PgMiniTest, Ash, PgMiniAshTest) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT)"));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_mvcc_delay_add_leader_pending_ms) = 5;
@@ -2415,6 +2415,40 @@ TEST_F_EX(PgMiniTest, DISABLED_ReadsDuringRBS, PgMiniStreamCompressionTest) {
 
   thread_holder.Stop();
 }
+
+TEST_F_EX(PgMiniTest, RegexPushdown, PgMiniTestSingleNode) {
+  // Create (a, aa, aaa, b, bb, bbb, ..., z, zz, zzz) rows.
+  const int kMaxRepeats = 3;
+  std::stringstream str;
+  auto first = true;
+  for (char c = 'a'; c <= 'z'; ++c) {
+    for (size_t repeats = 1; repeats <= kMaxRepeats; ++repeats) {
+      if (!first) {
+        str << ", ";
+      } else {
+        first = false;
+      }
+
+      str << "('";
+      for (size_t i = 0; i < repeats; ++i)
+        str << c;
+      str << "')";
+    }
+  }
+  const auto values = str.str();
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test_texticregex (t TEXT, PRIMARY KEY(t ASC)) SPLIT AT VALUES($0)", values));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO test_texticregex VALUES $0", values));
+
+  for (size_t i = 0; i < 10; ++i) {
+    const auto count = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+        "SELECT COUNT(*) FROM test_texticregex WHERE texticregexeq(t, t)"));
+    ASSERT_EQ(count, ('z' - 'a' + 1) * kMaxRepeats);
+  }
+}
+
 
 Status MockAbortFailure(
     const yb::tserver::PgFinishTransactionRequestPB* req,

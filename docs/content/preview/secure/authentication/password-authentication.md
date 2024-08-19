@@ -31,7 +31,7 @@ Database passwords can be managed using the following:
 - YSQL API: [CREATE ROLE](../../../api/ysql/the-sql-language/statements/dcl_create_role) and [ALTER ROLE](../../../api/ysql/the-sql-language/statements/dcl_alter_role)
 - `ysqlsh` meta-command: [\password](../../../admin/ysqlsh-meta-commands/#password-username)
 
-The [passwordcheck extension](../../../explore/ysql-language-features/pg-extensions/#passwordcheck-example) can be used to enforce strong passwords whenever they are set with `CREATE ROLE` or `ALTER ROLE`. passwordcheck only works for passwords that are provided in plain text. For more information, refer to the [PostgreSQL passwordcheck documentation](https://www.postgresql.org/docs/11/passwordcheck.html).
+The [passwordcheck extension](../../../explore/ysql-language-features/pg-extensions/extension-passwordcheck) can be used to enforce strong passwords whenever they are set with `CREATE ROLE` or `ALTER ROLE`. passwordcheck only works for passwords that are provided in plain text. For more information, refer to the [PostgreSQL passwordcheck documentation](https://www.postgresql.org/docs/11/passwordcheck.html).
 
 ## Password authentication methods
 

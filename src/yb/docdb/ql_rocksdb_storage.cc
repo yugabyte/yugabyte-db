@@ -138,16 +138,16 @@ Status QLRocksDBStorage::GetIteratorForYbctid(
     std::reference_wrapper<const DocReadContext> doc_read_context,
     const TransactionOperationContext& txn_op_context,
     const ReadOperationData& read_operation_data,
-    const QLValuePB& min_ybctid,
-    const QLValuePB& max_ybctid,
+    const Slice& min_ybctid,
+    const Slice& max_ybctid,
     std::reference_wrapper<const ScopedRWOperation> pending_op,
     YQLRowwiseIteratorIf::UniPtr* iter,
     SkipSeek skip_seek) const {
   DocKey lower_doc_key(doc_read_context.get().schema());
-  RETURN_NOT_OK(lower_doc_key.DecodeFrom(min_ybctid.binary_value()));
+  RETURN_NOT_OK(lower_doc_key.DecodeFrom(min_ybctid));
 
   DocKey upper_doc_key(doc_read_context.get().schema());
-  RETURN_NOT_OK(upper_doc_key.DecodeFrom(max_ybctid.binary_value()));
+  RETURN_NOT_OK(upper_doc_key.DecodeFrom(max_ybctid));
   upper_doc_key.AddRangeComponent(dockv::KeyEntryValue(dockv::KeyEntryType::kHighest));
   auto doc_iter = std::make_unique<DocRowwiseIterator>(
       projection, doc_read_context, txn_op_context, doc_db_, read_operation_data, pending_op);

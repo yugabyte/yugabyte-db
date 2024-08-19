@@ -714,7 +714,6 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 		 * version mode is impossible in case prefething is started.
 		 */
 		YBIsDBCatalogVersionMode();
-		YBCPgResetCatalogReadTime();
 		YBCStartSysTablePrefetchingNoCache();
 		YbRegisterSysTableForPrefetching(AuthIdRelationId);   // pg_authid
 		YbRegisterSysTableForPrefetching(DatabaseRelationId); // pg_database

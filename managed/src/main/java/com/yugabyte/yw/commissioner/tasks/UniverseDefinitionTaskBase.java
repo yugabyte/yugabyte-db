@@ -455,6 +455,19 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     PlacementInfoUtil.ensureUniqueNodeNames(taskParams().nodeDetailsSet);
   }
 
+  protected void setCommunicationPortsForNodes(boolean isCreate) {
+    UniverseTaskParams.CommunicationPorts communicationPorts = taskParams().communicationPorts;
+    if (communicationPorts == null) {
+      communicationPorts = getUniverse().getUniverseDetails().communicationPorts;
+    }
+    for (NodeDetails nodeDetails : taskParams().nodeDetailsSet) {
+      if (isCreate || nodeDetails.state == NodeState.ToBeAdded) {
+        UniverseTaskParams.CommunicationPorts.setCommunicationPorts(
+            communicationPorts, nodeDetails);
+      }
+    }
+  }
+
   /**
    * Pick nodes from node-instance table, set the instance UUIDs to the nodes in task params and
    * reserve in memory or persist the changes to the table.
@@ -1004,6 +1017,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
     // Create read write test table tasks.
     checkAndCreateReadWriteTestTableTask(primaryCluster);
+
+    // Create consistency check table tasks.
+    checkAndCreateConsistencyCheckTableTask(primaryCluster);
 
     // Change admin password for Admin user, as specified.
     checkAndCreateChangeAdminPasswordTask(primaryCluster);

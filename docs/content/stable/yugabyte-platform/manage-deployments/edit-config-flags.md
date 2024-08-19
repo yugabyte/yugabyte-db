@@ -21,7 +21,7 @@ For more information about the available configuration flags, see the following:
 
 ## Modify configuration flags
 
-You can add and edit configuration flags by opening the universe in the YugabyteDB Anywhere UI and clicking **Actions > Edit Flags** to open the **G-Flags** dialog shown in the following illustration:
+You can add and edit configuration flags by navigating to the universe and clicking **Actions > Edit Flags** to open the **G-Flags** dialog shown in the following illustration:
 
 ![Modify configuration flags](/images/ee/edit-config-2.png)
 

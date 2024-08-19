@@ -221,6 +221,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @ApiModelProperty(hidden = true)
   public boolean overridePrebuiltAmiDBVersion = false;
 
+  // local value for sequence number
+  @ApiModelProperty(hidden = true)
+  public int sequenceNumber = -1;
+
   // if we want to use a different SSH_USER instead of  what is defined in the accessKey
   // Use imagebundle to overwrite the sshPort
   @Nullable @ApiModelProperty @Deprecated public String sshUserOverride;
@@ -1528,13 +1532,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @Override
     public T convert(T taskParams) {
-      // If there is universe level communication port set then push it down to node level
-      if (taskParams.communicationPorts != null && taskParams.nodeDetailsSet != null) {
-        taskParams.nodeDetailsSet.forEach(
-            nodeDetails ->
-                CommunicationPorts.setCommunicationPorts(
-                    taskParams.communicationPorts, nodeDetails));
-      }
       if (taskParams.expectedUniverseVersion == null) {
         taskParams.expectedUniverseVersion = -1;
       }

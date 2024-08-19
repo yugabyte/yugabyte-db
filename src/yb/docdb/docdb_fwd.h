@@ -64,6 +64,7 @@ struct IntentKeyValueForCDC;
 struct KeyBounds;
 template <typename T>
 struct LockBatchEntry;
+struct ObjectLockPrefix;
 struct ReadOperationData;
 
 using DocKeyHash = uint16_t;
@@ -76,7 +77,6 @@ using LockBatchEntries = std::vector<LockBatchEntry<T>>;
 // (lock_state >> (to_underlying(intent_type) * kIntentTypeBits)) & kFirstIntentTypeMask.
 // Refer shared_lock_manager.cc for further details.
 using LockState = uint64_t;
-using ObjectLockPrefix = std::pair<uint64_t, dockv::KeyEntryType>;
 using ScanChoicesPtr = std::unique_ptr<ScanChoices>;
 using SessionIDHostPair = std::pair<const uint64_t, const std::string>;
 

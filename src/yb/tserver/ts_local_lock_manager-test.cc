@@ -28,6 +28,8 @@ namespace yb::docdb {
 
 constexpr auto kSession1 = 1;
 constexpr auto kSession2 = 2;
+constexpr auto kDatabase1 = 1;
+constexpr auto kDatabase2 = 2;
 constexpr auto kObject1 = 1;
 
 class TSLocalLockManagerTest : public YBTest {
@@ -37,7 +39,7 @@ class TSLocalLockManagerTest : public YBTest {
   tablet::TSLocalLockManager lm_;
 
   Status LockObjects(
-      uint64_t session_id, const std::vector<uint64_t>& object_ids,
+      uint64_t session_id, uint64_t database_id, const std::vector<uint64_t>& object_ids,
       const std::vector<TableLockType>& lock_types,
       CoarseTimePoint deadline = CoarseTimePoint::max()) {
     SCHECK_EQ(object_ids.size(), lock_types.size(), IllegalState, "Expected equal sizes");
@@ -46,22 +48,27 @@ class TSLocalLockManagerTest : public YBTest {
     req.set_session_host_uuid("localhost");
     for (size_t i = 0; i < object_ids.size(); i++) {
       auto* lock = req.add_object_locks();
-      lock->set_id(object_ids[i]);
+      lock->set_database_oid(database_id);
+      lock->set_object_oid(object_ids[i]);
       lock->set_lock_type(lock_types[i]);
     }
     return lm_.AcquireObjectLocks(req, deadline);
   }
 
-  Status LockObject(uint64_t session_id, uint64_t object_id, TableLockType lock_type,
-                    CoarseTimePoint deadline = CoarseTimePoint::max()) {
-    return LockObjects(session_id, {object_id}, {lock_type}, deadline);
+  Status LockObject(
+      uint64_t session_id, uint64_t database_id, uint64_t object_id, TableLockType lock_type,
+      CoarseTimePoint deadline = CoarseTimePoint::max()) {
+    return LockObjects(session_id, database_id, {object_id}, {lock_type}, deadline);
   }
 
-  Status ReleaseObjectLock(uint64_t session_id, uint64_t object_id) {
+  Status ReleaseObjectLock(
+      uint64_t session_id, uint64_t database_id, uint64_t object_id) {
     tserver::ReleaseObjectLockRequestPB req;
     req.set_session_id(session_id);
     req.set_session_host_uuid("localhost");
-    req.add_object_ids(object_id);
+    auto* lock = req.add_object_locks();
+    lock->set_database_oid(database_id);
+    lock->set_object_oid(object_id);
     return lm_.ReleaseObjectLocks(req);
   }
 
@@ -84,11 +91,11 @@ class TSLocalLockManagerTest : public YBTest {
 
 TEST_F(TSLocalLockManagerTest, TestLockAndRelease) {
   for (auto l = TableLockType_MIN + 1; l <= TableLockType_MAX; l++) {
-    ASSERT_OK(LockObject(kSession1, kObject1, TableLockType(l)));
+    ASSERT_OK(LockObject(kSession1, kDatabase1, kObject1, TableLockType(l)));
     ASSERT_GE(GrantedLocksSize(), 1);
     ASSERT_EQ(WaitingLocksSize(), 0);
 
-    ASSERT_OK(ReleaseObjectLock(kSession1, kObject1));
+    ASSERT_OK(ReleaseObjectLock(kSession1, kDatabase1, kObject1));
     ASSERT_EQ(GrantedLocksSize(), 0);
     ASSERT_EQ(WaitingLocksSize(), 0);
   }
@@ -98,14 +105,14 @@ TEST_F(TSLocalLockManagerTest, TestReleaseAllLocksForSession) {
   constexpr auto kReaderSession = 1;
   constexpr auto kWriterSession = 2;
   for (int i = 0; i < 5; i++) {
-    ASSERT_OK(LockObject(kReaderSession, i, TableLockType::ACCESS_SHARE));
+    ASSERT_OK(LockObject(kReaderSession, kDatabase1, i, TableLockType::ACCESS_SHARE));
   }
 
   TestThreadHolder thread_holder;
   CountDownLatch blocker_pending{1};
   thread_holder.AddThreadFunctor([this, &blocker_pending] {
     for (int i = 0; i < 5; i++) {
-      ASSERT_OK(LockObject(kWriterSession, i, TableLockType::ACCESS_EXCLUSIVE));
+      ASSERT_OK(LockObject(kWriterSession, kDatabase1, i, TableLockType::ACCESS_EXCLUSIVE));
     }
     blocker_pending.CountDown();
   });
@@ -127,14 +134,14 @@ TEST_F(TSLocalLockManagerTest, TestWaitersAndBlocker) {
   CountDownLatch waiters_blocked{kNumReaders};
 
   for (int i = 0; i < kNumReaders; i++) {
-    ASSERT_OK(LockObject(i, kObject1, TableLockType::ACCESS_SHARE));
+    ASSERT_OK(LockObject(i, kDatabase1, kObject1, TableLockType::ACCESS_SHARE));
   }
   ASSERT_EQ(GrantedLocksSize(), kNumReaders);
   ASSERT_EQ(WaitingLocksSize(), 0);
 
   auto status_future = std::async(std::launch::async, [&]() {
     blocker_started.CountDown();
-    return LockObject(kWriterSession, kObject1, TableLockType::ACCESS_EXCLUSIVE);
+    return LockObject(kWriterSession, kDatabase1, kObject1, TableLockType::ACCESS_EXCLUSIVE);
   });
 
   ASSERT_TRUE(blocker_started.WaitFor(2s * kTimeMultiplier));
@@ -142,7 +149,7 @@ TEST_F(TSLocalLockManagerTest, TestWaitersAndBlocker) {
   ASSERT_GE(WaitingLocksSize(), 1);
 
   for (int i = 0; i < kNumReaders; i++) {
-    ASSERT_OK(ReleaseObjectLock(i, kObject1));
+    ASSERT_OK(ReleaseObjectLock(i, kDatabase1, kObject1));
     if (i + 1 < kNumReaders) {
       ASSERT_NE(status_future.wait_for(0s), std::future_status::ready);
     }
@@ -153,29 +160,29 @@ TEST_F(TSLocalLockManagerTest, TestWaitersAndBlocker) {
   for (int i = 0; i < kNumReaders; i++) {
     thread_holder.AddThreadFunctor([this, i, &waiters_started, &waiters_blocked] {
       waiters_started.CountDown();
-      ASSERT_OK(LockObject(i, kObject1, TableLockType::ACCESS_SHARE));
+      ASSERT_OK(LockObject(i, kDatabase1, kObject1, TableLockType::ACCESS_SHARE));
       waiters_blocked.CountDown();
     });
   }
   ASSERT_EQ(waiters_blocked.count(), 5);
 
-  ASSERT_OK(ReleaseObjectLock(kWriterSession, kObject1));
+  ASSERT_OK(ReleaseObjectLock(kWriterSession, kDatabase1, kObject1));
   ASSERT_TRUE(waiters_blocked.WaitFor(2s * kTimeMultiplier));
   ASSERT_EQ(GrantedLocksSize(), kNumReaders);
   thread_holder.WaitAndStop(2s * kTimeMultiplier);
   for (int i = 0; i < kNumReaders; i++) {
-    ASSERT_OK(ReleaseObjectLock(i, kObject1));
+    ASSERT_OK(ReleaseObjectLock(i, kDatabase1, kObject1));
   }
 }
 
 TEST_F(TSLocalLockManagerTest, TestLockTypeNoneErrors) {
-  ASSERT_NOK(LockObject(1, 1, TableLockType::NONE));
+  ASSERT_NOK(LockObject(kSession1, kDatabase1, kObject1, TableLockType::NONE));
   ASSERT_GE(GrantedLocksSize(), 0);
 }
 
 TEST_F(TSLocalLockManagerTest, TestSessionIgnoresLockConflictWithSelf) {
   for (auto l = TableLockType_MIN + 1; l <= TableLockType_MAX; l++) {
-    ASSERT_OK(LockObject(kSession1, kObject1, TableLockType(l)));
+    ASSERT_OK(LockObject(kSession1, kDatabase1, kObject1, TableLockType(l)));
   }
   // The above lock requests would lead to 2 entries in the granted locks map for the following keys
   // {1, kWeakObjectLock}
@@ -186,15 +193,15 @@ TEST_F(TSLocalLockManagerTest, TestSessionIgnoresLockConflictWithSelf) {
 // The below test asserts that the lock manager signals the corresponding condition variable on
 // every release call so as to unblock potential waiters.
 TEST_F(TSLocalLockManagerTest, TestWaitersSignaledOnEveryRelease) {
-  ASSERT_OK(LockObject(kSession1, kObject1, TableLockType::ACCESS_SHARE));
-  ASSERT_OK(LockObject(kSession2, kObject1, TableLockType::ACCESS_SHARE));
+  ASSERT_OK(LockObject(kSession1, kDatabase1, kObject1, TableLockType::ACCESS_SHARE));
+  ASSERT_OK(LockObject(kSession2, kDatabase1, kObject1, TableLockType::ACCESS_SHARE));
 
   auto status_future = std::async(std::launch::async, [&]() {
-    return LockObject(kSession1, kObject1, TableLockType::ACCESS_EXCLUSIVE);
+    return LockObject(kSession1, kDatabase1, kObject1, TableLockType::ACCESS_EXCLUSIVE);
   });
   ASSERT_NE(status_future.wait_for(1s * kTimeMultiplier), std::future_status::ready);
 
-  ASSERT_OK(ReleaseObjectLock(kSession2, kObject1));
+  ASSERT_OK(ReleaseObjectLock(kSession2, kDatabase1, kObject1));
   ASSERT_OK(status_future.get());
 }
 
@@ -205,10 +212,10 @@ TEST_F(TSLocalLockManagerTest, TestWaitersSignaledOnEveryRelease) {
 TEST_F(TSLocalLockManagerTest, TestFailedLockRpcSemantics) {
   constexpr auto kObject2 = 2;
   ASSERT_OK(LockObjects(
-      kSession1, {kObject1, kObject2},
+      kSession1, kDatabase1, {kObject1, kObject2},
       {TableLockType::ACCESS_SHARE, TableLockType::ACCESS_EXCLUSIVE}));
 
-  ASSERT_OK(LockObject(kSession2, kObject1, TableLockType::ACCESS_SHARE));
+  ASSERT_OK(LockObject(kSession2, kDatabase1, kObject1, TableLockType::ACCESS_SHARE));
   // Granted locks map would have the following keys
   // session1 + {1, kWeakObjectLock}
   // session1 + {2, kWeakObjectLock}
@@ -225,7 +232,8 @@ TEST_F(TSLocalLockManagerTest, TestFailedLockRpcSemantics) {
     // session2 + {2, kWeakObjectLock} -> would be granted
     // session2 + {2, kStrongObjectLock} -> would end up waiting
     return LockObject(
-        kSession2, kObject2, TableLockType::ACCESS_EXCLUSIVE, CoarseMonoClock::Now() + 5s);
+        kSession2, kDatabase1, kObject2, TableLockType::ACCESS_EXCLUSIVE,
+        CoarseMonoClock::Now() + 5s);
   });
   DEBUG_ONLY_TEST_SYNC_POINT("TestFailedLockRpcSemantics");
 
@@ -240,5 +248,19 @@ TEST_F(TSLocalLockManagerTest, TestFailedLockRpcSemantics) {
   ASSERT_EQ(GrantedLocksSize(), 1);
 }
 #endif // NDEBUG
+
+TEST_F(TSLocalLockManagerTest, TestLockAgainstDifferentDbsDontConflict) {
+  ASSERT_OK(LockObject(kSession1, kDatabase1, kObject1, TableLockType::ACCESS_EXCLUSIVE));
+  ASSERT_GE(GrantedLocksSize(), 1);
+  ASSERT_EQ(WaitingLocksSize(), 0);
+
+  ASSERT_OK(LockObject(kSession2, kDatabase2, kObject1, TableLockType::ACCESS_EXCLUSIVE));
+  ASSERT_GE(GrantedLocksSize(), 2);
+  ASSERT_EQ(WaitingLocksSize(), 0);
+
+  ASSERT_OK(ReleaseAllLocksForSession(kSession1));
+  ASSERT_GE(GrantedLocksSize(), 1);
+  ASSERT_OK(ReleaseAllLocksForSession(kSession2));
+}
 
 } // namespace yb::docdb

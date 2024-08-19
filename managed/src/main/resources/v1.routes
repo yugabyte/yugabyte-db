@@ -380,6 +380,17 @@ DELETE  /customers/:cUUID/dr_configs/:drUUID                                   c
 GET     /customers/:cUUID/dr_configs/:drUUID/safetime                          com.yugabyte.yw.controllers.DrConfigController.getSafetime(cUUID: java.util.UUID, drUUID: java.util.UUID)
 PUT     /customers/:cUUID/dr_configs/:drUUID/set_dbs                           com.yugabyte.yw.controllers.DrConfigController.setDatabases(cUUID: java.util.UUID, drUUID: java.util.UUID, request: Request)
 
+# Continuous Backups API
+GET     /customers/:cUUID/auto_yba_backups                                     com.yugabyte.yw.controllers.ContinuousBackupController.get(cUUID: java.util.UUID, request: Request)
+POST    /customers/:cUUID/auto_yba_backups                                     com.yugabyte.yw.controllers.ContinuousBackupController.create(cUUID: java.util.UUID, request: Request)
+POST    /customers/:cUUID/auto_yba_backups/restore                             com.yugabyte.yw.controllers.ContinuousBackupController.restore(cUUID: java.util.UUID, request: Request)
+PUT     /customers/:cUUID/auto_yba_backups/:bUUID                              com.yugabyte.yw.controllers.ContinuousBackupController.edit(cUUID: java.util.UUID, bUUID: java.util.UUID, request: Request)
+DELETE  /customers/:cUUID/auto_yba_backups/:bUUID                              com.yugabyte.yw.controllers.ContinuousBackupController.delete(cUUID: java.util.UUID, bUUID: java.util.UUID, request: Request)
+
+# Isolated Backups API
+POST    /customers/:cUUID/yba_backups                                          com.yugabyte.yw.controllers.YbaBackupController.create(cUUID: java.util.UUID, request: Request)
+POST    /customers/:cUUID/yba_backups/restore                                  com.yugabyte.yw.controllers.YbaBackupController.restore(cUUID: java.util.UUID, request: Request)
+
 # Universe upgrade API
 POST    /customers/:cUUID/universes/:uniUUID/upgrade/restart                   com.yugabyte.yw.controllers.UpgradeUniverseController.restartUniverse(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/universes/:uniUUID/upgrade/software                  com.yugabyte.yw.controllers.UpgradeUniverseController.upgradeSoftware(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)

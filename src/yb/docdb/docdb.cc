@@ -99,7 +99,7 @@ Status ApplyIntent(
 }
 
 Status FormSharedLock(
-    ObjectLockPrefix key, dockv::IntentTypeSet intent_types,
+    ObjectLockPrefix&& key, dockv::IntentTypeSet intent_types,
     LockBatchEntries<ObjectLockPrefix>* keys_locked) {
   SCHECK(!intent_types.None(), InternalError, "Empty intent types is not allowed");
   keys_locked->push_back(
@@ -589,10 +589,11 @@ Result<DetermineKeysToLockResult<ObjectLockPrefix>> DetermineObjectsToLock(
     const google::protobuf::RepeatedPtrField<ObjectLockPB>& objects_to_lock) {
   DetermineKeysToLockResult<ObjectLockPrefix> result;
   for (const auto& object_lock : objects_to_lock) {
-    SCHECK(object_lock.has_id(), IllegalState, "Expected non-empty id in ObjectLockPB");
+    SCHECK(object_lock.has_object_oid(), IllegalState, "ObjectLockPB has empty object oid");
+    SCHECK(object_lock.has_database_oid(), IllegalState, "ObjectLockPB has empty database oid");
     for (const auto& [lock_key, intent_types] : GetEntriesForLockType(object_lock.lock_type())) {
-      ObjectLockPrefix key(object_lock.id(), lock_key);
-      RETURN_NOT_OK(FormSharedLock(key, intent_types, &result.lock_batch));
+      ObjectLockPrefix key(object_lock.database_oid(), object_lock.object_oid(), lock_key);
+      RETURN_NOT_OK(FormSharedLock(std::move(key), intent_types, &result.lock_batch));
     }
   }
   FilterKeysToLock<ObjectLockPrefix>(&result.lock_batch);
