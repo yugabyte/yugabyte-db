@@ -13,12 +13,14 @@ import { AlertConfigurationContainer } from '../alerts';
 import { UserManagementContainer } from '../users';
 import { RuntimeConfigContainer } from '../advanced';
 import { HAInstancesContainer } from '../ha/instances/HAInstanceContainer';
-
+import { HaMetrics } from '../ha/HaMetrics';
 import ListCACerts from '../customCACerts/ListCACerts';
 import { RBACContainer } from '../../redesign/features/rbac/RBACContainer';
 import { RbacValidator } from '../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../redesign/features/rbac/ApiAndUserPermMapping';
 import { isRbacEnabled } from '../../redesign/features/rbac/common/RbacUtils';
+import { useLoadHAConfiguration } from '../ha/hooks/useLoadHAConfiguration';
+
 import './Administration.scss';
 
 // very basic redux store definition, just enough to compile without ts errors
@@ -52,8 +54,9 @@ enum AdministrationTabs {
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 enum HighAvailabilityTabs {
-  Replication = 'replication',
-  Instances = 'instances'
+  REPLICATION = 'replication',
+  INSTANCES = 'instances',
+  METRICS = 'metrics'
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -87,7 +90,10 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
   const globalRuntimeConfigs = useQuery(['globalRuntimeConfigs'], () =>
     fetchGlobalRunTimeConfigs(true).then((res: any) => res.data)
   );
-
+  const { config, isNoHAConfigExists } = useLoadHAConfiguration({
+    loadSchedule: false,
+    autoRefresh: true
+  });
   const isCongifUIEnabled =
     globalRuntimeConfigs?.data?.configEntries?.find(
       (c: any) => c.key === 'yb.runtime_conf_ui.enable_for_all'
@@ -120,22 +126,23 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
     ) : null;
   };
 
+  const currentInstance = config?.instances.find((instance) => instance.is_local);
   const getHighAvailabilityTab = () => {
     return isAvailable(currentCustomer.data.features, 'administration.highAvailability') ? (
       <Tab eventKey="ha" title="High Availability" key="high-availability">
         <RbacValidator accessRequiredOn={ApiPermissionMap.GET_HA_CONFIG}>
           <YBTabsPanel
-            defaultTab={HighAvailabilityTabs.Replication}
+            defaultTab={HighAvailabilityTabs.REPLICATION}
             activeTab={params.section}
             routePrefix={`/admin/${AdministrationTabs.HA}/`}
             id="administration-ha-subtab"
             className="config-tabs"
           >
             <Tab
-              eventKey={HighAvailabilityTabs.Replication}
+              eventKey={HighAvailabilityTabs.REPLICATION}
               title={
                 <span>
-                  <i className="fa fa-clone tab-logo" aria-hidden="true"></i> Replication
+                  <i className="fa fa-clone tab-logo" aria-hidden="true" /> Replication
                   Configuration
                 </span>
               }
@@ -144,7 +151,7 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
               <HAReplication />
             </Tab>
             <Tab
-              eventKey={HighAvailabilityTabs.Instances}
+              eventKey={HighAvailabilityTabs.INSTANCES}
               title={
                 <span>
                   <i className="fa fa-codepen tab-logo" aria-hidden="true"></i> Instance
@@ -155,6 +162,20 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
             >
               <HAInstancesContainer />
             </Tab>
+            {currentInstance?.is_leader && !isNoHAConfigExists && (
+              <Tab
+                eventKey={HighAvailabilityTabs.METRICS}
+                title={
+                  <span>
+                    <i className="fa fa-line-chart tab-logo" aria-hidden="true" />
+                    Metrics
+                  </span>
+                }
+                unmountOnExit
+              >
+                <HaMetrics />
+              </Tab>
+            )}
           </YBTabsPanel>
         </RbacValidator>
       </Tab>

@@ -34,6 +34,7 @@ import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.inject.Inject;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -67,6 +68,7 @@ public class MetricQueryHelper {
   public static final String TABLE_NAME = "table_name";
   public static final String NAMESPACE_NAME = "namespace_name";
   public static final String NAMESPACE_ID = "namespace_id";
+  public static final String YBA_INSTANCE_ADDRESS = "instance_address";
   private static final String POD_NAME = "pod_name";
   private static final String CONTAINER_NAME = "container_name";
   private static final String PVC = "persistentvolumeclaim";
@@ -162,6 +164,17 @@ public class MetricQueryHelper {
       params.put("end", String.valueOf(metricQueryParams.getEnd()));
     }
     HashMap<String, Map<String, String>> filterOverrides = new HashMap<>();
+
+    // If all requested metrics are platform level metrics, then we can skip the logic for adding
+    // node/universe level filters.
+    if (isExclusivelyPlatformLevelMetrics(metricQueryParams)) {
+      return query(
+          new ArrayList<>(metricSettingsMap.values()),
+          params,
+          filterOverrides,
+          metricQueryParams.isRecharts());
+    }
+
     // Given we have a limitation on not being able to rename the pod labels in
     // kubernetes cadvisor metrics, we try to see if the metric being queried is for
     // container or not, and use pod_name vs exported_instance accordingly.
@@ -596,6 +609,26 @@ public class MetricQueryHelper {
     return n.cloudInfo != null
         && n.cloudInfo.mount_roots != null
         && !n.cloudInfo.mount_roots.isEmpty();
+  }
+
+  private static boolean isPlatformMetric(String metric) {
+    return metric.startsWith("yba_");
+  }
+
+  private static boolean isExclusivelyPlatformLevelMetrics(MetricQueryParams metricQueryParams) {
+    boolean isAllMetricsPlatformLevel =
+        Optional.ofNullable(metricQueryParams.getMetrics())
+            .map(Collection::stream)
+            .orElseGet(Stream::empty)
+            .allMatch(metric -> isPlatformMetric(metric));
+
+    boolean isAllMetricsWithSettingsPlatformLevel =
+        Optional.ofNullable(metricQueryParams.getMetricsWithSettings())
+            .map(Collection::stream)
+            .orElseGet(Stream::empty)
+            .allMatch(metricSettings -> isPlatformMetric(metricSettings.getMetric()));
+
+    return isAllMetricsPlatformLevel && isAllMetricsWithSettingsPlatformLevel;
   }
 
   public static String getDataMountPoints(Universe universe) {

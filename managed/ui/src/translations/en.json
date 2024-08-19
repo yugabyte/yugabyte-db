@@ -46,6 +46,11 @@
         "minutes": "Minutes",
         "hours": "Hours",
         "days": "Days"
+      },
+      "unitAbbreviation": {
+        "milliseconds": "ms",
+        "seconds": "s",
+        "megabyte": "MB"
       }
     },
     "imgAltText": {
@@ -78,7 +83,9 @@
     "prometheusMetricTrace": {
       "async_replication_sent_lag_micros": "Async Replication Lag",
       "consumer_safe_time_lag": "Consumer Safe Time Lag",
-      "consumer_safe_time_skew": "Consumer Safe Time Skew"
+      "consumer_safe_time_skew": "Consumer Safe Time Skew",
+      "yba_ha_last_backup_seconds": "HA Backup Lag (Seconds)",
+      "yba_ha_last_backup_size_mb": "HA Last Backup Size (mb)"
     },
     "universeActions": {
       "lbState": {
@@ -2129,6 +2136,12 @@
           "Awaiting Connection to Replicas": "Awaiting Connection to Replicas",
           "Connected": "Connected",
           "Disconnected": "Disconnected"
+        }
+      },
+      "metricsPanel": {
+        "graphTitle": {
+          "haBackupLag": "HA Backup Lag",
+          "haLastBackupSize": "HA Last Backup Size"
         }
       }
     },

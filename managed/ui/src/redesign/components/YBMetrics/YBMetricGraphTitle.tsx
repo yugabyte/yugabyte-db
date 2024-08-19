@@ -1,7 +1,7 @@
 import { makeStyles, Typography } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 
-import { getPrometheusUrls } from '../../../components/metrics/utils';
+import { getPrometheusUrls } from './utils';
 import { YBTooltip } from '../YBTooltip/YBTooltip';
 import { ReactComponent as PrometheusIcon } from '../../../redesign/assets/prometheus-icon.svg';
 
