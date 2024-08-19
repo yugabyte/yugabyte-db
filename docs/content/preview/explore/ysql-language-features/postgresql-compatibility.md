@@ -29,63 +29,87 @@ PostgreSQL compatibility has two aspects:
 
 ## Enhanced Postgres Compatibility Mode
 
-To test and take advantage of features developed for PostgreSQL compatibility in YugabyteDB that are currently in {{<badge/ea>}}, you can enable Enhanced Postgres Compatibility Mode. When this mode is turned on, YugabyteDB is configured to use all the latest features developed for feature and performance parity. Enhanced Postgres Compatibility Mode is available in v2024.1 and later.
+To test and take advantage of features developed for PostgreSQL compatibility in YugabyteDB that are currently in {{<badge/ea>}}, you can enable Enhanced Postgres Compatibility Mode (EPCM). When this mode is turned on, YugabyteDB is configured to use all the latest features developed for feature and performance parity. EPCM is available in v2024.1 and later.
 
-Depending on the version of YugabyteDB, Enhanced Postgres Compatibility Mode configures a different set of features as described in the following sections.
+<!--Depending on the version of YugabyteDB, EPCM configures a different set of features as described in the following sections.-->
 
 After turning this mode on, as you upgrade universes, YugabyteDB will automatically enable new designated PostgreSQL compatibility features.
 
-As features included in the PostgreSQL compatibility mode transition from {{<badge/ea>}} to {{<badge/ga>}} in subsequent versions of YugabyteDB, they become enabled by default on new universes, and are no longer managed under Enhanced Postgres Compatibility Mode on your existing universes after the upgrade.
+As features included in the PostgreSQL compatibility mode transition from {{<badge/ea>}} to {{<badge/ga>}} in subsequent versions of YugabyteDB, they become enabled by default on new universes, and are no longer managed under EPCM on your existing universes after the upgrade.
 
 {{<note title="Note">}}
-If you have set these features independent of Enhanced Postgres Compatibility Mode, you cannot use Enhanced Postgres Compatibility Mode.
+If you have set these features independent of EPCM, you cannot use EPCM.
 
-Conversely, if you are using Enhanced Postgres Compatibility Mode on a universe, you cannot set any of the features independently.
+Conversely, if you are using EPCM on a universe, you cannot set any of the features independently.
 {{</note>}}
 
-| PG Feature | 2.20 | 2024.1 | 2024.2 | 2025.1 |
-| :--- | :--- | :--- | :--- | :--- |
-| feature | {{<badge/ga>}} | {{<badge/ga>}} | {{<badge/ga>}} | {{<badge/ga>}} |
-| Read-Committed isolation | {{<badge/tp>}} | {{<badge/ea>}} | {{<badge/ga>}} | {{<badge/ga>}} |
-| Wait-on-Conflict concurrency for predictable P99 latencies | {{<badge/tp>}} | {{<badge/ea>}} | {{<badge/ga>}} | {{<badge/ga>}} |
-| Cost based optimizer. Includes query pushdowns, LSM indexes, and batched nested loop joins for PostgreSQL-like performance. | {{<badge/tp>}} | {{<badge/ea>}} | {{<badge/ga>}} | {{<badge/ga>}} |
-| Use range sharding (ascending) by default | {{<badge/tp>}} | {{<badge/ea>}} | {{<badge/ga>}} | {{<badge/ga>}} |
-| feature |  | {{<badge/tp>}} | {{<badge/ea>}} | {{<badge/ga>}} |
-| feature |  | {{<badge/tp>}} | {{<badge/ea>}} | {{<badge/ga>}} |
-| feature |  |  | {{<badge/tp>}} | {{<badge/ea>}} |
+### Features
 
-### v2024.1
+| Feature | Flag | EA | Included in EPCM |
+| :--- | :--- | :--- | :--- |
+| Read committed | yb_enable_read_committed_isolation | v2.20 and 2024.1 | Yes |
+| Wait-on-conflict | [enable_wait_queues](../../../reference/configuration/yb-tserver/#enable-wait-queues) | v2024.1 | Yes |
+| Cost-based optimizer | [yb_enable_base_scans_cost_model](../../../reference/configuration/yb-tserver/#yb-enable-base-scans-cost-model) | v2.20 | Yes |
+| Batch nested loop join | [yb_enable_batchednl](../../../reference/configuration/yb-tserver/#yb-enable-batchednl) | v2.20 and 2024.1 | Yes |
+| Size-based fetching | [yb_fetch_size_limit](../../../reference/configuration/yb-tserver/#yb-fetch-size-limit) | v2.20 and 2024.1 | No |
+| Bitmap scan | [enable_bitmapscan](../../../reference/configuration/yb-tserver/#enable-bitmapscan) | 2024.1.3 | Planned |
+| Parallel query | | | Planned |
 
-| EA Feature | Flag |
-| :--- | :--- |
-| Read-Committed isolation | yb_enable_read_committed_isolation=true |
-| Wait-on-Conflict concurrency for predictable P99 latencies | enable_wait_queues=true |
-| Cost based optimizer. Includes query pushdowns, LSM indexes, and batched nested loop joins for PostgreSQL-like performance. | yb_enable_base_scans_cost_model=true<br>yb_bnl_batch_size=1024<br>yb_fetch_row_limit=0<br>yb_fetch_size_limit=1MB |
-| Use range sharding (ascending) by default | yb_use_hash_splitting_by_default=false |
+#### Released features
 
-### v2024.2
+The following features are currently available.
 
-The following shows the features that are planned for Enhanced Postgres Compatibility Mode for v2024.2 and is subject to change without notice.
+##### Read committed
 
-| EA Feature | Flag |
-| :--- | :--- | :--- |
-| Feature 1 | flag=false |
-| Feature 2 | flag=true |
-| Feature 3 | flag=false |
+Read Committed isolation level handles serialization errors and avoids the need to retry errors in the application logic. Read Committed provides feature compatibility, and is the default isolation level in PostgreSQL. When migrating applications from PostgreSQL to YugabyteDB, read committed is the preferred isolation level.
 
-The following features are planned to go {{<badge/ga>}} in v2024.2 and will no longer be managed under Enhanced Postgres Compatibility Mode:
+{{<lead link="../../../architecture/transactions/read-committed/">}}
+To learn more about read committed isolation, see [Read Committed](../../../architecture/transactions/read-committed/).
+{{</lead>}}
 
-- Read-Committed isolation
-- Cost based optimizer
-- Use range sharding (ascending) by default
+##### Cost-based optimizer
 
-## Enable enhanced compatibility mode
+Cost-based optimizer (CBO) creates optimal execution plans for queries, providing significant performance improvements both in single-primary and distributed PostgreSQL workloads. This feature reduces or eliminates the need to use hints or modify queries to optimize query execution. CBO provides improved performance parity.
 
-### YugabyteDB
+##### Wait-on-conflict concurrency
 
-To enable compatibility mode in YugabyteDB:
+Enables use of wait queues so that conflicting transactions can wait for the completion of other dependent transactions, helping to improve P99 latencies. Wait-on-conflict concurrency control provides feature compatibility, and uses the same semantics as PostgreSQL.
 
-- Pass the `enable_pg_parity_early_access` flag to yugabyted when bringing up your cluster.
+{{<lead link="../../../architecture/transactions/concurrency-control/">}}
+To learn more about concurrency control in YugabyteDB, see [Concurrency control](../../../architecture/transactions/concurrency-control/).
+{{</lead>}}
+
+##### Batched nested loop join
+
+Batched nested loop join (BNLJ) is a join execution strategy that improves on nested loop joins by batching the tuples from the outer table into a single request to the inner table. By using batched execution, BNLJ helps reduce the latency for query plans that previously used nested loop joins. BNLJ provides improved performance parity.
+
+{{<lead link="../join-strategies/">}}
+To learn more about join strategies in YugabyteDB, see [Join strategies](../../../architecture/transactions/concurrency-control/).
+{{</lead>}}
+
+##### Size-based fetching
+
+Size-based fetching allows you to control the amount of data returned in one response when the query layer fetches rows of a table from DocDB. With size-based fetching, you can specify the limit based on size (instead based on the number of rows). This can help reduce the number of requests from PostgreSQL and DocDB. Size-based fetching provides improved performance parity.
+
+#### Planned features
+
+The following features are planned for EPCM in future releases.
+
+##### Bitmap scan
+
+Bitmap scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Bitmap scans can improve the performance of queries containing AND and OR conditions across several index scans. Bitmap scan provides improved performance parity.
+
+##### Parallel query
+
+Enables the use of PostgreSQL parallel queries. Using parallel queries, the query planner can devise plans that leverage multiple CPUs to answer queries faster. Parallel query provides feature compatibility and improved performance parity.
+
+### Enable enhanced compatibility mode
+
+#### YugabyteDB
+
+To enable EPCM in YugabyteDB:
+
+- Pass the `enable_pg_parity_early_access` flag to [yugabyted](../../../reference/configuration/yugabyted/) when starting your cluster.
 
 For example, from your YugabyteDB home directory, run the following command:
 
@@ -95,21 +119,21 @@ For example, from your YugabyteDB home directory, run the following command:
 
 Note: When enabling the cost models, ensure that packed row for colocated tables is enabled by setting the `--ysql_enable_packed_row_for_colocated_table` flag to true.
 
-### YugabyteDB Anywhere
+#### YugabyteDB Anywhere
 
-To enable compatibility mode in YugabyteDB Anywhere v2024.1, see the [Release notes](../../../releases/yba-releases/v2024.1/#highlights).
+To enable EPCM in YugabyteDB Anywhere v2024.1, see the [Release notes](/preview/releases/yba-releases/v2024.1/#highlights).
 
-To enable compatibility mode in YugabyteDB Anywhere v2024.2 or later:
+To enable EPCM in YugabyteDB Anywhere v2024.2 or later:
 
 - When creating a universe, turn on the **Enable Enhanced Postgres Compatibility** option.
 
   You can also change the setting on deployed universes using the **More > Edit Postgres Compatibility** option.
 
-### YugabyteDB Aeon
+#### YugabyteDB Aeon
 
-To enable compatibility mode in YugabyteDB Aeon:
+To enable EPCM in YugabyteDB Aeon:
 
-1. When creating a cluster, choose a track with database version 2024.1.0 or later.
+1. When creating a cluster, choose a track with database v2024.1.0 or later.
 1. Select the **Enhanced Postgres Compatibility** option (on by default).
 
 You can also change the setting on the **Settings** tab for deployed clusters.
