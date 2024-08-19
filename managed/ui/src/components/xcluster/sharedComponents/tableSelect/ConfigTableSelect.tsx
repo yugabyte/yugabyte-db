@@ -481,6 +481,7 @@ function getSelectionOptionsFromTables(
 
       const mainTableRestartReplicationCandidate: MainTableRestartReplicationCandidate = {
         ...xClusterTable,
+        tableUUID: getTableUuid(xClusterTable),
         indexTables
       };
 
