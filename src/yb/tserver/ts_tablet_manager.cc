@@ -1299,6 +1299,10 @@ Status TSTabletManager::DoApplyCloneTablet(
     committed_raft_config =
         VERIFY_RESULT(tablet_peer->GetRaftConsensus())->CommittedConfigUnlocked();
   }
+  // Set op_id of the raft config to the same as we would for a fresh tablet. This is required
+  // because a change config will use the current op id of 0 (since the tablet has no data). If the
+  // committed config has a higher op id, the change config fails.
+  committed_raft_config->set_opid_index(consensus::kInvalidOpIdIndex);
 
   // State transition for clone target could be already registered because it is remote
   // bootstrapping from an existing quorum. We would ideally avoid this by passing
@@ -1337,8 +1341,8 @@ Status TSTabletManager::DoApplyCloneTablet(
   });
 
   std::unique_ptr<ConsensusMetadata> cmeta = VERIFY_RESULT(ConsensusMetadata::Create(
-      fs_manager_, target_tablet_id, fs_manager_->uuid(), committed_raft_config.value(),
-      clone_op_id.term));
+      fs_manager_, target_tablet_id, fs_manager_->uuid(), *committed_raft_config,
+      consensus::kMinimumTerm /* current_term */));
   cmeta->set_clone_source_info(request->clone_request_seq_no(), source_tablet_id);
   RETURN_NOT_OK(cmeta->Flush());
 
@@ -1454,8 +1458,8 @@ Status TSTabletManager::ApplyCloneTablet(
   }
 
   LOG(INFO) << Format(
-      "Starting apply of clone op with seq_no $0 on tablet $1", clone_request_seq_no,
-      source_tablet_id);
+      "Starting apply of clone op with seq_no $0 on source tablet $1 to target tablet $2",
+      clone_request_seq_no, source_tablet_id, operation->request()->target_tablet_id());
   auto status = DoApplyCloneTablet(operation, raft_log, committed_raft_config);
   if (!status.ok()) {
     if (FLAGS_TEST_expect_clone_apply_failure) {
