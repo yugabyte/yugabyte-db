@@ -76,7 +76,7 @@ extern void ybvectorrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 extern bool ybvectorgettuple(IndexScanDesc scan, ScanDirection dir);
 extern void ybvectorendscan(IndexScanDesc scan);
 extern bool ybvectorinsert(Relation rel, Datum *values, bool *isnull,
-						ItemPointer heap_tid, Relation heapRel,
+						Datum ybctid, Relation heapRel,
 						IndexUniqueCheck checkUnique,
 						struct IndexInfo *indexInfo, bool shared_insert);
 extern void ybvectordelete(Relation rel, Datum *values, bool *isnull,

@@ -609,3 +609,14 @@ BEGIN
 END$$;
 
 DROP TABLE wide_table;
+
+-- Test CREATE TABLE PARTITION OF with CONSTRAINT .. PRIMARY KEY 
+CREATE TABLE t (
+    id uuid NOT NULL,
+    geo_partition character varying NOT NULL
+)
+PARTITION BY LIST (geo_partition);
+CREATE TABLE t1 PARTITION OF t (
+    CONSTRAINT t1_pkey PRIMARY KEY ((id) HASH)
+)
+FOR VALUES IN ('1');

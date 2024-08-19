@@ -4353,7 +4353,6 @@ ExecModifyTable(PlanState *pstate)
 
 				if(IsYBRelation(relation))
 				{
-					tuple_ctid.yb_item.ybctid = datum;
 					TABLETUPLE_YBCTID(context.planSlot) = datum;
 				}
 				else

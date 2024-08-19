@@ -1172,7 +1172,8 @@ heapam_index_build_range_scan(Relation heapRelation,
 							  void *callback_state,
 							  TableScanDesc scan,
 							  YbBackfillInfo *bfinfo,
-							  YbPgExecOutParam *bfresult)
+							  YbPgExecOutParam *bfresult,
+							  YbIndexBuildCallback ybcallback)
 {
 	HeapScanDesc hscan;
 	bool		is_system_catalog;
@@ -1732,6 +1733,11 @@ heapam_index_build_range_scan(Relation heapRelation,
 			callback(indexRelation, &tid, values, isnull, tupleIsAlive,
 					 callback_state);
 		}
+		else if (IsYBRelation(indexRelation))
+		{
+			ybcallback(indexRelation, heapTuple->t_ybctid, values, isnull,
+					 tupleIsAlive, callback_state);
+		}
 		else
 		{
 			/* Call the AM's callback routine to process the tuple */
@@ -2010,6 +2016,7 @@ heapam_index_validate_scan(Relation heapRelation,
 						 values,
 						 isnull,
 						 &rootTuple,
+						 heapTuple->t_ybctid,
 						 heapRelation,
 						 indexInfo->ii_Unique ?
 						 UNIQUE_CHECK_YES : UNIQUE_CHECK_NO,

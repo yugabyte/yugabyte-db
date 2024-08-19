@@ -173,7 +173,8 @@ unique_key_recheck(PG_FUNCTION_ARGS)
 		 * the row is now dead, because that is the TID the index will know
 		 * about.
 		 */
-		index_insert(indexRel, values, isnull, &checktid,
+		index_insert(indexRel, values, isnull, &checktid, 0, /* YB_TODO: right
+																thing to do? */
 					 trigdata->tg_relation, UNIQUE_CHECK_EXISTING,
 					 false, indexInfo, false /* yb_shared_insert */);
 	}

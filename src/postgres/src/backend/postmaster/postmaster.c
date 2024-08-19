@@ -3637,7 +3637,7 @@ CleanupKilledProcess(PGPROC *proc)
 	if (proc->backendId == InvalidBackendId)
 	{
 		/* These come from ShutdownAuxiliaryProcess */
-		ConditionVariableCancelSleepForProc(proc);
+		YbConditionVariableCancelSleepForProc(proc);
 		/*
 		 * We don't need to call pgstat_report_wait_end because it refers only
 		 * to a static variable, not a member of the PGPROC struct.
@@ -3658,7 +3658,7 @@ CleanupKilledProcess(PGPROC *proc)
 	/* From ProcKill */
 	ReplicationSlotCleanupForProc(proc);
 	SyncRepCleanupAtProcExit(proc);
-	ConditionVariableCancelSleepForProc(proc);
+	YbConditionVariableCancelSleepForProc(proc);
 
 	if (proc->lockGroupLeader != NULL)
 	{

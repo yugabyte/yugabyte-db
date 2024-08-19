@@ -2354,9 +2354,9 @@ CatalogCacheCreateEntry(CatCache *cache, HeapTuple ntp, Datum *arguments,
 #endif
 		ct->tuple.t_len = dtp->t_len;
 		ct->tuple.t_self = dtp->t_self;
-		HEAPTUPLE_COPY_YBITEM(dtp, &ct->tuple);
+		HEAPTUPLE_COPY_YBCTID(dtp, &ct->tuple);
 #ifdef CATCACHE_STATS
-		/* HEAPTUPLE_COPY_YBITEM makes allocation for ybctid. */
+		/* HEAPTUPLE_COPY_YBCTID makes allocation for ybctid. */
 		bool allocated_ybctid = (IsYugaByteEnabled() &&
 								 HEAPTUPLE_YBCTID(&ct->tuple));
 		if (allocated_ybctid)

@@ -181,7 +181,7 @@ doBindsForIdxDelete(YBCPgStatement stmt,
 static int32
 ybVectorTupleWrite(YbVectorBuildState *vectorstate, OffsetNumber attnum,
 				   Relation index, Datum value, bool isNull,
-				   ItemPointer tid, uint64_t *backfilltime, bool isinsert)
+				   Datum ybctid, uint64_t *backfilltime, bool isinsert)
 {
 	Datum vector;
 	if (!isNull)
@@ -191,13 +191,13 @@ ybVectorTupleWrite(YbVectorBuildState *vectorstate, OffsetNumber attnum,
 	Assert(RelationGetNumberOfAttributes(index) == 1);
 
 	if (isinsert)
-		YBCExecuteInsertIndex(index, &vector, &isNull, tid,
+		YBCExecuteInsertIndex(index, &vector, &isNull, ybctid,
 							  backfilltime /* backfill_write_time */,
 							  doBindsForIdxWrite, (void *) vectorstate);
 	else
 	{
 		Assert(!backfilltime);
-		YBCExecuteDeleteIndex(index, &vector, &isNull, YbItemPointerYbctid(tid),
+		YBCExecuteDeleteIndex(index, &vector, &isNull, ybctid,
 							  doBindsForIdxDelete, (void *) vectorstate);
 	}
 
@@ -211,9 +211,9 @@ ybVectorTupleWrite(YbVectorBuildState *vectorstate, OffsetNumber attnum,
 static int32
 ybvectorTupleDelete(YbVectorBuildState *vectorstate, OffsetNumber attnum,
 				 Relation index, Datum value, bool isNull,
-				 ItemPointer tid)
+				 Datum ybctid)
 {
-	return ybVectorTupleWrite(vectorstate, attnum, index, value, isNull, tid,
+	return ybVectorTupleWrite(vectorstate, attnum, index, value, isNull, ybctid,
 						   NULL /* backfilltime */, false /* isinsert */);
 }
 
@@ -224,10 +224,10 @@ ybvectorTupleDelete(YbVectorBuildState *vectorstate, OffsetNumber attnum,
 static int32
 ybVectorTupleInsert(YbVectorBuildState *vectorstate, OffsetNumber attnum,
 				 Relation index, Datum value, bool isNull,
-				 ItemPointer tid, uint64_t *backfilltime)
+				 Datum ybctid, uint64_t *backfilltime)
 {
 	return ybVectorTupleWrite(vectorstate, attnum, index, value, isNull,
-							  tid, backfilltime, true /* isinsert */);
+							  ybctid, backfilltime, true /* isinsert */);
 }
 
 /*
@@ -235,8 +235,8 @@ ybVectorTupleInsert(YbVectorBuildState *vectorstate, OffsetNumber attnum,
  * similar ybcinbuildCallback.
  */
 static void
-ybvectorBuildCallback(Relation index, ItemPointer tid, Datum *values,
-				   bool *isnull, bool tupleIsAlive, void *state)
+ybvectorBuildCallback(Relation index, Datum ybctid, Datum *values, bool *isnull,
+					  bool tupleIsAlive, void *state)
 {
 	YbVectorBuildState *buildstate = (YbVectorBuildState *) state;
 	MemoryContext oldCtx;
@@ -247,7 +247,7 @@ ybvectorBuildCallback(Relation index, ItemPointer tid, Datum *values,
 	 */
 	oldCtx = MemoryContextSwitchTo(buildstate->tmpCtx);
 	ybVectorTupleInsert(buildstate, 1, index, values[0], isnull[0],
-		tid, buildstate->backfilltime);
+		ybctid, buildstate->backfilltime);
 
 	buildstate->indtuples += 1;
 
@@ -305,9 +305,10 @@ ybvectorBuildCommon(Relation heap, Relation index, struct IndexInfo *indexInfo,
 	 * Do the heap scan.
 	 */
 	if (!bfinfo)
-		reltuples = table_index_build_scan(heap, index, indexInfo, true, true,
-									   ybvectorBuildCallback, (void *) &buildstate,
-									   NULL /* HeapScanDesc */);
+		reltuples = yb_table_index_build_scan(heap, index, indexInfo, true,
+											  ybvectorBuildCallback,
+											  (void *) &buildstate,
+											  NULL /* HeapScanDesc */);
 	else
 		reltuples = IndexBackfillHeapRangeScan(heap, index, indexInfo,
 											   ybvectorBuildCallback,
@@ -331,7 +332,7 @@ ybvectorBuildCommon(Relation heap, Relation index, struct IndexInfo *indexInfo,
  * Write code for both ybvectorinsert and ybvectordelete.
  */
 static void
-ybvectorWrite(Relation index, Datum *values, bool *isnull, ItemPointer heap_tid,
+ybvectorWrite(Relation index, Datum *values, bool *isnull, Datum ybctid,
 		   Relation heap, struct IndexInfo *indexInfo, bool isinsert)
 {
 	YbVectorBuildState   *vectorstate =
@@ -361,11 +362,11 @@ ybvectorWrite(Relation index, Datum *values, bool *isnull, ItemPointer heap_tid,
 	if (isinsert)
 		ybVectorTupleInsert(vectorstate, (OffsetNumber) (i + 1),
 							index, values[i], isnull[i],
-							heap_tid, NULL /* backfilltime */);
+							ybctid, NULL /* backfilltime */);
 	else
 		ybvectorTupleDelete(vectorstate, (OffsetNumber) (i + 1),
 							index, values[i], isnull[i],
-							heap_tid);
+							ybctid);
 
 	MemoryContextSwitchTo(oldCtx);
 	MemoryContextDelete(writeCtx);
@@ -393,11 +394,11 @@ ybvectorbulkdelete(IndexVacuumInfo *info, IndexBulkDeleteResult *stats,
 }
 
 bool
-ybvectorinsert(Relation index, Datum *values, bool *isnull, ItemPointer heap_tid,
+ybvectorinsert(Relation index, Datum *values, bool *isnull, Datum ybctid,
 			Relation heap, IndexUniqueCheck checkUnique,
 			struct IndexInfo *indexInfo, bool shared_insert)
 {
-	ybvectorWrite(index, values, isnull, heap_tid, heap, indexInfo,
+	ybvectorWrite(index, values, isnull, ybctid, heap, indexInfo,
 				  true /* isinsert */);
 
 	/* index cannot be unique */
@@ -408,9 +409,7 @@ void
 ybvectordelete(Relation index, Datum *values, bool *isnull, Datum ybctid,
 			Relation heap, struct IndexInfo *indexInfo)
 {
-	ItemPointerData tid;
-	YbItemPointerYbctid(&tid) = ybctid;
-	ybvectorWrite(index, values, isnull, &tid, heap, indexInfo,
+	ybvectorWrite(index, values, isnull, ybctid, heap, indexInfo,
 				  false /* isinsert */);
 }
 

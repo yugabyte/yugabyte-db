@@ -1156,7 +1156,7 @@ SPI_modifytuple(Relation rel, HeapTuple tuple, int natts, int *attnum,
 		 */
 		mtuple->t_data->t_ctid = tuple->t_data->t_ctid;
 		mtuple->t_self = tuple->t_self;
-		HEAPTUPLE_COPY_YBITEM(tuple, mtuple);
+		HEAPTUPLE_COPY_YBCTID(tuple, mtuple);
 		mtuple->t_tableOid = tuple->t_tableOid;
 	}
 	else

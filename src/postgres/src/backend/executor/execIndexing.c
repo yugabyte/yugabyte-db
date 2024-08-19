@@ -306,8 +306,6 @@ ExecInsertIndexTuples(ResultRelInfo *resultRelInfo,
 	bool		isnull[INDEX_MAX_KEYS];
 	bool		isYBRelation;
 
-	Assert(ItemPointerIsValid(tupleid));
-
 	/*
 	 * Get information from the result relation info structure.
 	 */
@@ -316,6 +314,11 @@ ExecInsertIndexTuples(ResultRelInfo *resultRelInfo,
 	indexInfoArray = resultRelInfo->ri_IndexRelationInfo;
 	heapRelation = resultRelInfo->ri_RelationDesc;
 	isYBRelation = IsYBRelation(heapRelation);
+
+	if (!isYBRelation)
+		Assert(ItemPointerIsValid(tupleid));
+	else
+		Assert(slot->tts_ybctid);
 
 	/* Sanity check: slot must belong to the same rel as the resultRelInfo. */
 	Assert(slot->tts_tableOid == RelationGetRelid(heapRelation));
@@ -441,6 +444,7 @@ ExecInsertIndexTuples(ResultRelInfo *resultRelInfo,
 						 values,	/* array of index Datums */
 						 isnull,	/* null flags */
 						 tupleid,	/* tid of heap tuple */
+						 slot->tts_ybctid,
 						 heapRelation,	/* heap relation */
 						 checkUnique,	/* type of uniqueness check to do */
 						 indexUnchanged,	/* UPDATE without logical change? */

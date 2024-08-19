@@ -2325,7 +2325,8 @@ YbDdlModeOptional YbGetDdlMode(
 				foreach(lcmd, stmt->cmds)
 				{
 					AlterTableCmd *cmd = (AlterTableCmd *) lfirst(lcmd);
-					if (IsA(cmd->def, Constraint) &&
+					if (cmd->def != NULL &&
+					    IsA(cmd->def, Constraint) &&
 						((Constraint *) cmd->def)->contype == CONSTR_FOREIGN)
 					{
 						is_version_increment = true;

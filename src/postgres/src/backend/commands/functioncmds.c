@@ -2354,6 +2354,7 @@ ExecuteCallStmt(CallStmt *stmt, ParamListInfo params, bool atomic, DestReceiver 
 
 		rettupdata.t_len = HeapTupleHeaderGetDatumLength(td);
 		ItemPointerSetInvalid(&(rettupdata.t_self));
+		HEAPTUPLE_YBCTID(&rettupdata) = 0;
 		rettupdata.t_tableOid = InvalidOid;
 		rettupdata.t_data = td;
 

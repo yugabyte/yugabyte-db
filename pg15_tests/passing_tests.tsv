@@ -22,6 +22,7 @@ JAVA	org.yb.pgsql.TestPgDepend#testForSuperfluousEntries
 JAVA	org.yb.pgsql.TestPgDepend#testSequenceDeletionWithCascade
 JAVA	org.yb.pgsql.TestPgDepend#testTableWithSequenceDeletion
 JAVA	org.yb.pgsql.TestPgDepend#testViewDeletionWithCascade
+JAVA	org.yb.pgsql.TestPgEstimatedDocdbResultWidth#testDocdbResultWidthEstimationArrays
 JAVA	org.yb.pgsql.TestPgExplainAnalyze
 JAVA	org.yb.pgsql.TestPgExplainAnalyzeColocated
 JAVA	org.yb.pgsql.TestPgExplainAnalyzeMetrics
@@ -74,9 +75,11 @@ JAVA	org.yb.pgsql.TestPgRegressJson
 JAVA	org.yb.pgsql.TestPgRegressLegacyColocation
 JAVA	org.yb.pgsql.TestPgRegressMatview
 JAVA	org.yb.pgsql.TestPgRegressMisc#testPgRegressMiscIndependent
+JAVA	org.yb.pgsql.TestPgRegressMisc#testPgRegressMiscSerial
 JAVA	org.yb.pgsql.TestPgRegressMisc#testPgRegressMiscSerial2
 JAVA	org.yb.pgsql.TestPgRegressMisc#testPgRegressMiscSerial3
 JAVA	org.yb.pgsql.TestPgRegressNonTxnCopy
+JAVA	org.yb.pgsql.TestPgRegressParallel
 JAVA	org.yb.pgsql.TestPgRegressPartitions#yb_partitions_tests
 JAVA	org.yb.pgsql.TestPgRegressPgAuth
 JAVA	org.yb.pgsql.TestPgRegressPgForeignData
@@ -493,13 +496,13 @@ pgwrapper_pg_libpq-test	PgLibPqTest.TablegroupCreationFailureWithRestart
 pgwrapper_pg_libpq-test	PgLibPqTest.TempTableMultiNodeNamespaceConflict
 pgwrapper_pg_libpq-test	PgLibPqTest.TempTableViewFileCountTest
 pgwrapper_pg_libpq-test	PgLibPqTest.TestConcurrentCounterReadCommitted
+pgwrapper_pg_libpq-test	PgLibPqTest.TestLWPgBackendKillAfterLWLockAcquire
 pgwrapper_pg_libpq-test	PgLibPqTest.TestOomScoreAdjPGBackend
 pgwrapper_pg_libpq-test	PgLibPqTest.TxnConflictsForTablegroupsOrdered
 pgwrapper_pg_libpq-test	PgLibPqTest.TxnConflictsForTablegroupsYbSeq
-pgwrapper_pg_libpq-test	PgLibPqTest.TestLWPgBackendKillAfterLWLockAcquire
 pgwrapper_pg_libpq-test	PgOidCollisionTest/PgOidCollisionTest.TablespaceOidCollision/0
-pgwrapper_pg_libpq-test	PgPostmasterExitTest.SignalIdleBackendOnPostmasterDeath
 pgwrapper_pg_libpq-test	PgPostmasterExitTest.SignalBackendOnPostmasterDeath
+pgwrapper_pg_libpq-test	PgPostmasterExitTest.SignalIdleBackendOnPostmasterDeath
 pgwrapper_pg_mini-test	PgMiniTest.AlterTableWithReplicaIdentity
 pgwrapper_pg_mini-test	PgMiniTest.BloomFilterBackwardScanTest
 pgwrapper_pg_mini-test	PgMiniTest.FollowerReads
@@ -556,6 +559,7 @@ pgwrapper_pg_tablet_split-test	PgTabletSplitTest/PgPartitioningTest.PgGatePartit
 pgwrapper_pg_tablet_split-test	PgTabletSplitTest/PgPartitioningVersionTest.ManualSplit/0
 pgwrapper_pg_tablet_split-test	PgTabletSplitTest/PgPartitioningVersionTest.UniqueIndexRowsPersistenceAfterManualSplit/1
 pgwrapper_pg_txn-test	PgTxnTest.ShowEffectiveYBIsolationLevel
+pgwrapper_pg_type-test	PgTypeTest.YbTypeDetailsMatch
 pgwrapper_pg_wait_on_conflict-test	*/PgWaitQueueRF1Test.TestDeadlockAcrossMultipleTablets/*
 pgwrapper_pg_wait_on_conflict-test	*/PgWaitQueueRF1Test.TestDetectorPreservesBlockerSubtxnInfo/*
 pgwrapper_pg_wait_on_conflict-test	*/PgWaitQueueRF1Test.TestResumingWaitersDoesntBlockTabletShutdown/*
