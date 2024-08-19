@@ -2547,6 +2547,7 @@ YbRunWithPrefetcherImpl(
 		return NULL;
 
 	YBCStopSysTablePrefetching();
+	YBCPgResetCatalogReadTime();
 
 	if (result && YBCStatusIsNotFound(result))
 		YbRaiseInvalidDBConnectionError();
