@@ -865,6 +865,8 @@
         "tabMigrations": "Migrations",
         "migrations": "Migrations",
         "migration": "Migration",
+        "previous": "Previous",
+        "nextStep": "Next: {{step}}",
         "sourceDatabase": "Source Database",
         "voyagerInstance": "Voyager Instance",
         "targetCluster": "Target Cluster",
