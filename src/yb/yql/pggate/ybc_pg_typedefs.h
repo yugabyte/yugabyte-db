@@ -196,10 +196,7 @@ typedef enum TxnPriorityRequirement {
   kHighestPriority
 } TxnPriorityRequirement;
 
-// API to read type information.
 const YBCPgTypeEntity *YBCPgFindTypeEntity(int type_oid);
-YBCPgDataType YBCPgGetType(const YBCPgTypeEntity *type_entity);
-bool YBCPgAllowForPrimaryKey(const YBCPgTypeEntity *type_entity);
 
 // PostgreSQL can represent text strings up to 1 GB minus a four-byte header.
 static const int64_t kYBCMaxPostgresTextSizeBytes = 1024ll * 1024 * 1024 - 4;

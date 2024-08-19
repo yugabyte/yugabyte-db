@@ -303,10 +303,7 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   static std::vector<MemTrackerPtr> ListTrackers();
 
   // Gets a shared_ptr to the "root" tracker, creating it if necessary.
-  static MemTrackerPtr GetRootTracker();
-
-  // Get the memory consumption from the "root" tracker, creating it if necessary.
-  static int64_t GetRootTrackerConsumption();
+  static const MemTrackerPtr& GetRootTracker();
 
   static uint64_t GetTrackedMemory();
 
@@ -476,12 +473,6 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   // 1. Must be called with a non-NULL parent, and
   // 2. Must be called with parent->child_trackers_lock_ held.
   MemTrackerPtr FindChildUnlocked(const std::string& id);
-
-  // Creates the root tracker.
-  static void CreateRootTracker();
-
-  // Tracks state to ensure that CreateRootTracker is only called once
-  static void InitRootTrackerOnce();
 
   const int64_t limit_;
   const int64_t soft_limit_;

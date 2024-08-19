@@ -99,9 +99,9 @@ const unsigned char* YBCGetLocalTserverUuid();
 // Get access to callbacks.
 const YBCPgCallbacks* YBCGetPgCallbacks();
 
-YBCStatus YBCGetPgggateCurrentAllocatedBytes(int64_t *consumption);
+int64_t YBCGetPgggateCurrentAllocatedBytes();
 
-YBCStatus YbGetActualHeapSizeBytes(int64_t *consumption);
+int64_t YBCGetActualHeapSizeBytes();
 
 // Call root MemTacker to consume the consumption bytes.
 // Return true if MemTracker exists (inited by pggate); otherwise false.

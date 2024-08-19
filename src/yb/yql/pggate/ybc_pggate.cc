@@ -592,34 +592,12 @@ const YBCPgTypeEntity *YBCPgFindTypeEntity(int type_oid) {
   return pgapi->FindTypeEntity(type_oid);
 }
 
-YBCPgDataType YBCPgGetType(const YBCPgTypeEntity *type_entity) {
-  if (type_entity) {
-    return type_entity->yb_type;
-  }
-  return YB_YQL_DATA_TYPE_UNKNOWN_DATA;
+int64_t YBCGetPgggateCurrentAllocatedBytes() {
+  return GetTCMallocCurrentAllocatedBytes();
 }
 
-bool YBCPgAllowForPrimaryKey(const YBCPgTypeEntity *type_entity) {
-  if (type_entity) {
-    return type_entity->allow_for_primary_key;
-  }
-  return false;
-}
-
-YBCStatus YBCGetPgggateCurrentAllocatedBytes(int64_t *consumption) {
-  *consumption = GetTCMallocCurrentAllocatedBytes();
-  return YBCStatusOK();
-}
-
-YBCStatus YbGetActualHeapSizeBytes(int64_t *consumption) {
-#ifdef YB_TCMALLOC_ENABLED
-    // Use GetRootMemTrackerConsumption instead of directly accessing TCMalloc to avoid excess
-    // calls to TCMalloc on every memory allocation.
-    *consumption = pgapi ? pgapi->GetRootMemTrackerConsumption() : 0;
-#else
-    *consumption = 0;
-#endif
-    return YBCStatusOK();
+int64_t YBCGetActualHeapSizeBytes() {
+  return pgapi ? pgapi->GetRootMemTracker().consumption() : 0;
 }
 
 bool YBCTryMemConsume(int64_t bytes) {
@@ -854,11 +832,6 @@ YBCStatus YBCPgInvalidateTableCacheByTableId(const char *table_id) {
   const PgObjectId pg_object_id(table_id_str);
   pgapi->InvalidateTableCache(pg_object_id);
   return YBCStatusOK();
-}
-
-void YBCPgInvalidateTableCacheByRelfileNodeId(const YBCPgOid database_oid,
-                                              const YBCPgOid table_oid) {
-  pgapi->InvalidateTableCache(PgObjectId(database_oid, table_oid));
 }
 
 // Tablegroup Operations ---------------------------------------------------------------------------
