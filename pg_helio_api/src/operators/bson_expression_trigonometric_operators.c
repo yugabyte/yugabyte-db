@@ -23,24 +23,8 @@
 /* --------------------------------------------------------- */
 /* Type definitions */
 /* --------------------------------------------------------- */
-typedef enum TrigOperatorType
-{
-	TrigOperatorType_DegreesToRadians = 0,
-	TrigOperatorType_RadiansToDegrees = 1,
-	TrigOperatorType_Sin = 2,
-	TrigOperatorType_Cos = 3,
-	TrigOperatorType_Tan = 4,
-	TrigOperatorType_Sinh = 5,
-	TrigOperatorType_Cosh = 6,
-	TrigOperatorType_Tanh = 7,
-	TrigOperatorType_Asin = 8,
-	TrigOperatorType_Acos = 9,
-	TrigOperatorType_Atan = 10,
-	TrigOperatorType_Atan2 = 11,
-	TrigOperatorType_Asinh = 12,
-	TrigOperatorType_Acosh = 14,
-	TrigOperatorType_Atanh = 15,
-} TrigOperatorType;
+typedef void (*ProcessTrigSingleOperand)(const bson_value_t *currentValue,
+										 bson_value_t *result);
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
@@ -49,35 +33,35 @@ static void HandlePreParsedTrigOperatorSingleOperand(pgbson *doc,
 													 void *arguments,
 													 ExpressionResult *expressionResult,
 													 const char *operatorName,
-													 TrigOperatorType operator);
+													 ProcessTrigSingleOperand
+													 processOperatorFunc);
 static void ParseTrigOperatorSingleOperand(const bson_value_t *argument,
 										   AggregationExpressionData *data,
 										   const char *operatorName,
-										   TrigOperatorType operatorType,
-										   ParseAggregationExpressionContext *parseContext);
-static void ProcessDegreesToRadiansOperator(const bson_value_t *currentValue,
-											bson_value_t *result);
-static void ProcessRadiansToDegreesOperator(const bson_value_t *currentValue,
-											bson_value_t *result);
-static void ProcessTrigOperatorSingleOperand(bson_value_t *currentValue,
-											 bson_value_t *result,
-											 const char *operatorName, TrigOperatorType
-											 operatorType);
-static void ProcessSinOperator(const bson_value_t *currentValue, bson_value_t *result);
-static void ProcessCosOperator(const bson_value_t *currentValue, bson_value_t *result);
-static void ProcessTanOperator(const bson_value_t *currentValue, bson_value_t *result);
-static void ProcessSinhOperator(const bson_value_t *currentValue, bson_value_t *result);
-static void ProcessCoshOperator(const bson_value_t *currentValue, bson_value_t *result);
-static void ProcessTanhOperator(const bson_value_t *currentValue, bson_value_t *result);
-static void ProcessAsinOperator(const bson_value_t *currentValue, bson_value_t *result);
-static void ProcessAcosOperator(const bson_value_t *currentValue, bson_value_t *result);
-static void ProcessAtanOperator(const bson_value_t *currentValue, bson_value_t *result);
-static void ProcessAtan2Operator(const bson_value_t *currentValue, const
-								 bson_value_t *currentValue2, bson_value_t *result);
-static void ProcessAsinhOperator(const bson_value_t *currentValue, bson_value_t *result);
-static void ProcessAcoshOperator(const bson_value_t *currentValue, bson_value_t *result);
-static void ProcessAtanhOperator(const bson_value_t *currentValue, bson_value_t *result);
-
+										   ParseAggregationExpressionContext *parseContext,
+										   ProcessTrigSingleOperand processOperatorFunc);
+static void ProcessDollarDegreesToRadians(const bson_value_t *currentValue,
+										  bson_value_t *result);
+static void ProcessDollarRadiansToDegrees(const bson_value_t *currentValue,
+										  bson_value_t *result);
+static void ProcessDollarSin(const bson_value_t *currentValue, bson_value_t *result);
+static void ProcessDollarCos(const bson_value_t *currentValue, bson_value_t *result);
+static void ProcessDollarTan(const bson_value_t *currentValue, bson_value_t *result);
+static void ProcessDollarSinh(const bson_value_t *currentValue, bson_value_t *result);
+static void ProcessDollarCosh(const bson_value_t *currentValue, bson_value_t *result);
+static void ProcessDollarTanh(const bson_value_t *currentValue, bson_value_t *result);
+static void ProcessDollarAsin(const bson_value_t *currentValue, bson_value_t *result);
+static void ProcessDollarAcos(const bson_value_t *currentValue, bson_value_t *result);
+static void ProcessDollarAtan(const bson_value_t *currentValue, bson_value_t *result);
+static void ProcessDollarAtan2(const bson_value_t *currentValue, const
+							   bson_value_t *currentValue2, bson_value_t *result);
+static void ProcessDollarAsinh(const bson_value_t *currentValue, bson_value_t *result);
+static void ProcessDollarAcosh(const bson_value_t *currentValue, bson_value_t *result);
+static void ProcessDollarAtanh(const bson_value_t *currentValue, bson_value_t *result);
+static void ApplyTrigOperator(bson_value_t *currentValue,
+							  bson_value_t *result,
+							  const char *operatorName, ProcessTrigSingleOperand
+							  processOperatorFunc);
 
 /*
  * Parses an $degreesToRadians expression and sets the parsed data in the data argument.
@@ -87,8 +71,8 @@ void
 ParseDollarDegreesToRadians(const bson_value_t *argument, AggregationExpressionData *data,
 							ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorSingleOperand(argument, data, "$degreesToRadians",
-								   TrigOperatorType_DegreesToRadians, parseContext);
+	ParseTrigOperatorSingleOperand(argument, data, "$degreesToRadians", parseContext,
+								   ProcessDollarDegreesToRadians);
 }
 
 
@@ -103,7 +87,7 @@ HandlePreParsedDollarDegreesToRadians(pgbson *doc, void *arguments,
 {
 	HandlePreParsedTrigOperatorSingleOperand(doc, arguments, expressionResult,
 											 "$degreesToRadians",
-											 TrigOperatorType_DegreesToRadians);
+											 ProcessDollarDegreesToRadians);
 }
 
 
@@ -115,8 +99,8 @@ void
 ParseDollarRadiansToDegrees(const bson_value_t *argument, AggregationExpressionData *data,
 							ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorSingleOperand(argument, data, "$radiansToDegrees",
-								   TrigOperatorType_RadiansToDegrees, parseContext);
+	ParseTrigOperatorSingleOperand(argument, data, "$radiansToDegrees", parseContext,
+								   ProcessDollarRadiansToDegrees);
 }
 
 
@@ -131,7 +115,7 @@ HandlePreParsedDollarRadiansToDegrees(pgbson *doc, void *arguments,
 {
 	HandlePreParsedTrigOperatorSingleOperand(doc, arguments, expressionResult,
 											 "$radiansToDegrees",
-											 TrigOperatorType_RadiansToDegrees);
+											 ProcessDollarRadiansToDegrees);
 }
 
 
@@ -143,8 +127,8 @@ void
 ParseDollarSin(const bson_value_t *argument, AggregationExpressionData *data,
 			   ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorSingleOperand(argument, data, "$sin", TrigOperatorType_Sin,
-								   parseContext);
+	ParseTrigOperatorSingleOperand(argument, data, "$sin",
+								   parseContext, ProcessDollarSin);
 }
 
 
@@ -157,7 +141,7 @@ void
 HandlePreParsedDollarSin(pgbson *doc, void *arguments, ExpressionResult *expressionResult)
 {
 	HandlePreParsedTrigOperatorSingleOperand(doc, arguments, expressionResult, "$sin",
-											 TrigOperatorType_Sin);
+											 ProcessDollarSin);
 }
 
 
@@ -169,8 +153,8 @@ void
 ParseDollarCos(const bson_value_t *argument, AggregationExpressionData *data,
 			   ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorSingleOperand(argument, data, "$cos", TrigOperatorType_Cos,
-								   parseContext);
+	ParseTrigOperatorSingleOperand(argument, data, "$cos", parseContext,
+								   ProcessDollarCos);
 }
 
 
@@ -183,7 +167,7 @@ void
 HandlePreParsedDollarCos(pgbson *doc, void *arguments, ExpressionResult *expressionResult)
 {
 	HandlePreParsedTrigOperatorSingleOperand(doc, arguments, expressionResult, "$cos",
-											 TrigOperatorType_Cos);
+											 ProcessDollarCos);
 }
 
 
@@ -195,8 +179,8 @@ void
 ParseDollarTan(const bson_value_t *argument, AggregationExpressionData *data,
 			   ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorSingleOperand(argument, data, "$tan", TrigOperatorType_Tan,
-								   parseContext);
+	ParseTrigOperatorSingleOperand(argument, data, "$tan",
+								   parseContext, ProcessDollarTan);
 }
 
 
@@ -209,7 +193,7 @@ void
 HandlePreParsedDollarTan(pgbson *doc, void *arguments, ExpressionResult *expressionResult)
 {
 	HandlePreParsedTrigOperatorSingleOperand(doc, arguments, expressionResult, "$tan",
-											 TrigOperatorType_Tan);
+											 ProcessDollarTan);
 }
 
 
@@ -221,8 +205,8 @@ void
 ParseDollarSinh(const bson_value_t *argument, AggregationExpressionData *data,
 				ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorSingleOperand(argument, data, "$sinh", TrigOperatorType_Sinh,
-								   parseContext);
+	ParseTrigOperatorSingleOperand(argument, data, "$sinh",
+								   parseContext, ProcessDollarSinh);
 }
 
 
@@ -236,7 +220,7 @@ HandlePreParsedDollarSinh(pgbson *doc, void *arguments,
 						  ExpressionResult *expressionResult)
 {
 	HandlePreParsedTrigOperatorSingleOperand(doc, arguments, expressionResult, "$sinh",
-											 TrigOperatorType_Sinh);
+											 ProcessDollarSinh);
 }
 
 
@@ -248,8 +232,8 @@ void
 ParseDollarCosh(const bson_value_t *argument, AggregationExpressionData *data,
 				ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorSingleOperand(argument, data, "$cosh", TrigOperatorType_Cosh,
-								   parseContext);
+	ParseTrigOperatorSingleOperand(argument, data, "$cosh", parseContext,
+								   ProcessDollarCosh);
 }
 
 
@@ -263,7 +247,7 @@ HandlePreParsedDollarCosh(pgbson *doc, void *arguments,
 						  ExpressionResult *expressionResult)
 {
 	HandlePreParsedTrigOperatorSingleOperand(doc, arguments, expressionResult, "$cosh",
-											 TrigOperatorType_Cosh);
+											 ProcessDollarCosh);
 }
 
 
@@ -275,8 +259,8 @@ void
 ParseDollarTanh(const bson_value_t *argument, AggregationExpressionData *data,
 				ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorSingleOperand(argument, data, "$tanh", TrigOperatorType_Tanh,
-								   parseContext);
+	ParseTrigOperatorSingleOperand(argument, data, "$tanh", parseContext,
+								   ProcessDollarTanh);
 }
 
 
@@ -290,7 +274,7 @@ HandlePreParsedDollarTanh(pgbson *doc, void *arguments,
 						  ExpressionResult *expressionResult)
 {
 	HandlePreParsedTrigOperatorSingleOperand(doc, arguments, expressionResult, "$tanh",
-											 TrigOperatorType_Tanh);
+											 ProcessDollarTanh);
 }
 
 
@@ -302,8 +286,8 @@ void
 ParseDollarAsin(const bson_value_t *argument, AggregationExpressionData *data,
 				ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorSingleOperand(argument, data, "$asin", TrigOperatorType_Asin,
-								   parseContext);
+	ParseTrigOperatorSingleOperand(argument, data, "$asin",
+								   parseContext, ProcessDollarAsin);
 }
 
 
@@ -317,7 +301,7 @@ HandlePreParsedDollarAsin(pgbson *doc, void *arguments,
 						  ExpressionResult *expressionResult)
 {
 	HandlePreParsedTrigOperatorSingleOperand(doc, arguments, expressionResult, "$asin",
-											 TrigOperatorType_Asin);
+											 ProcessDollarAsin);
 }
 
 
@@ -329,8 +313,8 @@ void
 ParseDollarAcos(const bson_value_t *argument, AggregationExpressionData *data,
 				ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorSingleOperand(argument, data, "$acos", TrigOperatorType_Acos,
-								   parseContext);
+	ParseTrigOperatorSingleOperand(argument, data, "$acos",
+								   parseContext, ProcessDollarAcos);
 }
 
 
@@ -344,7 +328,7 @@ HandlePreParsedDollarAcos(pgbson *doc, void *arguments,
 						  ExpressionResult *expressionResult)
 {
 	HandlePreParsedTrigOperatorSingleOperand(doc, arguments, expressionResult, "$acos",
-											 TrigOperatorType_Acos);
+											 ProcessDollarAcos);
 }
 
 
@@ -356,8 +340,8 @@ void
 ParseDollarAtan(const bson_value_t *argument, AggregationExpressionData *data,
 				ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorSingleOperand(argument, data, "$atan", TrigOperatorType_Atan,
-								   parseContext);
+	ParseTrigOperatorSingleOperand(argument, data, "$atan",
+								   parseContext, ProcessDollarAtan);
 }
 
 
@@ -371,7 +355,7 @@ HandlePreParsedDollarAtan(pgbson *doc, void *arguments,
 						  ExpressionResult *expressionResult)
 {
 	HandlePreParsedTrigOperatorSingleOperand(doc, arguments, expressionResult, "$atan",
-											 TrigOperatorType_Atan);
+											 ProcessDollarAtan);
 }
 
 
@@ -398,7 +382,7 @@ ParseDollarAtan2(const bson_value_t *argument, AggregationExpressionData *data,
 	 * and free the arguments list as it won't be needed anymore. */
 	if (IsAggregationExpressionConstant(first) && IsAggregationExpressionConstant(second))
 	{
-		ProcessAtan2Operator(&first->value, &second->value, &data->value);
+		ProcessDollarAtan2(&first->value, &second->value, &data->value);
 		data->kind = AggregationExpressionKind_Constant;
 		list_free_deep(arguments);
 	}
@@ -434,7 +418,7 @@ HandlePreParsedDollarAtan2(pgbson *doc, void *arguments,
 	bson_value_t secondValue = childResult.value;
 
 	bson_value_t result = { 0 };
-	ProcessAtan2Operator(&firstValue, &secondValue, &result);
+	ProcessDollarAtan2(&firstValue, &secondValue, &result);
 	ExpressionResultSetValue(expressionResult, &result);
 }
 
@@ -447,8 +431,8 @@ void
 ParseDollarAsinh(const bson_value_t *argument, AggregationExpressionData *data,
 				 ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorSingleOperand(argument, data, "$asinh", TrigOperatorType_Asinh,
-								   parseContext);
+	ParseTrigOperatorSingleOperand(argument, data, "$asinh",
+								   parseContext, ProcessDollarAsinh);
 }
 
 
@@ -462,7 +446,7 @@ HandlePreParsedDollarAsinh(pgbson *doc, void *arguments,
 						   ExpressionResult *expressionResult)
 {
 	HandlePreParsedTrigOperatorSingleOperand(doc, arguments, expressionResult, "$asinh",
-											 TrigOperatorType_Asinh);
+											 ProcessDollarAsinh);
 }
 
 
@@ -474,8 +458,8 @@ void
 ParseDollarAcosh(const bson_value_t *argument, AggregationExpressionData *data,
 				 ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorSingleOperand(argument, data, "$acosh", TrigOperatorType_Acosh,
-								   parseContext);
+	ParseTrigOperatorSingleOperand(argument, data, "$acosh",
+								   parseContext, ProcessDollarAcosh);
 }
 
 
@@ -489,7 +473,7 @@ HandlePreParsedDollarAcosh(pgbson *doc, void *arguments,
 						   ExpressionResult *expressionResult)
 {
 	HandlePreParsedTrigOperatorSingleOperand(doc, arguments, expressionResult, "$acosh",
-											 TrigOperatorType_Acosh);
+											 ProcessDollarAcosh);
 }
 
 
@@ -501,8 +485,8 @@ void
 ParseDollarAtanh(const bson_value_t *argument, AggregationExpressionData *data,
 				 ParseAggregationExpressionContext *parseContext)
 {
-	ParseTrigOperatorSingleOperand(argument, data, "$atanh", TrigOperatorType_Atanh,
-								   parseContext);
+	ParseTrigOperatorSingleOperand(argument, data, "$atanh",
+								   parseContext, ProcessDollarAtanh);
 }
 
 
@@ -516,7 +500,7 @@ HandlePreParsedDollarAtanh(pgbson *doc, void *arguments,
 						   ExpressionResult *expressionResult)
 {
 	HandlePreParsedTrigOperatorSingleOperand(doc, arguments, expressionResult, "$atanh",
-											 TrigOperatorType_Atanh);
+											 ProcessDollarAtanh);
 }
 
 
@@ -528,7 +512,7 @@ HandlePreParsedTrigOperatorSingleOperand(pgbson *doc,
 										 void *arguments,
 										 ExpressionResult *expressionResult,
 										 const char *operatorName,
-										 TrigOperatorType operatorType)
+										 ProcessTrigSingleOperand processOperatorFunc)
 {
 	AggregationExpressionData *argument = (AggregationExpressionData *) arguments;
 
@@ -539,7 +523,7 @@ HandlePreParsedTrigOperatorSingleOperand(pgbson *doc,
 	bson_value_t currentValue = childResult.value;
 
 	bson_value_t result = { 0 };
-	ProcessTrigOperatorSingleOperand(&currentValue, &result, operatorName, operatorType);
+	ApplyTrigOperator(&currentValue, &result, operatorName, processOperatorFunc);
 
 	ExpressionResultSetValue(expressionResult, &result);
 }
@@ -549,8 +533,8 @@ static void
 ParseTrigOperatorSingleOperand(const bson_value_t *argument,
 							   AggregationExpressionData *data,
 							   const char *operatorName,
-							   TrigOperatorType operatorType,
-							   ParseAggregationExpressionContext *parseContext)
+							   ParseAggregationExpressionContext *parseContext,
+							   ProcessTrigSingleOperand processOperatorFunc)
 {
 	int numOfRequiredArgs = 1;
 	AggregationExpressionData *parsedData = ParseFixedArgumentsForExpression(argument,
@@ -566,8 +550,8 @@ ParseTrigOperatorSingleOperand(const bson_value_t *argument,
 	 * and free the argument as it won't be needed anymore. */
 	if (IsAggregationExpressionConstant(parsedData))
 	{
-		ProcessTrigOperatorSingleOperand(&parsedData->value, &data->value, operatorName,
-										 operatorType);
+		ApplyTrigOperator(&parsedData->value, &data->value, operatorName,
+						  processOperatorFunc);
 		data->kind = AggregationExpressionKind_Constant;
 		pfree(parsedData);
 	}
@@ -580,10 +564,10 @@ ParseTrigOperatorSingleOperand(const bson_value_t *argument,
 
 /* Function that validates the $sin argument and sets the sine value to the result. */
 static void
-ProcessTrigOperatorSingleOperand(bson_value_t *currentValue,
-								 bson_value_t *result,
-								 const char *operatorName,
-								 TrigOperatorType operatorType)
+ApplyTrigOperator(bson_value_t *currentValue,
+				  bson_value_t *result,
+				  const char *operatorName,
+				  ProcessTrigSingleOperand processOperatorFunc)
 {
 	if (IsExpressionResultNullOrUndefined(currentValue))
 	{
@@ -599,105 +583,13 @@ ProcessTrigOperatorSingleOperand(bson_value_t *currentValue,
 							BsonTypeName(currentValue->value_type))));
 	}
 
-	switch (operatorType)
-	{
-		case TrigOperatorType_DegreesToRadians:
-		{
-			ProcessDegreesToRadiansOperator(currentValue, result);
-			break;
-		}
-
-		case TrigOperatorType_RadiansToDegrees:
-		{
-			ProcessRadiansToDegreesOperator(currentValue, result);
-			break;
-		}
-
-		case TrigOperatorType_Sin:
-		{
-			ProcessSinOperator(currentValue, result);
-			break;
-		}
-
-		case TrigOperatorType_Cos:
-		{
-			ProcessCosOperator(currentValue, result);
-			break;
-		}
-
-		case TrigOperatorType_Tan:
-		{
-			ProcessTanOperator(currentValue, result);
-			break;
-		}
-
-		case TrigOperatorType_Sinh:
-		{
-			ProcessSinhOperator(currentValue, result);
-			break;
-		}
-
-		case TrigOperatorType_Cosh:
-		{
-			ProcessCoshOperator(currentValue, result);
-			break;
-		}
-
-		case TrigOperatorType_Tanh:
-		{
-			ProcessTanhOperator(currentValue, result);
-			break;
-		}
-
-		case TrigOperatorType_Asin:
-		{
-			ProcessAsinOperator(currentValue, result);
-			break;
-		}
-
-		case TrigOperatorType_Acos:
-		{
-			ProcessAcosOperator(currentValue, result);
-			break;
-		}
-
-		case TrigOperatorType_Atan:
-		{
-			ProcessAtanOperator(currentValue, result);
-			break;
-		}
-
-		case TrigOperatorType_Asinh:
-		{
-			ProcessAsinhOperator(currentValue, result);
-			break;
-		}
-
-		case TrigOperatorType_Acosh:
-		{
-			ProcessAcoshOperator(currentValue, result);
-			break;
-		}
-
-		case TrigOperatorType_Atanh:
-		{
-			ProcessAtanhOperator(currentValue, result);
-			break;
-		}
-
-		default:
-		{
-			ereport(ERROR, (errmsg("Invalid trigonometry aggregation operator %d",
-								   operatorType)));
-			break;
-		}
-	}
+	processOperatorFunc(currentValue, result);
 }
 
 
 /* Function that validates the $degreesToRadians argument and sets the result. */
 static void
-ProcessDegreesToRadiansOperator(const bson_value_t *currentValue, bson_value_t *result)
+ProcessDollarDegreesToRadians(const bson_value_t *currentValue, bson_value_t *result)
 {
 	bson_value_t pi = { .value_type = BSON_TYPE_DOUBLE, .value.v_double = M_PI };
 	bson_value_t factor = { .value_type = BSON_TYPE_DOUBLE, .value.v_double = 180.0 };
@@ -727,7 +619,7 @@ ProcessDegreesToRadiansOperator(const bson_value_t *currentValue, bson_value_t *
 
 /* Function that validates the $radiansToDegrees argument and sets the result. */
 static void
-ProcessRadiansToDegreesOperator(const bson_value_t *currentValue, bson_value_t *result)
+ProcessDollarRadiansToDegrees(const bson_value_t *currentValue, bson_value_t *result)
 {
 	bson_value_t pi = { .value_type = BSON_TYPE_DOUBLE, .value.v_double = M_PI };
 	bson_value_t factor = { .value_type = BSON_TYPE_DOUBLE, .value.v_double = 180.0 };
@@ -757,7 +649,7 @@ ProcessRadiansToDegreesOperator(const bson_value_t *currentValue, bson_value_t *
 
 /* Function that validates the $sin argument and sets the sine value to the result. */
 static void
-ProcessSinOperator(const bson_value_t *currentValue, bson_value_t *result)
+ProcessDollarSin(const bson_value_t *currentValue, bson_value_t *result)
 {
 	if (IsBsonValueInfinity(currentValue))
 	{
@@ -781,7 +673,7 @@ ProcessSinOperator(const bson_value_t *currentValue, bson_value_t *result)
 
 /* Function that validates the $cos argument and sets the cosine value to the result. */
 static void
-ProcessCosOperator(const bson_value_t *currentValue, bson_value_t *result)
+ProcessDollarCos(const bson_value_t *currentValue, bson_value_t *result)
 {
 	if (IsBsonValueInfinity(currentValue))
 	{
@@ -805,7 +697,7 @@ ProcessCosOperator(const bson_value_t *currentValue, bson_value_t *result)
 
 /* Function that validates the $tan argument and sets the tangent value to the result. */
 static void
-ProcessTanOperator(const bson_value_t *currentValue, bson_value_t *result)
+ProcessDollarTan(const bson_value_t *currentValue, bson_value_t *result)
 {
 	if (IsBsonValueInfinity(currentValue))
 	{
@@ -829,7 +721,7 @@ ProcessTanOperator(const bson_value_t *currentValue, bson_value_t *result)
 
 /* Function that validates the $sinh argument and sets the hyperbolic sine value to the result. */
 static void
-ProcessSinhOperator(const bson_value_t *currentValue, bson_value_t *result)
+ProcessDollarSinh(const bson_value_t *currentValue, bson_value_t *result)
 {
 	if (currentValue->value_type == BSON_TYPE_DECIMAL128)
 	{
@@ -845,7 +737,7 @@ ProcessSinhOperator(const bson_value_t *currentValue, bson_value_t *result)
 
 /* Function that validates the $cosh argument and sets the hyperbolic cosine value to the result. */
 static void
-ProcessCoshOperator(const bson_value_t *currentValue, bson_value_t *result)
+ProcessDollarCosh(const bson_value_t *currentValue, bson_value_t *result)
 {
 	if (currentValue->value_type == BSON_TYPE_DECIMAL128)
 	{
@@ -861,7 +753,7 @@ ProcessCoshOperator(const bson_value_t *currentValue, bson_value_t *result)
 
 /* Function that validates the $tanh argument and sets the hyperbolic tangent value to the result. */
 static void
-ProcessTanhOperator(const bson_value_t *currentValue, bson_value_t *result)
+ProcessDollarTanh(const bson_value_t *currentValue, bson_value_t *result)
 {
 	if (currentValue->value_type == BSON_TYPE_DECIMAL128)
 	{
@@ -877,7 +769,7 @@ ProcessTanhOperator(const bson_value_t *currentValue, bson_value_t *result)
 
 /* Function that validates the $asin argument and sets the arcsine value to the result. */
 static void
-ProcessAsinOperator(const bson_value_t *currentValue, bson_value_t *result)
+ProcessDollarAsin(const bson_value_t *currentValue, bson_value_t *result)
 {
 	if (BsonValueAsDouble(currentValue) < -1.0 || BsonValueAsDouble(currentValue) > 1.0)
 	{
@@ -901,7 +793,7 @@ ProcessAsinOperator(const bson_value_t *currentValue, bson_value_t *result)
 
 /* Function that validates the $acos argument and sets the arccosine value to the result. */
 static void
-ProcessAcosOperator(const bson_value_t *currentValue, bson_value_t *result)
+ProcessDollarAcos(const bson_value_t *currentValue, bson_value_t *result)
 {
 	if (BsonValueAsDouble(currentValue) < -1.0 || BsonValueAsDouble(currentValue) > 1.0)
 	{
@@ -925,7 +817,7 @@ ProcessAcosOperator(const bson_value_t *currentValue, bson_value_t *result)
 
 /* Function that validates the $atan argument and sets the arctangent value to the result. */
 static void
-ProcessAtanOperator(const bson_value_t *currentValue, bson_value_t *result)
+ProcessDollarAtan(const bson_value_t *currentValue, bson_value_t *result)
 {
 	if (currentValue->value_type == BSON_TYPE_DECIMAL128)
 	{
@@ -941,8 +833,8 @@ ProcessAtanOperator(const bson_value_t *currentValue, bson_value_t *result)
 
 /* Function that validates the $atan2 argument and sets the hyperbolic arctan2 value to the result. */
 static void
-ProcessAtan2Operator(const bson_value_t *firstValue, const bson_value_t *secondValue,
-					 bson_value_t *result)
+ProcessDollarAtan2(const bson_value_t *firstValue, const bson_value_t *secondValue,
+				   bson_value_t *result)
 {
 	if (IsExpressionResultNullOrUndefined(firstValue) ||
 		IsExpressionResultNullOrUndefined(secondValue))
@@ -994,7 +886,7 @@ ProcessAtan2Operator(const bson_value_t *firstValue, const bson_value_t *secondV
 
 /* Function that validates the $asinh argument and sets the arctangent value to the result. */
 static void
-ProcessAsinhOperator(const bson_value_t *currentValue, bson_value_t *result)
+ProcessDollarAsinh(const bson_value_t *currentValue, bson_value_t *result)
 {
 	if (currentValue->value_type == BSON_TYPE_DECIMAL128)
 	{
@@ -1010,7 +902,7 @@ ProcessAsinhOperator(const bson_value_t *currentValue, bson_value_t *result)
 
 /* Function that validates the $acosh argument and sets the arctangent value to the result. */
 static void
-ProcessAcoshOperator(const bson_value_t *currentValue, bson_value_t *result)
+ProcessDollarAcosh(const bson_value_t *currentValue, bson_value_t *result)
 {
 	if (BsonValueAsDouble(currentValue) < 1.0)
 	{
@@ -1034,7 +926,7 @@ ProcessAcoshOperator(const bson_value_t *currentValue, bson_value_t *result)
 
 /* Function that validates the $atanh argument and sets the arctangent value to the result. */
 static void
-ProcessAtanhOperator(const bson_value_t *currentValue, bson_value_t *result)
+ProcessDollarAtanh(const bson_value_t *currentValue, bson_value_t *result)
 {
 	if (BsonValueAsDouble(currentValue) < -1.0 || BsonValueAsDouble(currentValue) > 1.0)
 	{

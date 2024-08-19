@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/bson/bson_expression_arithmetic_operators.c
+ * src/operators/bson_expression_arithmetic_operators.c
  *
  * Arithmetic Operator expression implementations of BSON.
  *
@@ -22,6 +22,13 @@
 /* --------------------------------------------------------- */
 /* Type definitions */
 /* --------------------------------------------------------- */
+typedef void (*ProcessArithmeticSingleOperand)(const bson_value_t *currentValue,
+											   bson_value_t *result);
+typedef void (*ProcessArithmeticDualOperands)(void *state, bson_value_t *result);
+typedef bool (*ProcessArithmeticVariableOperands)(const bson_value_t *currentValue,
+												  void *state,
+												  bson_value_t *result, bool
+												  isFieldPathExpression);
 
 /* State for $add operator */
 typedef struct DollarAddState
@@ -43,42 +50,70 @@ typedef enum RoundOperation
 /* --------------------------------------------------------- */
 /* Forward declaration */
 /* --------------------------------------------------------- */
+static void ParseArithmeticSingleOperand(const bson_value_t *argument,
+										 AggregationExpressionData *data, const
+										 char *operatorName,
+										 ProcessArithmeticSingleOperand
+										 processOperatorFunc,
+										 ParseAggregationExpressionContext *context);
+static void ParseArithmeticDualOperands(const bson_value_t *argument,
+										AggregationExpressionData *data, const
+										char *operatorName,
+										ProcessArithmeticDualOperands
+										processArithmeticOperatorFunc,
+										ParseAggregationExpressionContext *context);
+static void ParseArithmeticRangeOperands(const bson_value_t *argument,
+										 AggregationExpressionData *data, const
+										 char *operatorName,
+										 ProcessArithmeticDualOperands processOperatorFunc,
+										 ParseAggregationExpressionContext *context);
+static void ParseArithmeticVariableOperands(const bson_value_t *argument,
+											void *state,
+											AggregationExpressionData *data,
+											ProcessArithmeticVariableOperands
+											processOperatorFunc,
+											ParseAggregationExpressionContext *context);
+static void HandlePreParsedArithmeticSingleOperand(pgbson *doc, void *arguments,
+												   ExpressionResult *
+												   expressionResult,
+												   ProcessArithmeticSingleOperand
+												   processOperatorFunc);
+static void HandlePreParsedArithmeticDualOperands(pgbson *doc, void *arguments,
+												  ExpressionResult *
+												  expressionResult,
+												  ProcessArithmeticDualOperands
+												  processOperatorFunc);
+static void HandlePreParsedArithmeticVariableOperands(pgbson *doc, void *arguments,
+													  void *state,
+													  bson_value_t *result,
+													  ExpressionResult *expressionResult,
+													  ProcessArithmeticVariableOperands
+													  processOperatorFunc);
+static bool ProcessDollarAdd(const bson_value_t *currentElement, void *state,
+							 bson_value_t *result,
+							 bool isFieldPathExpression);
+static bool ProcessDollarMultiply(const bson_value_t *currentElement, void *state,
+								  bson_value_t *result, bool
+								  isFieldPathExpression);
+static void ProcessDollarSubtract(void *state, bson_value_t *result);
+static void ProcessDollarLog(void *state, bson_value_t *result);
+static void ProcessDollarPow(void *state, bson_value_t *result);
+static void ProcessDollarMod(void *state, bson_value_t *result);
+static void ProcessDollarDivide(void *state, bson_value_t *result);
+static void ProcessDollarRound(void *state, bson_value_t *result);
+static void ProcessDollarTrunc(void *state, bson_value_t *result);
+static void ProcessDollarCeil(const bson_value_t *currentValue, bson_value_t *result);
+static void ProcessDollarFloor(const bson_value_t *currentValue, bson_value_t *result);
+static void ProcessDollarExp(const bson_value_t *currentValue, bson_value_t *result);
+static void ProcessDollarSqrt(const bson_value_t *currentValue, bson_value_t *result);
+static void ProcessDollarLog10(const bson_value_t *currentValue, bson_value_t *result);
+static void ProcessDollarLn(const bson_value_t *currentValue, bson_value_t *result);
+static void ProcessDollarAbs(const bson_value_t *currentValue, bson_value_t *result);
+static void ProcessDollarAddAccumulatedResult(void *state, bson_value_t *result);
+static void InitializeDualArgumentState(bson_value_t firstValue, bson_value_t secondValue,
+										bool hasFieldExpression,
+										DualArgumentExpressionState *state);
 static bool CheckForDateOverflow(bson_value_t *value);
-static bool ProcessDollarAddElement(bson_value_t *result,
-									const bson_value_t *currentElement,
-									bool isFieldPathExpression, void *state);
-static void ProcessDollarAddAccumulatedResult(bson_value_t *result, void *state);
-static bool ProcessDollarMultiplyElement(bson_value_t *result,
-										 const bson_value_t *currentElement,
-										 bool isFieldPathExpression, void *state);
-static void ProcessDollarSubstract(bson_value_t *result, void *state);
-static void ProcessDollarDivide(bson_value_t *result, void *state);
-static void ProcessDollarMod(bson_value_t *result, void *state);
-static void ProcessDollarLog(bson_value_t *result, void *state);
-static void ProcessDollarPow(bson_value_t *result, void *state);
-static void ProcessDollarRound(bson_value_t *result, void *state);
-static void ProcessDollarTrunc(bson_value_t *result, void *state);
-static bool ProcessDollarCeilElement(bson_value_t *result,
-									 const bson_value_t *currentElement,
-									 bool isFieldPathExpression, void *state);
-static bool ProcessDollarFloorElement(bson_value_t *result,
-									  const bson_value_t *currentElement,
-									  bool isFieldPathExpression, void *state);
-static bool ProcessDollarExpElement(bson_value_t *result,
-									const bson_value_t *currentElement,
-									bool isFieldPathExpression, void *state);
-static bool ProcessDollarSqrtElement(bson_value_t *result, const
-									 bson_value_t *currentElement,
-									 bool isFieldPathExpression, void *state);
-static bool ProcessDollarLog10Element(bson_value_t *result, const
-									  bson_value_t *currentElement,
-									  bool isFieldPathExpression, void *state);
-static bool ProcessDollarLnElement(bson_value_t *result, const
-								   bson_value_t *currentElement,
-								   bool isFieldPathExpression, void *state);
-static bool ProcessDollarAbsElement(bson_value_t *result, const
-									bson_value_t *currentElement,
-									bool isFieldPathExpression, void *state);
 static void ThrowIfNotNumeric(const bson_value_t *value, const char *operatorName,
 							  bool isFieldPathExpression);
 static void ThrowIfNotNumericOrDate(const bson_value_t *value, const char *operatorName,
@@ -92,51 +127,115 @@ static void RoundOrTruncateValue(bson_value_t *result,
 								 RoundOperation operationType);
 
 /*
- * Evaluates the output of an $add expression.
- * Since $add is expressed as { "$add": [ <expression1>, <expression2>, ... ] }
- * We evaluate the inner expressions and then return the addition of them.
+ * Parses an $add expression and sets the parsed data in the data argument.
+ * $add is expressed as { "$add": [ <expression1>, <expression2>, ... ] }
  */
 void
-HandleDollarAdd(pgbson *doc, const bson_value_t *operatorValue,
-				ExpressionResult *expressionResult)
+ParseDollarAdd(const bson_value_t *argument, AggregationExpressionData *data,
+			   ParseAggregationExpressionContext *context)
 {
+	data->value.value_type = BSON_TYPE_INT32;
+	data->value.value.v_int32 = 0;
+
 	DollarAddState state =
 	{
 		.isDateTimeAdd = false,
 		.foundUndefined = false,
 	};
 
-	ExpressionArgumentHandlingContext context =
-	{
-		.processElementFunc = ProcessDollarAddElement,
-		.processExpressionResultFunc = ProcessDollarAddAccumulatedResult,
-		.state = &state,
-	};
+	ParseArithmeticVariableOperands(argument, &state, data, ProcessDollarAdd,
+									context);
 
-	bson_value_t startValue;
-	startValue.value_type = BSON_TYPE_INT32;
-	startValue.value.v_int32 = 0;
-	HandleVariableArgumentExpression(doc, operatorValue, expressionResult, &startValue,
-									 &context);
+	if (data->kind == AggregationExpressionKind_Constant)
+	{
+		ProcessDollarAddAccumulatedResult(&state, &data->value);
+	}
 }
 
 
+/*
+ * Evaluates the output of an $add expression.
+ * Since $add is expressed as { "$add": [ <expression1>, <expression2>, ... ] }
+ * We evaluate the inner expressions and then return the addition of them.
+ */
 void
-HandleDollarMultiply(pgbson *doc, const bson_value_t *operatorValue,
-					 ExpressionResult *expressionResult)
+HandlePreParsedDollarAdd(pgbson *doc, void *arguments,
+						 ExpressionResult *expressionResult)
 {
-	ExpressionArgumentHandlingContext context =
-	{
-		.processElementFunc = ProcessDollarMultiplyElement,
-		.processExpressionResultFunc = NULL,
-		.state = NULL,
+	bson_value_t result = {
+		.value_type = BSON_TYPE_INT32,
+		.value.v_int32 = 0
 	};
 
-	bson_value_t startValue;
-	startValue.value_type = BSON_TYPE_INT32;
-	startValue.value.v_int32 = 1;
-	HandleVariableArgumentExpression(doc, operatorValue, expressionResult, &startValue,
-									 &context);
+
+	DollarAddState state =
+	{
+		.isDateTimeAdd = false,
+		.foundUndefined = false,
+	};
+
+	HandlePreParsedArithmeticVariableOperands(doc, arguments, &state, &result,
+											  expressionResult,
+											  ProcessDollarAdd);
+
+
+	if (result.value_type != BSON_TYPE_NULL)
+	{
+		ProcessDollarAddAccumulatedResult(&state, &result);
+	}
+
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+/*
+ * Parses a $multiply expression and sets the parsed data in the data argument.
+ * $multiply is expressed as { "$multiply": [ <expression1>, <expression2>, ... ] }
+ */
+void
+ParseDollarMultiply(const bson_value_t *argument, AggregationExpressionData *data,
+					ParseAggregationExpressionContext *context)
+{
+	data->value.value_type = BSON_TYPE_INT32;
+	data->value.value.v_int32 = 1;
+
+	ParseArithmeticVariableOperands(argument, NULL, data, ProcessDollarMultiply,
+									context);
+}
+
+
+/*
+ * Evaluates the output of an $multiply expression.
+ * Since $multiply is expressed as { "$multiply": [ <expression1>, <expression2>, ... ] }
+ * We evaluate the inner expressions and then return the product of them.
+ */
+void
+HandlePreParsedDollarMultiply(pgbson *doc, void *arguments,
+							  ExpressionResult *expressionResult)
+{
+	bson_value_t result =
+	{
+		value_type: BSON_TYPE_INT32,
+		value: { v_int32: 1 }
+	};
+
+	HandlePreParsedArithmeticVariableOperands(doc, arguments, NULL, &result,
+											  expressionResult,
+											  ProcessDollarMultiply);
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+/*
+ * Parses a $subtract expression and sets the parsed data in the data argument.
+ * $subtract is expressed as { "$subtract": [ <expression1>, <expression2> ] }
+ */
+void
+ParseDollarSubtract(const bson_value_t *argument, AggregationExpressionData *data,
+					ParseAggregationExpressionContext *context)
+{
+	ParseArithmeticDualOperands(argument, data, "$subtract",
+								ProcessDollarSubtract, context);
 }
 
 
@@ -147,22 +246,24 @@ HandleDollarMultiply(pgbson *doc, const bson_value_t *operatorValue,
  * $subtract accepts exactly 2 arguments.
  */
 void
-HandleDollarSubtract(pgbson *doc, const bson_value_t *operatorValue,
-					 ExpressionResult *expressionResult)
+HandlePreParsedDollarSubtract(pgbson *doc, void *arguments,
+							  ExpressionResult *expressionResult)
 {
-	DualArgumentExpressionState state;
-	memset(&state, 0, sizeof(DualArgumentExpressionState));
+	HandlePreParsedArithmeticDualOperands(doc, arguments, expressionResult,
+										  ProcessDollarSubtract);
+}
 
-	ExpressionArgumentHandlingContext context =
-	{
-		.processElementFunc = ProcessDualArgumentElement,
-		.processExpressionResultFunc = ProcessDollarSubstract,
-		.state = &state,
-	};
 
-	int numberOfRequiredArgs = 2;
-	HandleFixedArgumentExpression(doc, operatorValue, expressionResult,
-								  numberOfRequiredArgs, "$subtract", &context);
+/*
+ * Parses a $divide expression and sets the parsed data in the data argument.
+ * $divide is expressed as { "$divide": [ <expression1>, <expression2> ] }
+ */
+void
+ParseDollarDivide(const bson_value_t *argument, AggregationExpressionData *data,
+				  ParseAggregationExpressionContext *context)
+{
+	ParseArithmeticDualOperands(argument, data, "$divide",
+								ProcessDollarDivide, context);
 }
 
 
@@ -173,22 +274,11 @@ HandleDollarSubtract(pgbson *doc, const bson_value_t *operatorValue,
  * $divide accepts exactly 2 arguments.
  */
 void
-HandleDollarDivide(pgbson *doc, const bson_value_t *operatorValue,
-				   ExpressionResult *expressionResult)
+HandlePreParsedDollarDivide(pgbson *doc, void *arguments,
+							ExpressionResult *expressionResult)
 {
-	DualArgumentExpressionState state;
-	memset(&state, 0, sizeof(DualArgumentExpressionState));
-
-	ExpressionArgumentHandlingContext context =
-	{
-		.processElementFunc = ProcessDualArgumentElement,
-		.processExpressionResultFunc = ProcessDollarDivide,
-		.state = &state,
-	};
-
-	int numberOfRequiredArgs = 2;
-	HandleFixedArgumentExpression(doc, operatorValue, expressionResult,
-								  numberOfRequiredArgs, "$divide", &context);
+	HandlePreParsedArithmeticDualOperands(doc, arguments, expressionResult,
+										  ProcessDollarDivide);
 }
 
 
@@ -199,22 +289,153 @@ HandleDollarDivide(pgbson *doc, const bson_value_t *operatorValue,
  * $mod accepts exactly 2 arguments.
  */
 void
-HandleDollarMod(pgbson *doc, const bson_value_t *operatorValue,
-				ExpressionResult *expressionResult)
+ParseDollarMod(const bson_value_t *argument, AggregationExpressionData *data,
+			   ParseAggregationExpressionContext *context)
 {
-	DualArgumentExpressionState state;
-	memset(&state, 0, sizeof(DualArgumentExpressionState));
+	ParseArithmeticDualOperands(argument, data, "$mod",
+								ProcessDollarMod, context);
+}
 
-	ExpressionArgumentHandlingContext context =
-	{
-		.processElementFunc = ProcessDualArgumentElement,
-		.processExpressionResultFunc = ProcessDollarMod,
-		.state = &state,
-	};
 
-	int numberOfRequiredArgs = 2;
-	HandleFixedArgumentExpression(doc, operatorValue, expressionResult,
-								  numberOfRequiredArgs, "$mod", &context);
+/*
+ * Evaluates the output of a $mod expression.
+ * $mod is expressed as { "$mod": [ <expression1>, <expression2> ] }
+ * We evaluate the inner expressions and set their mod value to the result.
+ */
+void
+HandlePreParsedDollarMod(pgbson *doc, void *arguments,
+						 ExpressionResult *expressionResult)
+{
+	HandlePreParsedArithmeticDualOperands(doc, arguments, expressionResult,
+										  ProcessDollarMod);
+}
+
+
+/*
+ * Parses a $pow expression and sets the parsed data in the data argument.
+ * $pow is expressed as { "$pow": [ <expression1>, <expression2> ] }
+ */
+void
+ParseDollarPow(const bson_value_t *argument, AggregationExpressionData *data,
+			   ParseAggregationExpressionContext *context)
+{
+	ParseArithmeticDualOperands(argument, data, "$pow",
+								ProcessDollarPow, context);
+}
+
+
+/*
+ * Evaluates the output of a $pow expression.
+ * Since $pow is expressed as { "$pow": [ <number>, <exponent> ] }
+ * We evaluate the inner expressions and elevate the number to the requested exponent.
+ * $pow accepts exactly two arguments.
+ */
+void
+HandlePreParsedDollarPow(pgbson *doc, void *arguments,
+						 ExpressionResult *expressionResult)
+{
+	HandlePreParsedArithmeticDualOperands(doc, arguments, expressionResult,
+										  ProcessDollarPow);
+}
+
+
+/*
+ * Parses a $log expression and sets the parsed data in the data argument.
+ * $log is expressed as { "$log": [ <expression1>, <expression2> ] }
+ */
+void
+ParseDollarLog(const bson_value_t *argument, AggregationExpressionData *data,
+			   ParseAggregationExpressionContext *context)
+{
+	ParseArithmeticDualOperands(argument, data, "$log",
+								ProcessDollarLog, context);
+}
+
+
+/*
+ * Evaluates the output of a $log expression.
+ * Since $log is expressed as { "$log": [ <number>, <base> ] }
+ * We evaluate the inner expressions and calculate the logarithm in the requested base.
+ * $log accepts exactly two arguments.
+ */
+void
+HandlePreParsedDollarLog(pgbson *doc, void *arguments,
+						 ExpressionResult *expressionResult)
+{
+	HandlePreParsedArithmeticDualOperands(doc, arguments, expressionResult,
+										  ProcessDollarLog);
+}
+
+
+/*
+ * Parses a $round expression and sets the parsed data in the data argument.
+ * $round is expressed as { "$round": [<number>, <precision>] }
+ * with <precision> being an optional argument.
+ */
+void
+ParseDollarRound(const bson_value_t *argument, AggregationExpressionData *data,
+				 ParseAggregationExpressionContext *context)
+{
+	ParseArithmeticRangeOperands(argument, data, "$round",
+								 ProcessDollarRound, context);
+}
+
+
+/*
+ * Evaluates the output of a $round expression.
+ * Since $round is expressed as { "$round": [<number>, <precision>] }
+ * with <precision> being an optional argument.
+ * We evaluate the number expression and precision and calculate the result.
+ */
+void
+HandlePreParsedDollarRound(pgbson *doc, void *arguments,
+						   ExpressionResult *expressionResult)
+{
+	HandlePreParsedArithmeticDualOperands(doc, arguments, expressionResult,
+										  ProcessDollarRound);
+}
+
+
+/*
+ * Parses a $trunc expression and sets the parsed data in the data argument.
+ * $trunc is expressed as { "$trunc": [<number>, <precision>] }
+ * with <precision> being an optional argument.
+ */
+void
+ParseDollarTrunc(const bson_value_t *argument, AggregationExpressionData *data,
+				 ParseAggregationExpressionContext *context)
+{
+	ParseArithmeticRangeOperands(argument, data, "$trunc",
+								 ProcessDollarTrunc, context);
+}
+
+
+/*
+ * Evaluates the output of a $trunc expression.
+ * Since $trunc is expressed as { "$trunc": [<number>, <precision>] }
+ * with <precision> being an optional argument.
+ * We evaluate the number expression and precision and calculate the result.
+ */
+void
+HandlePreParsedDollarTrunc(pgbson *doc, void *arguments,
+						   ExpressionResult *expressionResult)
+{
+	HandlePreParsedArithmeticDualOperands(doc, arguments, expressionResult,
+										  ProcessDollarTrunc);
+}
+
+
+/*
+ * Parses a $ceil expression and sets the parsed data in the data argument.
+ * $ceil is expressed as { "$ceil": <number> }
+ * with <precision> being an optional argument.
+ */
+void
+ParseDollarCeil(const bson_value_t *argument, AggregationExpressionData *data,
+				ParseAggregationExpressionContext *context)
+{
+	ParseArithmeticSingleOperand(argument, data, "$ceil",
+								 ProcessDollarCeil, context);
 }
 
 
@@ -226,19 +447,25 @@ HandleDollarMod(pgbson *doc, const bson_value_t *operatorValue,
  * $ceil accepts exactly one argument.
  */
 void
-HandleDollarCeil(pgbson *doc, const bson_value_t *operatorValue,
-				 ExpressionResult *expressionResult)
+HandlePreParsedDollarCeil(pgbson *doc, void *arguments,
+						  ExpressionResult *expressionResult)
 {
-	ExpressionArgumentHandlingContext context =
-	{
-		.processElementFunc = ProcessDollarCeilElement,
-		.processExpressionResultFunc = NULL,
-		.state = NULL,
-	};
+	HandlePreParsedArithmeticSingleOperand(doc, arguments, expressionResult,
+										   ProcessDollarCeil);
+}
 
-	int numberOfRequiredArgs = 1;
-	HandleFixedArgumentExpression(doc, operatorValue, expressionResult,
-								  numberOfRequiredArgs, "$ceil", &context);
+
+/*
+ * Parses a $floor expression and sets the parsed data in the data argument.
+ * $floor is expressed as { "$floor": <numeric-expression> }
+ * with <precision> being an optional argument.
+ */
+void
+ParseDollarFloor(const bson_value_t *argument, AggregationExpressionData *data,
+				 ParseAggregationExpressionContext *context)
+{
+	ParseArithmeticSingleOperand(argument, data, "$floor",
+								 ProcessDollarFloor, context);
 }
 
 
@@ -250,19 +477,24 @@ HandleDollarCeil(pgbson *doc, const bson_value_t *operatorValue,
  * $floor accepts exactly one argument.
  */
 void
-HandleDollarFloor(pgbson *doc, const bson_value_t *operatorValue,
-				  ExpressionResult *expressionResult)
+HandlePreParsedDollarFloor(pgbson *doc, void *arguments,
+						   ExpressionResult *expressionResult)
 {
-	ExpressionArgumentHandlingContext context =
-	{
-		.processElementFunc = ProcessDollarFloorElement,
-		.processExpressionResultFunc = NULL,
-		.state = NULL,
-	};
+	HandlePreParsedArithmeticSingleOperand(doc, arguments, expressionResult,
+										   ProcessDollarFloor);
+}
 
-	int numberOfRequiredArgs = 1;
-	HandleFixedArgumentExpression(doc, operatorValue, expressionResult,
-								  numberOfRequiredArgs, "$floor", &context);
+
+/*
+ * Parses a $exp expression and sets the parsed data in the data argument.
+ * $exp is expressed as { "$exp": <numeric-expression> }
+ */
+void
+ParseDollarExp(const bson_value_t *argument, AggregationExpressionData *data,
+			   ParseAggregationExpressionContext *context)
+{
+	ParseArithmeticSingleOperand(argument, data, "$exp",
+								 ProcessDollarExp, context);
 }
 
 
@@ -274,19 +506,25 @@ HandleDollarFloor(pgbson *doc, const bson_value_t *operatorValue,
  * $exp accepts exactly one argument.
  */
 void
-HandleDollarExp(pgbson *doc, const bson_value_t *operatorValue,
-				ExpressionResult *expressionResult)
+HandlePreParsedDollarExp(pgbson *doc, void *arguments,
+						 ExpressionResult *expressionResult)
 {
-	ExpressionArgumentHandlingContext context =
-	{
-		.processElementFunc = ProcessDollarExpElement,
-		.processExpressionResultFunc = NULL,
-		.state = NULL,
-	};
+	HandlePreParsedArithmeticSingleOperand(doc, arguments, expressionResult,
+										   ProcessDollarExp);
+}
 
-	int numberOfRequiredArgs = 1;
-	HandleFixedArgumentExpression(doc, operatorValue, expressionResult,
-								  numberOfRequiredArgs, "$exp", &context);
+
+/*
+ * Parses a $sqrt expression and sets the parsed data in the data argument.
+ * $sqrt is expressed as { "$sqrt": <numeric-expression> }
+ * $sqrt accepts exactly one argument.
+ */
+void
+ParseDollarSqrt(const bson_value_t *argument, AggregationExpressionData *data,
+				ParseAggregationExpressionContext *context)
+{
+	ParseArithmeticSingleOperand(argument, data, "$sqrt",
+								 ProcessDollarSqrt, context);
 }
 
 
@@ -298,19 +536,25 @@ HandleDollarExp(pgbson *doc, const bson_value_t *operatorValue,
  * $sqrt accepts exactly one argument.
  */
 void
-HandleDollarSqrt(pgbson *doc, const bson_value_t *operatorValue,
-				 ExpressionResult *expressionResult)
+HandlePreParsedDollarSqrt(pgbson *doc, void *arguments,
+						  ExpressionResult *expressionResult)
 {
-	ExpressionArgumentHandlingContext context =
-	{
-		.processElementFunc = ProcessDollarSqrtElement,
-		.processExpressionResultFunc = NULL,
-		.state = NULL,
-	};
+	HandlePreParsedArithmeticSingleOperand(doc, arguments, expressionResult,
+										   ProcessDollarSqrt);
+}
 
-	int numberOfRequiredArgs = 1;
-	HandleFixedArgumentExpression(doc, operatorValue, expressionResult,
-								  numberOfRequiredArgs, "$sqrt", &context);
+
+/*
+ * Parses a $log10 expression and sets the parsed data in the data argument.
+ * $log10 is expressed as { "$log10": <numeric-expression> }
+ * $log10 accepts exactly one argument.
+ */
+void
+ParseDollarLog10(const bson_value_t *argument, AggregationExpressionData *data,
+				 ParseAggregationExpressionContext *context)
+{
+	ParseArithmeticSingleOperand(argument, data, "$log10",
+								 ProcessDollarLog10, context);
 }
 
 
@@ -322,19 +566,11 @@ HandleDollarSqrt(pgbson *doc, const bson_value_t *operatorValue,
  * $log10 accepts exactly one argument.
  */
 void
-HandleDollarLog10(pgbson *doc, const bson_value_t *operatorValue,
-				  ExpressionResult *expressionResult)
+HandlePreParsedDollarLog10(pgbson *doc, void *arguments,
+						   ExpressionResult *expressionResult)
 {
-	ExpressionArgumentHandlingContext context =
-	{
-		.processElementFunc = ProcessDollarLog10Element,
-		.processExpressionResultFunc = NULL,
-		.state = NULL,
-	};
-
-	int numberOfRequiredArgs = 1;
-	HandleFixedArgumentExpression(doc, operatorValue, expressionResult,
-								  numberOfRequiredArgs, "$log10", &context);
+	HandlePreParsedArithmeticSingleOperand(doc, arguments, expressionResult,
+										   ProcessDollarLog10);
 }
 
 
@@ -346,71 +582,40 @@ HandleDollarLog10(pgbson *doc, const bson_value_t *operatorValue,
  * $ln accepts exactly one argument.
  */
 void
-HandleDollarLn(pgbson *doc, const bson_value_t *operatorValue,
-			   ExpressionResult *expressionResult)
+ParseDollarLn(const bson_value_t *argument, AggregationExpressionData *data,
+			  ParseAggregationExpressionContext *context)
 {
-	ExpressionArgumentHandlingContext context =
-	{
-		.processElementFunc = ProcessDollarLnElement,
-		.processExpressionResultFunc = NULL,
-		.state = NULL,
-	};
-
-	int numberOfRequiredArgs = 1;
-	HandleFixedArgumentExpression(doc, operatorValue, expressionResult,
-								  numberOfRequiredArgs, "$ln", &context);
+	ParseArithmeticSingleOperand(argument, data, "$ln",
+								 ProcessDollarLn, context);
 }
 
 
 /*
- * Evaluates the output of a $log expression.
- * Since $log is expressed as { "$log": [ <number>, <base> ] }
- * We evaluate the inner expressions and calculate the logarithm in the requested base.
- * $log accepts exactly two arguments.
+ * Evaluates the output of a $ln expression.
+ * Since $ln is expressed as { "$ln": <numeric-expression> }
+ * We evaluate the inner expression and calculate the natural logarithm of the evaluated
+ * number and set it to the result.
+ * $ln accepts exactly one argument.
  */
 void
-HandleDollarLog(pgbson *doc, const bson_value_t *operatorValue,
-				ExpressionResult *expressionResult)
+HandlePreParsedDollarLn(pgbson *doc, void *arguments,
+						ExpressionResult *expressionResult)
 {
-	DualArgumentExpressionState state;
-	memset(&state, 0, sizeof(DualArgumentExpressionState));
-
-	ExpressionArgumentHandlingContext context =
-	{
-		.processElementFunc = ProcessDualArgumentElement,
-		.processExpressionResultFunc = ProcessDollarLog,
-		.state = &state,
-	};
-
-	int numberOfRequiredArgs = 2;
-	HandleFixedArgumentExpression(doc, operatorValue, expressionResult,
-								  numberOfRequiredArgs, "$log", &context);
+	HandlePreParsedArithmeticSingleOperand(doc, arguments, expressionResult,
+										   ProcessDollarLn);
 }
 
 
 /*
- * Evaluates the output of a $pow expression.
- * Since $pow is expressed as { "$pow": [ <number>, <exponent> ] }
- * We evaluate the inner expressions and elevate the number to the requested exponent.
- * $pow accepts exactly two arguments.
+ * Parses a abs expression and sets the parsed data in the data argument.
+ * abs is expressed as { "abs": <numeric-expression> }
  */
 void
-HandleDollarPow(pgbson *doc, const bson_value_t *operatorValue,
-				ExpressionResult *expressionResult)
+ParseDollarAbs(const bson_value_t *argument, AggregationExpressionData *data,
+			   ParseAggregationExpressionContext *context)
 {
-	DualArgumentExpressionState state;
-	memset(&state, 0, sizeof(DualArgumentExpressionState));
-
-	ExpressionArgumentHandlingContext context =
-	{
-		.processElementFunc = ProcessDualArgumentElement,
-		.processExpressionResultFunc = ProcessDollarPow,
-		.state = &state,
-	};
-
-	int numberOfRequiredArgs = 2;
-	HandleFixedArgumentExpression(doc, operatorValue, expressionResult,
-								  numberOfRequiredArgs, "$pow", &context);
+	ParseArithmeticSingleOperand(argument, data, "$abs",
+								 ProcessDollarAbs, context);
 }
 
 
@@ -421,90 +626,309 @@ HandleDollarPow(pgbson *doc, const bson_value_t *operatorValue,
  * $abs accepts exactly one argument.
  */
 void
-HandleDollarAbs(pgbson *doc, const bson_value_t *operatorValue,
-				ExpressionResult *expressionResult)
+HandlePreParsedDollarAbs(pgbson *doc, void *arguments,
+						 ExpressionResult *expressionResult)
 {
-	ExpressionArgumentHandlingContext context =
-	{
-		.processElementFunc = ProcessDollarAbsElement,
-		.processExpressionResultFunc = NULL,
-		.state = NULL,
-	};
+	HandlePreParsedArithmeticSingleOperand(doc, arguments, expressionResult,
+										   ProcessDollarAbs);
+}
 
-	int numberOfRequiredArgs = 1;
-	HandleFixedArgumentExpression(doc, operatorValue, expressionResult,
-								  numberOfRequiredArgs, "$abs", &context);
+
+/* Helper to parse arithmetic operators that take strictly single arguments. */
+static void
+ParseArithmeticSingleOperand(const bson_value_t *argument,
+							 AggregationExpressionData *data, const
+							 char *operatorName,
+							 ProcessArithmeticSingleOperand processOperatorFunc,
+							 ParseAggregationExpressionContext *context)
+{
+	int numOfRequiredArgs = 1;
+	AggregationExpressionData *parsedData = ParseFixedArgumentsForExpression(argument,
+																			 numOfRequiredArgs,
+																			 operatorName,
+																			 &data->
+																			 operator.
+																			 argumentsKind,
+																			 context);
+
+	/* If the arguments is constant: compute comparison result, change
+	 * expression type to constant, store the result in the expression value
+	 * and free the arguments list as it won't be needed anymore. */
+	if (IsAggregationExpressionConstant(parsedData))
+	{
+		processOperatorFunc(&parsedData->value, &data->value);
+
+		data->kind = AggregationExpressionKind_Constant;
+		pfree(parsedData);
+	}
+	else
+	{
+		data->operator.arguments = parsedData;
+	}
+}
+
+
+/* Helper to evaluate pre-parsed expressions of operators that take strictly single operands. */
+static void
+HandlePreParsedArithmeticSingleOperand(pgbson *doc, void *arguments,
+									   ExpressionResult *expressionResult,
+									   ProcessArithmeticSingleOperand
+									   processOperatorFunc)
+{
+	AggregationExpressionData *argument = (AggregationExpressionData *) arguments;
+
+	bool isNullOnEmpty = false;
+	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(argument, doc, &childResult, isNullOnEmpty);
+
+	bson_value_t currentValue = childResult.value;
+
+	bson_value_t result = { 0 };
+	processOperatorFunc(&currentValue, &result);
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+/* Helper to parse arithmetic operators that take strictly two arguments. */
+static void
+ParseArithmeticDualOperands(const bson_value_t *argument,
+							AggregationExpressionData *data, const
+							char *operatorName,
+							ProcessArithmeticDualOperands processOperatorFunc,
+							ParseAggregationExpressionContext *context)
+{
+	int numOfRequiredArgs = 2;
+	List *arguments = ParseFixedArgumentsForExpression(argument,
+													   numOfRequiredArgs,
+													   operatorName,
+													   &data->operator.argumentsKind,
+													   context);
+
+	AggregationExpressionData *firstArg = list_nth(arguments, 0);
+	AggregationExpressionData *secondArg = list_nth(arguments, 1);
+
+	/* If both arguments are constants: compute comparison result, change
+	 * expression type to constant, store the result in the expression value
+	 * and free the arguments list as it won't be needed anymore. */
+	if (IsAggregationExpressionConstant(firstArg) && IsAggregationExpressionConstant(
+			secondArg))
+	{
+		DualArgumentExpressionState state;
+		memset(&state, 0, sizeof(DualArgumentExpressionState));
+
+		InitializeDualArgumentState(firstArg->value, secondArg->value, false, &state);
+		processOperatorFunc(&state, &data->value);
+
+		data->kind = AggregationExpressionKind_Constant;
+		list_free_deep(arguments);
+	}
+	else
+	{
+		data->operator.arguments = arguments;
+	}
+}
+
+
+/* Helper to evaluate pre-parsed expressions of operators that take strictly two operands. */
+static void
+HandlePreParsedArithmeticDualOperands(pgbson *doc, void *arguments,
+									  ExpressionResult *expressionResult,
+									  ProcessArithmeticDualOperands
+									  processOperatorFunc)
+{
+	List *argumentList = (List *) arguments;
+	AggregationExpressionData *firstArg = list_nth(argumentList, 0);
+	AggregationExpressionData *secondArg = list_nth(argumentList, 1);
+
+	bool hasFieldExpression = false;
+	bool isNullOnEmpty = false;
+	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(firstArg, doc, &childResult, isNullOnEmpty);
+
+	bson_value_t firstValue = childResult.value;
+	hasFieldExpression = childResult.isFieldPathExpression;
+
+	ExpressionResultReset(&childResult);
+	EvaluateAggregationExpressionData(secondArg, doc, &childResult, isNullOnEmpty);
+	hasFieldExpression = hasFieldExpression || childResult.isFieldPathExpression;
+
+	bson_value_t secondValue = childResult.value;
+
+	bson_value_t result = { 0 };
+	DualArgumentExpressionState state;
+	memset(&state, 0, sizeof(DualArgumentExpressionState));
+
+	InitializeDualArgumentState(firstValue, secondValue, hasFieldExpression, &state);
+	processOperatorFunc(&state, &result);
+
+	ExpressionResultSetValue(expressionResult, &result);
 }
 
 
 /*
- * Evaluates the output of a $round expression.
- * Since $round is expressed as { "$round": [<number>, <precision>] }
- * with <precision> being an optional argument.
- * We evaluate the number expression and precision and calculate the result.
+ * Helper to parse arithmetic operators with a range ofarguments.
+ * Currently used by only $round and $trunc which take one to two arguments.
  */
-void
-HandleDollarRound(pgbson *doc, const bson_value_t *operatorValue,
-				  ExpressionResult *expressionResult)
+static void
+ParseArithmeticRangeOperands(const bson_value_t *argument,
+							 AggregationExpressionData *data, const
+							 char *operatorName,
+							 ProcessArithmeticDualOperands
+							 processOperatorFunc,
+							 ParseAggregationExpressionContext *context)
 {
-	DualArgumentExpressionState state;
-	memset(&state, 0, sizeof(DualArgumentExpressionState));
+	int minNumOfArgs = 1;
+	int maxNumOfArgs = 2;
 
-	bson_value_t precisionDefault;
-	precisionDefault.value_type = BSON_TYPE_INT32;
-	precisionDefault.value.v_int32 = 0;
-	state.secondArgument = precisionDefault;
-
-	ExpressionArgumentHandlingContext context =
+	bson_value_t optionalDefault =
 	{
-		.processElementFunc = ProcessDualArgumentElement,
-		.processExpressionResultFunc = ProcessDollarRound,
-		.state = &state,
+		.value_type = BSON_TYPE_INT32,
+		.value.v_int32 = 0
 	};
 
-	int minRequiredArgs = 1;
-	int maxRequiredArgs = 2;
-	HandleRangedArgumentExpression(doc, operatorValue, expressionResult,
-								   minRequiredArgs, maxRequiredArgs, "$round", &context);
+	AggregationExpressionArgumentsKind kind = AggregationExpressionArgumentsKind_Palloc;
+
+	AggregationExpressionData *firstArg;
+	AggregationExpressionData *secondArg = ParseRangeArgumentsForExpression(
+		&optionalDefault,
+		minNumOfArgs,
+		maxNumOfArgs,
+		operatorName,
+		&kind, context);
+
+	List *argumentsList = NIL;
+	if (argument->value_type == BSON_TYPE_ARRAY)
+	{
+		argumentsList = ParseRangeArgumentsForExpression(argument,
+														 minNumOfArgs,
+														 maxNumOfArgs,
+														 operatorName,
+														 &data->operator.argumentsKind,
+														 context);
+
+		if (argumentsList->length < 2)
+		{
+			argumentsList = lappend(argumentsList, secondArg);
+		}
+
+		firstArg = list_nth(argumentsList, 0);
+		secondArg = list_nth(argumentsList, 1);
+	}
+	else
+	{
+		firstArg = ParseRangeArgumentsForExpression(argument,
+													minNumOfArgs,
+													maxNumOfArgs,
+													operatorName,
+													&data->operator.argumentsKind,
+													context);
+		argumentsList = list_make2(firstArg, secondArg);
+		data->operator.argumentsKind = AggregationExpressionArgumentsKind_List;
+	}
+
+	/* If both arguments are constants: compute comparison result, change
+	 * expression type to constant, store the result in the expression value
+	 * and free the arguments list as it won't be needed anymore. */
+	if (IsAggregationExpressionConstant(firstArg) && IsAggregationExpressionConstant(
+			secondArg))
+	{
+		DualArgumentExpressionState state;
+		memset(&state, 0, sizeof(DualArgumentExpressionState));
+
+		InitializeDualArgumentState(firstArg->value, secondArg->value, false, &state);
+		processOperatorFunc(&state, &data->value);
+
+		data->kind = AggregationExpressionKind_Constant;
+		list_free_deep(argumentsList);
+	}
+	else
+	{
+		data->operator.arguments = argumentsList;
+	}
 }
 
 
-/*
- * Evaluates the output of a $trunc expression.
- * Since $trunc is expressed as { "$trunc": [<number>, <precision>] }
- * with <precision> being an optional argument.
- * We evaluate the number expression and precision and calculate the result.
- */
+/* Helper to parse arithmetic operators that take variable number of operands. */
 void
-HandleDollarTrunc(pgbson *doc, const bson_value_t *operatorValue,
-				  ExpressionResult *expressionResult)
+ParseArithmeticVariableOperands(const bson_value_t *argument,
+								void *state,
+								AggregationExpressionData *data,
+								ProcessArithmeticVariableOperands processOperatorFunc,
+								ParseAggregationExpressionContext *context)
 {
-	DualArgumentExpressionState state;
-	memset(&state, 0, sizeof(DualArgumentExpressionState));
+	bool areArgumentsConstant;
+	List *argumentsList = ParseVariableArgumentsForExpression(argument,
+															  &areArgumentsConstant,
+															  context);
 
-	bson_value_t precisionDefault;
-	precisionDefault.value_type = BSON_TYPE_INT32;
-	precisionDefault.value.v_int32 = 0;
-	state.secondArgument = precisionDefault;
-
-	ExpressionArgumentHandlingContext context =
+	if (areArgumentsConstant)
 	{
-		.processElementFunc = ProcessDualArgumentElement,
-		.processExpressionResultFunc = ProcessDollarTrunc,
-		.state = &state,
-	};
+		int idx = 0;
+		while (argumentsList != NIL && idx < argumentsList->length)
+		{
+			AggregationExpressionData *currentData = list_nth(argumentsList, idx);
 
-	int minRequiredArgs = 1;
-	int maxRequiredArgs = 2;
-	HandleRangedArgumentExpression(doc, operatorValue, expressionResult,
-								   minRequiredArgs, maxRequiredArgs, "$trunc", &context);
+			bool continueEnumerating = processOperatorFunc(&currentData->value,
+														   state,
+														   &data->value,
+														   false);
+			if (!continueEnumerating)
+			{
+				break;
+			}
+
+			idx++;
+		}
+
+		data->kind = AggregationExpressionKind_Constant;
+		list_free_deep(argumentsList);
+	}
+	else
+	{
+		data->operator.arguments = argumentsList;
+		data->operator.argumentsKind = AggregationExpressionArgumentsKind_List;
+	}
+}
+
+
+/* Helper to evaluate pre-parsed expressions of operators that take variable number of operands. */
+static void
+HandlePreParsedArithmeticVariableOperands(pgbson *doc, void *arguments, void *state,
+										  bson_value_t *result,
+										  ExpressionResult *expressionResult,
+										  ProcessArithmeticVariableOperands
+										  processOperatorFunc)
+{
+	List *argumentList = (List *) arguments;
+
+	int idx = 0;
+	while (argumentList != NIL && idx < argumentList->length)
+	{
+		AggregationExpressionData *currentData = list_nth(argumentList, idx);
+
+		bool isNullOnEmpty = false;
+		ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+		EvaluateAggregationExpressionData(currentData, doc, &childResult, isNullOnEmpty);
+
+		bson_value_t currentValue = childResult.value;
+
+		bool continueEnumerating = processOperatorFunc(&currentValue, state, result,
+													   childResult.
+													   isFieldPathExpression);
+		if (!continueEnumerating)
+		{
+			return;
+		}
+
+		idx++;
+	}
 }
 
 
 /* Function that processes a single argument for $add and adds it to the current result. */
 static bool
-ProcessDollarAddElement(bson_value_t *result, const bson_value_t *currentElement,
-						bool isFieldPathExpression, void *state)
+ProcessDollarAdd(const bson_value_t *currentElement, void *state, bson_value_t *result,
+				 bool isFieldPathExpression)
 {
 	DollarAddState *addState = (DollarAddState *) state;
 
@@ -575,7 +999,6 @@ ProcessDollarAddElement(bson_value_t *result, const bson_value_t *currentElement
 		return true;
 	}
 
-
 	bool overflowedFromInt64Ignore = false;
 	AddNumberToBsonValue(result, &evaluatedValue,
 						 &overflowedFromInt64Ignore);
@@ -586,7 +1009,7 @@ ProcessDollarAddElement(bson_value_t *result, const bson_value_t *currentElement
 
 /* Function that validates the final state before returning the result for $add. */
 static void
-ProcessDollarAddAccumulatedResult(bson_value_t *result, void *state)
+ProcessDollarAddAccumulatedResult(void *state, bson_value_t *result)
 {
 	DollarAddState *addState = (DollarAddState *) state;
 	if (addState->isDateTimeAdd)
@@ -618,8 +1041,9 @@ ProcessDollarAddAccumulatedResult(bson_value_t *result, void *state)
 
 /* Function that processes a single element for the $multiply operator. */
 static bool
-ProcessDollarMultiplyElement(bson_value_t *result, const bson_value_t *currentElement,
-							 bool isFieldPathExpression, void *state)
+ProcessDollarMultiply(const bson_value_t *currentElement, void *state,
+					  bson_value_t *result,
+					  bool isFieldPathExpression)
 {
 	if (IsExpressionResultNullOrUndefined(currentElement))
 	{
@@ -639,7 +1063,7 @@ ProcessDollarMultiplyElement(bson_value_t *result, const bson_value_t *currentEl
 
 /* Function that calculates the result for $substract based on the result and state. */
 static void
-ProcessDollarSubstract(bson_value_t *result, void *state)
+ProcessDollarSubtract(void *state, bson_value_t *result)
 {
 	DualArgumentExpressionState *dualState = (DualArgumentExpressionState *) state;
 
@@ -709,7 +1133,7 @@ ProcessDollarSubstract(bson_value_t *result, void *state)
 
 /* Function that calculates the result for $divide based on the result and state. */
 static void
-ProcessDollarDivide(bson_value_t *result, void *state)
+ProcessDollarDivide(void *state, bson_value_t *result)
 {
 	DualArgumentExpressionState *dualState = (DualArgumentExpressionState *) state;
 
@@ -788,7 +1212,7 @@ ProcessDollarDivide(bson_value_t *result, void *state)
 
 /* Function that calculates the result for $mod based on the result and state. */
 static void
-ProcessDollarMod(bson_value_t *result, void *state)
+ProcessDollarMod(void *state, bson_value_t *result)
 {
 	DualArgumentExpressionState *dualState = (DualArgumentExpressionState *) state;
 
@@ -835,133 +1259,123 @@ ProcessDollarMod(bson_value_t *result, void *state)
 
 
 /* Function that calculates the ceil of the current element and sets it to the result. */
-static bool
-ProcessDollarCeilElement(bson_value_t *result, const bson_value_t *currentElement,
-						 bool isFieldPathExpression, void *state)
+static void
+ProcessDollarCeil(const bson_value_t *currentValue, bson_value_t *result)
 {
-	if (IsExpressionResultNullOrUndefined(currentElement))
+	if (IsExpressionResultNullOrUndefined(currentValue))
 	{
 		result->value_type = BSON_TYPE_NULL;
-		return false;
+		return;
 	}
 
-	if (!BsonValueIsNumber(currentElement))
+	if (!BsonValueIsNumber(currentValue))
 	{
 		ereport(ERROR, (errcode(MongoLocation28765), errmsg(
 							"$ceil only supports numeric types, not %s",
-							BsonTypeName(currentElement->value_type))));
+							BsonTypeName(currentValue->value_type))));
 	}
 
-	if (currentElement->value_type == BSON_TYPE_DECIMAL128)
+	if (currentValue->value_type == BSON_TYPE_DECIMAL128)
 	{
-		CeilDecimal128Number(currentElement, result);
+		CeilDecimal128Number(currentValue, result);
 	}
-	else if (currentElement->value_type == BSON_TYPE_DOUBLE)
+	else if (currentValue->value_type == BSON_TYPE_DOUBLE)
 	{
 		result->value_type = BSON_TYPE_DOUBLE;
-		result->value.v_double = ceil(BsonValueAsDouble(currentElement));
+		result->value.v_double = ceil(BsonValueAsDouble(currentValue));
 	}
 	else
 	{
-		*result = *currentElement;
+		*result = *currentValue;
 	}
-
-	return true;
 }
 
 
 /* Function that calculates the floor of the current element and sets it to the result. */
-static bool
-ProcessDollarFloorElement(bson_value_t *result, const bson_value_t *currentElement,
-						  bool isFieldPathExpression, void *state)
+static void
+ProcessDollarFloor(const bson_value_t *currentValue, bson_value_t *result)
 {
-	if (IsExpressionResultNullOrUndefined(currentElement))
+	if (IsExpressionResultNullOrUndefined(currentValue))
 	{
 		result->value_type = BSON_TYPE_NULL;
-		return false;
+		return;
 	}
 
-	if (!BsonValueIsNumber(currentElement))
+	if (!BsonValueIsNumber(currentValue))
 	{
 		ereport(ERROR, (errcode(MongoLocation28765), errmsg(
 							"$floor only supports numeric types, not %s",
-							BsonTypeName(currentElement->value_type))));
+							BsonTypeName(currentValue->value_type))));
 	}
 
-	if (currentElement->value_type == BSON_TYPE_DECIMAL128)
+	if (currentValue->value_type == BSON_TYPE_DECIMAL128)
 	{
-		FloorDecimal128Number(currentElement, result);
+		FloorDecimal128Number(currentValue, result);
 	}
-	else if (currentElement->value_type == BSON_TYPE_DOUBLE)
+	else if (currentValue->value_type == BSON_TYPE_DOUBLE)
 	{
 		result->value_type = BSON_TYPE_DOUBLE;
-		result->value.v_double = floor(BsonValueAsDouble(currentElement));
+		result->value.v_double = floor(BsonValueAsDouble(currentValue));
 	}
 	else
 	{
-		*result = *currentElement;
+		*result = *currentValue;
 	}
-
-	return true;
 }
 
 
 /* Function that raises Euler's number to the specified exponent and sets it to the result. */
-static bool
-ProcessDollarExpElement(bson_value_t *result, const bson_value_t *currentElement,
-						bool isFieldPathExpression, void *state)
+static void
+ProcessDollarExp(const bson_value_t *currentValue, bson_value_t *result)
 {
-	if (IsExpressionResultNullOrUndefined(currentElement))
+	if (IsExpressionResultNullOrUndefined(currentValue))
 	{
 		result->value_type = BSON_TYPE_NULL;
-		return false;
+		return;
 	}
 
-	if (!BsonValueIsNumber(currentElement))
+	if (!BsonValueIsNumber(currentValue))
 	{
 		ereport(ERROR, (errcode(MongoLocation28765), errmsg(
 							"$exp only supports numeric types, not %s",
-							BsonTypeName(currentElement->value_type))));
+							BsonTypeName(currentValue->value_type))));
 	}
 
-	if (currentElement->value_type == BSON_TYPE_DECIMAL128)
+	if (currentValue->value_type == BSON_TYPE_DECIMAL128)
 	{
-		EulerExpDecimal128(currentElement, result);
+		EulerExpDecimal128(currentValue, result);
 	}
 	else
 	{
 		/* $exp returns double for non-decimal inputs. */
-		double power = BsonValueAsDouble(currentElement);
+		double power = BsonValueAsDouble(currentValue);
 
 		result->value_type = BSON_TYPE_DOUBLE;
 		result->value.v_double = exp(power);
 	}
-
-	return true;
 }
 
 
-/* Function that validates and calculates the square root of currentElement and sets it to the result. */
-static bool
-ProcessDollarSqrtElement(bson_value_t *result, const bson_value_t *currentElement,
-						 bool isFieldPathExpression, void *state)
+/* Function that validates and calculates the square root of currentValue and sets it to the result. */
+static void
+ProcessDollarSqrt(const bson_value_t *currentValue, bson_value_t *result)
 {
-	if (IsExpressionResultNullOrUndefined(currentElement))
+	if (IsExpressionResultNullOrUndefined(currentValue))
 	{
 		result->value_type = BSON_TYPE_NULL;
-		return false;
+		return;
 	}
 
-	if (!BsonValueIsNumber(currentElement))
+	if (!BsonValueIsNumber(currentValue))
 	{
 		ereport(ERROR, (errcode(MongoLocation28765), errmsg(
 							"$sqrt only supports numeric types, not %s",
-							BsonTypeName(currentElement->value_type))));
+							BsonTypeName(currentValue->value_type))));
 	}
 
 	bson_value_t argDecimal = {
 		.value_type = BSON_TYPE_DECIMAL128,
-		.value.v_decimal128 = GetBsonValueAsDecimal128(currentElement),
+		.value.v_decimal128 = GetBsonValueAsDecimal128(currentValue),
 	};
 
 	bool isComparisonValid = false;
@@ -975,7 +1389,7 @@ ProcessDollarSqrtElement(bson_value_t *result, const bson_value_t *currentElemen
 	bson_value_t sqrtResult;
 	SqrtDecimal128Number(&argDecimal, &sqrtResult);
 
-	if (currentElement->value_type == BSON_TYPE_DECIMAL128)
+	if (currentValue->value_type == BSON_TYPE_DECIMAL128)
 	{
 		*result = sqrtResult;
 	}
@@ -985,32 +1399,29 @@ ProcessDollarSqrtElement(bson_value_t *result, const bson_value_t *currentElemen
 		result->value_type = BSON_TYPE_DOUBLE;
 		result->value.v_double = GetBsonDecimal128AsDouble(&sqrtResult);
 	}
-
-	return true;
 }
 
 
 /* Function that validates the $log10 argument and calculates its log10 and sets it to the result. */
-static bool
-ProcessDollarLog10Element(bson_value_t *result, const bson_value_t *currentElement,
-						  bool isFieldPathExpression, void *state)
+static void
+ProcessDollarLog10(const bson_value_t *currentValue, bson_value_t *result)
 {
-	if (IsExpressionResultNullOrUndefined(currentElement))
+	if (IsExpressionResultNullOrUndefined(currentValue))
 	{
 		result->value_type = BSON_TYPE_NULL;
-		return false;
+		return;
 	}
 
-	if (!BsonValueIsNumber(currentElement))
+	if (!BsonValueIsNumber(currentValue))
 	{
 		ereport(ERROR, (errcode(MongoLocation28765), errmsg(
 							"$log10 only supports numeric types, not %s",
-							BsonTypeName(currentElement->value_type))));
+							BsonTypeName(currentValue->value_type))));
 	}
 
 	bson_value_t argDecimal = {
 		.value_type = BSON_TYPE_DECIMAL128,
-		.value.v_decimal128 = GetBsonValueAsDecimal128(currentElement),
+		.value.v_decimal128 = GetBsonValueAsDecimal128(currentValue),
 	};
 
 	bool isComparisonValid = false;
@@ -1019,14 +1430,14 @@ ProcessDollarLog10Element(bson_value_t *result, const bson_value_t *currentEleme
 	{
 		ereport(ERROR, (errcode(MongoDollarLog10MustBePositiveNumber), errmsg(
 							"$log10's argument must be a positive number, but is %s",
-							BsonValueToJsonForLogging(currentElement))));
+							BsonValueToJsonForLogging(currentValue))));
 	}
 
 	bson_value_t log10Result;
 	Log10Decimal128Number(&argDecimal, &log10Result);
 
 	/* if the input type is decimal128 and not NaN we should return decimal128 */
-	if (currentElement->value_type == BSON_TYPE_DECIMAL128 &&
+	if (currentValue->value_type == BSON_TYPE_DECIMAL128 &&
 		!IsDecimal128NaN(&log10Result))
 	{
 		*result = log10Result;
@@ -1036,32 +1447,29 @@ ProcessDollarLog10Element(bson_value_t *result, const bson_value_t *currentEleme
 		result->value_type = BSON_TYPE_DOUBLE;
 		result->value.v_double = GetBsonDecimal128AsDouble(&log10Result);
 	}
-
-	return true;
 }
 
 
 /* Function that validates the $ln argument and calculates its natural logarithm and sets it to the result. */
-static bool
-ProcessDollarLnElement(bson_value_t *result, const bson_value_t *currentElement,
-					   bool isFieldPathExpression, void *state)
+static void
+ProcessDollarLn(const bson_value_t *currentValue, bson_value_t *result)
 {
-	if (IsExpressionResultNullOrUndefined(currentElement))
+	if (IsExpressionResultNullOrUndefined(currentValue))
 	{
 		result->value_type = BSON_TYPE_NULL;
-		return false;
+		return;
 	}
 
-	if (!BsonValueIsNumber(currentElement))
+	if (!BsonValueIsNumber(currentValue))
 	{
 		ereport(ERROR, (errcode(MongoLocation28765), errmsg(
 							"$ln only supports numeric types, not %s",
-							BsonTypeName(currentElement->value_type))));
+							BsonTypeName(currentValue->value_type))));
 	}
 
 	bson_value_t argDecimal = {
 		.value_type = BSON_TYPE_DECIMAL128,
-		.value.v_decimal128 = GetBsonValueAsDecimal128(currentElement),
+		.value.v_decimal128 = GetBsonValueAsDecimal128(currentValue),
 	};
 
 	bool isComparisonValid = false;
@@ -1070,14 +1478,14 @@ ProcessDollarLnElement(bson_value_t *result, const bson_value_t *currentElement,
 	{
 		ereport(ERROR, (errcode(MongoDollarLnMustBePositiveNumber), errmsg(
 							"$ln's argument must be a positive number, but is %s",
-							BsonValueToJsonForLogging(currentElement))));
+							BsonValueToJsonForLogging(currentValue))));
 	}
 
 	bson_value_t lnResult;
 	NaturalLogarithmDecimal128Number(&argDecimal, &lnResult);
 
 	/* if the input type is decimal128 and not NaN we should return decimal128 */
-	if (currentElement->value_type == BSON_TYPE_DECIMAL128 &&
+	if (currentValue->value_type == BSON_TYPE_DECIMAL128 &&
 		!IsDecimal128NaN(&lnResult))
 	{
 		*result = lnResult;
@@ -1087,14 +1495,12 @@ ProcessDollarLnElement(bson_value_t *result, const bson_value_t *currentElement,
 		result->value_type = BSON_TYPE_DOUBLE;
 		result->value.v_double = GetBsonDecimal128AsDouble(&lnResult);
 	}
-
-	return true;
 }
 
 
-/* Function that calculates the result for $log. */
+/* Function that calculates the result for $log based on the state and sets reset to the value. */
 static void
-ProcessDollarLog(bson_value_t *result, void *state)
+ProcessDollarLog(void *state, bson_value_t *result)
 {
 	DualArgumentExpressionState *dualState = (DualArgumentExpressionState *) state;
 
@@ -1211,7 +1617,7 @@ ProcessDollarLog(bson_value_t *result, void *state)
 
 /* Function that calculates the result for $pow. */
 static void
-ProcessDollarPow(bson_value_t *result, void *state)
+ProcessDollarPow(void *state, bson_value_t *result)
 {
 	DualArgumentExpressionState *dualState = (DualArgumentExpressionState *) state;
 
@@ -1306,9 +1712,9 @@ ProcessDollarPow(bson_value_t *result, void *state)
 }
 
 
-/* Function that calculates the result for $round. */
+/* Function that calculates the result for $round. based on the state and result. */
 static void
-ProcessDollarRound(bson_value_t *result, void *state)
+ProcessDollarRound(void *state, bson_value_t *result)
 {
 	RoundOrTruncateValue(result, (DualArgumentExpressionState *) state,
 						 RoundOperation_Round);
@@ -1317,7 +1723,7 @@ ProcessDollarRound(bson_value_t *result, void *state)
 
 /* Function that calculates the result for $trunc. */
 static void
-ProcessDollarTrunc(bson_value_t *result, void *state)
+ProcessDollarTrunc(void *state, bson_value_t *result)
 {
 	RoundOrTruncateValue(result, (DualArgumentExpressionState *) state,
 						 RoundOperation_Trunc);
@@ -1431,45 +1837,44 @@ RoundOrTruncateValue(bson_value_t *result, DualArgumentExpressionState *dualStat
 }
 
 
-/* Function that validates the $abs argument and sets the absolute value to the result. */
-static bool
-ProcessDollarAbsElement(bson_value_t *result, const bson_value_t *currentElement,
-						bool isFieldPathExpression, void *state)
+/* Function that calculates the result for $abs based on the currentValue and result. */
+static void
+ProcessDollarAbs(const bson_value_t *currentValue, bson_value_t *result)
 {
-	if (IsExpressionResultNullOrUndefined(currentElement))
+	if (IsExpressionResultNullOrUndefined(currentValue))
 	{
 		result->value_type = BSON_TYPE_NULL;
-		return false;
+		return;
 	}
 
-	if (!BsonValueIsNumber(currentElement))
+	if (!BsonValueIsNumber(currentValue))
 	{
 		ereport(ERROR, (errcode(MongoLocation28765), errmsg(
 							"$abs only supports numeric types, not %s",
-							BsonTypeName(currentElement->value_type))));
+							BsonTypeName(currentValue->value_type))));
 	}
 
-	if (currentElement->value_type == BSON_TYPE_DECIMAL128)
+	if (currentValue->value_type == BSON_TYPE_DECIMAL128)
 	{
-		AbsDecimal128Number(currentElement, result);
+		AbsDecimal128Number(currentValue, result);
 	}
-	else if (currentElement->value_type == BSON_TYPE_DOUBLE)
+	else if (currentValue->value_type == BSON_TYPE_DOUBLE)
 	{
 		result->value_type = BSON_TYPE_DOUBLE;
-		result->value.v_double = fabs(BsonValueAsDouble(currentElement));
+		result->value.v_double = fabs(BsonValueAsDouble(currentValue));
 	}
 	else
 	{
-		if (currentElement->value_type == BSON_TYPE_INT64 &&
-			currentElement->value.v_int64 == INT64_MIN)
+		if (currentValue->value_type == BSON_TYPE_INT64 &&
+			currentValue->value.v_int64 == INT64_MIN)
 		{
 			ereport(ERROR, (errcode(MongoDollarAbsCantTakeLongMinValue), errmsg(
 								"can't take $abs of long long min")));
 		}
 
-		int64_t absValue = llabs(BsonValueAsInt64(currentElement));
+		int64_t absValue = llabs(BsonValueAsInt64(currentValue));
 
-		if (currentElement->value_type == BSON_TYPE_INT32 && absValue <= INT32_MAX)
+		if (currentValue->value_type == BSON_TYPE_INT32 && absValue <= INT32_MAX)
 		{
 			result->value_type = BSON_TYPE_INT32;
 			result->value.v_int32 = (int32_t) absValue;
@@ -1480,8 +1885,19 @@ ProcessDollarAbsElement(bson_value_t *result, const bson_value_t *currentElement
 			result->value.v_int64 = absValue;
 		}
 	}
+}
 
-	return true;
+
+/* Initializes the state for dual argument expressions. */
+static void
+InitializeDualArgumentState(bson_value_t firstValue, bson_value_t secondValue, bool
+							hasFieldExpression, DualArgumentExpressionState *state)
+{
+	state->firstArgument = firstValue;
+	state->secondArgument = secondValue;
+	state->hasFieldExpression = hasFieldExpression;
+	state->hasNullOrUndefined = IsExpressionResultNullOrUndefined(&firstValue) ||
+								IsExpressionResultNullOrUndefined(&secondValue);
 }
 
 
@@ -1515,6 +1931,32 @@ ThrowInvalidTypesForDollarSubtract(bson_value_t minuend, bson_value_t subtrahend
 }
 
 
+/* Throws if the value is not numeric value. */
+static void
+ThrowIfNotNumeric(const bson_value_t *value, const char *operatorName,
+				  bool isFieldPathExpression)
+{
+	if (!BsonValueIsNumber(value))
+	{
+		/* Mongo emits a different error message if the value is a field/operator expression
+		 * or just a constant value. */
+		if (!isFieldPathExpression)
+		{
+			ereport(ERROR, (errcode(MongoTypeMismatch), errmsg(
+								"%s only supports numeric types, not %s",
+								operatorName,
+								BsonTypeName(value->value_type))));
+		}
+		else
+		{
+			ereport(ERROR, (errcode(MongoTypeMismatch), errmsg(
+								"only numbers are allowed in an %s expression",
+								operatorName)));
+		}
+	}
+}
+
+
 /* Throws if the value is not numeric or a date value. */
 static void
 ThrowIfNotNumericOrDate(const bson_value_t *value, const char *operatorName,
@@ -1537,32 +1979,6 @@ ThrowIfNotNumericOrDate(const bson_value_t *value, const char *operatorName,
 			/* TODO: when we move to 6.1 the error code is TypeMismatch */
 			ereport(ERROR, (errcode(MongoDollarAddNumericOrDateTypes), errmsg(
 								"only numbers and dates are allowed in %s expression",
-								operatorName)));
-		}
-	}
-}
-
-
-/* Throws if the value is not numeric value. */
-static void
-ThrowIfNotNumeric(const bson_value_t *value, const char *operatorName,
-				  bool isFieldPathExpression)
-{
-	if (!BsonValueIsNumber(value))
-	{
-		/* Mongo emits a different error message if the value is a field/operator expression
-		 * or just a constant value. */
-		if (!isFieldPathExpression)
-		{
-			ereport(ERROR, (errcode(MongoTypeMismatch), errmsg(
-								"%s only supports numeric types, not %s",
-								operatorName,
-								BsonTypeName(value->value_type))));
-		}
-		else
-		{
-			ereport(ERROR, (errcode(MongoTypeMismatch), errmsg(
-								"only numbers are allowed in an %s expression",
 								operatorName)));
 		}
 	}

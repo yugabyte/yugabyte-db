@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * include/bson/bson_expression_operators.h
+ * include/operators/bson_expression_operators.h
  *
  * Common declarations of the bson expression operators.
  *
@@ -223,22 +223,14 @@ void ExpressionResultSetConstantVariable(ExpressionResult *expressionResult, con
 										 bson_value_t *value);
 
 /* Operator handlers definition */
-void HandleDollarAbs(pgbson *doc, const bson_value_t *operatorValue,
-					 ExpressionResult *expressionResult);
-void HandleDollarAdd(pgbson *doc, const bson_value_t *operatorValue,
-					 ExpressionResult *expressionResult);
 void HandleDollarAllElementsTrue(pgbson *doc, const bson_value_t *operatorValue,
 								 ExpressionResult *expressionResult);
-void HandleDollarAnd(pgbson *doc, const bson_value_t *operatorValue,
-					 ExpressionResult *expressionResult);
 void HandleDollarAnyElementTrue(pgbson *doc, const bson_value_t *operatorValue,
 								ExpressionResult *expressionResult);
 void HandleDollarArrayElemAt(pgbson *doc, const bson_value_t *operatorValue,
 							 ExpressionResult *expressionResult);
 void HandleDollarArrayToObject(pgbson *doc, const bson_value_t *operatorValue,
 							   ExpressionResult *expressionResult);
-void HandleDollarCeil(pgbson *doc, const bson_value_t *operatorValue,
-					  ExpressionResult *expressionResult);
 void HandleDollarConcat(pgbson *doc, const bson_value_t *operatorValue,
 						ExpressionResult *expressionResult);
 void HandleDollarCond(pgbson *doc, const bson_value_t *operatorValue,
@@ -257,15 +249,9 @@ void HandleDollarDayOfWeek(pgbson *doc, const bson_value_t *operatorValue,
 						   ExpressionResult *expressionResult);
 void HandleDollarDayOfYear(pgbson *doc, const bson_value_t *operatorValue,
 						   ExpressionResult *expressionResult);
-void HandleDollarDivide(pgbson *doc, const bson_value_t *operatorValue,
-						ExpressionResult *expressionResult);
-void HandleDollarExp(pgbson *doc, const bson_value_t *operatorValue,
-					 ExpressionResult *expressionResult);
 void HandleDollarFilter(pgbson *doc, const bson_value_t *operatorValue,
 						ExpressionResult *expressionResult);
 void HandleDollarFirst(pgbson *doc, const bson_value_t *operatorValue,
-					   ExpressionResult *expressionResult);
-void HandleDollarFloor(pgbson *doc, const bson_value_t *operatorValue,
 					   ExpressionResult *expressionResult);
 void HandleDollarHour(pgbson *doc, const bson_value_t *operatorValue,
 					  ExpressionResult *expressionResult);
@@ -291,12 +277,6 @@ void HandleDollarLast(pgbson *doc, const bson_value_t *operatorValue,
 					  ExpressionResult *expressionResult);
 void HandleDollarLiteral(pgbson *doc, const bson_value_t *operatorValue,
 						 ExpressionResult *expressionResult);
-void HandleDollarLn(pgbson *doc, const bson_value_t *operatorValue,
-					ExpressionResult *expressionResult);
-void HandleDollarLog(pgbson *doc, const bson_value_t *operatorValue,
-					 ExpressionResult *expressionResult);
-void HandleDollarLog10(pgbson *doc, const bson_value_t *operatorValue,
-					   ExpressionResult *expressionResult);
 void HandleDollarLtrim(pgbson *doc, const bson_value_t *operatorValue,
 					   ExpressionResult *expressionResult);
 void HandleDollarMergeObjects(pgbson *doc, const bson_value_t *operatorValue,
@@ -307,24 +287,14 @@ void HandleDollarMillisecond(pgbson *doc, const bson_value_t *operatorValue,
 							 ExpressionResult *expressionResult);
 void HandleDollarMinute(pgbson *doc, const bson_value_t *operatorValue,
 						ExpressionResult *expressionResult);
-void HandleDollarMod(pgbson *doc, const bson_value_t *operatorValue,
-					 ExpressionResult *expressionResult);
 void HandleDollarMonth(pgbson *doc, const bson_value_t *operatorValue,
 					   ExpressionResult *expressionResult);
 void HandleDollarMultiply(pgbson *doc, const bson_value_t *operatorValue,
 						  ExpressionResult *expressionResult);
-void HandleDollarNot(pgbson *doc, const bson_value_t *operatorValue,
-					 ExpressionResult *expressionResult);
 void HandleDollarObjectToArray(pgbson *doc, const bson_value_t *operatorValue,
 							   ExpressionResult *expressionResult);
-void HandleDollarOr(pgbson *doc, const bson_value_t *operatorValue,
-					ExpressionResult *expressionResult);
-void HandleDollarPow(pgbson *doc, const bson_value_t *operatorValue,
-					 ExpressionResult *expressionResult);
 void HandleDollarRand(pgbson *doc, const bson_value_t *operatorValue,
 					  ExpressionResult *expressionResult);
-void HandleDollarRound(pgbson *doc, const bson_value_t *operatorValue,
-					   ExpressionResult *expressionResult);
 void HandleDollarRtrim(pgbson *doc, const bson_value_t *operatorValue,
 					   ExpressionResult *expressionResult);
 void HandleDollarToBool(pgbson *doc, const bson_value_t *operatorValue,
@@ -343,8 +313,6 @@ void HandleDollarToObjectId(pgbson *doc, const bson_value_t *operatorValue,
 							ExpressionResult *expressionResult);
 void HandleDollarToString(pgbson *doc, const bson_value_t *operatorValue,
 						  ExpressionResult *expressionResult);
-void HandleDollarTrunc(pgbson *doc, const bson_value_t *operatorValue,
-					   ExpressionResult *expressionResult);
 void HandleDollarTrim(pgbson *doc, const bson_value_t *operatorValue,
 					  ExpressionResult *expressionResult);
 void HandleDollarType(pgbson *doc, const bson_value_t *operatorValue,
@@ -367,13 +335,9 @@ void HandleDollarSlice(pgbson *doc, const bson_value_t *operatorValue,
 					   ExpressionResult *expressionResult);
 void HandleDollarSplit(pgbson *doc, const bson_value_t *operatorValue,
 					   ExpressionResult *expressionResult);
-void HandleDollarSqrt(pgbson *doc, const bson_value_t *operatorValue,
-					  ExpressionResult *expressionResult);
 void HandleDollarStrLenBytes(pgbson *doc, const bson_value_t *operatorValue,
 							 ExpressionResult *expressionResult);
 void HandleDollarStrLenCP(pgbson *doc, const bson_value_t *operatorValue,
-						  ExpressionResult *expressionResult);
-void HandleDollarSubtract(pgbson *doc, const bson_value_t *operatorValue,
 						  ExpressionResult *expressionResult);
 void HandleDollarSwitch(pgbson *doc, const bson_value_t *operatorValue,
 						ExpressionResult *expressionResult);
@@ -394,10 +358,16 @@ void HandleDollarStrCaseCmp(pgbson *doc, const bson_value_t *operatorValue,
  * New operator functions that use the pre parsed framework
  *************************************************************
  */
+void HandlePreParsedDollarAbs(pgbson *doc, void *arguments,
+							  ExpressionResult *expressionResult);
 void HandlePreParsedDollarAcos(pgbson *doc, void *arguments,
 							   ExpressionResult *expressionResult);
 void HandlePreParsedDollarAcosh(pgbson *doc, void *arguments,
 								ExpressionResult *expressionResult);
+void HandlePreParsedDollarAdd(pgbson *doc, void *arguments,
+							  ExpressionResult *expressionResult);
+void HandlePreParsedDollarAnd(pgbson *doc, void *arguments,
+							  ExpressionResult *expressionResult);
 void HandlePreParsedDollarAsin(pgbson *doc, void *arguments,
 							   ExpressionResult *expressionResult);
 void HandlePreParsedDollarAsinh(pgbson *doc, void *arguments,
@@ -424,6 +394,8 @@ void HandlePreParsedDollarBitXor(pgbson *doc, void *arguments,
 								 ExpressionResult *expressionResult);
 void HandlePreParsedDollarBucketInternal(pgbson *doc, void *arguments,
 										 ExpressionResult *expressionResult);
+void HandlePreParsedDollarCeil(pgbson *doc, void *arguments,
+							   ExpressionResult *expressionResult);
 void HandlePreParsedDollarCmp(pgbson *doc, void *arguments,
 							  ExpressionResult *expressionResult);
 void HandlePreParsedDollarCos(pgbson *doc, void *arguments,
@@ -444,8 +416,14 @@ void HandlePreParsedDollarDateTrunc(pgbson *doc, void *arguments,
 									ExpressionResult *expressionResult);
 void HandlePreParsedDollarDegreesToRadians(pgbson *doc, void *arguments,
 										   ExpressionResult *expressionResult);
+void HandlePreParsedDollarDivide(pgbson *doc, void *arguments,
+								 ExpressionResult *expressionResult);
 void HandlePreParsedDollarEq(pgbson *doc, void *arguments,
 							 ExpressionResult *expressionResult);
+void HandlePreParsedDollarExp(pgbson *doc, void *arguments,
+							  ExpressionResult *expressionResult);
+void HandlePreParsedDollarFloor(pgbson *doc, void *arguments,
+								ExpressionResult *expressionResult);
 void HandlePreParsedDollarGetField(pgbson *doc, void *arguments,
 								   ExpressionResult *expressionResult);
 void HandlePreParsedDollarGt(pgbson *doc, void *arguments,
@@ -458,13 +436,25 @@ void HandlePreParsedDollarLt(pgbson *doc, void *arguments,
 							 ExpressionResult *expressionResult);
 void HandlePreParsedDollarLte(pgbson *doc, void *arguments,
 							  ExpressionResult *expressionResult);
+void HandlePreParsedDollarLog(pgbson *doc, void *arguments,
+							  ExpressionResult *expressionResult);
+void HandlePreParsedDollarLog10(pgbson *doc, void *arguments,
+								ExpressionResult *expressionResult);
+void HandlePreParsedDollarLn(pgbson *doc, void *arguments,
+							 ExpressionResult *expressionResult);
 void HandlePreParsedDollarMap(pgbson *doc, void *arguments,
 							  ExpressionResult *expressionResult);
 void HandlePreParsedDollarMax(pgbson *doc, void *arguments,
 							  ExpressionResult *expressionResult);
 void HandlePreParsedDollarMin(pgbson *doc, void *arguments,
 							  ExpressionResult *expressionResult);
+void HandlePreParsedDollarMod(pgbson *doc, void *arguments,
+							  ExpressionResult *expressionResult);
 void HandlePreParsedDollarNe(pgbson *doc, void *arguments,
+							 ExpressionResult *expressionResult);
+void HandlePreParsedDollarNot(pgbson *doc, void *arguments,
+							  ExpressionResult *expressionResult);
+void HandlePreParsedDollarOr(pgbson *doc, void *arguments,
 							 ExpressionResult *expressionResult);
 void HandlePreParsedDollarFilter(pgbson *doc, void *arguments,
 								 ExpressionResult *expressionResult);
@@ -478,6 +468,10 @@ void HandlePreParsedDollarMakeArray(pgbson *doc, void *arguments,
 									ExpressionResult *expressionResult);
 void HandlePreParsedDollarMaxMinN(pgbson *doc, void *arguments,
 								  ExpressionResult *expressionResult);
+void HandlePreParsedDollarMultiply(pgbson *doc, void *arguments,
+								   ExpressionResult *expressionResult);
+void HandlePreParsedDollarPow(pgbson *doc, void *arguments,
+							  ExpressionResult *expressionResult);
 void HandlePreParsedDollarRadiansToDegrees(pgbson *doc, void *arguments,
 										   ExpressionResult *expressionResult);
 void HandlePreParsedDollarRange(pgbson *doc, void *arguments,
@@ -496,6 +490,8 @@ void HandlePreParsedDollarReplaceOne(pgbson *doc, void *arguments,
 									 ExpressionResult *expressionResult);
 void HandlePreParsedDollarReverseArray(pgbson *doc, void *arguments,
 									   ExpressionResult *expressionResult);
+void HandlePreParsedDollarRound(pgbson *doc, void *arguments,
+								ExpressionResult *expressionResult);
 void HandlePreParsedDollarSetField(pgbson *doc, void *arguments,
 								   ExpressionResult *expressionResult);
 void HandlePreParsedDollarSin(pgbson *doc, void *arguments,
@@ -504,9 +500,13 @@ void HandlePreParsedDollarSinh(pgbson *doc, void *arguments,
 							   ExpressionResult *expressionResult);
 void HandlePreParsedDollarSortArray(pgbson *doc, void *arguments,
 									ExpressionResult *expressionResult);
+void HandlePreParsedDollarSqrt(pgbson *doc, void *arguments,
+							   ExpressionResult *expressionResult);
 void HandlePreParsedDollarSubstrBytes(pgbson *doc, void *arguments,
 									  ExpressionResult *expressionResult);
 void HandlePreParsedDollarSubstrCP(pgbson *doc, void *arguments,
+								   ExpressionResult *expressionResult);
+void HandlePreParsedDollarSubtract(pgbson *doc, void *arguments,
 								   ExpressionResult *expressionResult);
 void HandlePreParsedDollarSum(pgbson *doc, void *arguments,
 							  ExpressionResult *expressionResult);
@@ -514,6 +514,8 @@ void HandlePreParsedDollarTan(pgbson *doc, void *arguments,
 							  ExpressionResult *expressionResult);
 void HandlePreParsedDollarTanh(pgbson *doc, void *arguments,
 							   ExpressionResult *expressionResult);
+void HandlePreParsedDollarTrunc(pgbson *doc, void *arguments,
+								ExpressionResult *expressionResult);
 void HandlePreParsedDollarTsIncrement(pgbson *doc, void *arguments,
 									  ExpressionResult *expressionResult);
 void HandlePreParsedDollarTsSecond(pgbson *doc, void *arguments,
@@ -522,10 +524,16 @@ void HandlePreParsedDollarUnsetField(pgbson *doc, void *arguments,
 									 ExpressionResult *expressionResult);
 void HandlePreParsedDollarZip(pgbson *doc, void *arguments,
 							  ExpressionResult *ExpressionResult);
+void ParseDollarAbs(const bson_value_t *argument, AggregationExpressionData *data,
+					ParseAggregationExpressionContext *context);
 void ParseDollarAcos(const bson_value_t *argument, AggregationExpressionData *data,
 					 ParseAggregationExpressionContext *context);
 void ParseDollarAcosh(const bson_value_t *argument, AggregationExpressionData *data,
 					  ParseAggregationExpressionContext *context);
+void ParseDollarAdd(const bson_value_t *argument, AggregationExpressionData *data,
+					ParseAggregationExpressionContext *context);
+void ParseDollarAnd(const bson_value_t *argument, AggregationExpressionData *data,
+					ParseAggregationExpressionContext *context);
 void ParseDollarAsin(const bson_value_t *argument, AggregationExpressionData *data,
 					 ParseAggregationExpressionContext *context);
 void ParseDollarAsinh(const bson_value_t *argument, AggregationExpressionData *data,
@@ -553,6 +561,8 @@ void ParseDollarBitXor(const bson_value_t *argument, AggregationExpressionData *
 void ParseDollarBucketInternal(const bson_value_t *argument,
 							   AggregationExpressionData *data,
 							   ParseAggregationExpressionContext *context);
+void ParseDollarCeil(const bson_value_t *argument, AggregationExpressionData *data,
+					 ParseAggregationExpressionContext *context);
 void ParseDollarCos(const bson_value_t *argument, AggregationExpressionData *data,
 					ParseAggregationExpressionContext *context);
 void ParseDollarCosh(const bson_value_t *argument, AggregationExpressionData *data,
@@ -577,8 +587,14 @@ void ParseDollarDateTrunc(const bson_value_t *argument, AggregationExpressionDat
 void ParseDollarDegreesToRadians(const bson_value_t *argument,
 								 AggregationExpressionData *data,
 								 ParseAggregationExpressionContext *context);
+void ParseDollarDivide(const bson_value_t *argument, AggregationExpressionData *data,
+					   ParseAggregationExpressionContext *context);
 void ParseDollarEq(const bson_value_t *argument, AggregationExpressionData *data,
 				   ParseAggregationExpressionContext *context);
+void ParseDollarExp(const bson_value_t *argument, AggregationExpressionData *data,
+					ParseAggregationExpressionContext *context);
+void ParseDollarFloor(const bson_value_t *argument, AggregationExpressionData *data,
+					  ParseAggregationExpressionContext *context);
 void ParseDollarGetField(const bson_value_t *argument, AggregationExpressionData *data,
 						 ParseAggregationExpressionContext *context);
 void ParseDollarGt(const bson_value_t *argument, AggregationExpressionData *data,
@@ -587,6 +603,12 @@ void ParseDollarGte(const bson_value_t *argument, AggregationExpressionData *dat
 					ParseAggregationExpressionContext *context);
 void ParseDollarLet(const bson_value_t *argument, AggregationExpressionData *data,
 					ParseAggregationExpressionContext *context);
+void ParseDollarLn(const bson_value_t *argument, AggregationExpressionData *data,
+				   ParseAggregationExpressionContext *context);
+void ParseDollarLog(const bson_value_t *argument, AggregationExpressionData *data,
+					ParseAggregationExpressionContext *context);
+void ParseDollarLog10(const bson_value_t *argument, AggregationExpressionData *data,
+					  ParseAggregationExpressionContext *context);
 void ParseDollarLt(const bson_value_t *argument, AggregationExpressionData *data,
 				   ParseAggregationExpressionContext *context);
 void ParseDollarLte(const bson_value_t *argument, AggregationExpressionData *data,
@@ -597,7 +619,15 @@ void ParseDollarMax(const bson_value_t *argument, AggregationExpressionData *dat
 					ParseAggregationExpressionContext *context);
 void ParseDollarMin(const bson_value_t *argument, AggregationExpressionData *data,
 					ParseAggregationExpressionContext *context);
+void ParseDollarMod(const bson_value_t *argument, AggregationExpressionData *data,
+					ParseAggregationExpressionContext *context);
+void ParseDollarMultiply(const bson_value_t *argument, AggregationExpressionData *data,
+						 ParseAggregationExpressionContext *context);
 void ParseDollarNe(const bson_value_t *argument, AggregationExpressionData *data,
+				   ParseAggregationExpressionContext *context);
+void ParseDollarNot(const bson_value_t *argument, AggregationExpressionData *data,
+					ParseAggregationExpressionContext *context);
+void ParseDollarOr(const bson_value_t *argument, AggregationExpressionData *data,
 				   ParseAggregationExpressionContext *context);
 void ParseDollarFilter(const bson_value_t *argument, AggregationExpressionData *data,
 					   ParseAggregationExpressionContext *context);
@@ -618,6 +648,8 @@ void ParseDollarMaxN(const bson_value_t *argument, AggregationExpressionData *da
 					 ParseAggregationExpressionContext *context);
 void ParseDollarMinN(const bson_value_t *argument, AggregationExpressionData *data,
 					 ParseAggregationExpressionContext *context);
+void ParseDollarPow(const bson_value_t *argument, AggregationExpressionData *data,
+					ParseAggregationExpressionContext *context);
 void ParseDollarRadiansToDegrees(const bson_value_t *argument,
 								 AggregationExpressionData *data,
 								 ParseAggregationExpressionContext *context);
@@ -639,6 +671,8 @@ void ParseDollarReplaceOne(const bson_value_t *argument, AggregationExpressionDa
 void ParseDollarReverseArray(const bson_value_t *argument,
 							 AggregationExpressionData *data,
 							 ParseAggregationExpressionContext *context);
+void ParseDollarRound(const bson_value_t *argument, AggregationExpressionData *data,
+					  ParseAggregationExpressionContext *context);
 void ParseDollarSetField(const bson_value_t *argument, AggregationExpressionData *data,
 						 ParseAggregationExpressionContext *context);
 void ParseDollarSin(const bson_value_t *argument, AggregationExpressionData *data,
@@ -647,6 +681,8 @@ void ParseDollarSinh(const bson_value_t *argument, AggregationExpressionData *da
 					 ParseAggregationExpressionContext *context);
 void ParseDollarSortArray(const bson_value_t *argument, AggregationExpressionData *data,
 						  ParseAggregationExpressionContext *context);
+void ParseDollarSqrt(const bson_value_t *argument, AggregationExpressionData *data,
+					 ParseAggregationExpressionContext *context);
 void ParseDollarSubstr(const bson_value_t *argument, AggregationExpressionData *data,
 					   ParseAggregationExpressionContext *context);
 void ParseDollarSubstrBytes(const bson_value_t *argument,
@@ -654,12 +690,16 @@ void ParseDollarSubstrBytes(const bson_value_t *argument,
 							ParseAggregationExpressionContext *context);
 void ParseDollarSubstrCP(const bson_value_t *argument, AggregationExpressionData *data,
 						 ParseAggregationExpressionContext *context);
+void ParseDollarSubtract(const bson_value_t *argument, AggregationExpressionData *data,
+						 ParseAggregationExpressionContext *context);
 void ParseDollarSum(const bson_value_t *argument, AggregationExpressionData *data,
 					ParseAggregationExpressionContext *context);
 void ParseDollarTan(const bson_value_t *argument, AggregationExpressionData *data,
 					ParseAggregationExpressionContext *context);
 void ParseDollarTanh(const bson_value_t *argument, AggregationExpressionData *data,
 					 ParseAggregationExpressionContext *context);
+void ParseDollarTrunc(const bson_value_t *argument, AggregationExpressionData *data,
+					  ParseAggregationExpressionContext *context);
 void ParseDollarTsSecond(const bson_value_t *argument, AggregationExpressionData *data,
 						 ParseAggregationExpressionContext *context);
 void ParseDollarTsIncrement(const bson_value_t *argument,
