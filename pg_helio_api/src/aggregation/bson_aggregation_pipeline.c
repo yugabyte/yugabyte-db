@@ -4844,6 +4844,17 @@ GenerateBaseTableQuery(Datum databaseDatum, const StringView *collectionNameView
 		rte->rtekind = RTE_RELATION;
 		rte->relid = collection->relationId;
 
+		if (context->allowShardBaseTable)
+		{
+			Oid shardOid = TryGetCollectionShardTable(collection, AccessShareLock);
+			if (shardOid != InvalidOid)
+			{
+				/* Mark on our copy of the collection that we're using the shard */
+				collection->relationId = shardOid;
+				rte->relid = shardOid;
+			}
+		}
+
 		rte->alias = makeAlias(collectionAlias, NIL);
 		rte->eref = makeAlias(collectionAlias, colNames);
 		rte->lateral = false;
