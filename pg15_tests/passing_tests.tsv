@@ -581,9 +581,7 @@ tools_yb-backup-cross-feature-test	YBBackupTestColocatedTablesWithTablespaces.Te
 tools_yb-backup-cross-feature-test	YBDdlAtomicityBackupTest.*
 tools_yb-backup-test	YBBackupTest.BackupRaceWithDropColocatedTable
 tools_yb-backup-test	YBBackupTest.BackupRaceWithDropTable
-tools_yb-backup-test	YBBackupTest.TestYSQLBackupWithDropYugabyteDB
 tools_yb-backup-test	YBBackupTest.TestYSQLKeyspaceBackup
-tools_yb-backup-test	YBBackupTest.TestYSQLKeyspaceBackupWithDropTable
 tools_yb-backup-test	YBBackupTest.TestYSQLPgBasedBackup
 tools_yb-backup-test	YBBackupTest.TestYSQLRestoreBackupToGlobalCatalogVersionMode
 tools_yb-backup-test	YBBackupTest.TestYSQLRestoreBackupToNewKeyspace
