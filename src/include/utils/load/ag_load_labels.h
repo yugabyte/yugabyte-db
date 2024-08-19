@@ -22,6 +22,7 @@
 #define AG_LOAD_LABELS_H
 
 #include "access/heapam.h"
+#include "utils/load/age_load.h"
 
 #define AGE_VERTIX 1
 #define AGE_EDGE 2
@@ -47,10 +48,14 @@ typedef struct {
     size_t curr_row_length;
     char *graph_name;
     Oid graph_oid;
-    char *object_name;
-    int object_id;
+    char *label_name;
+    int label_id;
+    Oid label_seq_relid;
+    Oid temp_table_relid;
     bool id_field_exists;
     bool load_as_agtype;
+    int curr_seq_num;
+    batch_insert_state *batch_state;
 } csv_vertex_reader;
 
 
@@ -58,7 +63,7 @@ void vertex_field_cb(void *field, size_t field_len, void *data);
 void vertex_row_cb(int delim __attribute__((unused)), void *data);
 
 int create_labels_from_csv_file(char *file_path, char *graph_name, Oid graph_oid,
-                                char *object_name, int object_id,
+                                char *label_name, int label_id,
                                 bool id_field_exists, bool load_as_agtype);
 
 #endif /* AG_LOAD_LABELS_H */

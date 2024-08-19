@@ -20,8 +20,12 @@
 #include "postgres.h"
 
 #include "utils/load/ag_load_edges.h"
-#include "utils/load/age_load.h"
 #include "utils/load/csv.h"
+
+void init_edge_batch_insert(batch_insert_state **batch_state,
+                            char *label_name, Oid graph_oid);
+void finish_edge_batch_insert(batch_insert_state **batch_state,
+                              char *label_name, Oid graph_oid);
 
 void edge_field_cb(void *field, size_t field_len, void *data)
 {
@@ -58,6 +62,7 @@ void edge_row_cb(int delim __attribute__((unused)), void *data)
 {
 
     csv_edge_reader *cr = (csv_edge_reader*)data;
+    batch_insert_state *batch_state = cr->batch_state;
 
     size_t i, n_fields;
     int64 start_id_int;
@@ -68,9 +73,9 @@ void edge_row_cb(int delim __attribute__((unused)), void *data)
     graphid end_vertex_graph_id;
     int end_vertex_type_id;
 
-    graphid object_graph_id;
-
-    agtype* props = NULL;
+    graphid edge_id;
+    int64 entry_id;
+    TupleTableSlot *slot;
 
     n_fields = cr->cur_field;
 
@@ -89,7 +94,8 @@ void edge_row_cb(int delim __attribute__((unused)), void *data)
     }
     else
     {
-        object_graph_id = make_graphid(cr->object_id, (int64)cr->row);
+        entry_id = nextval_internal(cr->label_seq_relid, true);
+        edge_id = make_graphid(cr->label_id, entry_id);
 
         start_id_int = strtol(cr->fields[0], NULL, 10);
         start_vertex_type_id = get_label_id(cr->fields[1], cr->graph_oid);
@@ -99,14 +105,35 @@ void edge_row_cb(int delim __attribute__((unused)), void *data)
         start_vertex_graph_id = make_graphid(start_vertex_type_id, start_id_int);
         end_vertex_graph_id = make_graphid(end_vertex_type_id, end_id_int);
 
-        props = create_agtype_from_list_i(cr->header, cr->fields,
-                                          n_fields, 4, cr->load_as_agtype);
+        /* Get the appropriate slot from the batch state */
+        slot = batch_state->slots[batch_state->num_tuples];
 
-        insert_edge_simple(cr->graph_oid, cr->object_name,
-                           object_graph_id, start_vertex_graph_id,
-                           end_vertex_graph_id, props);
+        /* Clear the slots contents */
+        ExecClearTuple(slot);
 
-        pfree(props);
+        /* Fill the values in the slot */
+        slot->tts_values[0] = GRAPHID_GET_DATUM(edge_id);
+        slot->tts_values[1] = GRAPHID_GET_DATUM(start_vertex_graph_id);
+        slot->tts_values[2] = GRAPHID_GET_DATUM(end_vertex_graph_id);
+        slot->tts_values[3] = AGTYPE_P_GET_DATUM(
+                                create_agtype_from_list_i(
+                                    cr->header, cr->fields,
+                                    n_fields, 4, cr->load_as_agtype));
+        slot->tts_isnull[0] = false;
+        slot->tts_isnull[1] = false;
+        slot->tts_isnull[2] = false;
+        slot->tts_isnull[3] = false;
+
+        /* Make the slot as containing virtual tuple */
+        ExecStoreVirtualTuple(slot);
+        batch_state->num_tuples++;
+
+        if (batch_state->num_tuples >= batch_state->max_tuples)
+        {
+            /* Insert the batch when it is full (i.e. BATCH_SIZE) */
+            insert_batch(batch_state, cr->label_name, cr->graph_oid);
+            batch_state->num_tuples = 0;
+        }
     }
 
     for (i = 0; i < n_fields; ++i)
@@ -118,7 +145,6 @@ void edge_row_cb(int delim __attribute__((unused)), void *data)
     {
         ereport(NOTICE,(errmsg("THere is some error")));
     }
-
 
     cr->cur_field = 0;
     cr->curr_row_length = 0;
@@ -152,8 +178,8 @@ static int is_term(unsigned char c)
 int create_edges_from_csv_file(char *file_path,
                                char *graph_name,
                                Oid graph_oid,
-                               char *object_name,
-                               int object_id,
+                               char *label_name,
+                               int label_id,
                                bool load_as_agtype)
 {
 
@@ -163,6 +189,7 @@ int create_edges_from_csv_file(char *file_path,
     size_t bytes_read;
     unsigned char options = 0;
     csv_edge_reader cr;
+    char *label_seq_name;
 
     if (csv_init(&p, options) != 0)
     {
@@ -180,6 +207,7 @@ int create_edges_from_csv_file(char *file_path,
                 (errmsg("Failed to open %s\n", file_path)));
     }
 
+    label_seq_name = get_label_seq_relation_name(label_name);
 
     memset((void*)&cr, 0, sizeof(csv_edge_reader));
     cr.alloc = 128;
@@ -189,9 +217,13 @@ int create_edges_from_csv_file(char *file_path,
     cr.curr_row_length = 0;
     cr.graph_name = graph_name;
     cr.graph_oid = graph_oid;
-    cr.object_name = object_name;
-    cr.object_id = object_id;
+    cr.label_name = label_name;
+    cr.label_id = label_id;
+    cr.label_seq_relid = get_relname_relid(label_seq_name, graph_oid);
     cr.load_as_agtype = load_as_agtype;
+
+    /* Initialize the batch insert state */
+    init_edge_batch_insert(&cr.batch_state, label_name, graph_oid);
 
     while ((bytes_read=fread(buf, 1, 1024, fp)) > 0)
     {
@@ -205,6 +237,9 @@ int create_edges_from_csv_file(char *file_path,
 
     csv_fini(&p, edge_field_cb, edge_row_cb, &cr);
 
+    /* Finish any remaining batch inserts */
+    finish_edge_batch_insert(&cr.batch_state, label_name, graph_oid);
+
     if (ferror(fp))
     {
         ereport(ERROR, (errmsg("Error while reading file %s\n", file_path)));
@@ -215,4 +250,66 @@ int create_edges_from_csv_file(char *file_path,
     free(cr.fields);
     csv_free(&p);
     return EXIT_SUCCESS;
+}
+
+/*
+ * Initialize the batch insert state for edges.
+ */
+void init_edge_batch_insert(batch_insert_state **batch_state,
+                            char *label_name, Oid graph_oid)
+{
+    Relation relation;
+    int i;
+
+    // Open a temporary relation to get the tuple descriptor
+    relation = table_open(get_label_relation(label_name, graph_oid), AccessShareLock);
+
+    // Initialize the batch insert state
+    *batch_state = (batch_insert_state *) palloc0(sizeof(batch_insert_state));
+    (*batch_state)->max_tuples = BATCH_SIZE;
+    (*batch_state)->slots = palloc(sizeof(TupleTableSlot *) * BATCH_SIZE);
+    (*batch_state)->num_tuples = 0;
+
+    // Create slots
+    for (i = 0; i < BATCH_SIZE; i++)
+    {
+        (*batch_state)->slots[i] = MakeSingleTupleTableSlot(
+                                            RelationGetDescr(relation),
+                                            &TTSOpsHeapTuple);
+    }
+
+    table_close(relation, AccessShareLock);
+}
+
+/*
+ * Finish the batch insert for edges. Insert the
+ * remaining tuples in the batch state and clean up.
+ */
+void finish_edge_batch_insert(batch_insert_state **batch_state,
+                              char *label_name, Oid graph_oid)
+{
+    int i;
+    Relation relation;
+
+    if ((*batch_state)->num_tuples > 0)
+    {
+        insert_batch(*batch_state, label_name, graph_oid);
+        (*batch_state)->num_tuples = 0;
+    }
+
+    // Open a temporary relation to ensure resources are properly cleaned up
+    relation = table_open(get_label_relation(label_name, graph_oid), AccessShareLock);
+
+    // Free slots
+    for (i = 0; i < BATCH_SIZE; i++)
+    {
+        ExecDropSingleTupleTableSlot((*batch_state)->slots[i]);
+    }
+
+    // Clean up batch state
+    pfree((*batch_state)->slots);
+    pfree(*batch_state);
+    *batch_state = NULL;
+
+    table_close(relation, AccessShareLock);
 }

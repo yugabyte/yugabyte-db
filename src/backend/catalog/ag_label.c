@@ -174,6 +174,11 @@ char get_label_kind(const char *label_name, Oid label_graph)
     }
 }
 
+char *get_label_seq_relation_name(const char *label_name)
+{
+    return psprintf("%s_id_seq", label_name);
+}
+
 PG_FUNCTION_INFO_V1(_label_name);
 
 /*

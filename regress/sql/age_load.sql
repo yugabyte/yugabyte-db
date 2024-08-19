@@ -22,19 +22,64 @@
 LOAD 'age';
 
 SET search_path TO ag_catalog;
+
+-- Create a country using CREATE clause
 SELECT create_graph('agload_test_graph');
 
-SELECT create_vlabel('agload_test_graph','Country');
-SELECT load_labels_from_file('agload_test_graph', 'Country',
-    'age_load/countries.csv');
+SELECT * FROM cypher('agload_test_graph', $$CREATE (n:Country {__id__:1}) RETURN n$$) as (n agtype);
 
-SELECT create_vlabel('agload_test_graph','City');
+--
+-- Load countries with id
+--
+SELECT load_labels_from_file('agload_test_graph', 'Country',
+    'age_load/countries.csv', true);
+
+-- A temporary table should have been created with 54 ids; 1 from CREATE and 53 from file
+SELECT COUNT(*)=54 FROM "_agload_test_graph_ag_vertex_ids";
+
+-- Sequence should be equal to max entry id i.e. 248
+SELECT currval('agload_test_graph."Country_id_seq"')=248;
+
+-- Should error out on loading the same file again due to duplicate id
+SELECT load_labels_from_file('agload_test_graph', 'Country',
+    'age_load/countries.csv', true);
+
+--
+-- Load cities with id
+--
+
+-- Should create City label automatically and load cities
 SELECT load_labels_from_file('agload_test_graph', 'City',
-    'age_load/cities.csv');
+    'age_load/cities.csv', true);
+
+-- Temporary table should have 54+72485 rows now
+SELECT COUNT(*)=54+72485 FROM "_agload_test_graph_ag_vertex_ids";
+
+-- Sequence should be equal to max entry id i.e. 146941
+SELECT currval('agload_test_graph."City_id_seq"')=146941;
+
+-- Should error out on loading the same file again due to duplicate id
+SELECT load_labels_from_file('agload_test_graph', 'City',
+    'age_load/cities.csv', true);
+
+--
+-- Load edges -- Connects cities to countries
+--
+
+-- Should error out for using vertex label
+SELECT load_edges_from_file('agload_test_graph', 'Country',
+    'age_load/edges.csv');
 
 SELECT create_elabel('agload_test_graph','has_city');
 SELECT load_edges_from_file('agload_test_graph', 'has_city',
      'age_load/edges.csv');
+
+-- Sequence should be equal to number of edges loaded i.e. 72485
+SELECT currval('agload_test_graph."has_city_id_seq"')=72485;
+
+-- Should error out for using edge label
+SELECT load_labels_from_file('agload_test_graph', 'has_city',
+     'age_load/cities.csv');
 
 SELECT table_catalog, table_schema, lower(table_name) as table_name, table_type
 FROM information_schema.tables
@@ -47,6 +92,14 @@ SELECT COUNT(*) FROM agload_test_graph."has_city";
 SELECT COUNT(*) FROM cypher('agload_test_graph', $$MATCH(n) RETURN n$$) as (n agtype);
 
 SELECT COUNT(*) FROM cypher('agload_test_graph', $$MATCH (a)-[e]->(b) RETURN e$$) as (n agtype);
+
+--
+-- Load countries and cities without id
+--
+
+-- Should load countries in Country label without error since it should use sequence now
+SELECT load_labels_from_file('agload_test_graph', 'Country',
+    'age_load/countries.csv', false);
 
 SELECT create_vlabel('agload_test_graph','Country2');
 SELECT load_labels_from_file('agload_test_graph', 'Country2',
@@ -62,31 +115,39 @@ SELECT COUNT(*) FROM agload_test_graph."City2";
 SELECT id FROM agload_test_graph."Country" LIMIT 10;
 SELECT id FROM agload_test_graph."Country2" LIMIT 10;
 
+-- Should return 2 rows for Country with same properties, but different ids
 SELECT * FROM cypher('agload_test_graph', $$MATCH(n:Country {iso2 : 'BE'})
     RETURN id(n), n.name, n.iso2 $$) as ("id(n)" agtype, "n.name" agtype, "n.iso2" agtype);
+-- Should return 1 row
 SELECT * FROM cypher('agload_test_graph', $$MATCH(n:Country2 {iso2 : 'BE'})
     RETURN id(n), n.name, n.iso2 $$) as ("id(n)" agtype, "n.name" agtype, "n.iso2" agtype);
 
+-- Should return 2 rows for Country with same properties, but different ids
 SELECT * FROM cypher('agload_test_graph', $$MATCH(n:Country {iso2 : 'AT'})
     RETURN id(n), n.name, n.iso2 $$) as ("id(n)" agtype, "n.name" agtype, "n.iso2" agtype);
+-- Should return 1 row
 SELECT * FROM cypher('agload_test_graph', $$MATCH(n:Country2 {iso2 : 'AT'})
     RETURN id(n), n.name, n.iso2 $$) as ("id(n)" agtype, "n.name" agtype, "n.iso2" agtype);
 
+-- Should return 2 rows for Country with same properties, but different ids
 SELECT * FROM cypher('agload_test_graph', $$
     MATCH (u:Country {region : "Europe"})
     WHERE u.name =~ 'Cro.*'
-    RETURN u.name, u.region
-$$) AS (result_1 agtype, result_2 agtype);
+    RETURN id(u), u.name, u.region
+$$) AS ("id(u)" agtype, result_1 agtype, result_2 agtype);
+
+-- There shouldn't be any duplicates
+SELECT * FROM cypher('agload_test_graph', $$return graph_stats('agload_test_graph')$$) as (a agtype);
 
 SELECT drop_graph('agload_test_graph', true);
 
 --
 -- Test property type conversion
 --
-SELECT create_graph('agload_conversion');
 
 -- vertex: load as agtype
-SELECT create_vlabel('agload_conversion','Person1');
+
+-- Should create graph and label automatically
 SELECT load_labels_from_file('agload_conversion', 'Person1', 'age_load/conversion_vertices.csv', true, true);
 SELECT * FROM cypher('agload_conversion', $$ MATCH (n:Person1) RETURN properties(n) $$) as (a agtype);
 

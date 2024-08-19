@@ -19,6 +19,7 @@
 \! cp -r regress/age_load/data regress/instance/data/age_load
 LOAD 'age';
 SET search_path TO ag_catalog;
+-- Create a country using CREATE clause
 SELECT create_graph('agload_test_graph');
 NOTICE:  graph "agload_test_graph" has been created
  create_graph 
@@ -26,34 +27,79 @@ NOTICE:  graph "agload_test_graph" has been created
  
 (1 row)
 
-SELECT create_vlabel('agload_test_graph','Country');
-NOTICE:  VLabel "Country" has been created
- create_vlabel 
----------------
- 
+SELECT * FROM cypher('agload_test_graph', $$CREATE (n:Country {__id__:1}) RETURN n$$) as (n agtype);
+                                        n                                         
+----------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "Country", "properties": {"__id__": 1}}::vertex
 (1 row)
 
+--
+-- Load countries with id
+--
 SELECT load_labels_from_file('agload_test_graph', 'Country',
-    'age_load/countries.csv');
+    'age_load/countries.csv', true);
  load_labels_from_file 
 -----------------------
  
 (1 row)
 
-SELECT create_vlabel('agload_test_graph','City');
-NOTICE:  VLabel "City" has been created
- create_vlabel 
----------------
- 
+-- A temporary table should have been created with 54 ids; 1 from CREATE and 53 from file
+SELECT COUNT(*)=54 FROM "_agload_test_graph_ag_vertex_ids";
+ ?column? 
+----------
+ t
 (1 row)
 
+-- Sequence should be equal to max entry id i.e. 248
+SELECT currval('agload_test_graph."Country_id_seq"')=248;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Should error out on loading the same file again due to duplicate id
+SELECT load_labels_from_file('agload_test_graph', 'Country',
+    'age_load/countries.csv', true);
+ERROR:  Cannot insert duplicate vertex id: 844424930131970
+HINT:  Entry id 2 is already used
+--
+-- Load cities with id
+--
+-- Should create City label automatically and load cities
 SELECT load_labels_from_file('agload_test_graph', 'City',
-    'age_load/cities.csv');
+    'age_load/cities.csv', true);
+NOTICE:  VLabel "City" has been created
  load_labels_from_file 
 -----------------------
  
 (1 row)
 
+-- Temporary table should have 54+72485 rows now
+SELECT COUNT(*)=54+72485 FROM "_agload_test_graph_ag_vertex_ids";
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Sequence should be equal to max entry id i.e. 146941
+SELECT currval('agload_test_graph."City_id_seq"')=146941;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Should error out on loading the same file again due to duplicate id
+SELECT load_labels_from_file('agload_test_graph', 'City',
+    'age_load/cities.csv', true);
+ERROR:  Cannot insert duplicate vertex id: 1125899906842777
+HINT:  Entry id 153 is already used
+--
+-- Load edges -- Connects cities to countries
+--
+-- Should error out for using vertex label
+SELECT load_edges_from_file('agload_test_graph', 'Country',
+    'age_load/edges.csv');
+ERROR:  label "Country" already exists as edge label
 SELECT create_elabel('agload_test_graph','has_city');
 NOTICE:  ELabel "has_city" has been created
  create_elabel 
@@ -68,6 +114,17 @@ SELECT load_edges_from_file('agload_test_graph', 'has_city',
  
 (1 row)
 
+-- Sequence should be equal to number of edges loaded i.e. 72485
+SELECT currval('agload_test_graph."has_city_id_seq"')=72485;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- Should error out for using edge label
+SELECT load_labels_from_file('agload_test_graph', 'has_city',
+     'age_load/cities.csv');
+ERROR:  label "has_city" already exists as vertex label
 SELECT table_catalog, table_schema, lower(table_name) as table_name, table_type
 FROM information_schema.tables
 WHERE table_schema = 'agload_test_graph' ORDER BY table_name ASC;
@@ -83,7 +140,7 @@ WHERE table_schema = 'agload_test_graph' ORDER BY table_name ASC;
 SELECT COUNT(*) FROM agload_test_graph."Country";
  count 
 -------
-    53
+    54
 (1 row)
 
 SELECT COUNT(*) FROM agload_test_graph."City";
@@ -101,13 +158,24 @@ SELECT COUNT(*) FROM agload_test_graph."has_city";
 SELECT COUNT(*) FROM cypher('agload_test_graph', $$MATCH(n) RETURN n$$) as (n agtype);
  count 
 -------
- 72538
+ 72539
 (1 row)
 
 SELECT COUNT(*) FROM cypher('agload_test_graph', $$MATCH (a)-[e]->(b) RETURN e$$) as (n agtype);
  count 
 -------
  72485
+(1 row)
+
+--
+-- Load countries and cities without id
+--
+-- Should load countries in Country label without error since it should use sequence now
+SELECT load_labels_from_file('agload_test_graph', 'Country',
+    'age_load/countries.csv', false);
+ load_labels_from_file 
+-----------------------
+ 
 (1 row)
 
 SELECT create_vlabel('agload_test_graph','Country2');
@@ -153,6 +221,7 @@ SELECT COUNT(*) FROM agload_test_graph."City2";
 SELECT id FROM agload_test_graph."Country" LIMIT 10;
        id        
 -----------------
+ 844424930131969
  844424930131970
  844424930131971
  844424930131974
@@ -162,7 +231,6 @@ SELECT id FROM agload_test_graph."Country" LIMIT 10;
  844424930131996
  844424930132002
  844424930132023
- 844424930132025
 (10 rows)
 
 SELECT id FROM agload_test_graph."Country2" LIMIT 10;
@@ -180,13 +248,16 @@ SELECT id FROM agload_test_graph."Country2" LIMIT 10;
  1688849860263946
 (10 rows)
 
+-- Should return 2 rows for Country with same properties, but different ids
 SELECT * FROM cypher('agload_test_graph', $$MATCH(n:Country {iso2 : 'BE'})
     RETURN id(n), n.name, n.iso2 $$) as ("id(n)" agtype, "n.name" agtype, "n.iso2" agtype);
       id(n)      |  n.name   | n.iso2 
 -----------------+-----------+--------
  844424930131990 | "Belgium" | "BE"
-(1 row)
+ 844424930132223 | "Belgium" | "BE"
+(2 rows)
 
+-- Should return 1 row
 SELECT * FROM cypher('agload_test_graph', $$MATCH(n:Country2 {iso2 : 'BE'})
     RETURN id(n), n.name, n.iso2 $$) as ("id(n)" agtype, "n.name" agtype, "n.iso2" agtype);
       id(n)       |  n.name   | n.iso2 
@@ -194,13 +265,16 @@ SELECT * FROM cypher('agload_test_graph', $$MATCH(n:Country2 {iso2 : 'BE'})
  1688849860263942 | "Belgium" | "BE"
 (1 row)
 
+-- Should return 2 rows for Country with same properties, but different ids
 SELECT * FROM cypher('agload_test_graph', $$MATCH(n:Country {iso2 : 'AT'})
     RETURN id(n), n.name, n.iso2 $$) as ("id(n)" agtype, "n.name" agtype, "n.iso2" agtype);
       id(n)      |  n.name   | n.iso2 
 -----------------+-----------+--------
  844424930131983 | "Austria" | "AT"
-(1 row)
+ 844424930132221 | "Austria" | "AT"
+(2 rows)
 
+-- Should return 1 row
 SELECT * FROM cypher('agload_test_graph', $$MATCH(n:Country2 {iso2 : 'AT'})
     RETURN id(n), n.name, n.iso2 $$) as ("id(n)" agtype, "n.name" agtype, "n.iso2" agtype);
       id(n)       |  n.name   | n.iso2 
@@ -208,14 +282,23 @@ SELECT * FROM cypher('agload_test_graph', $$MATCH(n:Country2 {iso2 : 'AT'})
  1688849860263940 | "Austria" | "AT"
 (1 row)
 
+-- Should return 2 rows for Country with same properties, but different ids
 SELECT * FROM cypher('agload_test_graph', $$
     MATCH (u:Country {region : "Europe"})
     WHERE u.name =~ 'Cro.*'
-    RETURN u.name, u.region
-$$) AS (result_1 agtype, result_2 agtype);
- result_1  | result_2 
------------+----------
- "Croatia" | "Europe"
+    RETURN id(u), u.name, u.region
+$$) AS ("id(u)" agtype, result_1 agtype, result_2 agtype);
+      id(u)      | result_1  | result_2 
+-----------------+-----------+----------
+ 844424930132023 | "Croatia" | "Europe"
+ 844424930132226 | "Croatia" | "Europe"
+(2 rows)
+
+-- There shouldn't be any duplicates
+SELECT * FROM cypher('agload_test_graph', $$return graph_stats('agload_test_graph')$$) as (a agtype);
+                                            a                                             
+------------------------------------------------------------------------------------------
+ {"graph": "agload_test_graph", "num_loaded_edges": 72485, "num_loaded_vertices": 145130}
 (1 row)
 
 SELECT drop_graph('agload_test_graph', true);
@@ -236,22 +319,11 @@ NOTICE:  graph "agload_test_graph" has been dropped
 --
 -- Test property type conversion
 --
-SELECT create_graph('agload_conversion');
-NOTICE:  graph "agload_conversion" has been created
- create_graph 
---------------
- 
-(1 row)
-
 -- vertex: load as agtype
-SELECT create_vlabel('agload_conversion','Person1');
-NOTICE:  VLabel "Person1" has been created
- create_vlabel 
----------------
- 
-(1 row)
-
+-- Should create graph and label automatically
 SELECT load_labels_from_file('agload_conversion', 'Person1', 'age_load/conversion_vertices.csv', true, true);
+NOTICE:  graph "agload_conversion" has been created
+NOTICE:  VLabel "Person1" has been created
  load_labels_from_file 
 -----------------------
  

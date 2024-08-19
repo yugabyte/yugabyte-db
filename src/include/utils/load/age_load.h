@@ -24,10 +24,25 @@
 #include "catalog/ag_graph.h"
 #include "catalog/ag_label.h"
 #include "commands/label_commands.h"
+#include "commands/graph_commands.h"
 #include "utils/ag_cache.h"
 
 #ifndef AGE_ENTITY_CREATOR_H
 #define AGE_ENTITY_CREATOR_H
+
+#define TEMP_VERTEX_ID_TABLE_SUFFIX "_ag_vertex_ids"
+#define GET_TEMP_VERTEX_ID_TABLE(graph_name) \
+    psprintf("_%s%s", graph_name, TEMP_VERTEX_ID_TABLE_SUFFIX)
+
+#define BATCH_SIZE 1000
+
+typedef struct
+{
+    TupleTableSlot **slots;
+    TupleTableSlot **temp_id_slots;
+    int num_tuples;
+    int max_tuples;
+} batch_insert_state;
 
 agtype* create_empty_agtype(void);
 
@@ -42,5 +57,7 @@ void insert_vertex_simple(Oid graph_oid, char *label_name, graphid vertex_id,
 void insert_edge_simple(Oid graph_oid, char *label_name, graphid edge_id,
                         graphid start_id, graphid end_id,
                         agtype* end_properties);
+void insert_batch(batch_insert_state *batch_state, char *label_name,
+                  Oid graph_oid);
 
 #endif /* AGE_ENTITY_CREATOR_H */

@@ -42,6 +42,7 @@
 #include "catalog/ag_label.h"
 #include "commands/label_commands.h"
 #include "utils/graphid.h"
+#include "commands/graph_commands.h"
 #include "utils/name_validation.h"
 
 /*
@@ -60,10 +61,7 @@ PG_FUNCTION_INFO_V1(create_graph);
 /* function that is evoked for creating a graph */
 Datum create_graph(PG_FUNCTION_ARGS)
 {
-    char *graph;
     Name graph_name;
-    char *graph_name_str;
-    Oid nsp_id;
 
     /* if no argument is passed with the function, graph name cannot be null */
     if (PG_ARGISNULL(0))
@@ -74,6 +72,23 @@ Datum create_graph(PG_FUNCTION_ARGS)
 
     /* gets graph name as function argument */
     graph_name = PG_GETARG_NAME(0);  
+
+    create_graph_internal(graph_name);
+
+    ereport(NOTICE,
+            (errmsg("graph \"%s\" has been created", NameStr(*graph_name))));
+
+    /* 
+     * According to postgres specification of c-language functions
+     * if function returns void this is the syntax.
+     */
+    PG_RETURN_VOID(); 
+}
+
+Oid create_graph_internal(const Name graph_name)
+{
+    Oid nsp_id;
+    char *graph_name_str;
 
     graph_name_str = NameStr(*graph_name);
 
@@ -101,15 +116,10 @@ Datum create_graph(PG_FUNCTION_ARGS)
     CommandCounterIncrement();
 
     /* Create the default label tables */
-    graph = graph_name->data;
-    create_label(graph, AG_DEFAULT_LABEL_VERTEX, LABEL_TYPE_VERTEX, NIL);
-    create_label(graph, AG_DEFAULT_LABEL_EDGE, LABEL_TYPE_EDGE, NIL);
+    create_label(graph_name_str, AG_DEFAULT_LABEL_VERTEX, LABEL_TYPE_VERTEX, NIL);
+    create_label(graph_name_str, AG_DEFAULT_LABEL_EDGE, LABEL_TYPE_EDGE, NIL);
 
-    ereport(NOTICE,
-            (errmsg("graph \"%s\" has been created", NameStr(*graph_name))));
-
-    /* according to postgres specification of c-language functions if function returns void this is the syntax */
-    PG_RETURN_VOID();
+    return nsp_id;
 }
 
 PG_FUNCTION_INFO_V1(age_graph_exists);

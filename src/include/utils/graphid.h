@@ -36,7 +36,7 @@ typedef int64 graphid;
 
 #define label_id_is_valid(id) (id >= LABEL_ID_MIN && id <= LABEL_ID_MAX)
 
-#define ENTRY_ID_MIN INT64CONST(1)
+#define ENTRY_ID_MIN INT64CONST(0)
 /* 0x0000ffffffffffff */
 #define ENTRY_ID_MAX INT64CONST(281474976710655)
 #define INVALID_ENTRY_ID INT64CONST(0)

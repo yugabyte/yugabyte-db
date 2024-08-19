@@ -17,6 +17,9 @@
  * under the License.
  */
 
+#include "access/heapam.h"
+#include "utils/load/age_load.h"
+
 #ifndef AG_LOAD_EDGES_H
 #define AG_LOAD_EDGES_H
 
@@ -34,12 +37,13 @@ typedef struct {
     size_t curr_row_length;
     char *graph_name;
     Oid graph_oid;
-    char *object_name;
-    int object_id;
+    char *label_name;
+    int label_id;
+    Oid label_seq_relid;
     char *start_vertex;
     char *end_vertex;
     bool load_as_agtype;
-
+    batch_insert_state *batch_state;
 } csv_edge_reader;
 
 
@@ -47,7 +51,7 @@ void edge_field_cb(void *field, size_t field_len, void *data);
 void edge_row_cb(int delim __attribute__((unused)), void *data);
 
 int create_edges_from_csv_file(char *file_path, char *graph_name, Oid graph_oid,
-                                char *object_name, int object_id,
+                                char *label_name, int label_id,
                                 bool load_as_agtype);
 
 #endif /*AG_LOAD_EDGES_H */

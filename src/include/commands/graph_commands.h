@@ -21,5 +21,6 @@
 #define AG_GRAPH_COMMANDS_H
 
 Datum create_graph(PG_FUNCTION_ARGS);
+Oid create_graph_internal(const Name graph_name);
 
 #endif
