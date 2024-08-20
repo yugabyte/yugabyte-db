@@ -1653,9 +1653,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
     if (addedMasterNode != null) {
       // Include this newly added master node which may not yet have isMaster set to true.
-      // New tservers are started later after AnsbibleConfigure to update
-      // the master addresses and isTserver can be false.
       masterNodes.add(addedMasterNode);
+      if (addedMasterNode.isTserver) {
+        // It is also a tserver.
+        tserverNodes.add(addedMasterNode);
+      }
     }
 
     // Remove the stopped node from the update.
