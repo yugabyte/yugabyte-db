@@ -1910,10 +1910,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                         return false;
                       }
                       if (provider.getCloudCode() == CloudType.onprem) {
-                        AccessKey accessKey =
-                            AccessKey.getOrBadRequest(
-                                provider.getUuid(), cluster.userIntent.accessKeyCode);
-                        return !accessKey.getKeyInfo().skipProvisioning;
+
+                        return !provider.getDetails().skipProvisioning;
                       } else if (provider.getCloudCode() != CloudType.aws
                           && provider.getCloudCode() != CloudType.azu
                           && provider.getCloudCode() != CloudType.gcp) {

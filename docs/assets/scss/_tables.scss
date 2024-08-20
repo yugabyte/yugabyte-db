@@ -9,6 +9,10 @@ main {
       margin: 20px 0;
       max-width: 828px;
 
+      @media (min-width:1200px) {
+        max-width: 100%;
+      }
+
       > table {
         margin: 0 !important;
         border: none;
