@@ -44,7 +44,7 @@ var listUniverseCmd = &cobra.Command{
 			if util.IsOutputType("table") {
 				logrus.Infoln("No universes found\n")
 			} else {
-				logrus.Infoln("{}\n")
+				logrus.Infoln("[]\n")
 			}
 			return
 		}

@@ -201,7 +201,8 @@ public class VMImageUpgrade extends UpgradeTaskBase {
 
       createCheckNodesAreSafeToTakeDownTask(
           Collections.singletonList(MastersAndTservers.from(node, processTypes)),
-          getTargetSoftwareVersion());
+          getTargetSoftwareVersion(),
+          false);
 
       // The node is going to be stopped. Ignore error because of previous error due to
       // possibly detached root volume.

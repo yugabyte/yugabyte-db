@@ -297,7 +297,7 @@ The following are examples of payloads that are collected during some migration 
   "source_db_details": "",
   "target_db_details": {
     "host": "10.9.14.120",
-    "db_version": "11.2-YB-2.18.2.1-b0",
+    "db_version": "11.2-YB-{{<yb-version version="preview">}}-b0",
     "node_count": 1,
     "total_cores": 8
   },

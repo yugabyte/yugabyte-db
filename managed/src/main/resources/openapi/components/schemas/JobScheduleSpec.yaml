@@ -1,0 +1,10 @@
+title: JobScheduleSpec
+description: Spec of a job schedule that is a part of JobSchedule.
+type: object
+properties:
+  job_config:
+    description: Job config spec
+    $ref: "./JobConfigSpec.yaml"
+  schedule_config:
+    description: Schedule config spec
+    $ref: "./JobScheduleConfigSpec.yaml"

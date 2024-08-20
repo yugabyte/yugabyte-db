@@ -23,6 +23,7 @@
 namespace yb {
 
 class HybridTime;
+class IsOperationDoneResult;
 class JsonWriter;
 
 namespace rpc {
@@ -92,6 +93,9 @@ class XClusterManagerIf {
   virtual Status AlterUniverseReplication(
       const AlterUniverseReplicationRequestPB* req, AlterUniverseReplicationResponsePB* resp,
       rpc::RpcContext* rpc, const LeaderEpoch& epoch) = 0;
+
+  virtual Result<IsOperationDoneResult> IsSetupUniverseReplicationDone(
+      const xcluster::ReplicationGroupId& replication_group_id, bool skip_health_check) = 0;
 
  protected:
   virtual ~XClusterManagerIf() = default;

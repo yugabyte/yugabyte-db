@@ -154,6 +154,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
       ImmutableList.of(
           TaskType.CheckNodeSafeToDelete,
           TaskType.FreezeUniverse,
+          TaskType.UpdateConsistencyCheck,
           TaskType.SetNodeState,
           TaskType.WaitForMasterLeader,
           TaskType.SetNodeState,
@@ -166,6 +167,7 @@ public class ReleaseInstanceFromUniverseTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> RELEASE_INSTANCE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "BeingDecommissioned")),

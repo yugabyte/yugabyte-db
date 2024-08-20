@@ -28,6 +28,7 @@
 
 #include "yb/master/master_replication.fwd.h"
 
+#include "yb/util/is_operation_done_result.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
@@ -229,6 +230,10 @@ class XClusterTestBase : public YBTest {
       const xcluster::ReplicationGroupId& replication_group_id,
       master::IsSetupUniverseReplicationDoneResponsePB* resp);
 
+  Result<IsOperationDoneResult> WaitForSetupUniverseReplication(
+      const xcluster::ReplicationGroupId& replication_group_id = kReplicationGroupId,
+      MiniCluster* consumer_cluster = nullptr, YBClient* consumer_client = nullptr);
+
   Status GetCDCStreamForTable(const TableId& table_id, master::ListCDCStreamsResponsePB* resp);
 
   uint32_t GetSuccessfulWriteOps(MiniCluster* cluster);
@@ -320,6 +325,9 @@ class XClusterTestBase : public YBTest {
     }
     return output;
   }
+
+  // Run ysql_dump on a database for the given cluster.
+  Result<std::string> RunYSQLDump(Cluster& cluster, const std::string& database_name = "yugabyte");
 
   // Wait for the xcluster safe time to advance to the given time on all TServers.
   Status WaitForSafeTime(const NamespaceId& namespace_id, const HybridTime& min_safe_time);

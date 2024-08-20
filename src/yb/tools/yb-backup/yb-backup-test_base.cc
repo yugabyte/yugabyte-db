@@ -123,13 +123,12 @@ Status YBBackupTest::RunBackupCommand(const vector<string>& args) {
   return YBBackupTestBase::RunBackupCommand(args, cluster_.get());
 }
 
-void YBBackupTest::RecreateDatabase(const string& db) {
+void YBBackupTest::DropPsqlDatabase(const string& db) {
+  std::string current_db = GetDbName();
   ASSERT_NO_FATALS(RunPsqlCommand("CREATE DATABASE temp_db", "CREATE DATABASE"));
-  SetDbName("temp_db"); // Connecting to the second DB from the moment.
-  // Validate that the DB restoration works even if the default 'yugabyte' db was recreated.
+  SetDbName("temp_db"); // Connecting to the second DB for the moment.
   ASSERT_NO_FATALS(RunPsqlCommand(string("DROP DATABASE ") + db, "DROP DATABASE"));
-  ASSERT_NO_FATALS(RunPsqlCommand(string("CREATE DATABASE ") + db, "CREATE DATABASE"));
-  SetDbName(db); // Connecting to the recreated 'yugabyte' DB from the moment.
+  SetDbName(current_db);
 }
 
 Result<client::YBTableName> YBBackupTest::GetTableName(
@@ -346,7 +345,7 @@ void YBBackupTest::DoTestYEDISBackup(helpers::TableOp tableOp) {
   ASSERT_OK(helpers::RedisGet(session, table, "abc", "123"));
 }
 
-void YBBackupTest::DoTestYSQLKeyspaceBackup(helpers::TableOp tableOp) {
+void YBBackupTest::DoTestYSQLKeyspaceBackup() {
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE mytbl (k INT PRIMARY KEY, v TEXT)"));
   ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (100, 'foo')"));
   ASSERT_NO_FATALS(RunPsqlCommand(
@@ -368,26 +367,8 @@ void YBBackupTest::DoTestYSQLKeyspaceBackup(helpers::TableOp tableOp) {
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
 
-  ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (200, 'bar')"));
-  ASSERT_NO_FATALS(RunPsqlCommand(
-      "SELECT k, v FROM mytbl ORDER BY k",
-      R"#(
-          k  |  v
-        -----+-----
-         100 | foo
-         200 | bar
-        (2 rows)
-      )#"
-  ));
-
-  if (tableOp == helpers::TableOp::kDropTable) {
-    // Validate that the DB restoration works even if we have deleted tables with the same name.
-    ASSERT_NO_FATALS(RunPsqlCommand("DROP TABLE mytbl", "DROP TABLE"));
-  } else if (tableOp == helpers::TableOp::kDropDB) {
-    RecreateDatabase("yugabyte");
-  }
-
-  // Restore into the original "ysql.yugabyte" YSQL DB.
+  // Restore "ysql.yugabyte" YSQL DB.
+  DropPsqlDatabase("yugabyte");
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
@@ -403,7 +384,7 @@ void YBBackupTest::DoTestYSQLKeyspaceBackup(helpers::TableOp tableOp) {
   ));
 }
 
-void YBBackupTest::DoTestYSQLMultiSchemaKeyspaceBackup(helpers::TableOp tableOp) {
+void YBBackupTest::DoTestYSQLMultiSchemaKeyspaceBackup() {
   ASSERT_NO_FATALS(CreateSchema("CREATE SCHEMA schema1"));
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE schema1.mytbl (k INT PRIMARY KEY, v TEXT)"));
   ASSERT_NO_FATALS(CreateIndex("CREATE INDEX mytbl_idx ON schema1.mytbl (v)"));
@@ -439,39 +420,8 @@ void YBBackupTest::DoTestYSQLMultiSchemaKeyspaceBackup(helpers::TableOp tableOp)
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
 
-  ASSERT_NO_FATALS(InsertOneRow("INSERT INTO schema1.mytbl (k, v) VALUES (200, 'bar')"));
-  ASSERT_NO_FATALS(RunPsqlCommand(
-      "SELECT k, v FROM schema1.mytbl ORDER BY k",
-      R"#(
-          k  |  v
-        -----+-----
-         100 | foo
-         200 | bar
-        (2 rows)
-      )#"
-  ));
-
-  ASSERT_NO_FATALS(InsertOneRow("INSERT INTO schema2.mytbl (h1, v1) VALUES ('text2', 333)"));
-  ASSERT_NO_FATALS(RunPsqlCommand(
-      "SELECT h1, v1 FROM schema2.mytbl ORDER BY h1",
-      R"#(
-          h1   | v1
-        -------+-----
-         text1 | 222
-         text2 | 333
-        (2 rows)
-      )#"
-  ));
-
-  if (tableOp == helpers::TableOp::kDropTable) {
-    // Validate that the DB restoration works even if we have deleted tables with the same name.
-    ASSERT_NO_FATALS(RunPsqlCommand("DROP TABLE schema1.mytbl", "DROP TABLE"));
-    ASSERT_NO_FATALS(RunPsqlCommand("DROP TABLE schema2.mytbl", "DROP TABLE"));
-  } else if (tableOp == helpers::TableOp::kDropDB) {
-    RecreateDatabase("yugabyte");
-  }
-
-  // Restore into the original "ysql.yugabyte" YSQL DB.
+  // Restore "ysql.yugabyte" YSQL DB.
+  DropPsqlDatabase("yugabyte");
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
@@ -521,7 +471,7 @@ void YBBackupTest::DoTestYSQLMultiSchemaKeyspaceBackup(helpers::TableOp tableOp)
 
 void YBBackupTest::DoTestYSQLKeyspaceWithHyphenBackupRestore(
     const string& backup_db, const string& restore_db) {
-  if(backup_db != "yugabyte") {
+  if (backup_db != "yugabyte") {
     ASSERT_NO_FATALS(
         RunPsqlCommand(Format("CREATE DATABASE \"$0\"", backup_db), "CREATE DATABASE"));
     SetDbName(backup_db);
@@ -532,6 +482,7 @@ void YBBackupTest::DoTestYSQLKeyspaceWithHyphenBackupRestore(
   const string backup_dir = GetTempDir("backup");
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", backup_db), "create"}));
+  ASSERT_NE(restore_db, "yugabyte");
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", restore_db), "restore"}));
 

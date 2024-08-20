@@ -19,6 +19,18 @@ It is strongly recommended that you take appropriate measures as outlined in the
 {{%table%}}
 | Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
 | :------------------------------- | :------- | :-----: | :---------------: | :--- |
+| {{<ta 22935>}}
+|Potential issues with server-side sequence caching in multi-database clusters
+| {{<product "ysql">}}
+| {{<release "2.18.0.0, 2.20.0.0, 2024.1.0.0">}}
+| {{<nobreak "25 June 2024">}}
+|
+| {{<ta 22802>}}
+|Inconsistencies between system catalog and DocDB schema during DDL operations
+| {{<product "ysql">}}
+| {{<release "2.14.0.0">}}, [v2.16.0.0](/preview/releases/ybdb-releases/end-of-life/v2.16/#v2.16.0.0), {{<release "2.18.0.0, 2.20.0.0">}}
+| {{<nobreak "11 June 2024">}}
+|
 | {{<ta 22057>}}
 |Risk of data loss when upgrading to or from version 2.20.3.0 or 2.21.0
 | {{<product "ysql">}}

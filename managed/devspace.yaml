@@ -45,7 +45,9 @@ deployments:
           tag: ${YB_IMAGE_TAG}
         yugaware:
           service:
-            type: ClusterIP
+            annotations:
+              'networking.gke.io/load-balancer-type': Internal
+            type: LoadBalancer
           storage: 100Gi
           storageClass: yb-standard
       # valuesFiles:

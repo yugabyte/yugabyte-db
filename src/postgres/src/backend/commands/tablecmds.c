@@ -14721,6 +14721,16 @@ AlterRelationNamespaceInternal(Relation classRel, Oid relOid,
 
 		CatalogTupleUpdate(classRel, &classTup->t_self, classTup);
 
+		/*
+		 * Call SetSchema handler for the related internal YB DocDB table.
+		 * No YB DocDB table for a primary key dummy index.
+		 */
+		const Relation rel = RelationIdGetRelation(relOid);
+		if (IsYBRelation(rel) && !(rel->rd_index && rel->rd_index->indisprimary))
+			YBCAlterTableNamespace(classForm, relOid);
+
+		RelationClose(rel);
+
 		/* Update dependency on schema if caller said so */
 		if (hasDependEntry &&
 			changeDependencyFor(RelationRelationId,

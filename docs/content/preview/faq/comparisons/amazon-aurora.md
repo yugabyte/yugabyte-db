@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-Generally available since 2015, Amazon Aurora is built on a proprietary distributed storage engine that automatically replicates 6 copies of data across 3 availability zones for high availability. From an API standpoint, Aurora is wire compatible with both PostgreSQL and MySQL. As described in ["Amazon Aurora under the hood: quorums and correlated failure"](https://aws.amazon.com/blogs/database/amazon-aurora-under-the-hood-quorum-and-correlated-failure/), Aurora uses a quorum write approach based on 6 replicas. This allows for significantly better availability and durability than traditional master-slave replication.
+Generally available since 2015, Amazon Aurora is built on a proprietary distributed storage engine that automatically replicates 6 copies of data across 3 availability zones for high availability. From an API standpoint, Aurora is wire compatible with both PostgreSQL and MySQL. As described in ["Amazon Aurora under the hood: quorums and correlated failure"](https://aws.amazon.com/blogs/database/amazon-aurora-under-the-hood-quorum-and-correlated-failure/), Aurora uses a quorum write approach based on 6 replicas. This allows for significantly better availability and durability than traditional leader-follower replication.
 
 ## Horizontal write scalability
 

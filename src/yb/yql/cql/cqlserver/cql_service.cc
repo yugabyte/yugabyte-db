@@ -27,6 +27,7 @@
 
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/tablet_server_interface.h"
+#include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/format.h"
@@ -215,6 +216,7 @@ void CQLServiceImpl::Handle(yb::rpc::InboundCallPtr inbound_call) {
   if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
     ash::AshMetadata metadata{
         .root_request_id = Uuid::Generate(),
+        .pid = server_->tserver()->SharedObject().pid(),
         .client_host_port = HostPort(inbound_call->remote_address()),
         .addr_family = static_cast<uint8_t>(inbound_call->remote_address().address().is_v4()
             ? AF_INET : AF_INET6)};

@@ -30,6 +30,7 @@ API_TOKEN=""
 PLATFORM_URL=""
 PROVIDER_ID=""
 INSTANCE_TYPE=""
+REGION_NAME=""
 ZONE_NAME=""
 COMMAND=""
 VERSION=""
@@ -328,6 +329,7 @@ EOF
 #The usage shows only the ones available to end users.
 show_usage() {
   cat <<-EOT
+
 Usage: ${0##*/} [<options>]
 
 Options:
@@ -335,11 +337,11 @@ Options:
     Command to run. Must be in ['install', 'uninstall', 'install_service'].
   -u, --url (REQUIRED)
     Yugabyte Anywhere URL.
-  -t, --api_token (REQUIRED with install command)
+  -t, --api_token (REQUIRED for install and uninstall commands)
     Api token to download the build files.
-  -ip, --node_ip (Required for uninstall command)
+  -ip, --node_ip (REQUIRED for uninstall command)
     Server IP.
-  -p, --node_port (OPTIONAL with install command)
+  -p, --node_port (OPTIONAL for install command)
     Server port.
   --user (REQUIRED only for install_service command)
     Username of the installation. A sudo user can install service for a non-sudo user.
@@ -347,8 +349,23 @@ Options:
     Specify to skip Yugabyte Anywhere server cert verification during install.
   --airgap (OPTIONAL)
     Specify to skip installing semanage utility.
+  --silent (OPTIONAL for install command)
+    Silent installation. By default, installation is interactive without this option.
   -h, --help
     Show usage.
+EOT
+}
+
+show_silent_args() {
+  cat <<-EOT
+
+Required for silent installation:
+  --node_ip for node ip.
+  --node_name for node name.
+  --provider_id for fully manual on-prem provider ID or name.
+  --instance_type for instance type.
+  --region_name for region name.
+  --zone_name for zone name.
 EOT
 }
 
@@ -385,21 +402,34 @@ main() {
       fi
       #For non-silent, the following inputs are read interactively.
       if [ "$SILENT_INSTALL" = "true" ]; then
-        # This mode is hidden from usage.
+        if [ -z "$NODE_IP" ]; then
+          echo "Node IP is required."
+          show_silent_args >&2
+          exit 1
+        fi
         if [ -z "$NODE_NAME" ]; then
           echo "Node name is required."
+          show_silent_args >&2
           exit 1
         fi
         if [ -z "$PROVIDER_ID" ]; then
           echo "Provider ID is required."
+          show_silent_args >&2
           exit 1
         fi
         if [ -z "$INSTANCE_TYPE" ]; then
           echo "Instance type is required."
+          show_silent_args >&2
+          exit 1
+        fi
+        if [ -z "$REGION_NAME" ]; then
+          echo "Region name is required."
+          show_silent_args >&2
           exit 1
         fi
         if [ -z "$ZONE_NAME" ]; then
           echo "Zone name is required."
+          show_silent_args >&2
           exit 1
         fi
       fi
@@ -408,10 +438,11 @@ main() {
       --node_port "$NODE_PORT" "${SKIP_VERIFY_CERT:+ "--skip_verify_cert"}")
       if [ "$SILENT_INSTALL" = "true" ]; then
         NODE_AGENT_CONFIG_ARGS+=(--silent --node_name "$NODE_NAME" --node_ip "$NODE_IP" \
-        --provider_id "$PROVIDER_ID" --instance_type "$INSTANCE_TYPE" --zone_name "$ZONE_NAME")
+        --provider_id "$PROVIDER_ID" --instance_type "$INSTANCE_TYPE" --region_name \
+        "$REGION_NAME" --zone_name "$ZONE_NAME")
       fi
     else
-        # This path is hidden from usage.
+        # This path is hidden from usage as this is used by YBA internally.
       if [ -z "$CUSTOMER_ID" ]; then
         echo "Customer ID is required."
         exit 1
@@ -541,6 +572,10 @@ while [[ $# -gt 0 ]]; do
       INSTANCE_TYPE="$2"
       shift
     ;;
+    --region_name)
+      REGION_NAME="$2"
+      shift
+    ;;
     --zone_name)
       ZONE_NAME="$2"
       shift
@@ -568,7 +603,7 @@ while [[ $# -gt 0 ]]; do
     -p|--node_port)
       NODE_PORT=$2
       shift
-      ;;
+    ;;
     -t|--api_token)
       API_TOKEN="$2"
       shift

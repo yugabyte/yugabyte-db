@@ -18,7 +18,7 @@ type: docs
 A foreign key represents one or more columns in a table referencing the following:
 
 - A primary key in another table.
-- A [unique index](../unique-index-ysql/#using-a-unique-index) or columns restricted with a [unique constraint](../other-constraints/#unique-constraint) in another table.
+- A [unique index](../unique-index-ysql/) or columns restricted with a [unique constraint](../other-constraints/#unique-constraint) in another table.
 
 Tables can have multiple foreign keys.
 

@@ -1540,4 +1540,52 @@ TEST_F(CqlTest, RetainSchemaPacking) {
   LOG(INFO) << "Content: " << content;
 }
 
+TEST_F(CqlTest, InsertHashAndRangePkWithReturnsStatusAsRow) {
+  constexpr auto TTL_SECONDS = 2;
+  constexpr auto INSERT_PHASE_SECONDS = TTL_SECONDS + 3;
+
+  constexpr auto HASH_COLUMN_VALUE = 12345678;
+
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE TABLE test (h int, r int, v int, PRIMARY KEY (h, r)) "
+      "WITH CLUSTERING ORDER BY (r ASC) AND transactions = {'enabled': 'false'}"));
+
+  auto insert_prepared = ASSERT_RESULT(session.Prepare(Format(
+      "INSERT INTO test (h, r, v) VALUES (?,?,?) USING TTL $0 RETURNS STATUS AS ROW",
+      TTL_SECONDS)));
+
+  int row_count = 0;
+
+  auto deadline = CoarseMonoClock::now() + INSERT_PHASE_SECONDS * 1s;
+  while (CoarseMonoClock::now() < deadline) {
+    auto stmt = insert_prepared.Bind();
+    stmt.Bind(0, HASH_COLUMN_VALUE);
+    stmt.Bind(1, row_count);
+    stmt.Bind(2, row_count);
+    ASSERT_OK(session.Execute(stmt));
+    ++row_count;
+    YB_LOG_EVERY_N_SECS(INFO, 5) << row_count << " rows inserted";
+  }
+
+  ASSERT_GT(row_count, 0) << "We expect some rows to be inserted";
+
+  // Make sure `RETURNS STATUS AS ROW` doesn't iterate over rows (both obsolete and live) related to
+  // the same hash column but different range columns.
+  for (auto peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
+    auto tablet = peer->shared_tablet();
+    if (tablet->table_type() != TableType::YQL_TABLE_TYPE) {
+      break;
+    }
+    auto* metrics = tablet->metrics();
+    for (auto counter :
+         {tablet::TabletCounters::kDocDBKeysFound, tablet::TabletCounters::kDocDBObsoleteKeysFound,
+          tablet::TabletCounters::kDocDBObsoleteKeysFoundPastCutoff}) {
+      ASSERT_EQ(metrics->Get(counter), 0)
+          << "Expected " << counter << " to be zero for tablet peer " << peer->LogPrefix();
+    }
+  }
+}
+
 }  // namespace yb

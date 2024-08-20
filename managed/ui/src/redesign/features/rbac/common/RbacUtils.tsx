@@ -14,6 +14,7 @@ import { makeStyles } from '@material-ui/core';
 import { RbacBindings } from '../users/components/UserUtils';
 import { Role } from '../roles';
 import { Action, ActionType, Resource, ResourceType } from '../permission';
+import { UserPermission } from './rbac_constants';
 
 const useStyles = makeStyles((theme) => ({
   roleType: {
@@ -87,4 +88,14 @@ export const userhavePermInRoleBindings = (resourceType: ResourceType, action: A
   return userRoleBindings.some((roleBinding) => {
     return find(roleBinding.role.permissionDetails.permissionList, { action, resourceType }) !== undefined;
   });
+};
+
+/**
+ * Checks if the user has super admin privileges.
+ * 
+ * @param {UserPermission[]} userPermissions - The user's permissions list.
+ * @returns {boolean} - Returns true if the user has super admin privileges, otherwise returns false.
+ */
+export const isSuperAdminUser = (userPermissions: UserPermission[]) => {
+  return find(userPermissions, { actions: [Action.SUPER_ADMIN_ACTIONS], resourceType: Resource.DEFAULT }) !== undefined;
 };

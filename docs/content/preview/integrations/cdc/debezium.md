@@ -69,7 +69,7 @@ Use the following steps to run change data capture (CDC) with Debezium on a loca
 
 ### Create a database stream ID
 
-[`yb-admin`](../../../admin/yb-admin#change-data-capture-cdc-commands) is equipped with commands to manage stream IDs for CDC. Use it to create a stream ID:
+[yb-admin](../../../admin/yb-admin#change-data-capture-cdc-commands) is equipped with commands to manage stream IDs for CDC. Use it to create a stream ID:
 
 ```sh
 ./bin/yb-admin --master_addresses ${IP}:7100 create_change_data_stream ysql.yugabyte

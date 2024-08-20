@@ -31,7 +31,7 @@ Database passwords can be managed using the following:
 - YSQL API: [CREATE ROLE](../../../api/ysql/the-sql-language/statements/dcl_create_role) and [ALTER ROLE](../../../api/ysql/the-sql-language/statements/dcl_alter_role)
 - `ysqlsh` meta-command: [\password](../../../admin/ysqlsh-meta-commands/#password-username)
 
-The [passwordcheck extension](../../../explore/ysql-language-features/pg-extensions/#passwordcheck-example) can be used to enforce strong passwords whenever they are set with `CREATE ROLE` or `ALTER ROLE`. passwordcheck only works for passwords that are provided in plain text. For more information, refer to the [PostgreSQL passwordcheck documentation](https://www.postgresql.org/docs/11/passwordcheck.html).
+The [passwordcheck extension](../../../explore/ysql-language-features/pg-extensions/extension-passwordcheck) can be used to enforce strong passwords whenever they are set with `CREATE ROLE` or `ALTER ROLE`. passwordcheck only works for passwords that are provided in plain text. For more information, refer to the [PostgreSQL passwordcheck documentation](https://www.postgresql.org/docs/11/passwordcheck.html).
 
 ## Password authentication methods
 
@@ -120,7 +120,7 @@ To use SCRAM-SHA-256 password authentication on a new YugabyteDB cluster, follow
     When prompted for the password, enter the `yugabyte` password (default is `yugabyte`). You should be able to log in and see a response like this:
 
     ```output
-    ysqlsh (11.2-YB-2.3.3.0-b0)
+    ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
     Type "help" for help.
 
     yugabyte=#

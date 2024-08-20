@@ -193,11 +193,7 @@ TEST_F(XClusterUpgradeTest, SetupWithLowerTargetUniverse) {
   ASSERT_NOK(s);
   ASSERT_STR_CONTAINS(s.ToString(), kAutoFlagsMismatchError);
   master::GetUniverseReplicationResponsePB resp;
-  s = VerifyUniverseReplication(replication_group_id1, &resp);
-  ASSERT_NOK(s);
-  ASSERT_STR_CONTAINS(s.ToString(), kAutoFlagsMismatchError);
-
-  ASSERT_OK(DeleteUniverseReplication(replication_group_id1));
+  ASSERT_NOK(GetUniverseReplicationInfo(consumer_cluster_, replication_group_id1));
 
   // Without AutoFlag validation enabled it should work. SourceWithoutAutoFlagCompatiblity and
   // TargetWithoutAutoFlagCompatiblity tests validate this more thoroughly.

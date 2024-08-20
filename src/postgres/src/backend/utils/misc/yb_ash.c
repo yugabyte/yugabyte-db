@@ -26,9 +26,13 @@
 
 #include "yb_ash.h"
 
+#include <arpa/inet.h>
+
 #include "access/hash.h"
+#include "common/ip.h"
 #include "executor/executor.h"
 #include "funcapi.h"
+#include "libpq/libpq-be.h"
 #include "miscadmin.h"
 #include "parser/scansup.h"
 #include "pgstat.h"
@@ -54,6 +58,8 @@
 #define ACTIVE_SESSION_HISTORY_COLS_V1 12
 #define ACTIVE_SESSION_HISTORY_COLS_V2 13
 #define ACTIVE_SESSION_HISTORY_COLS_V3 14
+
+#define YB_WAIT_EVENT_DESC_COLS 4
 
 #define MAX_NESTED_QUERY_LEVEL 64
 
@@ -188,14 +194,6 @@ YbAshInstallHooks(void)
 
 	prev_ProcessUtility = ProcessUtility_hook;
 	ProcessUtility_hook = yb_ash_ProcessUtility;
-}
-
-void
-YbAshSetSessionId(uint64 session_id)
-{
-	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
-	MyProc->yb_ash_metadata.session_id = session_id;
-	LWLockRelease(&MyProc->yb_ash_metadata_lock);
 }
 
 void
@@ -505,6 +503,79 @@ YbAshUnsetMetadata(void)
 }
 
 /*
+ * Sets the client address, port and pid for ASH metadata.
+ * If the address family is not AF_INET or AF_INET6, then the PGPPROC ASH metadata
+ * fields for client address and port don't mean anything. Otherwise, if
+ * pg_getnameinfo_all returns non-zero value, a warning is printed with the error
+ * code and ASH keeps working without client address and port for the current PG
+ * backend.
+ *
+ * ASH samples only normal backends and this excludes background workers.
+ * So it's fine in that case to not set the client address.
+ */
+void
+YbAshSetOneTimeMetadata()
+{
+	/* Background workers which creates a postgres backend may have null MyProcPort. */
+	if (MyProcPort == NULL)
+	{
+		Assert(MyProc->isBackgroundWorker == true);
+		return;
+	}
+
+	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
+
+	/* Set the address family and null the client_addr and client_port */
+	MyProc->yb_ash_metadata.addr_family = MyProcPort->raddr.addr.ss_family;
+	MemSet(MyProc->yb_ash_metadata.client_addr, 0, 16);
+	MyProc->yb_ash_metadata.client_port = 0;
+	MyProc->yb_ash_metadata.pid = MyProcPid;
+
+	switch (MyProcPort->raddr.addr.ss_family)
+	{
+		case AF_INET:
+#ifdef HAVE_IPV6
+		case AF_INET6:
+#endif
+			break;
+		default:
+			LWLockRelease(&MyProc->yb_ash_metadata_lock);
+			return;
+	}
+
+	char		remote_host[NI_MAXHOST];
+	int			ret;
+
+	ret = pg_getnameinfo_all(&MyProcPort->raddr.addr, MyProcPort->raddr.salen,
+							 remote_host, sizeof(remote_host),
+							 NULL, 0,
+							 NI_NUMERICHOST | NI_NUMERICSERV);
+
+	if (ret != 0)
+	{
+		ereport(WARNING,
+				(errmsg("pg_getnameinfo_all while setting ash metadata failed"),
+				 errdetail("%s\naddress family: %u",
+						   gai_strerror(ret),
+						   MyProcPort->raddr.addr.ss_family)));
+
+		LWLockRelease(&MyProc->yb_ash_metadata_lock);
+		return;
+	}
+
+	clean_ipv6_addr(MyProcPort->raddr.addr.ss_family, remote_host);
+
+	/* Setting ip address */
+	inet_pton(MyProcPort->raddr.addr.ss_family, remote_host,
+			  MyProc->yb_ash_metadata.client_addr);
+
+	/* Setting port */
+	MyProc->yb_ash_metadata.client_port = atoi(MyProcPort->remote_port);
+
+	LWLockRelease(&MyProc->yb_ash_metadata_lock);
+}
+
+/*
  * Calculate the query id for utility statements. This takes parts of pgss_store
  * from pg_stat_statements.
  */
@@ -625,7 +696,7 @@ YbAshMain(Datum main_arg)
 		int 		rc;
 		/* Wait necessary amount of time */
 		rc = WaitLatch(MyLatch, WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
-					   yb_ash_sampling_interval_ms, PG_WAIT_EXTENSION);
+					   yb_ash_sampling_interval_ms, WAIT_EVENT_YB_ASH_MAIN);
 		ResetLatch(MyLatch);
 
 		/* Bailout if postmaster has died */
@@ -881,7 +952,7 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 		values[j++] = UUIDPGetDatum(&yql_endpoint_tserver_uuid);
 
 		values[j++] = UInt64GetDatum(metadata->query_id);
-		values[j++] = UInt64GetDatum(metadata->session_id);
+		values[j++] = Int32GetDatum(metadata->pid);
 
 		if (metadata->addr_family == AF_INET || metadata->addr_family == AF_INET6)
 		{
@@ -950,4 +1021,75 @@ client_ip_to_string(unsigned char *client_addr, uint16 client_port,
 				client_addr[12], client_addr[13], client_addr[14], client_addr[15],
 				client_port);
 	}
+}
+
+Datum
+yb_wait_event_desc(PG_FUNCTION_ARGS)
+{
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	TupleDesc	tupdesc;
+	Tuplestorestate *tupstore;
+	MemoryContext per_query_ctx;
+	MemoryContext oldcontext;
+	int			i;
+
+	/* ASH must be loaded first */
+	if (!yb_ash)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("ysql_yb_ash_enable_infra gflag must be enabled")));
+
+	/* check to see if caller supports us returning a tuplestore */
+	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("set-valued function called in context that cannot accept a set")));
+
+	if (!(rsinfo->allowedModes & SFRM_Materialize))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("materialize mode required, but it is not " \
+						"allowed in this context")));
+
+	/* Switch context to construct returned data structures */
+	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
+	oldcontext = MemoryContextSwitchTo(per_query_ctx);
+
+	/* Build a tuple descriptor */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		ereport(ERROR,
+				(errmsg_internal("return type must be a row type")));
+
+	tupstore = tuplestore_begin_heap(true, false, work_mem);
+	rsinfo->returnMode = SFRM_Materialize;
+	rsinfo->setResult = tupstore;
+	rsinfo->setDesc = tupdesc;
+
+	MemoryContextSwitchTo(oldcontext);
+
+	for (i = 0;; ++i)
+	{
+		Datum		values[YB_WAIT_EVENT_DESC_COLS];
+		bool		nulls[YB_WAIT_EVENT_DESC_COLS];
+
+		memset(values, 0, sizeof(values));
+		memset(nulls, 0, sizeof(nulls));
+
+		YBCWaitEventDescriptor wait_event_desc = YBCGetWaitEventDescription(i);
+
+		if (wait_event_desc.code == 0 && wait_event_desc.description == NULL)
+			break;
+
+		values[0] = CStringGetTextDatum(YBCGetWaitEventClass(wait_event_desc.code));
+		values[1] = CStringGetTextDatum(pgstat_get_wait_event_type(wait_event_desc.code));
+		values[2] = CStringGetTextDatum(pgstat_get_wait_event(wait_event_desc.code));
+		values[3] = CStringGetTextDatum(wait_event_desc.description);
+
+		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+	}
+
+	/* clean up and return the tuplestore */
+	tuplestore_donestoring(tupstore);
+
+	return (Datum) 0;
 }

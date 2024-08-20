@@ -75,9 +75,9 @@ class TSLocalLockManager::Impl {
     static auto const key_entry_types =
         {dockv::KeyEntryType::kWeakObjectLock, dockv::KeyEntryType::kStrongObjectLock};
     std::vector<docdb::TrackedLockEntryKey<docdb::ObjectLockPrefix>> lock_entry_keys;
-    for (auto id : req.object_ids()) {
+    for (auto lock : req.object_locks()) {
       for (const auto& type : key_entry_types) {
-        lock_entry_keys.push_back({session_pair, {id, type}});
+        lock_entry_keys.push_back({session_pair, {lock.database_oid(), lock.object_oid(), type}});
       }
     }
     object_lock_manager_.Unlock(lock_entry_keys);

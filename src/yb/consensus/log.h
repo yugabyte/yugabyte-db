@@ -153,7 +153,6 @@ class Log : public RefCountedThreadSafe<Log> {
                              ThreadPool *append_thread_pool,
                              ThreadPool* allocation_thread_pool,
                              ThreadPool* background_sync_threadpool,
-                             int64_t cdc_min_replicated_index,
                              scoped_refptr<Log> *log,
                              const PreLogRolloverCallback& pre_log_rollover_callback = {},
                              NewSegmentAllocationCallback callback = {},
@@ -338,6 +337,14 @@ class Log : public RefCountedThreadSafe<Log> {
   Status TEST_WriteCorruptedEntryBatchAndSync();
 
   bool HasSufficientDiskSpaceForWrite();
+
+  void SetGetXClusterMinIndexToRetainFunc(
+      std::function<int64_t(const std::string&)> get_xcluster_required_index_func) {
+    std::lock_guard l(state_lock_);
+    if (get_xcluster_min_index_to_retain_ == nullptr) {
+      get_xcluster_min_index_to_retain_ = std::move(get_xcluster_required_index_func);
+    }
+  }
 
  private:
   friend class LogTest;
@@ -674,6 +681,11 @@ class Log : public RefCountedThreadSafe<Log> {
   std::atomic<bool> has_free_disk_space_{false};
   std::atomic<uint32> disk_space_frequent_check_interval_sec_{0};
   std::shared_timed_mutex disk_space_mutex_;
+
+  // Function pointer to CDCServiceImpl::GetXClusterMinRequiredIndex.
+  // This function retrieves the xCluster minimum required index for a given tablet.
+  std::function<int64_t(const std::string&)> get_xcluster_min_index_to_retain_
+      GUARDED_BY(state_lock_);
 
   DISALLOW_COPY_AND_ASSIGN(Log);
 };

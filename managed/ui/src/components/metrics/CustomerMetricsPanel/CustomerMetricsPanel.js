@@ -41,7 +41,8 @@ const PanelBody = ({
   width,
   tableName,
   graph,
-  customer
+  customer,
+  printMode
 }) => {
   let result = null;
   const runtimeConfigs = customer?.runtimeConfigs;
@@ -115,66 +116,88 @@ const PanelBody = ({
         )
       ) {
         if (!invalidTabType.includes(type)) {
-          prevTabs.push(
-            <Tab
-              eventKey={type}
-              title={tabTitle}
-              key={`${type}-${metricMeasure}-tab`}
-              mountOnEnter={true}
-              unmountOnExit={true}
-            >
-              <GraphTab
-                type={type}
-                metricsKey={metricContent.metrics}
-                nodePrefixes={nodePrefixes}
-                selectedUniverse={selectedUniverse}
-                title={metricContent.title}
-                width={width}
-                tableName={tableName}
-                isGranularMetricsEnabled={isGranularMetricsEnabled}
-              />
-            </Tab>
-          );
+          if (printMode) {
+            prevTabs.push(
+              <div style={{ marginBottom: '20px' }}>
+                <GraphTab
+                  type={type}
+                  metricsKey={metricContent.metrics}
+                  nodePrefixes={nodePrefixes}
+                  selectedUniverse={selectedUniverse}
+                  title={metricContent.title}
+                  width={width}
+                  tableName={tableName}
+                  isGranularMetricsEnabled={isGranularMetricsEnabled}
+                  printMode={printMode}
+                />
+              </div>
+            );
+          } else {
+            prevTabs.push(
+              <Tab
+                eventKey={type}
+                title={tabTitle}
+                key={`${type}-${metricMeasure}-tab`}
+                mountOnEnter={true}
+                unmountOnExit={true}
+              >
+                <GraphTab
+                  type={type}
+                  metricsKey={metricContent.metrics}
+                  nodePrefixes={nodePrefixes}
+                  selectedUniverse={selectedUniverse}
+                  title={metricContent.title}
+                  width={width}
+                  tableName={tableName}
+                  isGranularMetricsEnabled={isGranularMetricsEnabled}
+                />
+              </Tab>
+            );
+          }
         }
       }
       return prevTabs;
     }, []);
     if (origin === MetricOrigin.UNIVERSE && isDrEnabled && hasDrConfig) {
-      metricTabs.push(
-        <Tab
-          eventKey={'xClusterDr'}
-          title={'xCluster DR'}
-          key={`xClusterDr-${metricMeasure}-tab`}
-          mountOnEnter={true}
-          unmountOnExit={true}
-        >
+      if (printMode) {
+        metricTabs.push(
           <Box marginTop="16px" textAlign="center">
             <Link to={`/universes/${selectedUniverse.universeUUID}/recovery`}>
               <span className="dr-metrics-link">See xCluster DR Metrics</span>
             </Link>
           </Box>
-        </Tab>
+        );
+      } else {
+        metricTabs.push(
+          <Tab
+            eventKey={'xClusterDr'}
+            title={'xCluster DR'}
+            key={`xClusterDr-${metricMeasure}-tab`}
+            mountOnEnter={true}
+            unmountOnExit={true}
+          >
+            <Box marginTop="16px" textAlign="center">
+              <Link to={`/universes/${selectedUniverse.universeUUID}/recovery`}>
+                <span className="dr-metrics-link">See xCluster DR Metrics</span>
+              </Link>
+            </Box>
+          </Tab>
+        );
+      }
+    }
+    if (printMode) {
+      result = <div id="print-metrics">{metricTabs}</div>;
+    } else {
+      result = (
+        <YBTabsPanel defaultTab={defaultTabToDisplay} className="overall-metrics-by-origin">
+          {metricTabs}
+        </YBTabsPanel>
       );
     }
-    result = (
-      <YBTabsPanel defaultTab={defaultTabToDisplay} className="overall-metrics-by-origin">
-        {metricTabs}
-      </YBTabsPanel>
-    );
   } else if (metricMeasure === MetricMeasure.OUTLIER_TABLES) {
-    result = (
-      <YBTabsPanel
-        defaultTab={MetricTypes.OUTLIER_TABLES}
-        activeTab={MetricTypes.OUTLIER_TABLES}
-        className="overall-metrics-by-origin"
-      >
-        <Tab
-          eventKey={MetricTypes.OUTLIER_TABLES}
-          title={MetricTypesWithOperations[MetricTypes.OUTLIER_TABLES].title}
-          key={`${MetricTypes.OUTLIER_TABLES}-tab`}
-          mountOnEnter={true}
-          unmountOnExit={true}
-        >
+    if (printMode) {
+      result = (
+        <div id="print-metrics" style={{ marginBottom: '20px' }}>
           <GraphTab
             type={MetricTypes.OUTLIER_TABLES}
             metricsKey={MetricTypesWithOperations[MetricTypes.OUTLIER_TABLES].metrics}
@@ -184,10 +207,38 @@ const PanelBody = ({
             width={width}
             tableName={tableName}
             isGranularMetricsEnabled={isGranularMetricsEnabled}
+            printMode={printMode}
           />
-        </Tab>
-      </YBTabsPanel>
-    );
+        </div>
+      );
+    } else {
+      result = (
+        <YBTabsPanel
+          defaultTab={MetricTypes.OUTLIER_TABLES}
+          activeTab={MetricTypes.OUTLIER_TABLES}
+          className="overall-metrics-by-origin"
+        >
+          <Tab
+            eventKey={MetricTypes.OUTLIER_TABLES}
+            title={MetricTypesWithOperations[MetricTypes.OUTLIER_TABLES].title}
+            key={`${MetricTypes.OUTLIER_TABLES}-tab`}
+            mountOnEnter={true}
+            unmountOnExit={true}
+          >
+            <GraphTab
+              type={MetricTypes.OUTLIER_TABLES}
+              metricsKey={MetricTypesWithOperations[MetricTypes.OUTLIER_TABLES].metrics}
+              nodePrefixes={nodePrefixes}
+              selectedUniverse={selectedUniverse}
+              title={MetricTypesWithOperations[MetricTypes.OUTLIER_TABLES].title}
+              width={width}
+              tableName={tableName}
+              isGranularMetricsEnabled={isGranularMetricsEnabled}
+            />
+          </Tab>
+        </YBTabsPanel>
+      );
+    }
   }
 
   return result;
@@ -216,10 +267,10 @@ export default class CustomerMetricsPanel extends Component {
   }
 
   render() {
-    const { origin } = this.props;
+    const { origin, printMode = false } = this.props;
     return (
-      <GraphPanelHeaderContainer origin={origin}>
-        <PanelBody {...this.props} />
+      <GraphPanelHeaderContainer origin={origin} printMode={printMode}>
+        <PanelBody {...this.props} printMode={printMode} />
       </GraphPanelHeaderContainer>
     );
   }

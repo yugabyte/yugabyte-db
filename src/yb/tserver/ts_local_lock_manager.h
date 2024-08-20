@@ -63,8 +63,8 @@ class TSLocalLockManager {
   // Continuous influx of readers can starve writers. For instance, if there are multiple sessions
   // requesting ACCESS_SHARE on a key, a writer requesting ACCESS_EXCLUSIVE may face starvation.
   // Since we intend to use this for table locks, DDLs may face starvation if there is influx of
-  // conflicting DMLs. This seems to be the desired behavior as PG does the same when DDL(s)
-  // conflict with DMLs.
+  // conflicting DMLs.
+  // TODO: DDLs don't face starvation in PG. Address the above starvation problem.
   //
   // TODO: Augment the 'pg_locks' path to show the acquired/waiting object/table level locks.
   Status AcquireObjectLocks(

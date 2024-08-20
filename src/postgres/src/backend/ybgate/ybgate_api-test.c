@@ -352,7 +352,7 @@ void YbgTestNoReporting(YbGateTestCase case_no)
 }
 
 bool YbTypeDetailsTest(
-	unsigned int elmtype, int *elmlen, bool *elmbyval, char *elmalign)
+	unsigned int elmtype, int16_t *elmlen, bool *elmbyval, char *elmalign)
 {
 	return YbTypeDetails(elmtype, elmlen, elmbyval, elmalign);
 }

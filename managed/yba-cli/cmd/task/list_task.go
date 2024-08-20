@@ -55,7 +55,7 @@ var listTaskCmd = &cobra.Command{
 			if util.IsOutputType("table") {
 				logrus.Infoln("No tasks found\n")
 			} else {
-				logrus.Infoln("{}\n")
+				logrus.Infoln("[]\n")
 			}
 			return
 		}

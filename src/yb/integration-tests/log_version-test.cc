@@ -69,9 +69,9 @@ class LogHeader {
 
 class LogRollingTest : public ExternalMiniClusterITestBase {
  public:
-  void SetUpCluster(ExternalMiniClusterOptions* opts) override {
-    ExternalMiniClusterITestBase::SetUpCluster(opts);
-    opts->log_to_file = true;
+  void SetUpOptions(ExternalMiniClusterOptions& opts) override {
+    ExternalMiniClusterITestBase::SetUpOptions(opts);
+    opts.log_to_file = true;
   }
 };
 

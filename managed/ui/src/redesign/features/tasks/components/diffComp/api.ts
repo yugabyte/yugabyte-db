@@ -9,7 +9,7 @@
 
 import axios from 'axios';
 import { ROOT_URL } from '../../../../../config';
-import { DiffApiResp } from './dtos';
+import { AuditLogProps, DiffApiResp } from './dtos';
 
 /**
  * Retrieves the diff details for a specific task.
@@ -20,4 +20,10 @@ export const getTaskDiffDetails = (taskUUID: string) => {
   const cUUID = localStorage.getItem('customerId');
   const requestUrl = `${ROOT_URL}/customers/${cUUID}/tasks/${taskUUID}/diff_details`;
   return axios.get<DiffApiResp>(requestUrl);
+};
+
+export const getAuditLog = (taskUUID: string) => {
+  const cUUID = localStorage.getItem('customerId');
+  const requestUrl = `${ROOT_URL}/customers/${cUUID}/tasks/${taskUUID}/audit_info`;
+  return axios.get<AuditLogProps>(requestUrl);
 };

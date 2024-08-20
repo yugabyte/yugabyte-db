@@ -120,11 +120,11 @@ To connect your application, do the following:
 - Add the YCQL java driver to your dependencies.
 - Initialize SSLContext using the downloaded root certificate.
 
-For an example of building a Java application connected to YugabyteDB Aeon using the Yugabyte Java Driver for YCQL v4.6, refer to [Connect a YCQL Java application](../../cloud-examples/connect-ycql-application/).
-
   {{% /tab %}}
 
 {{< /tabpane >}}
+
+For examples of applications you can build and connect to YugabyteDB Aeon using a variety of drivers, refer to [Build an application](../../../tutorials/build-apps/).
 
 ## Learn more
 

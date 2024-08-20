@@ -342,6 +342,7 @@ export const AuditLog: FC<AuditLogProps> = ({ universeData, universePaused }) =>
         open={openDisableLogDialog}
         onClose={() => setDisableLogDialog(false)}
         universeName={universeName}
+        universeUUID={universeUUID}
         onSubmit={() => {
           disableAuditLog();
           setDisableLogDialog(false);
@@ -351,6 +352,7 @@ export const AuditLog: FC<AuditLogProps> = ({ universeData, universePaused }) =>
         open={openDisableExportDialog}
         onClose={() => setDisableExportDialog(false)}
         universeName={universeName}
+        universeUUID={universeUUID}
         onSubmit={() => {
           disableExport();
           setDisableExportDialog(false);

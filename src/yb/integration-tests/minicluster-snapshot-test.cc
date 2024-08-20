@@ -557,10 +557,11 @@ class PgCloneTest : public PostgresMiniClusterTest {
   virtual Status CreateProxies() {
     messenger_ = VERIFY_RESULT(rpc::MessengerBuilder("test-msgr").set_num_reactors(1).Build());
     proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
+    auto* master = VERIFY_RESULT(mini_cluster()->GetLeaderMiniMaster());
     master_admin_proxy_ = std::make_unique<MasterAdminProxy>(
-        proxy_cache_.get(), mini_cluster()->mini_master()->bound_rpc_addr());
+        proxy_cache_.get(), master->bound_rpc_addr());
     master_backup_proxy_ = std::make_shared<MasterBackupProxy>(
-        proxy_cache_.get(), mini_cluster()->mini_master()->bound_rpc_addr());
+        proxy_cache_.get(), master->bound_rpc_addr());
     return Status::OK();
   }
 
@@ -867,10 +868,36 @@ TEST_F(PgCloneTest, YB_DISABLE_TEST_IN_SANITIZERS(PreventConnectionsUntilCloneSu
       Format("database \"$0\" is not currently accepting connections", kTargetNamespaceName1));
 }
 
+class PgCloneMultiMaster : public PgCloneTest {
+  virtual void OverrideMiniClusterOptions(MiniClusterOptions* options) override {
+    options->num_masters = 3;
+  }
+};
+
+TEST_F(PgCloneMultiMaster, YB_DISABLE_TEST_IN_SANITIZERS(CloneAfterMasterChange)) {
+  const std::tuple<int32_t, int32_t> kRow = {1, 10};
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "INSERT INTO t1 VALUES ($0, $1)", std::get<0>(kRow), std::get<1>(kRow)));
+
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName));
+  ASSERT_OK(cluster_->StepDownMasterLeader());
+  // TODO(#22925) Remove this sleep once TsDescriptors are persisted.
+  SleepFor(3s);
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName2, kSourceNamespaceName));
+
+  auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+  auto row = ASSERT_RESULT((target_conn.FetchRow<int32_t, int32_t>("SELECT * FROM t1")));
+  ASSERT_EQ(row, kRow);
+  target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName2));
+  row = ASSERT_RESULT((target_conn.FetchRow<int32_t, int32_t>("SELECT * FROM t1")));
+  ASSERT_EQ(row, kRow);
+}
+
 class PgCloneColocationTest : public PgCloneTest {
   virtual void OverrideMiniClusterOptions(MiniClusterOptions* options) override {
     options->num_masters = 3;
-    options->num_tablet_servers = 3;
   }
 
   virtual Status CreateProxies() override {

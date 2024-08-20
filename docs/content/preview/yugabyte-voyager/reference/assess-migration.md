@@ -32,7 +32,7 @@ The valid *arguments* for assess migration are described in the following table:
 | --iops-capture-interval | Interval (in seconds) at which Voyager will gather IOPS metadata from the source database for the given schema(s). <br> Default: 120 |
 | --oracle-db-sid | Oracle System Identifier you can use while exporting data from Oracle instances. Oracle migrations only. |
 | --oracle-home | Path to set `$ORACLE_HOME` environment variable. `tnsnames.ora` is found in `$ORACLE_HOME/network/admin`. Oracle migrations only. |
-| [--oracle-tns-alias](../../yb-voyager-cli/#oracle-options) | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
+| [--oracle-tns-alias](../yb-voyager-cli/#oracle-options) | TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server. Oracle migrations only. |
 | --send-diagnostics | Enable or disable sending [diagnostics](../../diagnostics-report/) information to Yugabyte. <br>Default: true<br> Accepted parameters: true, false, yes, no, 0, 1 |
 | --source-db-host <hostname> | Domain name or IP address of the machine on which the source database server is running. <br>Default: localhost |
 | --source-db-name | Source database name. |

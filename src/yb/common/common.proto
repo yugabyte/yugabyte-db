@@ -675,8 +675,11 @@ message AshMetadataPB {
   optional int64 rpc_request_id = 4;
   // Query id as seen on pg_stat_statements to identify identical normalized queries.
   optional uint64 query_id = 5;
-  // PgClient session id. This will be 0 for YCQL.
-  optional uint64 session_id = 6;
+  // Deprecated session_id
+  reserved 6;
+  // pid of the YSQL/YCQL backend which is executing the query. TServer pid for
+  // background activities
+  optional int32 pid = 9;
   // PG database OID. This will be 0 for YCQL.
   optional uint32 database_id = 8;
 }

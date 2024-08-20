@@ -6054,7 +6054,8 @@ AfterTriggerSaveEvent(EState *estate, ResultRelInfo *relinfo,
 				case RI_TRIGGER_PK:
 					/* Update on trigger's PK table */
 					if (!RI_FKey_pk_upd_check_required(trigger, rel,
-													   oldtup, newtup))
+													   oldtup, newtup,
+													   &estate->yb_skip_entities))
 					{
 						/* skip queuing this event */
 						continue;
@@ -6064,7 +6065,8 @@ AfterTriggerSaveEvent(EState *estate, ResultRelInfo *relinfo,
 				case RI_TRIGGER_FK:
 					/* Update on trigger's FK table */
 					if (!RI_FKey_fk_upd_check_required(trigger, rel,
-													   oldtup, newtup))
+													   oldtup, newtup,
+													   &estate->yb_skip_entities))
 					{
 						/* skip queuing this event */
 						continue;

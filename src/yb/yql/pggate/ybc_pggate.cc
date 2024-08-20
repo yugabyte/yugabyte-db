@@ -357,7 +357,9 @@ void AshCopyTServerSample(
   const auto& tserver_metadata = tserver_sample.metadata();
 
   cb_metadata->query_id = tserver_metadata.query_id();
-  cb_metadata->session_id = tserver_metadata.session_id();
+  // if the pid is zero, it's a tserver background activity
+  cb_metadata->pid = tserver_metadata.pid() ? tserver_metadata.pid()
+                                            : pgapi->GetLocalTServerPid();
   cb_metadata->database_id = tserver_metadata.database_id();
   cb_sample->rpc_request_id = tserver_metadata.rpc_request_id();
   cb_sample->encoded_wait_event_code =
@@ -1057,6 +1059,10 @@ YBCStatus YBCPgAlterTableSetTableId(
     YBCPgStatement handle, const YBCPgOid database_oid, const YBCPgOid table_relfilenode_oid) {
   const PgObjectId table_id(database_oid, table_relfilenode_oid);
   return ToYBCStatus(pgapi->AlterTableSetTableId(handle, table_id));
+}
+
+YBCStatus YBCPgAlterTableSetSchema(YBCPgStatement handle, const char *schema_name) {
+  return ToYBCStatus(pgapi->AlterTableSetSchema(handle, schema_name));
 }
 
 YBCStatus YBCPgExecAlterTable(YBCPgStatement handle) {
@@ -2080,6 +2086,15 @@ void* YBCPgGetThreadLocalStrTokPtr() {
 
 void YBCPgSetThreadLocalStrTokPtr(char *new_pg_strtok_ptr) {
   PgSetThreadLocalStrTokPtr(new_pg_strtok_ptr);
+}
+
+YBCPgThreadLocalRegexpCache* YBCPgGetThreadLocalRegexpCache() {
+  return PgGetThreadLocalRegexpCache();
+}
+
+YBCPgThreadLocalRegexpCache* YBCPgInitThreadLocalRegexpCache(
+    size_t buffer_size, YBCPgThreadLocalRegexpCacheCleanup cleanup) {
+  return PgInitThreadLocalRegexpCache(buffer_size, cleanup);
 }
 
 void* YBCPgSetThreadLocalJumpBuffer(void* new_buffer) {

@@ -7,6 +7,7 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -32,6 +33,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -49,6 +51,9 @@ public class XClusterScheduler {
   private final XClusterUniverseService xClusterUniverseService;
   private final MetricService metricService;
   private final UniverseTableHandler tableHandler;
+
+  // This is a key lock for xCluster Config by UUID.
+  private static final KeyLock<UUID> XCLUSTER_CONFIG_LOCK = new KeyLock<>();
 
   @Inject
   public XClusterScheduler(
@@ -267,8 +272,9 @@ public class XClusterScheduler {
     }
   }
 
-  public synchronized void syncXClusterConfig(XClusterConfig config) {
+  public void syncXClusterConfig(XClusterConfig config) {
     try {
+      XCLUSTER_CONFIG_LOCK.acquireLock(config.getUuid());
       if (!isXClusterEligibleForScheduledSync(config)) {
         log.debug("Skipping xCluster config {} for scheduled sync", config.getName());
         return;
@@ -276,6 +282,12 @@ public class XClusterScheduler {
       compareTablesAndSyncXClusterConfig(config);
     } catch (Exception e) {
       log.error("Error syncing xCluster config:", e);
+    } finally {
+      try {
+        XCLUSTER_CONFIG_LOCK.releaseLock(config.getUuid());
+      } catch (Exception e) {
+        log.error("Error releasing lock for xCluster config:", e);
+      }
     }
   }
 
@@ -346,7 +358,7 @@ public class XClusterScheduler {
       return metricsList;
     }
 
-    XClusterConfigTaskBase.setReplicationStatus(
+    XClusterConfigTaskBase.updateReplicationDetailsFromDB(
         xClusterUniverseService, ybClientService, tableHandler, xClusterConfig);
     Set<XClusterTableConfig> xClusterTableConfigs = xClusterConfig.getTableDetails();
     xClusterTableConfigs.forEach(

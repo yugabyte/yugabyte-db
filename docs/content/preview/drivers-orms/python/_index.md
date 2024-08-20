@@ -3,7 +3,7 @@ title: Python drivers and ORMs
 headerTitle: Python
 linkTitle: Python
 description: Python Drivers and ORMs support for YugabyteDB.
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
+image: fa-brands fa-python
 menu:
   preview:
     identifier: python-drivers

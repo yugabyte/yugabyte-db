@@ -133,6 +133,10 @@ constexpr std::pair<Tickers, const char *> TickersNameMap[] = {
 
     {COMPACTION_FILES_FILTERED, "rocksdb_compaction_files_filtered"},
     {COMPACTION_FILES_NOT_FILTERED, "rocksdb_compaction_files_not_filtered"},
+
+    {READAHEAD_RESET, "rocksdb_readahead_reset"},
+    {READAHEAD_CALLS, "rocksdb_readahead_calls"},
+    {READAHEAD_BYTES_READ, "rocksdb_readahead_bytes_read"},
 };
 
 constexpr std::pair<Histograms, const char *> HistogramsNameMap[] = {
@@ -142,6 +146,7 @@ constexpr std::pair<Histograms, const char *> HistogramsNameMap[] = {
     {WAL_FILE_SYNC_MICROS, "rocksdb_wal_file_sync_micros"},
     {DB_MULTIGET, "rocksdb_db_multiget_micros"},
     {READ_BLOCK_COMPACTION_MICROS, "rocksdb_read_block_compaction_micros"},
+    // Only takes into account block reads by RocksDB iterator and Get?
     {READ_BLOCK_GET_MICROS, "rocksdb_read_block_get_micros"},
     {WRITE_RAW_BLOCK_MICROS, "rocksdb_write_raw_block_micros"},
     {NUM_FILES_IN_SINGLE_COMPACTION, "rocksdb_numfiles_in_singlecompaction"},

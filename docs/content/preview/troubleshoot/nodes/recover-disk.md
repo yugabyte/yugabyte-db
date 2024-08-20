@@ -27,6 +27,6 @@ To replace a failed disk, perform the following steps:
 
 1. Stop the YB-TServer node.
 2. Replace the disks that have failed.
-3. Restart the `yb-tserver` service.
+3. Restart the yb-tserver service.
 
 On restart, the YB-TServer will see the new empty disk and start replicating tablets from other nodes.

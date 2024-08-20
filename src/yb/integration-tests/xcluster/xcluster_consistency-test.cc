@@ -168,8 +168,7 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
     uint32_t count = 0;
     for (const auto& mini_tserver : producer_cluster()->mini_tablet_servers()) {
       auto* tserver = mini_tserver->server();
-      auto cdc_service = dynamic_cast<cdc::CDCServiceImpl*>(
-          tserver->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+      auto cdc_service = dynamic_cast<cdc::CDCServiceImpl*>(tserver->GetCDCService().get());
 
       for (const auto& stream_id : stream_ids_) {
         for (const auto& tablet_id : producer_tablet_ids_) {
@@ -191,8 +190,7 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
     uint32_t count = 0;
     for (const auto& mini_tserver : producer_cluster()->mini_tablet_servers()) {
       auto* tserver = mini_tserver->server();
-      auto cdc_service = dynamic_cast<cdc::CDCServiceImpl*>(
-          tserver->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+      auto cdc_service = dynamic_cast<cdc::CDCServiceImpl*>(tserver->GetCDCService().get());
 
       for (const auto& stream_id : stream_ids_) {
         for (const auto& tablet_id : producer_tablet_ids_) {

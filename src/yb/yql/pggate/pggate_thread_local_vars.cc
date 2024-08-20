@@ -15,18 +15,41 @@
 #include "yb/yql/pggate/pggate_thread_local_vars.h"
 
 #include <stddef.h>
+#include <optional>
+#include <vector>
 
-namespace yb {
-namespace pggate {
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/util/logging.h"
+
+class CachedRegexpHolder {
+ public:
+  CachedRegexpHolder(size_t buffer_size,
+                     YBCPgThreadLocalRegexpCacheCleanup cleanup)
+      : buffer_(buffer_size, 0), cleanup_(cleanup), cache_{.num = 0, .array = buffer_.data()} {}
+
+  ~CachedRegexpHolder() {
+    cleanup_(&cache_);
+  }
+
+  PgThreadLocalRegexpCache& cache() { return cache_; }
+
+ private:
+  std::vector<char> buffer_;
+  const YBCPgThreadLocalRegexpCacheCleanup cleanup_;
+  PgThreadLocalRegexpCache cache_ = {};
+};
+
+namespace yb::pggate {
 
 /*
  * This code does not need to know anything about the value internals.
  * TODO we could use opaque types instead of void* for additional type safety.
  */
-thread_local void* thread_local_memory_context_ = NULL;
-thread_local void* pg_strtok_ptr = NULL;
-thread_local void* jump_buffer = NULL;
-thread_local void* err_status = NULL;
+thread_local void* thread_local_memory_context_ = nullptr;
+thread_local void* pg_strtok_ptr = nullptr;
+thread_local void* jump_buffer = nullptr;
+thread_local void* err_status = nullptr;
+thread_local std::optional<CachedRegexpHolder> re_cache;
 
 //-----------------------------------------------------------------------------
 // Memory context.
@@ -43,9 +66,9 @@ void* PgGetThreadLocalCurrentMemoryContext() {
 }
 
 void PgResetCurrentMemCtxThreadLocalVars() {
-  pg_strtok_ptr = NULL;
-  jump_buffer = NULL;
-  err_status = NULL;
+  pg_strtok_ptr = nullptr;
+  jump_buffer = nullptr;
+  err_status = nullptr;
 }
 
 //-----------------------------------------------------------------------------
@@ -84,5 +107,15 @@ void PgSetThreadLocalStrTokPtr(char *new_pg_strtok_ptr) {
   pg_strtok_ptr = new_pg_strtok_ptr;
 }
 
-}  // namespace pggate
-}  // namespace yb
+YBCPgThreadLocalRegexpCache* PgGetThreadLocalRegexpCache() {
+  return re_cache ? &re_cache->cache() : nullptr;
+}
+
+YBCPgThreadLocalRegexpCache* PgInitThreadLocalRegexpCache(
+    size_t buffer_size, YBCPgThreadLocalRegexpCacheCleanup cleanup) {
+  DCHECK(!re_cache);
+  re_cache.emplace(buffer_size, cleanup);
+  return &re_cache->cache();
+}
+
+}  // namespace yb::pggate

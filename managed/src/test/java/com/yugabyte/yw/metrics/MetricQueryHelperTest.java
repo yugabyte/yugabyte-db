@@ -19,6 +19,7 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.metrics.data.AlertData;
 import com.yugabyte.yw.metrics.data.AlertState;
 import com.yugabyte.yw.models.MetricConfig;
@@ -55,6 +56,8 @@ public class MetricQueryHelperTest extends FakeDBApplication {
 
   @Mock WSClientRefresher wsClientRefresher;
 
+  @Mock YBClientService ybService;
+
   MetricConfigDefinition validMetric;
 
   @Before
@@ -80,7 +83,8 @@ public class MetricQueryHelperTest extends FakeDBApplication {
             runtimeConfGetter,
             wsClientRefresher,
             metricUrlProvider,
-            mockPlatformExecutorFactory) {
+            mockPlatformExecutorFactory,
+            ybService) {
           @Override
           protected ApiHelper getApiHelper() {
             return mockApiHelper;

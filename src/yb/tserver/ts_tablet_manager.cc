@@ -46,6 +46,8 @@
 
 #include "yb/ash/wait_state.h"
 
+#include "yb/cdc/cdc_service.h"
+
 #include "yb/client/client.h"
 #include "yb/client/meta_data_cache.h"
 #include "yb/client/transaction_manager.h"
@@ -863,10 +865,16 @@ void TSTabletManager::CleanupSplitTablets() {
   }
 }
 
-Status TSTabletManager::WaitForAllBootstrapsToFinish() {
+Status TSTabletManager::WaitForAllBootstrapsToFinish(MonoDelta timeout) {
   CHECK_EQ(state(), MANAGER_RUNNING);
 
-  open_tablet_pool_->Wait();
+  if (timeout.Initialized()) {
+    if (!open_tablet_pool_->WaitFor(timeout)) {
+      return STATUS(TimedOut, "Timeout waiting for all bootstraps to finish");
+    }
+  } else {
+    open_tablet_pool_->Wait();
+  }
 
   Status s = Status::OK();
 
@@ -2096,6 +2104,11 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
                  << s.ToString();
       tablet_peer->SetFailed(s);
       return;
+    }
+
+    if (server_->GetCDCService()) {
+      tablet_peer->log()->SetGetXClusterMinIndexToRetainFunc(
+          server_->GetCDCService()->GetXClusterMinRequiredIndexFunc());
     }
 
     tablet_peer->RegisterMaintenanceOps(server_->maintenance_manager());

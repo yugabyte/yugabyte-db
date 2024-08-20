@@ -195,35 +195,4 @@ export const useDeleteInstanceType = (
     }
   );
 
-type SyncXClusterConfigWithDBParams = {
-  xClusterConfigUuid: string;
-  replicationGroupName: string;
-  targetUniverseUuid: string;
-};
-export const useSyncXClusterConfigWithDB = (
-  queryClient: QueryClient,
-  mutationOptions?: MutationOptions<YBPTask, Error | AxiosError, SyncXClusterConfigWithDBParams>
-) =>
-  useMutation(
-    ({ replicationGroupName, targetUniverseUuid }: SyncXClusterConfigWithDBParams) =>
-      syncXClusterConfigWithDB(replicationGroupName, targetUniverseUuid),
-    {
-      ...mutationOptions,
-      onSuccess: (response, variables, context) => {
-        if (mutationOptions?.onSuccess) {
-          mutationOptions.onSuccess(response, variables, context);
-        } else {
-          toast.success('Reconciled xCluster config with DB.');
-          queryClient.invalidateQueries(xClusterQueryKey.detail(variables.xClusterConfigUuid));
-        }
-      },
-      onError: (error, variables, context) => {
-        mutationOptions?.onError
-          ? mutationOptions.onError(error, variables, context)
-          : handleServerError(error, {
-              customErrorLabel: 'xCluster config DB sync request failed'
-            });
-      }
-    }
-  );
 // --------------------------------------------------------------------------------------

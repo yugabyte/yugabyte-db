@@ -9,6 +9,7 @@
 
 import { useSelector } from 'react-redux';
 import { Task, TaskStates, TaskType } from './dtos';
+import { AuditLogProps, DiffApiResp } from './components/diffComp/dtos';
 
 /**
  * Checks if a task is currently running.
@@ -47,3 +48,13 @@ export function useIsTaskNewUIEnabled(): boolean {
   const featureFlags = useSelector((state: any) => state.featureFlags);
   return featureFlags?.test?.newTaskDetailsUI || featureFlags?.release?.newTaskDetailsUI;
 }
+
+export const mapAuditLogToTaskDiffApiResp = (auditLog: AuditLogProps | undefined): DiffApiResp | undefined => {
+  if (!auditLog) return undefined;
+  return {
+    afterData: auditLog.payload,
+    beforeData: auditLog.additionalDetails,
+    parentUuid: auditLog.taskUUID,
+    uuid: auditLog.auditID.toString(),
+  };
+};

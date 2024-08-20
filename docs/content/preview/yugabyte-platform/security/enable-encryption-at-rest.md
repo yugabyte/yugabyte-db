@@ -57,8 +57,7 @@ You enable encryption at rest on an existing universe as follows:
 
 You can verify that encryption at rest has been successfully configured as follows:
 
-1. Open the YugabyteDB Anywhere UI and navigate to the universe.
-1. Select **Nodes**.
+1. Navigate to the universe and select **Nodes**.
 1. On one of the nodes, click **Master** under the **PROCESSES** column to open the overview.
 1. To the right of **Replication Factor**, click **See full config** to open the **Current Cluster Config** page.
 1. Verify that the configuration includes the following `encryption_info` section with the correct values:

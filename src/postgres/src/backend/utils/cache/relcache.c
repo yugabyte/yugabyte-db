@@ -2551,7 +2551,6 @@ YbRunWithPrefetcherImpl(
 	YBCStatus (*func)(YbRunWithPrefetcherContext *ctx),
 	bool keep_prefetcher)
 {
-	YBCPgResetCatalogReadTime();
 	const bool is_using_response_cache =
 		prefetcher_starter->call(prefetcher_starter);
 	YBCStatus result = NULL;
@@ -5303,11 +5302,11 @@ RelationBuildLocalRelation(const char *relname,
 			}
 			else
 			{
-				/* 
-				 * This should never happen since we check the guc value in 
+				/*
+				 * This should never happen since we check the guc value in
 				 * check_default_replica_identity.
 				 */
-				Assert(false);	
+				Assert(false);
 			}
 			rel->rd_rel->relreplident = replica_identity;
 		}
@@ -6346,6 +6345,69 @@ RelationGetFKeyList(Relation relation)
 }
 
 /*
+ * YbRelationGetFKeyReferencedByList -- Gets a list of foreign key infos that
+ * reference the given relation.
+ *
+ * Returns a list of ForeignKeyCacheInfo structs, one per FK that is constrained
+ * on the given relation.  This data is a direct copy of relevant fields from
+ * pg_constraint.  The list items are in no particular order.
+ */
+List *
+YbRelationGetFKeyReferencedByList(Relation relation)
+{
+	List *result = NIL;
+	TriggerDesc *trigdesc = relation->trigdesc;
+
+	if (!trigdesc)
+		return result;
+
+	for (int16 i = 0; i < trigdesc->numtriggers; i++)
+	{
+		Trigger trigger = trigdesc->triggers[i];
+		HeapTuple htup;
+		ForeignKeyCacheInfo *info;
+
+		/*
+		 * Consider only referential constraints. Avoid duplication by
+		 * considering only DELETEs. UPDATEs have triggers in both directions
+		 * and could cause duplicates.
+		 */
+		if (!TRIGGER_TYPE_MATCHES(trigger.tgtype, TRIGGER_TYPE_ROW,
+								  TRIGGER_TYPE_AFTER, TRIGGER_TYPE_DELETE) ||
+			!trigger.tgconstrrelid)
+			continue;
+
+		/* Each trigger is a 1:1 mapping to a constraint */
+		/* Each constraint may or may not be a foreign key constraint */
+		htup = SearchSysCacheCopy1(CONSTROID,
+								   ObjectIdGetDatum(trigger.tgconstraint));
+		if (!HeapTupleIsValid(htup))
+			elog(ERROR, "cache lookup failed for constraint %u",
+				 trigger.tgconstraint);
+
+		Form_pg_constraint constraint = (Form_pg_constraint) GETSTRUCT(htup);
+
+		Assert(constraint->contype == CONSTRAINT_FOREIGN);
+		Assert(constraint->confrelid == relation->rd_id);
+
+		info = makeNode(ForeignKeyCacheInfo);
+		info->conoid = HeapTupleGetOid(htup);
+		info->conrelid = constraint->conrelid;
+		info->confrelid = constraint->confrelid;
+
+		DeconstructFkConstraintRow(htup, &info->nkeys, info->conkey,
+								   info->confkey, info->conpfeqop, NULL, NULL);
+
+		/* Add FK's node to the result list */
+		result = lappend(result, info);
+
+		/* We do not cache the computed information anywhere for now. */
+	}
+
+	return result;
+}
+
+/*
  * RelationGetIndexList -- get a list of OIDs of indexes on this relation
  *
  * The index list is created only if someone requests it.  We scan pg_index
@@ -6930,23 +6992,54 @@ IsProjectionFunctionalIndex(Relation index)
 	return is_projection;
 }
 
+/*
+ * YbComputeIndexExprOrPredicateAttrs -- get a bitmap of index attribute numbers for the
+ * given index relation.
+ *
+ * The result has a bit set for each attribute used anywhere in the index
+ * definitions of the given index relation. (This includes not only
+ * simple index keys, but attributes used in expressions and partial-index
+ * predicates.)
+ *
+ * Attribute numbers are offset by FirstLowInvalidHeapAttributeNumber (or its
+ * YB equivalent) so that we can include system attributes (e.g., OID) in the
+ * bitmap representation.
+ *
+ * The returned result is palloc'd in the caller's memory context and should
+ * be bms_free'd when not needed anymore.
+ */
+void
+YbComputeIndexExprOrPredicateAttrs(Bitmapset **indexattrs,
+								   Relation indexDesc,
+								   const int Anum_pg_index,
+								   AttrNumber attr_offset)
+{
+	bool		isnull = false;
+	Datum		datum = heap_getattr(
+		indexDesc->rd_indextuple, Anum_pg_index, GetPgIndexDescriptor(),
+		&isnull);
+
+	if (isnull)
+		return;
+
+	Node *indexNode = stringToNode(TextDatumGetCString(datum));
+	pull_varattnos_min_attr(indexNode, 1, indexattrs, attr_offset + 1);
+}
+
 bool
 CheckUpdateExprOrPred(const Bitmapset *updated_attrs,
                       Relation indexDesc,
                       const int Anum_pg_index,
                       AttrNumber attr_offset)
 {
-  bool      isnull = false;
-  Datum datum = heap_getattr(
-      indexDesc->rd_indextuple, Anum_pg_index, GetPgIndexDescriptor(), &isnull);
-  if (isnull)
-    return false;
-
-  Node *indexNode = stringToNode(TextDatumGetCString(datum));
-  Bitmapset *indexattrs = NULL;
-  pull_varattnos_min_attr(indexNode, 1, &indexattrs, attr_offset + 1);
-  return bms_overlap(updated_attrs, indexattrs);
+	Bitmapset *indexattrs = NULL;
+	YbComputeIndexExprOrPredicateAttrs(
+		&indexattrs, indexDesc, Anum_pg_index, attr_offset);
+	bool need_update = bms_overlap(updated_attrs, indexattrs);
+	bms_free(indexattrs);
+	return need_update;
 }
+
 /*
  * CheckIndexForUpdate -- Given Oid of an Index corresponding to a specific
  * relation and the set of attributes that are updated because of an SQL

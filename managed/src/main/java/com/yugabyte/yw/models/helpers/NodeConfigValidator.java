@@ -168,8 +168,8 @@ public class NodeConfigValidator {
           nodeConfig.getType(),
           ValidationResult.builder()
               .type(nodeConfig.getType())
-              .isValid(isValid)
-              .isRequired(isRequired)
+              .valid(isValid)
+              .required(isRequired)
               .value(nodeConfig.getValue())
               .description(nodeConfig.getType().getDescription())
               .build());
@@ -457,6 +457,9 @@ public class NodeConfigValidator {
 
   public boolean sshIntoNode(Provider provider, NodeInstanceData nodeData, Operation operation) {
     AccessKey accessKey = AccessKey.getLatestKey(provider.getUuid());
+    if (accessKey == null) {
+      return false;
+    }
     KeyInfo keyInfo = accessKey.getKeyInfo();
     String sshUser = operation == Operation.CONFIGURE ? "yugabyte" : provider.getDetails().sshUser;
     List<String> commandList =

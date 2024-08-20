@@ -333,4 +333,33 @@ public class TestYbAsh extends BasePgSQLTest {
       }
     }
   }
+
+  /**
+   * Verify that we see the YSQL backend's pid in ASH
+   */
+  @Test
+  public void testYsqlPids() throws Exception {
+    setAshConfigAndRestartCluster(100, ASH_SAMPLE_SIZE);
+
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE test_table(k INT, v TEXT)");
+      for (int i = 0; i < 100; ++i) {
+        statement.execute(String.format("INSERT INTO test_table VALUES(%d, 'v-%d')", i, i));
+      }
+      int pid = getSingleRow(statement, "SELECT pg_backend_pid()").getInt(0);
+      int res = getSingleRow(statement, "SELECT COUNT(*) FROM " + ASH_VIEW +
+          " WHERE pid = " + pid).getLong(0).intValue();
+      assertGreaterThan(res, 0);
+    }
+
+    try (Statement statement = connection.createStatement()) {
+      for (int i = 0; i < 100; ++i) {
+        statement.execute(String.format("SELECT * FROM test_table WHERE k = %d", i));
+      }
+      int pid = getSingleRow(statement, "SELECT pg_backend_pid()").getInt(0);
+      int res = getSingleRow(statement, "SELECT COUNT(*) FROM " + ASH_VIEW +
+          " WHERE pid = " + pid).getLong(0).intValue();
+      assertGreaterThan(res, 0);
+    }
+  }
 }

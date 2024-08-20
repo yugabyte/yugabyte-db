@@ -38,6 +38,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -52,6 +53,7 @@ import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
@@ -138,6 +140,10 @@ public class GFlagsUtil {
   public static final String LEADER_FAILURE_MAX_MISSED_HEARTBEAT_PERIODS =
       "leader_failure_max_missed_heartbeat_periods";
   public static final String LOAD_BALANCER_INITIAL_DELAY_SECS = "load_balancer_initial_delay_secs";
+
+  public static final String TIMESTAMP_HISTORY_RETENTION_INTERVAL_SEC =
+      "timestamp_history_retention_interval_sec";
+  public static final long DEFAULT_TIMESTAMP_HISTORY_RETENTION_INTERVAL_SEC = 900L;
 
   public static final String YBC_LOG_SUBDIR = "/controller/logs";
   public static final String CORES_DIR_PATH = "/cores";
@@ -317,6 +323,9 @@ public class GFlagsUtil {
           && confGetter.getStaticConf().getInt(NodeManager.POSTGRES_RR_MAX_MEM_MB) >= 0) {
         configCgroup = config.getInt(NodeManager.POSTGRES_RR_MAX_MEM_MB) > 0;
       }
+      long historyRetentionBufferSecs =
+          confGetter.getConfForScope(
+              universe, UniverseConfKeys.pitEnabledBackupsRetentionBufferTimeSecs);
       extra_gflags.putAll(
           getTServerDefaultGflags(
               taskParam,
@@ -325,7 +334,8 @@ public class GFlagsUtil {
               useHostname,
               useSecondaryIp,
               isDualNet,
-              configCgroup));
+              configCgroup,
+              historyRetentionBufferSecs));
     } else {
       Map<String, String> masterGFlags =
           getMasterDefaultGFlags(
@@ -365,7 +375,7 @@ public class GFlagsUtil {
 
     if (universe.getUniverseDetails().xClusterInfo.isSourceRootCertDirPathGflagConfigured()) {
       extra_gflags.put(
-          XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG,
+          XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG,
           universe.getUniverseDetails().xClusterInfo.sourceRootCertDirPath);
     }
 
@@ -580,7 +590,8 @@ public class GFlagsUtil {
       boolean useHostname,
       boolean useSecondaryIp,
       boolean isDualNet,
-      boolean configureCGroup) {
+      boolean configureCGroup,
+      long historyRetentionBufferSecs) {
     Map<String, String> gflags = new TreeMap<>();
     NodeDetails node = universe.getNode(taskParam.nodeName);
     String masterAddresses = getMasterAddrs(taskParam, universe, useSecondaryIp);
@@ -636,6 +647,15 @@ public class GFlagsUtil {
     }
     if (configureCGroup) {
       gflags.put(POSTMASTER_CGROUP, YSQL_CGROUP_PATH);
+    }
+    // Add timestamp_history_retention_sec gflag if required.
+    Duration timestampHistoryRetentionForPITR =
+        Schedule.getMaxBackupIntervalInUniverseForPITRestore(
+            universe.getUniverseUUID(), true /* includeIntermediate */);
+    if (timestampHistoryRetentionForPITR.toSeconds() > 0L) {
+      gflags.put(
+          TIMESTAMP_HISTORY_RETENTION_INTERVAL_SEC,
+          Long.toString(timestampHistoryRetentionForPITR.toSeconds() + historyRetentionBufferSecs));
     }
     return gflags;
   }
@@ -1078,6 +1098,9 @@ public class GFlagsUtil {
     // Merge the `ysql_hba_conf_csv` post pre-processing the hba conf for jwt if required.
     mergeCSVs(userGFlags, platformGFlags, YSQL_HBA_CONF_CSV, false);
     mergeCSVs(userGFlags, platformGFlags, YSQL_PG_CONF_CSV, true);
+
+    // timestamp_hitory_retention_sec gflag should be max of platform and user values
+    processTimestampHistoryRetentionSecGflagIfRequired(userGFlags, platformGFlags);
   }
 
   public static void processGFlagGroups(
@@ -1376,6 +1399,23 @@ public class GFlagsUtil {
       }
     } catch (URISyntaxException ex) {
       LOG.warn("Not a uri {}", uriStr);
+    }
+  }
+
+  // Get max of platform configured value and user set value for
+  // "timstamp_history_retention_sec" gflag.
+  public static void processTimestampHistoryRetentionSecGflagIfRequired(
+      Map<String, String> userGFlags, Map<String, String> platformGFlags) {
+    if (userGFlags.containsKey(TIMESTAMP_HISTORY_RETENTION_INTERVAL_SEC)
+        && platformGFlags.containsKey(TIMESTAMP_HISTORY_RETENTION_INTERVAL_SEC)) {
+      long userTimestampHistoryRetentionGFlag =
+          Long.valueOf(userGFlags.get(TIMESTAMP_HISTORY_RETENTION_INTERVAL_SEC));
+      long platformTimestampHistoryRetentionGFlag =
+          Long.valueOf(platformGFlags.get(TIMESTAMP_HISTORY_RETENTION_INTERVAL_SEC));
+      String value =
+          Long.toString(
+              Math.max(userTimestampHistoryRetentionGFlag, platformTimestampHistoryRetentionGFlag));
+      userGFlags.put(TIMESTAMP_HISTORY_RETENTION_INTERVAL_SEC, value);
     }
   }
 

@@ -51,6 +51,7 @@ public class DeleteNodeFromUniverseTest extends CommissionerBaseTest {
   private static final List<TaskType> DELETE_NODE_TASK_SEQUENCE_WITH_INSTANCE =
       ImmutableList.of(
           TaskType.FreezeUniverse,
+          TaskType.UpdateConsistencyCheck,
           TaskType.CheckNodeSafeToDelete,
           TaskType.AnsibleDestroyServer,
           TaskType.DeleteNode,
@@ -59,6 +60,7 @@ public class DeleteNodeFromUniverseTest extends CommissionerBaseTest {
   private static final List<TaskType> DELETE_NODE_TASK_SEQUENCE_WITHOUT_INSTANCE =
       ImmutableList.of(
           TaskType.FreezeUniverse,
+          TaskType.UpdateConsistencyCheck,
           TaskType.RemoveNodeAgent,
           TaskType.DeleteNode,
           TaskType.UniverseUpdateSucceeded);

@@ -3,14 +3,14 @@ title: Build apps using C# drivers and ORMs
 headerTitle: C#
 linkTitle: C#
 description: C# Drivers and ORMs support for YugabyteDB.
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
+image: fa-classic fa-hashtag
 aliases:
   - /preview/develop/client-drivers/csharp/
 menu:
   preview:
     identifier: csharp-drivers
     parent: drivers-orms
-    weight: 560
+    weight: 570
 type: indexpage
 showRightNav: true
 ---
