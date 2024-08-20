@@ -1,12 +1,10 @@
 ---
 title: All YB-Master YugabyteDB process flags
-headerTitle: All YB-Master Flags
-linkTitle: All YB-Master Flags
+headerTitle: All YB-Master flags
 description: All YB-Master process flags to store and manage data for client applications.
 menu:
   preview:
     identifier: all-flags-yb-master
-    parent: yb-master
     weight: 2440
 type: docs
 ---
