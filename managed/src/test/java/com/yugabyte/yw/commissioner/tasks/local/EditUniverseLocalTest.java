@@ -15,11 +15,15 @@ import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.io.IOException;
+import java.net.InetAddress;
+import java.net.ServerSocket;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -381,6 +385,58 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     verifyUniverseState(universe);
     verifyYSQL(universe);
     assertEquals(1, universe.getMasters().size());
+  }
+
+  @Test
+  public void testUpdateCommPorts() throws InterruptedException {
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
+    Universe universe = createUniverse(userIntent);
+    initYSQL(universe);
+    UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
+    UniverseTaskParams.CommunicationPorts newPorts = new UniverseTaskParams.CommunicationPorts();
+    newPorts.masterHttpPort = 11010;
+    newPorts.masterRpcPort = 11011;
+    newPorts.tserverHttpPort = 11050;
+    newPorts.tserverRpcPort = 11051;
+    taskParams.communicationPorts = newPorts;
+
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams,
+        customer.getId(),
+        taskParams.getPrimaryCluster().uuid,
+        UniverseConfigureTaskParams.ClusterOperationType.EDIT);
+    verifyNodeModifications(universe, 3, 3);
+
+    UUID taskID =
+        universeCRUDHandler.update(
+            customer, Universe.getOrBadRequest(universe.getUniverseUUID()), taskParams);
+    TaskInfo taskInfo = waitForTask(taskID, universe);
+    verifyUniverseTaskSuccess(taskInfo);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    verifyUniverseState(universe);
+    assertEquals(newPorts, universe.getUniverseDetails().communicationPorts);
+    for (NodeDetails nodeDetails : universe.getNodes()) {
+      if (nodeDetails.isMaster) {
+        verifyListeningPort(nodeDetails, newPorts.masterHttpPort);
+        verifyListeningPort(nodeDetails, newPorts.masterRpcPort);
+      }
+      if (nodeDetails.isTserver) {
+        verifyListeningPort(nodeDetails, newPorts.tserverHttpPort);
+        verifyListeningPort(nodeDetails, newPorts.tserverRpcPort);
+      }
+    }
+  }
+
+  private void verifyListeningPort(NodeDetails nodeDetails, int port) {
+    InetAddress inetAddress = null;
+    try {
+      inetAddress = InetAddress.getByName(nodeDetails.cloudInfo.private_ip);
+      ServerSocket ignored = new ServerSocket(port, 50, inetAddress);
+      throw new IllegalStateException(
+          String.format("Expected %s to listen %s port", nodeDetails.cloudInfo.private_ip, port));
+    } catch (IOException ign) {
+    }
   }
 
   // FAILURE TESTS

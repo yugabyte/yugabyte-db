@@ -2192,6 +2192,8 @@ bool CatalogManager::StartShutdown() {
 
   refresh_ysql_pg_catalog_versions_task_.StartShutdown();
 
+  xcluster_manager_->StartShutdown();
+
   if (sys_catalog_) {
     sys_catalog_->StartShutdown();
   }
@@ -2204,7 +2206,7 @@ void CatalogManager::CompleteShutdown() {
   refresh_ysql_tablespace_info_task_.CompleteShutdown();
   xrepl_parent_tablet_deletion_task_.CompleteShutdown();
   refresh_ysql_pg_catalog_versions_task_.CompleteShutdown();
-  xcluster_manager_->Shutdown();
+  xcluster_manager_->CompleteShutdown();
 
   if (background_tasks_) {
     background_tasks_->Shutdown();
@@ -12927,23 +12929,6 @@ CatalogManager::GetStatefulServicesStatus() const {
   return result;
 }
 
-Status CatalogManager::GetTableGroupAndColocationInfo(
-    const TableId& table_id, TablegroupId& out_tablegroup_id, bool& out_colocated_database) {
-  SharedLock lock(mutex_);
-  const auto* tablegroup = tablegroup_manager_->FindByTable(table_id);
-  SCHECK_FORMAT(tablegroup, NotFound, "No tablegroup found for table: $0", table_id);
-
-  out_tablegroup_id = tablegroup->id();
-
-  auto ns = FindPtrOrNull(namespace_ids_map_, tablegroup->database_id());
-  SCHECK(
-      ns, NotFound,
-      Format("Could not find namespace by namespace id $0", tablegroup->database_id()));
-  out_colocated_database = ns->colocated();
-
-  return Status::OK();
-}
-
 Result<std::vector<SysCatalogEntryDumpPB>> CatalogManager::FetchFromSysCatalog(
     SysRowEntryType type, const std::string& item_id_filter) {
   SCHECK_NOTNULL(sys_catalog_);
@@ -13020,6 +13005,13 @@ Status CatalogManager::WriteSysCatalogEntry(
   auto statement_type = VERIFY_RESULT(ToQLStmtType(req->op_type()));
   return WriteToSysCatalog(
       req->entry_type(), req->entity_id(), req->pb_debug_string(), statement_type);
+}
+
+Result<TablegroupId> CatalogManager::GetTablegroupId(const TableId& table_id) {
+  SharedLock lock(mutex_);
+  const auto* tablegroup = tablegroup_manager_->FindByTable(table_id);
+  SCHECK_FORMAT(tablegroup, NotFound, "No tablegroup found for table: $0", table_id);
+  return tablegroup->id();
 }
 
 }  // namespace master

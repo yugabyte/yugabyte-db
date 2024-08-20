@@ -47,7 +47,7 @@ log "Generating $FROZEN_REQUIREMENTS_FILE"
 
 # Use LANG=C to force case-sensitive sorting.
 # https://stackoverflow.com/questions/10326933/case-sensitive-sort-unix-bash
-( set -x; run_pip freeze | LANG=C sort >"$FROZEN_REQUIREMENTS_FILE" )
+( set -x; run_pip freeze --all | LANG=C sort >"$FROZEN_REQUIREMENTS_FILE" )
 
 log_empty_line
 log "Contents of $FROZEN_REQUIREMENTS_FILE:"

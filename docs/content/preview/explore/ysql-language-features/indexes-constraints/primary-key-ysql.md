@@ -15,7 +15,7 @@ aliases:
 type: docs
 ---
 
-The Primary Key constraint is a means to uniquely identify a specific row in a table via one or more columns. To define a primary key, you create a constraint that is, functionally, a [unique index](../unique-index-ysql/#using-a-unique-index) applied to the table columns. It is crucial to choose and design the primary key of the table for several reasons.
+The Primary Key constraint is a means to uniquely identify a specific row in a table via one or more columns. To define a primary key, you create a constraint that is, functionally, a [unique index](../unique-index-ysql/) applied to the table columns. It is crucial to choose and design the primary key of the table for several reasons.
 
 - **Uniqueness**. The Primary key is a column or a set of columns that act as the unique identifier for the rows of the table. This is essential to identify a row uniquely across the different nodes in the cluster.
 - **Data distribution**. In YugabyteDB, data is distributed based on the primary key. In [hash sharding](../../../../explore/going-beyond-sql/data-sharding#hash-sharding), the data is distributed based on the hash of the Primary key. In [range sharding](../../../../explore/going-beyond-sql/data-sharding#range-sharding), it is based on the actual value of the primary key.

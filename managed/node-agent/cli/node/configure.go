@@ -438,6 +438,9 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 				return "", errors.New("Region name is not found")
 			},
 		)
+		if err != nil {
+			util.ConsoleLogger().Fatalf(ctx, "Unable to store region ID - %s", err.Error())
+		}
 		_, err = config.StoreCommandFlagString(
 			ctx,
 			cmd,

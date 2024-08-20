@@ -18,12 +18,13 @@
 #include "yb/dockv/key_bytes.h"
 #include "yb/dockv/primitive_value.h"
 
+#include "yb/vector/graph_repr_defs.h"
+
 namespace yb::docdb {
 
-using VertexId = uint64_t;
-using VectorIndexLevel = uint8_t;
-using VectorNodeNeighbors = std::set<VertexId>;
-constexpr VertexId kInvalidVertexId = 0;
+using VertexId = vectorindex::VertexId;
+using VectorIndexLevel = vectorindex::VectorIndexLevel;
+using VectorNodeNeighbors = vectorindex::VectorNodeNeighbors;
 
 template <class CoordinateType>
 struct VectorIndexTypes {

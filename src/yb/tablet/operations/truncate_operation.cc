@@ -22,6 +22,10 @@
 
 #include "yb/util/trace.h"
 
+DEFINE_test_flag(bool, skip_applying_truncate, false,
+                 "If true, the test will skip applying tablet truncate operation."
+                 "Note that other operations will still be applied.");
+
 namespace yb {
 namespace tablet {
 
@@ -42,6 +46,11 @@ Status TruncateOperation::DoAborted(const Status& status) {
 
 Status TruncateOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
   TRACE("APPLY TRUNCATE: started");
+
+  if (FLAGS_TEST_skip_applying_truncate) {
+    TRACE("APPLY TRUNCATE: skipped");
+    return Status::OK();
+  }
 
   RETURN_NOT_OK(VERIFY_RESULT(tablet_safe())->Truncate(this));
 

@@ -53,7 +53,7 @@ The master key resource policy and AWS user associated with a KMS configuration 
 
 You can create a KMS configuration that uses AWS KMS, as follows:
 
-1. Use the YugabyteDB Anywhere UI to navigate to **Configs > Security > Encryption At Rest** to access the list of existing configurations.
+1. Navigate to **Configs > Security > Encryption At Rest** to access the list of existing configurations.
 
 1. Click **Create New Config**.
 
@@ -107,7 +107,7 @@ You can create a KMS configuration that uses AWS KMS, as follows:
 
 You can modify an existing KMS configuration as follows:
 
-1. Using the YugabyteDB Anywhere UI, navigate to **Configs > Security > Encryption At Rest** to open a list of existing configurations.
+1. Navigate to **Configs > Security > Encryption At Rest** to open a list of existing configurations.
 
 1. Find the configuration you want to modify and click its corresponding **Actions > Edit Configuration**.
 
@@ -120,7 +120,7 @@ You can modify an existing KMS configuration as follows:
 ## Delete a KMS configuration
 
 {{<note title="Note">}}
-You can only delete a KMS configuration if it is not in use by any universes.
+You can only delete a KMS configuration if it has never been used by any universes.
 {{</note>}}
 
 To delete a KMS configuration, click its corresponding **Actions > Delete Configuration**.

@@ -13,7 +13,7 @@ type: docs
 
 {{< note title=" " >}}
 
-Make sure that you read the section [The data sets used by the code examples](../../data-sets/) before running the script to create table _"t2"_. In particular, it's essential that you have installed the [pgcrypto](../../../../../../../explore/ysql-language-features/pg-extensions/#pgcrypto-example) extension.
+Make sure that you read the section [The data sets used by the code examples](../../data-sets/) before running the script to create table _"t2"_. In particular, it's essential that you have installed the [pgcrypto](../../../../../../../explore/ysql-language-features/pg-extensions/extension-pgcrypto) extension.
 
 {{< /note >}}
 

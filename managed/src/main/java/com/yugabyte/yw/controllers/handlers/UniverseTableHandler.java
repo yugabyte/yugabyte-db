@@ -23,7 +23,6 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableSpaceStructures;
 import com.yugabyte.yw.common.TableSpaceUtil;
-import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.table.TableInfoUtil;
 import com.yugabyte.yw.common.utils.FileUtils;
@@ -411,12 +410,12 @@ public class UniverseTableHandler {
     List<NamespaceInfoResp> namespaceInfoRespList = new ArrayList<>();
     for (MasterTypes.NamespaceIdentifierPB namespace : response.getNamespacesList()) {
       if (includeSystemNamespaces) {
-        namespaceInfoRespList.add(buildResponseFromNamespaceIdentifier(namespace).build());
+        namespaceInfoRespList.add(NamespaceInfoResp.createFromNamespaceIdentifier(namespace));
       } else if (!((namespace.getDatabaseType().equals(CommonTypes.YQLDatabase.YQL_DATABASE_PGSQL)
               && PGSQL_SYSTEM_NAMESPACE_LIST.contains(namespace.getName().toLowerCase()))
           || (namespace.getDatabaseType().equals(CommonTypes.YQLDatabase.YQL_DATABASE_CQL)
               && YCQL_SYSTEM_NAMESPACES_LIST.contains(namespace.getName().toLowerCase())))) {
-        namespaceInfoRespList.add(buildResponseFromNamespaceIdentifier(namespace).build());
+        namespaceInfoRespList.add(NamespaceInfoResp.createFromNamespaceIdentifier(namespace));
       }
     }
     return namespaceInfoRespList;
@@ -744,19 +743,5 @@ public class UniverseTableHandler {
       }
     }
     return colocatedKeySpaces;
-  }
-
-  private static NamespaceInfoResp.NamespaceInfoRespBuilder buildResponseFromNamespaceIdentifier(
-      MasterTypes.NamespaceIdentifierPB namespace) {
-    String id = namespace.getId().toStringUtf8();
-    NamespaceInfoResp.NamespaceInfoRespBuilder builder =
-        NamespaceInfoResp.builder()
-            .namespaceUUID(getUUIDRepresentation(id))
-            .tableType(
-                BackupUtil.TABLE_TYPE_TO_YQL_DATABASE_MAP
-                    .inverse()
-                    .get(namespace.getDatabaseType()))
-            .name(namespace.getName());
-    return builder;
   }
 }

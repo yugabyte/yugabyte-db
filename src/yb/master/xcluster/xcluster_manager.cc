@@ -21,6 +21,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/xcluster/xcluster_status.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/master/xcluster/xcluster_config.h"
 
@@ -74,7 +75,33 @@ XClusterManager::XClusterManager(
 
 XClusterManager::~XClusterManager() {}
 
-void XClusterManager::Shutdown() { XClusterTargetManager::Shutdown(); }
+void XClusterManager::StartShutdown() {
+  XClusterTargetManager::StartShutdown();
+
+  // Copy the tasks out since Abort will trigger UnRegister which needs the mutex.
+  decltype(monitored_tasks_) tasks;
+  {
+    std::lock_guard l(monitored_tasks_mutex_);
+    tasks = monitored_tasks_;
+  }
+  for (auto& task : tasks) {
+    task->AbortAndReturnPrevState(STATUS(Aborted, "Master is shutting down"));
+  }
+}
+
+void XClusterManager::CompleteShutdown() {
+  XClusterTargetManager::CompleteShutdown();
+
+  CHECK_OK(WaitFor(
+      [this]() {
+        std::lock_guard l(monitored_tasks_mutex_);
+        YB_LOG_EVERY_N_SECS(WARNING, 10)
+            << "Waiting for " << monitored_tasks_.size() << " monitored tasks to complete";
+        return monitored_tasks_.empty();
+      },
+      MonoDelta::kMax, "Waiting for monitored tasks to complete",
+      MonoDelta::FromMilliseconds(100)));
+}
 
 Status XClusterManager::Init() {
   RETURN_NOT_OK(XClusterSourceManager::Init());
@@ -715,12 +742,18 @@ Status XClusterManager::IsSetupUniverseReplicationDone(
 
   SCHECK_PB_FIELDS_NOT_EMPTY(*req, replication_group_id);
 
-  auto is_operation_done = VERIFY_RESULT(XClusterTargetManager::IsSetupUniverseReplicationDone(
-      xcluster::ReplicationGroupId(req->replication_group_id())));
+  auto is_operation_done = VERIFY_RESULT(IsSetupUniverseReplicationDone(
+      xcluster::ReplicationGroupId(req->replication_group_id()), /*skip_health_check=*/false));
 
   resp->set_done(is_operation_done.done());
   StatusToPB(is_operation_done.status(), resp->mutable_replication_error());
   return Status::OK();
+}
+
+Result<IsOperationDoneResult> XClusterManager::IsSetupUniverseReplicationDone(
+    const xcluster::ReplicationGroupId& replication_group_id, bool skip_health_check) {
+  return XClusterTargetManager::IsSetupUniverseReplicationDone(
+      replication_group_id, skip_health_check);
 }
 
 Status XClusterManager::SetupNamespaceReplicationWithBootstrap(
@@ -774,6 +807,19 @@ Status XClusterManager::DeleteUniverseReplication(
             << RequestorString(rpc);
 
   return Status::OK();
+}
+
+Status XClusterManager::RegisterMonitoredTask(server::MonitoredTaskPtr task) {
+  std::lock_guard l(monitored_tasks_mutex_);
+  SCHECK_FORMAT(
+      monitored_tasks_.insert(task).second, AlreadyPresent, "Task $0 already registered",
+      task->description());
+  return Status::OK();
+}
+
+void XClusterManager::UnRegisterMonitoredTask(server::MonitoredTaskPtr task) {
+  std::lock_guard l(monitored_tasks_mutex_);
+  monitored_tasks_.erase(task);
 }
 
 }  // namespace yb::master

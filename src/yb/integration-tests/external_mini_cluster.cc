@@ -310,6 +310,10 @@ Status ExternalMiniCluster::DeduceBinRoot(std::string* ret) {
   return Status::OK();
 }
 
+void ExternalMiniCluster::SetDaemonBinPath(const std::string& bin_path) {
+  daemon_bin_path_ = bin_path;
+}
+
 std::string ExternalMiniCluster::GetClusterDataDirName() const {
   if (opts_.cluster_id == "") {
     return "minicluster-data";
@@ -481,6 +485,14 @@ string ExternalMiniCluster::GetBinaryPath(const string& binary) const {
 string ExternalMiniCluster::GetDataPath(const string& daemon_id) const {
   CHECK(!data_root_.empty());
   return JoinPathSegments(data_root_, daemon_id);
+}
+
+std::string ExternalMiniCluster::GetMasterBinaryPath() const {
+  return GetBinaryPath(GetMasterBinaryName());
+}
+
+std::string ExternalMiniCluster::GetTServerBinaryPath() const {
+  return GetBinaryPath(GetTServerBinaryName());
 }
 
 namespace {

@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudProviderDelete;
+import com.yugabyte.yw.commissioner.tasks.CloudProviderEdit;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyKubernetesClusterDelete;
@@ -648,6 +649,9 @@ public class CustomerTaskManager {
         break;
       case CloudBootstrap:
         taskParams = Json.fromJson(oldTaskParams, CloudBootstrap.Params.class);
+        break;
+      case CloudProviderEdit:
+        taskParams = Json.fromJson(oldTaskParams, CloudProviderEdit.Params.class);
         break;
       case ReadOnlyClusterDelete:
         taskParams = Json.fromJson(oldTaskParams, ReadOnlyKubernetesClusterDelete.Params.class);
