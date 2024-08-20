@@ -14,12 +14,12 @@ type: docs
 
 ## Prerequisites
 
-Create two universes, the source universe which will serve reads and writes, and the target.
+Create the source and target universes for replication.
 
 Ensure the universes have the following characteristics:
 
 - Both universes are running the same version of YugabyteDB (v2.18.0.0 or later).
-- Both universes have the same [encryption in transit](../../../security/enable-encryption-in-transit/) settings. Encryption in transit is recommended, and you should create the source and target universes with TLS enabled.
+- Both universes have [node-to-node encryption](../../../security/enable-encryption-in-transit/) enabled (recommended) or both have this setting disabled.
 
     If you [rotate the CA certificate](../../../security/enable-encryption-in-transit/rotate-certificates/) on the source universe, you need to restart the replication so that the target nodes get the new root certificate for TLS verifications.
 
@@ -39,8 +39,6 @@ Prepare your database and tables on the source. The source can be empty or have 
 
 During initial setup, you don't need to create objects on the target. YugabyteDB Anywhere performs a full copy of the data to be replicated on the source, and automatically creates tables and objects, and restores data on the target from the source.
 
-For transactional YSQL, after replication is configured, the target will only be available for reads.
-
 ## Best practices
 
 - Monitor CPU use and keep it below 65%.
@@ -55,7 +53,16 @@ For transactional YSQL, after replication is configured, the target will only be
 - Add new tables and databases to the replication configuration soon after creating them, and before performing any writes to avoid the overhead of a full copy.
 - If xCluster replication setup clashes with scheduled backups, wait for the scheduled backup to finish, and then restart the replication.
 
-### Full copy during xCluster setup
+## Configure replication
+
+### Before you start
+
+Before configuring replication, you should be aware of the following:
+
+- When a full copy of data needs to be made
+- Special conditions for adding YSQL tables to replication
+
+#### Full copy during xCluster setup
 
 When xCluster is [set up](#set-up-xcluster-replication) or [restarted](#restart-replication), or when new [tables or databases are added](../xcluster-replication-ddl/) to an existing xCluster configuration, YugabyteDB Anywhere checks if a full copy is required before configuring the replication. A full copy is required in the following circumstances:
 
@@ -75,13 +82,15 @@ A full copy is done by first backing up the data to external storage, and then r
 - For information on creating and using storage configurations, refer to [Configure backup storage](../../../back-up-restore-universes/configure-backup-storage/)
 - To configure the performance of backup and restore, refer to [Configure backup performance parameters](../../../back-up-restore-universes/back-up-universe-data/#configure-backup-performance-parameters).
 
-### YSQL tables
+#### YSQL tables
 
-Replication is set up at the table level on the source and target universes. Selecting a YSQL database adds all its current tables to the xCluster configuration. If you add any tables that you want replicated, you must manually add them to the xCluster configuration in YugabyteDB Anywhere.
+Replication is set up at the table level on the source and target universes.
+
+Selecting a YSQL database adds all its current tables to the xCluster configuration. If you add any tables that you want replicated, you must manually add them to the xCluster configuration in YugabyteDB Anywhere.
 
 When adding tables or during xCluster setup, however, you must select the database with the tables you want, and all tables in a selected database are added to the replication.
 
-If a full copy is required, the entire database is recreated on the target universe from the current database on the source universe. Be sure to keep the set of tables the same at all times on both the source and target universes in these databases by following the steps in [Manage tables and indexes](../xcluster-replication-ddl/).
+If a [full copy](#full-copy-during-xcluster-setup) is required, the entire database is recreated on the target universe from the current database on the source universe. Be sure to keep the set of tables the same at all times on both the source and target universes in these databases by following the steps in [Manage tables and indexes](../xcluster-replication-ddl/).
 
 To be eligible for xCluster replication, tables must not already be in replication. That is, the table can't already be in another xCluster configuration between the same two universes in the same direction.
 
@@ -89,7 +98,7 @@ If a YSQL database includes tables considered ineligible for replication, this d
 
 You can add databases containing colocated tables to the xCluster configuration as long as the underlying database is v2.18.1.0 or later. Colocated tables on the source and target should be created with the same colocation ID if they already exist on both the source and target prior to setup. Refer to [xCluster and colocation](../../../../architecture/docdb-sharding/colocated-tables/#xcluster-and-colocation).
 
-## Set up xCluster replication
+### Set up xCluster replication
 
 To set up replication for a universe, do the following:
 
@@ -109,11 +118,13 @@ To set up replication for a universe, do the following:
 
 1. Select the databases or tables to be copied to the target for replication.
 
-    You can add databases containing colocated tables to the replication configuration as long as the underlying database is v2.18.1.0 or later. Colocated tables on the source and target should be created with the same colocation ID if they already exist on both the source and target prior to setup. Refer to [xCluster and colocation](../../../../architecture/docdb-sharding/colocated-tables/#xcluster-and-colocation).
+    For YSQL, select the database(s) with the tables you want in replication. All tables in a selected database are added. Colocated tables require additional conditions. For more information, see [YSQL tables](#ysql-tables).
+
+    For YCQL, you can select individual tables.
 
 1. Click **Validate Table Selection**.
 
-    YugabyteDB Anywhere checks whether or not data needs to be copied to the target for the selected databases and its tables.
+    YugabyteDB Anywhere checks whether or not data needs to be copied to the target for the selected databases and its tables. See [Full copy during xCluster setup](#full-copy-during-xcluster-setup).
 
 1. If data needs to be copied, click **Next: Configure Full Copy**, and select a storage configuration.
 
@@ -127,7 +138,31 @@ To set up replication for a universe, do the following:
 
 YugabyteDB Anywhere proceeds to set up replication for the universe. How long this takes depends mainly on the amount of data that needs to be copied to the target. You can view the progress of xCluster tasks by navigating to the universe **Tasks** tab.
 
-## Monitor replication
+### Add a database to an existing replication
+
+Note that, although you don't need to create objects on the target when adding tables to an existing replication configuration, for YSQL, if a table is missing on the target, xCluster Replication must copy the entire database. By adding the objects to the target, you can potentially avoid a [full copy](#full-copy-during-xcluster-setup).
+
+To add a database to replication, do the following:
+
+1. Navigate to the source universe **xCluster Replication** tab and select the replication configuration.
+
+1. Click **Actions > Select Databases and Tables**.
+
+1. Select the databases to be copied to the target for replication.
+
+    All tables in a selected database are added. Colocated tables require additional conditions. For more information, see [YSQL tables](#ysql-tables).
+
+1. Click **Validate Selection**.
+
+    YugabyteDB Anywhere checks whether or not data needs to be copied to the target for the selected databases and its tables.
+
+1. If data needs to be copied, click **Next: Confirm Full Copy**.
+
+1. Click **Apply Changes**.
+
+YugabyteDB Anywhere proceeds to copy the database to the target. How long this takes depends mainly on the amount of data that needs to be copied.
+
+## Monitoring and alerts
 
 After replication is set up, the **xCluster Replication** tab displays the status.
 
@@ -177,7 +212,7 @@ The replication details also provide all the tables in replication and their sta
 
 - To delete a table from the replication, click **... > Remove Table**. This removes both the table and its index tables from replication. If you decide to remove an index table from the replication group, it does not remove its main table from the replication group.
 
-## Set up replication lag alerts
+### Set up replication lag alerts
 
 Replication lag measures how far behind in time the target lags the source. In a failover scenario, the longer the lag, the more data is at risk of being lost.
 
@@ -203,31 +238,9 @@ When replication is set up, YugabyteDB automatically creates an alert for _YSQL 
 
 For more information on alerting in YugabyteDB Anywhere, refer to [Alerts](../../../alerts-monitoring/alert/).
 
-## Add a database to an existing replication
+## Manage replication
 
-Note that, although you don't need to create objects on the target when adding tables to an existing replication configuration, for YSQL, if a table is missing on the target, xCluster Replication must copy the entire database. By adding the objects to the target, you can potentially avoid a full copy.
-
-To add a database to replication, do the following:
-
-1. Navigate to the source universe **xCluster Replication** tab and select the replication configuration.
-
-1. Click **Actions > Select Databases and Tables**.
-
-1. Select the databases to be copied to the target for replication.
-
-    You can add databases containing colocated tables to the replication configuration as long as the underlying database is v2.18.1.0 or later. Colocated tables on the source and target should be created with the same colocation ID if they already exist on both the source and target prior to setup. Refer to [xCluster and colocation](../../../../architecture/docdb-sharding/colocated-tables/#xcluster-and-colocation).
-
-1. Click **Validate Selection**.
-
-    YugabyteDB Anywhere checks whether or not data needs to be copied to the target for the selected databases and its tables.
-
-1. If data needs to be copied, click **Next: Confirm Full Copy**.
-
-1. Click **Apply Changes**.
-
-YugabyteDB Anywhere proceeds to copy the database to the target. How long this takes depends mainly on the amount of data that needs to be copied.
-
-## Restart replication
+### Restart replication
 
 Some situations, such as extended network partitions between the source and target, can cause a permanent failure of replication due to WAL logs being no longer available on the source. For information on restarting bidirectional replication, see [Restart bidirectional replication](../bidirectional-replication/#restart-bidirectional-replication).
 
@@ -242,7 +255,7 @@ In these cases, restart replication as follows:
 
 This performs a full copy of the databases (YSQL) or tables (YCQL) involved from the source to the target.
 
-## Pause and remove replication
+### Pause and remove replication
 
 To pause xCluster replication for a universe, do the following:
 
