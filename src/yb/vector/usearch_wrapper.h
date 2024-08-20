@@ -11,23 +11,37 @@
 // under the License.
 //
 
-// Interface definitions for a vector index.
+#pragma once
+
+#include <cstddef>
+#include <memory>
+
+#include "yb/util/status.h"
 
 #include "yb/vector/distance.h"
-#include "yb/common/vector_types.h"
-
-#pragma once
+#include "yb/vector/hnsw_options.h"
+#include "yb/vector/vector_index_if.h"
 
 namespace yb::vectorindex {
 
-class VectorIndexReader {
+class UsearchIndex : public VectorIndexReader {
  public:
-  virtual ~VectorIndexReader() = default;
-  virtual std::vector<VertexWithDistance> Search(
-      const FloatVector& query_vector, size_t max_num_results) const = 0;
+  explicit UsearchIndex(const HNSWOptions& options);
+  virtual ~UsearchIndex();
 
-  // Returns the vector with the given id, or an empty vector if it does not exist.
-  virtual FloatVector GetVector(VertexId vertex_id) const = 0;
+  void Reserve(size_t num_vectors);
+
+  Status Insert(VertexId vertex_id, const FloatVector& vector);
+
+  std::vector<VertexWithDistance> Search(
+      const FloatVector& query_vector, size_t max_num_results) const override;
+
+  FloatVector GetVector(VertexId vertex_id) const override;
+
+ private:
+  class Impl;
+
+  std::unique_ptr<Impl> impl_;
 };
 
 }  // namespace yb::vectorindex

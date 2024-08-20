@@ -34,6 +34,11 @@ YB_DEFINE_ENUM(
 
 using DistanceFunction = std::function<float(const FloatVector&, const FloatVector&)>;
 
+// A variant of a distance function that knows how to resolve a vertex id to a vector, and then
+// compute the distance.
+using VertexIdToVectorDistanceFunction =
+    std::function<float(VertexId vertex_id, const FloatVector&)>;
+
 DistanceFunction GetDistanceImpl(VectorDistanceType distance_type);
 
 struct VertexWithDistance {
@@ -50,6 +55,29 @@ struct VertexWithDistance {
       : vertex_id(vertex_id_), distance(distance_) {}
 
   std::string ToString() const;
+
+  bool operator ==(const VertexWithDistance& other) const {
+    return vertex_id == other.vertex_id && distance == other.distance;
+  }
+
+  bool operator !=(const VertexWithDistance& other) const {
+    return !(*this == other);
+  }
+
+  // Sort in lexicographical order of (distance, vertex_id).
+  bool operator <(const VertexWithDistance& other) const {
+    return distance < other.distance ||
+           (distance == other.distance && vertex_id < other.vertex_id);
+  }
+
+  bool operator>(const VertexWithDistance& other) const {
+    return distance > other.distance ||
+           (distance == other.distance && vertex_id > other.vertex_id);
+  }
 };
+
+using VerticesWithDistances = std::vector<VertexWithDistance>;
+
+std::vector<VertexId> VertexIdsOnly(const VerticesWithDistances& vertices_with_distances);
 
 }  // namespace yb::vectorindex

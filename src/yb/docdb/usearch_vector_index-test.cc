@@ -26,32 +26,7 @@
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
-#pragma GCC diagnostic push
-
-#ifdef __clang__
-// For https://gist.githubusercontent.com/mbautin/87278fc41654c6c74cf7232960364c95/raw
-#pragma GCC diagnostic ignored "-Wpass-failed"
-
-#if __clang_major__ == 14
-// For https://gist.githubusercontent.com/mbautin/7856257553a1d41734b1cec7c73a0fb4/raw
-#pragma GCC diagnostic ignored "-Wambiguous-reversed-operator"
-#endif
-#endif  // __clang__
-
-#include "usearch/index.hpp"
-#include "usearch/index_dense.hpp"
-
-#pragma GCC diagnostic pop
-
-// Helper function to generate random vectors
-template<typename Distribution>
-std::vector<float> GenerateRandomVector(size_t dimensions, Distribution& dis) {
-  std::vector<float> vec(dimensions);
-  for (auto& v : vec) {
-    v = static_cast<float>(dis(yb::ThreadLocalRandom()));
-  }
-  return vec;
-}
+#include "yb/vector/usearch_include_wrapper_internal.h"
 
 namespace yb {
 
@@ -137,7 +112,7 @@ TEST_F(UsearchVectorIndexTest, CreateAndQuery) {
       [&num_vectors_queried, &loaded_index, &latch, &uniform_distrib, kNumResultsPerQuery]() {
         // Perform searches on the loaded index
         while (num_vectors_queried.fetch_add(1) < kNumQueries) {
-          auto query_vec = GenerateRandomVector(kDimensions, uniform_distrib);
+          auto query_vec = RandomFloatVector(kDimensions, uniform_distrib);
           auto results = loaded_index.search(query_vec.data(), kNumResultsPerQuery);
           ASSERT_LE(results.size(), kNumResultsPerQuery);
         }

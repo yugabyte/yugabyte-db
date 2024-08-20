@@ -251,5 +251,23 @@ Status CommonHelpExecute(const CommonHelpArguments& args) {
   return Status::OK();
 }
 
+// ------------------------------------------------------------------------------------------------
+// Helpers for specifying valid ranges of options
+// ------------------------------------------------------------------------------------------------
+
+template<typename OptionType>
+auto OptionLowerBound(const char* option_name, OptionType lower_bound) ->
+    typename std::enable_if<std::is_integral<OptionType>::value,
+                            std::function<void(OptionType)>>::type {
+  return [option_name, lower_bound](OptionType value) {
+    if (value < lower_bound) {
+        throw boost::program_options::validation_error(
+            boost::program_options::validation_error::invalid_option_value,
+            option_name,
+            std::to_string(value));
+    }
+  };
+}
+
 } // namespace tools
 } // namespace yb
