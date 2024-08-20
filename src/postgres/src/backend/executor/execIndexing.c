@@ -291,8 +291,7 @@ ExecInsertIndexTuples(ResultRelInfo *resultRelInfo,
 					  bool update,
 					  bool noDupErr,
 					  bool *specConflict,
-					  List *arbiterIndexes,
-					  List *no_update_index_list)
+					  List *arbiterIndexes)
 {
 	ItemPointer tupleid = &slot->tts_tid;
 	List	   *result = NIL;
@@ -348,9 +347,10 @@ ExecInsertIndexTuples(ResultRelInfo *resultRelInfo,
 		 * For an update command check if we need to skip index. For that purpose,
 		 * we check if the relid of the index is part of the skip list.
 		 */
-		if (indexRelation == NULL || (no_update_index_list &&
-		    list_member_oid(no_update_index_list, RelationGetRelid(indexRelation))))
-		continue;
+		if (indexRelation == NULL ||
+			list_member_oid(estate->yb_skip_entities.index_list,
+							RelationGetRelid(indexRelation)))
+			continue;
 
 		indexInfo = indexInfoArray[i];
 		Assert(indexInfo->ii_ReadyForInserts ==
@@ -433,11 +433,18 @@ ExecInsertIndexTuples(ResultRelInfo *resultRelInfo,
 		 * There's definitely going to be an index_insert() call for this
 		 * index.  If we're being called as part of an UPDATE statement,
 		 * consider if the 'indexUnchanged' = true hint should be passed.
+		 *
+		 * YB Note: In case of a Yugabyte relation, we have already computed if
+		 * the index is unchanged (partly at planning time, and partly during
+		 * execution in ExecUpdate). Further, the result of this computation is
+		 * not just a hint, but is enforced by skipping RPCs to the storage
+		 * layer. Hence this variable is not relevant for Yugabyte relations and
+		 * will always evaluate to false.
 		 */
-		indexUnchanged = update && index_unchanged_by_update(resultRelInfo,
-															 estate,
-															 indexInfo,
-															 indexRelation);
+		indexUnchanged = isYBRelation && update && index_unchanged_by_update(resultRelInfo,
+																			 estate,
+																			 indexInfo,
+																			 indexRelation);
 
 		satisfiesConstraint =
 			index_insert(indexRelation, /* index relation */
@@ -526,17 +533,6 @@ ExecInsertIndexTuples(ResultRelInfo *resultRelInfo,
 void
 ExecDeleteIndexTuples(ResultRelInfo *resultRelInfo, Datum ybctid, HeapTuple tuple, EState *estate)
 {
-  ExecDeleteIndexTuplesOptimized(resultRelInfo, ybctid, tuple, estate,
-								 NIL /* no_update_index_list */);
-}
-
-void
-ExecDeleteIndexTuplesOptimized(ResultRelInfo *resultRelInfo,
-							   Datum ybctid,
-                               HeapTuple tuple,
-                               EState *estate,
-                               List *no_update_index_list)
-{
 	int			i;
 	int			numIndices;
 	RelationPtr relationDescs;
@@ -584,9 +580,10 @@ ExecDeleteIndexTuplesOptimized(ResultRelInfo *resultRelInfo,
 		 * For an update command check if we need to skip index.
 		 * For that purpose, we check if the relid of the index is part of the skip list.
 		 */
-		if (indexRelation == NULL || (no_update_index_list &&
-		    list_member_oid(no_update_index_list, RelationGetRelid(indexRelation))))
-		  continue;
+		if (indexRelation == NULL ||
+			list_member_oid(estate->yb_skip_entities.index_list,
+							RelationGetRelid(indexRelation)))
+			continue;
 
 		/*
 		 * No need to update YugaByte primary key which is intrinic part of

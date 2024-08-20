@@ -1,0 +1,8 @@
+# src/test/regress/yb_update_optimized_schedule
+#
+####################################################################################################
+# Testsuite for tests covering UPDATE query optimizations.
+####################################################################################################
+test: yb_update_optimize_base
+test: yb_update_optimize_indices
+test: yb_update_optimize_triggers

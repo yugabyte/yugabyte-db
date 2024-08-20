@@ -165,6 +165,8 @@ CreateExecutorState(void)
 	estate->es_jit_flags = 0;
 	estate->es_jit = NULL;
 
+	NodeSetTag(&estate->yb_skip_entities, T_YbSkippableEntities);
+
 	/*
 	 * Return the executor state structure
 	 */

@@ -643,8 +643,7 @@ extern List *ExecInsertIndexTuples(ResultRelInfo *resultRelInfo,
 								   TupleTableSlot *slot, EState *estate,
 								   bool update,
 								   bool noDupErr,
-								   bool *specConflict, List *arbiterIndexes,
-								   List *no_update_index_list);
+								   bool *specConflict, List *arbiterIndexes);
 extern bool ExecCheckIndexConstraints(ResultRelInfo *resultRelInfo,
 									  TupleTableSlot *slot,
 									  EState *estate, ItemPointer conflictTid,
@@ -657,10 +656,6 @@ extern void check_exclusion_constraint(Relation heap, Relation index,
 									   EState *estate, bool newIndex);
 extern void ExecDeleteIndexTuples(ResultRelInfo *resultRelInfo, Datum ybctid, HeapTuple tuple,
 								  EState *estate);
-extern void ExecDeleteIndexTuplesOptimized(ResultRelInfo *resultRelInfo, Datum ybctid,
-										   HeapTuple tuple, EState *estate,
-										   List *no_update_index_list);
-extern bool ContainsIndexRelation(Oid indexrelid, List *no_update_index_list);
 
 /*
  * prototypes from functions in execReplication.c

@@ -38,6 +38,7 @@
 #include "utils/guc.h"
 #include "utils/relcache.h"
 #include "utils/resowner.h"
+#include "utils/typcache.h"
 
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
@@ -557,6 +558,8 @@ extern bool yb_prefer_bnl;
  */
 extern bool yb_explain_hide_non_deterministic_fields;
 
+extern int yb_update_num_cols_to_compare;
+extern int yb_update_max_cols_size_to_compare;
 /*
  * Enables scalar array operation pushdown.
  * If true, planner sends supported expressions to DocDB for evaluation
@@ -670,6 +673,15 @@ YbDdlRollbackEnabled () {
 }
 
 extern bool yb_use_hash_splitting_by_default;
+
+typedef struct YBUpdateOptimizationOptions
+{
+	int num_cols_to_compare;
+	int max_cols_size_to_compare;
+} YBUpdateOptimizationOptions;
+
+/* GUC variables to control the behavior of optimizing update queries. */
+extern YBUpdateOptimizationOptions yb_update_optimization_options;
 
 /*
  * GUC to allow user to silence the error saying that advisory locks are not
@@ -1159,6 +1171,9 @@ extern SortByDir YbSortOrdering(SortByDir ordering, bool is_colocated, bool is_t
 
 extern void YbGetRedactedQueryString(const char* query, int query_len,
 									 const char** redacted_query, int* redacted_query_len);
+
+/* Check if optimizations for UPDATE queries have been enabled. */
+extern bool YbIsUpdateOptimizationEnabled();
 
 extern void YbRelationSetNewRelfileNode(Relation rel, Oid relfileNodeId,
 										bool yb_copy_split_options,
