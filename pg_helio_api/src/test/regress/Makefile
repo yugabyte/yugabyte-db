@@ -32,6 +32,9 @@ endef
 check-basic:
 	$(call common_test,--schedule=./basic_schedule)
 
+check-bson-minimal:
+	$(call common_test,--schedule=./minimal_schedule, $(EXTRA_TESTS))
+
 check-test-output:
 	./validate_test_output.sh
 

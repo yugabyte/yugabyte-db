@@ -11,11 +11,14 @@
 #include <miscadmin.h>
 #include <bson.h>
 #include <access/xact.h>
+#include <utils/version_utils.h>
+#include "distributed_hooks.h"
 
 PG_MODULE_MAGIC;
 
 void _PG_init(void);
 void _PG_fini(void);
+
 
 /*
  * _PG_init gets called when the extension is loaded.
@@ -32,6 +35,8 @@ _PG_init(void)
 							"variable in postgresql.conf in coordinator and workers. "
 							"Note that pg_helio_distributed should be placed right after citus and pg_helio_api.")));
 	}
+
+	InitializeHelioDistributedHooks();
 }
 
 

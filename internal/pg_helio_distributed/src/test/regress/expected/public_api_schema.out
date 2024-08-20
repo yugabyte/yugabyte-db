@@ -1,7 +1,23 @@
--- show all functions exported in helio_api_distributed: This should stay empty
+-- show all functions exported in helio_api_distributed
 \df helio_api_distributed.*
-                       List of functions
- Schema | Name | Result data type | Argument data types | Type 
---------+------+------------------+---------------------+------
+                                     List of functions
+        Schema         |        Name        | Result data type | Argument data types | Type 
+-----------------------+--------------------+------------------+---------------------+------
+ helio_api_distributed | complete_upgrade   | boolean          |                     | func
+ helio_api_distributed | initialize_cluster | void             |                     | func
+(2 rows)
+
+-- show all aggregates exported
+\da+ helio_api_distributed.*
+                     List of aggregate functions
+ Schema | Name | Result data type | Argument data types | Description 
+--------+------+------------------+---------------------+-------------
 (0 rows)
+
+-- This is last (Tables/indexes)
+\d helio_api_distributed.*
+      Table "helio_api_distributed.helio_cluster_data"
+  Column  |      Type       | Collation | Nullable | Default 
+----------+-----------------+-----------+----------+---------
+ metadata | helio_core.bson |           |          | 
 

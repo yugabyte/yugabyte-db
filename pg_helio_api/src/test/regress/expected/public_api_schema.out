@@ -298,6 +298,8 @@ Check constraints:
     "valid_db_coll_name" CHECK (helio_api_internal.ensure_valid_db_coll(database_name, collection_name))
     "validation_action_check" CHECK (validation_action = ANY (ARRAY['warn'::text, 'error'::text]))
     "validation_level_check" CHECK (validation_level = ANY (ARRAY['off'::text, 'strict'::text, 'moderate'::text]))
+Triggers:
+    collections_trigger_validate_dbname BEFORE INSERT OR UPDATE ON helio_api_catalog.collections FOR EACH ROW EXECUTE FUNCTION helio_api_internal.trigger_validate_dbname()
 
 Index "helio_api_catalog.collections_collection_id_key"
     Column     |  Type  | Key? |  Definition   

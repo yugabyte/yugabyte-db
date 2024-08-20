@@ -64,6 +64,9 @@ clean-sql:
 check:
 	$(MAKE) -C src/test all
 
+check-minimal:
+	$(MAKE) -C src/test/regress check-bson-minimal
+
 citus-indent:
 	citus_indent
 

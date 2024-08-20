@@ -1309,6 +1309,9 @@ ProcessWorkerWriteQueryPath(PlannerInfo *root, RelOptInfo *rel, Index rti,
 	rel->pathlist = list_make1(funcScanPath);
 	rel->partial_pathlist = NIL;
 	rel->baserestrictinfo = NIL;
+#if PG_VERSION_NUM >= 160000
+	rte->perminfoindex = 0;
+#endif
 	return true;
 }
 

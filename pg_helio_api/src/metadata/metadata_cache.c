@@ -116,6 +116,8 @@ PGDLLEXPORT char *PostgisSchemaName = "public";
  */
 PGDLLEXPORT char *ApiToApiInternalSchemaName = "helio_api_internal";
 
+PGDLLEXPORT char *ApiCatalogToApiInternalSchemaName = "helio_api_internal";
+
 typedef struct HelioApiOidCacheData
 {
 	/* OID of the <bigint> OPERATOR(pg_catalog.=) <bigint> operator */

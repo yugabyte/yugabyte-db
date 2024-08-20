@@ -14,6 +14,7 @@
 #include <nodes/makefuncs.h>
 #include <catalog/namespace.h>
 #include <utils/lsyscache.h>
+#include <utils/memutils.h>
 
 #include "io/helio_bson_core.h"
 #include "utils/query_utils.h"
@@ -28,6 +29,8 @@
 #include "distributed_hooks.h"
 
 extern bool UseLocalExecutionShardQueries;
+extern char *VersionRefreshQuery;
+extern char *ApiDistributedSchemaName;
 
 /* Cached value for the current Global PID - can cache once
  * Since nodeId, Pid are stable.
@@ -230,12 +233,15 @@ DistributePostgresTableCore(const char *postgresTable, const char *distributionC
 		bool innerReadOnly = true;
 		bool isNull = true;
 		ExtensionExecuteQueryViaSPI(
-			"SELECT 1 FROM pg_catalog.pg_dist_partition "
-			" WHERE logicalrelid = 'mongo_data.changes'::regclass",
+			FormatSqlQuery("SELECT 1 FROM pg_catalog.pg_dist_partition "
+						   " WHERE logicalrelid = '%s.changes'::regclass",
+						   ApiDataSchemaName),
 			innerReadOnly, SPI_OK_SELECT, &isNull);
 		if (!isNull)
 		{
-			argValues[2] = CStringGetTextDatum("mongo_data.changes");
+			char changesTableName[NAMEDATALEN] = { 0 };
+			sprintf(changesTableName, "%s.changes", ApiDataSchemaName);
+			argValues[2] = CStringGetTextDatum(changesTableName);
 			argNulls[2] = ' ';
 		}
 		else
@@ -391,4 +397,14 @@ InitializeHelioDistributedHooks(void)
 		TryGetShardNameForUnshardedCollectionCore;
 	get_distributed_application_name_hook = GetDistributedApplicationNameCore;
 	UpdateColocationHooks();
+
+	/* Update the version check query to consider distributed versions */
+	MemoryContext currContext = MemoryContextSwitchTo(TopMemoryContext);
+	StringInfo s = makeStringInfo();
+	appendStringInfo(s,
+					 "SELECT regexp_split_to_array(TRIM(%s.bson_get_value_text(metadata, 'last_deploy_version'), '\"'), '[-\\.]')::int4[] FROM %s.%s_cluster_data",
+					 CoreSchemaName, ApiDistributedSchemaName, ExtensionObjectPrefix);
+	VersionRefreshQuery = s->data;
+	MemoryContextSwitchTo(currContext);
+	elog(LOG, "Version refresh query is %s", VersionRefreshQuery);
 }
