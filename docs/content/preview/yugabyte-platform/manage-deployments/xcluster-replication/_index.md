@@ -28,7 +28,7 @@ xCluster replication can be used to move data from one YugabyteDB universe to an
 
 You can use YugabyteDB Anywhere to set up xCluster replication, monitor the status of replication, and manage changes to the replication when new databases or tables are added to the replication.
 
-- For more information on how YugabyteDB xCluster replication works, see [xCluster replication: overview and architecture](../../../architecture/docdb-replication/async-replication/).
+- For more information on how YugabyteDB xCluster replication works, see [xCluster replication](../../../architecture/docdb-replication/async-replication/).
 - For an example of unidirectional (master-follower) xCluster replication, see [Active-active single-master](../../../develop/build-global-apps/active-active-single-master/).
 - For an example of bidirectional (multi-master) xCluster replication, see [Active-active multi-master](../../../develop/build-global-apps/active-active-multi-master/).
 
