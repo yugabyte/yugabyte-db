@@ -1,20 +1,22 @@
-## yba backup describe
+## yba backup schedule delete
 
-Describe a YugabyteDB Anywhere universe backup
+Delete a YugabyteDB Anywhere universe backup schedule
 
 ### Synopsis
 
-Describe an universe backup in YugabyteDB Anywhere
+Delete an universe backup schedule in YugabyteDB Anywhere
 
 ```
-yba backup describe [flags]
+yba backup schedule delete [flags]
 ```
 
 ### Options
 
 ```
-      --uuid string   [Required] The UUID of the backup to be described.
-  -h, --help          help for describe
+  -n, --name string            [Required] The name of the schedule to be deleted.
+      --universe-name string   [Optional] The name of the universe containing the schedule.
+  -f, --force                  [Optional] Bypass the prompt for non-interactive usage.
+  -h, --help                   help for delete
 ```
 
 ### Options inherited from parent commands
@@ -33,5 +35,5 @@ yba backup describe [flags]
 
 ### SEE ALSO
 
-* [yba backup](yba_backup.md)	 - Manage YugabyteDB Anywhere universe backups
+* [yba backup schedule](yba_backup_schedule.md)	 - Manage YugabyteDB Anywhere universe backup schedules
 

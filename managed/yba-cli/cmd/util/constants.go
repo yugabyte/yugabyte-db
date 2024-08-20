@@ -89,6 +89,44 @@ const (
 	DeletingProviderState = "DELETING"
 )
 
+// BackupStates
+const (
+	// InProgressBackupState state
+	InProgressBackupState = "InProgress"
+	// CompletedBackupState state
+	CompletedBackupState = "Completed"
+	// FailedBackupState state
+	FailedBackupState = "Failed"
+	// SkippedBackupState state
+	SkippedBackupState = "Skipped"
+	// FailedToDeleteBackupState state
+	FailedToDeleteBackupState = "FailedToDelete"
+	// StoppingBackupState state
+	StoppingBackupState = "Stopping"
+	// StoppedBackupState state
+	StoppedBackupState = "Stopped"
+	// QueuedForDeletionBackupState state
+	QueuedForDeletionBackupState = "QueuedForDeletion"
+	// QueuedForForcedDeletionBackupState state
+	QueuedForForcedDeletionBackupState = "QueuedForForcedDeletion"
+	// DeleteInProgressBackupState state
+	DeleteInProgressBackupState = "DeleteInProgress"
+)
+
+// RestoreStates
+const (
+	// InProgressRestoreState state
+	InProgressRestoreState = "InProgress"
+	// CompletedRestoreState state
+	CompletedRestoreState = "Completed"
+	// FailedRestoreState state
+	FailedRestoreState = "Failed"
+	// AbortedRestoreState state
+	AbortedRestoreState = "Aborted"
+	// CreatedRestoreState state
+	CreatedRestoreState = "Created"
+)
+
 // Allowed states for YugabyteDB Anywhere Tasks
 const (
 	// CreateTaskStatus task status
@@ -213,18 +251,18 @@ const (
 	AARCH64 = "aarch64"
 )
 
-// CompletedStates returns set of states that mark the task as completed
-func CompletedStates() []string {
+// CompletedTaskStates returns set of states that mark the task as completed
+func CompletedTaskStates() []string {
 	return []string{SuccessTaskStatus, FailureTaskStatus, AbortedTaskStatus}
 }
 
-// ErrorStates return set of states that mark state as failure
-func ErrorStates() []string {
+// ErrorTaskStates return set of states that mark state as failure
+func ErrorTaskStates() []string {
 	return []string{FailureTaskStatus, AbortedTaskStatus}
 }
 
-// IncompleteStates return set of states for ongoing tasks
-func IncompleteStates() []string {
+// IncompleteTaskStates return set of states for ongoing tasks
+func IncompleteTaskStates() []string {
 	return []string{CreatedTaskStatus, InitializingTaskStatus, RunningTaskStatus, AbortTaskStatus}
 }
 
