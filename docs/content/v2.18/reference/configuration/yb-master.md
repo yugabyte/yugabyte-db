@@ -13,6 +13,8 @@ type: docs
 
 Use the `yb-master` binary and its flags to configure the [YB-Master](../../../architecture/concepts/yb-master/) server. The `yb-master` executable file is located in the `bin` directory of YugabyteDB home.
 
+The following page describes the flags considered relevant to configuring YugabyteDB for production deployments. For a list of all flags, see [All YB-Master flags](../all-flags-yb-master/).
+
 ## Syntax
 
 ```sh
