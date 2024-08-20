@@ -1736,6 +1736,7 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
         } else {
           tablet = CreateTabletInfo(table.get(), partition_pb, SysTabletsEntryPB::PREPARING);
         }
+        tablet->mutable_metadata()->mutable_dirty()->pb.set_colocated(table->colocated());
         new_tablets.push_back(tablet);
       }
 
@@ -1822,6 +1823,17 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
   // The create tablet requests should be handled by bg tasks which find the PREPARING tablets after
   // commit.
 
+  // Update the colocated tablet in the tablegroup manager.
+  if (table->colocated()) {
+    SharedLock l(mutex_);
+    SCHECK(
+        table->IsColocationParentTable(), IllegalState,
+        "Only the parent table in a colocated table should be repartitioned");
+    SCHECK_EQ(new_tablets.size(), 1, IllegalState, "Expected 1 new tablet after repartitioning");
+    auto tablegroup_id = GetTablegroupIdFromParentTableId(table->id());
+    RETURN_NOT_OK(tablegroup_manager_->Remove(tablegroup_id));
+    RETURN_NOT_OK(tablegroup_manager_->Add(table->namespace_id(), tablegroup_id, new_tablets[0]));
+  }
   return Status::OK();
 }
 
