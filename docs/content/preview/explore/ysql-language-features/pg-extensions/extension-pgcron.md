@@ -95,22 +95,6 @@ $$;
 $$);
 ```
 
-### Archive old data
-
-You can move old or infrequently accessed data to an archive table to keep the main table performant.
-
-This example schedules a job to archive old data from the `main_table` to the `archive_table` every month on the 1st at 1AM.
-
-```sql
-SELECT cron.schedule('monthly_archive', '0 1 1 * *', $$
-DO $$
-BEGIN
-INSERT INTO archive_table SELECT * FROM main_table WHERE created_at < NOW() - INTERVAL '1 year';
-DELETE FROM main_table WHERE created_at < NOW() - INTERVAL '1 year';
-END;
-$$);
-```
-
 ### Automate data refresh for materialized views
 
 You can keep materialized views up to date ensuring that they reflect recent data changes.
@@ -136,20 +120,49 @@ END;
 $$);
 ```
 
-### Data synchronization between tables
+### Best practices
 
-You can synchronize data between tables ensuring consistency across different parts of the database.
+As a best practice, you can set up a periodic cleanup task for the `cron.job_run_details` table using the `pg_cron` extension ensuring old data doesn't accumulate and affect database performance. The `cron.job_run_details` table is part of the `pg_cron` extension in PostgreSQL. This table keeps a record of the execution details of the scheduled cron jobs. It logs information about each cron job run, including its start and end time, status, and any exit messages or errors that occurred during the execution.
 
-This example schedules a job to synchronize data between `source_table` and `target_table` every 15 minutes.
+#### View job details and clean up records
 
-```sql
-SELECT cron.schedule('sync_tables', '*/15 * * * *', $$
-DO $$
-BEGIN
-INSERT INTO target_table (col1, col2, col3)
-SELECT col1, col2, col3
-FROM source_table
-WHERE NOT EXISTS (SELECT 1 FROM target_table WHERE target_table.id = source_table.id);
-END;
-$$);
-```
+1. You can view the status of running and recently completed job runs in the `cron.job_run_details` table using the following command:
+
+    ```sql
+    select * from cron.job_run_details order by start_time desc limit 5;
+    ```
+
+1. The records in `cron.job_run_details` are not cleaned automatically. So in scenarios when you have jobs that run every few seconds, it can be a good idea to clean up regularly, which can easily be done using `pg_cron` as follows:
+
+    ```sql
+    -- Delete old cron.job_run_details records of the current user every day at noon
+    SELECT  cron.schedule('delete-job-run-details', '0 12 * * *', $$DELETE FROM cron.job_run_details WHERE end_time < now() - interval '7 days'$$);
+    ```
+
+    If you do not want to use `cron.job_run_details` at all, then you can add `cron.log_run = off` to `postgresql.conf`.
+
+#### Create a cleanup function
+
+You can also create a cleanup function to delete old records from `cron.job_run_details` based on a retention period.
+For example, if you want to retain records for 30 days, do the following:
+
+1. Create a cleanup function as follows:
+
+    ```sql
+      CREATE OR REPLACE FUNCTION cleanup_cron_job_run_details(retention_days INTEGER) RETURNS void AS $$
+        BEGIN
+            DELETE FROM cron.job_run_details
+            WHERE end_time < NOW() - INTERVAL '1 day' * retention_days;
+        END;
+        $$ LANGUAGE plpgsql;
+    ```
+
+1. Schedule the cleanup job to run periodically using `pg_cron`. The following example schedules the cleanup job to run daily at midnight (00:00).
+
+    ```sql
+    SELECT cron.schedule(
+        'daily_cron_cleanup',                  -- job name
+        '0 0 * * *',                           -- cron expression for daily at midnight
+        $$ CALL cleanup_cron_job_run_details(30); $$  -- SQL command to execute
+    );
+    ```
