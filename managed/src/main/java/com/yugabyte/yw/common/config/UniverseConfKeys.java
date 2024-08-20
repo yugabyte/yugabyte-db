@@ -47,6 +47,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 
+  public static final ConfKeyInfo<Boolean> ddlAtomicityCheckEnabled =
+      new ConfKeyInfo<>(
+          "yb.health.ddl_atomicity_check_enabled",
+          ScopeType.UNIVERSE,
+          "DDL Atomicity Check Enabled",
+          "If we want to perform DDL atomicity check for the universe periodically",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
   public static final ConfKeyInfo<Integer> ddlAtomicityIntervalSec =
       new ConfKeyInfo<>(
           "yb.health.ddl_atomicity_interval_sec",

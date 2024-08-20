@@ -149,7 +149,7 @@ public class HealthChecker {
 
   // We upload health check script to the node only when NodeInfo is updates
   private final Map<Pair<UUID, String>, NodeInfo> uploadedNodeInfo = new ConcurrentHashMap<>();
-  private final Map<UUID, Instant> ddlAtomicityCheckTimestamp = new ConcurrentHashMap<>();
+  private final Map<UUID, Instant> ddlAtomicitySuccessfulCheckTimestamp = new ConcurrentHashMap<>();
 
   private final Set<String> healthScriptMetrics =
       Collections.newSetFromMap(new ConcurrentHashMap<>());
@@ -321,8 +321,8 @@ public class HealthChecker {
             || checkName.equals(OPENED_FILE_DESCRIPTORS_CHECK)
             || checkName.equals(CLOCK_SYNC_CHECK)
             || checkName.equals(DDL_ATOMICITY_CHECK)) {
-          if (checkName.equals(DDL_ATOMICITY_CHECK)) {
-            ddlAtomicityCheckTimestamp.put(
+          if (checkName.equals(DDL_ATOMICITY_CHECK) && !checkResult) {
+            ddlAtomicitySuccessfulCheckTimestamp.put(
                 u.getUniverseUUID(), report.getTimestampIso().toInstant());
           }
           // Used FD count metric is always collected through health check as it's not
@@ -866,44 +866,63 @@ public class HealthChecker {
         confGetter.getConfForScope(universe, UniverseConfKeys.healthLogOutput);
     int nodeCheckTimeoutSec =
         confGetter.getConfForScope(universe, UniverseConfKeys.nodeCheckTimeoutSec);
-    int ddlAtomicityIntervalSec =
-        confGetter.getConfForScope(universe, UniverseConfKeys.ddlAtomicityIntervalSec);
 
-    Instant lastDdlAtomicityCheckTimestamp =
-        ddlAtomicityCheckTimestamp.get(universe.getUniverseUUID());
-    String nodeToRunDdlTAtomicityCheck = null;
+    boolean ddlAtomicityCheckEnabled =
+        confGetter.getConfForScope(universe, UniverseConfKeys.ddlAtomicityCheckEnabled);
+    String nodeToRunDdlAtomicityCheck = null;
     String masterLeaderUrl = null;
-    String ybDbRelease =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
-    boolean ddlAtomicityCheckSupported =
-        CommonUtils.isReleaseBetween(DDL_ATOMICITY_CHECK_RELEASE, "2.19.0.0-b0", ybDbRelease)
-            || CommonUtils.isReleaseEqualOrAfter(DDL_ATOMICITY_CHECK_PREVIEW_RELEASE, ybDbRelease);
-    if (ddlAtomicityCheckSupported
-        && !params.onlyMetrics
-        && (lastDdlAtomicityCheckTimestamp == null
-            || lastDdlAtomicityCheckTimestamp
-                .plus(ddlAtomicityIntervalSec, ChronoUnit.SECONDS)
-                .isBefore(Instant.now()))) {
-      // We should schedule DDL atomicity check.
-      NodeDetails masterLeader = universe.getMasterLeaderNode();
-      if (masterLeader != null) {
-        NodeDetails nodeToRun = CommonUtils.getServerToRunYsqlQuery(universe);
-        boolean httpsEnabledUI =
-            universe.getConfig().getOrDefault(Universe.HTTPS_ENABLED_UI, "false").equals("true");
-        masterLeaderUrl =
-            (httpsEnabledUI ? "https" : "http")
-                + "://"
-                + masterLeader.cloudInfo.private_ip
-                + ":"
-                + masterLeader.masterHttpPort;
-        nodeToRunDdlTAtomicityCheck = nodeToRun.getNodeName();
+
+    if (ddlAtomicityCheckEnabled) {
+      int ddlAtomicityIntervalSec =
+          confGetter.getConfForScope(universe, UniverseConfKeys.ddlAtomicityIntervalSec);
+
+      Instant lastDdlAtomicitySuccessfulCheckTimestamp =
+          ddlAtomicitySuccessfulCheckTimestamp.get(universe.getUniverseUUID());
+      String ybDbRelease =
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+      boolean ddlAtomicityCheckSupported =
+          CommonUtils.isReleaseBetween(DDL_ATOMICITY_CHECK_RELEASE, "2.19.0.0-b0", ybDbRelease)
+              || CommonUtils.isReleaseEqualOrAfter(
+                  DDL_ATOMICITY_CHECK_PREVIEW_RELEASE, ybDbRelease);
+      if (ddlAtomicityCheckSupported
+          && !params.onlyMetrics
+          && (lastDdlAtomicitySuccessfulCheckTimestamp == null
+              || lastDdlAtomicitySuccessfulCheckTimestamp
+                  .plus(ddlAtomicityIntervalSec, ChronoUnit.SECONDS)
+                  .isBefore(Instant.now()))) {
+        // We should schedule DDL atomicity check.
+        NodeDetails masterLeader = universe.getMasterLeaderNode();
+        if (masterLeader != null) {
+          NodeDetails nodeToRun = CommonUtils.getServerToRunYsqlQuery(universe);
+          boolean isK8s =
+              nodes.stream()
+                  .filter(ni -> ni.getNodeName().equals(masterLeader.getNodeName()))
+                  .map(NodeInfo::isK8s)
+                  .findFirst()
+                  .orElse(false);
+          // For now we don't enable HTTPS for K8S DB nodes.
+          // Fix that once we start doing that.
+          boolean httpsEnabledUI =
+              !isK8s
+                  && universe
+                      .getConfig()
+                      .getOrDefault(Universe.HTTPS_ENABLED_UI, "false")
+                      .equals("true");
+          masterLeaderUrl =
+              (httpsEnabledUI ? "https" : "http")
+                  + "://"
+                  + masterLeader.cloudInfo.private_ip
+                  + ":"
+                  + masterLeader.masterHttpPort;
+          nodeToRunDdlAtomicityCheck = nodeToRun.getNodeName();
+        }
       }
     }
     Map<String, CompletableFuture<Details>> nodeChecks = new HashMap<>();
     for (NodeInfo nodeInfo : nodes) {
       NodeCheckContext context =
           new NodeCheckContext().setLogOutput(shouldLogOutput).setTimeoutSec(nodeCheckTimeoutSec);
-      if (nodeInfo.getNodeName().equals(nodeToRunDdlTAtomicityCheck)) {
+      if (nodeInfo.getNodeName().equals(nodeToRunDdlAtomicityCheck)) {
         context.setDdlAtomicityCheck(true);
         context.setMasterLeaderUrl(masterLeaderUrl);
       }
