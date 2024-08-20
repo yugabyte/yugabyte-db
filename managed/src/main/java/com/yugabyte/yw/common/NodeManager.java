@@ -321,10 +321,16 @@ public class NodeManager extends DevopsBase {
     final String defaultAccessKeyCode = appConfig.getString("yb.security.default.access.key");
 
     // TODO: [ENG-1242] we shouldn't be using our keypair, until we fix our VPC to support VPN
-    if (userIntent != null && !userIntent.accessKeyCode.equalsIgnoreCase(defaultAccessKeyCode)) {
-      AccessKey accessKey =
-          AccessKey.getOrBadRequest(params.getProvider().getUuid(), userIntent.accessKeyCode);
-      AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
+    if ((userIntent != null
+            && StringUtils.isNotBlank(userIntent.accessKeyCode)
+            && !userIntent.accessKeyCode.equalsIgnoreCase(defaultAccessKeyCode))
+        || StringUtils.isBlank(userIntent.accessKeyCode)) {
+      AccessKey.KeyInfo keyInfo = null;
+      if (!StringUtils.isBlank(userIntent.accessKeyCode)) {
+        AccessKey accessKey =
+            AccessKey.getOrBadRequest(params.getProvider().getUuid(), userIntent.accessKeyCode);
+        keyInfo = accessKey.getKeyInfo();
+      }
       String sshUser = null;
       // Currently we only need this for provision node operation.
       // All others use yugabyte user.
@@ -377,13 +383,13 @@ public class NodeManager extends DevopsBase {
       Integer sshPort) {
     List<String> subCommand = new ArrayList<>();
 
-    if (keyInfo.vaultFile != null) {
+    if (keyInfo != null && keyInfo.vaultFile != null) {
       subCommand.add("--vars_file");
       subCommand.add(keyInfo.vaultFile);
       subCommand.add("--vault_password_file");
       subCommand.add(keyInfo.vaultPasswordFile);
     }
-    if (keyInfo.privateKey != null) {
+    if (keyInfo != null && keyInfo.privateKey != null) {
       subCommand.add("--private_key_file");
       subCommand.add(keyInfo.privateKey);
 
@@ -1540,21 +1546,17 @@ public class NodeManager extends DevopsBase {
     }
     Provider provider = nodeTaskParam.getProvider();
     List<AccessKey> accessKeys = AccessKey.getAll(provider.getUuid());
-    if (accessKeys.isEmpty()) {
-      throw new RuntimeException("No access keys for provider: " + provider.getUuid());
-    }
     Map<String, String> redactedVals = new HashMap<>();
-    AccessKey accessKey = accessKeys.get(0);
-    AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
+    String accessKeyCode = "";
+    AccessKey.KeyInfo keyInfo = null;
+    if (accessKeys.size() > 0) {
+      AccessKey accessKey = accessKeys.get(0);
+      accessKeyCode = accessKey.getKeyCode();
+      keyInfo = accessKey.getKeyInfo();
+    }
     commandArgs.addAll(
         getAccessKeySpecificCommand(
-            nodeTaskParam,
-            type,
-            keyInfo,
-            Common.CloudType.onprem,
-            accessKey.getKeyCode(),
-            null,
-            null));
+            nodeTaskParam, type, keyInfo, Common.CloudType.onprem, accessKeyCode, null, null));
     InstanceType instanceType =
         InstanceType.get(provider.getUuid(), nodeTaskParam.getInstanceType());
     commandArgs.add("--mount_points");
@@ -1598,7 +1600,7 @@ public class NodeManager extends DevopsBase {
       case Precheck:
         commandArgs.addAll(
             getCommunicationPortsParams(
-                new UserIntent(), accessKey, new UniverseTaskParams.CommunicationPorts()));
+                new UserIntent(), provider.getUuid(), new UniverseTaskParams.CommunicationPorts()));
         break;
     }
 
@@ -2444,11 +2446,11 @@ public class NodeManager extends DevopsBase {
           if (nodeTaskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(nodeTaskParam));
           }
-          AccessKey accessKey =
-              AccessKey.getOrBadRequest(
-                  nodeTaskParam.getProvider().getUuid(), userIntent.accessKeyCode);
           commandArgs.addAll(
-              getCommunicationPortsParams(userIntent, accessKey, nodeTaskParam.communicationPorts));
+              getCommunicationPortsParams(
+                  userIntent,
+                  nodeTaskParam.getProvider().getUuid(),
+                  nodeTaskParam.communicationPorts));
 
           boolean rootAndClientAreTheSame =
               nodeTaskParam.getClientRootCA() == null
@@ -2691,9 +2693,9 @@ public class NodeManager extends DevopsBase {
   }
 
   private Collection<String> getCommunicationPortsParams(
-      UserIntent userIntent, AccessKey accessKey, UniverseTaskParams.CommunicationPorts ports) {
+      UserIntent userIntent, UUID providerUUID, UniverseTaskParams.CommunicationPorts ports) {
     List<String> result = new ArrayList<>();
-    Provider provider = Provider.getOrBadRequest(accessKey.getProviderUUID());
+    Provider provider = Provider.getOrBadRequest(providerUUID);
     result.add("--master_http_port");
     result.add(Integer.toString(ports.masterHttpPort));
     result.add("--master_rpc_port");
