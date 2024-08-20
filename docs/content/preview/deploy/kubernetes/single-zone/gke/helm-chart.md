@@ -87,13 +87,11 @@ The following steps show how to meet these prerequisites:
 
 Create a private Kubernetes cluster by running the following command.
 
-Note that you require to set up Cloud NAT for a private Kubernetes cluster in Google Cloud to ensure that your cluster can access the internet while its nodes do not have public IP addresses.
-
-Refer to [Configuring Private Google Access and Cloud NAT in Google Cloud Platform (GCP)](https://kloudkraft.medium.com/configuring-private-google-access-and-cloud-nat-in-google-cloud-platform-gcp-3c4406b590b3).
-
 ```sh
 gcloud container clusters create cluster_name --enable-private-nodes --machine-type=n1-standard-8
 ```
+
+Note that you must set up Cloud NAT for a private Kubernetes cluster in Google Cloud to ensure that your cluster can access the internet while its nodes do not have public IP addresses. Refer to [Configuring Private Google Access and Cloud NAT in Google Cloud Platform (GCP)](https://kloudkraft.medium.com/configuring-private-google-access-and-cloud-nat-in-google-cloud-platform-gcp-3c4406b590b3).
 
 As stated in [Prerequisites](#prerequisites), the default configuration in the YugabyteDB Helm chart requires Kubernetes nodes to have a total of 12 CPU cores and 45 GB RAM allocated to YugabyteDB. This can be three nodes with 4 CPU cores and 15 GB RAM allocated to YugabyteDB. The smallest Google Cloud machine type that meets this requirement is `n1-standard-8` which has 8 CPU cores and 30GB RAM.
 
