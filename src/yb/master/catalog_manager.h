@@ -63,14 +63,12 @@
 
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_manager_util.h"
-#include "yb/master/clone/clone_state_manager.h"
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_dcl.fwd.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_encryption.fwd.h"
 #include "yb/master/master_heartbeat.pb.h"
-#include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_types.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/snapshot_coordinator_context.h"
@@ -79,7 +77,6 @@
 #include "yb/master/system_tablet.h"
 #include "yb/master/table_index.h"
 #include "yb/master/tablet_creation_limits.h"
-#include "yb/master/tablet_split_manager.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/ysql_tablespace_manager.h"
@@ -401,6 +398,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                                      LaunchBackfillIndexForTableResponsePB* resp,
                                      rpc::RpcContext* rpc,
                                      const LeaderEpoch& epoch);
+
+  void AcquireObjectLocks(
+      const tserver::AcquireObjectLockRequestPB* req, tserver::AcquireObjectLockResponsePB* resp,
+      rpc::RpcContext rpc);
+  void ReleaseObjectLocks(
+      const tserver::ReleaseObjectLockRequestPB* req, tserver::ReleaseObjectLockResponsePB* resp,
+      rpc::RpcContext rpc);
 
   // Gets the progress of ongoing index backfills.
   Status GetIndexBackfillProgress(const GetIndexBackfillProgressRequestPB* req,
@@ -746,7 +750,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status WaitForTransactionTableVersionUpdateToPropagate();
 
-  Status FillHeartbeatResponse(const TSHeartbeatRequestPB* req, TSHeartbeatResponsePB* resp);
+  Status FillHeartbeatResponse(const TSHeartbeatRequestPB& req, TSHeartbeatResponsePB* resp);
 
   SysCatalogTable* sys_catalog() override { return sys_catalog_.get(); }
 
@@ -754,10 +758,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   std::shared_ptr<tablet::TabletPeer> tablet_peer() const override;
 
   ClusterLoadBalancer* load_balancer() override { return load_balance_policy_.get(); }
-
-  TabletSplitManager* tablet_split_manager() override { return &tablet_split_manager_; }
-
-  CloneStateManager* clone_state_manager() override { return clone_state_manager_.get(); }
 
   XClusterManagerIf* GetXClusterManager() override;
   XClusterManager* GetXClusterManagerImpl() override { return xcluster_manager_.get(); }
@@ -1088,6 +1088,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const SplitTabletRequestPB* req, SplitTabletResponsePB* resp, rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
 
+  Status DumpSysCatalogEntries(
+      const DumpSysCatalogEntriesRequestPB* req, DumpSysCatalogEntriesResponsePB* resp,
+      rpc::RpcContext* rpc);
+
+  Status WriteSysCatalogEntry(
+      const WriteSysCatalogEntryRequestPB* req, WriteSysCatalogEntryResponsePB* resp,
+      rpc::RpcContext* rpc);
+
   // Deletes a tablet that is no longer serving user requests. This would require that the tablet
   // has been split and both of its children are now in RUNNING state and serving user requests
   // instead.
@@ -1289,13 +1297,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       rpc::RpcContext* rpc,
       const LeaderEpoch& epoch);
 
-  void HandleCreateTabletSnapshotResponse(TabletInfo* tablet, bool error) override;
-
-  void HandleRestoreTabletSnapshotResponse(TabletInfo* tablet, bool error) override;
-
-  void HandleDeleteTabletSnapshotResponse(
-      const SnapshotId& snapshot_id, TabletInfo* tablet, bool error) override;
-
   // Is encryption at rest enabled for this cluster.
   Status IsEncryptionEnabled(
       const IsEncryptionEnabledRequestPB* req, IsEncryptionEnabledResponsePB* resp);
@@ -1496,8 +1497,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const std::vector<xrepl::StreamId>& stream_ids,
       const std::vector<yb::master::SysCDCStreamEntryPB>& update_entries);
 
-  MasterSnapshotCoordinator& snapshot_coordinator() override { return snapshot_coordinator_; }
-
   Result<size_t> GetNumLiveTServersForActiveCluster() override;
 
   Status ClearFailedUniverse(const LeaderEpoch& epoch);
@@ -1583,9 +1582,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Result<SchemaVersion> GetTableSchemaVersion(const TableId& table_id);
 
-  Status GetTableGroupAndColocationInfo(
-      const TableId& table_id, TablegroupId& out_tablegroup_id, bool& out_colocated_database)
-      EXCLUDES(mutex_);
+  Result<TablegroupId> GetTablegroupId(const TableId& table_id) EXCLUDES(mutex_);
 
   void InsertNewUniverseReplication(UniverseReplicationInfo& replication_group) EXCLUDES(mutex_);
 
@@ -1616,6 +1613,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status CreateTransactionAwareSnapshot(
       const CreateSnapshotRequestPB& req, CreateSnapshotResponsePB* resp, CoarseTimePoint deadline);
+
+  Result<std::vector<SysCatalogEntryDumpPB>> FetchFromSysCatalog(
+      SysRowEntryType type, const std::string& item_id_filter);
+
+  Status WriteToSysCatalog(
+      SysRowEntryType type, const std::string& item_id, const std::string& debug_string,
+      QLWriteRequestPB::QLStmtType op_type);
 
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
@@ -2389,7 +2393,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
     const TSDescriptorVector& ts_descs);
 
  private:
-  friend class SnapshotLoader;
   friend class yb::master::ClusterLoadBalancer;
   friend class CDCStreamLoader;
   friend class UniverseReplicationLoader;
@@ -2729,12 +2732,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status FillHeartbeatResponseEncryption(
       const SysClusterConfigEntryPB& cluster_config,
-      const TSHeartbeatRequestPB* req,
+      const TSHeartbeatRequestPB& req,
       TSHeartbeatResponsePB* resp);
 
   Status FillHeartbeatResponseCDC(
       const SysClusterConfigEntryPB& cluster_config,
-      const TSHeartbeatRequestPB* req,
+      const TSHeartbeatRequestPB& req,
       TSHeartbeatResponsePB* resp);
 
   Status AddSchemaVersionMappingToUniverseReplication(
@@ -2757,14 +2760,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       bool* const bootstrap_required);
 
   std::unordered_set<xrepl::StreamId> GetCDCSDKStreamsForTable(const TableId& table_id) const;
-
-  Status CreateNonTransactionAwareSnapshot(
-      const CreateSnapshotRequestPB* req, CreateSnapshotResponsePB* resp, const LeaderEpoch& epoch);
-
-  Status RestoreNonTransactionAwareSnapshot(
-      const SnapshotId& snapshot_id, const LeaderEpoch& epoch);
-
-  Status DeleteNonTransactionAwareSnapshot(const SnapshotId& snapshot_id, const LeaderEpoch& epoch);
 
   Status AddNamespaceEntriesToPB(
       const std::vector<TableDescription>& tables,
@@ -2918,7 +2913,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
     YsqlDdlVerificationState state;
 
     // The table info objects of the tables affected by this transaction.
+    // The processed_tables is used to avoid duplicated processing. Currently it is the set of
+    // tables for which delete table has already been called. For PITR, we cannot make duplicate
+    // delete table calls.
     std::vector<scoped_refptr<TableInfo>> tables;
+    std::unordered_set<TableId> processed_tables;
   };
 
   // This map stores the transaction ids of all the DDL transactions undergoing verification.
@@ -2931,21 +2930,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   ServerRegistrationPB server_registration_;
 
-  TabletSplitManager tablet_split_manager_;
-
-  std::unique_ptr<CloneStateManager> clone_state_manager_;
-
   mutable MutexType delete_replica_task_throttler_per_ts_mutex_;
 
   // Maps a tserver uuid to the AsyncTaskThrottler instance responsible for throttling outstanding
   // AsyncDeletaReplica tasks per destination.
   std::unordered_map<std::string, std::unique_ptr<DynamicAsyncTaskThrottler>>
     delete_replica_task_throttler_per_ts_ GUARDED_BY(delete_replica_task_throttler_per_ts_mutex_);
-
-  // Snapshot map: snapshot-id -> SnapshotInfo.
-  typedef std::unordered_map<SnapshotId, scoped_refptr<SnapshotInfo>> SnapshotInfoMap;
-  SnapshotInfoMap non_txn_snapshot_ids_map_;
-  SnapshotId current_snapshot_id_;
 
   // mutex on should_send_universe_key_registry_mutex_.
   mutable simple_spinlock should_send_universe_key_registry_mutex_;
@@ -3003,8 +2993,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Should catalog manager resend latest consumer registry to tserver.
   std::unordered_map<TabletServerId, bool> should_send_consumer_registry_
       GUARDED_BY(should_send_consumer_registry_mutex_);
-
-  MasterSnapshotCoordinator snapshot_coordinator_;
 
   // True when the cluster is a producer of a valid replication stream.
   std::atomic<bool> cdc_enabled_{false};

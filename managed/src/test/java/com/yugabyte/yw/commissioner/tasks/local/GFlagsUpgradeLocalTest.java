@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.local;
 
+import static com.yugabyte.yw.common.Util.YUGABYTE_DB;
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.CREATE;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
@@ -14,6 +15,7 @@ import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.LocalNodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagGroup;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -22,6 +24,7 @@ import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
+import com.yugabyte.yw.forms.RollMaxBatchSize;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
@@ -35,8 +38,11 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Test;
 
@@ -191,25 +197,15 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
   }
 
   @Test
+  // Roll a 6 node cluster in batches of 2 per AZ
   public void testStopMultipleNodesInAZ() throws InterruptedException {
     UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.numNodes = 6;
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.nodePrefix = "univConfCreate";
     taskParams.upsertPrimaryCluster(userIntent, null);
     PlacementInfoUtil.updateUniverseDefinition(
         taskParams, customer.getId(), taskParams.getPrimaryCluster().uuid, CREATE);
-
-    taskParams.getPrimaryCluster().placementInfo.findByAZUUID(az1.getUuid()).numNodesInAZ = 4;
-    taskParams.userAZSelected = true;
-    PlacementInfoUtil.updateUniverseDefinition(
-        taskParams, customer.getId(), taskParams.getPrimaryCluster().uuid, CREATE);
-
-    assertEquals(6, taskParams.getPrimaryCluster().userIntent.numNodes);
-    assertEquals(
-        4,
-        PlacementInfoUtil.getAzUuidToNumNodes(taskParams.nodeDetailsSet)
-            .get(az1.getUuid())
-            .intValue());
 
     taskParams.expectedUniverseVersion = -1;
     UniverseResp universeResp = universeCRUDHandler.createUniverse(customer, taskParams);
@@ -217,25 +213,195 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     Universe universe = Universe.getOrBadRequest(universeResp.universeUUID);
     verifyUniverseTaskSuccess(taskInfo);
 
-    RuntimeConfigEntry.upsertGlobal(UniverseConfKeys.stopMultipleNodesInAZEnabled.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(UniverseConfKeys.upgradeBatchRollEnabled.getKey(), "true");
     RuntimeConfigEntry.upsertGlobal(
-        UniverseConfKeys.simultaneousStopsInUpgradePercent.getKey(), "55");
+        UniverseConfKeys.nodesAreSafeToTakeDownCheckTimeout.getKey(), "30s");
+
+    SpecificGFlags specificGFlags =
+        SpecificGFlags.construct(
+            Collections.singletonMap("max_log_size", "1805"),
+            Collections.singletonMap("log_max_seconds_to_retain", "86333"));
+    RollMaxBatchSize rollMaxBatchSize = new RollMaxBatchSize();
+    rollMaxBatchSize.setPrimaryBatchSize(2);
+
+    taskInfo =
+        doGflagsUpgrade(
+            universe,
+            UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE,
+            specificGFlags,
+            null,
+            TaskInfo.State.Success,
+            null,
+            params -> params.rollMaxBatchSize = rollMaxBatchSize);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        taskInfo.getSubTasks().stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+    boolean foundTasks = false;
+    for (List<TaskInfo> group : subTasksByPosition.values()) {
+      if (group.get(0).getTaskType() == TaskType.AnsibleClusterServerCtl) {
+        String process = group.get(0).getTaskParams().get("process").asText();
+        if (process.equals("tserver")) {
+          // Verifying that there are 2 simultaneous stops/starts for tservers.
+          assertEquals(2, group.size());
+          foundTasks = true;
+        }
+      }
+    }
+    assertTrue(foundTasks);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    compareGFlags(universe);
+  }
+
+  @Test
+  // Roll a 6 node cluster in batches of 2 per AZ
+  public void testStopMultipleNodesInAZRuntimeConf() throws InterruptedException {
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.numNodes = 6;
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.nodePrefix = "univConfCreate";
+    taskParams.upsertPrimaryCluster(userIntent, null);
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams, customer.getId(), taskParams.getPrimaryCluster().uuid, CREATE);
+
+    taskParams.expectedUniverseVersion = -1;
+    UniverseResp universeResp = universeCRUDHandler.createUniverse(customer, taskParams);
+    TaskInfo taskInfo = waitForTask(universeResp.taskUUID);
+    Universe universe = Universe.getOrBadRequest(universeResp.universeUUID);
+    verifyUniverseTaskSuccess(taskInfo);
+
+    RuntimeConfigEntry.upsertGlobal(UniverseConfKeys.upgradeBatchRollEnabled.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(
+        UniverseConfKeys.nodesAreSafeToTakeDownCheckTimeout.getKey(), "30s");
+
+    SpecificGFlags specificGFlags =
+        SpecificGFlags.construct(
+            Collections.singletonMap("max_log_size", "1805"),
+            Collections.singletonMap("log_max_seconds_to_retain", "86333"));
+    RuntimeConfigEntry.upsertGlobal(UniverseConfKeys.upgradeBatchRollAutoNumber.getKey(), "2");
+    taskInfo =
+        doGflagsUpgrade(
+            universe,
+            UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE,
+            specificGFlags,
+            null,
+            TaskInfo.State.Success,
+            null,
+            null);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        taskInfo.getSubTasks().stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+    boolean foundTasks = false;
+    for (List<TaskInfo> group : subTasksByPosition.values()) {
+      if (group.get(0).getTaskType() == TaskType.AnsibleClusterServerCtl) {
+        String process = group.get(0).getTaskParams().get("process").asText();
+        if (process.equals("tserver")) {
+          // Verifying that there are 2 simultaneous stops/starts for tservers.
+          assertEquals(2, group.size());
+          foundTasks = true;
+        }
+      }
+    }
+    assertTrue(foundTasks);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    compareGFlags(universe);
+  }
+
+  @Test
+  public void testStopMultipleNodesInAZFallback() throws InterruptedException {
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.numNodes = 6;
+    Universe universe = createUniverse(userIntent);
+
+    NodeDetails nodeDetails = universe.getNodes().iterator().next();
+
+    String createTblSpace =
+        "CREATE TABLESPACE two_zone_tablespace\n"
+            + "  WITH (replica_placement='{ \"num_replicas\": 3, \"placement_blocks\": [\n"
+            + "    {\"cloud\":\"local\",\"region\":\"region-1\","
+            + "\"zone\":\"az-1\",\"min_num_replicas\":1},\n"
+            + "    {\"cloud\":\"local\",\"region\":\"region-1\","
+            + "\"zone\":\"az-2\",\"min_num_replicas\":2}\n"
+            + "]}')";
+
+    ShellResponse response =
+        localNodeUniverseManager.runYsqlCommand(
+            nodeDetails,
+            universe,
+            YUGABYTE_DB,
+            createTblSpace,
+            20,
+            userIntent.isYSQLAuthEnabled(),
+            true);
+    assertTrue("Message is " + response.getMessage(), response.isSuccess());
+
+    response =
+        localNodeUniverseManager.runYsqlCommand(
+            nodeDetails,
+            universe,
+            YUGABYTE_DB,
+            "CREATE TABLE two_zone_table (id INTEGER, field text)\n"
+                + "  TABLESPACE two_zone_tablespace",
+            20,
+            userIntent.isYSQLAuthEnabled());
+    assertTrue(response.isSuccess());
+
+    response =
+        localNodeUniverseManager.runYsqlCommand(
+            nodeDetails,
+            universe,
+            YUGABYTE_DB,
+            "INSERT INTO two_zone_table \n" + " values (1, 'some_value')",
+            20,
+            userIntent.isYSQLAuthEnabled());
+    assertTrue(response.isSuccess());
+
+    RuntimeConfigEntry.upsertGlobal(UniverseConfKeys.upgradeBatchRollEnabled.getKey(), "true");
+    RuntimeConfigEntry.upsertGlobal(
+        UniverseConfKeys.nodesAreSafeToTakeDownCheckTimeout.getKey(), "30s");
 
     SpecificGFlags specificGFlags =
         SpecificGFlags.construct(
             Collections.singletonMap("max_log_size", "1805"),
             Collections.singletonMap("log_max_seconds_to_retain", "86333"));
 
-    taskInfo =
+    UniverseDefinitionTaskParams.Cluster cluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+
+    RollMaxBatchSize rollMaxBatchSize = new RollMaxBatchSize();
+    // Since we have az-2 with 2 replicas, we cannot stop 2 nodes -> will have fallback.
+    rollMaxBatchSize.setPrimaryBatchSize(2);
+
+    TaskInfo taskInfo =
         doGflagsUpgrade(
-            universe, UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, specificGFlags, null);
+            universe,
+            UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE,
+            specificGFlags,
+            null,
+            TaskInfo.State.Success,
+            null,
+            params -> params.rollMaxBatchSize = rollMaxBatchSize);
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        taskInfo.getSubTasks().stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+
+    boolean foundTasks = false;
+    for (List<TaskInfo> group : subTasksByPosition.values()) {
+      if (group.get(0).getTaskType() == TaskType.AnsibleClusterServerCtl) {
+        String process = group.get(0).getTaskParams().get("process").asText();
+        if (process.equals("tserver")) {
+          // Verifying that there are 1 simultaneous stops/starts for tservers.
+          assertEquals(1, group.size());
+          foundTasks = true;
+        }
+      }
+    }
+    assertTrue(foundTasks);
+
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     compareGFlags(universe);
   }
 
-  // @Test
-  // Current db version doesn't support that api, so will uncomment later
+  @Test
   public void testNodesAreSafeToTakeDownFails() throws InterruptedException, IOException {
     // So that we will do only one check.
     RuntimeConfigEntry.upsertGlobal(
@@ -259,7 +425,9 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
         specificGFlags,
         null,
         TaskInfo.State.Failure,
-        "Nodes are not safe to take down");
+        "Aborting because this operation can potentially "
+            + "take down a majority of copies of some tablets",
+        null);
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     // Verify that it failed before locking
     assertNull(universe.getUniverseDetails().updatingTaskUUID);
@@ -275,7 +443,9 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
         specificGFlags,
         null,
         TaskInfo.State.Failure,
-        "Nodes are not safe to take down");
+        "Aborting because this operation can potentially "
+            + "take down a majority of copies of some tablets",
+        null);
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     // Verify that it failed before locking
     assertNull(universe.getUniverseDetails().updatingTaskUUID);
@@ -290,7 +460,9 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
         specificGFlags,
         null,
         TaskInfo.State.Failure,
-        "Nodes are not safe to take down");
+        "Aborting because this operation can potentially "
+            + "take down a majority of copies of some tablets",
+        null);
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     // Verify that it failed before locking
     assertNull(universe.getUniverseDetails().updatingTaskUUID);
@@ -307,8 +479,7 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     verifyYSQL(universe);
   }
 
-  // @Test
-  // Current db version doesn't support that api, so will uncomment later
+  @Test
   public void testUpgradeFailsDuringExecution() throws InterruptedException, IOException {
     // So that we will do only one check.
     RuntimeConfigEntry.upsertGlobal(
@@ -323,7 +494,7 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
             new HashMap<>(), Collections.singletonMap("log_max_seconds_to_retain", "86333"));
     universe.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags = specificGFlags;
 
-    CommissionerBaseTest.setPausePosition(11);
+    CommissionerBaseTest.setPausePosition(20);
     GFlagsUpgradeParams gFlagsUpgradeParams =
         getUpgradeParams(
             universe, UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, GFlagsUpgradeParams.class);
@@ -341,19 +512,15 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
             .findFirst()
             .get();
 
-    NodeDetails anotherNode =
-        universe.getUniverseDetails().nodeDetailsSet.stream()
-            .filter(n -> !n.getNodeName().equals(processedNodeName))
-            .findFirst()
-            .get();
-
-    localNodeManager.killProcess(anotherNode.getNodeName(), UniverseTaskBase.ServerType.TSERVER);
+    localNodeManager.killProcess(processedNodeName, UniverseTaskBase.ServerType.TSERVER);
     CommissionerBaseTest.clearAbortOrPausePositions();
 
     commissioner.resumeTask(taskID);
     taskInfo = waitForTask(taskID);
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
-    assertThat(getAllErrorsStr(taskInfo), containsString("Nodes are not safe to take down"));
+    assertThat(
+        getAllErrorsStr(taskInfo),
+        containsString("this operation can potentially take down a majority"));
   }
 
   protected TaskInfo doGflagsUpgrade(
@@ -363,7 +530,7 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
       SpecificGFlags rrGflags)
       throws InterruptedException {
     return doGflagsUpgrade(
-        universe, upgradeOption, specificGFlags, rrGflags, TaskInfo.State.Success, null);
+        universe, upgradeOption, specificGFlags, rrGflags, TaskInfo.State.Success, null, null);
   }
 
   protected TaskInfo doGflagsUpgrade(
@@ -372,7 +539,8 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
       SpecificGFlags specificGFlags,
       SpecificGFlags rrGflags,
       TaskInfo.State expectedState,
-      String expectedFailMessage)
+      String expectedFailMessage,
+      Consumer<GFlagsUpgradeParams> upgradeParamsCustomizer)
       throws InterruptedException {
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     GFlagsUpgradeParams gFlagsUpgradeParams =
@@ -380,6 +548,9 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     gFlagsUpgradeParams.getPrimaryCluster().userIntent.specificGFlags = specificGFlags;
     if (rrGflags != null) {
       gFlagsUpgradeParams.getReadOnlyClusters().get(0).userIntent.specificGFlags = rrGflags;
+    }
+    if (upgradeParamsCustomizer != null) {
+      upgradeParamsCustomizer.accept(gFlagsUpgradeParams);
     }
     TaskInfo taskInfo =
         waitForTask(

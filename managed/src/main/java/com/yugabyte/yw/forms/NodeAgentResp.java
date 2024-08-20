@@ -4,6 +4,7 @@ package com.yugabyte.yw.forms;
 
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import com.yugabyte.yw.models.NodeAgent;
 import io.swagger.annotations.ApiModel;
@@ -36,6 +37,7 @@ public class NodeAgentResp {
   @ApiModelProperty(accessMode = READ_ONLY)
   private UUID universeUuid;
 
+  @JsonCreator
   public NodeAgentResp(NodeAgent nodeAgent) {
     this.nodeAgent = nodeAgent;
   }

@@ -184,15 +184,19 @@ export const ConfigureRegionModal = ({
     }),
     azuNetworkRGOverride: string().when([], {
       is: () => shouldExposeField.azuNetworkRGOverride && providerCode === ProviderCode.AZU,
-      then: string().matches(
-          RG_REGEX,
-          "Resource group names can only include alphanumeric, underscore, parentheses, hyphen, period (except at end)"),
+      then: string().matches(RG_REGEX, {
+        message:
+          'Resource group names can only include alphanumeric, underscore, parentheses, hyphen, period (except at end)',
+        excludeEmptyString: true
+      })
     }),
     azuRGOverride: string().when([], {
       is: () => shouldExposeField.azuRGOverride && providerCode === ProviderCode.AZU,
-      then: string().matches(
-          RG_REGEX,
-          "Resource group names can only include alphanumeric, underscore, parentheses, hyphen, period (except at end)"),
+      then: string().matches(RG_REGEX, {
+        message:
+          'Resource group names can only include alphanumeric, underscore, parentheses, hyphen, period (except at end)',
+        excludeEmptyString: true
+      })
     })
   });
   const formMethods = useForm<ConfigureRegionFormValues>({

@@ -185,9 +185,11 @@ IF current_setting('server_version_num')::int >= 100000 THEN
                             , v_child_schema
                             , v_child_tablename
                             , '"' || array_to_string(v_index_list.indkey_names, '","') || '"');
+            /* YB: cannot set TABLESPACE for PRIMARY KEY INDEX
             IF v_index_list.tablespace_name IS NOT NULL THEN
                 v_sql := v_sql || format(' USING INDEX TABLESPACE %I', v_index_list.tablespace_name);
             END IF;
+            */
             RAISE DEBUG 'inherit_template_properties: Create pk: %', v_sql;
             EXECUTE v_sql;
         ELSE

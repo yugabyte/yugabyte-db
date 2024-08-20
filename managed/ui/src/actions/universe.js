@@ -39,6 +39,10 @@ export const PAUSE_UNIVERSE_RESPONSE = 'PAUSE_UNIVERSE_RESPONSE';
 export const RESTART_UNIVERSE = 'RESTART_UNIVERSE';
 export const RESTART_UNIVERSE_RESPONSE = 'RESTART_UNIVERSE_RESPONSE';
 
+// Get Universe load balancer state
+export const FETCH_UNIVERSE_LB_STATE = 'FETCH_UNIVERSE_LB_STATE';
+export const FETCH_UNIVERSE_LB_STATE_RESPONSE = 'FETCH_UNIVERSE_LB_STATE_RESPONSE';
+
 // Read replicas
 export const ADD_READ_REPLICA = 'ADD_READ_REPLICA';
 export const ADD_READ_REPLICA_RESPONSE = 'ADD_READ_REPLICA_RESPONSE';
@@ -181,6 +185,24 @@ export function resetUniverseInfo() {
 export function fetchUniverseInfoResponse(response) {
   return {
     type: FETCH_UNIVERSE_INFO_RESPONSE,
+    payload: response
+  };
+}
+
+export function fetchUniverseLbState(universeUUID) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.get(
+    `${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}/master_lb_state`
+  );
+  return {
+    type: FETCH_UNIVERSE_LB_STATE,
+    payload: request
+  };
+}
+
+export function fetchUniverseLbStateResponse(response) {
+  return {
+    type: FETCH_UNIVERSE_LB_STATE_RESPONSE,
     payload: response
   };
 }

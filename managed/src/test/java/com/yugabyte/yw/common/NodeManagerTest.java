@@ -589,6 +589,9 @@ public class NodeManagerTest extends FakeDBApplication {
         .thenReturn(false);
     when(mockConfGetter.getConfForScope(any(Customer.class), eq(CustomerConfKeys.cloudEnabled)))
         .thenReturn(false);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.pitEnabledBackupsRetentionBufferTimeSecs)))
+        .thenReturn(3600);
   }
 
   private String getMountPoints(AnsibleConfigureServers.Params taskParam) {
@@ -1204,9 +1207,9 @@ public class NodeManagerTest extends FakeDBApplication {
         }
         expectedCommand.add("--replication_config_name");
         expectedCommand.add(txccTaskParams.replicationGroupName);
-        if (txccTaskParams.producerCertsDirOnTarget != null) {
-          expectedCommand.add("--producer_certs_dir");
-          expectedCommand.add(txccTaskParams.producerCertsDirOnTarget.toString());
+        if (txccTaskParams.destinationCertsDir != null) {
+          expectedCommand.add("--xcluster_dest_certs_dir");
+          expectedCommand.add(txccTaskParams.destinationCertsDir.toString());
         }
         break;
       case Delete_Root_Volumes:
@@ -1332,7 +1335,7 @@ public class NodeManagerTest extends FakeDBApplication {
       }
       params.replicationGroupName = "universe-uuid_MyRepl1";
       if (isCustomProducerCertsDir) {
-        params.producerCertsDirOnTarget = new File("custom-producer-dir");
+        params.destinationCertsDir = new File("custom-producer-dir");
       }
       expectedCommand.addAll(
           nodeCommand(

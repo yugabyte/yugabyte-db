@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudProviderDelete;
+import com.yugabyte.yw.commissioner.tasks.CloudProviderEdit;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyKubernetesClusterDelete;
@@ -18,6 +19,8 @@ import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
 import com.yugabyte.yw.commissioner.tasks.ReprovisionNode;
 import com.yugabyte.yw.commissioner.tasks.params.IProviderTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.YsqlQueryExecutor.ConsistencyInfoResp;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.forms.AuditLogConfigParams;
@@ -45,8 +48,10 @@ import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
+import com.yugabyte.yw.models.PendingConsistencyCheck;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.RestoreKeyspace;
+import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
@@ -80,6 +85,8 @@ public class CustomerTaskManager {
 
   private Commissioner commissioner;
   private YBClientService ybService;
+  private YbcManager ybcManager;
+  private YsqlQueryExecutor ysqlQueryExecutor;
 
   public static final Logger LOG = LoggerFactory.getLogger(CustomerTaskManager.class);
   private static final List<TaskType> LOAD_BALANCER_TASK_TYPES =
@@ -91,9 +98,15 @@ public class CustomerTaskManager {
   private static final String ALTER_LOAD_BALANCER = "alterLoadBalancer";
 
   @Inject
-  public CustomerTaskManager(YBClientService ybService, Commissioner commissioner) {
+  public CustomerTaskManager(
+      YBClientService ybService,
+      Commissioner commissioner,
+      YbcManager ybcManager,
+      YsqlQueryExecutor ysqlQueryExecutor) {
     this.ybService = ybService;
     this.commissioner = commissioner;
+    this.ybcManager = ybcManager;
+    this.ysqlQueryExecutor = ysqlQueryExecutor;
   }
 
   // Invoked if the task is in incomplete state.
@@ -329,12 +342,24 @@ public class CustomerTaskManager {
                 handlePendingTask(customerTask, taskInfo);
               });
 
-      // Change the DeleteInProgress backups state to QueuedForDeletion
       for (Customer customer : Customer.getAll()) {
+        // Change the DeleteInProgress backups state to QueuedForDeletion
         Backup.findAllBackupWithState(
                 customer.getUuid(), Arrays.asList(Backup.BackupState.DeleteInProgress))
             .stream()
             .forEach(b -> b.transitionState(Backup.BackupState.QueuedForDeletion));
+        // Update intermediate schedules to Error state and clear running state
+        Schedule.getAllByCustomerUUIDAndType(customer.getUuid(), TaskType.CreateBackup).stream()
+            .forEach(
+                s -> {
+                  if (s.isRunningState()) {
+                    s.setRunningState(false /* runningState */);
+                  }
+                  if (s.getStatus().isIntermediateState()) {
+                    s.setStatus(Schedule.State.Error);
+                  }
+                  s.save();
+                });
       }
     } catch (Exception e) {
       LOG.error("Encountered error failing pending tasks", e);
@@ -530,8 +555,7 @@ public class CustomerTaskManager {
         if (universe.isYbcEnabled()) {
           nodeTaskParams.setEnableYbc(true);
           nodeTaskParams.setYbcInstalled(true);
-          nodeTaskParams.setYbcSoftwareVersion(
-              universe.getUniverseDetails().getYbcSoftwareVersion());
+          nodeTaskParams.setYbcSoftwareVersion(ybcManager.getStableYbcVersion());
         }
         if (taskType == TaskType.MasterFailover) {
           nodeTaskParams.azUuid = UUID.fromString(oldTaskParams.get("azUuid").textValue());
@@ -626,6 +650,9 @@ public class CustomerTaskManager {
       case CloudBootstrap:
         taskParams = Json.fromJson(oldTaskParams, CloudBootstrap.Params.class);
         break;
+      case CloudProviderEdit:
+        taskParams = Json.fromJson(oldTaskParams, CloudProviderEdit.Params.class);
+        break;
       case ReadOnlyClusterDelete:
         taskParams = Json.fromJson(oldTaskParams, ReadOnlyKubernetesClusterDelete.Params.class);
         break;
@@ -678,5 +705,47 @@ public class CustomerTaskManager {
         customerTask.getTargetType(),
         customerTask.getType(),
         customerTask.getTargetName());
+  }
+
+  public static String getCustomTaskName(
+      CustomerTask.TaskType customerTaskType,
+      UniverseTaskParams taskParams,
+      String currentCustomTaskName) {
+    if (taskParams.isRunOnlyPrechecks()) {
+      String baseName =
+          currentCustomTaskName == null
+              ? customerTaskType.getFriendlyName()
+              : currentCustomTaskName;
+      return "Validation " + baseName;
+    }
+    return currentCustomTaskName;
+  }
+
+  public void handlePendingConsistencyTasks() {
+    List<PendingConsistencyCheck> pendings = PendingConsistencyCheck.getAll();
+
+    for (PendingConsistencyCheck pending : pendings) {
+      try {
+        Universe universe = Universe.getOrBadRequest(pending.getUniverse().getUniverseUUID());
+        ConsistencyInfoResp response = ysqlQueryExecutor.getConsistencyInfo(universe);
+        if (response != null) {
+          UUID dbTaskUuid = response.getTaskUuid();
+          int dbSeqNum = response.getSeqNum();
+          if (dbTaskUuid.equals(pending.getTaskUuid())) {
+            // Updated on DB side before crash, set ourselves to whatever is in the DB
+            UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+            universeDetails.sequenceNumber = dbSeqNum;
+            universe.setUniverseDetails(universeDetails);
+            universe.save(false);
+          } else if (dbSeqNum > universe.getUniverseDetails().sequenceNumber) {
+            LOG.warn("Found pending task on a universe that appears stale.");
+          }
+        }
+      } catch (Exception e) {
+        LOG.warn("Exception handling WAL tasks: " + e.getMessage());
+      } finally {
+        pending.delete();
+      }
+    }
   }
 }

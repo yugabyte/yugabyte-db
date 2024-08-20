@@ -18,6 +18,7 @@ import {
   api,
   CreateDrConfigRequest,
   drConfigQueryKey,
+  runtimeConfigQueryKey,
   universeQueryKey
 } from '../../../../redesign/helpers/api';
 import { generateUniqueName } from '../../../../redesign/helpers/utils';
@@ -25,21 +26,24 @@ import { YBButton, YBModal, YBModalProps } from '../../../../redesign/components
 import { CurrentFormStep } from './CurrentFormStep';
 import { StorageConfigOption } from '../../sharedComponents/ReactSelectStorageConfig';
 import { TableType, Universe, YBTable } from '../../../../redesign/helpers/dtos';
-import { XClusterConfigAction, XCLUSTER_UNIVERSE_TABLE_FILTERS } from '../../constants';
+import {
+  XClusterConfigAction,
+  XCLUSTER_TRANSACTIONAL_PITR_SNAPSHOT_INTERVAL_SECONDS,
+  XCLUSTER_UNIVERSE_TABLE_FILTERS
+} from '../../constants';
+import { DurationUnit, DURATION_UNIT_TO_SECONDS } from '../constants';
+import { RuntimeConfigKey } from '../../../../redesign/helpers/constants';
+import { parseDurationToSeconds } from '../../../../utils/parsers';
 
 import toastStyles from '../../../../redesign/styles/toastStyles.module.scss';
 
 export interface CreateDrConfigFormValues {
-  targetUniverse: { label: string; value: Universe };
+  targetUniverse: { label: string; value: Universe; isDisabled: boolean; disabledReason?: string };
   namespaceUuids: string[];
   tableUuids: string[];
   storageConfig: StorageConfigOption;
-}
-
-export interface CreateDrConfigFormErrors {
-  targetUniverse: string;
-  namespaceUuids: { title: string; body: string };
-  storageConfig: string;
+  pitrRetentionPeriodValue: number;
+  pitrRetentionPeriodUnit: { label: string; value: DurationUnit };
 }
 
 interface CreateConfigModalProps {
@@ -51,6 +55,7 @@ export const FormStep = {
   SELECT_TARGET_UNIVERSE: 'selectTargetUniverse',
   SELECT_TABLES: 'selectDatabases',
   CONFIGURE_BOOTSTRAP: 'configureBootstrap',
+  CONFIGURE_PITR: 'configurePitr',
   CONFIRM_ALERT: 'configureAlert'
 } as const;
 export type FormStep = typeof FormStep[keyof typeof FormStep];
@@ -76,8 +81,32 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
   const queryClient = useQueryClient();
 
+  const tablesQuery = useQuery<YBTable[]>(
+    universeQueryKey.tables(sourceUniverseUuid, XCLUSTER_UNIVERSE_TABLE_FILTERS),
+    () =>
+      fetchTablesInUniverse(sourceUniverseUuid, XCLUSTER_UNIVERSE_TABLE_FILTERS).then(
+        (response) => response.data
+      )
+  );
+  const sourceUniverseQuery = useQuery<Universe>(universeQueryKey.detail(sourceUniverseUuid), () =>
+    api.fetchUniverse(sourceUniverseUuid)
+  );
+  const runtimeConfigQuery = useQuery(runtimeConfigQueryKey.universeScope(sourceUniverseUuid), () =>
+    api.fetchRuntimeConfigs(sourceUniverseUuid, true)
+  );
+
   const drConfigMutation = useMutation(
-    (formValues: CreateDrConfigFormValues) => {
+    ({
+      formValues,
+      defaultPitrSnapshotInterval
+    }: {
+      formValues: CreateDrConfigFormValues;
+      defaultPitrSnapshotInterval: number;
+    }) => {
+      const retentionPeriodSec =
+        formValues.pitrRetentionPeriodValue *
+        DURATION_UNIT_TO_SECONDS[formValues.pitrRetentionPeriodUnit.value];
+
       const createDrConfigRequest: CreateDrConfigRequest = {
         name: `dr-config-${generateUniqueName()}`,
         sourceUniverseUUID: sourceUniverseUuid,
@@ -87,12 +116,20 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
           backupRequestParams: {
             storageConfigUUID: formValues.storageConfig.value.uuid
           }
+        },
+        pitrParams: {
+          retentionPeriodSec: retentionPeriodSec,
+          // Math.max is used to ensure the snapshot interval is at least 1 second.
+          snapshotIntervalSec: Math.max(
+            Math.min(defaultPitrSnapshotInterval, retentionPeriodSec - 1),
+            1
+          )
         }
       };
       return api.createDrConfig(createDrConfigRequest);
     },
     {
-      onSuccess: async (response, values) => {
+      onSuccess: async (response, { formValues }) => {
         const invalidateQueries = () => {
           queryClient.invalidateQueries(drConfigQueryKey.detail(response.resourceUUID));
           // The new DR config will update the sourceXClusterConfigs for the source universe and
@@ -102,7 +139,7 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
             exact: true
           });
           queryClient.invalidateQueries(
-            universeQueryKey.detail(values.targetUniverse.value.universeUUID),
+            universeQueryKey.detail(formValues.targetUniverse.value.universeUUID),
             { exact: true }
           );
 
@@ -143,17 +180,6 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
     }
   );
 
-  const tablesQuery = useQuery<YBTable[]>(
-    universeQueryKey.tables(sourceUniverseUuid, XCLUSTER_UNIVERSE_TABLE_FILTERS),
-    () =>
-      fetchTablesInUniverse(sourceUniverseUuid, XCLUSTER_UNIVERSE_TABLE_FILTERS).then(
-        (response) => response.data
-      )
-  );
-  const sourceUniverseQuery = useQuery<Universe>(universeQueryKey.detail(sourceUniverseUuid), () =>
-    api.fetchUniverse(sourceUniverseUuid)
-  );
-
   const formMethods = useForm<CreateDrConfigFormValues>({
     defaultValues: {
       namespaceUuids: [],
@@ -167,7 +193,9 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
     tablesQuery.isLoading ||
     tablesQuery.isIdle ||
     sourceUniverseQuery.isLoading ||
-    sourceUniverseQuery.isIdle
+    sourceUniverseQuery.isIdle ||
+    runtimeConfigQuery.isLoading ||
+    runtimeConfigQuery.isIdle
   ) {
     return (
       <YBModal
@@ -185,7 +213,7 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
     );
   }
 
-  if (tablesQuery.isError || sourceUniverseQuery.isError) {
+  if (tablesQuery.isError || sourceUniverseQuery.isError || runtimeConfigQuery.isError) {
     return (
       <YBModal
         title={modalTitle}
@@ -236,6 +264,17 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
     setSelectedNamespaceUuids([]);
   };
 
+  const runtimeConfigEntries = runtimeConfigQuery.data.configEntries ?? [];
+  const runtimeConfigDefaultPitrSnapshotInterval = parseDurationToSeconds(
+    runtimeConfigEntries.find(
+      (config: any) => config.key === RuntimeConfigKey.XCLUSTER_TRANSACTIONAL_PITR_SNAPSHOT_INTERVAL
+    )?.value,
+    { noThrow: true }
+  );
+  const defaultPitrSnapshotInterval = isNaN(runtimeConfigDefaultPitrSnapshotInterval)
+    ? XCLUSTER_TRANSACTIONAL_PITR_SNAPSHOT_INTERVAL_SECONDS
+    : runtimeConfigDefaultPitrSnapshotInterval;
+
   const onSubmit: SubmitHandler<CreateDrConfigFormValues> = async (formValues) => {
     // When the user changes target universe, the old table selection is no longer valid.
     const isTableSelectionInvalidated =
@@ -277,10 +316,13 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
         }
         return;
       case FormStep.CONFIGURE_BOOTSTRAP:
+        setCurrentFormStep(FormStep.CONFIGURE_PITR);
+        return;
+      case FormStep.CONFIGURE_PITR:
         setCurrentFormStep(FormStep.CONFIRM_ALERT);
         return;
       case FormStep.CONFIRM_ALERT:
-        return drConfigMutation.mutateAsync(formValues);
+        return drConfigMutation.mutateAsync({ formValues, defaultPitrSnapshotInterval });
       default:
         return assertUnreachableCase(currentFormStep);
     }
@@ -300,8 +342,11 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
       case FormStep.CONFIGURE_BOOTSTRAP:
         setCurrentFormStep(FormStep.SELECT_TABLES);
         return;
-      case FormStep.CONFIRM_ALERT:
+      case FormStep.CONFIGURE_PITR:
         setCurrentFormStep(FormStep.CONFIGURE_BOOTSTRAP);
+        return;
+      case FormStep.CONFIRM_ALERT:
+        setCurrentFormStep(FormStep.CONFIGURE_PITR);
         return;
       default:
         assertUnreachableCase(currentFormStep);
@@ -316,6 +361,8 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
         return t('step.selectDatabases.submitButton');
       case FormStep.CONFIGURE_BOOTSTRAP:
         return t('step.configureBootstrap.submitButton');
+      case FormStep.CONFIGURE_PITR:
+        return t('step.configurePitr.submitButton');
       case FormStep.CONFIRM_ALERT:
         return t('step.confirmAlert.submitButton');
       default:

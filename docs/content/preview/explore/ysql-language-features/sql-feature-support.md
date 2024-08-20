@@ -22,7 +22,7 @@ This page highlights the important differences in feature support between YSQL a
 | {{<icon/yes>}} | `BIT`,`BYTES`                                                             |                                                                                            |
 | {{<icon/yes>}} | `BOOLEAN`                                                                 | [Boolean data types](../../../api/ysql/datatypes/type_bool/)                               |
 | {{<icon/yes>}} | `CHAR`, `VARCHAR`, `TEXT`                                                 | [Character data types](../../../api/ysql/datatypes/type_character/)                        |
-| {{<icon/yes>}} | `COLLATE`                                                                 | [Collations](../../ysql-language-features/advanced-features/collations/#root)              |
+| {{<icon/yes>}} | `COLLATE`                                                                 | [Collations](../../ysql-language-features/advanced-features/collations/)                   |
 | {{<icon/yes>}} | `DATE`, `TIME`, `TIMESTAMP`, `INTERVAL`                                   | [Date and time data types](../../../api/ysql/datatypes/type_datetime/)                     |
 | {{<icon/yes>}} | `DEC`, `DECIMAL`, `NUMERIC`                                               | [Fixed point numbers](../../../api/ysql/datatypes/type_numeric/#fixed-point-numbers)       |
 | {{<icon/yes>}} | `ENUM`                                                                    | [Enumerations](../../ysql-language-features/data-types/#enumerations-enum-type)            |
@@ -47,8 +47,8 @@ This page highlights the important differences in feature support between YSQL a
 |   {{<icon/yes>}}   | Altering a column's name          |                                                                                                                                      |
 |   {{<icon/yes>}}   | Altering a column's default value |                                                                                                                                      |
 | {{<icon/partial>}} | Altering a column's data type     |                                                                                                                                      |
-|   {{<icon/yes>}}   | Adding columns                    | [ADD COLUMN](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#add-column-column-name-data-type-constraint-constraints) |
-|   {{<icon/yes>}}   | Removing columns                  | [DROP COLUMN](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#drop-column-column-name-restrict-cascade)               |
+|   {{<icon/yes>}}   | Adding columns                    | [ADD COLUMN](../../../api/ysql/the-sql-language/statements/ddl_alter_table/)                                                         |
+|   {{<icon/yes>}}   | Removing columns                  | [DROP COLUMN](../../../api/ysql/the-sql-language/statements/ddl_alter_table/)                                                        |
 |   {{<icon/yes>}}   | Adding constraints                | [ADD CONSTRAINT](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#add-alter-table-constraint-constraints)              |
 |   {{<icon/yes>}}   | Removing constraints              | [DROP CONSTRAINT](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#drop-constraint-constraint-name-restrict-cascade)   |
 |   {{<icon/no>}}    | Altering indexes                  |                                                                                                                                      |

@@ -11,6 +11,21 @@
 // under the License.
 //
 
+#include <cassert>
+
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <vector>
+#include <random>
+
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/random_util.h"
+#include "yb/util/test_thread_holder.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
+
 #pragma GCC diagnostic push
 
 #ifdef __clang__
@@ -27,20 +42,6 @@
 #include "usearch/index_dense.hpp"
 
 #pragma GCC diagnostic pop
-
-#include <iostream>
-#include <fstream>
-#include <string>
-#include <vector>
-#include <random>
-#include <cassert>
-
-#include "yb/util/logging.h"
-#include "yb/util/monotime.h"
-#include "yb/util/random_util.h"
-#include "yb/util/test_thread_holder.h"
-#include "yb/util/test_util.h"
-#include "yb/util/tsan_util.h"
 
 // Helper function to generate random vectors
 template<typename Distribution>
@@ -68,7 +69,7 @@ void ReportPerf(
 }
 
 TEST_F(UsearchVectorIndexTest, CreateAndQuery) {
-  using namespace unum::usearch;
+  using namespace unum::usearch;  // NOLINT
 
   // Create a metric and index
   const size_t kDimensions = 96;
@@ -94,7 +95,7 @@ TEST_F(UsearchVectorIndexTest, CreateAndQuery) {
             std::random_device rd;
             size_t vector_id;
             while ((vector_id = num_vectors_inserted.fetch_add(1)) < kNumVectors) {
-              auto vec = GenerateRandomVector(kDimensions, uniform_distrib);
+              auto vec = RandomFloatVector(kDimensions, uniform_distrib);
               ASSERT_TRUE(index.add(vector_id, vec.data()));
             }
             latch.CountDown();
@@ -147,6 +148,6 @@ TEST_F(UsearchVectorIndexTest, CreateAndQuery) {
   auto query_elapsed_usec = (MonoTime::Now() - query_start_time).ToMicroseconds();
   ReportPerf("Performed", kNumQueries, "queries", kDimensions, query_elapsed_usec,
               kNumIndexingThreads);
-};
+}
 
 }  // namespace yb

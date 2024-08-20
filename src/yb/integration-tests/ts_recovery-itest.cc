@@ -124,9 +124,12 @@ TEST_F(TsRecoveryITest, TestCrashDuringLogReplay) {
 }
 
 TEST_F(TsRecoveryITest, CrashAfterLogSegmentPreAllocationg) {
+  // Set xcluster_checkpoint_max_staleness_secs to 0 to prevent the flag validator from failing
+  // when log_min_seconds_to_retain is also set to 0
   ASSERT_NO_FATALS(StartCluster({
       "--log_segment_size_bytes=2000",
       "--log_min_seconds_to_retain=0",
+      "--xcluster_checkpoint_max_staleness_secs=0",
       "--retryable_request_timeout_secs=0",
       "--db_write_buffer_size=2000",
       "--TEST_log_fault_after_segment_allocation_min_replicate_index=10" }));

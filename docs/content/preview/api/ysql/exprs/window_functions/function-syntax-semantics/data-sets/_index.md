@@ -21,14 +21,14 @@ These four pages:
 
 contain scripts to create and populate tables with data sets that are useful for demonstrating window function semantics.
 
-Each table uses a surrogate `uuid` primary key whose values are provided by the function `gen_random_uuid()`, brought by the `pgcrypto` extension. The procedure to populate table _"t4"_ also uses the function `normal_rand()`, brought by the `tablefunc` extension. These extensions are described in the sections [pgcrypto](../../../../../../explore/ysql-language-features/pg-extensions/#pgcrypto-example) and [tablefunc](../../../../../../explore/ysql-language-features/pg-extensions/#tablefunc-example). Each is a pre-bundled extension. This means that the installation for each will work without any preparatory steps, as long as you install them as a `superuser` like this:
+Each table uses a surrogate `uuid` primary key whose values are provided by the function `gen_random_uuid()`, brought by the `pgcrypto` extension. The procedure to populate table _"t4"_ also uses the function `normal_rand()`, brought by the `tablefunc` extension. These extensions are described in the sections [pgcrypto](../../../../../../explore/ysql-language-features/pg-extensions/extension-pgcrypto) and [tablefunc](../../../../../../explore/ysql-language-features/pg-extensions/extension-tablefunc). Each is a pre-bundled extension. This means that the installation for each will work without any preparatory steps, as long as you install them as a `superuser` like this:
 
 ```plpgsql
 create extension pgcrypto;
 create extension tablefunc;
 ```
 
-If you plan to run the code samples in this main "_Window functions"_ section on your laptop using a YugabyteDB cluster that you've created for your own personal use, then you probably have already adopted the habit of running any and all _ad hoc_ tests as a `superuser`. If so, then simply install the [pgcrypto](../../../../../../explore/ysql-language-features/pg-extensions/#pgcrypto-example) and [tablefunc](../../../../../../explore/ysql-language-features/pg-extensions/#tablefunc-example) extensions just as you'd do anything else and then create the tables _"t1"_, _"t2"_, _"t3"_, and _"t4"_.
+If you plan to run the code samples in this main "_Window functions"_ section on your laptop using a YugabyteDB cluster that you've created for your own personal use, then you probably have already adopted the habit of running any and all _ad hoc_ tests as a `superuser`. If so, then simply install the [pgcrypto](../../../../../../explore/ysql-language-features/pg-extensions/extension-pgcrypto) and [tablefunc](../../../../../../explore/ysql-language-features/pg-extensions/extension-tablefunc) extensions just as you'd do anything else and then create the tables _"t1"_, _"t2"_, _"t3"_, and _"t4"_.
 
 {{< note title="Note 1: about the installation of extensions" >}}
 

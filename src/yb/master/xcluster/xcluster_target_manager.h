@@ -27,6 +27,7 @@ class TSHeartbeatRequestPB;
 class TSHeartbeatResponsePB;
 
 class PostTabletCreateTaskBase;
+class XClusterInboundReplicationGroupSetupTaskIf;
 class UniverseReplicationInfo;
 class XClusterSafeTimeService;
 struct XClusterInboundReplicationGroupStatus;
@@ -63,7 +64,8 @@ class XClusterTargetManager {
       EXCLUDES(table_stream_ids_map_mutex_);
 
   Status WaitForSetupUniverseReplicationToFinish(
-      const xcluster::ReplicationGroupId& replication_group_id, CoarseTimePoint deadline);
+      const xcluster::ReplicationGroupId& replication_group_id, CoarseTimePoint deadline,
+      bool skip_health_check);
 
  protected:
   explicit XClusterTargetManager(
@@ -71,7 +73,8 @@ class XClusterTargetManager {
 
   ~XClusterTargetManager();
 
-  void Shutdown();
+  void StartShutdown() EXCLUDES(replication_setup_tasks_mutex_);
+  void CompleteShutdown() EXCLUDES(replication_setup_tasks_mutex_);
 
   Status Init();
 
@@ -172,7 +175,7 @@ class XClusterTargetManager {
       const LeaderEpoch& epoch);
 
   Result<IsOperationDoneResult> IsSetupUniverseReplicationDone(
-      const xcluster::ReplicationGroupId& replication_group_id);
+      const xcluster::ReplicationGroupId& replication_group_id, bool skip_health_check);
 
   Status SetupNamespaceReplicationWithBootstrap(
       const SetupNamespaceReplicationWithBootstrapRequestPB* req,
@@ -236,6 +239,11 @@ class XClusterTargetManager {
   // Map of all consumer tables that are part of xcluster replication, to a map of the stream infos.
   std::unordered_map<TableId, std::unordered_map<xcluster::ReplicationGroupId, xrepl::StreamId>>
       table_stream_ids_map_ GUARDED_BY(table_stream_ids_map_mutex_);
+
+  mutable std::shared_mutex replication_setup_tasks_mutex_;
+  std::unordered_map<
+      xcluster::ReplicationGroupId, std::shared_ptr<XClusterInboundReplicationGroupSetupTaskIf>>
+      replication_setup_tasks_;
 
   DISALLOW_COPY_AND_ASSIGN(XClusterTargetManager);
 };

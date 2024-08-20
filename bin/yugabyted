@@ -1424,6 +1424,10 @@ class ControlScript(object):
                 "be part of xCluster replication"
         checkpoint_empty_db_ybd_err = "couldn't set xcluster checkpoint. " +\
                             "All provided databases should have atleast 1 table in them."
+        checkpoint_rep_id_in_use_yb_admin_err = "xClusterOutboundReplicationGroup " +\
+                                "{} already exists".format(replication_id)
+        checkpoint_rep_id_in_use_ybd_err = "xCluster Replication with replication ID: " +\
+                    "'{}' already exists. Please use another replication ID".format(replication_id)
 
         set_up_db_not_found_yb_admin_err = "YSQL keyspace name not found"
         set_up_object_not_found_yb_admin_err = "Could not find matching"
@@ -1460,6 +1464,7 @@ class ControlScript(object):
         # Map format: <err present in yb_admin stderr>: <ybd err to be displayed>
         yb_admin_err_msg_to_ybd_err_msg = {
             checkpoint_empty_db_yb_admin_err: checkpoint_empty_db_ybd_err,
+            checkpoint_rep_id_in_use_yb_admin_err: checkpoint_rep_id_in_use_ybd_err,
             set_up_db_not_found_yb_admin_err: set_up_db_not_found_ybd_err,
             set_up_object_not_found_yb_admin_err: set_up_object_not_found_ybd_err,
             delete_replication_id_not_found_yb_admin_err: delete_replication_id_not_found_ybd_err,
@@ -1489,7 +1494,7 @@ class ControlScript(object):
         is_bootstrap_required = False
 
         if ret_code:
-            err_msg = self.get_xcluster_error_msg(err)
+            err_msg = self.get_xcluster_error_msg(err, replication_id=replication_id)
             if not err_msg:
                 err_msg = "couldn't set xcluster checkpoint."
             Output.log_error_and_exit(Output.make_red("Error") +
@@ -1557,11 +1562,19 @@ class ControlScript(object):
                         databases_not_to_be_bootstrapped[0])
 
 
-
-        status_details.extend([
-            (Output.make_yellow("Bootstrapping"), bootstrap_msg),
-            (Output.make_yellow(""), schema_creation_msg),
-        ])
+        if bootstrap_msg and schema_creation_msg:
+            status_details.extend([
+                (Output.make_yellow("Bootstrapping"), bootstrap_msg),
+                (Output.make_yellow(""), schema_creation_msg),
+            ])
+        elif bootstrap_msg:
+            status_details.extend([
+                (Output.make_yellow("Bootstrapping"), bootstrap_msg),
+            ])
+        elif schema_creation_msg:
+            status_details.extend([
+                (Output.make_yellow("Bootstrapping"), schema_creation_msg),
+            ])
 
         Output.print_out(self.get_status_string_common(status_details, status_display_info))
 
@@ -1941,8 +1954,12 @@ class ControlScript(object):
                     "root-ca certs database. Removing...")
                 shutil.rmtree(node_certs_dir)
 
+            if self.configs.saved_data.get("dns_enabled"):
+                hostname_type = "DNS"
+            else:
+                hostname_type = "IP"
             status = OpenSSLProxy.generate_node_server_certs(root_certs_dir=root_certs_dir,
-                hostname=hostname, server_cert_dir=node_certs_dir)
+                hostname=hostname, server_cert_dir=node_certs_dir, hostname_type=hostname_type)
 
             if not status:
                 status_details = [
@@ -3230,8 +3247,6 @@ class ControlScript(object):
             "--webserver_port={}".format(self.configs.saved_data.get("master_webserver_port")),
             "--default_memory_limit_to_ram_ratio=0.35",
             "--instance_uuid_override={}".format(self.configs.saved_data.get("master_uuid")),
-            "--enable_xcluster_api_v2=true",
-            "--allowed_preview_flags_csv=enable_xcluster_api_v2",
         ]
 
         if self.configs.saved_data.get("secure"):
@@ -5895,24 +5910,38 @@ class ControlScript(object):
         return fqdn
 
     # Check whether the leader master is secure.
-    def is_leader_master_secure(self, master_hostport):
-        try:
-            leaderMasterURL = "http://{}/api/v1/varz".format(master_hostport)
-            response = urlopen(Request(leaderMasterURL))
-            jsonResponseFromMaster = json.load(response)
-            listOfAllFlags = jsonResponseFromMaster.get("flags")
+    def is_leader_master_secure(self, master_hostport, timeout=60):
+        start_time = time.time()
+        now = start_time
+        try_count = 0
+        while True:
+            try:
+                try_count+=1
+                leaderMasterURL = "http://{}/api/v1/varz".format(master_hostport)
+                Output.log("Trying to get response from {}. Try Count: {}".format(leaderMasterURL,
+                                                                                    try_count))
+                response = urlopen(Request(leaderMasterURL), timeout=timeout)
+                jsonResponseFromMaster = json.load(response)
+                listOfAllFlags = jsonResponseFromMaster.get("flags")
 
-            encryptionFlag = [flag for flag in listOfAllFlags if
-                flag.get("name") == "use_node_to_node_encryption"]
+                encryptionFlag = [flag for flag in listOfAllFlags if
+                    flag.get("name") == "use_node_to_node_encryption"]
 
-            return encryptionFlag[0].get("value") == "true"
+                return encryptionFlag[0].get("value") == "true"
 
-        except HTTPError as http_err:
-            Output.log_error_and_exit("HTTP error occurred while checking for security of " +
-                                    "leader master: {}".format(http_err))
-        except Exception as err:
-            Output.log_error_and_exit("Other error occurred while checking for security of " +
-                                    "leader master: {}".format(err))
+            except HTTPError as http_err:
+                Output.log_error_and_exit("HTTP error occurred while checking for security of " +
+                                        "leader master: {}".format(http_err))
+            except Exception as err:
+                now = time.time()
+                if now - start_time > timeout:
+                    Output.log_error_and_exit("Other error occurred while checking for " +
+                        "security of leader master: {}. Timeout: {}".format(err, now - start_time))
+                else:
+                    Output.log("Other error occurred while checking for " +
+                            "security of leader master: {}.".format(err))
+                    time.sleep(0.2)
+
 
     def handle_config_files(self, args, conf_dir, config_file, base_dir):
         if not os.path.isdir(conf_dir):
@@ -6851,6 +6880,8 @@ class ControlScript(object):
                 data_constraints = args.data_placement_constraint.split(",")
                 has_errors = False
                 for constraint in data_constraints:
+                    if ':' not in constraint:
+                        has_errors = True
                     cloud_info = constraint.split(":")[0].split(".")
                     if (len(cloud_info) == 3):
                         for value in cloud_info:
@@ -6862,8 +6893,8 @@ class ControlScript(object):
                 if has_errors:
                     Output.print_out(Output.make_red("ERROR") +
                         ": Incorrect value specified for --data_placement_constraint. " +
-                        "Please specify comma sperated value with format " +
-                        "- cloudprovider.region.zone")
+                        "Please specify comma sperated values with the num of replicas with " +
+                        "format - <cloudprovider.region.zone>:<num_of_replicas>")
                 else:
                     self.configs.temp_data[
                         "rr_data_placement_constraint"] = args.data_placement_constraint
@@ -6887,6 +6918,8 @@ class ControlScript(object):
                 data_constraints = args.data_placement_constraint.split(",")
                 has_errors = False
                 for constraint in data_constraints:
+                    if ':' not in constraint:
+                        has_errors = True
                     cloud_info = constraint.split(".")
                     if (len(cloud_info) == 3):
                         for value in cloud_info:
@@ -6898,9 +6931,8 @@ class ControlScript(object):
                 if has_errors:
                     Output.print_out(
                         "Incorrect value specified for --data_placement_constraint. " +
-                        "Please specify comma sperated value with format " +
-                        "- cloudprovider.region.zone".format(
-                            args.data_placement_constraint))
+                        "Please specify comma sperated values with the num of replicas with " +
+                        "format - <cloudprovider.region.zone>:<num_of_replicas>")
                 else:
                     self.configs.temp_data[
                         "rr_data_placement_constraint"] = args.data_placement_constraint
@@ -9080,9 +9112,10 @@ class OpenSSLProxy(object):
 
     # Generate node server certificates
     @staticmethod
-    def generate_node_server_certs(root_certs_dir, server_cert_dir, hostname, timeout=60):
+    def generate_node_server_certs(root_certs_dir, server_cert_dir, hostname, hostname_type,
+                                    timeout=60):
         cmd = OpenSSLProxy.cmd_args + ['generate-server-cert', '-rcp', root_certs_dir,
-            '-scp', server_cert_dir, '-hn', hostname]
+            '-scp', server_cert_dir, '-hn', hostname, '-ht', hostname_type]
         out, err, ret = run_process(cmd, timeout=timeout, log_cmd=True)
 
         return (0 == ret)

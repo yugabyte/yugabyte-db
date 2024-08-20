@@ -43,8 +43,29 @@ func NewNodesFormat(source string) formatter.Format {
 	}
 }
 
-// Write renders the context for a list of Node
+// NodeWrite renders the context for a list of Node
 func NodeWrite(ctx formatter.Context, nodes []ybaclient.NodeDetailsResp) error {
+	// Check if the format is JSON or Pretty JSON
+	if ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON() {
+		// Marshal the slice of universe nodes into JSON
+		var output []byte
+		var err error
+
+		if ctx.Format.IsPrettyJSON() {
+			output, err = json.MarshalIndent(nodes, "", "  ")
+		} else {
+			output, err = json.Marshal(nodes)
+		}
+
+		if err != nil {
+			logrus.Errorf("Error marshaling universe nodes to json: %v\n", err)
+			return err
+		}
+
+		// Write the JSON output to the context
+		_, err = ctx.Output.Write(output)
+		return err
+	}
 	render := func(format func(subContext formatter.SubContext) error) error {
 		for _, node := range nodes {
 			err := format(&NodeContext{n: node})

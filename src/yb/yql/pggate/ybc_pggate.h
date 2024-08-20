@@ -330,6 +330,8 @@ YBCStatus YBCPgAlterTableIncrementSchemaVersion(YBCPgStatement handle);
 YBCStatus YBCPgAlterTableSetTableId(
     YBCPgStatement handle, const YBCPgOid database_oid, const YBCPgOid table_relfilenode_oid);
 
+YBCStatus YBCPgAlterTableSetSchema(YBCPgStatement handle, const char *schema_name);
+
 YBCStatus YBCPgExecAlterTable(YBCPgStatement handle);
 
 YBCStatus YBCPgAlterTableInvalidateTableCacheEntry(YBCPgStatement handle);
@@ -799,6 +801,11 @@ void* YBCPgGetThreadLocalJumpBuffer();
 void* YBCPgSetThreadLocalErrStatus(void* new_status);
 
 void* YBCPgGetThreadLocalErrStatus();
+
+YBCPgThreadLocalRegexpCache* YBCPgGetThreadLocalRegexpCache();
+
+YBCPgThreadLocalRegexpCache* YBCPgInitThreadLocalRegexpCache(
+    size_t buffer_size, YBCPgThreadLocalRegexpCacheCleanup cleanup);
 
 void YBCPgResetCatalogReadTime();
 

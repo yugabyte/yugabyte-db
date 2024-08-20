@@ -134,12 +134,12 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
     if (manualSourceRootCertDirPath != null) {
       log.debug(
           "{} gflag has already been set manually",
-          XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG);
+          XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG);
       targetUniverseDetails.xClusterInfo.sourceRootCertDirPath =
           manualSourceRootCertDirPath.toString();
       GFlagsUtil.removeGFlag(
           targetPrimaryUserIntent,
-          XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG,
+          XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG,
           ServerType.TSERVER,
           ServerType.MASTER);
     } else {
@@ -186,7 +186,7 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
                           targetUniverse.getNodes(),
                           xClusterConfig.getReplicationGroupName(),
                           sourceCertificate,
-                          targetUniverseDetails.getSourceRootCertDirPath()));
+                          targetUniverse));
             }
             log.debug(
                 "Subtasks created to transfer all source universe root certificates to "

@@ -18,7 +18,7 @@ import { YBPanelItem } from '../../../../components/panels';
 import { YBTable } from '../../../../components/common/YBTable';
 import { YBSearchInput } from '../../../../components/common/forms/fields/YBSearchInput';
 import { YBErrorIndicator, YBLoading } from '../../../../components/common/indicators';
-import { RbacValidator } from '../../rbac/common/RbacApiPermValidator';
+import { hasNecessaryPerm, RbacValidator } from '../../rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../rbac/ApiAndUserPermMapping';
 import {
   ModalTitle,
@@ -339,6 +339,7 @@ export const NewReleaseList = () => {
               }}
               data-testid="ReleaseList-AddArchitectureButton"
               variant="secondary"
+              disabled={!hasNecessaryPerm(ApiPermissionMap.MODIFY_YBDB_RELEASE)}
             >
               <img src={AddIcon} alt="add" />
             </YBButton>
@@ -413,6 +414,7 @@ export const NewReleaseList = () => {
               onActionClick(value, row);
               e.stopPropagation();
             }}
+            disabled={!hasNecessaryPerm(ApiPermissionMap.MODIFY_YBDB_RELEASE)}
             data-testid={`ReleaseList-Action${value}`}
           >
             {value}
@@ -426,7 +428,10 @@ export const NewReleaseList = () => {
         artifact.architecture === null
           ? EDIT_ACTIONS['kubernetes']
           : EDIT_ACTIONS[artifact.architecture!];
-      const isDisabled = row.universes?.length > 0 || row.state === ReleaseState.DISABLED;
+      const isDisabled =
+        row.universes?.length > 0 ||
+        row.state === ReleaseState.DISABLED ||
+        !hasNecessaryPerm(ApiPermissionMap.MODIFY_YBDB_RELEASE);
       renderedItems.push(
         <MenuItem
           key={artifact.architecture}
@@ -463,6 +468,12 @@ export const NewReleaseList = () => {
         (value === OTHER_ACTONS.DISABLE_RELEASE || value === OTHER_ACTONS.DELETE_RELEASE)
       ) {
         disabled = true;
+      }
+
+      if (value === OTHER_ACTONS.DELETE_RELEASE) {
+        disabled = !hasNecessaryPerm(ApiPermissionMap.DELETE_YBDB_RELEASE);
+      } else {
+        disabled = !hasNecessaryPerm(ApiPermissionMap.MODIFY_YBDB_RELEASE);
       }
 
       renderedItems.push(
@@ -673,96 +684,96 @@ export const NewReleaseList = () => {
                   data-testid="ReleaseList-AddReleaseButton"
                   startIcon={<Add />}
                   onClick={onNewReleaseButtonClick}
+                  disabled={!hasNecessaryPerm(ApiPermissionMap.CREATE_YBDB_RELEASE)}
                 >
                   {t('releases.newRelease')}
                 </YBButton>
-                <RbacValidator
-                  accessRequiredOn={ApiPermissionMap.CREATE_RELEASE}
-                  isControl
-                  overrideStyle={{
-                    float: 'right'
-                  }}
-                >
-                  <></>
-                </RbacValidator>
               </Box>
             </Box>
             <h2 className="content-title">{t('releases.headerTitle')}</h2>
           </Box>
         }
         body={
-          <Box>
-            <YBTable
-              data={filteredReleaseList}
-              pagination={true}
-              options={{
-                defaultSortOrder: DEFAULT_SORT_DIRECTION.toLowerCase() as SortOrder,
-                defaultSortName: DEFAULT_SORT_COLUMN,
-                onRowClick: onRowClick
-              }}
-              trClassName={helperClasses.rowHover}
-            >
-              <TableHeaderColumn dataField={'release_uuid'} isKey={true} hidden={true} />
-              <TableHeaderColumn
-                width="15%"
-                tdStyle={{ verticalAlign: 'middle' }}
-                dataField={'version'}
-                dataFormat={formatVersion}
-                dataSort
+          <RbacValidator
+            accessRequiredOn={ApiPermissionMap.GET_YBDB_RELEASES}
+            isControl
+            overrideStyle={{
+              float: 'right'
+            }}
+          >
+            <Box>
+              <YBTable
+                data={filteredReleaseList}
+                pagination={true}
+                options={{
+                  defaultSortOrder: DEFAULT_SORT_DIRECTION.toLowerCase() as SortOrder,
+                  defaultSortName: DEFAULT_SORT_COLUMN,
+                  onRowClick: onRowClick
+                }}
+                trClassName={helperClasses.rowHover}
               >
-                {t('releases.version')}
-              </TableHeaderColumn>
-              <TableHeaderColumn
-                width="10%"
-                tdStyle={{ verticalAlign: 'middle' }}
-                dataFormat={formatDateMilliSecs}
-                dataField={'release_date_msecs'}
-                dataSort
-              >
-                {t('releases.releaseDate')}
-              </TableHeaderColumn>
-              <TableHeaderColumn
-                width="10%"
-                tdStyle={{ verticalAlign: 'middle' }}
-                dataField={'release_type'}
-                dataFormat={formatReleaseSupport}
-                dataSort
-              >
-                {t('releases.releaseSupport')}
-              </TableHeaderColumn>
-              <TableHeaderColumn
-                width="10%"
-                tdStyle={{ verticalAlign: 'middle' }}
-                dataFormat={formatUsage}
-              >
-                {t('releases.releaseUsage')}
-              </TableHeaderColumn>
-              <TableHeaderColumn
-                width="15%"
-                tdStyle={{ verticalAlign: 'middle' }}
-                dataFormat={formatImportedArchitecture}
-              >
-                {t('releases.importArchitecture')}
-              </TableHeaderColumn>
-              <TableHeaderColumn
-                width="10%"
-                tdStyle={{ verticalAlign: 'middle' }}
-                dataFormat={formatDeploymentStatus}
-                dataField={'state'}
-                dataSort
-              >
-                {t('releases.releaseDeployment')}
-              </TableHeaderColumn>
-              <TableHeaderColumn
-                dataField={'actions'}
-                columnClassName={'yb-actions-cell'}
-                width="15%"
-                dataFormat={formatActionButtons}
-              >
-                Actions
-              </TableHeaderColumn>
-            </YBTable>
-          </Box>
+                <TableHeaderColumn dataField={'release_uuid'} isKey={true} hidden={true} />
+                <TableHeaderColumn
+                  width="15%"
+                  tdStyle={{ verticalAlign: 'middle' }}
+                  dataField={'version'}
+                  dataFormat={formatVersion}
+                  dataSort
+                >
+                  {t('releases.version')}
+                </TableHeaderColumn>
+                <TableHeaderColumn
+                  width="10%"
+                  tdStyle={{ verticalAlign: 'middle' }}
+                  dataFormat={formatDateMilliSecs}
+                  dataField={'release_date_msecs'}
+                  dataSort
+                >
+                  {t('releases.releaseDate')}
+                </TableHeaderColumn>
+                <TableHeaderColumn
+                  width="10%"
+                  tdStyle={{ verticalAlign: 'middle' }}
+                  dataField={'release_type'}
+                  dataFormat={formatReleaseSupport}
+                  dataSort
+                >
+                  {t('releases.releaseSupport')}
+                </TableHeaderColumn>
+                <TableHeaderColumn
+                  width="10%"
+                  tdStyle={{ verticalAlign: 'middle' }}
+                  dataFormat={formatUsage}
+                >
+                  {t('releases.releaseUsage')}
+                </TableHeaderColumn>
+                <TableHeaderColumn
+                  width="15%"
+                  tdStyle={{ verticalAlign: 'middle' }}
+                  dataFormat={formatImportedArchitecture}
+                >
+                  {t('releases.importArchitecture')}
+                </TableHeaderColumn>
+                <TableHeaderColumn
+                  width="10%"
+                  tdStyle={{ verticalAlign: 'middle' }}
+                  dataFormat={formatDeploymentStatus}
+                  dataField={'state'}
+                  dataSort
+                >
+                  {t('releases.releaseDeployment')}
+                </TableHeaderColumn>
+                <TableHeaderColumn
+                  dataField={'actions'}
+                  columnClassName={'yb-actions-cell'}
+                  width="15%"
+                  dataFormat={formatActionButtons}
+                >
+                  Actions
+                </TableHeaderColumn>
+              </YBTable>
+            </Box>
+          </RbacValidator>
         }
       />
       {openSidePanel && selectedReleaseDetails && (

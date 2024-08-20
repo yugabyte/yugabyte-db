@@ -62,6 +62,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
                 setCloudNodeUuids(u);
                 // Update on-prem node UUIDs.
                 updateOnPremNodeUuidsOnTaskParams(true);
+                setCommunicationPortsForNodes(false);
                 // Set the prepared data to universe in-memory.
                 updateUniverseNodesAndSettings(u, taskParams(), true);
                 u.getUniverseDetails()

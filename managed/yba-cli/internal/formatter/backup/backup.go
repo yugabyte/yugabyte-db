@@ -53,6 +53,27 @@ func NewBackupFormat(source string) formatter.Format {
 
 // Write renders the context for a list of backups
 func Write(ctx formatter.Context, backups []ybaclient.BackupResp) error {
+	// Check if the format is JSON or Pretty JSON
+	if ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON() {
+		// Marshal the slice of backups into JSON
+		var output []byte
+		var err error
+
+		if ctx.Format.IsPrettyJSON() {
+			output, err = json.MarshalIndent(backups, "", "  ")
+		} else {
+			output, err = json.Marshal(backups)
+		}
+
+		if err != nil {
+			logrus.Errorf("Error marshaling backups to json: %v\n", err)
+			return err
+		}
+
+		// Write the JSON output to the context
+		_, err = ctx.Output.Write(output)
+		return err
+	}
 	render := func(format func(subContext formatter.SubContext) error) error {
 		for _, backup := range backups {
 			err := format(&Context{b: backup})

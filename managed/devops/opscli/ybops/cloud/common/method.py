@@ -1876,9 +1876,9 @@ class TransferXClusterCerts(AbstractInstancesMethod):
                                  required=True,
                                  help="The format of this name must be "
                                       "[Source universe UUID]_[Config name].")
-        self.parser.add_argument("--producer_certs_dir",
+        self.parser.add_argument("--xcluster_dest_certs_dir",
                                  required=True,
-                                 help="The directory containing the certs on the target universe.")
+                                 help="The directory containing the certs on destination universe.")
         self.parser.add_argument("--action",
                                  default="copy",
                                  help="If true, the root certificate will be removed.")
@@ -1913,12 +1913,12 @@ class TransferXClusterCerts(AbstractInstancesMethod):
                 connect_options,
                 args.root_cert_path,
                 args.replication_config_name,
-                args.producer_certs_dir)
+                args.xcluster_dest_certs_dir)
         elif args.action == "remove":
             self.cloud.remove_xcluster_root_cert(
                 connect_options,
                 args.replication_config_name,
-                args.producer_certs_dir)
+                args.xcluster_dest_certs_dir)
         else:
             raise YBOpsRuntimeError("The action \"{}\" was not found: Must be either copy, "
                                     "or remove".format(args.action))

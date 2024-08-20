@@ -54,6 +54,27 @@ func NewProviderFormat(source string) formatter.Format {
 
 // Write renders the context for a list of Providers
 func Write(ctx formatter.Context, providers []ybaclient.Provider) error {
+	// Check if the format is JSON or Pretty JSON
+	if ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON() {
+		// Marshal the slice of providers into JSON
+		var output []byte
+		var err error
+
+		if ctx.Format.IsPrettyJSON() {
+			output, err = json.MarshalIndent(providers, "", "  ")
+		} else {
+			output, err = json.Marshal(providers)
+		}
+
+		if err != nil {
+			logrus.Errorf("Error marshaling providers to json: %v\n", err)
+			return err
+		}
+
+		// Write the JSON output to the context
+		_, err = ctx.Output.Write(output)
+		return err
+	}
 	render := func(format func(subContext formatter.SubContext) error) error {
 		for _, provider := range providers {
 			err := format(&Context{p: provider})

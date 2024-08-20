@@ -113,8 +113,10 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
       ImmutableList.of(
           // Freeze for source.
           TaskType.FreezeUniverse,
+          TaskType.UpdateConsistencyCheck,
           // Freeze for target.
           TaskType.FreezeUniverse,
+          TaskType.UpdateConsistencyCheck,
           TaskType.XClusterConfigSetStatus,
           TaskType.XClusterConfigRename,
           TaskType.XClusterConfigSetStatus,
@@ -125,8 +127,10 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
       ImmutableList.of(
           // Freeze for source.
           TaskType.FreezeUniverse,
+          TaskType.UpdateConsistencyCheck,
           // Freeze for target.
           TaskType.FreezeUniverse,
+          TaskType.UpdateConsistencyCheck,
           TaskType.XClusterConfigSetStatus,
           TaskType.XClusterConfigSetStatusForTables,
           TaskType.BootstrapProducer,
@@ -481,7 +485,7 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
       assertEquals(RENAME_FAILURE_TASK_SEQUENCE.get(i), subtaskGroup.getTaskType());
     }
 
-    String taskErrMsg = taskInfo.getSubTasks().get(3).getErrorMessage();
+    String taskErrMsg = taskInfo.getSubTasks().get(5).getErrorMessage();
     String expectedErrMsg =
         String.format(
             "Failed to rename XClusterConfig(%s): %s", xClusterConfig.getUuid(), renameErrMsg);
@@ -718,8 +722,8 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     assertNotNull(taskInfo);
     assertEquals(Failure, taskInfo.getTaskState());
 
-    assertEquals(TaskType.SetReplicationPaused, taskInfo.getSubTasks().get(3).getTaskType());
-    String taskErrMsg = taskInfo.getSubTasks().get(3).getErrorMessage();
+    assertEquals(TaskType.SetReplicationPaused, taskInfo.getSubTasks().get(5).getTaskType());
+    String taskErrMsg = taskInfo.getSubTasks().get(5).getErrorMessage();
     assertThat(taskErrMsg, containsString("Failed to pause/enable XClusterConfig"));
     assertThat(taskErrMsg, containsString(pauseResumeErrMsg));
     assertEquals(XClusterConfigStatusType.Running, xClusterConfig.getStatus());
@@ -965,7 +969,7 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
       assertEquals(ADD_TABLE_IS_ALTER_DONE_FAILURE.get(i), subtaskGroup.getTaskType());
     }
 
-    String taskErrMsg = taskInfo.getSubTasks().get(5).getErrorMessage();
+    String taskErrMsg = taskInfo.getSubTasks().get(7).getErrorMessage();
     String expectedErrMsg =
         String.format(
             "Failed to add tables to XClusterConfig(%s): %s",
@@ -1047,7 +1051,7 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
       assertEquals(ADD_TABLE_IS_ALTER_DONE_FAILURE.get(i), subtaskGroup.getTaskType());
     }
 
-    String taskErrMsg = taskInfo.getSubTasks().get(5).getErrorMessage();
+    String taskErrMsg = taskInfo.getSubTasks().get(7).getErrorMessage();
     String expectedErrMsg =
         String.format(
             "XClusterConfig(%s) operation failed: code: %s\nmessage: \"%s\"",
@@ -1196,8 +1200,8 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
     assertNotNull(taskInfo);
     assertEquals(Failure, taskInfo.getTaskState());
 
-    assertEquals(TaskType.XClusterConfigModifyTables, taskInfo.getSubTasks().get(4).getTaskType());
-    String taskErrMsg = taskInfo.getSubTasks().get(4).getErrorMessage();
+    assertEquals(TaskType.XClusterConfigModifyTables, taskInfo.getSubTasks().get(6).getTaskType());
+    String taskErrMsg = taskInfo.getSubTasks().get(6).getErrorMessage();
     String expectedErrMsg =
         String.format(
             "Failed to remove tables from XClusterConfig(%s): %s",

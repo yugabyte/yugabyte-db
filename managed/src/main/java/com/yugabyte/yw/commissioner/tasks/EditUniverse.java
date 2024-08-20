@@ -23,6 +23,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
@@ -65,6 +66,9 @@ public class EditUniverse extends EditUniverseTaskBase {
 
   @Override
   public void run() {
+    if (maybeRunOnlyPrechecks()) {
+      return;
+    }
     log.info("Started {} task for uuid={}", getName(), taskParams().getUniverseUUID());
     checkUniverseVersion();
     String errorString = null;
@@ -109,6 +113,11 @@ public class EditUniverse extends EditUniverseTaskBase {
             cluster.userIntent.providerType == CloudType.onprem /* force destroy servers */);
         // Updating placement info and userIntent in DB
         createUpdateUniverseIntentTask(cluster);
+      }
+      if (taskParams().communicationPorts != null
+          && !Objects.equals(
+              universe.getUniverseDetails().communicationPorts, taskParams().communicationPorts)) {
+        createUpdateUniverseCommunicationPortsTask(taskParams().communicationPorts);
       }
 
       // Wait for the master leader to hear from all tservers.

@@ -31,6 +31,8 @@
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log.h"
+#include "yb/consensus/log.messages.h"
+#include "yb/consensus/log_reader.h"
 #include "yb/consensus/raft_consensus.h"
 
 #include "yb/dockv/doc_key.h"
@@ -833,14 +835,16 @@ TEST_F(TabletSplitITest, MaxCreateTabletsPerTs) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = false;
   SetNumTablets(3);
   CreateTable();
+
+  auto& master = ASSERT_RESULT(GetLeaderMaster()).get();
   auto catalog_mgr = ASSERT_RESULT(catalog_manager());
   auto table = catalog_mgr->GetTableInfo(table_->id());
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_create_tablets_per_ts) = 1;
-  ASSERT_NOK(catalog_mgr->tablet_split_manager()->ValidateSplitCandidateTable(table));
+  ASSERT_NOK(master.tablet_split_manager().ValidateSplitCandidateTable(table));
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_create_tablets_per_ts) = 2;
-  ASSERT_OK(catalog_mgr->tablet_split_manager()->ValidateSplitCandidateTable(table));
+  ASSERT_OK(master.tablet_split_manager().ValidateSplitCandidateTable(table));
 }
 
 TEST_F(TabletSplitITest, SplitDuringReplicaOffline) {
@@ -893,6 +897,77 @@ TEST_F(TabletSplitITest, SplitDuringReplicaOffline) {
       s = CheckPostSplitTabletReplicasData(kNumRows * 2);
       return s.IsOk();
     }, 30s * kTimeMultiplier, "Waiting for TS-1 to catch up ..."), AsString(s));
+}
+
+// During apply of tablet split op, each child tablet copies the log segments from the parent. For
+// each segment, the copy could either be a hard link to the parent's copy or an actual duplication
+// of the segment. The below test asserts that footer of the duplicated segments is rightly formed.
+TEST_F(TabletSplitITest, TestLogCopySetsCloseTimestampInFooter) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
+
+  SetNumTablets(1);
+  CreateTable();
+  const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kDefaultNumRows));
+
+  const auto catalog_mgr = ASSERT_RESULT(catalog_manager());
+  const auto tablet = ASSERT_RESULT(GetSingleTestTabletInfo(catalog_mgr));
+  const auto tablet_id = tablet->id();
+  LOG(INFO) << "Source tablet id " << tablet_id;
+
+  size_t leader_idx;
+  CHECK_NOTNULL(GetLeaderForTablet(cluster_.get(), tablet_id, &leader_idx));
+  const auto follower1_idx = (leader_idx + 1) % 3;
+  const auto follower1_id = cluster_->mini_tablet_server(follower1_idx)->server()->permanent_uuid();
+  const auto follower2_idx = (leader_idx + 2) % 3;
+  const auto follower2_id = cluster_->mini_tablet_server(follower2_idx)->server()->permanent_uuid();
+
+  cluster_->mini_tablet_server(follower1_idx)->Shutdown();
+
+  ASSERT_OK(catalog_mgr->TEST_SplitTablet(tablet, split_hash_code));
+  ASSERT_OK(WaitForTabletSplitCompletion(
+      /* expected_non_split_tablets = */ 2, /* expected_split_tablets = */ 1,
+      /* num_replicas_online = */ 2));
+
+  // Initiate a leader change in order to append NO_OP entry to tablet's log from the new leader.
+  // We do this hoping that it would trigger the duplication of log segment while creation of the
+  // child tablets once the offline TS restarts, instead of hard linking to the parent's log
+  // segment. An actual copy is triggered when the split op is in the segment but not the last op.
+  const auto leader_peer = ASSERT_RESULT(GetLeaderPeerForTablet(cluster_.get(), tablet_id));
+  ASSERT_OK(StepDown(leader_peer, follower2_id, ForceStepDown::kTrue));
+  // Wait for the new leader to replicate NO_OP.
+  ASSERT_OK(WaitUntilTabletHasLeader(
+      cluster_.get(), tablet_id, CoarseMonoClock::Now() + 5s, RequireLeaderIsReady::kTrue));
+  // Now follower1_idx comes back alive, and receives the split op as well as the NO_OP, and applies
+  // the split op while satisfying the condition that the split op isn't the last op in the segment.
+  ASSERT_OK(cluster_->mini_tablet_server(follower1_idx)->Start());
+  // Wait for the split op to be applied on the restarted TS.
+  ASSERT_OK(WaitForTabletSplitCompletion(
+      /* expected_non_split_tablets = */ 2, /* expected_split_tablets = */ 1,
+      /* num_replicas_online = */ 3));
+
+  auto peers = ListTabletPeers(
+      cluster_.get(), ListPeersFilter::kAll, IncludeTransactionStatusTablets::kFalse);
+  for (const auto& peer : peers) {
+    log::SegmentSequence segments;
+    ASSERT_OK(peer->log()->GetLogReader()->GetSegmentsSnapshot(&segments));
+    for (const auto& segment : segments) {
+      if (!segment->HasFooter()) {
+        continue;
+      }
+      auto entries_copy_result = segment->ReadEntries();
+      ASSERT_OK(entries_copy_result.status);
+      bool has_replicated_entries = false;
+      for (const auto& entry : entries_copy_result.entries) {
+        if (entry->has_replicate()) {
+          has_replicated_entries = true;
+          break;
+        }
+      }
+      ASSERT_EQ(has_replicated_entries, segment->footer().has_close_timestamp_micros())
+          << "T " << peer->tablet_id() << " P " << peer->permanent_uuid()
+          << ": Expected valid close timestamp for segment with replicated entries.";
+    }
+  }
 }
 
 // Test for https://github.com/yugabyte/yugabyte-db/issues/6890.
@@ -1840,8 +1915,8 @@ TEST_F(AutomaticTabletSplitITest, IncludeTasksInOutstandingSplits) {
 
   // Allow no new splits. The stalled split task should resume after the pause is removed.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
-  auto catalog_mgr = ASSERT_RESULT(catalog_manager());
-  ASSERT_OK(catalog_mgr->tablet_split_manager()->WaitUntilIdle());
+  auto& master = ASSERT_RESULT(GetLeaderMaster()).get();
+  ASSERT_OK(master.tablet_split_manager().WaitUntilIdle());
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_tserver_get_split_key) = false;
   ASSERT_OK(WaitForTabletSplitCompletion(kInitialNumTablets + 1, /* expected_non_split_tablets */
                                          1 /* expected_split_tablets */));
@@ -2291,8 +2366,9 @@ TEST_F(TabletSplitSingleServerITest, MaxFileSizeTTLTabletOnlyValidForManualSplit
   CreateSingleTablet();
   ASSERT_RESULT(WriteRowsAndFlush(kNumRows));
 
+  auto& master = ASSERT_RESULT(GetLeaderMaster()).get();
   auto* catalog_mgr = ASSERT_RESULT(catalog_manager());
-  auto* split_manager = catalog_mgr->tablet_split_manager();
+  auto* split_manager = &master.tablet_split_manager();
   auto source_tablet_info = ASSERT_RESULT(GetSingleTestTabletInfo(catalog_mgr));
 
   // Requires a metrics heartbeat to get max_file_size_for_compaction flag to master.
@@ -2333,8 +2409,9 @@ TEST_F(TabletSplitSingleServerITest, AutoSplitNotValidOnceCheckedForTtl) {
   CreateSingleTablet();
   ASSERT_RESULT(WriteRowsAndFlush(kNumRows));
 
+  auto& master = ASSERT_RESULT(GetLeaderMaster()).get();
   auto* catalog_mgr = ASSERT_RESULT(catalog_manager());
-  auto* split_manager = catalog_mgr->tablet_split_manager();
+  auto* split_manager = &master.tablet_split_manager();
   auto table_info = ASSERT_NOTNULL(catalog_mgr->GetTableInfo(table_->id()));
 
   // Candidate table should start as a valid split candidate.
@@ -3617,9 +3694,8 @@ class TabletSplitSingleBlockITest :
       return STATUS(Incomplete, "Empty or too small SST.");
     }
 
-    auto data_block = VERIFY_RESULT(table_reader->RetrieveBlockFromFile(
-        rocksdb::ReadOptions::kDefault, index_iter->value(), rocksdb::BlockType::kData));
-    return data_block->NumRestarts();
+    return table_reader->TEST_GetBlockNumRestarts(
+        rocksdb::ReadOptions::kDefault, index_iter->value(), rocksdb::BlockType::kData);
   }
 };
 

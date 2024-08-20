@@ -59,11 +59,11 @@ Snapshot too old: Snapshot too old. Read point: { physical: 1628678717824559 }, 
 
 When the command takes a long time to be processed, a compaction may have occurred and have deleted some rows at the snapshot the dump was started on. For large backups, it is recommended to use [distributed snapshots](../../../manage/backup-restore/snapshot-ysql/), which are more efficient and fast.
 
-If you really need to use `ysql_dump`, you can increase the [`--timestamp_history_retention_interval_sec`](../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec) gflag on the master to a higher value. The total time necessary for this command depends on the amount of metadata in your environment, thus you might need to tune this flag a couple of times. You can start by setting this flag to 3600 seconds and iterating from there. Note: Ideally, you don't want to leave this flag at a really high value, as that can have an adverse effect on the runtime of regular metadata queries (eg DDLs, new connection establishment, metadata cache refreshes).
+If you really need to use `ysql_dump`, you can increase the [`--timestamp_history_retention_interval_sec`](../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec) flag on the master to a higher value. The total time necessary for this command depends on the amount of metadata in your environment, thus you might need to tune this flag a couple of times. You can start by setting this flag to 3600 seconds and iterating from there. Note: Ideally, you don't want to leave this flag at a really high value, as that can have an adverse effect on the runtime of regular metadata queries (for example, DDLs, new connection establishment, metadata cache refreshes).
 
 ## Not able to perform operations using yb-admin after enabling encryption in transit
 
-After configuring [encryption in transit](../../../secure/tls-encryption/) for a YugabyteDB cluster, you may encounter the following error when trying to use `yb-admin`:
+After configuring [encryption in transit](../../../secure/tls-encryption/) for a YugabyteDB cluster, you may encounter the following error when trying to use yb-admin:
 
 ```sh
 ./bin/yb-admin -master_addresses <master-addresses> list_all_masters
@@ -81,7 +81,7 @@ Please verify the addresses.
 Could not locate the leader master: GetLeaderMasterRpc(addrs: [MASTERIP1:7100, MASTERIP2:7100, MASTERIP3:7100]
 ```
 
-To remedy the situation, you should pass the location of your certificates directory via `--certs_dir_name` on the `yb-admin` command.
+To remedy the situation, you should pass the location of your certificates directory using the `-certs_dir_name` flag on the yb-admin command.
 
 ## ysqlsh: FATAL: password authentication failed for user "yugabyte" after fresh installation
 
@@ -91,7 +91,7 @@ You may encounter the following error when trying to connect to YSQL using the `
 ysqlsh: FATAL:  password authentication failed for user "yugabyte"
 ```
 
-By default, PostgreSQL listens on port `5432`. To avoid conflict, the YSQL port is set to `5433`. But since you can create multiple PostgreSQL clusters locally, each one takes the next port available, starting from `5433`, and thus conflicting with the YSQL port.
+By default, PostgreSQL listens on port `5432`. To avoid conflict, the YSQL port is set to `5433`. But because you can create multiple PostgreSQL clusters locally, each one takes the next port available, starting from `5433`, and thus conflicting with the YSQL port.
 
 If you have created two PostgreSQL clusters before creating the YugabyteDB cluster, the `ysqlsh` shell is trying to connect to PostgreSQL running on port `5433` and fails to authenticate. To verify, you can run the following command to check which process is listening on port `5433`:
 

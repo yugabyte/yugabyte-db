@@ -53,15 +53,8 @@ template <class DumpStringFunc>
 void ProcessDumpEntry(
     Slice key, Slice value, SchemaPackingProvider* schema_packing_provider /*null ok*/,
     StorageDbType db_type, IncludeBinary include_binary, DumpStringFunc func) {
-  auto [key_str, value_str] = DumpEntryToString(key, value, schema_packing_provider, db_type);
-  if (!key_str.ok()) {
-    func(key_str.status().ToString());
-  }
-  if (!value_str.ok()) {
-    func(value_str.status().CloneAndAppend(". Key: " + *key_str).ToString());
-  } else {
-    func(Format("$0 -> $1", *key_str, *value_str));
-  }
+  auto [key_res, value_res] = DumpEntryToString(key, value, schema_packing_provider, db_type);
+  func(Format("$0 -> $1", key_res, value_res));
   if (include_binary) {
     func(Format("$0 -> $1\n", FormatSliceAsStr(key), FormatSliceAsStr(value)));
   }

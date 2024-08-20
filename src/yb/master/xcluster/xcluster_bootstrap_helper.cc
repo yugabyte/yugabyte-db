@@ -17,7 +17,9 @@
 #include "yb/gutil/bind.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/master/master.h"
 #include "yb/master/snapshot_transfer_manager.h"
+#include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/xcluster/xcluster_universe_replication_setup_helper.h"
 #include "yb/util/backoff_waiter.h"
@@ -212,8 +214,7 @@ Status SetupUniverseReplicationWithBootstrapHelper::ValidateReplicationBootstrap
   }
 
   RETURN_NOT_OK_PREPEND(
-      SetupUniverseReplicationHelper::ValidateMasterAddressesBelongToDifferentCluster(
-          master_, req->producer_master_addresses()),
+      ValidateMasterAddressesBelongToDifferentCluster(master_, req->producer_master_addresses()),
       req->ShortDebugString());
 
   auto universe =
@@ -280,8 +281,9 @@ void SetupUniverseReplicationWithBootstrapHelper::DoReplicationBootstrap(
 
   SetReplicationBootstrapState(
       bootstrap_info, SysUniverseReplicationBootstrapEntryPB::SETUP_REPLICATION);
-  MARK_BOOTSTRAP_FAILED_NOT_OK(SetupUniverseReplicationHelper::Setup(
-      master_, catalog_manager_, &replication_req, &replication_resp, epoch_));
+
+  MARK_BOOTSTRAP_FAILED_NOT_OK(xcluster_manager_.SetupUniverseReplication(
+      &replication_req, &replication_resp, /*rpc=*/nullptr, epoch_));
 
   LOG(INFO) << Format(
       "Successfully completed replication bootstrap for $0", replication_id.ToString());
@@ -384,7 +386,6 @@ SetupUniverseReplicationWithBootstrapHelper::DoReplicationBootstrapImportSnapsho
   }
 
   snapshot_req.set_add_indexes(false);
-  snapshot_req.set_transaction_aware(true);
   snapshot_req.set_imported(true);
   RETURN_NOT_OK(
       catalog_manager_.CreateTransactionAwareSnapshot(snapshot_req, &snapshot_resp, deadline));
@@ -434,7 +435,7 @@ SetupUniverseReplicationWithBootstrapHelper::DoReplicationBootstrapTransferAndRe
   // Restore snapshot.
   SetReplicationBootstrapState(
       bootstrap_info, SysUniverseReplicationBootstrapEntryPB::RESTORE_SNAPSHOT);
-  auto restoration_id = VERIFY_RESULT(catalog_manager_.snapshot_coordinator().Restore(
+  auto restoration_id = VERIFY_RESULT(master_.snapshot_coordinator().Restore(
       new_snapshot_id, HybridTime(), epoch.leader_term));
 
   if (PREDICT_FALSE(FLAGS_TEST_xcluster_fail_restore_consumer_snapshot)) {
@@ -445,7 +446,7 @@ SetupUniverseReplicationWithBootstrapHelper::DoReplicationBootstrapTransferAndRe
   return WaitFor(
       [this, &new_snapshot_id, &restoration_id]() -> Result<bool> {
         ListSnapshotRestorationsResponsePB resp;
-        RETURN_NOT_OK(catalog_manager_.snapshot_coordinator().ListRestorations(
+        RETURN_NOT_OK(master_.snapshot_coordinator().ListRestorations(
             restoration_id, new_snapshot_id, &resp));
 
         SCHECK_EQ(

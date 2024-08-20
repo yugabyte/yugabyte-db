@@ -353,8 +353,7 @@ TEST_F(CDCServiceTxnTest, MetricsTest) {
   }
 
     const auto& tserver = cluster_->mini_tablet_server(0)->server();
-    auto cdc_service = dynamic_cast<CDCServiceImpl*>(
-        tserver->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+    auto cdc_service = dynamic_cast<CDCServiceImpl*>(tserver->GetCDCService().get());
     auto metrics = ASSERT_RESULT(GetXClusterTabletMetrics(*cdc_service, tablet_id, stream_id));
     ASSERT_OK(WaitFor(
         [&]() -> Result<bool> {

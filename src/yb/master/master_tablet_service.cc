@@ -21,6 +21,7 @@
 
 #include "yb/dockv/doc_key.h"
 
+#include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
 #include "yb/master/scoped_leader_shared_lock.h"
@@ -32,9 +33,12 @@
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/util/trace.h"
 
 DEFINE_test_flag(int32, ysql_catalog_write_rejection_percentage, 0,
     "Reject specified percentage of writes to the YSQL catalog tables.");
+
+DECLARE_bool(TEST_enable_object_locking_for_table_locks);
 
 using namespace std::chrono_literals;
 
@@ -61,6 +65,48 @@ Result<std::shared_ptr<tablet::AbstractTablet>> MasterTabletServiceImpl::GetTabl
   RETURN_NOT_OK(l.first_failed_status());
 
   return master_->catalog_manager()->GetSystemTablet(tablet_id);
+}
+
+void MasterTabletServiceImpl::AcquireObjectLocks(
+    const tserver::AcquireObjectLockRequestPB* req, tserver::AcquireObjectLockResponsePB* resp,
+    rpc::RpcContext context) {
+  TRACE("Start AcquireObjectLocks");
+  VLOG(2) << "Received AcquireObjectLocks RPC: " << req->DebugString();
+
+  SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
+  if (!l.CheckIsInitializedAndIsLeaderOrRespondTServer(resp, &context)) {
+    return;
+  }
+
+  if (!FLAGS_TEST_enable_object_locking_for_table_locks) {
+    context.RespondRpcFailure(
+        rpc::ErrorStatusPB::ERROR_APPLICATION,
+        STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"));
+    return;
+  }
+
+  master_->catalog_manager_impl()->AcquireObjectLocks(req, resp, std::move(context));
+}
+
+void MasterTabletServiceImpl::ReleaseObjectLocks(
+    const tserver::ReleaseObjectLockRequestPB* req, tserver::ReleaseObjectLockResponsePB* resp,
+    rpc::RpcContext context) {
+  TRACE("Start ReleaseObjectLocks");
+  VLOG(2) << "Received ReleaseObjectLocks RPC: " << req->DebugString();
+
+  SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
+  if (!l.CheckIsInitializedAndIsLeaderOrRespondTServer(resp, &context)) {
+    return;
+  }
+
+  if (!FLAGS_TEST_enable_object_locking_for_table_locks) {
+    context.RespondRpcFailure(
+        rpc::ErrorStatusPB::ERROR_APPLICATION,
+        STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"));
+    return;
+  }
+
+  master_->catalog_manager_impl()->ReleaseObjectLocks(req, resp, std::move(context));
 }
 
 void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,

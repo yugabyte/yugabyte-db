@@ -194,6 +194,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.InstanceExistCheck, // only if it wasn't decommissioned.
           TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
+          TaskType.UpdateConsistencyCheck,
           TaskType.SetNodeState, // to Adding
           TaskType.SetNodeStatus, // to Adding for 'To Be Added'
           TaskType.AnsibleCreateServer,
@@ -219,6 +220,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
   private static final List<JsonNode> ADD_NODE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -250,6 +252,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.CheckLeaderlessTablets,
           TaskType.PreflightNodeCheck,
           TaskType.FreezeUniverse,
+          TaskType.UpdateConsistencyCheck,
           TaskType.SetNodeState,
           TaskType.SetNodeStatus,
           TaskType.AnsibleCreateServer,
@@ -291,6 +294,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
           Json.toJson(ImmutableMap.of()),
@@ -306,6 +310,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.InstanceExistCheck,
           TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
+          TaskType.UpdateConsistencyCheck,
           TaskType.SetNodeState,
           TaskType.SetNodeStatus,
           TaskType.AnsibleCreateServer,
@@ -341,6 +346,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
   private static final List<JsonNode> WITH_MASTER_UNDER_REPLICATED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),

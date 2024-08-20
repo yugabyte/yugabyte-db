@@ -286,7 +286,7 @@ Steps for configuring the JDBC client for server authentication in a Kubernetes 
     ```
 
     ```output
-    ysqlsh (11.2-YB-2.9.0.0-b0)
+    ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
     SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, bits: 256, compression: off)
     Type "help" for help.
     ```

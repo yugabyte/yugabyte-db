@@ -45,6 +45,8 @@ import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.controllers.apiModels.MasterLBStateResponse;
+import com.yugabyte.yw.controllers.handlers.MetaMasterHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseTableHandler;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
@@ -68,6 +70,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.YugawareProperty;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.LocalCloudInfo;
@@ -425,6 +428,9 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     injectDependencies();
 
     settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.releases.use_redesign", "false");
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.universe.consistency_check_enabled", "true");
     Pair<Integer, Integer> ipRange = getIpRange();
     localNodeManager.setIpRangeStart(ipRange.getFirst());
     localNodeManager.setIpRangeEnd(ipRange.getSecond());
@@ -739,7 +745,8 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
             10,
             authEnabled);
     assertTrue(response.isSuccess());
-    assertEquals("3", LocalNodeManager.getRawCommandOutput(response.getMessage()));
+    assertEquals("3", CommonUtils.extractJsonisedSqlResponse(response).trim());
+    // Check universe sequence and DB sequence number
   }
 
   protected void initYCQL(Universe universe) {
@@ -1100,5 +1107,27 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
       Thread.sleep(1000);
     } while (stopwatch.elapsed().compareTo(timeout) < 0);
     throw new RuntimeException("Timed-out waiting for next task to start");
+  }
+
+  protected void verifyNodeModifications(Universe universe, int added, int removed) {
+    assertEquals(
+        added,
+        universe.getUniverseDetails().nodeDetailsSet.stream()
+            .filter(n -> n.state == NodeDetails.NodeState.ToBeAdded)
+            .count());
+    assertEquals(
+        removed,
+        universe.getUniverseDetails().nodeDetailsSet.stream()
+            .filter(n -> n.state == NodeDetails.NodeState.ToBeRemoved)
+            .count());
+  }
+
+  protected void verifyMasterLBStatus(
+      Customer customer, Universe universe, boolean isEnabled, boolean isLoadBalancerIdle) {
+    MetaMasterHandler metaMasterHandler = app.injector().instanceOf(MetaMasterHandler.class);
+    MasterLBStateResponse resp =
+        metaMasterHandler.getMasterLBState(customer.getUuid(), universe.getUniverseUUID());
+    assertEquals(resp.isEnabled, isEnabled);
+    assertEquals(resp.isIdle, isLoadBalancerIdle);
   }
 }

@@ -77,3 +77,26 @@ func TestCompareVersionStablePreviewDevMode(t *testing.T) {
 	LessVersions(version3, version4)
 	LessVersions(version4, version3)
 }
+
+func TestIsSubdirectory(t *testing.T) {
+	base, target := "/data", "/data/ybanywhere"
+	if isSubdir, err := IsSubdirectory(base, target); err == nil {
+		if !isSubdir {
+			t.Fatalf("/data/ybanywhere is a subdirectory of /data")
+		}
+	}
+
+	base, target = "/data/replicated", "/data/replicatedMigrate"
+	if isSubdir, err := IsSubdirectory(base, target); err == nil {
+		if isSubdir {
+			t.Fatalf("/data/replicatedMigrate is not a subdirectory of /data/replicated")
+		}
+	}
+
+	base, target = "/opt/yugabyte", "/opt/yugabyte/test/nested/"
+	if isSubdir, err := IsSubdirectory(base, target); err == nil {
+		if !isSubdir {
+			t.Fatalf("/opt/yugabyte/test/nested/ is a subdirectory of /opt/yugabyte")
+		}
+	}
+}

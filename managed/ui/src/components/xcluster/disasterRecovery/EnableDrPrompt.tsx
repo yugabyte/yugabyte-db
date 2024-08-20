@@ -11,7 +11,7 @@ import { DOCS_URL_ACTIVE_ACTIVE_SINGLE_MASTER } from './constants';
 interface EnableDrPromptProps {
   isDisabled: boolean;
   onConfigureDrButtonClick: () => void;
-
+  universeUUID: string;
   className?: string;
 }
 
@@ -39,7 +39,8 @@ const TRANSLATION_KEY_PREFIX = 'clusterDetail.disasterRecovery.enableDrPrompt';
 export const EnableDrPrompt = ({
   className,
   isDisabled,
-  onConfigureDrButtonClick
+  onConfigureDrButtonClick,
+  universeUUID
 }: EnableDrPromptProps) => {
   const classes = useStyles();
   const { t } = useTranslation('translation', {
@@ -55,7 +56,13 @@ export const EnableDrPrompt = ({
           components={{ bold: <b /> }}
         />
       </Typography>
-      <RbacValidator accessRequiredOn={ApiPermissionMap.CREATE_DR_CONFIG} isControl>
+      <RbacValidator
+        accessRequiredOn={{
+          onResource: universeUUID,
+          ...ApiPermissionMap.CREATE_DR_CONFIG
+        }}
+        isControl
+      >
         <YBTooltip
           title={isDisabled ? t('tooltip.universeLinkedToTxnXCluster') : ''}
           placement="top"
@@ -76,7 +83,15 @@ export const EnableDrPrompt = ({
       <Typography variant="body2">
         <Trans
           i18nKey={`${TRANSLATION_KEY_PREFIX}.learnMore`}
-          components={{ docsLink: <a href={DOCS_URL_ACTIVE_ACTIVE_SINGLE_MASTER} /> }}
+          components={{
+            docsLink: (
+              <a
+                href={DOCS_URL_ACTIVE_ACTIVE_SINGLE_MASTER}
+                target="_blank"
+                rel="noopener noreferrer"
+              />
+            )
+          }}
         />
       </Typography>
     </div>

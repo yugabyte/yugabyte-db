@@ -105,7 +105,7 @@ public class Scheduler {
             schedule -> {
               if (schedule.getNextScheduleTaskTime() == null
                   || Util.isTimeExpired(schedule.getNextScheduleTaskTime())) {
-                schedule.updateNextScheduleTaskTime(Schedule.nextExpectedTaskTime(null, schedule));
+                schedule.updateNextScheduleTaskTime(schedule.nextExpectedTaskTime(null));
                 if (ScheduleUtil.isIncrementalBackupSchedule(schedule.getScheduleUUID())) {
                   schedule.updateNextIncrementScheduleTaskTime(
                       ScheduleUtil.nextExpectedIncrementTaskTime(schedule));
@@ -156,9 +156,14 @@ public class Scheduler {
               "Scheduled task does not have a recurrence specified {}", schedule.getScheduleUUID());
           continue;
         }
+        // Lock schedule outside try-catch block
+        schedule =
+            Schedule.modifyScheduleRunningAndSave(
+                schedule.getCustomerUUID(),
+                schedule.getScheduleUUID(),
+                true /* isRunning */,
+                true /* onlyLockIfActive */);
         try {
-          schedule.setRunningState(true);
-          schedule.save();
           TaskType taskType = schedule.getTaskType();
           ScheduleTask lastTask = ScheduleTask.getLastTask(schedule.getScheduleUUID());
           Date lastScheduledTime = null;
@@ -189,8 +194,7 @@ public class Scheduler {
 
           // Update next scheduled task time if it is expired or null.
           if (expectedScheduleTaskTime == null || isExpectedScheduleTaskTimeExpired) {
-            Date nextScheduleTaskTime =
-                Schedule.nextExpectedTaskTime(expectedScheduleTaskTime, schedule);
+            Date nextScheduleTaskTime = schedule.nextExpectedTaskTime(expectedScheduleTaskTime);
             expectedScheduleTaskTime =
                 expectedScheduleTaskTime == null ? nextScheduleTaskTime : expectedScheduleTaskTime;
             schedule.updateNextScheduleTaskTime(nextScheduleTaskTime);
@@ -292,8 +296,8 @@ public class Scheduler {
         } catch (Exception e) {
           log.error("Error running schedule {} ", schedule.getScheduleUUID(), e);
         } finally {
-          schedule.setRunningState(false);
-          schedule.save();
+          Schedule.modifyScheduleRunningAndSave(
+              schedule.getCustomerUUID(), schedule.getScheduleUUID(), false /* isRunning */);
         }
       }
     } catch (Exception e) {

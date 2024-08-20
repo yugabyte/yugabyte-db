@@ -209,4 +209,4 @@ Ensure that YugabyteDB runs in a trusted network environment, such that:
 
 * Only servers running applications can connect to YugabyteDB services on the RPC ports. Access to the [YugabyteDB ports](../../../reference/configuration/default-ports/) should be denied to all others.
 
-In addition, you can limit the interfaces on which YugabyteDB instances listen for incoming connections. To specify just the required interfaces when starting `yb-master` and `yb-tserver`, use the `--rpc_bind_addresses` YB-TServer flag. Do not bind to the loopback address. Refer to the [Admin Reference](../../../reference/configuration/yb-tserver/) for more information on using these flags.
+In addition, you can limit the interfaces on which YugabyteDB instances listen for incoming connections. To specify just the required interfaces when starting yb-master and yb-tserver, use the `--rpc_bind_addresses` YB-TServer flag. Do not bind to the loopback address. Refer to the [Admin Reference](../../../reference/configuration/yb-tserver/) for more information on using these flags.

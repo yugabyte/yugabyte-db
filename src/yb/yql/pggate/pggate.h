@@ -169,6 +169,7 @@ class PgApiImpl {
   Result<bool> CatalogVersionTableInPerdbMode();
   uint64_t GetSharedAuthKey() const;
   const unsigned char *GetLocalTserverUuid() const;
+  pid_t GetLocalTServerPid() const;
 
   Status NewTupleExpr(
     YBCPgStatement stmt, const YBCPgTypeEntity *tuple_type_entity,
@@ -345,6 +346,8 @@ class PgApiImpl {
   Status AlterTableIncrementSchemaVersion(PgStatement *handle);
 
   Status AlterTableSetTableId(PgStatement* handle, const PgObjectId& table_id);
+
+  Status AlterTableSetSchema(PgStatement *handle, const char *schema_name);
 
   Status ExecAlterTable(PgStatement *handle);
 

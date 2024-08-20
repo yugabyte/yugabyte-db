@@ -83,7 +83,6 @@ static int64 ScheduleCronJob(text *scheduleText, text *commandText,
 								bool active, text *jobnameText);
 static Oid CronExtensionOwner(void);
 static void EnsureDeletePermission(Relation cronJobsTable, HeapTuple heapTuple);
-static void InvalidateJobCacheCallback(Datum argument, Oid relationId);
 static void InvalidateJobCache(void);
 static Oid CronJobRelationId(void);
 
@@ -125,9 +124,6 @@ bool EnableSuperuserJobs = true;
 void
 InitializeJobMetadataCache(void)
 {
-	/* watch for invalidation events */
-	CacheRegisterRelcacheCallback(InvalidateJobCacheCallback, (Datum) 0);
-
 	CronJobContext = AllocSetContextCreate(CurrentMemoryContext,
 											 "pg_cron job context",
 											 ALLOCSET_DEFAULT_MINSIZE,
@@ -830,7 +826,7 @@ InvalidateJobCache(void)
  * InvalidateJobCacheCallback invalidates the job cache in response to
  * an invalidation event.
  */
-static void
+void
 InvalidateJobCacheCallback(Datum argument, Oid relationId)
 {
 	if (relationId == CachedCronJobRelationId ||

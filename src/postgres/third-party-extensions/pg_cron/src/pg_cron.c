@@ -222,6 +222,9 @@ _PG_init(void)
 								"configuration variable in postgresql.conf.")));
 	}
 
+	/* watch for invalidation events */
+	CacheRegisterRelcacheCallback(InvalidateJobCacheCallback, (Datum) 0);
+
 	DefineCustomStringVariable(
 		"cron.database_name",
 		gettext_noop("Database in which pg_cron metadata is kept."),

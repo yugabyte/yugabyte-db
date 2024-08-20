@@ -11,7 +11,9 @@ import {
   updateBackupState,
   updateBackupStateResponse,
   fetchReleasesByProvider,
-  fetchReleasesResponse
+  fetchReleasesResponse,
+  fetchUniverseLbState,
+  fetchUniverseLbStateResponse
 } from '../../../actions/universe';
 import {
   abortTask,
@@ -50,6 +52,12 @@ const mapDispatchToProps = (dispatch) => {
     getUniverseInfo: (uuid) => {
       return dispatch(fetchUniverseInfo(uuid)).then((response) => {
         return dispatch(fetchUniverseInfoResponse(response.payload));
+      });
+    },
+
+    getUniverseLbState: (uuid) => {
+      return dispatch(fetchUniverseLbState(uuid)).then((response) => {
+        return dispatch(fetchUniverseLbStateResponse(response.payload));
       });
     },
 

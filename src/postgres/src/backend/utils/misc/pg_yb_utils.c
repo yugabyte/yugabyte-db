@@ -921,8 +921,6 @@ YBInitPostgresBackend(
 		 * mapped to PG backends.
 		 */
 		yb_pgstat_add_session_info(YBCPgGetSessionID());
-		if (yb_ash_enable_infra)
-			YbAshSetSessionId(YBCPgGetSessionID());
 	}
 }
 

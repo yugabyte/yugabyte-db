@@ -105,10 +105,6 @@ TEST_F_EX(YBBackupTest,
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
 
-  // Drop the table (and index) so that, on restore, running the ysql_dump file recreates the table
-  // (and index).
-  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
-
   // When restore runs the CREATE TABLE, make it run in an environment where the default number of
   // tablets is different. Namely, run it with new default 2 (previously 3). This won't affect the
   // table since the table is generated with SPLIT clause specifying 3, but it will change the way
@@ -123,14 +119,15 @@ TEST_F_EX(YBBackupTest,
   // Check that --ysql_num_tablets=2 is working as intended by
   // 1. running the CREATE TABLE that is expected to be found in the ysql_dump file and
   // 2. finding 2 index tablets
+  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
   ASSERT_NO_FATALS(CreateTable(Format(
       "CREATE TABLE $0 (k INT PRIMARY KEY, v TEXT, UNIQUE (v))", table_name)));
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
   ASSERT_EQ(tablets.size(), 2);
-  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
 
   // Restore should notice that the index it creates from ysql_dump file (2 tablets) differs from
   // the external snapshot (3 tablets), so it should adjust to match the snapshot (3 tablets).
+  DropPsqlDatabase("yugabyte");
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
@@ -240,6 +237,12 @@ TEST_F_EX(
   ASSERT_OK(snapshot_util_->WaitAllSnapshotsDeleted());
 }
 
+// WARNING: The following test currently does not test what it describes below (different boundaries
+// but the same number of partitions), but rather both a different number of partitions and
+// different boundaries, which tests a simpler and different path of the code.  #23303 is the GitHub
+// issue to fix this.  It has more information, but also see the comments prefixed with MLILLIBRIDGE
+// below.
+//
 // Test backup/restore when a hash-partitioned table undergoes manual tablet splitting.  Most
 // often, if tablets are split after creation, the partition boundaries will not be evenly spaced.
 // This then differs from the boundaries of a hash table that is pre-split with the same number of
@@ -249,9 +252,8 @@ TEST_F_EX(
 // 1. start with 3 pre-split tablets
 // 2. split one of them to make 4 tablets
 // 3. backup
-// 4. drop table
-// 5. restore, which will initially create 4 pre-split tablets then realize the partition boundaries
-//    differ
+// 4. restore, which will initially create [sic] 4 pre-split tablets then realize the partition
+//    boundaries differ
 TEST_F_EX(YBBackupTest,
           YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLManualTabletSplit),
           YBBackupTestNumTablets) {
@@ -334,23 +336,26 @@ TEST_F_EX(YBBackupTest,
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
 
-  // Drop the table so that, on restore, running the ysql_dump file recreates the table.  ysql_dump
+  // On restore, running the ysql_dump file recreates the table.  ysql_dump
   // should specify SPLIT INTO 4 TABLETS because the table in snapshot has 4 tablets.
-  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
+  // MLILLIBRIDGE: This is not true; the actual split is into 3 tablets.
 
   // Before performing restore, demonstrate that the table that would be created by the ysql_dump
   // file will have different splits.
+  // MLILLIBRIDGE: Given the above misunderstanding, this does not demonstrate that.
+  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
   ASSERT_NO_FATALS(CreateTable(
       Format("CREATE TABLE $0 (k INT PRIMARY KEY) SPLIT INTO 4 TABLETS", table_name)));
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
   ASSERT_EQ(tablets.size(), 4);
   auto default_table_split_points = ASSERT_RESULT(GetSplitPoints(tablets));
   ASSERT_NE(three_split_points, default_table_split_points);
-  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
 
   // Restore should notice that the table it creates from ysql_dump file has different partition
   // boundaries from the one in the external snapshot EVEN THOUGH the number of partitions is four
   // in both, so it should recreate partitions to match the splits in the snapshot.
+  // MLILLIBRIDGE: The number of partitions is not 4 in both.
+  DropPsqlDatabase("yugabyte");
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
@@ -373,8 +378,7 @@ TEST_F_EX(YBBackupTest,
 // 1. start with a table with 3 pre-split tablets
 // 2. insert data
 // 3. backup
-// 4. drop table
-// 5. restore
+// 4. restore
 TEST_F_EX(YBBackupTest,
           YB_DISABLE_TEST_IN_SANITIZERS(TestPreSplitYSQLRangeSplitTable),
           YBBackupTestNumTablets) {
@@ -418,10 +422,8 @@ TEST_F_EX(YBBackupTest,
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
 
-  // Drop the table
-  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
-
   // Restore
+  DropPsqlDatabase("yugabyte");
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
@@ -456,8 +458,7 @@ TEST_F_EX(YBBackupTest,
 // 2. create an index with 3 pre-split tablets
 // 3. insert data
 // 4. backup
-// 5. drop table
-// 6. restore
+// 5. restore
 TEST_F_EX(YBBackupTest,
           YB_DISABLE_TEST_IN_SANITIZERS(TestPreSplitYSQLRangeSplitTableAndIndex),
           YBBackupTestNumTablets) {
@@ -511,10 +512,8 @@ TEST_F_EX(YBBackupTest,
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
 
-  // Drop the table
-  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
-
   // Restore
+  DropPsqlDatabase("yugabyte");
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
@@ -550,8 +549,7 @@ TEST_F_EX(YBBackupTest,
 // 1. start with a table with 2 pre-split tablets
 // 2. insert data into the table to trigger automatic tablet splitting
 // 3. backup
-// 4. drop table
-// 5. restore
+// 4. restore
 TEST_F_EX(YBBackupTest,
           YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLAutomaticTabletSplitRangeTable),
           YBBackupTestNumTablets) {
@@ -604,10 +602,8 @@ TEST_F_EX(YBBackupTest,
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
 
-  // Drop the table.
-  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
-
   // Restore.
+  DropPsqlDatabase("yugabyte");
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
@@ -627,8 +623,7 @@ TEST_F_EX(YBBackupTest,
 // 2. split one of them (3 tablets)
 // 3. further split one of newly created tablets (4 tablets)
 // 4. backup
-// 5. drop table
-// 6. restore
+// 5. restore
 TEST_F_EX(YBBackupTest,
           YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLManualTabletSplitRangeTable),
           YBBackupTestNumTablets) {
@@ -701,10 +696,8 @@ TEST_F_EX(YBBackupTest,
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
 
-  // Drop the table
-  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
-
   // Restore
+  DropPsqlDatabase("yugabyte");
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
@@ -724,8 +717,7 @@ TEST_F_EX(YBBackupTest,
 // 2. insert data into the table
 // 3. split the index on its hidden column into 3 tablets
 // 4. backup
-// 5. drop table
-// 6. restore
+// 5. restore
 TEST_F_EX(YBBackupTest,
           YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLTabletSplitRangeUniqueIndexOnHiddenColumn),
           YBBackupTestNumTablets) {
@@ -807,10 +799,8 @@ TEST_F_EX(YBBackupTest,
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
 
-  // Drop the table
-  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
-
   // Restore
+  DropPsqlDatabase("yugabyte");
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
@@ -842,8 +832,7 @@ TEST_F_EX(YBBackupTest,
 // 2. insert data into the table
 // 3. split the index on its hidden column into 3 tablets
 // 4. backup
-// 5. drop table
-// 6. restore
+// 5. restore
 TEST_F_EX(YBBackupTest,
           YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLTabletSplitRangeIndexOnHiddenColumn),
           YBBackupTestNumTablets) {
@@ -911,10 +900,8 @@ TEST_F_EX(YBBackupTest,
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
 
-  // Drop the table
-  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
-
   // Restore
+  DropPsqlDatabase("yugabyte");
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
@@ -941,8 +928,7 @@ TEST_F_EX(YBBackupTest,
 // 2. insert NULL data into the table
 // 3. split the GIN index into 2 tablets to make GinNull become part of partition bounds
 // 4. backup
-// 5. drop table
-// 6. restore
+// 5. restore
 TEST_F_EX(YBBackupTest,
           YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLTabletSplitGINIndexWithGinNullInPartitionBounds),
           YBBackupTestNumTablets) {
@@ -1000,10 +986,8 @@ TEST_F_EX(YBBackupTest,
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
 
-  // Drop the table
-  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
-
   // Restore
+  DropPsqlDatabase("yugabyte");
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
@@ -1304,18 +1288,16 @@ TEST_F_EX(
   ASSERT_OK(
       RunBackupCommand({"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
 
-  // 3) Drop table to be able to restore in the same keyspace.
-  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE tblv0"), "DROP TABLE"));
-
-  // 4) Simulate cluster upgrade with new partitioning_version and restore. Index tables with
+  // 3) Simulate cluster upgrade with new partitioning_version and restore. Index tables with
   //    partitioning version above 0 should contain additional `null` value for a hidden columns
   //    `ybuniqueidxkeysuffix` or `ybidxbasectid`.
   ASSERT_OK(ForceSetPartitioningVersion(1));
+  DropPsqlDatabase("yugabyte");
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
 
-  // 5) Make sure new tables are created with a new patitioning version.
-  // 5.1) Create regular tablet and check partitioning verison and structure.
+  // 4) Make sure new tables are created with a new patitioning version.
+  // 4.1) Create regular tablet and check partitioning verison and structure.
   ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE tblr1 (k INT, v TEXT, PRIMARY KEY (k ASC))")));
   ASSERT_EQ(1, ASSERT_RESULT(GetTablePartitioningVersion("tblr1", "post-restore")));
   ASSERT_TRUE(CheckPartitions(
@@ -1327,7 +1309,7 @@ TEST_F_EX(
       ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, "tblv1")),
       {bytes_to_str("\x48\x80\x00\x00\x0a\x21"), /* 10 */}));
 
-  // 5.2) Create indexes and check partitoning verison and structure.
+  // 4.2) Create indexes and check partitoning verison and structure.
   ASSERT_NO_FATALS(
       CreateIndex(Format("CREATE INDEX idx1v1 ON tblv1 (v ASC) SPLIT AT VALUES (('de'), ('op'))")));
   ASSERT_EQ(1, ASSERT_RESULT(GetTablePartitioningVersion("idx1v1", "post-restore")));
@@ -1345,7 +1327,7 @@ TEST_F_EX(
        bytes_to_str("\x61\x9c\x9c\xff\xff\x00\x21"),
        /* 'cc', -Inf */}));
 
-  // 6) Make sure old tables have been restored with the old patitioning version and structure
+  // 5) Make sure old tables have been restored with the old patitioning version and structure
   ASSERT_EQ(0, ASSERT_RESULT(GetTablePartitioningVersion("tblr0", "post-restore")));
   ASSERT_TRUE(CheckPartitions(
       ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, "tblr0")), {}));
@@ -2309,6 +2291,167 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestBackupWithFailedLegacyRew
          5 | 5
         (5 rows)
       )#"));
+}
+
+TEST_F_EX(
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestPreservingPgEnumOids),
+    YBBackupTestOneTablet) {
+
+  // Backup only works when there is at least one table so create one.
+  ASSERT_NO_FATALS(CreateTable(
+      Format("CREATE TABLE gratuitous_table (a INT, b INT)", "gratuitous_table")));
+
+  // Create some enums intermixed with filler ones then drop the fillers.
+  // The filler enums will ensure the non-filler enums don't just use the default OIDs.
+  ASSERT_NO_FATALS(CreateType("CREATE TYPE filler_1 AS ENUM ('A','B','C')"));
+  ASSERT_NO_FATALS(CreateType("CREATE TYPE e_contact_method AS ENUM ('Email','Sms','Phone','A')"));
+  ASSERT_NO_FATALS(CreateType("CREATE TYPE filler_2 AS ENUM ('A','B','C')"));
+  ASSERT_NO_FATALS(CreateType("CREATE TYPE empty_enum AS ENUM ()"));
+  ASSERT_NO_FATALS(CreateType("CREATE TYPE twofold AS ENUM ('A', 'B')"));
+  ASSERT_NO_FATALS(RunPsqlCommand("DROP TYPE filler_1", "DROP TYPE"));
+  ASSERT_NO_FATALS(RunPsqlCommand("DROP TYPE filler_2", "DROP TYPE"));
+
+  // Backup then restore to a new database.
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte_new", "restore"}));
+
+  auto query = "SELECT oid, enumlabel FROM pg_enum ORDER BY oid ASC";
+  Result<std::string> result{""};
+  ASSERT_NO_FATALS(result = RunPsqlCommand(query));
+  ASSERT_OK(result);
+  LOG(INFO) << "***** pg_enum OIDs on namespace being backed up are: " << *result;
+
+  SetDbName("yugabyte_new");
+  ASSERT_NO_FATALS(RunPsqlCommand(query, *result));
+}
+
+TEST_F_EX(
+    YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestPreservingPgTypeAndClassOids),
+    YBBackupTestOneTablet) {
+  // Attempt to create one instance of each thing that consumes a pg_type or pg_class OID.  Also
+  // create some fillers that will we will drop at the end to make sure we don't just use the same
+  // default OIDs by accident.
+
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE filler_table (a INT, b INT)"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE filler_table_2 (a INT, b INT)"));
+
+  // Creating basic tables.
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE simple_table (a INT, b INT)"));
+  // Backup ignores temporary tables so no need to test.
+
+  // Creating tables with indexes and constraints.
+  ASSERT_NO_FATALS(
+      CreateTable("CREATE TABLE table_with_primary_key (a INT PRIMARY KEY, b INT, c INT)"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE indexed_table (a INT, b INT)"));
+  ASSERT_NO_FATALS(CreateIndex("CREATE INDEX simple_index ON indexed_table (a DESC)"));
+  // This is a special case due to D6956, where we create the table and the primary key index
+  // simultaneously.
+  ASSERT_NO_FATALS(CreateTable(
+      "CREATE TABLE table_with_index_and_constraint (k INT PRIMARY KEY, v TEXT, UNIQUE (v))"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE constrained_table (a INT, b INT)"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "ALTER TABLE constrained_table ADD CONSTRAINT equality_constraint CHECK (a = b)",
+      "ALTER TABLE"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "ALTER TABLE constrained_table ADD CONSTRAINT positive_constraint CHECK (a > 0)",
+      "ALTER TABLE"));
+  // Another special case due to D6956; note that a separate index/OID is created for
+  // htest_1 automatically.
+  ASSERT_NO_FATALS(CreateTable(
+      "CREATE TABLE htest(k1 INT, k2 TEXT, k3 INT, v1 INT, v2 TEXT, PRIMARY KEY(k1, k2)) PARTITION "
+      "BY HASH (k1)"));
+  ASSERT_NO_FATALS(CreateTable(
+      "CREATE TABLE htest_1 PARTITION OF htest(k1, k2, k3, v1, v2) FOR VALUES WITH (MODULUS 2, "
+      "REMAINDER 0)"));
+
+  // Attempt to create a table with an accompanying TOAST table; this does not actually work with
+  // YugabyteDB, which does not use TOAST tables.
+  ASSERT_NO_FATALS(
+      CreateTable("CREATE TABLE table_using_toast (id SERIAL PRIMARY KEY, data TEXT)"));
+  ASSERT_NO_FATALS(
+      InsertOneRow("INSERT INTO table_using_toast (data) VALUES (repeat('A', 5000))"));
+
+  // Creating sequences, both standalone and as part of a table.
+  ASSERT_NO_FATALS(CreateSequence("CREATE SEQUENCE standalone_sequence"));
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE table_with_serial_column (key SERIAL, value TEXT)"));
+  ASSERT_NO_FATALS(
+      CreateTable("CREATE TABLE table_with_2_serial_columns (key SERIAL, id SERIAL, value TEXT)"));
+  ASSERT_NO_FATALS(
+      CreateTable("CREATE TABLE table_with_default_sequence ("
+                  "id INTEGER PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY (INCREMENT 7 START "
+                  "77777),value INTEGER)"));
+  ASSERT_NO_FATALS(CreateSequence("CREATE SEQUENCE sequence_created_first"));
+  ASSERT_NO_FATALS(
+      CreateTable("CREATE TABLE table_using_existing_sequence (id INTEGER DEFAULT "
+                  "nextval('sequence_created_first'),value INTEGER)"));
+  ASSERT_NO_FATALS(CreateTable(
+      "CREATE TABLE table_with_primary_serial_key (a SERIAL PRIMARY KEY, b INT, c INT)"));
+
+  // Creating table-like things.
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "CREATE VIEW view AS SELECT a, b FROM simple_table WHERE a = b", "CREATE VIEW"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "CREATE MATERIALIZED VIEW materialized_view AS SELECT a, b FROM simple_table", "SELECT 0"));
+  // Not possible to create a materialized view with a primary key directly so no D6956 special case
+  // exists for materialized views.
+  // The following currently produces warnings because FOREIGN DATA WRAPPER is a YSQL beta feature.
+  // This doesn't matter for this test, however.
+  ASSERT_NO_FATALS(
+      RunPsqlCommand("CREATE FOREIGN DATA WRAPPER dummy_wrapper", "CREATE FOREIGN DATA WRAPPER"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "CREATE SERVER dummy_server FOREIGN DATA WRAPPER dummy_wrapper", "CREATE SERVER"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "CREATE FOREIGN TABLE test_foreign_table () SERVER dummy_server", "CREATE FOREIGN TABLE"));
+
+  // Create one of each type of Postgres type not already covered.
+  ASSERT_NO_FATALS(CreateType("CREATE TYPE composite_type AS (x INT, y INT)"));
+  ASSERT_NO_FATALS(CreateType("CREATE TYPE twofold AS ENUM ('A', 'B')"));
+  ASSERT_NO_FATALS(CreateType("CREATE TYPE date_range AS RANGE (subtype = DATE)"));
+  ASSERT_NO_FATALS(CreateType("CREATE TYPE shell_type"));
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "CREATE DOMAIN email_address AS VARCHAR CHECK (VALUE ~ "
+      "'^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$')",
+      "CREATE DOMAIN"));
+  // This extension creates a new base type, vector.
+  ASSERT_NO_FATALS(RunPsqlCommand("CREATE EXTENSION vector", "CREATE EXTENSION"));
+
+  // Done creating stuff, time to drop the filler objects.
+  ASSERT_NO_FATALS(RunPsqlCommand("DROP TABLE filler_table", "DROP TABLE"));
+  ASSERT_NO_FATALS(RunPsqlCommand("DROP TABLE filler_table_2", "DROP TABLE"));
+
+  // Backup then restore to a new database.
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte_new", "restore"}));
+
+  // Assert the pg type OIDs are the same in both databases.
+  {
+    auto query = "SELECT oid, typname FROM pg_type ORDER BY oid ASC";
+    Result<std::string> query_result{""};
+    SetDbName("yugabyte");
+    ASSERT_NO_FATALS(query_result = RunPsqlCommand(query));
+    ASSERT_OK(query_result);
+    LOG(INFO) << "***** pg_type OIDs on namespace being backed up are: " << *query_result;
+    SetDbName("yugabyte_new");
+    ASSERT_NO_FATALS(RunPsqlCommand(query, *query_result));
+  }
+
+  // Assert the pg class OIDs are the same in both databases.
+  {
+    auto query = "SELECT oid, relname FROM pg_class ORDER BY oid ASC";
+    Result<std::string> query_result{""};
+    SetDbName("yugabyte");
+    ASSERT_NO_FATALS(query_result = RunPsqlCommand(query));
+    ASSERT_OK(query_result);
+    LOG(INFO) << "***** pg_class OIDs on namespace being backed up are: " << *query_result;
+    SetDbName("yugabyte_new");
+    ASSERT_NO_FATALS(RunPsqlCommand(query, *query_result));
+  }
 }
 }  // namespace tools
 }  // namespace yb

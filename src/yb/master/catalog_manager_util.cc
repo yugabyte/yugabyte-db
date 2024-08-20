@@ -117,7 +117,7 @@ Status CatalogManagerUtil::AreLeadersOnPreferredOnly(
          const ReplicationInfoPB& replication_info) {
         for (const auto& ts_desc : ts_descs) {
           if (ts_desc->IsAcceptingLeaderLoad(replication_info)) {
-            accepting_leader_load.insert(ts_desc->permanent_uuid());
+            accepting_leader_load.insert(ts_desc->id());
           }
         }
       };

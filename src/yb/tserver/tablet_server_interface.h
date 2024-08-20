@@ -54,7 +54,7 @@ class TabletServerIf : public LocalTabletServer {
 
   virtual TSTabletManager* tablet_manager() = 0;
   virtual TabletPeerLookupIf* tablet_peer_lookup() = 0;
-  virtual tablet::TSLocalLockManager* ts_local_lock_maganer() = 0;
+  virtual tablet::TSLocalLockManager* ts_local_lock_manager() = 0;
 
   virtual server::Clock* Clock() = 0;
   virtual rpc::Publisher* GetPublisher() = 0;

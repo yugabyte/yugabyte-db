@@ -114,6 +114,7 @@ set(MASTER_SRCS
   mini_master.cc
   master_snapshot_coordinator.cc
   multi_step_monitored_task.cc
+  object_lock.cc
   post_tablet_create_task_base.cc
   restoration_state.cc
   restore_sys_catalog_state.cc
@@ -150,7 +151,7 @@ set(MASTER_SRCS
   xcluster/xcluster_source_manager.cc
   xcluster/xcluster_target_manager.cc
   xcluster/xcluster_universe_replication_alter_helper.cc
-  xcluster/xcluster_universe_replication_setup_helper.cc
+  xcluster/xcluster_inbound_replication_group_setup_task.cc
   xrepl_catalog_manager.cc
   yql_aggregates_vtable.cc
   yql_auth_resource_role_permissions_index.cc
@@ -172,10 +173,12 @@ set(MASTER_SRCS
   yql_virtual_table.cc
   yql_vtable_iterator.cc
   ysql_backends_manager.cc
+  ysql_ddl_handler.cc
+  ysql_ddl_verification_task.cc
+  ysql_sequence_util.cc
   ysql_tablegroup_manager.cc
   ysql_tablespace_manager.cc
-  ysql_ddl_handler.cc
-  ysql_ddl_verification_task.cc)
+)
 
 set(MASTER_DEPS
   yb_common
@@ -223,7 +226,8 @@ ADD_YB_LIBRARY(master_error
   DEPS ${MASTER_RPC_LIBS})
 
 set(MASTER_UTIL_SRCS
-  master_util.cc)
+  master_util.cc
+  catalog_entity_parser.cc)
 ADD_YB_LIBRARY(master_util
   SRCS ${MASTER_UTIL_SRCS}
   DEPS master_error ${MASTER_RPC_LIBS})
@@ -231,7 +235,8 @@ ADD_YB_LIBRARY(master_util
 # A library with common code shared between master tests.
 set(MASTER_TEST_COMMON_SRCS
   master-test_base.cc
-  master-test-util.cc)
+  master-test-util.cc
+  ts_descriptor_test_util.cc)
 add_library(master_test_common ${MASTER_TEST_COMMON_SRCS})
 target_link_libraries(master_test_common
   master ${MASTER_PROTO_LIBS} yb_client ${YB_MIN_TEST_LIBS})

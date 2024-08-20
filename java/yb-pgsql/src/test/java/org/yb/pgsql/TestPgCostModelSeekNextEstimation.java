@@ -302,7 +302,12 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
   // in Nov/2023.
   @Test
   public void testSeekNextEstimationIndexScan() throws Exception {
+    boolean isConnMgr = isTestRunningWithConnectionManager();
     try (Statement stmt = this.connection2.createStatement()) {
+      if (isConnMgr) {
+        testExplainDebug(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 IN (4, 8)", T1_NAME, T1_NAME), null);
+      }
       testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 IN (4, 8)", T1_NAME, T1_NAME),
         T1_NAME, T1_INDEX_NAME, 2, 4, 5);
@@ -414,8 +419,13 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
   @Test
   public void testSeekNextEstimationBitmapScan() throws Exception {
     assumeTrue("BitmapScan has much fewer nexts in fastdebug (#22052)", TestUtils.isReleaseBuild());
+    boolean isConnMgr = isTestRunningWithConnectionManager();
     try (Statement stmt = this.connection2.createStatement()) {
       stmt.execute("SET work_mem TO '1GB'"); /* avoid getting close to work_mem */
+      if (isConnMgr) {
+        testExplainDebug(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 IN (4, 8)", T1_NAME, T1_NAME), null);
+      }
       testSeekAndNextEstimationBitmapScanHelper(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 IN (4, 8)", T1_NAME, T1_NAME),
         T1_NAME, 2, 4, 5, makeBitmapIndexScanChecker(T1_INDEX_NAME, 2, 4));
