@@ -38,7 +38,18 @@ struct YsqlSequenceInfo {
 // to cause the reads done by ScanSequencesDataTable to fail in order to test the error handling
 // pathways.
 Result<std::vector<YsqlSequenceInfo>> ScanSequencesDataTable(
-    client::YBClient* client, uint32_t db_oid, uint64_t max_rows_per_read = 10000,
+    client::YBClient& client, uint32_t db_oid, uint64_t max_rows_per_read = 10000,
     bool TEST_fail_read = false);
+
+// Ensure that there is a full update for every sequence in sequences in the WALs after the time the
+// sequence info was read from the sequences_data table.
+//
+// That is, if a sequence S in sequences had value v at the time we scanned sequences_data to obtain
+// sequences, then after this function successfully completes, there will either be an update S := v
+// or some other update to S in the WAL with commit timestamp after the time the scan was done.
+//
+// When successful returns the number of updates it makes.
+Result<int> EnsureSequenceUpdatesInWal(
+    client::YBClient& client, uint32_t db_oid, const std::vector<YsqlSequenceInfo>& sequences);
 
 }  // namespace yb::master

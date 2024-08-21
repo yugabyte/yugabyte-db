@@ -69,7 +69,8 @@ export const RuntimeConfigKey = {
   KUBERNETES_DEFAULT_VOLUME_SIZE: 'yb.kubernetes.default_volume_size_gb',
   AZURE_DEFAULT_VOLUME_SIZE: 'yb.azure.default_volume_size_gb',
   AZURE_DEFAULT_STORAGE_TYPE: 'yb.azure.storage.default_storage_type',
-  AZURE_PREMIUM_V2_STORAGE_TYPE: 'yb.azure.show_premiumv2_storage_type'
+  AZURE_PREMIUM_V2_STORAGE_TYPE: 'yb.azure.show_premiumv2_storage_type',
+  DOWNLOAD_METRICS_PDF: 'yb.ui.metrics.enable_download_pdf'
 } as const;
 
 /**

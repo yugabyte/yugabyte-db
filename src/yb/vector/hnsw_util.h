@@ -35,27 +35,25 @@ namespace yb::vectorindex {
 // 3. If ml = 1/log(4)  (~0.7213), then p = 1 - 1/4  (~0.75), and the expected level is ~1.333.
 VectorIndexLevel SelectRandomLevel(double ml, VectorIndexLevel max_level);
 
+namespace detail {
+
 struct CompareDistanceForMinHeap {
   bool operator()(const VertexWithDistance& a, const VertexWithDistance& b) {
-    return a.distance > b.distance;
+    return a > b;
   }
 };
 
-struct CompareDistanceForMaxHeap {
-  bool operator()(const VertexWithDistance& a, const VertexWithDistance& b) {
-    return a.distance < b.distance;
-  }
-};
+}  // namespace detail
 
 using MinDistanceQueue =
     std::priority_queue<VertexWithDistance,
                         std::vector<VertexWithDistance>,
-                        CompareDistanceForMinHeap>;
+                        detail::CompareDistanceForMinHeap>;
 
+// Our default comparator for VertexWithDistance already orders the pairs by increasing distance.
 using MaxDistanceQueue =
     std::priority_queue<VertexWithDistance,
-                        std::vector<VertexWithDistance>,
-                        CompareDistanceForMaxHeap>;
+                        std::vector<VertexWithDistance>>;
 
 using ConstFloatVectorRef = std::reference_wrapper<const FloatVector>;
 using VertexIdOrVectorRef = std::variant<VertexId, ConstFloatVectorRef>;
@@ -63,5 +61,14 @@ using VertexIdOrVectorRef = std::variant<VertexId, ConstFloatVectorRef>;
 // Drain a max-queue of (vertex, distance) pairs and return a list of VertexWithDistance instances
 // ordered by increasing distance.
 std::vector<VertexWithDistance> DrainMaxQueueToIncreasingDistanceList(MaxDistanceQueue& queue);
+
+// Computes precise nearest neighbors for the given query by brute force search. In case of
+// multiple results having the same distance from the query, results with lower vertex ids are
+// preferred.
+std::vector<VertexWithDistance> BruteForcePreciseNearestNeighbors(
+    const FloatVector& query,
+    const std::vector<VertexId>& vertex_ids,
+    const VertexIdToVectorDistanceFunction& distance_fn,
+    size_t num_results);
 
 }  // namespace yb::vectorindex

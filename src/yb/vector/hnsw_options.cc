@@ -11,23 +11,23 @@
 // under the License.
 //
 
-// Interface definitions for a vector index.
+#include "yb/vector/hnsw_options.h"
 
-#include "yb/vector/distance.h"
-#include "yb/common/vector_types.h"
-
-#pragma once
+#include "yb/util/tostring.h"
 
 namespace yb::vectorindex {
 
-class VectorIndexReader {
- public:
-  virtual ~VectorIndexReader() = default;
-  virtual std::vector<VertexWithDistance> Search(
-      const FloatVector& query_vector, size_t max_num_results) const = 0;
-
-  // Returns the vector with the given id, or an empty vector if it does not exist.
-  virtual FloatVector GetVector(VertexId vertex_id) const = 0;
-};
+std::string HNSWOptions::ToString() const {
+  return YB_STRUCT_TO_STRING(
+      extend_candidates,
+      keep_pruned_connections,
+      num_neighbors_per_vertex,
+      max_neighbors_per_vertex,
+      num_neighbors_per_vertex_base,
+      max_neighbors_per_vertex_base,
+      ml,
+      ef_construction,
+      robust_prune_alpha);
+}
 
 }  // namespace yb::vectorindex
