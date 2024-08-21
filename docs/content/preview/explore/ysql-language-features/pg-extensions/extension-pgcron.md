@@ -65,6 +65,25 @@ When running jobs, keep in mind the following:
 
 For more information on how to schedule jobs, refer to the [pg_cron documentation](https://github.com/yugabyte/yugabyte-db/blob/master/src/postgres/third-party-extensions/pg_cron/README.md).
 
+## Best practices
+
+As a best practice, you can set up a periodic cleanup task for the `cron.job_run_details` table using the `pg_cron` extension ensuring old data doesn't accumulate and affect database performance. The `cron.job_run_details` table is part of the `pg_cron` extension in PostgreSQL. This table keeps a record of the execution details of the scheduled cron jobs. It logs information about each cron job run, including its start and end time, status, and any exit messages or errors that occurred during the execution.
+
+### View job details and clean up records
+
+1. You can view the status of running and recently completed job runs in the `cron.job_run_details` table using the following command:
+
+    ```sql
+    select * from cron.job_run_details order by start_time desc limit 5;
+    ```
+
+1. The records in `cron.job_run_details` are not cleaned automatically. So in scenarios when you have jobs that run every few seconds, it can be a good idea to clean up regularly, which can easily be done using `pg_cron` as follows:
+
+    ```sql
+    -- Delete old cron.job_run_details records of the current user every day at noon
+    SELECT  cron.schedule('delete-job-run-details', '0 12 * * *', $$DELETE FROM cron.job_run_details WHERE end_time < now() - interval '7 days'$$);
+    ```
+
 ## Examples
 
 The following examples decribe various ways `pg_cron` can be used to automate and improve database management tasks. The tool can help maintain database performance, consistency, and reliability through scheduled jobs.
@@ -74,7 +93,7 @@ The following examples decribe various ways `pg_cron` can be used to automate an
 Use [pg_stat_statements](../extension-pgstatstatements/) to capture statistics about queries, and schedule regular reports with `pg_cron` to summarize slow queries.
 
 ```sql
-SELECT * FROM pg_stat_statements ORDER BY total_time DESC LIMIT 10;
+INSERT INTO slow_queries SELECT * FROM pg_stat_statements ORDER BY total_time DESC LIMIT 10;
 ```
 
 ### Deploy changes and validate
@@ -119,50 +138,3 @@ DELETE FROM logs WHERE log_date < NOW() - INTERVAL '30 days';
 END;
 $$);
 ```
-
-### Best practices
-
-As a best practice, you can set up a periodic cleanup task for the `cron.job_run_details` table using the `pg_cron` extension ensuring old data doesn't accumulate and affect database performance. The `cron.job_run_details` table is part of the `pg_cron` extension in PostgreSQL. This table keeps a record of the execution details of the scheduled cron jobs. It logs information about each cron job run, including its start and end time, status, and any exit messages or errors that occurred during the execution.
-
-#### View job details and clean up records
-
-1. You can view the status of running and recently completed job runs in the `cron.job_run_details` table using the following command:
-
-    ```sql
-    select * from cron.job_run_details order by start_time desc limit 5;
-    ```
-
-1. The records in `cron.job_run_details` are not cleaned automatically. So in scenarios when you have jobs that run every few seconds, it can be a good idea to clean up regularly, which can easily be done using `pg_cron` as follows:
-
-    ```sql
-    -- Delete old cron.job_run_details records of the current user every day at noon
-    SELECT  cron.schedule('delete-job-run-details', '0 12 * * *', $$DELETE FROM cron.job_run_details WHERE end_time < now() - interval '7 days'$$);
-    ```
-
-    If you do not want to use `cron.job_run_details` at all, then you can add `cron.log_run = off` to `postgresql.conf`.
-
-#### Create a cleanup function
-
-You can also create a cleanup function to delete old records from `cron.job_run_details` based on a retention period.
-For example, if you want to retain records for 30 days, do the following:
-
-1. Create a cleanup function as follows:
-
-    ```sql
-      CREATE OR REPLACE FUNCTION cleanup_cron_job_run_details(retention_days INTEGER) RETURNS void AS $$
-        BEGIN
-            DELETE FROM cron.job_run_details
-            WHERE end_time < NOW() - INTERVAL '1 day' * retention_days;
-        END;
-        $$ LANGUAGE plpgsql;
-    ```
-
-1. Schedule the cleanup job to run periodically using `pg_cron`. The following example schedules the cleanup job to run daily at midnight (00:00).
-
-    ```sql
-    SELECT cron.schedule(
-        'daily_cron_cleanup',                  -- job name
-        '0 0 * * *',                           -- cron expression for daily at midnight
-        $$ CALL cleanup_cron_job_run_details(30); $$  -- SQL command to execute
-    );
-    ```
