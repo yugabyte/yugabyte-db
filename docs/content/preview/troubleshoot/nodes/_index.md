@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: troubleshoot-nodes
     parent: troubleshoot
-    weight: 840
+    weight: 200
 type: indexpage
 ---
 
@@ -50,7 +50,7 @@ type: indexpage
       </div>
     </a>
   </div>
-  
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link glyphicon-floppy-disk" href="recover-disk/">
       <div class="head">
@@ -62,7 +62,7 @@ type: indexpage
       </div>
     </a>
   </div>
-  
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link glyphicon-floppy-disk" href="trouble-common/">
       <div class="head">
@@ -73,8 +73,8 @@ type: indexpage
         Familiarize yourself with error messages that are common to all YugabytDB components.
       </div>
     </a>
-  </div>  
-  
+  </div>
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link glyphicon-floppy-disk" href="disk-full/">
       <div class="head">
@@ -86,7 +86,7 @@ type: indexpage
       </div>
     </a>
   </div>
-  
-  
-  
+
+
+
 </div>

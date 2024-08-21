@@ -10,7 +10,7 @@ menu:
   preview:
     identifier: troubleshoot-cluster
     parent: troubleshoot
-    weight: 820
+    weight: 100
 type: indexpage
 ---
 
