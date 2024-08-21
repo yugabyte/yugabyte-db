@@ -21,7 +21,7 @@ type: indexpage
 
 PostgreSQL extensions provide a way to extend the functionality of a database by bundling SQL objects into a package and using them as a unit. YugabyteDB supports a variety of PostgreSQL extensions.
 
-Supported extensions are either pre-bundled with YugabyteDB, or require installation:
+Supported extensions are either pre-bundled with YugabyteDB or require installation:
 
 * **Pre-bundled** extensions are included in the standard YugabyteDB distribution and can be enabled in YSQL by running the [CREATE EXTENSION](../../../api/ysql/the-sql-language/statements/ddl_create_extension/) statement.
 * **Requires installation** - you must install these extensions manually before you can enable them using CREATE EXTENSION. Refer to [Install extensions](install-extensions/).
@@ -43,7 +43,7 @@ YugabyteDB supports the following [PostgreSQL modules](https://www.postgresql.or
 | [passwordcheck](extension-passwordcheck/) | Checks user passwords whenever they are set with CREATE ROLE or ALTER ROLE. If a password is considered too weak, it is rejected. |
 | [pgcrypto](extension-pgcrypto/) | Provides various cryptographic functions. |
 | [pg_stat_statements](extension-pgstatstatements/) | Provides a means for tracking execution statistics of all SQL statements executed by a server. |
-| pg_trgm | Provides functions and operators for determining the similarity of alphanumeric text based on trigram matching, as well as index operator classes that support fast searching for similar strings.<br/>For more information, see [pg_trgm](https://www.postgresql.org/docs/11/pgtrgm.html) in the PostgreSQL documentation. |
+| [pg_trgm](../../../develop/learn/text-search/similarity-matching/#trigrams) | Provides functions and operators for determining the similarity of alphanumeric text based on trigram matching, as well as index operator classes that support fast searching for similar strings.<br/>For more information, see [pg_trgm](https://www.postgresql.org/docs/11/pgtrgm.html) in the PostgreSQL documentation. |
 | [postgres_fdw](extension-postgres-fdw/) | Provides the foreign-data wrapper postgres_fdw, which can be used to access data stored in external PostgreSQL servers. |
 | [spi](extension-spi/) | Lets you use the Server Programming Interface (SPI) to create user-defined functions and stored procedures in C, and to run YSQL queries directly against YugabyteDB. |
 | sslinfo | Provides information about the SSL certificate that the current client provided when connecting to PostgreSQL.<br/>For more information, see [sslinfo](https://www.postgresql.org/docs/11/sslinfo.html) in the PostgreSQL documentation. |
