@@ -1301,4 +1301,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Require chrony or ntp(d) to be installed for health check to pass",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> nodeAgentEnablerInstallTimeout =
+      new ConfKeyInfo<>(
+          "yb.node_agent.enabler.install_timeout",
+          ScopeType.UNIVERSE,
+          "Node Agent Enabler Installation Time-out",
+          "Node agent enabler installation time-out for the universe",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

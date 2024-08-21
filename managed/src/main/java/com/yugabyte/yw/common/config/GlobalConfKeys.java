@@ -1439,4 +1439,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable Per Process Metrics",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> nodeAgentEnablerScanInterval =
+      new ConfKeyInfo<>(
+          "yb.node_agent.enabler.scan_interval",
+          ScopeType.GLOBAL,
+          "Node Agent Enabler Scan Interval",
+          "Node agent enabler scan interval",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
