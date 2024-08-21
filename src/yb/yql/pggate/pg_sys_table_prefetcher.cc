@@ -40,6 +40,7 @@
 #include "yb/util/tostring.h"
 
 #include "yb/yql/pggate/pg_column.h"
+#include "yb/yql/pggate/pg_doc_op.h"
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_table.h"
@@ -333,12 +334,13 @@ auto MakeGenerator(const std::vector<OperationInfo>& ops) {
 Result<rpc::CallResponsePtr> Run(
     yb::ThreadSafeArena* arena, PgSession* session,
     const std::vector<OperationInfo>& ops, const PrefetcherOptions& options) {
-  auto result = VERIFY_RESULT(options.caching_info
+  PgDocResponse response(VERIFY_RESULT(options.caching_info
       ? session->RunAsync(
           make_lw_function(MakeGenerator(ops)),
           BuildCacheOptions(arena, session->catalog_read_time(), ops, *options.caching_info))
-      : session->RunAsync(make_lw_function(MakeGenerator(ops)), HybridTime()));
-  return VERIFY_RESULT(result.Get(*session)).response;
+      : session->RunAsync(make_lw_function(MakeGenerator(ops)), HybridTime())),
+      {TableType::SYSTEM, IsForWritePgDoc::kFalse});
+  return VERIFY_RESULT(response.Get(*session)).response;
 }
 
 struct RegisteredItem {
