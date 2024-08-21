@@ -39,6 +39,8 @@
 
 #include "yb/tablet/tablet_fwd.h"
 
+#include "yb/tserver/tserver.pb.h"
+
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 

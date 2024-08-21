@@ -868,8 +868,6 @@ class NamespaceInfo : public RefCountedThreadSafe<NamespaceInfo>,
 
   std::string ToString() const override;
 
-  uint32_t FetchAndIncrementCloneSeqNo();
-
  private:
   friend class RefCountedThreadSafe<NamespaceInfo>;
   ~NamespaceInfo() = default;

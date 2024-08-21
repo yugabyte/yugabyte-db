@@ -7,7 +7,7 @@
   <parent>
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
-    <version>0.8.93-SNAPSHOT</version>
+    <version>0.8.94-SNAPSHOT</version>
   </parent>
   <artifactId>yb-jedis-tests</artifactId>
   <name>YB Jedis Tests</name>

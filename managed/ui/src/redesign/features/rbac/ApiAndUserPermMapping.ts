@@ -937,9 +937,9 @@ export const ApiPermissionMap = {
         requestType: ApiRequestType.POST,
         endpoint: '/xcluster_configs/$xccUUID<[^/]+>/need_bootstrap'
     },
-    SYNC_XCLUSTER_REQUIREMENT: {
+    SYNC_XCLUSTER: {
         requestType: ApiRequestType.POST,
-        endpoint: '/xcluster_configs/sync'
+        endpoint: '/xcluster_configs/$xccUUID<[^/]+>/sync'
     },
     CREATE_NODES_IN_ZONE: {
         requestType: ApiRequestType.POST,

@@ -154,6 +154,7 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
       ImmutableList.of(
           TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
+          TaskType.UpdateConsistencyCheck,
           TaskType.SetNodeState,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
           TaskType.AnsibleConfigureServers,
@@ -174,6 +175,7 @@ public class StartMasterOnNodeTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> START_MASTER_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Starting")),

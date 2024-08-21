@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/object_lock_prefix.h"
 #include "yb/dockv/intent.h"
 
 #include "yb/util/monotime.h"

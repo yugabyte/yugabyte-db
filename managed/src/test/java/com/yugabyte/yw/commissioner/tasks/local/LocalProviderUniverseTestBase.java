@@ -70,6 +70,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.YugawareProperty;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.LocalCloudInfo;
@@ -236,7 +237,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     subDir = DATE_FORMAT.format(new Date());
   }
 
-  @Rule public Timeout globalTimeout = Timeout.seconds(600);
+  @Rule public Timeout globalTimeout = Timeout.seconds(900);
 
   private static void setUpBaseDir() {
     if (System.getenv(BASE_DIR_ENV_KEY) != null) {
@@ -427,6 +428,9 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     injectDependencies();
 
     settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.releases.use_redesign", "false");
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.universe.consistency_check_enabled", "true");
     Pair<Integer, Integer> ipRange = getIpRange();
     localNodeManager.setIpRangeStart(ipRange.getFirst());
     localNodeManager.setIpRangeEnd(ipRange.getSecond());
@@ -741,7 +745,8 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
             10,
             authEnabled);
     assertTrue(response.isSuccess());
-    assertEquals("3", LocalNodeManager.getRawCommandOutput(response.getMessage()));
+    assertEquals("3", CommonUtils.extractJsonisedSqlResponse(response).trim());
+    // Check universe sequence and DB sequence number
   }
 
   protected void initYCQL(Universe universe) {

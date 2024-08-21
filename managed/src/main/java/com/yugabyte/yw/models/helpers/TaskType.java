@@ -569,6 +569,21 @@ public enum TaskType {
       CustomerTask.TaskType.SyncMasterAddresses,
       CustomerTask.TargetType.Universe),
 
+  CreateYbaBackup(
+      com.yugabyte.yw.commissioner.tasks.CreateYbaBackup.class,
+      CustomerTask.TaskType.CreateYbaBackup,
+      CustomerTask.TargetType.Yba),
+
+  RestoreYbaBackup(
+      com.yugabyte.yw.commissioner.tasks.RestoreYbaBackup.class,
+      CustomerTask.TaskType.CreateYbaBackup,
+      CustomerTask.TargetType.Yba),
+
+  RestoreContinuousBackup(
+      com.yugabyte.yw.commissioner.tasks.RestoreContinuousBackup.class,
+      CustomerTask.TaskType.CreateYbaBackup,
+      CustomerTask.TargetType.Yba),
+
   /* Subtasks start here */
 
   KubernetesCheckVolumeExpansion(
@@ -784,6 +799,10 @@ public enum TaskType {
   XClusterConfigSetStatusForTables(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetStatusForTables.class),
 
+  XClusterConfigSetStatusForNamespaces(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetStatusForNamespaces
+          .class),
+
   XClusterConfigModifyTables(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModifyTables.class),
 
@@ -998,6 +1017,8 @@ public enum TaskType {
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseCommunicationPorts.class),
 
   UpdateUniverseIntent(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseIntent.class),
+
+  UpdateConsistencyCheck(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateConsistencyCheck.class),
 
   FreezeUniverse(com.yugabyte.yw.commissioner.tasks.subtasks.FreezeUniverse.class),
 

@@ -85,7 +85,7 @@ func ListStorageConfigurationUtil(cmd *cobra.Command, commandCall, storageCode s
 		if util.IsOutputType("table") {
 			logrus.Infoln("No storage configurations found\n")
 		} else {
-			logrus.Infoln("{}\n")
+			logrus.Infoln("[]\n")
 		}
 		return
 	}

@@ -242,7 +242,9 @@ public class UniverseUiOnlyController extends AuthenticatedController {
             Audit.TargetType.Universe,
             universeUUID.toString(),
             Audit.ActionType.Update,
-            taskUUID);
+            request.body().asJson(),
+            taskUUID,
+            Json.toJson(universe.getUniverseDetails()));
     return PlatformResults.withData(UniverseResp.create(universe, taskUUID, confGetter));
   }
 

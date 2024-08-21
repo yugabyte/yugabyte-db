@@ -20,6 +20,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/provider"
 )
 
+// ListProviderUtil executes the list provider command
 func ListProviderUtil(cmd *cobra.Command, commandCall, providerCode string) {
 	authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 
@@ -73,7 +74,7 @@ func ListProviderUtil(cmd *cobra.Command, commandCall, providerCode string) {
 		if util.IsOutputType("table") {
 			logrus.Infoln("No providers found\n")
 		} else {
-			logrus.Infoln("{}\n")
+			logrus.Infoln("[]\n")
 		}
 		return
 	}

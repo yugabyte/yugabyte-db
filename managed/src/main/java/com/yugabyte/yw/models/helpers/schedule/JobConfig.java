@@ -57,8 +57,17 @@ public interface JobConfig extends Serializable {
   @JsonIgnore
   default Date createNextStartTime(JobSchedule jobSchedule, boolean restart) {
     ScheduleConfig scheduleConfig = jobSchedule.getScheduleConfig();
+    Instant nextStartInstantFromNow =
+        Instant.now().plus(scheduleConfig.getIntervalSecs(), ChronoUnit.SECONDS);
+    if (scheduleConfig.getSnoozeUntil() != null
+        && scheduleConfig.getSnoozeUntil().after(new Date())) {
+      // Snooze is in effect.
+      if (scheduleConfig.getSnoozeUntil().toInstant().isAfter(nextStartInstantFromNow)) {
+        return scheduleConfig.getSnoozeUntil();
+      }
+    }
     if (restart) {
-      return Date.from(Instant.now().plus(scheduleConfig.getIntervalSecs(), ChronoUnit.SECONDS));
+      return Date.from(nextStartInstantFromNow);
     }
     Date lastTime = null;
     if (scheduleConfig.getType() == ScheduleType.FIXED_RATE) {
@@ -78,8 +87,8 @@ public interface JobConfig extends Serializable {
     Instant nextTime =
         lastTime.toInstant().plus(scheduleConfig.getIntervalSecs(), ChronoUnit.SECONDS);
     if (nextTime.isBefore(Instant.now())) {
-      // Expired long back.
-      return Date.from(Instant.now().plus(1, ChronoUnit.MINUTES));
+      // Expired long back, restart from now.
+      return Date.from(nextStartInstantFromNow);
     }
     return Date.from(nextTime);
   }

@@ -47,6 +47,7 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
       ImmutableList.of(
           TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.FreezeUniverse,
+          TaskType.UpdateConsistencyCheck,
           TaskType.UpdateUniverseState,
           TaskType.RollbackAutoFlags,
           TaskType.KubernetesCommandExecutor,
@@ -113,6 +114,7 @@ public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
   private static List<JsonNode> createUpgradeResult(boolean isSingleAZ) {
     String namespace = isSingleAZ ? "demo-universe" : "demo-universe-az-2";
     return ImmutableList.of(
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),

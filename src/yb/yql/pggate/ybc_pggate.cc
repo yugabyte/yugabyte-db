@@ -357,7 +357,9 @@ void AshCopyTServerSample(
   const auto& tserver_metadata = tserver_sample.metadata();
 
   cb_metadata->query_id = tserver_metadata.query_id();
-  cb_metadata->session_id = tserver_metadata.session_id();
+  // if the pid is zero, it's a tserver background activity
+  cb_metadata->pid = tserver_metadata.pid() ? tserver_metadata.pid()
+                                            : pgapi->GetLocalTServerPid();
   cb_metadata->database_id = tserver_metadata.database_id();
   cb_sample->rpc_request_id = tserver_metadata.rpc_request_id();
   cb_sample->encoded_wait_event_code =
@@ -590,34 +592,12 @@ const YBCPgTypeEntity *YBCPgFindTypeEntity(int type_oid) {
   return pgapi->FindTypeEntity(type_oid);
 }
 
-YBCPgDataType YBCPgGetType(const YBCPgTypeEntity *type_entity) {
-  if (type_entity) {
-    return type_entity->yb_type;
-  }
-  return YB_YQL_DATA_TYPE_UNKNOWN_DATA;
+int64_t YBCGetPgggateCurrentAllocatedBytes() {
+  return GetTCMallocCurrentAllocatedBytes();
 }
 
-bool YBCPgAllowForPrimaryKey(const YBCPgTypeEntity *type_entity) {
-  if (type_entity) {
-    return type_entity->allow_for_primary_key;
-  }
-  return false;
-}
-
-YBCStatus YBCGetPgggateCurrentAllocatedBytes(int64_t *consumption) {
-  *consumption = GetTCMallocCurrentAllocatedBytes();
-  return YBCStatusOK();
-}
-
-YBCStatus YbGetActualHeapSizeBytes(int64_t *consumption) {
-#ifdef YB_TCMALLOC_ENABLED
-    // Use GetRootMemTrackerConsumption instead of directly accessing TCMalloc to avoid excess
-    // calls to TCMalloc on every memory allocation.
-    *consumption = pgapi ? pgapi->GetRootMemTrackerConsumption() : 0;
-#else
-    *consumption = 0;
-#endif
-    return YBCStatusOK();
+int64_t YBCGetActualHeapSizeBytes() {
+  return pgapi ? pgapi->GetRootMemTracker().consumption() : 0;
 }
 
 bool YBCTryMemConsume(int64_t bytes) {
@@ -852,11 +832,6 @@ YBCStatus YBCPgInvalidateTableCacheByTableId(const char *table_id) {
   const PgObjectId pg_object_id(table_id_str);
   pgapi->InvalidateTableCache(pg_object_id);
   return YBCStatusOK();
-}
-
-void YBCPgInvalidateTableCacheByRelfileNodeId(const YBCPgOid database_oid,
-                                              const YBCPgOid table_oid) {
-  pgapi->InvalidateTableCache(PgObjectId(database_oid, table_oid));
 }
 
 // Tablegroup Operations ---------------------------------------------------------------------------
@@ -2084,6 +2059,15 @@ void* YBCPgGetThreadLocalStrTokPtr() {
 
 void YBCPgSetThreadLocalStrTokPtr(char *new_pg_strtok_ptr) {
   PgSetThreadLocalStrTokPtr(new_pg_strtok_ptr);
+}
+
+YBCPgThreadLocalRegexpCache* YBCPgGetThreadLocalRegexpCache() {
+  return PgGetThreadLocalRegexpCache();
+}
+
+YBCPgThreadLocalRegexpCache* YBCPgInitThreadLocalRegexpCache(
+    size_t buffer_size, YBCPgThreadLocalRegexpCacheCleanup cleanup) {
+  return PgInitThreadLocalRegexpCache(buffer_size, cleanup);
 }
 
 void* YBCPgSetThreadLocalJumpBuffer(void* new_buffer) {

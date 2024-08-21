@@ -1156,7 +1156,6 @@ Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
   if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
     if (options.has_ash_metadata()) {
       wait_state->UpdateMetadataFromPB(options.ash_metadata());
-      wait_state->set_session_id(id_);
     }
   }
   auto ddl_mode = options.ddl_mode() || options.yb_non_ddl_txn_for_sys_tables_allowed();

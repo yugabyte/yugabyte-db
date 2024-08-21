@@ -148,6 +148,7 @@ class UniverseDetail extends Component {
         const providerUUID = primaryCluster?.userIntent?.provider;
         this.props.fetchSupportedReleases(providerUUID);
         this.props.fetchProviderRunTimeConfigs(providerUUID);
+        this.props.getUniverseLbState(uuid);
       });
 
       if (isDisabled(currentCustomer.data.features, 'universes.details.health')) {
@@ -171,6 +172,7 @@ class UniverseDetail extends Component {
     // Always refresh universe info on Overview tab
     if (prevProps.params.tab !== this.props.params.tab && this.props.params.tab === 'overview') {
       this.props.getUniverseInfo(currentUniverse.data.universeUUID);
+      this.props.getUniverseLbState(currentUniverse.data.universeUUID);
     }
     if (
       getPromiseState(currentUniverse).isSuccess() &&
@@ -271,7 +273,7 @@ class UniverseDetail extends Component {
       modal: { showModal, visibleModal },
       universe,
       tasks,
-      universe: { currentUniverse, supportedReleases },
+      universe: { currentUniverse, supportedReleases, universeLbState },
       showSoftwareUpgradesModal,
       showLinuxSoftwareUpgradeModal,
       showSoftwareUpgradesNewModal,
@@ -321,6 +323,7 @@ class UniverseDetail extends Component {
       universe?.currentUniverse?.data?.universeDetails?.clusters
     );
     const useSystemd = primaryCluster?.userIntent?.useSystemd;
+    const isYSQLEnabledInUniverse = primaryCluster?.userIntent?.enableYSQL;
     const isReadOnlyUniverse =
       getPromiseState(currentUniverse).isSuccess() &&
       currentUniverse.data.universeDetails.capability === 'READ_ONLY';
@@ -396,6 +399,11 @@ class UniverseDetail extends Component {
     const isK8OperatorBlocked =
       runtimeConfigs?.data?.configEntries?.find(
         (config) => config.key === RuntimeConfigKey.BLOCK_K8_OPERATOR
+      )?.value === 'true';
+
+    const isRollingUpradeMutlipleNodesEnabled =
+      runtimeConfigs?.data?.configEntries?.find(
+        (c) => c.key === RuntimeConfigKey.BATCH_ROLLING_UPGRADE_FEATURE_FLAG
       )?.value === 'true';
 
     const isAuditLogEnabled =
@@ -538,6 +546,7 @@ class UniverseDetail extends Component {
               updateAvailable={updateAvailable}
               showSoftwareUpgradesModal={showSoftwareUpgradesModal}
               isReleasesEnabled={isReleasesEnabled}
+              universeLbState={universeLbState}
             />
           </Tab.Pane>
         ),
@@ -677,7 +686,7 @@ class UniverseDetail extends Component {
       ...(isReadOnlyUniverse
         ? []
         : [
-            !isItKubernetesUniverse && isAuditLogEnabled && (
+            !isItKubernetesUniverse && isAuditLogEnabled && isYSQLEnabledInUniverse && (
               <Tab.Pane
                 eventKey={'db-audit-log'}
                 tabtitle="Logs"
@@ -704,7 +713,7 @@ class UniverseDetail extends Component {
               featureFlags.test.showReplicationSlots) && (
               <Tab.Pane
                 eventKey={'replication-slots'}
-                tabtitle="CDC Replication Slots"
+                tabtitle="CDC"
                 key="ReplicationSlots-tab"
                 mountOnEnter={true}
                 unmountOnExit={true}
@@ -1479,6 +1488,7 @@ class UniverseDetail extends Component {
           }}
           isGFlagMultilineConfEnabled={isGFlagMultilineConfEnabled}
           universeData={currentUniverse.data}
+          isRollingUpradeMutlipleNodesEnabled={isRollingUpradeMutlipleNodesEnabled}
         />
         <UpgradeLinuxVersionModal
           visible={showModal && visibleModal === 'linuxVersionUpgradeModal'}

@@ -163,7 +163,7 @@
       "x" : 0,
       "y" : 1
     },
-    "id" : 187,
+    "id" : 189,
     "interval" : null,
     "links" : [ ],
     "mappingType" : 2,
@@ -310,7 +310,7 @@
       "value" : "null"
     } ],
     "valueName" : "current",
-    "id" : 188
+    "id" : 190
   }, {
     "collapsed" : false,
     "datasource" : "$datasource",
@@ -323,7 +323,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "Container",
-    "id" : 189
+    "id" : 191
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -796,7 +796,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "Master",
-    "id" : 190
+    "id" : 192
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -2582,7 +2582,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "Master Advanced",
-    "id" : 191
+    "id" : 193
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -4306,7 +4306,7 @@
     "panels" : [ ],
     "type" : "row",
     "title" : "Misc",
-    "id" : 192
+    "id" : 194
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -6422,18 +6422,202 @@
       "y" : 319
     }
   }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : ""
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "HA Backup Lag",
+    "id" : 181,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "HA Backup Lag (Seconds)",
+      "expr" : "timestamp(yba_ha_last_backup_seconds{node_prefix=~\"$dbcluster\"}) - yba_ha_last_backup_seconds",
+      "refId" : "A"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 12,
+      "y" : 319
+    }
+  }, {
+    "aliasColors" : { },
+    "bars" : false,
+    "collapsed" : false,
+    "dashLength" : 10,
+    "dashes" : false,
+    "datasource" : "$datasource",
+    "fieldConfig" : {
+      "defaults" : {
+        "custom" : { }
+      },
+      "overrides" : [ ]
+    },
+    "fill" : 1,
+    "fillGradient" : 0,
+    "hiddenSeries" : false,
+    "legend" : {
+      "alignAsTable" : true,
+      "avg" : false,
+      "current" : true,
+      "max" : true,
+      "min" : false,
+      "show" : true,
+      "total" : false,
+      "values" : true
+    },
+    "lines" : true,
+    "linewidth" : 1,
+    "nullPointMode" : "null",
+    "options" : {
+      "dataLinks" : [ ]
+    },
+    "percentage" : false,
+    "pointradius" : 2,
+    "points" : false,
+    "renderer" : "flot",
+    "repeat" : null,
+    "repeatDirection" : "v",
+    "seriesOverrides" : [ ],
+    "spaceLength" : 10,
+    "stack" : false,
+    "steppedLine" : false,
+    "thresholds" : [ ],
+    "timeFrom" : null,
+    "timeRegions" : [ ],
+    "timeShift" : null,
+    "tooltip" : {
+      "shared" : true,
+      "sort" : 0,
+      "value_type" : "individual"
+    },
+    "type" : "graph",
+    "xaxis" : {
+      "buckets" : null,
+      "mode" : "time",
+      "name" : null,
+      "show" : true,
+      "values" : [ ]
+    },
+    "yaxes" : [ {
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : true,
+      "format" : ""
+    }, {
+      "format" : "short",
+      "label" : null,
+      "logBase" : 1,
+      "max" : null,
+      "min" : null,
+      "show" : false
+    } ],
+    "yaxis" : {
+      "align" : false,
+      "alignLevel" : null
+    },
+    "title" : "HA Last Backup Size",
+    "id" : 182,
+    "targets" : [ {
+      "hide" : false,
+      "legendFormat" : "HA Last Backup Size (MB)",
+      "expr" : "yba_ha_last_backup_size_mb{node_prefix=~\"$dbcluster\"}",
+      "refId" : "A"
+    } ],
+    "gridPos" : {
+      "w" : 12,
+      "h" : 9,
+      "x" : 0,
+      "y" : 328
+    }
+  }, {
     "collapsed" : false,
     "datasource" : "$datasource",
     "gridPos" : {
       "w" : 24,
       "h" : 1,
       "x" : 0,
-      "y" : 320
+      "y" : 329
     },
     "panels" : [ ],
     "type" : "row",
     "title" : "Node Metrics",
-    "id" : 193
+    "id" : 195
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -6534,7 +6718,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 320
+      "y" : 329
     }
   }, {
     "aliasColors" : { },
@@ -6626,7 +6810,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 329
+      "y" : 338
     }
   }, {
     "aliasColors" : { },
@@ -6718,7 +6902,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 329
+      "y" : 338
     }
   }, {
     "aliasColors" : { },
@@ -6815,7 +6999,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 338
+      "y" : 347
     }
   }, {
     "aliasColors" : { },
@@ -6907,7 +7091,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 338
+      "y" : 347
     }
   }, {
     "aliasColors" : { },
@@ -6999,7 +7183,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 347
+      "y" : 356
     }
   }, {
     "aliasColors" : { },
@@ -7091,7 +7275,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 347
+      "y" : 356
     }
   }, {
     "aliasColors" : { },
@@ -7183,7 +7367,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 356
+      "y" : 365
     }
   }, {
     "aliasColors" : { },
@@ -7285,7 +7469,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 356
+      "y" : 365
     }
   }, {
     "aliasColors" : { },
@@ -7382,7 +7566,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 365
+      "y" : 374
     }
   }, {
     "aliasColors" : { },
@@ -7474,7 +7658,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 365
+      "y" : 374
     }
   }, {
     "aliasColors" : { },
@@ -7566,7 +7750,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 374
+      "y" : 383
     }
   }, {
     "aliasColors" : { },
@@ -7673,7 +7857,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 374
+      "y" : 383
     }
   }, {
     "aliasColors" : { },
@@ -7770,7 +7954,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 383
+      "y" : 392
     }
   }, {
     "aliasColors" : { },
@@ -7867,7 +8051,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 383
+      "y" : 392
     }
   }, {
     "aliasColors" : { },
@@ -7964,7 +8148,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 392
+      "y" : 401
     }
   }, {
     "aliasColors" : { },
@@ -8056,7 +8240,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 392
+      "y" : 401
     }
   }, {
     "aliasColors" : { },
@@ -8148,7 +8332,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 401
+      "y" : 410
     }
   }, {
     "aliasColors" : { },
@@ -8250,7 +8434,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 401
+      "y" : 410
     }
   }, {
     "collapsed" : false,
@@ -8259,12 +8443,12 @@
       "w" : 24,
       "h" : 1,
       "x" : 0,
-      "y" : 402
+      "y" : 411
     },
     "panels" : [ ],
     "type" : "row",
     "title" : "Otel Collector",
-    "id" : 194
+    "id" : 196
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -8355,7 +8539,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 402
+      "y" : 411
     }
   }, {
     "aliasColors" : { },
@@ -8447,7 +8631,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 411
+      "y" : 420
     }
   }, {
     "aliasColors" : { },
@@ -8539,7 +8723,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 411
+      "y" : 420
     }
   }, {
     "aliasColors" : { },
@@ -8631,7 +8815,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 420
+      "y" : 429
     }
   }, {
     "aliasColors" : { },
@@ -8723,7 +8907,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 420
+      "y" : 429
     }
   }, {
     "collapsed" : false,
@@ -8732,12 +8916,12 @@
       "w" : 24,
       "h" : 1,
       "x" : 0,
-      "y" : 421
+      "y" : 430
     },
     "panels" : [ ],
     "type" : "row",
     "title" : "RocksDB",
-    "id" : 195
+    "id" : 197
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -8828,7 +9012,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 421
+      "y" : 430
     }
   }, {
     "aliasColors" : { },
@@ -8920,7 +9104,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 430
+      "y" : 439
     }
   }, {
     "aliasColors" : { },
@@ -9012,7 +9196,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 430
+      "y" : 439
     }
   }, {
     "aliasColors" : { },
@@ -9114,7 +9298,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 439
+      "y" : 448
     }
   }, {
     "aliasColors" : { },
@@ -9211,7 +9395,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 439
+      "y" : 448
     }
   }, {
     "aliasColors" : { },
@@ -9308,7 +9492,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 448
+      "y" : 457
     }
   }, {
     "aliasColors" : { },
@@ -9405,7 +9589,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 448
+      "y" : 457
     }
   }, {
     "aliasColors" : { },
@@ -9502,7 +9686,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 457
+      "y" : 466
     }
   }, {
     "aliasColors" : { },
@@ -9594,7 +9778,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 457
+      "y" : 466
     }
   }, {
     "aliasColors" : { },
@@ -9686,7 +9870,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 466
+      "y" : 475
     }
   }, {
     "aliasColors" : { },
@@ -9778,7 +9962,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 466
+      "y" : 475
     }
   }, {
     "aliasColors" : { },
@@ -9870,7 +10054,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 475
+      "y" : 484
     }
   }, {
     "aliasColors" : { },
@@ -9962,7 +10146,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 475
+      "y" : 484
     }
   }, {
     "aliasColors" : { },
@@ -10054,7 +10238,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 484
+      "y" : 493
     }
   }, {
     "aliasColors" : { },
@@ -10146,7 +10330,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 484
+      "y" : 493
     }
   }, {
     "aliasColors" : { },
@@ -10238,7 +10422,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 493
+      "y" : 502
     }
   }, {
     "aliasColors" : { },
@@ -10355,7 +10539,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 493
+      "y" : 502
     }
   }, {
     "aliasColors" : { },
@@ -10457,7 +10641,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 502
+      "y" : 511
     }
   }, {
     "aliasColors" : { },
@@ -10559,7 +10743,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 502
+      "y" : 511
     }
   }, {
     "aliasColors" : { },
@@ -10651,7 +10835,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 511
+      "y" : 520
     }
   }, {
     "aliasColors" : { },
@@ -10743,7 +10927,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 511
+      "y" : 520
     }
   }, {
     "aliasColors" : { },
@@ -10835,7 +11019,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 520
+      "y" : 529
     }
   }, {
     "aliasColors" : { },
@@ -10942,7 +11126,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 520
+      "y" : 529
     }
   }, {
     "collapsed" : false,
@@ -10951,12 +11135,12 @@
       "w" : 24,
       "h" : 1,
       "x" : 0,
-      "y" : 521
+      "y" : 530
     },
     "panels" : [ ],
     "type" : "row",
     "title" : "Tablet Server",
-    "id" : 196
+    "id" : 198
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -11047,7 +11231,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 521
+      "y" : 530
     }
   }, {
     "aliasColors" : { },
@@ -11139,7 +11323,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 530
+      "y" : 539
     }
   }, {
     "aliasColors" : { },
@@ -11231,7 +11415,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 530
+      "y" : 539
     }
   }, {
     "aliasColors" : { },
@@ -11323,7 +11507,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 539
+      "y" : 548
     }
   }, {
     "aliasColors" : { },
@@ -11420,7 +11604,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 539
+      "y" : 548
     }
   }, {
     "aliasColors" : { },
@@ -11512,7 +11696,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 548
+      "y" : 557
     }
   }, {
     "aliasColors" : { },
@@ -11614,7 +11798,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 548
+      "y" : 557
     }
   }, {
     "aliasColors" : { },
@@ -11706,7 +11890,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 557
+      "y" : 566
     }
   }, {
     "aliasColors" : { },
@@ -11798,7 +11982,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 557
+      "y" : 566
     }
   }, {
     "aliasColors" : { },
@@ -11905,7 +12089,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 566
+      "y" : 575
     }
   }, {
     "aliasColors" : { },
@@ -11997,7 +12181,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 566
+      "y" : 575
     }
   }, {
     "aliasColors" : { },
@@ -12099,7 +12283,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 575
+      "y" : 584
     }
   }, {
     "aliasColors" : { },
@@ -12201,7 +12385,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 575
+      "y" : 584
     }
   }, {
     "aliasColors" : { },
@@ -12298,7 +12482,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 584
+      "y" : 593
     }
   }, {
     "aliasColors" : { },
@@ -12395,7 +12579,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 584
+      "y" : 593
     }
   }, {
     "aliasColors" : { },
@@ -12497,7 +12681,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 593
+      "y" : 602
     }
   }, {
     "aliasColors" : { },
@@ -12599,7 +12783,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 593
+      "y" : 602
     }
   }, {
     "aliasColors" : { },
@@ -12691,7 +12875,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 602
+      "y" : 611
     }
   }, {
     "aliasColors" : { },
@@ -12783,7 +12967,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 602
+      "y" : 611
     }
   }, {
     "aliasColors" : { },
@@ -12875,7 +13059,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 611
+      "y" : 620
     }
   }, {
     "aliasColors" : { },
@@ -12977,7 +13161,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 611
+      "y" : 620
     }
   }, {
     "aliasColors" : { },
@@ -13079,7 +13263,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 620
+      "y" : 629
     }
   }, {
     "aliasColors" : { },
@@ -13176,7 +13360,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 620
+      "y" : 629
     }
   }, {
     "aliasColors" : { },
@@ -13268,7 +13452,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 629
+      "y" : 638
     }
   }, {
     "aliasColors" : { },
@@ -13370,7 +13554,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 629
+      "y" : 638
     }
   }, {
     "aliasColors" : { },
@@ -13462,7 +13646,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 638
+      "y" : 647
     }
   }, {
     "aliasColors" : { },
@@ -13554,7 +13738,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 638
+      "y" : 647
     }
   }, {
     "aliasColors" : { },
@@ -13646,7 +13830,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 647
+      "y" : 656
     }
   }, {
     "aliasColors" : { },
@@ -13738,7 +13922,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 647
+      "y" : 656
     }
   }, {
     "aliasColors" : { },
@@ -13840,7 +14024,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 656
+      "y" : 665
     }
   }, {
     "aliasColors" : { },
@@ -13932,7 +14116,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 656
+      "y" : 665
     }
   }, {
     "aliasColors" : { },
@@ -14029,7 +14213,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 665
+      "y" : 674
     }
   }, {
     "aliasColors" : { },
@@ -14121,7 +14305,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 665
+      "y" : 674
     }
   }, {
     "aliasColors" : { },
@@ -14213,7 +14397,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 674
+      "y" : 683
     }
   }, {
     "aliasColors" : { },
@@ -14305,7 +14489,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 674
+      "y" : 683
     }
   }, {
     "aliasColors" : { },
@@ -14397,7 +14581,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 683
+      "y" : 692
     }
   }, {
     "aliasColors" : { },
@@ -14489,7 +14673,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 683
+      "y" : 692
     }
   }, {
     "collapsed" : false,
@@ -14498,12 +14682,12 @@
       "w" : 24,
       "h" : 1,
       "x" : 0,
-      "y" : 684
+      "y" : 693
     },
     "panels" : [ ],
     "type" : "row",
     "title" : "YCQL Ops & Latency",
-    "id" : 197
+    "id" : 199
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -14604,7 +14788,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 684
+      "y" : 693
     }
   }, {
     "aliasColors" : { },
@@ -14721,7 +14905,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 693
+      "y" : 702
     }
   }, {
     "aliasColors" : { },
@@ -14838,7 +15022,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 693
+      "y" : 702
     }
   }, {
     "aliasColors" : { },
@@ -14955,7 +15139,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 702
+      "y" : 711
     }
   }, {
     "aliasColors" : { },
@@ -15072,7 +15256,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 702
+      "y" : 711
     }
   }, {
     "aliasColors" : { },
@@ -15179,7 +15363,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 711
+      "y" : 720
     }
   }, {
     "aliasColors" : { },
@@ -15271,7 +15455,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 711
+      "y" : 720
     }
   }, {
     "aliasColors" : { },
@@ -15363,7 +15547,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 720
+      "y" : 729
     }
   }, {
     "aliasColors" : { },
@@ -15455,7 +15639,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 720
+      "y" : 729
     }
   }, {
     "aliasColors" : { },
@@ -15547,7 +15731,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 729
+      "y" : 738
     }
   }, {
     "aliasColors" : { },
@@ -15639,7 +15823,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 729
+      "y" : 738
     }
   }, {
     "collapsed" : false,
@@ -15648,12 +15832,12 @@
       "w" : 24,
       "h" : 1,
       "x" : 0,
-      "y" : 730
+      "y" : 739
     },
     "panels" : [ ],
     "type" : "row",
     "title" : "YEDIS Ops & Latency",
-    "id" : 198
+    "id" : 200
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -15744,7 +15928,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 730
+      "y" : 739
     }
   }, {
     "aliasColors" : { },
@@ -15891,7 +16075,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 739
+      "y" : 748
     }
   }, {
     "aliasColors" : { },
@@ -16023,7 +16207,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 739
+      "y" : 748
     }
   }, {
     "aliasColors" : { },
@@ -16140,7 +16324,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 748
+      "y" : 757
     }
   }, {
     "aliasColors" : { },
@@ -16252,7 +16436,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 748
+      "y" : 757
     }
   }, {
     "aliasColors" : { },
@@ -16399,7 +16583,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 757
+      "y" : 766
     }
   }, {
     "aliasColors" : { },
@@ -16506,7 +16690,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 757
+      "y" : 766
     }
   }, {
     "aliasColors" : { },
@@ -16608,7 +16792,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 766
+      "y" : 775
     }
   }, {
     "aliasColors" : { },
@@ -16700,7 +16884,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 766
+      "y" : 775
     }
   }, {
     "aliasColors" : { },
@@ -16847,7 +17031,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 775
+      "y" : 784
     }
   }, {
     "aliasColors" : { },
@@ -16979,7 +17163,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 775
+      "y" : 784
     }
   }, {
     "aliasColors" : { },
@@ -17096,7 +17280,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 784
+      "y" : 793
     }
   }, {
     "aliasColors" : { },
@@ -17208,7 +17392,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 784
+      "y" : 793
     }
   }, {
     "aliasColors" : { },
@@ -17355,7 +17539,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 793
+      "y" : 802
     }
   }, {
     "aliasColors" : { },
@@ -17462,7 +17646,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 793
+      "y" : 802
     }
   }, {
     "aliasColors" : { },
@@ -17554,7 +17738,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 802
+      "y" : 811
     }
   }, {
     "aliasColors" : { },
@@ -17646,7 +17830,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 802
+      "y" : 811
     }
   }, {
     "aliasColors" : { },
@@ -17738,7 +17922,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 811
+      "y" : 820
     }
   }, {
     "aliasColors" : { },
@@ -17830,7 +18014,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 811
+      "y" : 820
     }
   }, {
     "aliasColors" : { },
@@ -17922,7 +18106,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 820
+      "y" : 829
     }
   }, {
     "aliasColors" : { },
@@ -18014,7 +18198,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 820
+      "y" : 829
     }
   }, {
     "collapsed" : false,
@@ -18023,12 +18207,12 @@
       "w" : 24,
       "h" : 1,
       "x" : 0,
-      "y" : 821
+      "y" : 830
     },
     "panels" : [ ],
     "type" : "row",
     "title" : "YSQL Ops & Latency",
-    "id" : 199
+    "id" : 201
   }, {
     "aliasColors" : { },
     "bars" : false,
@@ -18108,7 +18292,7 @@
       "alignLevel" : null
     },
     "title" : "Total YSQL Connections",
-    "id" : 181,
+    "id" : 183,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Total",
@@ -18124,7 +18308,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 821
+      "y" : 830
     }
   }, {
     "aliasColors" : { },
@@ -18205,7 +18389,7 @@
       "alignLevel" : null
     },
     "title" : "Total YSQL Connections / Sec",
-    "id" : 182,
+    "id" : 184,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Rejected",
@@ -18221,7 +18405,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 830
+      "y" : 839
     }
   }, {
     "aliasColors" : { },
@@ -18302,7 +18486,7 @@
       "alignLevel" : null
     },
     "title" : "Total YSQL Ops / Sec",
-    "id" : 183,
+    "id" : 185,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Begin",
@@ -18333,7 +18517,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 830
+      "y" : 839
     }
   }, {
     "aliasColors" : { },
@@ -18414,7 +18598,7 @@
       "alignLevel" : null
     },
     "title" : "Total YSQL Ops / Sec",
-    "id" : 184,
+    "id" : 186,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Insert",
@@ -18440,7 +18624,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 839
+      "y" : 848
     }
   }, {
     "aliasColors" : { },
@@ -18521,7 +18705,7 @@
       "alignLevel" : null
     },
     "title" : "YSQL Advanced Op Latency (Avg)",
-    "id" : 185,
+    "id" : 187,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Rollback",
@@ -18552,7 +18736,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 12,
-      "y" : 839
+      "y" : 848
     }
   }, {
     "aliasColors" : { },
@@ -18633,7 +18817,7 @@
       "alignLevel" : null
     },
     "title" : "YSQL Op Latency (Avg)",
-    "id" : 186,
+    "id" : 188,
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Delete",
@@ -18659,7 +18843,7 @@
       "w" : 12,
       "h" : 9,
       "x" : 0,
-      "y" : 848
+      "y" : 857
     }
   } ]
 }

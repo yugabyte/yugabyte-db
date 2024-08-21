@@ -71,6 +71,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
     setCloudNodeUuids(universe);
     // Update on-prem node UUIDs.
     updateOnPremNodeUuidsOnTaskParams(true /* commit changes */);
+    setCommunicationPortsForNodes(true);
     // Set the prepared data to universe in-memory.
     updateUniverseNodesAndSettings(universe, taskParams(), false);
     for (Cluster cluster : taskParams().clusters) {

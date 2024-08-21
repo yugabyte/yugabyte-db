@@ -114,6 +114,7 @@ set(MASTER_SRCS
   mini_master.cc
   master_snapshot_coordinator.cc
   multi_step_monitored_task.cc
+  object_lock.cc
   post_tablet_create_task_base.cc
   restoration_state.cc
   restore_sys_catalog_state.cc
@@ -150,7 +151,7 @@ set(MASTER_SRCS
   xcluster/xcluster_source_manager.cc
   xcluster/xcluster_target_manager.cc
   xcluster/xcluster_universe_replication_alter_helper.cc
-  xcluster/xcluster_universe_replication_setup_helper.cc
+  xcluster/xcluster_inbound_replication_group_setup_task.cc
   xrepl_catalog_manager.cc
   yql_aggregates_vtable.cc
   yql_auth_resource_role_permissions_index.cc
@@ -172,10 +173,12 @@ set(MASTER_SRCS
   yql_virtual_table.cc
   yql_vtable_iterator.cc
   ysql_backends_manager.cc
+  ysql_ddl_handler.cc
+  ysql_ddl_verification_task.cc
+  ysql_sequence_util.cc
   ysql_tablegroup_manager.cc
   ysql_tablespace_manager.cc
-  ysql_ddl_handler.cc
-  ysql_ddl_verification_task.cc)
+)
 
 set(MASTER_DEPS
   yb_common

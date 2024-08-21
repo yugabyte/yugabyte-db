@@ -7,9 +7,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
 import com.google.api.client.googleapis.json.GoogleJsonResponseException;
+import com.google.api.client.http.HttpBackOffUnsuccessfulResponseHandler;
+import com.google.api.client.http.HttpHeaders;
+import com.google.api.client.http.HttpRequest;
 import com.google.api.client.http.HttpRequestInitializer;
 import com.google.api.client.http.HttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
+import com.google.api.client.util.ExponentialBackOff;
 import com.google.api.services.cloudresourcemanager.CloudResourceManager;
 import com.google.api.services.cloudresourcemanager.model.TestIamPermissionsRequest;
 import com.google.api.services.cloudresourcemanager.model.TestIamPermissionsResponse;
@@ -38,7 +42,6 @@ import com.google.api.services.compute.model.NetworkList;
 import com.google.api.services.compute.model.Operation;
 import com.google.api.services.compute.model.SubnetworkList;
 import com.google.api.services.compute.model.TCPHealthCheck;
-import com.google.auth.http.HttpCredentialsAdapter;
 import com.google.auth.oauth2.ComputeEngineCredentials;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.yugabyte.yw.cloud.CloudAPI;
@@ -53,6 +56,7 @@ import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.net.URI;
 import java.security.GeneralSecurityException;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -392,12 +396,49 @@ public class GCPProjectApiClient {
           GoogleCredentials.fromStream(
               new ByteArrayInputStream(mapper.writeValueAsBytes(gceCreds)));
     }
-    requestInitializer = new HttpCredentialsAdapter(credentials);
+    requestInitializer = getHttpRequestInitializerWithBackoff();
     httpTransport = GoogleNetHttpTransport.newTrustedTransport();
     // Create Compute Engine object.
     return new Compute.Builder(httpTransport, GsonFactory.getDefaultInstance(), requestInitializer)
         .setApplicationName("")
         .build();
+  }
+
+  /**
+   * Build a custom HttpRequestInitializer which retries Http requests on 5xx server errors via a
+   * handler. Rest of the logic is same as original library code here :
+   * https://github.com/googleapis/google-auth-library-java/blob/
+   * d42f30acae7c7bd81afbecbfa83ebde5c6db931a/oauth2_http/java/com/
+   * google/auth/http/HttpCredentialsAdapter.java#L85
+   */
+  private HttpRequestInitializer getHttpRequestInitializerWithBackoff() {
+    return new HttpRequestInitializer() {
+      @Override
+      public void initialize(HttpRequest request) throws IOException {
+        HttpBackOffUnsuccessfulResponseHandler handler =
+            new HttpBackOffUnsuccessfulResponseHandler(new ExponentialBackOff());
+        request.setUnsuccessfulResponseHandler(handler);
+
+        if (!credentials.hasRequestMetadata()) {
+          return;
+        }
+        HttpHeaders requestHeaders = request.getHeaders();
+        URI uri = null;
+        if (request.getUrl() != null) {
+          uri = request.getUrl().toURI();
+        }
+        Map<String, List<String>> credentialHeaders = credentials.getRequestMetadata(uri);
+        if (credentialHeaders == null) {
+          return;
+        }
+        for (Map.Entry<String, List<String>> entry : credentialHeaders.entrySet()) {
+          String headerName = entry.getKey();
+          List<String> requestValues = new ArrayList<>();
+          requestValues.addAll(entry.getValue());
+          requestHeaders.put(headerName, requestValues);
+        }
+      }
+    };
   }
 
   /**

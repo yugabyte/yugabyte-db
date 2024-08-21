@@ -49,8 +49,7 @@ To open the local `ysqlsh` CLI and access your YugabyteDB cluster, run `ysqlsh` 
 $ ./bin/ysqlsh -h 127.0.0.1 -p 5433 -U yugabyte "sslmode=require"
 ```
 
-```
-$ ./bin/ysqlsh
+```output
 ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
 SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
 Type "help" for help.
@@ -60,7 +59,7 @@ yugabyte=#
 
 ## yb-admin
 
-To enable `yb-admin` to connect with a cluster having TLS enabled, pass in the extra argument of `certs_dir_name` with the directory location where the root certificate is present. The `yb-admin` tool is present on the cluster node in the `~/master/bin/` directory. The `~/yugabyte-tls-config` directory on the cluster node contains all the certificates.
+To enable yb-admin to connect with a cluster having TLS enabled, pass in the extra argument of `certs_dir_name` with the directory location where the root certificate is present. The yb-admin tool is present on the cluster node in the `~/master/bin/` directory. The `~/yugabyte-tls-config` directory on the cluster node contains all the certificates.
 
 For example, the following command lists the master information for the TLS-enabled cluster:
 
@@ -71,11 +70,11 @@ export MASTERS=node1:7100,node2:7100,node3:7100
 
 You should see the following output format:
 
-```sh
-Master UUID	RPC Host/Port	State	Role
-UUID_1 		node1:7100  	ALIVE 	FOLLOWER
-UUID_2		node2:7100     	ALIVE 	LEADER
-UUID_3 		node3:7100     	ALIVE 	FOLLOWER
+```output
+Master UUID RPC Host/Port State Role
+UUID_1    node1:7100      ALIVE FOLLOWER
+UUID_2    node2:7100      ALIVE LEADER
+UUID_3    node3:7100      ALIVE FOLLOWER
 ```
 
 ## ycqlsh
@@ -102,7 +101,7 @@ $ ./bin/ycqlsh --ssl
 
 You should see the following output:
 
-```sql
+```output
 Connected to local cluster at X.X.X.X:9042.
 [ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.
@@ -132,7 +131,7 @@ $ ./bin/ycqlsh 127.0.0.2 9042 --ssl
 
 You should see the following output:
 
-```sql
+```output
 Connected to local cluster at X.X.X.X:9042.
 [ycqlsh 5.0.1 | Cassandra 3.9-SNAPSHOT | CQL spec 3.4.2 | Native protocol v4]
 Use HELP for help.

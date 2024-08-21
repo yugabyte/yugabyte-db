@@ -30,7 +30,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -82,10 +81,7 @@ public class AutoMasterFailoverTest extends FakeDBApplication {
     when(mockMasterHeartbeatDelaysResponse.hasError()).thenReturn(false);
 
     when(mockRuntimeConfGetter.getConfForScope(
-            eq(defaultUniverse), eq(UniverseConfKeys.autoMasterFailoverMaxMasterFollowerLag)))
-        .thenReturn(Duration.ofMinutes(10));
-    when(mockRuntimeConfGetter.getConfForScope(
-            eq(defaultUniverse), eq(UniverseConfKeys.autoMasterFailoverMaxMasterHeartbeatDelay)))
+            eq(defaultUniverse), eq(UniverseConfKeys.autoMasterFailoverFollowerLagSoftThreshold)))
         .thenReturn(Duration.ofMinutes(10));
 
     mockListMastersResponse = mock(ListMastersResponse.class);
@@ -133,9 +129,9 @@ public class AutoMasterFailoverTest extends FakeDBApplication {
 
   @Test
   public void testNoFailedMasters() throws Exception {
-    Set<String> failedMasters =
-        automatedMasterFailover.getFailedMastersForUniverse(defaultUniverse, mockYbClient);
-    assertEquals(0, failedMasters.size());
+    Map<String, Long> maybeFailedMasters =
+        automatedMasterFailover.getMaybeFailedMastersForUniverse(defaultUniverse, mockYbClient);
+    assertEquals(0, maybeFailedMasters.size());
   }
 
   @Test
@@ -145,25 +141,25 @@ public class AutoMasterFailoverTest extends FakeDBApplication {
     doReturn(followerLags)
         .when(automatedMasterFailover)
         .getFollowerLagMs(eq("127.0.0.2"), anyInt());
-    Set<String> failedMasters =
-        automatedMasterFailover.getFailedMastersForUniverse(defaultUniverse, mockYbClient);
-    assertEquals(1, failedMasters.size());
+    Map<String, Long> maybeFailedMasters =
+        automatedMasterFailover.getMaybeFailedMastersForUniverse(defaultUniverse, mockYbClient);
+    assertEquals(1, maybeFailedMasters.size());
   }
 
   @Test
   public void testMasterUnreachableDetection() throws Exception {
     mockMasterHeartbeatDelays.remove(masterUUIDs[1]);
-    Set<String> failedMasters =
-        automatedMasterFailover.getFailedMastersForUniverse(defaultUniverse, mockYbClient);
+    Map<String, Long> maybeFailedMasters =
+        automatedMasterFailover.getMaybeFailedMastersForUniverse(defaultUniverse, mockYbClient);
     // No action to be conservative.
-    assertEquals(0, failedMasters.size());
+    assertEquals(0, maybeFailedMasters.size());
   }
 
   @Test
   public void testMasterExceedingHeartbeatDelay() throws Exception {
     mockMasterHeartbeatDelays.put(masterUUIDs[1], 1000000L);
-    Set<String> failedMasters =
-        automatedMasterFailover.getFailedMastersForUniverse(defaultUniverse, mockYbClient);
-    assertEquals(1, failedMasters.size());
+    Map<String, Long> maybeFailedMasters =
+        automatedMasterFailover.getMaybeFailedMastersForUniverse(defaultUniverse, mockYbClient);
+    assertEquals(1, maybeFailedMasters.size());
   }
 }

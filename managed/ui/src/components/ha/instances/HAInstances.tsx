@@ -13,11 +13,11 @@ import { PromoteInstanceModal } from '../modals/PromoteInstanceModal';
 import { BadgeInstanceType } from '../compounds/BadgeInstanceType';
 import { AddStandbyInstanceModal } from '../modals/AddStandbyInstanceModal';
 import { formatDuration } from '../../../utils/Formatters';
+import { HAInstanceStatelabel } from '../compounds/HAInstanceStateLabel';
 
 import { HaInstanceState, HaPlatformInstance } from '../dtos';
 
 import './HAInstances.scss';
-import { HAInstanceStatelabel } from '../compounds/HAInstanceStateLabel';
 
 interface HAInstancesProps {
   // Dispatch

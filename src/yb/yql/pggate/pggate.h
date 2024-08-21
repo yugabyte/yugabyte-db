@@ -169,6 +169,7 @@ class PgApiImpl {
   Result<bool> CatalogVersionTableInPerdbMode();
   uint64_t GetSharedAuthKey() const;
   const unsigned char *GetLocalTserverUuid() const;
+  pid_t GetLocalTServerPid() const;
 
   Status NewTupleExpr(
     YBCPgStatement stmt, const YBCPgTypeEntity *tuple_type_entity,
@@ -753,12 +754,9 @@ class PgApiImpl {
       const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
       uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length);
 
-  MemTracker &GetMemTracker() { return *mem_tracker_; }
+  MemTracker& GetMemTracker() { return *mem_tracker_; }
 
-  MemTracker &GetRootMemTracker() { return *MemTracker::GetRootTracker(); }
-
-  // Using this function instead of GetRootMemTracker allows us to avoid copying a shared_pointer
-  int64_t GetRootMemTrackerConsumption() { return MemTracker::GetRootTrackerConsumption(); }
+  MemTracker& GetRootMemTracker() { return *MemTracker::GetRootTracker(); }
 
   void DumpSessionState(YBCPgSessionState* session_data);
 

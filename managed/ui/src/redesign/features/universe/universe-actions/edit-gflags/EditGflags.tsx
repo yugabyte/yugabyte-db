@@ -1,11 +1,11 @@
-import { FC, useState, useRef } from 'react';
+import { FC, useState, useRef, FocusEvent } from 'react';
 import _ from 'lodash';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { useUpdateEffect } from 'react-use';
 import { useForm, FormProvider } from 'react-hook-form';
 import { toast } from 'react-toastify';
-import { Box, Typography, makeStyles } from '@material-ui/core';
+import { Box, Tooltip, Typography, makeStyles } from '@material-ui/core';
 import { InheritRRDialog } from './InheritRRDialog';
 import { ModifiedFlagsDialog } from './ModifiedFlagsDialog';
 import { YBModal, YBToggle, YBRadioGroupField, YBInputField } from '../../../../components';
@@ -32,11 +32,14 @@ import { hasNecessaryPerm } from '../../../rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../rbac/ApiAndUserPermMapping';
 import { isPGEnabledFromIntent } from '../../universe-form/utils/helpers';
 
+import InfoMessageIcon from '../../../../../redesign/assets/info-message.svg';
+
 interface EditGflagsModalProps {
   open: boolean;
   onClose: () => void;
   universeData: Universe;
   isGFlagMultilineConfEnabled: boolean;
+  isRollingUpradeMutlipleNodesEnabled: boolean;
 }
 
 export const useStyles = makeStyles((theme) => ({
@@ -79,6 +82,14 @@ export const useStyles = makeStyles((theme) => ({
     alignItems: 'center',
     cursor: 'pointer',
     margin: theme.spacing(0, 1)
+  },
+  tooltip: {
+    marginLeft: theme.spacing(1)
+  },
+  gFlagUpdateOptions: {
+    '& .MuiFormControlLabel-root': {
+      alignItems: 'flex-start'
+    }
   }
 }));
 
@@ -86,18 +97,20 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
   open,
   onClose,
   universeData,
-  isGFlagMultilineConfEnabled
+  isGFlagMultilineConfEnabled,
+  isRollingUpradeMutlipleNodesEnabled
 }) => {
   const { t } = useTranslation();
-  const { universeDetails, universeUUID } = universeData;
+  const { universeDetails, universeUUID, rollMaxBatchSize } = universeData;
   const { nodePrefix } = universeDetails;
   const [isPrimary, setIsPrimary] = useState(true);
   const [openInheritRRModal, setOpenInheritRRModal] = useState(false);
   const [openWarningModal, setWarningModal] = useState(false);
   const classes = useStyles();
   const globalClasses = useFormMainStyles();
+  const asyncCluster = getAsyncCluster(universeDetails);
   const primaryCluster = _.cloneDeep(getPrimaryCluster(universeDetails));
-  const asyncCluster = _.cloneDeep(getAsyncCluster(universeDetails));
+  const asyncClusterCopy = _.cloneDeep(asyncCluster);
   const currentVersion = getCurrentVersion(universeDetails) || '';
   const { gFlags, asyncGflags, inheritFlagsFromPrimary } = transformToEditFlagsForm(universeData);
   const initialGflagSet = useRef({ gFlags, asyncGflags, inheritFlagsFromPrimary });
@@ -111,7 +124,8 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
       inheritFlagsFromPrimary: inheritFlagsFromPrimary ?? true,
       asyncGflags: asyncGflags,
       upgradeOption: UpgradeOptions.Rolling,
-      timeDelay: 180
+      timeDelay: 180,
+      numNodesToUpgradePrimary: 1
     },
     mode: 'onChange',
     reValidateMode: 'onChange'
@@ -123,6 +137,7 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
   const primaryFlags = watch('gFlags');
   const asyncFlags = watch('asyncGflags');
 
+  const isRollingUpgrade = upgradeOption === UpgradeOptions.Rolling;
   const isNotRuntime = () => {
     if (!isPrimary) return asyncFlags?.some((f) => !f?.tags?.includes('runtime'));
     else return primaryFlags.some((f) => !f?.tags?.includes('runtime'));
@@ -146,6 +161,13 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
         clusters: []
       };
 
+      if (isRollingUpradeMutlipleNodesEnabled && isRollingUpgrade) {
+        payload.rollMaxBatchSize = {
+          primaryBatchSize: values.numNodesToUpgradePrimary,
+          readReplicaBatchSize: values.numNodesToUpgradePrimary
+        };
+      }
+
       if (primaryCluster && !_.isEmpty(primaryCluster)) {
         const { masterGFlags, tserverGFlags } = transformFlagArrayToObject(gFlags);
         primaryCluster.userIntent.specificGFlags = {
@@ -162,17 +184,15 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
         delete primaryCluster.userIntent.tserverGFlags;
         payload.clusters = [primaryCluster];
       }
-      if (asyncCluster && !_.isEmpty(asyncCluster)) {
+      if (asyncClusterCopy && !_.isEmpty(asyncClusterCopy)) {
         if (inheritFlagsFromPrimary) {
-          asyncCluster.userIntent.specificGFlags = {
-            ...asyncCluster.userIntent.specificGFlags,
+          asyncClusterCopy.userIntent.specificGFlags = {
             inheritFromPrimary: true,
             perProcessFlags: {}
           };
         } else {
           const { tserverGFlags } = transformFlagArrayToObject(asyncGflags);
-          asyncCluster.userIntent.specificGFlags = {
-            ...asyncCluster.userIntent.specificGFlags,
+          asyncClusterCopy.userIntent.specificGFlags = {
             inheritFromPrimary: false,
             perProcessFlags: {
               value: {
@@ -181,9 +201,9 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
             }
           };
         }
-        delete asyncCluster.userIntent.masterGFlags;
-        delete asyncCluster.userIntent.tserverGFlags;
-        payload.clusters.push(asyncCluster);
+        delete asyncClusterCopy.userIntent.masterGFlags;
+        delete asyncClusterCopy.userIntent.tserverGFlags;
+        payload.clusters.push(asyncClusterCopy);
       }
       try {
         await api.upgradeGflags(payload, universeUUID);
@@ -207,24 +227,54 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
     if (inheritFromPrimary) setIsPrimary(true);
   }, [inheritFromPrimary]);
 
+  const handleNumNodeChangePrimary = (e: FocusEvent<HTMLInputElement>) => {
+    const fieldValue = (e.target.value as unknown) as number;
+    if (fieldValue > rollMaxBatchSize?.primaryBatchSize)
+      setValue('numNodesToUpgradePrimary', rollMaxBatchSize?.primaryBatchSize);
+    else if (fieldValue < 1) setValue('numNodesToUpgradePrimary', 1);
+    else setValue('numNodesToUpgradePrimary', fieldValue);
+  };
+
   const GFLAG_UPDATE_OPTIONS = [
     {
       value: UpgradeOptions.Rolling,
       label: (
-        <Box display="flex" flexDirection="row" alignItems="baseline">
+        <Box display="flex" flexDirection="column" alignItems="baseline">
           <div className="upgrade-radio-label"> {t('universeForm.gFlags.rollingMsg')}</div>
 
           <div className="gflag-delay">
             <span className="vr-line">|</span>
             {t('universeForm.gFlags.delayBetweenServers')}&nbsp;
-            <YBInputField
-              name="timeDelay"
-              type="number"
-              disabled={upgradeOption !== UpgradeOptions.Rolling}
-            />{' '}
+            <YBInputField name="timeDelay" type="number" disabled={!isRollingUpgrade} />
             &nbsp;
             {t('universeForm.gFlags.seconds')}
           </div>
+          {isRollingUpgrade && rollMaxBatchSize?.primaryBatchSize > 1 && (
+            <div className="gflag-num-nodes-upgrade">
+              <span className="vr-line">|</span>
+              {t('universeForm.gFlags.numNodesToRollingUpgrade')}&nbsp;
+              <YBInputField
+                name="numNodesToUpgradePrimary"
+                type="number"
+                inputProps={{
+                  min: 1,
+                  max: rollMaxBatchSize.primaryBatchSize,
+                  autoFocus: true,
+                  'data-testid': 'EditGFlags-NumNodesToRollingUpgrade'
+                }}
+                onChange={handleNumNodeChangePrimary}
+              />
+              <Tooltip
+                className={classes.tooltip}
+                title={t('universeForm.gFlags.rollingUpgradeMsg')}
+                arrow
+                placement="top"
+              >
+                <img src={InfoMessageIcon} alt="info" />
+              </Tooltip>
+              &nbsp;
+            </div>
+          )}
         </Box>
       )
     },
@@ -282,7 +332,7 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
           height="100%"
           data-testid="EditGflags-Modal"
         >
-          {asyncCluster && (
+          {asyncClusterCopy && (
             <Box className={classes.toggleContainer}>
               <Box flex={1} display="flex" flexDirection={'row'} alignItems={'center'}>
                 <YBToggle
@@ -307,7 +357,7 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
               <Box></Box>
             </Box>
           )}
-          {asyncCluster && !inheritFromPrimary && (
+          {asyncClusterCopy && !inheritFromPrimary && (
             <Box className={classes.tabMain}>
               <Box
                 onClick={() => setIsPrimary(true)}
@@ -340,7 +390,9 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
                 fieldPath={'gFlags'}
                 isReadReplica={false}
                 isReadOnly={!canEditGFlags}
-                tableMaxHeight={!asyncCluster ? '420px' : inheritFromPrimary ? '362px' : '296px'}
+                tableMaxHeight={
+                  !asyncClusterCopy ? '420px' : inheritFromPrimary ? '362px' : '296px'
+                }
                 isGFlagMultilineConfEnabled={isGFlagMultilineConfEnabled}
                 isPGSupported={isPGSupported}
               />
@@ -353,7 +405,9 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
                 fieldPath={'asyncGflags'}
                 isReadReplica={true}
                 isReadOnly={!canEditGFlags}
-                tableMaxHeight={!asyncCluster ? '412px' : inheritFromPrimary ? '354px' : '288px'}
+                tableMaxHeight={
+                  !asyncClusterCopy ? '412px' : inheritFromPrimary ? '354px' : '288px'
+                }
                 isGFlagMultilineConfEnabled={isGFlagMultilineConfEnabled}
                 isPGSupported={isPGSupported}
               />
@@ -369,6 +423,7 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
                 options={GFLAG_UPDATE_OPTIONS}
                 control={control}
                 orientation="vertical"
+                className={classes.gFlagUpdateOptions}
               />
             </div>
           </Box>

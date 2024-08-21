@@ -11381,8 +11381,7 @@ dumpCompositeType(Archive *fout, TypeInfo *tyinfo)
 		binary_upgrade_set_type_oids_by_type_oid(fout, q,
 												 tyinfo->dobj.catId.oid,
 												 false);
-		if (dopt->binary_upgrade)
-			binary_upgrade_set_pg_class_oids(fout, q, tyinfo->typrelid, false);
+		binary_upgrade_set_pg_class_oids(fout, q, tyinfo->typrelid, false);
 	}
 
 	qtypname = pg_strdup(fmtId(tyinfo->dobj.name));
@@ -15946,7 +15945,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 
 		appendPQExpBuffer(delq, "DROP VIEW %s;\n", qualrelname);
 
-		if (dopt->binary_upgrade)
+		if (dopt->binary_upgrade || dopt->include_yb_metadata)
 			binary_upgrade_set_pg_class_oids(fout, q,
 											 tbinfo->dobj.catId.oid, false);
 
@@ -16023,10 +16022,21 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 
 		appendPQExpBuffer(delq, "DROP %s %s;\n", reltypename, qualrelname);
 
-		if (dopt->binary_upgrade)
+		if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		{
 			binary_upgrade_set_pg_class_oids(fout, q,
 											 tbinfo->dobj.catId.oid, false);
+			/*
+			 * We may create a primary key index as part of the CREATE TABLE
+			 * statement we generate here; accordingly, set things up so we
+			 * will set its OID correctly in binary update mode.
+			 */
+			if (tbinfo->primaryKeyIndex)
+			{
+				IndxInfo *index = tbinfo->primaryKeyIndex;
+				binary_upgrade_set_pg_class_oids(fout, q,
+												 index->dobj.catId.oid, true);
+			}
 		}
 
 		/* Get the table properties from YB, if relevant. */
@@ -16223,7 +16233,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			bool parent_has_primary_key = false;
 			if (tbinfo->ispartition)
 			{
-				TableInfo  *parentRel = tbinfo->parents[0];
+				TableInfo  *parentRel = parents[0];
 				parent_has_primary_key = parentRel->primaryKeyIndex;
 			}
 
@@ -16905,7 +16915,7 @@ dumpIndex(Archive *fout, IndxInfo *indxinfo)
 		int			nstatcols;
 		int			nstatvals;
 
-		if (dopt->binary_upgrade)
+		if (dopt->binary_upgrade || dopt->include_yb_metadata)
 			binary_upgrade_set_pg_class_oids(fout, q,
 											 indxinfo->dobj.catId.oid, true);
 
@@ -17131,7 +17141,7 @@ dumpConstraint(Archive *fout, ConstraintInfo *coninfo)
 			exit_horribly(NULL, "missing index for constraint \"%s\"\n",
 						  coninfo->dobj.name);
 
-		if (dopt->binary_upgrade)
+		if (dopt->binary_upgrade || dopt->include_yb_metadata)
 			binary_upgrade_set_pg_class_oids(fout, q,
 											 indxinfo->dobj.catId.oid, true);
 
@@ -17633,9 +17643,8 @@ dumpSequence(Archive *fout, TableInfo *tbinfo)
 
 	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 	{
-		if (dopt->binary_upgrade)
-			binary_upgrade_set_pg_class_oids(fout, query,
-											 tbinfo->dobj.catId.oid, false);
+		binary_upgrade_set_pg_class_oids(fout, query,
+										 tbinfo->dobj.catId.oid, false);
 		binary_upgrade_set_type_oids_by_rel_oid(fout, query,
 												tbinfo->dobj.catId.oid);
 	}

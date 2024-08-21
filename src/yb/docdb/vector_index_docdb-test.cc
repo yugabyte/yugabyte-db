@@ -38,8 +38,9 @@ void VectorIndexDocDBTest::WriteSimple() {
   const HybridTime kHybridTime = HybridTime::FromMicros(1000);
   constexpr int kNumNodes = 3;
   const auto kNodes = Range(1, kNumNodes + 1);
+  FloatVectorIndexStorage storage(doc_db());
   rocksdb::WriteBatch write_batch;
-  FloatVectorIndexUpdate update(kHybridTime, write_batch);
+  FloatVectorIndexUpdate update(kHybridTime, write_batch, storage);
   for (int i : kNodes) {
     update.AddVector(i, GenVector(i));
   }
@@ -143,6 +144,50 @@ TEST_F(VectorIndexDocDBTest, Read) {
   ASSERT_EQ(vector, GenVector(5));
   neighbors = ASSERT_RESULT(storage.GetNeighbors(read_operation_data, 5, 0));
   ASSERT_EQ(neighbors, VectorNodeNeighbors({1, 2, 3}));
+}
+
+TEST_F(VectorIndexDocDBTest, ReadUpdate) {
+  WriteSimple();
+
+  const HybridTime kHybridTime = HybridTime::FromMicros(2000);
+
+  ReadOperationData read_operation_data = {
+    .deadline = CoarseTimePoint::max(),
+    .read_time = ReadHybridTime::SingleTime(kHybridTime),
+  };
+
+  FloatVectorIndexStorage storage(doc_db());
+
+  rocksdb::WriteBatch write_batch;
+  FloatVectorIndexUpdate update(kHybridTime, write_batch, storage);
+
+  update.AddVector(6, GenVector(6));
+  update.DeleteVector(4);
+  update.SetNeighbors(1, 0, {3, 4});
+  update.AddDirectedEdge(1, 5, 0);
+  update.DeleteDirectedEdge(1, 3, 0);
+  update.SetNeighbors(1, 10, {2, 3, 4, 5, 6});
+  update.AddDirectedEdge(2, 4, 0);
+  update.DeleteDirectedEdge(5, 2, 0);
+
+  for (int i = 1; i <= 6; ++i) {
+    SCOPED_TRACE(Format("Vertex id: $0", i));
+    auto vector = ASSERT_RESULT(update.GetVector(read_operation_data, i));
+    if (i != 3 && i != 4) {
+      ASSERT_EQ(vector, GenVector(i));
+    } else {
+      ASSERT_TRUE(vector.empty());
+    }
+  }
+
+  auto neighbors = ASSERT_RESULT(update.GetNeighbors(read_operation_data, 1, 0));
+  ASSERT_EQ(neighbors, VectorNodeNeighbors({4, 5}));
+  neighbors = ASSERT_RESULT(update.GetNeighbors(read_operation_data, 1, 10));
+  ASSERT_EQ(neighbors, VectorNodeNeighbors({2, 3, 4, 5, 6}));
+  neighbors = ASSERT_RESULT(update.GetNeighbors(read_operation_data, 2, 0));
+  ASSERT_EQ(neighbors, VectorNodeNeighbors({3, 4}));
+  neighbors = ASSERT_RESULT(update.GetNeighbors(read_operation_data, 5, 0));
+  ASSERT_EQ(neighbors, VectorNodeNeighbors({1, 3}));
 }
 
 }  // namespace yb::docdb

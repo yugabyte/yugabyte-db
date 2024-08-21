@@ -4,10 +4,12 @@
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
-import Select, { Styles } from 'react-select';
-import { Box, FormHelperText, useTheme } from '@material-ui/core';
+import Select, { components, OptionProps, Styles } from 'react-select';
+import { Box, FormHelperText, Typography, useTheme } from '@material-ui/core';
 import { FieldValues, useController, UseControllerProps } from 'react-hook-form';
+
 import { SelectComponents } from 'react-select/src/components';
+import { YBTooltip } from '../../../../../redesign/components';
 
 export type ReactSelectOption = { value: any; label: string; isDisabled?: boolean };
 export type ReactSelectGroupedOption = { label: string; options: ReactSelectOption[] };
@@ -84,7 +86,7 @@ export const YBReactSelectField = <T extends FieldValues>({
           onChange={handleChange}
           onBlur={field.onBlur}
           value={field.value}
-          components={components}
+          components={{ Option: Option, ...components }}
           options={options}
           isDisabled={isDisabled}
           placeholder={placeholder}
@@ -97,3 +99,22 @@ export const YBReactSelectField = <T extends FieldValues>({
     </Box>
   );
 };
+
+/**
+ * Customized React-Select Option which adds support for disabled option tooltip.
+ */
+export const Option = <T extends FieldValues>({ children, ...props }: OptionProps<T>) => (
+  <components.Option {...props}>
+    <YBTooltip
+      title={
+        props.isDisabled && props.data?.disabledReason ? (
+          <Typography variant="body2">{props.data.disabledReason}</Typography>
+        ) : (
+          ''
+        )
+      }
+    >
+      <div>{children}</div>
+    </YBTooltip>
+  </components.Option>
+);
