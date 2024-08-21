@@ -1,7 +1,7 @@
 ---
-title: Lightweight database clone
-headerTitle: Lightweight database clone
-linkTitle: Lightweight database clone
+title: Database clone
+headerTitle: Database clone
+linkTitle: Database clone
 description: Clone your database in YugabyteDB for data recovery, development, and testing.
 badges: tp
 menu:
@@ -30,12 +30,12 @@ You can instantly create an isolated copy of your production database for develo
 
 ## Enable database cloning
 
-To enable lightweight database cloning in a cluster, you set the YB-Master flag `enable_db_clone` to true. Additionally, as cloning is in {{<badge/tp>}}, the flag `enable_db_clone` should be added to the `allowed_preview_flags_csv`list.
+To enable database cloning in a cluster, you set the YB-Master flag `enable_db_clone` to true. Additionally, as cloning is in {{<badge/tp>}}, the flag `enable_db_clone` should be added to the `allowed_preview_flags_csv`list.
 
-**Using yb-ctl**: You can set these two flags using the `--master_flag` option of [yb-ctl](../../../admin/yb-ctl/) as follows:
+**Using yugabyted**: You can set these two flags using the `--master_flags` option of [yugabyted](../../../../reference/configuration/yugabyted/) as follows:
 
 ```sh
-./bin/yb-ctl create --rf=1 --master_flags "enable_db_clone=true,allowed_preview_flags_csv=enable_db_clone"
+./bin/yugabyted start --master_flags "allowed_preview_flags_csv={enable_db_clone},enable_db_clone=true"
 ```
 
 **Using yb-ts-cli**: You can set the runtime flags while the yb-master process is running using [set_flag](../../../admin/yb-ts-cli/#set-flag) option of [yb-ts-cli](../../../admin/yb-ts-cli/) as follows:
