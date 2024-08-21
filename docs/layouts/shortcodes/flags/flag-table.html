@@ -45,17 +45,17 @@
 
 <!-- <pre>{{ debug.Dump $data }}</pre> -->
 <!-- XML to table -->
-<table>
+<table class="sno-1">
 	<thead>
 		<tr>
-			<th>NAME</th>
+			<th style="text-align:right" >NAME</th>
 			<th>ATTRIBUTES</th>
 		</tr>
 	</thead>
 	<tbody>
 		{{ range $data.flag}}
 		<tr >
-			<td>{{ .name }}</td>
+			<td style="text-align:right">{{ .name }}</td>
 			<td>
 				<b>DEFAULT:</b> {{ or .default .target}} <br>
 				<b>TAGS:</b> {{ or .tags "N/A"}} <br>
