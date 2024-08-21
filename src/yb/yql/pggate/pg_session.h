@@ -468,7 +468,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   PgDocMetrics metrics_;
 
   const YBCPgCallbacks& pg_callbacks_;
-  const PgWaitEventWatcher::Starter wait_starter_;
 
   // Should write operations be buffered?
   bool buffering_enabled_ = false;

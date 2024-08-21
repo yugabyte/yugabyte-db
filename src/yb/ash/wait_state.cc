@@ -117,10 +117,16 @@ std::string GetWaitStateDescription(WaitStateCode code) {
       return "A YSQL backend is waiting for a catalog read from master.";
     case WaitStateCode::kIndexRead:
       return "A YSQL backend is waiting for a secondary index read from DocDB.";
-    case WaitStateCode::kStorageRead:
+    case WaitStateCode::kTableRead:
       return "A YSQL backend is waiting for a table read from DocDB.";
     case WaitStateCode::kStorageFlush:
       return "A YSQL backend is waiting for a table/index read/write from DocDB.";
+    case WaitStateCode::kCatalogWrite:
+      return "A YSQL backend is waiting for a catalog write from master.";
+    case WaitStateCode::kIndexWrite:
+      return "A YSQL backend is waiting for a secondary index write from DocDB.";
+    case WaitStateCode::kTableWrite:
+      return "A YSQL backend is waiting for a table write from DocDB.";
     case WaitStateCode::kOnCpu_Active:
       return "A rpc/task is being actively processed on a thread.";
     case WaitStateCode::kOnCpu_Passive:
@@ -490,8 +496,11 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
 
     case WaitStateCode::kCatalogRead:
     case WaitStateCode::kIndexRead:
-    case WaitStateCode::kStorageRead:
+    case WaitStateCode::kTableRead:
     case WaitStateCode::kStorageFlush:
+    case WaitStateCode::kCatalogWrite:
+    case WaitStateCode::kIndexWrite:
+    case WaitStateCode::kTableWrite:
       return WaitStateType::kNetwork;
 
     case WaitStateCode::kOnCpu_Active:
