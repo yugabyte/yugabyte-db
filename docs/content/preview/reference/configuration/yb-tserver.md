@@ -13,8 +13,6 @@ type: docs
 
 Use the yb-tserver binary and its flags to configure the [YB-TServer](../../../architecture/yb-tserver/) server. The yb-tserver executable file is located in the `bin` directory of YugabyteDB home.
 
-The following page describes the flags considered relevant to configuring YugabyteDB for production deployments. For a list of all flags, see [All YB-TServer flags](../all-flags-yb-tserver/).
-
 ## Syntax
 
 ```sh
@@ -46,6 +44,10 @@ Displays help on all flags.
 ##### --helpon
 
 Displays help on modules named by the specified flag value.
+
+## All flags
+
+The following sections describe the flags considered relevant to configuring YugabyteDB for production deployments. For a list of all flags, see [All YB-TServer flags](../all-flags-yb-tserver/).
 
 ## General flags
 
