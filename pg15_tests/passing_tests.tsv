@@ -33,6 +33,7 @@ JAVA	org.yb.pgsql.TestPgInsert
 JAVA	org.yb.pgsql.TestPgMisc#testVacuum
 JAVA	org.yb.pgsql.TestPgParallelReadIsolation
 JAVA	org.yb.pgsql.TestPgParallelSelect
+JAVA	org.yb.pgsql.TestPgPortalLeak
 JAVA	org.yb.pgsql.TestPgPrefetchControl#testBnlWithSizeLimit
 JAVA	org.yb.pgsql.TestPgPrefetchControl#testLimitPerformance
 JAVA	org.yb.pgsql.TestPgPrefetchControl#testSimplePrefetch
