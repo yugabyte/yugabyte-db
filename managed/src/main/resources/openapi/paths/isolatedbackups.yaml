@@ -1,0 +1,82 @@
+'/customers/{cUUID}/yba-backups':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: CreateYbaBackup
+    summary: Create YBA Backup
+    description: Trigger a one time backup of YBA to the desired storage location
+    tags:
+      - Isolated Backup
+    requestBody:
+      $ref: "../components/requestBodies/IsolatedBackupCreateReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: IsolatedBackup
+      auditTargetId: 'null'
+      auditActionType: Create
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/yba-backups/restore':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: RestoreYbaBackup
+    summary: Restore YBA Backup
+    description: Trigger a one time restore of YBA from the desired storage location
+    tags:
+      - Isolated Backup
+    requestBody:
+      $ref: "../components/requestBodies/IsolatedBackupRestoreReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: IsolatedBackup
+      auditTargetId: 'null'
+      auditActionType: Restore
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
