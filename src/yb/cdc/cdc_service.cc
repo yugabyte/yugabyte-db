@@ -412,10 +412,10 @@ class CDCServiceImpl::Impl {
     }
     it->commit_timestamp = timestamp;
     it->last_streamed_op_id = op_id;
-    it->schema_details_map = schema_details;
+    it->schema_details_map = std::move(schema_details);
   }
 
-  SchemaDetailsMap& GetOrAddSchema(
+  SchemaDetailsMap GetOrAddSchema(
       const TabletStreamInfo& producer_tablet, const bool need_schema_info) {
     std::lock_guard l(mutex_);
     auto it = cdc_state_metadata_.find(producer_tablet);
