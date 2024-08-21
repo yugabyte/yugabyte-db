@@ -29,7 +29,7 @@ PostgreSQL compatibility has two aspects:
 
 ## Enhanced Postgres Compatibility Mode
 
-To test and take advantage of features developed for PostgreSQL compatibility in YugabyteDB that are currently in {{<badge/ea>}}, you can enable Enhanced Postgres Compatibility Mode (EPCM). When this mode is turned on, YugabyteDB is configured to use all the latest features developed for feature and performance parity. EPCM is available in v2024.1 and later.
+To test and take advantage of features developed for PostgreSQL compatibility in YugabyteDB that are currently in {{<badge/ea>}}, you can enable Enhanced Postgres Compatibility Mode (EPCM). When this mode is turned on, YugabyteDB is configured to use all the latest features developed for feature and performance parity. EPCM is available in [v2024.1](/preview/releases/ybdb-releases/v2024.1/) and later.
 
 <!--Depending on the version of YugabyteDB, EPCM configures a different set of features as described in the following sections.-->
 
@@ -45,9 +45,9 @@ Conversely, if you are using EPCM on a universe, you cannot set any of the featu
 
 ### Features
 
-| Feature | Flag | EA | Included in EPCM |
+| Feature | Flag/Configuration Parameter | EA | Included in EPCM |
 | :--- | :--- | :--- | :--- |
-| Read committed | yb_enable_read_committed_isolation | v2.20 and 2024.1 | Yes |
+| Read committed | [yb_enable_read_committed_isolation](../../../reference/configuration/yb-tserver/#ysql-default-transaction-isolation) | v2.20 and 2024.1 | Yes |
 | Wait-on-conflict | [enable_wait_queues](../../../reference/configuration/yb-tserver/#enable-wait-queues) | v2024.1 | Yes |
 | Cost-based optimizer | [yb_enable_base_scans_cost_model](../../../reference/configuration/yb-tserver/#yb-enable-base-scans-cost-model) | v2.20 | Yes |
 | Batch nested loop join | [yb_enable_batchednl](../../../reference/configuration/yb-tserver/#yb-enable-batchednl) | v2.20 and 2024.1 | Yes |

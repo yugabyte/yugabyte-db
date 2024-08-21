@@ -781,6 +781,12 @@ Default: `READ COMMITTED` {{<badge/ea>}}
 
 Read Committed support is currently in [Early Access](/preview/releases/versioning/#feature-maturity). Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
 
+##### --yb_enable_read_committed_isolation
+
+Enables Read Committed Isolation. When set to false, the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation. See [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag for more details.
+
+Default: `false`
+
 ##### --ysql_disable_index_backfill
 
 Set this flag to `false` to enable online index backfill. When set to `false`, online index builds run while online, without failing other concurrent writes and traffic.
