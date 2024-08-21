@@ -95,22 +95,22 @@ xCluster DR targets one specific and common xCluster deployment model: [active-a
 
 - Unidirectional replication means that at any moment in time, replication traffic flows in one direction, and is configured (and enforced) to flow only in one direction.
 
-- Transactional SQL means that the application is using SQL (and not CQL), and write-ordering is guaranteed. Furthermore, transactions are guaranteed to be atomic.
+- Transactional SQL means that the application is using SQL (and not CQL), and write-ordering is guaranteed for reads on the target. Furthermore, transactions are guaranteed to be atomic.
 
 xCluster DR adds higher-level orchestration workflows to this deployment to make the end-to-end setup, switchover, and failover of the DR primary to DR replica simple and turnkey. This orchestration includes the following:
 
 - During setup, xCluster DR ensures that both universes have identical copies of the data (using backup and restore to synchronize), and configures the DR replica to be read-only.
 - During switchover, xCluster DR waits for all remaining changes on the DR primary to be replicated to the DR replica before switching over.
-- During both switchover and failover, xCluster DR also promotes the DR replica from read only to read and write, and demotes (when possible) the original DR primary from read and write to read only.
+- During both switchover and failover, xCluster DR promotes the DR replica from read only to read and write; during switchover, xCluster DR demotes (when possible) the original DR primary from read and write to read only.
 
 For all deployment models _other than_ active-active single-master, unidirectional replication configured at any moment in time, for transactional YSQL, use xCluster replication directly instead of xCluster DR.
 
 For example, use xCluster replication for the following:
 
-- Multi-master deployments, where you have two application instances, each one writing to a different universe.
+- Multi-master (bidirectional) deployments, where you have two application instances, each one writing to a different universe.
 - Active-active single-master deployments in which a single master application can freely write (without coordinating with YugabyteDB for failover or switchover) to either universe, because both accept writes.
 - Non-transactional SQL. That is, SQL without write-order guarantees and without transactional atomicity guarantees.
-- CQL
+- CQL deployments.
 
 Note that a universe configured for xCluster DR cannot be used for xCluster replication, and vice versa. Although xCluster DR uses xCluster replication under the hood, xCluster DR replication is managed exclusively from the **xCluster Disaster Recovery** tab, and not on the **xCluster Replication** tab.
 

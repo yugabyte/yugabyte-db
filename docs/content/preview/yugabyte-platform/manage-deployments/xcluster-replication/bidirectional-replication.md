@@ -26,14 +26,11 @@ Due to its operational complexity, bidirectional xCluster is not recommended for
 
 ## Limitations
 
-- Bidirectional replication can only be done using non-transactional replication. Transactional replication is not supported because transactional replication puts the target universe in read-only mode. For more information, see [Asynchronous replication modes](../../../../architecture/docdb-replication/async-replication/#asynchronous-replication-modes).
-- You can't use the YugabyteDB Anywhere UI to create two separate replication configurations for YSQL, each containing a subset of the database tables.
-
-For more information, refer to [Limitations](../../../../architecture/docdb-replication/async-replication/#limitations).
+In addition to the regular [limitations](../#limitations), Bidirectional replication can only be done using [non-transactional replication](../#xcluster-configurations).
 
 ## Prerequisites
 
-- Create two universes as described in [Prerequisites](../xcluster-replication-setup/#prerequisites).
+Create two universes as described in [Prerequisites](../xcluster-replication-setup/#prerequisites).
 
 ## Set up bidirectional replication
 
@@ -43,15 +40,23 @@ To set up bidirectional replication from universe A to universe B, and vice vers
 1. Set up xCluster replication from A to B following the steps in [Deploy xCluster](../../../../deploy/multi-dc/async-replication/async-deployment/). A full copy of the selected tables or databases may be performed as part of this operation.
 1. Set up xCluster replication from universe B to A following the steps in [Deploy xCluster](../../../../deploy/multi-dc/async-replication/async-deployment/).
 
-    No full copy is performed, so it is important to have no writes on B during this setup, as these writes might not be replicated to universe A.
+    No full copy is performed for the reverse replication. It is important to have no writes on B during this setup, as these writes might not be replicated to universe A.
 
-For information on how to monitor and manage the replication configurations, refer to [Monitor replication](../xcluster-replication-setup/#monitor-replication).
+For information on how to monitor and manage the replication configurations, refer to [Monitoring and alerts](../xcluster-replication-setup/#monitoring-and-alerts).
+
+### Add a database to an existing bidirectional replication
+
+To add a newly created database to bidirectional replication, follow the instructions in [Add a database to an existing replication](../xcluster-replication-setup/#add-a-database-to-an-existing-replication) in both directions.
+
+For best results, add databases to bidirectional configurations right after you create them, and before any writes are performed on the tables in them.
+
+You can add databases that have data to replication in both directions, but note that YugabyteDB Anywhere performs a [full copy](../xcluster-replication-setup/#full-copy-during-xcluster-setup) from the source to the target, and this causes the existing database on the target to be re-created.
 
 ## Restart bidirectional replication
 
-Restarting bidirectional replication can cause unreplicated data on one of the universes to be lost, because a full copy is performed as part of the restart. Copying data can be done only if an xCluster configuration with reverse direction for a table does not exist, which means the reverse replication must first be deleted.
+In case of an extended network partition, or if replication is broken for any other reason, you may need to restart replication.
 
-As a result, before restarting bidirectional replication, you need to identify the universe whose data is more up to date.
+Before restarting bidirectional replication, you need to identify the universe whose data is more up to date.
 
 To restart a bidirectional replication setup:
 

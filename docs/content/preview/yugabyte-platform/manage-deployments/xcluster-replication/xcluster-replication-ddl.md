@@ -21,7 +21,7 @@ The order in which you do this varies depending on the operation.
 
 ## Order of operations
 
-Perform DDL operations in the order as shown in the following table.
+Perform DDL operations in the order as shown in the following table. The order varies depending on the [xCluster configuration](../#xcluster-configurations).
 
 {{<tabpane text=true >}}
 {{% tab header="YSQL Transactional" lang="ysql-transaction" %}}
@@ -84,7 +84,7 @@ Note: If you are performing application upgrades involving both adding and dropp
 
 ### Add a table to replication
 
-To potentially avoid a full copy, set up replication on a new table _before_ starting any workload.
+To avoid a [full copy](../xcluster-replication-setup/#full-copy-during-xcluster-setup), add the table to replication when it is newly created (that is, empty) on both source and target.
 
 {{<tip>}}
 Before adding a table to replication in YugabyteDB Anywhere, refer to [Order of operations](#order-of-operations) for your setup.
@@ -95,18 +95,13 @@ Add tables to replication as follows:
 1. In YugabyteDB Anywhere, navigate to your source, select **xCluster Replication**, and select the replication configuration.
 1. Click **Actions** and choose **Select Databases and Tables**.
 1. Select the tables and click **Validate Selection**.
+
+    For YSQL, select the database(s) with the tables you want in replication. Colocated tables require additional conditions. For more information, see [YSQL tables](../xcluster-replication-setup/#ysql-tables).
+
 1. If data needs to be copied, click **Next: Confirm Full Copy**.
 1. Click **Apply Changes**.
 
-Note the following:
-
-- If the newly added table already has data, then adding the table can trigger a full copy of that entire database from source to target.
-
-- It is recommended that you set up replication on the new table before starting any workload to ensure that data is protected at all times. This approach also avoids the full copy.
-
-- This operation also automatically adds any associated index tables of this table to the replication configuration.
-
-- If using colocation, colocated tables on the source and target should be created with the same colocation ID if they already exist on both the source and target prior to replication setup.
+This operation also automatically adds any associated index tables of this table to the replication configuration.
 
 ### Remove a table from replication
 
