@@ -1998,7 +1998,7 @@
       "tooltips": {
         "logCatalog": "Log statements for the PostgreSQL system catalog relations in pg_catalog. Disable this option to reduce noise in the log.",
         "logClient": "Log messages directly to clients such as ysqlsh and psql for debugging. When enabled, you can set the level of logs that are output using pgaudit.log_client.",
-        "logLevel": "Set the severity level of logs displayed in clients when pgaudit.log_client is on.",
+        "logLevel": "Set the severity level of logs displayed in clients when pgaudit.log_client is on.User need to set an extra flag log_min_messages for all the severity levels to work. By default only LOG or WARNING will work without the need of additional flag log_min_messages",
         "logParameter": "Include parameters passed with the statement. Parameters are provided in .csv format after the statement text.",
         "logParameterMaxSize": "Maximum size, in bytes, of parameters to include. Parameters longer than this value are replaced with <long param suppressed>.",
         "logRelation": "Create separate log entries for each relation (TABLE, VIEW, etc.) referenced in a SELECT or DML statement. This is a shortcut for exhaustive logging without using object audit logging.",
