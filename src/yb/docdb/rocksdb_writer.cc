@@ -30,6 +30,8 @@
 
 #include "yb/gutil/walltime.h"
 
+#include "yb/rocksdb/options.h"
+
 #include "yb/util/bitmap.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/fast_varint.h"
@@ -449,7 +451,7 @@ IntentsWriter::IntentsWriter(const Slice& start_key,
   reverse_index_iter_ = CreateRocksDBIterator(
       intents_db_, &KeyBounds::kNoBounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
       rocksdb::kDefaultQueryId, CreateIntentHybridTimeFileFilter(file_filter_ht),
-      &reverse_index_upperbound_);
+      &reverse_index_upperbound_, rocksdb::CacheRestartBlockKeys::kFalse);
 }
 
 Status IntentsWriter::Apply(rocksdb::DirectWriteHandler* handler) {
@@ -524,8 +526,8 @@ ApplyIntentsContext::ApplyIntentsContext(
       key_bounds_(key_bounds),
       intent_iter_(CreateRocksDBIterator(
           intents_db, key_bounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
-          rocksdb::kDefaultQueryId,
-          CreateIntentHybridTimeFileFilter(file_filter_ht))) {
+          rocksdb::kDefaultQueryId, CreateIntentHybridTimeFileFilter(file_filter_ht),
+          /* iterate_upper_bound = */ nullptr, rocksdb::CacheRestartBlockKeys::kFalse)) {
 }
 
 Result<bool> ApplyIntentsContext::StoreApplyState(
@@ -745,7 +747,8 @@ ExternalIntentsBatchWriter::ExternalIntentsBatchWriter(
     intents_db_iter_ = CreateRocksDBIterator(
         intents_db, &docdb::KeyBounds::kNoBounds, docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
         /* user_key_for_filter= */ boost::none, rocksdb::kDefaultQueryId,
-        /* read_filter= */ nullptr, &intents_db_iter_upperbound_);
+        /* read_filter= */ nullptr, &intents_db_iter_upperbound_,
+        rocksdb::CacheRestartBlockKeys::kFalse);
   }
 }
 
