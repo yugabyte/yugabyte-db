@@ -35,6 +35,7 @@ def construct_node_agent_command(args):
         '--node_agent_port', '{{node_agent_port}}',
         '--provider_id', '{{provider_id}}',
         '--instance_type',  args.instance_type,
+        '--region_name', args.region_name,
         '--zone_name', args.zone_name
     ]
     cmd.append('@@DEFAULT_NODE_NAME@@')
@@ -133,8 +134,10 @@ if __name__ == '__main__':
                             help='Node name.')
         parser.add_argument('--instance_type', required=False,
                             help='Instance type e.g c5.xlarge.')
+        parser.add_argument('--region_name', required=False,
+                            help='Region code e.g us-west-2.')
         parser.add_argument('--zone_name', required=False,
-                            help='Zone name or code e.g us-west-2a.')
+                            help='Zone code e.g us-west-2a.')
     args = parser.parse_args()
     if INSTALL_NODE_AGENT:
         if args.install_node_agent != (args.yba_url is not None):
@@ -145,6 +148,8 @@ if __name__ == '__main__':
             parser.error("--node_name is required only for --install_node_agent.")
         if args.install_node_agent != (args.instance_type is not None):
             parser.error("--instance_type is required only for --install_node_agent.")
+        if args.install_node_agent != (args.region_name is not None):
+            parser.error("--region_name is required only for --install_node_agent.")
         if args.install_node_agent != (args.zone_name is not None):
             parser.error("--zone_name is required only for --install_node_agent.")
     password = None

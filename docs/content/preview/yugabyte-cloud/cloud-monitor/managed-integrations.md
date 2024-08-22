@@ -22,6 +22,7 @@ Currently, you can export data to the following tools:
 - [Datadog](https://docs.datadoghq.com/)
 - [Grafana Cloud](https://grafana.com/docs/grafana-cloud/)
 - [Sumo Logic](https://www.sumologic.com)
+- [Prometheus](https://prometheus.io/docs/introduction/overview/) {{<badge/tp>}}
 
 Exporting cluster metrics and logs counts against your data transfer allowance. This may incur additional costs for network transfer, especially for cross-region and internet-based transfers, if usage exceeds your cluster allowance. Refer to [Data transfer costs](../../cloud-admin/cloud-billing-costs/#data-transfer-costs).
 
@@ -95,6 +96,37 @@ To create an export configuration, do the following:
 1. Enter your installation token, access ID, and access key.
 1. Optionally, click **Download** to download the Sumo Logic dashboard template. After you install the [YugabyteDB app](https://help.sumologic.com/docs/get-started/apps-integrations/) (coming soon) in your Sumo Logic account, you can import this JSON format template and use it as a starting point for visualizing your cluster data.
 1. Click **Test Configuration** to make sure your connection is working.
+1. Click **Create Configuration**.
+
+  {{% /tab %}}
+
+  {{% tab header="Prometheus" lang="prometheus" %}}
+
+Prometheus integration is {{<badge/tp>}} and only available for clusters deployed on AWS.
+
+The Prometheus integration requires the following:
+
+- Prometheus instance
+  - deployed in a VPC on AWS
+  - [OLTP Receiver](https://prometheus.io/docs/prometheus/latest/querying/api/#otlp-receiver) feature flag enabled
+  - publically-accessible endpoint URL that resolves to the private IP of the Prometheus instance; the DNS for the endpoint must be in a public hosted zone in AWS.
+  - VPC hosting the Prometheus instance has the following Inbound Security Group rules:
+    - Allow HTTP inbound traffic on port 80 for Prometheus endpoint URL (HTTP)
+    - Allow HTTPS inbound traffic on port 443 for Prometheus endpoint URL (HTTPS)
+
+    See [Control traffic to your AWS resources using security groups](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html) in the AWS documentation.
+
+- YugabyteDB Aeon cluster from which you want to export metrics
+  - the cluster is [deployed in VPCs](../../cloud-basics/cloud-vpcs/cloud-add-vpc/) on AWS
+  - each region VPC is peered with the VPC hosting Prometheus. See [Peer VPCs](../../cloud-basics/cloud-vpcs/cloud-add-vpc-aws/).
+
+  As each region of a cluster deployed in AWS has its own VPC, make sure that all the VPCs are peered and allow inbound access from Prometheus; this also applies to regions you add or change after deployment, and to read replicas. For information on VPC networking in YugabyteDB Aeon, see [VPC network overview](../../cloud-basics/cloud-vpcs/cloud-vpc-intro/).
+
+To create an export configuration, do the following:
+
+1. On the **Integrations** page, click **Configure** for the Prometheus provider or, if a configuration is already available, **Add Configuration**.
+1. Enter a name for the configuration.
+1. Enter the endpoint URL of the Prometheus instance.
 1. Click **Create Configuration**.
 
   {{% /tab %}}

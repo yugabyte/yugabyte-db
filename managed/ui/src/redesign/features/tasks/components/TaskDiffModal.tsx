@@ -10,15 +10,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from 'react-query';
+import { toast } from 'react-toastify';
 import { YBModal } from '../../../components';
 import { BaseDiff } from './diffComp/diffs/BaseDiff';
 import GFlagsDiff from './diffComp/diffs/GFlagsDiff';
 import SoftwareUpgradeDiff from './diffComp/diffs/SoftwareUpgradeDiff';
 import UniverseDiff from './diffComp/diffs/UniverseDiff';
-import { getTaskDiffDetails } from './diffComp/api';
+import { getAuditLog } from './diffComp/api';
+import { mapAuditLogToTaskDiffApiResp } from '../TaskUtils';
 import { TargetType, Task, TaskType } from '../dtos';
 import { DiffComponentProps } from './diffComp/dtos';
-import { toast } from 'react-toastify';
 
 interface TaskDiffModalProps {
   visible: boolean;
@@ -34,19 +35,20 @@ const TaskDiffModal: React.FC<TaskDiffModalProps> = ({ visible, onClose, current
   // Differ to be used for the current task.
   const [differ, setDiffer] = useState<BaseDiff<DiffComponentProps, any> | null>(null);
 
-  const { data: taskDiffDetails } = useQuery(
-    ['taskDiffDetails', currentTask?.id],
-    () => getTaskDiffDetails(currentTask!.id),
+
+  const { data: auditData } = useQuery(
+    ['auditData', currentTask?.id],
+    () => getAuditLog(currentTask!.id),
     {
       enabled: !!currentTask && visible,
       select: (data) => data.data,
-      // old task won't have diff details
       onError: () => {
-        toast.error(t('diffDetailsNotFound'));
-      }
-    }
-  );
+              toast.error(t('diffDetailsNotFound'));
+            }
+    });
 
+  const taskDiffDetails = mapAuditLogToTaskDiffApiResp(auditData);
+  
   useEffect(() => {
     if (!currentTask || !visible || !taskDiffDetails) {
       return;

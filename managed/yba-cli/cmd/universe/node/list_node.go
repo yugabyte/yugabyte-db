@@ -69,7 +69,7 @@ var listNodeCmd = &cobra.Command{
 			if util.IsOutputType("table") {
 				logrus.Infoln("No universe node instances found\n")
 			} else {
-				logrus.Infoln("{}\n")
+				logrus.Infoln("[]\n")
 			}
 			return
 		}

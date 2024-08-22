@@ -83,7 +83,7 @@ var listRestoreCmd = &cobra.Command{
 				if util.IsOutputType("table") {
 					logrus.Infoln("No restores found\n")
 				} else {
-					logrus.Infoln("{}\n")
+					logrus.Infoln("[]\n")
 				}
 				return
 			}

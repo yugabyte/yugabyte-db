@@ -195,7 +195,7 @@ class TabletPeerTest : public YBTabletTest {
                         metadata->fs_manager()->uuid(), *tablet()->schema(),
                         metadata->schema_version(), table_metric_entity_.get(),
                         tablet_metric_entity_.get(), log_thread_pool_.get(), log_thread_pool_.get(),
-                        log_thread_pool_.get(), metadata->cdc_min_replicated_index(), &log,
+                        log_thread_pool_.get(), &log,
                         pre_log_rollover_callback, new_segment_allocation_callback));
 
     auto bootstrap_state_manager = std::make_shared<TabletBootstrapStateManager>(

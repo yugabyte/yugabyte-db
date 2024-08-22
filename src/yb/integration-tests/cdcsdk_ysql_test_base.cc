@@ -1258,8 +1258,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
   void CDCSDKYsqlTest::EnableCDCServiceInAllTserver(uint32_t num_tservers) {
     for (uint32_t i = 0; i < num_tservers; ++i) {
       const auto& tserver = test_cluster()->mini_tablet_server(i)->server();
-      auto cdc_service = dynamic_cast<CDCServiceImpl*>(
-          tserver->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+      auto cdc_service = CDCService(tserver);
       cdc_service->SetCDCServiceEnabled();
     }
   }
@@ -1270,8 +1269,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
     // check the CDC Service Cache of all the tservers.
     for (uint32_t i = 0; i < num_tservers; ++i) {
       const auto& tserver = test_cluster()->mini_tablet_server(i)->server();
-      auto cdc_service = dynamic_cast<CDCServiceImpl*>(
-          tserver->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+      auto cdc_service = CDCService(tserver);
       auto status = cdc_service->TEST_GetTabletInfoFromCache({stream_id, tablet_id});
       if (status.ok()) {
         count += 1;

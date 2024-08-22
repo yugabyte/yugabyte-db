@@ -213,7 +213,7 @@ struct AshMetadata {
   Uuid root_request_id = Uuid::Nil();
   Uuid yql_endpoint_tserver_uuid = Uuid::Nil();
   uint64_t query_id = 0;
-  uint64_t session_id = 0;
+  pid_t pid = 0;
   uint32_t database_id = 0;
   int64_t rpc_request_id = 0;
   HostPort client_host_port{};
@@ -233,8 +233,8 @@ struct AshMetadata {
     if (other.query_id != 0) {
       query_id = other.query_id;
     }
-    if (other.session_id != 0) {
-      session_id = other.session_id;
+    if (other.pid != 0) {
+      pid = other.pid;
     }
     if (other.database_id != 0) {
       database_id = other.database_id;
@@ -267,10 +267,10 @@ struct AshMetadata {
     } else {
       pb->clear_query_id();
     }
-    if (session_id != 0) {
-      pb->set_session_id(session_id);
-    } else { // valid PgClient session id cannot be zero
-      pb->clear_session_id();
+    if (pid != 0) {
+      pb->set_pid(pid);
+    } else {
+      pb->clear_pid();
     }
     if (database_id != 0) {
       pb->set_database_id(database_id);
@@ -316,7 +316,7 @@ struct AshMetadata {
         root_request_id,                       // root_request_id
         yql_endpoint_tserver_uuid,             // yql_endpoint_tserver_uuid
         pb.query_id(),                         // query_id
-        pb.session_id(),                       // session_id
+        pb.pid(),                              // pid
         pb.database_id(),                      // database_id
         pb.rpc_request_id(),                   // rpc_request_id
         HostPortFromPB(pb.client_host_port()), // client_host_port
@@ -360,8 +360,6 @@ class WaitStateInfo {
   void set_yql_endpoint_tserver_uuid(const Uuid& yql_endpoint_tserver_uuid) EXCLUDES(mutex_);
   uint64_t query_id() EXCLUDES(mutex_);
   void set_query_id(uint64_t query_id) EXCLUDES(mutex_);
-  uint64_t session_id() EXCLUDES(mutex_);
-  void set_session_id(uint64_t session_id) EXCLUDES(mutex_);
   int64_t rpc_request_id() EXCLUDES(mutex_);
   void set_rpc_request_id(int64_t id) EXCLUDES(mutex_);
   void set_client_host_port(const HostPort& host_port) EXCLUDES(mutex_);

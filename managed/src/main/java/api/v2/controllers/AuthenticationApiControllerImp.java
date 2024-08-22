@@ -3,7 +3,7 @@
 package api.v2.controllers;
 
 import api.v2.handlers.AuthenticationHandler;
-import api.v2.models.GroupMappingSpec;
+import api.v2.models.AuthGroupToRolesMapping;
 import com.google.inject.Inject;
 import java.util.List;
 import java.util.UUID;
@@ -14,14 +14,16 @@ public class AuthenticationApiControllerImp extends AuthenticationApiControllerI
   @Inject AuthenticationHandler authHandler;
 
   @Override
-  public List<GroupMappingSpec> listMappings(Http.Request request, UUID cUUID) throws Exception {
+  public List<AuthGroupToRolesMapping> listMappings(Http.Request request, UUID cUUID)
+      throws Exception {
     return authHandler.listMappings(cUUID);
   }
 
   @Override
   public void updateGroupMappings(
-      Http.Request request, UUID cUUID, List<GroupMappingSpec> groupMappingSpec) throws Exception {
-    authHandler.updateGroupMappings(request, cUUID, groupMappingSpec);
+      Http.Request request, UUID cUUID, List<AuthGroupToRolesMapping> AuthGroupToRolesMapping)
+      throws Exception {
+    authHandler.updateGroupMappings(request, cUUID, AuthGroupToRolesMapping);
   }
 
   @Override

@@ -116,6 +116,13 @@ Status SysCatalogWriter::DoMutateItem(
       type, item_id, new_pb, op_type, schema_with_ids_, req_->add_ql_write_batch());
 }
 
+Status SysCatalogWriter::Mutate(
+    int8_t type, const std::string& item_id, const google::protobuf::Message& new_pb,
+    QLWriteRequestPB::QLStmtType op_type) {
+  return FillSysCatalogWriteRequest(
+      type, item_id, new_pb, op_type, schema_with_ids_, req_->add_ql_write_batch());
+}
+
 Status SysCatalogWriter::InsertPgsqlTableRow(const Schema& source_schema,
                                              const qlexpr::QLTableRow& source_row,
                                              const TableId& target_table_id,

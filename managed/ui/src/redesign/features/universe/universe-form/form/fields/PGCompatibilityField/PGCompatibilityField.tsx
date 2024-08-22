@@ -57,6 +57,7 @@ export const PGCompatibiltyField: FC<PGCompatibiltyFieldProps> = ({ disabled }) 
   return (
     <Box display="flex" width="100%" data-testid="PGCompatibiltyField-Container">
       <YBTooltip
+        interactive={true}
         title={
           isPGSupported ? (
             ''
@@ -64,7 +65,7 @@ export const PGCompatibiltyField: FC<PGCompatibiltyFieldProps> = ({ disabled }) 
             <Typography className={classes.subText}>
               <Trans>
                 {t('universeForm.advancedConfig.pgTooltip')}
-                <Link underline="always" className={classes.linkText}></Link>
+                {/* <Link underline="always" className={classes.linkText}></Link> */}
               </Trans>
             </Typography>
           )
@@ -90,7 +91,7 @@ export const PGCompatibiltyField: FC<PGCompatibiltyFieldProps> = ({ disabled }) 
           <Typography className={classes.subText}>
             <Trans>
               {t('universeForm.advancedConfig.pgSubText')}
-              <Link underline="always" className={classes.linkText}></Link>
+              {/* <Link underline="always" className={classes.linkText}></Link> */}
             </Trans>
           </Typography>
         </Box>

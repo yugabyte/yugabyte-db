@@ -259,7 +259,7 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
         END IF;
     END IF;
 
-    IF v_exists IS NULL THEN
+    IF v_exists = 0 THEN
         RAISE DEBUG 'create_partition_time v_sql: %', v_sql;
         EXECUTE v_sql;
     END IF;

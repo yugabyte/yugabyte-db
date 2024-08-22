@@ -62,8 +62,8 @@ func waitForUpgradeUniverseTask(
 
 }
 
-// UpgradeValidations to ensure that the universe being accessed exists
-func UpgradeValidations(cmd *cobra.Command, operation string) (
+// Validations to ensure that the universe being accessed exists
+func Validations(cmd *cobra.Command, operation string) (
 	*ybaAuthClient.AuthAPIClient,
 	ybaclient.UniverseResp,
 	error,
@@ -92,6 +92,7 @@ func UpgradeValidations(cmd *cobra.Command, operation string) (
 	return authAPI, r[0], nil
 }
 
+// FetchMasterGFlags is to fetch list of master gflags
 func FetchMasterGFlags(masterGFlagsString string) map[string]string {
 	masterGFlags := make(map[string]interface{}, 0)
 	if len(strings.TrimSpace(masterGFlagsString)) != 0 {
@@ -108,6 +109,7 @@ func FetchMasterGFlags(masterGFlagsString string) map[string]string {
 	return *util.StringMap(masterGFlags)
 }
 
+// FetchTServerGFlags is to fetch list of tserver gflags
 func FetchTServerGFlags(
 	tserverGFlagsStringList []string,
 	noOfClusters int,
@@ -167,6 +169,7 @@ func ProcessMasterGflagsYAMLString(yamlData string) map[string]string {
 	return singleMap
 }
 
+// ProcessTServerGFlagsFromString takes in a string and returns it as a map
 func ProcessTServerGFlagsFromString(input string, data interface{}) error {
 	if err := json.Unmarshal([]byte(input), data); err == nil {
 		logrus.Debug("Tserver GFlags from JSON string: ", data)
@@ -181,6 +184,7 @@ func ProcessTServerGFlagsFromString(input string, data interface{}) error {
 	return fmt.Errorf("TServer GFlags is neither valid JSON nor valid YAML")
 }
 
+// ProcessTServerGFlagsFromConfig takes in a map from config file and returns it as a map
 func ProcessTServerGFlagsFromConfig(input map[string]interface{}) map[string]map[string]string {
 	data := make(map[string]map[string]string, 0)
 	for k, v := range input {

@@ -1,0 +1,210 @@
+SET yb_fetch_row_limit TO 1024;
+SET yb_explain_hide_non_deterministic_fields TO true;
+SET yb_update_num_cols_to_compare TO 50;
+SET yb_update_max_cols_size_to_compare TO 10240;
+-- This test requires the t-server gflag 'ysql_skip_row_lock_for_update' to be set to false.
+CREATE OR REPLACE FUNCTION musical_chair() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  -- Increment a specifc column based on the modulo of the row supplied
+  RAISE NOTICE 'Musical chairs invoked with h = %', NEW.h;
+  IF OLD.h % 4 = 0 THEN
+    NEW.h = NEW.h + 40;
+  ELSIF OLD.h % 4 = 1 THEN
+    NEW.v1 = NEW.v1 + 1;
+  ELSIF OLD.h % 4 = 2 THEN
+    NEW.v2 = NEW.v2 + 1;
+  ELSE
+    NEW.v3 = NEW.v3 + 1;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+-- CREATE a table that contains the columns specified in the above function.
+DROP TABLE IF EXISTS mchairs_table;
+NOTICE:  table "mchairs_table" does not exist, skipping
+CREATE TABLE mchairs_table (h INT PRIMARY KEY, v1 INT, v2 INT, v3 INT);
+INSERT INTO mchairs_table (SELECT i, i, i, i FROM generate_series(1, 12) AS i);
+-- Create some indexes to test the behavior of the updates
+CREATE INDEX NONCONCURRENTLY mchairs_v1_v2 ON mchairs_table (v1 ASC, v2 DESC);
+CREATE INDEX NONCONCURRENTLY mchairs_v3 ON mchairs_table (v3 HASH);
+-- Add the trigger that plays musical chairs with the above table
+CREATE TRIGGER mchairs_table_trigger BEFORE UPDATE ON mchairs_table FOR EACH ROW EXECUTE FUNCTION musical_chair();
+-- The value of v1 should be incremented twice, index v1_v2 should be updated.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE mchairs_table SET v1 = v1 + 1 WHERE h = 1;
+NOTICE:  Musical chairs invoked with h = 1
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
+ Update on mchairs_table (actual rows=0 loops=1)
+   ->  Index Scan using mchairs_table_pkey on mchairs_table (actual rows=1 loops=1)
+         Index Cond: (h = 1)
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+         Storage Index Write Requests: 2
+ Trigger mchairs_table_trigger: calls=1
+ Storage Read Requests: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 3
+ Storage Flush Requests: 1
+(12 rows)
+
+-- The value of v1 should be updated again, indexes v1_v2, v3 should be updated.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE mchairs_table SET h = h, v3 = v3 + 1 WHERE h = 1;
+NOTICE:  Musical chairs invoked with h = 1
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
+ Update on mchairs_table (actual rows=0 loops=1)
+   ->  Index Scan using mchairs_table_pkey on mchairs_table (actual rows=1 loops=1)
+         Index Cond: (h = 1)
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+         Storage Index Write Requests: 4
+ Trigger mchairs_table_trigger: calls=1
+ Storage Read Requests: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 5
+ Storage Flush Requests: 1
+(12 rows)
+
+-- Multi-row scenario affecting 4 successive rows exactly with 4 flushes.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE mchairs_table SET h = h, v1 = v1, v2 = v3, v3 = v2 WHERE h > 8 AND h <= 12;
+NOTICE:  Musical chairs invoked with h = 11
+NOTICE:  Musical chairs invoked with h = 12
+NOTICE:  Musical chairs invoked with h = 9
+NOTICE:  Musical chairs invoked with h = 10
+                       QUERY PLAN
+---------------------------------------------------------
+ Update on mchairs_table (actual rows=0 loops=1)
+   ->  Seq Scan on mchairs_table (actual rows=4 loops=1)
+         Storage Filter: ((h > 8) AND (h <= 12))
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 12
+         Storage Table Write Requests: 5
+         Storage Index Write Requests: 10
+         Storage Flush Requests: 3
+ Trigger mchairs_table_trigger: calls=4
+ Storage Read Requests: 1
+ Storage Rows Scanned: 12
+ Storage Write Requests: 15
+ Storage Flush Requests: 4
+(13 rows)
+
+-- Validate the updates
+SELECT * FROM mchairs_table ORDER BY h;
+ h  | v1 | v2 | v3
+----+----+----+----
+  1 |  4 |  1 |  2
+  2 |  2 |  2 |  2
+  3 |  3 |  3 |  3
+  4 |  4 |  4 |  4
+  5 |  5 |  5 |  5
+  6 |  6 |  6 |  6
+  7 |  7 |  7 |  7
+  8 |  8 |  8 |  8
+  9 | 10 |  9 |  9
+ 10 | 10 | 11 | 10
+ 11 | 11 | 11 | 12
+ 52 | 12 | 12 | 12
+(12 rows)
+
+-- The decrement of v1 should be offset by the before row trigger. No indexes
+-- should be updated.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE mchairs_table SET v1 = v1 - 1 WHERE h = 1;
+NOTICE:  Musical chairs invoked with h = 1
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
+ Update on mchairs_table (actual rows=0 loops=1)
+   ->  Index Scan using mchairs_table_pkey on mchairs_table (actual rows=1 loops=1)
+         Index Cond: (h = 1)
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+ Trigger mchairs_table_trigger: calls=1
+ Storage Read Requests: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 1
+ Storage Flush Requests: 1
+(11 rows)
+
+-- Same as above but for the primary key
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE mchairs_table SET h = h - 40, v1 = v1 + 1 WHERE h = 4;
+NOTICE:  Musical chairs invoked with h = -36
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
+ Update on mchairs_table (actual rows=0 loops=1)
+   ->  Index Scan using mchairs_table_pkey on mchairs_table (actual rows=1 loops=1)
+         Index Cond: (h = 4)
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 1
+         Storage Index Write Requests: 2
+ Trigger mchairs_table_trigger: calls=1
+ Storage Read Requests: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 3
+ Storage Flush Requests: 1
+(12 rows)
+
+-- A subtle variation of the above to test the scenario that the decrement of
+-- h is applied on the value of h that is returned by the before row trigger.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE mchairs_table SET h = h - 1, v1 = v1 + 1 WHERE h = 4;
+NOTICE:  Musical chairs invoked with h = 3
+                                     QUERY PLAN
+------------------------------------------------------------------------------------
+ Update on mchairs_table (actual rows=0 loops=1)
+   ->  Index Scan using mchairs_table_pkey on mchairs_table (actual rows=1 loops=1)
+         Index Cond: (h = 4)
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 1
+         Storage Table Write Requests: 2
+         Storage Index Write Requests: 4
+ Trigger mchairs_table_trigger: calls=1
+ Storage Read Requests: 1
+ Storage Rows Scanned: 1
+ Storage Write Requests: 6
+ Storage Flush Requests: 1
+(12 rows)
+
+-- Multi-row scenario.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE mchairs_table SET v1 = v1 - 1, v2 = v2 - 1, v3 = v3 - 1 WHERE h > 4 AND h <= 8;
+NOTICE:  Musical chairs invoked with h = 5
+NOTICE:  Musical chairs invoked with h = 6
+NOTICE:  Musical chairs invoked with h = 7
+NOTICE:  Musical chairs invoked with h = 8
+                       QUERY PLAN
+---------------------------------------------------------
+ Update on mchairs_table (actual rows=0 loops=1)
+   ->  Seq Scan on mchairs_table (actual rows=4 loops=1)
+         Storage Filter: ((h > 4) AND (h <= 8))
+         Storage Table Read Requests: 1
+         Storage Table Rows Scanned: 12
+         Storage Table Write Requests: 5
+         Storage Index Write Requests: 14
+         Storage Flush Requests: 3
+ Trigger mchairs_table_trigger: calls=4
+ Storage Read Requests: 1
+ Storage Rows Scanned: 12
+ Storage Write Requests: 19
+ Storage Flush Requests: 4
+(13 rows)
+
+-- Again, validate the updates
+SELECT * FROM mchairs_table ORDER BY h;
+ h  | v1 | v2 | v3
+----+----+----+----
+  1 |  4 |  1 |  2
+  2 |  2 |  2 |  2
+  3 |  3 |  3 |  3
+  5 |  5 |  4 |  4
+  6 |  5 |  6 |  5
+  7 |  6 |  6 |  7
+  9 | 10 |  9 |  9
+ 10 | 10 | 11 | 10
+ 11 | 11 | 11 | 12
+ 43 |  6 |  4 |  4
+ 48 |  7 |  7 |  7
+ 52 | 12 | 12 | 12
+(12 rows)
+
+DROP TABLE mchairs_table;

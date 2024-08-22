@@ -34,6 +34,10 @@ import {
 import { ExportLogResponse } from '../../../../export-log/utils/types';
 import { TP_FRIENDLY_NAMES } from '../../../../export-log/utils/constants';
 import { YSQL_AUDIT_CLASSES, YSQL_LOG_LEVEL_OPTIONS } from '../utils/constants';
+//RBAC
+import { hasNecessaryPerm } from '../../../../rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../../rbac/ApiAndUserPermMapping';
+import { RBAC_ERR_MSG_NO_PERM } from '../../../../rbac/common/validator/ValidatorUtils';
 
 //styles
 import { auditLogStyles } from '../utils/AuditLogStyles';
@@ -170,6 +174,11 @@ export const AuditLogSettings: FC<AuditLogSettingProps> = ({
     );
   };
 
+  const canUpdateAuditLog = hasNecessaryPerm({
+    onResource: universeUUID,
+    ...ApiPermissionMap.ENABLE_AUDITLOG_CONFIG
+  });
+
   return (
     <YBSidePanel
       open={open}
@@ -181,6 +190,12 @@ export const AuditLogSettings: FC<AuditLogSettingProps> = ({
       onSubmit={() => setConfirmationDialog(true)}
       submitTestId="AuditLogSettings-Submit"
       cancelTestId="AuditLogSettings-Cancel"
+      buttonProps={{
+        primary: {
+          disabled: !canUpdateAuditLog
+        }
+      }}
+      submitButtonTooltip={!canUpdateAuditLog ? RBAC_ERR_MSG_NO_PERM : ''}
     >
       <FormProvider {...formMethods}>
         <Box height="100%" width="100%" display="flex" pl={1} pr={1} flexDirection={'column'}>

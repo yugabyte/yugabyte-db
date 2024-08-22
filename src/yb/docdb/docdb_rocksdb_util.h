@@ -72,8 +72,7 @@ std::unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     const ReadOperationData& read_operation_data,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr,
     const Slice* iterate_upper_bound = nullptr,
-    FastBackwardScan use_fast_backward_scan = FastBackwardScan::kFalse,
-    const DocDBStatistics* statistics = nullptr);
+    FastBackwardScan use_fast_backward_scan = FastBackwardScan::kFalse);
 
 BoundedRocksDbIterator CreateIntentsIteratorWithHybridTimeFilter(
     rocksdb::DB* intentsdb,

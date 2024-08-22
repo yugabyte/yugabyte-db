@@ -37,7 +37,7 @@ $ ./bin/ysqlsh -h 127.0.0.1
 This should bring up the following prompt, which prints the version of `ysqlsh` being used.
 
 ```output
-ysqlsh (11.2-YB-2.5.1.0-b0)
+ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
 Type "help" for help.
 
 yugabyte=#
@@ -54,7 +54,7 @@ The output shows the YugabyteDB server version, and is a fork of PostgreSQL v11.
 ```output
                                               version
 ----------------------------------------------------------------------------------------------------------
- PostgreSQL 11.2-YB-2.5.1.0-b0 on x86_64-<os, compiler version, etc>, 64-bit
+ PostgreSQL 11.2-YB-{{<yb-version version="preview">}}-b0 on x86_64-<os, compiler version, etc>, 64-bit
 (1 row)
 ```
 

@@ -26,9 +26,13 @@
 
 #include "yb_ash.h"
 
+#include <arpa/inet.h>
+
 #include "access/hash.h"
+#include "common/ip.h"
 #include "executor/executor.h"
 #include "funcapi.h"
+#include "libpq/libpq-be.h"
 #include "miscadmin.h"
 #include "parser/scansup.h"
 #include "pgstat.h"
@@ -189,14 +193,6 @@ YbAshInstallHooks(void)
 
 	prev_ProcessUtility = ProcessUtility_hook;
 	ProcessUtility_hook = yb_ash_ProcessUtility;
-}
-
-void
-YbAshSetSessionId(uint64 session_id)
-{
-	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
-	MyProc->yb_ash_metadata.session_id = session_id;
-	LWLockRelease(&MyProc->yb_ash_metadata_lock);
 }
 
 void
@@ -507,6 +503,79 @@ YbAshUnsetMetadata(void)
 }
 
 /*
+ * Sets the client address, port and pid for ASH metadata.
+ * If the address family is not AF_INET or AF_INET6, then the PGPPROC ASH metadata
+ * fields for client address and port don't mean anything. Otherwise, if
+ * pg_getnameinfo_all returns non-zero value, a warning is printed with the error
+ * code and ASH keeps working without client address and port for the current PG
+ * backend.
+ *
+ * ASH samples only normal backends and this excludes background workers.
+ * So it's fine in that case to not set the client address.
+ */
+void
+YbAshSetOneTimeMetadata()
+{
+	/* Background workers which creates a postgres backend may have null MyProcPort. */
+	if (MyProcPort == NULL)
+	{
+		Assert(MyProc->isBackgroundWorker == true);
+		return;
+	}
+
+	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
+
+	/* Set the address family and null the client_addr and client_port */
+	MyProc->yb_ash_metadata.addr_family = MyProcPort->raddr.addr.ss_family;
+	MemSet(MyProc->yb_ash_metadata.client_addr, 0, 16);
+	MyProc->yb_ash_metadata.client_port = 0;
+	MyProc->yb_ash_metadata.pid = MyProcPid;
+
+	switch (MyProcPort->raddr.addr.ss_family)
+	{
+		case AF_INET:
+#ifdef HAVE_IPV6
+		case AF_INET6:
+#endif
+			break;
+		default:
+			LWLockRelease(&MyProc->yb_ash_metadata_lock);
+			return;
+	}
+
+	char		remote_host[NI_MAXHOST];
+	int			ret;
+
+	ret = pg_getnameinfo_all(&MyProcPort->raddr.addr, MyProcPort->raddr.salen,
+							 remote_host, sizeof(remote_host),
+							 NULL, 0,
+							 NI_NUMERICHOST | NI_NUMERICSERV);
+
+	if (ret != 0)
+	{
+		ereport(WARNING,
+				(errmsg("pg_getnameinfo_all while setting ash metadata failed"),
+				 errdetail("%s\naddress family: %u",
+						   gai_strerror(ret),
+						   MyProcPort->raddr.addr.ss_family)));
+
+		LWLockRelease(&MyProc->yb_ash_metadata_lock);
+		return;
+	}
+
+	clean_ipv6_addr(MyProcPort->raddr.addr.ss_family, remote_host);
+
+	/* Setting ip address */
+	inet_pton(MyProcPort->raddr.addr.ss_family, remote_host,
+			  MyProc->yb_ash_metadata.client_addr);
+
+	/* Setting port */
+	MyProc->yb_ash_metadata.client_port = atoi(MyProcPort->remote_port);
+
+	LWLockRelease(&MyProc->yb_ash_metadata_lock);
+}
+
+/*
  * Calculate the query id for utility statements. This takes parts of pgss_store
  * from pg_stat_statements.
  */
@@ -627,7 +696,7 @@ YbAshMain(Datum main_arg)
 		int 		rc;
 		/* Wait necessary amount of time */
 		rc = WaitLatch(MyLatch, WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
-					   yb_ash_sampling_interval_ms, PG_WAIT_EXTENSION);
+					   yb_ash_sampling_interval_ms, WAIT_EVENT_YB_ASH_MAIN);
 		ResetLatch(MyLatch);
 
 		/* Bailout if postmaster has died */
@@ -883,7 +952,7 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 		values[j++] = UUIDPGetDatum(&yql_endpoint_tserver_uuid);
 
 		values[j++] = UInt64GetDatum(metadata->query_id);
-		values[j++] = UInt64GetDatum(metadata->session_id);
+		values[j++] = Int32GetDatum(metadata->pid);
 
 		if (metadata->addr_family == AF_INET || metadata->addr_family == AF_INET6)
 		{

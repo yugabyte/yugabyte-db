@@ -160,21 +160,24 @@ public class TestPgYbHashCodeScanProjection extends BasePgSQLTest {
   // @param selectList The SELECT-list items used in the queries
   // @param expectedNumColumns Expected number of items in the column_refs DocDB request field
   // @param maxHashCode The yb_hash_code predicate upper bound value to use in the query.
+  // @param expectedMaxHashCodeInRequest The upper bound for hash code in request sent to t-server
   private void testOneCase(
-      Statement stmt, String selectList, int expectedNumColumns, int maxHashCode)
+      Statement stmt, String selectList, int expectedNumColumns,
+      int maxHashCode, int expectedMaxHashCodeInRequest)
       throws Exception {
     final ScanInfo seqScan = collectSeqScanInfo(stmt, selectList);
     final ScanInfo indexScan = collectFullIndexScanInfo(stmt, selectList);
     final ScanInfo hashScan = collectHashCodeScanInfo(stmt, selectList, maxHashCode);
 
-    final double scanFraction = (double)(maxHashCode + 1) / (kYbHashCodeMax + 1);
+    final double scanFraction =
+        (double)(Math.min(maxHashCode, kYbHashCodeMax) + 1) / (kYbHashCodeMax + 1);
     final double errorTolerance = (maxHashCode >= kYbHashCodeMax? 0.0: kErrorTolerance);
 
     final String message = String.format(
         "selectList=[%s] maxHashCode=%d seqScan: %s indexScan: %s hashScan: %s",
         selectList, maxHashCode, seqScan, indexScan, hashScan);
 
-    assertEquals(message, maxHashCode, hashScan.maxHashCode);
+    assertEquals(message, expectedMaxHashCodeInRequest, hashScan.maxHashCode);
     assertEquals(message, expectedNumColumns, hashScan.projection.size());
 
     verifyPartialScanIterBytesRead(
@@ -184,6 +187,12 @@ public class TestPgYbHashCodeScanProjection extends BasePgSQLTest {
       message, indexScan.iterBytesRead, scanFraction, hashScan.iterBytesRead, errorTolerance);
   }
 
+  private void testOneCase(
+      Statement stmt, String selectList, int expectedNumColumns, int maxHashCode)
+      throws Exception {
+    testOneCase(stmt, selectList, expectedNumColumns, maxHashCode, maxHashCode);
+  }
+
   @Test
   public void testScans() throws Exception {
     try (Statement stmt = connection.createStatement()) {
@@ -191,12 +200,19 @@ public class TestPgYbHashCodeScanProjection extends BasePgSQLTest {
       //       They are required for row recheck.
 
       // full range
-      testOneCase(stmt, "z", 2, kYbHashCodeMax);
-      testOneCase(stmt, "z, d", 3, kYbHashCodeMax);
-      testOneCase(stmt, "*", kNumTableColumns, kYbHashCodeMax);
-      testOneCase(stmt, "k", 1, kYbHashCodeMax);  // the hash key
-      testOneCase(stmt, "0", 1, kYbHashCodeMax);  // no table column
-      testOneCase(stmt, "yb_hash_code(k)", 1, kYbHashCodeMax);
+      testOneCase(stmt, "z", 2, kYbHashCodeMax, kNoHashCode);
+
+      // more than full range
+      testOneCase(stmt, "z", 2, kYbHashCodeMax + 1, kNoHashCode);
+
+      // almost full range
+      final int maxHashCode = kYbHashCodeMax - 1;
+      testOneCase(stmt, "z", 2, maxHashCode);
+      testOneCase(stmt, "z, d", 3, maxHashCode);
+      testOneCase(stmt, "*", kNumTableColumns, maxHashCode);
+      testOneCase(stmt, "k", 1, maxHashCode);  // the hash key
+      testOneCase(stmt, "0", 1, maxHashCode);  // no table column
+      testOneCase(stmt, "yb_hash_code(k)", 1, maxHashCode);
 
       // partial range
       testOneCase(stmt, "z", 2, 32767); // 1/2

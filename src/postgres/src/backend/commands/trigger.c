@@ -6423,7 +6423,8 @@ AfterTriggerSaveEvent(EState *estate, ResultRelInfo *relinfo,
 
 					/* Update or delete on trigger's PK table */
 					if (!RI_FKey_pk_upd_check_required(trigger, rel,
-													   oldslot, newslot))
+													   oldslot, newslot,
+													   &estate->yb_skip_entities))
 					{
 						/* skip queuing this event */
 						continue;
@@ -6445,7 +6446,8 @@ AfterTriggerSaveEvent(EState *estate, ResultRelInfo *relinfo,
 					 */
 					if (rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE ||
 						!RI_FKey_fk_upd_check_required(trigger, rel,
-													   oldslot, newslot))
+													   oldslot, newslot,
+													   &estate->yb_skip_entities))
 					{
 						/* skip queuing this event */
 						continue;

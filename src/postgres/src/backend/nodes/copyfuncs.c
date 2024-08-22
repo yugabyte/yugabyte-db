@@ -29,6 +29,8 @@
 #include "utils/datum.h"
 #include "utils/rel.h"
 
+/* YB includes */
+#include "nodes/ybbitmatrix.h"
 
 /*
  * Macros to simplify copying of different kinds of fields.  Use these
@@ -235,7 +237,8 @@ _copyModifyTable(const ModifyTable *from)
 	COPY_NODE_FIELD(ybPushdownTlist);
 	COPY_NODE_FIELD(ybReturningColumns);
 	COPY_NODE_FIELD(ybColumnRefs);
-	COPY_NODE_FIELD(no_update_index_list);
+	COPY_NODE_FIELD(yb_skip_entities);
+	COPY_NODE_FIELD(yb_update_affected_entities);
 	COPY_SCALAR_FIELD(no_row_trigger);
 	COPY_SCALAR_FIELD(ybUseScanTupleInUpdate);
 	COPY_SCALAR_FIELD(ybHasWholeRowAttribute);
@@ -5326,6 +5329,30 @@ _copyYbBatchedExpr(const YbBatchedExpr *from)
 	return newnode;
 }
 
+static YbUpdateAffectedEntities *
+_copyYbUpdateAffectedEntities(const YbUpdateAffectedEntities *from)
+{
+	YbUpdateAffectedEntities *newnode = makeNode(YbUpdateAffectedEntities);
+
+	COPY_POINTER_FIELD(entity_list, from->matrix.ncols * sizeof(struct YbUpdateEntity));
+	COPY_POINTER_FIELD(col_info_list, from->matrix.nrows * sizeof(struct YbUpdateColInfo));
+	YbCopyBitMatrix(&newnode->matrix, &from->matrix);
+
+	return newnode;
+}
+
+static YbSkippableEntities *
+_copyYbSkippableEntities(const YbSkippableEntities *from)
+{
+	YbSkippableEntities *newnode = makeNode(YbSkippableEntities);
+
+	COPY_NODE_FIELD(index_list);
+	COPY_NODE_FIELD(referencing_fkey_list);
+	COPY_NODE_FIELD(referenced_fkey_list);
+
+	return newnode;
+}
+
 /*
  * copyObjectImpl -- implementation of copyObject(); see nodes/nodes.h
  *
@@ -6316,6 +6343,14 @@ copyObjectImpl(const void *from)
 
 		case T_YbBatchedExpr:
 			retval = _copyYbBatchedExpr(from);
+			break;
+
+		case T_YbSkippableEntities:
+			retval = _copyYbSkippableEntities(from);
+			break;
+
+		case T_YbUpdateAffectedEntities:
+			retval = _copyYbUpdateAffectedEntities(from);
 			break;
 
 		default:

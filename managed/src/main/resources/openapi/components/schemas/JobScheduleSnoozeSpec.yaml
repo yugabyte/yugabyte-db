@@ -1,0 +1,13 @@
+title: JobScheduleSnoozeSpec
+description: |
+  JobScheduleSnoozeSpec
+
+  Request payload to put off the next schedule by snooze secs.
+type: object
+properties:
+  snooze_secs:
+    description: Schedule the next job after the sum of snooze time and interval from now.
+    type: integer
+    format: int64
+required:
+  - snooze_secs

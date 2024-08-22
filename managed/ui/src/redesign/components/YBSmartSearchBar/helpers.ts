@@ -63,7 +63,6 @@ export const isMatchedBySearchToken = (
         const comparisonOperator = match[1] as ComparisonOperator;
         const comparisonThreshold = parseFloat(match[2]);
 
-        console.log(comparisonOperator, comparisonThreshold, searchToken.value, fieldValue);
         switch (comparisonOperator) {
           case '>':
             return fieldValue > comparisonThreshold;

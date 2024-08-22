@@ -1972,6 +1972,9 @@ TEST_F(RemoteBootstrapITest, TestRBSWithLazySuperblockFlush) {
   ts_flags.push_back("--log_min_segments_to_retain=1");
   ts_flags.push_back("--log_min_seconds_to_retain=0");
 
+  // Prevent the flag validator from failing when FLAGS_log_min_seconds_to_retain is also set to 0
+  ts_flags.push_back("--xcluster_checkpoint_max_staleness_secs=0");
+
   // Minimize log replay.
   ts_flags.push_back("--retryable_request_timeout_secs=0");
 

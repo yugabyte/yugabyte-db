@@ -156,7 +156,7 @@ Deploying the benchmark setup is a multi-step process that involves deployment o
 - When prompted for password, enter the Yugabyte password (the default password is yugabyte). Expect the following output:
 
   ```sh
-  ysqlsh (11.2-YB-2.3.3.0-b0)
+  ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
   Type "help" for help.
 
   yugabyte=#

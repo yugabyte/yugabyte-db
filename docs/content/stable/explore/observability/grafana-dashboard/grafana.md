@@ -15,11 +15,11 @@ You can create dashboards for your local YugabyteDB clusters using [Grafana](htt
 
 To create dashboards, you need to add Prometheus metrics as a data source in Grafana. The visualization it provides gives a better understanding of the health and performance of your YugabyteDB clusters.
 
-In this tutorial, you use Grafana to populate dashboards with the metrics you collect using the [Prometheus integration](../../prometheus-integration/macos/).
+In this tutorial, you use Grafana to populate dashboards with the metrics you collect using the [Prometheus integration](../../prometheus-integration/).
 
 ## Prerequisite
 
-This tutorial requires a local multi-node universe with an instance of Prometheus displaying the metrics of your YugabyteDB cluster. Use the Prometheus setup you created for the [Prometheus integration](../../prometheus-integration/macos/#setup) example.
+This tutorial requires a local multi-node universe with an instance of Prometheus displaying the metrics of your YugabyteDB cluster. Use the Prometheus setup you created for the [Prometheus integration](../../prometheus-integration/) example.
 
 ## Set up Grafana and add Prometheus as a data source
 
@@ -49,7 +49,7 @@ After clicking Import, you can see the new dashboard with various details, start
 
 ![Grafana dashboard](/images/ce/graf-server-status.png)
 
-Because this example uses the `CassandraKeyValue` workload generator from the [Prometheus integration](../../prometheus-integration/macos/) page, you can see different YCQL-related metrics in addition to the YB-Master and YB-TServer statuses. The [source code](https://github.com/yugabyte/yugabyte-db/blob/master/java/yb-loadtester/src/main/java/com/yugabyte/sample/apps/CassandraSparkKeyValueCopy.java) of the application uses only `SELECT` statements for reads and `INSERT` statements for writes (aside from the initial `CREATE TABLE`). This means that throughput and latency can be measured using the metrics corresponding to the `SELECT` and `INSERT` statements.
+Because this example uses the `CassandraKeyValue` workload generator from the [Prometheus integration](../../prometheus-integration/) page, you can see different YCQL-related metrics in addition to the YB-Master and YB-TServer statuses. The [source code](https://github.com/yugabyte/yugabyte-db/blob/master/java/yb-loadtester/src/main/java/com/yugabyte/sample/apps/CassandraSparkKeyValueCopy.java) of the application uses only `SELECT` statements for reads and `INSERT` statements for writes (aside from the initial `CREATE TABLE`). This means that throughput and latency can be measured using the metrics corresponding to the `SELECT` and `INSERT` statements.
 
 The following illustration shows YCQL OPS and latency metrics:
 

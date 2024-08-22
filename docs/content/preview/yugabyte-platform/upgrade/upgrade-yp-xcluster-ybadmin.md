@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-If you have upgraded YugabyteDB Anywhere to version 2.12 or later and [xCluster replication](../../../explore/going-beyond-sql/asynchronous-replication-ysql/) for your universes was set up via `yb-admin` instead of the UI, you need to synchronize the replication after performing the upgrade.
+If you have upgraded YugabyteDB Anywhere to version 2.12 or later and [xCluster replication](../../../explore/going-beyond-sql/asynchronous-replication-ysql/) for your universes was set up via yb-admin instead of the UI, you need to synchronize the replication after performing the upgrade.
 
 ## Update replication group names
 

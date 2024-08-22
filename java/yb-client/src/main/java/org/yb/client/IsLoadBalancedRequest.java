@@ -34,7 +34,9 @@ class IsLoadBalancedRequest extends YRpc<IsLoadBalancedResponse> {
     assert header.isInitialized();
     final MasterClusterOuterClass.IsLoadBalancedRequestPB.Builder builder =
       MasterClusterOuterClass.IsLoadBalancedRequestPB.newBuilder();
-    builder.setExpectedNumServers(expectedServers);
+    if (expectedServers != 0) {
+      builder.setExpectedNumServers(expectedServers);
+    }
     return toChannelBuffer(header, builder.build());
   }
 

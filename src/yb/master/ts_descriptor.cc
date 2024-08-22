@@ -60,51 +60,38 @@ TAG_FLAG(tserver_unresponsive_timeout_ms, advanced);
 namespace yb {
 namespace master {
 
-Result<TSDescriptorPtr> TSDescriptor::RegisterNew(
+Result<std::pair<TSDescriptorPtr, TSDescriptor::WriteLock>> TSDescriptor::CreateNew(
     const NodeInstancePB& instance,
     const TSRegistrationPB& registration,
     CloudInfoPB local_cloud_info,
     rpc::ProxyCache* proxy_cache,
     RegisteredThroughHeartbeat registered_through_heartbeat) {
-  auto result = std::make_shared<TSDescriptor>(
+  auto desc = std::make_shared<TSDescriptor>(
       instance.permanent_uuid(), registered_through_heartbeat);
-  RETURN_NOT_OK(result->Register(instance, registration, std::move(local_cloud_info), proxy_cache));
-  return std::move(result);
+  auto lock = VERIFY_RESULT(
+      desc->UpdateRegistration(instance, registration, std::move(local_cloud_info), proxy_cache));
+  return std::make_pair(std::move(desc), std::move(lock));
 }
 
-TSDescriptor::TSDescriptor(std::string perm_id,
+TSDescriptor::TSDescriptor(const std::string& permanent_uuid,
                            RegisteredThroughHeartbeat registered_through_heartbeat)
-    : permanent_uuid_(std::move(perm_id)),
-      report_sequence_number_(std::numeric_limits<int32_t>::min()),
-      has_tablet_report_(false),
-      has_faulty_drive_(false),
-      recent_replica_creations_(0),
-      last_replica_creations_decay_(MonoTime::Now()),
-      num_live_replicas_(0),
-      registered_through_heartbeat_(registered_through_heartbeat) {
-  if (registered_through_heartbeat_) {
-    last_heartbeat_ = MonoTime::Now();
-  }
-}
+  : permanent_uuid_(permanent_uuid),
+    last_heartbeat_(registered_through_heartbeat ? MonoTime::Now() : MonoTime()),
+    registered_through_heartbeat_(registered_through_heartbeat),
+    latest_report_seqno_(std::numeric_limits<int32_t>::min()),
+    has_tablet_report_(false),
+    has_faulty_drive_(false),
+    recent_replica_creations_(0),
+    last_replica_creations_decay_(MonoTime::Now()),
+    num_live_replicas_(0) {}
 
-Status TSDescriptor::Register(const NodeInstancePB& instance,
-                              const TSRegistrationPB& registration,
-                              CloudInfoPB local_cloud_info,
-                              rpc::ProxyCache* proxy_cache) {
-  std::lock_guard l(lock_);
-  return RegisterUnlocked(instance, registration, std::move(local_cloud_info), proxy_cache);
-}
+Result<TSDescriptor::WriteLock> TSDescriptor::UpdateRegistration(
+    const NodeInstancePB& instance, const TSRegistrationPB& registration,
+    CloudInfoPB local_cloud_info, rpc::ProxyCache* proxy_cache) {
+  CHECK_EQ(instance.permanent_uuid(), permanent_uuid());
 
-Status TSDescriptor::RegisterUnlocked(
-    const NodeInstancePB& instance,
-    const TSRegistrationPB& registration,
-    CloudInfoPB local_cloud_info,
-    rpc::ProxyCache* proxy_cache) {
-  CHECK_EQ(instance.permanent_uuid(), permanent_uuid_);
-
-  int64_t latest_seqno = ts_information_
-      ? ts_information_->tserver_instance().instance_seqno()
-      : -1;
+  auto l = LockForWrite();
+  int64_t latest_seqno = l->pb.instance_seqno();
   if (instance.instance_seqno() < latest_seqno) {
     return STATUS(AlreadyPresent,
       strings::Substitute("Cannot register with sequence number $0:"
@@ -118,33 +105,27 @@ Status TSDescriptor::RegisterUnlocked(
     LOG(INFO) << "Processing retry of TS registration from " << instance.ShortDebugString();
   }
 
-  latest_seqno = instance.instance_seqno();
+  std::lock_guard spinlock(mutex_);
   // After re-registering, make the TS re-report its tablets.
   has_tablet_report_ = false;
 
-  ts_information_ = std::make_shared<TSInformationPB>();
-  ts_information_->mutable_registration()->CopyFrom(registration);
-  ts_information_->mutable_tserver_instance()->set_permanent_uuid(permanent_uuid_);
-  ts_information_->mutable_tserver_instance()->set_instance_seqno(latest_seqno);
-  report_sequence_number_ = std::numeric_limits<int32_t>::min();
-
+  l.mutable_data()->pb.set_instance_seqno(instance.instance_seqno());
+  *l.mutable_data()->pb.mutable_registration() = registration.common();
+  *l.mutable_data()->pb.mutable_resources() = registration.resources();
+  l.mutable_data()->pb.set_state(SysTServerEntryPB::MAYBE_LIVE);
+  latest_report_seqno_ = std::numeric_limits<int32_t>::min();
   placement_id_ = generate_placement_id(registration.common().cloud_info());
 
   proxies_.reset();
 
-  placement_uuid_ = "";
-  if (registration.common().has_placement_uuid()) {
-    placement_uuid_ = registration.common().placement_uuid();
-  }
   local_cloud_info_ = std::move(local_cloud_info);
   proxy_cache_ = proxy_cache;
 
-  return Status::OK();
+  return std::move(l);
 }
 
 std::string TSDescriptor::placement_uuid() const {
-  SharedLock<decltype(lock_)> l(lock_);
-  return placement_uuid_;
+  return LockForRead()->pb.registration().placement_uuid();
 }
 
 std::string TSDescriptor::generate_placement_id(const CloudInfoPB& ci) {
@@ -153,17 +134,20 @@ std::string TSDescriptor::generate_placement_id(const CloudInfoPB& ci) {
 }
 
 std::string TSDescriptor::placement_id() const {
-  SharedLock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(mutex_)> l(mutex_);
   return placement_id_;
 }
 
-Status TSDescriptor::UpdateTSMetadataFromHeartbeat(const TSHeartbeatRequestPB& req) {
+Status TSDescriptor::UpdateTSMetadataFromHeartbeat(
+    const TSHeartbeatRequestPB& req, TSDescriptor::WriteLock* lock) {
   DCHECK_GE(req.num_live_tablets(), 0);
   DCHECK_GE(req.leader_count(), 0);
   {
-    std::lock_guard l(lock_);
+    std::lock_guard l(mutex_);
     RETURN_NOT_OK(IsReportCurrentUnlocked(
-        req.common().ts_instance(), req.has_tablet_report() ? &req.tablet_report() : nullptr));
+        req.common().ts_instance(),
+        req.has_tablet_report() ? std::optional(std::cref(req.tablet_report())) : std::nullopt,
+        lock));
     last_heartbeat_ = MonoTime::Now();
     num_live_replicas_ = req.num_live_tablets();
     leader_count_ = req.leader_count();
@@ -171,12 +155,15 @@ Status TSDescriptor::UpdateTSMetadataFromHeartbeat(const TSHeartbeatRequestPB& r
     hybrid_time_ = HybridTime::FromPB(req.ts_hybrid_time());
     heartbeat_rtt_ = MonoDelta::FromMicroseconds(req.rtt_us());
     if (req.has_tablet_report()) {
-      report_sequence_number_ =
-          std::max(report_sequence_number_, req.tablet_report().sequence_number());
+      latest_report_seqno_ =
+          std::max(latest_report_seqno_, req.tablet_report().sequence_number());
     }
     if (req.has_faulty_drive()) {
       has_faulty_drive_ = req.faulty_drive();
     }
+  }
+  if ((*lock)->pb.state() != SysTServerEntryPB::MAYBE_LIVE) {
+    lock->mutable_data()->pb.set_state(SysTServerEntryPB::MAYBE_LIVE);
   }
   return Status::OK();
 }
@@ -187,38 +174,35 @@ MonoDelta TSDescriptor::TimeSinceHeartbeat() const {
 }
 
 MonoTime TSDescriptor::LastHeartbeatTime() const {
-  SharedLock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(mutex_)> l(mutex_);
   return last_heartbeat_;
 }
 
 int64_t TSDescriptor::latest_seqno() const {
-  SharedLock<decltype(lock_)> l(lock_);
-  return ts_information_->tserver_instance().instance_seqno();
+  return LockForRead()->pb.instance_seqno();
 }
 
-int32_t TSDescriptor::latest_report_sequence_number() const {
-    SharedLock<decltype(lock_)> l(lock_);
-    return report_sequence_number_;
+int32_t TSDescriptor::latest_report_seqno() const {
+    SharedLock<decltype(mutex_)> l(mutex_);
+    return latest_report_seqno_;
 }
 
 bool TSDescriptor::has_tablet_report() const {
-  SharedLock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(mutex_)> l(mutex_);
   return has_tablet_report_;
 }
 
 void TSDescriptor::set_has_tablet_report(bool has_report) {
-  std::lock_guard l(lock_);
+  std::lock_guard l(mutex_);
   has_tablet_report_ = has_report;
 }
 
 bool TSDescriptor::has_faulty_drive() const {
-  SharedLock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(mutex_)> l(mutex_);
   return has_faulty_drive_;
 }
 
-bool TSDescriptor::registered_through_heartbeat() const {
-  return registered_through_heartbeat_;
-}
+bool TSDescriptor::registered_through_heartbeat() const { return registered_through_heartbeat_; }
 
 void TSDescriptor::DecayRecentReplicaCreationsUnlocked() {
   // In most cases, we won't have any recent replica creations, so
@@ -238,56 +222,73 @@ void TSDescriptor::DecayRecentReplicaCreationsUnlocked() {
 }
 
 void TSDescriptor::IncrementRecentReplicaCreations() {
-  std::lock_guard l(lock_);
+  std::lock_guard l(mutex_);
   DecayRecentReplicaCreationsUnlocked();
   recent_replica_creations_ += 1;
 }
 
 double TSDescriptor::RecentReplicaCreations() {
-  std::lock_guard l(lock_);
+  std::lock_guard l(mutex_);
   DecayRecentReplicaCreationsUnlocked();
   return recent_replica_creations_;
 }
 
-TSRegistrationPB TSDescriptor::GetRegistration() const {
-  SharedLock<decltype(lock_)> l(lock_);
-  return ts_information_->registration();
+ServerRegistrationPB TSDescriptor::GetRegistration() const {
+  return LockForRead()->pb.registration();
 }
 
-const std::shared_ptr<TSInformationPB> TSDescriptor::GetTSInformationPB() const {
-  SharedLock<decltype(lock_)> l(lock_);
-  CHECK(ts_information_) << "No stored information";
-  return ts_information_;
+ResourcesPB TSDescriptor::GetResources() const {
+  return LockForRead()->pb.resources();
+}
+
+TSInformationPB TSDescriptor::GetTSInformationPB() const {
+  auto l = LockForRead();
+  TSInformationPB ts_info_pb;
+  *ts_info_pb.mutable_registration()->mutable_common() = l->pb.registration();
+  *ts_info_pb.mutable_registration()->mutable_resources() = l->pb.resources();
+  ts_info_pb.mutable_tserver_instance()->set_permanent_uuid(permanent_uuid());
+  ts_info_pb.mutable_tserver_instance()->set_instance_seqno(l->pb.instance_seqno());
+  return ts_info_pb;
+}
+
+TSRegistrationPB TSDescriptor::GetTSRegistrationPB() const {
+  auto l = LockForRead();
+  TSRegistrationPB ts_reg;
+  *ts_reg.mutable_common() = l->pb.registration();
+  *ts_reg.mutable_resources() = l->pb.resources();
+  return ts_reg;
+}
+
+NodeInstancePB TSDescriptor::GetNodeInstancePB() const {
+  NodeInstancePB node;
+  node.set_permanent_uuid(permanent_uuid());
+  node.set_instance_seqno(LockForRead()->pb.instance_seqno());
+  return node;
 }
 
 bool TSDescriptor::MatchesCloudInfo(const CloudInfoPB& cloud_info) const {
-  SharedLock<decltype(lock_)> l(lock_);
-  const auto& ts_ci = ts_information_->registration().common().cloud_info();
-
-  // cloud_info should be a prefix of ts_ci.
-  return CatalogManagerUtil::IsCloudInfoPrefix(cloud_info, ts_ci);
+  return CatalogManagerUtil::IsCloudInfoPrefix(
+      cloud_info, LockForRead()->pb.registration().cloud_info());
 }
 
 CloudInfoPB TSDescriptor::GetCloudInfo() const {
-  SharedLock<decltype(lock_)> l(lock_);
-  return ts_information_->registration().common().cloud_info();
+  return LockForRead()->pb.registration().cloud_info();
 }
 
 bool TSDescriptor::IsBlacklisted(const BlacklistSet& blacklist) const {
-  TSRegistrationPB reg = GetRegistration();
-  return yb::master::IsBlacklisted(reg.common(), blacklist);
+  return yb::master::IsBlacklisted(LockForRead()->pb.registration(), blacklist);
 }
 
 bool TSDescriptor::IsRunningOn(const HostPortPB& hp) const {
-  TSRegistrationPB reg = GetRegistration();
-  return yb::master::IsRunningOn(reg.common(), hp);
+  return yb::master::IsRunningOn(LockForRead()->pb.registration(), hp);
 }
 
 Result<HostPort> TSDescriptor::GetHostPortUnlocked() const {
-  const auto& addr = DesiredHostPort(ts_information_->registration().common(), local_cloud_info_);
+  auto l = LockForRead();
+  const auto& addr = DesiredHostPort(l->pb.registration(), local_cloud_info_);
   if (addr.host().empty()) {
     return STATUS_FORMAT(NetworkError, "Unable to find the TS address for $0: $1",
-                         permanent_uuid_, ts_information_->registration().ShortDebugString());
+                         permanent_uuid(), l->pb.registration().ShortDebugString());
   }
 
   return HostPortFromPB(addr);
@@ -323,7 +324,7 @@ bool TSDescriptor::IsAcceptingLeaderLoad(const ReplicationInfoPB& replication_in
 }
 
 void TSDescriptor::UpdateMetrics(const TServerMetricsPB& metrics) {
-  std::lock_guard l(lock_);
+  std::lock_guard l(mutex_);
   ts_metrics_.total_memory_usage = metrics.total_ram_usage();
   ts_metrics_.total_sst_file_size = metrics.total_sst_file_size();
   ts_metrics_.uncompressed_sst_file_size = metrics.uncompressed_sst_file_size();
@@ -341,7 +342,7 @@ void TSDescriptor::UpdateMetrics(const TServerMetricsPB& metrics) {
 
 void TSDescriptor::GetMetrics(TServerMetricsPB* metrics) {
   CHECK(metrics);
-  SharedLock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(mutex_)> l(mutex_);
   metrics->set_total_ram_usage(ts_metrics_.total_memory_usage);
   metrics->set_total_sst_file_size(ts_metrics_.total_sst_file_size);
   metrics->set_uncompressed_sst_file_size(ts_metrics_.uncompressed_sst_file_size);
@@ -359,68 +360,82 @@ void TSDescriptor::GetMetrics(TServerMetricsPB* metrics) {
 }
 
 Status TSDescriptor::IsReportCurrent(
-    const NodeInstancePB& ts_instance, const TabletReportPB* report) {
-  SharedLock<decltype(lock_)> l(lock_);
-  return IsReportCurrentUnlocked(ts_instance, report);
+    const NodeInstancePB& ts_instance, const TabletReportPB& report) {
+  auto cow_lock = LockForRead();
+  SharedLock<decltype(mutex_)> l(mutex_);
+  return IsReportCurrentUnlocked(ts_instance, std::cref(report), &cow_lock);
 }
 
+template <typename LockType>
+int64_t GetInstanceSeqNo(LockType* lock);
+
+template <>
+int64_t GetInstanceSeqNo(TSDescriptor::WriteLock* lock) {
+  return lock->mutable_data()->pb.instance_seqno();
+}
+
+template <>
+int64_t GetInstanceSeqNo(TSDescriptor::ReadLock* lock) {
+  return (*lock)->pb.instance_seqno();
+}
+
+template <typename LockType>
 Status TSDescriptor::IsReportCurrentUnlocked(
-    const NodeInstancePB& ts_instance, const TabletReportPB* report) {
+    const NodeInstancePB& ts_instance,
+    std::optional<std::reference_wrapper<const TabletReportPB>> report, LockType* l) {
   // Check instance seqno: did this tserver restart and send us another tablet report before we
   // finished with this one?
-  if (ts_information_->tserver_instance().instance_seqno() != ts_instance.instance_seqno()) {
+  if (GetInstanceSeqNo(l) != ts_instance.instance_seqno()) {
     return STATUS_FORMAT(
         IllegalState,
         "Stale tablet report for ts $0: instance sequence number in tablet report is $1 but "
         "current sequence number is $2",
-        permanent_uuid_, ts_instance.instance_seqno(),
-        ts_information_->tserver_instance().instance_seqno());
+        permanent_uuid(), ts_instance.instance_seqno(), (*l)->pb.instance_seqno());
   }
   // Check report sequence number: Has the client tserver timed out on the heartbeat RPC carrying
   // this tablet report and already sent another one?
-  if (report != nullptr && report->sequence_number() < report_sequence_number_) {
+  if (report && report->get().sequence_number() < latest_report_seqno_) {
     return STATUS_FORMAT(
         IllegalState,
         "Stale tablet report for ts $0: latest tablet report sequence number for this tserver is "
         "$1, but still processing a tablet report with sequence number $2",
-        permanent_uuid_, report_sequence_number_, report->sequence_number());
+        permanent_uuid(), latest_report_seqno_, report->get().sequence_number());
   }
   return Status::OK();
 }
 
 bool TSDescriptor::HasTabletDeletePending() const {
-  SharedLock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(mutex_)> l(mutex_);
   return !tablets_pending_delete_.empty();
 }
 
 void TSDescriptor::AddPendingTabletDelete(const std::string& tablet_id) {
-  std::lock_guard l(lock_);
+  std::lock_guard l(mutex_);
   tablets_pending_delete_.insert(tablet_id);
 }
 
 size_t TSDescriptor::ClearPendingTabletDelete(const std::string& tablet_id) {
-  std::lock_guard l(lock_);
+  std::lock_guard l(mutex_);
   return tablets_pending_delete_.erase(tablet_id);
 }
 
 std::string TSDescriptor::PendingTabletDeleteToString() const {
-  SharedLock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(mutex_)> l(mutex_);
   return yb::ToString(tablets_pending_delete_);
 }
 
 std::set<std::string> TSDescriptor::TabletsPendingDeletion() const {
-  SharedLock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(mutex_)> l(mutex_);
   return tablets_pending_delete_;
 }
 
 std::size_t TSDescriptor::NumTasks() const {
-  SharedLock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(mutex_)> l(mutex_);
   return tablets_pending_delete_.size();
 }
 
 bool TSDescriptor::IsLive() const {
-  return TimeSinceHeartbeat().ToMilliseconds() <
-         GetAtomicFlag(&FLAGS_tserver_unresponsive_timeout_ms) && !IsRemoved();
+  return LockForRead()->pb.state() == SysTServerEntryPB::MAYBE_LIVE;
 }
 
 bool TSDescriptor::IsLiveAndHasReported() const {
@@ -433,9 +448,9 @@ bool TSDescriptor::HasYsqlCatalogLease() const {
 }
 
 std::string TSDescriptor::ToString() const {
-  SharedLock<decltype(lock_)> l(lock_);
+  SharedLock<decltype(mutex_)> l(mutex_);
   return Format("{ permanent_uuid: $0 registration: $1 placement_id: $2 }",
-                permanent_uuid_, ts_information_->registration(), placement_id_);
+                permanent_uuid(), LockForRead()->pb.registration(), placement_id_);
 }
 
 bool TSDescriptor::IsReadOnlyTS(const ReplicationInfoPB& replication_info) const {

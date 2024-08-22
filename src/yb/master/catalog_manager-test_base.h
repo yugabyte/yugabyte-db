@@ -21,8 +21,10 @@
 
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/ts_descriptor.h"
+#include "yb/master/ts_descriptor_test_util.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/monotime.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 
@@ -189,9 +191,10 @@ std::shared_ptr<TSDescriptor> SetupTS(const std::string& uuid, const std::string
   ci->set_placement_region(default_region);
   ci->set_placement_zone(az);
 
-  std::shared_ptr<TSDescriptor> ts(new TSDescriptor(node.permanent_uuid()));
-  CHECK_OK(ts->Register(node, reg, CloudInfoPB(), nullptr));
-  return ts;
+  auto result = TSDescriptorTestUtil::RegisterNew(
+      node, reg, CloudInfoPB(), nullptr, RegisteredThroughHeartbeat::kTrue);
+  CHECK(result.ok()) << result.status();
+  return *result;
 }
 
 std::shared_ptr<TSDescriptor> SetupTS(
@@ -211,10 +214,10 @@ std::shared_ptr<TSDescriptor> SetupTS(
   ci->set_placement_region(default_region);
   ci->set_placement_zone(az);
 
-  std::shared_ptr<TSDescriptor> ts(new TSDescriptor(node.permanent_uuid()));
-  CHECK_OK(ts->Register(node, reg, CloudInfoPB(), nullptr));
-
-  return ts;
+  auto result = TSDescriptorTestUtil::RegisterNew(
+      node, reg, CloudInfoPB(), nullptr, RegisteredThroughHeartbeat::kTrue);
+  CHECK(result.ok()) << result.status();
+  return *result;
 }
 
 void SimulateSetLeaderReplicas(

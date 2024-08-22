@@ -145,7 +145,9 @@ export const GFlagsField = ({
     }
   );
 
-  const pgGroupFlags = getFlagsByGroupName(pgFlags, GFLAG_GROUPS.ENHANCED_POSTGRES_COMPATIBILITY);
+  const pgGroupFlags = isPGSupported
+    ? getFlagsByGroupName(pgFlags, GFLAG_GROUPS.ENHANCED_POSTGRES_COMPATIBILITY)
+    : {};
   //options Array -- TO DRY THE CODE
   const OPTIONS = [
     {
@@ -543,7 +545,8 @@ export const GFlagsField = ({
               ...selectedProps,
               dbVersion,
               existingFlags: fields,
-              isGFlagMultilineConfEnabled
+              isGFlagMultilineConfEnabled,
+              editMode
             }}
           />
         );

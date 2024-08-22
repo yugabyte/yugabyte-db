@@ -1500,7 +1500,7 @@ YbUnixEpochToPostgresEpoch(int64_t unix_t)
 }
 
 bool
-YbTypeDetails(Oid elmtype, int *elmlen, bool *elmbyval, char *elmalign)
+YbTypeDetails(Oid elmtype, int16_t *elmlen, bool *elmbyval, char *elmalign)
 {
 	switch (elmtype)
 	{

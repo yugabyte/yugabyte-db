@@ -442,7 +442,8 @@ _outModifyTable(StringInfo str, const ModifyTable *node)
 	WRITE_NODE_FIELD(ybPushdownTlist);
 	WRITE_NODE_FIELD(ybReturningColumns);
 	WRITE_NODE_FIELD(ybColumnRefs);
-	WRITE_NODE_FIELD(no_update_index_list);
+	WRITE_NODE_FIELD(yb_skip_entities);
+	WRITE_NODE_FIELD(yb_update_affected_entities);
 	WRITE_BOOL_FIELD(no_row_trigger);
 	WRITE_BOOL_FIELD(ybUseScanTupleInUpdate);
 	WRITE_BOOL_FIELD(ybHasWholeRowAttribute);
@@ -4037,6 +4038,23 @@ _outYbExprColrefDesc(StringInfo str, const YbExprColrefDesc *node)
 	WRITE_OID_FIELD(collid);
 }
 
+static void
+_outYbSkippableEntities(StringInfo str, const YbSkippableEntities *node)
+{
+	WRITE_NODE_TYPE("YBSKIPPABLEENTITIES");
+
+	WRITE_NODE_FIELD(index_list);
+	WRITE_NODE_FIELD(referencing_fkey_list);
+	WRITE_NODE_FIELD(referenced_fkey_list);
+}
+
+static void
+_outYbUpdateAffectedEntities(StringInfo str, const YbUpdateAffectedEntities *node)
+{
+	WRITE_NODE_TYPE("YBUPDATEAFFECTEDENTITIES");
+	/* TODO(kramanathan): Define serializability for YbUpdateAffectedEntities */
+}
+
 /*
  * outNode -
  *	  converts a Node into ascii string and append it to 'str'
@@ -4765,6 +4783,12 @@ outNode(StringInfo str, const void *obj)
 				break;
 			case T_YbExprColrefDesc:
 				_outYbExprColrefDesc(str, obj);
+				break;
+			case T_YbSkippableEntities:
+				_outYbSkippableEntities(str, obj);
+				break;
+			case T_YbUpdateAffectedEntities:
+				_outYbUpdateAffectedEntities(str, obj);
 				break;
 
 			default:

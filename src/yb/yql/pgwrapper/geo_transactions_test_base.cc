@@ -320,7 +320,7 @@ void GeoTransactionsTestBase::ValidateAllTabletLeaderinZone(std::vector<TabletId
     auto table_info = ASSERT_RESULT(catalog_manager.GetTabletInfo(tablet_id));
     auto leader = ASSERT_RESULT(table_info->GetLeader());
     auto server_reg_pb = leader->GetRegistration();
-    ASSERT_EQ(server_reg_pb.common().cloud_info().placement_region(), region_str);
+    ASSERT_EQ(server_reg_pb.cloud_info().placement_region(), region_str);
   }
 }
 

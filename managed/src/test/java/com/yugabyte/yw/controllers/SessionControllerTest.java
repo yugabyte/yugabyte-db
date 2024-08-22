@@ -15,7 +15,10 @@ import static play.inject.Bindings.bind;
 import static play.mvc.Http.Status.*;
 import static play.test.Helpers.*;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -33,18 +36,30 @@ import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.QueryAlerts;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.common.rbac.Permission;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.controllers.handlers.ThirdPartyLoginHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.*;
-import com.yugabyte.yw.models.Users.Role;
+import com.yugabyte.yw.models.GroupMappingInfo.GroupType;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.UserType;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.rbac.ResourceGroup;
+import com.yugabyte.yw.models.rbac.Role;
 import com.yugabyte.yw.models.rbac.Role.RoleType;
+import com.yugabyte.yw.models.rbac.RoleBinding;
 import com.yugabyte.yw.scheduler.Scheduler;
+import db.migration.default_.common.R__Sync_System_Roles;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.PrivateKey;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
@@ -137,6 +152,10 @@ public class SessionControllerTest {
   private final Config mockPac4jConfig = mock(Config.class);
   private final SecureAction mockSecureAction = mock(SecureAction.class);
 
+  // Define test permissions to use later.
+  private Permission permission1 = new Permission(ResourceType.UNIVERSE, Action.CREATE);
+  private Permission permission2 = new Permission(ResourceType.UNIVERSE, Action.READ);
+
   private void startApp(boolean isMultiTenant) {
     HealthChecker mockHealthChecker = mock(HealthChecker.class);
     Scheduler mockScheduler = mock(Scheduler.class);
@@ -222,20 +241,20 @@ public class SessionControllerTest {
     startApp(false);
     authorizeUserMockSetup(); // authorize "test@yugabyte.com"
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
+    R__Sync_System_Roles.syncSystemRoles();
 
-    // create group mappings
-    com.yugabyte.yw.models.rbac.Role role1 =
-        com.yugabyte.yw.models.rbac.Role.create(
-            customer.getUuid(), "Admin", "Admin role", RoleType.System, null);
-    com.yugabyte.yw.models.rbac.Role role2 =
-        com.yugabyte.yw.models.rbac.Role.create(
-            customer.getUuid(), "BackupAdmin", "BackupAdmin role", RoleType.System, null);
-    OidcGroupToYbaRoles group1 =
-        OidcGroupToYbaRoles.create(
-            customer.getUuid(), "Admin Group", ImmutableList.of(role1.getRoleUUID()));
-    OidcGroupToYbaRoles group2 =
-        OidcGroupToYbaRoles.create(
-            customer.getUuid(), "BackupAdmin Group", ImmutableList.of(role2.getRoleUUID()));
+    GroupMappingInfo group1 =
+        GroupMappingInfo.create(
+            customer.getUuid(),
+            Role.get(customer.getUuid(), "Admin").getRoleUUID(),
+            "Admin Group",
+            GroupType.OIDC);
+    GroupMappingInfo group2 =
+        GroupMappingInfo.create(
+            customer.getUuid(),
+            Role.get(customer.getUuid(), "BackupAdmin").getRoleUUID(),
+            "BackupAdmin Group",
+            GroupType.OIDC);
 
     Result result = route(app, fakeRequest("GET", "/api/third_party_login"));
     assertEquals("Headers:" + result.headers(), SEE_OTHER, result.status());
@@ -245,7 +264,93 @@ public class SessionControllerTest {
     // assert user created
     assertNotNull(user);
     // assert correct role assigned
-    assertEquals(Role.Admin, user.getRole());
+    assertEquals(Users.Role.Admin, user.getRole());
+  }
+
+  @Test
+  public void testCustomRolesMapping() throws Exception {
+    startApp(false);
+    authorizeUserMockSetup(); // authorize "test@yugabyte.com"
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
+    R__Sync_System_Roles.syncSystemRoles();
+    Customer customer = ModelFactory.testCustomer("Test Customer 1");
+    Users superAdmin = ModelFactory.testSuperAdminUserNewRbac(customer);
+    String authToken = superAdmin.createAuthToken();
+    // create custom role
+    Role customRole =
+        Role.create(
+            customer.getUuid(),
+            "testCustomRole",
+            "testDescription",
+            RoleType.Custom,
+            new HashSet<>(Arrays.asList(permission1, permission2)));
+
+    // create group mapping
+    GroupMappingInfo group1 =
+        GroupMappingInfo.create(
+            customer.getUuid(),
+            Role.get(customer.getUuid(), "ConnectOnly").getRoleUUID(),
+            "Admin Group",
+            GroupType.OIDC);
+
+    RoleBinding roleBinding1 =
+        RoleBinding.create(
+            group1,
+            RoleBinding.RoleBindingType.Custom,
+            customRole,
+            new ResourceGroup(
+                new HashSet<>(
+                    Arrays.asList(
+                        ResourceGroup.ResourceDefinition.builder()
+                            .resourceType(ResourceType.UNIVERSE)
+                            .allowAll(true)
+                            .build(),
+                        ResourceGroup.ResourceDefinition.builder()
+                            .resourceType(ResourceType.OTHER)
+                            .allowAll(true)
+                            .build()))));
+
+    Result result = route(app, fakeRequest("GET", "/api/third_party_login"));
+    assertEquals("Headers:" + result.headers(), SEE_OTHER, result.status());
+    assertEquals("/", result.headers().get("Location")); // Redirect
+
+    // check user.groupmembership on login
+    Users user = Users.find.query().where().eq("email", "test@yugabyte.com").findOne();
+    assertNotNull(user);
+    assertNotNull(user.getGroupMemberships());
+    assertTrue(user.getGroupMemberships().contains(group1.getGroupUUID()));
+    // call role binding api and check user has the correct role bindings
+    result = listRoleBindings(customer.getUuid(), user.getUuid(), authToken);
+    assertEquals(OK, result.status());
+
+    ObjectMapper mapper = new ObjectMapper();
+    JsonNode json = Json.parse(contentAsString(result));
+    ObjectReader reader = mapper.readerFor(new TypeReference<Map<UUID, List<RoleBinding>>>() {});
+    Map<UUID, List<RoleBinding>> roleBindingList = reader.readValue(json);
+    assertTrue(roleBindingList.get(user.getUuid()).contains(roleBinding1));
+    // delete group mapping
+    group1.delete();
+    // call role binding api and check user has the correct role bindings
+    result = listRoleBindings(customer.getUuid(), user.getUuid(), authToken);
+    assertEquals(OK, result.status());
+
+    json = Json.parse(contentAsString(result));
+    reader = mapper.readerFor(new TypeReference<Map<UUID, List<RoleBinding>>>() {});
+    roleBindingList = reader.readValue(json);
+    assertFalse(roleBindingList.get(user.getUuid()).contains(roleBinding1));
+  }
+
+  private Result listRoleBindings(UUID customerUUID, UUID userUUID, String authToken) {
+    String uri = "";
+    if (userUUID == null) {
+      uri = String.format("/api/customers/%s/rbac/role_binding", customerUUID.toString());
+    } else {
+      uri =
+          String.format(
+              "/api/customers/%s/rbac/role_binding?userUUID=%s",
+              customerUUID.toString(), userUUID.toString());
+    }
+    return route(app, fakeRequest("GET", uri).header("X-AUTH-TOKEN", authToken));
   }
 
   public void authorizeUserMockSetup() {
@@ -426,7 +531,7 @@ public class SessionControllerTest {
   public void testInsecureLoginValid() {
     startApp(false);
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
-    ModelFactory.testUser(customer, "tc1@test.com", Role.ReadOnly);
+    ModelFactory.testUser(customer, "tc1@test.com", Users.Role.ReadOnly);
     ConfigHelper configHelper = new ConfigHelper();
     configHelper.loadConfigToDB(
         ConfigHelper.ConfigType.Security, ImmutableMap.of("level", "insecure"));
@@ -446,7 +551,7 @@ public class SessionControllerTest {
       throws InterruptedException, ExecutionException, TimeoutException {
     startApp(false);
     Customer customer = ModelFactory.testCustomer("Test Customer 1");
-    ModelFactory.testUser(customer, "tc1@test.com", Role.Admin);
+    ModelFactory.testUser(customer, "tc1@test.com", Users.Role.Admin);
     ConfigHelper configHelper = new ConfigHelper();
     configHelper.loadConfigToDB(
         ConfigHelper.ConfigType.Security, ImmutableMap.of("level", "insecure"));
@@ -536,7 +641,7 @@ public class SessionControllerTest {
     String authToken = json.get("authToken").asText();
     Customer c1 = Customer.get(UUID.fromString(json.get("customerUUID").asText()));
     Users user = Users.get(UUID.fromString(json.get("userUUID").asText()));
-    assertEquals(Role.SuperAdmin, user.getRole());
+    assertEquals(Users.Role.SuperAdmin, user.getRole());
     assertAuditEntry(1, c1.getUuid());
 
     ObjectNode registerJson2 = Json.newObject();

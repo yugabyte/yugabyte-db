@@ -3982,10 +3982,9 @@ TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
   ASSERT_GT(expected, 0);
   LOG(INFO) << "Expected total cache misses: " << expected;
   int total_cache_misses = 0;
-  for (int i = 0; ; ++i) {
-    auto cache_miss_metric_id =
-      Format("handler_latency_yb_ysqlserver_SQLProcessor_CatalogCacheMisses_$0_", i);
-    begin = page_content.find(cache_miss_metric_id);
+  while (true) {
+    auto cache_id_miss_metric = "handler_latency_yb_ysqlserver_SQLProcessor_CatalogCacheMisses_";
+    begin = page_content.find(cache_id_miss_metric, end);
     if (begin == std::string::npos) {
       break;
     }

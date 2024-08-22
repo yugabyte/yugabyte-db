@@ -24,6 +24,7 @@ interface MetricsData {
   title: string;
   tableName?: string;
   isGranularMetricsEnabled: boolean;
+  printMode: boolean;
 }
 
 export const GraphTab: FC<MetricsData> = ({
@@ -33,7 +34,8 @@ export const GraphTab: FC<MetricsData> = ({
   selectedUniverse,
   title,
   tableName,
-  isGranularMetricsEnabled
+  isGranularMetricsEnabled,
+  printMode = false
 }) => {
   let tabContent = null;
   const { currentUser } = useSelector((state: any) => state.customer);
@@ -175,7 +177,8 @@ export const GraphTab: FC<MetricsData> = ({
     title,
     currentUser,
     isGranularMetricsEnabled,
-    updateTimestamp
+    updateTimestamp,
+    printMode
   );
 
   return <>{tabContent}</>;

@@ -48,11 +48,9 @@ Status QLRocksDBStorage::GetIterator(
     const ReadOperationData& read_operation_data,
     const qlexpr::QLScanSpec& spec,
     std::reference_wrapper<const ScopedRWOperation> pending_op,
-    std::unique_ptr<YQLRowwiseIteratorIf> *iter,
-    const docdb::DocDBStatistics* statistics) const {
+    std::unique_ptr<YQLRowwiseIteratorIf> *iter) const {
   auto doc_iter = std::make_unique<DocRowwiseIterator>(
-      projection, doc_read_context, txn_op_context, doc_db_, read_operation_data, pending_op,
-      statistics);
+      projection, doc_read_context, txn_op_context, doc_db_, read_operation_data, pending_op);
   RETURN_NOT_OK(doc_iter->Init(spec));
   *iter = std::move(doc_iter);
   return Status::OK();
@@ -117,11 +115,9 @@ Status QLRocksDBStorage::CreateIterator(
     const TransactionOperationContext& txn_op_context,
     const ReadOperationData& read_operation_data,
     std::reference_wrapper<const ScopedRWOperation> pending_op,
-    YQLRowwiseIteratorIf::UniPtr* iter,
-    const docdb::DocDBStatistics* statistics) const {
+    YQLRowwiseIteratorIf::UniPtr* iter) const {
   auto doc_iter = std::make_unique<DocRowwiseIterator>(
-      projection, doc_read_context, txn_op_context, doc_db_, read_operation_data, pending_op,
-      statistics);
+      projection, doc_read_context, txn_op_context, doc_db_, read_operation_data, pending_op);
   *iter = std::move(doc_iter);
   return Status::OK();
 }
@@ -142,21 +138,19 @@ Status QLRocksDBStorage::GetIteratorForYbctid(
     std::reference_wrapper<const DocReadContext> doc_read_context,
     const TransactionOperationContext& txn_op_context,
     const ReadOperationData& read_operation_data,
-    const QLValuePB& min_ybctid,
-    const QLValuePB& max_ybctid,
+    const Slice& min_ybctid,
+    const Slice& max_ybctid,
     std::reference_wrapper<const ScopedRWOperation> pending_op,
     YQLRowwiseIteratorIf::UniPtr* iter,
-    const docdb::DocDBStatistics* statistics,
     SkipSeek skip_seek) const {
   DocKey lower_doc_key(doc_read_context.get().schema());
-  RETURN_NOT_OK(lower_doc_key.DecodeFrom(min_ybctid.binary_value()));
+  RETURN_NOT_OK(lower_doc_key.DecodeFrom(min_ybctid));
 
   DocKey upper_doc_key(doc_read_context.get().schema());
-  RETURN_NOT_OK(upper_doc_key.DecodeFrom(max_ybctid.binary_value()));
+  RETURN_NOT_OK(upper_doc_key.DecodeFrom(max_ybctid));
   upper_doc_key.AddRangeComponent(dockv::KeyEntryValue(dockv::KeyEntryType::kHighest));
   auto doc_iter = std::make_unique<DocRowwiseIterator>(
-      projection, doc_read_context, txn_op_context, doc_db_, read_operation_data, pending_op,
-      statistics);
+      projection, doc_read_context, txn_op_context, doc_db_, read_operation_data, pending_op);
 
   static const dockv::KeyEntryValues kEmptyVec;
   RETURN_NOT_OK(doc_iter->Init(
@@ -183,8 +177,7 @@ Status QLRocksDBStorage::GetIterator(
     const ReadOperationData& read_operation_data,
     const DocKey& start_doc_key,
     std::reference_wrapper<const ScopedRWOperation> pending_op,
-    YQLRowwiseIteratorIf::UniPtr* iter,
-    const docdb::DocDBStatistics* statistics) const {
+    YQLRowwiseIteratorIf::UniPtr* iter) const {
   const auto& schema = doc_read_context.get().schema();
   // Populate dockey from QL key columns.
   auto hashed_components = VERIFY_RESULT(qlexpr::InitKeyColumnPrimitiveValues(
@@ -194,8 +187,7 @@ Status QLRocksDBStorage::GetIterator(
       request.range_column_values(), schema, schema.num_hash_key_columns()));
 
   auto doc_iter = std::make_unique<DocRowwiseIterator>(
-      projection, doc_read_context, txn_op_context, doc_db_, read_operation_data, pending_op,
-      statistics);
+      projection, doc_read_context, txn_op_context, doc_db_, read_operation_data, pending_op);
 
   if (range_components.size() == schema.num_range_key_columns() &&
       hashed_components.size() == schema.num_hash_key_columns()) {

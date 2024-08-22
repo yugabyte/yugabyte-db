@@ -1819,7 +1819,6 @@ class CreateSnapshotRpc
       table.SetIntoTableIdentifierPB(&id);
       req_.mutable_tables()->Add()->Swap(&id);
     }
-    req_.set_transaction_aware(true);
     return Status::OK();
   }
 

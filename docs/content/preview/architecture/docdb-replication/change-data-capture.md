@@ -33,7 +33,7 @@ Each tablet has its own WAL file. WAL is NOT in-memory, but it is disk persisted
 
 YugabyteDB normally purges WAL segments after some period of time. This means that the connector does not have the complete history of all changes that have been made to the database. Therefore, when the connector first connects to a particular YugabyteDB database, it starts by performing a consistent snapshot of each of the database schemas.
 
-The Debezium YugabyteDB connector captures row-level changes in the schemas of a YugabyteDB database. The first time it connects to a YugabyteDB cluster, the connector takes a consistent snapshot of all schemas. After that snapshot is complete, the connector continuously captures row-level changes that insert, update, and delete database content, and that were committed to a YugabyteDB database.
+The YugabyteDB Debezium connector captures row-level changes in the schemas of a YugabyteDB database. The first time it connects to a YugabyteDB cluster, the connector takes a consistent snapshot of all schemas. After that snapshot is complete, the connector continuously captures row-level changes that insert, update, and delete database content, and that were committed to a YugabyteDB database.
 
 ![How does CDC work](/images/explore/cdc-overview-work.png)
 
@@ -51,7 +51,7 @@ CDC in YugabyteDB provides technology to ensure that any changes in data due to 
 
 ### Per-tablet ordered delivery
 
-All data changes for one row or multiple rows in the same tablet are received in the order in which they occur. Due to the distributed nature of the problem, however, there is no guarantee for the order across tablets.
+All data changes for one row or multiple rows in the same tablet are received in the order in which they occur. Due to the distributed nature of the problem, however, gRPC replication does not guarantee order across tablets.
 
 Consider the following scenario:
 

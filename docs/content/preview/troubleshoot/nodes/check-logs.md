@@ -16,12 +16,12 @@ YugabyteDB has an extensive error-handling mechanism, with logging being one of 
 
 The logs for each node are written to a subdirectory of the YugabyteDB `yugabyte-data` directory and may vary depending on your deployment, as follows:
 
-- When you use `yb-ctl` to create local YugabyteDB clusters on a single host (for example, your computer), the default location for each node is `/yugabyte-data/node-<node_nr>/`. For a 3-node cluster, the `yb-ctl` utility creates three directories: `node-1`, `node-2`, `node-3`.
+- When you use yb-ctl to create local YugabyteDB clusters on a single host (for example, your computer), the default location for each node is `/yugabyte-data/node-<node_nr>/`. For a 3-node cluster, the yb-ctl utility creates three directories: `node-1`, `node-2`, `node-3`.
 - For a multi-node cluster deployment to multiple hosts, the location where YugabyteDB disks are set up can vary (for example, `/home/centos/`, `/mnt/`, or another directory) on each node (host).
 - When using the `--fs_data_dirs` flag with multiple directories, logs are saved in the first directory in the list.
 - When using YugabyteDB Anywhere, logs are located in `/home/yugabyte/{master,tserver}/logs`. This is a symlink to the first directory in `--fs_data_dirs` list.
 - When using the Docker container, logs are located in `/root/var/logs` inside the container.
-- When using the `yugabyted` command-line interface to create the local YugabyteDB cluster, by default logs are located in `~/var/logs`.
+- When using the yugabyted command-line interface to create the local YugabyteDB cluster, by default logs are located in `~/var/logs`.
 
 In this document, the YugabyteDB `yugabyte-data` directory is represented by `<yugabyte-data-directory>`.
 
@@ -43,7 +43,7 @@ The YB-TServer service performs the actual input-output for end-user requests. I
 cd <yugabyte-data-directory>/disk1/yb-data/tserver/logs/
 ```
 
-Logs are organized by error severity: `FATAL`, `ERROR`, `WARNING`, `INFO`. 
+Logs are organized by error severity: `FATAL`, `ERROR`, `WARNING`, `INFO`.
 
 ## Logs management
 

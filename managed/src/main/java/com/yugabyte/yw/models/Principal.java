@@ -4,10 +4,12 @@ package com.yugabyte.yw.models;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.GroupMappingInfo.GroupType;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.annotation.Cache;
 import io.ebean.annotation.EnumValue;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -17,12 +19,15 @@ import java.util.UUID;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 @Entity
 @Table(name = "principal")
 @Data
 @NoArgsConstructor
 @EqualsAndHashCode(callSuper = false)
+@ToString
+@Cache
 public class Principal extends Model {
   // A Principal is an entity which is allowed to have role bindings.
   // Currently it can either be a group or an user.
@@ -70,8 +75,16 @@ public class Principal extends Model {
     }
   }
 
+  @JsonIgnore
+  public UUID getCustomerUUID() {
+    if (this.type.equals(PrincipalType.USER)) {
+      return Users.getOrBadRequest(this.uuid).getCustomerUUID();
+    }
+    return GroupMappingInfo.getOrBadRequest(this.uuid).getCustomerUUID();
+  }
+
   public static Principal get(UUID principalUUID) {
-    Principal principal = find.query().where().eq("uuid", principalUUID).findOne();
+    Principal principal = find.byId(principalUUID);
     return principal;
   }
 

@@ -48,7 +48,13 @@ const auto kTable = "test_table";
 namespace yb {
 namespace pgwrapper {
 
-class PgDdlAtomicityStressTest : public PgDdlAtomicityTestBase {
+YB_STRONGLY_TYPED_BOOL(ColocatedDatabase);
+YB_STRONGLY_TYPED_BOOL(PartitionedTables);
+
+class PgDdlAtomicityStressTest
+    : public PgDdlAtomicityTestBase,
+      public ::testing::WithParamInterface<std::tuple<ColocatedDatabase, PartitionedTables,
+                                                      std::string>> {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=false");
@@ -57,162 +63,110 @@ class PgDdlAtomicityStressTest : public PgDdlAtomicityTestBase {
     options->extra_master_flags.push_back("--ysql_ddl_transaction_wait_for_ddl_verification=false");
   }
 
-  Status StressTestWithFlag(const std::string& error_probability);
+  Status SetupTables();
 
-  virtual Status SetupTables();
+  Result<PGConn> Connect();
 
-  virtual Result<PGConn> Connect() {
-    return LibPqTestBase::Connect();
+  int NumIterations();
+
+  std::string database();
+
+  // Return a cached global connection that is used for test table/data setup, and test
+  // result verification.
+  PGConn* GetGlobalConn() {
+    if (!global_conn) {
+      global_conn = std::make_unique<PGConn>(CHECK_RESULT(Connect()));
+    }
+    return global_conn.get();
   }
 
-  virtual int NumIterations() {
-    return RegularBuildVsSanitizers(10, 5);
+  bool IsColocated() const {
+    return std::get<0>(GetParam());
   }
 
-  virtual std::string database() {
-    return "yugabyte";
+  bool IsPartitioned() const {
+    return std::get<1>(GetParam());
   }
 
- private:
-  Status StressTest();
+  std::string ErrorProbability() const {
+    return std::get<2>(GetParam());
+  }
 
-  Status TestDdl(const std::vector<std::string>& ddl, const int iteration);
+  Status TestDdl(PGConn* conn, const std::vector<std::string>& ddl, const int iteration);
 
-  Status TestConcurrentIndex(const int num_iterations);
+  Status TestConcurrentIndex(PGConn* conn, const int num_iterations);
 
-  Status TestDml(const int num_iterations);
+  Status TestDml(PGConn* conn, const int num_iterations);
 
   template<class... Args>
-  Result<bool> ExecuteFormatWithRetry(const std::string& format, Args&&... args) {
-    return DoExecuteWithRetry(Format(format, std::forward<Args>(args)...));
+  Result<bool> ExecuteFormatWithRetry(PGConn* conn, const std::string& format, Args&&... args) {
+    return DoExecuteWithRetry(conn, Format(format, std::forward<Args>(args)...));
   }
 
-  Result<bool> DoExecuteWithRetry(const std::string& stmt);
+  Result<bool> DoExecuteWithRetry(PGConn* conn, const std::string& stmt);
 
   Status InsertTestData(const int num_rows);
+
+ private:
+  std::unique_ptr<PGConn> global_conn;
 };
 
 Status PgDdlAtomicityStressTest::SetupTables() {
-  auto conn = VERIFY_RESULT(Connect());
-  return conn.Execute(CreateTableStmt(kTable));
+  if (IsColocated()) {
+    // We need a separate connection to create the colocated database, before we can
+    // connect to it via GetGlobalConn().
+    auto conn_init = VERIFY_RESULT(LibPqTestBase::Connect());
+    RETURN_NOT_OK(conn_init.ExecuteFormat("CREATE DATABASE $0 WITH colocated = true", database()));
+  }
+  auto global_conn = GetGlobalConn();
+  if (IsPartitioned()) {
+    RETURN_NOT_OK(global_conn->ExecuteFormat(
+        "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT, num real) "
+        " PARTITION BY RANGE(key)", kTable));
+    RETURN_NOT_OK(global_conn->ExecuteFormat(
+        "CREATE TABLE $0_$1 PARTITION OF $0 FOR VALUES FROM ($1) TO ($2)",
+        kTable, 1, NumIterations()));
+    // Create a default partition.
+    return global_conn->ExecuteFormat("CREATE TABLE $0_default PARTITION OF $0 DEFAULT", kTable);
+  }
+  return global_conn->Execute(CreateTableStmt(kTable));
 }
 
 Status PgDdlAtomicityStressTest::InsertTestData(const int num_rows) {
-  auto conn = VERIFY_RESULT(Connect());
-  return conn.ExecuteFormat(
+  auto global_conn = GetGlobalConn();
+  return global_conn->ExecuteFormat(
     "INSERT INTO $0 VALUES (generate_series(1, $1))",
     kTable,
     num_rows);
 }
 
-Status PgDdlAtomicityStressTest::StressTestWithFlag(const std::string& error_probability) {
-  RETURN_NOT_OK(SetupTables());
-
-  RETURN_NOT_OK(InsertTestData(NumIterations() * 2));
-
-  if (!error_probability.empty()) {
-    RETURN_NOT_OK(cluster_->SetFlagOnMasters(error_probability, "0.1"));
+Result<PGConn> PgDdlAtomicityStressTest::Connect() {
+  if (IsColocated()) {
+    return ConnectToDB(database());
   }
-
-  RETURN_NOT_OK(StressTest());
-
-  return Status::OK();
+  return LibPqTestBase::Connect();
 }
 
-Status PgDdlAtomicityStressTest::StressTest() {
-  const int num_iterations = NumIterations();
-  TestThreadHolder thread_holder;
-
-  // We test creation/deletion together so that we can be sure that the entity we are dropping
-  // exists when it is executed.
-
-  // Create a thread to add and drop columns.
-  thread_holder.AddThreadFunctor([this, num_iterations] {
-    std::vector<std::string> ddls = {
-      "ALTER TABLE $0 ADD COLUMN col_$1 TEXT",
-      "ALTER TABLE $0 DROP COLUMN col_$1"
-    };
-    ASSERT_OK(TestDdl(ddls, num_iterations));
-    LOG(INFO) << "Thread to add and drop columns has completed";
-  });
-
-  // Create a thread to add and drop columns with default values.
-  thread_holder.AddThreadFunctor([this, num_iterations] {
-    std::vector<std::string> ddls = {
-      "ALTER TABLE $0 ADD COLUMN col_def_$1 TEXT DEFAULT 'def'",
-      "ALTER TABLE $0 DROP COLUMN col_def_$1"
-    };
-    ASSERT_OK(TestDdl(ddls, num_iterations));
-    LOG(INFO) << "Thread to add and drop columns with default values has completed";
-  });
-
-  // Create a thread to create/drop an index on this table.
-  thread_holder.AddThreadFunctor([this, num_iterations] {
-    std::vector<std::string> ddls = {
-      "CREATE INDEX NONCONCURRENTLY non_concurrent_idx_$1 ON $0(key)",
-      "DROP INDEX non_concurrent_idx_$1"
-    };
-    ASSERT_OK(TestDdl(ddls, num_iterations));
-    LOG(INFO) << "Thread to create/drop an index has completed";
-  });
-
-  // ConcurrentIndex is a very long running operation. Cleaning up a failed ConcurrentIndex is
-  // also a DDL, and this can be a very long running test. Reduce the number of iterations.
-  thread_holder.AddThreadFunctor([this, num_iterations] {
-    ASSERT_OK(TestConcurrentIndex(num_iterations / 2));
-    LOG(INFO) << "Thread to run concurrent index has completed";
-  });
-
-  // Create a thread to update the rows on this table.
-  thread_holder.AddThreadFunctor([this, num_iterations] {
-    ASSERT_OK(TestDml(num_iterations));
-    LOG(INFO) << "Thread to update the rows has completed";
-  });
-
-  // Wait for all threads to complete.
-  thread_holder.JoinAll();
-
-  LOG(INFO) << "Verify that the table does not contain any additional columns";
-  auto client = VERIFY_RESULT(cluster_->CreateClient());
-  RETURN_NOT_OK(VerifySchema(client.get(), database(), kTable, {"key", "value", "num"}));
-
-  LOG(INFO) << "Verify that no indexes are present on this table";
-  for (int i = 0; i < num_iterations; ++i) {
-    client::VerifyTableNotExists(client.get(), database(), Format("idx_$0", i), 10);
+int PgDdlAtomicityStressTest::NumIterations() {
+  if (IsPartitioned()) {
+    // Fewer iterations are sufficient for partitioned table tests because each DDL statement
+    // internally invokes (num_partitions + 1) DDLs.
+    return 3;
   }
-
-  LOG(INFO) << "Verify that all the rows on this table are updated correctly";
-  auto conn = VERIFY_RESULT(Connect());
-  for (int i = 1; i <= num_iterations; ++i) {
-    auto res = VERIFY_RESULT(conn.FetchFormat("SELECT value FROM $0 WHERE key = $1", kTable, i));
-    auto num_rows = PQntuples(res.get());
-    if (num_rows != 1) {
-      return STATUS_FORMAT(Corruption, "Expected 1 rows for key $0, found $1", i, num_rows);
-    }
-
-    if (int num_cols = PQnfields(res.get()) != 1) {
-      return STATUS_FORMAT(Corruption, "got unexpected number of columns: $0", num_cols);
-    }
-
-    auto expected_val = Format("value_$0", i);
-    std::string val = VERIFY_RESULT(GetValue<std::string>(res.get(), 0, 0));
-    if (val != expected_val) {
-      return STATUS_FORMAT(Corruption, "Expected to get $0 for key $1 but got $2",
-                            expected_val, i, val);
-    }
-  }
-  LOG(INFO) << __FUNCTION__ << " done";
-  return Status::OK();
+  return RegularBuildVsSanitizers(10, 5);
 }
 
+std::string PgDdlAtomicityStressTest::database() {
+  return IsColocated() ? "yugabyte_colocated" : "yugabyte";
+}
 
 Status PgDdlAtomicityStressTest::TestDdl(
-    const std::vector<std::string>& ddls, const int num_iterations) {
+    PGConn* conn, const std::vector<std::string>& ddls, const int num_iterations) {
   for (int i = 0; i < num_iterations; ++i) {
     for (const auto& ddl : ddls) {
       auto stmt = Format(ddl, kTable, i);
       LOG(INFO) << "Executing stmt " << stmt;
-      while (!VERIFY_RESULT(DoExecuteWithRetry(stmt))) {
+      while (!VERIFY_RESULT(DoExecuteWithRetry(conn, stmt))) {
         LOG(INFO) << "Retry executing stmt " << stmt;
       }
     }
@@ -220,9 +174,8 @@ Status PgDdlAtomicityStressTest::TestDdl(
   return Status::OK();
 }
 
-Result<bool> PgDdlAtomicityStressTest::DoExecuteWithRetry(const std::string& stmt) {
-  auto conn = VERIFY_RESULT(Connect());
-  auto s = conn.Execute(stmt);
+Result<bool> PgDdlAtomicityStressTest::DoExecuteWithRetry(PGConn* conn, const std::string& stmt) {
+  auto s = conn->Execute(stmt);
   if (s.ok()) {
     LOG(INFO) << "Execution of stmt " << stmt << " succeeded";
     return true;
@@ -240,6 +193,7 @@ Result<bool> PgDdlAtomicityStressTest::DoExecuteWithRetry(const std::string& stm
     "Flush: Value write after transaction start"sv,
     "Injected random failure for testing"sv,
     "expired or aborted by a conflict"sv,
+    "current transaction is expired or aborted"sv,
     "schema version mismatch for table"sv,
     "marked for deletion in table"sv,
     "Invalid column number"sv,
@@ -269,101 +223,143 @@ Result<bool> PgDdlAtomicityStressTest::DoExecuteWithRetry(const std::string& stm
   return s;
 }
 
-Status PgDdlAtomicityStressTest::TestConcurrentIndex(const int num_iterations) {
+Status PgDdlAtomicityStressTest::TestConcurrentIndex(PGConn* conn, const int num_iterations) {
   for (int i = 0; i < num_iterations; ++i) {
     bool index_created = false;
     while (!index_created) {
       // If concurrent index creation fails, it does not clean up the invalid index. Thus to
       // make the statement idempotent, drop the index if the create index failed before retrying.
       index_created = VERIFY_RESULT(ExecuteFormatWithRetry(
-          "CREATE INDEX idx_$0 ON $1(key)", i, kTable));
+          conn, "CREATE INDEX idx_$0 ON $1(key)", i, kTable));
       if (!index_created) {
         auto stmt = Format("DROP INDEX IF EXISTS idx_$0", i);
-        while (!VERIFY_RESULT(ExecuteFormatWithRetry(stmt))) {
+        while (!VERIFY_RESULT(ExecuteFormatWithRetry(conn, stmt))) {
           LOG(INFO) << "Retry executing stmt " << stmt;
         }
       }
     }
     auto stmt = Format("DROP INDEX idx_$0", i);
-    while (!VERIFY_RESULT(ExecuteFormatWithRetry(stmt))) {
+    while (!VERIFY_RESULT(ExecuteFormatWithRetry(conn, stmt))) {
       LOG(INFO) << "Retry executing stmt " << stmt;
     }
   }
   return Status::OK();
 }
 
-Status PgDdlAtomicityStressTest::TestDml(const int num_iterations) {
-  auto conn = VERIFY_RESULT(Connect());
+Status PgDdlAtomicityStressTest::TestDml(PGConn* conn, const int num_iterations) {
   for (int i = 1; i <= num_iterations;) {
     if (VERIFY_RESULT(ExecuteFormatWithRetry(
-                      "UPDATE $0 SET value = 'value_$1' WHERE key = $1", kTable, i))) {
+                      conn, "UPDATE $0 SET value = 'value_$1' WHERE key = $1", kTable, i))) {
       ++i;
     }
   }
   return Status::OK();
 }
 
-TEST_F(PgDdlAtomicityStressTest, BasicTest) {
-  ASSERT_OK(StressTestWithFlag(""));
-}
 
-TEST_F(PgDdlAtomicityStressTest, TestTxnVerificationFailure) {
-  ASSERT_OK(StressTestWithFlag("TEST_ysql_ddl_transaction_verification_failure_probability"));
-}
+INSTANTIATE_TEST_CASE_P(
+    PgDdlAtomicityStressTest,
+    PgDdlAtomicityStressTest,
+    ::testing::Combine(
+        ::testing::Values(ColocatedDatabase::kFalse, ColocatedDatabase::kTrue),
+        ::testing::Values(PartitionedTables::kFalse, PartitionedTables::kTrue),
+        ::testing::Values("",
+                          "TEST_ysql_ddl_transaction_verification_failure_probability",
+                          "TEST_ysql_fail_probability_of_catalog_writes_by_ddl_verification",
+                          "TEST_ysql_ddl_rollback_failure_probability",
+                          "TEST_ysql_ddl_verification_failure_probability")));
 
-TEST_F(PgDdlAtomicityStressTest, TestFailCatalogWrites) {
-  ASSERT_OK(StressTestWithFlag(
-      "TEST_ysql_fail_probability_of_catalog_writes_by_ddl_verification"));
-}
+TEST_P(PgDdlAtomicityStressTest, StressTest) {
+  ASSERT_OK(SetupTables());
 
-TEST_F(PgDdlAtomicityStressTest, TestFailDdlRollback) {
-  ASSERT_OK(StressTestWithFlag("TEST_ysql_ddl_rollback_failure_probability"));
-}
+  ASSERT_OK(InsertTestData(NumIterations() * 2));
 
-TEST_F(PgDdlAtomicityStressTest, TestFailDdlVerification) {
-  ASSERT_OK(StressTestWithFlag("TEST_ysql_ddl_verification_failure_probability"));
-}
-
-/*
- * Tests on Colocated Tables.
-*/
-class PgDdlAtomicityColocatedStressTest : public PgDdlAtomicityStressTest {
-  virtual Status SetupTables() override;
-
-  virtual std::string database() override {
-    return "yugabyte_colocated";
+  if (!ErrorProbability().empty()) {
+    ASSERT_OK(cluster_->SetFlagOnMasters(ErrorProbability(), "0.1"));
   }
 
-  Result<PGConn> Connect() override {
-    return ConnectToDB(database());
+  const int num_iterations = NumIterations();
+  TestThreadHolder thread_holder;
+
+  // We test creation/deletion together so that we can be sure that the entity we are dropping
+  // exists when it is executed. Each thread uses its own connection for its entire duration.
+
+  // Create a thread to add and drop columns.
+  auto conn1 = ASSERT_RESULT(Connect());
+  thread_holder.AddThreadFunctor([this, &conn1, num_iterations] {
+    std::vector<std::string> ddls = {
+      "ALTER TABLE $0 ADD COLUMN col_$1 TEXT",
+      "ALTER TABLE $0 DROP COLUMN col_$1"
+    };
+    ASSERT_OK(TestDdl(&conn1, ddls, num_iterations));
+    LOG(INFO) << "Thread to add and drop columns has completed";
+  });
+
+  // Create a thread to add and drop columns with default values.
+  auto conn2 = ASSERT_RESULT(Connect());
+  thread_holder.AddThreadFunctor([this, &conn2, num_iterations] {
+    std::vector<std::string> ddls = {
+      "ALTER TABLE $0 ADD COLUMN col_def_$1 TEXT DEFAULT 'def'",
+      "ALTER TABLE $0 DROP COLUMN col_def_$1"
+    };
+    ASSERT_OK(TestDdl(&conn2, ddls, num_iterations));
+    LOG(INFO) << "Thread to add and drop columns with default values has completed";
+  });
+
+  // Create a thread to create/drop an index on this table.
+  auto conn3 = ASSERT_RESULT(Connect());
+  thread_holder.AddThreadFunctor([this, &conn3, num_iterations] {
+    std::vector<std::string> ddls = {
+      "CREATE INDEX NONCONCURRENTLY non_concurrent_idx_$1 ON $0(key)",
+      "DROP INDEX non_concurrent_idx_$1"
+    };
+    ASSERT_OK(TestDdl(&conn3, ddls, num_iterations));
+    LOG(INFO) << "Thread to create/drop an index has completed";
+  });
+
+  // ConcurrentIndex is a very long running operation. Cleaning up a failed ConcurrentIndex is
+  // also a DDL, and this can be a very long running test. Reduce the number of iterations.
+  auto conn4 = ASSERT_RESULT(Connect());
+  thread_holder.AddThreadFunctor([this, &conn4, num_iterations] {
+    ASSERT_OK(TestConcurrentIndex(&conn4, num_iterations / 2));
+    LOG(INFO) << "Thread to run concurrent index has completed";
+  });
+
+  // Create a thread to update the rows on this table.
+  auto conn5 = ASSERT_RESULT(Connect());
+  thread_holder.AddThreadFunctor([this, &conn5, num_iterations] {
+    ASSERT_OK(TestDml(&conn5, num_iterations));
+    LOG(INFO) << "Thread to update the rows has completed";
+  });
+
+  // Wait for all threads to complete.
+  thread_holder.JoinAll();
+
+  LOG(INFO) << "Verify that the table does not contain any additional columns";
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  ASSERT_OK(VerifySchema(client.get(), database(), kTable, {"key", "value", "num"}));
+
+  LOG(INFO) << "Verify that no indexes are present on this table";
+  for (int i = 0; i < num_iterations; ++i) {
+    client::VerifyTableNotExists(client.get(), database(), Format("idx_$0", i), 10);
   }
-};
 
-Status PgDdlAtomicityColocatedStressTest::SetupTables() {
-  auto conn_init = VERIFY_RESULT(LibPqTestBase::Connect());
-  RETURN_NOT_OK(conn_init.ExecuteFormat("CREATE DATABASE $0 WITH colocated = true", database()));
-  return PgDdlAtomicityStressTest::SetupTables();
-}
+  LOG(INFO) << "Verify that all the rows on this table are updated correctly";
+  auto global_conn = GetGlobalConn();
+  for (int i = 1; i <= num_iterations; ++i) {
+    auto res = ASSERT_RESULT(global_conn->FetchFormat(
+        "SELECT value FROM $0 WHERE key = $1", kTable, i));
+    auto num_rows = PQntuples(res.get());
+    ASSERT_EQ(num_rows, 1);
 
-TEST_F(PgDdlAtomicityColocatedStressTest, BasicTest) {
-  ASSERT_OK(StressTestWithFlag(""));
-}
+    auto num_cols = PQnfields(res.get());
+    ASSERT_EQ(num_cols, 1);
 
-TEST_F(PgDdlAtomicityColocatedStressTest, TestTxnVerificationFailure) {
-  ASSERT_OK(StressTestWithFlag("TEST_ysql_ddl_transaction_verification_failure_probability"));
-}
-
-TEST_F(PgDdlAtomicityColocatedStressTest, TestFailCatalogWrites) {
-  ASSERT_OK(StressTestWithFlag(
-      "TEST_ysql_fail_probability_of_catalog_writes_by_ddl_verification"));
-}
-
-TEST_F(PgDdlAtomicityColocatedStressTest, TestFailDdlRollback) {
-  ASSERT_OK(StressTestWithFlag("TEST_ysql_ddl_rollback_failure_probability"));
-}
-
-TEST_F(PgDdlAtomicityColocatedStressTest, TestFailDdlVerification) {
-  ASSERT_OK(StressTestWithFlag("TEST_ysql_ddl_verification_failure_probability"));
+    auto expected_val = Format("value_$0", i);
+    std::string val = ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 0));
+    ASSERT_EQ(val, expected_val);
+  }
+  LOG(INFO) << __FUNCTION__ << " done";
 }
 
 } // namespace pgwrapper

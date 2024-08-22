@@ -269,9 +269,11 @@ extern bool AfterTriggerPendingOnRel(Oid relid);
  * in utils/adt/ri_triggers.c
  */
 extern bool RI_FKey_pk_upd_check_required(Trigger *trigger, Relation pk_rel,
-										  TupleTableSlot *old_slot, TupleTableSlot *new_slot);
+										  TupleTableSlot *old_slot, TupleTableSlot *new_slot,
+										  const YbSkippableEntities *yb_skip_entities);
 extern bool RI_FKey_fk_upd_check_required(Trigger *trigger, Relation fk_rel,
-										  TupleTableSlot *old_slot, TupleTableSlot *new_slot);
+										  TupleTableSlot *old_slot, TupleTableSlot *new_slot,
+										  const YbSkippableEntities *yb_skip_entities);
 extern bool RI_Initial_Check(Trigger *trigger,
 							 Relation fk_rel, Relation pk_rel);
 extern void RI_PartitionRemove_Check(Trigger *trigger, Relation fk_rel,

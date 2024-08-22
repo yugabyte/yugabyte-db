@@ -45,6 +45,8 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.inject.Inject;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import play.libs.Json;
@@ -86,6 +88,54 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       tservers = PlacementInfoUtil.getNumTServerPerAZ(pi);
       // Mapping of the deployment zone and its corresponding Kubeconfig.
       configs = KubernetesUtil.getConfigPerAZ(pi);
+    }
+  }
+
+  @Getter
+  @Setter
+  public static class KubernetesGflagsUpgradeCommonParams {
+    private String universeName;
+    private String masterAddresses;
+    private KubernetesPlacement placement;
+    private String ybSoftwareVersion;
+    private String universeOverrides;
+    private Map<String, String> azOverrides;
+    private boolean newNamingStyle;
+    private boolean enableYbc;
+    private String ybcSoftwareVersion;
+
+    public KubernetesGflagsUpgradeCommonParams(Universe universe, Cluster cluster) {
+      UniverseDefinitionTaskParams universeParams = universe.getUniverseDetails();
+      Cluster primaryCluster = universeParams.getPrimaryCluster();
+      KubernetesPlacement primaryClusterPlacement =
+          new KubernetesPlacement(primaryCluster.placementInfo, false /* isReadOnlyCluster */);
+      Provider provider =
+          Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider));
+
+      this.universeName = universe.getName();
+      this.newNamingStyle = universeParams.useNewHelmNamingStyle;
+      this.masterAddresses =
+          KubernetesUtil.computeMasterAddresses(
+              primaryCluster.placementInfo,
+              primaryClusterPlacement.masters,
+              universeParams.nodePrefix,
+              this.universeName,
+              provider,
+              universeParams.communicationPorts.masterRpcPort,
+              this.newNamingStyle);
+      this.ybSoftwareVersion = primaryCluster.userIntent.ybSoftwareVersion;
+      // Overrides are always taken from the primary cluster
+      this.universeOverrides = primaryCluster.userIntent.universeOverrides;
+      this.azOverrides = primaryCluster.userIntent.azOverrides;
+      if (this.azOverrides == null) {
+        this.azOverrides = new HashMap<String, String>();
+      }
+      this.placement =
+          primaryCluster.uuid != cluster.uuid
+              ? new KubernetesPlacement(cluster.placementInfo, true /* isReadOnlyCluster */)
+              : primaryClusterPlacement;
+      this.enableYbc = universe.isYbcEnabled();
+      this.ybcSoftwareVersion = universe.getUniverseDetails().getYbcSoftwareVersion();
     }
   }
 

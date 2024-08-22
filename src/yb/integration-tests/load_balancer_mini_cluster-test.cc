@@ -24,6 +24,7 @@
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 
+#include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/cluster_balance.h"
 #include "yb/master/master.h"
 
@@ -447,17 +448,19 @@ TEST_F(LoadBalancerMiniClusterTest, UninitializedTSDescriptorOnPendingAddTest) {
   // Modify GetAllReportedDescriptors so that it does not report the new tserver
   // (this could happen normally from a late heartbeat).
   master::TSDescriptorVector ts_descs;
-  master::TSDescriptorPtr ts3_desc;
   ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())
       ->ts_manager().GetAllReportedDescriptors(&ts_descs);
-  for (const auto& ts_desc : ts_descs) {
-    if (ts_desc->permanent_uuid() == ts3_uuid) {
-      ts_desc->SetRemoved();
-      ts3_desc = ts_desc;
-      break;
-    }
+  auto ts3_it = std::find_if(
+      ts_descs.cbegin(), ts_descs.cend(),
+      [&ts3_uuid](const auto& ts_desc) -> bool {
+        return ts_desc->id() == ts3_uuid; });
+  ASSERT_NE(ts3_it, ts_descs.cend());
+  {
+    master::TSDescriptorPtr ts3_desc = *ts3_it;
+    auto l = ts3_desc->LockForWrite();
+    l.mutable_data()->pb.set_state(master::SysTServerEntryPB::REPLACED);
+    l.Commit();
   }
-  CHECK_NOTNULL(ts3_desc);
 
   // LB run #2 will now continue, with GetAllReportedDescriptors not reporting this tserver, but
   // with GetReplicaLocations reporting it.
@@ -471,7 +474,6 @@ TEST_F(LoadBalancerMiniClusterTest, UninitializedTSDescriptorOnPendingAddTest) {
   SleepFor(MonoDelta::FromMilliseconds(3 * test_bg_task_wait_ms));
 
   // If it has yet to happen, bring back the tserver so that load balancing can complete.
-  ts3_desc->SetRemoved(false);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 1000;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_slowdown_master_async_rpc_tasks_by_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_load_balancer_wait_after_count_pending_tasks_ms) = 0;
