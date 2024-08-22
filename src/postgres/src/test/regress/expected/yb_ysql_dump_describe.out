@@ -65,11 +65,11 @@
  yugabyte             | Superuser, Create role, Create DB, Replication, Bypass RLS | {}
  yugabyte_test        | Superuser, Create role, Create DB, Bypass RLS              | {}
 
-      List of schemas
-   Name    |     Owner
------------+---------------
+        List of schemas
+   Name    |       Owner       
+-----------+-------------------
  hint_plan | yugabyte_test
- public    | postgres
+ public    | pg_database_owner
 (2 rows)
 
                                      List of tablegroups
@@ -81,15 +81,15 @@
 (3 rows)
 
                                                                                                 List of tablegroup tables
-  Group Name  |     Group Owner      | Access privileges | Group Description | Group Tablespace | Group Options |                      Name                      | Type  |        Owner         | Rel Description | Size
+  Group Name  |     Group Owner      | Access privileges | Group Description | Group Tablespace | Group Options |                      Name                      | Type  |        Owner         | Rel Description | Size 
 --------------+----------------------+-------------------+-------------------+------------------+---------------+------------------------------------------------+-------+----------------------+-----------------+------
- grp1         | tablegroup_test_user |                   |                   |                  |               | tgroup_no_options_and_tgroup                   | table | tablegroup_test_user |                 |
- grp1         | tablegroup_test_user |                   |                   |                  |               | tgroup_after_options                           | table | tablegroup_test_user |                 |
- grp1         | tablegroup_test_user |                   |                   |                  |               | tgroup_in_between_options                      | table | tablegroup_test_user |                 |
- grp2         | tablegroup_test_user |                   |                   |                  |               | tgroup_options_tgroup_and_custom_colocation_id | table | tablegroup_test_user |                 |
- grp2         | tablegroup_test_user |                   |                   |                  |               | tgroup_one_option_and_tgroup                   | table | tablegroup_test_user |                 |
- grp2         | tablegroup_test_user |                   |                   |                  |               | tgroup_options_and_tgroup                      | table | tablegroup_test_user |                 |
- grp_with_spc | tablegroup_test_user |                   |                   | tsp1             |               | tgroup_with_spc                                | table | tablegroup_test_user |                 |
+ grp1         | tablegroup_test_user |                   |                   |                  |               | tgroup_no_options_and_tgroup                   | table | tablegroup_test_user |                 | 
+ grp1         | tablegroup_test_user |                   |                   |                  |               | tgroup_after_options                           | table | tablegroup_test_user |                 | 
+ grp1         | tablegroup_test_user |                   |                   |                  |               | tgroup_in_between_options                      | table | tablegroup_test_user |                 | 
+ grp2         | tablegroup_test_user |                   |                   |                  |               | tgroup_one_option_and_tgroup                   | table | tablegroup_test_user |                 | 
+ grp2         | tablegroup_test_user |                   |                   |                  |               | tgroup_options_and_tgroup                      | table | tablegroup_test_user |                 | 
+ grp2         | tablegroup_test_user |                   |                   |                  |               | tgroup_options_tgroup_and_custom_colocation_id | table | tablegroup_test_user |                 | 
+ grp_with_spc | tablegroup_test_user |                   |                   | tsp1             |               | tgroup_with_spc                                | table | tablegroup_test_user |                 | 
 (7 rows)
 
                  Table "public.p1"

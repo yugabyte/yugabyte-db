@@ -33,6 +33,7 @@ JAVA	org.yb.pgsql.TestPgInsert
 JAVA	org.yb.pgsql.TestPgMisc#testVacuum
 JAVA	org.yb.pgsql.TestPgParallelReadIsolation
 JAVA	org.yb.pgsql.TestPgParallelSelect
+JAVA	org.yb.pgsql.TestPgPortalLeak
 JAVA	org.yb.pgsql.TestPgPrefetchControl#testBnlWithSizeLimit
 JAVA	org.yb.pgsql.TestPgPrefetchControl#testLimitPerformance
 JAVA	org.yb.pgsql.TestPgPrefetchControl#testSimplePrefetch
@@ -171,6 +172,7 @@ JAVA	org.yb.pgsql.TestYsqlDump#ysqlDumpAllWithYbMetadata
 JAVA	org.yb.pgsql.TestYsqlDump#ysqlDumpAllWithoutYbMetadata
 JAVA	org.yb.pgsql.TestYsqlDump#ysqlDumpColocatedDB
 JAVA	org.yb.pgsql.TestYsqlDump#ysqlDumpLegacyColocatedDB
+JAVA	org.yb.pgsql.TestYsqlDump#ysqlDumpWithYbMetadata
 JAVA	org.yb.pgsql.TestYsqlDump#ysqlDumpWithoutYbMetadata
 JAVA	org.yb.pgsql.TestYsqlMetrics
 JAVA	org.yb.pgsql.TestYsqlPartitionedBackup

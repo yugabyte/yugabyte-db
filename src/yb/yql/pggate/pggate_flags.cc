@@ -113,17 +113,11 @@ DEPRECATE_FLAG(int32, ysql_max_read_restart_attempts, "12_2023");
 
 DEPRECATE_FLAG(int32, ysql_max_write_restart_attempts, "12_2023");
 
-// Flag for disabling runContext to Postgres's portal. Currently, each portal has two contexts.
-// - PortalContext whose lifetime lasts for as long as the Portal object.
-// - TmpContext whose lifetime lasts until one associated row of SELECT result set is sent out.
-//
-// We add one more context "ybRunContext".
-// - Its lifetime will begin when PortalRun() is called to process a user statement request until
-//   the end of the PortalRun() process.
-// - A SELECT might be queried in small batches, and each batch is processed by one call to
-//   PortalRun(). The "ybRunContext" is used for values that are private to one batch.
-// - Use boolean experimental flag just in case introducing "ybRunContext" is a wrong idea.
-DEFINE_UNKNOWN_bool(ysql_disable_portal_run_context, false, "Whether to use portal ybRunContext.");
+// This flag was used to disable ybRunContext, which was introduced by YB commit
+// 15c68094b07004b5a844b0221e4b7514c4d7dc9a to plug a memory leak in portal. Later, upstream PG
+// fixed the leak in commit f2004f19ed9c9228d3ea2b12379ccb4b9212641f. As a result, ybRunContext was
+// left redundant, so D37419 removed it. See commit summary for details.
+DEPRECATE_FLAG(bool, ysql_disable_portal_run_context, "08_2024");
 
 #ifdef NDEBUG
 constexpr bool kEnableReadCommitted = false;

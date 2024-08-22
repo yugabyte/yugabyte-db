@@ -4841,9 +4841,6 @@ yb_clear_portal_before_restart(Portal portal)
 		portal->holdContext = NULL;
 	}
 
-	/* the portal run context might not have been reset, so do it now */
-	MemoryContextReset(portal->ybRunContext);
-
 	/*
 	 * Fully detach portal from transaction to keep it alive in case of
 	 * transaction restart

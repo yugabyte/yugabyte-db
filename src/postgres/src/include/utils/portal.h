@@ -203,13 +203,6 @@ typedef struct PortalData
 	/* Presentation data, primarily used by the pg_cursors system view */
 	TimestampTz creation_time;	/* time at which this portal was defined */
 	bool		visible;		/* include this portal in pg_cursors? */
-
-	/* ybRunContext subsidiary memory for one PortalRun().
-	 * The scope of the RunContext's memory spaces begins at the start of PortalRun() and ends at
-	 * its return. When a SELECT is fetches in multiple batches, each batch is associated with one
-	 * call to PortalRun(), and RunContext is used for memory spaces that are private to the call.
-	 */
-	MemoryContext ybRunContext;
 }			PortalData;
 
 /*

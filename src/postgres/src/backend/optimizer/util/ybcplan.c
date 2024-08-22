@@ -39,10 +39,10 @@
 #include "utils/lsyscache.h"
 
 /* YB includes. */
+#include "yb/yql/pggate/ybc_pggate.h"
 #include "catalog/catalog.h"
 #include "catalog/pg_am_d.h"
 #include "catalog/yb_catalog_version.h"
-#include "yb/yql/pggate/ybc_pggate.h"
 #include "pg_yb_utils.h"
 
 /*
