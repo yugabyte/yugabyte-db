@@ -40,17 +40,10 @@ import sys
 import time
 
 try:
-    import html
-except Exception as e:
-    import HTMLParser
-    html = HTMLParser.HTMLParser()
-
-try:
     from builtins import RuntimeError
 except Exception as e:
     from exceptions import RuntimeError
 from datetime import datetime, timedelta
-from collections import defaultdict
 
 NODE_INFO = '{{NODE_INFO}}'
 
@@ -218,10 +211,6 @@ YB_NODE_CLOCK_SKEW_CHECK = MetricDefinition(
 YB_NODE_CONTROLLER_CHECK = MetricDefinition(
     "yb_node_controller_check",
     "YB-Controller server check")
-YB_DDL_ATOMICITY_CHECK = MetricDefinition(
-    "yb_ddl_atomicity_check",
-    "Status of DDL atomicity check"
-)
 
 ###################################################################################################
 # Reporting
@@ -510,7 +499,6 @@ class NodeChecker():
                  enable_tls_client, enable_tls, root_and_client_root_ca_same, ssl_protocol,
                  enable_ysql, enable_ysql_auth, master_http_port, tserver_http_port,
                  ysql_server_http_port, node_version, is_ybc_enabled, ybc_port,
-                 ddl_atomicity_check, master_leader_url,
                  master_rpc_port, tserver_rpc_port):
         self.node = node
         self.node_name = node_name
@@ -539,8 +527,6 @@ class NodeChecker():
         self.is_ybc_enabled = is_ybc_enabled
         self.ybc_port = ybc_port
         self.additional_info = {}
-        self.ddl_atomicity_check = ddl_atomicity_check
-        self.master_leader_url = master_leader_url
 
     def _new_entry(self, message, process=None):
         return Entry(message, self.node, process, self.node_name, self.node_identifier)
@@ -1342,7 +1328,7 @@ class NodeChecker():
         metric = Metric.from_definition(YB_NODE_REDIS_CONNECT).add_value(0 if has_errors else 1)
         return e.fill_and_return_entry(errors, has_error=has_errors, metrics=[metric])
 
-    def create_ysqlsh_command(self, db_name="system_platform"):
+    def create_ysqlsh_command(self):
         ysqlsh = '{}/bin/ysqlsh'.format(self.yb_tserver_dir())
         port_args = "-p {}".format(self.ysql_port)
         host = self.node
@@ -1358,9 +1344,8 @@ class NodeChecker():
             else:
                 raise RuntimeError("Could not find local socket")
 
-        ysqlsh_cmd = "{} {} -h {} {} -U yugabyte -d {}".format(
-            'env sslmode="require"' if (self.enable_tls_client) else '',
-            ysqlsh, host, port_args, db_name)
+        ysqlsh_cmd = "{} {} -h {} {} -U yugabyte -d system_platform".format(
+            'env sslmode="require"' if (self.enable_tls_client) else '', ysqlsh, host, port_args, )
 
         return ysqlsh_cmd
 
@@ -1503,123 +1488,6 @@ class NodeChecker():
         has_errors = len(errors) > 0
         metric = Metric.from_definition(YB_NODE_CLOCK_SKEW_CHECK).add_value(0 if has_errors else 1)
         return e.fill_and_return_entry(errors, has_error=has_errors, metrics=[metric])
-
-    def check_ddl_atomicity(self):
-        logging.info("Checking DDL atomicity on node {}".format(self.node))
-        e = self._new_entry("DDL atomicity")
-        metric = Metric.from_definition(YB_DDL_ATOMICITY_CHECK)
-
-        try:
-            ysqlsh_cmd = self.create_ysqlsh_command("")
-        except RuntimeError as re:
-            metric.add_value(0)
-            return e.fill_and_return_entry([str(re)], has_error=True, metrics=[metric])
-
-        errors = []
-        try:
-            # Get table data
-            tables_output = (json.loads(self.http_request(
-                "{}/api/v1/tables".format(self.master_leader_url))))
-            table_data_json = tables_output["user"]
-            table_data_json += tables_output["index"]
-
-            # Initialize a dictionary to store table data by database
-            db_tables = {}
-
-            # Iterate through each line of table data
-            for table in table_data_json:
-                pg_oid = table["ysql_oid"]
-                dbname = table["keyspace"]
-
-                # Skip over tables that aren't in YSQL/are hidden.
-                if pg_oid == "" or table["hidden"]:
-                    continue
-                # Extract table oid
-                yb_pg_table_oid = str(int(table["uuid"][-4:], 16))
-
-                # Add table to the database's list in the dictionary
-                if dbname not in db_tables:
-                    db_tables[dbname] = []
-                db_tables[dbname].append(
-                    (table["table_name"], pg_oid, yb_pg_table_oid, table["uuid"]))
-
-            # Iterate through each database
-            for dbname, tables in db_tables.items():
-                pg_class_cmd = "{}{} -t -c \"{}\"".format(ysqlsh_cmd, dbname,
-                    "SELECT json_agg(row_to_json(t)) FROM \
-                     (SELECT relname, oid, relfilenode FROM pg_class WHERE oid >= 16384) t;")
-
-                # Fetch all user tables from pg_class for the database
-                pg_class_output = json.loads(self._check_output(pg_class_cmd).strip())
-                pg_class_oid_tableinfo_dict = {}
-                # Use relfilenode if it exists (as the table may be rewritten)
-                for table in pg_class_output:
-                    if table['relfilenode'] != '0':
-                        pg_class_oid_tableinfo_dict[table['relfilenode']] = table
-                    else:
-                        pg_class_oid_tableinfo_dict[table['oid']] = table
-
-                pg_attribute_cmd = "{}{} -t -c \"{}\"".format(ysqlsh_cmd, dbname,
-                    "SELECT json_agg(row_to_json(t)) FROM \
-                     (SELECT attname, attrelid FROM pg_attribute WHERE attrelid >= 16384) t;")
-                pg_attribute_output = json.loads(self._check_output(pg_attribute_cmd).strip())
-                pg_attribute_attrelid_attnames_dict = defaultdict(list)
-                for attribute in pg_attribute_output:
-                    (pg_attribute_attrelid_attnames_dict[attribute['attrelid']]
-                        .append(attribute['attname']))
-
-                # Iterate through each table
-                for tablename, pg_oid, yb_pg_table_oid, tableid in tables:
-                    # Check if the table exists in pg_class
-                    if yb_pg_table_oid not in pg_class_oid_tableinfo_dict:
-                        # Note: on versions older than 2024.1, the oid in this log
-                        # will refer to the relfilenode for materialized views.
-                        errors.append(("Table {} with oid {} and uuid {} does not exist in "
-                                       "database {} - ORPHANED TABLE NEEDS TO BE DROPPED")
-                                       .format(tablename, pg_oid, tableid, dbname))
-                        continue
-
-                    pg_class_entry = pg_class_oid_tableinfo_dict[yb_pg_table_oid]
-                    # work-around for versions older than 2024.1, as master UI doesn't populate
-                    # YSQL table oid on the UI correctly
-                    # (it populated it with relfilenode oid instead).
-                    pg_oid = pg_class_entry['oid']
-
-                    if tablename != pg_class_entry['relname']:
-                        errors.append(("Table {} with oid {} and uuid {} exists in {} but has a "
-                                       "mismatched table name - TABLE NAME NEEDS TO BE FIXED")
-                                       .format(tablename, pg_oid, tableid, dbname))
-                        continue
-
-                    # Get columns
-                    table_schema_json = json.loads(self.http_request(
-                        "{}/api/v1/table?id={}".format(self.master_leader_url, tableid)))
-                    columns = [html.unescape(
-                        column['column']) for column in table_schema_json["columns"]]
-                    # Check if each column exists in pg_attribute
-                    for column in columns:
-                        if (column == "ybrowid" or column == "ybuniqueidxkeysuffix"
-                            or column == "ybidxbasectid"):
-                            continue
-                        if column not in pg_attribute_attrelid_attnames_dict[pg_oid]:
-                            errors.append(("Column {} does not exist in table {} in database {} - "
-                                           "ORPHANED COLUMN NEEDS TO BE DROPPED")
-                                           .format(column, tablename, dbname))
-                            continue
-        except Exception as ex:
-            metric.add_value(0)
-            return e.fill_and_return_entry([str(ex)], has_error=True, metrics=[metric])
-
-        has_errors = len(errors) > 0
-        if has_errors:
-            msgs = ["Found {} errors:".format(len(errors))]
-            msgs.extend(errors[:10])
-            if len(errors) > 10:
-                msgs.append("...")
-        else:
-            msgs = ["No errors found"]
-        metric.add_value(0 if has_errors else 1)
-        return e.fill_and_return_entry(msgs, has_error=has_errors, metrics=[metric])
 
     def check_openssl_availability(self):
         cmd = "which openssl &>/dev/null; echo $?"
@@ -1841,11 +1709,6 @@ def main():
                         help='Output file to which the metrics will be written to.')
     parser.add_argument('--retry_interval_secs', type=int, required=False, default=30,
                         help='Time to wait between retries of failed checks.')
-    parser.add_argument('--ddl_atomicity_check', type=bool, default=False, required=False,
-                        help='In case we want to get only metrics as an output.')
-    parser.add_argument('--master_leader_url', type=str, default="", required=False,
-                        help='Master leader URL.')
-
     args = parser.parse_args()
 
     if args.metrics_only:
@@ -1868,7 +1731,6 @@ def main():
         n.enable_tls_client, n.enable_tls, n.root_and_client_root_ca_same, n.ssl_protocol,
         n.enable_ysql, n.enable_ysql_auth, n.master_http_port, n.tserver_http_port,
         n.ysql_server_http_port, n.yb_version, n.is_ybc_enabled, n.ybc_port,
-        args.ddl_atomicity_check, args.master_leader_url,
         n.master_rpc_port, n.tserver_rpc_port)
     coordinator.add_precheck(checker, "check_openssl_availability")
 
@@ -1933,9 +1795,6 @@ def main():
 
     if not n.is_k8s:
         coordinator.add_check(checker, "check_oom_kills")
-
-    if args.ddl_atomicity_check:
-        coordinator.add_check(checker, "check_ddl_atomicity")
 
     entries = coordinator.run()
     for e in entries:

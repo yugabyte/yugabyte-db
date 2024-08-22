@@ -46,16 +46,6 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "The timeout (in seconds) for node check operation as part of universe health check",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-
-  public static final ConfKeyInfo<Integer> ddlAtomicityIntervalSec =
-      new ConfKeyInfo<>(
-          "yb.health.ddl_atomicity_interval_sec",
-          ScopeType.UNIVERSE,
-          "DDL Atomicity Check Interval",
-          "The interval (in seconds) between DDL atomicity checks",
-          ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
-
   public static final ConfKeyInfo<Boolean> ybUpgradeBlacklistLeaders =
       new ConfKeyInfo<>(
           "yb.upgrade.blacklist_leaders",
