@@ -234,6 +234,17 @@ func (fp *FullProviderContext) Write() error {
 		regionContext.Write(code, i)
 	}
 
+	// ImageBundle subSection
+	logrus.Debugf("Number of Linux Versions: %d", len(fp.p.GetImageBundles()))
+	fp.subSection("Linux Version Catalog")
+	for i, v := range fp.p.GetImageBundles() {
+		imageBundleContext := *NewImageBundleContext()
+		imageBundleContext.Output = os.Stdout
+		imageBundleContext.Format = NewFullProviderFormat(viper.GetString("output"))
+		imageBundleContext.SetImageBundle(v)
+		imageBundleContext.Write(code, i)
+	}
+
 	return nil
 }
 

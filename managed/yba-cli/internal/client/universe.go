@@ -45,6 +45,12 @@ func (a *AuthAPIClient) UpgradeGFlags(uUUID string) (
 	return a.APIClient.UniverseUpgradesManagementApi.UpgradeGFlags(a.ctx, a.CustomerUUID, uUUID)
 }
 
+// UpgradeVMImage upgrades the VM image of the universe
+func (a *AuthAPIClient) UpgradeVMImage(uUUID string) (
+	ybaclient.UniverseUpgradesManagementApiApiUpgradeVMImageRequest) {
+	return a.APIClient.UniverseUpgradesManagementApi.UpgradeVMImage(a.ctx, a.CustomerUUID, uUUID)
+}
+
 // RestartUniverse for restart operation
 func (a *AuthAPIClient) RestartUniverse(uUUID string) (
 	ybaclient.UniverseUpgradesManagementApiApiRestartUniverseRequest) {
@@ -55,7 +61,7 @@ func (a *AuthAPIClient) RestartUniverse(uUUID string) (
 // Provider API
 func (a *AuthAPIClient) UniverseYBAVersionCheck() (bool, string, error) {
 	allowedVersions := YBAMinimumVersion{
-		Stable: util.YBAAllowUniverseMinVersion,
+		Stable:  util.YBAAllowUniverseMinVersion,
 		Preview: util.YBAAllowUniverseMinVersion,
 	}
 	allowed, version, err := a.CheckValidYBAVersion(allowedVersions)
