@@ -35,27 +35,68 @@ SELECT helio_api.insert_one('invmatch','airports','{ "_id": 7, "airport_id": 134
 
 -- positive cases
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{"$match": {"state": "AK"}}, { "$inverseMatch": {"path": "rule", "input": {"flight_type": "public"}}}]}');
-ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist
+ document 
+----------
+(0 rows)
+
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{"$match": {"state": "AK"}}, { "$inverseMatch": {"path": "rule", "input": {"flight_type": "private"}}}]}');
-ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist
+                                                                                    document                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "airport_id" : { "$numberInt" : "10165" }, "city" : "Adak Island", "state" : "AK", "name" : "Adak", "rule" : { "flight_type" : "private" } }
+(1 row)
+
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{"$match": {"state": "AL"}}, { "$inverseMatch": {"path": "rule", "input": {"flight_type": "public"}}}]}');
-ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist
+ document 
+----------
+(0 rows)
+
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{"$match": {"state": "AL"}}, { "$inverseMatch": {"path": "rule", "input": {"flight_type": "private"}}}]}');
-ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist
+                                                                                                         document                                                                                                          
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "airport_id" : { "$numberInt" : "11308" }, "city" : "Dothan", "state" : "AL", "name" : "Dothan Regional", "rule" : { "$or" : [ { "origin" : "WA" }, { "flight_type" : "private" } ] } }
+(1 row)
+
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{"$match": {"state": "AR"}}, { "$inverseMatch": {"path": "rule", "input": {"is_emergency": true}}}]}');
-ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist
+                                                                                                           document                                                                                                            
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "airport_id" : { "$numberInt" : "11778" }, "city" : "Fort Smith", "state" : "AR", "name" : "Fort Smith Regional", "rule" : { "$in" : [ { "is_emergency" : true }, { "is_vip" : true } ] } }
+(1 row)
+
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{"$match": {"state": "CA"}}, { "$inverseMatch": {"path": "rule", "input": { "flight_type": "private", "origin": "CA" }}}]}');
-ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist
+                                                                                                                                                         document                                                                                                                                                          
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "airport_id" : { "$numberInt" : "14689" }, "city" : "Santa Barbara", "state" : "CA", "name" : "Santa Barbara Municipal", "rule" : { "$or" : [ { "$and" : [ { "flight_type" : "private" }, { "origin" : "CA" } ] }, { "$or" : [ { "is_emergency" : true }, { "is_vip" : true } ] } ] } }
+(1 row)
+
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{"$match": {"state": "CA"}}, { "$inverseMatch": {"path": "rule", "input": { "flight_type": "public", "origin": "CA" }}}]}');
-ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist
+ document 
+----------
+(0 rows)
+
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{"$match": {"state": "CA"}}, { "$inverseMatch": {"path": "rule", "input": { "flight_type": "public", "origin": "CA", "is_vip": true }}}]}');
-ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist
+                                                                                                                                                         document                                                                                                                                                          
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "airport_id" : { "$numberInt" : "14689" }, "city" : "Santa Barbara", "state" : "CA", "name" : "Santa Barbara Municipal", "rule" : { "$or" : [ { "$and" : [ { "flight_type" : "private" }, { "origin" : "CA" } ] }, { "$or" : [ { "is_emergency" : true }, { "is_vip" : true } ] } ] } }
+(1 row)
+
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{"$match": {"state": "AR"}}, { "$inverseMatch": {"path": "rule", "input": [{ "flight_type": "private"}, {"is_emergency": true}]}}]}');
-ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist
+                                                                                                           document                                                                                                            
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "airport_id" : { "$numberInt" : "11778" }, "city" : "Fort Smith", "state" : "AR", "name" : "Fort Smith Regional", "rule" : { "$in" : [ { "is_emergency" : true }, { "is_vip" : true } ] } }
+(1 row)
+
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{"$match": {"state": "WA"}}, { "$inverseMatch": {"path": "rule", "input": { "tags": ["private", "vip"]}}}]}');
-ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist
+                                                                                             document                                                                                              
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "airport_id" : { "$numberInt" : "13442" }, "city" : "Everet", "state" : "WA", "name" : "Paine Field", "rule" : { "tags" : { "$all" : [ "private", "vip" ] } } }
+(1 row)
+
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{ "$inverseMatch": {"path": "rule", "input": { "origin": "WA" }}}]}');
-ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist
+                                                                                                         document                                                                                                          
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "airport_id" : { "$numberInt" : "11308" }, "city" : "Dothan", "state" : "AL", "name" : "Dothan Regional", "rule" : { "$or" : [ { "origin" : "WA" }, { "flight_type" : "private" } ] } }
+(1 row)
+
 -- Validate errors
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [ { "$inverseMatch": {"pathRule": "rule", "input": {"flight_type": "private"} }}]}');
 ERROR:  unrecognized argument to $inverseMatch: 'pathRule'
@@ -85,12 +126,25 @@ ERROR:  unknown operator: $allValues
 HINT:  unknown operator: $allValues
 -- if we query "rule" path without defaultResult in the spec it should not match for the Everet airport which doesn't define the rule as the default value is false
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{ "$inverseMatch": {"path": "rule", "input": { "origin": "WA" }}}]}');
-ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist
+                                                                                                         document                                                                                                          
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "airport_id" : { "$numberInt" : "11308" }, "city" : "Dothan", "state" : "AL", "name" : "Dothan Regional", "rule" : { "$or" : [ { "origin" : "WA" }, { "flight_type" : "private" } ] } }
+(1 row)
+
 -- with defaultResult true should return all documents that don't define the path and false shouldn't return them
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{ "$inverseMatch": {"path": "rule", "input": { "origin": "WA" }, "defaultResult": true}}]}');
-ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist
+                                                                                                         document                                                                                                          
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "airport_id" : { "$numberInt" : "11308" }, "city" : "Dothan", "state" : "AL", "name" : "Dothan Regional", "rule" : { "$or" : [ { "origin" : "WA" }, { "flight_type" : "private" } ] } }
+ { "_id" : { "$numberInt" : "8" }, "airport_id" : { "$numberInt" : "13442" }, "city" : "Everet", "state" : "WA", "name" : "Paine Field", "specialRule" : { "tags" : { "$allValues" : [ "private", "vip" ] } } }
+(2 rows)
+
 SELECT document FROM bson_aggregation_pipeline('invmatch', '{ "aggregate": "airports", "pipeline": [{ "$inverseMatch": {"path": "rule", "input": { "origin": "WA" }, "defaultResult": false}}]}');
-ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist
+                                                                                                         document                                                                                                          
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "airport_id" : { "$numberInt" : "11308" }, "city" : "Dothan", "state" : "AL", "name" : "Dothan Regional", "rule" : { "$or" : [ { "origin" : "WA" }, { "flight_type" : "private" } ] } }
+(1 row)
+
 -- add tests with lookup for RBAC "like" scenarios
 SELECT helio_api.insert_one('invmatch','user_roles','{ "_id": 1, "user_id": 100, "roles": ["basic"]}', NULL);
 NOTICE:  creating collection
@@ -131,28 +185,87 @@ SELECT helio_api.insert_one('invmatch','sales','{ "_id": 3, "order": 103, "paid"
 (1 row)
 
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$lookup": { "from": "user_roles", "pipeline": [ { "$match": {"user_id": 100} } ], "as": "roles" }}, { "$inverseMatch": {"path": "rule", "input": "$roles"}}, {"$project": {"roles": 0, "rule": 0}} ], "cursor": {} }');
-ERROR:  function helio_api_catalog.bson_value_dollar_in(internal, bson) does not exist
+                                                        document                                                         
+-------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "paid" : true, "total" : { "$numberInt" : "0" } }
+(1 row)
+
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$lookup": { "from": "user_roles", "pipeline": [ { "$match": {"user_id": 101} } ], "as": "roles" }}, { "$inverseMatch": {"path": "rule", "input": "$roles"}}, {"$project": {"roles": 0, "rule": 0}} ], "cursor": {} }');
-ERROR:  function helio_api_catalog.bson_value_dollar_in(internal, bson) does not exist
+                                                          document                                                          
+----------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "paid" : true, "total" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "2" }, "order" : { "$numberInt" : "102" }, "paid" : true, "total" : { "$numberInt" : "1000" } }
+(2 rows)
+
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$lookup": { "from": "user_roles", "pipeline": [ { "$match": {"user_id": 102} } ], "as": "roles" }}, { "$inverseMatch": {"path": "rule", "input": "$roles"}}, {"$project": {"roles": 0, "rule": 0}} ], "cursor": {} }');
-ERROR:  function helio_api_catalog.bson_value_dollar_in(internal, bson) does not exist
+                                                          document                                                          
+----------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "paid" : true, "total" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "2" }, "order" : { "$numberInt" : "102" }, "paid" : true, "total" : { "$numberInt" : "1000" } }
+ { "_id" : { "$numberInt" : "3" }, "order" : { "$numberInt" : "103" }, "paid" : true, "total" : { "$numberInt" : "1000" } }
+(3 rows)
+
 -- use from collection instead of lookup (new feature)
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": 100}}]}} ], "cursor": {} }');
-ERROR:  function helio_api_catalog.bson_value_dollar_in(internal, bson) does not exist
+                                                                                         document                                                                                          
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "paid" : true, "total" : { "$numberInt" : "0" }, "rule" : { "roles" : { "$in" : [ "basic", "sales", "admin" ] } } }
+(1 row)
+
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": 101}}]}} ], "cursor": {} }');
-ERROR:  function helio_api_catalog.bson_value_dollar_in(internal, bson) does not exist
+                                                                                         document                                                                                          
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "paid" : true, "total" : { "$numberInt" : "0" }, "rule" : { "roles" : { "$in" : [ "basic", "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "2" }, "order" : { "$numberInt" : "102" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "sales", "admin" ] } } }
+(2 rows)
+
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": 102}}]}} ], "cursor": {} }');
-ERROR:  function helio_api_catalog.bson_value_dollar_in(internal, bson) does not exist
+                                                                                         document                                                                                          
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "paid" : true, "total" : { "$numberInt" : "0" }, "rule" : { "roles" : { "$in" : [ "basic", "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "2" }, "order" : { "$numberInt" : "102" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "3" }, "order" : { "$numberInt" : "103" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "admin" ] } } }
+(3 rows)
+
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": 102}}, {"$project": {"roles": 1, "_id": 0}}]}} ], "cursor": {} }');
-ERROR:  function helio_api_catalog.bson_value_dollar_in(internal, bson) does not exist
+                                                                                         document                                                                                          
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "paid" : true, "total" : { "$numberInt" : "0" }, "rule" : { "roles" : { "$in" : [ "basic", "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "2" }, "order" : { "$numberInt" : "102" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "3" }, "order" : { "$numberInt" : "103" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "admin" ] } } }
+(3 rows)
+
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": { "$lt": 102 }}}, {"$limit": 1}]}} ], "cursor": {} }');
-ERROR:  function helio_api_catalog.bson_value_dollar_in(internal, bson) does not exist
+                                                                                         document                                                                                          
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "paid" : true, "total" : { "$numberInt" : "0" }, "rule" : { "roles" : { "$in" : [ "basic", "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "2" }, "order" : { "$numberInt" : "102" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "sales", "admin" ] } } }
+(2 rows)
+
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": { "$ne": 200 }}}, {"$limit": 1}]}} ], "cursor": {} }');
-ERROR:  function helio_api_catalog.bson_value_dollar_in(internal, bson) does not exist
+                                                                                         document                                                                                          
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "paid" : true, "total" : { "$numberInt" : "0" }, "rule" : { "roles" : { "$in" : [ "basic", "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "2" }, "order" : { "$numberInt" : "102" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "3" }, "order" : { "$numberInt" : "103" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "admin" ] } } }
+(3 rows)
+
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": { "$lte": 102 }}}, {"$limit": 2}]}} ], "cursor": {} }');
-ERROR:  function helio_api_catalog.bson_value_dollar_in(internal, bson) does not exist
+                                                                                         document                                                                                          
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "paid" : true, "total" : { "$numberInt" : "0" }, "rule" : { "roles" : { "$in" : [ "basic", "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "2" }, "order" : { "$numberInt" : "102" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "3" }, "order" : { "$numberInt" : "103" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "admin" ] } } }
+(3 rows)
+
 SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": []}} ], "cursor": {} }');
-ERROR:  function helio_api_catalog.bson_value_dollar_in(internal, bson) does not exist
+                                                                                         document                                                                                          
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "order" : { "$numberInt" : "100" }, "paid" : true, "total" : { "$numberInt" : "0" }, "rule" : { "roles" : { "$in" : [ "basic", "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "2" }, "order" : { "$numberInt" : "102" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "sales", "admin" ] } } }
+ { "_id" : { "$numberInt" : "3" }, "order" : { "$numberInt" : "103" }, "paid" : true, "total" : { "$numberInt" : "1000" }, "rule" : { "roles" : { "$in" : [ "admin" ] } } }
+(3 rows)
+
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document from bson_aggregation_pipeline('invmatch', '{ "aggregate": "sales", "pipeline": [ { "$inverseMatch": {"path": "rule", "from": "user_roles", "pipeline": [{"$match": {"user_id": { "$ne": 200 }}}, {"$limit": 1}]}} ], "cursor": {} }'); 
                                                                       QUERY PLAN                                                                       
 -------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -205,7 +318,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document from bson_aggregation_pipeline('
                                                         QUERY PLAN                                                        
 --------------------------------------------------------------------------------------------------------------------------
  Bitmap Heap Scan on helio_data.documents_3903 collection
-   Output: collection.document
+   Output: document
    Recheck Cond: (collection.shard_key_value = '3903'::bigint)
    Filter: helio_api_internal.bson_dollar_inverse_match(collection.document, '{ "path" : "rule", "input" : {  } }'::bson)
    ->  Bitmap Index Scan on _id_

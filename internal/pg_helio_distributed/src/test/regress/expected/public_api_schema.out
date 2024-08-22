@@ -2,7 +2,7 @@
 \df helio_api_distributed.*
                                      List of functions
         Schema         |        Name        | Result data type | Argument data types | Type 
------------------------+--------------------+------------------+---------------------+------
+---------------------------------------------------------------------
  helio_api_distributed | complete_upgrade   | boolean          |                     | func
  helio_api_distributed | initialize_cluster | void             |                     | func
 (2 rows)
@@ -11,13 +11,15 @@
 \da+ helio_api_distributed.*
                      List of aggregate functions
  Schema | Name | Result data type | Argument data types | Description 
---------+------+------------------+---------------------+-------------
+---------------------------------------------------------------------
 (0 rows)
 
 -- This is last (Tables/indexes)
 \d helio_api_distributed.*
       Table "helio_api_distributed.helio_cluster_data"
   Column  |      Type       | Collation | Nullable | Default 
-----------+-----------------+-----------+----------+---------
+---------------------------------------------------------------------
  metadata | helio_core.bson |           |          | 
+Triggers:
+    helio_versions_trigger AFTER DELETE OR UPDATE ON helio_api_distributed.helio_cluster_data FOR EACH STATEMENT EXECUTE FUNCTION helio_api_internal.update_helio_version_data()
 

@@ -37,15 +37,15 @@ SELECT count(*) FROM helio_api.collection('collection_management','nonexistent')
 
 -- SELECT * from a non-existing collection
 SELECT * FROM helio_api.collection('collection_management','nonexistent');
- document 
-----------
+ shard_key_value | object_id | document | creation_time 
+-----------------+-----------+----------+---------------
 (0 rows)
 
 -- EXPLAIN of querying a non-existing collection
 EXPLAIN SELECT * FROM helio_api.collection('collection_management','nonexistent');
                                      QUERY PLAN                                      
 -------------------------------------------------------------------------------------
- Function Scan on empty_data_table collection  (cost=0.25..10.25 rows=1000 width=32)
+ Function Scan on empty_data_table collection  (cost=0.25..10.25 rows=1000 width=80)
 (1 row)
 
 -- try to rename to an already existing name
@@ -162,12 +162,19 @@ NOTICE:  creating collection
 
 PREPARE collectionQuery1(text, text) AS SELECT document FROM helio_api.collection($1, $2);
 EXECUTE collectionQuery1('collection_management', 'testPrepared');
-ERROR:  Query pipeline function must be in the FROM clause
+ document 
+----------
+(0 rows)
+
 -- try to run the prepared statement many times against a non-existent collection
 PREPARE qcountNoneExistent(text, text, helio_core.bson, text) AS WITH "stage0" as ( SELECT document FROM helio_api.collection($1, $2) WHERE document OPERATOR(helio_api_catalog.@@) $3 ) ,
             "stage1" as ( SELECT helio_core.bson_repath_and_build($4, BSONSUM('{ "": 1 }'::helio_core.bson)) as document FROM "stage0" ) SELECT * FROM "stage1";
 EXECUTE qcountNoneExistent('nonexistentdb', 'nonexistent', '{ "a": 1 }', 'count');
-ERROR:  Query pipeline function must be in the FROM clause
+               document               
+--------------------------------------
+ { "count" : { "$numberInt" : "0" } }
+(1 row)
+
 -- EXECUTE qcountNoneExistent('nonexistentdb', 'nonexistent', '{ "a": 1 }', 'count');
 -- EXECUTE qcountNoneExistent('nonexistentdb', 'nonexistent', '{ "a": 1 }', 'count');
 -- EXECUTE qcountNoneExistent('nonexistentdb', 'nonexistent', '{ "a": 1 }', 'count');

@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+
+# Our custom diff tool which normalizes result and expected files before
+# doing the actual diff. Rules for normalization are in normalize.sed. See
+# the comments there for more information.
+#
+# Note that src/test/regress/Makefile adds this directory to $PATH so
+# pg_regress uses this diff tool instead of the system diff tool.
+
+set -eu -o pipefail
+
+file1="${@:(-2):1}"
+file2="${@:(-1):1}"
+# pg_regress passes the expected file as the first argument ($file1 above),
+# and results file as the second argument ($file2 above). We take the base
+# filename of the expected file as the test name. We can have multiple
+# expected files for a single test with _0, _1, ... suffixes.
+# So for the test name, we also strip the additional suffix.
+test=$(basename "$file1" .out | sed -E "s/_[0-9]+$//")
+args=${@:1:$#-2}
+BASEDIR=$(dirname "$0")
+
+DIFF=/usr/bin/diff
+if [ ! -f "$DIFF" ]
+then
+	# whereis searches for standard unix places before $PATH. So select the
+	# first entry as the original diff tool.
+	# With the default WSL2 configuration whereis is very slow though ~400ms,
+	# so we only use it if /usr/bin/diff does not exist.
+	DIFF=$(whereis diff | sed "s/diff://g" | awk '{print $1}')
+	if [ -z "$DIFF" ]
+	then
+		echo "ERROR: could not find diff command" 1>&2
+		exit 1
+	fi
+fi
+
+if test -z "${VANILLATEST:-}"
+then
+	touch "$file1"  # when adding a new test the expected file does not exist
+	normalize_file="$BASEDIR/normalize.sed"
+	expect_normalize_file="$BASEDIR/expect_normalize.sed"
+	# when running tests on an existing cluster some changes need to be done on
+	# normalize.sed file. So a new file is used.
+	if [[ -f "$BASEDIR/normalize_modified.sed" ]]
+	then
+		normalize_file="$BASEDIR/normalize_modified.sed"
+	fi
+	sed -Ef "$normalize_file" < "$file1" > "$file1.modified"
+	sed -Ef "$normalize_file" < "$file2" > "$file2.modified"
+
+	mkdir -p "$BASEDIR/normalized/expected"
+	mkdir -p "$BASEDIR/normalized/results"
+
+	cp "$file2.modified" "$BASEDIR/normalized/results/$(basename $file2)"
+	cp "$file1.modified" "$BASEDIR/normalized/expected/$(basename $file1)"
+
+	# Move original files of results as .orig and modify the dashes in expected and results to be consistent
+	cp "$file2" "$file2.orig"
+
+	sed -Ef "$expect_normalize_file" < "$file1" > "$file1.replace"
+	sed -Ef "$expect_normalize_file" < "$file2" > "$file2.replace"
+	mv "$file1.replace" "$file1"
+	mv "$file2.replace" "$file2"
+
+	"$DIFF" -w $args "$file1.modified" "$file2.modified" | LC_CTYPE=C.UTF-8 diff-filter "$BASEDIR/normalize.sed"
+	exit ${PIPESTATUS[0]}
+else
+	exec "$DIFF" -w $args "$file1" "$file2"
+fi
+

@@ -107,16 +107,6 @@ ERROR:  cannot write to db.system.views
 begin;
 SET LOCAL search_path TO '';
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{},"limit":0}]}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                          delete                                          
 -----------------------------------------------------------------------------------------
  ("{ ""n"" : { ""$numberInt"" : ""10"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
@@ -190,7 +180,6 @@ select count(*) from helio_api.collection('db', 'removeme');
 rollback;
 begin;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a":1},"limit":0},{"q":{"$a":2},"limit":0},{"q":{"a":3},"limit":0}],"ordered":true}');
-NOTICE:  using bson_query_match implementation
                                                                                                                                                                           delete                                                                                                                                                                          
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown top level operator: $a. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" } ] }",f)
@@ -206,26 +195,6 @@ rollback;
 -- when not ordered, expect first and last delete to be executed
 begin;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a":1},"limit":0},{"q":{"$a":2},"limit":0},{"q":{"a":3},"limit":0}],"ordered":false}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                                                                                                                                                           delete                                                                                                                                                                          
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""n"" : { ""$numberInt"" : ""2"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown top level operator: $a. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" } ] }",f)
@@ -241,7 +210,6 @@ rollback;
 -- delete 1 without filters is supported for unsharded collections
 begin;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{},"limit":1}]}');
-NOTICE:  using bson_query_match implementation
                                          delete                                         
 ----------------------------------------------------------------------------------------
  ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
@@ -257,7 +225,6 @@ rollback;
 -- delete 1 is retryable on unsharded collection (second call is a noop)
 begin;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{},"limit":1}]}', NULL, 'xact-1');
-NOTICE:  using bson_query_match implementation
                                          delete                                         
 ----------------------------------------------------------------------------------------
  ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
@@ -382,7 +349,6 @@ select count(*) from helio_api.collection('db', 'removeme');
 
 set local citus.log_remote_commands to on;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a":{"$eq":5}},"limit":0}]}');
-NOTICE:  using bson_query_match implementation
                                          delete                                         
 ----------------------------------------------------------------------------------------
  ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
@@ -411,7 +377,6 @@ select count(*) from helio_api.collection('db', 'removeme');
 
 set local citus.log_remote_commands to on;
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"$and":[{"a":5},{"a":{"$gt":0}}]},"limit":0}]}');
-NOTICE:  using bson_query_match implementation
                                          delete                                         
 ----------------------------------------------------------------------------------------
  ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)

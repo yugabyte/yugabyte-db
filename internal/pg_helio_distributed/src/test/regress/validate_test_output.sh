@@ -48,8 +48,7 @@ aggregateCollectionIdStr=""
 aggregateShardIdStr=""
 maxCollectionIdStr=""
 
-# TODO: Investigate why these fail.
-validationExceptions="/sql/helio_distributed_test_helpers.sql,/sql/and3.sql,/sql/andor.sql,/sql/and.sql,/sql/or9.sql,/sql/public_api_schema.sql"
+validationExceptions="/sql/helio_distributed_test_helpers.sql,/sql/public_api_schema.sql,/sql/helio_distributed_setup.sql"
 for validationFile in $(ls ./expected/*.out); do
     fileName=$(basename $validationFile);
     sqlFile="${fileName%.out}.sql";

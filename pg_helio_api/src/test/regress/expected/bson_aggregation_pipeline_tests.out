@@ -56,20 +56,20 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 (3 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$addFields": { "newField" : "1", "a.y": ["p", "q"] } }, { "$addFields": { "newField2": "someOtherField" } } ], "cursor": {} }');
-                                                                                  QUERY PLAN                                                                                   
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                             QUERY PLAN                                                                             
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Bitmap Heap Scan on helio_data.documents_3500 collection
-   Output: bson_dollar_add_fields(bson_dollar_add_fields(collection.document, '{ "newField" : "1", "a.y" : [ "p", "q" ] }'::bson), '{ "newField2" : "someOtherField" }'::bson)
+   Output: bson_dollar_add_fields(bson_dollar_add_fields(document, '{ "newField" : "1", "a.y" : [ "p", "q" ] }'::bson), '{ "newField2" : "someOtherField" }'::bson)
    Recheck Cond: (collection.shard_key_value = '3500'::bigint)
    ->  Bitmap Index Scan on _id_
          Index Cond: (collection.shard_key_value = '3500'::bigint)
 (5 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$addFields": { "newField" : "1", "a.y": ["p", "q"] } }, { "$set": { "newField2": "someOtherField" } } ], "cursor": {} }');
-                                                                                  QUERY PLAN                                                                                   
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                             QUERY PLAN                                                                             
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Bitmap Heap Scan on helio_data.documents_3500 collection
-   Output: bson_dollar_add_fields(bson_dollar_add_fields(collection.document, '{ "newField" : "1", "a.y" : [ "p", "q" ] }'::bson), '{ "newField2" : "someOtherField" }'::bson)
+   Output: bson_dollar_add_fields(bson_dollar_add_fields(document, '{ "newField" : "1", "a.y" : [ "p", "q" ] }'::bson), '{ "newField2" : "someOtherField" }'::bson)
    Recheck Cond: (collection.shard_key_value = '3500'::bigint)
    ->  Bitmap Index Scan on _id_
          Index Cond: (collection.shard_key_value = '3500'::bigint)
@@ -85,10 +85,10 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 (3 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$project": { "_id" : 1, "a.b": 1 } }, { "$set": { "newField2": "someOtherField" } }], "cursor": {} }');
-                                                                                             QUERY PLAN                                                                                             
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                       QUERY PLAN                                                                                        
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Bitmap Heap Scan on helio_data.documents_3500 collection
-   Output: bson_dollar_add_fields(bson_dollar_project(collection.document, '{ "_id" : { "$numberInt" : "1" }, "a.b" : { "$numberInt" : "1" } }'::bson), '{ "newField2" : "someOtherField" }'::bson)
+   Output: bson_dollar_add_fields(bson_dollar_project(document, '{ "_id" : { "$numberInt" : "1" }, "a.b" : { "$numberInt" : "1" } }'::bson), '{ "newField2" : "someOtherField" }'::bson)
    Recheck Cond: (collection.shard_key_value = '3500'::bigint)
    ->  Bitmap Index Scan on _id_
          Index Cond: (collection.shard_key_value = '3500'::bigint)
@@ -120,12 +120,12 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 (2 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$project": { "_id" : 1, "a.b": 1 } }, { "$skip": 1 }], "cursor": {} }');
-                                                              QUERY PLAN                                                              
---------------------------------------------------------------------------------------------------------------------------------------
+                                                        QUERY PLAN                                                         
+---------------------------------------------------------------------------------------------------------------------------
  Limit
-   Output: (bson_dollar_project(collection.document, '{ "_id" : { "$numberInt" : "1" }, "a.b" : { "$numberInt" : "1" } }'::bson))
+   Output: (bson_dollar_project(document, '{ "_id" : { "$numberInt" : "1" }, "a.b" : { "$numberInt" : "1" } }'::bson))
    ->  Bitmap Heap Scan on helio_data.documents_3500 collection
-         Output: bson_dollar_project(collection.document, '{ "_id" : { "$numberInt" : "1" }, "a.b" : { "$numberInt" : "1" } }'::bson)
+         Output: bson_dollar_project(document, '{ "_id" : { "$numberInt" : "1" }, "a.b" : { "$numberInt" : "1" } }'::bson)
          Recheck Cond: (collection.shard_key_value = '3500'::bigint)
          ->  Bitmap Index Scan on _id_
                Index Cond: (collection.shard_key_value = '3500'::bigint)
@@ -139,12 +139,12 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 (1 row)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$project": { "_id" : 1, "a.b": 1 } }, { "$limit": 1 }], "cursor": {} }');
-                                                              QUERY PLAN                                                              
---------------------------------------------------------------------------------------------------------------------------------------
+                                                        QUERY PLAN                                                         
+---------------------------------------------------------------------------------------------------------------------------
  Limit
-   Output: (bson_dollar_project(collection.document, '{ "_id" : { "$numberInt" : "1" }, "a.b" : { "$numberInt" : "1" } }'::bson))
+   Output: (bson_dollar_project(document, '{ "_id" : { "$numberInt" : "1" }, "a.b" : { "$numberInt" : "1" } }'::bson))
    ->  Seq Scan on helio_data.documents_3500 collection
-         Output: bson_dollar_project(collection.document, '{ "_id" : { "$numberInt" : "1" }, "a.b" : { "$numberInt" : "1" } }'::bson)
+         Output: bson_dollar_project(document, '{ "_id" : { "$numberInt" : "1" }, "a.b" : { "$numberInt" : "1" } }'::bson)
 (4 rows)
 
 -- add skip + limit
@@ -196,7 +196,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
                                                    QUERY PLAN                                                    
 -----------------------------------------------------------------------------------------------------------------
  Index Scan using _id_ on helio_data.documents_3500 collection
-   Output: collection.document
+   Output: document
    Index Cond: ((collection.shard_key_value = '3500'::bigint) AND (collection.object_id > '{ "" : "1" }'::bson))
    Filter: (collection.document @> '{ "_id" : "1" }'::bson)
 (4 rows)
@@ -213,7 +213,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
                                                    QUERY PLAN                                                    
 -----------------------------------------------------------------------------------------------------------------
  Index Scan using _id_ on helio_data.documents_3500 collection
-   Output: bson_dollar_project(collection.document, '{ "a.b" : { "$numberInt" : "1" } }'::bson)
+   Output: bson_dollar_project(document, '{ "a.b" : { "$numberInt" : "1" } }'::bson)
    Index Cond: ((collection.shard_key_value = '3500'::bigint) AND (collection.object_id > '{ "" : "1" }'::bson))
    Filter: (collection.document @> '{ "_id" : "1" }'::bson)
 (4 rows)
@@ -229,7 +229,7 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
                                                                                                            QUERY PLAN                                                                                                           
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Index Scan using _id_ on helio_data.documents_3500 collection
-   Output: bson_dollar_project(collection.document, '{ "a.b" : { "$numberInt" : "1" }, "c" : "$_id", "_id" : { "$numberInt" : "0" } }'::bson)
+   Output: bson_dollar_project(document, '{ "a.b" : { "$numberInt" : "1" }, "c" : "$_id", "_id" : { "$numberInt" : "0" } }'::bson)
    Index Cond: ((collection.shard_key_value = '3500'::bigint) AND (collection.object_id > '{ "" : "1" }'::bson))
    Filter: ((collection.document @> '{ "_id" : "1" }'::bson) AND (bson_dollar_project(collection.document, '{ "a.b" : { "$numberInt" : "1" }, "c" : "$_id", "_id" : { "$numberInt" : "0" } }'::bson) @> '{ "c" : "2" }'::bson))
 (4 rows)
@@ -284,10 +284,10 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 (3 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON ) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$addFields": { "x": 1, "y": 2, "xyz": 3 } }, { "$addFields": { "xyz": "$_id" } } ], "cursor": {} }');
-                                                                                                    QUERY PLAN                                                                                                     
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                                               QUERY PLAN                                                                                               
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Bitmap Heap Scan on helio_data.documents_3500 collection
-   Output: bson_dollar_add_fields(bson_dollar_add_fields(collection.document, '{ "x" : { "$numberInt" : "1" }, "y" : { "$numberInt" : "2" }, "xyz" : { "$numberInt" : "3" } }'::bson), '{ "xyz" : "$_id" }'::bson)
+   Output: bson_dollar_add_fields(bson_dollar_add_fields(document, '{ "x" : { "$numberInt" : "1" }, "y" : { "$numberInt" : "2" }, "xyz" : { "$numberInt" : "3" } }'::bson), '{ "xyz" : "$_id" }'::bson)
    Recheck Cond: (collection.shard_key_value = '3500'::bigint)
    ->  Bitmap Index Scan on _id_
          Index Cond: (collection.shard_key_value = '3500'::bigint)
@@ -303,10 +303,10 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregatio
 (3 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON ) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$project": { "a": 0, "boolean": 0 } }, { "$addFields": { "a": 1, "xyz": "$_id" } } ], "cursor": {} }');
-                                                               QUERY PLAN                                                                
------------------------------------------------------------------------------------------------------------------------------------------
+                                                          QUERY PLAN                                                          
+------------------------------------------------------------------------------------------------------------------------------
  Bitmap Heap Scan on helio_data.documents_3500 collection
-   Output: bson_dollar_add_fields(collection.document, '{ "a" : { "$numberInt" : "1" }, "xyz" : "$_id", "boolean" : "$$REMOVE" }'::bson)
+   Output: bson_dollar_add_fields(document, '{ "a" : { "$numberInt" : "1" }, "xyz" : "$_id", "boolean" : "$$REMOVE" }'::bson)
    Recheck Cond: (collection.shard_key_value = '3500'::bigint)
    ->  Bitmap Index Scan on _id_
          Index Cond: (collection.shard_key_value = '3500'::bigint)
@@ -438,64 +438,58 @@ EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('
 
 -- Sample after pass-through stages
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$project": { "_id": "1" } }, { "$sample": { "size": 2 } }], "cursor": {} }');
-                                               QUERY PLAN                                                
----------------------------------------------------------------------------------------------------------
- Subquery Scan on "topQuery_stage_0"
-   Output: "topQuery_stage_0".document
-   ->  Limit
-         Output: (bson_dollar_project(collection.document, '{ "_id" : "1" }'::bson)), (random())
-         ->  Sort
-               Output: (bson_dollar_project(collection.document, '{ "_id" : "1" }'::bson)), (random())
-               Sort Key: (random())
-               ->  Sample Scan on helio_data.documents_3500 collection
-                     Output: bson_dollar_project(collection.document, '{ "_id" : "1" }'::bson), random()
-                     Sampling: system_rows ('2'::bigint)
-(10 rows)
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Limit
+   Output: (bson_dollar_project(document, '{ "_id" : "1" }'::bson)), (random())
+   ->  Sort
+         Output: (bson_dollar_project(document, '{ "_id" : "1" }'::bson)), (random())
+         Sort Key: (random())
+         ->  Sample Scan on helio_data.documents_3500 collection
+               Output: bson_dollar_project(document, '{ "_id" : "1" }'::bson), random()
+               Sampling: system_rows ('2'::bigint)
+(8 rows)
 
 -- Sample after sample
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$sample": { "size": 3 } }, { "$sample": { "size": 2 } }], "cursor": {} }');
-                                       QUERY PLAN                                        
------------------------------------------------------------------------------------------
- Subquery Scan on "topQuery_stage_0"
-   Output: "topQuery_stage_0".document
-   ->  Limit
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Limit
+   Output: agg_stage_1.document, (random())
+   ->  Sort
          Output: agg_stage_1.document, (random())
-         ->  Sort
-               Output: agg_stage_1.document, (random())
-               Sort Key: (random())
-               ->  Subquery Scan on agg_stage_1
-                     Output: agg_stage_1.document, random()
-                     ->  Limit
+         Sort Key: (random())
+         ->  Subquery Scan on agg_stage_1
+               Output: agg_stage_1.document, random()
+               ->  Limit
+                     Output: collection.document, (random())
+                     ->  Sort
                            Output: collection.document, (random())
-                           ->  Sort
-                                 Output: collection.document, (random())
-                                 Sort Key: (random())
-                                 ->  Sample Scan on helio_data.documents_3500 collection
-                                       Output: collection.document, random()
-                                       Sampling: system_rows ('3'::bigint)
-(17 rows)
+                           Sort Key: (random())
+                           ->  Sample Scan on helio_data.documents_3500 collection
+                                 Output: collection.document, random()
+                                 Sampling: system_rows ('3'::bigint)
+(15 rows)
 
 -- Sample after other stage
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$unwind": "$a.b" }, { "$sample": { "size": 2 } }], "cursor": {} }');
-                                                               QUERY PLAN                                                                
------------------------------------------------------------------------------------------------------------------------------------------
- Subquery Scan on "topQuery_stage_0"
-   Output: "topQuery_stage_0".document
-   ->  Limit
+                                                            QUERY PLAN                                                             
+-----------------------------------------------------------------------------------------------------------------------------------
+ Limit
+   Output: agg_stage_1.document, (random())
+   ->  Sort
          Output: agg_stage_1.document, (random())
-         ->  Sort
-               Output: agg_stage_1.document, (random())
-               Sort Key: (random())
-               ->  Subquery Scan on agg_stage_1
-                     Output: agg_stage_1.document, random()
-                     ->  ProjectSet
-                           Output: bson_dollar_unwind(collection.document, '$a.b'::text)
-                           ->  Bitmap Heap Scan on helio_data.documents_3500 collection
-                                 Output: collection.shard_key_value, collection.object_id, collection.document, collection.creation_time
-                                 Recheck Cond: (collection.shard_key_value = '3500'::bigint)
-                                 ->  Bitmap Index Scan on _id_
-                                       Index Cond: (collection.shard_key_value = '3500'::bigint)
-(16 rows)
+         Sort Key: (random())
+         ->  Subquery Scan on agg_stage_1
+               Output: agg_stage_1.document, random()
+               ->  ProjectSet
+                     Output: bson_dollar_unwind(collection.document, '$a.b'::text)
+                     ->  Bitmap Heap Scan on helio_data.documents_3500 collection
+                           Output: collection.shard_key_value, collection.object_id, collection.document, collection.creation_time
+                           Recheck Cond: (collection.shard_key_value = '3500'::bigint)
+                           ->  Bitmap Index Scan on _id_
+                                 Index Cond: (collection.shard_key_value = '3500'::bigint)
+(14 rows)
 
 -- internalInhibitOptimization
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$addFields": { "newField" : "1", "a.y": ["p", "q"] } }, { "$_internalInhibitOptimization": 1 }, { "$addFields": { "newField2": "someOtherField" } } ], "cursor": {} }');
@@ -583,20 +577,18 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipelin
 (1 row)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline", "filter": { "_id": { "$gt": "1" } }, "projection": { "a.b": 1 }, "sort": { "_id": 1 }, "skip": 1, "limit": 2 }');
-                                                                                                                QUERY PLAN                                                                                                                 
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Subquery Scan on "topQuery_stage_0"
-   Output: "topQuery_stage_0".document
-   ->  Limit
-         Output: (bson_dollar_project_find(collection.document, '{ "a.b" : { "$numberInt" : "1" } }'::bson, '{ "_id" : { "$gt" : "1" } }'::bson)), (bson_orderby(collection.document, '{ "_id" : { "$numberInt" : "1" } }'::bson))
-         ->  Sort
-               Output: (bson_dollar_project_find(collection.document, '{ "a.b" : { "$numberInt" : "1" } }'::bson, '{ "_id" : { "$gt" : "1" } }'::bson)), (bson_orderby(collection.document, '{ "_id" : { "$numberInt" : "1" } }'::bson))
-               Sort Key: (bson_orderby(collection.document, '{ "_id" : { "$numberInt" : "1" } }'::bson)) NULLS FIRST
-               ->  Index Scan using _id_ on helio_data.documents_3500 collection
-                     Output: bson_dollar_project_find(collection.document, '{ "a.b" : { "$numberInt" : "1" } }'::bson, '{ "_id" : { "$gt" : "1" } }'::bson), bson_orderby(collection.document, '{ "_id" : { "$numberInt" : "1" } }'::bson)
-                     Index Cond: ((collection.shard_key_value = '3500'::bigint) AND (collection.object_id > '{ "" : "1" }'::bson))
-                     Filter: (collection.document @> '{ "_id" : "1" }'::bson)
-(11 rows)
+                                                                                                  QUERY PLAN                                                                                                   
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit
+   Output: (bson_dollar_project_find(document, '{ "a.b" : { "$numberInt" : "1" } }'::bson, '{ "_id" : { "$gt" : "1" } }'::bson)), (bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::bson))
+   ->  Sort
+         Output: (bson_dollar_project_find(document, '{ "a.b" : { "$numberInt" : "1" } }'::bson, '{ "_id" : { "$gt" : "1" } }'::bson)), (bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::bson))
+         Sort Key: (bson_orderby(collection.document, '{ "_id" : { "$numberInt" : "1" } }'::bson)) NULLS FIRST
+         ->  Index Scan using _id_ on helio_data.documents_3500 collection
+               Output: bson_dollar_project_find(document, '{ "a.b" : { "$numberInt" : "1" } }'::bson, '{ "_id" : { "$gt" : "1" } }'::bson), bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::bson)
+               Index Cond: ((collection.shard_key_value = '3500'::bigint) AND (collection.object_id > '{ "" : "1" }'::bson))
+               Filter: (collection.document @> '{ "_id" : "1" }'::bson)
+(9 rows)
 
 SELECT document FROM bson_aggregation_find('db', '{ "find": "aggregation_pipeline", "filter": { "_id": { "$gt": "1" } }, "projection": { "a.b": 1 }, "sort": { "_id": 1 }, "skip": 1, "limit": -2 }');
     document     
@@ -939,35 +931,33 @@ SELECT document FROM bson_aggregation_pipeline('db',
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', 
     '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "agg_pipeline_inventory", "as": "matched_docs", "pipeline": [ { "$count": "efe" } ] } }, { "$sample": { "size": 3 } } ], "cursor": {} }');
-                                                                                                                                     QUERY PLAN                                                                                                                                     
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Subquery Scan on "topQuery_stage_0"
-   Output: "topQuery_stage_0".document
-   ->  Limit
+                                                                                                                                  QUERY PLAN                                                                                                                                  
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit
+   Output: agg_stage_1.document, (random())
+   ->  Sort
          Output: agg_stage_1.document, (random())
-         ->  Sort
-               Output: agg_stage_1.document, (random())
-               Sort Key: (random())
-               ->  Subquery Scan on agg_stage_1
-                     Output: agg_stage_1.document, random()
-                     ->  Nested Loop Left Join
-                           Output: helio_api_internal.bson_dollar_merge_documents(collection.document, (COALESCE(bson_array_agg((bson_repath_and_build('efe'::text, bsonsum('{ "" : { "$numberInt" : "1" } }'::bson))), 'matched_docs'::text), '{ "matched_docs" : [  ] }'::bson)))
-                           ->  Bitmap Heap Scan on helio_data.documents_3501 collection
-                                 Output: collection.shard_key_value, collection.object_id, collection.document, collection.creation_time
-                                 Recheck Cond: (collection.shard_key_value = '3501'::bigint)
-                                 ->  Bitmap Index Scan on _id_
-                                       Index Cond: (collection.shard_key_value = '3501'::bigint)
-                           ->  Materialize
-                                 Output: (COALESCE(bson_array_agg((bson_repath_and_build('efe'::text, bsonsum('{ "" : { "$numberInt" : "1" } }'::bson))), 'matched_docs'::text), '{ "matched_docs" : [  ] }'::bson))
+         Sort Key: (random())
+         ->  Subquery Scan on agg_stage_1
+               Output: agg_stage_1.document, random()
+               ->  Nested Loop Left Join
+                     Output: helio_api_internal.bson_dollar_merge_documents(collection.document, (COALESCE(bson_array_agg((bson_repath_and_build('efe'::text, bsonsum('{ "" : { "$numberInt" : "1" } }'::bson))), 'matched_docs'::text), '{ "matched_docs" : [  ] }'::bson)))
+                     ->  Bitmap Heap Scan on helio_data.documents_3501 collection
+                           Output: collection.shard_key_value, collection.object_id, collection.document, collection.creation_time
+                           Recheck Cond: (collection.shard_key_value = '3501'::bigint)
+                           ->  Bitmap Index Scan on _id_
+                                 Index Cond: (collection.shard_key_value = '3501'::bigint)
+                     ->  Materialize
+                           Output: (COALESCE(bson_array_agg((bson_repath_and_build('efe'::text, bsonsum('{ "" : { "$numberInt" : "1" } }'::bson))), 'matched_docs'::text), '{ "matched_docs" : [  ] }'::bson))
+                           ->  Aggregate
+                                 Output: COALESCE(bson_array_agg((bson_repath_and_build('efe'::text, bsonsum('{ "" : { "$numberInt" : "1" } }'::bson))), 'matched_docs'::text), '{ "matched_docs" : [  ] }'::bson)
                                  ->  Aggregate
-                                       Output: COALESCE(bson_array_agg((bson_repath_and_build('efe'::text, bsonsum('{ "" : { "$numberInt" : "1" } }'::bson))), 'matched_docs'::text), '{ "matched_docs" : [  ] }'::bson)
-                                       ->  Aggregate
-                                             Output: bson_repath_and_build('efe'::text, bsonsum('{ "" : { "$numberInt" : "1" } }'::bson))
-                                             ->  Bitmap Heap Scan on helio_data.documents_3502 collection_0_1
-                                                   Recheck Cond: (collection_0_1.shard_key_value = '3502'::bigint)
-                                                   ->  Bitmap Index Scan on _id_
-                                                         Index Cond: (collection_0_1.shard_key_value = '3502'::bigint)
-(26 rows)
+                                       Output: bson_repath_and_build('efe'::text, bsonsum('{ "" : { "$numberInt" : "1" } }'::bson))
+                                       ->  Bitmap Heap Scan on helio_data.documents_3502 collection_0_1
+                                             Recheck Cond: (collection_0_1.shard_key_value = '3502'::bigint)
+                                             ->  Bitmap Index Scan on _id_
+                                                   Index Cond: (collection_0_1.shard_key_value = '3502'::bigint)
+(24 rows)
 
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', 
     '{ "aggregate": "agg_pipeline_orders", "pipeline": [ { "$lookup": { "from": "agg_pipeline_inventory", "as": "matched_docs", "localField": "item", "foreignField": "sku", "pipeline": [ { "$count": "efe" } ] } } ], "cursor": {} }');

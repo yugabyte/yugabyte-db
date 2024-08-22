@@ -2403,80 +2403,172 @@ SELECT helio_api_internal.bson_update_document('{}', '{ "": { "$set": { "$inc": 
 
 -- $pull invalid cases
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": "text"}', '{ "": { "$pull": { "a": 1 } } }', '{}');
-ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist
+ERROR:  Cannot apply $pull to a non-array value
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": 1}', '{ "": { "$pull": { "a": 1 } } }', '{}');
-ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist
+ERROR:  Cannot apply $pull to a non-array value
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": true}', '{ "": { "$pull": { "a": 1 } } }', '{}');
-ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist
+ERROR:  Cannot apply $pull to a non-array value
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": {"$numberDecimal": "1.23"}}', '{ "": { "$pull": { "a": 1 } } }', '{}');
-ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist
+ERROR:  Cannot apply $pull to a non-array value
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": {"b": 2}}', '{ "": { "$pull": { "a": 1 } } }', '{}');
-ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist
+ERROR:  Cannot apply $pull to a non-array value
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": [{"b": 1, "c": 1}, {"b": 2, "c": 2}, {"b": 3, "c": 3}]}', '{ "": { "$pull": { "a.0": {"b": 2, "c":2} } } }', '{}');
-ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist
+ERROR:  Cannot apply $pull to a non-array value
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": [{"b": [1], "c": [1]}, {"b": [2], "c": [2]}, {"b": [3], "c": [3]}]}', '{ "": { "$pull": { "a.b": 1 } } }', '{}');
-ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist
+ERROR:  Invalid array index path b
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pull": { "a": {"$lte": 2, "b": 2} } } }', '{}');
 ERROR:  unknown operator: b
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pull": { "a": {"b": 2, "$lte": 2} } } }', '{}');
 ERROR:  unknown top level operator: $lte. If you have a field name that starts with a '$' symbol, consider using $getField or $setField.
 -- valid $pull without expressions in arrays and array of arrays
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pull": { "a": 3 } } }', '{}');
-ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist
+                                                             bson_update_document                                                             
+----------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "4" }, { "$numberInt" : "5" } ] }
+(1 row)
+
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": [{"b": 1, "c": 1}, {"b": 2, "c": 2}, {"b": 3, "c": 3}]}', '{ "": { "$pull": { "a": {"b": 2, "c":2} } } }', '{}');
-ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist
+                                                                             bson_update_document                                                                             
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } ] }
+(1 row)
+
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": [[1,2,3,4,5], [6,7,8,9,10]]}', '{ "": { "$pull": { "a.0": 4 } } }', '{}');
-ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist
+                                                                                                                             bson_update_document                                                                                                                              
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "5" } ], [ { "$numberInt" : "6" }, { "$numberInt" : "7" }, { "$numberInt" : "8" }, { "$numberInt" : "9" }, { "$numberInt" : "10" } ] ] }
+(1 row)
+
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": [[{"b": 1, "c": 1}, {"b": 2, "c": 2}, {"b": 3, "c": 3}], [{"b": 4, "c": 4}, {"b": 5, "c": 5}, {"b": 6, "c": 6}]]}', '{ "": { "$pull": { "a.1": {"b": 4, "c": 4} } } }', '{}');
-ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist
+                                                                                                                                                                                 bson_update_document                                                                                                                                                                                 
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ [ { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } }, { "b" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "3" } } ], [ { "b" : { "$numberInt" : "5" }, "c" : { "$numberInt" : "5" } }, { "b" : { "$numberInt" : "6" }, "c" : { "$numberInt" : "6" } } ] ] }
+(1 row)
+
 -- valid $pull with expressions in arrays and array of arrays
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5,6,7,8,9,10]}', '{ "": { "$pull": { "a": {"$gte": 2, "$lte": 5} } } }', '{}');
-ERROR:  function helio_api_catalog.bson_value_dollar_gte(internal, bson) does not exist
+                                                                                     bson_update_document                                                                                      
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "6" }, { "$numberInt" : "7" }, { "$numberInt" : "8" }, { "$numberInt" : "9" }, { "$numberInt" : "10" } ] }
+(1 row)
+
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": [[1],[2],[3],[4],[5],[6],[7],[8],[9],[10]]}', '{ "": { "$pull": { "a": {"$gte": 5} } } }', '{}');
-ERROR:  function helio_api_catalog.bson_value_dollar_gte(internal, bson) does not exist
+                                                                     bson_update_document                                                                     
+--------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ [ { "$numberInt" : "1" } ], [ { "$numberInt" : "2" } ], [ { "$numberInt" : "3" } ], [ { "$numberInt" : "4" } ] ] }
+(1 row)
+
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5,6,7,8,9,10]}', '{ "": { "$pull": { "a": {"$gte": 5, "$ne": 8} } } }', '{}');
-ERROR:  function helio_api_catalog.bson_value_dollar_gte(internal, bson) does not exist
+                                                                         bson_update_document                                                                         
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" }, { "$numberInt" : "8" } ] }
+(1 row)
+
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5,6,7,8,9,10]}', '{ "": { "$pull": { "a": {"$in": [3,6,9]} } } }', '{}');
-ERROR:  function helio_api_catalog.bson_value_dollar_in(internal, bson) does not exist
+                                                                                                 bson_update_document                                                                                                  
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "4" }, { "$numberInt" : "5" }, { "$numberInt" : "7" }, { "$numberInt" : "8" }, { "$numberInt" : "10" } ] }
+(1 row)
+
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5,6,7,8,9,10]}', '{ "": { "$pull": { "a": {"$nin": [3,6,9]} } } }', '{}');
-ERROR:  function helio_api_catalog.bson_value_dollar_nin(internal, bson) does not exist
+                                                 bson_update_document                                                 
+----------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "3" }, { "$numberInt" : "6" }, { "$numberInt" : "9" } ] }
+(1 row)
+
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5,6,7,8,9,10]}', '{ "": { "$pull": { "a": { "$not": {"$gt": 5 } } } } }', '{}');
-ERROR:  function helio_api_catalog.bson_value_dollar_gt(internal, bson) does not exist
+                                                                         bson_update_document                                                                          
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "6" }, { "$numberInt" : "7" }, { "$numberInt" : "8" }, { "$numberInt" : "9" }, { "$numberInt" : "10" } ] }
+(1 row)
+
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id":1,"fruits":[ "apples", "pears", "oranges", "grapes", "bananas" ],"vegetables":[ "carrots", "celery", "squash", "carrots" ]}',
                                                                                         '{"":{"$pull":{"fruits":{"$in":["apples","oranges"]},"vegetables":"carrots"}}}', '{}');
-ERROR:  function helio_api_catalog.bson_value_dollar_in(internal, bson) does not exist
+                                                  bson_update_document                                                  
+------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "fruits" : [ "pears", "grapes", "bananas" ], "vegetables" : [ "celery", "squash" ] }
+(1 row)
+
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id":2,"fruits":[ "plums", "kiwis", "oranges", "bananas", "apples" ],"vegetables":[ "broccoli", "zucchini", "carrots", "onions" ]}',
                                                                                         '{"":{"$pull":{"fruits":{"$in":["apples","oranges"]},"vegetables":"carrots"}}}', '{}');
-ERROR:  function helio_api_catalog.bson_value_dollar_in(internal, bson) does not exist
+                                                        bson_update_document                                                         
+-------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "fruits" : [ "plums", "kiwis", "bananas" ], "vegetables" : [ "broccoli", "zucchini", "onions" ] }
+(1 row)
+
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": [{ "item": "A", "score": 5 }, { "item": "B", "score": 8 }, { "item": "C", "score": 8 }, { "item": "B", "score": 4 }]}',
                                                                                         '{ "": { "$pull": { "a": { "score": 8 , "item": "B" } } } }', '{}');
-ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist
+                                                                                           bson_update_document                                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "item" : "A", "score" : { "$numberInt" : "5" } }, { "item" : "C", "score" : { "$numberInt" : "8" } }, { "item" : "B", "score" : { "$numberInt" : "4" } } ] }
+(1 row)
+
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "results": [{ "item": "A", "score": 5, "answers": [ { "q": 1, "a": 4 }, { "q": 2, "a": 6 } ] }, { "item": "B", "score": 8, "answers": [ { "q": 1, "a": 8 }, { "q": 2, "a": 9 } ]}, { "item": "C", "score": 8, "answers": [ { "q": 1, "a": 8 }, { "q": 2, "a": 7 } ] }, { "item": "B", "score": 4, "answers": [ { "q": 1, "a": 0 }, { "q": 2, "a": 8 } ] }]}',
                                                                                         '{ "": { "$pull": { "results": { "answers": {"$elemMatch": { "q": 2, "a": { "$gte": 8 } } } } } } }', '{}');
-ERROR:  function helio_api_catalog.bson_value_dollar_elemmatch(internal, bson) does not exist
+                                                                                                                                                                                                                    bson_update_document                                                                                                                                                                                                                    
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "results" : [ { "item" : "A", "score" : { "$numberInt" : "5" }, "answers" : [ { "q" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "4" } }, { "q" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "6" } } ] }, { "item" : "C", "score" : { "$numberInt" : "8" }, "answers" : [ { "q" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "8" } }, { "q" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "7" } } ] } ] }
+(1 row)
+
 -- First level of nested array is supported in native mongo only when pull spec value is expression
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": [[1],[2],[3],[4],[5],[6],[7],[8],[9],[10]]}', '{ "": { "$pull": { "a": {"$gte": 5} } } }', '{}');
-ERROR:  function helio_api_catalog.bson_value_dollar_gte(internal, bson) does not exist
+                                                                     bson_update_document                                                                     
+--------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ [ { "$numberInt" : "1" } ], [ { "$numberInt" : "2" } ], [ { "$numberInt" : "3" } ], [ { "$numberInt" : "4" } ] ] }
+(1 row)
+
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "arr": [[{"a": 1, "b" : 1}], [{"a": 2, "b": 2}], [{"a": 3, "b": 3}]]}', '{ "": { "$pull": { "arr":  {"$eq": {"a": 1, "b": 1} } } } }', '{}');
-ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist
+                                                                                  bson_update_document                                                                                  
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "arr" : [ [ { "a" : { "$numberInt" : "2" }, "b" : { "$numberInt" : "2" } } ], [ { "a" : { "$numberInt" : "3" }, "b" : { "$numberInt" : "3" } } ] ] }
+(1 row)
+
 -- First level of nested array is not recursed if $pull spec value is plain value
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "arr": [[1],[2],[3],[4],[5],[6],[7],[8],[9],[10]]}', '{ "": { "$pull": { "a":  5 } } }', '{}');
-ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist
+ bson_update_document 
+----------------------
+ 
+(1 row)
+
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "arr": [[{"a": 1, "b" : 1}], [{"a": 2, "b": 2}], [{"a": 3, "b": 3}]]}', '{ "": { "$pull": { "arr":  {"a": 1, "b": 1} } } }', '{}');
-ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist
+ bson_update_document 
+----------------------
+ 
+(1 row)
+
 -- Second and more are not supported
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": [[[1,2]], [[3,4]]]}', '{ "": { "$pull": { "a": {"$gte": 3} } } }', '{}');
-ERROR:  function helio_api_catalog.bson_value_dollar_gte(internal, bson) does not exist
+ bson_update_document 
+----------------------
+ 
+(1 row)
+
 -- $pull no ops for no match
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": [{"b": 1, "c": 1}, {"b": 2, "c": 2}, {"b": 3, "c": 3}]}', '{ "": { "$pull": { "a": {"b": 2, "c":3} } } }', '{}');
-ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist
+ bson_update_document 
+----------------------
+ 
+(1 row)
+
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pull": { "c": 1 } } }', '{}');
-ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist
+ bson_update_document 
+----------------------
+ 
+(1 row)
+
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pull": { "a": {"$gt": 5} } } }', '{}');
-ERROR:  function helio_api_catalog.bson_value_dollar_gt(internal, bson) does not exist
+ bson_update_document 
+----------------------
+ 
+(1 row)
+
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": [{ "item": "A", "score": 5 }, { "item": "B", "score": 8 }, { "item": "C", "score": 8 }, { "item": "B", "score": 4 }]}',
                                                                                         '{ "": { "$pull": { "a": { "$elemMatch": { "score": 8 , "item": "B" } } } } }', '{}');
-ERROR:  function helio_api_catalog.bson_value_dollar_elemmatch(internal, bson) does not exist
+ bson_update_document 
+----------------------
+ 
+(1 row)
+
 -- validate _id
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{}', '{ "": { "$set": { "_id": {"$b": 2, "c":3} } } }', '{}');
 ERROR:  _id fields may not contain '$'-prefixed fields: $b is not valid for storage.

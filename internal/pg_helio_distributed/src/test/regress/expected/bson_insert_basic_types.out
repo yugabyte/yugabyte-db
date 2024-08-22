@@ -1,0 +1,288 @@
+SET search_path TO helio_api,helio_api_internal,helio_core;
+SET citus.next_shard_id TO 300000;
+SET helio_api.next_collection_id TO 3000;
+SET helio_api.next_collection_index_id TO 3000;
+-- insert int32
+SELECT helio_api.insert_one('db','collection','{"_id":"1", "value": { "$numberInt" : "11" }, "valueMax": { "$numberInt" : "2147483647" }, "valueMin": { "$numberInt" : "-2147483648" }}', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- insert int64
+SELECT helio_api.insert_one('db','collection','{"_id":"2", "value":{"$numberLong" : "134311"}, "valueMax": { "$numberLong" : "9223372036854775807" }, "valueMin": { "$numberLong" : "-9223372036854775808" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- insert double
+SELECT helio_api.insert_one('db','collection','{"_id":"3", "value":{"$numberDouble" : "0"}, "valueMax": { "$numberDouble" : "1.7976931348623157E+308" }, "valueMin": { "$numberDouble" : "-1.7976931348623157E+308" }, "valueEpsilon": { "$numberDouble": "4.94065645841247E-324"}, "valueinfinity": {"$numberDouble":"Infinity"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- insert string
+SELECT helio_api.insert_one('db','collection','{"_id":"4", "value": "A quick brown fox jumps over the lazy dog."}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- insert binary
+SELECT helio_api.insert_one('db','collection','{"_id":"5", "value": {"$binary": { "base64": "U29tZVRleHRUb0VuY29kZQ==", "subType": "02"}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- minKey/maxKey
+SELECT helio_api.insert_one('db','collection','{"_id":"6", "valueMin": { "$minKey": 1 }, "valueMax": { "$maxKey": 1 }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- oid, date, time
+SELECT helio_api.insert_one('db','collection','{"_id":"7", "tsField": {"$timestamp":{"t":1565545664,"i":1}}, "dateBefore1970": {"$date":{"$numberLong":"-1577923200000"}}, "dateField": {"$date":{"$numberLong":"1565546054692"}}, "oidField": {"$oid":"5d505646cf6d4fe581014ab2"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- array & nested object
+SELECT helio_api.insert_one('db','collection','{"_id":"8", "arrayOfObject": [ { "ola": "ola"}, { "tudo bem?": "tudo bem!"}, { "o que tu fizeste essa semana?" : "nada" } ]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- fetch all rows
+SELECT shard_key_value, object_id, document FROM helio_api.collection('db', 'collection') ORDER BY 1,2,3;
+ shard_key_value |  object_id   |                                                                                                                                                      document                                                                                                                                                      
+---------------------------------------------------------------------
+            3000 | { "" : "1" } | { "_id" : "1", "value" : { "$numberInt" : "11" }, "valueMax" : { "$numberInt" : "2147483647" }, "valueMin" : { "$numberInt" : "-2147483648" } }
+            3000 | { "" : "2" } | { "_id" : "2", "value" : { "$numberLong" : "134311"}, "valueMax" : { "$numberLong" : "9223372036854775807"}, "valueMin" : { "$numberLong" : "-9223372036854775808"} }
+            3000 | { "" : "3" } | { "_id" : "3", "value" : { "$numberDouble" : "0.0" }, "valueMax" : { "$numberDouble" : "1.7976931348623157081e+308" }, "valueMin" : { "$numberDouble" : "-1.7976931348623157081e+308" }, "valueEpsilon" : { "$numberDouble" : "4.9406564584124654418e-324" }, "valueinfinity" : { "$numberDouble" : "Infinity" } }
+            3000 | { "" : "4" } | { "_id" : "4", "value" : "A quick brown fox jumps over the lazy dog." }
+            3000 | { "" : "5" } | { "_id" : "5", "value" : { "$binary" : { "base64": "U29tZVRleHRUb0VuY29kZQ==", "subType" : "02" } } }
+            3000 | { "" : "6" } | { "_id" : "6", "valueMin" : { "$minKey" : 1 }, "valueMax" : { "$maxKey" : 1 } }
+            3000 | { "" : "7" } | { "_id" : "7", "tsField" : { "$timestamp" : { "t" : 1565545664, "i" : 1 } }, "dateBefore1970" : { "$date" : { "$numberLong" : "-1577923200000" } }, "dateField" : { "$date" : { "$numberLong" : "1565546054692" } }, "oidField" : { "$oid" : "5d505646cf6d4fe581014ab2" } }
+            3000 | { "" : "8" } | { "_id" : "8", "arrayOfObject" : [ { "ola" : "ola" }, { "tudo bem?" : "tudo bem!" }, { "o que tu fizeste essa semana?" : "nada" } ] }
+(8 rows)
+
+-- project two fields out.
+SELECT document->'_id', document->'value' FROM helio_api.collection('db', 'collection') ORDER BY object_id;
+   ?column?   |                                      ?column?                                       
+---------------------------------------------------------------------
+ { "" : "1" } | { "" : { "$numberInt" : "11" } }
+ { "" : "2" } | { "" : { "$numberLong" : "134311"} }
+ { "" : "3" } | { "" : { "$numberDouble" : "0.0" } }
+ { "" : "4" } | { "" : "A quick brown fox jumps over the lazy dog." }
+ { "" : "5" } | { "" : { "$binary" : { "base64": "U29tZVRleHRUb0VuY29kZQ==", "subType" : "02" } } }
+ { "" : "6" } | 
+ { "" : "7" } | 
+ { "" : "8" } | 
+(8 rows)
+
+-- insert document with $ or . in the field path
+SELECT helio_api.insert_one('db', 'collection', '{ "_id": 9, "$field": 1}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'collection', '{ "_id": 10, "field": { "$subField": 1 } }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'collection', '{ "_id": 11, "field": [ { "$subField": 1 } ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'collection', '{ "_id": 12, ".field": 1}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'collection', '{ "_id": 13, "fie.ld": 1}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'collection', '{ "_id": 14, "field": { ".subField": 1 } }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'collection', '{ "_id": 15, "field": { "sub.Field": 1 } }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'collection', '{ "_id": 16, "field": [ { "sub.Field": 1 } ] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+/* Test to validate that _id field cannot have regex as it's value */
+select helio_api.insert_one('db', 'bsontypetests', '{"_id": {"$regex": "^A", "$options": ""}}');
+NOTICE:  creating collection
+                                                                                                          insert_one                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "687865858" }, "errmsg" : "The '_id' value cannot be of type regex" } ] }
+(1 row)
+
+/* Test _id cannot have nested paths with $ */
+SELECT helio_api.insert_one('db', 'bsontypetests', '{ "_id": { "a": 2, "$c": 3 } }');
+                                                                                                                             insert_one                                                                                                                             
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "687865908" }, "errmsg" : "_id fields may not contain '$'-prefixed fields: $c is not valid for storage." } ] }
+(1 row)
+
+/* Test to validate that _id field cannot have array as it's value */
+select helio_api.insert_one('db', 'bsontypetests', '{"_id": [1]}');
+                                                                                                          insert_one                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "687865858" }, "errmsg" : "The '_id' value cannot be of type array" } ] }
+(1 row)
+
+-- assert object_id matches the '_id' from the content - should be numRows.
+SELECT COUNT(*) FROM helio_api.collection('db', 'collection') where object_id::bson = bson_get_value(document, '_id');
+ count 
+---------------------------------------------------------------------
+    16
+(1 row)
+
+\copy helio_data.documents_3000 to 'test.bin' with (format 'binary')
+CREATE TABLE tmp_helio_data_documents_3000 (LIKE helio_data.documents_3000);
+\copy tmp_helio_data_documents_3000 from 'test.bin' with (format 'binary')
+-- verify that all records are same after serialization/deserialization
+SELECT COUNT(*)=0 FROM (
+    (TABLE helio_data.documents_3000 EXCEPT TABLE tmp_helio_data_documents_3000)
+    UNION
+    (TABLE tmp_helio_data_documents_3000 EXCEPT TABLE helio_data.documents_3000)
+) q;
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- verify output via hex strings and json
+BEGIN;
+set local helio_core.bsonUseEJson TO true;
+SELECT document FROM helio_api.collection('db', 'collection') ORDER BY document -> '_id';
+                                                                                                                                                      document                                                                                                                                                      
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "9" }, "$field" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "10" }, "field" : { "$subField" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "11" }, "field" : [ { "$subField" : { "$numberInt" : "1" } } ] }
+ { "_id" : { "$numberInt" : "12" }, ".field" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "13" }, "fie.ld" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "14" }, "field" : { ".subField" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "15" }, "field" : { "sub.Field" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "16" }, "field" : [ { "sub.Field" : { "$numberInt" : "1" } } ] }
+ { "_id" : "1", "value" : { "$numberInt" : "11" }, "valueMax" : { "$numberInt" : "2147483647" }, "valueMin" : { "$numberInt" : "-2147483648" } }
+ { "_id" : "2", "value" : { "$numberLong" : "134311"}, "valueMax" : { "$numberLong" : "9223372036854775807"}, "valueMin" : { "$numberLong" : "-9223372036854775808"} }
+ { "_id" : "3", "value" : { "$numberDouble" : "0.0" }, "valueMax" : { "$numberDouble" : "1.7976931348623157081e+308" }, "valueMin" : { "$numberDouble" : "-1.7976931348623157081e+308" }, "valueEpsilon" : { "$numberDouble" : "4.9406564584124654418e-324" }, "valueinfinity" : { "$numberDouble" : "Infinity" } }
+ { "_id" : "4", "value" : "A quick brown fox jumps over the lazy dog." }
+ { "_id" : "5", "value" : { "$binary" : { "base64": "U29tZVRleHRUb0VuY29kZQ==", "subType" : "02" } } }
+ { "_id" : "6", "valueMin" : { "$minKey" : 1 }, "valueMax" : { "$maxKey" : 1 } }
+ { "_id" : "7", "tsField" : { "$timestamp" : { "t" : 1565545664, "i" : 1 } }, "dateBefore1970" : { "$date" : { "$numberLong" : "-1577923200000" } }, "dateField" : { "$date" : { "$numberLong" : "1565546054692" } }, "oidField" : { "$oid" : "5d505646cf6d4fe581014ab2" } }
+ { "_id" : "8", "arrayOfObject" : [ { "ola" : "ola" }, { "tudo bem?" : "tudo bem!" }, { "o que tu fizeste essa semana?" : "nada" } ] }
+(16 rows)
+
+ROLLBACK;
+BEGIN;
+set local helio_core.bsonUseEJson TO false;
+SELECT document FROM helio_api.collection('db', 'collection') ORDER BY document -> '_id';
+                                                                                                                                          document                                                                                                                                           
+---------------------------------------------------------------------
+ BSONHEX1a000000105f6964000900000010246669656c64000100000000
+ BSONHEX29000000105f6964000a000000036669656c64001400000010247375624669656c6400010000000000
+ BSONHEX31000000105f6964000b000000046669656c64001c0000000330001400000010247375624669656c640001000000000000
+ BSONHEX1a000000105f6964000c000000102e6669656c64000100000000
+ BSONHEX1a000000105f6964000d000000106669652e6c64000100000000
+ BSONHEX29000000105f6964000e000000036669656c640014000000102e7375624669656c6400010000000000
+ BSONHEX29000000105f6964000f000000036669656c640014000000107375622e4669656c6400010000000000
+ BSONHEX31000000105f69640010000000046669656c64001c00000003300014000000107375622e4669656c640001000000000000
+ BSONHEX37000000025f6964000200000031001076616c7565000b0000001076616c75654d617800ffffff7f1076616c75654d696e000000008000
+ BSONHEX43000000025f6964000200000032001276616c756500a70c0200000000001276616c75654d617800ffffffffffffff7f1276616c75654d696e00000000000000008000
+ BSONHEX70000000025f6964000200000033000176616c75650000000000000000000176616c75654d617800ffffffffffffef7f0176616c75654d696e00ffffffffffffefff0176616c7565457073696c6f6e0001000000000000000176616c7565696e66696e69747900000000000000f07f00
+ BSONHEX46000000025f6964000200000034000276616c7565002b0000004120717569636b2062726f776e20666f78206a756d7073206f76657220746865206c617a7920646f672e0000
+ BSONHEX30000000025f6964000200000035000576616c756500140000000210000000536f6d6554657874546f456e636f646500
+ BSONHEX24000000025f696400020000003600ff76616c75654d696e007f76616c75654d61780000
+ BSONHEX62000000025f6964000200000037001174734669656c640001000000c054505d09646174654265666f7265313937300000bc729c90feffff09646174654669656c64002404d1816c010000076f69644669656c64005d505646cf6d4fe581014ab200
+ BSONHEX8a000000025f6964000200000038000461727261794f664f626a656374006b00000003300012000000026f6c6100040000006f6c6100000331001e000000027475646f2062656d3f000a0000007475646f2062656d2100000332002d000000026f207175652074752066697a6573746520657373612073656d616e613f00050000006e61646100000000
+(16 rows)
+
+ROLLBACK;
+BEGIN;
+set local helio_core.bsonUseEJson TO true;
+SELECT bson_hex_to_bson(bson_to_bson_hex(document)) FROM helio_api.collection('db', 'collection') ORDER BY document -> '_id';
+                                                                                                                                                  bson_hex_to_bson                                                                                                                                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "9" }, "$field" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "10" }, "field" : { "$subField" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "11" }, "field" : [ { "$subField" : { "$numberInt" : "1" } } ] }
+ { "_id" : { "$numberInt" : "12" }, ".field" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "13" }, "fie.ld" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "14" }, "field" : { ".subField" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "15" }, "field" : { "sub.Field" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "16" }, "field" : [ { "sub.Field" : { "$numberInt" : "1" } } ] }
+ { "_id" : "1", "value" : { "$numberInt" : "11" }, "valueMax" : { "$numberInt" : "2147483647" }, "valueMin" : { "$numberInt" : "-2147483648" } }
+ { "_id" : "2", "value" : { "$numberLong" : "134311"}, "valueMax" : { "$numberLong" : "9223372036854775807"}, "valueMin" : { "$numberLong" : "-9223372036854775808"} }
+ { "_id" : "3", "value" : { "$numberDouble" : "0.0" }, "valueMax" : { "$numberDouble" : "1.7976931348623157081e+308" }, "valueMin" : { "$numberDouble" : "-1.7976931348623157081e+308" }, "valueEpsilon" : { "$numberDouble" : "4.9406564584124654418e-324" }, "valueinfinity" : { "$numberDouble" : "Infinity" } }
+ { "_id" : "4", "value" : "A quick brown fox jumps over the lazy dog." }
+ { "_id" : "5", "value" : { "$binary" : { "base64": "U29tZVRleHRUb0VuY29kZQ==", "subType" : "02" } } }
+ { "_id" : "6", "valueMin" : { "$minKey" : 1 }, "valueMax" : { "$maxKey" : 1 } }
+ { "_id" : "7", "tsField" : { "$timestamp" : { "t" : 1565545664, "i" : 1 } }, "dateBefore1970" : { "$date" : { "$numberLong" : "-1577923200000" } }, "dateField" : { "$date" : { "$numberLong" : "1565546054692" } }, "oidField" : { "$oid" : "5d505646cf6d4fe581014ab2" } }
+ { "_id" : "8", "arrayOfObject" : [ { "ola" : "ola" }, { "tudo bem?" : "tudo bem!" }, { "o que tu fizeste essa semana?" : "nada" } ] }
+(16 rows)
+
+ROLLBACK;
+BEGIN;
+-- test that hex strings can be coerced to bson (bson_in accepts both)
+set local helio_core.bsonUseEJson TO true;
+SELECT bson_to_bson_hex(document)::text::bson FROM helio_api.collection('db', 'collection') ORDER BY document -> '_id';
+                                                                                                                                                  bson_to_bson_hex                                                                                                                                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "9" }, "$field" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "10" }, "field" : { "$subField" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "11" }, "field" : [ { "$subField" : { "$numberInt" : "1" } } ] }
+ { "_id" : { "$numberInt" : "12" }, ".field" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "13" }, "fie.ld" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "14" }, "field" : { ".subField" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "15" }, "field" : { "sub.Field" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "16" }, "field" : [ { "sub.Field" : { "$numberInt" : "1" } } ] }
+ { "_id" : "1", "value" : { "$numberInt" : "11" }, "valueMax" : { "$numberInt" : "2147483647" }, "valueMin" : { "$numberInt" : "-2147483648" } }
+ { "_id" : "2", "value" : { "$numberLong" : "134311"}, "valueMax" : { "$numberLong" : "9223372036854775807"}, "valueMin" : { "$numberLong" : "-9223372036854775808"} }
+ { "_id" : "3", "value" : { "$numberDouble" : "0.0" }, "valueMax" : { "$numberDouble" : "1.7976931348623157081e+308" }, "valueMin" : { "$numberDouble" : "-1.7976931348623157081e+308" }, "valueEpsilon" : { "$numberDouble" : "4.9406564584124654418e-324" }, "valueinfinity" : { "$numberDouble" : "Infinity" } }
+ { "_id" : "4", "value" : "A quick brown fox jumps over the lazy dog." }
+ { "_id" : "5", "value" : { "$binary" : { "base64": "U29tZVRleHRUb0VuY29kZQ==", "subType" : "02" } } }
+ { "_id" : "6", "valueMin" : { "$minKey" : 1 }, "valueMax" : { "$maxKey" : 1 } }
+ { "_id" : "7", "tsField" : { "$timestamp" : { "t" : 1565545664, "i" : 1 } }, "dateBefore1970" : { "$date" : { "$numberLong" : "-1577923200000" } }, "dateField" : { "$date" : { "$numberLong" : "1565546054692" } }, "oidField" : { "$oid" : "5d505646cf6d4fe581014ab2" } }
+ { "_id" : "8", "arrayOfObject" : [ { "ola" : "ola" }, { "tudo bem?" : "tudo bem!" }, { "o que tu fizeste essa semana?" : "nada" } ] }
+(16 rows)
+
+ROLLBACK;
+BEGIN;
+set local helio_core.bsonUseEJson TO false;
+SELECT COUNT(1) FROM helio_api.collection('db', 'collection') WHERE bson_hex_to_bson(bson_out(document)) != document;
+ count 
+---------------------------------------------------------------------
+     0
+(1 row)
+
+ROLLBACK;

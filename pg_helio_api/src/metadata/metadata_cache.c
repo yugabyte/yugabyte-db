@@ -64,6 +64,8 @@ static Oid GetCoreBinaryOperatorId(Oid *operatorId, Oid leftTypeOid, char *opera
 								   Oid rightTypeOid);
 static Oid GetBinaryOperatorFunctionId(Oid *operatorFuncId, char *operatorName,
 									   Oid leftTypeOid, Oid rightTypeOid);
+static Oid GetInternalBinaryOperatorFunctionId(Oid *operatorFuncId, char *operatorName,
+											   Oid leftTypeOid, Oid rightTypeOid);
 static Oid GetOperatorFunctionIdThreeArgs(Oid *operatorFuncId, char *schemaName,
 										  char *operatorName,
 										  Oid arg0TypeOid, Oid arg1TypeOid, Oid
@@ -1859,8 +1861,9 @@ BsonQueryOperatorId(void)
 Oid
 BsonValueEqualMatchFunctionId(void)
 {
-	return GetBinaryOperatorFunctionId(&Cache.BsonValueEqualMatchFunctionId,
-									   "bson_value_dollar_eq", INTERNALOID, BsonTypeId());
+	return GetInternalBinaryOperatorFunctionId(&Cache.BsonValueEqualMatchFunctionId,
+											   "bson_value_dollar_eq", INTERNALOID,
+											   BsonTypeId());
 }
 
 
@@ -1870,8 +1873,9 @@ BsonValueEqualMatchFunctionId(void)
 Oid
 BsonValueGreaterThanMatchFunctionId(void)
 {
-	return GetBinaryOperatorFunctionId(&Cache.BsonValueGreaterMatchFunctionId,
-									   "bson_value_dollar_gt", INTERNALOID, BsonTypeId());
+	return GetInternalBinaryOperatorFunctionId(&Cache.BsonValueGreaterMatchFunctionId,
+											   "bson_value_dollar_gt", INTERNALOID,
+											   BsonTypeId());
 }
 
 
@@ -1881,9 +1885,10 @@ BsonValueGreaterThanMatchFunctionId(void)
 Oid
 BsonValueGreaterThanEqualMatchFunctionId(void)
 {
-	return GetBinaryOperatorFunctionId(&Cache.BsonValueGreaterEqualMatchFunctionId,
-									   "bson_value_dollar_gte", INTERNALOID,
-									   BsonTypeId());
+	return GetInternalBinaryOperatorFunctionId(
+		&Cache.BsonValueGreaterEqualMatchFunctionId,
+		"bson_value_dollar_gte", INTERNALOID,
+		BsonTypeId());
 }
 
 
@@ -1893,8 +1898,9 @@ BsonValueGreaterThanEqualMatchFunctionId(void)
 Oid
 BsonValueLessThanMatchFunctionId(void)
 {
-	return GetBinaryOperatorFunctionId(&Cache.BsonValueLessMatchFunctionId,
-									   "bson_value_dollar_lt", INTERNALOID, BsonTypeId());
+	return GetInternalBinaryOperatorFunctionId(&Cache.BsonValueLessMatchFunctionId,
+											   "bson_value_dollar_lt", INTERNALOID,
+											   BsonTypeId());
 }
 
 
@@ -1904,9 +1910,9 @@ BsonValueLessThanMatchFunctionId(void)
 Oid
 BsonValueLessThanEqualMatchFunctionId(void)
 {
-	return GetBinaryOperatorFunctionId(&Cache.BsonValueLessEqualMatchFunctionId,
-									   "bson_value_dollar_lte", INTERNALOID,
-									   BsonTypeId());
+	return GetInternalBinaryOperatorFunctionId(&Cache.BsonValueLessEqualMatchFunctionId,
+											   "bson_value_dollar_lte", INTERNALOID,
+											   BsonTypeId());
 }
 
 
@@ -1916,9 +1922,9 @@ BsonValueLessThanEqualMatchFunctionId(void)
 Oid
 BsonValueSizeMatchFunctionId(void)
 {
-	return GetBinaryOperatorFunctionId(&Cache.BsonValueSizeMatchFunctionId,
-									   "bson_value_dollar_size", INTERNALOID,
-									   BsonTypeId());
+	return GetInternalBinaryOperatorFunctionId(&Cache.BsonValueSizeMatchFunctionId,
+											   "bson_value_dollar_size", INTERNALOID,
+											   BsonTypeId());
 }
 
 
@@ -1928,9 +1934,9 @@ BsonValueSizeMatchFunctionId(void)
 Oid
 BsonValueTypeMatchFunctionId(void)
 {
-	return GetBinaryOperatorFunctionId(&Cache.BsonValueTypeMatchFunctionId,
-									   "bson_value_dollar_type", INTERNALOID,
-									   BsonTypeId());
+	return GetInternalBinaryOperatorFunctionId(&Cache.BsonValueTypeMatchFunctionId,
+											   "bson_value_dollar_type", INTERNALOID,
+											   BsonTypeId());
 }
 
 
@@ -1940,8 +1946,9 @@ BsonValueTypeMatchFunctionId(void)
 Oid
 BsonValueInMatchFunctionId(void)
 {
-	return GetBinaryOperatorFunctionId(&Cache.BsonValueInMatchFunctionId,
-									   "bson_value_dollar_in", INTERNALOID, BsonTypeId());
+	return GetInternalBinaryOperatorFunctionId(&Cache.BsonValueInMatchFunctionId,
+											   "bson_value_dollar_in", INTERNALOID,
+											   BsonTypeId());
 }
 
 
@@ -1951,9 +1958,9 @@ BsonValueInMatchFunctionId(void)
 Oid
 BsonValueNinMatchFunctionId(void)
 {
-	return GetBinaryOperatorFunctionId(&Cache.BsonValueNinMatchFunctionId,
-									   "bson_value_dollar_nin", INTERNALOID,
-									   BsonTypeId());
+	return GetInternalBinaryOperatorFunctionId(&Cache.BsonValueNinMatchFunctionId,
+											   "bson_value_dollar_nin", INTERNALOID,
+											   BsonTypeId());
 }
 
 
@@ -1963,8 +1970,9 @@ BsonValueNinMatchFunctionId(void)
 Oid
 BsonValueNotEqualMatchFunctionId(void)
 {
-	return GetBinaryOperatorFunctionId(&Cache.BsonValueNotEqualMatchFunctionId,
-									   "bson_value_dollar_ne", INTERNALOID, BsonTypeId());
+	return GetInternalBinaryOperatorFunctionId(&Cache.BsonValueNotEqualMatchFunctionId,
+											   "bson_value_dollar_ne", INTERNALOID,
+											   BsonTypeId());
 }
 
 
@@ -1974,9 +1982,9 @@ BsonValueNotEqualMatchFunctionId(void)
 Oid
 BsonValueExistsMatchFunctionId(void)
 {
-	return GetBinaryOperatorFunctionId(&Cache.BsonValueExistsMatchFunctionId,
-									   "bson_value_dollar_exists", INTERNALOID,
-									   BsonTypeId());
+	return GetInternalBinaryOperatorFunctionId(&Cache.BsonValueExistsMatchFunctionId,
+											   "bson_value_dollar_exists", INTERNALOID,
+											   BsonTypeId());
 }
 
 
@@ -1986,9 +1994,9 @@ BsonValueExistsMatchFunctionId(void)
 Oid
 BsonValueElemMatchMatchFunctionId(void)
 {
-	return GetBinaryOperatorFunctionId(&Cache.BsonValueElemMatchMatchFunctionId,
-									   "bson_value_dollar_elemmatch", INTERNALOID,
-									   BsonTypeId());
+	return GetInternalBinaryOperatorFunctionId(&Cache.BsonValueElemMatchMatchFunctionId,
+											   "bson_value_dollar_elemmatch", INTERNALOID,
+											   BsonTypeId());
 }
 
 
@@ -1998,9 +2006,9 @@ BsonValueElemMatchMatchFunctionId(void)
 Oid
 BsonValueAllMatchFunctionId(void)
 {
-	return GetBinaryOperatorFunctionId(&Cache.BsonValueAllMatchFunctionId,
-									   "bson_value_dollar_all", INTERNALOID,
-									   BsonTypeId());
+	return GetInternalBinaryOperatorFunctionId(&Cache.BsonValueAllMatchFunctionId,
+											   "bson_value_dollar_all", INTERNALOID,
+											   BsonTypeId());
 }
 
 
@@ -2010,9 +2018,9 @@ BsonValueAllMatchFunctionId(void)
 Oid
 BsonValueRegexMatchFunctionId(void)
 {
-	return GetBinaryOperatorFunctionId(&Cache.BsonValueRegexMatchFunctionId,
-									   "bson_value_dollar_regex", INTERNALOID,
-									   BsonTypeId());
+	return GetInternalBinaryOperatorFunctionId(&Cache.BsonValueRegexMatchFunctionId,
+											   "bson_value_dollar_regex", INTERNALOID,
+											   BsonTypeId());
 }
 
 
@@ -2022,9 +2030,9 @@ BsonValueRegexMatchFunctionId(void)
 Oid
 BsonValueModMatchFunctionId(void)
 {
-	return GetBinaryOperatorFunctionId(&Cache.BsonValueModMatchFunctionId,
-									   "bson_value_dollar_mod", INTERNALOID,
-									   BsonTypeId());
+	return GetInternalBinaryOperatorFunctionId(&Cache.BsonValueModMatchFunctionId,
+											   "bson_value_dollar_mod", INTERNALOID,
+											   BsonTypeId());
 }
 
 
@@ -2034,9 +2042,10 @@ BsonValueModMatchFunctionId(void)
 Oid
 BsonValueBitsAllClearFunctionId(void)
 {
-	return GetBinaryOperatorFunctionId(&Cache.BsonValueBitsAllClearFunctionId,
-									   "bson_value_dollar_bits_all_clear", INTERNALOID,
-									   BsonTypeId());
+	return GetInternalBinaryOperatorFunctionId(&Cache.BsonValueBitsAllClearFunctionId,
+											   "bson_value_dollar_bits_all_clear",
+											   INTERNALOID,
+											   BsonTypeId());
 }
 
 
@@ -2046,9 +2055,10 @@ BsonValueBitsAllClearFunctionId(void)
 Oid
 BsonValueBitsAnyClearFunctionId(void)
 {
-	return GetBinaryOperatorFunctionId(&Cache.BsonValueBitsAnyClearFunctionId,
-									   "bson_value_dollar_bits_any_clear", INTERNALOID,
-									   BsonTypeId());
+	return GetInternalBinaryOperatorFunctionId(&Cache.BsonValueBitsAnyClearFunctionId,
+											   "bson_value_dollar_bits_any_clear",
+											   INTERNALOID,
+											   BsonTypeId());
 }
 
 
@@ -2058,9 +2068,10 @@ BsonValueBitsAnyClearFunctionId(void)
 Oid
 BsonValueBitsAllSetFunctionId(void)
 {
-	return GetBinaryOperatorFunctionId(&Cache.BsonValueBitsAllSetFunctionId,
-									   "bson_value_dollar_bits_all_set", INTERNALOID,
-									   BsonTypeId());
+	return GetInternalBinaryOperatorFunctionId(&Cache.BsonValueBitsAllSetFunctionId,
+											   "bson_value_dollar_bits_all_set",
+											   INTERNALOID,
+											   BsonTypeId());
 }
 
 
@@ -2070,9 +2081,10 @@ BsonValueBitsAllSetFunctionId(void)
 Oid
 BsonValueBitsAnySetFunctionId(void)
 {
-	return GetBinaryOperatorFunctionId(&Cache.BsonValueBitsAnySetFunctionId,
-									   "bson_value_dollar_bits_any_set", INTERNALOID,
-									   BsonTypeId());
+	return GetInternalBinaryOperatorFunctionId(&Cache.BsonValueBitsAnySetFunctionId,
+											   "bson_value_dollar_bits_any_set",
+											   INTERNALOID,
+											   BsonTypeId());
 }
 
 
@@ -5044,6 +5056,31 @@ GetBinaryOperatorFunctionIdMissingOk(Oid *operatorFuncId, char *operatorName,
 											makeString(operatorName));
 		Oid paramOids[2] = { leftTypeOid, rightTypeOid };
 		bool missingOK = true;
+
+		*operatorFuncId =
+			LookupFuncName(functionNameList, 2, paramOids, missingOK);
+	}
+
+	return *operatorFuncId;
+}
+
+
+/*
+ * GetBinaryOperatorFunctionId is a helper function for getting and caching the OID
+ * of a <functionName> <leftTypeOid> <rightTypeOid> operator.
+ */
+static Oid
+GetInternalBinaryOperatorFunctionId(Oid *operatorFuncId, char *operatorName,
+									Oid leftTypeOid, Oid rightTypeOid)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (*operatorFuncId == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString(ApiCatalogToApiInternalSchemaName),
+											makeString(operatorName));
+		Oid paramOids[2] = { leftTypeOid, rightTypeOid };
+		bool missingOK = false;
 
 		*operatorFuncId =
 			LookupFuncName(functionNameList, 2, paramOids, missingOK);

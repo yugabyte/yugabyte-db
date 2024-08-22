@@ -1,0 +1,263 @@
+SET search_path TO helio_api,helio_api_internal,helio_core;
+SET citus.next_shard_id TO 4700000;
+SET helio_api.next_collection_id TO 4700;
+SET helio_api.next_collection_index_id TO 4700;
+SELECT '{"a":1,"b":"c"}'::bson->'a';
+            ?column?             
+---------------------------------------------------------------------
+ { "" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT '{"a":1,"b":"c"}'::bson->'b';
+   ?column?   
+---------------------------------------------------------------------
+ { "" : "c" }
+(1 row)
+
+SELECT '{"a":1,"b":["c"]}'::bson->'b';
+     ?column?     
+---------------------------------------------------------------------
+ { "" : [ "c" ] }
+(1 row)
+
+SELECT '{"a":1,"b":{"c":3}}'::bson->'b';
+                 ?column?                  
+---------------------------------------------------------------------
+ { "" : { "c" : { "$numberInt" : "3" } } }
+(1 row)
+
+SELECT '{"a":1,"b":"c"}'::bson->'c' IS NULL;
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT '{"a":1,"b":"c"}'::bson->NULL IS NULL;
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_get_value('{"a":1,"b":"c"}', 'a');
+         bson_get_value          
+---------------------------------------------------------------------
+ { "" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT bson_get_value('{"a":1,"b":"c"}', 'b');
+ bson_get_value 
+---------------------------------------------------------------------
+ { "" : "c" }
+(1 row)
+
+SELECT bson_get_value('{"a":1,"b":["c"]}', 'b');
+  bson_get_value  
+---------------------------------------------------------------------
+ { "" : [ "c" ] }
+(1 row)
+
+SELECT bson_get_value('{"a":1,"b":{"c":3}}', 'b');
+              bson_get_value               
+---------------------------------------------------------------------
+ { "" : { "c" : { "$numberInt" : "3" } } }
+(1 row)
+
+SELECT bson_get_value('{"a":1,"b":"c"}', 'c') IS NULL;
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_get_value('{"a":1,"b":"c"}', NULL) IS NULL;
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT * FROM bson_object_keys('{"a":1,"b":2}');
+ bson_object_keys 
+---------------------------------------------------------------------
+ a
+ b
+(2 rows)
+
+SELECT * FROM bson_object_keys('{"b":1,"a":2}');
+ bson_object_keys 
+---------------------------------------------------------------------
+ b
+ a
+(2 rows)
+
+SELECT * FROM bson_object_keys('{"b":1,"b":2}');
+ bson_object_keys 
+---------------------------------------------------------------------
+ b
+ b
+(2 rows)
+
+SELECT * FROM bson_object_keys(NULL);
+ bson_object_keys 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT '{ "a": { "$numberInt": "10" }, "b" : "c" }'::bson->>'a';
+ ?column? 
+---------------------------------------------------------------------
+ 10
+(1 row)
+
+SELECT ('{ "a": { "$numberInt": "10" }, "b" : "c" }'::bson->>'a')::int;
+ int4 
+---------------------------------------------------------------------
+   10
+(1 row)
+
+SELECT ('{ "a": { "$numberInt": "10" }, "b" : "c" }'::bson->>'a')::int8;
+ int8 
+---------------------------------------------------------------------
+   10
+(1 row)
+
+SELECT ('{ "a": { "$numberInt": "10" }, "b" : "c" }'::bson->>'a')::float;
+ float8 
+---------------------------------------------------------------------
+     10
+(1 row)
+
+SELECT '{ "a": { "$numberLong": "11" }, "b" : "c" }'::bson->>'a';
+ ?column? 
+---------------------------------------------------------------------
+ 11
+(1 row)
+
+SELECT ('{ "a": { "$numberLong": "11" }, "b" : "c" }'::bson->>'a')::int;
+ int4 
+---------------------------------------------------------------------
+   11
+(1 row)
+
+SELECT ('{ "a": { "$numberLong": "11" }, "b" : "c" }'::bson->>'a')::int8;
+ int8 
+---------------------------------------------------------------------
+   11
+(1 row)
+
+SELECT ('{ "a": { "$numberLong": "11" }, "b" : "c" }'::bson->>'a')::float;
+ float8 
+---------------------------------------------------------------------
+     11
+(1 row)
+
+SELECT '{ "a": { "$numberDouble": "11.12" }, "b" : "c" }'::bson->>'a';
+ ?column? 
+---------------------------------------------------------------------
+ 11.12
+(1 row)
+
+SELECT ('{ "a": { "$numberDouble": "11" }, "b" : "c" }'::bson->>'a')::int;
+ int4 
+---------------------------------------------------------------------
+   11
+(1 row)
+
+SELECT ('{ "a": { "$numberDouble": "11.12" }, "b" : "c" }'::bson->>'a')::int;
+ERROR:  invalid input syntax for type integer: "11.12"
+SELECT ('{ "a": { "$numberDouble": "11" }, "b" : "c" }'::bson->>'a')::int8;
+ int8 
+---------------------------------------------------------------------
+   11
+(1 row)
+
+SELECT ('{ "a": { "$numberDouble": "11.12" }, "b" : "c" }'::bson->>'a')::int8;
+ERROR:  invalid input syntax for type bigint: "11.12"
+SELECT ('{ "a": { "$numberDouble": "1.23e100" }, "b" : "c" }'::bson->>'a')::float;
+  float8   
+---------------------------------------------------------------------
+ 1.23e+100
+(1 row)
+
+SELECT ('{ "a": { "$numberDouble": "11.12" }, "b" : "c" }'::bson->>'a')::float;
+ float8 
+---------------------------------------------------------------------
+  11.12
+(1 row)
+
+SELECT '{ "a": { "$numberDecimal": "11.12" }, "b" : "c" }'::bson->>'a';
+ ?column? 
+---------------------------------------------------------------------
+ 11.12
+(1 row)
+
+SELECT ('{ "a": { "$numberDecimal": "11" }, "b" : "c" }'::bson->>'a')::int;
+ int4 
+---------------------------------------------------------------------
+   11
+(1 row)
+
+SELECT ('{ "a": { "$numberDecimal": "11.12" }, "b" : "c" }'::bson->>'a')::int;
+ERROR:  invalid input syntax for type integer: "11.12"
+SELECT ('{ "a": { "$numberDecimal": "11" }, "b" : "c" }'::bson->>'a')::int8;
+ int8 
+---------------------------------------------------------------------
+   11
+(1 row)
+
+SELECT ('{ "a": { "$numberDecimal": "11.12" }, "b" : "c" }'::bson->>'a')::int8;
+ERROR:  invalid input syntax for type bigint: "11.12"
+SELECT ('{ "a": { "$numberDecimal": "1.23e100" }, "b" : "c" }'::bson->>'a')::float;
+  float8   
+---------------------------------------------------------------------
+ 1.23e+100
+(1 row)
+
+SELECT ('{ "a": { "$numberDecimal": "11.12" }, "b" : "c" }'::bson->>'a')::float;
+ float8 
+---------------------------------------------------------------------
+  11.12
+(1 row)
+
+SELECT ('{ "a": { "$numberDecimal": "1123123e2000" }, "b" : "c" }'::bson->>'a')::float;
+ERROR:  "1.123123E+2006" is out of range for type double precision
+SELECT '{ "a": true, "b" : "c" }'::bson->>'a';
+ ?column? 
+---------------------------------------------------------------------
+ true
+(1 row)
+
+SELECT '{ "a": false, "b" : "c" }'::bson->>'a';
+ ?column? 
+---------------------------------------------------------------------
+ false
+(1 row)
+
+SELECT ('{ "a": true, "b" : "c" }'::bson->>'a')::boolean;
+ bool 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT ('{ "a": false, "b" : "c" }'::bson->>'a')::boolean;
+ bool 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+-- other types other than string are returned as an object when used with ->>
+SELECT '{ "a": {"$oid": "62e034e129274a635b24d895"}, "b" : "c" }'::bson->>'a';
+                ?column?                 
+---------------------------------------------------------------------
+ { "$oid" : "62e034e129274a635b24d895" }
+(1 row)
+
+WITH r1 AS (SELECT 1.0::float8 as dbl, 'text' AS txt, 3::int4 as int32, 44::int8 as int64, '{ "": [1, 2, 3]}'::bson as bsonValue, '{"a": 1, "b": 2}'::bson as bsonObj) SELECT row_get_bson(r) FROM r1 r;
+                                                                                                                                            row_get_bson                                                                                                                                            
+---------------------------------------------------------------------
+ { "dbl" : { "$numberDouble" : "1.0" }, "txt" : "text", "int32" : { "$numberInt" : "3" }, "int64" : { "$numberInt" : "44" }, "bsonvalue" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "bsonobj" : { "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "2" } } }
+(1 row)
+
+SELECT '{"a":1,"b":"c"}'::bson::bytea::bson = '{"a":1,"b":"c"}'::bson;
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+

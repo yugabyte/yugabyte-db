@@ -8,14 +8,16 @@
  *
  * Output arguments need to match data tables exactly.
  */
-CREATE OR REPLACE FUNCTION __API_SCHEMA__.collection(
+CREATE OR REPLACE FUNCTION helio_api.collection(
     p_database_name text,
     p_collection_name text,
-    OUT document __CORE_SCHEMA__.bson)
-RETURNS SETOF __CORE_SCHEMA__.bson
+    OUT shard_key_value bigint,
+    OUT object_id __CORE_SCHEMA__.bson,
+    OUT document __CORE_SCHEMA__.bson,
+    OUT creation_time timestamptz)
+RETURNS SETOF record
 LANGUAGE c
  STRICT
- SUPPORT __API_SCHEMA_INTERNAL__.aggregation_support
 AS 'MODULE_PATHNAME', $function$command_api_collection$function$;
-COMMENT ON FUNCTION __API_SCHEMA__.collection(text,text)
+COMMENT ON FUNCTION helio_api.collection(text,text)
     IS 'query a Mongo collection';

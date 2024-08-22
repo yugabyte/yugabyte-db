@@ -18,6 +18,7 @@ PG_MODULE_MAGIC;
 void _PG_init(void);
 void _PG_fini(void);
 
+bool SkipHelioCoreLoad = false;
 
 /*
  * _PG_init gets called when the extension is loaded.
@@ -25,6 +26,11 @@ void _PG_fini(void);
 void
 _PG_init(void)
 {
+	if (SkipHelioCoreLoad)
+	{
+		return;
+	}
+
 	if (!process_shared_preload_libraries_in_progress)
 	{
 		ereport(ERROR, (errmsg(

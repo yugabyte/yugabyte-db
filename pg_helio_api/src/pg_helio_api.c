@@ -22,12 +22,20 @@ void _PG_init(void);
 void _PG_fini(void);
 
 
+bool SkipHelioApiLoad = false;
+
+
 /*
  * _PG_init gets called when the extension is loaded.
  */
 void
 _PG_init(void)
 {
+	if (SkipHelioApiLoad)
+	{
+		return;
+	}
+
 	if (!process_shared_preload_libraries_in_progress)
 	{
 		ereport(ERROR, (errmsg(
@@ -56,5 +64,10 @@ _PG_init(void)
 void
 _PG_fini(void)
 {
+	if (SkipHelioApiLoad)
+	{
+		return;
+	}
+
 	UninstallHelioApiPostgresHooks();
 }

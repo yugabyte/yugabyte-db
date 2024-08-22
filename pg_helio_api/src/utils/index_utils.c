@@ -10,6 +10,7 @@
 #include <postgres.h>
 #include <storage/proc.h>
 #include <utils/snapmgr.h>
+#include <tcop/pquery.h>
 
 #include "utils/index_utils.h"
 
@@ -42,5 +43,11 @@ PopAllActiveSnapshots(void)
 	while (ActiveSnapshotSet())
 	{
 		PopActiveSnapshot();
+	}
+
+	/* If there was a snapshot on the portal, clear it */
+	if (ActivePortal != NULL)
+	{
+		ActivePortal->portalSnapshot = NULL;
 	}
 }

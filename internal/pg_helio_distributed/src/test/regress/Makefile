@@ -30,7 +30,7 @@ define isolation_test
 endef
 
 check-basic:
-	$(call common_test,--schedule=./basic_schedule)
+	$(call common_test,--schedule=./basic_schedule --schedule=./basic_schedule_core)
 
 check-test-output:
 	./validate_test_output.sh

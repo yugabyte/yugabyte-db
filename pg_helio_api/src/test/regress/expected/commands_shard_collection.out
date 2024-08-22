@@ -16,7 +16,7 @@ EXPLAIN (COSTS OFF)
 SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":11}';
                               QUERY PLAN                               
 -----------------------------------------------------------------------
- Index Scan using _id_ on documents_5000 collection
+ Index Scan using _id_ on documents_5000
    Index Cond: (shard_key_value = '5000'::bigint)
    Filter: (document @= '{ "value" : { "$numberInt" : "11" } }'::bson)
 (3 rows)
@@ -179,10 +179,11 @@ SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"v
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  Sort
-   Sort Key: ((collection.document -> 'id'::text))
-   ->  Seq Scan on documents_5000 collection
+   Sort Key: ((document -> 'id'::text))
+   ->  Index Scan using _id_ on documents_5000
+         Index Cond: (shard_key_value = '838241346061304183'::bigint)
          Filter: (document @= '{ "value" : { "$numberInt" : "11" } }'::bson)
-(4 rows)
+(5 rows)
 
 SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":11}' ORDER BY document->'id';
                       document                      
@@ -201,10 +202,11 @@ SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"v
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  Sort
-   Sort Key: ((collection.document -> 'id'::text))
-   ->  Seq Scan on documents_5000 collection
+   Sort Key: ((document -> 'id'::text))
+   ->  Index Scan using _id_ on documents_5000
+         Index Cond: (shard_key_value = '7547761715150210803'::bigint)
          Filter: (document @= '{ "value" : { "$numberLong" : "134311"} }'::bson)
-(4 rows)
+(5 rows)
 
 SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":{"$numberLong" : "134311"}}' ORDER BY document->'id';
                         document                        
@@ -221,10 +223,11 @@ SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"v
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  Sort
-   Sort Key: ((collection.document -> 'id'::text))
-   ->  Seq Scan on documents_5000 collection
+   Sort Key: ((document -> 'id'::text))
+   ->  Index Scan using _id_ on documents_5000
+         Index Cond: (shard_key_value = '7547761715150210803'::bigint)
          Filter: (document @= '{ "value" : { "$numberInt" : "134311" } }'::bson)
-(4 rows)
+(5 rows)
 
 SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":{"$numberInt" : "134311"}}' ORDER BY document->'id';
                         document                        
@@ -242,10 +245,11 @@ SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"v
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  Sort
-   Sort Key: ((collection.document -> 'id'::text))
-   ->  Seq Scan on documents_5000 collection
+   Sort Key: ((document -> 'id'::text))
+   ->  Index Scan using _id_ on documents_5000
+         Index Cond: (shard_key_value = '8792588867541173546'::bigint)
          Filter: (document @= '{ "value" : { "$numberInt" : "15" } }'::bson)
-(4 rows)
+(5 rows)
 
 SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":15}' ORDER BY document->'id';
                         document                         
@@ -268,14 +272,12 @@ SET LOCAL seq_page_cost TO 9999999;
 SET LOCAL helio_api.ForceUseIndexIfAvailable to OFF;
 EXPLAIN (COSTS OFF)
 SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"$and":[{"value":{"$eq":11}},{"_id":{"$eq":"1"}}]}';
-                              QUERY PLAN                               
------------------------------------------------------------------------
- Bitmap Heap Scan on documents_5000 collection
-   Recheck Cond: (document @= '{ "_id" : "1" }'::bson)
+                                                QUERY PLAN                                                 
+-----------------------------------------------------------------------------------------------------------
+ Index Scan using _id_ on documents_5000
+   Index Cond: ((shard_key_value = '-2638831846010261801'::bigint) AND (object_id = '{ "" : "1" }'::bson))
    Filter: (document @= '{ "value" : { "$numberInt" : "11" } }'::bson)
-   ->  Bitmap Index Scan on _id_
-         Index Cond: (document @= '{ "_id" : "1" }'::bson)
-(5 rows)
+(3 rows)
 
 SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"$and":[{"value":{"$eq":11}},{"_id":{"$eq":"1"}}]}';
                       document                      
@@ -290,14 +292,12 @@ SET LOCAL seq_page_cost TO 9999999;
 SET LOCAL helio_api.ForceUseIndexIfAvailable to OFF;
 EXPLAIN (COSTS OFF)
 SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":11,"_id":"1"}';
-                              QUERY PLAN                               
------------------------------------------------------------------------
- Bitmap Heap Scan on documents_5000 collection
-   Recheck Cond: (document @= '{ "_id" : "1" }'::bson)
+                                                QUERY PLAN                                                 
+-----------------------------------------------------------------------------------------------------------
+ Index Scan using _id_ on documents_5000
+   Index Cond: ((shard_key_value = '-2638831846010261801'::bigint) AND (object_id = '{ "" : "1" }'::bson))
    Filter: (document @= '{ "value" : { "$numberInt" : "11" } }'::bson)
-   ->  Bitmap Index Scan on _id_
-         Index Cond: (document @= '{ "_id" : "1" }'::bson)
-(5 rows)
+(3 rows)
 
 SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":11,"_id":"1"}';
                       document                      
@@ -353,8 +353,8 @@ SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"v
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  Sort
-   Sort Key: ((collection.document -> 'id'::text))
-   ->  Seq Scan on documents_5000 collection
+   Sort Key: ((document -> 'id'::text))
+   ->  Seq Scan on documents_5000
          Filter: (document @= '{ "value" : { "$numberInt" : "11" } }'::bson)
 (4 rows)
 
@@ -414,10 +414,11 @@ SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"a
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  Sort
-   Sort Key: ((collection.document -> 'id'::text))
-   ->  Seq Scan on documents_5000 collection
+   Sort Key: ((document -> 'id'::text))
+   ->  Index Scan using _id_ on documents_5000
+         Index Cond: (shard_key_value = '-8641956760761651950'::bigint)
          Filter: (document @= '{ "a.b" : { "$numberInt" : "22" } }'::bson)
-(4 rows)
+(5 rows)
 
 SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"a.b":22}' ORDER BY document->'id';
                          document                          

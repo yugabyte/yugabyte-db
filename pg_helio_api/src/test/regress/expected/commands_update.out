@@ -100,7 +100,6 @@ select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$s
 ERROR:  BSON field 'update.ordered' is the wrong type 'int', expected type 'bool'
 HINT:  BSON field 'update.ordered' is the wrong type 'int', expected type 'bool'
 select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$bork":{"b":0}},"multi":true}]}');
-NOTICE:  using bson_query_match implementation
                                                                                                                                                                                      update                                                                                                                                                                                     
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""687865865"" }, ""errmsg"" : ""Unknown modifier: $bork. Expected a valid update modifier or pipeline-style update specified as an array"" } ] }",f)
@@ -116,16 +115,6 @@ ERROR:  cannot write to db.system.views
 begin;
 SET LOCAL search_path TO '';
 select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":true}]}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                                                 update                                                                
 --------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""10""}, ""n"" : { ""$numberLong"" : ""10""} }",t)
@@ -232,7 +221,6 @@ rollback;
 -- update 1 without filters is supported for unsharded collections
 begin;
 select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":false}]}');
-NOTICE:  using bson_query_match implementation
                                                                update                                                               
 ------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
@@ -780,9 +768,12 @@ select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":10},
 (1 row)
 
 select document from helio_api.collection('db', 'updateme') where document @@ '{"_id":10}' ORDER BY object_id;
-ERROR:  column "object_id" does not exist
-LINE 1: ...pdateme') where document @@ '{"_id":10}' ORDER BY object_id;
-                                                             ^
+                                             document                                              
+---------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "10" }, "a" : { "$numberInt" : "11" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "$numberInt" : "10" }, "b" : { "$numberInt" : "11" } }
+(2 rows)
+
 rollback;
 -- upsert on sharded collection with multi:true
 begin;
@@ -1466,9 +1457,9 @@ select helio_api.update('update', '{"update":"single", "updates":[{"q":{"_id": 1
 -- array filters sent to final update command.
 BEGIN;
 select helio_api.update('update', '{"update":"single", "updates":[{"q":{"_id": 134111, "b": [ 5, 2, 4 ] },"u":{"$set" : {"b.$[a]":3} },"upsert":true, "arrayFilters": [ { "a": 2 } ]}]}');
-                                                                                                                                                                       update                                                                                                                                                                        
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""52461700"" }, ""errmsg"" : ""function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist"" } ] }",f)
+                                                                                                                    update                                                                                                                    
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""1""}, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""134111"" } } ] }",t)
 (1 row)
 
 SELECT helio_api.insert_one('update', 'multi', '{ "_id": 134112, "blah": [ 5, 1, 4 ] }');
@@ -1484,23 +1475,23 @@ SELECT helio_api.insert_one('update', 'multi', '{ "_id": 134113, "blah": [ 6, 3,
 (1 row)
 
 select helio_api.update('update', '{"update":"multi", "updates":[{"q":{"blah": 1 },"u":{"$max":{"blah.$[a]":99}},"multi":true,"upsert":false, "arrayFilters": [ { "a": 1 } ]}]}');
-                                                                                                                                                                       update                                                                                                                                                                        
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""52461700"" }, ""errmsg"" : ""function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist"" } ] }",f)
+                                                               update                                                               
+------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""2""}, ""n"" : { ""$numberLong"" : ""2""} }",t)
 (1 row)
 
 -- no match here.
 select helio_api.update('update', '{"update":"multi", "updates":[{"q":{"blah": 1 },"u":{"$max":{"blah.$[a]":99}},"multi":false,"upsert":false, "arrayFilters": [ { "a": 1 } ]}]}');
-                                                                                                                                                                       update                                                                                                                                                                        
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""52461700"" }, ""errmsg"" : ""function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist"" } ] }",f)
+                                                               update                                                               
+------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""} }",t)
 (1 row)
 
 -- updates one of the two.
 select helio_api.update('update', '{"update":"multi", "updates":[{"q":{"blah": 99 },"u":{"$max":{"blah.$[a]":109}},"multi":false,"upsert":false, "arrayFilters": [ { "a": 99 } ]}]}');
-                                                                                                                                                                       update                                                                                                                                                                        
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""52461700"" }, ""errmsg"" : ""function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist"" } ] }",f)
+                                                               update                                                               
+------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
 (1 row)
 
 ROLLBACK;

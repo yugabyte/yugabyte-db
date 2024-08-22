@@ -124,9 +124,6 @@ SELECT helio_api.find_and_modify('fam', '{"findAndModify": "system.views", "quer
 ERROR:  cannot write to fam.system.views
 BEGIN;
   SELECT helio_api.find_and_modify('fam', '{"findAndModify": "collection", "query": null, "remove": 0.0, "sort": {"b": -1}, "update": {"a": 10}, "fields": {"_id": 0}}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                                                                                            find_and_modify                                                                                                            
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""1"" }, ""updatedExisting"" : true }, ""value"" : { ""a"" : { ""$numberInt"" : ""5"" }, ""b"" : { ""$numberInt"" : ""7"" } }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
@@ -192,7 +189,7 @@ BEGIN;
 (1 row)
 
   SELECT helio_api.find_and_modify('fam', '{"findAndModify": "collection", "query": {"a": 100}, "sort": {"b": 1}, "update": { "$set": { "a.$[a]": 10 }}, "fields": {"b": 1, "_id": 0}, "upsert": true, "arrayFilters": [ { "a": 30 } ]}');
-ERROR:  function helio_api_catalog.bson_value_dollar_eq(internal, helio_core.bson) does not exist
+ERROR:  Cannot create field 'a' in element {a : 100}
 ROLLBACK;
 BEGIN;
   SELECT helio_api.find_and_modify('fam', '{"findAndModify": "collection", "query": {"a": { "$gte": 15 } }, "sort": {}, "update": {"$set": {"z": 5}, "$inc": {"z": 5}, "$inc": {"a": 10}}, "upsert": false, "new": true, "fields": {}}');
@@ -204,9 +201,6 @@ BEGIN;
 ROLLBACK;
 BEGIN;
   SELECT helio_api.find_and_modify('fam', '{"findAndModify": "collection", "query": null, "remove": true, "sort": {"b": -1}, "fields": {"_id": 0, "a": 0}}');
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
-NOTICE:  using bson_query_match implementation
                                                                            find_and_modify                                                                            
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------
  ("{ ""lastErrorObject"" : { ""n"" : { ""$numberInt"" : ""1"" } }, ""value"" : { ""b"" : { ""$numberInt"" : ""7"" } }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)

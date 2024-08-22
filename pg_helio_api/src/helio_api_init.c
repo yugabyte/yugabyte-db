@@ -846,6 +846,10 @@ InitApiConfigurations(char *prefix)
 void
 InstallHelioApiPostgresHooks(void)
 {
+	/* override planner to apply query transformations */
+	ExtensionPreviousPlannerHook = planner_hook;
+	planner_hook = HelioApiPlanner;
+
 	ExtensionPreviousIndexNameHook = explain_get_index_name_hook;
 	explain_get_index_name_hook = ExtensionExplainGetIndexName;
 
@@ -899,6 +903,9 @@ InitializeHelioBackgroundWorker(char *libraryName)
 void
 UninstallHelioApiPostgresHooks(void)
 {
+	planner_hook = ExtensionPreviousPlannerHook;
+	ExtensionPreviousPlannerHook = NULL;
+
 	explain_get_index_name_hook = ExtensionPreviousIndexNameHook;
 	ExtensionPreviousIndexNameHook = NULL;
 
