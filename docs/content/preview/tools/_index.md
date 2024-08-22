@@ -1,7 +1,7 @@
 ---
 title: Third party tools
-headerTitle: Third party tools
-linkTitle: Gui tools
+headerTitle: GUI clients
+linkTitle: GUI clients
 description: Interactive third party clients that you can use with YugabyteDB.
 headcontent: Use popular third party clients with YugabyteDB
 image: /images/section_icons/troubleshoot/troubleshoot.png

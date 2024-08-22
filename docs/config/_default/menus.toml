@@ -559,7 +559,7 @@
     showSection = true
 
 [[preview_integrations]]
-  name = "GUI tools"
+  name = "GUI clients"
   weight = 7
   identifier = "tools"
   url = "/preview/tools/"
