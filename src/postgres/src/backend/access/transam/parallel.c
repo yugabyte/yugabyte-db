@@ -177,6 +177,10 @@ CreateParallelContext(const char *library_name, const char *function_name,
 	/* Number of workers should be non-negative. */
 	Assert(nworkers >= 0);
 
+	/* TODO GHI 23549 */
+	if (IsolationIsSerializable())
+		nworkers = 0;
+
 	/* We might be running in a short-lived memory context. */
 	oldcontext = MemoryContextSwitchTo(TopTransactionContext);
 
