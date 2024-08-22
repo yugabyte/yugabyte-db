@@ -12,81 +12,42 @@ menu:
 type: indexpage
 ---
 
-<div class="row">
+{{<index/block>}}
 
+  {{<index/item
+    title="Check processes"
+    body="Check the status and accessibility of YugabyteDB nodes."
+    href="check-processes/"
+    icon="/images/section_icons/troubleshoot/troubleshoot.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="check-processes/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
-        <div class="title">Check processes</div>
-      </div>
-      <div class="body">
-        Check the status and accessibility of YugabyteDB nodes.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Inspect logs"
+    body="Diagnose issues by inspecting the YugabyteDB logs."
+    href="check-logs/"
+    icon="/images/section_icons/troubleshoot/troubleshoot.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="check-logs/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
-        <div class="title">Inspect logs</div>
-      </div>
-      <div class="body">
-        Diagnose issues by inspecting the YugabyteDB logs.
-      </div>
-    </a>
-  </div>
+   {{<index/item
+    title="Get system statistics"
+    body="Get state information and metrics for YugabyteDB processes."
+    href="check-stats/"
+    icon="/images/section_icons/troubleshoot/troubleshoot.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="check-stats/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
-        <div class="title">Get system statistics</div>
-      </div>
-      <div class="body">
-        Get state information and metrics for YugabyteDB processes.
-      </div>
-    </a>
-  </div>
+   {{<index/item
+    title="Handle disk failure"
+    body="Recover a YB-TServer from a disk failure."
+    href="recover-disk/"
+    icon="/images/section_icons/troubleshoot/troubleshoot.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link glyphicon-floppy-disk" href="recover-disk/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
-        <div class="title">Handle disk failure</div>
-      </div>
-      <div class="body">
-        Recover a YB-TServer from a disk failure.
-      </div>
-    </a>
-  </div>
+   {{<index/item
+    title="Review common error messages"
+    body="Familiarize yourself with error messages that are common to all YugabytDB components."
+    href="trouble-common/"
+    icon="/images/section_icons/troubleshoot/troubleshoot.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link glyphicon-floppy-disk" href="trouble-common/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
-        <div class="title">Review common error messages</div>
-      </div>
-      <div class="body">
-        Familiarize yourself with error messages that are common to all YugabytDB components.
-      </div>
-    </a>
-  </div>
+   {{<index/item
+    title="Handle disk full"
+    body="Address disk full issue."
+    href="disk-full/"
+    icon="/images/section_icons/troubleshoot/troubleshoot.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link glyphicon-floppy-disk" href="disk-full/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true" />
-        <div class="title">Handle disk full</div>
-      </div>
-      <div class="body">
-        Address disk full issue.
-      </div>
-    </a>
-  </div>
-
-
-
-</div>
+{{</index/block>}}
