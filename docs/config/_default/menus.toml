@@ -532,75 +532,88 @@
 
 [[preview_integrations]]
   name = "Drivers and ORMs"
-  weight = 2
+  weight = 3
   url = "/preview/drivers-orms/"
-  parent = "integrations"
+  [preview_integrations.params]
+    showSection = true
 
 [[preview_integrations]]
   name = "Schema migration"
-  weight = 3
+  weight = 4
   identifier = "schema-migration"
-  parent = "integrations"
+  [preview_integrations.params]
+    showSection = true
 
 [[preview_integrations]]
   name = "Data migration"
-  weight = 4
+  weight = 5
   identifier = "data-migration"
-  parent = "integrations"
+  [preview_integrations.params]
+    showSection = true
 
 [[preview_integrations]]
   name = "Data integration"
-  weight = 5
+  weight = 6
   identifier = "data-integration"
-  parent = "integrations"
+  [preview_integrations.params]
+    showSection = true
 
 [[preview_integrations]]
-  name = "GUI clients"
-  weight = 6
+  name = "GUI tools"
+  weight = 7
+  identifier = "tools"
   url = "/preview/tools/"
-  parent = "integrations"
+  [preview_integrations.params]
+    showSection = true
 
 [[preview_integrations]]
   name = "Application frameworks"
-  weight = 7
+  weight = 8
   identifier = "application-frameworks"
-  parent = "integrations"
+  [preview_integrations.params]
+    showSection = true
 
 [[preview_integrations]]
   name = "Development platforms"
-  weight = 8
+  weight = 9
   identifier = "development-platforms"
-  parent = "integrations"
+  [preview_integrations.params]
+    showSection = true
 
 [[preview_integrations]]
   name = "Data discovery"
-  weight = 9
+  weight = 10
   identifier = "data-discovery"
-  parent = "integrations"
+  [preview_integrations.params]
+    showSection = true
 
 [[preview_integrations]]
   name = "Security"
-  weight = 10
+  weight = 11
   identifier = "integrations-security"
-  parent = "integrations"
+  [preview_integrations.params]
+    showSection = true
 
 [[preview_integrations]]
   name = "Applications"
-  weight = 11
+  weight = 12
   identifier = "integrations-applications"
-  parent = "integrations"
+  [preview_integrations.params]
+    showSection = true
 
 [[preview_integrations]]
-  name = "Infrastructure (HW, SW, Data Mgmt)"
-  weight = 12
+  name = "Infrastructure"
+  weight = 13
   identifier = "integrations-platforms"
-  parent = "integrations"
+  [preview_integrations.params]
+    showSection = true
 
 [[preview_integrations]]
   name = "Other"
-  weight = 13
+  weight = 14
   identifier = "integrations-other"
-  parent = "integrations"
+  [preview_integrations.params]
+    showSection = true
 
 ########## Menus (in preview) for Tutorials
 
@@ -630,20 +643,26 @@
   [preview_tutorials.params]
     showSection = true
 
-#[[preview_tutorials]]
-#  name = "Hello world"
-#  weight = 3
-#  identifier = "build-apps"
-#  url = "/preview/tutorials/build-apps/"
-#  parent = "tutorials"
-#  [preview_tutorials.params]
-#    showSection = true
+[[preview_tutorials]]
+  name = "Hello world"
+  weight = 3
+  identifier = "build-apps"
+  url = "/preview/tutorials/build-apps/"
+  [preview_tutorials.params]
+    showSection = true
+
+[[preview_tutorials]]
+  name = "Build and learn"
+  weight = 10
+  identifier = "tutorials-cloud"
+  url = "/preview/tutorials/build-and-learn/"
+  [preview_tutorials.params]
+    showSection = true
 
 [[preview_tutorials]]
   name = "Cloud"
   weight = 30
   identifier = "tutorials-cloud"
-  parent = "tutorials"
   [preview_tutorials.params]
     showSection = true
 
@@ -651,7 +670,6 @@
   name = "CDC"
   weight = 40
   identifier = "tutorials-cdc"
-  parent = "tutorials"
   [preview_tutorials.params]
     showSection = true
 

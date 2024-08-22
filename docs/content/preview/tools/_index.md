@@ -1,20 +1,17 @@
 ---
 title: Third party tools
 headerTitle: Third party tools
-linkTitle: Third party tools
+linkTitle: Gui tools
 description: Interactive third party clients that you can use with YugabyteDB.
 headcontent: Use popular third party clients with YugabyteDB
 image: /images/section_icons/troubleshoot/troubleshoot.png
 aliases:
   - /develop/tools/
   - /preview/develop/tools/
-menu:
-  preview:
-    identifier: tools
-    parent: reference
-    weight: 2900
 type: indexpage
 showRightNav: true
+cascade:
+  unversioned: true
 ---
 
 Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can use third-party clients to connect to your YugabyteDB clusters.

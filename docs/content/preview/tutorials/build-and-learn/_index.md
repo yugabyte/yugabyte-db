@@ -3,11 +3,6 @@ title: Build and Learn Tutorial
 headerTitle: Build and learn the essential capabilities of YugabyteDB
 linkTitle: Build and Learn
 description: learn the essential capabilities of YugabyteDB by building YugaPlus, a scalable and fault-tolerant streaming platform
-menu:
-  preview_tutorials:
-    identifier: tutorials-build-and-learn
-    parent: tutorials
-    weight: 20
 type: indexpage
 ---
 

@@ -8,7 +8,6 @@ headcontent: Add a scalable and highly-available database to your AI projects
 menu:
   preview_tutorials:
     identifier: tutorials-ai
-    parent: tutorials
     weight: 35
 type: indexpage
 ---
