@@ -66,7 +66,6 @@ import play.libs.Json;
 public class EditKubernetesUniverse extends KubernetesTaskBase {
 
   static final int DEFAULT_WAIT_TIME_MS = 10000;
-  static final int WAIT_FOR_MASTER_ADDRESSES_CHANGE_SECS = 120;
   private final OperatorStatusUpdater kubernetesStatus;
   private final YbcManager ybcManager;
 
@@ -706,11 +705,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           universe.isYbcEnabled(),
           universe.getUniverseDetails().getYbcSoftwareVersion());
 
-      // Wait for gflags change to be reflected on mounted locations
-      createWaitForDurationSubtask(
-              universe, Duration.ofSeconds(WAIT_FOR_MASTER_ADDRESSES_CHANGE_SECS))
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
       Set<NodeDetails> mastersToModify =
           Stream.concat(
                   mastersToAdd.stream(),
@@ -749,11 +743,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           isReadOnlyCluster,
           universe.isYbcEnabled(),
           universe.getUniverseDetails().getYbcSoftwareVersion());
-
-      // Wait for gflags change to be reflected on mounted locations
-      createWaitForDurationSubtask(
-              universe, Duration.ofSeconds(WAIT_FOR_MASTER_ADDRESSES_CHANGE_SECS))
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Set flag in memory for tserver
       createSetFlagInMemoryTasks(

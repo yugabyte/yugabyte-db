@@ -27,6 +27,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -726,6 +727,11 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                       enableYbc));
             });
     getRunnableTask().addSubTaskGroup(helmUpgrade);
+    // Wait for gflags change to be reflected on mounted locations
+    createWaitForDurationSubtask(
+            taskParams().getUniverseUUID(),
+            Duration.ofSeconds(KubernetesUtil.WAIT_FOR_GFLAG_SYNC_SECS))
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 
   private Map<UUID, ServerType> getServersToUpdateAzMap(
