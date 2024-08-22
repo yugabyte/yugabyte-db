@@ -596,9 +596,6 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 		case T_IndexScan:
 			{
 				IndexScan  *splan = (IndexScan *) plan;
-				indexed_tlist *index_itlist;
-
-				index_itlist = build_tlist_index(splan->indextlist);
 				splan->scan.scanrelid += rtoffset;
 				splan->scan.plan.targetlist =
 					fix_scan_list(root, splan->scan.plan.targetlist,
@@ -608,20 +605,35 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 				splan->yb_rel_pushdown.quals =
 					fix_scan_list(root, splan->yb_rel_pushdown.quals, rtoffset,
 								  NUM_EXEC_QUAL(plan));
-				splan->yb_idx_pushdown.quals = (List *)
-					fix_upper_expr(root,
-								   (Node *) splan->yb_idx_pushdown.quals,
-								   index_itlist,
-								   INDEX_VAR,
-								   rtoffset,
-								   NUM_EXEC_QUAL(plan));
-				splan->yb_idx_pushdown.colrefs = (List *)
-					fix_upper_expr(root,
-								   (Node *) splan->yb_idx_pushdown.colrefs,
-								   index_itlist,
-								   INDEX_VAR,
-								   rtoffset,
-								   NUM_EXEC_TLIST(plan));
+				/*
+				 * Index quals has to be fixed to refer index columns, not main
+				 * table columns, so we need to index the indextlist.
+				 * Also, indextlist has to be converted, as ANALYZE may use it.
+				 * Skip that if we don't have index pushdown quals.
+				 */
+				if (splan->yb_idx_pushdown.quals)
+				{
+					indexed_tlist *index_itlist;
+					index_itlist = build_tlist_index(splan->indextlist);
+					splan->yb_idx_pushdown.quals = (List *)
+						fix_upper_expr(root,
+									   (Node *) splan->yb_idx_pushdown.quals,
+									   index_itlist,
+									   INDEX_VAR,
+									   rtoffset,
+									   NUM_EXEC_QUAL(plan));
+					splan->yb_idx_pushdown.colrefs = (List *)
+						fix_upper_expr(root,
+									   (Node *) splan->yb_idx_pushdown.colrefs,
+									   index_itlist,
+									   INDEX_VAR,
+									   rtoffset,
+									   NUM_EXEC_TLIST(plan));
+					splan->indextlist =
+						fix_scan_list(root, splan->indextlist, rtoffset,
+									  NUM_EXEC_TLIST(plan));
+					pfree(index_itlist);
+				}
 				splan->indexqual =
 					fix_scan_list(root, splan->indexqual,
 								  rtoffset, 1);
