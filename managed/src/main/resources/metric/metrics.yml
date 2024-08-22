@@ -2776,7 +2776,6 @@ master_max_follower_lag:
       alias:
         "follower_lag_ms": "Max Follower Lag (ms)"
 
-
 master_load_balancer_stats:
   metric: "tablets_in_wrong_placement|total_table_load_difference|blacklisted_leaders"
   filters:
@@ -3496,5 +3495,26 @@ otel_exporter_queue_size:
   group_by: exporter
   layout:
     "title": "Audit Log Send Queue Size"
+    xaxis:
+      type: "date"
+
+yba_ha_backup_lag:
+  metric: "yba_ha_last_backup_seconds"
+  function: "timestamp|subtract_metric"
+  layout:
+    "title": "HA Backup Lag"
+    yaxis:
+      alias:
+        "yba_ha_last_backup_seconds": "HA Backup Lag (Seconds)"
+    xaxis:
+      type: "date"
+
+yba_ha_last_backup_size_mb:
+  metric: "yba_ha_last_backup_size_mb"
+  layout:
+    "title": "HA Last Backup Size"
+    yaxis:
+      alias:
+        "yba_ha_last_backup_size_mb": "HA Last Backup Size (MB)"
     xaxis:
       type: "date"

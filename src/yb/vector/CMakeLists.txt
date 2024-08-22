@@ -16,9 +16,13 @@ set(YB_PCH_PREFIX vector)
 # Vector indexing, approximate nearest neighbor search, HNSW.
 
 set(VECTOR_SRCS
-    hnsw_util.cc
-    distance.cc
-    benchmark_data.cc)
+  ann_validation.cc
+  benchmark_data.cc
+  distance.cc
+  hnsw_options.cc
+  hnsw_util.cc
+  usearch_wrapper.cc
+  )
 
 set(VECTOR_LIBS
   yb_common

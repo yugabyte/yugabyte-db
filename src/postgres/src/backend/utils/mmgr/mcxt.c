@@ -90,7 +90,7 @@ static void
 YbPgMemUpdateCur()
 {
 #if YB_TCMALLOC_ENABLED
-	YbGetActualHeapSizeBytes(&PgMemTracker.backend_cur_allocated_mem_bytes);
+	PgMemTracker.backend_cur_allocated_mem_bytes = YBCGetActualHeapSizeBytes();
 	yb_pgstat_report_allocated_mem_bytes();
 #endif
 }

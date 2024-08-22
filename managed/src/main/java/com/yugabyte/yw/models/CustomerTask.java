@@ -849,6 +849,15 @@ public class CustomerTask extends Model {
         .findList();
   }
 
+  public static List<CustomerTask> findNewerThan(Customer customer, Duration duration) {
+    Date cutoffDate = new Date(Instant.now().minus(duration).toEpochMilli());
+    return find.query()
+        .where()
+        .eq("customerUUID", customer.getUuid())
+        .ge("completion_time", cutoffDate)
+        .findList();
+  }
+
   public static Optional<CustomerTask> maybeGetByTargetUUIDTaskTypeTargetType(
       UUID customerUUID, UUID targetUUID, TaskType taskType, TargetType targetType) {
     List<CustomerTask> cTaskList =

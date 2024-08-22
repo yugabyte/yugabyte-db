@@ -63,4 +63,13 @@ DistanceFunction GetDistanceImpl(VectorDistanceType distance_type) {
   FATAL_INVALID_ENUM_VALUE(VectorDistanceType, distance_type);
 }
 
+std::vector<VertexId> VertexIdsOnly(const VerticesWithDistances& vertices_with_distances) {
+  std::vector<VertexId> result;
+  result.reserve(vertices_with_distances.size());
+  for (const auto& v_dist : vertices_with_distances) {
+    result.push_back(v_dist.vertex_id);
+  }
+  return result;
+
+}
 }  // namespace yb::vectorindex

@@ -5,6 +5,21 @@ import { formatUuidFromXCluster } from '../../../components/xcluster/Replication
 import { assertUnreachableCase } from '../../../utils/errorHandlingUtils';
 import { MetricSettings, MetricTrace } from '../../helpers/dtos';
 
+/**
+ * Returns an array of Prometheus URLs with the appropriate FQDN.
+ */
+export const getPrometheusUrls = (directUrls: string[], useBrowserFqdn: boolean) =>
+  directUrls.map((directUrl) => {
+    if (!useBrowserFqdn || window.location.hostname === 'localhost') {
+      return directUrl;
+    }
+
+    // Use FQDN from the browser window instead.
+    const url = new URL(directUrl);
+    url.hostname = window.location.hostname;
+    return url.href;
+  });
+
 export const getUniqueTraceId = (trace: MetricTrace): string =>
   `${trace.name}.${trace.instanceName}.${trace.namespaceId ?? trace.namespaceName}.${
     trace.tableId ?? trace.tableName
@@ -15,7 +30,7 @@ export const getUniqueTraceName = (
   trace: MetricTrace,
   namespaceUuidToNamespace: { [namespaceUuid: string]: string | undefined }
 ): string => {
-  const traceName = i18next.t(`prometheusMetricTrace.${trace.name}`);
+  const traceName = i18next.t(`prometheusMetricTrace.${trace.metricName}`);
 
   if (
     metricSettings.splitMode !== SplitMode.NONE &&

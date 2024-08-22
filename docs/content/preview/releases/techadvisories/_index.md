@@ -19,6 +19,12 @@ It is strongly recommended that you take appropriate measures as outlined in the
 {{%table%}}
 | Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
 | :------------------------------- | :------- | :-----: | :---------------: | :--- |
+| {{<ta 22935>}}
+|Potential issues with server-side sequence caching in multi-database clusters
+| {{<product "ysql">}}
+| {{<release "2.18.0.0, 2.20.0.0, 2024.1.0.0">}}
+| {{<nobreak "25 June 2024">}}
+|
 | {{<ta 22802>}}
 |Inconsistencies between system catalog and DocDB schema during DDL operations
 | {{<product "ysql">}}

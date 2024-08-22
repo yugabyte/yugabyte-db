@@ -132,7 +132,8 @@ YbDataTypeFromOidMod(int attnum, Oid type_id)
 
 	/* Find the type mapping entry */
 	const YBCPgTypeEntity *type_entity = YBCPgFindTypeEntity(type_id);
-	YBCPgDataType yb_type = YBCPgGetType(type_entity);
+	const YBCPgDataType yb_type =
+		type_entity ? type_entity->yb_type : YB_YQL_DATA_TYPE_UNKNOWN_DATA;
 
 	/* For non-primitive types, we need to look up the definition */
 	if (yb_type == YB_YQL_DATA_TYPE_UNKNOWN_DATA) {
@@ -215,8 +216,9 @@ Oid YbGetPrimitiveTypeOid(Oid type_id, char typtype, Oid typbasetype) {
 bool
 YbDataTypeIsValidForKey(Oid type_id)
 {
-	const YBCPgTypeEntity *type_entity = YbDataTypeFromOidMod(InvalidAttrNumber, type_id);
-	return YBCPgAllowForPrimaryKey(type_entity);
+	const YBCPgTypeEntity *entity =
+		YbDataTypeFromOidMod(InvalidAttrNumber, type_id);
+	return entity && entity->allow_for_primary_key;
 }
 
 const YBCPgTypeEntity *
