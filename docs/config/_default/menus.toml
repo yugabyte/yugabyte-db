@@ -645,7 +645,7 @@
 
 [[preview_tutorials]]
   name = "Hello world"
-  weight = 3
+  weight = 5
   identifier = "build-apps"
   url = "/preview/tutorials/build-apps/"
   [preview_tutorials.params]
@@ -654,7 +654,7 @@
 [[preview_tutorials]]
   name = "Build and learn"
   weight = 10
-  identifier = "tutorials-cloud"
+  identifier = "tutorials-build-and-learn"
   url = "/preview/tutorials/build-and-learn/"
   [preview_tutorials.params]
     showSection = true
@@ -663,6 +663,14 @@
   name = "Cloud"
   weight = 30
   identifier = "tutorials-cloud"
+  [preview_tutorials.params]
+    showSection = true
+
+[[preview_tutorials]]
+  name = "AI"
+  weight = 35
+  identifier = "tutorials-ai"
+  url = "/preview/tutorials/ai/"
   [preview_tutorials.params]
     showSection = true
 

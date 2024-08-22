@@ -4,6 +4,8 @@ headerTitle: Build and learn the essential capabilities of YugabyteDB
 linkTitle: Build and Learn
 description: learn the essential capabilities of YugabyteDB by building YugaPlus, a scalable and fault-tolerant streaming platform
 type: indexpage
+cascade:
+  unversioned: true
 ---
 
 Welcome to the Build and Learn tutorial! You are going to learn the essential capabilities of YugabyteDB by building YugaPlus, a scalable and fault-tolerant streaming platform where users watch their favorite movies, series, and live events.
