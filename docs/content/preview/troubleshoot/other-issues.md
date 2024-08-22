@@ -1,6 +1,8 @@
 ---
-title: Miscellaneous issues
-linkTitle: Miscellaneous issues
+title: Troubleshoot miscellaneous issues
+headerTitle: Other issues
+linkTitle: Other issues
+description: Troubleshoot miscellaneous other issues in YugabyteDB
 menu:
   preview:
     identifier: troubleshoot-miscellaneous
@@ -17,20 +19,24 @@ rightnav:
 
 Leader preference is enforced by the [load balancer](../../architecture/yb-master#load-balancing) component of the [YB-Master](../../architecture/yb-master) service. This load balancer has a 2 minute delay in triggering after the cluster is started. For the tables created within this 2 minute window, it will take a while for the tablets to be placed according to the placement policy.
 
-## yugabyted
+## Unable to start a local installation of YugabyteDB on MacOS
 
-### Unable to start yugabyted on mac os
-
-When starting a local cluster on mac, you might see an error like:
+When starting a local cluster on MacOS, you might see an error like the following:
 
 ```bash{.nocopy}
 ERROR: Master node present at 127.0.0.1:7000 is not reachable.
 ```
 
-This could be because, on the mac os the port 7000 is used by the Airplay Reciever service. This service allows other devices to stream content to your mac. You can disable this feature temporarily by going to System settings -> Airdrop -> Airplay Receiver and toggle it `OFF` and then start your cluster and then enable the Airplay Receiver feature.
+MacOS Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB.
 
-For scenarios where you do not want to turn off the Airplay Receiver feature, you can start the master webserver on a different port using the `master_webserver_port` gflag.
+If you are using yugabyted, use the [--master_webserver_port flag](#advanced-flags) when you start the cluster to change the default port number, as follows:
+
+```sh
+./bin/yugabyted start --master_webserver_port=9999
+```
+
+Alternatively, you can disable AirPlay receiving, then start YugabyteDB normally, and then, optionally, re-enable AirPlay receiving.
 
 {{<tip>}}
-If you do not need this feature, it is advisable to permanently disable it.
+If you do not need AirPlay, it is advisable to permanently disable it.
 {{</tip>}}
