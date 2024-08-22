@@ -78,6 +78,7 @@ typedef struct BsonAddToSetState
 {
 	HTAB *set;
 	int64_t currentSizeWritten;
+	bool isWindowAggregation;
 } BsonAddToSetState;
 
 typedef struct BsonOutAggregateState
@@ -1452,10 +1453,13 @@ bson_add_to_set_transition(PG_FUNCTION_ARGS)
 	BsonAddToSetState *currentState = { 0 };
 	bytea *bytes;
 	MemoryContext aggregateContext;
-	if (!AggCheckCallContext(fcinfo, &aggregateContext))
+	int aggregationContext = AggCheckCallContext(fcinfo, &aggregateContext);
+	if (aggregationContext == 0)
 	{
 		ereport(ERROR, errmsg("aggregate function called in non-aggregate context"));
 	}
+
+	bool isWindowAggregation = aggregationContext == AGG_CONTEXT_WINDOW;
 
 	/* Create the aggregate state in the aggregate context. */
 	MemoryContext oldContext = MemoryContextSwitchTo(aggregateContext);
@@ -1471,6 +1475,7 @@ bson_add_to_set_transition(PG_FUNCTION_ARGS)
 		currentState = (BsonAddToSetState *) VARDATA(bytes);
 		currentState->currentSizeWritten = 0;
 		currentState->set = CreateBsonValueHashSet();
+		currentState->isWindowAggregation = isWindowAggregation;
 	}
 	else
 	{
@@ -1548,13 +1553,39 @@ bson_add_to_set_final(PG_FUNCTION_ARGS)
 			PgbsonArrayWriterWriteValue(&arrayWriter, entry);
 		}
 
-		hash_destroy(state->set);
+		/*
+		 * For window aggregation, with the HASHTBL destroyed (on the call for the first group),
+		 * subsequent calls to this final function for other groups will fail
+		 * for certain bounds such as ["unbounded", constant].
+		 * This is because the head never moves and the aggregation is not restarted.
+		 * Thus, the table is expected to hold something valid.
+		 */
+		if (!state->isWindowAggregation)
+		{
+			hash_destroy(state->set);
+		}
+
 		PgbsonWriterEndArray(&writer, &arrayWriter);
 
 		PG_RETURN_POINTER(PgbsonWriterGetPgbson(&writer));
 	}
 	else
 	{
+		MemoryContext aggregateContext;
+		int aggContext = AggCheckCallContext(fcinfo, &aggregateContext);
+		if (aggContext == AGG_CONTEXT_WINDOW)
+		{
+			/*
+			 * We will need to return the default value of $addToSet accumulator which is empty array in case
+			 * where the window doesn't select any document.
+			 *
+			 * e.g ["unbounded", -1] => For the first row it doesn't select any rows.
+			 */
+			pgbson_writer writer;
+			PgbsonWriterInit(&writer);
+			PgbsonWriterAppendEmptyArray(&writer, "", 0);
+			PG_RETURN_POINTER(PgbsonWriterGetPgbson(&writer));
+		}
 		PG_RETURN_NULL();
 	}
 }

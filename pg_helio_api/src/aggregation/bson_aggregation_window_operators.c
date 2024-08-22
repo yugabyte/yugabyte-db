@@ -149,6 +149,8 @@ static WindowFunc * HandleDollarAvgWindowOperator(const bson_value_t *opValue,
 												  WindowOperatorContext *context);
 static WindowFunc * HandleDollarPushWindowOperator(const bson_value_t *opValue,
 												   WindowOperatorContext *context);
+static WindowFunc * HandleDollarAddToSetWindowOperator(const bson_value_t *opValue,
+													   WindowOperatorContext *context);
 
 
 /* GUC to enable SetWindowFields stage */
@@ -163,7 +165,7 @@ static const WindowOperatorDefinition WindowOperatorDefinitions[] =
 {
 	{
 		.operatorName = "$addToSet",
-		.windowOperatorFunc = NULL
+		.windowOperatorFunc = &HandleDollarAddToSetWindowOperator
 	},
 	{
 		.operatorName = "$avg",
@@ -1417,4 +1419,13 @@ HandleDollarPushWindowOperator(const bson_value_t *opValue,
 		MakeBoolValueConst(handleSingleValue));
 	windowFunc->args = aggregateArgs;
 	return windowFunc;
+}
+
+
+static WindowFunc *
+HandleDollarAddToSetWindowOperator(const bson_value_t *opValue,
+								   WindowOperatorContext *context)
+{
+	return GetSimpleBsonExpressionGetWindowFunc(opValue, context,
+												BsonAddToSetAggregateFunctionOid());
 }
