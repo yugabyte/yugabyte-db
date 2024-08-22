@@ -3881,6 +3881,11 @@
     "CommunicationPorts" : {
       "description" : "Communication ports",
       "properties" : {
+        "internalYsqlServerRpcPort" : {
+          "description" : "Internal YSQL RPC port",
+          "format" : "int32",
+          "type" : "integer"
+        },
         "masterHttpPort" : {
           "description" : "Master table HTTP port",
           "format" : "int32",
@@ -4065,6 +4070,10 @@
         "communicationPorts" : {
           "$ref" : "#/definitions/CommunicationPorts",
           "description" : "Communication ports for the universe"
+        },
+        "enableConnectionPooling" : {
+          "description" : "Enable Connection Pooling for the universe",
+          "type" : "boolean"
         },
         "enableYSQL" : {
           "description" : "Enable YSQL Api for the universe",
@@ -8091,6 +8100,11 @@
           "description" : "Disks are mounted by uuid",
           "type" : "boolean"
         },
+        "internalYsqlServerRpcPort" : {
+          "description" : "Internal YSQL RPC port",
+          "format" : "int32",
+          "type" : "integer"
+        },
         "isMaster" : {
           "description" : "True if this node is a master",
           "type" : "boolean"
@@ -8276,6 +8290,11 @@
         "disksAreMountedByUUID" : {
           "description" : "Disks are mounted by uuid",
           "type" : "boolean"
+        },
+        "internalYsqlServerRpcPort" : {
+          "description" : "Internal YSQL RPC port",
+          "format" : "int32",
+          "type" : "integer"
         },
         "isMaster" : {
           "description" : "True if this node is a master",
@@ -15258,6 +15277,9 @@
           "description" : "Device specification that is used for tserver nodes in current cluster"
         },
         "enableClientToNodeEncrypt" : {
+          "type" : "boolean"
+        },
+        "enableConnectionPooling" : {
           "type" : "boolean"
         },
         "enableExposingService" : {

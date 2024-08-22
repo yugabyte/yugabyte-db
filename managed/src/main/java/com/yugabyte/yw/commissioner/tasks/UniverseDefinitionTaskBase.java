@@ -929,6 +929,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Sets the isMaster field
       params.isMaster = node.isMaster;
       params.enableYSQL = userIntent.enableYSQL;
+      params.enableConnectionPooling = userIntent.enableConnectionPooling;
       params.enableYCQL = userIntent.enableYCQL;
       params.enableYCQLAuth = userIntent.enableYCQLAuth;
       params.enableYSQLAuth = userIntent.enableYSQLAuth;
@@ -1384,6 +1385,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.placementUuid = node.placementUuid;
       // Sets the isMaster field
       params.enableYSQL = userIntent.enableYSQL;
+      params.enableConnectionPooling = userIntent.enableConnectionPooling;
       params.enableYCQL = userIntent.enableYCQL;
       params.enableYCQLAuth = userIntent.enableYCQLAuth;
       params.enableYSQLAuth = userIntent.enableYSQLAuth;
@@ -2781,6 +2783,27 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.enableYCQL = enableYCQL;
     params.enableYCQLAuth = enableYCQLAuth;
+    params.enableYSQL = enableYSQL;
+    params.enableYSQLAuth = enableYSQLAuth;
+    UpdateClusterAPIDetails task = createTask(UpdateClusterAPIDetails.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  protected SubTaskGroup createUpdateDBApiDetailsTask(
+      boolean enableYSQL,
+      boolean enableYSQLAuth,
+      boolean enableConnectionPooling,
+      boolean enableYCQL,
+      boolean enableYCQLAuth) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateClusterAPIDetails");
+    UpdateClusterAPIDetails.Params params = new UpdateClusterAPIDetails.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.enableYCQL = enableYCQL;
+    params.enableYCQLAuth = enableYCQLAuth;
+    params.enableConnectionPooling = enableConnectionPooling;
     params.enableYSQL = enableYSQL;
     params.enableYSQLAuth = enableYSQLAuth;
     UpdateClusterAPIDetails task = createTask(UpdateClusterAPIDetails.class);
