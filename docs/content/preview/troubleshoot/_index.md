@@ -46,6 +46,7 @@ Typically, troubleshooting involves a number of steps that are rather consistent
    {{<index/item
     title="YSQL issues"
     body="Solve issues related to YSQL."
+    body="Solve issues related to YSQL."
     href="nodes/"
     icon="/images/section_icons/api/ysql.png">}}
 
