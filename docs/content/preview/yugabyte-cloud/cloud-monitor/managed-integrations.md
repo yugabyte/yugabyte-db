@@ -1,8 +1,8 @@
 ---
-title: Integrate with third-party tools for exporting cluster data
+title: Integrate with third-party tools in YugabyteDB Aeon
 headerTitle: Integrations
 linkTitle: Integrations
-description: Set up links to third-party tools.
+description: Set up links to third-party tools in YugabyteDB Aeon.
 headcontent: Set up links to third-party tools
 menu:
   preview_yugabyte-cloud:
