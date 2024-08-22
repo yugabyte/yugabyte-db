@@ -77,6 +77,7 @@ _DEFINE_MONGO_ERROR(AlreadyInitialized, 23);
 _DEFINE_MONGO_ERROR(NamespaceNotFound, 26);
 _DEFINE_MONGO_ERROR(IndexNotFound, 27);
 _DEFINE_MONGO_ERROR(PathNotViable, 28);
+_DEFINE_MONGO_ERROR(RoleNotFound, 31);
 _DEFINE_MONGO_ERROR(CannotBackfillArray, 34);
 _DEFINE_MONGO_ERROR(ConflictingUpdateOperators, 40);
 _DEFINE_MONGO_ERROR(CursorNotFound, 43);

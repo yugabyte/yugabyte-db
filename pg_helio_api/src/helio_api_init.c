@@ -302,6 +302,9 @@ bool IgnoreLetOnQuerySupport = DEFAULT_IGNORE_LET_ON_QUERY;
 bool EnableIndexTermTruncationOnNestedObjects =
 	DEFAULT_ENABLE_INDEX_TERM_TRUNCATION_NESTED_OBJECTS;
 
+#define DEFAULT_ENABLE_USER_CRUD false
+bool EnableUserCrud = DEFAULT_ENABLE_USER_CRUD;
+
 /* --------------------------------------------------------- */
 /* Top level exports */
 /* --------------------------------------------------------- */
@@ -826,6 +829,13 @@ InitApiConfigurations(char *prefix)
 			"Determines whether to truncate index terms with nested objects (arrays/objects of arrays/objects)"),
 		NULL, &EnableIndexTermTruncationOnNestedObjects,
 		DEFAULT_ENABLE_INDEX_TERM_TRUNCATION_NESTED_OBJECTS,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		"helio_api.enableUserCrud",
+		gettext_noop(
+			"Enables user crud through the data plane."),
+		NULL, &EnableUserCrud, DEFAULT_ENABLE_USER_CRUD,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 }
 

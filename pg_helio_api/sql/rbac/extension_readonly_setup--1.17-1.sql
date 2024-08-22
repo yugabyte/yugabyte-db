@@ -18,6 +18,5 @@ GRANT USAGE ON SCHEMA __API_SCHEMA_INTERNAL__ TO helio_readonly_role;
 GRANT USAGE ON SCHEMA __API_SCHEMA__ TO helio_readonly_role;
 GRANT USAGE ON SCHEMA __API_DATA_SCHEMA__ TO helio_readonly_role;
  
-ALTER DEFAULT PRIVILEGES IN SCHEMA __API_DATA_SCHEMA__ GRANT SELECT ON TABLES TO helio_readonly_role;
 GRANT SELECT ON TABLE __API_CATALOG_SCHEMA__.collections TO helio_readonly_role;
 GRANT SELECT ON TABLE __API_CATALOG_SCHEMA__.collection_indexes TO helio_readonly_role;
