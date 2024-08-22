@@ -4,11 +4,14 @@ import tempfile
 import subprocess
 import logging
 import pkgutil
-import jinja2
 import sys
+import pwd
+import grp
+import semver
 
 import modules.base_module as mbm
 from .base_command import Command
+from utils.util import safely_write_file
 
 logger = logging.getLogger(__name__)
 
@@ -176,9 +179,60 @@ class ProvisionCommand(Command):
         run_combined_script, precheck_combined_script = self._generate_template()
         self._run_script(run_combined_script)
         self._run_script(precheck_combined_script)
+        self._save_ynp_version()
+
+    def _save_ynp_version(self):
+        key = next(iter(self.config), None)
+        if key is not None:
+            context = self.config[key]
+            current_ynp_version = context.get('version')
+            yb_home_dir = context.get('yb_home_dir')
+
+            # Ensure yb_home_dir exists
+            if yb_home_dir and current_ynp_version:
+                os.makedirs(yb_home_dir, exist_ok=True)
+
+                # Define the full path to the ynp_version file
+                ynp_version_file = os.path.join(yb_home_dir, 'ynp_version')
+                safely_write_file(ynp_version_file, current_ynp_version)
+                yb_user = context.get('yb_user')
+                uid = pwd.getpwnam(yb_user).pw_uid
+                gid = grp.getgrnam(yb_user).gr_gid
+                os.chown(ynp_version_file, uid, gid)
+            else:
+                logger.info("yb_home_dir or current_ynp_version is missing in the context")
+
+    def _compare_ynp_version(self):
+        key = next(iter(self.config), None)
+        if key is not None:
+            context = self.config[key]
+            yb_home_dir = context.get('yb_home_dir')
+            current_ynp_version = semver.Version.parse(context.get('version'))
+
+            # Define the full path to the ynp_version file
+            ynp_version_file = os.path.join(yb_home_dir, 'ynp_version')
+            try:
+                # Read the ynp_version from the file
+                with open(ynp_version_file, 'r') as file:
+                    stored_ynp_version = semver.Version.parse(file.read().strip())
+            except FileNotFoundError:
+                logger.error(f"The ynp_version file was not found at {ynp_version_file}")
+                sys.exit(1)
+            except ValueError as e:
+                logger.error(f"Error parsing version from the ynp_version file: {e}")
+                sys.exit(1)
+
+            if current_ynp_version.major != stored_ynp_version.major:
+                logger.info(
+                    f"The major versions are different. Current: {current_ynp_version},"
+                    f"Stored: {stored_ynp_version}. "
+                    "Please run reprovision again on the node"
+                    )
+                sys.exit(1)
 
     def run_preflight_checks(self):
         _, precheck_combined_script = self._generate_template()
+        self._compare_ynp_version()
         self._run_script(precheck_combined_script)
 
     def cleanup(self):

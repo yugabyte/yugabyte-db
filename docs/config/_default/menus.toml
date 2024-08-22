@@ -359,7 +359,7 @@
   name = "YugabyteDB"
   weight = 10
   identifier = "yugabytedb"
-  url = "/preview/"
+  url = "/stable/"
   [home.params]
     showSection = true
 
@@ -367,7 +367,7 @@
   name = "YugabyteDB Anywhere"
   weight = 11
   identifier = "yugabytedb-anywhere"
-  url = "/preview/yugabyte-platform/"
+  url = "/stable/yugabyte-platform/"
   [home.params]
     showSection = true
 

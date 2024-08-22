@@ -9,6 +9,11 @@ properties:
     description: Delay interval between two jobs.
     type: integer
     format: int64
+  snooze_until:
+    description: Time until the job should be snoozed.
+    type: string
+    format: date-time
+    example: '2024-07-25T13:07:18Z'
   type:
     description: Type of the job schedule.
     $ref: "./JobScheduleType.yaml"

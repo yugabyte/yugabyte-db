@@ -10,11 +10,11 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import api.v2.models.YbaComponent;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.forms.AbstractTaskParams;
-import com.yugabyte.yw.forms.YbaBackupForm;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 
@@ -28,7 +28,7 @@ public class CreateYbaBackup extends AbstractTaskBase {
 
   public static class Params extends AbstractTaskParams {
     public String localDir;
-    public List<YbaBackupForm.Component> components;
+    public List<YbaComponent> components;
   }
 
   @Override

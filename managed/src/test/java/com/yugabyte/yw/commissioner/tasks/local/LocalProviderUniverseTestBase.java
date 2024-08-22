@@ -237,7 +237,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     subDir = DATE_FORMAT.format(new Date());
   }
 
-  @Rule public Timeout globalTimeout = Timeout.seconds(600);
+  @Rule public Timeout globalTimeout = Timeout.seconds(900);
 
   private static void setUpBaseDir() {
     if (System.getenv(BASE_DIR_ENV_KEY) != null) {
