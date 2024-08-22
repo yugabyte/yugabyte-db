@@ -88,6 +88,7 @@ public class RedactingService {
           // LDAP - DB Universe Sync
           .add("$..dbuserPassword")
           .add("$..ldapBindPassword")
+          .add("$..ysql_hba_conf_csv")
           .build();
 
   // List of json paths to any secret fields we want to redact.

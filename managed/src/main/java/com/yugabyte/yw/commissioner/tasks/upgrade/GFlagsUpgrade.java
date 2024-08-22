@@ -4,12 +4,15 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RedactingService;
+import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -168,16 +171,37 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
           GFlagsUtil.getBaseGFlags(ServerType.MASTER, newCluster, newClusters.values());
       Map<String, String> tserverGflags =
           GFlagsUtil.getBaseGFlags(ServerType.TSERVER, newCluster, newClusters.values());
+      ObjectMapper mapper = new ObjectMapper();
+      String redactedMasterNewFlags =
+          RedactingService.filterSecretFields(
+                  mapper.valueToTree(masterGflags), RedactionTarget.LOGS)
+              .toString();
+      String redactedMasterOldFlags =
+          RedactingService.filterSecretFields(
+                  mapper.valueToTree(
+                      GFlagsUtil.getBaseGFlags(ServerType.MASTER, curCluster, curClusters)),
+                  RedactionTarget.LOGS)
+              .toString();
       log.debug(
           "Cluster {} master: new flags {} old flags {}",
           curCluster.clusterType,
-          masterGflags,
-          GFlagsUtil.getBaseGFlags(ServerType.MASTER, curCluster, curClusters));
+          redactedMasterNewFlags,
+          redactedMasterOldFlags);
+      String redactedTsNewFlags =
+          RedactingService.filterSecretFields(
+                  mapper.valueToTree(tserverGflags), RedactionTarget.LOGS)
+              .toString();
+      String redactedTsOldFlags =
+          RedactingService.filterSecretFields(
+                  mapper.valueToTree(
+                      GFlagsUtil.getBaseGFlags(ServerType.TSERVER, curCluster, curClusters)),
+                  RedactionTarget.LOGS)
+              .toString();
       log.debug(
           "Cluster {} tserver: new flags {} old flags {}",
           curCluster.clusterType,
-          tserverGflags,
-          GFlagsUtil.getBaseGFlags(ServerType.TSERVER, curCluster, curClusters));
+          redactedTsNewFlags,
+          redactedTsOldFlags);
 
       boolean changedByMasterFlags =
           curCluster.clusterType == UniverseDefinitionTaskParams.ClusterType.PRIMARY

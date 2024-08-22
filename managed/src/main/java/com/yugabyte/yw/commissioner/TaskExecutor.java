@@ -957,9 +957,9 @@ public class TaskExecutor {
           "Task state must be one of " + TaskInfo.ERROR_STATES);
       taskInfo.refresh();
       ObjectNode taskDetails = taskInfo.getDetails().deepCopy();
-      // Method maskConfig does not modify the input as it makes a deep-copy.
-      String maskedTaskDetails = CommonUtils.maskConfig(taskDetails).toString();
       String errorString;
+      // Method getRedactedParams does not modify the input as it makes a deep-copy.
+      String redactedTaskParams = taskInfo.getRedactedParams().toString();
       if (state == TaskInfo.State.Aborted && isShutdown.get()) {
         errorString = "Platform shutdown";
       } else {
@@ -972,14 +972,14 @@ public class TaskExecutor {
         errorString =
             String.format(
                 "Failed to execute task %s, hit error:\n\n %s.",
-                StringUtils.abbreviate(maskedTaskDetails, 500),
+                StringUtils.abbreviate(redactedTaskParams, 500),
                 StringUtils.abbreviateMiddle(cause.getMessage(), "...", 3000));
       }
       log.error(
           "Failed to execute task type {} UUID {} details {}, hit error.",
           taskInfo.getTaskType(),
           taskInfo.getTaskUUID(),
-          maskedTaskDetails,
+          redactedTaskParams,
           t);
 
       if (log.isDebugEnabled()) {
@@ -1272,7 +1272,14 @@ public class TaskExecutor {
             throw e;
           }
 
-          log.warn("Task {} attempt {} has failed", getTask(), currentAttempt);
+          String redactedParams =
+              RedactingService.filterSecretFields(getTask().getTaskDetails(), RedactionTarget.LOGS)
+                  .toString();
+          log.warn(
+              "Task {} with params {} attempt {} has failed",
+              getTask().getName(),
+              redactedParams,
+              currentAttempt);
           if (!getTask().onFailure(getTaskInfo(), e)) {
             throw e;
           }
