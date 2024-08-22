@@ -3,7 +3,7 @@ import moment from 'moment';
 import i18n from 'i18next';
 
 import { getAlertConfigurations } from '../../actions/universe';
-import { fetchReplicationLag, isBootstrapRequired } from '../../actions/xClusterReplication';
+import { fetchReplicationLag } from '../../actions/xClusterReplication';
 import { formatLagMetric } from '../../utils/Formatters';
 import {
   MetricName,
@@ -18,7 +18,8 @@ import {
   XCLUSTER_UNDEFINED_LAG_NUMERIC_REPRESENTATION,
   I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS,
   UNCONFIGURED_XCLUSTER_TABLE_STATUSES,
-  DROPPED_XCLUSTER_TABLE_STATUSES
+  DROPPED_XCLUSTER_TABLE_STATUSES,
+  BootstrapCategory
 } from './constants';
 import {
   alertConfigQueryKey,
@@ -30,7 +31,6 @@ import { getUniverseStatus } from '../universes/helpers/universeHelpers';
 import { UnavailableUniverseStates } from '../../redesign/helpers/constants';
 import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
 import { SortOrder } from '../../redesign/helpers/constants';
-import { getTableUuid } from '../../utils/tableUtils';
 import { compareYBSoftwareVersions, getPrimaryCluster } from '../../utils/universeUtilsTyped';
 
 import {
@@ -41,9 +41,15 @@ import {
   MainTableReplicationCandidate,
   IndexTableReplicationCandidate,
   XClusterTableType,
-  XClusterTable
+  XClusterTable,
+  CategorizedNeedBootstrapPerTableResponse
 } from './XClusterTypes';
-import { XClusterConfig, XClusterTableDetails } from './dtos';
+import {
+  XClusterConfig,
+  XClusterConfigNeedBootstrapPerTableResponse,
+  XClusterNeedBootstrapReason,
+  XClusterTableDetails
+} from './dtos';
 import {
   MetricTrace,
   TableType,
@@ -317,6 +323,85 @@ export const adaptMetricDataForRecharts = (
   );
 };
 
+export const getCategorizedNeedBootstrapPerTableResponse = (
+  xClusterConfigNeedBootstrapPerTableResponse: XClusterConfigNeedBootstrapPerTableResponse
+): CategorizedNeedBootstrapPerTableResponse => {
+  const categorizedNeedBootstrapPerTableResponse: CategorizedNeedBootstrapPerTableResponse = {
+    bootstrapTableUuids: [],
+    noBootstrapRequired: {
+      bootstrapCategory: BootstrapCategory.NO_BOOTSTRAP_REQUIRED,
+      tableCount: 0,
+      tables: {}
+    },
+    tableHasDataBidirectional: {
+      bootstrapCategory: BootstrapCategory.TABLE_HAS_DATA_BIDIRECTIONAL,
+      tableCount: 0,
+      tables: {}
+    },
+    targetTableMissingBidirectional: {
+      bootstrapCategory: BootstrapCategory.TARGET_TABLE_MISSING_BIDIRECTIONAL,
+      tableCount: 0,
+      tables: {}
+    },
+    tableHasData: {
+      bootstrapCategory: BootstrapCategory.TABLE_HAS_DATA,
+      tableCount: 0,
+      tables: {}
+    },
+    targetTableMissing: {
+      bootstrapCategory: BootstrapCategory.TARGET_TABLE_MISSING,
+      tableCount: 0,
+      tables: {}
+    }
+  };
+  Object.entries(xClusterConfigNeedBootstrapPerTableResponse).forEach(
+    ([tableUuid, needBootstrapDetails]) => {
+      const { reasons, bootstrapRequired } = needBootstrapDetails;
+      const isBidirectionalReplicationParticipant = reasons.includes(
+        XClusterNeedBootstrapReason.BIDIRECTIONAL_REPLICATION
+      );
+      const tableHasData = reasons.includes(XClusterNeedBootstrapReason.TABLE_HAS_DATA);
+      const targetTableMissing = reasons.includes(
+        XClusterNeedBootstrapReason.TABLE_MISSING_ON_TARGET
+      );
+
+      if (bootstrapRequired) {
+        categorizedNeedBootstrapPerTableResponse.bootstrapTableUuids.push(tableUuid);
+      }
+
+      // In the following assignments, we won't be writing over an existing entries because YBA
+      // backend returns an entry per tableUuid. i.e. `.tables[tableUuid]` is always undefined.
+      if (isBidirectionalReplicationParticipant && tableHasData) {
+        categorizedNeedBootstrapPerTableResponse.tableHasDataBidirectional.tables[
+          tableUuid
+        ] = needBootstrapDetails;
+        categorizedNeedBootstrapPerTableResponse.tableHasDataBidirectional.tableCount += 1;
+      } else if (isBidirectionalReplicationParticipant && targetTableMissing) {
+        categorizedNeedBootstrapPerTableResponse.targetTableMissingBidirectional.tables[
+          tableUuid
+        ] = needBootstrapDetails;
+        categorizedNeedBootstrapPerTableResponse.targetTableMissingBidirectional.tableCount += 1;
+      } else if (tableHasData) {
+        categorizedNeedBootstrapPerTableResponse.tableHasData.tables[
+          tableUuid
+        ] = needBootstrapDetails;
+        categorizedNeedBootstrapPerTableResponse.tableHasData.tableCount += 1;
+      } else if (targetTableMissing) {
+        categorizedNeedBootstrapPerTableResponse.targetTableMissing.tables[
+          tableUuid
+        ] = needBootstrapDetails;
+        categorizedNeedBootstrapPerTableResponse.targetTableMissing.tableCount += 1;
+      } else {
+        categorizedNeedBootstrapPerTableResponse.noBootstrapRequired.tables[
+          tableUuid
+        ] = needBootstrapDetails;
+        categorizedNeedBootstrapPerTableResponse.noBootstrapRequired.tableCount += 1;
+      }
+    }
+  );
+  return categorizedNeedBootstrapPerTableResponse;
+};
+
 export const getMasterNodeAddress = (nodeDetailsSet: Array<any>) => {
   const master = nodeDetailsSet.find((node: Record<string, any>) => node.isMaster);
   if (master) {
@@ -371,12 +456,14 @@ export const getEnabledConfigActions = (
   replication: XClusterConfig,
   sourceUniverse: Universe | undefined,
   targetUniverse: Universe | undefined,
+  isXClusterConfigAllBidirectional: boolean,
   drConfigState?: DrConfigState
 ): XClusterConfigAction[] => {
   if (drConfigState === DrConfigState.ERROR) {
     // When DR config is in error state, we only allow the DR config delete operation.
     return [];
   }
+
   if (
     UnavailableUniverseStates.includes(getUniverseStatus(sourceUniverse).state) ||
     UnavailableUniverseStates.includes(getUniverseStatus(targetUniverse).state)
@@ -387,27 +474,38 @@ export const getEnabledConfigActions = (
     return [XClusterConfigAction.DELETE];
   }
 
-  switch (replication.status) {
-    case XClusterConfigStatus.INITIALIZED:
-    case XClusterConfigStatus.UPDATING:
-      return [XClusterConfigAction.DELETE, XClusterConfigAction.RESTART];
-    case XClusterConfigStatus.RUNNING:
-      return [
-        replication.paused ? XClusterConfigAction.RESUME : XClusterConfigAction.PAUSE,
-        XClusterConfigAction.MANAGE_TABLE,
-        XClusterConfigAction.DB_SYNC,
-        XClusterConfigAction.DELETE,
-        XClusterConfigAction.EDIT,
-        XClusterConfigAction.RESTART
-      ];
-    case XClusterConfigStatus.FAILED:
-      return [XClusterConfigAction.DELETE, XClusterConfigAction.RESTART];
-    case XClusterConfigStatus.DELETED_UNIVERSE:
-    case XClusterConfigStatus.DELETION_FAILED:
-      return [XClusterConfigAction.DELETE];
-    default:
-      return assertUnreachableCase(replication.status);
-  }
+  const getEnabledConfigActionsBasedOnStatus = (
+    status: XClusterConfigStatus
+  ): XClusterConfigAction[] => {
+    switch (status) {
+      case XClusterConfigStatus.INITIALIZED:
+      case XClusterConfigStatus.UPDATING:
+        return [XClusterConfigAction.DELETE, XClusterConfigAction.RESTART];
+      case XClusterConfigStatus.RUNNING:
+        return [
+          replication.paused ? XClusterConfigAction.RESUME : XClusterConfigAction.PAUSE,
+          XClusterConfigAction.MANAGE_TABLE,
+          XClusterConfigAction.DB_SYNC,
+          XClusterConfigAction.DELETE,
+          XClusterConfigAction.EDIT,
+          XClusterConfigAction.RESTART
+        ];
+      case XClusterConfigStatus.FAILED:
+        return [XClusterConfigAction.DELETE, XClusterConfigAction.RESTART];
+      case XClusterConfigStatus.DELETED_UNIVERSE:
+      case XClusterConfigStatus.DELETION_FAILED:
+        return [XClusterConfigAction.DELETE];
+      default:
+        return assertUnreachableCase(status);
+    }
+  };
+
+  const enabledActions = getEnabledConfigActionsBasedOnStatus(replication.status);
+
+  // Remove `RESTART` action if all tables in the config are in bidirectional replication.
+  return isXClusterConfigAllBidirectional
+    ? enabledActions.filter((action) => action !== XClusterConfigAction.RESTART)
+    : enabledActions;
 };
 
 /**
@@ -604,6 +702,32 @@ export const getInConfigTableUuidsToTableDetailsMap = (tableDetails: XClusterTab
     return tableUuidToTableDetails;
   }, new Map<string, XClusterTableDetails>());
 
+/**
+ * Filters out the extra table details and returns the table UUIDs for only tables in
+ * the replication config.
+ */
+export const getInConfigTableUuid = (tableDetails: XClusterTableDetails[]) =>
+  tableDetails.reduce((inConfigTableUuids: string[], tableDetails) => {
+    if (!UNCONFIGURED_XCLUSTER_TABLE_STATUSES.includes(tableDetails.status)) {
+      inConfigTableUuids.push(tableDetails.tableId);
+    }
+    return inConfigTableUuids;
+  }, []);
+
+/**
+ * Accepts the backend need bootstrap response.
+ * Returns true if every table in the xCluster config is part of a database under bidirectional replication.
+ */
+export const getIsXClusterConfigAllBidirectional = (
+  xClusterConfigNeedBootstrapPerTableResponse: XClusterConfigNeedBootstrapPerTableResponse
+): boolean => {
+  return Object.entries(
+    xClusterConfigNeedBootstrapPerTableResponse
+  ).every(([_, needBootstrapDetails]) =>
+    needBootstrapDetails.reasons.includes(XClusterNeedBootstrapReason.BIDIRECTIONAL_REPLICATION)
+  );
+};
+
 const updateTableStatusWithReplicationLag = (
   tableStatus: XClusterTableStatus,
   maxAcceptableLag: number | undefined,
@@ -699,68 +823,4 @@ export const augmentTablesWithXClusterDetails = <TIncludeDroppedTables extends b
   return tables as TIncludeDroppedTables extends true
     ? XClusterReplicationTable[]
     : XClusterTable[];
-};
-
-/**
- * Return the UUIDs for tables which require bootstrapping.
- * May throw an error if the need_bootstrap query fails.
- */
-export const getTablesForBootstrapping = async (
-  selectedTableUuids: string[],
-  sourceUniverseUuid: string,
-  targetUniverseUuid: string | null,
-  sourceUniverseTables: YBTable[],
-  xClusterConfigType: XClusterConfigType
-) => {
-  // Check if bootstrap is required, for each selected table
-  let bootstrapTest: { [tableUUID: string]: boolean } = {};
-
-  bootstrapTest = await isBootstrapRequired(
-    sourceUniverseUuid,
-    targetUniverseUuid,
-    selectedTableUuids.map(formatUuidForXCluster),
-    xClusterConfigType
-  );
-
-  const bootstrapRequiredTableUUIDs = new Set<string>();
-  if (bootstrapTest) {
-    const ysqlKeyspaceToTableUUIDs = new Map<string, Set<string>>();
-    const ysqlTableUUIDToKeyspace = new Map<string, string>();
-    sourceUniverseTables.forEach((table) => {
-      if (table.tableType !== TableType.PGSQL_TABLE_TYPE) {
-        // Ignore non-YSQL tables.
-        return;
-      }
-      // If a single YSQL table requires bootstrapping, then we must submit all table UUIDs
-      // under the same database in the bootstrap param because the backup and restore is only available at a
-      // database level.
-      const tableUUIDs = ysqlKeyspaceToTableUUIDs.get(table.keySpace);
-      if (tableUUIDs !== undefined) {
-        tableUUIDs.add(formatUuidForXCluster(getTableUuid(table)));
-      } else {
-        ysqlKeyspaceToTableUUIDs.set(
-          table.keySpace,
-          new Set<string>([formatUuidForXCluster(getTableUuid(table))])
-        );
-      }
-      ysqlTableUUIDToKeyspace.set(formatUuidForXCluster(getTableUuid(table)), table.keySpace);
-    });
-
-    Object.entries(bootstrapTest).forEach(([tableUUID, bootstrapRequired]) => {
-      if (bootstrapRequired) {
-        bootstrapRequiredTableUUIDs.add(tableUUID);
-        // YSQL ONLY: In addition to the current table, add all other tables in the same keyspace
-        //            for bootstrapping.
-        const keyspace = ysqlTableUUIDToKeyspace.get(tableUUID);
-        if (keyspace !== undefined) {
-          const tableUUIDs = ysqlKeyspaceToTableUUIDs.get(keyspace);
-          if (tableUUIDs !== undefined) {
-            tableUUIDs.forEach((tableUUID) => bootstrapRequiredTableUUIDs.add(tableUUID));
-          }
-        }
-      }
-    });
-  }
-
-  return Array.from(bootstrapRequiredTableUUIDs);
 };
