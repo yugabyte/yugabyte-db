@@ -1,15 +1,16 @@
 ---
-title: Colocated tables
-headerTitle: Colocated tables
-linkTitle: Colocated tables
+title: Colocating tables and databases
+headerTitle: Colocating tables
+linkTitle: Colocation
 description: Learn how colocated tables aggregate data into a single tablet.
 aliases:
   - /preview/architecture/docdb/colocated_tables/
+  - /preview/architecture/docdb-sharding/colocated-tables/
 menu:
   preview:
     identifier: docdb-colocated-tables
-    parent: architecture-docdb-sharding
-    weight: 1144
+    parent: explore
+    weight: 250
 rightNav:
   hideH4: true
 type: docs
@@ -63,7 +64,7 @@ Colocation can be enabled at the cluster, database, or table level. For a coloca
 
 ### Clusters
 
-To enable colocation for all databases in a cluster, when you create the cluster, set the following [flag](../../../reference/configuration/yb-master/#ysql-colocate-database-by-default) to true for [YB-Master](../../yb-master/) and [YB-TServer](../../yb-tserver/) services as follows:
+To enable colocation for all databases in a cluster, when you create the cluster, set the following [flag](../../reference/configuration/yb-master/#ysql-colocate-database-by-default) to true for [YB-Master](../../architecture/yb-master/) and [YB-TServer](../../architecture/yb-tserver/) services as follows:
 
 ```sql
 ysql_colocate_database_by_default = true
@@ -133,7 +134,7 @@ CREATE TABLE <name> (columns) WITH (colocated = <true|false>)
 
 {{< /warning >}}
 
-To check if a table is colocated or not, you can use the [`\d`](../../../admin/ysqlsh-meta-commands/#d-s-pattern-patterns) meta-command in [ysqlsh](../../../admin/ysqlsh). You can also retrieve the same information using the `yb_table_properties` function as follows:
+To check if a table is colocated or not, you can use the [`\d`](../../admin/ysqlsh-meta-commands/#d-s-pattern-patterns) meta-command in [ysqlsh](../../admin/ysqlsh). You can also retrieve the same information using the `yb_table_properties` function as follows:
 
 ```sql
 select is_colocated from yb_table_properties('table_name'::regclass);
@@ -181,7 +182,7 @@ For a colocated table, a TRUNCATE / DROP operation may abort due to conflicts if
 
 ## xCluster and colocation
 
-xCluster is supported for colocated tables and indexes in v2.18.0 only via [yb-admin](../../../admin/yb-admin/). To set up xCluster for colocated tables, the `colocation_id` for a given table or index needs to match on the source and target universes.
+xCluster is supported for colocated tables and indexes in v2.18.0 only via [yb-admin](../../admin/yb-admin/). To set up xCluster for colocated tables, the `colocation_id` for a given table or index needs to match on the source and target universes.
 
 To set up xCluster for colocated tables, do the following:
 
@@ -237,4 +238,4 @@ To set up xCluster for colocated tables, do the following:
 
 If new colocated tables are added to the same colocated database on both source and target universes with matching colocation IDs, then they are automatically included in replication.
 
-For information on how to set up xCluster for non-colocated tables, refer to [xCluster deployment](../../../deploy/multi-dc/async-replication/).
+For information on how to set up xCluster for non-colocated tables, refer to [xCluster deployment](../../deploy/multi-dc/async-replication/).
