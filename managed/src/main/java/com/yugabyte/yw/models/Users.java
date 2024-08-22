@@ -356,7 +356,7 @@ public class Users extends Model {
   }
 
   public String upsertApiToken(Long version) {
-    String apiTokenFormatVersion = "2";
+    String apiTokenFormatVersion = "3";
     UUID uuidToLock = uuid != null ? uuid : NULL_UUID;
     usersLock.acquireLock(uuidToLock);
     try {
@@ -372,7 +372,7 @@ public class Users extends Model {
       apiTokenVersion = apiTokenVersion == null ? 1L : apiTokenVersion + 1;
       save();
       // new format of api token = apiTokenFormatVersion$userUUID$apiTokenUnhashed
-      return apiTokenFormatVersion + "$" + uuid + "$" + apiTokenUnhashed;
+      return apiTokenFormatVersion + "." + uuid + "." + apiTokenUnhashed;
 
     } finally {
       usersLock.releaseLock(uuidToLock);
@@ -425,17 +425,27 @@ public class Users extends Model {
       return null;
     }
 
-    // Supporting the 2 formats of api token
-    // 1. apiTokenFormatVersion$userUUID$apiToken (newer format)
-    // 2. apiToken (older format)
-
-    // The second format would lead to performance degradation in the case of more than 10 users
+    // Supporting the 3 formats of api token
+    // 1. apiToken (older format)
+    // 2. apiTokenFormatVersion$userUUID$apiToken (version 2 $ seperated format)
+    // 3. apiTokenFormatVersion.userUUID.apiToken (version 3 . seperated format)
+    // The 3rd format is better for shell based clients because dot is easier to escape than dollar
+    // The first format would lead to performance degradation in the case of more than 10 users
     // Recommended to reissue the token (which will follow the first format)
 
     try {
-      if (apiToken.contains("$")) {
-        // to authenticate new format of api token = apiTokenFormatVersion$userUUID$apiTokenUnhashed
-        String[] parts = apiToken.split("\\$");
+      boolean isOldFormat = true;
+      String regexSeparator = "";
+      if (apiToken.startsWith("2$", 0)) {
+        regexSeparator = "\\$";
+        isOldFormat = false;
+      } else if (apiToken.startsWith("3.", 0)) {
+        regexSeparator = "\\.";
+        isOldFormat = false;
+      }
+      if (!isOldFormat) {
+        // to authenticate new format of api token = apiTokenFormatVersion.userUUID.apiTokenUnhashed
+        String[] parts = apiToken.split(regexSeparator);
         UUID userUUID = UUID.fromString(parts[1]);
         String apiTokenUnhashed = parts[2];
         Users userWithToken = find.query().where().eq("uuid", userUUID).findOne();
@@ -445,7 +455,7 @@ public class Users extends Model {
           }
         }
       } else {
-        // to authenticate old format of api token
+        // to authenticate old format of api token with no seperator
         LOG.warn("Using older API token format. Renew to improve performance.");
         List<Users> usersList = find.query().where().isNotNull("apiToken").findList();
         long startTime = System.currentTimeMillis();
@@ -463,6 +473,7 @@ public class Users extends Model {
       }
       return null;
     } catch (Exception e) {
+      LOG.error("Error while authenticating API token", e);
       return null;
     }
   }
