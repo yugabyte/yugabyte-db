@@ -96,9 +96,9 @@ func initServices() {
 	services = make(map[string]common.Component)
 	installPostgres := viper.GetBool("postgres.install.enabled")
 	installYbdb := viper.GetBool("ybdb.install.enabled")
-	services[PostgresServiceName] = NewPostgres("14.11")
+	services[PostgresServiceName] = NewPostgres("14.12")
 	// services[YbdbServiceName] = NewYbdb("2.17.2.0")
-	services[PrometheusServiceName] = NewPrometheus("2.47.1")
+	services[PrometheusServiceName] = NewPrometheus("2.53.1")
 	services[YbPlatformServiceName] = NewPlatform(ybactl.Version)
 	// serviceOrder = make([]string, len(services))
 	if installPostgres {

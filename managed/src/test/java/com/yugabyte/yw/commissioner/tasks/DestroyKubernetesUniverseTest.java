@@ -182,6 +182,8 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
       // Shift by 1 subtask due to FreezeUniverse.
       assertEquals(
           TaskType.FreezeUniverse, subTasksByPosition.get(position++).get(0).getTaskType());
+      assertEquals(
+          TaskType.UpdateConsistencyCheck, subTasksByPosition.get(position++).get(0).getTaskType());
     }
     for (int i = 0; i < KUBERNETES_DESTROY_UNIVERSE_TASKS.size(); i++) {
       TaskType taskType = KUBERNETES_DESTROY_UNIVERSE_TASKS.get(i);

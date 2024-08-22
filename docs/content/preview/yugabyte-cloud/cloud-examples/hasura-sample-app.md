@@ -1,4 +1,4 @@
----
+<!---
 title: Deploy a GraphQL application
 headerTitle: Deploy a GraphQL application
 linkTitle: Deploy a GraphQL application
@@ -11,7 +11,8 @@ menu:
     parent: cloud-examples
     weight: 450
 type: docs
----
+private: true
+--->
 
 This page demonstrates how to deploy a GraphQL application on Hasura Cloud and YugabyteDB Aeon using Hasura's Realtime Poll sample application. This application is built using React, powered by the Hasura GraphQL Engine, and backed by a YugabyteDB Aeon YugabyteDB cluster. It has an interface for users to cast a vote on a poll, and results are updated in an on-screen bar chart in real time.
 

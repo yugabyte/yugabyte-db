@@ -91,7 +91,7 @@ TEST(TableInfoTest, TestAssignmentRanges) {
 }
 
 TEST(TestTSDescriptor, TestReplicaCreationsDecay) {
-  TSDescriptor ts("test");
+  TSDescriptor ts("test", RegisteredThroughHeartbeat::kTrue);
   ASSERT_EQ(0, ts.RecentReplicaCreations());
   ts.IncrementRecentReplicaCreations();
 

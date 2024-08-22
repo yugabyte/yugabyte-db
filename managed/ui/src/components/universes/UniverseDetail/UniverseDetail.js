@@ -148,6 +148,7 @@ class UniverseDetail extends Component {
         const providerUUID = primaryCluster?.userIntent?.provider;
         this.props.fetchSupportedReleases(providerUUID);
         this.props.fetchProviderRunTimeConfigs(providerUUID);
+        this.props.getUniverseLbState(uuid);
       });
 
       if (isDisabled(currentCustomer.data.features, 'universes.details.health')) {
@@ -171,6 +172,7 @@ class UniverseDetail extends Component {
     // Always refresh universe info on Overview tab
     if (prevProps.params.tab !== this.props.params.tab && this.props.params.tab === 'overview') {
       this.props.getUniverseInfo(currentUniverse.data.universeUUID);
+      this.props.getUniverseLbState(currentUniverse.data.universeUUID);
     }
     if (
       getPromiseState(currentUniverse).isSuccess() &&
@@ -271,7 +273,7 @@ class UniverseDetail extends Component {
       modal: { showModal, visibleModal },
       universe,
       tasks,
-      universe: { currentUniverse, supportedReleases },
+      universe: { currentUniverse, supportedReleases, universeLbState },
       showSoftwareUpgradesModal,
       showLinuxSoftwareUpgradeModal,
       showSoftwareUpgradesNewModal,
@@ -396,6 +398,11 @@ class UniverseDetail extends Component {
     const isK8OperatorBlocked =
       runtimeConfigs?.data?.configEntries?.find(
         (config) => config.key === RuntimeConfigKey.BLOCK_K8_OPERATOR
+      )?.value === 'true';
+
+    const isRollingUpradeMutlipleNodesEnabled =
+      runtimeConfigs?.data?.configEntries?.find(
+        (c) => c.key === RuntimeConfigKey.BATCH_ROLLING_UPGRADE_FEATURE_FLAG
       )?.value === 'true';
 
     const isAuditLogEnabled =
@@ -538,6 +545,7 @@ class UniverseDetail extends Component {
               updateAvailable={updateAvailable}
               showSoftwareUpgradesModal={showSoftwareUpgradesModal}
               isReleasesEnabled={isReleasesEnabled}
+              universeLbState={universeLbState}
             />
           </Tab.Pane>
         ),
@@ -1127,18 +1135,29 @@ class UniverseDetail extends Component {
                       }}
                       isControl
                     >
-                      <YBMenuItem
-                        disabled={isEditGFlagsDisabled}
-                        onClick={showPGCompatibilityModal}
-                        availability={getFeatureState(
-                          currentCustomer.data.features,
-                          'universes.details.overview.editGFlags'
-                        )}
+                      <YBTooltip
+                        title={
+                          hasAsymmetricPrimaryCluster
+                            ? 'Editing gflags for asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.'
+                            : ''
+                        }
+                        placement="left"
                       >
-                        <YBLabelWithIcon icon="fa fa-retweet fa-fw">
-                          Edit Postgres Compatibility
-                        </YBLabelWithIcon>
-                      </YBMenuItem>
+                        <span>
+                          <YBMenuItem
+                            disabled={isEditGFlagsDisabled}
+                            onClick={showPGCompatibilityModal}
+                            availability={getFeatureState(
+                              currentCustomer.data.features,
+                              'universes.details.overview.editGFlags'
+                            )}
+                          >
+                            <YBLabelWithIcon icon="fa fa-retweet fa-fw">
+                              Edit Postgres Compatibility
+                            </YBLabelWithIcon>
+                          </YBMenuItem>
+                        </span>
+                      </YBTooltip>
                     </RbacValidator>
                   )}
                   {!universePaused && isConfigureYSQLEnabled && (
@@ -1442,7 +1461,10 @@ class UniverseDetail extends Component {
             shouldDisplayTaskButton={true}
           />
         </div>
-        <TaskDetailBanner taskUUID={currentUniverse.data.universeDetails.updatingTaskUUID} universeUUID={currentUniverse.data.universeUUID}/>
+        <TaskDetailBanner
+          taskUUID={currentUniverse.data.universeDetails.updatingTaskUUID}
+          universeUUID={currentUniverse.data.universeUUID}
+        />
         <RollingUpgradeFormContainer
           modalVisible={
             showModal &&
@@ -1465,6 +1487,7 @@ class UniverseDetail extends Component {
           }}
           isGFlagMultilineConfEnabled={isGFlagMultilineConfEnabled}
           universeData={currentUniverse.data}
+          isRollingUpradeMutlipleNodesEnabled={isRollingUpradeMutlipleNodesEnabled}
         />
         <UpgradeLinuxVersionModal
           visible={showModal && visibleModal === 'linuxVersionUpgradeModal'}
@@ -1588,12 +1611,7 @@ class UniverseDetail extends Component {
             id={'universe-tab-panel'}
             className={'universe-detail'}
           >
-            {
-              [
-                ...tabElements,
-                <div title={actionMenuButtons} />
-              ]
-            }
+            {[...tabElements, <div title={actionMenuButtons} />]}
           </YBTabsWithLinksPanel>
         </Measure>
       </Grid>

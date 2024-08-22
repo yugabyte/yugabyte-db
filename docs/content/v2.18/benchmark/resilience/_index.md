@@ -4,7 +4,7 @@ headerTitle: Resilience
 linkTitle: Resilience
 description: Benchmark YugabyteDB's ability to withstand component failure.
 image: /images/section_icons/explore/high_performance.png
-headcontent: Benchmarking the ability to withstand component failure.
+headcontent: Benchmarking the ability to withstand component failure
 menu:
   v2.18:
     identifier: resilience
@@ -31,9 +31,9 @@ Jepsen employs a rigorous verification process, which includes generating comple
 
 YugabyteDB passes 99.9% of the Jepsen tests.
 
-{{<tip>}}
-For more details, see [Jepsen test results](jepsen-testing-ysql/).
-{{</tip>}}
+{{<lead link="jepsen-testing/">}}
+For more details, see [Jepsen test results](jepsen-testing/).
+{{</lead>}}
 
 ## Learn more
 

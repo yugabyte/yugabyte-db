@@ -161,12 +161,11 @@ Today, this is done by backing up the source universe and restoring it to the ta
 
 Ongoing work, [#17862](https://github.com/yugabyte/yugabyte-db/issues/17862), will replace using backup and restore here with directly copying RocksDB files between the source and target universes.  This will be more performant and flexible and remove the need for external storage like S3 to set up replication.
 
-
 ## Supported deployment scenarios
 
 xCluster currently supports active-active single-master and active-active multi-master deployments.
 
-### Active- active single-master
+### Active-active single-master
 
 Here the replication is unidirectional from a source universe to a target universe. The target universe is typically located in data centers or regions that are different from the source universe. The source universe can serve both reads and writes. The target universe can only serve reads. Since only the nodes in one universe can take writes this mode is referred to as single master. Note that within the source universe all nodes can serve writes.
 

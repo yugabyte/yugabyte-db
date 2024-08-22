@@ -52,6 +52,7 @@ extern List *RelationGetDummyIndexExpressions(Relation relation);
 extern List *RelationGetIndexPredicate(Relation relation);
 extern Datum *RelationGetIndexRawAttOptions(Relation relation);
 extern bytea **RelationGetIndexAttOptions(Relation relation, bool copy);
+extern List *YbRelationGetFKeyReferencedByList(Relation relation);
 
 typedef enum IndexAttrBitmapKind
 {
@@ -63,6 +64,10 @@ typedef enum IndexAttrBitmapKind
 
 extern Bitmapset *RelationGetIndexAttrBitmap(Relation relation,
 											 IndexAttrBitmapKind attrKind);
+extern void YbComputeIndexExprOrPredicateAttrs(Bitmapset **indexattrs,
+											   Relation indexDesc,
+											   const int Anum_pg_index,
+											   AttrNumber attr_offset);
 
 extern Bitmapset *RelationGetIdentityKeyBitmap(Relation relation);
 

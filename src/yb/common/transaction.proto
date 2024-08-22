@@ -79,6 +79,24 @@ enum RowMarkType {
   ROW_MARK_ABSENT = 15;
 }
 
+// This enum matches enum table locks defined in src/include/storage/lockdefs.h.
+// Table level lock conflict matrix.
+// Source: https://www.postgresql.org/docs/15/explicit-locking.html#LOCKING-TABLES
+enum TableLockType {
+  // Though NONE is listed as a lock type, it seems to be a flag conveying "don't get a
+  // lock". Despite that, if a lock request with NONE type makes it to DocDB, we return
+  // an error status.
+  NONE = 0;
+  ACCESS_SHARE = 1;
+  ROW_SHARE = 2;
+  ROW_EXCLUSIVE = 3;
+  SHARE_UPDATE_EXCLUSIVE = 4;
+  SHARE = 5;
+  SHARE_ROW_EXCLUSIVE = 6;
+  EXCLUSIVE = 7;
+  ACCESS_EXCLUSIVE = 8;
+}
+
 message SubtxnSetPB {
   // This is not a simple set representation, but rather the encoded output of a
   // yb::UnsignedIntSet<uint32_t>.

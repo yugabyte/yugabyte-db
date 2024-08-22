@@ -165,6 +165,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
           TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
+          TaskType.UpdateConsistencyCheck,
           TaskType.ModifyBlackList,
           TaskType.SetNodeState,
           TaskType.ModifyBlackList,
@@ -178,6 +179,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> STOP_NODE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -199,6 +201,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
           TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
+          TaskType.UpdateConsistencyCheck,
           TaskType.ModifyBlackList,
           TaskType.SetNodeState,
           TaskType.ModifyBlackList,
@@ -213,6 +216,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> STOP_NODE_WITH_YBC_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -235,6 +239,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
           TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
+          TaskType.UpdateConsistencyCheck,
           TaskType.ModifyBlackList,
           TaskType.SetNodeState,
           TaskType.ModifyBlackList,
@@ -257,6 +262,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> STOP_NODE_TASK_SEQUENCE_MASTER_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -287,6 +293,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
           TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
+          TaskType.UpdateConsistencyCheck,
           TaskType.ModifyBlackList,
           TaskType.SetNodeState,
           TaskType.ModifyBlackList,
@@ -310,6 +317,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> STOP_NODE_WITH_YBC_TASK_SEQUENCE_MASTER_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -340,6 +348,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
           TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
+          TaskType.UpdateConsistencyCheck,
           TaskType.SetNodeState,
           TaskType.ChangeMasterConfig,
           TaskType.AnsibleClusterServerCtl,
@@ -356,6 +365,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> STOP_NODE_DEDICATED_MASTER_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),

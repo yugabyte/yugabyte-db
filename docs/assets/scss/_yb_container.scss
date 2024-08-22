@@ -29,6 +29,7 @@ html {
   main {
     &:only-child {
       width: 100%;
+      position: relative;
     }
   }
 
@@ -146,7 +147,7 @@ html {
       width: 200px !important;
       padding: 0;
       padding-left: 24px;
-      padding-top: 80px;
+      padding-top: 105px;
       background: transparent;
       border: 0;
     }

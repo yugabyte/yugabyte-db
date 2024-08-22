@@ -167,7 +167,8 @@ export const MetricTypesWithOperations = {
       'master_cpu_util_secs',
       'master_yb_rpc_connections',
       'master_leaderless_and_underreplicated_tablets',
-      'master_max_follower_lag'
+      'master_max_follower_lag',
+      'master_load_balancer_stats'
     ]
   },
   master_advanced: {

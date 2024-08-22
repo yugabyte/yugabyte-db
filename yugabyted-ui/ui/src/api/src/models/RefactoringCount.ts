@@ -22,6 +22,12 @@
 export interface RefactoringCount  {
   /**
    * 
+   * @type {string}
+   * @memberof RefactoringCount
+   */
+  sql_object_type?: string;
+  /**
+   * 
    * @type {number}
    * @memberof RefactoringCount
    */

@@ -19,6 +19,16 @@ On this page:
 
 ## Change log
 
+### August 15, 2024
+
+**New features**
+
+- Support for latency histogram and P99 latency metrics. View percentile metrics and a latency histogram for your YSQL queries from the [Slow Queries dashboard](../cloud-monitor/cloud-queries-slow/).
+
+**Database**
+
+- Innovation track updated to 2.20.5.0.
+
 ### July 11, 2024
 
 **New features**

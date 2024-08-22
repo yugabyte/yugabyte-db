@@ -519,14 +519,19 @@ void XClusterPoller::HandleApplyChangesResponse(XClusterOutputClientResponse res
     ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN;
     auto s = ddl_queue_handler_->ProcessDDLQueueTable(response);
     if (!s.ok()) {
-      // If processing ddl_queue table fails, then retry just this part (don't repeat ApplyChanges).
-      YB_LOG_EVERY_N(WARNING, 30) << "ProcessDDLQueueTable Error: " << s << " " << THROTTLE_MSG;
-
+      if (s.IsTryAgain()) {
+        // The handler will return try again when waiting for safe time to catch up, so can log
+        // these errors less frequently.
+        YB_LOG_EVERY_N(WARNING, 300) << "ProcessDDLQueueTable Error: " << s << " " << THROTTLE_MSG;
+      } else {
+        YB_LOG_EVERY_N(WARNING, 30) << "ProcessDDLQueueTable Error: " << s << " " << THROTTLE_MSG;
+      }
       StoreNOKReplicationError();
-
       if (FLAGS_enable_xcluster_stat_collection) {
         poll_stats_history_.SetError(std::move(s));
       }
+
+      // If processing ddl_queue table fails, then retry just this part (don't repeat ApplyChanges).
       ScheduleFuncWithDelay(
           GetAtomicFlag(&FLAGS_xcluster_safe_time_update_interval_secs),
           BIND_FUNCTION_AND_ARGS(XClusterPoller::HandleApplyChangesResponse, std::move(response)));

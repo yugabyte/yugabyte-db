@@ -37,7 +37,7 @@ using SplitsToScheduleMap = std::unordered_map<TabletId, std::optional<uint64_t>
 class TabletSplitManager {
  public:
   TabletSplitManager(
-      CatalogManagerIf& catalog_manager,
+      Master& master,
       const scoped_refptr<MetricEntity>& master_metrics,
       const scoped_refptr<MetricEntity>& cluster_metrics);
 
@@ -118,6 +118,7 @@ class TabletSplitManager {
   Status ValidateTabletAgainstDisabledList(const TabletId& tablet_id);
   Status ValidatePartitioningVersion(const TableInfo& table);
 
+  Master& master_;
   CatalogManagerIf& catalog_manager_;
 
   // This mutex is acquired in each tablet splitting manager run.

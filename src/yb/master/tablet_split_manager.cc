@@ -28,6 +28,7 @@
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/master.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/ts_descriptor.h"
@@ -158,10 +159,11 @@ Status ValidateAgainstDisabledList(const IdType& id,
 } // namespace
 
 TabletSplitManager::TabletSplitManager(
-    CatalogManagerIf& catalog_manager,
+    Master& master,
     const scoped_refptr<MetricEntity>& master_metrics,
     const scoped_refptr<MetricEntity>& cluster_metrics):
-    catalog_manager_(catalog_manager),
+    master_(master),
+    catalog_manager_(*master.catalog_manager()),
     last_run_time_(CoarseDuration::zero()),
     automatic_split_manager_time_ms_(
         METRIC_automatic_split_manager_time.Instantiate(master_metrics, 0)),
@@ -238,7 +240,7 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
   }
 
   // Check if this table is covered by a PITR schedule.
-  const auto& master_snapshot_coordinator = catalog_manager_.snapshot_coordinator();
+  const auto& master_snapshot_coordinator = master_.snapshot_coordinator();
   if (!FLAGS_enable_tablet_split_of_pitr_tables &&
       VERIFY_RESULT(master_snapshot_coordinator.IsTableCoveredBySomeSnapshotSchedule(*table))) {
     return STATUS_FORMAT(

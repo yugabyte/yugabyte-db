@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.models.helpers.schedule;
 
-import java.time.Duration;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.extern.jackson.Jacksonized;
@@ -12,7 +11,9 @@ import lombok.extern.jackson.Jacksonized;
 @Jacksonized
 public class ScheduleConfig {
   @Builder.Default private ScheduleType type = ScheduleType.FIXED_DELAY;
-  @Builder.Default private Duration interval = Duration.ofMinutes(1);
+
+  @Builder.Default private long intervalSecs = 60;
+
   private boolean disabled;
 
   public enum ScheduleType {

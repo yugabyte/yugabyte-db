@@ -98,7 +98,7 @@ export function ReplicationTables(props: ReplicationTablesProps) {
   const [searchTokens, setSearchTokens] = useState<SearchToken[]>([]);
 
   const dispatch = useDispatch();
-  const { showModal, visibleModal } = useSelector((state: any) => state.modal);
+  const { visibleModal } = useSelector((state: any) => state.modal);
   const queryClient = useQueryClient();
   const theme = useTheme();
 
@@ -231,11 +231,10 @@ export function ReplicationTables(props: ReplicationTablesProps) {
   };
   const maxAcceptableLag = getStrictestReplicationLagAlertThreshold(alertConfigQuery.data);
   const tablesInConfig = augmentTablesWithXClusterDetails(
-    sourceUniverseTablesQuery.data,
     xClusterConfig.tableDetails,
     maxAcceptableLag,
     tableReplicationLagQuery.data?.async_replication_sent_lag?.data,
-    { includeDroppedTables: true }
+    { includeUnconfiguredTables: true, includeDroppedTables: true }
   );
 
   const sourceUniverse = sourceUniverseQuery.data;

@@ -604,7 +604,6 @@ Status Log::Open(const LogOptions &options,
                  ThreadPool* append_thread_pool,
                  ThreadPool* allocation_thread_pool,
                  ThreadPool* background_sync_threadpool,
-                 int64_t cdc_min_replicated_index,
                  scoped_refptr<Log>* log,
                  const PreLogRolloverCallback& pre_log_rollover_callback,
                  NewSegmentAllocationCallback callback,
@@ -1359,10 +1358,18 @@ Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segment
   // avoid concurrently deleting those ops, we bump min_op_idx here to be at-least as
   // low as log_copy_min_index_.
   min_op_idx = std::min(log_copy_min_index_, min_op_idx);
+
+  auto xrepl_min_replicated_index = cdc_min_replicated_index_.load(std::memory_order_acquire);
+
+  if (get_xcluster_min_index_to_retain_) {
+    xrepl_min_replicated_index =
+        std::min(xrepl_min_replicated_index, get_xcluster_min_index_to_retain_(tablet_id_));
+  }
+
   // Find the prefix of segments in the segment sequence that is guaranteed not to include
   // 'min_op_idx'.
   RETURN_NOT_OK(reader_->GetSegmentPrefixNotIncluding(
-      min_op_idx, cdc_min_replicated_index_.load(std::memory_order_acquire), segments_to_gc));
+      min_op_idx, xrepl_min_replicated_index, segments_to_gc));
 
   const auto max_to_delete =
       std::max<ssize_t>(reader_->num_segments() - FLAGS_log_min_segments_to_retain, 0);

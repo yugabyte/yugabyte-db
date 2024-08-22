@@ -756,3 +756,22 @@ order by a.a;
  1 |   6
  2 |   5
 (2 rows)
+
+-- #23287 string_to_text pushdown
+create table string_to_text_test(data text);
+insert into string_to_text_test values ('foo bar');
+explain (costs off)
+select * from string_to_text_test where 'foo' = ANY(string_to_array(data, ' '));
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Seq Scan on string_to_text_test
+   Storage Filter: ('foo'::text = ANY (string_to_array(data, ' '::text)))
+(2 rows)
+
+select * from string_to_text_test where 'foo' = ANY(string_to_array(data, ' '));
+  data
+---------
+ foo bar
+(1 row)
+
+drop table string_to_text_test;

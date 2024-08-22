@@ -12,10 +12,12 @@ import static org.hamcrest.Matchers.hasEntry;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.hamcrest.Matchers.nullValue;
+import static org.mockito.ArgumentMatchers.isNotNull;
 
 import com.yugabyte.yba.v2.client.ApiClient;
 import com.yugabyte.yba.v2.client.ApiException;
 import com.yugabyte.yba.v2.client.Configuration;
+import com.yugabyte.yba.v2.client.models.AllowedTasksOnFailure;
 import com.yugabyte.yba.v2.client.models.AuditLogConfig;
 import com.yugabyte.yba.v2.client.models.AvailabilityZoneGFlags;
 import com.yugabyte.yba.v2.client.models.CloudSpecificInfo;
@@ -49,15 +51,23 @@ import com.yugabyte.yba.v2.client.models.UniverseEditSpec;
 import com.yugabyte.yba.v2.client.models.UniverseInfo;
 import com.yugabyte.yba.v2.client.models.UniverseLogsExporterConfig;
 import com.yugabyte.yba.v2.client.models.UniverseNetworkingSpec;
+import com.yugabyte.yba.v2.client.models.UniverseResourceDetails;
 import com.yugabyte.yba.v2.client.models.UniverseSpec;
+import com.yugabyte.yba.v2.client.models.User;
+import com.yugabyte.yba.v2.client.models.UserInfo;
+import com.yugabyte.yba.v2.client.models.UserSpec;
 import com.yugabyte.yba.v2.client.models.XClusterInfo;
 import com.yugabyte.yba.v2.client.models.YCQLAuditConfig;
 import com.yugabyte.yba.v2.client.models.YCQLSpec;
 import com.yugabyte.yba.v2.client.models.YSQLAuditConfig;
 import com.yugabyte.yba.v2.client.models.YSQLSpec;
+import com.yugabyte.yba.v2.client.models.YbSoftwareDetails;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
+import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.AllowedTasks;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.TestHelper;
@@ -65,11 +75,13 @@ import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.controllers.UniverseControllerTestBase;
+import com.yugabyte.yw.forms.AllowedUniverseTasksResp;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PrevYBSoftwareConfig;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams.CommunicationPorts;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -79,6 +91,7 @@ import com.yugabyte.yw.models.ImageBundleDetails;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.ProxyConfig;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
@@ -321,7 +334,6 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     universeSpec.name("Test-V2-Universe");
     universeSpec.setYbSoftwareVersion("2.20.0.0-b123");
     universeSpec.setUseTimeSync(true);
-    universeSpec.setUseSystemd(true);
     universeSpec.ysql(new YSQLSpec().enable(true).enableAuth(true).password("ysqlPassword#1"));
     universeSpec.ycql(new YCQLSpec().enable(true).enableAuth(true).password("ycqlPassword#1"));
     universeSpec.networkingSpec(
@@ -411,11 +423,7 @@ public class UniverseTestBase extends UniverseControllerTestBase {
       UniverseSpec v2UnivSpec, UniverseDefinitionTaskParams dbUnivDetails) {
     UserIntent dbUserIntent = dbUnivDetails.getPrimaryCluster().userIntent;
     assertThat(v2UnivSpec.getYbSoftwareVersion(), is(dbUserIntent.ybSoftwareVersion));
-    if (v2UnivSpec.getUseSystemd() == null) {
-      assertThat(dbUserIntent.useSystemd, is(false));
-    } else {
-      assertThat(v2UnivSpec.getUseSystemd(), is(dbUserIntent.useSystemd));
-    }
+    assertThat(dbUserIntent.useSystemd, is(true));
     if (v2UnivSpec.getUseTimeSync() == null) {
       assertThat(dbUserIntent.useTimeSync, is(false));
     } else {
@@ -627,6 +635,11 @@ public class UniverseTestBase extends UniverseControllerTestBase {
 
   private void validateClusterNodeSpec(
       ClusterNodeSpec v2NodeSpec, UserIntent dbUserIntent, ClusterNodeSpec v2PrimaryNodeSpec) {
+    if (v2NodeSpec.getDedicatedNodes() == null) {
+      assertThat(dbUserIntent.dedicatedNodes, is(false));
+    } else {
+      assertThat(v2NodeSpec.getDedicatedNodes(), is(dbUserIntent.dedicatedNodes));
+    }
     if (v2NodeSpec.getCgroupSize() == null) {
       assertThat(dbUserIntent.getCgroupSize(), is(nullValue()));
     } else {
@@ -976,6 +989,7 @@ public class UniverseTestBase extends UniverseControllerTestBase {
 
   protected void validateUniverseInfo(UniverseInfo v2UnivInfo, Universe dbUniverse) {
     UniverseDefinitionTaskParams dbUniv = dbUniverse.getUniverseDetails();
+    validateAllowedTasksOnFailure(v2UnivInfo.getAllowedTasksOnFailure(), dbUniv);
     if (v2UnivInfo.getArch() == null) {
       // default image bundle arch used in cloud provider in this test is aarch64
       assertThat(dbUniv.arch, is(PublicCloudConstants.Architecture.aarch64));
@@ -989,12 +1003,15 @@ public class UniverseTestBase extends UniverseControllerTestBase {
             .toInstant()
             .truncatedTo(ChronoUnit.SECONDS)
             .atOffset(ZoneOffset.UTC);
+    validateUser(v2UnivInfo.getCreatingUser(), dbUniv.creatingUser);
     assertThat(v2UnivInfo.getCreationDate().compareTo(dbCreationDate), is(0));
     com.yugabyte.yw.forms.UniverseResp v1UniverseResp =
         new com.yugabyte.yw.forms.UniverseResp(dbUniverse);
     assertThat(
         v2UnivInfo.getDnsName(),
         is(v1UniverseResp.getDnsName(customer, Provider.getOrBadRequest(providerUuid))));
+    assertThat(v2UnivInfo.getDrConfigUuidsAsSource(), is(v1UniverseResp.drConfigUuidsAsSource));
+    assertThat(v2UnivInfo.getDrConfigUuidsAsTarget(), is(v1UniverseResp.drConfigUuidsAsTarget));
     validateEncryptionAtRestInfo(
         v2UnivInfo.getEncryptionAtRestInfo(), dbUniv.encryptionAtRestConfig);
     assertThat(
@@ -1006,7 +1023,14 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     assertThat(v2UnivInfo.getOtelCollectorEnabled(), is(dbUniv.otelCollectorEnabled));
     assertThat(
         v2UnivInfo.getPlacementModificationTaskUuid(), is(dbUniv.placementModificationTaskUuid));
-    assertThat(v2UnivInfo.getPlatformUrl(), is(dbUniv.platformUrl));
+    assertThat(v2UnivInfo.getPreviousTaskUuid(), is(dbUniv.getPreviousTaskUUID()));
+    validatePreviousSoftwareDetails(
+        v2UnivInfo.getPreviousYbSoftwareDetails(), dbUniv.prevYBSoftwareConfig);
+    Context context = new Context(mockRuntimeConfig, dbUniverse);
+    com.yugabyte.yw.cloud.UniverseResourceDetails v1UniverseResourceDetails =
+        com.yugabyte.yw.cloud.UniverseResourceDetails.create(
+            dbUniverse.getUniverseDetails(), context);
+    validateUniverseInfoResources(v2UnivInfo.getResources(), v1UniverseResourceDetails);
     assertThat(
         v2UnivInfo.getSoftwareUpgradeState().getValue(), is(dbUniv.softwareUpgradeState.name()));
     assertThat(v2UnivInfo.getUniversePaused(), is(dbUniv.universePaused));
@@ -1020,8 +1044,24 @@ public class UniverseTestBase extends UniverseControllerTestBase {
     }
     assertThat(v2UnivInfo.getUpdatingTaskUuid(), is(dbUniv.updatingTaskUUID));
     assertThat(v2UnivInfo.getVersion(), is(dbUniverse.getVersion()));
+    assertThat(v2UnivInfo.getYbaUrl(), is(dbUniv.platformUrl));
     assertThat(v2UnivInfo.getYbcSoftwareVersion(), is(dbUniv.getYbcSoftwareVersion()));
     validateXClusterInfo(v2UnivInfo.getxClusterInfo(), dbUniv.xClusterInfo);
+  }
+
+  private void validateAllowedTasksOnFailure(
+      AllowedTasksOnFailure allowedTasksOnFailure, UniverseDefinitionTaskParams dbUniv) {
+    if (dbUniv.placementModificationTaskUuid == null) {
+      assertThat(allowedTasksOnFailure, is(nullValue()));
+      return;
+    }
+    assertThat(allowedTasksOnFailure, isNotNull());
+    AllowedTasks allowedTasks =
+        UniverseTaskBase.getAllowedTasksOnFailure(dbUniv.placementModificationTaskUuid);
+    assertThat(allowedTasksOnFailure.getRestricted(), is(allowedTasks.isRestricted()));
+    assertThat(
+        allowedTasksOnFailure.getTaskTypes(),
+        is(new AllowedUniverseTasksResp(allowedTasks).getTaskIds()));
   }
 
   private void validateClustersInfo(List<ClusterInfo> v2Clusters, Universe dbUniverse) {
@@ -1118,6 +1158,41 @@ public class UniverseTestBase extends UniverseControllerTestBase {
               .orElseThrow();
       validateNodeDetail(v2NodeDetail, dbNodeDetail);
     }
+  }
+
+  private void validatePreviousSoftwareDetails(
+      YbSoftwareDetails v2PrevSoftware, PrevYBSoftwareConfig dbPrevSoftware) {
+    if (v2PrevSoftware == null) {
+      assertThat(dbPrevSoftware, is(nullValue()));
+      return;
+    }
+    assertThat(v2PrevSoftware.getYbSoftwareVersion(), is(dbPrevSoftware.getSoftwareVersion()));
+    assertThat(
+        v2PrevSoftware.getAutoFlagConfigVersion(), is(dbPrevSoftware.getAutoFlagConfigVersion()));
+  }
+
+  private void validateUniverseInfoResources(
+      UniverseResourceDetails v2Resources,
+      com.yugabyte.yw.cloud.UniverseResourceDetails v1Resources) {
+    if (v2Resources == null) {
+      assertThat(v1Resources, is(nullValue()));
+      return;
+    }
+    if (v2Resources.getAzList() == null) {
+      assertThat(v1Resources.azList, is(nullValue()));
+    } else {
+      assertThat(v2Resources.getAzList(), containsInAnyOrder(v1Resources.azList.toArray()));
+    }
+    assertThat(v2Resources.getEbsPricePerHour(), is(v1Resources.ebsPricePerHour));
+    assertThat(v2Resources.getGp3FreePiops(), is(v1Resources.gp3FreePiops));
+    assertThat(v2Resources.getGp3FreeThroughput(), is(v1Resources.gp3FreeThroughput));
+    assertThat(v2Resources.getMemSizeGb(), is(v1Resources.memSizeGB));
+    assertThat(v2Resources.getNumCores(), is(v1Resources.numCores));
+    assertThat(v2Resources.getNumNodes(), is(v1Resources.numNodes));
+    assertThat(v2Resources.getPricePerHour(), is(v1Resources.pricePerHour));
+    assertThat(v2Resources.getPricingKnown(), is(v1Resources.pricingKnown));
+    assertThat(v2Resources.getVolumeCount(), is(v1Resources.volumeCount));
+    assertThat(v2Resources.getVolumeSizeGb(), is(v1Resources.volumeSizeGB));
   }
 
   private void validateNodeDetail(
@@ -1315,5 +1390,41 @@ public class UniverseTestBase extends UniverseControllerTestBase {
         assertThat(v1ClusterType, is(ClusterType.ADDON));
         break;
     }
+  }
+
+  private void validateUser(User v2User, Users dbUser) {
+    if (v2User == null) {
+      assertThat(dbUser, is(nullValue()));
+      return;
+    }
+    validateUserSpec(v2User.getSpec(), dbUser);
+    validateUserInfo(v2User.getInfo(), dbUser);
+  }
+
+  private void validateUserSpec(UserSpec spec, Users dbUser) {
+    if (spec == null) {
+      assertThat(dbUser, is(nullValue()));
+      return;
+    }
+    assertThat(spec.getEmail(), is(dbUser.getEmail()));
+    if (spec.getRole() == null) {
+      assertThat(dbUser.getRole(), is(nullValue()));
+    } else {
+      assertThat(spec.getRole().getValue(), is(dbUser.getRole().name()));
+    }
+  }
+
+  private void validateUserInfo(UserInfo info, Users dbUser) {
+    if (info == null) {
+      assertThat(dbUser, is(nullValue()));
+      return;
+    }
+    assertThat(info.getCreationDate(), is(dbUser.getCreationDate()));
+    assertThat(info.getCustomerUuid(), is(dbUser.getCustomerUUID()));
+    assertThat(info.getIsPrimary(), is(dbUser.isPrimary()));
+    assertThat(info.getLdapSpecifiedRole(), is(dbUser.isLdapSpecifiedRole()));
+    assertThat(info.getTimezone(), is(dbUser.getTimezone()));
+    assertThat(info.getUserType().getValue(), is(dbUser.getUserType().name()));
+    assertThat(info.getUuid(), is(dbUser.getUuid()));
   }
 }

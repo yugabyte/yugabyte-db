@@ -103,7 +103,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
     this.editUniverse =
         new EditKubernetesUniverse(
-            mockBaseTaskDependencies, null, mockOperatorStatusUpdaterFactory);
+            mockBaseTaskDependencies, null, mockOperatorStatusUpdaterFactory, mockYbcManager);
   }
 
   private void setup() {
@@ -163,14 +163,16 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     defaultUniverse = createUniverse(defaultCustomer.getId());
     Universe.saveDetails(
         defaultUniverse.getUniverseUUID(),
-        ApiUtils.mockUniverseUpdater(userIntent, NODE_PREFIX, setMasters /* setMasters */));
-    Universe.saveDetails(
-        defaultUniverse.getUniverseUUID(), ApiUtils.mockUniverseUpdaterWithActivePods(1, 3));
+        ApiUtils.mockUniverseUpdaterForK8sEdit(
+            userIntent, NODE_PREFIX, setMasters /* setMasters */, false /* updateInProgress */));
+    // Universe.saveDetails(
+    //     defaultUniverse.getUniverseUUID(), ApiUtils.mockUniverseUpdaterWithActivePods(1, 3));
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
     defaultUniverse.save();
     setDumpEntitiesMock(defaultUniverse, "", false);
+    log.info("Universe: {}", defaultUniverse.getUniverseDetailsJson());
   }
 
   private void setupUniverseMultiAZ(boolean setMasters, int numTservers) {
@@ -209,6 +211,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
       ImmutableList.of(
           TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
+          TaskType.UpdateConsistencyCheck,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesCheckNumPod,
           TaskType.KubernetesCommandExecutor,
@@ -222,6 +225,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
   private List<JsonNode> getExpectedAddPodTaskResults() {
     return ImmutableList.of(
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
@@ -240,6 +244,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
       ImmutableList.of(
           TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
+          TaskType.UpdateConsistencyCheck,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForDataMove,
           TaskType.CheckNodeSafeToDelete,
@@ -260,6 +265,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
         Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_PODS.name())),
         Json.toJson(ImmutableMap.of()),
@@ -275,6 +281,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
       ImmutableList.of(
           TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
+          TaskType.UpdateConsistencyCheck,
           TaskType.UpdatePlacementInfo,
           TaskType.CheckUnderReplicatedTablets,
           TaskType.CheckNodesAreSafeToTakeDown,
@@ -304,6 +311,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
   private List<JsonNode> getExpectedChangeInstaceTypeResults() {
     return ImmutableList.of(
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
@@ -436,7 +444,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
-    taskParams.expectedUniverseVersion = 3;
+    taskParams.expectedUniverseVersion = 2;
     taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
     UniverseDefinitionTaskParams.UserIntent newUserIntent =
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone();
@@ -505,14 +513,14 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     List<Pod> pods = TestUtils.deserialize(podsString, PodList.class).getItems();
     when(mockKubernetesManager.getPodInfos(any(), any(), any())).thenReturn(pods);
     when(mockClient.getLeaderMasterHostAndPort())
-        .thenReturn(HostAndPort.fromParts("1.2.3.0", 7000));
+        .thenReturn(HostAndPort.fromParts("yb-master-0.svc.cluster.local", 1234));
     setDumpEntitiesMock(defaultUniverse, "yb-tserver-2", false);
     factory
         .forUniverse(defaultUniverse)
         .setValue(UniverseConfKeys.ybEditWaitDurationBeforeBlacklistClear.getKey(), "1 ms");
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
-    taskParams.expectedUniverseVersion = 3;
+    taskParams.expectedUniverseVersion = 2;
     taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
     UniverseDefinitionTaskParams.UserIntent newUserIntent =
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone();
@@ -592,7 +600,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
-    taskParams.expectedUniverseVersion = 3;
+    taskParams.expectedUniverseVersion = 2;
     taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
     InstanceType.upsert(
         kubernetesProvider.getUuid(), "c5.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
@@ -678,7 +686,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
-    taskParams.expectedUniverseVersion = 3;
+    taskParams.expectedUniverseVersion = 2;
     taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
     UniverseDefinitionTaskParams.UserIntent newUserIntent =
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone();

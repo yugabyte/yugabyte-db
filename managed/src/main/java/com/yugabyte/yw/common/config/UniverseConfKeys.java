@@ -46,6 +46,16 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "The timeout (in seconds) for node check operation as part of universe health check",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+
+  public static final ConfKeyInfo<Integer> ddlAtomicityIntervalSec =
+      new ConfKeyInfo<>(
+          "yb.health.ddl_atomicity_interval_sec",
+          ScopeType.UNIVERSE,
+          "DDL Atomicity Check Interval",
+          "The interval (in seconds) between DDL atomicity checks",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
   public static final ConfKeyInfo<Boolean> ybUpgradeBlacklistLeaders =
       new ConfKeyInfo<>(
           "yb.upgrade.blacklist_leaders",
@@ -1142,28 +1152,28 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Maximum value of heartbeat delay allowed before master is considered to have failed",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Boolean> stopMultipleNodesInAZEnabled =
+  public static final ConfKeyInfo<Boolean> upgradeBatchRollEnabled =
       new ConfKeyInfo<>(
-          "yb.task.upgrade.stop_multiple_in_az",
+          "yb.task.upgrade.batch_roll_enabled",
           ScopeType.UNIVERSE,
           "Stop multiple nodes in az simultaneously during upgrade",
           "Stop multiple nodes simultaneously in az during upgrade",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Integer> simultaneousStopsInUpgradePercent =
+  public static final ConfKeyInfo<Integer> upgradeBatchRollAutoPercent =
       new ConfKeyInfo<>(
-          "yb.task.upgrade.simultaneous_stops_in_az_percent",
+          "yb.task.upgrade.batch_roll_auto_percent",
           ScopeType.UNIVERSE,
-          "Number of nodes to stop simultaneously during upgrade (percent of nodes per az)",
-          "Number of nodes to stop simultaneously during upgrade (percent of nodes per az)",
+          "Percent of nodes to roll simultaneously during upgrade",
+          "Percent of nodes to roll simultaneously during upgrade",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Integer> maxSimultaneousStopsInUpgrade =
+  public static final ConfKeyInfo<Integer> upgradeBatchRollAutoNumber =
       new ConfKeyInfo<>(
-          "yb.task.upgrade.max_simultaneous_stops_in_az",
+          "yb.task.upgrade.batch_roll_auto_number",
           ScopeType.UNIVERSE,
-          "Maximum number of nodes to stop simultaneously during upgrade",
-          "Maximum number of nodes to stop simultaneously during upgrade",
+          "Number of nodes to roll simultaneously during upgrade",
+          "Number of nodes to roll simultaneously during upgrade",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Duration> autoMasterFailoverDetectionInterval =
@@ -1174,12 +1184,21 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Automated master failover detection interval for a universe in background process",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Duration> autoMasterFailoverTaskInterval =
+  public static final ConfKeyInfo<Duration> autoMasterFailoverTaskDelay =
       new ConfKeyInfo<>(
-          "yb.auto_master_failover.task_interval",
+          "yb.auto_master_failover.failover_task_delay",
           ScopeType.UNIVERSE,
-          "Automated Master Failover Task Interval",
-          "Automated master failover task submission interval for a universe in background process",
+          "Automated Master Failover Task Delay",
+          "Automated master failover task submission delay for a universe in background process",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> autoSyncMasterAddrsTaskDelay =
+      new ConfKeyInfo<>(
+          "yb.auto_master_failover.sync_master_addrs_task_delay",
+          ScopeType.UNIVERSE,
+          "Automated Sync Master Addresses Task Delay",
+          "Automated sync master addresses task submission delay for a universe in background"
+              + " process",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> nodeAgentNodeActionUseJavaClient =
@@ -1247,5 +1266,23 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Time drift threshold for error health check",
           "Threshold to raise a error when time drift exceeds this amount",
           ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> pitEnabledBackupsRetentionBufferTimeSecs =
+      new ConfKeyInfo<>(
+          "yb.backup.pit_enabled_backups_history_retention_buffer_time_secs",
+          ScopeType.UNIVERSE,
+          "Time in seconds added to history_retention gflag on top of backup frequency",
+          "Time in seconds added to history_retention gflag on top of backup frequency. This is to"
+              + " accommodate backup upload times etc",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableConsistencyCheck =
+      new ConfKeyInfo<>(
+          "yb.universe.consistency_check_enabled",
+          ScopeType.UNIVERSE,
+          "Enable consistency check for universe",
+          "When enabled, all universe operations will attempt consistency check validation before"
+              + " proceeding. Turn off in disaster scenarios to force perform actions.",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

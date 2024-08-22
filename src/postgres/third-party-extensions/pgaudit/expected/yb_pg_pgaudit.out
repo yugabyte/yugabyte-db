@@ -937,10 +937,8 @@ NOTICE:  AUDIT: SESSION,38,1,DDL,ALTER TABLE,TABLE,public.test2,"ALTER TABLE pub
 	RENAME TO test2;",<none>
 ALTER TABLE public.test2
 	SET SCHEMA test;
-ERROR:  ALTER TABLE SET SCHEMA not supported yet at character 1
-CREATE TABLE test.test2 (LIKE public.test2 INCLUDING ALL); -- YB: workaround for above failure
-NOTICE:  AUDIT: SESSION,39,1,DDL,CREATE TABLE,TABLE,test.test2,CREATE TABLE test.test2 (LIKE public.test2 INCLUDING ALL);,<none>
-NOTICE:  AUDIT: SESSION,39,1,DDL,CREATE INDEX,INDEX,test.test2_pkey,CREATE TABLE test.test2 (LIKE public.test2 INCLUDING ALL);,<none>
+NOTICE:  AUDIT: SESSION,39,1,DDL,ALTER TABLE,TABLE,test.test2,"ALTER TABLE public.test2
+	SET SCHEMA test;",<none>
 ALTER TABLE test.test2
 	ADD COLUMN description TEXT;
 NOTICE:  AUDIT: SESSION,40,1,DDL,ALTER TABLE,TABLE,test.test2,"ALTER TABLE test.test2
@@ -951,10 +949,10 @@ NOTICE:  AUDIT: SESSION,41,1,DDL,ALTER TABLE,TABLE COLUMN,test.test2.description
 	DROP COLUMN description;",<none>
 NOTICE:  AUDIT: SESSION,41,1,DDL,ALTER TABLE,TABLE,test.test2,"ALTER TABLE test.test2
 	DROP COLUMN description;",<none>
-DROP TABLE test.test2; -- YB: output has "test2_pkey" because of workaround above
+DROP TABLE test.test2;
 NOTICE:  AUDIT: SESSION,42,1,DDL,DROP TABLE,TABLE,test.test2,DROP TABLE test.test2;,<none>
-NOTICE:  AUDIT: SESSION,42,1,DDL,DROP TABLE,TABLE CONSTRAINT,test2_pkey on test.test2,DROP TABLE test.test2;,<none>
-NOTICE:  AUDIT: SESSION,42,1,DDL,DROP TABLE,INDEX,test.test2_pkey,DROP TABLE test.test2;,<none>
+NOTICE:  AUDIT: SESSION,42,1,DDL,DROP TABLE,TABLE CONSTRAINT,test_pkey on test.test2,DROP TABLE test.test2;,<none>
+NOTICE:  AUDIT: SESSION,42,1,DDL,DROP TABLE,INDEX,test.test_pkey,DROP TABLE test.test2;,<none>
 --
 -- Test multiple statements with one semi-colon
 CREATE SCHEMA foo
@@ -1286,8 +1284,6 @@ DROP INDEX h_idx;
 NOTICE:  AUDIT: SESSION,95,1,DDL,DROP INDEX,,,DROP INDEX h_idx;,<none>
 DROP TABLE h;
 NOTICE:  AUDIT: SESSION,96,1,DDL,DROP TABLE,,,DROP TABLE h;,<none>
-DROP TABLE test2; -- YB: followup on above workaround for failed "ALTER TABLE SET SCHEMA" (do it now to avoid shifting upstream's audit numbers)
-NOTICE:  AUDIT: SESSION,97,1,DDL,DROP TABLE,,,DROP TABLE test2;,<none>
 --
 -- Test rows retrived or affected by statements
 \connect - :current_user
@@ -2178,9 +2174,8 @@ NOTICE:  AUDIT: SESSION,93,1,DDL,ALTER TABLE,,,"ALTER TABLE public.test
 	RENAME TO test2;",<none>,0
 ALTER TABLE public.test2
 	SET SCHEMA test;
-ERROR:  ALTER TABLE SET SCHEMA not supported yet at character 1
-CREATE TABLE test.test2 (LIKE public.test2 INCLUDING ALL); -- YB: workaround for above failure
-NOTICE:  AUDIT: SESSION,94,1,DDL,CREATE TABLE,,,CREATE TABLE test.test2 (LIKE public.test2 INCLUDING ALL);,<none>,0
+NOTICE:  AUDIT: SESSION,94,1,DDL,ALTER TABLE,,,"ALTER TABLE public.test2
+	SET SCHEMA test;",<none>,0
 ALTER TABLE test.test2
 	ADD COLUMN description TEXT;
 NOTICE:  AUDIT: SESSION,95,1,DDL,ALTER TABLE,,,"ALTER TABLE test.test2

@@ -295,28 +295,51 @@ YBDecodeUpdate(LogicalDecodingContext *ctx, XLogReaderState *record)
 	after_op_tuple_buf->yb_is_omitted_size =
 		(should_handle_omitted_case) ? nattrs : 0;
 
-	before_op_tuple =
-		heap_form_tuple(tupdesc, before_op_datums, before_op_is_nulls);
-	before_op_tuple_buf = ReorderBufferGetTupleBuf(
-		ctx->reorder, before_op_tuple->t_len + HEAPTUPLESIZE);
-	yb_heap_copytuple_with_tuple(before_op_tuple, &before_op_tuple_buf->tuple);
-	pfree(before_op_tuple);
-	before_op_tuple_buf->yb_is_omitted = before_op_is_omitted;
-	before_op_tuple_buf->yb_is_omitted_size =
-		(should_handle_omitted_case) ? nattrs : 0;
+	/*
+	 * In YB, the primary key updates are sent as DELETE + INSERT. So the only
+	 * updates that will be streamed are for non-primary key updates. For
+	 * non-primary key updates non-null old-tuple will be sent only for replica
+	 * identity FULL to match the PG behaviour.
+	 */
+	if (relation->rd_rel->relreplident == REPLICA_IDENTITY_FULL)
+	{
+		before_op_tuple =
+			heap_form_tuple(tupdesc, before_op_datums, before_op_is_nulls);
+		before_op_tuple_buf = ReorderBufferGetTupleBuf(
+			ctx->reorder, before_op_tuple->t_len + HEAPTUPLESIZE);
+		yb_heap_copytuple_with_tuple(before_op_tuple,
+									 &before_op_tuple_buf->tuple);
+		pfree(before_op_tuple);
+		before_op_tuple_buf->yb_is_omitted = before_op_is_omitted;
+		before_op_tuple_buf->yb_is_omitted_size =
+			(should_handle_omitted_case) ? nattrs : 0;
+	}
+	else
+	{
+		before_op_tuple_buf = NULL;
+		if (should_handle_omitted_case && before_op_is_omitted)
+			pfree(before_op_is_omitted);
+	}
 
 	if (log_min_messages <= DEBUG2)
 	{
-		const char *old_tuple_string = YbHeapTupleToStringWithIsOmitted(
-			&before_op_tuple_buf->tuple, tupdesc, before_op_is_omitted);
 		const char *new_tuple_string = YbHeapTupleToStringWithIsOmitted(
 			&after_op_tuple_buf->tuple, tupdesc, after_op_is_omitted);
 
-		elog(DEBUG2,
-			 "yb_decode: before_op heap tuple: %s, after_op heap tuple: %s",
-			 old_tuple_string, new_tuple_string);
+		if (before_op_tuple_buf)
+		{
+			const char *old_tuple_string = YbHeapTupleToStringWithIsOmitted(
+				&before_op_tuple_buf->tuple, tupdesc, before_op_is_omitted);
+			elog(DEBUG2,
+				 "yb_decode: before_op heap tuple: %s, after_op heap tuple: %s",
+				 old_tuple_string, new_tuple_string);
+			pfree((char *) old_tuple_string);
+		}
+		else
+			elog(DEBUG2,
+				 "yb_decode: before_op heap tuple: NULL, after_op heap tuple: %s",
+				 new_tuple_string);
 
-		pfree((char *) old_tuple_string);
 		pfree((char *) new_tuple_string);
 	}
 

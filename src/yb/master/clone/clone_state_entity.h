@@ -21,8 +21,7 @@
 
 namespace yb::master {
 
-struct PersistentCloneStateInfo : public Persistent<SysCloneStatePB, SysRowEntryType::CLONE_STATE>
-  {};
+struct PersistentCloneStateInfo : public Persistent<SysCloneStatePB> {};
 
 struct CloneStateInfoHelpers {
   static bool IsDone(const SysCloneStatePB& pb) {
@@ -33,9 +32,17 @@ struct CloneStateInfoHelpers {
 
 class CloneStateInfo : public MetadataCowWrapper<PersistentCloneStateInfo> {
  public:
+  struct ColocatedTableData {
+    TableId new_table_id;
+    SysTablesEntryPB table_entry_pb;
+    int new_schema_version;
+  };
+
   struct TabletData {
     TabletId source_tablet_id;
     TabletId target_tablet_id;
+    // The correct schema version and SysTablesEntryPB of every colocated table.
+    std::vector<ColocatedTableData> colocated_tables_data;
   };
 
   explicit CloneStateInfo(std::string id);

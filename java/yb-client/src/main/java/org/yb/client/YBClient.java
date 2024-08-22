@@ -459,6 +459,17 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+   * Get the load balancer state.
+   *
+   * @return the response of the operation.
+   */
+  public GetLoadBalancerStateResponse getLoadBalancerState()
+      throws Exception {
+    Deferred<GetLoadBalancerStateResponse> d = asyncClient.getLoadBalancerState();
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
    * Get the tablet load move completion percentage for blacklisted nodes, if any.
    *
    * @return the response with percent load completed.

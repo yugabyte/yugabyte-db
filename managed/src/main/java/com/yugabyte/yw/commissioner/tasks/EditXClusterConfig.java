@@ -15,12 +15,10 @@ import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterNamespaceConfig;
 import com.yugabyte.yw.models.XClusterTableConfig;
-import java.io.File;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -71,29 +69,17 @@ public class EditXClusterConfig extends CreateXClusterConfig {
           String oldReplicationGroupName = xClusterConfig.getReplicationGroupName();
           // If TLS root certificates are different, create a directory containing the source
           // universe root certs with the new name.
-          Optional<File> sourceCertificate =
-              getSourceCertificateIfNecessary(sourceUniverse, targetUniverse);
-          sourceCertificate.ifPresent(
-              cert ->
-                  createTransferXClusterCertsCopyTasks(
-                      targetUniverse.getNodes(),
-                      xClusterConfig.getNewReplicationGroupName(
-                          xClusterConfig.getSourceUniverseUUID(), editFormData.name),
-                      cert,
-                      targetUniverse.getUniverseDetails().getSourceRootCertDirPath()));
+          createTransferXClusterCertsCopyTasks(
+              xClusterConfig,
+              xClusterConfig.getNewReplicationGroupName(
+                  xClusterConfig.getSourceUniverseUUID(), editFormData.name));
 
           createXClusterConfigRenameTask(xClusterConfig, editFormData.name)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
           // Delete the old directory if it created a new one. When the old directory is removed
           // because of renaming, the directory for transactional replication must not be deleted.
-          sourceCertificate.ifPresent(
-              cert ->
-                  createTransferXClusterCertsRemoveTasks(
-                      xClusterConfig,
-                      oldReplicationGroupName,
-                      targetUniverse.getUniverseDetails().getSourceRootCertDirPath(),
-                      false /* ignoreErrors */));
+          createTransferXClusterCertsRemoveTasks(xClusterConfig, oldReplicationGroupName);
         } else if (editFormData.status != null) {
           createSetReplicationPausedTask(xClusterConfig, editFormData.status)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);

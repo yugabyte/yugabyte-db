@@ -6,8 +6,8 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.NOT_FOUND;
 
 import api.v2.mappers.RoleResourceDefinitionMapper;
-import api.v2.models.GroupMappingSpec;
-import api.v2.models.GroupMappingSpec.TypeEnum;
+import api.v2.models.AuthGroupToRolesMapping;
+import api.v2.models.AuthGroupToRolesMapping.TypeEnum;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -19,9 +19,11 @@ import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.models.GroupMappingInfo;
 import com.yugabyte.yw.models.GroupMappingInfo.GroupType;
 import com.yugabyte.yw.models.rbac.Role;
+import com.yugabyte.yw.models.rbac.Role.RoleType;
 import com.yugabyte.yw.models.rbac.RoleBinding;
 import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
 import io.ebean.annotation.Transactional;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -36,23 +38,29 @@ public class AuthenticationHandler {
   @Inject TokenAuthenticator tokenAuthenticator;
   @Inject RoleBindingUtil roleBindingUtil;
 
-  public List<GroupMappingSpec> listMappings(UUID cUUID) throws Exception {
+  public List<AuthGroupToRolesMapping> listMappings(UUID cUUID) throws Exception {
 
     checkRuntimeConfig();
 
     List<GroupMappingInfo> groupInfoList =
         GroupMappingInfo.find.query().where().eq("customer_uuid", cUUID).findList();
-    List<GroupMappingSpec> specList = new ArrayList<GroupMappingSpec>();
+    List<AuthGroupToRolesMapping> groupMappingList = new ArrayList<AuthGroupToRolesMapping>();
     for (GroupMappingInfo info : groupInfoList) {
-      GroupMappingSpec spec =
-          new GroupMappingSpec()
+      AuthGroupToRolesMapping groupMapping =
+          new AuthGroupToRolesMapping()
               .groupIdentifier(info.getIdentifier())
               .type(TypeEnum.valueOf(info.getType().toString()))
+              .creationDate(info.getCreationDate().toInstant().atOffset(ZoneOffset.UTC))
               .uuid(info.getGroupUUID());
 
       List<RoleResourceDefinition> roleResourceDefinitions = new ArrayList<>();
+      RoleResourceDefinition rrd = new RoleResourceDefinition();
+      rrd.setRoleUUID(info.getRoleUUID());
+      // Fetch all role rolebindings for the current group if RBAC is on.
       if (confGetter.getGlobalConf(GlobalConfKeys.useNewRbacAuthz)) {
-        // fetch all role rolebindings for the current group
+        if (Role.get(cUUID, "ConnectOnly").getRoleUUID().equals(info.getRoleUUID())) {
+          roleResourceDefinitions.add(rrd);
+        }
         List<RoleBinding> roleBindingList = RoleBinding.getAll(info.getGroupUUID());
         for (RoleBinding rb : roleBindingList) {
           RoleResourceDefinition roleResourceDefinition =
@@ -60,22 +68,19 @@ public class AuthenticationHandler {
           roleResourceDefinitions.add(roleResourceDefinition);
         }
       } else {
-        // No role bindings present if RBAC is off.
-        RoleResourceDefinition rrd = new RoleResourceDefinition();
-        rrd.setRoleUUID(info.getRoleUUID());
         roleResourceDefinitions.add(rrd);
       }
-      spec.setRoleResourceDefinitions(
+      groupMapping.setRoleResourceDefinitions(
           RoleResourceDefinitionMapper.INSTANCE.toV2RoleResourceDefinitionList(
               roleResourceDefinitions));
-      specList.add(spec);
+      groupMappingList.add(groupMapping);
     }
-    return specList;
+    return groupMappingList;
   }
 
   @Transactional
   public void updateGroupMappings(
-      Http.Request request, UUID cUUID, List<GroupMappingSpec> groupMappingSpec) {
+      Http.Request request, UUID cUUID, List<AuthGroupToRolesMapping> AuthGroupToRolesMapping) {
     boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(request);
     if (!isSuperAdmin) {
       throw new PlatformServiceException(BAD_REQUEST, "Only SuperAdmin can create group mappings!");
@@ -83,7 +88,7 @@ public class AuthenticationHandler {
 
     checkRuntimeConfig();
 
-    for (GroupMappingSpec mapping : groupMappingSpec) {
+    for (AuthGroupToRolesMapping mapping : AuthGroupToRolesMapping) {
       GroupMappingInfo mappingInfo =
           GroupMappingInfo.find
               .query()
@@ -102,7 +107,7 @@ public class AuthenticationHandler {
                 GroupType.valueOf(mapping.getType().toString()));
       } else {
         // clear role bindings for existing group
-        clearRoleBindings(mappingInfo);
+        RoleBindingUtil.clearRoleBindingsForGroup(mappingInfo);
       }
 
       List<RoleResourceDefinition> roleResourceDefinitions =
@@ -112,11 +117,18 @@ public class AuthenticationHandler {
       roleBindingUtil.validateRoles(cUUID, roleResourceDefinitions);
       roleBindingUtil.validateResourceGroups(cUUID, roleResourceDefinitions);
 
+      // Add role bindings if rbac is on.
       if (confGetter.getGlobalConf(GlobalConfKeys.useNewRbacAuthz)) {
-        // Add role bindings if rbac is on.
         for (RoleResourceDefinition rrd : roleResourceDefinitions) {
           Role rbacRole = Role.getOrBadRequest(cUUID, rrd.getRoleUUID());
-          RoleBinding.create(mappingInfo, RoleBindingType.Custom, rbacRole, rrd.getResourceGroup());
+          // Resource group is null for system roles, so need to populate that before
+          // adding role binding.
+          if (rbacRole.getRoleType().equals(RoleType.Custom)) {
+            RoleBinding.create(
+                mappingInfo, RoleBindingType.Custom, rbacRole, rrd.getResourceGroup());
+          } else {
+            RoleBindingUtil.createSystemRoleBindingsForGroup(mappingInfo, rbacRole);
+          }
         }
         // This role will be ignored when rbac is on.
         mappingInfo.setRoleUUID(Role.get(cUUID, "ConnectOnly").getRoleUUID());
@@ -148,16 +160,8 @@ public class AuthenticationHandler {
       throw new PlatformServiceException(NOT_FOUND, "No group mapping found with uuid: " + gUUID);
     }
 
-    // Delete all role bindings
-    clearRoleBindings(entity);
     log.info("Deleting Group Mapping with name: " + entity.getIdentifier());
     entity.delete();
-  }
-
-  private void clearRoleBindings(GroupMappingInfo mappingInfo) {
-    log.info("Clearing role bindings for group: " + mappingInfo.getIdentifier());
-    List<RoleBinding> list = RoleBinding.getAll(mappingInfo.getGroupUUID());
-    list.forEach(rb -> rb.delete());
   }
 
   private void checkRuntimeConfig() {

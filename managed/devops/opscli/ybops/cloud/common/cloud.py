@@ -533,28 +533,28 @@ class AbstractCloud(AbstractCommandParser):
             connect_options,
             root_cert_path,
             replication_config_name,
-            producer_certs_dir):
+            xcluster_dest_certs_dir):
         host_port_user = get_host_port_user(connect_options)
         remote_shell = RemoteShell(connect_options)
         node_ip = host_port_user["host"]
-        src_root_cert_dir_path = os.path.join(producer_certs_dir, replication_config_name)
-        src_root_cert_path = os.path.join(src_root_cert_dir_path, self.ROOT_CERT_NAME)
+        xcluster_root_cert_dir_path = os.path.join(xcluster_dest_certs_dir, replication_config_name)
+        xcluster_root_cert_path = os.path.join(xcluster_root_cert_dir_path, self.ROOT_CERT_NAME)
         logging.info("Moving server cert located at {} to {}:{}.".format(
-            root_cert_path, node_ip, src_root_cert_dir_path))
+            root_cert_path, node_ip, xcluster_root_cert_dir_path))
 
-        remote_shell.run_command('mkdir -p ' + src_root_cert_dir_path)
+        remote_shell.run_command('mkdir -p ' + xcluster_root_cert_dir_path)
         # Give write permissions. If the command fails, ignore.
-        remote_shell.run_command('chmod -f 666 {}/* || true'.format(src_root_cert_dir_path))
-        remote_shell.put_file(root_cert_path, src_root_cert_path)
+        remote_shell.run_command('chmod -f 666 {}/* || true'.format(xcluster_root_cert_dir_path))
+        remote_shell.put_file(root_cert_path, xcluster_root_cert_path)
 
         # Reset the write permission as a sanity check.
-        remote_shell.run_command('chmod 400 {}/*'.format(src_root_cert_dir_path))
+        remote_shell.run_command('chmod 400 {}/*'.format(xcluster_root_cert_dir_path))
 
     def remove_xcluster_root_cert(
             self,
             connect_options,
             replication_config_name,
-            producer_certs_dir):
+            xcluster_dest_certs_dir):
         def check_rm_result(rm_result):
             if rm_result.exited and rm_result.stderr.find("No such file or directory") == -1:
                 raise YBOpsRuntimeError(
@@ -565,19 +565,19 @@ class AbstractCloud(AbstractCommandParser):
         host_port_user = get_host_port_user(connect_options)
         remote_shell = RemoteShell(connect_options)
         node_ip = host_port_user["host"]
-        src_root_cert_dir_path = os.path.join(producer_certs_dir, replication_config_name)
-        src_root_cert_path = os.path.join(src_root_cert_dir_path, self.ROOT_CERT_NAME)
+        xcluster_root_cert_dir_path = os.path.join(xcluster_dest_certs_dir, replication_config_name)
+        xcluster_root_cert_path = os.path.join(xcluster_root_cert_dir_path, self.ROOT_CERT_NAME)
         logging.info("Removing server cert located at {} from server {}.".format(
-            src_root_cert_dir_path, node_ip))
+            xcluster_root_cert_dir_path, node_ip))
 
-        remote_shell.run_command('chmod -f 666 {}/* || true'.format(src_root_cert_dir_path))
-        result = remote_shell.run_command_raw('rm ' + src_root_cert_path)
+        remote_shell.run_command('chmod -f 666 {}/* || true'.format(xcluster_root_cert_dir_path))
+        result = remote_shell.run_command_raw('rm ' + xcluster_root_cert_path)
         check_rm_result(result)
         # Remove the directory only if it is empty.
-        result = remote_shell.run_command_raw('rm -d ' + src_root_cert_dir_path)
+        result = remote_shell.run_command_raw('rm -d ' + xcluster_root_cert_dir_path)
         check_rm_result(result)
         # No need to check the result of this command.
-        remote_shell.run_command_raw('rm -d ' + producer_certs_dir)
+        remote_shell.run_command_raw('rm -d ' + xcluster_dest_certs_dir)
 
     def copy_client_certs(
             self,

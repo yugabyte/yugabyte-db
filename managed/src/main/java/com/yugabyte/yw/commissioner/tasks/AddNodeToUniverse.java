@@ -148,6 +148,9 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
   @Override
   public void run() {
+    if (maybeRunOnlyPrechecks()) {
+      return;
+    }
     log.info(
         "Started {} task for node {} in universe {}",
         getName(),

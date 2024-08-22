@@ -80,7 +80,7 @@ const useStyles = makeStyles((theme) => ({
     marginLeft: theme.spacing(1),
     alignSelf: 'center'
   },
-   premiumV2StorageLabelField: {
+  premiumV2StorageLabelField: {
     marginTop: theme.spacing(2),
     alignItems: 'flex-start'
   }
@@ -144,7 +144,9 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   );
   const instance = instanceTypes?.find((item) => item.instanceTypeCode === instanceType);
 
-  //update volume info after istance changes
+  // Update volume info after instance changes
+  // We need to have have 2 separate useEffects for instanceType and provider changes
+  // once provider can be edited via the UI in case of primary cluster
   useEffect(() => {
     if (!instance) return;
     const getProviderRuntimeConfigs = async () => {
@@ -153,7 +155,9 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
         instance,
         providerRuntimeConfigsRefetch.isError
           ? providerRuntimeConfigs
-          : providerRuntimeConfigsRefetch.data
+          : providerRuntimeConfigsRefetch.data,
+        isEditMode,
+        fieldValue?.storageType
       );
 
       //retain old volume size if its edit mode or not ephemeral storage
@@ -183,8 +187,14 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   //reset methods
   const resetThroughput = () => {
     const { storageType, throughput, diskIops, volumeSize } = fieldValue;
-    if ([StorageType.IO1, StorageType.GP3, StorageType.UltraSSD_LRS, StorageType.PremiumV2_LRS]
-        .includes(storageType)) {
+    if (
+      [
+        StorageType.IO1,
+        StorageType.GP3,
+        StorageType.UltraSSD_LRS,
+        StorageType.PremiumV2_LRS
+      ].includes(storageType)
+    ) {
       //resetting throughput
       const throughputVal = getThroughputByIops(Number(throughput), diskIops, storageType);
       setValue(UPDATE_FIELD, {
@@ -218,11 +228,13 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
     Hence, when volume size is changed, disk IOPS should be recalculated.
   */
   useUpdateEffect(() => {
-    if (fieldValue.storageType === StorageType.UltraSSD_LRS
-        || fieldValue.storageType === StorageType.PremiumV2_LRS) {
+    if (
+      fieldValue.storageType === StorageType.UltraSSD_LRS ||
+      fieldValue.storageType === StorageType.PremiumV2_LRS
+    ) {
       onDiskIopsChanged(fieldValue.diskIops);
     }
-  },[fieldValue?.volumeSize]);
+  }, [fieldValue?.volumeSize]);
 
   const onDiskIopsChanged = (value: any) => {
     const { storageType, volumeSize } = fieldValue;
@@ -350,6 +362,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
 
   const renderStorageType = () => {
     const isPremiumV2Storage = fieldValue.storageType === StorageType.PremiumV2_LRS;
+
     if (
       [CloudType.gcp, CloudType.azu].includes(provider?.code) ||
       (volumeType === VolumeType.EBS && provider?.code === CloudType.aws)
@@ -379,7 +392,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
                       min: 1,
                       'data-testid': `VolumeInfoField-${dataTag}-StorageTypeSelect`
                     }}
-                     helperText={
+                    helperText={
                       isPremiumV2Storage && (
                         <YBHelper variant={YBHelperVariants.warning}>
                           {t('universeForm.instanceConfig.premiumv2Storage')}
@@ -390,7 +403,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
                       onStorageTypeChanged((event?.target.value as unknown) as StorageType)
                     }
                   >
-                    {getStorageTypeOptions(provider?.code).map((item) => (
+                    {getStorageTypeOptions(provider?.code, providerRuntimeConfigs).map((item) => (
                       <MenuItem key={item.value} value={item.value}>
                         {item.label}
                       </MenuItem>
@@ -408,8 +421,12 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
 
   const renderDiskIops = () => {
     if (
-      ![StorageType.IO1, StorageType.GP3, StorageType.UltraSSD_LRS, StorageType.PremiumV2_LRS]
-          .includes(fieldValue.storageType)
+      ![
+        StorageType.IO1,
+        StorageType.GP3,
+        StorageType.UltraSSD_LRS,
+        StorageType.PremiumV2_LRS
+      ].includes(fieldValue.storageType)
     )
       return null;
 
@@ -439,8 +456,12 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   };
 
   const renderThroughput = () => {
-    if (![StorageType.GP3, StorageType.UltraSSD_LRS, StorageType.PremiumV2_LRS]
-        .includes(fieldValue.storageType)) return null;
+    if (
+      ![StorageType.GP3, StorageType.UltraSSD_LRS, StorageType.PremiumV2_LRS].includes(
+        fieldValue.storageType
+      )
+    )
+      return null;
     return (
       <Grid container spacing={2}>
         <Grid item lg={6}>

@@ -47,7 +47,8 @@ export const CONST_VALUES = {
   SINGLE_QUOTES_SEPARATOR: "'",
   COMMA_SEPARATOR: ',',
   EQUALS: '=',
-  JWKS: 'jwks'
+  JWKS: 'jwks',
+  JWT_JWKS_URL: 'jwt_jwks_url'
 };
 
 export const GFLAG_EDIT = 'EDIT';
@@ -324,7 +325,10 @@ export const unformatConf = (GFlagInput) => {
     }
 
     // Extract jwks content from the row input if it exists
-    if (GFlagRowConfSubset.includes(CONST_VALUES.JWKS)) {
+    if (
+      GFlagRowConfSubset.includes(CONST_VALUES.JWKS) &&
+      !GFlagRowConfSubset.includes(CONST_VALUES.JWT_JWKS_URL)
+    ) {
       const JWKSKey = GFlagRowConfSubset.substring(GFlagRowConfSubset.indexOf(CONST_VALUES.JWKS));
       if (isNonEmptyString(JWKSKey)) {
         GFlagRowConfSubset = GFlagRowConfSubset.replace(JWKSKey, '');
@@ -405,6 +409,7 @@ export const formatConf = (GFlagInput, searchTerm, JWKSToken) => {
 
     return initialLDAPConf + appendedLDAPConf + JWKS;
   }
+
   return GFlagInput;
 };
 
@@ -433,16 +438,6 @@ export const verifyAttributes = (GFlagInput, searchTerm, JWKSKeyset, isOIDCSuppo
     return { isAttributeInvalid, errorMessageKey, isWarning };
   }
 
-  // Raise error when there is jwt keyword but is no JWKS keyset associated with it
-  if (searchTerm === CONST_VALUES.JWT && (isEmptyString(JWKSKeyset) || !JWKSKeyset)) {
-    isAttributeInvalid = true;
-    isWarning = false;
-    errorMessageKey = isOIDCSupported
-      ? 'universeForm.gFlags.uploadKeyset'
-      : 'universeForm.gFlags.jwksNotSupported';
-    return { isAttributeInvalid, errorMessageKey, isWarning };
-  }
-
   const keywordLength = searchTerm.length;
   const isKeywordExist = GFlagInput.includes(searchTerm);
 
@@ -453,6 +448,20 @@ export const verifyAttributes = (GFlagInput, searchTerm, JWKSKeyset, isOIDCSuppo
     const keywordIndex = GFlagInput.indexOf(keywordList?.[0]);
     const keywordConf = GFlagInput?.substring(keywordIndex + 1 + keywordLength, GFlagInput.length);
     const attributes = keywordConf?.match(/(?:[^\s"|""]+|""[^"""]*"|")+/g);
+    const isJWTUrlExist = attributes?.some((input) => input.includes(CONST_VALUES.JWT_JWKS_URL));
+    const isJWKSKesysetEmpty = isEmptyString(JWKSKeyset) || !JWKSKeyset;
+
+    /* 
+      Raise error when there is jwt keyword but is no JWT_JWKS_URL attribute present and Keyset is empty
+    */
+    if (searchTerm === CONST_VALUES.JWT && !isJWTUrlExist && isJWKSKesysetEmpty) {
+      isAttributeInvalid = true;
+      isWarning = false;
+      errorMessageKey = isOIDCSupported
+        ? 'universeForm.gFlags.uploadKeyset'
+        : 'universeForm.gFlags.jwksNotSupported';
+      return { isAttributeInvalid, errorMessageKey, isWarning };
+    }
 
     for (let index = 0; index < attributes?.length; index++) {
       const [attributeKey, ...attributeValues] = attributes[index]?.split(CONST_VALUES.EQUALS);

@@ -12,6 +12,7 @@ import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.XClusterUtil;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -20,6 +21,7 @@ import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.controllers.handlers.UniverseTableHandler;
 import com.yugabyte.yw.forms.DrConfigCreateForm;
 import com.yugabyte.yw.forms.DrConfigEditForm;
 import com.yugabyte.yw.forms.DrConfigFailoverForm;
@@ -103,6 +105,7 @@ public class DrConfigController extends AuthenticatedController {
   private final XClusterUniverseService xClusterUniverseService;
   private final AutoFlagUtil autoFlagUtil;
   private final XClusterScheduler xClusterScheduler;
+  private final UniverseTableHandler tableHandler;
 
   @Inject
   public DrConfigController(
@@ -114,7 +117,8 @@ public class DrConfigController extends AuthenticatedController {
       RuntimeConfGetter confGetter,
       XClusterUniverseService xClusterUniverseService,
       AutoFlagUtil autoFlagUtil,
-      XClusterScheduler xClusterScheduler) {
+      XClusterScheduler xClusterScheduler,
+      UniverseTableHandler tableHandler) {
     this.commissioner = commissioner;
     this.metricQueryHelper = metricQueryHelper;
     this.backupHelper = backupHelper;
@@ -124,6 +128,7 @@ public class DrConfigController extends AuthenticatedController {
     this.xClusterUniverseService = xClusterUniverseService;
     this.autoFlagUtil = autoFlagUtil;
     this.xClusterScheduler = xClusterScheduler;
+    this.tableHandler = tableHandler;
   }
 
   /**
@@ -180,6 +185,10 @@ public class DrConfigController extends AuthenticatedController {
           BAD_REQUEST,
           "Support for db scoped disaster recovery configs is disabled in YBA. You may enable it "
               + "by setting yb.xcluster.db_scoped.enabled to true in the application.conf");
+    }
+
+    if (isDbScoped) {
+      XClusterUtil.dbScopedXClusterPreChecks(sourceUniverse, targetUniverse);
     }
 
     DrConfig drConfig;
@@ -1178,8 +1187,8 @@ public class DrConfigController extends AuthenticatedController {
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drUUID);
 
     for (XClusterConfig xClusterConfig : drConfig.getXClusterConfigs()) {
-      XClusterConfigTaskBase.setReplicationStatus(
-          this.xClusterUniverseService, this.ybService, xClusterConfig);
+      XClusterConfigTaskBase.updateReplicationDetailsFromDB(
+          this.xClusterUniverseService, this.ybService, this.tableHandler, xClusterConfig);
     }
 
     XClusterConfig activeXClusterConfig = drConfig.getActiveXClusterConfig();

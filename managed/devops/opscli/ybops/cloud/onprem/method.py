@@ -522,7 +522,8 @@ class OnPremInstallNodeAgentMethod(AbstractInstancesMethod):
                                  required=True)
         self.parser.add_argument("--api_token", help="API token for YBA.", required=True)
         self.parser.add_argument("--node_name", help="Node name.", required=True)
-        self.parser.add_argument("--provider_id", help="Provider ID (UUID).", required=True)
+        self.parser.add_argument("--provider_id", help="Provider ID or name.", required=True)
+        self.parser.add_argument("--region_name", help="Region name.", required=True)
         self.parser.add_argument("--zone_name", help="Zone name.", required=True)
 
     def callback(self, args):
@@ -632,6 +633,7 @@ class OnPremInstallNodeAgentMethod(AbstractInstancesMethod):
             install_cmd_args += f" --node_port {args.node_agent_port}"
             install_cmd_args += f" --provider_id {args.provider_id}"
             install_cmd_args += f" --instance_type {args.instance_type}"
+            install_cmd_args += f" --region_name {args.region_name}"
             install_cmd_args += f" --zone_name {args.zone_name}"
             install_cmd = ["bash", "-c", install_cmd_args]
             # Run the installer script.

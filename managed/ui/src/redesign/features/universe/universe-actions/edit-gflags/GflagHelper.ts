@@ -5,7 +5,7 @@ import {
   transformSpecificGFlagToFlagsArray,
   transformGFlagToFlagsArray
 } from '../../universe-form/utils/helpers';
-import { Universe, Gflag, Cluster } from '../../universe-form/utils/dto';
+import { Universe, Gflag, Cluster, RollMaxBatchSize } from '../../universe-form/utils/dto';
 
 export enum UpgradeOptions {
   Rolling = 'Rolling',
@@ -18,6 +18,7 @@ export interface EditGflagsFormValues {
   inheritFlagsFromPrimary?: boolean;
   asyncGflags: Gflag[] | [];
   timeDelay: number;
+  numNodesToUpgradePrimary: number;
   upgradeOption: UpgradeOptions;
 }
 
@@ -30,6 +31,15 @@ export interface EditGflagPayload {
   universeUUID: string;
   upgradeOption: UpgradeOptions;
   ybSoftwareVersion: string;
+  rollMaxBatchSize?: RollMaxBatchSize;
+}
+
+export interface GFlagGroupObject {
+  group_name: string;
+  flags: {
+    MASTER: Record<string, string>;
+    TSERVER: Record<string, string>;
+  };
 }
 
 export interface GFlagGroupObject {

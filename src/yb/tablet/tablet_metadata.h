@@ -275,6 +275,7 @@ struct RaftGroupMetadataData {
   bool colocated = false;
   std::vector<SnapshotScheduleId> snapshot_schedules;
   std::unordered_set<StatefulServiceKind> hosted_services;
+  std::vector<TableInfoPtr> colocated_tables_infos = {};
 };
 
 // At startup, the TSTabletManager will load a RaftGroupMetadata for each

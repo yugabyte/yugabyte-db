@@ -40,6 +40,10 @@ Status RunBackupCommand(
 Status RunYbControllerCommand(
     MiniClusterBase* cluster, const std::string& tmp_dir, const std::vector<std::string>& args);
 
+// Runs ysql_dump against specified database of the cluster and returns the output.
+Result<std::string> RunYSQLDump(
+    HostPort& pg_host_port, const std::string& database_name = "yugabyte");
+
 // A class to manage random tmp dir for test.
 class TmpDirProvider {
  public:

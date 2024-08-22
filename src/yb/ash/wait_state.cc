@@ -139,7 +139,7 @@ void AshMetadata::set_client_host_port(const HostPort &host_port) {
 
 std::string AshMetadata::ToString() const {
   return YB_STRUCT_TO_STRING(
-      yql_endpoint_tserver_uuid, root_request_id, query_id, session_id, database_id,
+      yql_endpoint_tserver_uuid, root_request_id, query_id, database_id,
       rpc_request_id, client_host_port);
 }
 
@@ -210,16 +210,6 @@ void WaitStateInfo::set_query_id(uint64_t query_id) {
 uint64_t WaitStateInfo::query_id() {
   std::lock_guard lock(mutex_);
   return metadata_.query_id;
-}
-
-void WaitStateInfo::set_session_id(uint64_t session_id) {
-  std::lock_guard lock(mutex_);
-  metadata_.session_id = session_id;
-}
-
-uint64_t WaitStateInfo::session_id() {
-  std::lock_guard lock(mutex_);
-  return metadata_.session_id;
 }
 
 void WaitStateInfo::set_client_host_port(const HostPort &host_port) {

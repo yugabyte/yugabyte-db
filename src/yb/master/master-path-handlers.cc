@@ -378,8 +378,8 @@ namespace {
 
 bool TabletServerComparator(
     const std::shared_ptr<TSDescriptor>& a, const std::shared_ptr<TSDescriptor>& b) {
-  auto a_cloud_info = a->GetRegistration().common().cloud_info();
-  auto b_cloud_info = b->GetRegistration().common().cloud_info();
+  auto a_cloud_info = a->GetRegistration().cloud_info();
+  auto b_cloud_info = b->GetRegistration().cloud_info();
 
   if (a_cloud_info.placement_cloud() == b_cloud_info.placement_cloud()) {
     if (a_cloud_info.placement_region() == b_cloud_info.placement_region()) {
@@ -460,14 +460,14 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
         continue;
       }
       const string time_since_hb = StringPrintf("%.1fs", desc->TimeSinceHeartbeat().ToSeconds());
-      TSRegistrationPB reg = desc->GetRegistration();
-      string host_port = GetHttpHostPortFromServerRegistration(reg.common());
+      auto reg = desc->GetRegistration();
+      string host_port = GetHttpHostPortFromServerRegistration(reg);
       *output << "  <tr>\n";
-      *output << "  <td>" << RegistrationToHtml(reg.common(), host_port) << "</br>";
+      *output << "  <td>" << RegistrationToHtml(reg, host_port) << "</br>";
       *output << "  " << desc->permanent_uuid();
 
       if (viewType == TServersViewType::kTServersDefaultView) {
-        auto ci = reg.common().cloud_info();
+        auto ci = reg.cloud_info();
         for (size_t i = 0; i < affinitized_zones.size(); i++) {
           if (affinitized_zones[i].find(ci) != affinitized_zones[i].end()) {
             *output << "</br>  Leader preference priority: " << i + 1;
@@ -531,11 +531,11 @@ void MasterPathHandlers::TServerDisplay(const std::string& current_uuid,
         *output << "    <td>" << desc->write_ops_per_sec() << "</td>";
       }
 
-      *output << "    <td>" << EscapeForHtmlToString(reg.common().cloud_info().placement_cloud())
+      *output << "    <td>" << EscapeForHtmlToString(reg.cloud_info().placement_cloud())
               << "</td>";
-      *output << "    <td>" << EscapeForHtmlToString(reg.common().cloud_info().placement_region())
+      *output << "    <td>" << EscapeForHtmlToString(reg.cloud_info().placement_region())
               << "</td>";
-      *output << "    <td>" << EscapeForHtmlToString(reg.common().cloud_info().placement_zone())
+      *output << "    <td>" << EscapeForHtmlToString(reg.cloud_info().placement_zone())
               << "</td>";
 
       if (viewType == TServersViewType::kTServersDefaultView) {
@@ -679,7 +679,7 @@ MasterPathHandlers::ZoneTabletCounts::CloudTree MasterPathHandlers::CalculateTab
   ZoneTabletCounts::CloudTree cloud_tree;
 
   for (const auto& descriptor : descriptors) {
-    CloudInfoPB cloud_info = descriptor->GetRegistration().common().cloud_info();
+    CloudInfoPB cloud_info = descriptor->GetRegistration().cloud_info();
     std::string cloud = cloud_info.placement_cloud();
     std::string region = cloud_info.placement_region();
     std::string zone = cloud_info.placement_zone();
@@ -845,8 +845,8 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
     jw.StartObject();
     for (auto desc : descs) {
       if (desc->placement_uuid() == cur_uuid) {
-        TSRegistrationPB reg = desc->GetRegistration();
-        string host_port = GetHttpHostPortFromServerRegistration(reg.common());
+        auto reg = desc->GetRegistration();
+        string host_port = GetHttpHostPortFromServerRegistration(reg);
         jw.String(host_port);
 
         jw.StartObject();
@@ -939,7 +939,7 @@ void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req
         jw.String("active_tablets");
         jw.Int(active_tablets);
 
-        CloudInfoPB cloud_info = reg.common().cloud_info();
+        const auto& cloud_info = reg.cloud_info();
 
         jw.String("cloud");
         jw.String(cloud_info.placement_cloud());
@@ -1882,9 +1882,9 @@ void JsonOutputSchemaTable(const Schema& schema, JsonWriter* jw) {
 
 string TSDescriptorToJson(const TSDescriptor& desc,
                           const std::string& tablet_id) {
-  TSRegistrationPB reg = desc.GetRegistration();
+  auto reg = desc.GetRegistration();
 
-  auto public_http_hp = GetPublicHttpHostPort(reg.common());
+  auto public_http_hp = GetPublicHttpHostPort(reg);
   if (public_http_hp) {
     return Format(
         "$0://$1/tablet?id=$2",
@@ -3213,13 +3213,13 @@ void MasterPathHandlers::HandlePrettyLB(
       *output << Format("<div class='panel $0' style='margin-bottom: 0px'>\n", panel_type);
 
       // Point to the tablet servers link.
-      TSRegistrationPB reg = desc->GetRegistration();
+      auto reg = desc->GetRegistration();
       *output << Format("<div class='panel-heading'>"
                             "<h6 class='panel-title'><a href='$0://$1'>TServer - $1    "
                             "<i class='fa $2'></i></a></h6></div>\n",
                             GetProtocol(),
                             EscapeForHtmlToString(
-                                GetHttpHostPortFromServerRegistration(reg.common())),
+                                GetHttpHostPortFromServerRegistration(reg)),
                             icon_type);
 
       *output << "<table class='table table-borderless table-hover'>\n";
@@ -3313,11 +3313,11 @@ void MasterPathHandlers::HandleStatefulServices(
       "stateful_services", {"Service Name", "Hosting server", "Table Id", "Tablet ID"});
 
   for (const auto& service : *stateful_service_result) {
-    const auto& reg = service.hosting_node->GetRegistration();
-    const auto& host_port = GetHttpHostPortFromServerRegistration(reg.common());
-    const auto& cloud_info = reg.common().cloud_info();
+    auto reg = service.hosting_node->GetRegistration();
+    const auto& host_port = GetHttpHostPortFromServerRegistration(reg);
+    const auto& cloud_info = reg.cloud_info();
     const auto& host_server = Format(
-        "$0<br/>$1<br/>$2", RegistrationToHtml(reg.common(), host_port),
+        "$0<br/>$1<br/>$2", RegistrationToHtml(reg, host_port),
         service.hosting_node->permanent_uuid(),
         EscapeForHtmlToString(Format(
             "$0.$1.$2", cloud_info.placement_cloud(), cloud_info.placement_region(),
@@ -3514,9 +3514,9 @@ string MasterPathHandlers::RaftConfigToHtml(const std::vector<TabletReplica>& lo
 
 string MasterPathHandlers::TSDescriptorToHtml(const TSDescriptor& desc,
                                               const std::string& tablet_id) const {
-  TSRegistrationPB reg = desc.GetRegistration();
+  auto reg = desc.GetRegistration();
 
-  auto public_http_hp = GetPublicHttpHostPort(reg.common());
+  auto public_http_hp = GetPublicHttpHostPort(reg);
   if (public_http_hp) {
     return Format(
         "<a href=\"$0://$1/tablet?id=$2\">$3</a>",
@@ -3644,10 +3644,10 @@ void MasterPathHandlers::RenderLoadBalancerViewPanel(
   *output << "<tr><th rowspan='2'>Keyspace</th><th rowspan='2'>Table Name</th><th "
              "rowspan='2'>Tablet Count</th>";
   for (const auto& desc : descs) {
-    const auto& reg = desc->GetRegistration();
+    auto reg = desc->GetRegistration();
     *output << Format(
         "<th>$0<br>$1</th>",
-        RegistrationToHtml(reg.common(), GetHttpHostPortFromServerRegistration(reg.common())),
+        RegistrationToHtml(reg, GetHttpHostPortFromServerRegistration(reg)),
         desc->permanent_uuid());
   }
   *output << "</tr>";

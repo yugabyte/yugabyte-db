@@ -80,7 +80,9 @@ To create a Kubernetes provider:
 
     ![Auto-fill Kubernetes provider](/images/yb-platform/kubernetes-config-autofill.png)
 
-1. Click **Create Provider Configuration** when you are done and wait for the configuration to complete.
+1. Click **Validate and Save Configuration** when you are done and wait for the configuration to validate and complete.
+
+    If you want to save your progress, you can skip validation by choosing the **Ignore and save provider configuration anyway** option, which saves the provider configuration without validating. Note that you may not be able to create universes using an incomplete or unvalidated provider.
 
 ## Provider settings
 

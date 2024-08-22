@@ -123,16 +123,16 @@ type UnsupportedFeature struct {
 type TableIndexStats struct {
     SchemaName      string  `json:"SchemaName"`
     ObjectName      string  `json:"ObjectName"`
-    RowCount        *int64  `json:"RowCount"` // Pointer to allows null values
-    ColumnCount     *int64  `json:"ColumnCount"`
-    Reads           *int64  `json:"Reads"`
-    Writes          *int64  `json:"Writes"`
-    ReadsPerSecond  *int64  `json:"ReadsPerSecond"`
-    WritesPerSecond *int64  `json:"WritesPerSecond"`
+    RowCount        int64  `json:"RowCount"` // Pointer to allows null values
+    ColumnCount     int64  `json:"ColumnCount"`
+    Reads           int64  `json:"Reads"`
+    Writes          int64  `json:"Writes"`
+    ReadsPerSecond  int64  `json:"ReadsPerSecond"`
+    WritesPerSecond int64  `json:"WritesPerSecond"`
     IsIndex         bool    `json:"IsIndex"`
     ObjectType      string  `json:"ObjectType"`
-    ParentTableName *string `json:"ParentTableName"`
-    SizeInBytes     *int64  `json:"SizeInBytes"`
+    ParentTableName string `json:"ParentTableName"`
+    SizeInBytes     int64  `json:"SizeInBytes"`
 }
 
 type Issue struct {

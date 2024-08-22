@@ -42,7 +42,7 @@ type KuberenetesMetadata struct {
 	Name string `yaml:"name"`
 }
 
-// KuberenetesPullSecretYAML to extract image pull secret name
+// KubernetesPullSecretYAML to extract image pull secret name
 type KubernetesPullSecretYAML struct {
 	Metadata *KuberenetesMetadata `yaml:"metadata"`
 }

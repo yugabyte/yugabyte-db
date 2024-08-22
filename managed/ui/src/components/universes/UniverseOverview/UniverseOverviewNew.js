@@ -46,6 +46,7 @@ import {
   getUniverseStatus,
   UniverseState
 } from '../helpers/universeHelpers';
+import { DBLbState } from '../../../redesign/features/universe/universe-overview/DBLbState';
 
 class DatabasePanel extends PureComponent {
   static propTypes = {
@@ -841,7 +842,8 @@ export default class UniverseOverviewNew extends Component {
       updateAvailable,
       tasks,
       currentCustomer,
-      runtimeConfigs
+      runtimeConfigs,
+      universeLbState
     } = this.props;
     const universeInfo = currentUniverse.data;
     const nodePrefixes = [universeInfo.universeDetails.nodePrefix];
@@ -894,6 +896,11 @@ export default class UniverseOverviewNew extends Component {
                 failedTaskDetails={failedTask}
                 isReleasesEnabled={this.props.isReleasesEnabled}
               />
+            )}
+          </Col>
+          <Col lg={4} md={6} sm={8} xs={12}>
+            {getPromiseState(universeLbState).isSuccess() && (
+              <DBLbState universeLbState={universeLbState?.data} />
             )}
           </Col>
         </Row>

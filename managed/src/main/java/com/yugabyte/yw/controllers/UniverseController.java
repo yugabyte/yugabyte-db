@@ -4,6 +4,7 @@ package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.operator.annotations.BlockOperatorResource;
 import com.yugabyte.yw.common.operator.annotations.OperatorResourceTypes;
@@ -44,6 +45,7 @@ public class UniverseController extends AuthenticatedController {
   private static final Logger LOG = LoggerFactory.getLogger(UniverseController.class);
 
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
+  @Inject private RuntimeConfGetter configGetter;
   @Inject private UniverseCRUDHandler universeCRUDHandler;
   @Inject private RoleBindingUtil roleBindingUtil;
 
@@ -98,8 +100,7 @@ public class UniverseController extends AuthenticatedController {
   public Result index(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
-    return PlatformResults.withData(
-        UniverseResp.create(universe, null, runtimeConfigFactory.globalRuntimeConf()));
+    return PlatformResults.withData(UniverseResp.create(universe, null, configGetter));
   }
 
   @ApiOperation(

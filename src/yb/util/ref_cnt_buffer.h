@@ -215,6 +215,10 @@ struct RefCntPrefixHash {
   }
 };
 
+inline size_t hash_value(const RefCntPrefix& ref_cnt_prefix) noexcept {
+  return ref_cnt_prefix.as_slice().hash();
+}
+
 class RefCntSlice {
  public:
   RefCntSlice() = default;
