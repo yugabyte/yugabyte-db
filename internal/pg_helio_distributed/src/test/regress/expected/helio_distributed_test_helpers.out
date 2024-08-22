@@ -130,6 +130,19 @@ BEGIN
   END LOOP;
   RETURN;
 END; $$ language plpgsql;
+CREATE OR REPLACE FUNCTION helio_distributed_test_helpers.drop_primary_key(p_database_name text, p_collection_name text)
+RETURNS void
+AS $$
+DECLARE
+    v_collection_id bigint;
+BEGIN
+    SELECT collection_id INTO v_collection_id FROM helio_api_catalog.collections WHERE database_name = p_database_name AND collection_name = p_collection_name;
+    DELETE FROM helio_api_catalog.collection_indexes
+    WHERE (index_spec).index_key operator(helio_core.=) '{"_id": 1}' AND
+          collection_id = v_collection_id;
+	EXECUTE format('ALTER TABLE helio_data.documents_%s DROP CONSTRAINT collection_pk_%s', v_collection_id, v_collection_id);
+END;
+$$ LANGUAGE plpgsql;
 -- Function to avoid flakiness of a SQL query typically on a sharded multi-node collection. 
 -- One way to fix such falkiness is to add an order by clause to inject determinism, but 
 -- many queryies like cursors don't support order by. This test function bridges that gap 

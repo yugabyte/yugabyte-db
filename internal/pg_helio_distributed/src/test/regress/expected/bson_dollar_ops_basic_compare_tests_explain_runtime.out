@@ -1,0 +1,517 @@
+set search_path to helio_core,helio_api,helio_api_catalog,pg_catalog;
+SET citus.next_shard_id TO 52000;
+SET helio_api.next_collection_id TO 5200;
+SET helio_api.next_collection_index_id TO 5200;
+SELECT helio_api.drop_collection('db', 'querydollartest');
+ drop_collection 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT helio_api.create_collection('db', 'querydollartest');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SET client_min_messages=WARNING;
+-- avoid plans that use primary key index
+\i sql/bson_dollar_ops_basic_compare_tests_explain_core.sql
+/* validate explain */
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @= '{ "a.b": 1 }';
+                                                      QUERY PLAN                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5200_52002 collection
+               Recheck Cond: (shard_key_value = '5200'::bigint)
+               Filter: (document OPERATOR(helio_api_catalog.@=) '{ "a.b" : { "$numberInt" : "1" } }'::helio_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5200'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @!= '{ "a.b": 1 }';
+                                                       QUERY PLAN                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5200_52002 collection
+               Recheck Cond: (shard_key_value = '5200'::bigint)
+               Filter: (document OPERATOR(helio_api_catalog.@!=) '{ "a.b" : { "$numberInt" : "1" } }'::helio_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5200'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @> '{ "a.b": 1 }';
+                                                      QUERY PLAN                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5200_52002 collection
+               Recheck Cond: (shard_key_value = '5200'::bigint)
+               Filter: (document OPERATOR(helio_api_catalog.@>) '{ "a.b" : { "$numberInt" : "1" } }'::helio_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5200'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @>= '{ "a.b": 1 }';
+                                                       QUERY PLAN                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5200_52002 collection
+               Recheck Cond: (shard_key_value = '5200'::bigint)
+               Filter: (document OPERATOR(helio_api_catalog.@>=) '{ "a.b" : { "$numberInt" : "1" } }'::helio_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5200'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @< '{ "a.b": 1 }';
+                                                      QUERY PLAN                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5200_52002 collection
+               Recheck Cond: (shard_key_value = '5200'::bigint)
+               Filter: (document OPERATOR(helio_api_catalog.@<) '{ "a.b" : { "$numberInt" : "1" } }'::helio_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5200'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @<= '{ "a.b": 1 }';
+                                                       QUERY PLAN                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5200_52002 collection
+               Recheck Cond: (shard_key_value = '5200'::bigint)
+               Filter: (document OPERATOR(helio_api_catalog.@<=) '{ "a.b" : { "$numberInt" : "1" } }'::helio_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5200'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @*= '{ "a.b": [ 1, 2, true ]}'::bson;
+                                                                        QUERY PLAN                                                                        
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5200_52002 collection
+               Recheck Cond: (shard_key_value = '5200'::bigint)
+               Filter: (document OPERATOR(helio_api_catalog.@*=) '{ "a.b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, true ] }'::helio_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5200'::bigint)
+(10 rows)
+
+/* validate explain for the individual items as well */
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @> '{ "a": { "b": 1 } }';
+                                                          QUERY PLAN                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5200_52002 collection
+               Recheck Cond: (shard_key_value = '5200'::bigint)
+               Filter: (document OPERATOR(helio_api_catalog.@>) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::helio_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5200'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @> '{ "a": { "b": [ true, false ] } }';
+                                                       QUERY PLAN                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5200_52002 collection
+               Recheck Cond: (shard_key_value = '5200'::bigint)
+               Filter: (document OPERATOR(helio_api_catalog.@>) '{ "a" : { "b" : [ true, false ] } }'::helio_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5200'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @> '{ "a": [ { "b": [ 2, 3, 4 ] } ] }';
+                                                                                      QUERY PLAN                                                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5200_52002 collection
+               Recheck Cond: (shard_key_value = '5200'::bigint)
+               Filter: (document OPERATOR(helio_api_catalog.@>) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::helio_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5200'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @>= '{ "a": { "b": 1 } }';
+                                                           QUERY PLAN                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5200_52002 collection
+               Recheck Cond: (shard_key_value = '5200'::bigint)
+               Filter: (document OPERATOR(helio_api_catalog.@>=) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::helio_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5200'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @>= '{ "a": { "b": [ true, false ] } }';
+                                                       QUERY PLAN                                                        
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5200_52002 collection
+               Recheck Cond: (shard_key_value = '5200'::bigint)
+               Filter: (document OPERATOR(helio_api_catalog.@>=) '{ "a" : { "b" : [ true, false ] } }'::helio_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5200'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @>= '{ "a": [ { "b": [ 2, 3, 4 ] } ] }';
+                                                                                       QUERY PLAN                                                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5200_52002 collection
+               Recheck Cond: (shard_key_value = '5200'::bigint)
+               Filter: (document OPERATOR(helio_api_catalog.@>=) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::helio_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5200'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @< '{ "a": { "b": 1 } }';
+                                                          QUERY PLAN                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5200_52002 collection
+               Recheck Cond: (shard_key_value = '5200'::bigint)
+               Filter: (document OPERATOR(helio_api_catalog.@<) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::helio_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5200'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @< '{ "a": { "b": [ true, false ] } }';
+                                                       QUERY PLAN                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5200_52002 collection
+               Recheck Cond: (shard_key_value = '5200'::bigint)
+               Filter: (document OPERATOR(helio_api_catalog.@<) '{ "a" : { "b" : [ true, false ] } }'::helio_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5200'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @< '{ "a": [ { "b": [ 2, 3, 4 ] } ] }';
+                                                                                      QUERY PLAN                                                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5200_52002 collection
+               Recheck Cond: (shard_key_value = '5200'::bigint)
+               Filter: (document OPERATOR(helio_api_catalog.@<) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::helio_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5200'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @<= '{ "a": { "b": 1 } }';
+                                                           QUERY PLAN                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5200_52002 collection
+               Recheck Cond: (shard_key_value = '5200'::bigint)
+               Filter: (document OPERATOR(helio_api_catalog.@<=) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::helio_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5200'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @<= '{ "a": { "b": [ true, false ] } }';
+                                                       QUERY PLAN                                                        
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5200_52002 collection
+               Recheck Cond: (shard_key_value = '5200'::bigint)
+               Filter: (document OPERATOR(helio_api_catalog.@<=) '{ "a" : { "b" : [ true, false ] } }'::helio_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5200'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @<= '{ "a": [ { "b": [ 2, 3, 4 ] } ] }';
+                                                                                       QUERY PLAN                                                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5200_52002 collection
+               Recheck Cond: (shard_key_value = '5200'::bigint)
+               Filter: (document OPERATOR(helio_api_catalog.@<=) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::helio_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5200'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @= '{ "a": { "b": 1 } }';
+                                                          QUERY PLAN                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5200_52002 collection
+               Recheck Cond: (shard_key_value = '5200'::bigint)
+               Filter: (document OPERATOR(helio_api_catalog.@=) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::helio_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5200'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @= '{ "a": { "b": [ true, false ] } }';
+                                                       QUERY PLAN                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5200_52002 collection
+               Recheck Cond: (shard_key_value = '5200'::bigint)
+               Filter: (document OPERATOR(helio_api_catalog.@=) '{ "a" : { "b" : [ true, false ] } }'::helio_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5200'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @= '{ "a": [ { "b": [ 2, 3, 4 ] } ] }';
+                                                                                      QUERY PLAN                                                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5200_52002 collection
+               Recheck Cond: (shard_key_value = '5200'::bigint)
+               Filter: (document OPERATOR(helio_api_catalog.@=) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::helio_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5200'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @!= '{ "a": { "b": 1 } }';
+                                                           QUERY PLAN                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5200_52002 collection
+               Recheck Cond: (shard_key_value = '5200'::bigint)
+               Filter: (document OPERATOR(helio_api_catalog.@!=) '{ "a" : { "b" : { "$numberInt" : "1" } } }'::helio_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5200'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @!= '{ "a": { "b": [ true, false ] } }';
+                                                       QUERY PLAN                                                        
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5200_52002 collection
+               Recheck Cond: (shard_key_value = '5200'::bigint)
+               Filter: (document OPERATOR(helio_api_catalog.@!=) '{ "a" : { "b" : [ true, false ] } }'::helio_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5200'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @!= '{ "a": [ { "b": [ 2, 3, 4 ] } ] }';
+                                                                                       QUERY PLAN                                                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5200_52002 collection
+               Recheck Cond: (shard_key_value = '5200'::bigint)
+               Filter: (document OPERATOR(helio_api_catalog.@!=) '{ "a" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] } ] }'::helio_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5200'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @*= '{ "a.b": [ { "b": [ 2, 3, 4 ] }, 2, true ]}';
+                                                                                                       QUERY PLAN                                                                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5200_52002 collection
+               Recheck Cond: (shard_key_value = '5200'::bigint)
+               Filter: (document OPERATOR(helio_api_catalog.@*=) '{ "a.b" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }, { "$numberInt" : "2" }, true ] }'::helio_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5200'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @!*= '{ "a.b": [ { "b": [ 2, 3, 4 ] }, 2, true ]}';
+                                                                                                       QUERY PLAN                                                                                                        
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5200_52002 collection
+               Recheck Cond: (shard_key_value = '5200'::bigint)
+               Filter: (document OPERATOR(helio_api_catalog.@!*=) '{ "a.b" : [ { "b" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }, { "$numberInt" : "2" }, true ] }'::helio_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5200'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @? '{ "a.b": 1 }';
+                                                      QUERY PLAN                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5200_52002 collection
+               Recheck Cond: (shard_key_value = '5200'::bigint)
+               Filter: (document OPERATOR(helio_api_catalog.@?) '{ "a.b" : { "$numberInt" : "1" } }'::helio_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5200'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @? '{ "a.b": 0 }';
+                                                      QUERY PLAN                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5200_52002 collection
+               Recheck Cond: (shard_key_value = '5200'::bigint)
+               Filter: (document OPERATOR(helio_api_catalog.@?) '{ "a.b" : { "$numberInt" : "0" } }'::helio_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5200'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @&= '{ "a.b": [1] }';
+                                                         QUERY PLAN                                                         
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5200_52002 collection
+               Recheck Cond: (shard_key_value = '5200'::bigint)
+               Filter: (document OPERATOR(helio_api_catalog.@&=) '{ "a.b" : [ { "$numberInt" : "1" } ] }'::helio_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5200'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @&= '{ "a.b": [0, 1] }';
+                                                                     QUERY PLAN                                                                     
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5200_52002 collection
+               Recheck Cond: (shard_key_value = '5200'::bigint)
+               Filter: (document OPERATOR(helio_api_catalog.@&=) '{ "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" } ] }'::helio_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5200'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @&= '{ "a.b": [[0]] }';
+                                                           QUERY PLAN                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5200_52002 collection
+               Recheck Cond: (shard_key_value = '5200'::bigint)
+               Filter: (document OPERATOR(helio_api_catalog.@&=) '{ "a.b" : [ [ { "$numberInt" : "0" } ] ] }'::helio_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5200'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT object_id, document FROM helio_api.collection('db', 'querydollartest') WHERE document @&= '{ "a.b": [] }';
+                                              QUERY PLAN                                              
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on documents_5200_52002 collection
+               Recheck Cond: (shard_key_value = '5200'::bigint)
+               Filter: (document OPERATOR(helio_api_catalog.@&=) '{ "a.b" : [  ] }'::helio_core.bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (shard_key_value = '5200'::bigint)
+(10 rows)
+

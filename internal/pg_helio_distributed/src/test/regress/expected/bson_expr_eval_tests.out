@@ -1,4 +1,4 @@
-SET search_path TO mongo_catalog;
+set search_path to helio_core,helio_api,helio_api_catalog,pg_catalog;
 SET citus.next_shard_id TO 400000;
 SET helio_api.next_collection_id TO 4000;
 SET helio_api.next_collection_index_id TO 4000;

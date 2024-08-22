@@ -17,30 +17,30 @@ done
 
 scriptDir="$( cd -P "$( dirname "$source" )" && pwd )"
 
-# # Validate index/runtime equivalence.
-# for validationFileName in $(ls ./expected/*_tests_index.out); do
-#     runtimeFileName=${validationFileName/_tests_index.out/_tests_runtime.out};
+# Validate index/runtime equivalence.
+for validationFileName in $(ls ./expected/*_tests_index.out); do
+    runtimeFileName=${validationFileName/_tests_index.out/_tests_runtime.out};
 
-#     $diff -s -I 'CALL helio_api.create_indexes' -I 'set local enable_seqscan' -I 'helio_api.next_collection_id' -I 'set local enable_bitmapscan' -I 'set local helio_api.forceUseIndexIfAvailable' -I 'set local citus.enable_local_execution' -I '\\set' -I 'set enable_seqscan'  -I 'set helio_api.forceUseIndexIfAvailable' -I 'helio_api.enableGeospatial' \
-#         $validationFileName $runtimeFileName;
-#     if [ $? -ne 0 ]; then echo "Validation failed on '${validationFileName}' against '${runtimeFileName}' error code $?"; exit 1; fi;
-# done
+    $diff -s -I 'SELECT helio_api_internal.create_indexes' -I 'set local enable_seqscan' -I 'helio_api.next_collection_id' -I 'set local enable_bitmapscan' -I 'set local helio_api.forceUseIndexIfAvailable' -I 'set local citus.enable_local_execution' -I '\\set' -I 'set enable_seqscan'  -I 'set helio_api.forceUseIndexIfAvailable' -I 'helio_api.enableGeospatial' \
+        $validationFileName $runtimeFileName;
+    if [ $? -ne 0 ]; then echo "Validation failed on '${validationFileName}' against '${runtimeFileName}' error code $?"; exit 1; fi;
+done
 
-# # Validate index_backcompat/index equivalence.
-# for validationFileName in $(ls ./expected/*_tests_index_backcompat.out); do
-#     indexFileName=${validationFileName/_tests_index_backcompat.out$/_tests_index.out};
-#     $diff -s -I 'set local enable_seqscan' -I 'helio_api.next_collection_id' -I 'citus.next_shard_id' -I 'SET helio_api.next_collection_index_id' -I 'set local helio_api.enableGenerateNonExistsTerm' -I 'set local enable_bitmapscan' -I 'set local helio_api.forceUseIndexIfAvailable' -I 'set local citus.enable_local_execution' -I '\\set' -I 'set enable_seqscan'  -I 'set helio_api.forceUseIndexIfAvailable' \
-#         $validationFileName $indexFileName;
-#     if [ $? -ne 0 ]; then echo "Validation failed on '${validationFileName}' against '${runtimeFileName}' error code $?"; exit 1; fi;
-# done
+# Validate index_backcompat/index equivalence.
+for validationFileName in $(ls ./expected/*_tests_index_backcompat.out); do
+    indexFileName=${validationFileName/_tests_index_backcompat.out$/_tests_index.out};
+    $diff -s -I 'set local enable_seqscan' -I 'helio_api.next_collection_id' -I 'citus.next_shard_id' -I 'SET helio_api.next_collection_index_id' -I 'set local helio_api.enableGenerateNonExistsTerm' -I 'set local enable_bitmapscan' -I 'set local helio_api.forceUseIndexIfAvailable' -I 'set local citus.enable_local_execution' -I '\\set' -I 'set enable_seqscan'  -I 'set helio_api.forceUseIndexIfAvailable' \
+        $validationFileName $indexFileName;
+    if [ $? -ne 0 ]; then echo "Validation failed on '${validationFileName}' against '${runtimeFileName}' error code $?"; exit 1; fi;
+done
 
-# # Validate index (NoBitMap)/runtime equivalence.
-# for validationFileName in $(ls ./expected/*_tests_index_no_bitmap.out); do
-#     regularIndexFileName=${validationFileName/_tests_index_no_bitmap.out$/_tests_index.out};
-#     $diff -s -I 'set local enable_seqscan' -I 'set local enable_bitmapscan' -I 'set local helio_api.forceUseIndexIfAvailable' -I 'set local citus.enable_local_execution' -I '\\set' -I 'set enable_seqscan'  -I 'set helio_api.forceUseIndexIfAvailable' \
-#         $validationFileName $regularIndexFileName;
-#     if [ $? -ne 0 ]; then echo "Validation failed on '${validationFileName}' against '${runtimeFileName}' error code $?"; exit 1; fi;
-# done
+# Validate index (NoBitMap)/runtime equivalence.
+for validationFileName in $(ls ./expected/*_tests_index_no_bitmap.out); do
+    regularIndexFileName=${validationFileName/_tests_index_no_bitmap.out$/_tests_index.out};
+    $diff -s -I 'set local enable_seqscan' -I 'set local enable_bitmapscan' -I 'set local helio_api.forceUseIndexIfAvailable' -I 'set local citus.enable_local_execution' -I '\\set' -I 'set enable_seqscan'  -I 'set helio_api.forceUseIndexIfAvailable' \
+        $validationFileName $regularIndexFileName;
+    if [ $? -ne 0 ]; then echo "Validation failed on '${validationFileName}' against '${runtimeFileName}' error code $?"; exit 1; fi;
+done
 
 # Validate entry has helio_api's set next collection id.
 # These are baselined - will be cleaned up in a subsequent change.
