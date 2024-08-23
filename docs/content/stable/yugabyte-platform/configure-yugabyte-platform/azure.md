@@ -63,7 +63,7 @@ For more information on setting up an Azure account and resource groups, refer t
 
 ## Configure Azure
 
-Navigate to **Configs > Infrastructure > Microsoft Azure** to see a list of all currently configured Azure providers.
+Navigate to **Integrations > Infrastructure > Microsoft Azure** to see a list of all currently configured Azure providers.
 
 ### Create a provider
 

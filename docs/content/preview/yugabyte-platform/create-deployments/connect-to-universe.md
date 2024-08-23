@@ -23,7 +23,7 @@ You can connect to the database on a universe in the following ways:
 
 If the universe uses Client-to-Node encryption in transit, to connect you need to first download the universe TLS certificate. Do the following:
 
-1. Navigate to **Configs > Security > Encryption in Transit**.
+1. Navigate to **Integrations > Security > Encryption in Transit**.
 
 1. Find your universe in the list.
 

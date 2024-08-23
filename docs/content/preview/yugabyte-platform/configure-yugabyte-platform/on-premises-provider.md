@@ -16,7 +16,7 @@ Before you can deploy universes to private clouds using YugabyteDB Anywhere (YBA
 
 With on-premises providers, VMs are _not_ auto-created by YBA; you must create a provider, manually create your VMs, and then add them to the provider's free pool of nodes.
 
-Navigate to **Configs > Infrastructure > On-Premises Datacenters** to see a list of all currently configured on-premises providers.
+Navigate to **Integrations > Infrastructure > On-Premises Datacenters** to see a list of all currently configured on-premises providers.
 
 ## Create a provider
 

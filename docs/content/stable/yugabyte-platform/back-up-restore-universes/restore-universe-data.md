@@ -50,8 +50,6 @@ You can restore YugabyteDB universe data from a backup as follows:
 
     If you are restoring a backup to a universe with an existing databases of the same name, you must rename the database.
 
-1. Optionally, specify the number of parallel threads that are allowed to run. This can be any number between `1` and `100`.
-
 1. If you are restoring data from a universe that has tablespaces, select the **Restore tablespaces and data to their respective regions** option.
 
     To restore tablespaces, the target universe must have a topology that matches the source.
@@ -145,7 +143,7 @@ To perform an advanced restore, on the YugabyteDB Anywhere installation where yo
 
 1. On the **Backups** tab of the universe to which you want to restore, click **Advanced** and choose **Advanced Restore** to display the **Advanced Restore** dialog.
 
-    ![Restore advanced](/images/yp/restore-advanced-ycql.png)
+    ![Restore advanced](/images/yp/restore-advanced-ycql-2.20.png)
 
 1. Choose the type of API.
 
@@ -178,8 +176,6 @@ To perform an advanced restore, on the YugabyteDB Anywhere installation where yo
 1. To rename databases (YSQL) or keyspaces (YCQL) in the backup before restoring, select the rename option.
 
 1. If the backup involved universes that had [encryption at rest enabled](../../security/enable-encryption-at-rest), then select the KMS configuration to use.
-
-1. If you are using YBA version prior to 2.16 to manage universes with YugabyteDB version prior to 2.16, you can optionally specify the number of parallel threads that are allowed to run. This can be any number between 1 and 100.
 
 1. If you chose to rename databases/keyspaces, click **Next**, then enter new names for the databases/keyspaces that you want to rename.
 
