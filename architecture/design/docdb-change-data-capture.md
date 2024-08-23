@@ -203,7 +203,7 @@ WAIT: This option causes the command to wait if the slot is active until it beco
 
 - Removes a Replication Slot. A publication can only be dropped by its superuser or a user with replication privileges.
 - The WAIT option is treated differently In YugabyteDB. An “active” replication slot means a slot which has been consumed for a certain timeframe.
-- We will define this timeframe via a GFlag ysql_cdc_active_replication_slot_window_ms with a default of 5 minutes.
+- We will define this timeframe via a GFlag `ysql_cdc_active_replication_slot_window_ms` with a default of 5 minutes.
 
 #### Examples
 Drop an inactive replication slot:
