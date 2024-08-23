@@ -125,6 +125,7 @@ typedef struct DollarExistsQueryData
 } DollarExistsQueryData;
 
 extern bool EnableGenerateNonExistsTerm;
+extern bool EnableCollation;
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
@@ -967,7 +968,14 @@ GinBsonExtractQueryOrderBy(PG_FUNCTION_ARGS)
 
 	Datum *entries;
 	pgbsonelement filterElement;
-	PgbsonToSinglePgbsonElement(query, &filterElement);
+	if (EnableCollation)
+	{
+		PgbsonToSinglePgbsonElementWithCollation(query, &filterElement);
+	}
+	else
+	{
+		PgbsonToSinglePgbsonElement(query, &filterElement); /* TODO: collation index support */
+	}
 
 	filterElement.bsonValue.value_type = BSON_TYPE_MINKEY;
 
@@ -1544,9 +1552,16 @@ GinBsonExtractQueryEqual(BsonExtractQueryArgs *args)
 	int32 *nentries = args->nentries;
 	bool **partialmatch = args->partialmatch;
 	Datum *entries;
-
 	pgbsonelement filterElement;
-	PgbsonToSinglePgbsonElement(query, &filterElement);
+
+	if (EnableCollation)
+	{
+		PgbsonToSinglePgbsonElementWithCollation(query, &filterElement);
+	}
+	else
+	{
+		PgbsonToSinglePgbsonElement(query, &filterElement); /* TODO: collation index support */
+	}
 
 	if (filterElement.bsonValue.value_type == BSON_TYPE_NULL)
 	{
@@ -1596,7 +1611,14 @@ GinBsonExtractQueryDollarBitWiseOperators(BsonExtractQueryArgs *args)
 	(*partialmatch)[2] = false;
 
 
-	PgbsonToSinglePgbsonElement(query, &filterElement);
+	if (EnableCollation)
+	{
+		PgbsonToSinglePgbsonElementWithCollation(query, &filterElement);
+	}
+	else
+	{
+		PgbsonToSinglePgbsonElement(query, &filterElement); /* TODO: collation index support */
+	}
 
 	/* lowest possible values can be lowest of type double or binary */
 	/* we are assuming (decimal128(nan) == double(nan)) < all possible numbers */
@@ -1635,7 +1657,14 @@ GinBsonExtractQueryDollarRange(BsonExtractQueryArgs *args)
 	Pointer **extra_data = args->extra_data;
 
 	pgbsonelement filterElement;
-	PgbsonToSinglePgbsonElement(filter, &filterElement);
+	if (EnableCollation)
+	{
+		PgbsonToSinglePgbsonElementWithCollation(filter, &filterElement);
+	}
+	else
+	{
+		PgbsonToSinglePgbsonElement(filter, &filterElement); /* TODO: collation index support */
+	}
 	DollarRangeValues *rangeValues = palloc0(sizeof(DollarRangeValues));
 
 	DollarRangeParams *params = ParseQueryDollarRange(filter);
@@ -1690,7 +1719,15 @@ GinBsonExtractQueryDollarRange(BsonExtractQueryArgs *args)
 
 	pgbson *emptyArrayBson = PgbsonWriterGetPgbson(&writer);
 
-	PgbsonToSinglePgbsonElement(emptyArrayBson, &minElement);
+	if (EnableCollation)
+	{
+		PgbsonToSinglePgbsonElementWithCollation(emptyArrayBson, &minElement);
+	}
+	else
+	{
+		PgbsonToSinglePgbsonElement(emptyArrayBson, &minElement); /* TODO: collation index support */
+	}
+
 	entries[1] = PointerGetDatum(SerializeBsonIndexTerm(&minElement,
 														&args->termMetadata).indexTermVal);
 	(*partialmatch)[1] = true;
@@ -1731,7 +1768,14 @@ GinBsonExtractQueryNotEqual(BsonExtractQueryArgs *args)
 	Datum *entries = (Datum *) palloc(sizeof(Datum) * 6);
 
 	pgbsonelement element;
-	PgbsonToSinglePgbsonElement(query, &element);
+	if (EnableCollation)
+	{
+		PgbsonToSinglePgbsonElementWithCollation(query, &element);
+	}
+	else
+	{
+		PgbsonToSinglePgbsonElement(query, &element); /* TODO: collation index support */
+	}
 
 	if (element.bsonValue.value_type == BSON_TYPE_NULL)
 	{
@@ -1793,7 +1837,14 @@ GinBsonExtractQueryGreaterEqual(BsonExtractQueryArgs *args, bool isNegation)
 	Datum *entries;
 
 	pgbsonelement element;
-	PgbsonToSinglePgbsonElement(query, &element);
+	if (EnableCollation)
+	{
+		PgbsonToSinglePgbsonElementWithCollation(query, &element);
+	}
+	else
+	{
+		PgbsonToSinglePgbsonElement(query, &element); /* TODO: collation index support */
+	}
 	if (element.bsonValue.value_type == BSON_TYPE_NULL)
 	{
 		/* special case for $gte: null */
@@ -1853,7 +1904,15 @@ GinBsonExtractQueryGreater(BsonExtractQueryArgs *args, bool isNegation)
 	Datum *entries;
 
 	pgbsonelement element;
-	PgbsonToSinglePgbsonElement(query, &element);
+
+	if (EnableCollation)
+	{
+		PgbsonToSinglePgbsonElementWithCollation(query, &element);
+	}
+	else
+	{
+		PgbsonToSinglePgbsonElement(query, &element); /* TODO: collation index support */
+	}
 
 	int numTerms = isNegation ? 5 : 2;
 	entries = (Datum *) palloc(sizeof(Datum) * numTerms);
@@ -1893,7 +1952,14 @@ GinBsonExtractQueryLessEqual(BsonExtractQueryArgs *args, bool isNegation)
 	Pointer **extra_data = args->extra_data;
 	Datum *entries;
 	pgbsonelement documentElement;
-	PgbsonToSinglePgbsonElement(query, &documentElement);
+	if (EnableCollation)
+	{
+		PgbsonToSinglePgbsonElementWithCollation(query, &documentElement);
+	}
+	else
+	{
+		PgbsonToSinglePgbsonElement(query, &documentElement); /* TODO: collation index support */
+	}
 
 	/* Clone it for now */
 	pgbsonelement queryElement = documentElement;
@@ -1967,7 +2033,15 @@ GinBsonExtractQueryLess(BsonExtractQueryArgs *args, bool isNegation)
 	Pointer **extra_data = args->extra_data;
 	Datum *entries;
 	pgbsonelement documentElement;
-	PgbsonToSinglePgbsonElement(query, &documentElement);
+
+	if (EnableCollation)
+	{
+		PgbsonToSinglePgbsonElementWithCollation(query, &documentElement);
+	}
+	else
+	{
+		PgbsonToSinglePgbsonElement(query, &documentElement); /* TODO: collation index support */
+	}
 
 	/* Clone it for now */
 	pgbsonelement queryElement = documentElement;
@@ -2073,9 +2147,17 @@ GinBsonExtractQueryIn(BsonExtractQueryArgs *args)
 	Pointer **extra_data = args->extra_data;
 	int32_t inArraySize = 0, index = 0;
 	Datum *entries;
-
 	pgbsonelement queryElement;
-	PgbsonToSinglePgbsonElement(inArray, &queryElement);
+
+	if (EnableCollation)
+	{
+		PgbsonToSinglePgbsonElementWithCollation(inArray, &queryElement);
+	}
+	else
+	{
+		PgbsonToSinglePgbsonElement(inArray, &queryElement); /* TODO: collation index support */
+	}
+
 	if (queryElement.bsonValue.value_type != BSON_TYPE_ARRAY)
 	{
 		ereport(ERROR, (errcode(MongoBadValue), errmsg(
@@ -2202,9 +2284,17 @@ GinBsonExtractQueryNotIn(BsonExtractQueryArgs *args)
 	Pointer **extra_data = args->extra_data;
 	int32_t termCount, index;
 	Datum *entries;
-
 	pgbsonelement queryElement;
-	PgbsonToSinglePgbsonElement(inArray, &queryElement);
+
+	if (EnableCollation)
+	{
+		PgbsonToSinglePgbsonElementWithCollation(inArray, &queryElement);
+	}
+	else
+	{
+		PgbsonToSinglePgbsonElement(inArray, &queryElement); /* TODO: collation index support */
+	}
+
 	if (queryElement.bsonValue.value_type != BSON_TYPE_ARRAY)
 	{
 		ereport(ERROR, (errcode(MongoBadValue), errmsg(
@@ -2346,7 +2436,14 @@ GinBsonExtractQueryRegex(BsonExtractQueryArgs *args)
 	Pointer **extra_data = args->extra_data;
 	pgbsonelement queryElement;
 
-	PgbsonToSinglePgbsonElement(query, &queryElement);
+	if (EnableCollation)
+	{
+		PgbsonToSinglePgbsonElementWithCollation(query, &queryElement);
+	}
+	else
+	{
+		PgbsonToSinglePgbsonElement(query, &queryElement); /* TODO: collation index support */
+	}
 
 	if ((queryElement.bsonValue.value_type != BSON_TYPE_UTF8) &&
 		(queryElement.bsonValue.value_type != BSON_TYPE_REGEX))
@@ -2440,7 +2537,15 @@ GinBsonExtractQueryMod(BsonExtractQueryArgs *args)
 	Datum *entries;
 	pgbsonelement documentElement;
 	pgbsonelement filterElement;
-	PgbsonToSinglePgbsonElement(query, &filterElement);
+
+	if (EnableCollation)
+	{
+		PgbsonToSinglePgbsonElementWithCollation(query, &filterElement);
+	}
+	else
+	{
+		PgbsonToSinglePgbsonElement(query, &filterElement); /* TODO: collation index support */
+	}
 
 	*extra_data = (Pointer *) palloc(sizeof(Pointer));
 	**extra_data = (Pointer) query;
@@ -2475,7 +2580,16 @@ GinBsonExtractQueryExists(BsonExtractQueryArgs *args)
 {
 	pgbson *query = args->query;
 	pgbsonelement filterElement;
-	PgbsonToSinglePgbsonElement(query, &filterElement);
+
+	if (EnableCollation)
+	{
+		PgbsonToSinglePgbsonElementWithCollation(query, &filterElement);
+	}
+	else
+	{
+		PgbsonToSinglePgbsonElement(query, &filterElement); /* TODO: collation index support */
+	}
+
 	bool existsPositiveMatch = true;
 
 	/**
@@ -2610,7 +2724,15 @@ GinBsonExtractQuerySize(BsonExtractQueryArgs *args)
 	*partialmatch = (bool *) palloc(sizeof(bool));
 	*nentries = 1;
 	**partialmatch = true;
-	PgbsonToSinglePgbsonElement(query, &documentElement);
+
+	if (EnableCollation)
+	{
+		PgbsonToSinglePgbsonElementWithCollation(query, &documentElement);
+	}
+	else
+	{
+		PgbsonToSinglePgbsonElement(query, &documentElement); /* TODO: collation index support */
+	}
 
 	/* store the query value in extra data - this allows us to compute upper bound using */
 	/* this extra value. */
@@ -2639,7 +2761,15 @@ GinBsonExtractQueryDollarType(BsonExtractQueryArgs *args)
 	Pointer **extra_data = args->extra_data;
 	Datum *entries = (Datum *) palloc(sizeof(Datum));
 	pgbsonelement documentElement;
-	PgbsonToSinglePgbsonElement(query, &documentElement);
+
+	if (EnableCollation)
+	{
+		PgbsonToSinglePgbsonElementWithCollation(query, &documentElement);
+	}
+	else
+	{
+		PgbsonToSinglePgbsonElement(query, &documentElement); /* TODO: collation index support */
+	}
 
 	/* we only generate 1 term - minKey for the path. */
 	/* note that we can't simply use the minValue of the type */
@@ -2787,7 +2917,15 @@ GinBsonExtractQueryDollarAll(BsonExtractQueryArgs *args)
 	bool **partialmatch = args->partialmatch;
 	Pointer **extra_data = args->extra_data;
 	pgbsonelement filterElement;
-	PgbsonToSinglePgbsonElement(query, &filterElement);
+
+	if (EnableCollation)
+	{
+		PgbsonToSinglePgbsonElementWithCollation(query, &filterElement);
+	}
+	else
+	{
+		PgbsonToSinglePgbsonElement(query, &filterElement); /* TODO: collation index support */
+	}
 
 	if (filterElement.bsonValue.value_type != BSON_TYPE_ARRAY)
 	{
@@ -3009,7 +3147,15 @@ GinBsonComparePartialCore(BsonIndexStrategy strategy, BsonIndexTerm *queryValue,
 		{
 			pgbson *modArrayData = (pgbson *) extraData;
 			pgbsonelement modArray;
-			PgbsonToSinglePgbsonElement(modArrayData, &modArray);
+
+			if (EnableCollation)
+			{
+				PgbsonToSinglePgbsonElementWithCollation(modArrayData, &modArray);
+			}
+			else
+			{
+				PgbsonToSinglePgbsonElement(modArrayData, &modArray); /* TODO: collation index support */
+			}
 			return GinBsonComparePartialMod(queryValue, compareValue, &modArray);
 		}
 
@@ -3059,7 +3205,14 @@ GinBsonComparePartialCore(BsonIndexStrategy strategy, BsonIndexTerm *queryValue,
 		{
 			pgbson *queryBson = (pgbson *) extraData;
 			pgbsonelement filterElement;
-			PgbsonToSinglePgbsonElement(queryBson, &filterElement);
+			if (EnableCollation)
+			{
+				PgbsonToSinglePgbsonElementWithCollation(queryBson, &filterElement);
+			}
+			else
+			{
+				PgbsonToSinglePgbsonElement(queryBson, &filterElement); /* TODO: collation index support */
+			}
 			return GinBsonComparePartialBitsWiseOperator(queryValue, compareValue,
 														 &filterElement,
 														 CompareArrayForBitsAllClear);
@@ -3069,7 +3222,16 @@ GinBsonComparePartialCore(BsonIndexStrategy strategy, BsonIndexTerm *queryValue,
 		{
 			pgbson *queryBson = (pgbson *) extraData;
 			pgbsonelement filterElement;
-			PgbsonToSinglePgbsonElement(queryBson, &filterElement);
+
+			if (EnableCollation)
+			{
+				PgbsonToSinglePgbsonElementWithCollation(queryBson, &filterElement);
+			}
+			else
+			{
+				PgbsonToSinglePgbsonElement(queryBson, &filterElement); /* TODO: collation index support */
+			}
+
 			return GinBsonComparePartialBitsWiseOperator(queryValue, compareValue,
 														 &filterElement,
 														 CompareArrayForBitsAnyClear);
@@ -3079,7 +3241,16 @@ GinBsonComparePartialCore(BsonIndexStrategy strategy, BsonIndexTerm *queryValue,
 		{
 			pgbson *queryBson = (pgbson *) extraData;
 			pgbsonelement filterElement;
-			PgbsonToSinglePgbsonElement(queryBson, &filterElement);
+
+			if (EnableCollation)
+			{
+				PgbsonToSinglePgbsonElementWithCollation(queryBson, &filterElement);
+			}
+			else
+			{
+				PgbsonToSinglePgbsonElement(queryBson, &filterElement); /* TODO: collation index support */
+			}
+
 			return GinBsonComparePartialBitsWiseOperator(queryValue, compareValue,
 														 &filterElement,
 														 CompareArrayForBitsAllSet);
@@ -3089,7 +3260,16 @@ GinBsonComparePartialCore(BsonIndexStrategy strategy, BsonIndexTerm *queryValue,
 		{
 			pgbson *queryBson = (pgbson *) extraData;
 			pgbsonelement filterElement;
-			PgbsonToSinglePgbsonElement(queryBson, &filterElement);
+
+			if (EnableCollation)
+			{
+				PgbsonToSinglePgbsonElementWithCollation(queryBson, &filterElement);
+			}
+			else
+			{
+				PgbsonToSinglePgbsonElement(queryBson, &filterElement); /* TODO: collation index support */
+			}
+
 			return GinBsonComparePartialBitsWiseOperator(queryValue, compareValue,
 														 &filterElement,
 														 CompareArrayForBitsAnySet);

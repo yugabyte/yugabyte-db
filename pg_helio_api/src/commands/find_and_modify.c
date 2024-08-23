@@ -119,6 +119,7 @@ static FindAndModifyResult ProcessFindAndModifySpec(MongoCollection *collection,
 													text *transactionId);
 static pgbson * BuildResponseMessage(FindAndModifyResult *result);
 
+extern bool SkipFailOnCollation;
 
 /*
  * command_find_and_modify implements findAndModify command.
@@ -325,6 +326,12 @@ ParseFindAndModifyMessage(pgbson *message)
 
 			/* we keep arrayFilters in projected form to preserve the type */
 			spec.arrayFilters = BsonValueToDocumentPgbson(bson_iter_value(&messageIter));
+		}
+		else if (!SkipFailOnCollation && strcmp(key, "collation") == 0)
+		{
+			/* If Collation is not enabled, it is silently ignored */
+			ereport(ERROR, (errcode(MongoCommandNotSupported),
+							errmsg("findAndModify.collation is not implemented yet")));
 		}
 		else
 		{

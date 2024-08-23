@@ -199,6 +199,9 @@ static char FeatureMapping[MAX_FEATURE_COUNT][MAX_FEATURE_NAME_LENGTH] = {
 	[FEATURE_AGG_OPERATOR_YEAR] = "agg_operator_year",
 	[FEATURE_AGG_OPERATOR_ZIP] = "agg_operator_zip",
 
+	/* Find/Aggregate using collation */
+	[FEATURE_COLLATION] = "collation",
+
 	/* Feature Mapping region - Commands */
 	[FEATURE_COMMAND_COLLMOD] = "command_collmod",
 	[FEATURE_COMMAND_COLLSTATS] = "command_collstats",

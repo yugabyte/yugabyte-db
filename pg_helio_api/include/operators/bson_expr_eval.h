@@ -19,6 +19,9 @@ typedef struct ExprEvalState ExprEvalState;
 
 ExprEvalState * GetExpressionEvalState(const bson_value_t *expression,
 									   MemoryContext memoryContext);
+ExprEvalState * GetExpressionEvalStateWithCollation(const bson_value_t *expression,
+													MemoryContext memoryContext, const
+													char *collationString);
 
 ExprEvalState * GetExpressionEvalStateFromFuncExpr(const FuncExpr *expression,
 												   MemoryContext memoryContext);

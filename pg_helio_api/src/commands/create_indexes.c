@@ -225,6 +225,7 @@ extern bool ForceIndexTermTruncation;
 extern int IndexTruncationLimitOverride;
 extern int MaxWildcardIndexKeySize;
 extern bool DefaultEnableLargeIndexKeys;
+extern bool SkipFailOnCollation;
 
 #define WILDCARD_INDEX_SUFFIX "$**"
 #define DOT_WILDCARD_INDEX_SUFFIX "." WILDCARD_INDEX_SUFFIX
@@ -1729,6 +1730,11 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 			{
 				indexDef->enableLargeIndexKeys = BoolIndexOption_False;
 			}
+		}
+		else if (!SkipFailOnCollation && strcmp(indexDefDocKey, "collation") == 0)
+		{
+			ereport(ERROR, (errcode(MongoCommandNotSupported),
+							errmsg("createIndex.collation is not implemented yet")));
 		}
 		else if (!ignoreUnknownIndexOptions)
 		{

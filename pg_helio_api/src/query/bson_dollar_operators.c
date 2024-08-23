@@ -26,7 +26,8 @@
 #include "utils/hashset_utils.h"
 #include "opclass/helio_bson_text_gin.h"
 #include "types/decimal128.h"
-#include <utils/version_utils.h>
+#include "collation/collation.h"
+#include "utils/version_utils.h"
 
 /*
  * Custom bson_orderBy options to allow specific types when sorting.
@@ -75,6 +76,9 @@ typedef struct BsonDollarAllQueryState
 
 	/* The filter as a pgbsonelement */
 	pgbsonelement filterElement;
+
+	/* ICU standard colation string. See AggregationPipelineBuildContext for more details. */
+	const char *collationString;
 } BsonDollarAllQueryState;
 
 /*
@@ -111,6 +115,9 @@ typedef struct TraverseElementValidateState
 {
 	TraverseValidateState traverseState; /* must be the first field */
 	pgbsonelement *filter;
+
+	/* ICU standard colation string. See AggregationPipelineBuildContext for more details. */
+	const char *collationString;
 } TraverseElementValidateState;
 
 /* State for the comparison of $in operator */
@@ -156,6 +163,9 @@ typedef struct TraverseAllValidateState
 
 	/* See BsonDollarAllQueryState */
 	bool arrayHasOnlyNulls;
+
+	/* ICU standard colation string. See AggregationPipelineBuildContext for more details. */
+	const char *collationString;
 } TraverseAllValidateState;
 
 
@@ -216,6 +226,9 @@ typedef struct BsonElemMatchQueryState
 
 	/* Whether or not the elemMatch is on an empty query */
 	bool isEmptyElemMatch;
+
+	/* ICU standard colation string. See AggregationPipelineBuildContext for more details. */
+	const char *collationString;
 } BsonElemMatchQueryState;
 
 
@@ -232,16 +245,22 @@ typedef struct TraverseElemMatchValidateState
 
 	/* Whether or not the elemMatch object is empty */
 	bool isEmptyElemMatch;
+
+	/* ICU standard colation string. See AggregationPipelineBuildContext for more details. */
+	const char *collationString;
 } TraverseElemMatchValidateState;
 
 typedef bool (*IsQueryFilterNullFunc)(const TraverseValidateState *state);
+extern bool EnableCollation;
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
 /* --------------------------------------------------------- */
 
-static int CompareLogicalOperator(const pgbsonelement *documentElement, const
-								  pgbsonelement *filterElement, bool *isPathValid);
+static int CompareLogicalOperatorWithCollation(const pgbsonelement *documentElement, const
+											   pgbsonelement *filterElement,
+											   bool *isPathValid, const
+											   char *collationString);
 static bool CompareEqualMatch(const pgbsonelement *documentIterator,
 							  TraverseValidateState *validationState, bool
 							  isFirstArrayTerm);
@@ -306,7 +325,7 @@ static bool CompareBsonAgainstQuery(const pgbson *element,
 static bool IsExistPositiveMatch(pgbson *filter);
 static pgbsonelement PopulateRegexState(PG_FUNCTION_ARGS,
 										TraverseRegexValidateState *state);
-static void PopulateRegexFromQuery(RegexData *regexState, pgbson *filter);
+static void PopulateRegexFromQuery(RegexData *regexState, pgbsonelement *filterElement);
 static void PopulateDollarInValidationState(PG_FUNCTION_ARGS,
 											TraverseInValidateState *state,
 											pgbsonelement *filterElement);
@@ -412,10 +431,20 @@ CompareBsonValueAgainstQuery(const pgbsonelement *element,
 							 CompareMatchValueFunc compareFunc,
 							 IsQueryFilterNullFunc isQueryFilterNull)
 {
-	TraverseElementValidateState elementValidationState = { { 0 }, NULL };
+	TraverseElementValidateState elementValidationState = { 0 };
 
 	pgbsonelement filterElement;
-	PgbsonToSinglePgbsonElement(filter, &filterElement);
+
+	if (EnableCollation)
+	{
+		elementValidationState.collationString = PgbsonToSinglePgbsonElementWithCollation(
+			filter, &filterElement);
+	}
+	else
+	{
+		PgbsonToSinglePgbsonElement(filter, &filterElement);
+	}
+
 	elementValidationState.traverseState.matchFunc = compareFunc;
 	elementValidationState.filter = &filterElement;
 	return CompareBsonValueAgainstQueryCore(element, &filterElement,
@@ -516,7 +545,7 @@ bson_dollar_size(PG_FUNCTION_ARGS)
 
 	bson_iter_t documentIterator;
 	pgbsonelement filterElement;
-	TraverseElementValidateState state = { { 0 }, NULL };
+	TraverseElementValidateState state = { 0 };
 	PgbsonInitIterator(document, &documentIterator);
 	PgbsonToSinglePgbsonElement(filter, &filterElement);
 	filterElement.pathLength = 0;
@@ -539,7 +568,7 @@ bson_value_dollar_size(PG_FUNCTION_ARGS)
 	pgbson *query = (pgbson *) PG_GETARG_PGBSON(1);
 
 	pgbsonelement filterElement;
-	TraverseElementValidateState state = { { 0 }, NULL };
+	TraverseElementValidateState state = { 0 };
 	PgbsonToSinglePgbsonElement(query, &filterElement);
 	filterElement.pathLength = 0;
 	state.filter = &filterElement;
@@ -963,6 +992,9 @@ bson_dollar_eq(PG_FUNCTION_ARGS)
  * implements the Mongo's $eq functionality
  * in the runtime. Checks that the value in the element provided
  * is equal to the value in the filter.
+ *
+ *  example query with collation:  "{ "" : "cAt", "collation" : "en-u-ks-level1" }"
+ *
  */
 Datum
 bson_value_dollar_eq(PG_FUNCTION_ARGS)
@@ -1068,12 +1100,21 @@ bson_dollar_not_gte(PG_FUNCTION_ARGS)
 
 
 /*
- * bson_dollar_range implements the $range functionality
- * in the runtime. This traverses the document based on the
- * rewritten range query of the following format checks that at least
- * one matches range semantics on the value provided.
+ * bson_dollar_range implements the Helio API's version of the range
+ * functionality in the runtime. Note that this is different from MongoDB's
+ * $range array operator. This combines $gt and $lt conditions into a range
+ * operator that can be used to traverse an index efficiently.
  *
- *  { "path": { "min": VALUE, "max": VALUE, "minInclusive": BOOL, "maxInclusive": BOOL } }
+ * The runtime version is needed if the index requires a recheck of
+ * the range condition. It traverses the document based on the
+ * rewritten range query in the following format (see below) and ensures that at least
+ * one range condition is satisfied on the provided value.
+ *
+ * Note that if no attempt was made to push down a rewritten Helio range operator
+ * to the index, this runtime function would not be called.
+ *
+ * Range query format: { "path": { "min": VALUE, "max": VALUE, "minInclusive": BOOL, "maxInclusive": BOOL } }
+ *
  */
 Datum
 bson_dollar_range(PG_FUNCTION_ARGS)
@@ -1097,15 +1138,7 @@ bson_dollar_range(PG_FUNCTION_ARGS)
 		cachedRangeParamsState = &localState;
 	}
 
-	TraverseRangeValidateState rangeState = {
-		{
-			{ 0 }, NULL
-		},
-		{
-			{ 0 }, { 0 }, false, false
-		},
-		false, false
-	};
+	TraverseRangeValidateState rangeState = { 0 };
 
 	/*
 	 *  params (i.e., DollarRangeParams) remains unchanged throughout multiple invocations of bson_dollar_range()
@@ -1115,7 +1148,29 @@ bson_dollar_range(PG_FUNCTION_ARGS)
 	 */
 
 	pgbsonelement filterElement;
-	PgbsonToSinglePgbsonElement(filter, &filterElement);
+
+	if (EnableCollation)
+	{
+		const char *collationString = PgbsonToSinglePgbsonElementWithCollation(filter,
+																			   &
+																			   filterElement);
+
+		if (IS_COLLATION_VALID(collationString))
+		{
+			/* TODO (workitem=3423305): Index pushdwon on $range operator with collation (see method description for more details) */
+			/* This code path is not expected to be excercised until $range with collation is pushed down to the index. */
+			ereport(ERROR, (errcode(MongoInternalError), errmsg(
+								"operator $range or operators that can be optimized to $range is not supported with collation"),
+							errhint(
+								"operator $range or operators that can be optimized to $range is not supported with collation : %s",
+								collationString)));
+		}
+	}
+	else
+	{
+		PgbsonToSinglePgbsonElement(filter, &filterElement);
+	}
+
 	rangeState.elementState.filter = &filterElement;
 	rangeState.params = *cachedRangeParamsState;
 	rangeState.isMinConditionSet = false;
@@ -1374,7 +1429,7 @@ bson_dollar_merge_join_filter(PG_FUNCTION_ARGS)
 	IsQueryFilterNullFunc isNullFilterEquality = IsQueryFilterNullForValue;
 	bson_iter_t targetIter;
 
-	TraverseElementValidateState state = { { 0 }, NULL };
+	TraverseElementValidateState state = { 0 };
 	PgbsonInitIterator(targetDocument, &targetIter);
 	state.filter = &filterElement;
 	state.traverseState.matchFunc = CompareEqualMatch;
@@ -2427,9 +2482,19 @@ CompareBsonAgainstQuery(const pgbson *element,
 {
 	bson_iter_t documentIterator;
 	pgbsonelement filterElement;
-	TraverseElementValidateState state = { { 0 }, NULL };
+	TraverseElementValidateState state = { 0 };
 	PgbsonInitIterator(element, &documentIterator);
-	PgbsonToSinglePgbsonElement(filter, &filterElement);
+
+	if (EnableCollation)
+	{
+		state.collationString = PgbsonToSinglePgbsonElementWithCollation(filter,
+																		 &filterElement);
+	}
+	else
+	{
+		PgbsonToSinglePgbsonElement(filter, &filterElement);
+	}
+
 	filterElement.pathLength = 0;
 	state.filter = &filterElement;
 	state.traverseState.matchFunc = compareFunc;
@@ -2455,8 +2520,10 @@ CompareEqualMatch(const pgbsonelement *documentIterator,
 		return true;
 	}
 
-	int cmp = CompareLogicalOperator(documentIterator, validationState->filter,
-									 &isPathValid);
+	int cmp = CompareLogicalOperatorWithCollation(documentIterator,
+												  validationState->filter,
+												  &isPathValid,
+												  validationState->collationString);
 	return isPathValid && cmp == 0;
 }
 
@@ -2476,8 +2543,10 @@ CompareLessMatch(const pgbsonelement *documentIterator,
 		return documentIterator->bsonValue.value_type != BSON_TYPE_MAXKEY;
 	}
 
-	int cmp = CompareLogicalOperator(documentIterator, validationState->filter,
-									 &isPathValid);
+	int cmp = CompareLogicalOperatorWithCollation(documentIterator,
+												  validationState->filter,
+												  &isPathValid,
+												  validationState->collationString);
 	return isPathValid && cmp < 0;
 }
 
@@ -2497,8 +2566,10 @@ CompareLessEqualMatch(const pgbsonelement *documentIterator,
 		return true;
 	}
 
-	int cmp = CompareLogicalOperator(documentIterator, validationState->filter,
-									 &isPathValid);
+	int cmp = CompareLogicalOperatorWithCollation(documentIterator,
+												  validationState->filter,
+												  &isPathValid,
+												  validationState->collationString);
 	return isPathValid && cmp <= 0;
 }
 
@@ -2518,8 +2589,10 @@ CompareGreaterMatch(const pgbsonelement *documentIterator,
 		return documentIterator->bsonValue.value_type != BSON_TYPE_MINKEY;
 	}
 
-	int cmp = CompareLogicalOperator(documentIterator, validationState->filter,
-									 &isPathValid);
+	int cmp = CompareLogicalOperatorWithCollation(documentIterator,
+												  validationState->filter,
+												  &isPathValid,
+												  validationState->collationString);
 	return isPathValid && cmp > 0;
 }
 
@@ -2538,8 +2611,10 @@ CompareGreaterEqualMatch(const pgbsonelement *documentIterator,
 	{
 		return true;
 	}
-	int cmp = CompareLogicalOperator(documentIterator, validationState->filter,
-									 &isPathValid);
+	int cmp = CompareLogicalOperatorWithCollation(documentIterator,
+												  validationState->filter,
+												  &isPathValid,
+												  validationState->collationString);
 	return isPathValid && cmp >= 0;
 }
 
@@ -2796,9 +2871,12 @@ CompareAllMatch(const pgbsonelement *documentIterator,
 			else
 			{
 				bool isComparisonValid = false;
-				int cmp = CompareBsonValueAndType(arrayValue,
-												  &documentIterator->bsonValue,
-												  &isComparisonValid);
+				int cmp = CompareBsonValueAndTypeWithCollation(arrayValue,
+															   &documentIterator->
+															   bsonValue,
+															   &isComparisonValid,
+															   validationState->
+															   collationString);
 				match = isComparisonValid && cmp == 0;
 			}
 
@@ -2853,17 +2931,18 @@ CompareForOrderBy(const pgbsonelement *element,
  * valid (e.g. comparing NaN is an invalid comparison).
  */
 static int
-CompareLogicalOperator(const pgbsonelement *documentElement, const
-					   pgbsonelement *filterElement,
-					   bool *isPathValid)
+CompareLogicalOperatorWithCollation(const pgbsonelement *documentElement, const
+									pgbsonelement *filterElement,
+									bool *isPathValid, const char *collationString)
 {
 	/* Comparisons only work on the same sort order type. */
 	int cmp = CompareBsonSortOrderType(&documentElement->bsonValue,
 									   &filterElement->bsonValue);
 	if (cmp == 0)
 	{
-		return CompareBsonValueAndType(&documentElement->bsonValue,
-									   &filterElement->bsonValue, isPathValid);
+		return CompareBsonValueAndTypeWithCollation(&documentElement->bsonValue,
+													&filterElement->bsonValue,
+													isPathValid, collationString);
 	}
 	else
 	{
@@ -2907,16 +2986,25 @@ PopulateRegexState(PG_FUNCTION_ARGS, TraverseRegexValidateState *state)
 	const RegexData *regexState;
 	pgbsonelement filterElement;
 
-	PgbsonToSinglePgbsonElement(filter, &filterElement);
+	if (EnableCollation)
+	{
+		/* collation does not take effect on $regex according to native Mongo */
+		PgbsonToSinglePgbsonElementWithCollation(filter, &filterElement);
+	}
+	else
+	{
+		PgbsonToSinglePgbsonElement(filter, &filterElement);
+	}
 
 	/* State populated if and only if cached state is unusable */
 	RegexData localState = { 0 };
 
-	SetCachedFunctionState(regexState, RegexData, 1, PopulateRegexFromQuery, filter);
+	SetCachedFunctionState(regexState, RegexData, 1, PopulateRegexFromQuery,
+						   &filterElement);
 	if (regexState == NULL)
 	{
 		/* Cache is not available */
-		PopulateRegexFromQuery(&localState, filter);
+		PopulateRegexFromQuery(&localState, &filterElement);
 		regexState = &localState;
 	}
 
@@ -2932,27 +3020,24 @@ PopulateRegexState(PG_FUNCTION_ARGS, TraverseRegexValidateState *state)
  * $regex matches.
  */
 static void
-PopulateRegexFromQuery(RegexData *regexState, pgbson *filter)
+PopulateRegexFromQuery(RegexData *regexState, pgbsonelement *filterElement)
 {
-	pgbsonelement filterElement;
-	PgbsonToSinglePgbsonElement(filter, &filterElement);
-
-	if (filterElement.bsonValue.value_type != BSON_TYPE_UTF8 &&
-		filterElement.bsonValue.value_type != BSON_TYPE_REGEX)
+	if (filterElement->bsonValue.value_type != BSON_TYPE_UTF8 &&
+		filterElement->bsonValue.value_type != BSON_TYPE_REGEX)
 	{
 		ereport(ERROR, (errcode(MongoBadValue), errmsg(
 							"$regex has to be a string")));
 	}
 
 
-	if (filterElement.bsonValue.value_type == BSON_TYPE_REGEX)
+	if (filterElement->bsonValue.value_type == BSON_TYPE_REGEX)
 	{
-		regexState->regex = filterElement.bsonValue.value.v_regex.regex;
-		regexState->options = filterElement.bsonValue.value.v_regex.options;
+		regexState->regex = filterElement->bsonValue.value.v_regex.regex;
+		regexState->options = filterElement->bsonValue.value.v_regex.options;
 	}
 	else
 	{
-		regexState->regex = filterElement.bsonValue.value.v_utf8.str;
+		regexState->regex = filterElement->bsonValue.value.v_utf8.str;
 		regexState->options = NULL;
 	}
 
@@ -2988,6 +3073,7 @@ PopulateElemMatchValidationState(PG_FUNCTION_ARGS, TraverseElemMatchValidateStat
 		elemMatchState = &localState;
 	}
 
+	state->collationString = elemMatchState->collationString;
 	state->expressionEvaluationState = elemMatchState->expressionEvaluationState;
 	state->traverseState.matchFunc = CompareElemMatchMatch;
 	state->isEmptyElemMatch = elemMatchState->isEmptyElemMatch;
@@ -3004,11 +3090,21 @@ static void
 PopulateElemMatchStateFromQuery(BsonElemMatchQueryState *state, const pgbson *filter)
 {
 	pgbsonelement filterElement;
-	PgbsonToSinglePgbsonElement(filter, &filterElement);
+	if (EnableCollation)
+	{
+		state->collationString = PgbsonToSinglePgbsonElementWithCollation(filter,
+																		  &filterElement);
+	}
+	else
+	{
+		PgbsonToSinglePgbsonElement(filter, &filterElement);
+	}
 
 	state->isEmptyElemMatch = IsBsonValueEmptyDocument(&filterElement.bsonValue);
-	state->expressionEvaluationState = GetExpressionEvalState(&filterElement.bsonValue,
-															  CurrentMemoryContext);
+	state->expressionEvaluationState = GetExpressionEvalStateWithCollation(
+		&filterElement.bsonValue,
+		CurrentMemoryContext,
+		state->collationString);
 	state->filterElement = filterElement;
 }
 
@@ -3065,6 +3161,7 @@ PopulateDollarAllValidationState(PG_FUNCTION_ARGS,
 	state->evalStateArray = dollarAllState->evalStateArray;
 	state->crePcreData = dollarAllState->crePcreData;
 	state->matchState = NULL;
+	state->collationString = dollarAllState->collationString;
 	if (dollarAllState->numElements > 0)
 	{
 		state->matchState = palloc0(sizeof(bool) * dollarAllState->numElements);
@@ -3082,7 +3179,17 @@ PopulateDollarAllStateFromQuery(BsonDollarAllQueryState *dollarAllState,
 								const pgbson *filter)
 {
 	pgbsonelement filterElement;
-	PgbsonToSinglePgbsonElement(filter, &filterElement);
+	if (EnableCollation)
+	{
+		dollarAllState->collationString = PgbsonToSinglePgbsonElementWithCollation(filter,
+																				   &
+																				   filterElement);
+	}
+	else
+	{
+		PgbsonToSinglePgbsonElement(filter, &filterElement);
+	}
+
 	if (filterElement.bsonValue.value_type != BSON_TYPE_ARRAY)
 	{
 		ereport(ERROR, (errcode(MongoBadValue), errmsg(
@@ -3267,7 +3374,28 @@ PopulateDollarInStateFromQuery(BsonDollarInQueryState *dollarInState,
 	pgbsonelement filterElement;
 	bson_iter_t arrayIterator;
 
-	PgbsonToSinglePgbsonElement(filter, &filterElement);
+	if (EnableCollation)
+	{
+		const char *collationString = PgbsonToSinglePgbsonElementWithCollation(
+			(pgbson *) filter, &filterElement);
+
+		if (IS_COLLATION_VALID(collationString))
+		{
+			/* TODO: $in query is implemnet using postgres's HasMap implementation. */
+			/* But the key comparison of the the HashMap is not collation aware */
+			/* We will need a collation-aware implementation later */
+			ereport(ERROR, (errcode(MongoBadValue), errmsg(
+								"operator $in or operators that can be optimized to $in is not supported with collation"),
+							errhint(
+								"operator $in or operators that can be optimized to $in is not supported with collation : %s",
+								collationString)));
+		}
+	}
+	else
+	{
+		PgbsonToSinglePgbsonElement((pgbson *) filter, &filterElement);
+	}
+
 	BsonValueInitIterator(&filterElement.bsonValue, &arrayIterator);
 
 	dollarInState->filterElement = filterElement;
@@ -3695,7 +3823,7 @@ DollarRangeVisitTopLevelField(pgbsonelement *element, const StringView *filterPa
 	filterElement.pathLength = filterPath->length;
 	filterElement.bsonValue = rangeState->params.minValue;
 
-	TraverseElementValidateState elementState = { { 0 }, NULL };
+	TraverseElementValidateState elementState = { 0 };
 	elementState.filter = &filterElement;
 
 	bool minCondition = rangeState->params.isMinInclusive ?
@@ -3745,7 +3873,7 @@ DollarRangeVisitArrayField(pgbsonelement *element, const StringView *filterPath,
 	filterElement.pathLength = filterPath->length;
 	filterElement.bsonValue = rangeState->params.minValue;
 
-	TraverseElementValidateState elementState = { { 0 }, NULL };
+	TraverseElementValidateState elementState = { 0 };
 	elementState.filter = &filterElement;
 
 	bool minCondition = rangeState->params.isMinInclusive ?

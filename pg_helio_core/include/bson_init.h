@@ -12,6 +12,6 @@
 
 void InstallBsonMemVTables(void);
 
-void InitBsonConfigurations(void);
+void InitHelioCoreConfigurations(void);
 
 #endif

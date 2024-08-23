@@ -26,6 +26,8 @@ typedef struct pgbsonelement
 
 void BsonIterToPgbsonElement(bson_iter_t *iterator, pgbsonelement *element);
 void PgbsonToSinglePgbsonElement(const pgbson *bson, pgbsonelement *element);
+const char * PgbsonToSinglePgbsonElementWithCollation(const pgbson *bson,
+													  pgbsonelement *element);
 void BsonIterToSinglePgbsonElement(bson_iter_t *iterator, pgbsonelement *element);
 bool TryGetSinglePgbsonElementFromPgbson(pgbson *bson, pgbsonelement *element);
 bool TryGetSinglePgbsonElementFromBsonIterator(bson_iter_t *iterator,

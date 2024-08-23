@@ -98,6 +98,9 @@ typedef struct BsonQueryOperatorContext
 
 	/* Any let variable context for this query operator */
 	Expr *variableContext;
+
+	/* ICU standard colation string. See AggregationPipelineBuildContext for more details. */
+	const char *collationString;
 } BsonQueryOperatorContext;
 
 Var * MakeSimpleDocumentVar(void);
@@ -110,7 +113,8 @@ List * CreateQualsFromQueryDocIterator(bson_iter_t *queryDocIterator,
 Node * EvaluateBoundParameters(Node *expression, ParamListInfo boundParams);
 
 List * CreateQualsForBsonValueTopLevelQuery(const pgbson *query);
-Expr * CreateQualForBsonValueExpression(const bson_value_t *expression);
+Expr * CreateQualForBsonValueExpression(const bson_value_t *expression, const
+										char *collationString);
 Expr * CreateQualForBsonValueArrayExpression(const bson_value_t *expression);
 Expr * CreateQualForBsonExpression(const bson_value_t *expression, const char *queryPath);
 
@@ -120,7 +124,7 @@ Expr * CreateShardKeyFiltersForQuery(const bson_value_t *queryDocument, pgbson *
 									 uint64_t collectionId,
 									 Index collectionVarno);
 Expr * CreateIdFilterForQuery(List *existingQuals,
-							  Index collectionVarno);
+							  Index collectionVarno, bool *isCollationAware);
 
 bool ValidateOrderbyExpressionAndGetIsAscending(pgbson *orderby);
 

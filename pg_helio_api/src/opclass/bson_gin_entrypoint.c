@@ -35,7 +35,7 @@
 #include "query/helio_bson_compare.h"
 #include "utils/mongo_errors.h"
 #include "metadata/metadata_cache.h"
-#include <math.h>
+#include "collation/collation.h"
 
 
 /* --------------------------------------------------------- */
@@ -63,6 +63,7 @@ static Size FillWildcardProjectPathSpec(const char *prefix, void *buffer);
 
 extern Datum gin_bson_exclusion_pre_consistent(PG_FUNCTION_ARGS);
 extern uint32_t MaxWildcardIndexKeySize;
+extern bool EnableCollation;
 
 /*
  * gin_bson_single_path_extract_value is run on the insert/update path and collects the terms
@@ -731,7 +732,23 @@ ValidateIndexForQualifierValue(bytea *indexOptions, Datum queryValue, BsonIndexS
 	}
 
 	queryBson = DatumGetPgBson(queryValue);
-	PgbsonToSinglePgbsonElement(queryBson, &filterElement);
+
+	if (EnableCollation)
+	{
+		const char *collationString = PgbsonToSinglePgbsonElementWithCollation(queryBson,
+																			   &
+																			   filterElement);
+
+		if (IS_COLLATION_VALID(collationString))
+		{
+			/* We don't yet support collated index, until then we can't use index is operator has collation */
+			return false;
+		}
+	}
+	else
+	{
+		PgbsonToSinglePgbsonElement(queryBson, &filterElement);
+	}
 
 	BsonGinIndexOptionsBase *options = (BsonGinIndexOptionsBase *) indexOptions;
 

@@ -22,11 +22,11 @@ export PGISOLATIONTIMEOUT = 60
 .PHONY: check-bson-basic check-bson-minimal
 
 define common_test
-	$(top_builddir)/src/test/regress/pg_regress --dlpath=$(BASEPATH) $(EXTENSIONLOAD) --temp-instance ./tmp --temp-config ./postgresql.conf --host localhost --port 58070 $(1) $(2) || (cat regression.diffs && false)
+	$(top_builddir)/src/test/regress/pg_regress --encoding=UTF8 --dlpath=$(BASEPATH) $(EXTENSIONLOAD) --temp-instance ./tmp --temp-config ./postgresql.conf --host localhost --port 58070 $(1) $(2) || (cat regression.diffs && false)
 endef
 
 define isolation_test
-	$(top_builddir)/src/test/isolation/pg_isolation_regress --dlpath=$(BASEPATH) $(EXTENSIONLOAD) --temp-instance ./tmp --temp-config ./isolation_postgresql.conf --host localhost --port 58071 $(1) $(2) || (cat regression.diffs && false)
+	$(top_builddir)/src/test/isolation/pg_isolation_regress --encoding=UTF8 --dlpath=$(BASEPATH) $(EXTENSIONLOAD) --temp-instance ./tmp --temp-config ./isolation_postgresql.conf --host localhost --port 58071 $(1) $(2) || (cat regression.diffs && false)
 endef
 
 check-basic:

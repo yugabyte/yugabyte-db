@@ -14,6 +14,7 @@
 
 #include "metadata/collection.h"
 #include <utils/version_utils.h>
+#include "collation/collation.h"
 
 #ifndef BSON_AGGREGATION_PIPELINE_PRIVATE_H
 #define BSON_AGGREGATION_PIPELINE_PRIVATE_H
@@ -85,6 +86,14 @@ typedef struct
 
 	/* Whether or not the query requires a tailable cursor */
 	bool requiresTailableCursor;
+
+	/*
+	 * String indicating a standard ICU collation. An example string is "und-u-ks-level1-kc-true".
+	 * We parse the Mongo collation spec and covert it to an ICU standard collation string.
+	 * This string uniquely identify collation-based string comparison logic by postgres.
+	 * See: https://www.postgresql.org/docs/current/collation.html
+	 */
+	const char collationString[MAX_ICU_COLLATION_LENGTH];
 } AggregationPipelineBuildContext;
 
 

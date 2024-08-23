@@ -36,6 +36,9 @@ static bson_mem_vtable_t gMemVtable = {
 #define DEFAULT_BSON_TEXT_USE_JSON_REPRESENTATION false
 bool BsonTextUseJsonRepresentation = DEFAULT_BSON_TEXT_USE_JSON_REPRESENTATION;
 
+/* GUC deciding whether collation is support */
+#define DEFAULT_ENABLE_COLLATION true
+bool EnableCollation = DEFAULT_ENABLE_COLLATION;
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -56,16 +59,24 @@ InstallBsonMemVTables(void)
 
 
 /*
- * Initializes core configurations pertaining to the bson type management.
+ * Initializes core configurations pertaining to helio core.
  */
 void
-InitBsonConfigurations(void)
+InitHelioCoreConfigurations(void)
 {
 	DefineCustomBoolVariable(
 		"helio_core.bsonUseEJson",
 		gettext_noop(
 			"Determines whether the bson text is printed as extended Json. Used mainly for test."),
 		NULL, &BsonTextUseJsonRepresentation, DEFAULT_BSON_TEXT_USE_JSON_REPRESENTATION,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		"helio_api.enableCollation",
+		gettext_noop(
+			"Determines whether collation is supported."),
+		NULL, &EnableCollation,
+		DEFAULT_ENABLE_COLLATION,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 }
 

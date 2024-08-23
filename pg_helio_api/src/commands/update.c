@@ -705,6 +705,7 @@ BuildUpdateSpec(bson_iter_t *updateIter)
 		}
 		else if (strcmp(field, "collation") == 0)
 		{
+			/* We error on collation by default unlike FindAndModify. So we don't need to condition on EnableCollation GUC here. */
 			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							errmsg("BSON field 'update.updates.collation' is not yet "
 								   "supported")));

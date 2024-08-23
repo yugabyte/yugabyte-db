@@ -21,6 +21,8 @@
 #include "utils/mongo_errors.h"
 #include "utils/date_utils.h"
 #include "utils/hashset_utils.h"
+#include "unicode/umachine.h"
+#include "utils/pg_locale.h"
 
 /* --------------------------------------------------------- */
 /* Data-types */
@@ -31,13 +33,14 @@ static const int64 MillisecondsInSecond = 1000;
 /* --------------------------------------------------------- */
 /* Forward declaration */
 /* --------------------------------------------------------- */
-static int CompareBsonIter(bson_iter_t *left, bson_iter_t *right, bool compareFields);
+static int CompareBsonIter(bson_iter_t *left, bson_iter_t *right, bool compareFields,
+						   const char *collationString);
 static long double BsonNumberAsLongDouble(const bson_value_t *left);
 static int CompareNumbers(const bson_value_t *left, const bson_value_t *right,
 						  bool *isComparisonValid);
 static int GetSortOrderType(bson_type_t type);
 static int CompareBsonValue(const bson_value_t *left, const bson_value_t *right,
-							bool *isComparisonValid);
+							bool *isComparisonValid, const char *collationString);
 static double BsonValueAsDoubleCore(const bson_value_t *value, bool quiet);
 
 /* --------------------------------------------------------- */
@@ -275,8 +278,9 @@ bson_in_range_numeric(PG_FUNCTION_ARGS)
 						 &isIntOverflow);
 
 	bool isComparisonValid;
+	const char *collationStringIgnore = NULL;
 	int result = CompareBsonValue(&valElement.bsonValue, &baseElement.bsonValue,
-								  &isComparisonValid);
+								  &isComparisonValid, collationStringIgnore);
 
 	PG_FREE_IF_COPY(val, 0);
 	PG_FREE_IF_COPY(base, 1);
@@ -308,7 +312,10 @@ ComparePgbson(const pgbson *leftBson, const pgbson *rightBson)
 
 	PgbsonInitIterator(leftBson, &leftIter);
 	PgbsonInitIterator(rightBson, &rightIter);
-	return CompareBsonIter(&leftIter, &rightIter, true);
+
+	const char *collationStringCurrentlyUnsupported = NULL;
+	return CompareBsonIter(&leftIter, &rightIter, true,
+						   collationStringCurrentlyUnsupported);
 }
 
 
@@ -338,7 +345,8 @@ CompareNullablePgbson(pgbson *leftBson, pgbson *rightBson)
 
 
 int
-CompareBsonIter(bson_iter_t *leftIter, bson_iter_t *rightIter, bool compareFields)
+CompareBsonIter(bson_iter_t *leftIter, bson_iter_t *rightIter, bool compareFields, const
+				char *collationString)
 {
 	check_stack_depth();
 	while (true)
@@ -378,8 +386,9 @@ CompareBsonIter(bson_iter_t *leftIter, bson_iter_t *rightIter, bool compareField
 		}
 
 		/* next compare field name. */
+		const char *collationStringIgnore = NULL;
 		cmp = CompareStrings(leftElement.path, leftElement.pathLength, rightElement.path,
-							 rightElement.pathLength);
+							 rightElement.pathLength, collationStringIgnore);
 		if (cmp != 0)
 		{
 			return cmp;
@@ -387,7 +396,7 @@ CompareBsonIter(bson_iter_t *leftIter, bson_iter_t *rightIter, bool compareField
 
 		bool ignoreIsComparisonValid;
 		cmp = CompareBsonValue(&leftElement.bsonValue, &rightElement.bsonValue,
-							   &ignoreIsComparisonValid);
+							   &ignoreIsComparisonValid, collationString);
 		if (cmp != 0)
 		{
 			return cmp;
@@ -395,6 +404,20 @@ CompareBsonIter(bson_iter_t *leftIter, bson_iter_t *rightIter, bool compareField
 	}
 
 	return 0;
+}
+
+
+/*
+ * checks if two bson values are equal.
+ * types are compared using mongo semantics, so comparing 1 to 1.0 will return true.
+ */
+bool
+BsonValueEqualsWithCollation(const bson_value_t *left, const bson_value_t *right, const
+							 char *collationString)
+{
+	bool isComparisonValidIgnore;
+	return CompareBsonValueAndTypeWithCollation(left, right, &isComparisonValidIgnore,
+												collationString) == 0;
 }
 
 
@@ -428,8 +451,34 @@ BsonValueEqualsStrict(const bson_value_t *left, const bson_value_t *right)
 		return false;
 	}
 
+	const char *collationString = NULL;
+	return BsonValueEqualsStrictWithCollation(left, right, collationString);
+}
+
+
+/*
+ * Compares two bson values using strict comparison semantics. It also takes collation
+ * into account for string fields. Instead of
+ * considering type sort order (which is equal for all numeric types for example)
+ * it compares the actual type values and then if the same, it compares the actual values.
+ */
+bool
+BsonValueEqualsStrictWithCollation(const bson_value_t *left,
+								   const bson_value_t *right,
+								   const char *collationString)
+{
+	if (left == NULL || right == NULL)
+	{
+		return left == right;
+	}
+
+	if (left->value_type != right->value_type)
+	{
+		return false;
+	}
+
 	bool isComparisonValid;
-	int cmp = CompareBsonValue(left, right, &isComparisonValid);
+	int cmp = CompareBsonValue(left, right, &isComparisonValid, collationString);
 
 	return isComparisonValid && cmp == 0;
 }
@@ -454,7 +503,31 @@ CompareBsonValueAndType(const bson_value_t *left, const bson_value_t *right,
 		return cmp;
 	}
 
-	return CompareBsonValue(left, right, isComparisonValid);
+	const char *collationString = NULL;
+	return CompareBsonValue(left, right, isComparisonValid, collationString);
+}
+
+
+/*
+ * Compares two bson values by mongo semantics.
+ * Returns 0 if the two values are equal
+ * Returns 1 if left > right
+ * Returns -1 if left < right.
+ * Sets isComparisonValid if the comparison between the two values
+ * is not expected to be valid (e.g. comparison of non NaN values against NaN)
+ */
+int
+CompareBsonValueAndTypeWithCollation(const bson_value_t *left, const bson_value_t *right,
+									 bool *isComparisonValid, const char *collationString)
+{
+	int cmp;
+	*isComparisonValid = true;
+	if ((cmp = CompareBsonSortOrderType(left, right)) != 0)
+	{
+		return cmp;
+	}
+
+	return CompareBsonValue(left, right, isComparisonValid, collationString);
 }
 
 
@@ -969,13 +1042,49 @@ CompareSortOrderType(bson_type_t left, bson_type_t right)
 
 
 /*
+ *  Compares two strings using an ICU collation string. The code
+ *  follows same logic as how postgres performs ICU based string
+ *  comparison given an ICU standard collation string (e.g., en-u-kf-upper-kr-grek)
+ *  gi
+ */
+static int
+StringCompareWithCollation(const char *left, uint32_t leftLength,
+						   const char *right, uint32_t rightLength, const
+						   char *collationStr)
+{
+	int32_t ulen1, ulen2;
+	UChar *uchar1, *uchar2;
+
+	ulen1 = icu_to_uchar(&uchar1, left, leftLength);
+	ulen2 = icu_to_uchar(&uchar2, right, rightLength);
+
+	struct pg_locale_struct newCollator = { 0 };
+
+#if PG_VERSION_NUM >= 160000
+	const char *icurules = NULL;
+	make_icu_collator(collationStr, icurules, &newCollator);
+#else
+	make_icu_collator(collationStr, &newCollator);
+#endif
+	int result = ucol_strcoll(newCollator.info.icu.ucol,
+							  uchar1, ulen1,
+							  uchar2, ulen2);
+
+	pfree(uchar1);
+	pfree(uchar2);
+
+	return result;
+}
+
+
+/*
  *  Compares two bson values.
  *  Please DO NOT  expose this method beyond this file.
  * CODESYNC: This needs to match the behavior of HashBsonValueCompare in bson_hash.c
  */
 static int
 CompareBsonValue(const bson_value_t *left, const bson_value_t *right,
-				 bool *isComparisonValid)
+				 bool *isComparisonValid, const char *collationString)
 {
 	*isComparisonValid = true;
 	if (CompareBsonSortOrderType(left, right) != 0)
@@ -1010,7 +1119,7 @@ CompareBsonValue(const bson_value_t *left, const bson_value_t *right,
 				left->value.v_utf8.str,
 				left->value.v_utf8.len,
 				right->value.v_utf8.str,
-				right->value.v_utf8.len);
+				right->value.v_utf8.len, collationString);
 		}
 
 		case BSON_TYPE_SYMBOL:
@@ -1019,7 +1128,7 @@ CompareBsonValue(const bson_value_t *left, const bson_value_t *right,
 				left->value.v_symbol.symbol,
 				left->value.v_symbol.len,
 				right->value.v_symbol.symbol,
-				right->value.v_symbol.len);
+				right->value.v_symbol.len, collationString);
 		}
 
 		case BSON_TYPE_DOCUMENT:
@@ -1044,7 +1153,8 @@ CompareBsonValue(const bson_value_t *left, const bson_value_t *right,
 			}
 
 			bool compareFields = true;
-			return CompareBsonIter(&leftInnerIt, &rightInnerIt, compareFields);
+			return CompareBsonIter(&leftInnerIt, &rightInnerIt, compareFields,
+								   collationString);
 		}
 
 		case BSON_TYPE_BINARY:
@@ -1129,7 +1239,7 @@ CompareBsonValue(const bson_value_t *left, const bson_value_t *right,
 				left->value.v_code.code,
 				left->value.v_code.code_len,
 				right->value.v_code.code,
-				right->value.v_code.code_len);
+				right->value.v_code.code_len, collationString);
 		}
 
 		case BSON_TYPE_CODEWSCOPE:
@@ -1138,7 +1248,7 @@ CompareBsonValue(const bson_value_t *left, const bson_value_t *right,
 				left->value.v_codewscope.code,
 				left->value.v_codewscope.code_len,
 				right->value.v_codewscope.code,
-				right->value.v_codewscope.code_len);
+				right->value.v_codewscope.code_len, collationString);
 			if (cmp != 0)
 			{
 				return cmp;
@@ -1163,7 +1273,8 @@ CompareBsonValue(const bson_value_t *left, const bson_value_t *right,
 			}
 
 			bool compareFields = true;
-			return CompareBsonIter(&leftInnerIt, &rightInnerIt, compareFields);
+			return CompareBsonIter(&leftInnerIt, &rightInnerIt, compareFields,
+								   collationString);
 		}
 
 		case BSON_TYPE_DBPOINTER:
@@ -1172,7 +1283,7 @@ CompareBsonValue(const bson_value_t *left, const bson_value_t *right,
 				left->value.v_dbpointer.collection,
 				left->value.v_dbpointer.collection_len,
 				right->value.v_dbpointer.collection,
-				right->value.v_dbpointer.collection_len);
+				right->value.v_dbpointer.collection_len, collationString);
 			if (cmp != 0)
 			{
 				return cmp;
@@ -1391,9 +1502,12 @@ BsonNumberAsLongDouble(const bson_value_t *value)
 }
 
 
+/*
+ *  Compares two strings with an optional collation.
+ */
 int
 CompareStrings(const char *left, uint32_t leftLength, const char *right, uint32_t
-			   rightLength)
+			   rightLength, const char *collationString)
 {
 	uint32_t minLength = leftLength < rightLength ? leftLength : rightLength;
 	if (minLength == 0)
@@ -1401,7 +1515,18 @@ CompareStrings(const char *left, uint32_t leftLength, const char *right, uint32_
 		return leftLength - rightLength;
 	}
 
-	int32_t cmp = memcmp(left, right, minLength);
+	int32_t cmp;
+
+	if (collationString == NULL)
+	{
+		cmp = memcmp(left, right, minLength);
+	}
+	else
+	{
+		cmp = StringCompareWithCollation(left, leftLength, right, rightLength,
+										 collationString);
+	}
+
 	if (cmp != 0)
 	{
 		return cmp;

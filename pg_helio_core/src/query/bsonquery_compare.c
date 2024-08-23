@@ -39,6 +39,8 @@ PG_FUNCTION_INFO_V1(bsonquery_gte);
 PG_FUNCTION_INFO_V1(bsonquery_lt);
 PG_FUNCTION_INFO_V1(bsonquery_lte);
 
+extern bool EnableCollation;
+
 Datum
 bsonquery_compare(PG_FUNCTION_ARGS)
 {
@@ -144,6 +146,30 @@ bsonquery_lte(PG_FUNCTION_ARGS)
 }
 
 
+inline static void
+pg_attribute_noreturn()
+ThrowUnexpectedFieldError(bool leftNext, bool rightNext)
+{
+	ereport(ERROR, (errcode(MongoInternalError), errmsg(
+						"Unexpected bsonquery %s value had more than one field.",
+						leftNext ? "left" :
+						"right")));
+}
+
+inline static void
+CheckCollationType(const bson_value_t *bsonValue)
+{
+	if (bsonValue->value_type != BSON_TYPE_UTF8)
+	{
+		ereport(ERROR, (errcode(MongoBadValue),
+						errmsg("Collation is of wrong type: '%s', expected: 'String'",
+							   BsonTypeName(bsonValue->value_type)),
+						errhint("Collation is of wrong type: '%s', expected: 'String'",
+								BsonTypeName(bsonValue->value_type))));
+	}
+}
+
+
 static int
 ComparePgbsonQuery(pgbson *leftBson, pgbson *rightBson, bool *isComparisonValid)
 {
@@ -181,17 +207,45 @@ ComparePgbsonQuery(pgbson *leftBson, pgbson *rightBson, bool *isComparisonValid)
 
 	leftNext = bson_iter_next(&leftIter);
 	rightNext = bson_iter_next(&rightIter);
-	if (leftNext || rightNext)
+	const char *collationStringIgnore = NULL;
+
+	if (EnableCollation && (leftNext || rightNext))
 	{
-		ereport(ERROR, (errcode(MongoInternalError), errmsg(
-							"Unexpected bsonquery %s value had more than one field.",
-							leftNext ? "left" :
-							"right")));
+		if ((leftNext && strcmp(bson_iter_key(&leftIter), "collation") != 0) ||
+			(rightNext && strcmp(bson_iter_key(&rightIter), "collation") != 0))
+		{
+			ThrowUnexpectedFieldError(leftNext, rightNext);
+		}
+
+		/* TODO (workitem: 3423607): Test for the following case when index pushdown is enabled for collation. */
+		/* Index with a pfe { "a": { "gte": "aaa" }} and a query of { "a": { "gt": "bbb" }, "collation": "fr" }} */
+		/* that query should not use that index. But a query of { "a": { "$gte": "bbb" }} should be able to use it. */
+		if (leftNext && rightNext)
+		{
+			const bson_value_t *left = bson_iter_value(&leftIter);
+			const bson_value_t *right = bson_iter_value(&rightIter);
+
+			CheckCollationType(left);
+			CheckCollationType(right);
+
+			return CompareStrings(left->value.v_utf8.str, left->value.v_utf8.len,
+								  right->value.v_utf8.str, right->value.v_utf8.len,
+								  collationStringIgnore);
+		}
+		else
+		{
+			return leftNext ? 1 : -1;
+		}
+	}
+	else if (leftNext || rightNext)
+	{
+		ThrowUnexpectedFieldError(leftNext, rightNext);
 	}
 
-	/* next compare field name. */
+	/* next compare field name. Field name needs to be collation insensitive, hence we make sure we perform
+	 * collation agnostic comparison by passing a NULL collation string*/
 	int cmp = CompareStrings(leftElement.path, leftElement.pathLength, rightElement.path,
-							 rightElement.pathLength);
+							 rightElement.pathLength, collationStringIgnore);
 	if (cmp != 0)
 	{
 		return cmp;

@@ -332,8 +332,23 @@ GetExpressionEvalStateFromFuncExpr(const FuncExpr *expression,
 ExprEvalState *
 GetExpressionEvalState(const bson_value_t *expression, MemoryContext memoryContext)
 {
+	const char *collationString = NULL;
+	return GetExpressionEvalStateWithCollation(expression, memoryContext,
+											   collationString);
+}
+
+
+/*
+ * Compiles the expression pointed to by the bson value and creates an expression
+ * object that can be reused to evaluate expressions for input values. The state object
+ * is created in the specified MemoryContext.
+ */
+ExprEvalState *
+GetExpressionEvalStateWithCollation(const bson_value_t *expression, MemoryContext
+									memoryContext, const char *collationString)
+{
 	MemoryContext originalMemoryContext = MemoryContextSwitchTo(memoryContext);
-	Expr *expr = CreateQualForBsonValueExpression(expression);
+	Expr *expr = CreateQualForBsonValueExpression(expression, collationString);
 	ExprEvalState *evalState = CreateEvalStateFromExpr(expr);
 	MemoryContextSwitchTo(originalMemoryContext);
 	return evalState;

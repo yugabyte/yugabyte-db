@@ -62,6 +62,7 @@
 #include "geospatial/bson_geospatial_common.h"
 #include "geospatial/bson_geospatial_geonear.h"
 #include "utils/version_utils.h"
+#include "collation/collation.h"
 #include "api_hooks.h"
 
 extern bool EnableLetSupport;
@@ -69,6 +70,7 @@ extern bool IgnoreLetOnQuerySupport;
 extern bool EnableGroupMergeObjectsSupport;
 extern bool EnableCursorsOnAggregationQueryRewrite;
 extern bool EnableLookupUnwindSupport;
+extern bool EnableCollation;
 
 /*
  * The mutation function that modifies a given query with a pipeline stage's value.
@@ -1307,6 +1309,12 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 			collectionUuid = palloc(sizeof(pg_uuid_t));
 			memcpy(&collectionUuid->data, value->value.v_binary.data, 16);
 		}
+		else if (EnableCollation && StringViewEqualsCString(&keyView, "collation"))
+		{
+			EnsureTopLevelFieldType("collation", &aggregationIterator,
+									BSON_TYPE_DOCUMENT);
+			ParseAndGetCollationString(value, context.collationString);
+		}
 		else if (!IsCommonSpecIgnoredField(keyView.string))
 		{
 			ereport(ERROR, (errcode(MongoBadValue),
@@ -1483,6 +1491,11 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 		{
 			EnsureTopLevelFieldType("sort", &findIterator, BSON_TYPE_DOCUMENT);
 			sort = *value;
+		}
+		else if (EnableCollation && StringViewEqualsCString(&keyView, "collation"))
+		{
+			EnsureTopLevelFieldType("collation", &findIterator, BSON_TYPE_DOCUMENT);
+			ParseAndGetCollationString(value, context.collationString);
 		}
 		else if (StringViewEqualsCString(&keyView, "singleBatch"))
 		{
@@ -2430,6 +2443,11 @@ HandleMatch(const bson_value_t *existingValue, Query *query,
 	filterContext.requiredFilterPathNameHashSet = context->requiredFilterPathNameHashSet;
 	filterContext.variableContext = context->variableSpec;
 
+	if (EnableCollation)
+	{
+		filterContext.collationString = context->collationString;
+	}
+
 	bson_iter_t queryDocIterator;
 	BsonValueInitIterator(existingValue, &queryDocIterator);
 	List *quals = CreateQualsFromQueryDocIterator(&queryDocIterator, &filterContext);
@@ -2708,8 +2726,14 @@ AddShardKeyAndIdFilters(const bson_value_t *existingValue, Query *query,
 
 	if (hasShardKeyFilters)
 	{
-		Expr *idFilter = CreateIdFilterForQuery(existingQuals, var->varno);
-		if (idFilter != NULL)
+		/* Mongo allows collation on _id field. We need to make sure we do that as well. We can't
+		 * push the Id filter to primary key index if the type needs to be collation aware (e.g., _id contains UTF8 )*/
+		bool isCollationAware;
+		Expr *idFilter = CreateIdFilterForQuery(existingQuals, var->varno,
+												&isCollationAware);
+
+		if (idFilter != NULL &&
+			!(isCollationAware && IS_COLLATION_APPLICABLE(context->collationString)))
 		{
 			existingQuals = lappend(existingQuals, idFilter);
 		}

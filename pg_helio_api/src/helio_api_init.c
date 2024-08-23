@@ -302,6 +302,9 @@ bool IgnoreLetOnQuerySupport = DEFAULT_IGNORE_LET_ON_QUERY;
 bool EnableIndexTermTruncationOnNestedObjects =
 	DEFAULT_ENABLE_INDEX_TERM_TRUNCATION_NESTED_OBJECTS;
 
+#define DEFAULT_SKIP_FAIL_ON_COLLATION false
+bool SkipFailOnCollation = DEFAULT_SKIP_FAIL_ON_COLLATION;
+
 #define DEFAULT_ENABLE_USER_CRUD false
 bool EnableUserCrud = DEFAULT_ENABLE_USER_CRUD;
 
@@ -829,6 +832,13 @@ InitApiConfigurations(char *prefix)
 			"Determines whether to truncate index terms with nested objects (arrays/objects of arrays/objects)"),
 		NULL, &EnableIndexTermTruncationOnNestedObjects,
 		DEFAULT_ENABLE_INDEX_TERM_TRUNCATION_NESTED_OBJECTS,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		"helio_api.skipFailOnCollation",
+		gettext_noop(
+			"Determines whether we can skip failing when collation is specified but collation is not supported"),
+		NULL, &SkipFailOnCollation, DEFAULT_SKIP_FAIL_ON_COLLATION,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(

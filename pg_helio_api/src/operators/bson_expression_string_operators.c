@@ -1175,10 +1175,12 @@ ProcessDollarStrCaseCmpResult(bson_value_t *result, void *state)
 	ProcessCoersionForStrCaseCmp(&dualState->firstArgument);
 	ProcessCoersionForStrCaseCmp(&dualState->secondArgument);
 
+	const char *collationStringIgnore = NULL;
 	int cmp = CompareStrings(dualState->firstArgument.value.v_utf8.str,
 							 dualState->firstArgument.value.v_utf8.len,
 							 dualState->secondArgument.value.v_utf8.str,
-							 dualState->secondArgument.value.v_utf8.len);
+							 dualState->secondArgument.value.v_utf8.len,
+							 collationStringIgnore);
 	result->value_type = BSON_TYPE_INT32;
 	result->value.v_int32 = cmp == 0 ? 0 : cmp > 0 ? 1 : -1;
 }

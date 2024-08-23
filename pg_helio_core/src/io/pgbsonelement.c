@@ -25,6 +25,8 @@
 #include "io/helio_bson_core.h"
 #include "io/pgbsonelement.h"
 
+extern bool EnableCollation;
+
 /* --------------------------------------------------------- */
 /* Forward declaration */
 /* --------------------------------------------------------- */
@@ -60,7 +62,11 @@ BsonIterToSinglePgbsonElement(bson_iter_t *iterator, pgbsonelement *element)
 	}
 
 	BsonIterToPgbsonElement(iterator, element);
-	if (bson_iter_next(iterator))
+
+	/* The Enable collation is safety net to make sure something not expecting collation in operator spec
+	 * breaks unexpctedly */
+	if (bson_iter_next(iterator) &&
+		!(EnableCollation && strcmp(bson_iter_key(iterator), "collation") == 0))
 	{
 		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 						errmsg(
@@ -78,6 +84,51 @@ PgbsonToSinglePgbsonElement(const pgbson *bson, pgbsonelement *element)
 	bson_iter_t iterator;
 	PgbsonInitIterator(bson, &iterator);
 	BsonIterToSinglePgbsonElement(&iterator, element);
+}
+
+
+/*
+ * Converts a pgbson that has one or two entries into a pgbson element,
+ * and optionally sets the collationString if the second entry has key: "collation".
+ * Throws error in all other cases.
+ */
+const char *
+PgbsonToSinglePgbsonElementWithCollation(const pgbson *filter, pgbsonelement *element)
+{
+	bson_iter_t iter;
+	PgbsonInitIterator(filter, &iter);
+	const char *collationString = NULL;
+
+	if (!bson_iter_next(&iter))
+	{
+		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+						errmsg("invalid input BSON: Should not have empty document")));
+	}
+
+	BsonIterToPgbsonElement(&iter, element);
+
+	if (bson_iter_next(&iter))
+	{
+		if (strcmp(bson_iter_key(&iter), "collation") == 0)
+		{
+			collationString = pstrdup(bson_iter_utf8(&iter, NULL));
+		}
+		else
+		{
+			ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+							errmsg(
+								"invalid input BSON: 2nd entry in the bson document must have key \"collation\"")));
+		}
+
+		if (bson_iter_next(&iter))
+		{
+			ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+							errmsg(
+								"invalid input BSON: Should have only 2 entries in the bson document")));
+		}
+	}
+
+	return collationString;
 }
 
 

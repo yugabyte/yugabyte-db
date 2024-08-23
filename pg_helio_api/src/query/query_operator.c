@@ -55,6 +55,8 @@
 #include "query/bson_dollar_operators.h"
 #include "commands/commands_common.h"
 #include "utils/version_utils.h"
+#include "collation/collation.h"
+
 
 /*
  * ReplaceBsonQueryOperatorsContext is passed down while looking for
@@ -96,7 +98,12 @@ typedef struct IdFilterWalkerContext
 
 	/* The index into the RTE where the collection is. */
 	Index collectionVarno;
+
+	/* Whether the _id filed is of a type where collation rules apply, e.g., UTF8 */
+	bool isCollationAware;
 } IdFilterWalkerContext;
+
+extern bool EnableCollation;
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
@@ -129,7 +136,8 @@ static Expr * CreateFuncExprForQueryOperator(BsonQueryOperatorContext *context, 
 											 char *path,
 											 const MongoQueryOperator *operator,
 											 const bson_value_t *value);
-static Const * CreateConstFromBsonValue(const char *path, const bson_value_t *value);
+static Const * CreateConstFromBsonValue(const char *path, const bson_value_t *value, const
+										char *collationString);
 static Expr * CreateExprForDollarAll(const char *path,
 									 bson_iter_t *operatorDocIterator,
 									 BsonQueryOperatorContext *context,
@@ -395,9 +403,13 @@ ReplaceBsonQueryOperators(Query *node, ParamListInfo boundParams)
  * variable.
  * e.g. { "$or" [ { "$gte": 3 }, { "$lte": 6}]}
  *   -> VAR @>= '{ "" : 3 }' OR VAR @<= '{ "": 6 }'
+ *
+ * The collation is passed in the context and then is embedded in the
+ * operator for final comparisons.
  */
 Expr *
-CreateQualForBsonValueExpression(const bson_value_t *expression)
+CreateQualForBsonValueExpression(const bson_value_t *expression, const
+								 char *collationString)
 {
 	if (expression->value_type != BSON_TYPE_DOCUMENT)
 	{
@@ -413,6 +425,7 @@ CreateQualForBsonValueExpression(const bson_value_t *expression)
 	context.coerceOperatorExprIfApplicable = false;
 	context.requiredFilterPathNameHashSet = NULL;
 	context.variableContext = NULL;
+	context.collationString = collationString;
 
 	const char *traversedPath = NULL;
 	const char *basePath = "";
@@ -865,11 +878,17 @@ ExpandBsonQueryOperator(OpExpr *queryOpExpr, Node *queryNode,
 
 			if (hasShardKeyFilters)
 			{
+				/* Mongo allows collation on _id field. We need to make sure we do that as well. We can't
+				 * push the Id filter to primary key index if the type needs to be collation aware (e.g., _id contains UTF8 )*/
+				bool isCollationAware;
 				Expr *idFilter = CreateIdFilterForQuery(quals,
-														collectionVarno);
+														collectionVarno,
+														&isCollationAware);
 
 				/* include _id filter in quals */
-				if (idFilter != NULL)
+				if (idFilter != NULL &&
+					!(isCollationAware && IS_COLLATION_APPLICABLE(
+						  context.collationString)))
 				{
 					quals = lappend(quals, idFilter);
 				}
@@ -1211,7 +1230,8 @@ CreateBoolExprFromLogicalExpression(bson_iter_t *queryDocIterator,
 		{
 			/* $expr with let */
 			Const *constValue = CreateConstFromBsonValue("", bson_iter_value(
-															 queryDocIterator));
+															 queryDocIterator),
+														 context->collationString);
 			return (Expr *) makeFuncExpr(BsonExprWithLetFunctionId(), BOOLOID,
 										 list_make3(context->documentExpr, constValue,
 													context->variableContext),
@@ -2368,7 +2388,8 @@ CreateFuncExprForQueryOperator(BsonQueryOperatorContext *context, const char *pa
 	Expr *comparison = NULL;
 
 	/* construct left and right side of the comparison */
-	Const *constValue = CreateConstFromBsonValue(path, value);
+	Const *constValue = CreateConstFromBsonValue(path, value, context->collationString);
+
 
 	Oid functionOid = operator->postgresRuntimeFunctionOidLookup();
 	if (!OidIsValid(functionOid))
@@ -2410,12 +2431,18 @@ CreateFuncExprForQueryOperator(BsonQueryOperatorContext *context, const char *pa
  * CreateConstFromBsonValue returns a Const that mimics the output of bson_get_value.
  */
 static Const *
-CreateConstFromBsonValue(const char *path, const bson_value_t *value)
+CreateConstFromBsonValue(const char *path, const bson_value_t *value, const
+						 char *collationString)
 {
 	/* convert value to BSON Datum */
 	pgbson_writer writer;
 	PgbsonWriterInit(&writer);
 	PgbsonWriterAppendValue(&writer, path, strlen(path), value);
+
+	if (IS_COLLATION_APPLICABLE(collationString))
+	{
+		PgbsonWriterAppendUtf8(&writer, "collation", 9, collationString);
+	}
 
 	pgbson *bson = PgbsonWriterGetPgbson(&writer);
 
@@ -2743,7 +2770,21 @@ CheckAndAddIdFilter(List *opArgs, IdFilterWalkerContext *context,
 	pgbson *qual = DatumGetPgBson(secondConst->constvalue);
 
 	pgbsonelement qualElement;
-	PgbsonToSinglePgbsonElement(qual, &qualElement);
+	if (EnableCollation)
+	{
+		PgbsonToSinglePgbsonElementWithCollation(qual, &qualElement);
+
+		/* _id can't be array, regex. _id can take Code, but Code is agnostic to collation */
+		if (qualElement.bsonValue.value_type == BSON_TYPE_UTF8 ||
+			qualElement.bsonValue.value_type == BSON_TYPE_DOCUMENT)
+		{
+			context->isCollationAware = true;
+		}
+	}
+	else
+	{
+		PgbsonToSinglePgbsonElement(qual, &qualElement);
+	}
 
 	if (qualElement.pathLength == IdFieldStringView.length &&
 		strncmp(qualElement.path, IdFieldStringView.string, IdFieldStringView.length) ==
@@ -2929,8 +2970,9 @@ VisitIdFilterExpression(Node *node, IdFilterWalkerContext *context)
  */
 Expr *
 CreateIdFilterForQuery(List *existingQuals,
-					   Index collectionVarno)
+					   Index collectionVarno, bool *isCollationAware)
 {
+	*isCollationAware = false;
 	IdFilterWalkerContext walkerContext = { 0 };
 	walkerContext.idQuals = NIL;
 	walkerContext.collectionVarno = collectionVarno;
@@ -3430,6 +3472,12 @@ static Expr *
 TryProcessOrIntoDollarIn(BsonQueryOperatorContext *context,
 						 List *orQuals)
 {
+	if (IS_COLLATION_APPLICABLE(context->collationString))
+	{
+		/* TODO: Support collation with $in (workitem: 3412412). See details in PopulateDollarInStateFromQuery() */
+		return NULL;
+	}
+
 	const MongoQueryOperator *op = GetMongoQueryOperatorByQueryOperatorType(
 		QUERY_OPERATOR_EQ, context->inputType);
 
@@ -3510,7 +3558,7 @@ TryProcessOrIntoDollarIn(BsonQueryOperatorContext *context,
 
 		pgbson *value = DatumGetPgBson(argConst->constvalue);
 		pgbsonelement valueElement;
-		PgbsonToSinglePgbsonElement(value, &valueElement);
+		PgbsonToSinglePgbsonElement(value, &valueElement); /* TODO: collation support */
 
 		StringView currentPath = {
 			.length = valueElement.pathLength, .string = valueElement.path
@@ -3631,7 +3679,17 @@ TryOptimizeDollarOrExpr(BsonQueryOperatorContext *context,
 
 		pgbson *value = DatumGetPgBson(argConst->constvalue);
 		pgbsonelement valueElement;
-		PgbsonToSinglePgbsonElement(value, &valueElement);
+
+		if (EnableCollation)
+		{
+			/* Since, we are optimizing Or expression not br rewriting a the expression, but by getting rid of
+			 * redundant quals from the Quals list, we can ignore the collation*/
+			PgbsonToSinglePgbsonElementWithCollation(value, &valueElement);
+		}
+		else
+		{
+			PgbsonToSinglePgbsonElement(value, &valueElement);
+		}
 
 		if (funcId == eqop->postgresRuntimeFunctionOidLookup())
 		{

@@ -51,6 +51,8 @@ const int MaximumLookupPipelineDepth = 20;
 
 extern bool EnableLookupLetSupport;
 
+extern bool EnableCollation;
+
 /*
  * Struct having parsed view of the
  * arguments to Lookup.
@@ -381,6 +383,13 @@ HandleLookup(const bson_value_t *existingValue, Query *query,
 			 AggregationPipelineBuildContext *context)
 {
 	ReportFeatureUsage(FEATURE_STAGE_LOOKUP);
+
+	if (EnableCollation && IS_COLLATION_VALID(context->collationString))
+	{
+		ereport(ERROR, (errcode(MongoCommandNotSupported), errmsg(
+							"collation is not supported with $lookup yet")));
+	}
+
 	LookupArgs lookupArgs;
 	memset(&lookupArgs, 0, sizeof(LookupArgs));
 
@@ -414,6 +423,12 @@ HandleGraphLookup(const bson_value_t *existingValue, Query *query,
 				  AggregationPipelineBuildContext *context)
 {
 	ReportFeatureUsage(FEATURE_STAGE_GRAPH_LOOKUP);
+
+	if (EnableCollation && IS_COLLATION_VALID(context->collationString))
+	{
+		ereport(ERROR, (errcode(MongoCommandNotSupported), errmsg(
+							"collation is not supported with $graphLookup yet")));
+	}
 
 	GraphLookupArgs graphArgs;
 	memset(&graphArgs, 0, sizeof(GraphLookupArgs));
@@ -649,6 +664,9 @@ CreateInverseMatchFromCollectionQuery(InverseMatchArgs *inverseMatchArgs,
 	subPipelineContext.nestedPipelineLevel = context->nestedPipelineLevel + 1;
 	subPipelineContext.databaseNameDatum = context->databaseNameDatum;
 	subPipelineContext.variableSpec = context->variableSpec;
+	strncpy((char *) subPipelineContext.collationString, context->collationString,
+			MAX_ICU_COLLATION_LENGTH);
+
 
 	Query *nestedPipeline = GenerateBaseTableQuery(context->databaseNameDatum,
 												   &inverseMatchArgs->fromCollection,
@@ -920,6 +938,8 @@ HandleUnionWith(const bson_value_t *existingValue, Query *query,
 		subPipelineContext.nestedPipelineLevel = context->nestedPipelineLevel + 1;
 		subPipelineContext.databaseNameDatum = context->databaseNameDatum;
 		subPipelineContext.variableSpec = context->variableSpec;
+		strncpy((char *) subPipelineContext.collationString, context->collationString,
+				MAX_ICU_COLLATION_LENGTH);
 
 		/* This is unionWith on the base collection */
 		pg_uuid_t *collectionUuid = NULL;
@@ -934,6 +954,9 @@ HandleUnionWith(const bson_value_t *existingValue, Query *query,
 		subPipelineContext.nestedPipelineLevel = context->nestedPipelineLevel + 1;
 		subPipelineContext.databaseNameDatum = context->databaseNameDatum;
 		subPipelineContext.variableSpec = context->variableSpec;
+		strncpy((char *) subPipelineContext.collationString, context->collationString,
+				MAX_ICU_COLLATION_LENGTH);
+
 		pg_uuid_t *collectionUuid = NULL;
 
 		if (collectionFrom.length == 0)
@@ -1268,6 +1291,9 @@ BuildFacetUnionAllQuery(int numStages, const bson_value_t *facetValue,
 		nestedContext.databaseNameDatum = parentContext->databaseNameDatum;
 		nestedContext.sortSpec = *sortSpec;
 		nestedContext.variableSpec = parentContext->variableSpec;
+		strncpy((char *) nestedContext.collationString, parentContext->collationString,
+				MAX_ICU_COLLATION_LENGTH);
+
 		nestedContext.mongoCollection = parentContext->mongoCollection;
 
 		modifiedQuery = MutateQueryWithPipeline(baseQuery, &singleElement.bsonValue,
@@ -1319,6 +1345,8 @@ BuildFacetUnionAllQuery(int numStages, const bson_value_t *facetValue,
 			nestedContext.databaseNameDatum = parentContext->databaseNameDatum;
 			nestedContext.sortSpec = *sortSpec;
 			nestedContext.variableSpec = parentContext->variableSpec;
+			strncpy((char *) nestedContext.collationString,
+					parentContext->collationString, MAX_ICU_COLLATION_LENGTH);
 			nestedContext.mongoCollection = parentContext->mongoCollection;
 			nestedContext.nestedPipelineLevel = parentContext->nestedPipelineLevel + 1;
 
@@ -1930,6 +1958,8 @@ ProcessLookupCore(Query *query, AggregationPipelineBuildContext *context,
 	AggregationPipelineBuildContext subPipelineContext = { 0 };
 	subPipelineContext.nestedPipelineLevel = context->nestedPipelineLevel + 1;
 	subPipelineContext.databaseNameDatum = context->databaseNameDatum;
+	strncpy((char *) subPipelineContext.collationString, context->collationString,
+			MAX_ICU_COLLATION_LENGTH);
 
 	/* For the right query, generate a base table query for the right collection */
 	pg_uuid_t *collectionUuid = NULL;
@@ -2320,6 +2350,8 @@ OptimizeLookup(LookupArgs *lookupArgs,
 	optimizationArgs->rightQueryContext.databaseNameDatum =
 		leftQueryContext->databaseNameDatum;
 	optimizationArgs->rightQueryContext.variableSpec = leftQueryContext->variableSpec;
+	strncpy((char *) optimizationArgs->rightQueryContext.collationString,
+			leftQueryContext->collationString, MAX_ICU_COLLATION_LENGTH);
 
 	optimizationArgs->isLookupAgnostic = lookupArgs->from.length == 0;
 	optimizationArgs->isLookupUncorrelated = !lookupArgs->hasLookupMatch;
@@ -2957,6 +2989,9 @@ ProcessLookupCoreWithLet(Query *query, AggregationPipelineBuildContext *context,
 		projectorQueryContext.mongoCollection =
 			optimizationArgs.rightQueryContext.mongoCollection;
 		projectorQueryContext.variableSpec = letExpr;
+		strncpy((char *) projectorQueryContext.collationString, context->collationString,
+				MAX_ICU_COLLATION_LENGTH);
+
 
 		subSelectQuery = MutateQueryWithPipeline(subSelectQuery,
 												 &optimizationArgs.
@@ -3721,6 +3756,8 @@ GenerateBaseCaseQuery(AggregationPipelineBuildContext *parentContext,
 	subPipelineContext.nestedPipelineLevel = parentContext->nestedPipelineLevel + 2;
 	subPipelineContext.databaseNameDatum = parentContext->databaseNameDatum;
 	subPipelineContext.variableSpec = parentContext->variableSpec;
+	strncpy((char *) subPipelineContext.collationString, parentContext->collationString,
+			MAX_ICU_COLLATION_LENGTH);
 	pg_uuid_t *collectionUuid = NULL;
 	Query *baseCaseQuery = GenerateBaseTableQuery(parentContext->databaseNameDatum,
 												  &args->fromCollection, collectionUuid,
@@ -3816,6 +3853,8 @@ GenerateRecursiveCaseQuery(AggregationPipelineBuildContext *parentContext,
 	subPipelineContext.nestedPipelineLevel = parentContext->nestedPipelineLevel + 2;
 	subPipelineContext.databaseNameDatum = parentContext->databaseNameDatum;
 	subPipelineContext.variableSpec = parentContext->variableSpec;
+	strncpy((char *) subPipelineContext.collationString, parentContext->collationString,
+			MAX_ICU_COLLATION_LENGTH);
 	pg_uuid_t *collectionUuid = NULL;
 	Query *recursiveQuery = GenerateBaseTableQuery(parentContext->databaseNameDatum,
 												   &args->fromCollection, collectionUuid,
@@ -3984,6 +4023,8 @@ BuildRecursiveGraphLookupQuery(QuerySource parentSource, GraphLookupArgs *args,
 	subPipelineContext.nestedPipelineLevel = parentContext->nestedPipelineLevel + 1;
 	subPipelineContext.databaseNameDatum = parentContext->databaseNameDatum;
 	subPipelineContext.variableSpec = parentContext->variableSpec;
+	strncpy((char *) subPipelineContext.collationString, parentContext->collationString,
+			MAX_ICU_COLLATION_LENGTH);
 
 	/* First build the recursive CTE object */
 	CommonTableExpr *graphCteExpr = makeNode(CommonTableExpr);
