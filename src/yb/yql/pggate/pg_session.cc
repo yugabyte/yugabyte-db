@@ -465,7 +465,6 @@ bool ExplicitRowLockBuffer::IsEmpty() const {
 
 PgSession::PgSession(
     PgClient* pg_client,
-    const std::string& database_name,
     scoped_refptr<PgTxnManager> pg_txn_manager,
     const YBCPgCallbacks& pg_callbacks,
     YBCPgExecStatsState* stats_state)
@@ -488,11 +487,6 @@ PgSession::PgSession(
 PgSession::~PgSession() = default;
 
 //--------------------------------------------------------------------------------------------------
-
-Status PgSession::ConnectDatabase(const std::string& database_name) {
-  connected_database_ = database_name;
-  return Status::OK();
-}
 
 Status PgSession::IsDatabaseColocated(const PgOid database_oid, bool *colocated,
                                       bool *legacy_colocated_database) {

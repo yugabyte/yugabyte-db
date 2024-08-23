@@ -217,10 +217,8 @@ Status InitPgGateImpl(const YBCPgTypeEntity* data_type_table,
   });
 }
 
-Status PgInitSessionImpl(const char* database_name, YBCPgExecStatsState* session_stats) {
-  const std::string db_name(database_name ? database_name : "");
-  return WithMaskedYsqlSignals(
-      [&db_name, session_stats] { return pgapi->InitSession(db_name, session_stats); });
+Status PgInitSessionImpl(YBCPgExecStatsState* session_stats) {
+  return WithMaskedYsqlSignals([session_stats] { return pgapi->InitSession(session_stats); });
 }
 
 // ql_value is modified in-place.
@@ -558,8 +556,8 @@ void YBCRestorePgSessionState(const YBCPgSessionState* session_data) {
   pgapi->RestoreSessionState(*session_data);
 }
 
-YBCStatus YBCPgInitSession(const char* database_name, YBCPgExecStatsState* session_stats) {
-  return ToYBCStatus(PgInitSessionImpl(database_name, session_stats));
+YBCStatus YBCPgInitSession(YBCPgExecStatsState* session_stats) {
+  return ToYBCStatus(PgInitSessionImpl(session_stats));
 }
 
 uint64_t YBCPgGetSessionID() { return pgapi->GetSessionID(); }
@@ -758,10 +756,6 @@ size_t YBCBitmapGetVectorSize(ConstSliceVector vec) {
 // DDL Statements.
 //--------------------------------------------------------------------------------------------------
 // Database Operations -----------------------------------------------------------------------------
-
-YBCStatus YBCPgConnectDatabase(const char *database_name) {
-  return ToYBCStatus(pgapi->ConnectDatabase(database_name));
-}
 
 YBCStatus YBCPgIsDatabaseColocated(const YBCPgOid database_oid, bool *colocated,
                                    bool *legacy_colocated_database) {
