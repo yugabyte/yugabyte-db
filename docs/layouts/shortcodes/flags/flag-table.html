@@ -1,12 +1,12 @@
 {{/*
 	Syntax:
 	  {{<flags/flag-table process="<process>">}}
-	
+
 	process:
 	  * "tserver"
 	  * "master"
 
-*/}} 
+*/}}
 
 {{ $process := .Get "process" }}
 {{ $urlPrefix := "https://downloads.yugabyte.com/releases/" }}
@@ -35,12 +35,12 @@
 
 {{ with resources.GetRemote $url }}
   {{ with .Err }}
-    {{ errorf "%s Check url: %s" . $url}}
+    {{ warnf "%s - All flags page will not be generated, check url: %s" . $url}}
   {{ else }}
     {{ $data = .Content | transform.Unmarshal }}
   {{ end }}
 {{ else }}
-  {{ errorf "Unable to get remote resource %q" $url }}
+  {{ warnf "All flag pages will not be generated. Url fetch failed %q" $url }}
 {{ end }}
 
 <!-- <pre>{{ debug.Dump $data }}</pre> -->
