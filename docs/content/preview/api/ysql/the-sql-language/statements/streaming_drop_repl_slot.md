@@ -30,7 +30,7 @@ Use the `DROP_REPLICATION_SLOT` statement to drop a replication slot.
 
 The name of the replication slot.
 
-{{<note title="Note">}}
+{{< note title="Note" >}}
 A replication slot can only be dropped after the client consuming from it has been stopped for **at least** `ysql_cdc_active_replication_slot_window_ms` duration. The default value of the flag is 5 minutes.
 {{< /note >}}
 
