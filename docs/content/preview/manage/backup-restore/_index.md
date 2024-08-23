@@ -46,7 +46,7 @@ Unlike traditional single-instance databases, YugabyteDB is designed for fault t
 
   {{<index/item
     title="Lightweight database clone"
-    body="Clone your database in YugabyteDB for data recovery, development, and testing purposes."
+    body="Clone a database for data recovery, development, and testing."
     href="lightweight-db-clone/"
     icon="fa-solid fa-clone">}}
 
