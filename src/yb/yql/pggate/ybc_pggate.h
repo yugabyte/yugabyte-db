@@ -25,6 +25,8 @@ extern "C" {
 
 typedef void (*YBCAshAcquireBufferLock)(bool);
 typedef YBCAshSample* (*YBCAshGetNextCircularBufferSlot)();
+typedef const YBCPgTypeEntity* (*YBCTypeEntityProvider)(int, YBCPgOid);
+typedef void (*YBCGetTableKeyRangesCallback)(void*, const char*, size_t);
 
 typedef void * SliceVector;
 typedef const void * ConstSliceVector;
@@ -41,9 +43,9 @@ void YBCInterruptPgGate();
 
 //--------------------------------------------------------------------------------------------------
 // Environment and Session.
-bool YBCGetCurrentPgSessionParallelData(YBCPgSessionParallelData* session_data);
+void YBCDumpCurrentPgSessionState(YBCPgSessionState* session_data);
 
-void YBCRestorePgSessionParallelData(const YBCPgSessionParallelData* session_data);
+void YBCRestorePgSessionState(const YBCPgSessionState* session_data);
 
 // Initialize a session to process statements that come from the same client connection.
 YBCStatus YBCPgInitSession(
@@ -329,6 +331,8 @@ YBCStatus YBCPgAlterTableIncrementSchemaVersion(YBCPgStatement handle);
 YBCStatus YBCPgAlterTableSetTableId(
     YBCPgStatement handle, const YBCPgOid database_oid, const YBCPgOid table_relfilenode_oid);
 
+YBCStatus YBCPgAlterTableSetSchema(YBCPgStatement handle, const char *schema_name);
+
 YBCStatus YBCPgExecAlterTable(YBCPgStatement handle);
 
 YBCStatus YBCPgAlterTableInvalidateTableCacheEntry(YBCPgStatement handle);
@@ -501,9 +505,10 @@ YBCStatus YBCPgDmlBindRow(
 
 YBCStatus YBCPgDmlGetColumnInfo(YBCPgStatement handle, int attr_num, YBCPgColumnInfo* info);
 
-YBCStatus YBCPgDmlBindHashCodes(YBCPgStatement handle,
-                                YBCPgBoundType start_type, uint64_t start_value,
-                                YBCPgBoundType end_type, uint64_t end_value);
+YBCStatus YBCPgDmlBindHashCodes(
+    YBCPgStatement handle,
+    YBCPgBoundType start_type, uint16_t start_value,
+    YBCPgBoundType end_type, uint16_t end_value);
 
 // For parallel scan only, limit fetch to specified range of ybctids
 YBCStatus YBCPgDmlBindRange(YBCPgStatement handle,
@@ -667,6 +672,7 @@ YBCStatus YBCPgBeginTransaction(int64_t start_time);
 YBCStatus YBCPgRecreateTransaction();
 YBCStatus YBCPgRestartTransaction();
 YBCStatus YBCPgResetTransactionReadPoint();
+YBCStatus YBCPgEnsureReadPoint();
 YBCStatus YBCPgRestartReadPoint();
 bool YBCIsRestartReadPointRequested();
 YBCStatus YBCPgCommitPlainTransaction();
@@ -795,6 +801,11 @@ void* YBCPgSetThreadLocalErrStatus(void* new_status);
 
 void* YBCPgGetThreadLocalErrStatus();
 
+YBCPgThreadLocalRegexpCache* YBCPgGetThreadLocalRegexpCache();
+
+YBCPgThreadLocalRegexpCache* YBCPgInitThreadLocalRegexpCache(
+    size_t buffer_size, YBCPgThreadLocalRegexpCacheCleanup cleanup);
+
 void YBCPgResetCatalogReadTime();
 
 YBCStatus YBCNewGetLockStatusDataSRF(YBCPgFunction *handle);
@@ -843,8 +854,7 @@ YBCStatus YBCGetTableKeyRanges(
     YBCPgOid database_oid, YBCPgOid table_relfilenode_oid, const char* lower_bound_key,
     size_t lower_bound_key_size, const char* upper_bound_key, size_t upper_bound_key_size,
     uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length,
-    uint64_t* current_tserver_ht,
-    void callback(void* callback_param, const char* key, size_t key_size), void* callback_param);
+    YBCGetTableKeyRangesCallback callback, void* callback_param);
 
 //--------------------------------------------------------------------------------------------------
 // Replication Slots.
@@ -876,7 +886,8 @@ YBCStatus YBCPgUpdatePublicationTableList(
 YBCStatus YBCPgDestroyVirtualWalForCDC();
 
 YBCStatus YBCPgGetCDCConsistentChanges(const char *stream_id,
-                                       YBCPgChangeRecordBatch **record_batch);
+                                       YBCPgChangeRecordBatch **record_batch,
+                                       YBCTypeEntityProvider type_entity_provider);
 
 YBCStatus YBCPgUpdateAndPersistLSN(
     const char* stream_id, YBCPgXLogRecPtr restart_lsn_hint, YBCPgXLogRecPtr confirmed_flush,

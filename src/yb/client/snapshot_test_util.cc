@@ -247,7 +247,6 @@ Result<TxnSnapshotId> SnapshotTestUtil::DoStartSnapshot(const F& fill_tables) {
   rpc::RpcController controller;
   controller.set_timeout(60s);
   master::CreateSnapshotRequestPB req;
-  req.set_transaction_aware(true);
   fill_tables(&req);
   master::CreateSnapshotResponsePB resp;
   RETURN_NOT_OK(VERIFY_RESULT(MakeBackupServiceProxy()).CreateSnapshot(req, &resp, &controller));

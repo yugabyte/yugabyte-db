@@ -173,6 +173,7 @@ double		yb_random_block_cost = DEFAULT_RANDOM_PAGE_COST;
 double		yb_docdb_next_cpu_cycles = YB_DEFAULT_DOCDB_NEXT_CPU_CYCLES;
 double 		yb_seek_cost_factor = YB_DEFAULT_SEEK_COST_FACTOR;
 double 		yb_backward_seek_cost_factor = YB_DEFAULT_BACKWARD_SEEK_COST_FACTOR;
+double 		yb_fast_backward_seek_cost_factor = YB_DEFAULT_FAST_BACKWARD_SEEK_COST_FACTOR;
 int 		yb_docdb_merge_cpu_cycles = YB_DEFAULT_DOCDB_MERGE_CPU_CYCLES;
 int 		yb_docdb_remote_filter_overhead_cycles = YB_DEFAULT_DOCDB_REMOTE_FILTER_OVERHEAD_CYCLES;
 double		yb_local_latency_cost = YB_DEFAULT_LOCAL_LATENCY_COST;
@@ -7811,7 +7812,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 
 	if (path->indexscandir == BackwardScanDirection)
 	{
-		per_next_cost *= yb_backward_seek_cost_factor;
+		per_next_cost *= YbUseFastBackwardScan() ?
+			yb_fast_backward_seek_cost_factor : yb_backward_seek_cost_factor;
 	}
 
 	run_cost += num_seeks * index_per_seek_cost +

@@ -1687,6 +1687,33 @@ YBCRename(RenameStmt *stmt, Oid relationId)
 }
 
 void
+YBCAlterTableNamespace(Form_pg_class classForm, Oid relationId)
+{
+	YBCPgStatement	handle     = NULL;
+	Oid				databaseId = YBCGetDatabaseOidByRelid(relationId);
+
+	switch (classForm->relkind)
+	{
+		case RELKIND_MATVIEW:           /* materialized view */
+		case RELKIND_RELATION:          /* ordinary table */
+		case RELKIND_INDEX:             /* secondary index */
+		case RELKIND_PARTITIONED_TABLE: /* partitioned table */
+		case RELKIND_PARTITIONED_INDEX: /* partitioned index */
+			HandleYBStatus(
+				YBCPgNewAlterTable(databaseId, YbGetRelfileNodeIdFromRelId(relationId), &handle));
+			HandleYBStatus(
+				YBCPgAlterTableSetSchema(handle, get_namespace_name(classForm->relnamespace)));
+			break;
+
+		default:
+			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("Schema altering for this object is not yet supported.")));
+	}
+
+	YBCExecAlterTable(handle, relationId);
+}
+
+void
 YBCDropIndex(Relation index)
 {
 	YbTableProperties yb_props = YbTryGetTableProperties(index);
@@ -2026,9 +2053,10 @@ YBCDestroyVirtualWalForCDC()
 
 void
 YBCGetCDCConsistentChanges(const char *stream_id,
-						   YBCPgChangeRecordBatch **record_batch)
+						   YBCPgChangeRecordBatch **record_batch,
+						   YBCTypeEntityProvider type_entity_provider)
 {
-	HandleYBStatus(YBCPgGetCDCConsistentChanges(stream_id, record_batch));
+	HandleYBStatus(YBCPgGetCDCConsistentChanges(stream_id, record_batch, type_entity_provider));
 }
 
 void

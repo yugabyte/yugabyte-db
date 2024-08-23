@@ -114,6 +114,7 @@ set(MASTER_SRCS
   mini_master.cc
   master_snapshot_coordinator.cc
   multi_step_monitored_task.cc
+  object_lock.cc
   post_tablet_create_task_base.cc
   restoration_state.cc
   restore_sys_catalog_state.cc
@@ -224,7 +225,8 @@ ADD_YB_LIBRARY(master_error
   DEPS ${MASTER_RPC_LIBS})
 
 set(MASTER_UTIL_SRCS
-  master_util.cc)
+  master_util.cc
+  catalog_entity_parser.cc)
 ADD_YB_LIBRARY(master_util
   SRCS ${MASTER_UTIL_SRCS}
   DEPS master_error ${MASTER_RPC_LIBS})
@@ -232,7 +234,8 @@ ADD_YB_LIBRARY(master_util
 # A library with common code shared between master tests.
 set(MASTER_TEST_COMMON_SRCS
   master-test_base.cc
-  master-test-util.cc)
+  master-test-util.cc
+  ts_descriptor_test_util.cc)
 add_library(master_test_common ${MASTER_TEST_COMMON_SRCS})
 target_link_libraries(master_test_common
   master ${MASTER_PROTO_LIBS} yb_client ${YB_MIN_TEST_LIBS})

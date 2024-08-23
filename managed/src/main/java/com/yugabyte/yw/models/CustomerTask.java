@@ -95,7 +95,10 @@ public class CustomerTask extends Model {
     MasterKey(true),
 
     @EnumValue("Node Agent")
-    NodeAgent(false);
+    NodeAgent(false),
+
+    @EnumValue("Platform")
+    Yba(false);
 
     private final boolean universeTarget;
 
@@ -369,7 +372,16 @@ public class CustomerTask extends Model {
     UpdateProxyConfig,
 
     @EnumValue("SyncMasterAddresses")
-    SyncMasterAddresses;
+    SyncMasterAddresses,
+
+    @EnumValue("CreateYbaBackup")
+    CreateYbaBackup,
+
+    @EnumValue("RestoreYbaBackup")
+    RestoreYbaBackup,
+
+    @EnumValue("RestoreContinuousBackup")
+    RestoreContinuousBackup;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -536,6 +548,12 @@ public class CustomerTask extends Model {
           return completed ? "Started master on new node" : "Starting master on new node";
         case SyncMasterAddresses:
           return completed ? "Synced master addresses" : "Syncing master addresses";
+        case CreateYbaBackup:
+          return completed ? "Creating YBA backup" : "Created YBA backup";
+        case RestoreYbaBackup:
+          return completed ? "Restoring YBA backup" : "Restored YBA backup";
+        case RestoreContinuousBackup:
+          return completed ? "Restoring continuous YBA backup" : "Restored continuous YBA backup";
         default:
           return null;
       }
@@ -874,6 +892,18 @@ public class CustomerTask extends Model {
     } else {
       return null;
     }
+  }
+
+  public static Optional<CustomerTask> maybeGetLastTaskByTargetUuidTaskType(
+      UUID targetUUID, TaskType taskType) {
+    return find.query()
+        .where()
+        .eq("target_uuid", targetUUID)
+        .eq("type", taskType)
+        .isNotNull("completion_time")
+        .orderBy("completion_time desc")
+        .setMaxRows(1)
+        .findOneOrEmpty();
   }
 
   @JsonIgnore

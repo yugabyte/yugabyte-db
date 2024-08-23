@@ -193,6 +193,7 @@ index_insert(Relation indexRelation,
 			 Datum *values,
 			 bool *isnull,
 			 ItemPointer heap_t_ctid,
+			 Datum ybctid,
 			 Relation heapRelation,
 			 IndexUniqueCheck checkUnique,
 			 bool indexUnchanged,
@@ -217,7 +218,7 @@ index_insert(Relation indexRelation,
 	if (IsYugaByteEnabled() && IsYBRelation(indexRelation))
 	{
 		return indexRelation->rd_indam->yb_aminsert(indexRelation, values, isnull,
-													heap_t_ctid, heapRelation,
+													ybctid, heapRelation,
 													checkUnique, indexInfo,
 													yb_shared_insert);
 	}
@@ -619,7 +620,6 @@ index_getnext_tid(IndexScanDesc scan, ScanDirection direction)
 	 */
 	Assert(IsYBRelation(scan->indexRelation) ?
 		   (!ItemPointerIsValid(&scan->xs_heaptid) &&
-			YbItemPointerYbctid(&scan->xs_heaptid) == 0 &&
 			(!TupIsNull(scan->yb_agg_slot) ||
 			 scan->xs_hitup != NULL ||
 			 scan->xs_itup != NULL)) :
@@ -724,7 +724,6 @@ index_getnext_slot(IndexScanDesc scan, ScanDirection direction, TupleTableSlot *
 			 */
 			Assert(IsYBRelation(scan->indexRelation) ?
 				   (!ItemPointerIsValid(&scan->xs_heaptid) &&
-					YbItemPointerYbctid(&scan->xs_heaptid) == 0 &&
 					(!TupIsNull(scan->yb_agg_slot) ||
 					 scan->xs_hitup != NULL)) :
 				   ItemPointerIsValid(&scan->xs_heaptid));
@@ -740,7 +739,6 @@ index_getnext_slot(IndexScanDesc scan, ScanDirection direction, TupleTableSlot *
 		 */
 		Assert(IsYBRelation(scan->indexRelation) ?
 			   (!ItemPointerIsValid(&scan->xs_heaptid) &&
-				YbItemPointerYbctid(&scan->xs_heaptid) == 0 &&
 				(!TupIsNull(scan->yb_agg_slot) ||
 				 scan->xs_hitup != NULL)) :
 			   ItemPointerIsValid(&scan->xs_heaptid));

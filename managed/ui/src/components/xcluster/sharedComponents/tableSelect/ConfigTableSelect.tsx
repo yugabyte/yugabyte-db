@@ -297,11 +297,10 @@ export const ConfigTableSelect = ({
     replicationLagAlertConfigQuery.data
   );
   const tablesInConfig = augmentTablesWithXClusterDetails(
-    sourceUniverseTablesQuery.data,
     xClusterConfig.tableDetails,
     maxAcceptableLag,
     tableReplicationLagQuery.data?.async_replication_sent_lag?.data,
-    { includeDroppedTables: false }
+    { includeUnconfiguredTables: false, includeDroppedTables: false }
   );
 
   const tablesForSelection = tablesInConfig.filter(
@@ -337,7 +336,7 @@ export const ConfigTableSelect = ({
         <YBSmartSearchBar
           searchTokens={searchTokens}
           onSearchTokensChange={handleSearchTokenChange}
-          recognizedModifiers={['database', 'table']}
+          recognizedModifiers={['database', 'table', 'sizeBytes', 'status']}
           placeholder={t('tablesSearchBarPlaceholder')}
         />
       </Box>
@@ -537,12 +536,14 @@ function getSelectionOptionsFromTables(
 /**
  * Fields to do substring search on if search token modifier is not specified.
  */
-const SUBSTRING_SEARCH_FIELDS = ['table', 'database'];
+const SUBSTRING_SEARCH_FIELDS = ['table', 'database', 'status'];
 
 const checkIsTableMatchedBySearchTokens = (table: XClusterTable, searchTokens: SearchToken[]) => {
   const candidate = {
     database: { value: table.keySpace, type: FieldType.STRING },
-    table: { value: table.tableName, type: FieldType.STRING }
+    table: { value: table.tableName, type: FieldType.STRING },
+    sizeBytes: { value: table.sizeBytes, type: FieldType.NUMBER },
+    status: { value: table.statusLabel, type: FieldType.STRING }
   };
   return searchTokens.every((searchToken) =>
     isMatchedBySearchToken(candidate, searchToken, SUBSTRING_SEARCH_FIELDS)

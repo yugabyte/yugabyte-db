@@ -165,6 +165,8 @@ CreateExecutorState(void)
 	estate->es_jit_flags = 0;
 	estate->es_jit = NULL;
 
+	NodeSetTag(&estate->yb_skip_entities, T_YbSkippableEntities);
+
 	/*
 	 * Return the executor state structure
 	 */
@@ -175,7 +177,6 @@ CreateExecutorState(void)
 	 */
 	estate->yb_es_is_single_row_modify_txn = false;
 	estate->yb_es_is_fk_check_disabled = false;
-	estate->yb_conflict_slot = NULL;
 	estate->yb_es_in_txn_limit_ht_for_reads = 0;
 
 	estate->yb_exec_params.limit_count = 0;

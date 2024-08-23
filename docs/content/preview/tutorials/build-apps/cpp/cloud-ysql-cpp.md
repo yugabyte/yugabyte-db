@@ -10,7 +10,7 @@ menu:
     parent: build-apps
     name: C++
     identifier: cloud-cpp
-    weight: 500
+    weight: 700
 type: docs
 ---
 

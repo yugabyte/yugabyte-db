@@ -926,8 +926,8 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.92-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.0-b2"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.93-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.0-b4"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b33"
 
 libraryDependencies ++= Seq(
@@ -1231,3 +1231,5 @@ uIBuild := (uIBuild dependsOn (buildDependentArtifacts)).value
  *  Make SBT packaging depend on the UI build hook.
  */
 Universal / packageZipTarball := (Universal / packageZipTarball).dependsOn(uIBuild).value
+
+addCommandAlias("api", "cleanV2ServerStubs;openApiProcessServer;compile")

@@ -104,8 +104,6 @@ typedef enum
  *  - mutex to synchronize access to other fields
  *  - cv_empty is the conditional variable to wait while buffer has keys
  *    available to take
- *  - read_time_serial_no, used_ht_for_read to replicate from the main backend
- *    to the parallel workers.
  *  - total_key_size, total_key_count key stats, also used to estimate number
  *    of keys to fetch (provides average key length).
  */
@@ -117,7 +115,6 @@ typedef struct YBParallelPartitionKeysData
 	Oid			table_relfilenode_oid; /* relfilenode_oid of the target
 										  relation */
 	bool		is_forward;		/* scan direction */
-	uint64_t	used_ht_for_read;	/* to replicate to background workers */
 	FetchStatus fetch_status;	/* if fetch is in progress or completed */
 	int			low_offset;		/* offset of the lowest key in the buffer */
 	int			high_offset;	/* offset of the highest key in the buffer */
@@ -375,7 +372,7 @@ extern TM_Result YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode,
  * Fetch a single row for given ybctid into a heap-tuple.
  * This API is needed for reading data from a catalog (system table).
  */
-extern bool YbFetchHeapTuple(Relation relation, ItemPointer tid, HeapTuple* tuple);
+extern bool YbFetchHeapTuple(Relation relation, Datum ybctid, HeapTuple* tuple);
 extern void YBCFlushTupleLocks();
 
 /*

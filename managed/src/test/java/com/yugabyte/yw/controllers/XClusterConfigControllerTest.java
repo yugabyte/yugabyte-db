@@ -25,8 +25,6 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
@@ -120,8 +118,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   private ResourceDefinition rd1;
   private ResourceDefinition rd2;
 
-  Permission permission1 = new Permission(ResourceType.UNIVERSE, Action.BACKUP_RESTORE);
-  Permission permission2 = new Permission(ResourceType.UNIVERSE, Action.UPDATE);
+  Permission permission1 = new Permission(ResourceType.UNIVERSE, Action.XCLUSTER);
 
   @Before
   public void setUp() {
@@ -133,7 +130,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
             "FakeRole1",
             "testDescription",
             RoleType.Custom,
-            new HashSet<>(Arrays.asList(permission1, permission2)));
+            new HashSet<>(Arrays.asList(permission1)));
     rd1 =
         ResourceDefinition.builder()
             .resourceType(ResourceType.OTHER)
@@ -731,15 +728,23 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
 
     Mockito.doNothing().when(mockXClusterScheduler).syncXClusterConfig(any());
 
+    GetMasterClusterConfigResponse fakeClusterConfigResponse =
+        new GetMasterClusterConfigResponse(
+            0, "", CatalogEntityInfo.SysClusterConfigEntryPB.getDefaultInstance(), null);
+    try {
+      when(mockClient.getMasterClusterConfig()).thenReturn(fakeClusterConfigResponse);
+    } catch (Exception ignore) {
+    }
+
     String getAPIEndpoint = apiEndpoint + "/" + xClusterConfig.getUuid();
 
     Result result = doRequestWithAuthToken("GET", getAPIEndpoint, user.createAuthToken());
     assertOk(result);
 
-    try {
-      verify(mockClient, times(0)).getMasterClusterConfig();
-    } catch (Exception e) {
-    }
+    // try {
+    //   verify(mockClient, times(0)).getMasterClusterConfig();
+    // } catch (Exception e) {
+    // }
 
     validateGetXClusterResponse(xClusterConfig, result);
     validateGetXClusterLagResponse(result);

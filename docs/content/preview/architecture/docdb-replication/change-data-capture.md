@@ -16,16 +16,14 @@ type: docs
 
 ## Architecture
 
-![Stateless CDC Service](/images/architecture/stateless_cdc_service.png)
-
 Every YB-TServer has a `CDC service` that is stateless. The main APIs provided by the CDC service are the following:
 
 - `createCDCSDKStream` API for creating the stream on the database.
 - `getChangesCDCSDK` API that can be used by the client to get the latest set of changes.
 
-## CDC streams
+![Stateless CDC Service](/images/architecture/stateless_cdc_service.png)
 
-Creating a new CDC stream returns a stream UUID. This is facilitated via the [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) tool.
+## CDC streams
 
 YugabyteDB automatically splits user tables into multiple shards (also called tablets) using either a hash- or range-based strategy. The primary key for each row in the table uniquely identifies the location of the tablet in the row.
 
@@ -35,15 +33,17 @@ Each tablet has its own WAL file. WAL is NOT in-memory, but it is disk persisted
 
 YugabyteDB normally purges WAL segments after some period of time. This means that the connector does not have the complete history of all changes that have been made to the database. Therefore, when the connector first connects to a particular YugabyteDB database, it starts by performing a consistent snapshot of each of the database schemas.
 
-The Debezium YugabyteDB connector captures row-level changes in the schemas of a YugabyteDB database. The first time it connects to a YugabyteDB cluster, the connector takes a consistent snapshot of all schemas. After that snapshot is complete, the connector continuously captures row-level changes that insert, update, and delete database content, and that were committed to a YugabyteDB database.
+The YugabyteDB Debezium connector captures row-level changes in the schemas of a YugabyteDB database. The first time it connects to a YugabyteDB cluster, the connector takes a consistent snapshot of all schemas. After that snapshot is complete, the connector continuously captures row-level changes that insert, update, and delete database content, and that were committed to a YugabyteDB database.
 
 ![How does CDC work](/images/explore/cdc-overview-work.png)
 
-The connector produces a change event for every row-level insert, update, and delete operation that was captured, and sends change event records for each table in a separate Kafka topic. Client applications read the Kafka topics that correspond to the database tables of interest, and can react to every row-level event they receive from those topics. For each table, the default behavior is that the connector streams all generated events to a separate Kafka topic for that table. Applications and services consume data change event records from that topic.
+The core primitive of CDC is the _stream_. Streams can be enabled and disabled on databases. You can specify which tables to include or exclude. Every change to a watched database table is emitted as a record in a configurable format to a configurable sink. Streams scale to any YugabyteDB cluster independent of its size and are designed to impact production traffic as little as possible.
 
-The core primitive of CDC is the _stream_. Streams can be enabled and disabled on databases. Every change to a watched database table is emitted as a record in a configurable format to a configurable sink. Streams scale to any YugabyteDB cluster independent of its size and are designed to impact production traffic as little as possible.
+Creating a new CDC stream returns a stream UUID. This is facilitated via the [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands) tool. A stream ID is created first, per database. You configure the maximum batch side in YugabyteDB, while the polling frequency is configured on the connector side.
 
-![How does CDC work](/images/explore/cdc-overview-work3.png)
+Connector tasks can consume changes from multiple tablets. At least once delivery is guaranteed. In turn, connector tasks write to the Kafka cluster, and tasks don't need to match Kafka partitions. Tasks can be independently scaled up or down.
+
+The connector produces a change event for every row-level insert, update, and delete operation that was captured, and sends change event records for each table in a separate Kafka topic. Client applications read the Kafka topics that correspond to the database tables of interest, and can react to every row-level event they receive from those topics. For each table, the default behavior is that the connector streams all generated events to a separate Kafka topic for that table. Applications and services consume data change event records from that topic. All changes for a row (or rows in the same tablet) are received in the order in which they happened. A checkpoint per stream ID and tablet is updated in a state table after a successful write to Kafka brokers.
 
 ## CDC guarantees
 
@@ -51,7 +51,7 @@ CDC in YugabyteDB provides technology to ensure that any changes in data due to 
 
 ### Per-tablet ordered delivery
 
-All data changes for one row or multiple rows in the same tablet are received in the order in which they occur. Due to the distributed nature of the problem, however, there is no guarantee for the order across tablets.
+All data changes for one row or multiple rows in the same tablet are received in the order in which they occur. Due to the distributed nature of the problem, however, gRPC replication does not guarantee order across tablets.
 
 Consider the following scenario:
 

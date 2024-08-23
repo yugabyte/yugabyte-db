@@ -38,16 +38,37 @@ export const XClusterTableStatus = {
   VALIDATED: 'Validated',
   BOOTSTRAPPING: 'Bootstrapping',
   UNABLE_TO_FETCH: 'UnableToFetch',
-  // DROPPPED - Client internal status. Does not exist on the backend.
-  //            Used to mark tables which are dropped on the source universe.
+  // DROPPED - Client internal status. Does not exist on the backend.
+  //            Used to mark tables which are dropped on both the source and target.
   DROPPED: 'Dropped',
   EXTRA_TABLE_ON_SOURCE: 'ExtraTableOnSource',
-  EXTRA_TABLE_ON_TARGET: 'DroppedFromSource',
+  EXTRA_TABLE_ON_TARGET: 'ExtraTableOnTarget',
   DROPPED_FROM_SOURCE: 'DroppedFromSource',
   DROPPED_FROM_TARGET: 'DroppedFromTarget',
   REPLICATION_ERROR: 'ReplicationError'
 } as const;
 export type XClusterTableStatus = typeof XClusterTableStatus[keyof typeof XClusterTableStatus];
+
+/**
+ * Tables status which indicate the table only exists on the target.
+ */
+export const SOURCE_MISSING_XCLUSTER_TABLE_STATUSES: readonly XClusterTableStatus[] = [
+  XClusterTableStatus.DROPPED,
+  XClusterTableStatus.DROPPED_FROM_SOURCE,
+  XClusterTableStatus.EXTRA_TABLE_ON_TARGET
+];
+
+export const UNCONFIGURED_XCLUSTER_TABLE_STATUSES: readonly XClusterTableStatus[] = [
+  XClusterTableStatus.EXTRA_TABLE_ON_SOURCE,
+  XClusterTableStatus.EXTRA_TABLE_ON_TARGET
+];
+
+export const DROPPED_XCLUSTER_TABLE_STATUSES: readonly XClusterTableStatus[] = [
+  XClusterTableStatus.DROPPED,
+  XClusterTableStatus.DROPPED_FROM_SOURCE,
+  XClusterTableStatus.DROPPED_FROM_TARGET
+];
+
 //------------------------------------------------------------------------------------
 
 /**
@@ -229,6 +250,13 @@ export const PollingIntervalMs = {
 export const XCLUSTER_METRIC_REFETCH_INTERVAL_MS = PollingIntervalMs.XCLUSTER_METRICS;
 export const XCLUSTER_CONFIG_REFETCH_INTERVAL_MS = PollingIntervalMs.XCLUSTER_CONFIG;
 
+export const XCLUSTER_UNDEFINED_LAG_NUMERIC_REPRESENTATION = -1;
+
+/**
+ * Constant value fallback. Used when runtime config value is invalid/undefined.
+ */
+export const XCLUSTER_TRANSACTIONAL_PITR_SNAPSHOT_INTERVAL_SECONDS = 3600;
+
 export const XClusterModalName = {
   EDIT_CONFIG: 'editXClusterConfigModal',
   DELETE_CONFIG: 'deleteXClusterConfigModal',
@@ -263,3 +291,5 @@ export const XCLUSTER_REPLICATION_DOCUMENTATION_URL =
   'https://docs.yugabyte.com/preview/yugabyte-platform/create-deployments/async-replication-platform/';
 export const YB_ADMIN_XCLUSTER_DOCUMENTATION_URL =
   'https://docs.yugabyte.com/preview/admin/yb-admin/#xcluster-replication-commands';
+
+export const I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS = 'clusterDetail.xCluster.config.tableStatus';

@@ -151,12 +151,6 @@ typedef struct IndexScanDescData
 	HeapTuple	xs_hitup;		/* index data returned by AM, as HeapTuple */
 	struct TupleDescData *xs_hitupdesc; /* rowtype descriptor of xs_hitup */
 
-	/*
-	 * Result from Yugabyte.
-	 * - Note that Postgres keeps the result in field "ItemPointerData xs_heaptid;".
-	 * - This field now also contains the returned value from Yugabyte including ybctid.
-	 * - It is called "YbItemPointerData yb_itemptr;"
-	 */
 	ItemPointerData xs_heaptid; /* result */
 	bool		xs_heap_continue;	/* T if must keep walking, potential
 									 * further results */

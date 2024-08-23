@@ -192,20 +192,12 @@ class BlockBasedTable : public TableReader {
 
   InternalIterator* NewIndexIterator(const ReadOptions& read_options) override;
 
-  // Converts an index entry (i.e. an encoded BlockHandle) into an iterator over the contents of
-  // a correspoding block. Updates and returns input_iter if the one is specified, or returns
-  // a new iterator.
-  InternalIterator* NewDataBlockIterator(
-      const ReadOptions& ro, const Slice& index_value, BlockType block_type,
-      BlockIter* input_iter = nullptr);
-
   const ImmutableCFOptions& ioptions();
 
   yb::Result<std::string> GetMiddleKey() override;
 
-  // Helper function that force reading block from a file and takes care about block cleanup.
-  yb::Result<std::unique_ptr<Block>> RetrieveBlockFromFile(const ReadOptions& ro,
-      const Slice& index_value, BlockType block_type);
+  yb::Result<uint32_t> TEST_GetBlockNumRestarts(
+      const ReadOptions& ro, const Slice index_value, BlockType block_type);
 
   ~BlockBasedTable();
 
@@ -217,6 +209,8 @@ class BlockBasedTable : public TableReader {
   yb::Result<IndexReaderCleanablePtr> TEST_GetIndexReader();
 
  private:
+  struct BlockRetrievalInfo;
+
   template <class TValue>
   struct CachableEntry;
 
@@ -300,6 +294,15 @@ class BlockBasedTable : public TableReader {
       std::unique_ptr<IndexReader>* index_reader,
       InternalIterator* preloaded_meta_index_iter = nullptr);
 
+  // Converts an index entry (i.e. an encoded BlockHandle) into an iterator over the contents of
+  // a corresponding block (data block or lower level index block). Updates and returns input_iter
+  // if the one is specified, or returns a new iterator.
+  InternalIterator* NewBlockIterator(
+      const ReadOptions& ro, const Slice index_value, BlockType block_type,
+      BlockIter* input_iter = nullptr);
+  InternalIterator* NewBlockIterator(
+      CachableEntry<Block>* block, BlockType block_type, BlockIter* input_iter);
+
   bool NonBlockBasedFilterKeyMayMatch(FilterBlockReader* filter, const Slice& filter_key) const;
 
   Status ReadPropertiesBlock(InternalIterator* meta_iter);
@@ -324,10 +327,17 @@ class BlockBasedTable : public TableReader {
   FileReaderWithCachePrefix* GetBlockReader(BlockType block_type) const;
   KeyValueEncodingFormat GetKeyValueEncodingFormat(BlockType block_type) const;
 
+  Status GetBlockRetrievalInfo(
+      Slice index_value, const BlockType block_type, BlockRetrievalInfo *info);
+
   // Retrieves block from file system or cache.
   // NOTE! A caller is responsible for a block cleanup.
-  yb::Result<CachableEntry<Block>> RetrieveBlock(const ReadOptions& ro, const Slice& index_value,
-      BlockType block_type, bool use_cache = true);
+  yb::Result<CachableEntry<Block>> RetrieveBlock(
+      const ReadOptions& ro, const Slice index_value, BlockType block_type);
+  yb::Result<CachableEntry<Block>> GetBlockFromCache(
+      const ReadOptions& ro, const BlockRetrievalInfo& info);
+  yb::Result<CachableEntry<Block>> ReadBlockFromFileAndMaybePutToCache(
+      const ReadOptions& ro, const BlockRetrievalInfo& info);
 
   explicit BlockBasedTable(Rep* rep) : rep_(rep) {}
 

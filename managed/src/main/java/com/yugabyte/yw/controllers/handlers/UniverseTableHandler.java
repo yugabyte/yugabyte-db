@@ -127,6 +127,44 @@ public class UniverseTableHandler {
     // Validate universe UUID
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
+    final String masterAddresses = universe.getMasterAddresses();
+    if (masterAddresses.isEmpty()) {
+      throw new PlatformServiceException(SERVICE_UNAVAILABLE, MASTERS_UNAVAILABLE_ERR_MSG);
+    }
+
+    String certificate = universe.getCertificateNodetoNode();
+    ListTablesResponse response =
+        listTablesOrBadRequest(masterAddresses, certificate, false /* excludeSystemTables */);
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList =
+        response.getTableInfoList();
+
+    return getTableInfoRespFromTableInfo(
+        universe,
+        tableInfoList,
+        includeParentTableInfo,
+        excludeColocatedTables,
+        includeColocatedParentTables,
+        xClusterSupportedOnly);
+  }
+
+  /**
+   * Converts a list of TableInfo objects into a list of TableInfoResp objects.
+   *
+   * @param universe The Universe object.
+   * @param tableInfoList The list of TableInfo objects.
+   * @param includeParentTableInfo Flag indicating whether to include parent table information.
+   * @param excludeColocatedTables Flag indicating whether to exclude colocated tables.
+   * @param includeColocatedParentTables Flag indicating whether to include colocated parent tables.
+   * @param xClusterSupportedOnly Flag indicating whether to include only xCluster supported tables.
+   * @return The list of TableInfoResp objects.
+   */
+  public List<TableInfoResp> getTableInfoRespFromTableInfo(
+      Universe universe,
+      List<TableInfo> tableInfoList,
+      boolean includeParentTableInfo,
+      boolean excludeColocatedTables,
+      boolean includeColocatedParentTables,
+      boolean xClusterSupportedOnly) {
     if (xClusterSupportedOnly && (!includeColocatedParentTables || excludeColocatedTables)) {
       throw new PlatformServiceException(
           BAD_REQUEST,
@@ -141,18 +179,6 @@ public class UniverseTableHandler {
     boolean hasColocationInfo =
         CommonUtils.isReleaseBetween("2.18.1.0-b18", "2.19.0.0-b0", universeVersion)
             || CommonUtils.isReleaseEqualOrAfter("2.19.0.0-b168", universeVersion);
-    final String masterAddresses = universe.getMasterAddresses();
-    if (masterAddresses.isEmpty()) {
-      throw new PlatformServiceException(SERVICE_UNAVAILABLE, MASTERS_UNAVAILABLE_ERR_MSG);
-    }
-
-    Map<String, TableSizes> tableSizes = getTableSizesOrEmpty(universe);
-
-    String certificate = universe.getCertificateNodetoNode();
-    ListTablesResponse response =
-        listTablesOrBadRequest(masterAddresses, certificate, false /* excludeSystemTables */);
-    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList =
-        response.getTableInfoList();
 
     // First filter out all system tables except redis table.
     tableInfoList =
@@ -235,6 +261,8 @@ public class UniverseTableHandler {
                     indexTable -> indexTableMainTableMap.put(indexTable, mainTable)));
       }
     }
+
+    Map<String, TableSizes> tableSizes = getTableSizesOrEmpty(universe);
 
     for (TableInfo table : tableInfoList) {
       TablePartitionInfoKey tableKey =

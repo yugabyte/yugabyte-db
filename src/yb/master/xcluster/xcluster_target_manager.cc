@@ -303,8 +303,6 @@ Status XClusterTargetManager::RemoveDroppedTablesOnConsumer(
 
     RETURN_NOT_OK(RemoveTablesFromReplicationGroup(
         replication_group, producer_tables, catalog_manager_, epoch));
-    RETURN_NOT_OK(WaitForSetupUniverseReplicationToFinish(
-        replication_group_id, CoarseMonoClock::TimePoint::max()));
   }
 
   return Status::OK();
@@ -779,10 +777,11 @@ Status XClusterTargetManager::PopulateReplicationGroupErrors(
   for (const auto& [consumer_table_id, tablet_error_map] : *replication_error_map) {
     if (!table_stream_ids_map_.contains(consumer_table_id) ||
         !table_stream_ids_map_.at(consumer_table_id).contains(replication_group_id)) {
-      // This is not expected. The two maps should be kept in sync.
-      LOG(DFATAL) << "replication_error_map_ contains consumer table " << consumer_table_id
-                  << " in replication group " << replication_group_id
-                  << " but table_stream_ids_map_ does not.";
+      // It is possible to hit this if a table is deleted and we are still processing poller errors.
+      YB_LOG_EVERY_N_SECS_OR_VLOG(WARNING, 10, 1)
+          << "xcluster_consumer_replication_error_map_ contains consumer table "
+          << consumer_table_id << " in replication group " << replication_group_id
+          << " but xcluster_consumer_table_stream_ids_map_ does not.";
       continue;
     }
 

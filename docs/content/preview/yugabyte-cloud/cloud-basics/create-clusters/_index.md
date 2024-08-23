@@ -12,58 +12,30 @@ menu:
 type: indexpage
 ---
 
-<div class="row">
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="create-clusters-free/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/architecture/concepts/single_node.png" aria-hidden="true" />
-        <div class="title">Sandbox</div>
-      </div>
-      <div class="body">
-        Create your free single-node Sandbox cluster.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Sandbox"
+    body="Create your free single-node Sandbox cluster."
+    href="create-clusters-free/"
+    icon="/images/section_icons/architecture/concepts/single_node.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="create-single-region/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
-        <div class="title">Single region</div>
-      </div>
-      <div class="body">
-        Deploy single-region clusters with node- and availability zone-level fault tolerance.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Single region"
+    body="Deploy single-region clusters with node- and availability zone-level fault tolerance."
+    href="create-single-region/"
+    icon="/images/section_icons/quick_start/create_cluster.png">}}
 
-</div>
+  {{<index/item
+    title="Replicate across regions"
+    body="Create a stretched multi-region synchronous cluster."
+    href="create-clusters-multisync/"
+    icon="/images/section_icons/explore/planet_scale.png">}}
 
-<div class="row">
+  {{<index/item
+    title="Partition by region"
+    body="Pin data to specific geographical regions."
+    href="create-clusters-geopartition/"
+    icon="/images/section_icons/explore/planet_scale.png">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="create-clusters-multisync/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />
-        <div class="title">Replicate across regions</div>
-      </div>
-      <div class="body">
-        Create a stretched multi-region synchronous cluster.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="create-clusters-geopartition/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />
-        <div class="title">Partition by region</div>
-      </div>
-      <div class="body">
-        Pin data to specific geographical regions.
-      </div>
-    </a>
-  </div>
-
-</div>
+{{</index/block>}}

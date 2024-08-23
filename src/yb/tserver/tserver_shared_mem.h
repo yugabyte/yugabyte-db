@@ -116,6 +116,14 @@ class TServerSharedData {
 
   bool IsCronLeader() const;
 
+  void SetPid(pid_t pid) {
+    pid_ = pid;
+  }
+
+  pid_t pid() const {
+    return pid_;
+  }
+
  private:
   // Endpoint that should be used by local processes to access this tserver.
   Endpoint endpoint_;
@@ -130,6 +138,9 @@ class TServerSharedData {
   std::atomic<std::optional<bool>> catalog_version_table_in_perdb_mode_{std::nullopt};
 
   std::atomic<MonoTime> cron_leader_lease_{MonoTime::kUninitialized};
+
+  // pid of the local TServer
+  pid_t pid_;
 };
 
 YB_STRONGLY_TYPED_BOOL(Create);

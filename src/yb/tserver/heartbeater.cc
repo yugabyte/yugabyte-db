@@ -560,10 +560,8 @@ Status Heartbeater::Thread::TryHeartbeat() {
       VLOG_WITH_FUNC(2) << "got no master catalog version data";
     }
   } else {
-    // We never expect rolling gflag change of --ysql_enable_db_catalog_version_mode. In
-    // non-per-db mode, we do not use db_catalog_version_data.
-    DCHECK(!last_hb_response_.has_db_catalog_version_data());
     if (last_hb_response_.has_ysql_catalog_version()) {
+      DCHECK(!last_hb_response_.has_db_catalog_version_data());
       if (FLAGS_log_ysql_catalog_versions) {
         VLOG_WITH_FUNC(1) << "got master catalog version: "
                           << last_hb_response_.ysql_catalog_version()
@@ -580,6 +578,32 @@ Status Heartbeater::Thread::TryHeartbeat() {
         server_->SetYsqlCatalogVersion(last_hb_response_.ysql_catalog_version(),
                                        last_hb_response_.ysql_catalog_version());
       }
+    } else if (last_hb_response_.has_db_catalog_version_data()) {
+      // --ysql_enable_db_catalog_version_mode is still false on this tserver but master
+      // already has --ysql_enable_db_catalog_version_mode=true. This can happen during
+      // rolling upgrade from an old release where this gflag defaults to false to a new
+      // release where this gflag defaults to true: the change of this gflag from false
+      // to true happens on master first.
+      // This can also happen when such an upgrade is rolled back: where yb-tservers are
+      // first rolled back so the gflag changes to false before yb-masters.
+      // Here we take care of both cases in the same way: extracting the global catalog
+      // versions from last_hb_response_.db_catalog_version_data().
+      if (FLAGS_log_ysql_catalog_versions) {
+        VLOG_WITH_FUNC(1) << "got master db catalog version data: "
+                          << last_hb_response_.db_catalog_version_data().ShortDebugString();
+      }
+      const auto& version_data = last_hb_response_.db_catalog_version_data();
+
+      // The upgrade of the pg_yb_catalog_version table to one row per database happens in
+      // the finalization phase of cluster upgrade, at that time all the tservers should have
+      // completed rolling upgrade and have --ysql_enable_db_catalog_version_mode=true.
+      // Since we still have FLAGS_ysql_enable_db_catalog_version_mode=false, the table
+      // must still only have one row for template1.
+      DCHECK_EQ(version_data.db_catalog_versions_size(), 1);
+      DCHECK_EQ(version_data.db_catalog_versions(0).db_oid(), kTemplate1Oid);
+
+      server_->SetYsqlCatalogVersion(version_data.db_catalog_versions(0).current_version(),
+                                     version_data.db_catalog_versions(0).last_breaking_version());
     }
   }
 

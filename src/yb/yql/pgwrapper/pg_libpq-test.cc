@@ -3220,12 +3220,14 @@ TEST_F_EX(PgLibPqTest,
   ASSERT_NOK(conn1.Fetch("SELECT pg_stat_statements_reset()"));
   ASSERT_NOK(conn2.Fetch("SELECT 1"));
 
+#ifdef YB_TODO // yb_terminated_queries is not yet supported in PG15
   // validate that this query is added to yb_terminated_queries
   auto conn3 = ASSERT_RESULT(Connect());
   const string get_yb_terminated_queries =
     "SELECT query_text, termination_reason FROM yb_terminated_queries";
   auto row = ASSERT_RESULT((conn3.FetchRow<std::string, std::string>(get_yb_terminated_queries)));
   ASSERT_EQ(row, (decltype(row){"SELECT pg_stat_statements_reset()", "Terminated by SIGKILL"}));
+#endif
 }
 
 TEST_F_EX(PgLibPqTest,
@@ -3980,10 +3982,9 @@ TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
   ASSERT_GT(expected, 0);
   LOG(INFO) << "Expected total cache misses: " << expected;
   int total_cache_misses = 0;
-  for (int i = 0; ; ++i) {
-    auto cache_miss_metric_id =
-      Format("handler_latency_yb_ysqlserver_SQLProcessor_CatalogCacheMisses_$0_", i);
-    begin = page_content.find(cache_miss_metric_id);
+  while (true) {
+    auto cache_id_miss_metric = "handler_latency_yb_ysqlserver_SQLProcessor_CatalogCacheMisses_";
+    begin = page_content.find(cache_id_miss_metric, end);
     if (begin == std::string::npos) {
       break;
     }

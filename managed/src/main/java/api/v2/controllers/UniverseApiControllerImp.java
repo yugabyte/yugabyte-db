@@ -1,4 +1,5 @@
 // Copyright (c) YugaByte, Inc.
+
 package api.v2.controllers;
 
 import api.v2.handlers.UniverseManagementHandler;
@@ -10,6 +11,7 @@ import api.v2.models.UniverseCreateSpec;
 import api.v2.models.UniverseDeleteSpec;
 import api.v2.models.UniverseEditEncryptionInTransit;
 import api.v2.models.UniverseEditGFlags;
+import api.v2.models.UniverseEditKubernetesOverrides;
 import api.v2.models.UniverseEditSpec;
 import api.v2.models.UniverseRestart;
 import api.v2.models.UniverseRollbackUpgradeReq;
@@ -37,20 +39,20 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   @Override
   public YBATask createUniverse(Request request, UUID cUUID, UniverseCreateSpec universeSpec)
       throws Exception {
-    return universeHandler.createUniverse(cUUID, universeSpec);
+    return universeHandler.createUniverse(request, cUUID, universeSpec);
   }
 
   @Override
   public YBATask editUniverse(
       Request request, UUID cUUID, UUID uniUUID, UniverseEditSpec universeEditSpec)
       throws Exception {
-    return universeHandler.editUniverse(cUUID, uniUUID, universeEditSpec);
+    return universeHandler.editUniverse(request, cUUID, uniUUID, universeEditSpec);
   }
 
   @Override
   public YBATask addCluster(
       Request request, UUID cUUID, UUID uniUUID, ClusterAddSpec clusterAddSpec) throws Exception {
-    return universeHandler.addCluster(cUUID, uniUUID, clusterAddSpec);
+    return universeHandler.addCluster(request, cUUID, uniUUID, clusterAddSpec);
   }
 
   @Override
@@ -91,7 +93,7 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   @Override
   public UniverseSoftwareUpgradeFinalizeInfo getFinalizeSoftwareUpgradeInfo(
       Request request, UUID cUUID, UUID uniUUID) throws Exception {
-    return universeUpgradeHandler.getSoftwareUpgradeFinalizeInfo(request, cUUID, uniUUID);
+    return universeUpgradeHandler.getSoftwareUpgradeFinalizeInfo(cUUID, uniUUID);
   }
 
   @Override
@@ -112,7 +114,7 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   public UniverseSoftwareUpgradePrecheckResp precheckSoftwareUpgrade(
       Request request, UUID cUUID, UUID uniUUID, UniverseSoftwareUpgradePrecheckReq req)
       throws Exception {
-    return universeUpgradeHandler.precheckSoftwareUpgrade(request, cUUID, uniUUID, req);
+    return universeUpgradeHandler.precheckSoftwareUpgrade(cUUID, uniUUID, req);
   }
 
   @Override
@@ -139,5 +141,12 @@ public class UniverseApiControllerImp extends UniverseApiControllerImpInterface 
   public YBATask encryptionInTransitCertRotate(
       Request request, UUID cUUID, UUID uniUUID, UniverseCertRotateSpec spec) throws Exception {
     return universeUpgradeHandler.certRotate(request, cUUID, uniUUID, spec);
+  }
+
+  @Override
+  public YBATask editKubernetesOverrides(
+      Request request, UUID cUUID, UUID uniUUID, UniverseEditKubernetesOverrides spec)
+      throws Exception {
+    return universeUpgradeHandler.editKubernetesOverrides(request, cUUID, uniUUID, spec);
   }
 }

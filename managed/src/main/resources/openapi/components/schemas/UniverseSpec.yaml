@@ -27,11 +27,6 @@ properties:
     description: Whether to use time sync services like chrony on DB nodes of this cluster
     type: boolean
     example: false
-  use_systemd:
-    description: 'Whether to enable systemd on nodes of cluster. Defaults to false. Can be changed using API /customers/:cUUID/universes/:uniUUID/upgrade/systemd.'
-    type: boolean
-    example: false
-    default: true
   remote_package_path:
     description: Path to download thirdparty packages for itest. Only for AWS/onprem.
     type: string

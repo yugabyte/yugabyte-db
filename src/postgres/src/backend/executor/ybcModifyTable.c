@@ -570,7 +570,7 @@ YBCForeignKeyReferenceCacheDeleteIndex(Relation index, Datum *values, bool *isnu
 void YBCExecuteInsertIndex(Relation index,
 						   Datum *values,
 						   bool *isnull,
-						   ItemPointer tid,
+						   Datum ybctid,
 						   const uint64_t *backfill_write_time,
 						   yb_bind_for_write_function callback,
 						   void *indexstate)
@@ -579,7 +579,7 @@ void YBCExecuteInsertIndex(Relation index,
 							   index,
 							   values,
 							   isnull,
-							   tid,
+							   ybctid,
 							   backfill_write_time,
 							   callback,
 							   indexstate);
@@ -589,13 +589,13 @@ void YBCExecuteInsertIndexForDb(Oid dboid,
 								Relation index,
 								Datum* values,
 								bool* isnull,
-								ItemPointer tid,
+								Datum ybctid,
 								const uint64_t* backfill_write_time,
 								yb_bind_for_write_function callback,
 								void *indexstate)
 {
 	Assert(index->rd_rel->relkind == RELKIND_INDEX);
-	Assert(tid != 0 && YbItemPointerYbctid(tid));
+	Assert(ybctid != 0);
 
 	YBCPgStatement insert_stmt = NULL;
 
@@ -609,7 +609,7 @@ void YBCExecuteInsertIndexForDb(Oid dboid,
 
 	callback(insert_stmt, indexstate, index, values, isnull,
 			 RelationGetNumberOfAttributes(index),
-			 YbItemPointerYbctid(tid), true /* ybctid_as_value */);
+			 ybctid, true /* ybctid_as_value */);
 
 	/*
 	 * For non-unique indexes the primary-key component (base tuple id) already
@@ -928,20 +928,22 @@ bool YBCExecuteUpdate(ResultRelInfo *resultRelInfo,
 		 */
 		Assert(!bms_is_member(attnum - minattr, YBGetTablePrimaryKeyBms(rel)));
 
-		MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 		/* Assign this attr's value, handle expression pushdown if needed. */
 		if (pushdown_lc != NULL &&
 			((TargetEntry *) lfirst(pushdown_lc))->resno == attnum)
 		{
 			TargetEntry *tle = (TargetEntry *) lfirst(pushdown_lc);
 			Expr *expr = YbExprInstantiateParams(tle->expr, estate);
+			MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 			YBCPgExpr ybc_expr = YBCNewEvalExprCall(update_stmt, expr);
 			HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr));
 
 			pushdown_lc = lnext(mt_plan->ybPushdownTlist, pushdown_lc);
+			MemoryContextSwitchTo(oldContext);
 		}
 		else
 		{
+			MemoryContext oldContext = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 			bool is_null = false;
 			Datum d = slot_getattr(slot, attnum, &is_null);
 			/*
@@ -955,8 +957,8 @@ bool YBCExecuteUpdate(ResultRelInfo *resultRelInfo,
 			YBCPgExpr ybc_expr = YBCNewConstant(update_stmt, type_id, collation_id, d, is_null);
 
 			HandleYBStatus(YBCPgDmlAssignColumn(update_stmt, attnum, ybc_expr));
+			MemoryContextSwitchTo(oldContext);
 		}
-		MemoryContextSwitchTo(oldContext);
 	}
 
 	/*

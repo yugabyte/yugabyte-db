@@ -353,7 +353,7 @@ CopyMultiInsertBufferFlush(CopyMultiInsertInfo *miinfo,
 			recheckIndexes =
 				ExecInsertIndexTuples(resultRelInfo,
 									  buffer->slots[i], estate, false, false,
-									  NULL, NIL, NIL /* no_update_index_list */);
+									  NULL, NIL);
 			ExecARInsertTriggers(estate, resultRelInfo,
 								 slots[i], recheckIndexes,
 								 cstate->transition_capture);
@@ -1234,7 +1234,6 @@ yb_process_more_batches:
 																   false,
 																   false,
 																   NULL,
-																   NIL,
 																   NIL);
 					}
 					else if (resultRelInfo->ri_FdwRoutine != NULL)
@@ -1270,8 +1269,7 @@ yb_process_more_batches:
 																   false,
 																   false,
 																   NULL,
-																   NIL,
-																   NIL /* no_update_index_list */);
+																   NIL);
 					}
 
 					/* AFTER ROW INSERT Triggers */

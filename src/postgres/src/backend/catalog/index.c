@@ -3355,14 +3355,11 @@ double
 IndexBackfillHeapRangeScan(Relation table_rel,
 						   Relation index_rel,
 						   IndexInfo *index_info,
-						   IndexBuildCallback callback,
+						   YbIndexBuildCallback ybcallback,
 						   void *callback_state,
 						   YbBackfillInfo *bfinfo,
 						   YbPgExecOutParam *bfresult)
 {
-	/* YB_TODO(neil@yugabyte)
-	 * - Check for the value of the new flag "progress".
-	 */
 	return table_rel->rd_tableam->index_build_range_scan(table_rel,
 														 index_rel,
 														 index_info,
@@ -3371,11 +3368,12 @@ IndexBackfillHeapRangeScan(Relation table_rel,
 														 false /* progress */,
 														 0 /* start_blockno */,
 														 InvalidBlockNumber /* num_blocks */,
-														 callback,
+														 NULL,
 														 callback_state,
 														 NULL, /* scan */
 														 bfinfo,
-														 bfresult);
+														 bfresult,
+														 ybcallback);
 }
 
 /*

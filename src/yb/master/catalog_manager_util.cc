@@ -117,7 +117,7 @@ Status CatalogManagerUtil::AreLeadersOnPreferredOnly(
          const ReplicationInfoPB& replication_info) {
         for (const auto& ts_desc : ts_descs) {
           if (ts_desc->IsAcceptingLeaderLoad(replication_info)) {
-            accepting_leader_load.insert(ts_desc->permanent_uuid());
+            accepting_leader_load.insert(ts_desc->id());
           }
         }
       };
@@ -525,12 +525,24 @@ void CatalogManagerUtil::FillTableInfoPB(
     const TableId& table_id, const std::string& table_name, const TableType& table_type,
     const Schema& schema, uint32_t schema_version, const dockv::PartitionSchema& partition_schema,
     tablet::TableInfoPB* pb) {
+  SchemaPB schema_pb;
+  SchemaToPB(schema, &schema_pb);
+  PartitionSchemaPB partition_schema_pb;
+  partition_schema.ToPB(&partition_schema_pb);
+  FillTableInfoPB(
+      table_id, table_name, table_type, schema_pb, schema_version, partition_schema_pb, pb);
+}
+
+void CatalogManagerUtil::FillTableInfoPB(
+    const TableId& table_id, const std::string& table_name, const TableType& table_type,
+    const SchemaPB& schema, uint32_t schema_version, const PartitionSchemaPB& partition_schema,
+    tablet::TableInfoPB* pb) {
   pb->set_table_id(table_id);
   pb->set_table_name(table_name);
   pb->set_table_type(table_type);
-  SchemaToPB(schema, pb->mutable_schema());
+  pb->mutable_schema()->CopyFrom(schema);
   pb->set_schema_version(schema_version);
-  partition_schema.ToPB(pb->mutable_partition_schema());
+  pb->mutable_partition_schema()->CopyFrom(partition_schema);
 }
 
 Result<bool> CMPerTableLoadState::CompareReplicaLoads(

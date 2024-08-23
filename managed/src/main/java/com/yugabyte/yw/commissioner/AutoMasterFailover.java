@@ -26,9 +26,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.schedule.JobConfig.RuntimeParams;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -37,7 +34,9 @@ import java.util.Set;
 import java.util.UUID;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.yb.client.GetMasterHeartbeatDelaysResponse;
 import org.yb.client.YBClient;
 import org.yb.util.ServerInfo;
@@ -55,6 +54,7 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
 
   @Builder
   @Getter
+  @ToString
   // The fail-over action to be performed as a result of the detection.
   static class Action {
     @Builder.Default ActionType actionType = ActionType.NONE;
@@ -144,10 +144,6 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
                     "Retry limit of %d reached for task %s on universe %s",
                     retryLimit, action.getTaskType(), universe.getUniverseUUID());
             log.error(errMsg);
-            // Disable the schedule but keep it to track the failure count.
-            runtimeParams
-                .getJobScheduler()
-                .disableSchedule(runtimeParams.getJobSchedule().getUuid(), true);
             throw new RuntimeException(errMsg);
           }
         }
@@ -310,11 +306,13 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
                   failedMasters.add(node.getNodeName());
                 }
               } else {
-                log.error(
-                    "Failing master {} in universe {} as it is not alive",
-                    ipAddress,
-                    universe.getUniverseUUID());
-                failedMasters.add(node.getNodeName());
+                // Cannot decide at this time, wait for heartbeat delay to catch it.
+                String errMsg =
+                    String.format(
+                        "Follower lag for master %s in universe %s cannot be fetched",
+                        ipAddress, universe.getUniverseUUID());
+                log.error(errMsg);
+                throw new RuntimeException(errMsg);
               }
             });
     return failedMasters;
@@ -350,14 +348,19 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
       boolean autoSyncMasterAddrs =
           universe.getNodes().stream().anyMatch(n -> n.autoSyncMasterAddrs);
       if (autoSyncMasterAddrs) {
+        log.info("Sync master addresses is pending for universe {}", universe.getUniverseUUID());
         // Always sync even if another master may have failed.
         // TODO we may want to run this earlier if at least one is up.
-        return areAllTabletServersAlive(universe)
-            ? Action.builder()
-                .actionType(ActionType.SUBMIT)
-                .taskType(TaskType.SyncMasterAddresses)
-                .build()
-            : Action.builder().actionType(ActionType.NONE).build();
+        if (areAllTabletServersAlive(universe)) {
+          return Action.builder()
+              .actionType(ActionType.SUBMIT)
+              .taskType(TaskType.SyncMasterAddresses)
+              .build();
+        }
+        log.warn(
+            "Sync master addresses is skipped as some tservers not alive for universe {}",
+            universe.getUniverseUUID());
+        return Action.builder().actionType(ActionType.NONE).build();
       }
       String failedNodeName = validateAndGetFailedNodeName(customer, universe);
       return failedNodeName == null
@@ -413,7 +416,7 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
   @VisibleForTesting
   Map<String, Long> getFollowerLagMs(String ip, int port) {
     String endpoint = String.format(FOLLOWER_LAG_URL_FORMAT, ip, port);
-    log.info("Getting follower lag for endpoint {} {}", endpoint, nodeUIApiHelper);
+    log.info("Getting follower lag for endpoint {}", endpoint);
     try {
       JsonNode currentNodeMetricsJson = nodeUIApiHelper.getRequest(endpoint);
       JsonNode errors = currentNodeMetricsJson.get("error");
@@ -439,21 +442,6 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
 
   private CustomerTask submitMasterFailoverTask(
       Customer customer, Universe universe, String failedNodeName) {
-    CustomerTask lastTask = CustomerTask.getLastTaskByTargetUuid(universe.getUniverseUUID());
-    if (lastTask != null && lastTask.getCompletionTime() != null) {
-      // Cooldown is calculated from the last task.
-      Duration cooldownPeriod =
-          confGetter.getConfForScope(universe, UniverseConfKeys.autoMasterFailoverCooldown);
-      Instant restrictionEndTime =
-          lastTask
-              .getCompletionTime()
-              .toInstant()
-              .plus(cooldownPeriod.getSeconds(), ChronoUnit.SECONDS);
-      if (restrictionEndTime.isAfter(Instant.now())) {
-        log.info("Universe {} is cooling down", universe.getUniverseUUID());
-        return null;
-      }
-    }
     NodeDetails node = universe.getNode(failedNodeName);
     NodeDetails possibleReplacementCandidate = findReplacementMaster(universe, node);
     if (possibleReplacementCandidate == null) {
@@ -467,6 +455,14 @@ public class AutoMasterFailover extends UniverseDefinitionTaskBase {
         "Found a possible replacement master candidate {} for universe {}",
         possibleReplacementCandidate.getNodeName(),
         universe.getUniverseUUID());
+    Set<String> leaderlessTablets = getLeaderlessTablets(universe.getUniverseUUID());
+    if (CollectionUtils.isNotEmpty(leaderlessTablets)) {
+      log.error(
+          "Leaderless tablets {} found for universe {}",
+          Iterables.limit(leaderlessTablets, 10),
+          universe.getUniverseUUID());
+      return null;
+    }
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.setUniverseUUID(universe.getUniverseUUID());
     taskParams.nodeName = failedNodeName;

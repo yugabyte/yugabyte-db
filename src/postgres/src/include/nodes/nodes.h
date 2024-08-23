@@ -559,6 +559,8 @@ typedef enum NodeTag
 	T_YbCreateProfileStmt,
 	T_YbDropProfileStmt,
 	T_YbTIDBitmap,
+	T_YbSkippableEntities,
+	T_YbUpdateAffectedEntities,
 
 } NodeTag;
 

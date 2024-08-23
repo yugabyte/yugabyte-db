@@ -195,13 +195,13 @@ const (
 )
 
 const (
-	// PgSqlTableType
+	// PgSqlTableType table type
 	PgSqlTableType = "PGSQL_TABLE_TYPE"
 
-	// YqlTableType
+	// YqlTableType table type
 	YqlTableType = "YQL_TABLE_TYPE"
 
-	// RedisTableType
+	// RedisTableType table type
 	RedisTableType = "REDIS_TABLE_TYPE"
 )
 

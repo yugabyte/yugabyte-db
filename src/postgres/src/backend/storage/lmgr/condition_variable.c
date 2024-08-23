@@ -258,12 +258,11 @@ ConditionVariableCancelSleep(void)
  *
  * Do nothing if nothing is pending; this allows this function to be called
  * during transaction abort to clean up any unfinished CV sleep.
- */
-/* YB_TODO(neil) Need to rewrite function ConditionVariableCancelSleepForProc) to call
- * ConditionVariableCancelSleep()
+ *
+ * TODO(#23274): Rewrite / delete YbConditionVariableCancelSleepForProc
  */
 void
-ConditionVariableCancelSleepForProc(volatile PGPROC *proc)
+YbConditionVariableCancelSleepForProc(volatile PGPROC *proc)
 {
 	ConditionVariable *cv = cv_sleep_target;
 
@@ -301,6 +300,12 @@ ConditionVariableSignal(ConditionVariable *cv)
 		SetLatch(&proc->procLatch);
 }
 
+void
+ConditionVariableBroadcast(ConditionVariable *cv)
+{
+	return YbConditionVariableBroadcastForProc(cv, MyProc);
+}
+
 /*
  * Wake up all processes sleeping on the given CV.
  *
@@ -309,9 +314,10 @@ ConditionVariableSignal(ConditionVariable *cv)
  * will typically not get awakened.
  */
 void
-ConditionVariableBroadcast(ConditionVariable *cv)
+YbConditionVariableBroadcastForProc(ConditionVariable *cv,
+									volatile PGPROC *given_proc)
 {
-	int			pgprocno = MyProc->pgprocno;
+	int			pgprocno = given_proc->pgprocno;
 	PGPROC	   *proc = NULL;
 	bool		have_sentinel = false;
 
@@ -337,7 +343,7 @@ ConditionVariableBroadcast(ConditionVariable *cv)
 	 * care of re-establishing the lost state.
 	 */
 	if (cv_sleep_target != NULL)
-		ConditionVariableCancelSleep();
+		YbConditionVariableCancelSleepForProc(given_proc);
 
 	/*
 	 * Inspect the state of the queue.  If it's empty, we have nothing to do.
@@ -384,7 +390,7 @@ ConditionVariableBroadcast(ConditionVariable *cv)
 		have_sentinel = proclist_contains(&cv->wakeup, pgprocno, cvWaitLink);
 		SpinLockRelease(&cv->mutex);
 
-		if (proc != NULL && proc != MyProc)
+		if (proc != NULL && proc != given_proc)
 			SetLatch(&proc->procLatch);
 	}
 }

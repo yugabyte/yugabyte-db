@@ -23,7 +23,8 @@ import {
   isTableToggleable,
   formatUuidForXCluster,
   getNamespaceIdentifierToNamespaceUuidMap,
-  getNamespaceIdentifier
+  getNamespaceIdentifier,
+  getInConfigTableUuidsToTableDetailsMap
 } from '../../ReplicationUtils';
 import {
   XClusterConfigAction,
@@ -87,8 +88,9 @@ export type TableSelectProps =
   | (CommonTableSelectProps & {
       configAction: typeof XClusterConfigAction.MANAGE_TABLE;
       xClusterConfigUuid: string;
-      sourceDroppedTableUuids: Set<string>;
       unreplicatedTableInReplicatedNamespace: Set<string>;
+      tableUuidsDroppedOnSource: Set<string>;
+      tableUuidsDroppedOnTarget: Set<string>;
     });
 
 const useStyles = makeStyles(() => ({
@@ -378,13 +380,13 @@ export const TableSelect = (props: TableSelectProps) => {
 
   // Deselect any tables which are dropped on the source universe.
   if (props.configAction === XClusterConfigAction.MANAGE_TABLE) {
-    if (selectedTableUuids.some((tableUuid) => props.sourceDroppedTableUuids.has(tableUuid))) {
+    if (selectedTableUuids.some((tableUuid) => props.tableUuidsDroppedOnSource.has(tableUuid))) {
       setSelectedTableUuids(
-        selectedTableUuids.filter((tableUUID) => !props.sourceDroppedTableUuids.has(tableUUID))
+        selectedTableUuids.filter((tableUUID) => !props.tableUuidsDroppedOnSource.has(tableUUID))
       );
     }
   }
-  const { replicationItems, unreplicatedTablesInReplicatedNamespaces } =
+  const { replicationItems, namespaceUuidToUnreplicatedTableCandidates } =
     props.configAction === XClusterConfigAction.MANAGE_TABLE
       ? getReplicationItemsFromTables(
           sourceUniverseNamespaceQuery.data,
@@ -394,7 +396,8 @@ export const TableSelect = (props: TableSelectProps) => {
           isTransactionalConfig,
           tableType,
           props.xClusterConfigUuid,
-          props.unreplicatedTableInReplicatedNamespace
+          props.unreplicatedTableInReplicatedNamespace,
+          props.tableUuidsDroppedOnTarget
         )
       : getReplicationItemsFromTables(
           sourceUniverseNamespaceQuery.data,
@@ -414,7 +417,7 @@ export const TableSelect = (props: TableSelectProps) => {
     // Otherwise, we would be adding a proper subset of tables in a namespace
     // which is not supported for YSQL due to backup & restore being done at the
     // namespace (database) level.
-    Object.entries(unreplicatedTablesInReplicatedNamespaces).forEach(
+    Object.entries(namespaceUuidToUnreplicatedTableCandidates).forEach(
       ([namespaceId, unreplicatedTableCandidates]) => {
         if (selectedNamespaceUuids.includes(namespaceId)) {
           tableCandidates.push(...unreplicatedTableCandidates);
@@ -465,7 +468,7 @@ export const TableSelect = (props: TableSelectProps) => {
         <YBSmartSearchBar
           searchTokens={searchTokens}
           onSearchTokensChange={handleSearchTokenChange}
-          recognizedModifiers={['database', 'table', 'unreplicatedTable']}
+          recognizedModifiers={['database', 'table', 'sizeBytes', 'unreplicatedTable']}
           placeholder={t('tablesSearchBarPlaceholder')}
         />
         {props.configAction === XClusterConfigAction.MANAGE_TABLE &&
@@ -599,7 +602,7 @@ export const TableSelect = (props: TableSelectProps) => {
       )}
       <Box display="flex" flexDirection="column" marginTop={2} gridGap={theme.spacing(2)}>
         {props.configAction !== XClusterConfigAction.CREATE &&
-          props.sourceDroppedTableUuids.size > 0 && (
+          props.tableUuidsDroppedOnSource.size > 0 && (
             <YBBanner variant={YBBannerVariant.INFO}>
               <Typography variant="body2">
                 <Trans
@@ -608,7 +611,7 @@ export const TableSelect = (props: TableSelectProps) => {
                       ? 'droppedTablesInfoTextDr'
                       : 'droppedTablesInfoTextXCluster'
                   }`}
-                  values={{ droppedTableCount: props.sourceDroppedTableUuids.size }}
+                  values={{ droppedTableCount: props.tableUuidsDroppedOnSource.size }}
                   components={{ bold: <b /> }}
                 />
               </Typography>
@@ -643,10 +646,11 @@ const getReplicationItemsFromTables = (
   isTransactionalConfig: boolean,
   tableType: XClusterTableType,
   currentXClusterConfigUUID?: string,
-  unreplicatedTableInReplicatedNamespace?: Set<string>
+  unreplicatedTableInReplicatedNamespace?: Set<string>,
+  tableUuidsDroppedOnTarget?: Set<string>
 ): {
   replicationItems: ReplicationItems;
-  unreplicatedTablesInReplicatedNamespaces: {
+  namespaceUuidToUnreplicatedTableCandidates: {
     [namespace: string]: TableReplicationCandidate[];
   };
 } => {
@@ -656,7 +660,7 @@ const getReplicationItemsFromTables = (
   const tableUuidToTable = Object.fromEntries(
     sourceUniverseTables.map((table) => [getTableUuid(table), table])
   );
-  const unreplicatedTablesInReplicatedNamespaces: {
+  const namespaceUuidToUnreplicatedTableCandidates: {
     [namespace: string]: TableReplicationCandidate[];
   } = {};
   const replicationItems = sourceUniverseTables.reduce(
@@ -686,11 +690,13 @@ const getReplicationItemsFromTables = (
           const isUnreplicatedTableInReplicatedNamespace = !!unreplicatedTableInReplicatedNamespace?.has(
             indexTableUuid
           );
-          const indexTableReplicationCandidate = {
+          const isDroppedOnTarget = !!tableUuidsDroppedOnTarget?.has(indexTableUuid);
+          const indexTableReplicationCandidate: IndexTableReplicationCandidate = {
             ...indexTable,
             eligibilityDetails: indexTableReplicationEligibility,
             tableUUID: indexTableUuid,
-            isUnreplicatedTableInReplicatedNamespace: isUnreplicatedTableInReplicatedNamespace
+            isUnreplicatedTableInReplicatedNamespace,
+            isDroppedOnTarget
           };
 
           // The client only needs to select and submit index tables when dealing with non-txn xCluster configs.
@@ -712,12 +718,14 @@ const getReplicationItemsFromTables = (
         const isUnreplicatedTableInReplicatedNamespace = !!unreplicatedTableInReplicatedNamespace?.has(
           mainTableUuid
         );
+        const isDroppedOnTarget = !!tableUuidsDroppedOnTarget?.has(mainTableUuid);
         const mainTableReplicationCandidate: MainTableReplicationCandidate = {
           ...sourceTable,
           eligibilityDetails: mainTableReplicationEligibility,
           tableUUID: mainTableUuid,
           indexTables: indexTables,
-          isUnreplicatedTableInReplicatedNamespace: isUnreplicatedTableInReplicatedNamespace
+          isUnreplicatedTableInReplicatedNamespace,
+          isDroppedOnTarget
         };
         const {
           keySpace: namespaceName,
@@ -734,14 +742,16 @@ const getReplicationItemsFromTables = (
         // currently selected namespaces. Replicated namespaces may be deselected as part of the same
         // request.
         if (isUnreplicatedTableInReplicatedNamespace && mainTableReplicationEligibility) {
-          unreplicatedTablesInReplicatedNamespaces[namespaceId] =
-            unreplicatedTablesInReplicatedNamespaces[namespaceId] ?? [];
-          unreplicatedTablesInReplicatedNamespaces[namespaceId].push(mainTableReplicationCandidate);
+          namespaceUuidToUnreplicatedTableCandidates[namespaceId] =
+            namespaceUuidToUnreplicatedTableCandidates[namespaceId] ?? [];
+          namespaceUuidToUnreplicatedTableCandidates[namespaceId].push(
+            mainTableReplicationCandidate
+          );
         }
         if (unreplicatedIndexTablesInReplicatedNamespace.length) {
-          unreplicatedTablesInReplicatedNamespaces[namespaceId] =
-            unreplicatedTablesInReplicatedNamespaces[namespaceId] ?? [];
-          unreplicatedTablesInReplicatedNamespaces[namespaceId].push(
+          namespaceUuidToUnreplicatedTableCandidates[namespaceId] =
+            namespaceUuidToUnreplicatedTableCandidates[namespaceId] ?? [];
+          namespaceUuidToUnreplicatedTableCandidates[namespaceId].push(
             ...unreplicatedIndexTablesInReplicatedNamespace
           );
         }
@@ -803,7 +813,10 @@ const getReplicationItemsFromTables = (
       searchMatchingNamespaceUuids: new Set<string>()
     }
   );
-  return { replicationItems, unreplicatedTablesInReplicatedNamespaces };
+  return {
+    replicationItems,
+    namespaceUuidToUnreplicatedTableCandidates
+  };
 };
 
 /**
@@ -816,8 +829,10 @@ const getXClusterTableEligibilityDetails = (
   currentXClusterConfigUUID?: string
 ): EligibilityDetails => {
   for (const xClusterConfig of sharedXClusterConfigs) {
-    const xClusterConfigTables = new Set(xClusterConfig.tables);
-    if (xClusterConfigTables.has(sourceTable.tableID)) {
+    const tableUuidToTableDetails = getInConfigTableUuidsToTableDetailsMap(
+      xClusterConfig.tableDetails
+    );
+    if (tableUuidToTableDetails.has(sourceTable.tableID)) {
       return {
         status:
           xClusterConfig.uuid === currentXClusterConfigUUID
@@ -893,6 +908,7 @@ const isTableMatchedBySearchTokens = (
   const candidate = {
     database: { value: table.keySpace, type: FieldType.STRING },
     table: { value: table.tableName, type: FieldType.STRING },
+    sizeBytes: { value: table.sizeBytes, type: FieldType.NUMBER },
     ...(unreplicatedTableInReplicatedNamespace && {
       unreplicatedTable: {
         value: unreplicatedTableInReplicatedNamespace.has(getTableUuid(table)),

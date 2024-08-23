@@ -24,9 +24,7 @@ export type XClusterTableType = typeof XCLUSTER_SUPPORTED_TABLE_TYPES[number];
 type XClusterTableUiExtraMetadata = {
   // Stores the user facing string in the object for sorting/searching usage.
   statusLabel: string;
-
-  // This can be undefined if unable to fetch metrics for the table.
-  replicationLag?: number;
+  replicationLag: number;
 };
 
 export type XClusterTable = YBTable &
@@ -64,6 +62,7 @@ export type EligibilityDetails =
 export interface IndexTableReplicationCandidate extends YBTable {
   eligibilityDetails: EligibilityDetails;
   isUnreplicatedTableInReplicatedNamespace: boolean;
+  isDroppedOnTarget: boolean;
 }
 /**
  * YBTable with with additional metadata for table selection and an array of index tables.
@@ -71,6 +70,7 @@ export interface IndexTableReplicationCandidate extends YBTable {
 export interface MainTableReplicationCandidate extends YBTable {
   eligibilityDetails: EligibilityDetails;
   isUnreplicatedTableInReplicatedNamespace: boolean;
+  isDroppedOnTarget: boolean;
 
   indexTables?: IndexTableReplicationCandidate[];
 }

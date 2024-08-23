@@ -24,7 +24,9 @@
 #include "yb/integration-tests/cluster_itest_util.h"
 
 #include "yb/integration-tests/create-table-itest-base.h"
+
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/master.h"
 
 #include "yb/tablet/tablet_fwd.h"
 
@@ -153,8 +155,12 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
 
   Result<TabletId> CreateSingleTabletAndSplit(uint32_t num_rows, bool wait_for_intents = true);
 
+  Result<master::Master&> GetLeaderMaster() {
+    return *CHECK_NOTNULL(VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->master());
+  }
+
   Result<master::CatalogManagerIf*> catalog_manager() {
-    return &CHECK_NOTNULL(VERIFY_RESULT(cluster_->GetLeaderMiniMaster()))->catalog_manager();
+    return VERIFY_RESULT(GetLeaderMaster()).get().catalog_manager();
   }
 
   Result<master::TabletInfos> GetTabletInfosForTable(const TableId& table_id);

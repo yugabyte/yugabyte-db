@@ -124,6 +124,7 @@ tts_virtual_clear(TupleTableSlot *slot)
 	slot->tts_nvalid = 0;
 	slot->tts_flags |= TTS_FLAG_EMPTY;
 	ItemPointerSetInvalid(&slot->tts_tid);
+	TABLETUPLE_YBCTID(slot) = 0;
 }
 
 /*
@@ -329,6 +330,7 @@ tts_heap_clear(TupleTableSlot *slot)
 	ItemPointerSetInvalid(&slot->tts_tid);
 	hslot->off = 0;
 	hslot->tuple = NULL;
+	TABLETUPLE_YBCTID(slot) = 0;
 }
 
 static void
@@ -461,6 +463,7 @@ tts_heap_store_tuple(TupleTableSlot *slot, HeapTuple tuple, bool shouldFree)
 	hslot->off = 0;
 	slot->tts_flags &= ~(TTS_FLAG_EMPTY | TTS_FLAG_SHOULDFREE);
 	slot->tts_tid = tuple->t_self;
+	TABLETUPLE_YBCTID(slot) = HEAPTUPLE_YBCTID(tuple);
 
 	if (shouldFree)
 		slot->tts_flags |= TTS_FLAG_SHOULDFREE;
@@ -504,6 +507,7 @@ tts_minimal_clear(TupleTableSlot *slot)
 	ItemPointerSetInvalid(&slot->tts_tid);
 	mslot->off = 0;
 	mslot->mintuple = NULL;
+	TABLETUPLE_YBCTID(slot) = 0;
 }
 
 static void
@@ -688,6 +692,7 @@ tts_buffer_heap_clear(TupleTableSlot *slot)
 	bslot->base.tuple = NULL;
 	bslot->base.off = 0;
 	bslot->buffer = InvalidBuffer;
+	TABLETUPLE_YBCTID(slot) = 0;
 }
 
 static void
@@ -881,6 +886,8 @@ tts_buffer_heap_store_tuple(TupleTableSlot *slot, HeapTuple tuple,
 	bslot->base.off = 0;
 	slot->tts_tid = tuple->t_self;
 
+	/* set tts_ybctid to 0 since YB doesn't use buffer heap tuple */
+	TABLETUPLE_YBCTID(slot) = 0;
 	/*
 	 * If tuple is on a disk page, keep the page pinned as long as we hold a
 	 * pointer into it.  We assume the caller already has such a pin.  If

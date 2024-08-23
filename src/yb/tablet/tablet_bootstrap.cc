@@ -859,7 +859,6 @@ class TabletBootstrap {
         append_pool_,
         allocation_pool_,
         log_sync_pool_,
-        metadata.cdc_min_replicated_index(),
         &log_,
         data_.pre_log_rollover_callback,
         new_segment_allocation_callback,

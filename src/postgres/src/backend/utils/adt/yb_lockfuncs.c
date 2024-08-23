@@ -53,10 +53,10 @@ yb_lock_status(PG_FUNCTION_ARGS)
 	}
 
 	/*
-	 *  If this is not a superuser, do not return actual user data.
+	 *  If this is not a YB admin, do not return actual user data.
 	 *  TODO: Remove this as soon as we mask out user data.
 	 */
-	if (!superuser_arg(GetUserId()) || !IsYbDbAdminUser(GetUserId()))
+	if (!IsYbDbAdminUser(GetUserId()))
 	{
 		ereport(ERROR, (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 						errmsg("permission denied: user must must be a "

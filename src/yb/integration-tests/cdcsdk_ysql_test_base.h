@@ -49,6 +49,7 @@
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tserver_admin.proxy.h"
+#include "yb/tserver/tablet_server.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
@@ -121,6 +122,9 @@ DECLARE_bool(cdcsdk_enable_dynamic_tables_disable_option);
 DECLARE_bool(TEST_cdcsdk_skip_updating_cdc_state_entries_on_table_removal);
 DECLARE_bool(TEST_cdcsdk_add_indexes_to_stream);
 DECLARE_bool(cdcsdk_enable_cleanup_of_non_eligible_tables_from_stream);
+DECLARE_bool(TEST_cdcsdk_skip_stream_active_check);
+DECLARE_bool(TEST_cdcsdk_disable_drop_table_cleanup);
+DECLARE_bool(TEST_cdcsdk_disable_deleted_stream_cleanup);
 
 namespace yb {
 
@@ -140,6 +144,10 @@ YB_DEFINE_ENUM(OpIdExpectedValue, (MaxOpId)(InvalidOpId)(ValidNonMaxOpId));
 static constexpr uint64_t kVWALSessionId1 = std::numeric_limits<uint64_t>::max() / 2;
 static constexpr uint64_t kVWALSessionId2 = std::numeric_limits<uint64_t>::max() / 2 + 1;
 static constexpr uint64_t kVWALSessionId3 = std::numeric_limits<uint64_t>::max() / 2 + 2;
+
+CDCServiceImpl* CDCService(tserver::TabletServer* tserver) {
+  return down_cast<CDCServiceImpl*>(tserver->GetCDCService().get());
+}
 
 class CDCSDKYsqlTest : public CDCSDKTestBase {
  public:

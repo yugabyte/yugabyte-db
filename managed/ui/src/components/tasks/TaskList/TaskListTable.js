@@ -4,6 +4,7 @@ import { Component } from 'react';
 import PropTypes from 'prop-types';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { Link } from 'react-router';
+import { toast } from 'react-toastify';
 import { YBPanelItem } from '../../panels';
 import { timeFormatter, successStringFormatter } from '../../../utils/TableFormatters';
 import {
@@ -38,7 +39,7 @@ export default class TaskListTable extends Component {
     }
 
     function typeFormatter(cell, row) {
-      return row.correlationId && hasNecessaryPerm(ApiPermissionMap.GET_LOGS) ? (
+      return row.correlationId && hasNecessaryPerm(ApiPermissionMap.GET_LOGS) && !isNewTaskDetailsUIEnabled ? (
         <Link to={`/logs/?queryRegex=${row.correlationId}&startDate=${row.createTime}`}>
           {row.typeName} {row.target}
         </Link>
@@ -135,6 +136,7 @@ export default class TaskListTable extends Component {
               options={{
                 onRowClick: (task) => isNewTaskDetailsUIEnabled && this.setState({ selectedTaskUUID: task.id })
               }}
+              trStyle={isNewTaskDetailsUIEnabled && { cursor: 'pointer' }}
             >
               <TableHeaderColumn dataField="id" isKey={true} hidden={true} />
               <TableHeaderColumn

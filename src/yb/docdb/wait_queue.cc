@@ -871,10 +871,7 @@ class BlockerData {
   std::vector<std::weak_ptr<WaiterData>> post_resolve_waiters_ GUARDED_BY(mutex_);
   bool is_active_ GUARDED_BY(mutex_) = true;
 
-  using IntentsByKey = std::unordered_map<
-      RefCntPrefix,
-      dockv::IntentTypeSet,
-      RefCntPrefixHash>;
+  using IntentsByKey = std::unordered_map<RefCntPrefix, dockv::IntentTypeSet, RefCntPrefixHash>;
   std::unordered_map<SubTransactionId, IntentsByKey> subtxn_intents_by_key_ GUARDED_BY(mutex_);
 };
 

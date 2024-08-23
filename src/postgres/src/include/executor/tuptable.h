@@ -20,6 +20,9 @@
 #include "access/tupdesc.h"
 #include "storage/buf.h"
 
+/* YB includes. */
+#include "ybctid.h"
+
 /*----------
  * The executor stores tuples in a "tuple table" which is a List of
  * independent TupleTableSlots.
@@ -131,7 +134,7 @@ typedef struct TupleTableSlot
 	Oid			tts_tableOid;	/* table oid of tuple */
 
 	/* YugaByte support */
-	/* Datum tts_ybctid; */  /* Selected ybctid value. Replaced by field "tts_tid". */
+	Datum tts_ybctid;
 } TupleTableSlot;
 
 /* routines for a TupleTableSlot implementation */

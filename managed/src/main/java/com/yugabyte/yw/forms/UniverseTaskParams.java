@@ -2,9 +2,11 @@
 
 package com.yugabyte.yw.forms;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModel;
@@ -305,4 +307,13 @@ public class UniverseTaskParams extends AbstractTaskParams {
   public Users creatingUser;
 
   public String platformUrl;
+
+  @ApiModelProperty(value = "YbaApi Internal. Run only prechecks during task run")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.23.0.0")
+  public Boolean runOnlyPrechecks = false;
+
+  @JsonIgnore
+  public boolean isRunOnlyPrechecks() {
+    return runOnlyPrechecks;
+  }
 }

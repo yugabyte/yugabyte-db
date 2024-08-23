@@ -47,6 +47,7 @@ typedef std::vector<TSDescriptorPtr> TSDescriptorVector;
 
 class EncryptionManager;
 
+class AsyncDeleteReplica;
 class CatalogManager;
 class CatalogManagerIf;
 class CatalogManagerBgTasks;

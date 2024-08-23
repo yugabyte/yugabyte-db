@@ -937,8 +937,6 @@ YBInitPostgresBackend(
 		 * mapped to PG backends.
 		 */
 		yb_pgstat_add_session_info(YBCPgGetSessionID());
-		if (yb_ash_enable_infra)
-			YbAshSetSessionId(YBCPgGetSessionID());
 	}
 }
 
@@ -1569,6 +1567,11 @@ bool yb_explain_hide_non_deterministic_fields = false;
 bool yb_enable_saop_pushdown = true;
 int yb_toast_catcache_threshold = -1;
 int yb_parallel_range_size = 1024 * 1024;
+
+YBUpdateOptimizationOptions yb_update_optimization_options = {
+	.num_cols_to_compare = 50,
+	.max_cols_size_to_compare = 10 * 1024
+};
 
 //------------------------------------------------------------------------------
 // YB Debug utils.
@@ -2342,7 +2345,8 @@ YbDdlModeOptional YbGetDdlMode(
 				foreach(lcmd, stmt->cmds)
 				{
 					AlterTableCmd *cmd = (AlterTableCmd *) lfirst(lcmd);
-					if (IsA(cmd->def, Constraint) &&
+					if (cmd->def != NULL &&
+					    IsA(cmd->def, Constraint) &&
 						((Constraint *) cmd->def)->contype == CONSTR_FOREIGN)
 					{
 						is_version_increment = true;
@@ -5148,6 +5152,15 @@ YbGetRedactedQueryString(const char* query, int query_len,
 	*redacted_query = pnstrdup(query, query_len);
 	*redacted_query = RedactPasswordIfExists(*redacted_query);
 	*redacted_query_len = strlen(*redacted_query);
+}
+
+bool
+YbIsUpdateOptimizationEnabled()
+{
+	/* TODO(kramanathan): Placeholder until a flag strategy is agreed upon */
+	return (!YBCIsEnvVarTrue("FLAGS_ysql_skip_row_lock_for_update")) &&
+		   yb_update_optimization_options.num_cols_to_compare > 0 &&
+		   yb_update_optimization_options.max_cols_size_to_compare > 0;
 }
 
 /*

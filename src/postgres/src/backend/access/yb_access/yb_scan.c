@@ -23,6 +23,7 @@
 
 #include <limits.h>
 #include <math.h>
+#include <stdint.h>
 #include <string.h>
 #include "postgres.h"
 
@@ -961,12 +962,6 @@ YbIsRowHeader(ScanKey key)
 	return key->sk_flags & SK_ROW_HEADER;
 }
 
-static bool
-YbIsRowMember(ScanKey key)
-{
-	return key->sk_flags & (SK_ROW_HEADER | SK_ROW_MEMBER);
-}
-
 /*
  * Is the condition never TRUE because of c {=|<|<=|>=|>} NULL, etc.?
  */
@@ -1124,7 +1119,7 @@ YbShouldPushdownScanPrimaryKey(YbScanPlan scan_plan, AttrNumber attnum,
 		return key->sk_strategy == BTEqualStrategyNumber;
 	}
 
-	if (YbIsRowMember(key))
+	if (key->sk_flags & SK_ROW_MEMBER)
 	{
 		/* We'll recheck if this is a valid row comparison key later. */
 		return true;
@@ -1210,24 +1205,25 @@ static bool YbIsOidType(Oid typid) {
 	}
 }
 
-static bool YbIsIntegerInRange(Datum value, Oid value_typid, int min, int max) {
-	int64 val;
+static int64 YbDatumGetInt64(Datum value, Oid value_typid)
+{
 	switch (value_typid)
 	{
 		case INT2OID:
-			val = (int64) DatumGetInt16(value);
-			break;
+			return DatumGetInt16(value);
 		case INT4OID:
-			val = (int64) DatumGetInt32(value);
-			break;
+			return DatumGetInt32(value);
 		case INT8OID:
-			val = DatumGetInt64(value);
-			break;
+			return DatumGetInt64(value);
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
 					 errmsg("not an integer type")));
 	}
+}
+
+static bool YbIsIntegerInRange(Datum value, Oid value_typid, int min, int max) {
+	int64 val = YbDatumGetInt64(value, value_typid);
 	return val >= min && val <= max;
 }
 
@@ -1399,6 +1395,14 @@ YbCheckScanTypes(YbScanDesc ybScan, YbScanPlan scan_plan, int i)
 {
 	ScanKey key = ybScan->keys[i];
 	Oid valtypid = key->sk_subtype;
+	/*
+	 * TODO(jason): this RECORDOID logic is hacky.  It essentially skips the
+	 * whole check.  This should only arise from the (SK_ROW_HEADER |
+	 * SK_SEARCHARRAY) case, and in that case, this call should be avoided to
+	 * begin with since scan_plan->bind_key_attnums is irrelevant.  Or rather,
+	 * bind_key_attnums usage should be completely reworked to not be used in
+	 * all cases where SK_ROW_HEADER is involved.
+	 */
 	Oid atttypid = valtypid == RECORDOID ? RECORDOID :
 		ybc_get_atttypid(scan_plan->bind_desc, scan_plan->bind_key_attnums[i]);
 	Assert(OidIsValid(atttypid));
@@ -2247,8 +2251,14 @@ YbPredetermineNeedsRecheck(Relation relation,
 
 typedef struct {
 	YBCPgBoundType type;
-	uint64_t value;
+	int64_t value;
 } YbBound;
+
+static inline bool
+YbBoundEqual(const YbBound *lhs, const YbBound *rhs)
+{
+	return lhs->type == rhs->type && lhs->value == rhs->value;
+}
 
 typedef struct {
 	YbBound start;
@@ -2256,13 +2266,13 @@ typedef struct {
 } YbRange;
 
 static inline bool
-YbBoundValid(const YbBound* bound)
+YbBoundValid(const YbBound *bound)
 {
 	return bound->type != YB_YQL_BOUND_INVALID;
 }
 
 static inline bool
-YbBoundInclusive(const YbBound* bound)
+YbBoundInclusive(const YbBound *bound)
 {
 	return bound->type == YB_YQL_BOUND_VALID_INCLUSIVE;
 }
@@ -2280,12 +2290,13 @@ YbIsValidRange(const YbBound *start, const YbBound *end)
 static bool
 YbApplyStartBound(YbRange *range, const YbBound *start)
 {
+	Assert(YbIsValidRange(&range->start, &range->end));
 	Assert(YbBoundValid(start));
-	if (YbBoundValid(&range->end) && !YbIsValidRange(start, &range->end))
+
+	if (!YbIsValidRange(start, &range->end))
 		return false;
 
-	if (!YbBoundValid(&range->start) ||
-	    (range->start.value < start->value) ||
+	if ((range->start.value < start->value) ||
 	    (range->start.value == start->value && !YbBoundInclusive(start)))
 	{
 		range->start = *start;
@@ -2296,12 +2307,13 @@ YbApplyStartBound(YbRange *range, const YbBound *start)
 static bool
 YbApplyEndBound(YbRange *range, const YbBound *end)
 {
+	Assert(YbIsValidRange(&range->start, &range->end));
 	Assert(YbBoundValid(end));
-	if (YbBoundValid(&range->start) && !YbIsValidRange(&range->start, end))
+
+	if (!YbIsValidRange(&range->start, end))
 		return false;
 
-	if (!YbBoundValid(&range->end) ||
-	    (range->end.value > end->value) ||
+	if ((range->end.value > end->value) ||
 	    (range->end.value == end->value && !YbBoundInclusive(end)))
 	{
 		range->end = *end;
@@ -2309,11 +2321,23 @@ YbApplyEndBound(YbRange *range, const YbBound *end)
 	return true;
 }
 
+static inline uint16_t
+YbBoundUint16Value(const YbBound *bound)
+{
+	Assert(bound->type == YB_YQL_BOUND_INVALID ||
+		   (bound->value >= 0 && bound->value <= UINT16_MAX));
+	return bound->value;
+}
+
 static bool
 YbBindHashKeys(YbScanDesc ybScan)
 {
-	ListCell   *lc;
-	YbRange		range = {0};
+	static const YbBound YB_MIN_HASH_BOUND =
+		{.type = YB_YQL_BOUND_VALID_INCLUSIVE, .value = 0};
+	static const YbBound YB_MAX_HASH_BOUND =
+		{.type = YB_YQL_BOUND_VALID_INCLUSIVE, .value = UINT16_MAX};
+	YbRange range = {.start = YB_MIN_HASH_BOUND, .end = YB_MAX_HASH_BOUND};
+	ListCell *lc;
 
 	foreach(lc, ybScan->hash_code_keys)
 	{
@@ -2321,14 +2345,14 @@ YbBindHashKeys(YbScanDesc ybScan)
 		Assert(YbIsHashCodeSearch(key));
 		YbBound bound = {
 			.type = YB_YQL_BOUND_VALID,
-			.value = key->sk_argument
+			.value = YbDatumGetInt64(key->sk_argument, key->sk_subtype)
 		};
 		switch (key->sk_strategy)
 		{
 			case BTEqualStrategyNumber:
-					bound.type = YB_YQL_BOUND_VALID_INCLUSIVE;
-					if (!YbApplyStartBound(&range, &bound) ||
-					    !YbApplyEndBound(&range, &bound))
+				bound.type = YB_YQL_BOUND_VALID_INCLUSIVE;
+				if (!YbApplyStartBound(&range, &bound) ||
+					!YbApplyEndBound(&range, &bound))
 						return false;
 				break;
 
@@ -2353,11 +2377,15 @@ YbBindHashKeys(YbScanDesc ybScan)
 		}
 	}
 
+	if (YbBoundEqual(&range.start, &YB_MIN_HASH_BOUND))
+		range.start = (YbBound){};
+	if (YbBoundEqual(&range.end, &YB_MAX_HASH_BOUND))
+		range.end = (YbBound){};
 	if (YbBoundValid(&range.start) || YbBoundValid(&range.end))
-		HandleYBStatus(YBCPgDmlBindHashCodes(
+		YBCPgDmlBindHashCodes(
 			ybScan->handle,
-			range.start.type, range.start.value,
-			range.end.type, range.end.value));
+			range.start.type, YbBoundUint16Value(&range.start),
+			range.end.type, YbBoundUint16Value(&range.end));
 
 	return true;
 }
@@ -3650,7 +3678,7 @@ void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
 }
 
 static bool
-YbFetchRowData(YBCPgStatement ybc_stmt, Relation relation, ItemPointer tid,
+YbFetchRowData(YBCPgStatement ybc_stmt, Relation relation, Datum ybctid,
 			   Datum *values, bool *nulls, YBCPgSysColumns *syscols)
 {
 	bool has_data = false;
@@ -3660,7 +3688,7 @@ YbFetchRowData(YBCPgStatement ybc_stmt, Relation relation, ItemPointer tid,
 	YBCPgExpr ybctid_expr = YBCNewConstant(ybc_stmt,
 										   BYTEAOID,
 										   InvalidOid,
-										   YbItemPointerYbctid(tid),
+										   ybctid,
 										   false);
 	HandleYBStatus(YBCPgDmlBindColumn(ybc_stmt, YBTupleIdAttributeNumber, ybctid_expr));
 
@@ -3692,7 +3720,7 @@ YbFetchRowData(YBCPgStatement ybc_stmt, Relation relation, ItemPointer tid,
 }
 
 bool
-YbFetchHeapTuple(Relation relation, ItemPointer tid, HeapTuple* tuple)
+YbFetchHeapTuple(Relation relation, Datum ybctid, HeapTuple* tuple)
 {
 	bool has_data = false;
 	YBCPgStatement ybc_stmt;
@@ -3708,7 +3736,7 @@ YbFetchHeapTuple(Relation relation, ItemPointer tid, HeapTuple* tuple)
 								  NULL /* prepare_params */,
 								  YBCIsRegionLocal(relation),
 								  &ybc_stmt));
-	has_data = YbFetchRowData(ybc_stmt, relation, tid, values, nulls, &syscols);
+	has_data = YbFetchRowData(ybc_stmt, relation, ybctid, values, nulls, &syscols);
 
 	/* Write into the given tuple */
 	if (has_data)
@@ -4096,7 +4124,6 @@ yb_init_partition_key_data(void *data)
 	ConditionVariableInit(&ppk->cv_empty);
 	ppk->database_oid = InvalidOid;
 	ppk->table_relfilenode_oid = InvalidOid;
-	ppk->used_ht_for_read = 0;
 	ppk->fetch_status = FETCH_STATUS_IDLE;
 	ppk->low_offset = 0;
 	ppk->high_offset = 0;
@@ -4383,7 +4410,6 @@ yb_fetch_partition_keys(YBParallelPartitionKeys ppk)
 		ppk->is_forward ? 0 : latest_key_size /* upper_bound_key_size */,
 		max_num_ranges,  yb_parallel_range_size, ppk->is_forward,
 		(ppk->key_data_capacity / 3) - sizeof(keylen_t) /* max_key_length */,
-		NULL /* current_tserver_ht */,
 		ppk_buffer_fetch_callback, &fkp));
 	SpinLockAcquire(&ppk->mutex);
 	/* Update fetch status */
@@ -4450,30 +4476,24 @@ ybParallelPrepare(YBParallelPartitionKeys ppk, Relation relation,
 	 * disclose if DSM is initialized for main process or for the background
 	 * worker. However, it is still guaranteed that background workers do not
 	 * start until main worker DSM initialization is completed.
-	 * Hence we always call ybParallelPrepare and use table_oid as indicator:
-	 * if table_relfilenode_oid is valid, it is a background worker and no
-	 * initialization is needed.
+	 * Hence we always call ybParallelPrepare and use table_relfilenode_oid as
+	 * an indicator: if table_relfilenode_oid is valid, it is a background
+	 * worker and no initialization is needed.
 	 * The table_relfilenode_oid is never changed once initialized,
 	 * so spinlock is not required to check it. The rest of the code still
 	 * has the YBParallelPartitionKeys structure exclusively.
 	 */
-	if (ppk->table_relfilenode_oid == InvalidOid)
-	{
-		/* We expect frershly initialized parallel state */
-		Assert(ppk->fetch_status == FETCH_STATUS_IDLE);
-		Assert(ppk->low_offset == 0);
-		Assert(ppk->high_offset == 0);
-		Assert(ppk->key_count == 0);
-		ppk->database_oid = YBCGetDatabaseOid(relation);
-		ppk->table_relfilenode_oid = YbGetRelfileNodeId(relation);
-		ppk->is_forward = is_forward;
-		ppk->used_ht_for_read = *exec_params->stmt_in_txn_limit_ht_for_reads;
-	}
-	else
-	{
-		*exec_params->stmt_in_txn_limit_ht_for_reads = ppk->used_ht_for_read;
+	if (OidIsValid(ppk->table_relfilenode_oid))
 		return;
-	}
+
+	/* We expect freshly initialized parallel state */
+	Assert(ppk->fetch_status == FETCH_STATUS_IDLE);
+	Assert(ppk->low_offset == 0);
+	Assert(ppk->high_offset == 0);
+	Assert(ppk->key_count == 0);
+	ppk->database_oid = YBCGetDatabaseOid(relation);
+	ppk->table_relfilenode_oid = YbGetRelfileNodeId(relation);
+	ppk->is_forward = is_forward;
 	/*
 	 * Put empty key as the first to be taken.
 	 * Empty key means lower bound unchanged, so if original request has
@@ -4492,14 +4512,10 @@ ybParallelPrepare(YBParallelPartitionKeys ppk, Relation relation,
 		YB_PARTITION_KEYS_DEFAULT_FETCH_SIZE,
 		yb_parallel_range_size, is_forward,
 		(ppk->key_data_capacity / 3) - sizeof(keylen_t),
-		ppk->used_ht_for_read ? NULL : &ppk->used_ht_for_read,
 		ppk_buffer_initialize_callback, ppk));
 	/* Update fetch status, unless updated by the callback */
 	if (ppk->fetch_status == FETCH_STATUS_WORKING)
 		ppk->fetch_status = FETCH_STATUS_IDLE;
-	/* Key ranges fetch might set new read time, update the local value */
-	if (*exec_params->stmt_in_txn_limit_ht_for_reads == 0)
-		*exec_params->stmt_in_txn_limit_ht_for_reads = ppk->used_ht_for_read;
 }
 
 typedef enum YbNextRangeResult

@@ -55,6 +55,10 @@ class SysCatalogWriter {
     return Mutate<require_check>(op_type, std::forward<Items>(items)...);
   }
 
+  Status Mutate(
+      int8_t type, const std::string& item_id, const google::protobuf::Message& new_pb,
+      QLWriteRequestPB::QLStmtType op_type);
+
   Status ForceMutate(QLWriteRequestPB::QLStmtType op_type) {
     return Status::OK();
   }

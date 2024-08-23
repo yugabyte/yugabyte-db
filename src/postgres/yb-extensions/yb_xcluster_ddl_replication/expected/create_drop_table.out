@@ -1,0 +1,83 @@
+CALL TEST_reset();
+-- Verify that temporary objects are not captured.
+SET yb_xcluster_ddl_replication.replication_role = SOURCE;
+CREATE TEMP TABLE temp_foo(i int PRIMARY KEY);
+DROP TABLE temp_foo;
+SELECT yb_data FROM yb_xcluster_ddl_replication.ddl_queue ORDER BY start_time;
+ yb_data
+---------
+(0 rows)
+
+SET yb_xcluster_ddl_replication.replication_role = BIDIRECTIONAL;
+-- Verify that regular tables are captured.
+CREATE TABLE foo(i int PRIMARY KEY);
+-- Check with manual replication flags enabled, ddl string is captured with flag.
+SET yb_xcluster_ddl_replication.enable_manual_ddl_replication = 1;
+CREATE TABLE manual_foo(i int PRIMARY KEY);
+SET yb_xcluster_ddl_replication.enable_manual_ddl_replication = 0;
+-- Verify that extra info is captured.
+CREATE TABLE extra_foo(i int PRIMARY KEY) WITH (COLOCATION = false) SPLIT INTO 1 TABLETS;
+-- Verify that info for unique constraint indexes are also captured.
+CREATE TABLE unique_foo(i int PRIMARY KEY, u text UNIQUE);
+SELECT yb_data FROM yb_xcluster_ddl_replication.ddl_queue ORDER BY start_time;
+                                                                                                                                         yb_data
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"user": "yugabyte", "query": "CREATE TABLE foo(i int PRIMARY KEY);", "schema": "public", "version": 1, "command_tag": "CREATE TABLE", "new_rel_map": [{"rel_name": "foo", "relfile_oid": 16412}]}
+ {"user": "yugabyte", "query": "CREATE TABLE manual_foo(i int PRIMARY KEY);", "schema": "public", "version": 1, "command_tag": "CREATE TABLE", "manual_replication": true}
+ {"user": "yugabyte", "query": "CREATE TABLE extra_foo(i int PRIMARY KEY) WITH (COLOCATION = false) SPLIT INTO 1 TABLETS;", "schema": "public", "version": 1, "command_tag": "CREATE TABLE", "new_rel_map": [{"rel_name": "extra_foo", "relfile_oid": 16422}]}
+ {"user": "yugabyte", "query": "CREATE TABLE unique_foo(i int PRIMARY KEY, u text UNIQUE);", "schema": "public", "version": 1, "command_tag": "CREATE TABLE", "new_rel_map": [{"rel_name": "unique_foo", "relfile_oid": 16427}, {"rel_name": "unique_foo_u_key", "relfile_oid": 16432}]}
+(4 rows)
+
+SELECT * FROM yb_xcluster_ddl_replication.replicated_ddls ORDER BY start_time;
+ start_time | query_id |                                                yb_data
+------------+----------+--------------------------------------------------------------------------------------------------------
+          1 |        1 | {"query": "CREATE TABLE foo(i int PRIMARY KEY);"}
+          2 |        1 | {"query": "CREATE TABLE extra_foo(i int PRIMARY KEY) WITH (COLOCATION = false) SPLIT INTO 1 TABLETS;"}
+          3 |        1 | {"query": "CREATE TABLE unique_foo(i int PRIMARY KEY, u text UNIQUE);"}
+(3 rows)
+
+-- Now test dropping these tables.
+DROP TABLE foo;
+-- Check with manual replication flags enabled, ddl string is captured with flag.
+SET yb_xcluster_ddl_replication.enable_manual_ddl_replication = 1;
+DROP TABLE manual_foo;
+SET yb_xcluster_ddl_replication.enable_manual_ddl_replication = 0;
+DROP TABLE extra_foo;
+DROP TABLE unique_foo;
+SELECT yb_data FROM yb_xcluster_ddl_replication.ddl_queue ORDER BY start_time;
+                                                                                                                                         yb_data
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"user": "yugabyte", "query": "CREATE TABLE foo(i int PRIMARY KEY);", "schema": "public", "version": 1, "command_tag": "CREATE TABLE", "new_rel_map": [{"rel_name": "foo", "relfile_oid": 16412}]}
+ {"user": "yugabyte", "query": "CREATE TABLE manual_foo(i int PRIMARY KEY);", "schema": "public", "version": 1, "command_tag": "CREATE TABLE", "manual_replication": true}
+ {"user": "yugabyte", "query": "CREATE TABLE extra_foo(i int PRIMARY KEY) WITH (COLOCATION = false) SPLIT INTO 1 TABLETS;", "schema": "public", "version": 1, "command_tag": "CREATE TABLE", "new_rel_map": [{"rel_name": "extra_foo", "relfile_oid": 16422}]}
+ {"user": "yugabyte", "query": "CREATE TABLE unique_foo(i int PRIMARY KEY, u text UNIQUE);", "schema": "public", "version": 1, "command_tag": "CREATE TABLE", "new_rel_map": [{"rel_name": "unique_foo", "relfile_oid": 16427}, {"rel_name": "unique_foo_u_key", "relfile_oid": 16432}]}
+ {"user": "yugabyte", "query": "DROP TABLE foo;", "schema": "public", "version": 1, "command_tag": "DROP TABLE"}
+ {"user": "yugabyte", "query": "DROP TABLE manual_foo;", "schema": "public", "version": 1, "command_tag": "DROP TABLE", "manual_replication": true}
+ {"user": "yugabyte", "query": "DROP TABLE extra_foo;", "schema": "public", "version": 1, "command_tag": "DROP TABLE"}
+ {"user": "yugabyte", "query": "DROP TABLE unique_foo;", "schema": "public", "version": 1, "command_tag": "DROP TABLE"}
+(8 rows)
+
+SELECT * FROM yb_xcluster_ddl_replication.replicated_ddls ORDER BY start_time;
+ start_time | query_id |                                                yb_data
+------------+----------+--------------------------------------------------------------------------------------------------------
+          1 |        1 | {"query": "CREATE TABLE foo(i int PRIMARY KEY);"}
+          2 |        1 | {"query": "CREATE TABLE extra_foo(i int PRIMARY KEY) WITH (COLOCATION = false) SPLIT INTO 1 TABLETS;"}
+          3 |        1 | {"query": "CREATE TABLE unique_foo(i int PRIMARY KEY, u text UNIQUE);"}
+          4 |        1 | {"query": "DROP TABLE foo;"}
+          5 |        1 | {"query": "DROP TABLE extra_foo;"}
+          6 |        1 | {"query": "DROP TABLE unique_foo;"}
+(6 rows)
+
+-- Test mix of temp and regular tables.
+SET yb_xcluster_ddl_replication.replication_role = SOURCE;
+CREATE TEMP TABLE temp_foo(i int PRIMARY KEY);
+SET yb_xcluster_ddl_replication.replication_role = BIDIRECTIONAL;
+CREATE TABLE foo(i int PRIMARY KEY);
+DROP TABLE temp_foo, foo; -- should fail
+ERROR:  Unsupported DROP command, found mix of temporary and persisted objects in DDL command.
+To manually replicate, run DDL on the source followed by the target with SET yb_xcluster_ddl_replication.enable_manual_ddl_replication = true
+DROP TABLE foo, temp_foo; -- should fail
+ERROR:  Unsupported DROP command, found mix of temporary and persisted objects in DDL command.
+To manually replicate, run DDL on the source followed by the target with SET yb_xcluster_ddl_replication.enable_manual_ddl_replication = true
+DROP TABLE temp_foo;
+DROP TABLE foo;

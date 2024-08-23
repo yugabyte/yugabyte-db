@@ -115,21 +115,11 @@ public class TestPgPortalLeak extends BasePgSQLTest {
     }
   }
 
-  // This test case will be run with default setting where there should be no leak.
-  //   "ysql_disable_portal_run_context == true".
+  // Test that there is no leak.
   @Test
   public void testNoPortalLeak() throws Exception {
     String tableName = "tableExpectPgPortalHasNoLeak";
     createTable(tableName);
     selectBatches(tableName, true /* expectNoLeak */);
-  }
-
-  // This test case will be run in TestPgFlags() module where leaking is expected.
-  //   "ysql_disable_portal_run_context == true".
-  public static void testPgPortalLeakFlag() throws Exception {
-    String tableName = "tableExpectPgPortalHasLeak";
-    TestPgPortalLeak testCase = new TestPgPortalLeak();
-    testCase.createTable(tableName);
-    testCase.selectBatches(tableName, false /* expectNoLeak */);
   }
 }

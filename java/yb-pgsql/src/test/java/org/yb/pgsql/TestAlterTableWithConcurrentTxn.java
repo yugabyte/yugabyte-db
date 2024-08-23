@@ -744,6 +744,8 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
 
   @Test
   public void testDmlTransactionAfterAlterOnCurrentResourceWithCachedMetadata() throws Exception {
+    assumeFalse(BasePgSQLTest.CANNOT_GURANTEE_EXPECTED_PHYSICAL_CONN_FOR_CACHE,
+                isTestRunningWithConnectionManager());
     // Scenario 2. Execute any DML type after DDL.
     // a) For PG metadata cached table:
     //    Transaction should conflict since we are using

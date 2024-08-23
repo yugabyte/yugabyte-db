@@ -109,6 +109,7 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
     return ImmutableList.of(
         TaskType.CheckLeaderlessTablets,
         TaskType.FreezeUniverse,
+        TaskType.UpdateConsistencyCheck,
         TaskType.SetNodeState,
         TaskType.AnsibleClusterServerCtl,
         isHardReboot ? TaskType.HardRebootServer : TaskType.RebootServer,
@@ -122,6 +123,7 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
   private List<JsonNode> rebootNodeTaskExpectedResults(boolean isHardReboot) {
     String state = isHardReboot ? "HardRebooting" : "Rebooting";
     return ImmutableList.of(
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("state", state)),
@@ -138,6 +140,7 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
     return ImmutableList.of(
         TaskType.CheckLeaderlessTablets,
         TaskType.FreezeUniverse,
+        TaskType.UpdateConsistencyCheck,
         TaskType.SetNodeState,
         TaskType.AnsibleClusterServerCtl,
         TaskType.AnsibleClusterServerCtl,
@@ -156,6 +159,7 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
   private List<JsonNode> rebootNodeWithMasterResults(boolean isHardReboot) {
     String state = isHardReboot ? "HardRebooting" : "Rebooting";
     return ImmutableList.of(
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("state", state)),
@@ -177,6 +181,7 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
     return ImmutableList.of(
         TaskType.CheckLeaderlessTablets,
         TaskType.FreezeUniverse,
+        TaskType.UpdateConsistencyCheck,
         TaskType.SetNodeState,
         TaskType.AnsibleClusterServerCtl,
         TaskType.WaitForMasterLeader,
@@ -191,6 +196,7 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
   private List<JsonNode> rebootNodeWithOnlyMasterResults(boolean isHardReboot) {
     String state = isHardReboot ? "HardRebooting" : "Rebooting";
     return ImmutableList.of(
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("state", state)),

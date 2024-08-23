@@ -145,7 +145,7 @@ export interface UserIntent {
       value?: {
         MASTER?: Record<string, any>;
         TSERVER?: Record<string, any>;
-      }
+      };
     };
     perAZ?: {};
   };
@@ -264,6 +264,12 @@ export interface UniverseConfig {
   disableAlertsUntilSecs: string;
   takeBackups: string;
 }
+
+export interface RollMaxBatchSize {
+  primaryBatchSize: number;
+  readReplicaBatchSize: number;
+}
+
 export interface Universe {
   creationDate: string;
   name: string;
@@ -272,6 +278,7 @@ export interface Universe {
   universeDetails: UniverseDetails;
   universeUUID: string;
   version: number;
+  rollMaxBatchSize: RollMaxBatchSize;
 }
 
 //-------------------------------------------------------- Payload related Types - Ends -------------------------------------------------------------------

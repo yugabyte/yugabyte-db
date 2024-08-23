@@ -55,6 +55,7 @@ import io.prometheus.client.Gauge;
 import io.prometheus.client.hotspot.DefaultExports;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.extern.slf4j.Slf4j;
 import play.Application;
 import play.Environment;
@@ -69,6 +70,8 @@ public class AppInit {
   public static final Gauge INIT_TIME =
       Gauge.build("yba_init_time_seconds", "Last YBA startup time in seconds.")
           .register(CollectorRegistry.defaultRegistry);
+
+  private static final AtomicBoolean IS_H2_DB = new AtomicBoolean(false);
 
   @Inject
   public AppInit(
@@ -120,7 +123,13 @@ public class AppInit {
     try {
       log.info("Yugaware Application has started");
 
-      if (!environment.isTest()) {
+      if (environment.isTest()) {
+        String dbDriverKey = "db.default.driver";
+        if (config.hasPath(dbDriverKey)) {
+          String driver = config.getString(dbDriverKey);
+          IS_H2_DB.set(driver.contains("org.h2.Driver"));
+        }
+      } else {
         // only start thread dump collection for YBM at this time
         if (config.getBoolean("yb.cloud.enabled")) {
           threadDumpPublisher.start();
@@ -224,6 +233,7 @@ public class AppInit {
         // Handle incomplete tasks
         taskManager.handleAllPendingTasks();
         taskManager.updateUniverseSoftwareUpgradeStateSet();
+        taskManager.handlePendingConsistencyTasks();
 
         // Fail all incomplete support bundle creations.
         supportBundleCleanup.markAllRunningSupportBundlesFailed();
@@ -309,5 +319,10 @@ public class AppInit {
       log.error("caught error during app init ", t);
       throw t;
     }
+  }
+
+  // Workaround for some tests with H2 database.
+  public static boolean isH2Db() {
+    return IS_H2_DB.get();
   }
 }

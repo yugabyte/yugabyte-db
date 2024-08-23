@@ -41,6 +41,27 @@ func NewSessionFormat(source string) formatter.Format {
 
 // Write renders the context for a list of Sessions
 func Write(ctx formatter.Context, sessions []ybaclient.SessionInfo) error {
+	// Check if the format is JSON or Pretty JSON
+	if ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON() {
+		// Marshal the slice of sessions into JSON
+		var output []byte
+		var err error
+
+		if ctx.Format.IsPrettyJSON() {
+			output, err = json.MarshalIndent(sessions, "", "  ")
+		} else {
+			output, err = json.Marshal(sessions)
+		}
+
+		if err != nil {
+			logrus.Errorf("Error marshaling sessions to json: %v\n", err)
+			return err
+		}
+
+		// Write the JSON output to the context
+		_, err = ctx.Output.Write(output)
+		return err
+	}
 	render := func(format func(subContext formatter.SubContext) error) error {
 		for _, session := range sessions {
 			err := format(&Context{s: session})

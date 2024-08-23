@@ -57,7 +57,7 @@ $ ./bin/yugabyted start --ysql_enable_auth=true
 
 ### Start YB-TServer services
 
-To enable YSQL authentication in deployable YugabyteDB clusters, you need to start your `yb-tserver` services using the [--ysql_enable_auth](../../../reference/configuration/yb-tserver/#ysql-enable-auth) flag. Your command should look similar to the following:
+To enable YSQL authentication in deployable YugabyteDB clusters, you need to start your yb-tserver services using the [--ysql_enable_auth](../../../reference/configuration/yb-tserver/#ysql-enable-auth) flag. Your command should look similar to the following:
 
 ```sh
 ./bin/yb-tserver \
@@ -80,7 +80,7 @@ $ ./bin/ysqlsh -U yugabyte
 You are prompted to enter the password. After logging in, you should see the following output:
 
 ```output
-ysqlsh (11.2-YB-2.7.0.0-b0)
+ysqlsh (11.2-YB-{{<yb-version version="preview">}}-b0)
 Type "help" for help.
 
 yugabyte=#

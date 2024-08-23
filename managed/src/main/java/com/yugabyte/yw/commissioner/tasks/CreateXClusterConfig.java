@@ -20,6 +20,7 @@ import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.DrConfigCreateForm;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
+import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams.BootstrapBackupParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.PitrConfig;
@@ -86,10 +87,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     }
 
     Duration xclusterWaitTimeout =
-        this.confGetter.getConfForScope(sourceUniverse, UniverseConfKeys.xclusterSetupAlterTimeout);
-    long sleepTimeMs;
-    int iterationNum = 0;
-    Duration currentElapsedTime;
+        confGetter.getConfForScope(sourceUniverse, UniverseConfKeys.xclusterSetupAlterTimeout);
 
     try (YBClient client =
         ybService.getClient(
@@ -271,15 +269,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     }
 
     // Support mismatched TLS root certificates.
-    Optional<File> sourceCertificate =
-        getSourceCertificateIfNecessary(sourceUniverse, targetUniverse);
-    sourceCertificate.ifPresent(
-        cert ->
-            createTransferXClusterCertsCopyTasks(
-                targetUniverse.getNodes(),
-                xClusterConfig.getReplicationGroupName(),
-                cert,
-                targetUniverse.getUniverseDetails().getSourceRootCertDirPath()));
+    createTransferXClusterCertsCopyTasks(xClusterConfig);
 
     Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
         dbToTablesInfoMapNeedBootstrap = null;
@@ -331,6 +321,15 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
               null /* keyspacePending */)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
     }
+  }
+
+  protected void addSubtasksToCreateXClusterConfig(
+      XClusterConfig xClusterConfig,
+      Set<String> sourceDbIds,
+      @Nullable DrConfigCreateForm.PitrParams pitrParams,
+      boolean isForceBootstrap) {
+    addSubtasksToCreateXClusterConfig(
+        xClusterConfig, null, null, null, sourceDbIds, pitrParams, isForceBootstrap);
   }
 
   protected void addSubtasksToCreateXClusterConfig(
@@ -395,9 +394,8 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     }
 
     // Set up PITRs for txn/db scoped xCluster.
-    if (xClusterConfig.getType() != (ConfigType.Basic)) {
+    if (xClusterConfig.getType() != ConfigType.Basic) {
       Set<MasterTypes.NamespaceIdentifierPB> namespaces;
-
       if (xClusterConfig.getType() == ConfigType.Db) {
         namespaces = getNamespaces(sourceUniverse, sourceDbIds);
         if (namespaces.size() != sourceDbIds.size()) {
@@ -533,7 +531,12 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       // For db scoped replication, we will skip backup/restore subtasks at runtime if bootstrapping
       //   is not required. For non-db scoped replication, we always perform backup restore here.
       Predicate<ITask> bootstrapRequiredPredicate =
-          (task) -> {
+          task -> {
+            if (xClusterConfig.isUsedForDr()
+                && xClusterConfig.getDrConfig().getFailoverXClusterConfig() != null) {
+              return false;
+            }
+
             if (xClusterConfig.getType() == ConfigType.Db) {
               return checkBootstrapRequired(namespaceId, ybService, sourceUniverse, xClusterConfig);
             }
@@ -598,13 +601,21 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
           sourceUniverse.isYbcEnabled()
               && targetUniverse.isYbcEnabled()
               && confGetter.getGlobalConf(GlobalConfKeys.enableYbcForXCluster);
+
+      BootstrapBackupParams backupParams = null;
+      if (bootstrapParams == null) {
+        if (xClusterConfig.isUsedForDr()) {
+          backupParams = new BootstrapBackupParams();
+          backupParams.storageConfigUUID = xClusterConfig.getDrConfig().getStorageConfigUuid();
+          backupParams.parallelism = xClusterConfig.getDrConfig().getParallelism();
+        }
+      } else {
+        backupParams = bootstrapParams.backupRequestParams;
+      }
+
       BackupRequestParams backupRequestParams =
           getBackupRequestParams(
-              sourceUniverse,
-              bootstrapParams,
-              tablesInfoListNeedBootstrap,
-              namespaceName,
-              tableType);
+              sourceUniverse, backupParams, tablesInfoListNeedBootstrap, namespaceName, tableType);
       Backup backup =
           createAllBackupSubtasks(
               backupRequestParams,
@@ -667,7 +678,8 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RestoringBackup);
       } else if (tableType == CommonTypes.TableType.PGSQL_TABLE_TYPE) {
         // Delete hanging replication streams, otherwise deleting the database will fail.
-        createDeleteRemnantStreamsTask(targetUniverse.getUniverseUUID(), namespaceName);
+        createDeleteRemnantStreamsTask(targetUniverse.getUniverseUUID(), namespaceName)
+            .setShouldRunPredicate(bootstrapRequiredPredicate);
         // If the table type is YSQL, delete the database from the target universe before restore.
         createDeleteKeySpaceTask(
                 namespaceName, CommonTypes.TableType.PGSQL_TABLE_TYPE, true /*ysqlForce*/)
@@ -848,18 +860,18 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     return dbToTablesInfoMapNeedBootstrap;
   }
 
-  static BackupRequestParams getBackupRequestParams(
+  private static BackupRequestParams getBackupRequestParams(
       Universe sourceUniverse,
-      XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
+      BootstrapBackupParams backupParams,
       @Nullable
           List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tablesInfoListNeedBootstrap,
       String namespaceName,
       CommonTypes.TableType tableType) {
     BackupRequestParams backupRequestParams;
-    if (bootstrapParams != null && bootstrapParams.backupRequestParams != null) {
+    if (backupParams != null) {
       backupRequestParams = new BackupRequestParams();
-      backupRequestParams.storageConfigUUID = bootstrapParams.backupRequestParams.storageConfigUUID;
-      backupRequestParams.parallelism = bootstrapParams.backupRequestParams.parallelism;
+      backupRequestParams.storageConfigUUID = backupParams.storageConfigUUID;
+      backupRequestParams.parallelism = backupParams.parallelism;
     } else {
       // In case the user does not pass the backup parameters, use the default values.
       backupRequestParams = new BackupRequestParams();
@@ -869,7 +881,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
           Backup.fetchLatestByState(backupRequestParams.customerUUID, Backup.BackupState.Completed);
       if (latestCompletedBackupOptional.isEmpty()) {
         throw new RuntimeException(
-            "bootstrapParams in XClusterConfigCreateFormData is null, and storageConfigUUID "
+            "backupParams in XClusterConfigCreateFormData is null, and storageConfigUUID "
                 + "cannot be determined based on the latest successful backup");
       }
       backupRequestParams.storageConfigUUID =
@@ -977,5 +989,37 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     restoreTaskParams.backupStorageInfoList.add(backupStorageInfo);
 
     return restoreTaskParams;
+  }
+
+  public void createTransferXClusterCertsCopyTasks(XClusterConfig xClusterConfig) {
+    createTransferXClusterCertsCopyTasks(xClusterConfig, xClusterConfig.getReplicationGroupName());
+  }
+
+  /**
+   * Transfer source universe certs -> target universe. Also, target universe certs -> source
+   * universe if db scoped.
+   *
+   * @param xClusterConfig config with source and target universe to transfer certs.
+   * @param replicationGroupName name of the replication group for xClusterConfig.
+   */
+  public void createTransferXClusterCertsCopyTasks(
+      XClusterConfig xClusterConfig, String replicationGroupName) {
+    Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
+    Optional<File> sourceCertificate =
+        getOriginCertficateIfNecessary(sourceUniverse, targetUniverse);
+
+    sourceCertificate.ifPresent(
+        cert ->
+            createTransferXClusterCertsCopyTasks(
+                targetUniverse.getNodes(), replicationGroupName, cert, targetUniverse));
+    if (xClusterConfig.getType() == ConfigType.Db) {
+      Optional<File> targetCertificate =
+          getOriginCertficateIfNecessary(targetUniverse, sourceUniverse);
+      targetCertificate.ifPresent(
+          cert ->
+              createTransferXClusterCertsCopyTasks(
+                  sourceUniverse.getNodes(), replicationGroupName, cert, sourceUniverse));
+    }
   }
 }

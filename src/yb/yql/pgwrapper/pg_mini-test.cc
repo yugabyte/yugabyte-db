@@ -193,6 +193,8 @@ class PgMiniTest : public PgMiniTestBase {
   void ValidateAbortedTxnMetric();
 
   int64_t GetBloomFilterCheckedMetric();
+
+  PgSchemaName GetPgSchema(const string& tbl_name);
 };
 
 class PgMiniTestSingleNode : public PgMiniTest {
@@ -544,7 +546,7 @@ class PgMiniAshTest : public PgMiniTestSingleNode {
   }
 };
 
-TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(Ash), PgMiniAshTest) {
+TEST_F_EX(PgMiniTest, Ash, PgMiniAshTest) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT)"));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_mvcc_delay_add_leader_pending_ms) = 5;
@@ -1562,6 +1564,65 @@ TEST_F(PgMiniTest, SkipTableTombstoneCheckMetadata) {
       ->skip_table_tombstone_check);
 }
 
+PgSchemaName PgMiniTest::GetPgSchema(const string& tbl_name) {
+  const auto tbl_id = EXPECT_RESULT(GetTableIDFromTableName(tbl_name));
+  master::TableInfoPtr table = EXPECT_RESULT(catalog_manager())->GetTableInfo(tbl_id);
+  const auto schema_name = table->pgschema_name();
+  LOG(INFO) << "Table name = " << tbl_name << ", id =" << tbl_id << ", schema = " << schema_name;
+  return schema_name;
+}
+
+TEST_F(PgMiniTest, AlterTableSetSchema) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE SCHEMA S1"));
+  ASSERT_OK(conn.Execute("CREATE SCHEMA S2"));
+  ASSERT_OK(conn.Execute("CREATE SCHEMA S3"));
+  ASSERT_OK(conn.Execute("CREATE TABLE S1.TBL (a1 INT PRIMARY KEY, a2 INT)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX IDX ON S1.TBL(a2)"));
+
+  ASSERT_OK(conn.Execute("ALTER TABLE S1.TBL SET SCHEMA S2"));
+  // Check PG schema name in the CatalogManager.
+  ASSERT_EQ("s2", GetPgSchema("tbl"));
+  ASSERT_EQ("s2", GetPgSchema("idx"));
+
+  ASSERT_OK(conn.Execute("ALTER TABLE IF EXISTS S2.TBL SET SCHEMA S3"));
+  // Check PG schema name in the CatalogManager.
+  ASSERT_EQ("s3", GetPgSchema("tbl"));
+  ASSERT_EQ("s3", GetPgSchema("idx"));
+
+  ASSERT_OK(conn.Execute("DROP TABLE S3.TBL"));
+  ASSERT_OK(conn.Execute("DROP SCHEMA S3"));
+  ASSERT_OK(conn.Execute("DROP SCHEMA S2"));
+  ASSERT_OK(conn.Execute("DROP SCHEMA S1"));
+
+  // The command is successful for the deleted table due to IF EXISTS.
+  ASSERT_OK(conn.Execute("ALTER TABLE IF EXISTS S1.TBL SET SCHEMA S3"));
+}
+
+TEST_F(PgMiniTest, AlterPartitionedTableSetSchema) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE SCHEMA S1"));
+  ASSERT_OK(conn.Execute("CREATE SCHEMA S2"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE S1.P_TBL (k INT PRIMARY KEY, v TEXT)  PARTITION BY RANGE(k)"));
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE S1.P_TBL_1 PARTITION OF S1.P_TBL FOR VALUES FROM (1) TO (3)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE S1.P_TBL_DEFAULT PARTITION OF S1.P_TBL DEFAULT"));
+  ASSERT_OK(conn.Execute("CREATE INDEX P_TBL_IDX on S1.P_TBL(k)"));
+
+  ASSERT_OK(conn.Execute("ALTER TABLE S1.P_TBL SET SCHEMA S2"));
+  // Check PG schema name in the CatalogManager.
+  ASSERT_EQ("s2", GetPgSchema("p_tbl"));
+  ASSERT_EQ("s2", GetPgSchema("p_tbl_idx"));
+
+  ASSERT_EQ("s1", GetPgSchema("p_tbl_1"));
+  ASSERT_EQ("s1", GetPgSchema("p_tbl_default"));
+
+  ASSERT_OK(conn.Execute("DROP TABLE S2.P_TBL"));
+  ASSERT_OK(conn.Execute("DROP SCHEMA S2"));
+  ASSERT_OK(conn.Execute("DROP SCHEMA S1"));
+}
+
 // ------------------------------------------------------------------------------------------------
 // Tablet Splitting Tests
 // ------------------------------------------------------------------------------------------------
@@ -1669,7 +1730,7 @@ T* GetMetricOpt(const tablet::Tablet& tablet, const MetricPrototype& prototype) 
 }
 
 template <class T>
-T& GetMetric(tserver::MiniTabletServer& server, const MetricPrototype& prototype) {
+T& GetMetric(const tserver::MiniTabletServer& server, const MetricPrototype& prototype) {
   return *CHECK_NOTNULL(GetMetricOpt<T>(server, prototype));
 }
 
@@ -2354,6 +2415,40 @@ TEST_F_EX(PgMiniTest, DISABLED_ReadsDuringRBS, PgMiniStreamCompressionTest) {
 
   thread_holder.Stop();
 }
+
+TEST_F_EX(PgMiniTest, RegexPushdown, PgMiniTestSingleNode) {
+  // Create (a, aa, aaa, b, bb, bbb, ..., z, zz, zzz) rows.
+  const int kMaxRepeats = 3;
+  std::stringstream str;
+  auto first = true;
+  for (char c = 'a'; c <= 'z'; ++c) {
+    for (size_t repeats = 1; repeats <= kMaxRepeats; ++repeats) {
+      if (!first) {
+        str << ", ";
+      } else {
+        first = false;
+      }
+
+      str << "('";
+      for (size_t i = 0; i < repeats; ++i)
+        str << c;
+      str << "')";
+    }
+  }
+  const auto values = str.str();
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test_texticregex (t TEXT, PRIMARY KEY(t ASC)) SPLIT AT VALUES($0)", values));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO test_texticregex VALUES $0", values));
+
+  for (size_t i = 0; i < 10; ++i) {
+    const auto count = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+        "SELECT COUNT(*) FROM test_texticregex WHERE texticregexeq(t, t)"));
+    ASSERT_EQ(count, ('z' - 'a' + 1) * kMaxRepeats);
+  }
+}
+
 
 Status MockAbortFailure(
     const yb::tserver::PgFinishTransactionRequestPB* req,

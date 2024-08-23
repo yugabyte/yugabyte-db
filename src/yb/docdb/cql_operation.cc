@@ -494,7 +494,7 @@ Status QLWriteOperation::ReadColumns(const DocOperationApplyData& data,
   // Generate hashed / primary key depending on if static / non-static columns are referenced in
   // the if-condition.
   RETURN_NOT_OK(InitializeKeys(
-      !static_projection->columns.empty(), !non_static_projection->columns.empty()));
+      !request_.column_refs().static_ids().empty(), !non_static_projection->columns.empty()));
 
   // Scan docdb for the static and non-static columns of the row using the hashed / primary key.
   if (hashed_doc_key_) {
@@ -1699,8 +1699,7 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
                                 const DocReadContext& doc_read_context,
                                 std::reference_wrapper<const ScopedRWOperation> pending_op,
                                 QLResultSet* resultset,
-                                HybridTime* restart_read_ht,
-                                const docdb::DocDBStatistics* statistics) {
+                                HybridTime* restart_read_ht) {
   auto se = ScopeExit([resultset] {
     resultset->Complete();
   });
@@ -1745,7 +1744,7 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
       &static_row_spec));
   RETURN_NOT_OK(ql_storage.GetIterator(
       request_, full_projection, doc_read_context, txn_op_context_, read_operation_data,
-      *spec, pending_op, &iter, statistics));
+      *spec, pending_op, &iter));
   VTRACE(1, "Initialized iterator");
 
   QLTableRow static_row;
@@ -1760,7 +1759,7 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
     std::unique_ptr<YQLRowwiseIteratorIf> static_row_iter;
     RETURN_NOT_OK(ql_storage.GetIterator(
         request_, static_projection, doc_read_context, txn_op_context_, read_operation_data,
-        *static_row_spec, pending_op, &static_row_iter, statistics));
+        *static_row_spec, pending_op, &static_row_iter));
     RETURN_NOT_OK(static_row_iter->FetchNext(&static_row));
   }
 

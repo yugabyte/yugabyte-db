@@ -3450,10 +3450,6 @@ GRANT SELECT ON ref_tbl TO regress_rls_bob;
 GRANT SELECT ON rls_tbl TO regress_rls_bob;
 CREATE VIEW rls_view AS SELECT * FROM rls_tbl;
 ALTER VIEW rls_view OWNER TO regress_rls_bob;
-ERROR:  ALTER VIEW not supported yet
-LINE 1: ALTER VIEW rls_view OWNER TO regress_rls_bob;
-        ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1131. React with thumbs up to raise its priority
 GRANT SELECT ON rls_view TO regress_rls_alice;
 SET SESSION AUTHORIZATION regress_rls_alice;
 SELECT * FROM ref_tbl; -- Permission denied

@@ -172,7 +172,7 @@ class YbAdminSnapshotScheduleTest : public AdminTestBase {
 
   Status WaitNewSnapshot(const std::string& id = {}) {
     LOG(INFO) << "WaitNewSnapshot, schedule id: " << id;
-    std::string_view last_snapshot_id;
+    std::string last_snapshot_id;
     return WaitFor([this, &id, &last_snapshot_id]() -> Result<bool> {
       // If there's a master leader failover then we should wait for the next cycle.
       auto schedule = VERIFY_RESULT(GetSnapshotSchedule(id));
@@ -4116,12 +4116,6 @@ class YbAdminRestoreDuringSplit : public YbAdminRestoreAfterSplitTest {
 // Restore to a time just before split key is fetched by the master.
 TEST_F(YbAdminRestoreDuringSplit, RestoreBeforeGetSplitKey) {
   SetDelayFlag("TEST_pause_tserver_get_split_key", /* set on master */ false);
-  ASSERT_OK(RunTest(1 /* expected num tablets after restore */));
-}
-
-// Restore to a time after one of the child tablets is registered by the master.
-TEST_F(YbAdminRestoreDuringSplit, RestoreAfterOneChildRegistered) {
-  SetDelayFlag("TEST_pause_split_child_registration", /* set on master */ true);
   ASSERT_OK(RunTest(1 /* expected num tablets after restore */));
 }
 

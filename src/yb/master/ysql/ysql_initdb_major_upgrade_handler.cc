@@ -272,7 +272,7 @@ Result<std::string> YsqlInitDBAndMajorUpgradeHandler::GetClosestLiveTserverAddre
     if (!desc->IsLive()) {
       continue;
     }
-    const auto& ts_info = *desc->GetTSInformationPB();
+    const auto& ts_info = desc->GetTSInformationPB();
 
     if (!ts_info.has_registration() ||
         ts_info.registration().common().private_rpc_addresses().empty()) {

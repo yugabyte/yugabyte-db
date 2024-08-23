@@ -184,6 +184,8 @@ class RandomAccessFile : public FileWithUniqueId {
   // of this file. If the length is 0, then it refers to the end of file.
   // If the system is not caching the file contents, then this is a noop.
   virtual Status InvalidateCache(size_t offset, size_t length);
+
+  virtual void Readahead(size_t offset, size_t length) {}
 };
 
 } // namespace yb

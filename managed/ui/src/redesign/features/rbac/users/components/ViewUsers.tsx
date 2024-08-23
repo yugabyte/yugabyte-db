@@ -12,7 +12,7 @@ import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { useToggle } from 'react-use';
 import { WithRouterProps } from 'react-router';
-import { find } from 'lodash';
+import { find, uniqBy } from 'lodash';
 
 import { Box, makeStyles } from '@material-ui/core';
 import { TableHeaderColumn } from 'react-bootstrap-table';
@@ -264,7 +264,7 @@ export const ViewUsers = ({ routerProps }: { routerProps: WithRouterProps }) => 
           <TableHeaderColumn
             dataField="roles"
             dataFormat={(_role, row: RbacUser) => {
-              const roles: RbacBindings[] = [...(roleBindings?.[row.uuid] ?? [])];
+              const roles: RbacBindings[] = uniqBy([...(roleBindings?.[row.uuid] ?? [])], 'role.name');
               if (roles && roles.length > 0) {
                 const minRoles = roles.splice(3);
                 return (

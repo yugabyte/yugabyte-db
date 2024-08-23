@@ -151,6 +151,8 @@ To create an interface endpoint to connect to your cluster PSE, do the following
 
     ![AWS Create endpoint](/images/yb-cloud/managed-endpoint-aws-2.png)
 
+    Make sure the security groups in your application VPC allow internal connectivity. Otherwise, your application may not be able to reach the endpoint.
+
 1. Click **Create endpoint**.
 
     The endpoint is added to the Endpoints in AWS.

@@ -1154,7 +1154,6 @@ help(const char *progname)
 	printf(_("  --no-unlogged-table-data     do not dump unlogged table data\n"));
 	printf(_("  --on-conflict-do-nothing     add ON CONFLICT DO NOTHING to INSERT commands\n"));
 	printf(_("  --quote-all-identifiers      quote all identifiers, even if not key words\n"));
-	printf(_("  --read-time=TIMEPOINT        dump data/schema as of provided TIMEPOINT. Takes linux timestamp in microseconds\n"));
 	printf(_("  --rows-per-insert=NROWS      number of rows per INSERT; implies --inserts\n"));
 	printf(_("  --section=SECTION            dump named section (pre-data, data, or post-data)\n"));
 	printf(_("  --serializable-deferrable    wait until the dump can run without anomalies\n"));
@@ -14780,7 +14779,7 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 		PQExpBuffer tag = createPQExpBuffer();
 		DumpId		aclDeps[2];
 		int			nDeps = 0;
-		PQExpBuffer use_roles_sql;
+		PQExpBuffer yb_use_roles_sql;
 
 		if (subname)
 			appendPQExpBuffer(tag, "COLUMN %s.%s", name, subname);
@@ -14789,10 +14788,10 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 
 		if (dopt->include_yb_metadata)
 		{
-			use_roles_sql = createPQExpBuffer();
+			yb_use_roles_sql = createPQExpBuffer();
 			/* YB_TODO: \if is a psql meta-command and doesn't work with pg_restore */
 			if (!dopt->binary_upgrade)
-				appendPQExpBuffer(use_roles_sql, "\\if :use_roles\n%s\\endif\n", sql->data);
+				appendPQExpBuffer(yb_use_roles_sql, "\\if :use_roles\n%s\\endif\n", sql->data);
 		}
 
 		aclDeps[nDeps++] = objDumpId;
@@ -14808,12 +14807,12 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 								  .description = "ACL",
 								  .section = SECTION_NONE,
 								  .createStmt = (dopt->include_yb_metadata ?
-												 use_roles_sql->data :
+												 yb_use_roles_sql->data :
 												 sql->data),
 								  .deps = aclDeps,
 								  .nDeps = nDeps));
 		if (dopt->include_yb_metadata)
-			destroyPQExpBuffer(use_roles_sql);
+			destroyPQExpBuffer(yb_use_roles_sql);
 
 		destroyPQExpBuffer(tag);
 	}

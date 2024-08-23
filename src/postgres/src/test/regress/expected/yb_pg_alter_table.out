@@ -311,6 +311,33 @@ Check constraints:
 
 DROP TABLE constraint_rename_cache;
 DROP TABLE like_constraint_rename_cache;
+-- test inheritance
+create table renameColumn (a int);
+create table renameColumnChild (b int) inherits (renameColumn);
+ERROR:  INHERITS not supported yet
+LINE 1: create table renameColumnChild (b int) inherits (renameColum...
+                                               ^
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1129. React with thumbs up to raise its priority
+/* YB: uncomment when INHERITS is supported
+create table renameColumnAnother (c int) inherits (renameColumnChild);
+
+-- these three should fail
+alter table renameColumnChild rename column a to d;
+alter table only renameColumnChild rename column a to d;
+alter table only renameColumn rename column a to d;
+*/ -- YB
+-- these should work
+alter table renameColumn rename column a to d;
+/* YB: uncomment when INHERITS is supported
+alter table renameColumnChild rename column b to a;
+*/ -- YB
+-- these should work
+alter table if exists doesnt_exist_tab rename column a to d;
+NOTICE:  relation "doesnt_exist_tab" does not exist, skipping
+alter table if exists doesnt_exist_tab rename column b to a;
+NOTICE:  relation "doesnt_exist_tab" does not exist, skipping
+-- this should work
+alter table renameColumn add column w int;
 --
 -- lock levels
 --
@@ -432,14 +459,18 @@ rollback;
 --
 create schema alter1;
 create schema alter2;
+create table alter1.t1(f1 serial primary key, f2 int check (f2 > 0));
 create text search parser alter1.prs(start = prsd_start, gettoken = prsd_nexttoken, end = prsd_end, lextypes = prsd_lextype);
 create text search configuration alter1.cfg(parser = alter1.prs);
+alter table alter1.t1 set schema alter1; -- no-op, same schema
+alter table alter1.t1 set schema alter2;
 alter text search parser alter1.prs set schema alter2;
 alter text search configuration alter1.cfg set schema alter2;
 -- clean up
 drop schema alter2 cascade;
-NOTICE:  drop cascades to 2 other objects
-DETAIL:  drop cascades to text search configuration alter2.cfg
+NOTICE:  drop cascades to 3 other objects
+DETAIL:  drop cascades to table alter2.t1
+drop cascades to text search configuration alter2.cfg
 drop cascades to text search parser alter2.prs
 --
 -- typed tables: OF / NOT OF

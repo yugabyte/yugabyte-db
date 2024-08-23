@@ -13,12 +13,14 @@ import api.v2.models.UniverseInfo;
 import api.v2.models.UniverseSpec;
 import api.v2.models.YCQLSpec;
 import api.v2.models.YSQLSpec;
+import api.v2.models.YbSoftwareDetails;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
+import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
@@ -31,11 +33,10 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
-import java.util.Date;
 import org.mapstruct.BeanMapping;
+import org.mapstruct.Context;
 import org.mapstruct.DecoratedWith;
+import org.mapstruct.InheritConfiguration;
 import org.mapstruct.InheritInverseConfiguration;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -45,114 +46,68 @@ import org.mapstruct.ValueMapping;
 import org.mapstruct.ValueMappings;
 import org.mapstruct.control.DeepClone;
 import org.mapstruct.factory.Mappers;
+import play.mvc.Http.Request;
 
 @DecoratedWith(UniverseDefinitionTaskParamsDecorator.class)
 @Mapper(
     config = CentralConfig.class,
     mappingControl = DeepClone.class,
-    uses = {ClusterMapper.class})
+    uses = {ClusterMapper.class, UserMapper.class})
 public interface UniverseDefinitionTaskParamsMapper {
   public static UniverseDefinitionTaskParamsMapper INSTANCE =
       Mappers.getMapper(UniverseDefinitionTaskParamsMapper.class);
 
-  @Mapping(target = "existingLBs", ignore = true)
-  @Mapping(target = "primaryCluster", ignore = true)
-  @Mapping(target = "TServers", ignore = true)
-  @Mapping(target = "readOnlyClusters", ignore = true)
-  @Mapping(target = "addOnClusters", ignore = true)
-  @Mapping(target = "nonPrimaryClusters", ignore = true)
+  @InheritConfiguration(name = "defaultMapping")
   public UniverseConfigureTaskParams toUniverseConfigureTaskParams(
-      UniverseDefinitionTaskParams source);
+      UniverseDefinitionTaskParams source, @Context Request request);
 
-  @Mapping(target = "existingLBs", ignore = true)
-  @Mapping(target = "primaryCluster", ignore = true)
-  @Mapping(target = "TServers", ignore = true)
-  @Mapping(target = "readOnlyClusters", ignore = true)
-  @Mapping(target = "addOnClusters", ignore = true)
-  @Mapping(target = "nonPrimaryClusters", ignore = true)
-  public GFlagsUpgradeParams toGFlagsUpgradeParams(UniverseDefinitionTaskParams source);
+  @InheritConfiguration(name = "defaultMapping")
+  public GFlagsUpgradeParams toGFlagsUpgradeParams(
+      UniverseDefinitionTaskParams source, @Context Request request);
 
-  @Mapping(target = "existingLBs", ignore = true)
-  @Mapping(target = "primaryCluster", ignore = true)
-  @Mapping(target = "TServers", ignore = true)
-  @Mapping(target = "readOnlyClusters", ignore = true)
-  @Mapping(target = "addOnClusters", ignore = true)
-  @Mapping(target = "nonPrimaryClusters", ignore = true)
+  @InheritConfiguration(name = "defaultMapping")
   public KubernetesGFlagsUpgradeParams toKubernetesGFlagsUpgradeParams(
-      UniverseDefinitionTaskParams source);
+      UniverseDefinitionTaskParams source, @Context Request request);
 
-  @Mapping(target = "existingLBs", ignore = true)
-  @Mapping(target = "primaryCluster", ignore = true)
-  @Mapping(target = "TServers", ignore = true)
-  @Mapping(target = "readOnlyClusters", ignore = true)
-  @Mapping(target = "addOnClusters", ignore = true)
-  @Mapping(target = "nonPrimaryClusters", ignore = true)
-  public SoftwareUpgradeParams toSoftwareUpgradeParams(UniverseDefinitionTaskParams source);
+  @InheritConfiguration(name = "defaultMapping")
+  public SoftwareUpgradeParams toSoftwareUpgradeParams(
+      UniverseDefinitionTaskParams source, @Context Request request);
 
-  @Mapping(target = "existingLBs", ignore = true)
-  @Mapping(target = "primaryCluster", ignore = true)
-  @Mapping(target = "TServers", ignore = true)
-  @Mapping(target = "readOnlyClusters", ignore = true)
-  @Mapping(target = "addOnClusters", ignore = true)
-  @Mapping(target = "nonPrimaryClusters", ignore = true)
-  public RollbackUpgradeParams toRollbackUpgradeParams(UniverseDefinitionTaskParams source);
+  @InheritConfiguration(name = "defaultMapping")
+  public RollbackUpgradeParams toRollbackUpgradeParams(
+      UniverseDefinitionTaskParams source, @Context Request request);
 
-  @Mapping(target = "existingLBs", ignore = true)
-  @Mapping(target = "primaryCluster", ignore = true)
-  @Mapping(target = "TServers", ignore = true)
-  @Mapping(target = "readOnlyClusters", ignore = true)
-  @Mapping(target = "addOnClusters", ignore = true)
-  @Mapping(target = "nonPrimaryClusters", ignore = true)
-  public FinalizeUpgradeParams toFinalizeUpgradeParams(UniverseDefinitionTaskParams source);
+  @InheritConfiguration(name = "defaultMapping")
+  public FinalizeUpgradeParams toFinalizeUpgradeParams(
+      UniverseDefinitionTaskParams source, @Context Request request);
 
-  @Mapping(target = "existingLBs", ignore = true)
-  @Mapping(target = "primaryCluster", ignore = true)
-  @Mapping(target = "TServers", ignore = true)
-  @Mapping(target = "readOnlyClusters", ignore = true)
-  @Mapping(target = "addOnClusters", ignore = true)
-  @Mapping(target = "nonPrimaryClusters", ignore = true)
+  @InheritConfiguration(name = "defaultMapping")
   public ThirdpartySoftwareUpgradeParams toThirdpartySoftwareUpgradeParams(
-      UniverseDefinitionTaskParams source);
+      UniverseDefinitionTaskParams source, @Context Request request);
 
-  @Mapping(target = "existingLBs", ignore = true)
-  @Mapping(target = "primaryCluster", ignore = true)
-  @Mapping(target = "TServers", ignore = true)
-  @Mapping(target = "readOnlyClusters", ignore = true)
-  @Mapping(target = "addOnClusters", ignore = true)
-  @Mapping(target = "nonPrimaryClusters", ignore = true)
-  public UpgradeTaskParams toUpgradeTaskParams(UniverseDefinitionTaskParams source);
+  @InheritConfiguration(name = "defaultMapping")
+  public UpgradeTaskParams toUpgradeTaskParams(
+      UniverseDefinitionTaskParams source, @Context Request request);
 
-  @Mapping(target = "existingLBs", ignore = true)
-  @Mapping(target = "primaryCluster", ignore = true)
-  @Mapping(target = "TServers", ignore = true)
-  @Mapping(target = "readOnlyClusters", ignore = true)
-  @Mapping(target = "addOnClusters", ignore = true)
-  @Mapping(target = "nonPrimaryClusters", ignore = true)
-  public RestartTaskParams toRestartTaskParams(UniverseDefinitionTaskParams source);
+  @InheritConfiguration(name = "defaultMapping")
+  public RestartTaskParams toRestartTaskParams(
+      UniverseDefinitionTaskParams source, @Context Request request);
 
-  @Mapping(target = "existingLBs", ignore = true)
-  @Mapping(target = "primaryCluster", ignore = true)
-  @Mapping(target = "TServers", ignore = true)
-  @Mapping(target = "readOnlyClusters", ignore = true)
-  @Mapping(target = "addOnClusters", ignore = true)
-  @Mapping(target = "nonPrimaryClusters", ignore = true)
-  public SystemdUpgradeParams toSystemdUpgradeParams(UniverseDefinitionTaskParams source);
+  @InheritConfiguration(name = "defaultMapping")
+  public SystemdUpgradeParams toSystemdUpgradeParams(
+      UniverseDefinitionTaskParams source, @Context Request request);
 
-  @Mapping(target = "existingLBs", ignore = true)
-  @Mapping(target = "primaryCluster", ignore = true)
-  @Mapping(target = "TServers", ignore = true)
-  @Mapping(target = "readOnlyClusters", ignore = true)
-  @Mapping(target = "addOnClusters", ignore = true)
-  @Mapping(target = "nonPrimaryClusters", ignore = true)
-  public TlsToggleParams toTlsToggleParams(UniverseDefinitionTaskParams source);
+  @InheritConfiguration(name = "defaultMapping")
+  public TlsToggleParams toTlsToggleParams(
+      UniverseDefinitionTaskParams source, @Context Request request);
 
-  @Mapping(target = "existingLBs", ignore = true)
-  @Mapping(target = "primaryCluster", ignore = true)
-  @Mapping(target = "TServers", ignore = true)
-  @Mapping(target = "readOnlyClusters", ignore = true)
-  @Mapping(target = "addOnClusters", ignore = true)
-  @Mapping(target = "nonPrimaryClusters", ignore = true)
-  public CertsRotateParams toCertsRotateParams(UniverseDefinitionTaskParams source);
+  @InheritConfiguration(name = "defaultMapping")
+  public CertsRotateParams toCertsRotateParams(
+      UniverseDefinitionTaskParams source, @Context Request request);
+
+  @InheritConfiguration(name = "defaultMapping")
+  public KubernetesOverridesUpgradeParams toKubernetesOverridesUpgradeParams(
+      UniverseDefinitionTaskParams source, @Context Request request);
 
   @Mapping(target = "spec", source = ".")
   UniverseCreateSpec toV2UniverseCreateSpec(UniverseDefinitionTaskParams v1UniverseTaskParams);
@@ -165,6 +120,7 @@ public interface UniverseDefinitionTaskParamsMapper {
   @Mapping(target = "ycql", source = ".")
   UniverseSpec toV2UniverseSpec(UniverseDefinitionTaskParams v1UniverseTaskParams);
 
+  @InheritConfiguration(name = "defaultMapping")
   @InheritInverseConfiguration(name = "toV2UniverseSpec")
   UniverseDefinitionTaskParams toV1UniverseDefinitionTaskParams(UniverseSpec universeSpec);
 
@@ -180,6 +136,9 @@ public interface UniverseDefinitionTaskParamsMapper {
   @Mapping(target = "universeUuid", source = "universeUUID")
   @Mapping(target = "updatingTaskUuid", source = "updatingTaskUUID")
   @Mapping(target = "encryptionAtRestInfo", source = "encryptionAtRestConfig")
+  @Mapping(target = "ybaUrl", source = "platformUrl")
+  @Mapping(target = "previousYbSoftwareDetails", source = "prevYBSoftwareConfig")
+  @Mapping(target = "previousTaskUuid", source = "previousTaskUUID")
   UniverseInfo toV2UniverseInfo(UniverseDefinitionTaskParams v1UniverseTaskParams);
 
   // below methods are used implicitly to generate other mapping
@@ -324,10 +283,7 @@ public interface UniverseDefinitionTaskParamsMapper {
   NodeDetails.StateEnum toV2NodeState(
       com.yugabyte.yw.models.helpers.NodeDetails.NodeState v1NodeState);
 
-  default OffsetDateTime toOffsetDateTime(Date date) {
-    if (date == null) {
-      return null;
-    }
-    return date.toInstant().atOffset(ZoneOffset.UTC);
-  }
+  @Mapping(target = "ybSoftwareVersion", source = "softwareVersion")
+  YbSoftwareDetails toV2SoftwareDetails(
+      UniverseDefinitionTaskParams.PrevYBSoftwareConfig prevYBSoftwareConfig);
 }

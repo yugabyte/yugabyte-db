@@ -285,6 +285,33 @@ CREATE TABLE like_constraint_rename_cache
 DROP TABLE constraint_rename_cache;
 DROP TABLE like_constraint_rename_cache;
 
+-- test inheritance
+
+create table renameColumn (a int);
+create table renameColumnChild (b int) inherits (renameColumn);
+/* YB: uncomment when INHERITS is supported
+create table renameColumnAnother (c int) inherits (renameColumnChild);
+
+-- these three should fail
+alter table renameColumnChild rename column a to d;
+alter table only renameColumnChild rename column a to d;
+alter table only renameColumn rename column a to d;
+*/ -- YB
+
+-- these should work
+alter table renameColumn rename column a to d;
+/* YB: uncomment when INHERITS is supported
+alter table renameColumnChild rename column b to a;
+*/ -- YB
+
+-- these should work
+alter table if exists doesnt_exist_tab rename column a to d;
+alter table if exists doesnt_exist_tab rename column b to a;
+
+-- this should work
+alter table renameColumn add column w int;
+
+
 --
 -- lock levels
 --
@@ -371,9 +398,13 @@ rollback;
 create schema alter1;
 create schema alter2;
 
+create table alter1.t1(f1 serial primary key, f2 int check (f2 > 0));
+
 create text search parser alter1.prs(start = prsd_start, gettoken = prsd_nexttoken, end = prsd_end, lextypes = prsd_lextype);
 create text search configuration alter1.cfg(parser = alter1.prs);
 
+alter table alter1.t1 set schema alter1; -- no-op, same schema
+alter table alter1.t1 set schema alter2;
 alter text search parser alter1.prs set schema alter2;
 alter text search configuration alter1.cfg set schema alter2;
 

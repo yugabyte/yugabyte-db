@@ -140,10 +140,16 @@ Status YBTableAlterer::ToRequest(master::AlterTableRequestPB* req) {
   }
 
   if (rename_to_) {
-    req->set_new_table_name(rename_to_->table_name());
+    if (rename_to_->has_table()) {
+      req->set_new_table_name(rename_to_->table_name());
 
-    if (rename_to_->has_namespace()) {
-      req->mutable_new_namespace()->set_name(rename_to_->namespace_name());
+      if (rename_to_->has_namespace()) {
+        req->mutable_new_namespace()->set_name(rename_to_->namespace_name());
+      }
+    }
+
+    if (rename_to_->has_pgschema_name()) {
+      req->set_pgschema_name(rename_to_->pgschema_name());
     }
   }
 

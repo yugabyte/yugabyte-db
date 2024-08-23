@@ -1,10 +1,11 @@
 import React, { FC } from "react";
 import { Box, Divider, Grid, Paper, Typography, makeStyles, useTheme } from "@material-ui/core";
 import { useTranslation } from "react-i18next";
-import { YBTooltip } from "@app/components";
+import { YBButton, YBTooltip } from "@app/components";
 import { MigrationRecommendationSidePanel } from "./AssessmentRecommendationSidePanel";
 import type { Migration } from "../../MigrationOverview";
-import { convertBytesToGB } from "@app/helpers";
+import { getMemorySizeUnits } from "@app/helpers";
+import CaretRightIcon from "@app/assets/caret-right-circle.svg";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -82,7 +83,11 @@ export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommenda
           </Box>
         </Box>
 
-        <Box mb={4}>{recommendation}</Box>
+        <Box>{recommendation}</Box>
+
+        <Box my={4}>
+          <Divider orientation="horizontal" />
+        </Box>
 
         <Box display="flex">
           <Box>
@@ -150,13 +155,13 @@ export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommenda
               <Typography variant="h5">
                 {t("clusterDetail.voyager.planAndAssess.recommendation.schema.heading")}
               </Typography>
-              {/* <YBButton
+              <YBButton
                 variant="ghost"
                 startIcon={<CaretRightIcon />}
                 onClick={() => setShowRecommendation(true)}
               >
                 {t("clusterDetail.voyager.planAndAssess.sourceEnv.viewDetails")}
-              </YBButton> */}
+              </YBButton>
             </Box>
 
             <Grid container spacing={4}>
@@ -192,7 +197,7 @@ export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommenda
                 </Typography>
                 <Typography variant="body2" className={classes.value}>
                   {typeof colocatedTotalSize === "number"
-                    ? `${convertBytesToGB(colocatedTotalSize)} GB`
+                    ? getMemorySizeUnits(colocatedTotalSize)
                     : colocatedTotalSize}
                 </Typography>
               </Grid>
@@ -202,7 +207,7 @@ export const MigrationAssessmentRecommendation: FC<MigrationAssessmentRecommenda
                 </Typography>
                 <Typography variant="body2" className={classes.value}>
                   {typeof shardedTotalSize === "number"
-                    ? `${convertBytesToGB(shardedTotalSize)} GB`
+                    ? getMemorySizeUnits(shardedTotalSize)
                     : shardedTotalSize}
                 </Typography>
               </Grid>

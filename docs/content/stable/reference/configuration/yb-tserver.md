@@ -863,6 +863,14 @@ As long as no data has been flushed from the buffer, the database can retry quer
 
 Default: `262144` (256kB, type: int32)
 
+##### --ysql_yb_bnl_batch_size
+
+Sets the size of a tuple batch that's taken from the outer side of a [batched nested loop (BNL) join](../../../explore/ysql-language-features/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
+
+See also the [yb_bnl_batch_size](#yb-bnl-batch-size) configuration parameter. If both flag and parameter are set, the parameter takes precedence.
+
+Default: 1024
+
 ### YCQL
 
 The following flags support the use of the [YCQL API](../../../api/ycql/):
@@ -1296,6 +1304,38 @@ Number of tables to be added to the stream ID per run of the background thread w
 
 Default: `2`
 
+The following set of flags are only relevant for CDC using the PostgreSQL replication protocol. To learn about CDC using the PostgreSQL replication protocol, see [CDC using logical replication](../../../architecture/docdb-replication/cdc-logical-replication).
+
+##### --ysql_yb_default_replica_identity
+
+The default replica identity to be assigned to user defined tables at the time of creation. The flag is case sensitive and can take only one of the four possible values, `FULL`, `DEFAULT`,`'NOTHING` and `CHANGE`.
+
+Default: `CHANGE`
+
+##### --cdcsdk_enable_dynamic_table_support
+
+Tables created after the creation of a replication slot are referred as Dynamic tables. This preview flag can be used to switch the dynamic addition of tables to the publication ON or OFF.
+
+Default: `false`
+
+##### --cdcsdk_publication_list_refresh_interval_secs
+
+Interval in seconds at which the table list in the publication will be refreshed.
+
+Default: `3600`
+
+##### --cdcsdk_max_consistent_records
+
+Controls the maximum number of records sent from Virtual WAL (VWAL) to walsender in consistent order.
+
+Default: `500`
+
+##### --cdcsdk_vwal_getchanges_resp_max_size_bytes
+
+Max size (in bytes) of changes sent from CDC Service to [Virtual WAL](../../../architecture/docdb-replication/cdc-logical-replication)(VWAL) for a particular tablet.
+
+Default: `1 MB`
+
 ## File expiration based on TTL flags
 
 ##### --tablet_enable_ttl_file_filter
@@ -1372,20 +1412,23 @@ Default: `100`
 
 ## Metric export flags
 
+YB-TServer metrics are available in Prometheus format at `http://localhost:9000/prometheus-metrics`.
+
 ##### --export_help_and_type_in_prometheus_metrics
 
-YB-TServer metrics are available in Prometheus format at
-`http://localhost:9000/prometheus-metrics`.  This flag controls whether
-#TYPE and #HELP information is included as part of the Prometheus
-metrics output by default.
+This flag controls whether #TYPE and #HELP information is included as part of the Prometheus metrics output by default.
 
-To override this flag on a per-scrape basis, set the URL parameter
-`show_help` to `true` to include or to `false` to not include type and
-help information.  For example, querying
-`http://localhost:9000/prometheus-metrics?show_help=true` will return
-type and help information regardless of the setting of this flag.
+To override this flag on a per-scrape basis, set the URL parameter `show_help` to `true` to include or to `false` to not include type and help information.  For example, querying `http://localhost:9000/prometheus-metrics?show_help=true` returns type and help information regardless of the setting of this flag.
 
 Default: `true`
+
+##### --max_prometheus_metric_entries
+
+This flag limits the number of Prometheus metric entries returned per scrape. If adding a metric with all its entities exceeds this limit, all entries from that metric are excluded. This could result in fewer entries than the set limit.
+
+To override this flag on a per-scrape basis, you can adjust the URL parameter `max_metric_entries`.
+
+Default: `UINT32_MAX`
 
 ## Catalog flags
 
@@ -1666,13 +1709,13 @@ Default: false
 
 ##### yb_bnl_batch_size
 
-Set the size of a tuple batch that's taken from the outer side of a [YB Batched Nested Loop (BNL) Join](../../../explore/ysql-language-features/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
+Set the size of a tuple batch that's taken from the outer side of a [batched nested loop (BNL) join](../../../explore/ysql-language-features/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
 
 Default: 1024
 
 ##### yb_enable_batchednl
 
-Enable or disable the query planner's use of Batched Nested Loop Join.
+Enable or disable the query planner's use of batched nested loop join.
 
 Default: true
 

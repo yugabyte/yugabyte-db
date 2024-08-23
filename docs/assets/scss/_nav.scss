@@ -53,16 +53,20 @@ body {
           margin-right: auto;
           margin-left: auto;
           height: 32px;
-          margin-bottom: 28px;
+          margin-bottom: 40px;
         }
 
         .navbar-brand {
-          width: 203px;
-          height: 32px;
+          width: 148px;
+          height: 20px;
           padding: 0;
           margin: 0;
+          margin-right: 24px;
           display: flex;
           align-items: center;
+          @media(max-width:450px) {
+            margin-right: 8px;
+          }
         }
 
         .navbar-nav {
@@ -464,7 +468,7 @@ body {
           margin: 0 0 -1px 0;
 
           > li {
-            margin: 0 8px 0 0;
+            margin: 0 16px 0 0;
             list-style: none;
 
             &.active > a {
@@ -499,14 +503,13 @@ body {
 
             > {
               a {
-                font-weight: 400;
+                font-weight: 500;
                 display: block;
-                font-size: 13px;
+                font-size: 14px;
                 line-height: 16px;
                 color: #0b1117;
-                padding: 10px 16px;
+                padding: 12px 16px 16px;
                 width: auto;
-                height: 36px;
                 border-bottom: 3px solid transparent;
               }
 

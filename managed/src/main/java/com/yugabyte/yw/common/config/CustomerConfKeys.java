@@ -109,6 +109,15 @@ public class CustomerConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 
+  public static final ConfKeyInfo<Boolean> enableDownloadMetricsPdf =
+      new ConfKeyInfo<>(
+          "yb.ui.metrics.enable_download_pdf",
+          ScopeType.CUSTOMER,
+          "Enable downloading metrics as a PDF",
+          "When enabled, the download metrics option is shown on the universe metrics page.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
   public static final ConfKeyInfo<Boolean> useNewProviderUI =
       new ConfKeyInfo<>(
           "yb.ui.feature_flags.provider_redesign",

@@ -1,0 +1,8 @@
+title: JobSchedule
+description: Job schedule which contains the spec and execution info for a schedule.
+type: object
+properties:
+  spec:
+    $ref: "./JobScheduleSpec.yaml"
+  info:
+    $ref: "./JobScheduleInfo.yaml"

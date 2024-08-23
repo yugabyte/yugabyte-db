@@ -87,6 +87,10 @@ struct ExternalTableSnapshotData {
   PartitionToIdMap new_tablets_map;
   // Mapping: Old tablet ID -> New tablet ID.
   std::optional<ImportSnapshotMetaResponsePB::TableMetaPB> table_meta = std::nullopt;
+  // The correct schema version of the new table used for cloning colocated tables. Colocated
+  // tables' schemas and schema versions are added to the target tablet's superblock when applying
+  // the clone_op.
+  std::optional<int> new_table_schema_version = std::nullopt;
 };
 typedef std::unordered_map<TableId, ExternalTableSnapshotData> ExternalTableSnapshotDataMap;
 
@@ -184,7 +188,7 @@ struct TabletReplica {
 // The data related to a tablet which is persisted on disk.
 // This portion of TabletInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
-struct PersistentTabletInfo : public Persistent<SysTabletsEntryPB, SysRowEntryType::TABLET> {
+struct PersistentTabletInfo : public Persistent<SysTabletsEntryPB> {
   bool is_running() const {
     return pb.state() == SysTabletsEntryPB::RUNNING;
   }
@@ -368,7 +372,7 @@ class TabletInfo : public MetadataCowWrapper<PersistentTabletInfo> {
 // The data related to a table which is persisted on disk.
 // This portion of TableInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
-struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType::TABLE> {
+struct PersistentTableInfo : public Persistent<SysTablesEntryPB> {
   bool started_deleting() const {
     return pb.state() == SysTablesEntryPB::DELETING ||
            pb.state() == SysTablesEntryPB::DELETED;
@@ -827,8 +831,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 // The data related to a namespace which is persisted on disk.
 // This portion of NamespaceInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
-struct PersistentNamespaceInfo : public Persistent<
-    SysNamespaceEntryPB, SysRowEntryType::NAMESPACE> {
+struct PersistentNamespaceInfo : public Persistent<SysNamespaceEntryPB> {
   // Get the namespace name.
   const NamespaceName& name() const {
     return pb.name();
@@ -867,8 +870,6 @@ class NamespaceInfo : public RefCountedThreadSafe<NamespaceInfo>,
 
   std::string ToString() const override;
 
-  uint32_t FetchAndIncrementCloneSeqNo();
-
  private:
   friend class RefCountedThreadSafe<NamespaceInfo>;
   ~NamespaceInfo() = default;
@@ -882,7 +883,7 @@ class NamespaceInfo : public RefCountedThreadSafe<NamespaceInfo>,
 // The data related to a User-Defined Type which is persisted on disk.
 // This portion of UDTypeInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
-struct PersistentUDTypeInfo : public Persistent<SysUDTypeEntryPB, SysRowEntryType::UDTYPE> {
+struct PersistentUDTypeInfo : public Persistent<SysUDTypeEntryPB> {
   // Return the type's name.
   const UDTypeName& name() const {
     return pb.name();
@@ -944,16 +945,13 @@ class UDTypeInfo : public RefCountedThreadSafe<UDTypeInfo>,
 
 // This wraps around the proto containing cluster level config information. It will be used for
 // CowObject managed access.
-struct PersistentClusterConfigInfo : public Persistent<SysClusterConfigEntryPB,
-                                                       SysRowEntryType::CLUSTER_CONFIG> {
-};
+struct PersistentClusterConfigInfo : public Persistent<SysClusterConfigEntryPB> {};
 
 // This is the in memory representation of the cluster config information serialized proto data,
 // using metadata() for CowObject access.
 class ClusterConfigInfo : public SingletonMetadataCowWrapper<PersistentClusterConfigInfo> {};
 
-struct PersistentRedisConfigInfo
-    : public Persistent<SysRedisConfigEntryPB, SysRowEntryType::REDIS_CONFIG> {};
+struct PersistentRedisConfigInfo : public Persistent<SysRedisConfigEntryPB> {};
 
 class RedisConfigInfo : public RefCountedThreadSafe<RedisConfigInfo>,
                         public MetadataCowWrapper<PersistentRedisConfigInfo> {
@@ -971,7 +969,7 @@ class RedisConfigInfo : public RefCountedThreadSafe<RedisConfigInfo>,
   DISALLOW_COPY_AND_ASSIGN(RedisConfigInfo);
 };
 
-struct PersistentRoleInfo : public Persistent<SysRoleEntryPB, SysRowEntryType::ROLE> {};
+struct PersistentRoleInfo : public Persistent<SysRoleEntryPB> {};
 
 class RoleInfo : public RefCountedThreadSafe<RoleInfo>,
                  public MetadataCowWrapper<PersistentRoleInfo> {
@@ -988,8 +986,7 @@ class RoleInfo : public RefCountedThreadSafe<RoleInfo>,
   DISALLOW_COPY_AND_ASSIGN(RoleInfo);
 };
 
-struct PersistentSysConfigInfo
-    : public Persistent<SysConfigEntryPB, SysRowEntryType::SYS_CONFIG> {};
+struct PersistentSysConfigInfo : public Persistent<SysConfigEntryPB> {};
 
 class SysConfigInfo : public RefCountedThreadSafe<SysConfigInfo>,
                       public MetadataCowWrapper<PersistentSysConfigInfo> {
@@ -1101,8 +1098,7 @@ struct SplitTabletIds {
 
 // This wraps around the proto containing CDC stream information. It will be used for
 // CowObject managed access.
-struct PersistentCDCStreamInfo : public Persistent<
-    SysCDCStreamEntryPB, SysRowEntryType::CDC_STREAM> {
+struct PersistentCDCStreamInfo : public Persistent<SysCDCStreamEntryPB> {
   const google::protobuf::RepeatedPtrField<std::string>& table_id() const {
     return pb.table_id();
   }
@@ -1200,7 +1196,7 @@ class UniverseReplicationInfoBase {
 // This wraps around the proto containing universe replication information. It will be used for
 // CowObject managed access.
 struct PersistentUniverseReplicationInfo
-    : public Persistent<SysUniverseReplicationEntryPB, SysRowEntryType::UNIVERSE_REPLICATION> {
+    : public Persistent<SysUniverseReplicationEntryPB> {
   bool is_deleted_or_failed() const {
     return pb.state() == SysUniverseReplicationEntryPB::DELETED
       || pb.state() == SysUniverseReplicationEntryPB::DELETED_ERROR
@@ -1249,8 +1245,7 @@ class UniverseReplicationInfo : public UniverseReplicationInfoBase,
 // This wraps around the proto containing universe replication information. It will be used for
 // CowObject managed access.
 struct PersistentUniverseReplicationBootstrapInfo
-    : public Persistent<
-          SysUniverseReplicationBootstrapEntryPB, SysRowEntryType::UNIVERSE_REPLICATION_BOOTSTRAP> {
+    : public Persistent<SysUniverseReplicationBootstrapEntryPB> {
   bool is_deleted_or_failed() const {
     return pb.state() == SysUniverseReplicationBootstrapEntryPB::DELETED ||
            pb.state() == SysUniverseReplicationBootstrapEntryPB::DELETED_ERROR ||
@@ -1341,7 +1336,7 @@ class UniverseReplicationBootstrapInfo
 // The data related to a snapshot which is persisted on disk.
 // This portion of SnapshotInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
-struct PersistentSnapshotInfo : public Persistent<SysSnapshotEntryPB, SysRowEntryType::SNAPSHOT> {
+struct PersistentSnapshotInfo : public Persistent<SysSnapshotEntryPB> {
   SysSnapshotEntryPB::State state() const {
     return pb.state();
   }

@@ -697,7 +697,7 @@ heap_copytuple(HeapTuple tuple)
 	newTuple = (HeapTuple) palloc(HEAPTUPLESIZE + tuple->t_len);
 	newTuple->t_len = tuple->t_len;
 	newTuple->t_self = tuple->t_self;
-	HEAPTUPLE_COPY_YBITEM(tuple, newTuple);
+	HEAPTUPLE_COPY_YBCTID(tuple, newTuple);
 	newTuple->t_tableOid = tuple->t_tableOid;
 	newTuple->t_data = (HeapTupleHeader) ((char *) newTuple + HEAPTUPLESIZE);
 	memcpy((char *) newTuple->t_data, (char *) tuple->t_data, tuple->t_len);
@@ -724,7 +724,7 @@ heap_copytuple_with_tuple(HeapTuple src, HeapTuple dest)
 
 	dest->t_len = src->t_len;
 	dest->t_self = src->t_self;
-	HEAPTUPLE_COPY_YBITEM(src, dest);
+	HEAPTUPLE_COPY_YBCTID(src, dest);
 	dest->t_tableOid = src->t_tableOid;
 	dest->t_data = (HeapTupleHeader) palloc(src->t_len);
 	memcpy((char *) dest->t_data, (char *) src->t_data, src->t_len);
@@ -750,7 +750,7 @@ yb_heap_copytuple_with_tuple(HeapTuple src, HeapTuple dest)
 
 	dest->t_len = src->t_len;
 	dest->t_self = src->t_self;
-	HEAPTUPLE_COPY_YBITEM(src, dest);
+	HEAPTUPLE_COPY_YBCTID(src, dest);
 	dest->t_tableOid = src->t_tableOid;
 	/* assumes that dest->t_data is pre-allocated with enough memory. */
 	memcpy((char *) dest->t_data, (char *) src->t_data, src->t_len);
@@ -1115,6 +1115,7 @@ heap_form_tuple(TupleDesc tupleDescriptor,
 	tuple->t_len = len;
 	ItemPointerSetInvalid(&(tuple->t_self));
 	tuple->t_tableOid = InvalidOid;
+	HEAPTUPLE_YBCTID(tuple) = 0;
 
 	HeapTupleHeaderSetDatumLength(td, len);
 	HeapTupleHeaderSetTypeId(td, tupleDescriptor->tdtypeid);
@@ -1198,7 +1199,7 @@ heap_modify_tuple(HeapTuple tuple,
 	 */
 	newTuple->t_data->t_ctid = tuple->t_data->t_ctid;
 	newTuple->t_self = tuple->t_self;
-	HEAPTUPLE_COPY_YBITEM(tuple, newTuple);
+	HEAPTUPLE_COPY_YBCTID(tuple, newTuple);
 	newTuple->t_tableOid = tuple->t_tableOid;
 
 	return newTuple;
@@ -1262,7 +1263,7 @@ heap_modify_tuple_by_cols(HeapTuple tuple,
 	 */
 	newTuple->t_data->t_ctid = tuple->t_data->t_ctid;
 	newTuple->t_self = tuple->t_self;
-	HEAPTUPLE_COPY_YBITEM(tuple, newTuple);
+	HEAPTUPLE_COPY_YBCTID(tuple, newTuple);
 	newTuple->t_tableOid = tuple->t_tableOid;
 
 	return newTuple;
@@ -1504,6 +1505,7 @@ heap_tuple_from_minimal_tuple(MinimalTuple mtup)
 	result->t_len = len;
 	ItemPointerSetInvalid(&(result->t_self));
 	result->t_tableOid = InvalidOid;
+	HEAPTUPLE_YBCTID(result) = 0;
 	result->t_data = (HeapTupleHeader) ((char *) result + HEAPTUPLESIZE);
 	memcpy((char *) result->t_data + MINIMAL_TUPLE_OFFSET, mtup, mtup->t_len);
 	memset(result->t_data, 0, offsetof(HeapTupleHeaderData, t_infomask2));

@@ -77,6 +77,25 @@ class ApiService {
     return axios.get<RunTimeConfig>(requestUrl).then((resp) => resp.data);
   };
 
+  setRunTimeConfig = ({ key, value, scope = DEFAULT_RUNTIME_GLOBAL_SCOPE }: { key: string, value: any, scope?: string }) => {
+    const cUUID = localStorage.getItem('customerId');
+    const headers = {
+      'Content-Type': 'text/plain'
+    };
+    return axios.put(
+      `${ROOT_URL}/customers/${cUUID}/runtime_config/${scope}/key/${key}`,
+      value,
+      {
+        headers
+      }
+    );
+  }
+
+  deleteRunTimeConfig = ({ key, scope = DEFAULT_RUNTIME_GLOBAL_SCOPE }: { key: string, scope?: string }) => {
+    const cUUID = localStorage.getItem('customerId');
+    return axios.delete(`${ROOT_URL}/customers/${cUUID}/runtime_config/${scope}/key/${key}`);
+  }
+
   fetchUniverse = (universeId: string): Promise<Universe> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeId}`;
     return axios.get<Universe>(requestUrl).then((resp) => resp.data);
@@ -162,10 +181,10 @@ class ApiService {
 
   getDBVersions = (includeMetadata = false, arch = null, isReleasesEnabled: boolean): Promise<string[] | Record<string, YBSoftwareMetadata>> => {
     const requestUrl = isReleasesEnabled ? `${ROOT_URL}/customers/${this.getCustomerId()}/ybdb_release` : `${ROOT_URL}/customers/${this.getCustomerId()}/releases`;
-    const params = isReleasesEnabled ? {deployment_type: arch}: {
-        includeMetadata,
-        arch
-      };
+    const params = isReleasesEnabled ? { deployment_type: arch } : {
+      includeMetadata,
+      arch
+    };
     return axios.get<string[] | Record<string, YBSoftwareMetadata>>(requestUrl, {
       params
     }).then((resp) => resp.data);

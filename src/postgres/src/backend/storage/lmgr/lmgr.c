@@ -331,9 +331,15 @@ UnlockRelation(Relation relation, LOCKMODE lockmode)
 bool
 CheckRelationLockedByMe(Relation relation, LOCKMODE lockmode, bool orstronger)
 {
-	return true;
-#ifdef YB_TODO
-	/* Is it applicable to YB? */
+	/*
+	 * In LockAcquireExtended, YB reports LOCKACQUIRE_OK if we attempt to
+	 * acquire a lock on any relation, because locking is handled separately.
+	 * We always return true here because we assume that the caller has already
+	 * tried to acquire the lock.
+	 */
+	if (!YBIsPgLockingEnabled())
+		return true;
+
 	LOCKTAG		tag;
 
 	SET_LOCKTAG_RELATION(tag,
@@ -366,7 +372,6 @@ CheckRelationLockedByMe(Relation relation, LOCKMODE lockmode, bool orstronger)
 	}
 
 	return false;
-#endif
 }
 
 /*

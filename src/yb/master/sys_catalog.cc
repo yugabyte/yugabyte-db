@@ -619,7 +619,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       // initdb is much faster with transactions disabled.
       .txns_enabled = tablet::TransactionsEnabled(!FLAGS_create_initial_sys_catalog_snapshot),
       .is_sys_catalog = tablet::IsSysCatalogTablet::kTrue,
-      .snapshot_coordinator = &master_->catalog_manager()->snapshot_coordinator(),
+      .snapshot_coordinator = &master_->snapshot_coordinator(),
       .tablet_splitter = nullptr,
       .allowed_history_cutoff_provider = std::bind(
           &CatalogManager::AllowedHistoryCutoffProvider, master_->catalog_manager_impl(),
@@ -2070,6 +2070,14 @@ Result<PgTableReadData> SysCatalogTable::TableReadData(
 Result<PgTableReadData> SysCatalogTable::TableReadData(
     uint32_t database_oid, uint32_t table_oid, const ReadHybridTime& read_ht) const {
   return TableReadData(GetPgsqlTableId(database_oid, table_oid), read_ht);
+}
+
+Status SysCatalogTable::ForceWrite(
+    int8_t type, const std::string& item_id, const google::protobuf::Message& pb,
+    QLWriteRequestPB::QLStmtType op_type, int64_t leader_term) {
+  auto writer = NewWriter(leader_term);
+  RETURN_NOT_OK(writer->Mutate(type, item_id, pb, op_type));
+  return SyncWrite(writer.get());
 }
 
 const Schema& PgTableReadData::schema() const {

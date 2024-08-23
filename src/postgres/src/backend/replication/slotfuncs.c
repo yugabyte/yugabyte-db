@@ -393,6 +393,7 @@ pg_get_replication_slots(PG_FUNCTION_ARGS)
 			slot_contents.data.persistency = RS_PERSISTENT;
 			slot_contents.data.invalidated_at = InvalidXLogRecPtr;
 			slot_contents.data.two_phase_at = InvalidXLogRecPtr;
+			slot_contents.data.two_phase = false;
 		}
 		else
 		{

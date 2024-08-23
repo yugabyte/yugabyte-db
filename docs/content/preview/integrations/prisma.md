@@ -7,6 +7,8 @@ menu:
     identifier: prisma-integration
     parent: schema-migration
     weight: 571
+aliases:
+  - /preview/develop/graphql/prisma/
 type: docs
 ---
 

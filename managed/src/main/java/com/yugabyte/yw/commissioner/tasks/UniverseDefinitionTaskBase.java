@@ -1005,6 +1005,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Create read write test table tasks.
     checkAndCreateReadWriteTestTableTask(primaryCluster);
 
+    // Create consistency check table tasks.
+    checkAndCreateConsistencyCheckTableTask(primaryCluster);
+
     // Change admin password for Admin user, as specified.
     checkAndCreateChangeAdminPasswordTask(primaryCluster);
 
@@ -2806,7 +2809,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     if (!skipCheckNodesAreSafeToTakeDown) {
       createCheckNodesAreSafeToTakeDownTask(
           Collections.singletonList(UpgradeTaskBase.MastersAndTservers.from(node, processTypes)),
-          targetSoftwareVersion);
+          targetSoftwareVersion,
+          false);
     }
   }
 
@@ -2823,6 +2827,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     SubTaskGroup subTaskGroup = createSubTaskGroup("CheckUnderReplicatedTables");
     Duration maxWaitTime =
         confGetter.getConfForScope(getUniverse(), UniverseConfKeys.underReplicatedTabletsTimeout);
+    if (taskParams().isRunOnlyPrechecks()) {
+      maxWaitTime = Duration.ofMillis(1);
+    }
     CheckUnderReplicatedTablets.Params params = new CheckUnderReplicatedTablets.Params();
     params.targetSoftwareVersion = targetSoftwareVersion;
     params.setUniverseUUID(taskParams().getUniverseUUID());
@@ -2930,6 +2937,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       CheckClusterConsistency.Params params = new CheckClusterConsistency.Params();
       params.setUniverseUUID(taskParams().getUniverseUUID());
       params.skipMayBeRunning = skipMaybeRunning;
+      params.runOnlyPrechecks = taskParams().isRunOnlyPrechecks();
       CheckClusterConsistency task = createTask(CheckClusterConsistency.class);
       task.initialize(params);
       // Add it to the task list.
@@ -2944,6 +2952,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       subTaskGroup.setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
       ServerSubTaskParams params = new ServerSubTaskParams();
       params.setUniverseUUID(taskParams().getUniverseUUID());
+      params.runOnlyPrechecks = taskParams().isRunOnlyPrechecks();
 
       CheckLeaderlessTablets checkLeaderlessTablets = createTask(CheckLeaderlessTablets.class);
       checkLeaderlessTablets.initialize(params);
@@ -2953,7 +2962,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   protected void createCheckNodesAreSafeToTakeDownTask(
-      List<UpgradeTaskBase.MastersAndTservers> mastersAndTservers, String targetSoftwareVersion) {
+      List<UpgradeTaskBase.MastersAndTservers> mastersAndTservers,
+      String targetSoftwareVersion,
+      boolean fallbackToSingleSplits) {
     if (CollectionUtils.isEmpty(mastersAndTservers)) {
       return;
     }
@@ -2964,6 +2975,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.setUniverseUUID(taskParams().getUniverseUUID());
       params.targetSoftwareVersion = targetSoftwareVersion;
       params.nodesToCheck = mastersAndTservers;
+      params.fallbackToSingleSplits = fallbackToSingleSplits;
+      params.runOnlyPrechecks = taskParams().isRunOnlyPrechecks();
 
       CheckNodesAreSafeToTakeDown checkNodesAreSafeToTakeDown =
           createTask(CheckNodesAreSafeToTakeDown.class);
@@ -3030,7 +3043,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     } else {
       throw new IllegalArgumentException("Unknown server type " + serverType);
     }
-    // Command is run in shell.
+    // Command is run in shell. Make it return 0 even if pgrep returns non-zero on pattern mismatch.
     List<String> command =
         ImmutableList.<String>builder()
             .add("pgrep")
@@ -3038,6 +3051,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             .add("yugabyte")
             .add(processName)
             .add("2>/dev/null")
+            .add("||")
+            .add("true")
             .build();
     log.debug("Creating task to run command {}", command);
     BiConsumer<NodeDetails, ShellResponse> consumer =

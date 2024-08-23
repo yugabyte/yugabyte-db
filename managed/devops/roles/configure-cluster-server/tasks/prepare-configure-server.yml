@@ -38,6 +38,9 @@
     dest: "{{ yb_bin_dir }}/clock-sync.sh"
     owner: "{{ user_name }}"
     mode: 0755
+  tags:
+    - install-software
+    - systemd_upgrade
 
 - name: Setup | Create directory to land core dumps
   file:
@@ -65,7 +68,9 @@
     dest: "{{ yb_bin_dir }}/clean_cores.sh"
     owner: "{{ user_name }}"
     mode: 0755
-  tags: yb-prebuilt-ami
+  tags:
+    - yb-prebuilt-ami
+    - systemd_upgrade
 
 - name: Configure | Add purge logs script
   template:
@@ -73,7 +78,9 @@
     dest: "{{ yb_bin_dir }}/zip_purge_yb_logs.sh"
     owner: "{{ user_name }}"
     mode: 0755
-  tags: yb-prebuilt-ami
+  tags:
+    - yb-prebuilt-ami
+    - systemd_upgrade
 
 - name: Configure | Add collect metrics wrapper script
   template:
@@ -81,7 +88,9 @@
     dest: "{{ yb_bin_dir }}/collect_metrics_wrapper.sh"
     owner: "{{ user_name }}"
     mode: 0755
-  tags: yb-prebuilt-ami
+  tags:
+    - yb-prebuilt-ami
+    - systemd_upgrade
 
 - set_fact:
     cron_result: {}
@@ -282,7 +291,7 @@
       state: present
       mode: 0644
 
-  tags: 
+  tags:
   - systemd_upgrade
   - install-software
   when: (systemd_option and not ((ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7')

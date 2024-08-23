@@ -148,7 +148,7 @@ To check replication, you can add data to the `users` table on one cluster and s
 
 Bidirectional xCluster replication lets you insert data into the same table on either of the clusters and have the data changes added to the other cluster.
 
-To configure bidirectional replication for the same table, you run the `yb-admin` `setup_universe_replication` command to make the "Data Center - East" cluster the target of the "Data Center - West" cluster. This time, the target is 127.0.0.1:7100, and the source is 127.0.0.2:7100.
+To configure bidirectional replication for the same table, you run the yb-admin `setup_universe_replication` command to make the "Data Center - East" cluster the target of the "Data Center - West" cluster. This time, the target is 127.0.0.1:7100, and the source is 127.0.0.2:7100.
 
 Look up the source UUID in the source YB-Master UI (<http://127.0.0.2:7000>), and source table UUID at <http://127.0.0.2:7000/tables>.
 

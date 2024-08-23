@@ -21,12 +21,14 @@
 #include "yb/client/client_fwd.h"
 #include "yb/common/common_types.pb.h"
 
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/master/master_heartbeat.fwd.h"
 #include "yb/server/clock.h"
 
 #include "yb/tablet/tablet_fwd.h"
 
+#include "yb/tserver/ts_local_lock_manager.h"
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/local_tablet_server.h"
 
@@ -52,6 +54,7 @@ class TabletServerIf : public LocalTabletServer {
 
   virtual TSTabletManager* tablet_manager() = 0;
   virtual TabletPeerLookupIf* tablet_peer_lookup() = 0;
+  virtual tablet::TSLocalLockManager* ts_local_lock_manager() = 0;
 
   virtual server::Clock* Clock() = 0;
   virtual rpc::Publisher* GetPublisher() = 0;

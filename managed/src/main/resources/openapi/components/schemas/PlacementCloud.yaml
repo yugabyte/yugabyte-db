@@ -18,3 +18,8 @@ properties:
     description: 'UUID of default region. For universes with more AZs than RF, the default placement for user tables will be RF AZs in the default region. This is commonly encountered in geo-partitioning use cases.'
     type: string
     format: uuid
+  masters_in_default_region:
+    description: Whether to place all masters in the default region. Defaults to true.
+    type: boolean
+    example: true
+    default: true

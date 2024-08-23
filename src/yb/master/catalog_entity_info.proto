@@ -912,3 +912,36 @@ message SysXClusterOutboundReplicationGroupEntryPB {
   }
   optional State state = 3 [ default = READY ];
 }
+
+message SysTServerEntryPB {
+  enum State {
+    // Proto best practices are to include a sentinel as the first enum value.
+    // See https://protobuf.dev/programming-guides/dos-donts/#unspecified-enum
+    UNSPECIFIED = 0;
+    // TServer may be live. Clients need to check the in-memory last heartbeat time to be sure the
+    // TServer has heartbeated recently.
+    MAYBE_LIVE = 1;
+    // TServer has not heartbeated recently.
+    UNRESPONSIVE = 2;
+    // Another tserver which started more recently has registered with a conflicting
+    // address. Heartbeats from this TServer will be ignored until it restarts with a greater
+    // instance_seqno.
+    //
+    // This is currently used to deal with TServers rebooted after a disk wipe. In this case the new
+    // TServer process generates a new UUID and is recognized as a new TServer by the master
+    // leader. The old TServer is put into this state immediately and heartbeats from it are
+    // ignored.
+    REPLACED = 3;
+  }
+
+  // The instance_seqno of a tserver is chosen at process start and is constant throughout the
+  // process lifetime. It must be monotonically increased across process restarts for a given UUID.
+  optional int64 instance_seqno = 1;
+  optional State state = 2;
+  // If the TServer is in the UNRESPONSIVE state, this is the last time it heartbeated.
+  optional fixed64 unresponsive_last_heartbeat_ht = 3;
+  // Contains ip addresses, ports, cloud info, and placement_uuid.
+  optional ServerRegistrationPB registration = 4;
+  // The resources (cpu & memory) available at the tserver. Used by the tablet limits machinery.
+  optional ResourcesPB resources = 5;
+}
