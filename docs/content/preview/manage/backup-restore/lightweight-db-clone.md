@@ -12,21 +12,18 @@ menu:
 type: docs
 ---
 
-Database cloning in YugabyteDB allows you to quickly create an independent copy of your database for data recovery, development, and testing. The process is efficient because the clone starts by using the same data files as the original database. After the initial creation, the cloned database serves reads and writes independently, creates and maintains its own changes as delta files, separately from the original database.
+Database cloning in YugabyteDB allows you to quickly create an independent copy of your database for data recovery, development, and testing. Clones are efficient because they start by using the same data files as the original database. After initial creation, the cloned database serves reads and writes independently, and creates and maintains its own changes as delta files, separate from the original database.
+Cloning uses point-in-time restore (PITR), so you can create a clone of the database from a specific point in time within a configurable retention period.
 
-The two databases are completely isolated, meaning you can experiment with the cloned database, perform DDL operations, read and write data, and delete the clone without impacting the original database.
+Note that you can't have more than one clone of a database at the same time.
 
-Additionally, you can create a clone of the database from a specific point in time within a configurable retention period, making it particularly useful in data recovery scenarios due to user or application error. For example, if you accidentally dropped a table at 9:01, you can create a clone from 9:00 (just before the table drop) to restore the lost data to the production database.
+Cloning has two main use cases:
 
-## Use cases
+- Development and testing. Because the two databases are completely isolated, you can experiment with the cloned database, perform DDL operations, read and write data, and delete the clone without impacting the original. Developers can test their changes on an identical copy of the production database without affecting its performance.
 
-### Data recovery
+- Data recovery. To recover from data loss (for example, accidentally dropping a table) or corruption (for example, updating rows with corrupted data), you can create a clone of your production database from a point in time when the database was in a good state. This allows you to perform forensic analysis, export the lost or corrupted data data from the clone, and import it back to the original database. For example, if you accidentally dropped a table at 9:01, you can create a clone from 9:00 (just before the table drop) to restore the lost data to the production database.
 
-To recover from data loss (for example, accidentally dropping a table) or corruption (for example, updating rows with corrupted data), you can create a clone of your production database from a point in time when the database was in a good state. This allows you to perform forensic analysis, export the lost or corrupted data data from the clone, and import it back to the original database.
-
-### Development and testing
-
-Cloning lets you create an isolated copy of your production database for development and testing purposes. Developers can test their changes on an identical copy of the production database without affecting its performance.
+![Database clone](/images/manage/backup-restore/db-clone.png)
 
 ## Enable database cloning
 
@@ -55,17 +52,17 @@ You can set the runtime flags while the yb-master process is running using the y
 
 - You have to trust local YSQL connections (that use UNIX domain sockets) in the [host-based authentication](../../../secure/authentication/host-based-authentication/). You have to do this for all YB-TServers in the cluster. You can do this when starting the YB-TServer process by adding the authentication line `local all all trust` to the [ysql_hba_conf_csv](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv) flag.
 
-For example, if you are using yb-ctl you can run the following command:
+    For example, if you are using yb-ctl you can run the following command:
 
-```sh
-./bin/yb-ctl create --master_flags "enable_db_clone=true,allowed_preview_flags_csv=enable_db_clone" --tserver_flags '"ysql_hba_conf_csv=""host all all 0.0.0.0/0 trust,local all all trust"""'
-```
+    ```sh
+    ./bin/yb-ctl create --master_flags "enable_db_clone=true,allowed_preview_flags_csv=enable_db_clone" --tserver_flags '"ysql_hba_conf_csv=""host all all 0.0.0.0/0 trust,local all all trust"""'
+    ```
 
 {{<note title="Note">}}
 Do not override your default host-based authentication rules when trusting the local connection. You may need to add additional authentication lines to `ysql_hba_conf_csv` based on your specific configuration. For more information, see [host based authentication](../../../secure/authentication/host-based-authentication/).
 {{</note>}}
 
-### Cloning in YSQL
+### Clone a YSQL database
 
 Because YugabyteDB is PostgreSQL compatible, you can create a database as a clone of another using the `TEMPLATE` SQL option of `CREATE DATABASE` command as follows:
 
@@ -131,13 +128,6 @@ You can check the status of a specific clone operation if you have both the `sou
     {
         "aggregate_state": "COMPLETE",
         "source_namespace_id": "00004000000030008000000000000000",
-        "seq_no": "1",
-        "target_namespace_name": "testing_clone_db",
-        "restore_time": "2024-08-09 21:42:16.451974"
-    },
-    {
-        "aggregate_state": "COMPLETE",
-        "source_namespace_id": "00004000000030008000000000000000",
         "seq_no": "2",
         "target_namespace_name": "dev_clone_db",
         "restore_time": "2024-08-09 21:42:55.048663"
@@ -151,7 +141,7 @@ Note that the cluster doesn't allow two clone operations to happen concurrently 
 
 ### Example
 
-{{% explore-setup-single %}}
+{{% explore-setup-single-local %}}
 
 The following example uses [ysqlsh](../../../admin/ysqlsh/) to create a database clone to recover from an accidental table deletion.
 
