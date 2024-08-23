@@ -5,12 +5,14 @@ package com.yugabyte.yw.models.helpers.schedule;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import java.util.Date;
 import lombok.Builder;
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.extern.jackson.Jacksonized;
 
 @Getter
 @Builder(toBuilder = true)
 @Jacksonized
+@EqualsAndHashCode
 public class ScheduleConfig {
   @Builder.Default private ScheduleType type = ScheduleType.FIXED_DELAY;
 

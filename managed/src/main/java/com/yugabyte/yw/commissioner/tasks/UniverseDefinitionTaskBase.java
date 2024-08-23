@@ -657,7 +657,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         stoppingNode,
         isStoppable,
         ignoreStopError,
-        false /*ignoreMasterAddrsUpdateError*/);
+        false /*ignoreMasterAddrsUpdateError*/,
+        false /* keepTserverRunning */);
   }
 
   public void createStartMasterOnNodeTasks(
@@ -666,7 +667,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       @Nullable NodeDetails stoppingNode,
       boolean isStoppable,
       boolean ignoreStopError,
-      boolean ignoreMasterAddrsUpdateError) {
+      boolean ignoreMasterAddrsUpdateError,
+      boolean keepTserverRunning) {
 
     Set<NodeDetails> nodeSet = ImmutableSet.of(currentNode);
     if (currentNode.masterState != MasterState.Configured) {
@@ -725,7 +727,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
 
     // Update all server conf files because there was a master change.
-    createMasterInfoUpdateTask(universe, currentNode, stoppingNode, ignoreMasterAddrsUpdateError);
+    createMasterInfoUpdateTask(
+        universe, currentNode, stoppingNode, ignoreMasterAddrsUpdateError, keepTserverRunning);
   }
 
   // Find a similar node on which a new master process can be started.
@@ -779,7 +782,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         replacementSupplier,
         isStoppable,
         ignoreStopError,
-        false /* ignoreMasterAddrsUpdateError */);
+        false /* ignoreMasterAddrsUpdateError */,
+        false /* keepTserverRunning */);
   }
 
   /**
@@ -791,8 +795,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param replacementSupplier the supplier for the replacement node.
    * @param isStoppable true if the current node can stopped.
    * @param ignoreStopError true if any error on stopping the current node is to be ignored.
-   * @param updateMasterAddrsOnStoppedNode true if the tserver on the stopped node is to be updated
-   *     with the new master addresses.
+   * @param ignoreMasterAddrsUpdateError true if master address update needs to be ignored.
+   * @param keepTserverRunning true to keep tserver running in the node where master is being
+   *     stopped.
    */
   public void createMasterReplacementTasks(
       Universe universe,
@@ -800,7 +805,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       Supplier<NodeDetails> replacementSupplier,
       boolean isStoppable,
       boolean ignoreStopError,
-      boolean ignoreMasterAddrsUpdateError) {
+      boolean ignoreMasterAddrsUpdateError,
+      boolean keepTserverRunning) {
     if (currentNode.masterState != MasterState.ToStop) {
       log.info(
           "Current node {} is not a master to be stopped. Ignoring master replacement",
@@ -829,7 +835,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       createUpdateNodeProcessTask(currentNode.getNodeName(), ServerType.MASTER, false)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
       // Now isTserver and isMaster are both false for this stopped node.
-      createMasterInfoUpdateTask(universe, null, currentNode, ignoreMasterAddrsUpdateError);
+      createMasterInfoUpdateTask(
+          universe, null, currentNode, ignoreMasterAddrsUpdateError, keepTserverRunning);
     } else if (newMasterNode.masterState == MasterState.ToStart
         || newMasterNode.masterState == MasterState.Configured) {
       log.info(
@@ -847,7 +854,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           currentNode,
           isStoppable,
           ignoreStopError,
-          ignoreMasterAddrsUpdateError);
+          ignoreMasterAddrsUpdateError,
+          keepTserverRunning);
       createSetNodeStateTask(newMasterNode, NodeDetails.NodeState.Live)
           .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
     }
@@ -1786,7 +1794,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   protected void createMasterInfoUpdateTask(
       Universe universe, @Nullable NodeDetails addedMasterNode, @Nullable NodeDetails stoppedNode) {
-    createMasterInfoUpdateTask(universe, addedMasterNode, stoppedNode, false);
+    createMasterInfoUpdateTask(
+        universe,
+        addedMasterNode,
+        stoppedNode,
+        false /* ignoreError */,
+        false /* keepTserverRunning */);
   }
 
   /*
@@ -1797,7 +1810,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       Universe universe,
       @Nullable NodeDetails addedMasterNode,
       @Nullable NodeDetails stoppedNode,
-      boolean ignoreError) {
+      boolean ignoreError,
+      boolean keepTserverRunning) {
     Set<NodeDetails> tserverNodes = new HashSet<>(universe.getTServers());
     Set<NodeDetails> masterNodes = new HashSet<>(universe.getMasters());
 
@@ -1811,7 +1825,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
     // Remove the stopped node from the update.
     if (stoppedNode != null) {
-      tserverNodes.remove(stoppedNode);
+      if (!keepTserverRunning) {
+        tserverNodes.remove(stoppedNode);
+      }
       masterNodes.remove(stoppedNode);
     }
     createMasterAddressUpdateTask(universe, masterNodes, tserverNodes, ignoreError);

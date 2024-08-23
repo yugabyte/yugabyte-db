@@ -301,4 +301,46 @@ public class JobSchedulerTest extends FakeDBApplication {
         "Start time " + jobSchedule.getNextStartTime() + " must be before " + afterSnooze,
         jobSchedule.getNextStartTime().toInstant().isBefore(afterSnooze));
   }
+
+  @Test
+  public void testHandleRestart() {
+    ScheduleConfig scheduleConfig = ScheduleConfig.builder().intervalSecs(5).build();
+    UUID uuid1 =
+        jobScheduler.submitSchedule(createJobSchedule(scheduleConfig, new TestJobConfig()));
+    UUID uuid2 =
+        jobScheduler.submitSchedule(createJobSchedule(scheduleConfig, new DummyTestJobConfig()));
+    JobInstance.getAll()
+        .forEach(
+            i -> {
+              if (uuid1.equals(i.getJobScheduleUuid())) {
+                i.setState(JobInstance.State.RUNNING);
+              } else if (uuid2.equals(i.getJobScheduleUuid())) {
+                i.setState(JobInstance.State.SCHEDULED);
+              } else {
+                fail();
+              }
+              i.save();
+              JobSchedule jobSchedule = JobSchedule.getOrBadRequest(i.getJobScheduleUuid());
+              jobSchedule.setState(JobSchedule.State.ACTIVE);
+              jobSchedule.save();
+            });
+    jobScheduler.handleRestart();
+    JobSchedule.getAll()
+        .forEach(
+            s -> {
+              assertEquals(JobSchedule.State.INACTIVE, s.getState());
+            });
+    JobInstance.getAll()
+        .forEach(
+            i -> {
+              if (uuid1.equals(i.getJobScheduleUuid())) {
+                i.setState(JobInstance.State.FAILED);
+              } else if (uuid2.equals(i.getJobScheduleUuid())) {
+                i.setState(JobInstance.State.SKIPPED);
+              } else {
+                fail();
+              }
+              assertTrue("End time for job instance must be set", i.getEndTime() != null);
+            });
+  }
 }

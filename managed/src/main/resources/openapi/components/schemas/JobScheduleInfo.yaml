@@ -40,10 +40,6 @@ properties:
     format: date-time
     example: '2024-07-25T13:07:18Z'
     readOnly: true
-  name:
-    description: Job schedule name
-    type: string
-    readOnly: true
   next_start_time:
     description: Next start time
     type: string
