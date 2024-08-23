@@ -224,7 +224,7 @@ The assumption in the following examples is that you are using the GIN index in 
     Time: 2.115 ms
     ```
 
-### Using opclass `jsonb_path_ops`
+### Using opclass jsonb_path_ops
 
 By default, JSONB GIN indexes use the opclass `jsonb_ops`. Another opclass, `jsonb_path_ops`, can be used instead.
 

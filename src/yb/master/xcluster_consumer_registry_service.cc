@@ -18,15 +18,11 @@
 #include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
-#include "yb/master/master_util.h"
 
 #include "yb/cdc/cdc_consumer.pb.h"
-#include "yb/client/client.h"
-#include "yb/client/yb_table_name.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/dockv/partition.h"
 
-#include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
@@ -174,17 +170,10 @@ Status ValidateKeyRanges(const std::map<std::string, KeyRange>& tablet_keys) {
   return Status::OK();
 }
 
-Status InitXClusterStream(
+Status PopulateXClusterStreamEntryTabletMapping(
     const std::string& producer_table_id, const std::string& consumer_table_id,
     const std::map<std::string, KeyRange>& consumer_tablet_keys, cdc::StreamEntryPB* stream_entry,
-    std::shared_ptr<XClusterRpcTasks> xcluster_rpc_tasks) {
-  // Get the tablets in the producer table.
-  auto producer_table_locations =
-      VERIFY_RESULT(xcluster_rpc_tasks->GetTableLocations(producer_table_id));
-
-  stream_entry->set_consumer_table_id(consumer_table_id);
-  stream_entry->set_producer_table_id(producer_table_id);
-
+    const google::protobuf::RepeatedPtrField<TabletLocationsPB>& producer_table_locations) {
   auto producer_tablet_keys = GetTabletKeys(producer_table_locations);
   RETURN_NOT_OK_PREPEND(ValidateKeyRanges(producer_tablet_keys), "Producer key ranges invalid");
   RETURN_NOT_OK_PREPEND(ValidateKeyRanges(consumer_tablet_keys), "Consumer key ranges invalid");

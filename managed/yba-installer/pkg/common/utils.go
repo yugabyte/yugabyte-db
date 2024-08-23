@@ -267,6 +267,27 @@ func resolveSymlinkFallback(source, target string) error {
 	return nil
 }
 
+func IsSubdirectory(base, target string) (bool, error) {
+	// Get absolute paths
+	baseAbs, err := filepath.Abs(base)
+	if err != nil {
+		return false, fmt.Errorf("failed to get absolute path of base: %w", err)
+	}
+	targetAbs, err := filepath.Abs(target)
+	if err != nil {
+		return false, fmt.Errorf("failed to get absolute path of target: %w", err)
+	}
+
+	// Check if the base directory is a prefix of the target directory
+	rel, err := filepath.Rel(baseAbs, targetAbs)
+	if err != nil {
+		return false, fmt.Errorf("failed to calculate relative path: %w", err)
+	}
+
+	// If the relative path doesn't start with "..", it means targetAbs is within baseAbs
+	return !strings.HasPrefix(rel, ".."), nil
+}
+
 // Copy will copy the source to the destination
 /*
 	src - source file or directory

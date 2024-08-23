@@ -323,6 +323,7 @@ class UniverseDetail extends Component {
       universe?.currentUniverse?.data?.universeDetails?.clusters
     );
     const useSystemd = primaryCluster?.userIntent?.useSystemd;
+    const isYSQLEnabledInUniverse = primaryCluster?.userIntent?.enableYSQL;
     const isReadOnlyUniverse =
       getPromiseState(currentUniverse).isSuccess() &&
       currentUniverse.data.universeDetails.capability === 'READ_ONLY';
@@ -398,6 +399,11 @@ class UniverseDetail extends Component {
     const isK8OperatorBlocked =
       runtimeConfigs?.data?.configEntries?.find(
         (config) => config.key === RuntimeConfigKey.BLOCK_K8_OPERATOR
+      )?.value === 'true';
+
+    const isRollingUpradeMutlipleNodesEnabled =
+      runtimeConfigs?.data?.configEntries?.find(
+        (c) => c.key === RuntimeConfigKey.BATCH_ROLLING_UPGRADE_FEATURE_FLAG
       )?.value === 'true';
 
     const isAuditLogEnabled =
@@ -680,7 +686,7 @@ class UniverseDetail extends Component {
       ...(isReadOnlyUniverse
         ? []
         : [
-            !isItKubernetesUniverse && isAuditLogEnabled && (
+            !isItKubernetesUniverse && isAuditLogEnabled && isYSQLEnabledInUniverse && (
               <Tab.Pane
                 eventKey={'db-audit-log'}
                 tabtitle="Logs"
@@ -707,7 +713,7 @@ class UniverseDetail extends Component {
               featureFlags.test.showReplicationSlots) && (
               <Tab.Pane
                 eventKey={'replication-slots'}
-                tabtitle="CDC Replication Slots"
+                tabtitle="CDC"
                 key="ReplicationSlots-tab"
                 mountOnEnter={true}
                 unmountOnExit={true}
@@ -1482,6 +1488,7 @@ class UniverseDetail extends Component {
           }}
           isGFlagMultilineConfEnabled={isGFlagMultilineConfEnabled}
           universeData={currentUniverse.data}
+          isRollingUpradeMutlipleNodesEnabled={isRollingUpradeMutlipleNodesEnabled}
         />
         <UpgradeLinuxVersionModal
           visible={showModal && visibleModal === 'linuxVersionUpgradeModal'}

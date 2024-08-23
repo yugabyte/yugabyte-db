@@ -29,7 +29,7 @@
  * If you increment it, make sure you didn't forget to add a new SQL migration
  * (see pg_yb_migration.dat and src/yb/yql/pgwrapper/ysql_migrations/README.md)
  */
-#define YB_LAST_USED_OID 8068
+#define YB_LAST_USED_OID 8069
 
 extern bool IsSystemRelation(Relation relation);
 extern bool IsToastRelation(Relation relation);

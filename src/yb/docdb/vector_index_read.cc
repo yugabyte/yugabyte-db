@@ -13,6 +13,8 @@
 
 #include "yb/docdb/vector_index_read.h"
 
+#include "yb/vector/graph_repr_defs.h"
+
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent_aware_iterator.h"
 
@@ -55,7 +57,7 @@ class VectorIndexRead {
     return dockv::PrimitiveValue::DecodeFloatVector(kv.value);
   }
 
-  Result<VectorNodeNeighbors> GetNeighbors(VertexId id, VectorIndexLevel level) {
+  Result<vectorindex::VectorNodeNeighbors> GetNeighbors(VertexId id, VectorIndexLevel level) {
     auto vertex_level_key_bytes = MakeVectorIndexKey(id, level);
     auto vertex_level_key = vertex_level_key_bytes.AsSlice();
     iter_->Seek(vertex_level_key);
@@ -81,7 +83,7 @@ class VectorIndexRead {
       }
     }
 
-    auto prev_vertex_id = kInvalidVertexId;
+    auto prev_vertex_id = vectorindex::kInvalidVertexId;
     auto vertex_level_key_size = vertex_level_key.size();
     while (kv && kv.key.starts_with(vertex_level_key)) {
       if (kv.write_time < full_write_time) {

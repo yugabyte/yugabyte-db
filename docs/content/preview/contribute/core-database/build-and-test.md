@@ -19,7 +19,7 @@ Some flags can turn off certain parts of build, and other flags can decide which
 In general, they come down to these components:
 
 - build:
-  - C++: C++ code in `src/yb/` and `ent/src/yb` for `yb-master`, `yb-tserver`, `yb-admin`, test binaries, etc.
+  - C++: C++ code in `src/yb/` and `ent/src/yb` for yb-master, yb-tserver, yb-admin, test binaries, etc.
   - postgres: C code in `src/postgres/` for `postgres`, `ysql_dump`, `libyb_pgbackend`, `libpq`, etc.
   - Java: Java code in `java/` for CDC, Java tests, drivers, etc.
   - `initdb`: pre-created initial system catalog snapshot for YSQL

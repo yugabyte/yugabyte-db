@@ -103,9 +103,20 @@ export const ConfigurePitrStep = ({ isFormDisabled }: ConfigureAlertStepProps) =
               inputProps={{ min: pitrRetentionPeriodMinValue }}
               rules={{
                 required: t('error.pitrRetentionPeriodValueRequired'),
-                min: {
-                  value: pitrRetentionPeriodMinValue,
-                  message: t('error.pitrRetentionPeriodValueMinimum')
+                validate: {
+                  pattern: (value) => {
+                    const integerPattern = /^\d+$/;
+                    return (
+                      integerPattern.test(value?.toString() ?? '') ||
+                      t('error.pitrRetentionPeriodValueIntegerValidation')
+                    );
+                  },
+                  min: (value) => {
+                    return (
+                      (value as number) >= pitrRetentionPeriodMinValue ||
+                      t('error.pitrRetentionPeriodValueMinimum')
+                    );
+                  }
                 }
               }}
               disabled={isFormDisabled}

@@ -278,6 +278,7 @@ string GetStaticProgramName() {
 // Forward declarations.
 namespace flags_internal {
 Status ValidateFlagValue(const CommandLineFlagInfo& flag_info, const std::string& value);
+std::optional<std::string> GetFlagNewInstallValue(const std::string& flag_name);
 }  // namespace flags_internal
 
 namespace {
@@ -340,6 +341,11 @@ static string DescribeOneFlagInXML(
 
   if (!only_display_default_values) {
     AppendXMLTag("current", flag.current_value, &r);
+  }
+
+  auto new_install_value = flags_internal::GetFlagNewInstallValue(flag.name);
+  if (new_install_value) {
+    AppendXMLTag("new_install_default", *new_install_value, &r);
   }
 
   AppendXMLTag("type", flag.type, &r);
@@ -450,7 +456,7 @@ void InvokeAllCallbacks(const std::vector<google::CommandLineFlagInfo>& flag_inf
 bool IsPreviewFlagUpdateAllowed(
     const CommandLineFlagInfo& flag_info, const unordered_set<FlagTag>& tags,
     const std::string& new_value, const std::string& allowed_preview_flags, std::string* err_msg) {
-  if (!ContainsKey(tags, FlagTag::kPreview) || new_value == flag_info.default_value) {
+  if (!tags.contains(FlagTag::kPreview) || new_value == flag_info.default_value) {
     return true;
   }
 
@@ -739,7 +745,7 @@ void WarnFlagDeprecated(const std::string& flagname, const std::string& date_mm_
 static const std::string kMaskedFlagValue = "***";
 
 bool IsFlagSensitive(const unordered_set<FlagTag>& tags) {
-  return ContainsKey(tags, FlagTag::kSensitive_info);
+  return tags.contains(FlagTag::kSensitive_info);
 }
 
 bool IsFlagSensitive(const std::string& flag_name) {
@@ -815,7 +821,7 @@ SetFlagResult SetFlag(
   // Validate that the flag is runtime-changeable.
   unordered_set<FlagTag> tags;
   GetFlagTags(flag_name, &tags);
-  if (!ContainsKey(tags, FlagTag::kRuntime)) {
+  if (!tags.contains(FlagTag::kRuntime)) {
     if (force) {
       LOG(WARNING) << "Forcing change of non-runtime-safe flag " << flag_name;
     } else {
@@ -857,6 +863,42 @@ SetFlagResult SetFlag(
 
   return SetFlagResult::SUCCESS;
 }
+
+std::unordered_map<std::string, std::string>& GetFlagNewInstallValueMap() {
+  static std::unordered_map<std::string, std::string> flag_new_install_value_map;
+  return flag_new_install_value_map;
+}
+
+std::optional<std::string> GetFlagNewInstallValue(const std::string& flag_name) {
+  auto& flag_new_install_value_map = GetFlagNewInstallValueMap();
+  auto it = FindOrNull(flag_new_install_value_map, flag_name);
+  if (it) {
+    return *it;
+  }
+  return std::nullopt;
+}
+
+bool RegisterFlagNewInstallValue(const std::string& flag_name, const std::string& value) {
+  auto& flag_new_install_value_map = flags_internal::GetFlagNewInstallValueMap();
+  CHECK(!flag_new_install_value_map.contains(flag_name))
+      << "Flag " << flag_name
+      << " already has a new install value: " << flag_new_install_value_map[flag_name];
+
+  std::unordered_set<FlagTag> tags;
+  GetFlagTags(flag_name, &tags);
+  CHECK(!tags.contains(FlagTag::kAuto)) << "AutoFlags cannot have a new install value";
+  CHECK(!tags.contains(FlagTag::kPreview)) << "Preview flags cannot have a new install value";
+  CHECK(!tags.contains(FlagTag::kHidden)) << "Hidden flags cannot have a new install value";
+  CHECK(!tags.contains(FlagTag::kDeprecated)) << "Deprecated flags cannot have a new install value";
+
+  CHECK_OK_PREPEND(
+      ValidateFlagValue(flag_name, value),
+      Format("Invalid New install value '$0' for flag '$1'", value, flag_name));
+
+  flag_new_install_value_map[flag_name] = value;
+  return true;
+}
+
 }  // namespace flags_internal
 
 bool ValidatePercentageFlag(const char* flag_name, int value) {

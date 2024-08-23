@@ -150,8 +150,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   TSTabletManager* tablet_manager() override { return tablet_manager_.get(); }
   TabletPeerLookupIf* tablet_peer_lookup() override;
-  tablet::TSLocalLockManager* ts_local_lock_maganer() override {
-    return ts_local_lock_maganer_.get();
+  tablet::TSLocalLockManager* ts_local_lock_manager() override {
+    return ts_local_lock_manager_.get();
   }
 
   Heartbeater* heartbeater() { return heartbeater_.get(); }
@@ -534,7 +534,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::unique_ptr<stateful_service::PgCronLeaderService> pg_cron_leader_service_;
 
   // Lock Manager to maintain table/object locking activity in memory.
-  std::unique_ptr<tablet::TSLocalLockManager> ts_local_lock_maganer_;
+  std::unique_ptr<tablet::TSLocalLockManager> ts_local_lock_manager_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };

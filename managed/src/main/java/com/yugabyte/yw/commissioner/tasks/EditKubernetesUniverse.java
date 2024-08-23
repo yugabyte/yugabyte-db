@@ -107,7 +107,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       // some precheck operations to verify kubeconfig, svcaccount, connectivity to universe here ?
       Universe universe =
           lockAndFreezeUniverseForUpdate(
-              taskParams().expectedUniverseVersion, null /* Txn callback */);
+              taskParams().expectedUniverseVersion,
+              u -> setCommunicationPortsForNodes(false) /* Txn callback */);
 
       kubernetesStatus.startYBUniverseEventStatus(
           universe,

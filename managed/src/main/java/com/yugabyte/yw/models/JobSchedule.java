@@ -250,6 +250,19 @@ public class JobSchedule extends Model {
     return this;
   }
 
+  public JobSchedule updateJobConfig(JobConfig jobConfig) {
+    if (db().update(JobSchedule.class)
+            .set("jobConfig", new JobConfigWrapper(jobConfig))
+            .set("updatedAt", new Date())
+            .where()
+            .eq("uuid", getUuid())
+            .update()
+        > 0) {
+      refresh();
+    }
+    return this;
+  }
+
   public JobSchedule resetCounters() {
     if (db().update(JobSchedule.class)
             .set("executionCount", 0L)

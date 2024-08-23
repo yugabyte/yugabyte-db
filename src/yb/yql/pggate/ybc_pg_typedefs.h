@@ -196,10 +196,7 @@ typedef enum TxnPriorityRequirement {
   kHighestPriority
 } TxnPriorityRequirement;
 
-// API to read type information.
 const YBCPgTypeEntity *YBCPgFindTypeEntity(int type_oid);
-YBCPgDataType YBCPgGetType(const YBCPgTypeEntity *type_entity);
-bool YBCPgAllowForPrimaryKey(const YBCPgTypeEntity *type_entity);
 
 // PostgreSQL can represent text strings up to 1 GB minus a four-byte header.
 static const int64_t kYBCMaxPostgresTextSizeBytes = 1024ll * 1024 * 1024 - 4;
@@ -744,6 +741,11 @@ typedef struct PgAshConfig {
   char host[46];
 } YBCPgAshConfig;
 
+typedef struct WaitEventDescriptor {
+  uint32_t code;
+  const char *description;
+} YBCWaitEventDescriptor;
+
 typedef struct YBCBindColumn {
   int attr_num;
   const YBCPgTypeEntity* type_entity;
@@ -796,6 +798,14 @@ typedef struct YbCloneInfo {
   const char* src_owner;
   const char* tgt_owner;
 } YbCloneInfo;
+
+// A thread-safe way to cache compiled regexes.
+typedef struct PgThreadLocalRegexpCache {
+  int num;
+  void* array;
+} YBCPgThreadLocalRegexpCache;
+
+typedef void (*YBCPgThreadLocalRegexpCacheCleanup)(YBCPgThreadLocalRegexpCache*);
 
 #ifdef __cplusplus
 }  // extern "C"

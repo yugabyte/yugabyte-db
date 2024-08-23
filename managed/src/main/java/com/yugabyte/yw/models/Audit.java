@@ -184,7 +184,13 @@ public class Audit extends Model {
     GroupMapping,
 
     @EnumValue("JobSchedule")
-    JobSchedule
+    JobSchedule,
+
+    @EnumValue("ContinuousBackup")
+    ContinuousBackup,
+
+    @EnumValue("IsolatedBackup")
+    IsolatedBackup
   }
 
   public enum ActionType {

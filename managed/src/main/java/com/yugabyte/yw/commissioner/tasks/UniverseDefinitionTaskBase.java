@@ -455,6 +455,19 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     PlacementInfoUtil.ensureUniqueNodeNames(taskParams().nodeDetailsSet);
   }
 
+  protected void setCommunicationPortsForNodes(boolean isCreate) {
+    UniverseTaskParams.CommunicationPorts communicationPorts = taskParams().communicationPorts;
+    if (communicationPorts == null) {
+      communicationPorts = getUniverse().getUniverseDetails().communicationPorts;
+    }
+    for (NodeDetails nodeDetails : taskParams().nodeDetailsSet) {
+      if (isCreate || nodeDetails.state == NodeState.ToBeAdded) {
+        UniverseTaskParams.CommunicationPorts.setCommunicationPorts(
+            communicationPorts, nodeDetails);
+      }
+    }
+  }
+
   /**
    * Pick nodes from node-instance table, set the instance UUIDs to the nodes in task params and
    * reserve in memory or persist the changes to the table.
@@ -1004,6 +1017,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
     // Create read write test table tasks.
     checkAndCreateReadWriteTestTableTask(primaryCluster);
+
+    // Create consistency check table tasks.
+    checkAndCreateConsistencyCheckTableTask(primaryCluster);
 
     // Change admin password for Admin user, as specified.
     checkAndCreateChangeAdminPasswordTask(primaryCluster);
@@ -1768,15 +1784,15 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
   }
 
-  /*
-   * Setup a configure task to update the masters list in the conf files of all
-   * tservers and masters.
-   */
   protected void createMasterInfoUpdateTask(
       Universe universe, @Nullable NodeDetails addedMasterNode, @Nullable NodeDetails stoppedNode) {
     createMasterInfoUpdateTask(universe, addedMasterNode, stoppedNode, false);
   }
 
+  /*
+   * Setup a configure task to update the masters list in the conf files of all
+   * tservers and masters.
+   */
   protected void createMasterInfoUpdateTask(
       Universe universe,
       @Nullable NodeDetails addedMasterNode,
@@ -1787,11 +1803,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
     if (addedMasterNode != null) {
       // Include this newly added master node which may not yet have isMaster set to true.
-      // New tservers are started later after AnsbibleConfigure to update
-      // the master addresses and isTserver can be false.
       masterNodes.add(addedMasterNode);
+      if (addedMasterNode.isTserver) {
+        // It is also a tserver.
+        tserverNodes.add(addedMasterNode);
+      }
     }
-
     // Remove the stopped node from the update.
     if (stoppedNode != null) {
       tserverNodes.remove(stoppedNode);

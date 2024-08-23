@@ -47,6 +47,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 
+  public static final ConfKeyInfo<Boolean> ddlAtomicityCheckEnabled =
+      new ConfKeyInfo<>(
+          "yb.health.ddl_atomicity_check_enabled",
+          ScopeType.UNIVERSE,
+          "DDL Atomicity Check Enabled",
+          "If we want to perform DDL atomicity check for the universe periodically",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+
   public static final ConfKeyInfo<Integer> ddlAtomicityIntervalSec =
       new ConfKeyInfo<>(
           "yb.health.ddl_atomicity_interval_sec",
@@ -1135,21 +1144,28 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Enable Automated Master Failover for universes in background process",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Duration> autoMasterFailoverMaxMasterFollowerLag =
+  public static final ConfKeyInfo<Duration> autoMasterFailoverFollowerLagSoftThreshold =
       new ConfKeyInfo<>(
-          "yb.auto_master_failover.max_master_follower_lag",
+          "yb.auto_master_failover.master_follower_lag_soft_threshold",
           ScopeType.UNIVERSE,
-          "Max Master Follower Lag for Automated Master Failover",
-          "Max lag allowed for a master follower, after which the master is considered for"
-              + " failover",
+          "Master Follower Lag Soft Threshold",
+          "Master follower lag soft threshold for potential master failure",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Duration> autoMasterFailoverMaxMasterHeartbeatDelay =
+  public static final ConfKeyInfo<Duration> autoMasterFailoverFollowerLagHardThreshold =
       new ConfKeyInfo<>(
-          "yb.auto_master_failover.max_master_heartbeat_delay",
+          "yb.auto_master_failover.master_follower_lag_hard_threshold",
           ScopeType.UNIVERSE,
-          "Max master heartbeat delay",
-          "Maximum value of heartbeat delay allowed before master is considered to have failed",
+          "Master Follower Lag Hard Threshold",
+          "Master follower lag hard threshold for definite master failure",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Duration> autoMasterFailoverFollowerLagThresholdError =
+      new ConfKeyInfo<>(
+          "yb.auto_master_failover.master_follower_lag_threshold_error",
+          ScopeType.UNIVERSE,
+          "Master Follower Lag Soft Threshold Error Limit",
+          "Master follower lag soft threshold time error limit",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> upgradeBatchRollEnabled =
@@ -1160,20 +1176,28 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Stop multiple nodes simultaneously in az during upgrade",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> upgradeBatchRollAutoPercent =
+      new ConfKeyInfo<>(
+          "yb.task.upgrade.batch_roll_auto_percent",
+          ScopeType.UNIVERSE,
+          "Percent of nodes to roll simultaneously during upgrade",
+          "Percent of nodes to roll simultaneously during upgrade",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> upgradeBatchRollAutoNumber =
+      new ConfKeyInfo<>(
+          "yb.task.upgrade.batch_roll_auto_number",
+          ScopeType.UNIVERSE,
+          "Number of nodes to roll simultaneously during upgrade",
+          "Number of nodes to roll simultaneously during upgrade",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Duration> autoMasterFailoverDetectionInterval =
       new ConfKeyInfo<>(
           "yb.auto_master_failover.detect_interval",
           ScopeType.UNIVERSE,
           "Automated Master Failover Detection Interval",
           "Automated master failover detection interval for a universe in background process",
-          ConfDataType.DurationType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Duration> autoMasterFailoverTaskDelay =
-      new ConfKeyInfo<>(
-          "yb.auto_master_failover.failover_task_delay",
-          ScopeType.UNIVERSE,
-          "Automated Master Failover Task Delay",
-          "Automated master failover task submission delay for a universe in background process",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Duration> autoSyncMasterAddrsTaskDelay =
@@ -1260,4 +1284,21 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " accommodate backup upload times etc",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableConsistencyCheck =
+      new ConfKeyInfo<>(
+          "yb.universe.consistency_check_enabled",
+          ScopeType.UNIVERSE,
+          "Enable consistency check for universe",
+          "When enabled, all universe operations will attempt consistency check validation before"
+              + " proceeding. Turn off in disaster scenarios to force perform actions.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> healthCheckClockSyncServiceRequired =
+      new ConfKeyInfo<>(
+          "yb.health_checks.clock_sync_service_required",
+          ScopeType.UNIVERSE,
+          "Fail the the health check if no clock sync service is found",
+          "Require chrony or ntp(d) to be installed for health check to pass",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

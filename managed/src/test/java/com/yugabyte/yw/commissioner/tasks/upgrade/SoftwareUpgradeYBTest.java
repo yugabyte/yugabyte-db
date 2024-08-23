@@ -303,7 +303,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
 
     MockUpgrade mockUpgrade = initMockUpgrade();
     mockUpgrade
-        .precheckTasks(getPrecheckTasks(true))
+        .precheckTasks(enableYSQL, getPrecheckTasks(true))
         .addTasks(TaskType.UpdateUniverseState)
         .addSimultaneousTasks(TaskType.AnsibleConfigureServers, defaultUniverse.getMasters().size())
         .addSimultaneousTasks(

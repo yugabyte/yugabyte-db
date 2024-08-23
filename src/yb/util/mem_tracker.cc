@@ -40,7 +40,6 @@
 #include <boost/range/algorithm_ext/erase.hpp>
 
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/once.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/substitute.h"
 
@@ -134,10 +133,6 @@ using strings::Substitute;
 
 namespace {
 
-// The ancestor for all trackers. Every tracker is visible from the root down.
-shared_ptr<MemTracker> root_tracker;
-GoogleOnceType root_tracker_once = GOOGLE_ONCE_INIT;
-
 // Total amount of memory from calls to Release() since the last GC. If this
 // is greater than mem_tracker_tcmalloc_gc_release_bytes, this will trigger a tcmalloc gc.
 Atomic64 released_memory_since_gc;
@@ -186,6 +181,40 @@ std::string CreateMetricDescription(const MemTracker& mem_tracker) {
   return CreateMetricLabel(mem_tracker);
 }
 
+std::shared_ptr<MemTracker> CreateRootTracker() {
+  int64_t limit = FLAGS_memory_limit_hard_bytes;
+  if (limit == 0) {
+    // If no limit is provided, we'll use
+    // - 85% of the RAM for tservers.
+    // - 10% of the RAM for masters.
+    int64_t total_ram;
+    CHECK_OK(Env::Default()->GetTotalRAMBytes(&total_ram));
+    DCHECK(FLAGS_default_memory_limit_to_ram_ratio != USE_RECOMMENDED_MEMORY_VALUE);
+    limit = total_ram * FLAGS_default_memory_limit_to_ram_ratio;
+  }
+
+  ConsumptionFunctor consumption_functor;
+
+#if YB_TCMALLOC_ENABLED
+  consumption_functor = &GetTCMallocActualHeapSizeBytes;
+
+  if (FLAGS_mem_tracker_tcmalloc_gc_release_bytes < 0) {
+    // Allocate 1% of memory to the tcmalloc page heap freelist.
+    // On a 4GB RAM machine, the master gets 10%, so 400MB, so 1% is 4MB.
+    // On a 16GB RAM machine, the tserver gets 85%, so 13.6GB, so 1% is 136MB, so cap at 128MB.
+    FLAGS_mem_tracker_tcmalloc_gc_release_bytes =
+        std::min(static_cast<size_t>(1.0 * limit / 100), 128_MB);
+  }
+
+  LOG(INFO) << "Creating root MemTracker with garbage collection threshold "
+            << FLAGS_mem_tracker_tcmalloc_gc_release_bytes << " bytes";
+#endif
+
+  LOG(INFO) << "Root memory limit is " << limit;
+  return std::make_shared<MemTracker>(
+      limit, "root", std::move(consumption_functor), nullptr /* parent */, AddToParent::kFalse,
+      CreateMetrics::kFalse, std::string() /* metric_name */, IsRootTracker::kTrue);
+}
 
 } // namespace
 
@@ -231,45 +260,6 @@ void MemTracker::PrintTCMallocConfigs() {
 void MemTracker::ConfigureTCMalloc() {
   ::yb::ConfigureTCMalloc(MemTracker::GetRootTracker()->limit());
   RegisterTCMallocTraceHooks();
-}
-
-void MemTracker::InitRootTrackerOnce() {
-  GoogleOnceInit(&root_tracker_once, &MemTracker::CreateRootTracker);
-}
-
-void MemTracker::CreateRootTracker() {
-  int64_t limit = FLAGS_memory_limit_hard_bytes;
-  if (limit == 0) {
-    // If no limit is provided, we'll use
-    // - 85% of the RAM for tservers.
-    // - 10% of the RAM for masters.
-    int64_t total_ram;
-    CHECK_OK(Env::Default()->GetTotalRAMBytes(&total_ram));
-    DCHECK(FLAGS_default_memory_limit_to_ram_ratio != USE_RECOMMENDED_MEMORY_VALUE);
-    limit = total_ram * FLAGS_default_memory_limit_to_ram_ratio;
-  }
-
-  ConsumptionFunctor consumption_functor;
-
-#if YB_TCMALLOC_ENABLED
-  consumption_functor = &GetTCMallocActualHeapSizeBytes;
-
-  if (FLAGS_mem_tracker_tcmalloc_gc_release_bytes < 0) {
-    // Allocate 1% of memory to the tcmalloc page heap freelist.
-    // On a 4GB RAM machine, the master gets 10%, so 400MB, so 1% is 4MB.
-    // On a 16GB RAM machine, the tserver gets 85%, so 13.6GB, so 1% is 136MB, so cap at 128MB.
-    FLAGS_mem_tracker_tcmalloc_gc_release_bytes =
-        std::min(static_cast<size_t>(1.0 * limit / 100), 128_MB);
-  }
-
-  LOG(INFO) << "Creating root MemTracker with garbage collection threshold "
-            << FLAGS_mem_tracker_tcmalloc_gc_release_bytes << " bytes";
-#endif
-
-  LOG(INFO) << "Root memory limit is " << limit;
-  root_tracker = std::make_shared<MemTracker>(
-      limit, "root", std::move(consumption_functor), nullptr /* parent */, AddToParent::kFalse,
-      CreateMetrics::kFalse, std::string() /* metric_name */, IsRootTracker::kTrue);
 }
 
 shared_ptr<MemTracker> MemTracker::CreateTracker(int64_t byte_limit,
@@ -818,13 +808,8 @@ void MemTracker::LogUpdate(bool is_consume, int64_t bytes) const {
   LOG(ERROR) << ss.str();
 }
 
-int64_t MemTracker::GetRootTrackerConsumption() {
-  InitRootTrackerOnce();
-  return root_tracker->consumption();
-}
-
-shared_ptr<MemTracker> MemTracker::GetRootTracker() {
-  InitRootTrackerOnce();
+const shared_ptr<MemTracker>& MemTracker::GetRootTracker() {
+  static auto root_tracker = CreateRootTracker();
   return root_tracker;
 }
 

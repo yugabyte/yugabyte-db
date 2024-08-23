@@ -57,6 +57,7 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
           TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.CheckUpgrade,
           TaskType.FreezeUniverse,
+          TaskType.UpdateConsistencyCheck,
           TaskType.UpdateUniverseState,
           TaskType.KubernetesCommandExecutor,
           TaskType.CheckNodesAreSafeToTakeDown,
@@ -140,6 +141,7 @@ public class SoftwareKubernetesUpgradeYBTest extends KubernetesUpgradeTaskTest {
   private static List<JsonNode> createUpgradeResult(boolean isSingleAZ) {
     String namespace = isSingleAZ ? "demo-universe" : "demo-universe-az-2";
     return ImmutableList.of(
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),

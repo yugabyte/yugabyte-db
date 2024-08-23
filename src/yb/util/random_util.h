@@ -148,4 +148,13 @@ typename Collection::const_reference RandomElement(const Collection& collection,
 
 std::string RandomHumanReadableString(size_t len, std::mt19937_64* rng = nullptr);
 
+template<typename Distribution>
+std::vector<float> RandomFloatVector(size_t dimensions, Distribution& dis) {
+  std::vector<float> vec(dimensions);
+  for (auto& v : vec) {
+    v = dis(ThreadLocalRandom());
+  }
+  return vec;
+}
+
 } // namespace yb

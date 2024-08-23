@@ -344,11 +344,11 @@ public class XClusterScheduler {
 
   private List<Metric> collectMetrics(XClusterConfig xClusterConfig) {
     List<Metric> metricsList = new ArrayList<>();
-    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
-    Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
     if (!xClusterConfig.getStatus().equals(XClusterConfigStatusType.Running)) {
       return metricsList;
     }
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
+    Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
     if (sourceUniverse.getUniverseDetails().updateInProgress
         || targetUniverse.getUniverseDetails().updateInProgress) {
       return metricsList;

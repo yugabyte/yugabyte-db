@@ -16,7 +16,8 @@ import { ClusterType } from '../../../../../helpers/dtos';
 import {
   Cluster,
   PlacementAZ,
-  PlacementRegion
+  PlacementRegion,
+  UniverseDetails
 } from '../../../../universe/universe-form/utils/dto';
 import { getPrimaryCluster } from '../../../../universe/universe-form/utils/helpers';
 import { Task } from '../../../dtos';
@@ -312,8 +313,8 @@ export class UniverseDiff extends BaseDiff<DiffComponentProps, {}> {
 
   getDiffComponent(): React.ReactElement {
     // Get the primary cluster before and after the edit operation.
-    const beforePrimaryCluster = getPrimaryCluster(this.diffProps.beforeData);
-    const afterPrimaryCluster = getPrimaryCluster(this.diffProps.afterData);
+    const beforePrimaryCluster = getPrimaryCluster(this.diffProps.beforeData as UniverseDetails);
+    const afterPrimaryCluster = getPrimaryCluster(this.diffProps.afterData as UniverseDetails);
 
     // Get the differences in the instance type of the primary cluster.
     this.getInstanceTypeDiff(beforePrimaryCluster!, afterPrimaryCluster!, ClusterType.PRIMARY);

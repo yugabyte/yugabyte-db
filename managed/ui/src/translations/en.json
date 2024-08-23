@@ -46,6 +46,11 @@
         "minutes": "Minutes",
         "hours": "Hours",
         "days": "Days"
+      },
+      "unitAbbreviation": {
+        "milliseconds": "ms",
+        "seconds": "s",
+        "megabyte": "MB"
       }
     },
     "imgAltText": {
@@ -78,7 +83,9 @@
     "prometheusMetricTrace": {
       "async_replication_sent_lag_micros": "Async Replication Lag",
       "consumer_safe_time_lag": "Consumer Safe Time Lag",
-      "consumer_safe_time_skew": "Consumer Safe Time Skew"
+      "consumer_safe_time_skew": "Consumer Safe Time Skew",
+      "yba_ha_last_backup_seconds": "HA Backup Lag (Seconds)",
+      "yba_ha_last_backup_size_mb": "HA Last Backup Size (mb)"
     },
     "universeActions": {
       "lbState": {
@@ -170,6 +177,8 @@
         "configureUpgrade": "2. Configure upgrade details",
         "rolllingUpgradeLabel": "Rolling upgrade (upgrade nodes one at a time)",
         "upgradeDelayLabel": "Upgrade delay between Nodes:",
+        "numNodesToRollingUpgrade": "Max batch size: ",
+        "rollingUpgradeMsg": "Refers to the number of nodes that can be unavailable during upgrade process across AZs. This can possibly affect the performance of the cluster till the upgrade is finished",
         "footerMsg1": "Once the upgrade is finished, you can assess Universe performance and ",
         "footerMsg2": "if any unusual behavior is detected.",
         "rollbackPrevious": "roll back to the previous version",
@@ -408,6 +417,8 @@
         "flagsModifiedModalBody2": "If you don't want to lose modified flags, please reload the page.",
         "flagsModifiedModalLine1": "Do you want to reload ?",
         "flagsModifiedModalLine2": "Note that current changes will be lost.",
+        "numNodesToRollingUpgrade": "Max batch size: ",
+        "rollingUpgradeMsg": "Refers to the number of nodes that can be unavailable during upgrade process across AZs. This can possibly affect the performance of the cluster till the upgrade is finished",
         "pgGroupWarning": "You can't change this flag because it was set using the Enhanced Postgres Compatibility option"
       },
       "helmOverrides": {
@@ -927,8 +938,9 @@
                   "tooltip": "A longer snapshot retention period requires more disk space."
                 },
                 "error": {
-                  "pitrRetentionPeriodValueRequired": "Required.",
+                  "pitrRetentionPeriodValueRequired": "Please enter a positive integer.",
                   "pitrRetentionPeriodValueMinimum": "Minimum 5 minutes.",
+                  "pitrRetentionPeriodValueIntegerValidation": "Please enter a positive integer.",
                   "pitrRetentionPeriodUnitRequired": "Required."
                 }
               },
@@ -1109,7 +1121,8 @@
               },
               "error": {
                 "requiredField": "Required.",
-                "mismatchedNodeToNodeEncryption": "The source and target universe must have matching TLS enable/disable setting."
+                "mismatchedNodeToNodeEncryption": "The source and target universe must have matching TLS enable/disable setting.",
+                "illegalCharactersInConfigName": "The name of the replication configuration cannot contain any characters in [SPACE '_' '*' '<' '>' '?' '|' '\"' NULL])"
               }
             },
             "selectTables": {
@@ -2068,7 +2081,9 @@
         "targetVersion": "Target Version",
         "Failure": "Failed",
         "Success": "Completed",
-        "Running": "In Progress"
+        "Running": "In Progress",
+        "Abort": "Aborting",
+        "Aborted": "Aborted"
       },
       "progress": {
         "title": "Progress",
@@ -2121,6 +2136,12 @@
           "Awaiting Connection to Replicas": "Awaiting Connection to Replicas",
           "Connected": "Connected",
           "Disconnected": "Disconnected"
+        }
+      },
+      "metricsPanel": {
+        "graphTitle": {
+          "haBackupLag": "HA Backup Lag",
+          "haLastBackupSize": "HA Last Backup Size"
         }
       }
     },
@@ -2179,7 +2200,7 @@
       "tooltips": {
         "logCatalog": "Log statements for the PostgreSQL system catalog relations in pg_catalog. Disable this option to reduce noise in the log.",
         "logClient": "Log messages directly to clients such as ysqlsh and psql for debugging. When enabled, you can set the level of logs that are output using pgaudit.log_client.",
-        "logLevel": "Set the severity level of logs displayed in clients when pgaudit.log_client is on.",
+        "logLevel": "Set the severity level of logs displayed in clients when pgaudit.log_client is on.Will need to set an extra flag log_min_messages for all the severity levels to work. By default only LOG or WARNING will work without needing the flag log_min_messages",
         "logParameter": "Include parameters passed with the statement. Parameters are provided in .csv format after the statement text.",
         "logParameterMaxSize": "Maximum size, in bytes, of parameters to include. Parameters longer than this value are replaced with <long param suppressed>.",
         "logRelation": "Create separate log entries for each relation (TABLE, VIEW, etc.) referenced in a SELECT or DML statement. This is a shortcut for exhaustive logging without using object audit logging.",

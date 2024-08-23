@@ -17,7 +17,7 @@ This section describes how replication works in DocDB. The data in a DocDB table
 
 YugabyteDB also provides other advanced replication features. These include two forms of asynchronous replication of data:
 
-* **xCluster** Data is asynchronously replicated between different YugabyteDB universes - both unidirectional replication (master-slave) or  bidirectional replication across two universes.
+* **xCluster** Data is asynchronously replicated between different YugabyteDB universes - both unidirectional replication (leader-follower) or  bidirectional replication across two universes.
 * **Read replicas** The in-universe asynchronous replicas are called read replicas.
 
 The YugabyteDB synchronous replication architecture is inspired by <a href="https://research.google.com/archive/spanner-osdi2012.pdf">Google Spanner</a>.

@@ -77,7 +77,7 @@ var listNodesCmd = &cobra.Command{
 			if util.IsOutputType("table") {
 				logrus.Infoln("No node instances found\n")
 			} else {
-				logrus.Infoln("{}\n")
+				logrus.Infoln("[]\n")
 			}
 			return
 		}

@@ -215,7 +215,9 @@ export const MetricName = {
   CONSUMER_SAFE_TIME_LAG: 'consumer_safe_time_lag',
   CONSUMER_SAFE_TIME_SKEW: 'consumer_safe_time_skew',
   ASYNC_REPLICATION_SENT_LAG: 'async_replication_sent_lag',
-  DISK_USAGE: 'disk_usage'
+  DISK_USAGE: 'disk_usage',
+  HA_BACKUP_LAG: 'yba_ha_backup_lag',
+  HA_LAST_BACKUP_SIZE: 'yba_ha_last_backup_size_mb'
 } as const;
 export type MetricName = typeof MetricName[keyof typeof MetricName];
 

@@ -2551,7 +2551,6 @@ YbRunWithPrefetcherImpl(
 	YBCStatus (*func)(YbRunWithPrefetcherContext *ctx),
 	bool keep_prefetcher)
 {
-	YBCPgResetCatalogReadTime();
 	const bool is_using_response_cache =
 		prefetcher_starter->call(prefetcher_starter);
 	YBCStatus result = NULL;
@@ -5303,11 +5302,11 @@ RelationBuildLocalRelation(const char *relname,
 			}
 			else
 			{
-				/* 
-				 * This should never happen since we check the guc value in 
+				/*
+				 * This should never happen since we check the guc value in
 				 * check_default_replica_identity.
 				 */
-				Assert(false);	
+				Assert(false);
 			}
 			rel->rd_rel->relreplident = replica_identity;
 		}

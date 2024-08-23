@@ -499,7 +499,7 @@ class AshTestPg : public WaitStateTestCheckMethodCounts {
   }
 };
 
-TEST_F_EX(WaitStateITest, YB_DISABLE_TEST_IN_TSAN(AshPg), AshTestPg) {
+TEST_F_EX(WaitStateITest, AshPg, AshTestPg) {
   RunTestsAndFetchAshMethodCounts();
 }
 
@@ -589,7 +589,7 @@ void AshTestWithCompactions::DoCompactionsAndFlushes(std::atomic<bool>& stop) {
   }
 }
 
-TEST_F_EX(WaitStateITest, YB_DISABLE_TEST_IN_TSAN(AshFlushAndCompactions), AshTestWithCompactions) {
+TEST_F_EX(WaitStateITest, AshFlushAndCompactions, AshTestWithCompactions) {
   RunTestsAndFetchAshMethodCounts();
 }
 

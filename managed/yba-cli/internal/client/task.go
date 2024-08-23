@@ -66,9 +66,8 @@ func (a *AuthAPIClient) failureSubTaskListYBAVersionCheck() (
 func (a *AuthAPIClient) WaitForTask(taskUUID, message string) error {
 	if strings.ToLower(os.Getenv("YBA_CI")) == "true" {
 		return a.WaitForTaskCI(taskUUID, message)
-	} else {
-		return a.WaitForTaskProgressBar(taskUUID, message)
 	}
+	return a.WaitForTaskProgressBar(taskUUID, message)
 }
 
 // WaitForTaskCI waits for State change for a YugabyteDB Anywhere task for CI

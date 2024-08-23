@@ -43,7 +43,7 @@ Ensure that YugabyteDB runs in a trusted network environment, such that:
 
 ### RPC bind interfaces
 
-Limit the interfaces on which YugabyteDB instances listen for incoming connections. Specify just the required interfaces when starting `yb-master` and `yb-tserver` by using the `--rpc_bind_addresses` option. Do not bind to the loopback address. Refer to the [Admin Reference](../../reference/configuration/yb-tserver/) for more information on using these options.
+Limit the interfaces on which YugabyteDB instances listen for incoming connections. Specify just the required interfaces when starting yb-master and yb-tserver by using the `--rpc_bind_addresses` option. Do not bind to the loopback address. Refer to the [Admin Reference](../../reference/configuration/yb-tserver/) for more information on using these options.
 
 ### Tips for public clouds
 

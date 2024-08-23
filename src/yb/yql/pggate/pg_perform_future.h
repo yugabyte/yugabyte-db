@@ -13,8 +13,6 @@
 
 #pragma once
 
-#include <future>
-
 #include "yb/common/common_fwd.h"
 #include "yb/common/hybrid_time.h"
 
@@ -22,8 +20,7 @@
 
 #include "yb/yql/pggate/pg_client.h"
 
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
 
 class PgSession;
 
@@ -35,20 +32,18 @@ class PerformFuture {
   };
 
   PerformFuture() = default;
-  PerformFuture(PerformResultFuture future, PgSession* session, PgObjectIds&& relations);
+  PerformFuture(PerformResultFuture&& future, PgObjectIds&& relations);
   PerformFuture(PerformFuture&&) = default;
   PerformFuture& operator=(PerformFuture&&) = default;
   ~PerformFuture();
 
   bool Valid() const;
   bool Ready() const;
-  Result<Data> Get();
+  Result<Data> Get(PgSession& session);
 
  private:
   PerformResultFuture future_;
-  PgSession* session_ = nullptr;
   PgObjectIds relations_;
 };
 
-} // namespace pggate
-} // namespace yb
+} // namespace yb::pggate

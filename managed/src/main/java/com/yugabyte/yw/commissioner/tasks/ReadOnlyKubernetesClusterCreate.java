@@ -50,7 +50,7 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
       verifyParams(UniverseOpType.CREATE);
       Universe universe =
           lockAndFreezeUniverseForUpdate(
-              taskParams().expectedUniverseVersion, null /* Txn callback */);
+              taskParams().expectedUniverseVersion, u -> setCommunicationPortsForNodes(false));
       preTaskActions(universe);
       addBasicPrecheckTasks();
 

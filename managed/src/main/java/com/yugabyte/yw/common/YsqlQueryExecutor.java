@@ -2,9 +2,13 @@
 
 package com.yugabyte.yw.common;
 
+import static com.yugabyte.yw.common.Util.CONSISTENCY_CHECK;
+import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
 import static play.libs.Json.newObject;
 import static play.libs.Json.toJson;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -32,6 +36,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.mvc.Http;
@@ -453,6 +458,56 @@ public class YsqlQueryExecutor {
     }
 
     return ysqlResponse;
+  }
+
+  public static class ConsistencyInfoResp {
+    @JsonProperty("task_uuid")
+    private UUID taskUuid;
+
+    @JsonProperty("seq_num")
+    private int seqNum;
+
+    public UUID getTaskUuid() {
+      return taskUuid;
+    }
+
+    public int getSeqNum() {
+      return seqNum;
+    }
+  }
+
+  public ConsistencyInfoResp getConsistencyInfo(Universe universe) throws RecoverableException {
+    NodeDetails node;
+    try {
+      node = CommonUtils.getServerToRunYsqlQuery(universe, true);
+    } catch (IllegalStateException e) {
+      LOG.warn("Could not find valid tserver querying consistency info.");
+      return null;
+    }
+    RunQueryFormData ysqlQuery = new RunQueryFormData();
+    ysqlQuery.setDbName(SYSTEM_PLATFORM_DB);
+    ysqlQuery.setQuery(
+        String.format(
+            "SELECT seq_num, task_uuid FROM %s ORDER BY seq_num DESC LIMIT 1", CONSISTENCY_CHECK));
+    JsonNode response = executeQueryInNodeShell(universe, ysqlQuery, node);
+    int retries = 0;
+    while (response != null && response.has("error") && retries < 5) {
+      String match = String.format("relation \"%s\" does not exist", CONSISTENCY_CHECK);
+      if (response.get("error").asText().contains(match)) {
+        throw new RecoverableException("consistency_check table does not exist");
+      }
+      retries += 1;
+      response = executeQueryInNodeShell(universe, ysqlQuery, node);
+    }
+    if (response != null && response.has("result")) {
+      ObjectMapper mapper = new ObjectMapper();
+      try {
+        return mapper.treeToValue(response.get("result").get(0), ConsistencyInfoResp.class);
+      } catch (JsonProcessingException e) {
+        LOG.warn("Error parsing consistency info response: " + e.getMessage());
+      }
+    }
+    return null;
   }
 
   public void validateAdminPassword(Universe universe, DatabaseSecurityFormData data) {

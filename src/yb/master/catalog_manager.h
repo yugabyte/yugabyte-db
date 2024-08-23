@@ -399,6 +399,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                                      rpc::RpcContext* rpc,
                                      const LeaderEpoch& epoch);
 
+  void AcquireObjectLocks(
+      const tserver::AcquireObjectLockRequestPB* req, tserver::AcquireObjectLockResponsePB* resp,
+      rpc::RpcContext rpc);
+  void ReleaseObjectLocks(
+      const tserver::ReleaseObjectLockRequestPB* req, tserver::ReleaseObjectLockResponsePB* resp,
+      rpc::RpcContext rpc);
+
   // Gets the progress of ongoing index backfills.
   Status GetIndexBackfillProgress(const GetIndexBackfillProgressRequestPB* req,
                                   GetIndexBackfillProgressResponsePB* resp,
@@ -1575,9 +1582,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Result<SchemaVersion> GetTableSchemaVersion(const TableId& table_id);
 
-  Status GetTableGroupAndColocationInfo(
-      const TableId& table_id, TablegroupId& out_tablegroup_id, bool& out_colocated_database)
-      EXCLUDES(mutex_);
+  Result<TablegroupId> GetTablegroupId(const TableId& table_id) EXCLUDES(mutex_);
 
   void InsertNewUniverseReplication(UniverseReplicationInfo& replication_group) EXCLUDES(mutex_);
 

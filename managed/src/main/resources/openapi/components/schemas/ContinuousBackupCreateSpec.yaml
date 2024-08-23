@@ -1,0 +1,34 @@
+title: ContinuousBackupCreateSpec
+description: |
+  ContinuousBackupCreateSpec
+
+  Continuous Backup create time properties. Used to create a continuous backup configuration.
+type: object
+required:
+  - backup_dir
+  - frequency
+  - frequency_time_unit
+  - storage_config_uuid
+properties:
+  storage_config_uuid:
+    description: UUID of the storage config to use
+    type: string
+    format: uuid
+    example: f33e3c9b-75ab-4c30-80ad-cba85646ea39
+    readOnly: false
+  frequency:
+    description: Interval between two backups.
+    type: integer
+    format: int64
+  frequency_time_unit:
+    description: The time unit for the interval between backups.
+    $ref: "./TimeUnitType.yaml"
+  num_backups:
+    description: The number of historical backups to retain in the storage bucket.
+    type: integer
+    format: int32
+    default: 5
+  backup_dir:
+    description: The name of the directory in the storage config to use for YBA backups.
+    type: string
+    example: yba_backups

@@ -16,7 +16,9 @@
 namespace yb {
 
 void TestThreadHolder::JoinAll() {
-  LOG(INFO) << __func__;
+  if (verbose_) {
+    LOG(INFO) << __func__;
+  }
 
   for (auto& thread : threads_) {
     if (thread.joinable()) {
@@ -24,7 +26,9 @@ void TestThreadHolder::JoinAll() {
     }
   }
 
-  LOG(INFO) << __func__ << " done";
+  if (verbose_) {
+    LOG(INFO) << __func__ << " done";
+  }
 }
 
 void WaitStopped(const CoarseDuration& duration, std::atomic<bool>* stop) {

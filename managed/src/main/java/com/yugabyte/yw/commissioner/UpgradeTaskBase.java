@@ -198,6 +198,22 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     if (taskParams().rollMaxBatchSize != null
         && confGetter.getConfForScope(universe, UniverseConfKeys.upgradeBatchRollEnabled)) {
       rollMaxBatchSize = taskParams().rollMaxBatchSize;
+    } else {
+      RollMaxBatchSize max = getMaxNodesToRoll(universe);
+      int percent =
+          confGetter.getConfForScope(universe, UniverseConfKeys.upgradeBatchRollAutoPercent);
+      int number =
+          confGetter.getConfForScope(universe, UniverseConfKeys.upgradeBatchRollAutoNumber);
+      int numberToSet = 0;
+      if (percent > 0) {
+        numberToSet = max.getPrimaryBatchSize() * percent / 100;
+      } else if (number > 1) {
+        numberToSet = Math.min(number, max.getPrimaryBatchSize());
+      }
+      if (numberToSet > 1) {
+        rollMaxBatchSize.setPrimaryBatchSize(numberToSet);
+        rollMaxBatchSize.setReadReplicaBatchSize(numberToSet);
+      }
     }
     if (getTaskCache() != null && getTaskCache().get(SPLIT_FALLBACK) != null) {
       RollMaxBatchSize fallback = getTaskCache().get(SPLIT_FALLBACK, RollMaxBatchSize.class);

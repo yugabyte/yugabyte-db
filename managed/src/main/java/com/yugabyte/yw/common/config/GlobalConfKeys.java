@@ -1431,4 +1431,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Poller interval for universes to schedule master failover",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> perProcessMetricsEnabled =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_per_process_metrics",
+          ScopeType.GLOBAL,
+          "Enable Per Process Metrics",
+          "Enable Per Process Metrics",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

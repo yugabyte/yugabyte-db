@@ -53,6 +53,13 @@ var describeUniverseCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
+		universe.Providers, response, err = authAPI.GetListOfProviders().Execute()
+		if err != nil {
+			errMessage := util.ErrorFromHTTPResponse(response, err,
+				"Universe", "Describe - Get Providers")
+			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		}
+
 		universe.KMSConfigs, response, err = authAPI.ListKMSConfigs().Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(response, err,

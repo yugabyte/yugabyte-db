@@ -410,11 +410,6 @@ class YBClient {
                                  std::shared_ptr<std::vector<YBTableInfo>> info,
                                  StatusCallback callback);
 
-  Status GetColocatedTabletSchemaByParentTableId(
-      const TableId& parent_colocated_table_id,
-      std::shared_ptr<std::vector<YBTableInfo>> info,
-      StatusCallback callback);
-
   Result<IndexPermissions> GetIndexPermissions(
       const TableId& table_id,
       const TableId& index_id);
