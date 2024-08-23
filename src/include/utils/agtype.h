@@ -552,7 +552,6 @@ agtype_iterator *get_next_list_element(agtype_iterator *it,
                                        agtype_container *agtc,
                                        agtype_value *elem);
 void pfree_agtype_value(agtype_value* value);
-void pfree_agtype_value_content(agtype_value* value);
 void pfree_agtype_in_state(agtype_in_state* value);
 agtype_value *agtype_value_from_cstring(char *str, int len);
 

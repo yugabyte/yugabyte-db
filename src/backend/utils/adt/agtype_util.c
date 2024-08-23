@@ -87,6 +87,9 @@ static agtype_value *push_agtype_value_scalar(agtype_parse_state **pstate,
                                               agtype_value *scalar_val);
 static int compare_two_floats_orderability(float8 lhs, float8 rhs);
 static int get_type_sort_priority(enum agtype_value_type type);
+static void pfree_agtype_value_content(agtype_value* value);
+static void pfree_iterator_agtype_value_token(agtype_iterator_token token,
+                                              agtype_value *agtv);
 
 /*
  * Turn an in-memory agtype_value into an agtype for on-disk storage.
@@ -234,6 +237,17 @@ static int get_type_sort_priority(enum agtype_value_type type)
     return -1;
 }
 
+static void pfree_iterator_agtype_value_token(agtype_iterator_token token,
+                                              agtype_value *agtv)
+{
+    if (token == WAGT_KEY ||
+        token == WAGT_VALUE ||
+        token == WAGT_ELEM)
+    {
+        pfree_agtype_value_content(agtv);
+    }
+}
+
 /*
  * BT comparator worker function.  Returns an integer less than, equal to, or
  * greater than zero, indicating whether a is less than, equal to, or greater
@@ -269,6 +283,10 @@ int compare_agtype_containers_orderability(agtype_container *a,
             if (ra == WAGT_DONE)
             {
                 /* Decisively equal */
+
+                /* free the agtype_values associated with the tokens */
+                pfree_iterator_agtype_value_token(ra, &va);
+                pfree_iterator_agtype_value_token(rb, &vb);
                 break;
             }
 
@@ -280,6 +298,10 @@ int compare_agtype_containers_orderability(agtype_container *a,
                  * initially, at the WAGT_BEGIN_ARRAY and WAGT_BEGIN_OBJECT
                  * tokens.
                  */
+
+                /* free the agtype_values associated with the tokens */
+                pfree_iterator_agtype_value_token(ra, &va);
+                pfree_iterator_agtype_value_token(rb, &vb);
                 continue;
             }
 
@@ -367,12 +389,18 @@ int compare_agtype_containers_orderability(agtype_container *a,
             if (ra == WAGT_END_ARRAY || ra == WAGT_END_OBJECT)
             {
                 res = -1;
+                /* free the agtype_values associated with the tokens */
+                pfree_iterator_agtype_value_token(ra, &va);
+                pfree_iterator_agtype_value_token(rb, &vb);
                 break;
             }
             /* If right side is shorter, greater than */
             if (rb == WAGT_END_ARRAY || rb == WAGT_END_OBJECT)
             {
                 res = 1;
+                /* free the agtype_values associated with the tokens */
+                pfree_iterator_agtype_value_token(ra, &va);
+                pfree_iterator_agtype_value_token(rb, &vb);
                 break;
             }
 
@@ -387,7 +415,7 @@ int compare_agtype_containers_orderability(agtype_container *a,
             {
                 rb = agtype_iterator_next(&itb, &vb, false);
             }
-            
+
             Assert(va.type != vb.type);
             Assert(va.type != AGTV_BINARY);
             Assert(vb.type != AGTV_BINARY);
@@ -397,6 +425,9 @@ int compare_agtype_containers_orderability(agtype_container *a,
                       -1 :
                       1;
         }
+        /* free the agtype_values associated with the tokens */
+        pfree_iterator_agtype_value_token(ra, &va);
+        pfree_iterator_agtype_value_token(rb, &vb);
     } while (res == 0);
 
     while (ita != NULL)
@@ -2330,11 +2361,11 @@ void pfree_agtype_value(agtype_value* value)
 }
 
 /*
- * Helper function that recursively deallocates the contents 
+ * Helper function that recursively deallocates the contents
  * of the passed agtype_value only. It does not deallocate
  * `value` itself.
  */
-void pfree_agtype_value_content(agtype_value* value)
+static void pfree_agtype_value_content(agtype_value* value)
 {
     int i;
 
@@ -2352,6 +2383,7 @@ void pfree_agtype_value_content(agtype_value* value)
              * The char pointer (val.string.val) is not free'd because
              * it is not allocated by an agtype helper function.
              */
+            pfree(value->val.string.val);
             break;
 
         case AGTV_ARRAY:

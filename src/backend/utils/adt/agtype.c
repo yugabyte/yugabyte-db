@@ -389,8 +389,10 @@ agtype_value *agtype_value_from_cstring(char *str, int len)
 static inline Datum agtype_from_cstring(char *str, int len)
 {
     agtype_value *agtv = agtype_value_from_cstring(str, len);
+    agtype *agt = agtype_value_to_agtype(agtv);
 
-    PG_RETURN_POINTER(agtype_value_to_agtype(agtv));
+    pfree_agtype_value(agtv);
+    PG_RETURN_POINTER(agt);
 }
 
 size_t check_string_length(size_t len)
@@ -1927,7 +1929,7 @@ agtype_value *string_to_agtype_value(char *s)
 
     agtv->type = AGTV_STRING;
     agtv->val.string.len = check_string_length(strlen(s));
-    agtv->val.string.val = s;
+    agtv->val.string.val = pnstrdup(s, agtv->val.string.len);
 
     return agtv;
 }
@@ -1951,6 +1953,7 @@ PG_FUNCTION_INFO_V1(_agtype_build_path);
 Datum _agtype_build_path(PG_FUNCTION_ARGS)
 {
     agtype_in_state result;
+    agtype *agt_result;
     Datum *args = NULL;
     bool *nulls = NULL;
     Oid *types = NULL;
@@ -1993,8 +1996,10 @@ Datum _agtype_build_path(PG_FUNCTION_ARGS)
                 AGT_ROOT_BINARY_FLAGS(agt) == AGT_FBINARY_TYPE_VLE_PATH)
             {
                 agtype *path = agt_materialize_vle_path(agt);
+                PG_FREE_IF_COPY(agt, i);
                 PG_RETURN_POINTER(path);
             }
+            PG_FREE_IF_COPY(agt, i);
         }
     }
 
@@ -2043,6 +2048,8 @@ Datum _agtype_build_path(PG_FUNCTION_ARGS)
 
             /* get the VLE path from the container as an agtype_value */
             agtv_path = agtv_materialize_vle_path(agt);
+
+            PG_FREE_IF_COPY(agt, i);
 
             /* it better be an AGTV_PATH */
             Assert(agtv_path->type == AGTV_PATH);
@@ -2097,6 +2104,7 @@ Datum _agtype_build_path(PG_FUNCTION_ARGS)
         {
             add_agtype(AGTYPE_P_GET_DATUM(agt), false, &result, types[i],
                        false);
+            PG_FREE_IF_COPY(agt, i);
         }
         /* If we got here, we had a zero boundary case. So, clear it */
         else
@@ -2111,7 +2119,11 @@ Datum _agtype_build_path(PG_FUNCTION_ARGS)
     /* set it to a path type */
     result.res->type = AGTV_PATH;
 
-    PG_RETURN_POINTER(agtype_value_to_agtype(result.res));
+    agt_result = agtype_value_to_agtype(result.res);
+
+    pfree_agtype_in_state(&result);
+
+    PG_RETURN_POINTER(agt_result);
 }
 
 Datum make_path(List *path)
@@ -2435,6 +2447,7 @@ PG_FUNCTION_INFO_V1(agtype_build_map);
 Datum agtype_build_map(PG_FUNCTION_ARGS)
 {
     agtype_value *result = NULL;
+    agtype *agt_result = NULL;
 
     result = agtype_build_map_as_agtype_value(fcinfo);
     if (result == NULL)
@@ -2442,7 +2455,10 @@ Datum agtype_build_map(PG_FUNCTION_ARGS)
         PG_RETURN_NULL();
     }
 
-    PG_RETURN_POINTER(agtype_value_to_agtype(result));
+    agt_result = agtype_value_to_agtype(result);
+    pfree_agtype_value(result);
+
+    PG_RETURN_POINTER(agt_result);
 }
 
 PG_FUNCTION_INFO_V1(agtype_build_map_noargs);
@@ -4260,7 +4276,7 @@ Datum agtype_in_operator(PG_FUNCTION_ARGS)
                 result = (compare_agtype_scalar_values(&agtv_item, &agtv_elem) ==
                         0);
             }
-        }        
+        }
     }
 
     return boolean_to_agtype(result);
@@ -4421,19 +4437,31 @@ Datum agtype_btree_cmp(PG_FUNCTION_ARGS)
 {
     agtype *agtype_lhs;
     agtype *agtype_rhs;
+    int32 result;
 
     if (PG_ARGISNULL(0) && PG_ARGISNULL(1))
-        PG_RETURN_INT16(0);
+    {
+        PG_RETURN_INT32(0);
+    }
     else if (PG_ARGISNULL(0))
-        PG_RETURN_INT16(1);
+    {
+        PG_RETURN_INT32(1);
+    }
     else if (PG_ARGISNULL(1))
-        PG_RETURN_INT16(-1);
+    {
+        PG_RETURN_INT32(-1);
+    }
 
     agtype_lhs = AG_GET_ARG_AGTYPE_P(0);
     agtype_rhs = AG_GET_ARG_AGTYPE_P(1);
 
-    PG_RETURN_INT16(compare_agtype_containers_orderability(&agtype_lhs->root,
-                                                     &agtype_rhs->root));
+    result = compare_agtype_containers_orderability(&agtype_lhs->root,
+                                                    &agtype_rhs->root);
+
+    PG_FREE_IF_COPY(agtype_lhs, 0);
+    PG_FREE_IF_COPY(agtype_rhs, 1);
+
+    PG_RETURN_INT32(result);
 }
 
 PG_FUNCTION_INFO_V1(agtype_typecast_numeric);
@@ -5584,7 +5612,7 @@ Datum age_tail(PG_FUNCTION_ARGS)
                                         WAGT_END_ARRAY, NULL);
 
     agt_result = agtype_value_to_agtype(agis_result.res);
-    pfree_agtype_value(agis_result.res);
+    pfree_agtype_in_state(&agis_result);
 
     PG_RETURN_POINTER(agt_result);
 }
