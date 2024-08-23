@@ -383,6 +383,13 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   Status set_cdc_sdk_safe_time(const HybridTime& cdc_sdk_safe_time = HybridTime::kInvalid);
 
+  Status set_all_cdc_retention_barriers(int64 cdc_min_replicated_index,
+                                        bool set_cdc_min_replicated_index_check,
+                                        const OpId& cdc_min_checkpoint_op_id,
+                                        bool set_cdc_min_checkpoint_op_id_check,
+                                        const HybridTime& cdc_sdk_safe_time,
+                                        bool set_cdc_sdk_safe_time_check);
+
   int64_t cdc_min_replicated_index() const;
 
   OpId cdc_sdk_min_checkpoint_op_id() const;
