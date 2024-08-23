@@ -2753,13 +2753,8 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
-#ifdef YB_TODO
-	/* deepthi@yugabyte
-	 * - QUERY_TUNING is no longer defined in Postgres source code.
-	 * - Please make appropriate modification.
-	 */
 	{
-		{"yb_plpgsql_disable_prefetch_in_for_query", PGC_USERSET, QUERY_TUNING,
+		{"yb_plpgsql_disable_prefetch_in_for_query", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Disable prefetching in a PLPGSQL FOR loop over a query."),
 			NULL
 		},
@@ -2767,7 +2762,6 @@ static struct config_bool ConfigureNamesBool[] =
 		false,
 		NULL, NULL, NULL
 	},
-#endif
 
 	{
 		{"yb_enable_sequence_pushdown", PGC_USERSET, QUERY_TUNING_METHOD,
