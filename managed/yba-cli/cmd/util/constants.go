@@ -205,6 +205,14 @@ const (
 	RedisTableType = "REDIS_TABLE_TYPE"
 )
 
+const (
+	// X86_64 architecture
+	X86_64 = "x86_64"
+
+	// AARCH64 architecture
+	AARCH64 = "aarch64"
+)
+
 // CompletedStates returns set of states that mark the task as completed
 func CompletedStates() []string {
 	return []string{SuccessTaskStatus, FailureTaskStatus, AbortedTaskStatus}

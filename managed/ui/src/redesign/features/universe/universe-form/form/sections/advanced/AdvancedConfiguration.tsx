@@ -88,7 +88,10 @@ export const AdvancedConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
             <SystemDField disabled={!isCreatePrimary} />
           </Box>
           <Box display="flex" width="100%" mt={2.5}>
-            <DeploymentPortsField disabled={!isCreatePrimary} isEditMode={!isCreateMode} />
+            <DeploymentPortsField
+              disabled={provider.code === CloudType.kubernetes}
+              isEditMode={!isCreateMode}
+            />
           </Box>
         </>
       )}

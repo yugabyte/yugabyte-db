@@ -21,7 +21,13 @@ Installing YugabyteDB involves completing prerequisites and downloading the Yuga
 
 YugabyteDB supports both x86 and ARM (aarch64) CPU architectures. Download packages ending in `x86_64.tar.gz` to run on x86, and packages ending in `aarch64.tar.gz` to run on ARM.
 
-The following instructions are for downloading the STS (standard-term support) release of YugabyteDB, which is recommended for production deployments. For other versions, see [Releases](/preview/releases/).
+The following instructions are for downloading the latest stable release of YugabyteDB, which is recommended for production deployments. For other versions, see [Releases](/preview/releases/).
+
+{{<note title="Which release should I use?">}}
+For production deployments, install a stable release.
+
+Preview releases are recommended for development and testing only, and are not supported for production deployments. There is currently no migration path from a preview release to a stable release.
+{{</note>}}
 
 Download YugabyteDB as follows:
 

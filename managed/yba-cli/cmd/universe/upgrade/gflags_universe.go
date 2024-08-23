@@ -202,7 +202,7 @@ func init() {
 			"\"--add-primary-tserver-gflags tserver-gflag-key-1-for-primary-cluster="+
 			"tserver-gflag-value-1,tserver-gflag-key-2-for-primary-cluster=tserver-gflag-key2\"."+
 			" If no-of-clusters = 2 "+
-			"and apply-to-read-replica is set to true, "+
+			"and inherit-from-primary is set to true, "+
 			"these gflags are copied to the read replica cluster.")
 	upgradeGflagsCmd.Flags().String("edit-primary-tserver-gflags", "",
 		"[Optional] Edit TServer GFlags in primary cluster. Provide comma-separated key-value"+
@@ -210,7 +210,7 @@ func init() {
 			"\"--edit-primary-tserver-gflags tserver-gflag-key-1-for-primary-cluster="+
 			"tserver-gflag-value-1,tserver-gflag-key-2-for-primary-cluster=tserver-gflag-key2\"."+
 			" If no-of-clusters = 2 "+
-			"and apply-to-read-replica is set to true, these gflag "+
+			"and inherit-from-primary is set to true, these gflag "+
 			"values are copied to the read replica cluster.")
 	upgradeGflagsCmd.Flags().String("remove-primary-tserver-gflags", "",
 		"[Optional] Remove TServer GFlags from primary cluster. Provide comma-separated keys"+
@@ -218,7 +218,7 @@ func init() {
 			"\"--remove-primary-tserver-gflags tserver-gflag-key-1-for-primary-cluster"+
 			",tserver-gflag-key-2-for-primary-cluster\"."+
 			" If no-of-clusters = 2 "+
-			"and apply-to-read-replica is set to true, these gflag "+
+			"and inherit-from-primary is set to true, these gflag "+
 			"keys are removed from the read replica cluster.")
 
 	upgradeGflagsCmd.Flags().String("add-rr-tserver-gflags", "",
@@ -226,19 +226,19 @@ func init() {
 			" pairs in the following format: "+
 			"\"--add-rr-tserver-gflags tserver-gflag-key-1-for-rr-cluster="+
 			"tserver-gflag-value-1,tserver-gflag-key-2-for-rr-cluster=tserver-gflag-key2\"."+
-			" Ignored if apply-to-read-replica is set to true.")
+			" Ignored if inherit-from-primary is set to true.")
 	upgradeGflagsCmd.Flags().String("edit-rr-tserver-gflags", "",
 		"[Optional] Edit TServer GFlags in Read replica cluster. Provide comma-separated key-value"+
 			" pairs in the following format: "+
 			"\"--edit-rr-tserver-gflags tserver-gflag-key-1-for-rr-cluster="+
 			"tserver-gflag-value-1,tserver-gflag-key-2-for-rr-cluster=tserver-gflag-key2\"."+
-			" Ignored if apply-to-read-replica is set to true.")
+			" Ignored if inherit-from-primary is set to true.")
 	upgradeGflagsCmd.Flags().String("remove-rr-tserver-gflags", "",
 		"[Optional] Remove TServer GFlags from Read replica cluster. Provide comma-separated keys"+
 			" in the following format: "+
 			"\"--remove-rr-tserver-gflags tserver-gflag-key-1-for-rr-cluster"+
 			",tserver-gflag-key-2-for-rr-cluster\"."+
-			" Ignored if apply-to-read-replica is set to true.")
+			" Ignored if inherit-from-primary is set to true.")
 
 	upgradeGflagsCmd.Flags().String("upgrade-option", "Rolling",
 		"[Optional] Upgrade Options, defaults to Rolling. "+
