@@ -18,9 +18,9 @@ Starting with v2.20.1, RBAC is available with fine-grained control over access t
 
 {{< note title="Fine-grained RBAC is Early Access">}}
 
-Fine-grained RBAC with the ability to limit users to manage only a subset of universes is [Early Access](/preview/releases/versioning/#feature-maturity).
+Fine-grained RBAC with the ability to limit users to manage only a subset of universes is {{<badge/ea>}}.
 
-During EA, by default fine-grained RBAC is not enabled. To enable the feature, use following API command:
+During {{<badge/ea>}}, by default fine-grained RBAC is not enabled. To enable the feature, use following API command:
 
 ```sh
 curl --request PUT \

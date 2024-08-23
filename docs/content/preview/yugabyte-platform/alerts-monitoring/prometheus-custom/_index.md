@@ -8,7 +8,7 @@ menu:
   preview_yugabyte-platform:
     parent: alerts-monitoring
     identifier: prometheus-custom
-weight: 670
+weight: 90
 type: indexpage
 ---
 
