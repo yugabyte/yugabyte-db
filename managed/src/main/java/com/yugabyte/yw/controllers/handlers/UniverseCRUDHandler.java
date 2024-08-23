@@ -35,6 +35,7 @@ import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseContainer;
@@ -933,6 +934,20 @@ public class UniverseCRUDHandler {
           universe.updateConfig(
               ImmutableMap.of(Universe.LABEL_K8S_RESOURCES, Boolean.toString(true)));
           checkHelmChartExists(primaryCluster.userIntent.ybSoftwareVersion);
+          String serviceScope =
+              confGetter.getGlobalConf(GlobalConfKeys.k8sUniverseDefaultServiceScope);
+          if (KubernetesUtil.shouldConfigureNamespacedService(taskParams, universe.getConfig())) {
+            if (serviceScope.equals("Namespaced")) {
+              // Default service scope should be 'Namespaced'
+              primaryIntent.defaultServiceScopeAZ = false;
+            }
+            // Validate service endpoints
+            try {
+              KubernetesUtil.validateServiceEndpoints(taskParams, universe.getConfig());
+            } catch (IOException e) {
+              throw new RuntimeException("Failed to parse Kubernetes overrides!", e.getCause());
+            }
+          }
         } else {
           if (primaryCluster.userIntent.enableIPV6) {
             throw new PlatformServiceException(
@@ -1071,6 +1086,9 @@ public class UniverseCRUDHandler {
                 : u.getUniverseDetails().getClusterByUuid(cluster.uuid).userIntent.ybcFlags;
       }
     }
+
+    // Set helm naming style into params
+    taskParams.useNewHelmNamingStyle = u.getUniverseDetails().useNewHelmNamingStyle;
 
     // Set existing LBs into taskParams
     taskParams.setExistingLBs(u.getUniverseDetails().clusters);
@@ -1379,6 +1397,9 @@ public class UniverseCRUDHandler {
                 : universe.getUniverseDetails().getClusterByUuid(cluster.uuid).userIntent.ybcFlags;
       }
     }
+
+    // Set helm naming style into params
+    taskParams.useNewHelmNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
 
     List<Cluster> newReadOnlyClusters = taskParams.getReadOnlyClusters();
     List<Cluster> newAddOnClusters = taskParams.getAddOnClusters();

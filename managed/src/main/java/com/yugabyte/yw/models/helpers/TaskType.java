@@ -699,6 +699,9 @@ public enum TaskType {
   UpdateAndPersistKubernetesOverrides(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistKubernetesOverrides.class),
 
+  HandleKubernetesNamespacedServices(
+      com.yugabyte.yw.commissioner.tasks.subtasks.HandleKubernetesNamespacedServices.class),
+
   UpdatePlacementInfo(com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo.class),
 
   UpdateSoftwareVersion(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateSoftwareVersion.class),

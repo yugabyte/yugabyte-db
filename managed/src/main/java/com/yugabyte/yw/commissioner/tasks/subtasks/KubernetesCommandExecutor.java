@@ -110,6 +110,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     PVC_EXPAND_SIZE,
     COPY_PACKAGE,
     YBC_ACTION,
+    NAMESPACED_SVC_DELETE,
     // The following flag is deprecated.
     INIT_YSQL;
 
@@ -148,6 +149,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         case STS_DELETE:
         case PVC_EXPAND_SIZE:
           return UserTaskDetails.SubTaskGroupType.ResizingDisk.name();
+        case NAMESPACED_SVC_DELETE:
+          return UserTaskDetails.SubTaskGroupType.KubernetesNamespacedServiceDelete.name();
       }
       return null;
     }
@@ -213,6 +216,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     public Map<String, Object> universeOverrides;
     public Map<String, Object> azOverrides;
     public String podName;
+    public String serviceName;
     public String newDiskSize;
 
     // Master addresses in multi-az case (to have control over different deployments).
@@ -237,6 +241,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     public int newPlacementAzMasterCount = 0;
     public Map<ServerType, String> previousGflagsChecksumMap = new HashMap<>();
     public boolean usePreviousGflagsChecksum = false;
+    public boolean createNamespacedService = false;
+    public Set<String> deleteServiceNames;
   }
 
   protected KubernetesCommandExecutor.Params taskParams() {
@@ -380,6 +386,15 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         kubernetesManagerFactory
             .getManager()
             .deletePod(config, taskParams().namespace, taskParams().podName);
+        break;
+      case NAMESPACED_SVC_DELETE:
+        kubernetesManagerFactory
+            .getManager()
+            .deleteNamespacedService(
+                config,
+                taskParams().namespace,
+                taskParams().universeName,
+                taskParams().deleteServiceNames);
         break;
       case DELETE_ALL_SERVER_TYPE_PODS:
         Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
@@ -573,7 +588,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             azConfig = CloudInfoInterface.fetchEnvVars(az);
             regionConfig = CloudInfoInterface.fetchEnvVars(region);
             String podAddressTemplate =
-                getK8sPropertyFromConfigOrDefault(
+                KubernetesUtil.getK8sPropertyFromConfigOrDefault(
                     null,
                     regionConfig,
                     azConfig,
@@ -655,30 +670,6 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       return userIntent.numNodes;
     }
     return -1;
-  }
-
-  private String getK8sPropertyFromConfigOrDefault(
-      Map<String, String> config,
-      Map<String, String> regionConfig,
-      Map<String, String> azConfig,
-      String property,
-      String defaultValue) {
-    String value = azConfig != null ? azConfig.get(property) : null;
-    if (value != null) {
-      return value;
-    }
-
-    value = regionConfig != null ? regionConfig.get(property) : null;
-    if (value != null) {
-      return value;
-    }
-
-    value = config != null ? config.get(property) : null;
-    if (value != null) {
-      return value;
-    }
-
-    return defaultValue;
   }
 
   private void populatePreviousGflagsChecksum() {
@@ -837,7 +828,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
     // Storage class needs to be updated if it is overriden in the zone config.
     String storageClass =
-        getK8sPropertyFromConfigOrDefault(config, regionConfig, azConfig, "STORAGE_CLASS", null);
+        KubernetesUtil.getK8sPropertyFromConfigOrDefault(
+            config, regionConfig, azConfig, "STORAGE_CLASS", null);
     if (StringUtils.isNoneEmpty(storageClass)) {
       tserverDiskSpecs.put("storageClass", storageClass);
       masterDiskSpecs.put("storageClass", storageClass);
@@ -1039,10 +1031,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         rootCA.put("key", "");
         tlsInfo.put("rootCA", rootCA);
         String certManagerIssuer =
-            getK8sPropertyFromConfigOrDefault(
+            KubernetesUtil.getK8sPropertyFromConfigOrDefault(
                 null, regionConfig, azConfig, "CERT-MANAGER-ISSUER", null);
         String certManagerClusterIssuer =
-            getK8sPropertyFromConfigOrDefault(
+            KubernetesUtil.getK8sPropertyFromConfigOrDefault(
                 null, regionConfig, azConfig, "CERT-MANAGER-CLUSTERISSUER", null);
 
         if (certInfo.getCertType() == CertConfigType.K8SCertManager
@@ -1070,7 +1062,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           // As we are using same node cert for all nodes, set wildcard commonName
           boolean newNamingStyle = taskUniverseDetails.useNewHelmNamingStyle;
           String kubeDomain =
-              getK8sPropertyFromConfigOrDefault(
+              KubernetesUtil.getK8sPropertyFromConfigOrDefault(
                   null, regionConfig, azConfig, "KUBE_DOMAIN", "cluster.local");
           List<String> dnsNames = getDnsNamesForSAN(newNamingStyle, kubeDomain);
           Map<String, Integer> subjectAltNames = new HashMap<>(dnsNames.size());
@@ -1250,7 +1242,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
 
     String kubeDomain =
-        getK8sPropertyFromConfigOrDefault(null, regionConfig, azConfig, "KUBE_DOMAIN", null);
+        KubernetesUtil.getK8sPropertyFromConfigOrDefault(
+            null, regionConfig, azConfig, "KUBE_DOMAIN", null);
     if (StringUtils.isNotBlank(kubeDomain)) {
       overrides.put("domainName", kubeDomain);
     }
@@ -1302,7 +1295,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // overrides. Precedence: zone > region > provider.
     Map<String, Object> providerOverrides;
     String providerOverridesYAML =
-        getK8sPropertyFromConfigOrDefault(config, regionConfig, azConfig, "OVERRIDES", null);
+        KubernetesUtil.getK8sPropertyFromConfigOrDefault(
+            config, regionConfig, azConfig, "OVERRIDES", null);
     if (providerOverridesYAML != null) {
       providerOverrides = yaml.load(providerOverridesYAML);
       if (providerOverrides != null) {
@@ -1368,6 +1362,21 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       overrides.put("fullnameOverride", taskParams().helmReleaseName);
     }
 
+    String defaultScope = "AZ";
+    if (!universeFromDBParams.getPrimaryCluster().userIntent.defaultServiceScopeAZ) {
+      defaultScope = "Namespaced";
+    }
+    // Add default service scope
+    overrides.put("defaultServiceScope", defaultScope);
+    // If Helm_Install and current release is not the owner,
+    // remove the Namespaced service endpoint entries from the list.
+    if (KubernetesUtil.shouldConfigureNamespacedService(
+            taskUniverseDetails, universeFromDB.getConfig())
+        && taskParams().commandType == CommandType.HELM_INSTALL
+        && !taskParams().createNamespacedService) {
+      removeNamespacedServiceOverrides(overrides, defaultScope);
+    }
+
     try {
       Path tempFile =
           fileHelperService.createTempFile(taskParams().getUniverseUUID().toString(), ".yml");
@@ -1378,6 +1387,32 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     } catch (IOException e) {
       log.error(e.getMessage());
       throw new RuntimeException("Error writing Helm Override file!");
+    }
+  }
+
+  /**
+   * Remove all namespace scoped services from service endpoint list
+   *
+   * @param overrides The overrides
+   * @param defaultScope For missing scope in service endpoint entry, assume this to be the scope
+   */
+  private void removeNamespacedServiceOverrides(
+      Map<String, Object> overrides, String defaultScope) {
+    if (overrides.containsKey("serviceEndpoints")) {
+      ObjectMapper mapper = new ObjectMapper();
+      List<Map<String, Object>> filterServices = new ArrayList<>();
+      ArrayList<Object> serviceEndpoints = (ArrayList) overrides.get("serviceEndpoints");
+      for (Object service : serviceEndpoints) {
+        Map<String, Object> endpointOverride = mapper.convertValue(service, Map.class);
+        String scope = (String) endpointOverride.getOrDefault("scope", defaultScope);
+        if (!scope.equals("Namespaced")) {
+          filterServices.add(endpointOverride);
+        }
+      }
+      overrides.put("serviceEndpoints", filterServices);
+    } else if (defaultScope.equals("Namespaced")) {
+      // Insert empty list if service endpoints override absent
+      overrides.put("serviceEndpoints", new ArrayList<Object>());
     }
   }
 
@@ -1393,17 +1428,17 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             .helmShowValues(taskParams().ybSoftwareVersion, getConfig());
     if (defaultValuesStr != null) {
       Yaml defaultValuesYaml = new Yaml();
-      Map<String, Object> defaultValues = defaultValuesYaml.load(defaultValuesStr);
+      Map<String, Object> values = defaultValuesYaml.load(defaultValuesStr);
       // apply overrides on the helm chart default values
-      HelmUtils.mergeYaml(defaultValues, overrides);
-      log.trace("Running validations on merged yaml: {}", defaultValues);
+      HelmUtils.mergeYaml(values, overrides);
+      log.trace("Running validations on merged yaml: {}", values);
       // run any validations against the final values for helm install/upgrade
       // allow K8SCertManager cert type only with override
-      allowK8SCertManagerOnlyWithOverride(defaultValues);
+      allowK8SCertManagerOnlyWithOverride(values);
       // make sure certManager settings are provided
-      ensureCertManagerSettings(defaultValues);
+      ensureCertManagerSettings(values);
       // do not allow selfsignedBootstrap to be enabled ever from YBA
-      preventBootstrapCA(defaultValues);
+      preventBootstrapCA(values);
     }
   }
 

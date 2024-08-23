@@ -62,6 +62,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.HardRebootServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstallNodeAgent;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstallYbcSoftwareOnK8s;
+import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageAlertDefinitions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageLoadBalancerGroup;
@@ -147,6 +148,7 @@ import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.DrConfigStates;
 import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
 import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.NodeManager;
@@ -5380,6 +5382,26 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     } catch (Exception e) {
       throw Throwables.propagate(e);
     }
+  }
+
+  // This is used by both DestroyKubernetesUniverse and EditKubernetesUniverse.
+  protected KubernetesCommandExecutor createDeleteKubernetesNamespacedServiceTask(
+      String universeName,
+      Map<String, String> config,
+      String nodePrefix,
+      String azName,
+      @Nullable Set<String> serviceNames) {
+    KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+    params.namespace =
+        KubernetesUtil.getKubernetesNamespace(nodePrefix, azName, config, true, false);
+    params.config = config;
+    params.universeName = universeName;
+    params.deleteServiceNames = serviceNames;
+    params.commandType = KubernetesCommandExecutor.CommandType.NAMESPACED_SVC_DELETE;
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
+    task.initialize(params);
+    return task;
   }
 
   // XCluster: All the xCluster related code resides in this section.

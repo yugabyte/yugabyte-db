@@ -135,7 +135,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
             RuntimeException.class,
             () ->
                 kubernetesManager.getPreferredServiceIP(
-                    configProvider, "demo-az1", "demo-universe", true, false));
+                    configProvider, "demo-az1", "demo-universe", true, false, universe.getName()));
     Mockito.verify(shellProcessHandler, times(1)).run(command.capture(), context.capture());
     assertEquals(
         ImmutableList.of(
@@ -159,7 +159,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
     ShellResponse response = ShellResponse.create(0, "{\"items\": [{\"kind\": \"Service\"}]}");
     when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class))).thenReturn(response);
     kubernetesManager.getPreferredServiceIP(
-        configProvider, "demo-az2", "demo-universe", false, true);
+        configProvider, "demo-az2", "demo-universe", false, true, universe.getName());
     Mockito.verify(shellProcessHandler, times(1)).run(command.capture(), context.capture());
     assertEquals(
         ImmutableList.of(
@@ -169,7 +169,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
             "--namespace",
             "demo-universe",
             "-l",
-            "release=demo-az2,app.kubernetes.io/name=yb-tserver,"
+            "app.kubernetes.io/part-of=testUniverse,app.kubernetes.io/name=yb-tserver,"
                 + "service-type notin (headless, non-endpoint)",
             "-o",
             "json"),
