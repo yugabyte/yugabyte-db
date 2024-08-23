@@ -25,15 +25,20 @@ import { generateUniqueName } from '../../../../redesign/helpers/utils';
 import { YBButton, YBModal, YBModalProps } from '../../../../redesign/components';
 import { CurrentFormStep } from './CurrentFormStep';
 import { StorageConfigOption } from '../../sharedComponents/ReactSelectStorageConfig';
-import { TableType, Universe, YBTable } from '../../../../redesign/helpers/dtos';
 import {
   XClusterConfigAction,
-  XCLUSTER_TRANSACTIONAL_PITR_SNAPSHOT_INTERVAL_SECONDS,
+  XCLUSTER_TRANSACTIONAL_PITR_RETENTION_PERIOD_SECONDS_FALLBACK,
+  XCLUSTER_TRANSACTIONAL_PITR_SNAPSHOT_INTERVAL_SECONDS_FALLBACK,
   XCLUSTER_UNIVERSE_TABLE_FILTERS
 } from '../../constants';
 import { DurationUnit, DURATION_UNIT_TO_SECONDS } from '../constants';
 import { RuntimeConfigKey } from '../../../../redesign/helpers/constants';
 import { parseDurationToSeconds } from '../../../../utils/parsers';
+import { convertSecondsToLargestDurationUnit } from '../utils';
+import { PITR_RETENTION_PERIOD_UNIT_OPTIONS } from './ConfigurePitrStep';
+
+import { RunTimeConfigEntry } from '../../../../redesign/features/universe/universe-form/utils/dto';
+import { TableType, Universe, YBTable } from '../../../../redesign/helpers/dtos';
 
 import toastStyles from '../../../../redesign/styles/toastStyles.module.scss';
 
@@ -181,10 +186,9 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
   );
 
   const formMethods = useForm<CreateDrConfigFormValues>({
-    defaultValues: {
-      namespaceUuids: [],
-      tableUuids: []
-    }
+    defaultValues: runtimeConfigQuery.data
+      ? getDefaultValues(runtimeConfigQuery.data?.configEntries ?? [])
+      : {}
   });
 
   const modalTitle = t('title');
@@ -264,15 +268,24 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
     setSelectedNamespaceUuids([]);
   };
 
+  if (
+    formMethods.formState.defaultValues &&
+    Object.keys(formMethods.formState.defaultValues).length === 0
+  ) {
+    // react-hook-form caches the defaultValues on first render.
+    // We need to update the defaultValues with reset() after regionMetadataQuery is successful.
+    formMethods.reset(getDefaultValues(runtimeConfigQuery.data.configEntries ?? []));
+  }
+
   const runtimeConfigEntries = runtimeConfigQuery.data.configEntries ?? [];
   const runtimeConfigDefaultPitrSnapshotInterval = parseDurationToSeconds(
     runtimeConfigEntries.find(
       (config: any) => config.key === RuntimeConfigKey.XCLUSTER_TRANSACTIONAL_PITR_SNAPSHOT_INTERVAL
-    )?.value,
+    )?.value ?? '',
     { noThrow: true }
   );
   const defaultPitrSnapshotInterval = isNaN(runtimeConfigDefaultPitrSnapshotInterval)
-    ? XCLUSTER_TRANSACTIONAL_PITR_SNAPSHOT_INTERVAL_SECONDS
+    ? XCLUSTER_TRANSACTIONAL_PITR_SNAPSHOT_INTERVAL_SECONDS_FALLBACK
     : runtimeConfigDefaultPitrSnapshotInterval;
 
   const onSubmit: SubmitHandler<CreateDrConfigFormValues> = async (formValues) => {
@@ -421,4 +434,36 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
       </FormProvider>
     </YBModal>
   );
+};
+
+const getDefaultValues = (runtimeConfigEntries: RunTimeConfigEntry[]) => {
+  const runtimeConfigDefaultPitrRetentionPeriod = parseDurationToSeconds(
+    runtimeConfigEntries.find(
+      (config: any) => config.key === RuntimeConfigKey.XCLUSTER_TRANSACTIONAL_PITR_RETENTION_PERIOD
+    )?.value ?? '',
+    { noThrow: true }
+  );
+  const defaultPitrRetentionPeriod =
+    isNaN(runtimeConfigDefaultPitrRetentionPeriod) || runtimeConfigDefaultPitrRetentionPeriod < 0
+      ? XCLUSTER_TRANSACTIONAL_PITR_RETENTION_PERIOD_SECONDS_FALLBACK
+      : runtimeConfigDefaultPitrRetentionPeriod;
+  const {
+    value: pitrRetentionPeriodValue,
+    unit: durationUnit
+  } = convertSecondsToLargestDurationUnit(defaultPitrRetentionPeriod, { noThrow: true });
+  const pitrRetentionPeriodUnit = PITR_RETENTION_PERIOD_UNIT_OPTIONS.find(
+    (option) => option.value === durationUnit
+  );
+
+  return {
+    namespaceUuids: [],
+    tableUuids: [],
+    // Fall back to seconds if we can find a matching duration unit.
+    pitrRetentionPeriodValue: pitrRetentionPeriodUnit
+      ? pitrRetentionPeriodValue
+      : defaultPitrRetentionPeriod,
+    pitrRetentionPeriodUnit: pitrRetentionPeriodUnit
+      ? pitrRetentionPeriodUnit
+      : PITR_RETENTION_PERIOD_UNIT_OPTIONS.find((option) => option.value === DurationUnit.SECOND)
+  };
 };

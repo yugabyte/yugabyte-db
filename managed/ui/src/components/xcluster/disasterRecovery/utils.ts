@@ -1,6 +1,6 @@
 import { UnavailableUniverseStates } from '../../../redesign/helpers/constants';
 import { getUniverseStatus } from '../../universes/helpers/universeHelpers';
-import { DrConfigActions, DurationUnit } from './constants';
+import { DrConfigActions, DurationUnit, DURATION_UNIT_TO_SECONDS } from './constants';
 import { assertUnreachableCase } from '../../../utils/errorHandlingUtils';
 import { XClusterConfigType } from '../constants';
 
@@ -63,6 +63,39 @@ export const getPitrRetentionPeriodMinValue = (pitrRetentionPeriodUnit: Duration
     : pitrRetentionPeriodUnit === DurationUnit.MINUTE
     ? 5
     : 1;
+
+export const convertSecondsToLargestDurationUnit = (
+  seconds: number,
+  options: { noThrow?: boolean } = {}
+): { value: number; unit: DurationUnit } => {
+  const { noThrow = false } = options;
+
+  if (seconds < 0 || isNaN(seconds)) {
+    if (noThrow) {
+      return { value: 0, unit: DurationUnit.SECOND };
+    }
+    throw new Error('Input must be a non-negative number');
+  }
+
+  if (seconds === 0) {
+    return { value: 0, unit: DurationUnit.SECOND };
+  }
+
+  // Create an ordered array of units from largest to smallest based on DURATION_UNIT_TO_SECONDS
+  const orderedUnits = Object.entries(DURATION_UNIT_TO_SECONDS)
+    .sort(([, valueA], [, valueB]) => valueB - valueA)
+    .map(([unit, _]) => unit as DurationUnit);
+
+  for (const unit of orderedUnits) {
+    const unitInSeconds = DURATION_UNIT_TO_SECONDS[unit];
+    if (seconds % unitInSeconds === 0) {
+      return { value: seconds / unitInSeconds, unit };
+    }
+  }
+
+  // This line should never be reached due to SECOND being in the orderedUnits,
+  return { value: seconds, unit: DurationUnit.SECOND };
+};
 
 /**
  * Extract an XClusterConfig object from the fields of the provided DrConfig object.
