@@ -2776,7 +2776,6 @@ master_max_follower_lag:
       alias:
         "follower_lag_ms": "Max Follower Lag (ms)"
 
-
 master_load_balancer_stats:
   metric: "tablets_in_wrong_placement|total_table_load_difference|blacklisted_leaders"
   filters:
@@ -3498,3 +3497,207 @@ otel_exporter_queue_size:
     "title": "Audit Log Send Queue Size"
     xaxis:
       type: "date"
+
+yba_ha_backup_lag:
+  metric: "yba_ha_last_backup_seconds"
+  function: "timestamp|subtract_metric"
+  layout:
+    "title": "HA Backup Lag"
+    yaxis:
+      alias:
+        "yba_ha_last_backup_seconds": "HA Backup Lag (Seconds)"
+    xaxis:
+      type: "date"
+
+yba_ha_last_backup_size_mb:
+  metric: "yba_ha_last_backup_size_mb"
+  layout:
+    "title": "HA Last Backup Size"
+    yaxis:
+      alias:
+        "yba_ha_last_backup_size_mb": "HA Last Backup Size (MB)"
+    xaxis:
+      type: "date"
+
+process_user_cpu_seconds:
+  metric: "process_user_cpu_seconds_rate"
+  function: "avg_over_time|avg"
+  operator: "* 100"
+  range: true
+  filters:
+    process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|yb-controller-server|node_exporter"
+  group_by: "process"
+  panel_group: "Per-process Metrics"
+  layout:
+    title: "User CPU Seconds"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "yb-master": "Master"
+        "yb-tserver": "Tserver"
+        "yb-postmaster": "Postmaster"
+        "otelcol-contrib": "Otel Collector"
+        "yb-controller-server": "YB-Controller"
+        "node_exporter": "Node Exporter"
+      ticksuffix: "&nbsp;%"
+
+process_system_cpu_seconds:
+  metric: "process_system_cpu_seconds_rate"
+  function: "avg_over_time|avg"
+  operator: "* 100"
+  range: true
+  filters:
+    process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|yb-controller-server|node_exporter"
+  group_by: "process"
+  panel_group: "Per-process Metrics"
+  layout:
+    title: "System CPU Seconds"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "yb-master": "Master"
+        "yb-tserver": "Tserver"
+        "yb-postmaster": "Postmaster"
+        "otelcol-contrib": "Otel Collector"
+        "yb-controller-server": "YB-Controller"
+        "node_exporter": "Node Exporter"
+      ticksuffix: "&nbsp;%"
+
+process_virtual_memory:
+  metric: "yb_process_memory_kb"
+  function: "avg_over_time|avg"
+  range: true
+  operator: "/ 1024"
+  filters:
+    process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|yb-controller-server|node_exporter"
+    type: "virtual"
+  group_by: "process"
+  panel_group: "Per-process Metrics"
+  layout:
+    title: "Virtual Memory"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "yb-master": "Master"
+        "yb-tserver": "Tserver"
+        "yb-postmaster": "Postmaster"
+        "otelcol-contrib": "Otel Collector"
+        "yb-controller-server": "YB-Controller"
+        "node_exporter": "Node Exporter"
+      ticksuffix: "&nbsp;MB"
+
+process_resident_memory:
+  metric: "yb_process_memory_kb"
+  function: "avg_over_time|avg"
+  range: true
+  operator: "/ 1024"
+  filters:
+    process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|yb-controller-server|node_exporter"
+    type: "resident"
+  group_by: "process"
+  panel_group: "Per-process Metrics"
+  layout:
+    title: "RSS Memory"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "yb-master": "Master"
+        "yb-tserver": "Tserver"
+        "yb-postmaster": "Postmaster"
+        "otelcol-contrib": "Otel Collector"
+        "yb-controller-server": "YB-Controller"
+        "node_exporter": "Node Exporter"
+      ticksuffix: "&nbsp;MB"
+
+process_proportional_memory:
+  metric: "yb_process_memory_kb"
+  function: "avg_over_time|avg"
+  range: true
+  operator: "/ 1024"
+  filters:
+    process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|yb-controller-server|node_exporter"
+    type: "proportional"
+  group_by: "process"
+  panel_group: "Per-process Metrics"
+  layout:
+    title: "PSS Memory"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "yb-master": "Master"
+        "yb-tserver": "Tserver"
+        "yb-postmaster": "Postmaster"
+        "otelcol-contrib": "Otel Collector"
+        "yb-controller-server": "YB-Controller"
+        "node_exporter": "Node Exporter"
+      ticksuffix: "&nbsp;MB"
+
+process_io_read:
+  metric: "process_io_read_rate"
+  function: "avg_over_time|avg"
+  range: true
+  filters:
+    process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|yb-controller-server|node_exporter"
+  group_by: "process"
+  panel_group: "Per-process Metrics"
+  layout:
+    title: "IO Read"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "yb-master": "Master"
+        "yb-tserver": "Tserver"
+        "yb-postmaster": "Postmaster"
+        "otelcol-contrib": "Otel Collector"
+        "yb-controller-server": "YB-Controller"
+        "node_exporter": "Node Exporter"
+      ticksuffix: "&nbsp;KB"
+
+process_io_write:
+  metric: "process_io_write_rate"
+  function: "avg_over_time|avg"
+  range: true
+  filters:
+    process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|yb-controller-server|node_exporter"
+  group_by: "process"
+  panel_group: "Per-process Metrics"
+  layout:
+    title: "IO Write"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "yb-master": "Master"
+        "yb-tserver": "Tserver"
+        "yb-postmaster": "Postmaster"
+        "otelcol-contrib": "Otel Collector"
+        "yb-controller-server": "YB-Controller"
+        "node_exporter": "Node Exporter"
+      ticksuffix: "&nbsp;KB"
+
+process_open_files:
+  metric: "yb_process_open_files"
+  function: "max_over_time|avg"
+  range: true
+  filters:
+    process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|yb-controller-server|node_exporter"
+  group_by: "process"
+  panel_group: "Per-process Metrics"
+  layout:
+    title: "Open files"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "yb-master": "Master"
+        "yb-tserver": "Tserver"
+        "yb-postmaster": "Postmaster"
+        "otelcol-contrib": "Otel Collector"
+        "yb-controller-server": "YB-Controller"
+        "node_exporter": "Node Exporter"

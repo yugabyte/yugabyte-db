@@ -21,7 +21,7 @@ import (
 
 const (
 	defaultCluster = "table {{.UUID}}\t{{.ClusterNodes}}\t{{.ClusterRF}}" +
-		"\t{{.ClusterDedicatedMasters}}"
+		"\t{{.ClusterDedicatedMasters}}\t{{.LinuxVersion}}"
 	instanceTable1 = "table {{.InstanceType}}\t{{.VolumeSize}}\t{{.NumVolumes}}" +
 		"\t{{.DiskIops}}"
 	instanceTable2       = "table {{.Throughput}}\t{{.StorageClass}}\t{{.StorageType}}"
@@ -42,6 +42,7 @@ const (
 	throughputHeader    = "Throughput"
 	storageClassHeader  = "Storage Class"
 	storageTypeHeader   = "Storage Type"
+	linuxVersionHeader  = "Linux Version"
 )
 
 // ClusterContext for cluster outputs
@@ -234,6 +235,7 @@ func NewClusterContext() *ClusterContext {
 		"UUID":                    formatter.UUIDHeader,
 		"ClusterNodes":            nodeHeader,
 		"ClusterRF":               rfHeader,
+		"LinuxVersion":            linuxVersionHeader,
 		"ClusterDedicatedMasters": dedicatedMastersHeader,
 		"MasterGFlags":            masterGFlagsHeader,
 		"TServerGFlags":           tserverGFlagsHeader,
@@ -271,6 +273,24 @@ func (c *ClusterContext) ClusterNodes() string {
 func (c *ClusterContext) ClusterRF() string {
 	userIntent := c.c.GetUserIntent()
 	return fmt.Sprintf("%d", userIntent.GetReplicationFactor())
+}
+
+// LinuxVersion fetches linux version
+func (c *ClusterContext) LinuxVersion() string {
+	userIntent := c.c.GetUserIntent()
+	imageBundleUUID := userIntent.GetImageBundleUUID()
+	providerUUID := userIntent.GetProvider()
+	for _, p := range Providers {
+		if strings.Compare(p.GetUuid(), providerUUID) == 0 {
+			for _, imageBundle := range p.GetImageBundles() {
+				if strings.Compare(imageBundle.GetUuid(), imageBundleUUID) == 0 {
+					return fmt.Sprintf("%s(%s)", imageBundle.GetName(), imageBundle.GetUuid())
+				}
+			}
+		}
+	}
+
+	return imageBundleUUID
 }
 
 // ClusterDedicatedMasters fetches boolean

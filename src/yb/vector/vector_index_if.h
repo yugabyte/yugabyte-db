@@ -24,7 +24,10 @@ class VectorIndexReader {
  public:
   virtual ~VectorIndexReader() = default;
   virtual std::vector<VertexWithDistance> Search(
-      const FloatVector& query_vector, size_t max_num_results) = 0;
+      const FloatVector& query_vector, size_t max_num_results) const = 0;
+
+  // Returns the vector with the given id, or an empty vector if it does not exist.
+  virtual FloatVector GetVector(VertexId vertex_id) const = 0;
 };
 
 }  // namespace yb::vectorindex

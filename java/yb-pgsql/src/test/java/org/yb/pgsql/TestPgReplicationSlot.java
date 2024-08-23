@@ -988,12 +988,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               // The Oids for columns below are not fixed. Changing the order of creation of
               // objects (extensions, tables etc.) in the test will change these Oids. Hence,
               // skip comparing the Oids of these types.
-              PgOutputRelationMessageColumn.CreateForComparison(
-                "col_hstore", 16385, /* compareDataType */ false),
-              PgOutputRelationMessageColumn.CreateForComparison(
-                "col_discount", 16518, /* compareDataType */ false),
-              PgOutputRelationMessageColumn.CreateForComparison(
-                "col_discount_array", 16517, /* compareDataType */ false))));
+              PgOutputRelationMessageColumn.CreateForComparison("col_hstore"),
+              PgOutputRelationMessageColumn.CreateForComparison("col_discount"),
+              PgOutputRelationMessageColumn.CreateForComparison("col_discount_array"))));
         } else {
           // The replica identity for test_table in case of pgoutput is DEFAULT.
           add(PgOutputRelationMessage.CreateForComparison("public", "test_table", 'd',
@@ -1035,12 +1032,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               // The Oids for columns below are not fixed. Changing the order of creation of
               // objects (extensions, tables etc.) in the test will change these Oids. Hence,
               // skip comparing the Oids of these types.
-              PgOutputRelationMessageColumn.CreateForComparison(
-                "col_hstore", 16385, /* compareDataType */ false),
-              PgOutputRelationMessageColumn.CreateForComparison(
-                "col_discount", 16518, /* compareDataType */ false),
-              PgOutputRelationMessageColumn.CreateForComparison(
-                "col_discount_array", 16517, /* compareDataType */ false))));
+              PgOutputRelationMessageColumn.CreateForComparison("col_hstore"),
+              PgOutputRelationMessageColumn.CreateForComparison("col_discount"),
+              PgOutputRelationMessageColumn.CreateForComparison("col_discount_array"))));
         }
         add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 38,
             Arrays.asList(new PgOutputMessageTupleColumnValue("1"),

@@ -31,9 +31,14 @@
 
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
+DECLARE_int32(master_yb_client_default_timeout_ms);
+
 namespace yb::master {
 
 namespace {
+
+constexpr const size_t kPgSequenceLastValueColIdx = 2;
+constexpr const size_t kPgSequenceIsCalledColIdx = 3;
 
 Result<client::YBTablePtr> OpenSequencesDataTable(client::YBClient& client) {
   PgObjectId table_oid(kPgSequencesDataDatabaseOid, kPgSequencesDataTableOid);
@@ -51,13 +56,14 @@ Result<T> ReadNonNullNumber(Slice* cursor_into_sidebar) {
 }  // anonymous namespace
 
 Result<std::vector<YsqlSequenceInfo>> ScanSequencesDataTable(
-    client::YBClient* client, uint32_t db_oid, uint64_t max_rows_per_read, bool TEST_fail_read) {
-  auto table = VERIFY_RESULT(OpenSequencesDataTable(*client));
+    client::YBClient& client, uint32_t db_oid, uint64_t max_rows_per_read, bool TEST_fail_read) {
+  auto table = VERIFY_RESULT(OpenSequencesDataTable(client));
   RSTATUS_DCHECK_EQ(
       table->schema().num_columns(), 4, IllegalState,
       "sequences_data DocDB table has wrong number of columns");
 
-  auto session = client->NewSession(/*timeout=*/MonoDelta::FromSeconds(60));
+  auto session =
+      client.NewSession(MonoDelta::FromMilliseconds(FLAGS_master_yb_client_default_timeout_ms));
   session->set_allow_local_calls_in_curr_thread(false);
 
   PgsqlPagingStatePB* paging_state = nullptr;
@@ -110,8 +116,9 @@ Result<std::vector<YsqlSequenceInfo>> ScanSequencesDataTable(
         return StatusFromPB(*response.error_status().rbegin());
       } else {
         // This should not happen because other ways of returning errors are deprecated.
-        return STATUS(
-            InternalError, "Unknown error while trying to read from sequences_data DocDB table.");
+        return STATUS_FORMAT(
+            InternalError, "Unknown error while trying to read from sequences_data DocDB table: $0",
+            PgsqlResponsePB::RequestStatus_Name(response.status()));
       }
     }
 
@@ -137,5 +144,104 @@ Result<std::vector<YsqlSequenceInfo>> ScanSequencesDataTable(
   } while (paging_state != nullptr);
 
   return results;
+}
+
+Result<int> EnsureSequenceUpdatesInWal(
+    client::YBClient& client, uint32_t db_oid, const std::vector<YsqlSequenceInfo>& sequences) {
+  auto table = VERIFY_RESULT(OpenSequencesDataTable(client));
+
+  auto session =
+      client.NewSession(MonoDelta::FromMilliseconds(FLAGS_master_yb_client_default_timeout_ms));
+  session->set_allow_local_calls_in_curr_thread(false);
+
+  std::vector<rpc::Sidecars> sidecars_storage{sequences.size()};
+  std::vector<client::YBPgsqlWriteOpPtr> operations;
+  for (size_t i = 0; i < sequences.size(); i++) {
+    const auto& sequence = sequences[i];
+
+    // The following code creates a new YBPgsqlWriteOp operation equivalent to:
+    //
+    // UPDATE sequences_data SET last_value={sequence.last_value}, is_called={sequence.is_called}
+    //   WHERE db_oid={db_oid} AND seq_oid={sequence.sequence_oid}
+    //   AND last_value={sequence.last_value} AND is_called={sequence.is_called}
+
+    auto psql_write = client::YBPgsqlWriteOp::NewUpdate(table, &sidecars_storage[i]);
+    auto write_request = psql_write->mutable_request();
+    // We do not set the PG catalog version numbers in the request because we don't care what the PG
+    // catalog state is.
+
+    // Set primary key to db_oid, sequence.sequence_oid.
+    write_request->add_partition_column_values()->mutable_value()->set_int64_value(db_oid);
+    write_request->add_partition_column_values()->mutable_value()->set_int64_value(
+        sequence.sequence_oid);
+
+    // The SET part.
+    PgsqlColumnValuePB* column_value = write_request->add_column_new_values();
+    column_value->set_column_id(table->schema().ColumnId(kPgSequenceLastValueColIdx));
+    column_value->mutable_expr()->mutable_value()->set_int64_value(sequence.last_value);
+    column_value = write_request->add_column_new_values();
+    column_value->set_column_id(table->schema().ColumnId(kPgSequenceIsCalledColIdx));
+    column_value->mutable_expr()->mutable_value()->set_bool_value(sequence.is_called);
+
+    // The WHERE part without the primary key.
+    auto where_pb = write_request->mutable_where_expr()->mutable_condition();
+    where_pb->set_op(QL_OP_AND);
+    auto cond = where_pb->add_operands()->mutable_condition();
+    cond->set_op(QL_OP_EQUAL);
+    cond->add_operands()->set_column_id(table->schema().ColumnId(kPgSequenceLastValueColIdx));
+    cond->add_operands()->mutable_value()->set_int64_value(sequence.last_value);
+    cond = where_pb->add_operands()->mutable_condition();
+    cond->set_op(QL_OP_EQUAL);
+    cond->add_operands()->set_column_id(table->schema().ColumnId(kPgSequenceIsCalledColIdx));
+    cond->add_operands()->mutable_value()->set_bool_value(sequence.is_called);
+
+    // For compatibility set deprecated column_refs
+    write_request->mutable_column_refs()->add_ids(
+        table->schema().ColumnId(kPgSequenceLastValueColIdx));
+    write_request->mutable_column_refs()->add_ids(
+        table->schema().ColumnId(kPgSequenceIsCalledColIdx));
+    // Same values, to be consumed by current TServers
+    write_request->add_col_refs()->set_column_id(
+        table->schema().ColumnId(kPgSequenceLastValueColIdx));
+    write_request->add_col_refs()->set_column_id(
+        table->schema().ColumnId(kPgSequenceIsCalledColIdx));
+
+    // Add the operation to the operations the session should do once a flush is submitted.
+    VLOG(3) << "write request: " << write_request->DebugString();
+    operations.push_back(psql_write);
+    session->Apply(std::move(psql_write));
+  }
+
+  // Synchronously execute the operations.
+  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+  RETURN_NOT_OK(session->TEST_Flush());
+
+  int updates = 0;
+  for (const auto& operation : operations) {
+    const auto& response = operation.get()->response();
+    VLOG(3) << "write response: " << response.DebugString();
+
+    if (!operation->response().skipped()) {
+      updates++;
+    }
+
+    if (response.status() != PgsqlResponsePB::PGSQL_STATUS_OK) {
+      if (response.error_status().size() > 0) {
+        // TODO(14814, 18387):  We do not currently expect more than one status, when we do, we need
+        // to decide how to handle them.  Possible options: aggregate multiple statuses into one,
+        // discard all but one, etc.  Historically, for the one set of status fields (like
+        // error_message), new error message was overwriting the previous one, that's why let's
+        // return the last entry from error_status to mimic that past behavior, refer
+        // AsyncRpc::Finished for details.
+        return StatusFromPB(*response.error_status().rbegin());
+      } else {
+        // This should not happen because other ways of returning errors are deprecated.
+        return STATUS_FORMAT(
+            InternalError, "Unknown error while trying to update sequences_data DocDB table: $0",
+            PgsqlResponsePB::RequestStatus_Name(response.status()));
+      }
+    }
+  }
+  return updates;
 }
 }  // namespace yb::master

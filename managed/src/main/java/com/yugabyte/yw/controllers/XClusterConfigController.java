@@ -656,7 +656,7 @@ public class XClusterConfigController extends AuthenticatedController {
       if (bootstrapParams != null && !CollectionUtils.isEmpty(bootstrapParams.tables)) {
         Set<String> mainTablesInBootstrapParamsIds =
             XClusterConfigTaskBase.filterTableInfoListByTableIds(
-                    allTablesInReplicationInfoList, bootstrapParams.tables)
+                    sourceTableInfoList, bootstrapParams.tables)
                 .stream()
                 .filter(tableInfo -> !TableInfoUtil.isIndexTable(tableInfo))
                 .map(tableInfo -> XClusterConfigTaskBase.getTableId(tableInfo))

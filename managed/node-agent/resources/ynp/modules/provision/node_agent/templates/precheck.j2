@@ -19,22 +19,3 @@ else
     echo "MemoryCurrent is not greater than 0: $memory"
     add_result "Memory Usage Check" "FAIL" "MemoryCurrent is not greater than 0: $memory"
 fi
-
-# Check the start time for node-agent service.
-node_agent_start_time=$(systemctl show -p ExecMainStartTimestamp  "$service_name" | cut -d= -f2)
-if [ -n "$node_agent_start_time" ]; then
-    # Convert the service start time to Unix timestamp
-    service_start_time_unix=$(date -d "$node_agent_start_time" +%s)
-
-    # Compare the timestamps
-    if [ "$service_start_time_unix" -gt {{ execution_start_time }} ]; then
-        echo "The service $service_name started after the script execution."
-        add_result "Service Start Time Check" "PASS" "The service $service_name started after the script execution."
-    else
-        echo "The service $service_name is stale."
-        add_result "Service Start Time Check" "FAIL" "The service $service_name is stale."
-    fi
-else
-    echo "Failed to retrieve the start time for $service_name"
-    add_result "Service Start Time Check" "FAIL" "Failed to retrieve the start time for $service_name"
-fi

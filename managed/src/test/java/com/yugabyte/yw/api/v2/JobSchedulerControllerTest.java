@@ -187,7 +187,7 @@ public class JobSchedulerControllerTest extends FakeDBApplication {
     List<com.yugabyte.yw.models.JobSchedule> jobSchedules = createJobSchedules(2);
     com.yugabyte.yw.models.JobSchedule jobSchedule = jobSchedules.get(0);
     JobScheduleSnoozeSpec snoozeForm = new JobScheduleSnoozeSpec();
-    snoozeForm.setSnoozeSecs(600L);
+    snoozeForm.setSnoozeSecs(605L);
     JobSchedule updatedJobSchedule =
         jobSchedulerApi.snoozeJobSchedule(customer.getUuid(), jobSchedule.getUuid(), snoozeForm);
     assertEquals(jobSchedule.getUuid(), jobSchedule.getUuid());

@@ -1408,7 +1408,7 @@
         },
         "target" : {
           "description" : "Target",
-          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "CustomCACertificate", "Alert", "AlertTemplateSettings", "AlertTemplateVariables", "AlertChannel", "AlertChannelTemplates", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "DrConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "TelemetryProvider", "TroubleshootingPlatform", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense", "PerformanceRecommendation", "PerformanceAdvisorSettings", "PerformanceAdvisorRun", "Role", "RoleBinding", "GroupMapping", "JobSchedule" ],
+          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "CustomCACertificate", "Alert", "AlertTemplateSettings", "AlertTemplateVariables", "AlertChannel", "AlertChannelTemplates", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "DrConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "TelemetryProvider", "TroubleshootingPlatform", "GFlags", "Hook", "HookScope", "NodeAgent", "CustomerLicense", "PerformanceRecommendation", "PerformanceAdvisorSettings", "PerformanceAdvisorRun", "Role", "RoleBinding", "GroupMapping", "JobSchedule", "ContinuousBackup", "IsolatedBackup" ],
           "example" : "User",
           "readOnly" : true,
           "type" : "string"
@@ -4019,31 +4019,6 @@
         },
         "ysqlPassword" : {
           "description" : "YSQL Auth password",
-          "type" : "string"
-        }
-      },
-      "type" : "object"
-    },
-    "ContinuousBackupGetResp" : {
-      "description" : "continuous backup config get response",
-      "properties" : {
-        "backupInterval" : {
-          "description" : "Continuous backup config backup interval",
-          "type" : "string"
-        },
-        "lastBackup" : {
-          "description" : "Last time a backup was made to storage location",
-          "example" : "2024-07-28T01:02:03Z",
-          "format" : "date-time",
-          "type" : "string"
-        },
-        "storageLocation" : {
-          "description" : "Continuous backup config location",
-          "type" : "string"
-        },
-        "uuid" : {
-          "description" : "Continuous backup config UUID",
-          "format" : "uuid",
           "type" : "string"
         }
       },
@@ -18281,180 +18256,6 @@
         "tags" : [ "Session management" ]
       }
     },
-    "/api/v1/customers/{cUUID}/auto_yba_backups" : {
-      "get" : {
-        "description" : "",
-        "operationId" : "getContinuousBackupConfig",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/ContinuousBackupGetResp"
-            }
-          }
-        },
-        "responsesObject" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/ContinuousBackupGetResp"
-            }
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Get continuous backup config details",
-        "tags" : [ "Continuous YBA backup management" ]
-      },
-      "post" : {
-        "description" : "",
-        "operationId" : "createContinuousBackupConfig",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "responsesObject" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Create continuous backup config",
-        "tags" : [ "Continuous YBA backup management" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/auto_yba_backups/restore" : {
-      "post" : {
-        "description" : "",
-        "operationId" : "restoreContinuousBackup",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "responsesObject" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Restore from continuous backup",
-        "tags" : [ "Continuous YBA backup management" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/auto_yba_backups/{bUUID}" : {
-      "delete" : {
-        "description" : "",
-        "operationId" : "deleteContinuousBackupConfig",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "bUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "responsesObject" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Delete continuous backup config",
-        "tags" : [ "Continuous YBA backup management" ]
-      },
-      "put" : {
-        "description" : "",
-        "operationId" : "editContinuousBackupConfig",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "bUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "responsesObject" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Edit continuous backup config",
-        "tags" : [ "Continuous YBA backup management" ]
-      }
-    },
     "/api/v1/customers/{cUUID}/backups" : {
       "post" : {
         "description" : "",
@@ -28384,70 +28185,6 @@
         "tags" : [ "Asynchronous Replication" ]
       }
     },
-    "/api/v1/customers/{cUUID}/yba_backups" : {
-      "post" : {
-        "description" : "",
-        "operationId" : "createYbaBackup",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "responsesObject" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Create an isolated backup of YBA",
-        "tags" : [ "Individual YBA backup management" ]
-      }
-    },
-    "/api/v1/customers/{cUUID}/yba_backups/restore" : {
-      "post" : {
-        "description" : "",
-        "operationId" : "restoreYbaBackup",
-        "parameters" : [ {
-          "format" : "uuid",
-          "in" : "path",
-          "name" : "cUUID",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "in" : "query",
-          "name" : "request",
-          "required" : false
-        } ],
-        "responses" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "responsesObject" : {
-          "default" : {
-            "description" : "successful operation"
-          }
-        },
-        "security" : [ {
-          "apiKeyAuth" : [ ]
-        } ],
-        "summary" : "Restore an isolated backup to YBA",
-        "tags" : [ "Individual YBA backup management" ]
-      }
-    },
     "/api/v1/customers/{cUUID}/ybdb_release" : {
       "get" : {
         "description" : "WARNING: This is a preview API that could change: list ybdb releases",
@@ -29592,8 +29329,6 @@
   }, {
     "name" : "Cloud providers"
   }, {
-    "name" : "Continuous YBA backup management"
-  }, {
     "name" : "Custom CA Certificates"
   }, {
     "name" : "Customer Configuration"
@@ -29609,8 +29344,6 @@
     "name" : "Extract metadata from remote tarball"
   }, {
     "name" : "Grafana Dashboard"
-  }, {
-    "name" : "Individual YBA backup management"
   }, {
     "name" : "Instance types"
   }, {

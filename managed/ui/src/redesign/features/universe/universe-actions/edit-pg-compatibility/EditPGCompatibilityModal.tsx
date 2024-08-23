@@ -238,9 +238,9 @@ export const EditPGCompatibilityModal: FC<PGCompatibilityModalProps> = ({
                 </li>
                 <li>{t('universeActions.pgCompatibility.disableWarning3')}</li>
               </ul>
-              <Link underline="always" className={classes.learnLink}>
+              {/* <Link underline="always" className={classes.learnLink}>
                 {t('common.learnMore')}
-              </Link>
+              </Link> */}
             </Typography>
           </Box>
         )}

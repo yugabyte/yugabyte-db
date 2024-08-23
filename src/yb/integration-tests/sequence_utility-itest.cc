@@ -16,6 +16,8 @@
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/ysql_sequence_util.h"
 
+#include "yb/tablet/tablet.h"
+
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 namespace yb::master {
@@ -62,6 +64,8 @@ class SequencesUtilTest : public pgwrapper::PgMiniTestBase {
     RETURN_NOT_OK(conn.Execute("CREATE SEQUENCE dropped_sequence START WITH 40"));
     RETURN_NOT_OK(conn.Execute("DROP SEQUENCE dropped_sequence"));
 
+    RETURN_NOT_OK(conn.Execute("CREATE SEQUENCE extra_sequence START WITH 50"));
+
     const NamespaceName unscanned_namespace_name = "unscanned_database";
     RETURN_NOT_OK(CreateYsqlNamespace(unscanned_namespace_name));
     auto conn_2 = VERIFY_RESULT(ConnectToDB(unscanned_namespace_name));
@@ -105,7 +109,7 @@ class SequencesUtilTest : public pgwrapper::PgMiniTestBase {
 
 TEST_F(SequencesUtilTest, ScanWhenSequencesDataTableNonexistentGivesNotFound) {
   // Expect failure because sequences_data table has not been created yet.
-  auto result = master::ScanSequencesDataTable(client_.get(), namespace_oid_);
+  auto result = master::ScanSequencesDataTable(*client_.get(), namespace_oid_);
   ASSERT_NOK(result);
   ASSERT_TRUE(result.status().IsNotFound());
   ASSERT_NOK_STR_CONTAINS(
@@ -118,7 +122,7 @@ TEST_F(SequencesUtilTest, ScanReturnsNothingForNoSequences) {
   ASSERT_OK(conn.Execute("CREATE SEQUENCE foo"));
   ASSERT_OK(conn.Execute("DROP SEQUENCE foo"));
   {
-    auto results = master::ScanSequencesDataTable(client_.get(), namespace_oid_);
+    auto results = master::ScanSequencesDataTable(*client_.get(), namespace_oid_);
     ASSERT_OK(results);
     ASSERT_EQ(0, results->size());
   }
@@ -128,7 +132,7 @@ TEST_F(SequencesUtilTest, ScanReturnsNothingForNoSequences) {
   auto empty_namespace_id = ASSERT_RESULT(CreateYsqlNamespace("empty_database"));
   auto empty_namespace_oid = ASSERT_RESULT(GetPgsqlDatabaseOid(empty_namespace_id));
   {
-    auto results = master::ScanSequencesDataTable(client_.get(), empty_namespace_oid);
+    auto results = master::ScanSequencesDataTable(*client_.get(), empty_namespace_oid);
     ASSERT_OK(results);
     ASSERT_EQ(0, results->size());
   }
@@ -136,7 +140,7 @@ TEST_F(SequencesUtilTest, ScanReturnsNothingForNoSequences) {
   // Same but instead scan a nonexistent database OID.
   {
     auto results =
-        master::ScanSequencesDataTable(client_.get(), /*nonexistent database OID*/ 666666);
+        master::ScanSequencesDataTable(*client_.get(), /*nonexistent database OID*/ 666666);
     ASSERT_OK(results);
     ASSERT_EQ(0, results->size());
   }
@@ -145,7 +149,7 @@ TEST_F(SequencesUtilTest, ScanReturnsNothingForNoSequences) {
 TEST_F(SequencesUtilTest, ScanSampleSequences) {
   ASSERT_OK(CreateSampleSequences());
   auto expected = ASSERT_RESULT(ComputeExpectedScanResult());
-  auto actual = ASSERT_RESULT(master::ScanSequencesDataTable(client_.get(), namespace_oid_));
+  auto actual = ASSERT_RESULT(master::ScanSequencesDataTable(*client_.get(), namespace_oid_));
   VerifyScan(expected, actual);
 }
 
@@ -154,12 +158,12 @@ TEST_F(SequencesUtilTest, ScanWithPaging) {
   auto expected = ASSERT_RESULT(ComputeExpectedScanResult());
   {
     auto actual = ASSERT_RESULT(
-        master::ScanSequencesDataTable(client_.get(), namespace_oid_, /*max_rows_per_read=*/1));
+        master::ScanSequencesDataTable(*client_.get(), namespace_oid_, /*max_rows_per_read=*/1));
     VerifyScan(expected, actual);
   }
   {
     auto actual = ASSERT_RESULT(
-        master::ScanSequencesDataTable(client_.get(), namespace_oid_, /*max_rows_per_read=*/2));
+        master::ScanSequencesDataTable(*client_.get(), namespace_oid_, /*max_rows_per_read=*/2));
     VerifyScan(expected, actual);
   }
 }
@@ -167,8 +171,55 @@ TEST_F(SequencesUtilTest, ScanWithPaging) {
 TEST_F(SequencesUtilTest, ScanWithReadFailure) {
   ASSERT_OK(CreateSampleSequences());
   auto result = master::ScanSequencesDataTable(
-      client_.get(), namespace_oid_, /*max_rows_per_read=*/1000, /*TEST_fail_read=*/true);
+      *client_.get(), namespace_oid_, /*max_rows_per_read=*/1000, /*TEST_fail_read=*/true);
   ASSERT_NOK(result);
   LOG(INFO) << "return status is " << result.status();
+}
+
+TEST_F(SequencesUtilTest, EnsureSequenceUpdatesInWalWhenNoChanges) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_docdb_log_write_batches) = true;
+  ASSERT_OK(CreateSampleSequences());
+  auto expected = ASSERT_RESULT(ComputeExpectedScanResult());
+  auto sequences = ASSERT_RESULT(master::ScanSequencesDataTable(*client_.get(), namespace_oid_));
+  auto updates =
+      ASSERT_RESULT(EnsureSequenceUpdatesInWal(*client_.get(), namespace_oid_, sequences));
+
+  // For this test we assume there were no changes since the scan used to call
+  // EnsureSequenceUpdatesInWal was done.  Thus EnsureSequenceUpdatesInWal should have made one
+  // update for each sequence.
+  ASSERT_EQ(updates, expected.size());
+
+  // Ensure the updates it made are nops.
+  {
+    auto actual = ASSERT_RESULT(master::ScanSequencesDataTable(*client_.get(), namespace_oid_));
+    VerifyScan(expected, actual);
+  }
+}
+
+TEST_F(SequencesUtilTest, EnsureSequenceUpdatesInWalWithConcurrentChanges) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_docdb_log_write_batches) = true;
+  ASSERT_OK(CreateSampleSequences());
+  auto sequences = ASSERT_RESULT(master::ScanSequencesDataTable(*client_.get(), namespace_oid_));
+
+  // Here we are testing changes that occur between the scan used to get the sequence information
+  // and the call to EnsureSequenceUpdatesInWal.  This should make EnsureSequenceUpdatesInWal do
+  // fewer updates because it should not update changes since the scan was done.
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
+  ASSERT_OK(conn.Execute("ALTER SEQUENCE altered_sequence RESTART WITH 22"));
+  // Change just is_called.
+  ASSERT_OK(conn.Fetch("SELECT pg_catalog.setval('set_sequence', 31, false)"));
+  ASSERT_OK(conn.Execute("DROP SEQUENCE extra_sequence"));
+
+  auto updates =
+      ASSERT_RESULT(EnsureSequenceUpdatesInWal(*client_.get(), namespace_oid_, sequences));
+  ASSERT_EQ(updates, sequences.size() - /*number of sequences changed above*/ 3);
+
+  // Ensure the updates it did make are nops.
+  {
+    auto expected = ASSERT_RESULT(ComputeExpectedScanResult());
+    auto actual = ASSERT_RESULT(master::ScanSequencesDataTable(*client_.get(), namespace_oid_));
+    VerifyScan(expected, actual);
+  }
 }
 }  // namespace yb::master

@@ -35,6 +35,7 @@ import json
 import logging
 import os
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -83,6 +84,8 @@ CMD_TIMEOUT_SEC = 20
 MAX_THREADS = 10
 
 MAX_TRIES = 2
+
+PER_PROCESS_VERSION = 1
 
 DEFAULT_SSL_VERSION = "TLSv1_2"
 SSL_PROTOCOL_TO_SSL_VERSION = {
@@ -222,12 +225,14 @@ YB_NODE_CONTROLLER_CHECK = MetricDefinition(
     "YB-Controller server check")
 YB_NODE_CLOCK_DRIFT_CHECK = MetricDefinition(
     "yb_node_clock_drift_check_ms",
-    "Time Drift betwen nodes within limits",
+    "Time Drift between nodes within limits",
     "millisec")
+YB_NODE_NTP_SERVICE_STATUS = MetricDefinition(
+    "yb_node_ntp_service_status",
+    "If chronyd or ntp(d) services are running")
 YB_DDL_ATOMICITY_CHECK = MetricDefinition(
     "yb_ddl_atomicity_check",
-    "Status of DDL atomicity check"
-)
+    "Status of DDL atomicity check")
 YB_PROCESS_CPU_SECONDS_TOTAL = MetricDefinition(
     "yb_process_cpu_seconds_total",
     "Check total cpu seconds per process and its subprocesses")
@@ -531,7 +536,7 @@ class NodeChecker():
                  ysql_server_http_port, node_version, is_ybc_enabled, ybc_port,
                  time_drift_wrn_threshold, time_drift_err_threshold, otel_enabled,
                  temp_output_file, ddl_atomicity_check, master_leader_url,
-                 master_rpc_port, tserver_rpc_port, verbose):
+                 master_rpc_port, tserver_rpc_port, verbose, clock_service_required):
         self.node = node
         self.node_name = node_name
         self.node_identifier = node_identifier
@@ -558,6 +563,7 @@ class NodeChecker():
         self.node_version = node_version
         self.is_ybc_enabled = is_ybc_enabled
         self.ybc_port = ybc_port
+        self.clock_service_required = clock_service_required
         self.time_drift_wrn_threshold = time_drift_wrn_threshold
         self.time_drift_err_threshold = time_drift_err_threshold
         self.additional_info = {}
@@ -565,15 +571,18 @@ class NodeChecker():
         self.temp_output_file = temp_output_file
         self.ddl_atomicity_check = ddl_atomicity_check
         self.master_leader_url = master_leader_url
+        self.verbose = verbose
         self.prev_process_results = self._load_previous_per_process_results(temp_output_file)
         self.current_process_results = {}
-        self.verbose = verbose
 
     def _load_previous_per_process_results(self, temp_output_file):
         try:
             with open(temp_output_file) as f:
                 js = json.load(f)
-                return js
+                if 'version' in js and js['version'] == PER_PROCESS_VERSION:
+                    return js
+                self.verbose_log("skipping prev stats because of version")
+                return {}
         except IOError as ie:
             logging.info("Failed to load prev process results")
             return {}
@@ -581,6 +590,7 @@ class NodeChecker():
     def _dump_per_process_results(self):
          try:
             with open(self.temp_output_file, 'w') as f:
+                self.current_process_results['version'] = PER_PROCESS_VERSION
                 json.dump(self.current_process_results, f)
          except IOError as ie:
             logging.error("Failed to write current per process results: {}".format(str(ie)))
@@ -1678,24 +1688,38 @@ class NodeChecker():
 
     def check_yb_node_clock_drift(self):
         e = self._new_entry("Node Clock Drift")
-        if not chrony_exists():
-          return e.ignore_check()
-        metric = Metric.from_definition(YB_NODE_CLOCK_DRIFT_CHECK)
+        if not chrony_exists() and not ntp_exists():
+            if self.clock_service_required:
+                return e.fill_and_return_entry(["no time sync service found (chrony or ntp(d))"],
+                                               has_error=True)
+            return e.ignore_check()
+        # metrics[0] is clock drift metric
+        # metrics[1] is ntp service status
+        metrics = [
+            Metric.from_definition(YB_NODE_CLOCK_DRIFT_CHECK),
+            Metric.from_definition(YB_NODE_NTP_SERVICE_STATUS)
+        ]
+        service_status = get_ntp_service_status()
+        metrics[1].add_value(service_status)
         drift_ms = get_clock_drift_ms()
         # Returns error string on failure, int on success
         if isinstance(drift_ms, str):
-          return e.fill_and_return_entry([drift_ms], has_error=True)
-        metric.add_value(drift_ms)
+          return e.fill_and_return_entry([drift_ms], has_error=True, metrics=metrics)
+        metrics[0].add_value(drift_ms)
         errors = []
         if drift_ms > self.time_drift_err_threshold:
             errors.append("Node clock drift is {} ms, over {} ms".format(
                 drift_ms, self.time_drift_err_threshold))
-            return e.fill_and_return_entry(errors, has_error=True, metrics=[metric])
+            return e.fill_and_return_entry(errors, has_error=True, metrics=metrics)
         if drift_ms > self.time_drift_wrn_threshold:
             errors.append("Node clock drift is {} ms, over {} ms".format(
                 drift_ms, self.time_drift_wrn_threshold))
-            return e.fill_and_return_warning_entry(errors, metrics=[metric])
-        return e.fill_and_return_entry(["%s ms" % drift_ms], has_error=False, metrics=[metric])
+            return e.fill_and_return_warning_entry(errors, metrics=metrics)
+
+        service_error = service_status == 0
+        return e.fill_and_return_entry(
+            ["%s ms" % drift_ms, "ntp service is%s running" % "not" if service_error else ""],
+            has_error=service_error, metrics=metrics)
 
     def check_process_stats(self, process_name):
         metrics = [Metric.from_definition(YB_PROCESS_CPU_SECONDS_TOTAL),
@@ -1819,9 +1843,10 @@ class NodeChecker():
         cmd = 'cat /proc/{}/stat'.format(pid)
         stat = self._check_output(cmd).strip()
         stat_list = stat.split(" ")
+        ticks = int(os.sysconf("SC_CLK_TCK"))
         if len(stat_list) > 0:
-            res['user_cpu_seconds'] = int(stat_list[13])
-            res['system_cpu_seconds'] = int(stat_list[14])
+            res['user_cpu_seconds'] = int(stat_list[13]) // ticks
+            res['system_cpu_seconds'] = int(stat_list[14]) // ticks
             res['virtual_memory_kb'] = int(stat_list[22]) // 1024
 
         cmd = 'cat /proc/{}/smaps'.format(pid)
@@ -1924,6 +1949,13 @@ def is_equal_release_build(release_build1, release_build2):
             is_equal_or_newer_release_build(release_build2, release_build1))
 
 def get_clock_drift_ms():
+    if chrony_exists():
+        return _chrony_get_clock_drift_ms()
+    if ntp_exists():
+        return _ntp_get_clock_drift_ms()
+
+
+def _chrony_get_clock_drift_ms():
     """
     Get the clock drift in milliseconds. Returns absolute value of the drift
     """
@@ -1935,12 +1967,53 @@ def get_clock_drift_ms():
         match = re.search("System time.*: (.*) second", out, re.MULTILINE)
         if match:
           return float(match.group(1))*1000 # Convert seconds to milliseconds
-    return "Error: Unknown time service"
+    return "Failed to get clock drift from chrony"
+
+def _ntp_get_clock_drift_ms():
+    env = os.environ.copy()
+    ntp_out = check_output("systemctl status ntp.service", env)
+    ntpd_out = check_output("systemctl status ntpd.service", env)
+    if "Active: active" in ntp_out or "Active: active" in ntpd_out:
+        out = check_output("ntpq -p | awk 'NR==3' {print $9}'", env)
+        if "Error" not in out:
+          return int(float(out)*1000) # Convert seconds to milliseconds
+    return "Failed to get clock drift from ntp(d)"
+
+def get_ntp_service_status():
+    if chrony_exists():
+        return 1 if is_service_running("chronyd.service") else 0
+    elif ntp_exists():
+        ntp_running = is_service_running("ntp.service")
+        ntpd_running = is_service_running("ntpd.service")
+        return 1 if ntp_running or ntpd_running else 0
+    logging.error("unknown time service: must be ntp(d) or chrony")
+    return 0
 
 def chrony_exists():
     env = os.environ.copy()
     chrony_out = check_output("command -v chronyc", env)
     return "Error" not in chrony_out
+
+def ntp_exists():
+    env = os.environ.copy()
+    ntp_out = check_output("command -v ntpq", env)
+    return "Error" not in ntp_out
+
+def is_service_running(service_name):
+    env = os.environ.copy()
+    cmd = "systemctl show --no-pager {}".format(service_name)
+    out = check_output(cmd, env)
+    if out.startswith("Error"):
+        logging.warning("failed to determine if {} is running".format(service_name))
+        return False
+    for line in out.splitlines():
+        key, value = line.split('=',1)
+        if key == "LoadState" and value == "not-found":
+            return False
+        if key == "ActiveState":
+            return value == "active"
+    logging.warning("No 'ActiveState' or 'LoadState' found in service details")
+    return False
 
 class CheckCoordinator:
     class PreCheckRunInfo:
@@ -2058,6 +2131,7 @@ class NodeInfo:
         self.is_ybc_enabled = data["enableYbc"]
         self.ybc_port = data["ybcPort"]
         self.otel_enabled = data["otelCollectorEnabled"]
+        self.clockSyncServiceRequired = data.get("clockSyncServiceRequired", True)
 
 
 def main():
@@ -2106,7 +2180,7 @@ def main():
         n.ysql_server_http_port, n.yb_version, n.is_ybc_enabled, n.ybc_port,
         n.time_drift_wrn_threshold, n.time_drift_err_threshold, n.otel_enabled,
         args.temp_output_file, args.ddl_atomicity_check, args.master_leader_url,
-        n.master_rpc_port, n.tserver_rpc_port, args.verbose)
+        n.master_rpc_port, n.tserver_rpc_port, args.verbose, n.clockSyncServiceRequired)
 
     coordinator.add_precheck(checker, "check_openssl_availability")
 

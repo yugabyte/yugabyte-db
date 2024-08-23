@@ -323,6 +323,7 @@ class UniverseDetail extends Component {
       universe?.currentUniverse?.data?.universeDetails?.clusters
     );
     const useSystemd = primaryCluster?.userIntent?.useSystemd;
+    const isYSQLEnabledInUniverse = primaryCluster?.userIntent?.enableYSQL;
     const isReadOnlyUniverse =
       getPromiseState(currentUniverse).isSuccess() &&
       currentUniverse.data.universeDetails.capability === 'READ_ONLY';
@@ -685,7 +686,7 @@ class UniverseDetail extends Component {
       ...(isReadOnlyUniverse
         ? []
         : [
-            !isItKubernetesUniverse && isAuditLogEnabled && (
+            !isItKubernetesUniverse && isAuditLogEnabled && isYSQLEnabledInUniverse && (
               <Tab.Pane
                 eventKey={'db-audit-log'}
                 tabtitle="Logs"
@@ -712,7 +713,7 @@ class UniverseDetail extends Component {
               featureFlags.test.showReplicationSlots) && (
               <Tab.Pane
                 eventKey={'replication-slots'}
-                tabtitle="CDC Replication Slots"
+                tabtitle="CDC"
                 key="ReplicationSlots-tab"
                 mountOnEnter={true}
                 unmountOnExit={true}
