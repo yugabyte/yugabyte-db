@@ -132,6 +132,32 @@ GeonearDistanceFromDocument(const GeonearDistanceState *state,
 		points = BsonExtractGeographyRuntime(document, &state->key);
 	}
 
+	if (points == (Datum) 0)
+	{
+		/*
+		 * Because we support geonear in the runtime today and doesn't impose strict index usage.
+		 * There can be documents which can pass the validate step and end up here
+		 * e.g. empty document {a: {b: {}}}
+		 * and would have empty geo values. Don't allow this
+		 *
+		 * TODO: This would be fixed if we restrict geonear queries only with indexes
+		 */
+		StringInfo objectIdString = makeStringInfo();
+		bson_iter_t iterator;
+		if (PgbsonInitIteratorAtPath(document, "_id", &iterator))
+		{
+			appendStringInfo(objectIdString, "{ _id: %s } ",
+							 BsonValueToJsonForLogging(bson_iter_value(&iterator)));
+		}
+		ereport(ERROR, (
+					errcode(MongoConversionFailure),
+					errmsg(
+						"geoNear fails to convert values at path '%s' to valid points. %s",
+						state->key.string, objectIdString->len > 0 ?
+						objectIdString->data : ""),
+					errhint("geoNear fails to extract valid points from document")));
+	}
+
 	float8 distance = DatumGetFloat8(FunctionCall2(state->distanceFnInfo, points,
 												   state->referencePoint));
 	return distance;
