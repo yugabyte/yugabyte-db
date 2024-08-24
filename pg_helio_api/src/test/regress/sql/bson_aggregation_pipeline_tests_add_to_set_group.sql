@@ -18,12 +18,14 @@ SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggre
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "pricingDeals": { "$addToSet": "$pricing" } } } ] }');
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "retailPrices": { "$addToSet": "$pricing.retail" } } } ] }');
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "retailPrices": { "$addToSet": "$noValue" } } } ] }');
+SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "items": { "$addToSet": { "$getField": { "field": "a", "input": { "b": 1 } } } } } } ] }');
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "itemsSold": { "$addToSet": { "item" : "$item" } } } } ] }');
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "itemsSold": { "$addToSet": "$item" } } } ] }');
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "pricingDeals": { "$addToSet": "$pricing" } } } ] }');
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "retailPrices": { "$addToSet": "$pricing.retail" } } } ] }');
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "retailPrices": { "$addToSet": "$noValue" } } } ] }');
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "items": { "$addToSet": { "$getField": { "field": "a", "input": { "b": 1 } } } } } } ] }');
 
 /* running $addToSet with document that exceeds 16MB */
 DO $$
@@ -48,9 +50,11 @@ SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggre
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "pricingDeals": { "$addToSet": "$pricing" } } } ] }');
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "retailPrices": { "$addToSet": "$pricing.retail" } } } ] }');
 SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "retailPrices": { "$addToSet": "$noValue" } } } ] }');
+SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "items": { "$addToSet": { "$getField": { "field": "a", "input": { "b": 1 } } } } } } ] }');
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "itemsSold": { "$addToSet": { "item" : "$item" } } } } ] }');
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "itemsSold": { "$addToSet": "$item" } } } ] }');
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "pricingDeals": { "$addToSet": "$pricing" } } } ] }');
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "retailPrices": { "$addToSet": "$pricing.retail" } } } ] }');
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "retailPrices": { "$addToSet": "$noValue" } } } ] }');
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "sales", "pipeline": [ { "$group": { "_id": "$year", "items": { "$addToSet": { "$getField": { "field": "a", "input": { "b": 1 } } } } } } ] }');

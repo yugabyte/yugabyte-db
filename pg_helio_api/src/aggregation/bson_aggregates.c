@@ -1484,7 +1484,7 @@ bson_add_to_set_transition(PG_FUNCTION_ARGS)
 	}
 
 	pgbson *currentValue = PG_GETARG_MAYBE_NULL_PGBSON(1);
-	if (currentValue != NULL)
+	if (currentValue != NULL && !IsPgbsonEmptyDocument(currentValue))
 	{
 		CheckAggregateIntermediateResultSize(currentState->currentSizeWritten +
 											 PgbsonGetBsonSize(currentValue));
