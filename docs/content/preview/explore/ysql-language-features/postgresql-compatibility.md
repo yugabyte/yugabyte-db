@@ -11,6 +11,8 @@ menu:
     parent: explore-ysql-language-features
     weight: 70
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 YugabyteDB is a [PostgreSQL-compatible](https://www.yugabyte.com/tech/postgres-compatibility/) distributed database that supports the majority of PostgreSQL syntax. This means that existing applications built on PostgreSQL can often be migrated to YugabyteDB without changing application code.
@@ -27,9 +29,9 @@ PostgreSQL compatibility has two aspects:
 
     Performance parity refers to the capabilities of YugabyteDB that allow applications running on PostgreSQL to run with predictable performance on YugabyteDB. In other words, the performance degradation experienced by small and medium scale applications going from a single server database to a distributed database should be predictable and bounded.
 
-## Enhanced Postgres Compatibility Mode
+## Enhanced PostgreSQL Compatibility Mode
 
-To test and take advantage of features developed for PostgreSQL compatibility in YugabyteDB that are currently in {{<badge/ea>}}, you can enable Enhanced Postgres Compatibility Mode (EPCM). When this mode is turned on, YugabyteDB is configured to use all the latest features developed for feature and performance parity. EPCM is available in [v2024.1](/preview/releases/ybdb-releases/v2024.1/) and later.
+To test and take advantage of features developed for PostgreSQL compatibility in YugabyteDB that are currently in {{<badge/ea>}}, you can enable Enhanced PostgreSQL Compatibility Mode (EPCM). When this mode is turned on, YugabyteDB is configured to use all the latest features developed for feature and performance parity. EPCM is available in [v2024.1](/preview/releases/ybdb-releases/v2024.1/) and later.
 
 <!--Depending on the version of YugabyteDB, EPCM configures a different set of features as described in the following sections.-->
 
@@ -43,23 +45,24 @@ If you have set these features independent of EPCM, you cannot use EPCM.
 Conversely, if you are using EPCM on a universe, you cannot set any of the features independently.
 {{</note>}}
 
-### Features
-
 | Feature | Flag/Configuration Parameter | EA | Included in EPCM |
 | :--- | :--- | :--- | :--- |
 | Read committed | [yb_enable_read_committed_isolation](../../../reference/configuration/yb-tserver/#ysql-default-transaction-isolation) | v2.20 and 2024.1 | Yes |
 | Wait-on-conflict | [enable_wait_queues](../../../reference/configuration/yb-tserver/#enable-wait-queues) | v2024.1 | Yes |
 | Cost-based optimizer | [yb_enable_base_scans_cost_model](../../../reference/configuration/yb-tserver/#yb-enable-base-scans-cost-model) | v2.20 | Yes |
 | Batch nested loop join | [yb_enable_batchednl](../../../reference/configuration/yb-tserver/#yb-enable-batchednl) | v2.20 and 2024.1 | Yes |
-| Size-based fetching | [yb_fetch_size_limit](../../../reference/configuration/yb-tserver/#yb-fetch-size-limit) | v2.20 and 2024.1 | No |
+| Efficient communication<br>between PostgreSQL and DocDB | [pg_client_use_shared_memory](../../../reference/configuration/yb-tserver/#pg-client-use-shared-memory) | 2024.1 | Yes |
+| Ascending indexing by default | [yb_use_hash_splitting_by_default](../../../reference/configuration/yb-tserver/#yb-use-hash-splitting-by-default) | 2024.1 | Yes |
 | Bitmap scan | [enable_bitmapscan](../../../reference/configuration/yb-tserver/#enable-bitmapscan) | 2024.1.3 | Planned |
 | Parallel query | | | Planned |
 
-#### Released features
+### Released
 
 The following features are currently available.
 
-##### Read committed
+#### Read committed
+
+Flag: `yb_enable_read_committed_isolation=true`
 
 Read Committed isolation level handles serialization errors and avoids the need to retry errors in the application logic. Read Committed provides feature compatibility, and is the default isolation level in PostgreSQL. When migrating applications from PostgreSQL to YugabyteDB, read committed is the preferred isolation level.
 
@@ -67,11 +70,17 @@ Read Committed isolation level handles serialization errors and avoids the need 
 To learn more about read committed isolation, see [Read Committed](../../../architecture/transactions/read-committed/).
 {{</lead>}}
 
-##### Cost-based optimizer
+#### Cost-based optimizer
+
+Configuration parameter: `yb_enable_base_scans_cost_model=true`
 
 Cost-based optimizer (CBO) creates optimal execution plans for queries, providing significant performance improvements both in single-primary and distributed PostgreSQL workloads. This feature reduces or eliminates the need to use hints or modify queries to optimize query execution. CBO provides improved performance parity.
 
-##### Wait-on-conflict concurrency
+Note: When enabling the cost models, ensure that packed row for colocated tables is enabled by setting the `--ysql_enable_packed_row_for_colocated_table` flag to true.
+
+#### Wait-on-conflict concurrency
+
+Flag: `enable_wait_queues`
 
 Enables use of wait queues so that conflicting transactions can wait for the completion of other dependent transactions, helping to improve P99 latencies. Wait-on-conflict concurrency control provides feature compatibility, and uses the same semantics as PostgreSQL.
 
@@ -79,7 +88,9 @@ Enables use of wait queues so that conflicting transactions can wait for the com
 To learn more about concurrency control in YugabyteDB, see [Concurrency control](../../../architecture/transactions/concurrency-control/).
 {{</lead>}}
 
-##### Batched nested loop join
+#### Batched nested loop join
+
+Configuration parameter: `yb_bnl_batch_size=1024`
 
 Batched nested loop join (BNLJ) is a join execution strategy that improves on nested loop joins by batching the tuples from the outer table into a single request to the inner table. By using batched execution, BNLJ helps reduce the latency for query plans that previously used nested loop joins. BNLJ provides improved performance parity.
 
@@ -87,23 +98,37 @@ Batched nested loop join (BNLJ) is a join execution strategy that improves on ne
 To learn more about join strategies in YugabyteDB, see [Join strategies](../../../architecture/transactions/concurrency-control/).
 {{</lead>}}
 
-##### Size-based fetching
+#### Efficient communication between PostgreSQL and DocDB
 
-Size-based fetching allows you to control the amount of data returned in one response when the query layer fetches rows of a table from DocDB. With size-based fetching, you can specify the limit based on size (instead based on the number of rows). This can help reduce the number of requests from PostgreSQL and DocDB. Size-based fetching provides improved performance parity.
+Configuration parameter: `pg_client_use_shared_memory=true`
 
-#### Planned features
+Enable more efficient communication between YB-TServer and PostgreSQL using shared memory. This feature provides improved performance parity.
+
+#### Default ascending indexing
+
+Configuration parameter: `yb_use_hash_splitting_by_default=false`
+
+Enable efficient execution for range queries on data that can be sorted into some ordering. In particular, the query planner will consider using an index whenever an indexed column is involved in a comparison using one of the following operators: `<   <=   =   >=   >`.
+
+Also enables retrieving data in sorted order, which can eliminate the need to sort the data.
+
+Default ascending indexing provides feature compatibility and is the default in PostgreSQL.
+
+### Planned
 
 The following features are planned for EPCM in future releases.
 
-##### Bitmap scan
+#### Bitmap scan
+
+Configuration parameter: `enable_bitmapscan=true`
 
 Bitmap scans use multiple indexes to answer a query, with only one scan of the main table. Each index produces a "bitmap" indicating which rows of the main table are interesting. Bitmap scans can improve the performance of queries containing AND and OR conditions across several index scans. Bitmap scan provides improved performance parity.
 
-##### Parallel query
+#### Parallel query
 
-Enables the use of PostgreSQL parallel queries. Using parallel queries, the query planner can devise plans that leverage multiple CPUs to answer queries faster. Parallel query provides feature compatibility and improved performance parity.
+Enables the use of PostgreSQL [parallel queries](https://www.postgresql.org/docs/11/parallel-query.html). Using parallel queries, the query planner can devise plans that leverage multiple CPUs to answer queries faster. Parallel query provides feature compatibility and improved performance parity.
 
-### Enable enhanced compatibility mode
+### Enable EPCM
 
 #### YugabyteDB
 
