@@ -14,7 +14,7 @@ type: docs
 
 With bidirectional replication, both universes can perform reads and writes, and writes are replicated in both directions. This is also referred to as [Active-active multi-master](../../../../architecture/docdb-replication/async-replication/#active-active-multi-master).
 
-You set up bidirectional replication using YugabyteDB Anywhere by creating two separate non-transactional xCluster replication configurations. Under this scenario, you create a replication configuration from universe A to universe B, and then you create a new replication configuration from universe B to universe A.
+You set up bidirectional replication using YugabyteDB Anywhere by creating two separate non-transactional xCluster Replication configurations. Under this scenario, you create a replication configuration from universe A to universe B, and then you create a new replication configuration from universe B to universe A.
 
 ![Active-Active Multi-Master](/images/architecture/replication/active-active-deployment-new.png)
 
@@ -37,8 +37,8 @@ Create two universes as described in [Prerequisites](../xcluster-replication-set
 To set up bidirectional replication from universe A to universe B, and vice versa on the same set of tables or databases, do the following:
 
 1. Make sure that there are no writes happening on universe B.
-1. Set up xCluster replication from A to B following the steps in [Deploy xCluster](../../../../deploy/multi-dc/async-replication/async-deployment/). A full copy of the selected tables or databases may be performed as part of this operation.
-1. Set up xCluster replication from universe B to A following the steps in [Deploy xCluster](../../../../deploy/multi-dc/async-replication/async-deployment/).
+1. Set up xCluster Replication from A to B following the steps in [Deploy xCluster](../../../../deploy/multi-dc/async-replication/async-deployment/). A full copy of the selected tables or databases may be performed as part of this operation.
+1. Set up xCluster Replication from universe B to A following the steps in [Deploy xCluster](../../../../deploy/multi-dc/async-replication/async-deployment/).
 
     No full copy is performed for the reverse replication. It is important to have no writes on B during this setup, as these writes might not be replicated to universe A.
 
@@ -69,7 +69,7 @@ Note that restarting one side of an existing bidirectional replication configura
 
 ## DDL operations in bidirectional replication
 
-In general, for DDL operations, you can follow the steps in [Manage tables and indexes](../xcluster-replication-ddl/) while taking care to update the xCluster replication configuration on both configurations involved.
+In general, for DDL operations, you can follow the steps in [Manage tables and indexes](../xcluster-replication-ddl/) while taking care to update the xCluster Replication configuration on both configurations involved.
 
 However, in some special cases, you need to follow different procedures.
 
@@ -80,7 +80,7 @@ It is highly recommended that you add tables to bidirectional configurations imm
 To add a table to bidirectional replication:
 
 1. Add the table to both universes.
-1. Add the table to both replication configurations by following the steps in [Add a table to xCluster replication](../xcluster-replication-ddl/#add-a-table-to-replication).
+1. Add the table to both replication configurations by following the steps in [Add a table to xCluster Replication](../xcluster-replication-ddl/#add-a-table-to-replication).
 
 Non-empty tables can still be added to replication in both directions as above, but this is not advisable. In this case, no full copy is performed so any initial writes to the table are not replicated and data might be inconsistent between the source and target universes. To fix any inconsistencies, [restart the replication](#restart-replication).
 
@@ -91,6 +91,6 @@ To add an index table to a bidirectional replication, do the following:
 1. Stop the workload on the main table.
 1. Wait for the replication lag for the corresponding main table to become 0.
 1. Create the index table on both universes.
-1. Add the newly created index tables to both replication configurations by following the steps in [Add a table to xCluster replication](../xcluster-replication-ddl/#add-a-table-to-replication).
+1. Add the newly created index tables to both replication configurations by following the steps in [Add a table to xCluster Replication](../xcluster-replication-ddl/#add-a-table-to-replication).
 
 Note: If the main table has data, and the index table is added to the replication configurations without stopping the workload against the main table, the index table can be potentially inconsistent between the two universes.

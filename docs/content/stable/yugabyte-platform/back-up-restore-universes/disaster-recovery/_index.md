@@ -80,7 +80,7 @@ When [upgrading universes](../../manage-deployments/upgrade-software-install/) i
 
 Note that switchover operations can potentially fail if the DR primary and replica are at different versions.
 
-## xCluster DR vs xCluster replication
+## xCluster DR vs xCluster Replication
 
 xCluster refers to all YugabyteDB deployments with two or more universes, and has two major flavors:
 
@@ -103,20 +103,20 @@ xCluster DR adds higher-level orchestration workflows to this deployment to make
 - During switchover, xCluster DR waits for all remaining changes on the DR primary to be replicated to the DR replica before switching over.
 - During both switchover and failover, xCluster DR promotes the DR replica from read only to read and write; during switchover, xCluster DR demotes (when possible) the original DR primary from read and write to read only.
 
-For all deployment models _other than_ active-active single-master, unidirectional replication configured at any moment in time, for transactional YSQL, use xCluster replication directly instead of xCluster DR.
+For all deployment models _other than_ active-active single-master, unidirectional replication configured at any moment in time, for transactional YSQL, use xCluster Replication directly instead of xCluster DR.
 
-For example, use xCluster replication for the following:
+For example, use xCluster Replication for the following:
 
 - Multi-master (bidirectional) deployments, where you have two application instances, each one writing to a different universe.
 - Active-active single-master deployments in which a single master application can freely write (without coordinating with YugabyteDB for failover or switchover) to either universe, because both accept writes.
 - Non-transactional SQL. That is, SQL without write-order guarantees and without transactional atomicity guarantees.
 - CQL deployments.
 
-Note that a universe configured for xCluster DR cannot be used for xCluster replication, and vice versa. Although xCluster DR uses xCluster replication under the hood, xCluster DR replication is managed exclusively from the **xCluster Disaster Recovery** tab, and not on the **xCluster Replication** tab.
+Note that a universe configured for xCluster DR cannot be used for xCluster Replication, and vice versa. Although xCluster DR uses xCluster Replication under the hood, xCluster DR replication is managed exclusively from the **xCluster Disaster Recovery** tab, and not on the **xCluster Replication** tab.
 
-(As an alternative to xCluster DR, you can perform setup, failover, and switchover manually. Refer to [Set up transactional xCluster replication](../../../deploy/multi-dc/async-replication/async-transactional-setup/).)
+(As an alternative to xCluster DR, you can perform setup, failover, and switchover manually. Refer to [Set up transactional xCluster Replication](../../../deploy/multi-dc/async-replication/async-transactional-setup/).)
 
-For more information on xCluster replication in YugabyteDB, see the following:
+For more information on xCluster Replication in YugabyteDB, see the following:
 
-- [xCluster replication: overview and architecture](../../../architecture/docdb-replication/async-replication/)
-- [xCluster replication between universes in YugabyteDB](../../../deploy/multi-dc/async-replication/)
+- [xCluster Replication: overview and architecture](../../../architecture/docdb-replication/async-replication/)
+- [xCluster Replication between universes in YugabyteDB](../../../deploy/multi-dc/async-replication/)

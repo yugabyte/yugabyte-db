@@ -1,9 +1,9 @@
 ---
-title: Manage tables and indexes for xCluster replication
+title: Manage tables and indexes for xCluster Replication
 headerTitle: Manage tables and indexes
 linkTitle: Tables and indexes
-description: Manage tables and indexes in universes in xCluster replication
-headContent: Add and remove tables and indexes in universes with xCluster replication
+description: Manage tables and indexes in universes in xCluster Replication
+headContent: Add and remove tables and indexes in universes with xCluster Replication
 menu:
   preview_yugabyte-platform:
     parent: xcluster-replication
@@ -12,10 +12,10 @@ menu:
 type: docs
 ---
 
-When making DDL changes to databases in xCluster replication (such as creating, altering, or dropping tables or partitions), you must do the following:
+When making DDL changes to databases in xCluster Replication (such as creating, altering, or dropping tables or partitions), you must do the following:
 
 - Make the change at the SQL level on both the source and target.
-- Update the xCluster replication configuration in YugabyteDB Anywhere.
+- Update the xCluster Replication configuration in YugabyteDB Anywhere.
 
 The order in which you do this varies depending on the operation.
 

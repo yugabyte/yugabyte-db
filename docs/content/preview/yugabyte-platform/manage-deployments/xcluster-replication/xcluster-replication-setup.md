@@ -1,8 +1,8 @@
 ---
-title: Set up xCluster replication for a universe
-headerTitle: Set up xCluster replication
+title: Set up xCluster Replication for a universe
+headerTitle: Set up xCluster Replication
 linkTitle: Setup
-description: Setting up xCluster replication for a universe
+description: Setting up xCluster Replication for a universe
 headContent: Start replication from your source to your target
 menu:
   preview_yugabyte-platform:
@@ -29,23 +29,23 @@ Ensure the universes have the following characteristics:
 
 - They have enough disk space to support storage of write-ahead logs (WALs) in case of a network partition or a temporary outage of the target universe. During these cases, WALs will continue to write until replication is restored. Consider sizing your disk according to your ability to respond and recover from network or other infrastructure outages.
 
-    In addition, during xCluster replication setup, the source universe retains WAL logs and increases in size. The setup (including copying data from source to target) is not aborted if the source universe runs out of space. Instead, a warning is displayed notifying that the source universe has less than 100 GB of space remaining. Ensure that there is enough space available on the source universe before attempting to set up the replication.
+    In addition, during xCluster Replication setup, the source universe retains WAL logs and increases in size. The setup (including copying data from source to target) is not aborted if the source universe runs out of space. Instead, a warning is displayed notifying that the source universe has less than 100 GB of space remaining. Ensure that there is enough space available on the source universe before attempting to set up the replication.
 
 - They have network connectivity; see [Networking for xCluster](../../../prepare/networking/#networking-for-xcluster). If the source and target universe Master and TServer nodes use DNS addresses, those addresses must be resolvable on all nodes.
 
 ## Best practices
 
-- Monitor CPU use and keep it below 65%.
+- Monitor CPU use and keep it at 65% or less.
 - Monitor disk space and keep its use under 65%.
 - Set the YB-TServer [log_min_seconds_to_retain](../../../../reference/configuration/yb-tserver/#log-min-seconds-to-retain) flag to 86400 on both source and target.
 
-    This flag determines the duration for which WAL is retained on the source in case of a network partition or a complete outage of the target. For xCluster replication, you should set the flag to a value greater than the default. The goal is to retain write-ahead logs (WALs) during a network partition or target outage until replication can be restarted. Setting this to 86400 (24 hours) is a good rule of thumb, but you should also consider how quickly you will be able to recover from a network partition or target outage.
+    This flag determines the duration for which WAL is retained on the source in case of a network partition or a complete outage of the target. For xCluster Replication, you should set the flag to a value greater than the default. The goal is to retain write-ahead logs (WALs) during a network partition or target outage until replication can be restarted. Setting this to 86400 (24 hours) is a good rule of thumb, but you should also consider how quickly you will be able to recover from a network partition or target outage.
 
     In addition, during an outage, you will need enough disk space to retain the WALs, so determine the data change rate for your workload, and size your disk accordingly.
 
 - [Set a replication lag alert](#set-up-replication-lag-alerts) for the source to be alerted when the replication lag exceeds acceptable levels.
 - Add new tables and databases to the replication configuration soon after creating them, and before performing any writes to avoid the overhead of a [full copy](#full-copy-during-xcluster-setup).
-- If xCluster replication setup clashes with scheduled backups, wait for the scheduled backup to finish, and then restart the replication.
+- If xCluster Replication setup clashes with scheduled backups, wait for the scheduled backup to finish, and then restart the replication.
 
 ## Configure replication
 
@@ -55,7 +55,7 @@ During initial setup, or when adding a database, you don't need to create object
 
 If the source has a lot of data, setup will take longer because the data must be copied in full to the target before on-going asynchronous replication starts.
 
-### Set up xCluster replication
+### Set up xCluster Replication
 
 To set up replication for a universe, do the following:
 
@@ -134,7 +134,7 @@ Ideally, you should add tables to replication right after creating them on both 
 
 A full copy is done by first backing up the data to external storage, and then restoring to the target universe.
 
-- For information on creating and using storage configurations, refer to [Configure backup storage](../../../back-up-restore-universes/configure-backup-storage/)
+- For information on creating and using storage configurations, refer to [Configure backup storage](../../../back-up-restore-universes/configure-backup-storage/).
 - To configure the performance of backup and restore, refer to [Configure backup performance parameters](../../../back-up-restore-universes/back-up-universe-data/#configure-backup-performance-parameters).
 
 ### YSQL tables
@@ -238,13 +238,13 @@ This performs a full copy of the databases (YSQL) or tables (YCQL) involved from
 
 ### Pause and remove replication
 
-To pause xCluster replication for a universe, do the following:
+To pause xCluster Replication for a universe, do the following:
 
 1. Navigate to the universe **xCluster Replication** tab and select the replication configuration.
 
 1. Click **Pause Replication**.
 
-To remove xCluster replication for a universe, do the following:
+To remove xCluster Replication for a universe, do the following:
 
 1. Navigate to the universe **xCluster Replication** tab and select the replication configuration.
 
@@ -256,7 +256,7 @@ You can opt to ignore errors and force delete the replication, but this is not r
 
 Use the same version of YugabyteDB on both the source and target.
 
-When [upgrading universes](../../manage-deployments/upgrade-software-install/) in xCluster replication, you should upgrade and finalize the target universe before upgrading and finalizing the source universe.
+When [upgrading universes](../../../manage-deployments/upgrade-software-install/) in xCluster Replication, you should upgrade and finalize the target universe before upgrading and finalizing the source universe.
 
 If you upgrade and finalize the source universe first, replication may be paused automatically until both universes are finalized to the same software version.
 
