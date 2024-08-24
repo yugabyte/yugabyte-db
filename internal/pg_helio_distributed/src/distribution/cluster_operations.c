@@ -18,6 +18,7 @@
 #include "utils/mongo_errors.h"
 #include "metadata/collection.h"
 #include "metadata/metadata_cache.h"
+#include "utils/guc_utils.h"
 #include "utils/query_utils.h"
 #include "utils/version_utils.h"
 #include "utils/version_utils_private.h"
@@ -26,6 +27,7 @@
 extern int MaxNumActiveUsersIndexBuilds;
 extern int IndexBuildScheduleInSec;
 extern char *ApiExtensionName;
+extern char *ApiGucPrefix;
 
 char *ApiDistributedSchemaName = "helio_api_distributed";
 char *DistributedExtensionName = "pg_helio_distributed";
@@ -90,8 +92,16 @@ command_initialize_cluster(PG_FUNCTION_ARGS)
 Datum
 command_complete_upgrade(PG_FUNCTION_ARGS)
 {
+	/* Since complete_upgrade is internal operation, if the disk is full and we have readonly setting on, we should be able to upgrade so we turn off. */
+	int savedGUCLevel = NewGUCNestLevel();
+	SetGUCLocally(psprintf("%s.IsPgReadOnlyForDiskFull", ApiGucPrefix), "false");
+
 	bool isInitialize = false;
-	PG_RETURN_BOOL(SetupCluster(isInitialize));
+	bool upgraded = SetupCluster(isInitialize);
+
+	RollbackGUCChange(savedGUCLevel);
+
+	PG_RETURN_BOOL(upgraded);
 }
 
 
