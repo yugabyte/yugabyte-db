@@ -1,7 +1,7 @@
 ---
 title: Integrate with third-party tools in YugabyteDB Anywhere
 headerTitle: Manage export configurations
-linkTitle: Configure log export
+linkTitle: Export configuration
 description: Set up links to third-party tools in YugabyteDB Anywhere.
 headcontent: Set up links to third-party tools
 badges: ea
@@ -58,8 +58,6 @@ To create an export configuration, do the following:
 1. Enter a name for the configuration.
 1. Enter your Datadog [API key](https://docs.datadoghq.com/account_management/api-app-keys/).
 1. Choose the Datadog site to connect to, or choose Self-hosted and enter your URL.
-1. Optionally, click **Download** to download the Datadog [dashboard](https://docs.datadoghq.com/dashboards/) template. You can import this JSON format template into your Datadog account and use it as a starting point for visualizing your cluster data in Datadog.
-1. Click **Test Configuration** to make sure your connection is working.
 1. Click **Create Configuration**.
 
   {{% /tab %}}
@@ -68,8 +66,8 @@ To create an export configuration, do the following:
 
 The Splunk export configuration requires the following:
 
-- Splunk access token.
-- Endpoint URL.
+- Splunk access token
+- Endpoint URL
 
 To create an export configuration, do the following:
 
@@ -86,7 +84,7 @@ To create an export configuration, do the following:
 
 The AWS CloudWatch export configuration requires the following:
 
-- Access Key ID and Secret Access Key for the AWS Service Account.
+- Access Key ID and Secret Access Key for the AWS Service Account
 
 To create an export configuration, do the following:
 
@@ -101,7 +99,7 @@ To create an export configuration, do the following:
 
   {{% /tab %}}
 
-  {{% tab header="Prometheus" lang="prometheus" %}}
+  {{% tab header="GCP" lang="gcp" %}}
 
 The GCP Cloud Logging export configuration requires the following:
 
