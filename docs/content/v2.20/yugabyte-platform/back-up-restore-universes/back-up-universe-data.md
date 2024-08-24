@@ -44,6 +44,10 @@ The universe **Backups** page allows you to create new backups that start immedi
 
 1. For YCQL backups, you can choose to back up all tables in the keyspace to which the database belongs or only certain tables. Click **Select a subset of tables** to display the **Select Tables** dialog, where you can select one or more tables to back up. Click **Confirm** when you are done.
 
+1. For YSQL backups of universes with geo-partitioning, you can choose to back up the tablespaces. Select the **Backup tablespaces information** option.
+
+    If you don't choose to back up tablespaces, the tablespaces are not preserved and their data is backed up to the primary region.
+
 1. Specify the period of time during which the backup is to be retained. Note that there's an option to never delete the backup.
 
 1. Click **Backup**.
