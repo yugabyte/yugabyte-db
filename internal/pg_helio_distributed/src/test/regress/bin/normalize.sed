@@ -12,3 +12,4 @@ s/^-[+-]{2,}$/------------------------------------------------------------------
 s/process [0-9]+ still waiting for ShareLock on transaction [0-9]+ after [0-9\.]+ ms/process XYZ still waiting on ShareLock on transaction T1 after D1 ms/g
 s/process [0-9]+ acquired ShareLock on transaction [0-9]+ after [0-9\.]+ ms/process XYZ acquired ShareLock on transaction T1 after D1 ms/g
 s/Distributed Subplan \d+/Distributed Subplan DDD/g
+s/Type oid not supported \d+/Type oid not supported ddd/g

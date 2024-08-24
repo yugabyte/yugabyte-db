@@ -481,6 +481,39 @@ bson_repath_and_build(PG_FUNCTION_ARGS)
 }
 
 
+inline static void
+WriteBsonSqlValue(Datum fieldValue, pgbson_element_writer *writer)
+{
+	/* extract the bson. */
+	pgbson *nestedBson = (pgbson *) DatumGetPointer(fieldValue);
+
+	/* if it's a single value bson ({ "": <value> }) */
+	/* then write the *value* as a child element. */
+	pgbsonelement element;
+	bool isSingleElement = TryGetSinglePgbsonElementFromPgbson(nestedBson, &element);
+	if (isSingleElement && element.pathLength == 0)
+	{
+		PgbsonElementWriterWriteValue(writer, &element.bsonValue);
+	}
+	else
+	{
+		/* if it's not a single value element, treat it as a nested object. */
+		pgbson_writer childWriter;
+		bson_iter_t childIter;
+		PgbsonElementWriterStartDocument(writer, &childWriter);
+		PgbsonInitIterator(nestedBson, &childIter);
+		while (bson_iter_next(&childIter))
+		{
+			PgbsonWriterAppendValue(&childWriter, bson_iter_key(&childIter),
+									bson_iter_key_len(&childIter), bson_iter_value(
+										&childIter));
+		}
+
+		PgbsonElementWriterEndDocument(writer, &childWriter);
+	}
+}
+
+
 /*
  * Writes a SQL field to the writer specified doing the appropriate conversions
  */
@@ -521,37 +554,9 @@ PgbsonElementWriterWriteSQLValue(pgbson_element_writer *writer,
 		return;
 	}
 
-	Oid bsonTypeOid = BsonTypeId();
-	if (fieldTypeId == bsonTypeOid)
+	if (fieldTypeId == BsonTypeId())
 	{
-		/* extract the bson. */
-		pgbson *nestedBson = (pgbson *) DatumGetPointer(fieldValue);
-
-		/* if it's a single value bson ({ "": <value> }) */
-		/* then write the *value* as a child element. */
-		pgbsonelement element;
-		bool isSingleElement = TryGetSinglePgbsonElementFromPgbson(nestedBson, &element);
-		if (isSingleElement && element.pathLength == 0)
-		{
-			PgbsonElementWriterWriteValue(writer, &element.bsonValue);
-		}
-		else
-		{
-			/* if it's not a single value element, treat it as a nested object. */
-			pgbson_writer childWriter;
-			bson_iter_t childIter;
-			PgbsonElementWriterStartDocument(writer, &childWriter);
-			PgbsonInitIterator(nestedBson, &childIter);
-			while (bson_iter_next(&childIter))
-			{
-				PgbsonWriterAppendValue(&childWriter, bson_iter_key(&childIter),
-										bson_iter_key_len(&childIter), bson_iter_value(
-											&childIter));
-			}
-
-			PgbsonElementWriterEndDocument(writer, &childWriter);
-		}
-
+		WriteBsonSqlValue(fieldValue, writer);
 		return;
 	}
 
@@ -640,6 +645,12 @@ PgbsonElementWriterWriteSQLValue(pgbson_element_writer *writer,
 
 		default:
 		{
+			if (fieldTypeId == HelioCoreBsonTypeId())
+			{
+				WriteBsonSqlValue(fieldValue, writer);
+				return;
+			}
+
 			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg(
 								"Type oid not supported %d", fieldTypeId)));
 		}
