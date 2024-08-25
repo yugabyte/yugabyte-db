@@ -353,7 +353,7 @@ InitApiConfigurations(char *prefix)
 		NULL, NULL, NULL);
 
 	DefineCustomIntVariable(
-		psprintf("%s.next_collection_id", prefix),
+		"helio_api.next_collection_id",
 		gettext_noop("Set the next collection id to use when creationing a collection."),
 		gettext_noop("Collection ids are normally generated using a sequence. If "
 					 "next_collection_id is set to a value different than "
@@ -368,7 +368,7 @@ InitApiConfigurations(char *prefix)
 		NULL, NULL, NULL);
 
 	DefineCustomIntVariable(
-		psprintf("%s.next_collection_index_id", prefix),
+		"helio_api.next_collection_index_id",
 		gettext_noop("Set the next collection index id to use when creating a "
 					 "collection index."),
 		gettext_noop("Collection index ids are normally generated using a sequence. "
