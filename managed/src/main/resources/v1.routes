@@ -437,10 +437,13 @@ PUT     /customers/:cUUID/schedules/:sUUID                                     c
 + forceNoAudit
 POST    /customers/:cUUID/schedules/page                                       com.yugabyte.yw.controllers.ScheduleController.pageScheduleList(cUUID: java.util.UUID, request: Request)
 + forceNoAudit
-POST    /customers/:cUUID/restore/page                                         com.yugabyte.yw.controllers.BackupsController.pageRestoreList(cUUID: java.util.UUID, request: Request)
-DELETE  /customers/:cUUID/schedules/:sUUID/delete                              com.yugabyte.yw.controllers.ScheduleController.deleteYb(cUUID: java.util.UUID, sUUID: java.util.UUID, request: Request)
-GET     /customers/:cUUID/backups/:backupUUID/list_increments                  com.yugabyte.yw.controllers.BackupsController.listIncrementalBackups(cUUID: java.util.UUID, backupUUID: java.util.UUID)
-POST    /customers/:cUUID/restore/preflight                                    com.yugabyte.yw.controllers.BackupsController.restorePreflight(cUUID: java.util.UUID, request: Request)
+POST    /customers/:cUUID/restore/page                                              com.yugabyte.yw.controllers.BackupsController.pageRestoreList(cUUID: java.util.UUID, request: Request)
+DELETE  /customers/:cUUID/schedules/:sUUID/delete                                   com.yugabyte.yw.controllers.ScheduleController.deleteYb(cUUID: java.util.UUID, sUUID: java.util.UUID, request: Request)
+GET     /customers/:cUUID/backups/:backupUUID/list_increments                       com.yugabyte.yw.controllers.BackupsController.listIncrementalBackups(cUUID: java.util.UUID, backupUUID: java.util.UUID)
+POST    /customers/:cUUID/restore/preflight                                         com.yugabyte.yw.controllers.BackupsController.restorePreflight(cUUID: java.util.UUID, request: Request)
+POST    /customers/:cUUID/restore/validate_restorable_keyspace_tables               com.yugabyte.yw.controllers.BackupsController.validateRestorableKeyspaceTables(cUUID: java.util.UUID, request: Request)
+POST    /customers/:cUUID/restore/advanced_restore_preflight                        com.yugabyte.yw.controllers.BackupsController.advancedRestorePreflight(cUUID: java.util.UUID, request: Request)
+GET     /customers/:cUUID/backups/:baseBackupUUID/restorable_keyspace_tables        com.yugabyte.yw.controllers.BackupsController.listRestorableKeyspaceTables(cUUID: java.util.UUID, baseBackupUUID: java.util.UUID)
 
 # New Backup Schedule Create/Edit/Delete/Toggle APIs
 POST      /customers/:cUUID/create_backup_schedule_async                                          com.yugabyte.yw.controllers.BackupsController.createBackupScheduleAsync(cUUID: java.util.UUID, request: Request)

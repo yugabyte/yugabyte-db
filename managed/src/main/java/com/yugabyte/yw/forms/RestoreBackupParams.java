@@ -87,7 +87,11 @@ public class RestoreBackupParams extends UniverseTaskParams {
   public int parallelism = 8;
 
   @ApiModelProperty(value = "Restore TimeStamp")
+  @YBADeprecated(sinceDate = "2024-08-15", sinceYBAVersion = "2024.2.0.0")
   public String restoreTimeStamp = null;
+
+  @ApiModelProperty(value = "Restore timestamp in millis")
+  public long restoreToPointInTimeMillis;
 
   @ApiModel(description = "Backup Storage Info for doing restore operation")
   public static class BackupStorageInfo {
@@ -115,7 +119,8 @@ public class RestoreBackupParams extends UniverseTaskParams {
     @ApiModelProperty(value = "User name of the new tables owner")
     public String newOwner = null;
 
-    @ApiModelProperty(value = "Is selective table restore")
+    @ApiModelProperty(
+        value = "Only restore selected tables instead of restoring all tables in backup")
     public boolean selectiveTableRestore = false;
 
     @ApiModelProperty(value = "Use tablespaces during restore")
@@ -144,6 +149,7 @@ public class RestoreBackupParams extends UniverseTaskParams {
     this.disableMultipart = otherParams.disableMultipart;
     this.enableVerboseLogs = otherParams.enableVerboseLogs;
     this.prefixUUID = otherParams.prefixUUID;
+    this.restoreToPointInTimeMillis = otherParams.restoreToPointInTimeMillis;
   }
 
   @JsonIgnore
@@ -160,5 +166,6 @@ public class RestoreBackupParams extends UniverseTaskParams {
     this.disableChecksum = params.disableChecksum;
     this.useTablespaces = params.useTablespaces;
     this.prefixUUID = params.prefixUUID;
+    this.restoreToPointInTimeMillis = params.restoreToPointInTimeMillis;
   }
 }

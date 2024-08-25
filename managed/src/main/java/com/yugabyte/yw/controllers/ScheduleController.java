@@ -310,7 +310,7 @@ public class ScheduleController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      notes = "WARNING: This is a preview API that could change.",
+      notes = "WARNING: This is a preview API that could change. Edit a backup schedule async.",
       value = "Edit a backup schedule async",
       response = Schedule.class,
       nickname = "editBackupScheduleAsync")
@@ -383,7 +383,7 @@ public class ScheduleController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      notes = "WARNING: This is a preview API that could change.",
+      notes = "WARNING: This is a preview API that could change. Delete a backup schedule async.",
       value = "Delete a backup schedule async",
       response = Schedule.class,
       nickname = "deleteBackupScheduleAsync")

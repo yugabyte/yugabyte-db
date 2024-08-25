@@ -3,6 +3,10 @@
     "dbtype": "ycql",
     "backup_spec": "'ybdemo_keyspace' 'batch_ts_metrics_raw' 'ybdemo_keyspace' 'cassandrasecondaryindex'",
     "backup_size": "145964142823",
+    "restorable_window": {
+      "snapshot_timestamp_micros": "1721632620000000",
+      "history_retention_secs": "4500"
+    },
     "snapshot_details": [
       {
         "type": "NAMESPACE",
