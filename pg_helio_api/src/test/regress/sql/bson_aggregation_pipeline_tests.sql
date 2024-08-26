@@ -160,11 +160,39 @@ SELECT document FROM bson_aggregation_count('db', '{ "count": "aggregation_pipel
 
 SELECT document FROM bson_aggregation_count('db', '{ "count": "aggregation_pipeline", "query": { "_id": { "$gt": "1" } } }');
 
+-- count with skip
+SELECT document FROM bson_aggregation_count('db', '{ "count": "aggregation_pipeline", "query": {}, "skip": 0 }');
+
+SELECT document FROM bson_aggregation_count('db', '{ "count": "aggregation_pipeline", "query": {}, "skip": 1 }');
+
+SELECT document FROM bson_aggregation_count('db', '{ "count": "aggregation_pipeline", "query": {}, "skip": null }');
+
+SELECT document FROM bson_aggregation_count('db', '{ "count": "aggregation_pipeline", "query": {}, "skip": -3.14159 }');
+
+SELECT document FROM bson_aggregation_count('db', '{ "count": "aggregation_pipeline", "query": {}, "skip": -9223372036854775808 }');
+
 SELECT document FROM bson_aggregation_count('db', '{ "count": "non_existent_coll" }');
 
 SELECT document FROM helio_api.count_query('db', '{ "count": "aggregation_pipeline", "query": { "_id": { "$gt": "1" } } }');
 
 SELECT document FROM helio_api.count_query('db', '{ "count": "aggregation_pipeline" }');
+
+SELECT document FROM helio_api.count_query('db', '{ "count": "aggregation_pipeline", "query": {}, "skip": null }');
+
+SELECT document FROM helio_api.count_query('db', '{ "count": "aggregation_pipeline", "query": {}, "skip": -3.14159 }');
+
+SELECT document FROM helio_api.count_query('db', '{ "count": "aggregation_pipeline", "query": {}, "skip": -9223372036854775808 }');
+
+-- handling of skip as an aggregation stage; this is different from skip in a count query
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [{ "$match": {}}, { "$skip": 0 }], "cursor": {}}');
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [{ "$match": {}}, { "$skip": 1 }], "cursor": {}}');
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [{ "$match": {}}, { "$skip": null }], "cursor": {}}');
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [{ "$match": {}}, { "$skip": -3.14159 }], "cursor": {}}');
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [{ "$match": {}}, { "$skip": -9223372036854775808 }], "cursor": {}}');
 
 -- EXPLAIN the counts
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_count('db', '{ "count": "aggregation_pipeline" }');

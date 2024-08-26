@@ -609,6 +609,31 @@ SELECT document FROM bson_aggregation_count('db', '{ "count": "aggregation_pipel
  { "n" : { "$numberInt" : "2" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
+-- count with skip
+SELECT document FROM bson_aggregation_count('db', '{ "count": "aggregation_pipeline", "query": {}, "skip": 0 }');
+                               document                               
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "3" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_count('db', '{ "count": "aggregation_pipeline", "query": {}, "skip": 1 }');
+                               document                               
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "2" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_count('db', '{ "count": "aggregation_pipeline", "query": {}, "skip": null }');
+                               document                               
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "3" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_count('db', '{ "count": "aggregation_pipeline", "query": {}, "skip": -3.14159 }');
+ERROR:  BSON field 'skip' value must be >=0, actual value '-3'
+HINT:  BSON field 'skip' value must be >=0, actual value '-3'
+SELECT document FROM bson_aggregation_count('db', '{ "count": "aggregation_pipeline", "query": {}, "skip": -9223372036854775808 }');
+ERROR:  BSON field 'skip' value must be >=0, actual value '-9223372036854775808'
+HINT:  BSON field 'skip' value must be >=0, actual value '-9223372036854775808'
 SELECT document FROM bson_aggregation_count('db', '{ "count": "non_existent_coll" }');
                                document                               
 ----------------------------------------------------------------------
@@ -627,6 +652,40 @@ SELECT document FROM helio_api.count_query('db', '{ "count": "aggregation_pipeli
  { "n" : { "$numberInt" : "3" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
+SELECT document FROM helio_api.count_query('db', '{ "count": "aggregation_pipeline", "query": {}, "skip": null }');
+                               document                               
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "3" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM helio_api.count_query('db', '{ "count": "aggregation_pipeline", "query": {}, "skip": -3.14159 }');
+ERROR:  BSON field 'skip' value must be >=0, actual value '-3'
+HINT:  BSON field 'skip' value must be >=0, actual value '-3'
+SELECT document FROM helio_api.count_query('db', '{ "count": "aggregation_pipeline", "query": {}, "skip": -9223372036854775808 }');
+ERROR:  BSON field 'skip' value must be >=0, actual value '-9223372036854775808'
+HINT:  BSON field 'skip' value must be >=0, actual value '-9223372036854775808'
+-- handling of skip as an aggregation stage; this is different from skip in a count query
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [{ "$match": {}}, { "$skip": 0 }], "cursor": {}}');
+                                                               document                                                               
+--------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : "1", "int" : { "$numberInt" : "10" }, "a" : { "b" : [ "x", { "$numberInt" : "1" }, { "$numberDouble" : "2.0" }, true ] } }
+ { "_id" : "2", "double" : { "$numberDouble" : "2.0" }, "a" : { "b" : { "c" : { "$numberInt" : "3" } } } }
+ { "_id" : "3", "boolean" : false, "a" : "no", "b" : "yes", "c" : true }
+(3 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [{ "$match": {}}, { "$skip": 1 }], "cursor": {}}');
+                                                 document                                                  
+-----------------------------------------------------------------------------------------------------------
+ { "_id" : "2", "double" : { "$numberDouble" : "2.0" }, "a" : { "b" : { "c" : { "$numberInt" : "3" } } } }
+ { "_id" : "3", "boolean" : false, "a" : "no", "b" : "yes", "c" : true }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [{ "$match": {}}, { "$skip": null }], "cursor": {}}');
+ERROR:  Argument to $skip must be a number
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [{ "$match": {}}, { "$skip": -3.14159 }], "cursor": {}}');
+ERROR:  invalid argument to $skip stage: Cannot represent as a 64-bit integer $skip: -3.141590
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [{ "$match": {}}, { "$skip": -9223372036854775808 }], "cursor": {}}');
+ERROR:  invalid argument to $skip stage: Expected a non-negative number in $skip: -9223372036854775808
 -- EXPLAIN the counts
 EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_count('db', '{ "count": "aggregation_pipeline" }');
                      QUERY PLAN                     

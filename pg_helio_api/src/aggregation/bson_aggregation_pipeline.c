@@ -1807,7 +1807,33 @@ GenerateCountQuery(Datum databaseDatum, pgbson *countSpec)
 		/* Then do skip and then limit */
 		if (skip.value_type != BSON_TYPE_EOD)
 		{
-			query = HandleSkip(&skip, query, &context);
+			if (skip.value_type != BSON_TYPE_NULL)
+			{
+				if (!BsonValueIsNumber(&skip))
+				{
+					ereport(ERROR, (errcode(MongoTypeMismatch)),
+							errmsg(
+								"BSON field 'skip' is the wrong type '%s', expected types '[long, int, decimal, double]'",
+								BsonTypeName(skip.value_type)),
+							errhint(
+								"BSON field 'skip' is the wrong type '%s', expected types '[long, int, decimal, double]'",
+								BsonTypeName(skip.value_type)));
+				}
+
+				int64_t skipValue = BsonValueAsInt64(&skip);
+				if (skipValue < 0)
+				{
+					ereport(ERROR, (errcode(MongoLocation51024)),
+							errmsg(
+								"BSON field 'skip' value must be >=0, actual value '%ld'",
+								skipValue),
+							errhint(
+								"BSON field 'skip' value must be >=0, actual value '%ld'",
+								skipValue));
+				}
+
+				query = HandleSkip(&skip, query, &context);
+			}
 			context.stageNum++;
 			context.requiresPersistentCursor = true;
 		}
@@ -2297,7 +2323,7 @@ HandleSkip(const bson_value_t *existingValue, Query *query,
 		double doubleValue = BsonValueAsDouble(existingValue);
 		ereport(ERROR, (errcode(MongoLocation5107200),
 						errmsg(
-							"invalid argument to $skip stage: Cannot represent as a 64-bit integer: $skip: %f",
+							"invalid argument to $skip stage: Cannot represent as a 64-bit integer $skip: %f",
 							doubleValue)));
 	}
 
@@ -2306,7 +2332,7 @@ HandleSkip(const bson_value_t *existingValue, Query *query,
 	{
 		ereport(ERROR, (errcode(MongoLocation5107200),
 						errmsg(
-							"invalid argument to $skip stage: Expected a non - negative number in: $skip: %ld",
+							"invalid argument to $skip stage: Expected a non-negative number in $skip: %ld",
 							skipValue)));
 	}
 
