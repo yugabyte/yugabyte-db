@@ -1,5 +1,7 @@
 package com.yugabyte.yw.forms;
 
+import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams;
+import com.yugabyte.yw.forms.XClusterConfigRestartFormData.RestartBootstrapParams;
 import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.XClusterConfig;
 import java.util.Collections;
@@ -111,5 +113,18 @@ public class DrConfigTaskParams extends XClusterConfigTaskParams {
     this.dbs = new HashSet<>(dbs);
     this.oldXClusterConfig = oldXClusterConfig;
     this.namespaceIdSafetimeEpochUsMap = namespaceIdSafetimeEpochUsMap;
+  }
+
+  public DrConfigTaskParams(
+      DrConfig drConfig,
+      RestartBootstrapParams bootstrapParams,
+      DrConfigCreateForm.PitrParams pitrParams) {
+    super(drConfig.getActiveXClusterConfig());
+    this.drConfig = drConfig;
+    if (bootstrapParams != null) {
+      this.bootstrapParams = new BootstrapParams();
+      this.bootstrapParams.backupRequestParams = bootstrapParams.backupRequestParams;
+    }
+    this.pitrParams = pitrParams;
   }
 }

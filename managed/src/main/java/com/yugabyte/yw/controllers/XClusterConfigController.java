@@ -608,7 +608,8 @@ public class XClusterConfigController extends AuthenticatedController {
           xClusterConfig.getSourceUniverseUUID(),
           sourceTableInfoList,
           xClusterConfig.getTargetUniverseUUID(),
-          targetTableInfoList);
+          targetTableInfoList,
+          false /* skipTxnReplicationCheck */);
 
       if (!xClusterConfig.getTableType().equals(XClusterConfig.TableType.UNKNOWN)) {
         if (!xClusterConfig.getTableTypeAsCommonType().equals(tableType)) {
@@ -1823,7 +1824,8 @@ public class XClusterConfigController extends AuthenticatedController {
         sourceUniverse.getUniverseUUID(),
         sourceTableInfoList,
         targetUniverse.getUniverseUUID(),
-        targetTableInfoList);
+        targetTableInfoList,
+        false /* skipTxnReplicationCheck */);
     certsForCdcDirGFlagCheck(sourceUniverse, targetUniverse);
 
     // XCluster replication can be set up only for YCQL and YSQL tables.

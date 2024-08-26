@@ -411,6 +411,11 @@ public enum TaskType {
       CustomerTask.TaskType.Edit,
       CustomerTask.TargetType.DrConfig),
 
+  EditDrConfigParams(
+      com.yugabyte.yw.commissioner.tasks.EditDrConfigParams.class,
+      CustomerTask.TaskType.Edit,
+      CustomerTask.TargetType.DrConfig),
+
   ReinstallNodeAgent(
       com.yugabyte.yw.commissioner.tasks.ReinstallNodeAgent.class,
       CustomerTask.TaskType.Install,
@@ -772,6 +777,9 @@ public enum TaskType {
   ChangeXClusterRole(com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ChangeXClusterRole.class),
 
   SetDrStates(com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetDrStates.class),
+
+  UpdateDrConfigParams(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.UpdateDrConfigParams.class),
 
   XClusterAddNamespaceToOutboundReplicationGroup(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster
