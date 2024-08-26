@@ -783,7 +783,13 @@ Read Committed support is currently in [Early Access](/preview/releases/versioni
 
 ##### --yb_enable_read_committed_isolation
 
-Enables Read Committed Isolation. When set to false, the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation. See [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag for more details.
+{{<badge/ea>}} Enables Read Committed Isolation. When set to false, the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation. See [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag for more details.
+
+Default: `false`
+
+##### --pg_client_use_shared_memory
+
+{{<badge/ea>}} Enables the use of shared memory between PostgreSQL and the YB-TServer. Using shared memory can potentially improve the performance of your database operations. This is because shared memory reduces the need for disk I/O operations by keeping frequently accessed data in memory, which can be accessed more quickly than data stored on disk.
 
 Default: `false`
 
@@ -1721,7 +1727,7 @@ Default: 1024
 
 ##### yb_enable_batchednl
 
-Enable or disable the query planner's use of batched nested loop join.
+{{<badge/ea>}} Enable or disable the query planner's use of batched nested loop join.
 
 Default: true
 
@@ -1761,7 +1767,7 @@ Default: 1024
 
 ##### yb_use_hash_splitting_by_default
 
-When set to true, tables and indexes are hash-partitioned based on the first column in the primary key or index. Setting this flag to false changes the first column in the primary key or index to be stored in ascending order.
+{{<badge/ea>}} When set to true, tables and indexes are hash-partitioned based on the first column in the primary key or index. Setting this flag to false changes the first column in the primary key or index to be stored in ascending order.
 
 Default: true
 
