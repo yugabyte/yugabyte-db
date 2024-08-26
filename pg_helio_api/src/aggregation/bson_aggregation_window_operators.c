@@ -151,6 +151,12 @@ static WindowFunc * HandleDollarPushWindowOperator(const bson_value_t *opValue,
 												   WindowOperatorContext *context);
 static WindowFunc * HandleDollarAddToSetWindowOperator(const bson_value_t *opValue,
 													   WindowOperatorContext *context);
+static WindowFunc * HandleDollarCovariancePopWindowOperator(const bson_value_t *opValue,
+															WindowOperatorContext *
+															context);
+static WindowFunc * HandleDollarCovarianceSampWindowOperator(const bson_value_t *opValue,
+															 WindowOperatorContext *
+															 context);
 
 
 /* GUC to enable SetWindowFields stage */
@@ -185,11 +191,11 @@ static const WindowOperatorDefinition WindowOperatorDefinitions[] =
 	},
 	{
 		.operatorName = "$covariancePop",
-		.windowOperatorFunc = NULL
+		.windowOperatorFunc = &HandleDollarCovariancePopWindowOperator
 	},
 	{
 		.operatorName = "$covarianceSamp",
-		.windowOperatorFunc = NULL
+		.windowOperatorFunc = &HandleDollarCovarianceSampWindowOperator
 	},
 	{
 		.operatorName = "$denseRank",
@@ -1428,4 +1434,134 @@ HandleDollarAddToSetWindowOperator(const bson_value_t *opValue,
 {
 	return GetSimpleBsonExpressionGetWindowFunc(opValue, context,
 												BsonAddToSetAggregateFunctionOid());
+}
+
+
+/*
+ *  Parse array input for $covariancePop and $covarianceSamp window operators
+ */
+static List *
+ParseCovarianceWindowOperator(const bson_value_t *opValue, WindowOperatorContext *context)
+{
+	Expr *constXValue = NULL;
+	Expr *constYValue = NULL;
+	int varCount = 0;
+
+	if (opValue->value_type == BSON_TYPE_ARRAY)
+	{
+		bson_iter_t opValueIter;
+		BsonValueInitIterator(opValue, &opValueIter);
+		while (bson_iter_next(&opValueIter))
+		{
+			varCount++;
+			if (varCount == 1)
+			{
+				constXValue = (Expr *) MakeBsonConst(BsonValueToDocumentPgbson(
+														 bson_iter_value(&opValueIter)));
+				continue;
+			}
+			else if (varCount == 2)
+			{
+				constYValue = (Expr *) MakeBsonConst(BsonValueToDocumentPgbson(
+														 bson_iter_value(&opValueIter)));
+				continue;
+			}
+			else
+			{
+				break;
+			}
+		}
+	}
+
+	if (varCount != 2)
+	/* for cases where arguments is not an array or with incorrect length, return null */
+	{
+		bson_value_t nullDocument = (bson_value_t) {
+			.value_type = BSON_TYPE_NULL
+		};
+		constXValue = (Expr *) MakeBsonConst(BsonValueToDocumentPgbson(&nullDocument));
+		constYValue = (Expr *) MakeBsonConst(BsonValueToDocumentPgbson(&nullDocument));
+	}
+
+	/* empty values should be converted to {"": null} values so that they're ignored*/
+	Const *nullOnEmptyConst = makeConst(BOOLOID, -1, InvalidOid, 1, BoolGetDatum(true),
+										false, true);
+	List *xArgs;
+	List *yArgs;
+	Oid functionOid;
+
+	if (context->variableContext != NULL)
+	{
+		functionOid = BsonExpressionGetWithLetFunctionOid();
+		xArgs = list_make4(context->docExpr, constXValue, nullOnEmptyConst,
+						   context->variableContext);
+		yArgs = list_make4(context->docExpr, constYValue, nullOnEmptyConst,
+						   context->variableContext);
+	}
+	else
+	{
+		functionOid = BsonExpressionGetFunctionOid();
+		xArgs = list_make3(context->docExpr, constXValue, nullOnEmptyConst);
+		yArgs = list_make3(context->docExpr, constYValue, nullOnEmptyConst);
+	}
+
+	FuncExpr *xAccumFunc = makeFuncExpr(
+		functionOid, BsonTypeId(), xArgs, InvalidOid,
+		InvalidOid, COERCE_EXPLICIT_CALL);
+	FuncExpr *yAccumFunc = makeFuncExpr(
+		functionOid, BsonTypeId(), yArgs, InvalidOid,
+		InvalidOid, COERCE_EXPLICIT_CALL);
+
+	return list_make2(xAccumFunc, yAccumFunc);
+}
+
+
+/*
+ * Handle for $covariancePop window aggregation operator.
+ * Returns the WindowFunc for bson aggregate function `bsoncovariancepop`
+ */
+static WindowFunc *
+HandleDollarCovariancePopWindowOperator(const bson_value_t *opValue,
+										WindowOperatorContext *context)
+{
+	if (!IsClusterVersionAtleastThis(1, 21, 0))
+	{
+		ereport(ERROR, (errcode(MongoCommandNotSupported),
+						errmsg("Window operator $covariancePop is not supported yet")));
+	}
+
+	WindowFunc *windowFunc = makeNode(WindowFunc);
+	windowFunc->winfnoid = BsonCovariancePopAggregateFunctionOid();
+	windowFunc->wintype = BsonTypeId();
+	windowFunc->winref = context->winRef;
+	windowFunc->winstar = false;
+	windowFunc->winagg = true;
+
+	windowFunc->args = ParseCovarianceWindowOperator(opValue, context);
+	return windowFunc;
+}
+
+
+/*
+ * Handle for $covarianceSamp window aggregation operator.
+ * Returns the WindowFunc for bson aggregate function `bsonsum`
+ */
+static WindowFunc *
+HandleDollarCovarianceSampWindowOperator(const bson_value_t *opValue,
+										 WindowOperatorContext *context)
+{
+	if (!IsClusterVersionAtleastThis(1, 21, 0))
+	{
+		ereport(ERROR, (errcode(MongoCommandNotSupported),
+						errmsg("Window operator $covarianceSamp is not supported yet")));
+	}
+	WindowFunc *windowFunc = makeNode(WindowFunc);
+	windowFunc->winfnoid = BsonCovarianceSampAggregateFunctionOid();
+	windowFunc->wintype = BsonTypeId();
+	windowFunc->winref = context->winRef;
+	windowFunc->winstar = false;
+	windowFunc->winagg = true;
+
+	windowFunc->args = ParseCovarianceWindowOperator(opValue, context);
+	return windowFunc;
 }

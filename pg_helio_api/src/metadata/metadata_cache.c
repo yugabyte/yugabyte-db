@@ -570,6 +570,12 @@ typedef struct HelioApiOidCacheData
 	/* OID of the bson_aggregation_distinct function */
 	Oid ApiCatalogAggregationDistinctFunctionId;
 
+	/* OID of the BSONCOVARIANCEPOP aggregate function */
+	Oid ApiCatalogBsonCovariancePopAggregateFunctionOid;
+
+	/* OID of the BSONCOVARIANCESAMP aggregate function */
+	Oid ApiCatalogBsonCovarianceSampAggregateFunctionOid;
+
 	/* OID of the bson_dollar_add_fields function */
 	Oid ApiCatalogBsonDollarAddFieldsFunctionOid;
 
@@ -3175,6 +3181,24 @@ BsonAvgAggregateFunctionOid(void)
 {
 	return GetAggregateFunctionByName(&Cache.ApiCatalogBsonAverageAggregateFunctionOid,
 									  ApiCatalogSchemaName, "bsonaverage");
+}
+
+
+Oid
+BsonCovariancePopAggregateFunctionOid(void)
+{
+	return GetAggregateFunctionByName(
+		&Cache.ApiCatalogBsonCovariancePopAggregateFunctionOid,
+		"helio_api_internal", "bsoncovariancepop");
+}
+
+
+Oid
+BsonCovarianceSampAggregateFunctionOid(void)
+{
+	return GetAggregateFunctionByName(
+		&Cache.ApiCatalogBsonCovarianceSampAggregateFunctionOid,
+		"helio_api_internal", "bsoncovariancesamp");
 }
 
 

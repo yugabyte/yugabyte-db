@@ -77,6 +77,9 @@ bool IsDecimal128Infinity(const bson_value_t *value);
 bool IsDecimal128Finite(const bson_value_t *value);
 bool IsDecimal128AFixedInteger(const bson_value_t *value);
 bool IsDecimal128Zero(const bson_value_t *value);
+void SetDecimal128NaN(bson_value_t *value);
+void SetDecimal128NegativeInfinity(bson_value_t *value);
+void SetDecimal128PositiveInfinity(bson_value_t *value);
 void SetDecimal128Zero(bson_value_t *value);
 
 /* ================================== */

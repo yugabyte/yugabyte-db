@@ -258,6 +258,8 @@ Oid ApiCatalogAggregationPipelineFunctionId(void);
 Oid ApiCatalogAggregationFindFunctionId(void);
 Oid ApiCatalogAggregationCountFunctionId(void);
 Oid ApiCatalogAggregationDistinctFunctionId(void);
+Oid BsonCovariancePopAggregateFunctionOid(void);
+Oid BsonCovarianceSampAggregateFunctionOid(void);
 Oid BsonDollarAddFieldsFunctionOid(void);
 Oid BsonDollarAddFieldsWithLetFunctionOid(void);
 Oid BsonDollaMergeDocumentsFunctionOid(void);

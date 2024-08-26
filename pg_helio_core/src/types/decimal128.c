@@ -18,6 +18,7 @@
 /* Including lib headers here to limit the exposure and separating the concerns across */
 #include <bid_conf.h>
 #include <bid_functions.h>
+#include <bid_internal.h>
 #include <math.h>
 
 #include "utils/mongo_errors.h"
@@ -440,6 +441,39 @@ IsDecimal128Zero(const bson_value_t *value)
 {
 	BID_UINT128 bid = GetBIDUINT128FromBsonValue(value);
 	return bid128_isZero(bid);
+}
+
+
+/*
+ * Sets decimal128 NaN in the provided value
+ */
+void
+SetDecimal128NaN(bson_value_t *value)
+{
+	value->value.v_decimal128.high = NAN_MASK64;
+	value->value.v_decimal128.low = 0ul;
+}
+
+
+/*
+ * Sets decimal128 negative infinity in the provided value
+ */
+void
+SetDecimal128NegativeInfinity(bson_value_t *value)
+{
+	value->value.v_decimal128.high = SINFINITY_MASK64;
+	value->value.v_decimal128.low = 0ul;
+}
+
+
+/*
+ * Sets decimal128 positive infinity in the provided value
+ */
+void
+SetDecimal128PositiveInfinity(bson_value_t *value)
+{
+	value->value.v_decimal128.high = INFINITY_MASK64;
+	value->value.v_decimal128.low = 0ul;
 }
 
 
