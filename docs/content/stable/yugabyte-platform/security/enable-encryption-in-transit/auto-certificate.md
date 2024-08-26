@@ -30,7 +30,7 @@ YugabyteDB Anywhere generates the root CA certificate, root private key, and nod
 
 YugabyteDB Anywhere retains the root certificate and the root private key for all interactions with the cluster.
 
-To view the certificate details, navigate to **Configs > Security > Encryption in Transit** and click **Show details**.
+To view the certificate details, navigate to **Integrations > Security > Encryption in Transit** and click **Show details**.
 
 ## Customize the organization name in self-signed certificates
 

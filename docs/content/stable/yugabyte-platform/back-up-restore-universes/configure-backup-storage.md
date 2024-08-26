@@ -40,7 +40,7 @@ If there is more than one node, you should consider using a network file system 
 
 You can configure Amazon S3 as your backup target, as follows:
 
-1. Navigate to **Configs** > **Backup** > **Amazon S3**.
+1. Navigate to **Integrations** > **Backup** > **Amazon S3**.
 
 2. Click **Create S3 Backup** to access the configuration form shown in the following illustration:
 
@@ -82,7 +82,7 @@ The following S3 IAM permissions are required:
 
 You can configure Network File System (NFS) as your backup target, as follows:
 
-1. Navigate to **Configs > Backup > Network File System**.
+1. Navigate to **Integrations > Backup > Network File System**.
 
 2. Click **Create NFS Backup** to access the configuration form shown in the following illustration:
 
@@ -98,7 +98,7 @@ You can configure Network File System (NFS) as your backup target, as follows:
 
 You can configure Google Cloud Storage (GCS) as your backup target, as follows:
 
-1. Navigate to **Configs > Backup > Google Cloud Storage**.
+1. Navigate to **Integrations > Backup > Google Cloud Storage**.
 
 1. Click **Create GCS Backup** to access the configuration form shown in the following illustration:
 
@@ -179,7 +179,7 @@ You can configure Azure as your backup target, as follows:
 
 1. On your YugabyteDB Anywhere instance, provide the container URL and SAS token for creating a backup, as follows:
 
-    - Navigate to **Configs** > **Backup** > **Azure Storage**.
+    - Navigate to **Integrations** > **Backup** > **Azure Storage**.
     - Click **Create AZ Backup** to access the configuration form shown in the following illustration:
 
         ![Azure Configuration](/images/yp/cloud-provider-configuration-backup-azure.png)
