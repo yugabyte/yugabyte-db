@@ -149,6 +149,7 @@ DECLARE_uint32(cdcsdk_retention_barrier_no_revision_interval_secs);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_bool(TEST_xcluster_fail_setup_stream_update);
 DECLARE_bool(xcluster_skip_health_check_on_replication_setup);
+DECLARE_bool(FLAGS_update_min_cdc_indices_interval_secs);
 
 namespace yb {
 
@@ -2148,6 +2149,7 @@ TEST_P(XClusterTest, TestDeleteUniverse) {
 
 TEST_P(XClusterTest, TestWalRetentionSet) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_wal_retention_time_secs) = 8 * 3600;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
 
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   ASSERT_OK(SetUpWithParams({8, 4, 4, 12}, {8, 4, 12, 8}, replication_factor));
@@ -3710,42 +3712,22 @@ TEST_F_EX(XClusterTest, TestStats, XClusterTestNoParam) {
       },
       MonoDelta::FromSeconds(kRpcTimeout), "Waiting for initial target Stats to populate"));
 
-  // Make sure stats on source and target match.
-  auto source_stats = source_cdc_service->GetAllStreamTabletStats();
-  ASSERT_EQ(source_stats.size(), 1);
-  auto initial_index = source_stats[0].sent_index;
-  auto initial_records_sent = source_stats[0].records_sent;
-  auto initial_time = source_stats[0].last_poll_time;
-  ASSERT_GT(source_stats[0].avg_poll_delay_ms, 0);
-  ASSERT_TRUE(source_stats[0].last_poll_time);
-  ASSERT_EQ(source_stats[0].sent_index, source_stats[0].latest_index);
-  ASSERT_TRUE(source_stats[0].status.ok());
-
-  auto target_stats = target_xc_consumer->GetPollerStats();
-  ASSERT_EQ(target_stats.size(), 1);
-  ASSERT_GT(target_stats[0].avg_poll_delay_ms, 0);
-  ASSERT_TRUE(target_stats[0].status.ok());
-
-  ASSERT_EQ(source_stats[0].records_sent, target_stats[0].records_received);
-  ASSERT_EQ(source_stats[0].mbs_sent, target_stats[0].mbs_received);
-  ASSERT_EQ(source_stats[0].sent_index, target_stats[0].received_index);
-
+  // Make sure stats on source and target match and data was sent and received.
   ASSERT_OK(InsertRowsInProducer(0, 100));
   ASSERT_OK(VerifyRowsMatch());
+  auto source_stats = source_cdc_service->GetAllStreamTabletStats();
+  auto target_stats = target_xc_consumer->GetPollerStats();
 
-  // Make sure stats show data was sent and received.
-  source_stats = source_cdc_service->GetAllStreamTabletStats();
   ASSERT_EQ(source_stats.size(), 1);
   ASSERT_GT(source_stats[0].avg_poll_delay_ms, 0);
   ASSERT_GT(source_stats[0].records_sent, 0);
   ASSERT_GT(source_stats[0].mbs_sent, 0);
-  ASSERT_GT(source_stats[0].sent_index, initial_index);
-  ASSERT_GT(source_stats[0].records_sent, initial_records_sent);
-  ASSERT_GT(source_stats[0].last_poll_time, initial_time);
+  ASSERT_GT(source_stats[0].sent_index, 0);
+  ASSERT_GT(source_stats[0].records_sent, 0);
+  ASSERT_GT(source_stats[0].last_poll_time, MonoTime::Min());
   ASSERT_EQ(source_stats[0].sent_index, source_stats[0].latest_index);
   ASSERT_TRUE(source_stats[0].status.ok());
 
-  target_stats = target_xc_consumer->GetPollerStats();
   ASSERT_EQ(target_stats.size(), 1);
   ASSERT_GT(target_stats[0].records_received, 0);
   ASSERT_GT(target_stats[0].mbs_received, 0);

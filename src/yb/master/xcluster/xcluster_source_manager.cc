@@ -535,7 +535,6 @@ Status XClusterSourceManager::CheckpointStreamsToEndOfWAL(
     SCHECK(
         table_info->LockForRead()->visible_to_client(), NotFound, "Table does not exist", table_id);
 
-    RETURN_NOT_OK(catalog_manager_.SetXReplWalRetentionForTable(table_info, epoch));
     RETURN_NOT_OK(catalog_manager_.BackfillMetadataForXRepl(table_info, epoch));
 
     bootstrap_req.add_table_ids(table_info->id());
@@ -887,7 +886,6 @@ Result<xrepl::StreamId> XClusterSourceManager::CreateNewXClusterStreamForTable(
     const std::optional<SysCDCStreamEntryPB::State>& initial_state, const LeaderEpoch& epoch) {
   auto table_info = VERIFY_RESULT(catalog_manager_.FindTableById(table_id));
 
-  RETURN_NOT_OK(catalog_manager_.SetXReplWalRetentionForTable(table_info, epoch));
   RETURN_NOT_OK(catalog_manager_.BackfillMetadataForXRepl(table_info, epoch));
 
   const auto state = initial_state ? *initial_state : SysCDCStreamEntryPB::ACTIVE;

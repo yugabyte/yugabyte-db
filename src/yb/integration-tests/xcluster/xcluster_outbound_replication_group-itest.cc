@@ -13,15 +13,18 @@
 
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
+#include "yb/consensus/log.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/mini_master.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/util/backoff_waiter.h"
 
 DECLARE_uint32(cdc_wal_retention_time_secs);
 DECLARE_uint32(max_xcluster_streams_to_checkpoint_in_parallel);
 DECLARE_bool(TEST_block_xcluster_checkpoint_namespace_task);
+DECLARE_int32(update_min_cdc_indices_interval_secs);
 namespace yb {
 namespace master {
 
@@ -131,15 +134,26 @@ class XClusterOutboundReplicationGroupTest : public XClusterYsqlTestBase {
   }
 
   Status VerifyWalRetentionOfTable(
-      const TableId& table_id, uint32 wal_retention_secs = FLAGS_cdc_wal_retention_time_secs) {
+      const TableId& table_id,
+      uint32 expected_wal_retention_secs = FLAGS_cdc_wal_retention_time_secs) {
     auto tablets = ListTableActiveTabletLeadersPeers(producer_cluster(), table_id);
     SCHECK_GE(
         tablets.size(), static_cast<size_t>(1), IllegalState,
         Format("No active tablets found for table $0", table_id));
     for (const auto& tablet : tablets) {
-      SCHECK_EQ(
-          tablet->tablet_metadata()->wal_retention_secs(), wal_retention_secs, IllegalState,
-          Format("Tablet: $0", tablet->tablet_metadata()->LogPrefix()));
+      RETURN_NOT_OK(LoggedWaitFor([&]() -> Result<bool> {
+        uint32_t wal_retention_secs = tablet->log()->wal_retention_secs();
+        if (wal_retention_secs == expected_wal_retention_secs) {
+          return true;
+        } else {
+          LOG(INFO) << "wal_retention_secs " << wal_retention_secs
+                    << " doesn't match expected " << expected_wal_retention_secs
+                    << " for tablet " << tablet->tablet_id();
+          return false;
+        }
+      }, MonoDelta::FromSeconds(FLAGS_update_min_cdc_indices_interval_secs * 4),
+          Format("Waiting for tablet: $0 to reach expected WAL retention time $1",
+              tablet->tablet_metadata()->LogPrefix(), expected_wal_retention_secs)));
     }
 
     return Status::OK();
@@ -163,6 +177,7 @@ class XClusterOutboundReplicationGroupTest : public XClusterYsqlTestBase {
 
 TEST_F(XClusterOutboundReplicationGroupTest, TestMultipleTable) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_xcluster_streams_to_checkpoint_in_parallel) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 5;
 
   // Create two tables in two schemas.
   auto table_id_1 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName1));
@@ -279,8 +294,10 @@ TEST_F(XClusterOutboundReplicationGroupTest, AddDeleteNamespaces) {
 }
 
 TEST_F(XClusterOutboundReplicationGroupTest, AddTable) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 5;
+
   auto table_id_1 = ASSERT_RESULT(CreateYsqlTable(kNamespaceName, kTableName1));
-  ASSERT_OK(VerifyWalRetentionOfTable(table_id_1, 0));
+  ASSERT_OK(VerifyWalRetentionOfTable(table_id_1, 900));
 
   ASSERT_OK(XClusterClient().CreateOutboundReplicationGroup(kReplicationGroupId, {namespace_id_}));
 
@@ -388,17 +405,6 @@ TEST_F(XClusterOutboundReplicationGroupTest, MasterRestartDuringCheckpoint) {
 
   auto all_xcluster_streams_initial = CleanupAndGetAllXClusterStreams();
   ASSERT_EQ(all_xcluster_streams_initial.size(), stream_count);
-
-  // TODO (#21986) : Disabled since VerifyWalRetentionOfTable fails.
-  // ASSERT_OK(
-  //     catalog_manager_->WaitForAlterTableToFinish(table_id_1, CoarseMonoClock::Now() +
-  //     kDeadline));
-  // ASSERT_OK(
-  //     catalog_manager_->WaitForAlterTableToFinish(table_id_2, CoarseMonoClock::Now() +
-  //     kDeadline));
-
-  // ASSERT_OK(VerifyWalRetentionOfTable(table_id_1));
-  // ASSERT_OK(VerifyWalRetentionOfTable(table_id_2));
 }
 
 TEST_F(XClusterOutboundReplicationGroupTest, Repair) {

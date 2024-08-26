@@ -1609,9 +1609,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Result<scoped_refptr<CDCStreamInfo>> InitNewXReplStream() EXCLUDES(mutex_);
   void ReleaseAbandonedXReplStream(const xrepl::StreamId& stream_id) EXCLUDES(mutex_);
 
-  Status SetXReplWalRetentionForTable(const TableInfoPtr& table, const LeaderEpoch& epoch)
-      EXCLUDES(mutex_);
-
   Status BackfillMetadataForXRepl(const TableInfoPtr& table_info, const LeaderEpoch& epoch);
 
   Result<TabletInfoPtr> GetTabletInfo(const TabletId& tablet_id) override

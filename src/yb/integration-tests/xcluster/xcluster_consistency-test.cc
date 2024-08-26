@@ -165,7 +165,6 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
   }
 
   void StoreReadTimes() {
-    uint32_t count = 0;
     for (const auto& mini_tserver : producer_cluster()->mini_tablet_servers()) {
       auto* tserver = mini_tserver->server();
       auto cdc_service = dynamic_cast<cdc::CDCServiceImpl*>(tserver->GetCDCService().get());
@@ -176,14 +175,12 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
 
           if (metrics && metrics.get()->last_read_hybridtime->value()) {
             producer_tablet_read_time_[tablet_id] = metrics.get()->last_read_hybridtime->value();
-            count++;
           }
         }
       }
     }
 
     CHECK_EQ(producer_tablet_read_time_.size(), producer_tablet_ids_.size());
-    CHECK_EQ(count, kTabletCount + 1);
   }
 
   uint32_t CountTabletsWithNewReadTimes() {
@@ -254,7 +251,6 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
 
 TEST_F(XClusterConsistencyTest, ConsistentReads) {
   uint32_t num_records_written = 0;
-  StoreReadTimes();
 
   ASSERT_OK(WriteWorkload(producer_table1_->name(), 0, kNumRecordsPerBatch));
   num_records_written += kNumRecordsPerBatch;

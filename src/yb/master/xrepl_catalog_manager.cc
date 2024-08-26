@@ -56,9 +56,6 @@ using std::string;
 using namespace std::literals;
 using std::vector;
 
-DEFINE_RUNTIME_uint32(cdc_wal_retention_time_secs, 4 * 3600,
-    "WAL retention time in seconds to be used for tables for which a CDC stream was created.");
-
 DEFINE_test_flag(bool, disable_cdc_state_insert_on_setup, false,
     "Disable inserting new entries into cdc state as part of the setup flow.");
 
@@ -142,6 +139,7 @@ DECLARE_int32(master_rpc_timeout_ms);
 DECLARE_bool(ysql_yb_enable_replication_commands);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(ysql_yb_enable_replica_identity);
+DECLARE_uint32(cdc_wal_retention_time_secs);
 DECLARE_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup);
 
 
@@ -1335,39 +1333,6 @@ Status CatalogManager::SetAllCDCSDKRetentionBarriers(
     RETURN_NOT_OK(WaitForSnapshotSafeOpIdToBePopulated(stream_id, table_ids, deadline));
   }
 
-  return Status::OK();
-}
-
-Status CatalogManager::SetXReplWalRetentionForTable(
-    const TableInfoPtr& table, const LeaderEpoch& epoch) {
-  auto& table_id = table->id();
-  VLOG_WITH_FUNC(4) << "Setting WAL retention for table: " << table_id;
-
-  SCHECK(
-      !table->IsPreparing(), IllegalState,
-      "Cannot set WAL retention of a table that has not yet been fully created");
-
-  const auto min_wal_retention_secs = FLAGS_cdc_wal_retention_time_secs;
-  const auto table_wal_retention_secs = table->LockForRead()->pb.wal_retention_secs();
-  if (table_wal_retention_secs >= min_wal_retention_secs) {
-    VLOG_WITH_FUNC(1) << "Table " << table_id << " already has WAL retention set to "
-                      << table_wal_retention_secs
-                      << ", which is equal or higher than cdc_wal_retention_time_secs: "
-                      << min_wal_retention_secs;
-  } else {
-    AlterTableRequestPB alter_table_req;
-    alter_table_req.mutable_table()->set_table_id(table_id);
-    alter_table_req.set_wal_retention_secs(min_wal_retention_secs);
-
-    AlterTableResponsePB alter_table_resp;
-    RETURN_NOT_OK_PREPEND(
-        this->AlterTable(&alter_table_req, &alter_table_resp, /*rpc=*/nullptr, epoch),
-        Format("Unable to change the WAL retention time for table $0", table_id));
-  }
-
-  // Ideally we should WaitForAlterTableToFinish to ensure the change has propagated to all
-  // tablet peers. But since we have 15min default WAL retention and this operation completes much
-  // sooner, we skip it.
   return Status::OK();
 }
 

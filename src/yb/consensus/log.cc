@@ -246,6 +246,14 @@ DEFINE_validator(log_min_segments_to_retain, &ValidateGreaterThan0);
 DEFINE_validator(max_disk_throughput_mbps, &ValidateGreaterThan0);
 DEFINE_validator(reject_writes_min_disk_space_check_interval_sec, &ValidateGreaterThan0);
 
+DEFINE_RUNTIME_uint32(cdc_wal_retention_time_secs, 4 * 3600,
+    "WAL retention time in seconds to be used for tables which have a xCluster, "
+    "or CDCSDK outbound stream.");
+
+DEFINE_RUNTIME_bool(enable_xcluster_timed_based_wal_retention, true,
+    "If true, enable time-based WAL retention for tables with xCluster "
+    "by using --cdc_wal_retention_time_secs.");
+
 static std::string kSegmentPlaceholderFilePrefix = ".tmp.newsegment";
 static std::string kSegmentPlaceholderFileTemplate = kSegmentPlaceholderFilePrefix + "XXXXXX";
 
@@ -1362,9 +1370,12 @@ Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segment
 
   auto xrepl_min_replicated_index = cdc_min_replicated_index_.load(std::memory_order_acquire);
 
-  if (get_xcluster_min_index_to_retain_) {
-    xrepl_min_replicated_index =
-        std::min(xrepl_min_replicated_index, get_xcluster_min_index_to_retain_(tablet_id_));
+  {
+    std::lock_guard l(get_xcluster_index_lock_);
+    if (get_xcluster_min_index_to_retain_) {
+      xrepl_min_replicated_index =
+          std::min(xrepl_min_replicated_index, get_xcluster_min_index_to_retain_(tablet_id_));
+    }
   }
 
   // Find the prefix of segments in the segment sequence that is guaranteed not to include
@@ -1471,6 +1482,17 @@ void Log::set_wal_retention_secs(uint32_t wal_retention_secs) {
 
 uint32_t Log::wal_retention_secs() const {
   uint32_t wal_retention_secs = wal_retention_secs_.load(std::memory_order_acquire);
+
+  {
+    // If tablet is under xCluster, adjust WAL retention time for xCluster.
+    std::lock_guard l(get_xcluster_index_lock_);
+    if (FLAGS_enable_xcluster_timed_based_wal_retention &&
+        get_xcluster_min_index_to_retain_ &&
+        get_xcluster_min_index_to_retain_(tablet_id_) != std::numeric_limits<int64_t>::max()) {
+      wal_retention_secs = std::max(wal_retention_secs, FLAGS_cdc_wal_retention_time_secs);
+    }
+  }
+
   auto flag_wal_retention = ANNOTATE_UNPROTECTED_READ(FLAGS_log_min_seconds_to_retain);
   return flag_wal_retention > 0 ?
       std::max(wal_retention_secs, static_cast<uint32_t>(flag_wal_retention)) :
