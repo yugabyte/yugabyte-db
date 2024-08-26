@@ -33,7 +33,7 @@ Export configuration is {{<badge/ea>}}. To enable export configuration managemen
 
 ## Configure integrations
 
-Create and manage export configurations on the **Integrations > Logs** page.
+Create and manage export configurations on the **Integrations > Log** page.
 
 ![Export configurations](/images/yp/export-configurations.png)
 
