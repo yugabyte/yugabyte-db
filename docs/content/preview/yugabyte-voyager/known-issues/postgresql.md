@@ -445,7 +445,7 @@ ERROR: EXCLUDE constraint not supported yet (SQLSTATE 0A000)
 
 Note that creating an index on the relevant columns is essential for maintaining performance. Without an index, the trigger's search operation can degrade performance.
 
-**Caveats** : Note that there are specific issues related to [creating indexes on certain data types](LINK to other issue) in YugabyteDB. Depending on the data types involved, additional workarounds may be required to ensure optimal performance for these constraints.
+**Caveats** : Note that there are specific issues related to creating indexes on certain data types in YugabyteDB. Depending on the data types involved, additional workarounds may be required to ensure optimal performance for these constraints.
 
 **Example**
 
@@ -484,9 +484,9 @@ CREATE TRIGGER check_no_time_overlap_trigger
     BEFORE INSERT OR UPDATE ON meeting
     FOR EACH ROW
     EXECUTE FUNCTION check_no_time_overlap();
-```
 
-<!-- The following GiST index is also required for better performance of constraints, because the source constraint uses gist method but the target YugabyteDB doesn't support GIST indexes. need to do some workaround for that as well [refer](LINK DOCS).. -->
+CREATE INDEX idx_no_time_overlap on public.meeting USING gist(room_id,time_range); -- will error out in target
+```
 
 ---
 
@@ -598,7 +598,7 @@ CREATE INDEX gist_idx ON public.ts_query_table USING gist (query);
  ERROR:  INDEX on column of type '<TYPE_NAME>' not yet supported
 ```
 
-**Workaround**: Currently, there is no workaround, but you can cast these data types to supported types, which may require adjustments on the application side to query the column using the index. Ensure you address these changes before modifying the schema.
+**Workaround**: Currently, there is no workaround, but you can cast these data types to in the index definition to supported types, which may require adjustments on the application side when querying the column using the index. Ensure you address these changes before modifying the schema.
 
 **Example**
 
@@ -806,7 +806,7 @@ CREATE INDEX gin_multi_on_json
 
 **GitHub**: [Issue #1655](https://github.com/yugabyte/yb-voyager/issues/1655)
 
-**Description**: If there are policies in the source schema for users in database, the users have to be created manually on target YugabyteDB, as currently migration USER/GRANT is not supported. Skipping the manual user creation will return an error in import schema as follows:
+**Description**: If there are policies in the source schema for USERs in the database, the USERs have to be created manually on target YugabyteDB, as currently the migration USER/GRANT is not supported. Skipping the manual user creation will return an error in import schema as follows:
 
 ```output
 ERROR: role "<role_name>" does not exist (SQLSTATE 42704)
