@@ -2376,6 +2376,125 @@
         }
       }
     },
+    "backup": {
+      "Ysql": "YSQL",
+      "Ycql": "YCQL",
+      "scheduled": {
+        "empty": {
+          "createSchduledPolicy": "Create Scheduled Backup Policy",
+          "subText": "Currently there are no Scheduled Backup Policies to show"
+        },
+        "create": {
+          "title": "Create Scheduled Backup Policy",
+          "stepper": {
+            "generalSettings": "General Settings",
+            "backupObjects": "Backup Objects",
+            "backupFrequency": "Backup Frequency and Retention",
+            "backupSummary": "Summary"
+          },
+          "createPolicy": "Create Scheduled Backup Policy",
+          "next": "Next",
+          "prev": "Prev",
+          "generalSettings": {
+            "policyName": "Policy name",
+            "policyNamePlaceholder": "Enter policy name",
+            "storageConfigPlaceholder": "Select storage config",
+            "helpText": "This cannot be changed after policy creation",
+            "storageConfig": "Storage config",
+            "multiRegionSupport": "Multi-region support",
+            "unsatisfiedNodes": "<b>Warning!</b> This config does not have buckets for all regions that this universe has nodes in. This will lead to increased costs due to cross region data transfer and can result in violations related to data handling such as gdpr",
+            "parallelThreads": "Parallel Threads (Optional)"
+          },
+          "backupObjects": {
+            "allDatabase": "All Databases",
+            "allKeyspaces": "All Keyspaces",
+            "advancedConfig": "Advanced Configuration",
+            "selectDBTitle": "Select the Keyspaces/Databases you want to backup",
+            "selectDB": "Databases/Keyspaces",
+            "backupTablespace": "Backup tablespaces information",
+            "backupTablespaceSubText": "In Universes using tablespaces, this allows restoring while preserving source universe tablespaces. (Given both source and target have the same topology.)",
+            "allTables": "Select all tables in this Keyspace",
+            "subSetOfTables": "Select a subset of tables",
+            "selectTables": "Select Tables",
+            "selectTablesHeader": "Table",
+            "searchTableName": "Search table name",
+            "tablesCount": "{{count}} tables",
+            "tablesSelected": "{{count}} table(s) selected",
+            "editSelection": "Edit selection",
+            "errMsg": {
+              "keyspace": "Keyspace is required",
+              "selectedTables": "Atleast one table should be selected"
+            }
+          },
+          "backupFrequency": {
+            "backupStrategy": "Select backup strategy",
+            "standard": {
+              "title": "Standard backup",
+              "helpText": "<li>Restorable to the creation time of full & incremental backups</li><li>No additional disk storage required</li>"
+            },
+            "pitr": {
+              "title": "Backup with ability to restore to point-in-time",
+              "helpText": "<li>Restorable to any point in time from the first backup to the last backup</li><li>Requires additional disk storage. <a>Learn More</a></li>"
+            },
+            "backupFrequencyField": {
+              "title": "Set backup frequency",
+              "fullBackup": "Full Backup",
+              "every": "Every",
+              "cronExpression": "Use CRON expression (UTC)",
+              "cronPlaceholder": "0 7 * *  Sun,Wed",
+              "takeIncrementalBackups": "Take incremental backups within full backup intervals",
+              "incrementalBackupTitle": "Incremental Backup",
+              "incrementalBackupHelpText": "For continuous point-in-time restore, interval must be <b>24 hours or less.</b>"
+            },
+            "backupRetention": {
+              "title": "Set backup retention period",
+              "keepIndefinitely": "Keep indefinitely"
+            },
+            "errMsg": {
+              "frequency": "Interval should be greater than an hour",
+              "frequencyRequired": "Frequency is required",
+              "cronExpressionRequired": "Cron expression is required",
+              "expiryTime": "Duration must be greater than or equal to one",
+              "incrementalBackupFrequency": "'Incremental backup interval must be less than full backup'",
+              "incGreaterThan": "Incremental backup should be greater than {{min}} minutes"
+            }
+          },
+          "backupSummary": {
+            "title": "Summary",
+            "name": "Name",
+            "storageConfig": "Storage Config",
+            "apiType": "API Type",
+            "database": "Database",
+            "keyspace": "Keyspace",
+            "allKeyspaces": "All Keyspaces",
+            "allDatabases": "All Databases",
+            "tables": "Tables",
+            "allTables": "All Tables",
+            "backupStrategy": "Backup Strategy",
+            "Standard": "Standard Backup",
+            "Point-in-time": "Backup with ability to restore to point-in-time",
+            "fullBackup": "Full Backup",
+            "incrementalBackup": "Incremental Backup",
+            "retentionPeriod": "Retention Period",
+            "wontExpire": "Won't expire",
+            "backupWillStart": "<b>Note:</b> The next scheduled backup will start shortly following the creation of this policy",
+            "helpText": "We recommend performing an on-demand backup prior to executing any DDL changes between backup intervals to prevent data loss.<br/><a>Learn more</a>",
+            "successMsg": "Scheduled backup policy created. A backup will begin shortly.",
+            "errorMsg": "Unable to created scheduled backup policy"
+          },
+          "loadingMsg": {
+            "fetchingStorageConfig": "Fetching storage configs...",
+            "fetchingTables": "Fetching tables..."
+          },
+          "errMsg": {
+            "scheduleNameRequired": "Schedule name is required",
+            "storageConfigRequired": "Storage config is required",
+            "unableToFetchTables": "Unable to fetch tables",
+            "parallelThreads": "Parallel threads should be between 1 and 100"
+          }
+        }
+      }
+    },
     "footer": {
       "platformVersion": "Platform Version",
       "platformHostUrl": "Platform Host URL",

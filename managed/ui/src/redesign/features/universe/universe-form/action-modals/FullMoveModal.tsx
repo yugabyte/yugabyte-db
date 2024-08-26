@@ -4,9 +4,11 @@ import pluralize from 'pluralize';
 import _ from 'lodash';
 import { Box, Theme, Typography, makeStyles } from '@material-ui/core';
 import { InstanceTags } from './InstanceTags';
+import { CommunicationPorts } from './CommunicationPorts';
 import { YBModal } from '../../../../components';
-import { getAsyncCluster, getPrimaryCluster } from '../utils/helpers';
+import { getAsyncCluster, getChangedPorts, getPrimaryCluster } from '../utils/helpers';
 import { Cluster, MasterPlacementMode, UniverseDetails } from '../utils/dto';
+import { isNonEmptyObject } from '../../../../../utils/ObjectUtils';
 
 const useStyles = makeStyles((theme: Theme) => ({
   greyText: {
@@ -47,6 +49,9 @@ export const FullMoveModal: FC<FMModalProps> = ({
   const newCluster = isPrimary ? getPrimaryCluster(newConfigData) : getAsyncCluster(newConfigData);
   const oldInstanceTags = oldCluster?.userIntent?.instanceTags;
   const newInstanceTags = newCluster?.userIntent?.instanceTags;
+  const oldCommunicationPorts = oldConfigData?.communicationPorts;
+  const newCommunicationPorts = newConfigData?.communicationPorts;
+  const changedPorts = getChangedPorts(oldCommunicationPorts, newCommunicationPorts);
 
   const renderConfig = (cluster: Cluster, isNew: boolean) => {
     const { placementInfo, userIntent } = cluster;
@@ -102,6 +107,15 @@ export const FullMoveModal: FC<FMModalProps> = ({
               <>{<InstanceTags tags={newInstanceTags!} />}</>
             ) : (
               <>{<InstanceTags tags={oldInstanceTags!} />}</>
+            )}
+          </Box>
+        )}
+        {isNonEmptyObject(changedPorts?.oldPorts) && isNonEmptyObject(changedPorts?.newPorts) && (
+          <Box mt={2}>
+            {isNew ? (
+              <>{<CommunicationPorts communicationPorts={changedPorts?.newPorts} />}</>
+            ) : (
+              <>{<CommunicationPorts communicationPorts={changedPorts?.oldPorts} />}</>
             )}
           </Box>
         )}

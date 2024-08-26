@@ -25,6 +25,8 @@ export type YBReactSelectFieldProps<TFieldValues extends FieldValues> = {
   autoSizeMinWidth?: number; // If specified, will grow the field width from a given minimum.
   accessoryContainerWidthPx?: number;
   maxWidth?: string;
+  isClearable?: boolean;
+  label?: string;
 } & UseControllerProps<TFieldValues>;
 
 export const YBReactSelectField = <T extends FieldValues>({
@@ -38,6 +40,7 @@ export const YBReactSelectField = <T extends FieldValues>({
   autoSizeMinWidth,
   accessoryContainerWidthPx = 0,
   maxWidth,
+  isClearable = false,
   ...useControllerProps
 }: YBReactSelectFieldProps<T>) => {
   const { field, fieldState } = useController(useControllerProps);
@@ -91,6 +94,7 @@ export const YBReactSelectField = <T extends FieldValues>({
           isDisabled={isDisabled}
           placeholder={placeholder}
           menuShouldScrollIntoView={true}
+          isClearable={isClearable}
         />
       </div>
       {fieldState.error?.message && (

@@ -300,6 +300,8 @@ install_systemd_service() {
   [Unit]
   Description=YB Anywhere Node Agent
   After=network-online.target
+  # Disable restart limits, using RestartSec to rate limit restarts.
+  StartLimitInterval=0
 
   [Service]
   User=$INSTALL_USER

@@ -85,6 +85,8 @@ MAX_THREADS = 10
 
 MAX_TRIES = 2
 
+PER_PROCESS_VERSION = 1
+
 DEFAULT_SSL_VERSION = "TLSv1_2"
 SSL_PROTOCOL_TO_SSL_VERSION = {
     "ssl2": "SSLv2",
@@ -569,15 +571,18 @@ class NodeChecker():
         self.temp_output_file = temp_output_file
         self.ddl_atomicity_check = ddl_atomicity_check
         self.master_leader_url = master_leader_url
+        self.verbose = verbose
         self.prev_process_results = self._load_previous_per_process_results(temp_output_file)
         self.current_process_results = {}
-        self.verbose = verbose
 
     def _load_previous_per_process_results(self, temp_output_file):
         try:
             with open(temp_output_file) as f:
                 js = json.load(f)
-                return js
+                if 'version' in js and js['version'] == PER_PROCESS_VERSION:
+                    return js
+                self.verbose_log("skipping prev stats because of version")
+                return {}
         except IOError as ie:
             logging.info("Failed to load prev process results")
             return {}
@@ -585,6 +590,7 @@ class NodeChecker():
     def _dump_per_process_results(self):
          try:
             with open(self.temp_output_file, 'w') as f:
+                self.current_process_results['version'] = PER_PROCESS_VERSION
                 json.dump(self.current_process_results, f)
          except IOError as ie:
             logging.error("Failed to write current per process results: {}".format(str(ie)))
@@ -1837,9 +1843,10 @@ class NodeChecker():
         cmd = 'cat /proc/{}/stat'.format(pid)
         stat = self._check_output(cmd).strip()
         stat_list = stat.split(" ")
+        ticks = int(os.sysconf("SC_CLK_TCK"))
         if len(stat_list) > 0:
-            res['user_cpu_seconds'] = int(stat_list[13])
-            res['system_cpu_seconds'] = int(stat_list[14])
+            res['user_cpu_seconds'] = int(stat_list[13]) // ticks
+            res['system_cpu_seconds'] = int(stat_list[14]) // ticks
             res['virtual_memory_kb'] = int(stat_list[22]) // 1024
 
         cmd = 'cat /proc/{}/smaps'.format(pid)
