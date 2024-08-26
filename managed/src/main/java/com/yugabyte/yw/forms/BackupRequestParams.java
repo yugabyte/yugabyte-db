@@ -108,9 +108,6 @@ public class BackupRequestParams extends UniverseTaskParams {
   @ApiModelProperty(value = "Cron expression for a recurring backup")
   public String cronExpression = null;
 
-  @ApiModelProperty(value = "Use local timezone for Cron Expression, otherwise use UTC")
-  public boolean useLocalTimezone = true;
-
   @ApiModelProperty(value = "Is tablespaces information included")
   public Boolean useTablespaces = false;
 

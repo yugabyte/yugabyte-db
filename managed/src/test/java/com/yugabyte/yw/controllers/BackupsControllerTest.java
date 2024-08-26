@@ -373,7 +373,6 @@ public class BackupsControllerTest extends FakeDBApplication {
         TaskType.CreateBackup,
         1000000000L,
         "0 */2 * * *",
-        true /* useLocalTimezone */,
         TimeUnit.HOURS,
         "schedule-1");
     Result result = assertPlatformException(() -> createBackupSchedule(bodyJson, null));

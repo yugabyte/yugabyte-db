@@ -9,10 +9,6 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
-import com.cronutils.model.CronType;
-import com.cronutils.model.definition.CronDefinitionBuilder;
-import com.cronutils.model.time.ExecutionTime;
-import com.cronutils.parser.CronParser;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.TestUtils;
@@ -20,12 +16,7 @@ import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Schedule.State;
 import com.yugabyte.yw.models.configs.CustomerConfig;
-import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
@@ -182,30 +173,5 @@ public class ScheduleTest extends FakeDBApplication {
                     State.Creating /* invalid transition */));
     assertTrue(
         ex.getMessage().contains("Transition of Schedule from Editing to Creating not allowed"));
-  }
-
-  @Test
-  public void testCreateScheduleBackupCronUTC() {
-    Schedule schedule =
-        Schedule.create(
-            defaultCustomer.getUuid(),
-            UUID.randomUUID(),
-            new BackupRequestParams(),
-            TaskType.CreateBackup,
-            0L,
-            "0 0 * * *",
-            false /* useLocalTimezone */,
-            null,
-            null);
-    CronParser unixCronParser =
-        new CronParser(CronDefinitionBuilder.instanceDefinitionFor(CronType.UNIX));
-    ExecutionTime executionTime = ExecutionTime.forCron(unixCronParser.parse("0 0 * * *"));
-    Date lastScheduledTime = new Date();
-    Instant instant = lastScheduledTime.toInstant();
-    ZonedDateTime zonedDateTime = instant.atZone(ZoneId.of("UTC"));
-    Duration duration = executionTime.timeToNextExecution(zonedDateTime).get();
-    Date nextScheduleTime = new Date(lastScheduledTime.getTime() + duration.toMillis());
-    assertTrue(
-        Math.abs(nextScheduleTime.getTime() - schedule.getNextScheduleTaskTime().getTime()) < 10);
   }
 }
