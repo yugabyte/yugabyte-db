@@ -363,6 +363,48 @@ func getMigrateSchemaTaskInfoFuture(log logger.Logger, conn *pgxpool.Pool, migra
     determineStatusOfMigrateSchmeaPhases(log, conn, &schemaPhaseInfoList,
         &migrateSchemaTaskInfo)
 
+    recommendedRefactoringList := []models.RefactoringCount{}
+    for _, sqlObject := range migrateSchemaTaskInfo.SqlObjects {
+        var refactorCount models.RefactoringCount
+        refactorCount.SqlObjectType = sqlObject.ObjectType
+        refactorCount.Automatic = sqlObject.TotalCount - sqlObject.InvalidCount
+        refactorCount.Manual = sqlObject.InvalidCount
+        recommendedRefactoringList = append(recommendedRefactoringList, refactorCount)
+    }
+    migrateSchemaTaskInfo.CurrentAnalysisReport.RecommendedRefactoring.RefactorDetails =
+        recommendedRefactoringList
+
+    conversionIssuesDetailsWithCountMap := map[string]models.UnsupportedSqlWithDetails{}
+    fmt.Println(migrateSchemaTaskInfo.SuggestionsErrors)
+    for _, conversionIssue := range migrateSchemaTaskInfo.SuggestionsErrors {
+        fmt.Println(conversionIssue)
+        conversionIssuesByType, ok :=
+            conversionIssuesDetailsWithCountMap[conversionIssue.ObjectType]
+        if ok {
+            conversionIssuesByType.Count = conversionIssuesByType.Count + 1
+            conversionIssuesByType.SuggestionsErrors = append(
+                conversionIssuesByType.SuggestionsErrors, conversionIssue)
+        } else {
+            var newConversionIssuesByType models.UnsupportedSqlWithDetails
+            newConversionIssuesByType.Count = 1
+            newConversionIssuesByType.UnsupportedType = conversionIssue.ObjectType
+            newConversionIssuesByType.SuggestionsErrors =
+                append(newConversionIssuesByType.SuggestionsErrors, conversionIssue)
+            conversionIssuesDetailsWithCountMap[conversionIssue.ObjectType] =
+                    newConversionIssuesByType
+        }
+    }
+    fmt.Println(conversionIssuesDetailsWithCountMap)
+
+    var conversionIssuesDetailsWithCountList []models.UnsupportedSqlWithDetails
+    for _, value := range conversionIssuesDetailsWithCountMap {
+        conversionIssuesDetailsWithCountList = append(conversionIssuesDetailsWithCountList, value)
+    }
+    fmt.Print(conversionIssuesDetailsWithCountList)
+
+    migrateSchemaTaskInfo.CurrentAnalysisReport.UnsupportedFeatures =
+        conversionIssuesDetailsWithCountList
+
     MigrateSchemaTaskInfoResponse.Data = migrateSchemaTaskInfo
     future <- MigrateSchemaTaskInfoResponse
 }
@@ -402,9 +444,12 @@ func determineStatusOfMigrateSchmeaPhases(log logger.Logger, conn *pgxpool.Pool,
                     log.Errorf(migrateSchemaUIDetails.Error.Error())
                     migrateSchemaTaskInfo.SuggestionsErrors = nil
                     migrateSchemaTaskInfo.SqlObjects = nil
+                    migrateSchemaTaskInfo.AnalyzeSchema = "N/A"
+                    continue
                 }
                 migrateSchemaTaskInfo.SuggestionsErrors = migrateSchemaUIDetails.SuggestionsErrors
                 migrateSchemaTaskInfo.SqlObjects = migrateSchemaUIDetails.SqlObjects
+
                 migrateSchemaTaskInfo.AnalyzeSchema = "complete"
             } else {
                 migrateSchemaTaskInfo.ExportSchema = "in-progress"
@@ -747,7 +792,7 @@ func (c *Container) GetVoyagerAssessmentReport(ctx echo.Context) error {
     for _, unsupportedFeatureType := range assessmentReport.UnsupportedFeatures{
         unsupportedFeature := models.UnsupportedSqlInfo{}
         unsupportedFeature.UnsupportedType = unsupportedFeatureType.FeatureName
-        unsupportedFeature.Count = int32(len(unsupportedFeatureType.ObjectNames))
+        unsupportedFeature.Count = int32(len(unsupportedFeatureType.Objects))
         if (unsupportedFeature.Count != 0) {
             unsupportedFeaturesList = append(unsupportedFeaturesList, unsupportedFeature)
         }
@@ -768,7 +813,7 @@ func getMigrationAssessmentReportFuture(log logger.Logger, migrationUuid string,
         var assessmentReportPayload string
         row := conn.QueryRow(context.Background(), RETRIEVE_ASSESSMENT_REPORT, migrationUuid)
         err := row.Scan(&assessmentReportPayload)
-        log.Infof(fmt.Sprintf("assessment payload: [%s]", assessmentReportPayload))
+        // log.Infof(fmt.Sprintf("assessment payload: [%s]", assessmentReportPayload))
         if err != nil {
             log.Errorf(fmt.Sprintf("[%s] Error while scaning results for query: [%s]",
                 LOGGER_FILE_NAME, "RETRIEVE_ALL_VOYAGER_MIGRATIONS_SQL"))
