@@ -639,7 +639,7 @@ CREATE INDEX idx_json ON public.test_json (data);
 
 ### Constraint trigger is not supported
 
-**GitHub**: [Issue #9698](https://github.com/yugabyte/yugabyte-db/issues/9698)
+**GitHub**: [Issue #4700](https://github.com/yugabyte/yugabyte-db/issues/4700)
 
 **Description**: If you have constraint triggers in your source database, as they are currently unsupported in YugabyteDB, they will error out as follows:
 
