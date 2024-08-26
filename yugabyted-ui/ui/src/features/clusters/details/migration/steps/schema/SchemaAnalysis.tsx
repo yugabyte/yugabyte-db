@@ -9,7 +9,6 @@ import type { Migration } from "../../MigrationOverview";
 import type { MigrateSchemaTaskInfo, RefactoringCount, UnsupportedSqlInfo } from "@app/api/src";
 
 export type SchemaAnalysisData = {
-  id: number;
   completedOn?: string;
   manualRefactorObjectsCount: number | undefined;
   summary: {
@@ -62,40 +61,26 @@ export const SchemaAnalysis: FC<SchemaAnalysisProps> = ({ /* migration, */ schem
   const theme = useTheme();
   const { t } = useTranslation();
 
-  // Remove `as any` and ensure 'recommended_refactoring' is correct once we have the data models
-  const sqlObjects = (schemaAPI as any)?.recommended_refactoring as RefactoringCount[] | undefined;
+  // TODO: Remove `as any` and ensure 'current_analysis_report' is correct once we have the data models
+  const currentAnalysisReport = (schemaAPI as any)?.current_analysis_report;
+  // TODO: Remove the 'as any' and ensure 'analysis_history' is correct once we have the data models
+  const history = (schemaAPI as any)?.analysis_history ?? [];
 
-  const frequencyMap: { [key: string]: number } = {};
-  schemaAPI.suggestions_errors?.forEach((sugErr) => {
-    const type = sugErr.objectType || "";
-    frequencyMap[type] = (frequencyMap[type] || 0) + 1;
-  });
-
-  const unsupportedFeatures = Object.entries(frequencyMap).map(([unsupported_type, count]) => ({
-    unsupported_type,
-    count,
-  }));
-
-  const analysis: SchemaAnalysisData[] = [
-    // TODO: Append history once we have the data models
-    {
-      // TODO: Replace id with the actual id from the API
-      id: 1,
+  const analysis: SchemaAnalysisData[] = [currentAnalysisReport, ...history].filter(Boolean)
+    .map((analysisReport) => ({
       completedOn: "",
-      manualRefactorObjectsCount: sqlObjects
-        ? sqlObjects.reduce((acc, { manual }) => acc + (manual ?? 0), 0)
-        : undefined,
+      // TODO: Remove the 'as RefactoringCount[]' and ensure 'refactor_details' is correct once we have the data models
+      manualRefactorObjectsCount: (analysisReport?.recommended_refactoring?.refactor_details as RefactoringCount[] | undefined)
+        ?.reduce((acc, { manual }) => acc + (manual ?? 0), 0) || 0,
       summary: {
-        graph: sqlObjects ?? [],
+        graph: analysisReport?.recommended_refactoring?.refactor_details ?? [],
       },
       reviewRecomm: {
-        // TODO: How do we determine datatype/feature/function from the current data model?
-        unsupportedDataTypes: [],
-        unsupportedFeatures: unsupportedFeatures,
-        unsupportedFunctions: [],
+        unsupportedDataTypes: analysisReport?.unsupported_data_types ?? [],
+        unsupportedFeatures: analysisReport?.unsupported_features ?? [],
+        unsupportedFunctions: analysisReport?.unsupported_functions ?? [],
       },
-    },
-  ];
+    }));
 
   return (
     <Box>
@@ -116,7 +101,7 @@ export const SchemaAnalysis: FC<SchemaAnalysisProps> = ({ /* migration, */ schem
       <Box display="flex" flexDirection="column" gridGap={theme.spacing(2)} my={2}>
         {analysis.map((item, index) => (
           <YBAccordion
-            key={item.id}
+            key={index}
             titleContent={
               <Typography variant="body2" className={classes.accordionHeader}>
                 {t("clusterDetail.voyager.migrateSchema.analysis")}
