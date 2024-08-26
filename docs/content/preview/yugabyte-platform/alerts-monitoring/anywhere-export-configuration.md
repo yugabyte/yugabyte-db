@@ -41,7 +41,7 @@ The page lists the configured and available third-party integrations.
 
 ### Manage integrations
 
-You can add and delete export configurations for the following tools. You can't delete a configuration that is assigned to a cluster.
+You can add and delete export configurations for the following tools. You can't delete a configuration that is in use by a universe.
 
 {{< tabpane text=true >}}
 
@@ -121,7 +121,7 @@ To view configuration details, select the configuration.
 
 To delete a configuration, click **Actions** and choose **Delete**.
 
-Note that you can't modify an existing configuration. If you need to change an integration (for example, to replace or update an API key) for a particular tool, do the following:
+You can't modify an existing configuration. If you need to change the configuration (for example, to replace or update an API key) for a particular tool, do the following:
 
 1. Create a new configuration for the provider with the updated information.
 1. Assign the new configuration to your universes.
