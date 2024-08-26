@@ -12,6 +12,7 @@
 #include <miscadmin.h>
 #include <catalog/namespace.h>
 #include <catalog/pg_collation.h>
+#include <catalog/pg_operator.h>
 #include <executor/executor.h>
 #include <optimizer/optimizer.h>
 #include <nodes/makefuncs.h>
@@ -1184,7 +1185,8 @@ CreateBoolExprFromLogicalExpression(bson_iter_t *queryDocIterator,
 		operatorType != QUERY_OPERATOR_EXPR &&
 		operatorType != QUERY_OPERATOR_TEXT &&
 		operatorType != QUERY_OPERATOR_ALWAYS_TRUE &&
-		operatorType != QUERY_OPERATOR_ALWAYS_FALSE)
+		operatorType != QUERY_OPERATOR_ALWAYS_FALSE &&
+		operatorType != QUERY_OPERATOR_SAMPLERATE)
 	{
 		/* invalid query operator such as $eq at top level of query document */
 		/* We throw feature not supported since $where and such might be specified here */
@@ -1215,6 +1217,52 @@ CreateBoolExprFromLogicalExpression(bson_iter_t *queryDocIterator,
 
 		bool isNull = false;
 		return (Expr *) makeBoolConst(operatorType == QUERY_OPERATOR_ALWAYS_TRUE, isNull);
+	}
+
+	if (operatorType == QUERY_OPERATOR_SAMPLERATE)
+	{
+		/* This expression { $sampleRate: 0.33 } is equivalent to
+		 *  using the $rand: { $lt: [ { $rand: {} }, 0.33 ] } */
+		const bson_value_t *sampleRate = bson_iter_value(queryDocIterator);
+		if (!BsonValueIsNumber(sampleRate))
+		{
+			ereport(ERROR, (errcode(MongoBadValue),
+							errmsg(
+								"argument to $sampleRate must be a numeric type"),
+							errhint("argument to $sampleRate is: %s",
+									BsonValueToJsonForLogging(sampleRate))));
+		}
+		double sampleRateValue = BsonValueAsDouble(sampleRate);
+
+		/* sampleRate value outside of [0, 1] is invalid.
+		 * use de-morgan's law to handle nan, because the comparisons involving NaN are always false.
+		 * ref: https://standards.ieee.org/ieee/754/6210, boolean sameQuantum(source, source) */
+		if (!(sampleRateValue >= 0 && sampleRateValue <= 1))
+		{
+			ereport(ERROR, (errcode(MongoBadValue),
+							errmsg(
+								"numeric argument to $sampleRate must be in [0, 1]"),
+							errhint(
+								"numeric argument to $sampleRate is: %f",
+								sampleRateValue)));
+		}
+
+		/* PostgresDrandomFunctionId() returns a double precision float
+		 * in a continuous uniform distribution between [0.0, 1.0).
+		 * if sample_rate=0.0, zero documents will be selected
+		 * if sample_rate=1.0, all documents will be selected */
+		Expr *randomValueExpr = (Expr *) makeFuncExpr(PostgresDrandomFunctionId(),
+													  FLOAT8OID,
+													  NIL,
+													  InvalidOid, InvalidOid,
+													  COERCE_EXPLICIT_CALL);
+
+		Expr *constExpr = (Expr *) makeConst(FLOAT8OID, -1, InvalidOid, sizeof(float8),
+											 Float8GetDatum(sampleRateValue), false,
+											 true);
+		Expr *opExpr = make_opclause(Float8LessOperator, BOOLOID, false,
+									 randomValueExpr, constExpr, InvalidOid, InvalidOid);
+		return opExpr;
 	}
 
 	if (operatorType == QUERY_OPERATOR_EXPR)

@@ -315,6 +315,18 @@ static const MongoOperatorInfo QueryOperators[] = {
 		{ NULL, BSON_INDEX_STRATEGY_INVALID, false },
 		true,
 	},
+	{
+		{ "$sampleRate", QUERY_OPERATOR_SAMPLERATE, BsonTypeId,
+		  InvalidQueryOperatorFuncOid, NULL,
+		  InvalidQueryOperatorFuncOid,
+		  FEATURE_QUERY_OPERATOR_SAMPLERATE },
+		{ "$sampleRate", QUERY_OPERATOR_SAMPLERATE, BsonTypeId,
+		  InvalidQueryOperatorFuncOid, NULL,
+		  InvalidQueryOperatorFuncOid,
+		  INVALID_QUERY_OPERATOR_FEATURE_TYPE },
+		{ NULL, BSON_INDEX_STRATEGY_INVALID, false },
+		true,
+	},
 
 
 	/* bitwise */
