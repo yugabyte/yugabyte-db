@@ -190,50 +190,6 @@ static void LogsHandler(const Webserver::WebRequest& req, Webserver::WebResponse
   }
 }
 
-std::vector<google::CommandLineFlagInfo> GetAllFlags(const Webserver::WebRequest& req) {
-  std::vector<google::CommandLineFlagInfo> flag_infos;
-  google::GetAllFlags(&flag_infos);
-
-  if (FLAGS_TEST_mini_cluster_mode) {
-    const string* custom_varz_ptr = FindOrNull(req.parsed_args, "TEST_custom_varz");
-    if (custom_varz_ptr != nullptr) {
-      map<string, string> varz;
-      SplitStringToMapUsing(*custom_varz_ptr, "\n", &varz);
-
-      // Replace values for existing flags.
-      for (auto& flag_info : flag_infos) {
-        auto varz_it = varz.find(flag_info.name);
-        if (varz_it != varz.end()) {
-          if (flag_info.current_value != varz_it->second) {
-            flag_info.current_value = varz_it->second;
-            flag_info.is_default = false;
-          }
-          varz.erase(varz_it);
-        }
-      }
-
-      // Add new flags.
-      for (auto const& flag : varz) {
-        google::CommandLineFlagInfo flag_info;
-        flag_info.name = flag.first;
-        flag_info.current_value = flag.second;
-        flag_info.default_value = "";
-        flag_info.is_default = false;
-        flag_infos.push_back(flag_info);
-      }
-    }
-  }
-
-  return flag_infos;
-}
-
-YB_DEFINE_ENUM(FlagType, (kInvalid)(kNodeInfo)(kCustom)(kAuto)(kDefault));
-
-struct FlagInfo {
-  string name;
-  string value;
-};
-
 void ConvertFlagsToJson(
     const std::unordered_map<FlagType, std::vector<FlagInfo>>& flag_infos,
     std::stringstream* output) {
@@ -261,56 +217,32 @@ void ConvertFlagsToJson(
 }
 
 std::unordered_map<FlagType, std::vector<FlagInfo>> GetFlagInfos(
-    const Webserver::WebRequest& req, Webserver* webserver) {
-  const std::set<string> node_info_flags{
-      "log_filename",    "rpc_bind_addresses", "webserver_interface", "webserver_port",
-      "placement_cloud", "placement_region",   "placement_zone"};
-
-  const auto flags = GetAllFlags(req);
-
-  std::unordered_map<FlagType, std::vector<FlagInfo>> flag_infos;
-
-  for (const auto& flag : flags) {
-    std::unordered_set<FlagTag> flag_tags;
-    GetFlagTags(flag.name, &flag_tags);
-
-    FlagInfo flag_info;
-    flag_info.name = flag.name;
-
-    if (PREDICT_FALSE(ContainsKey(flag_tags, FlagTag::kSensitive_info))) {
-      flag_info.value = "****";
-    } else if (!ContainsKey(flag_tags, FlagTag::kDeprecated)) {
-      // Do not get values of deprecated flags.
-      flag_info.value = flag.current_value;
+    const Webserver::WebRequest& req, Webserver* webserver, bool filter_default_flags) {
+  std::map<std::string, std::string> custom_varz;
+  if (FLAGS_TEST_mini_cluster_mode) {
+    const string* custom_varz_ptr = FindOrNull(req.parsed_args, "TEST_custom_varz");
+    if (custom_varz_ptr != nullptr) {
+      SplitStringToMapUsing(*custom_varz_ptr, "\n", &custom_varz);
     }
-
-    auto type = FlagType::kDefault;
-    if (node_info_flags.contains(flag.name)) {
-      type = FlagType::kNodeInfo;
-    } else if (flag.current_value != flag.default_value) {
-      type = FlagType::kCustom;
-    } else if (flag_tags.contains(FlagTag::kAuto) && webserver->ContainsAutoFlag(flag_info.name)) {
-      type = FlagType::kAuto;
-    }
-
-    flag_infos[type].push_back(std::move(flag_info));
   }
 
-  // Sort by type, name ascending
-  for (auto& [_, flags] : flag_infos) {
-    std::sort(flags.begin(), flags.end(), [](const FlagInfo& lhs, const FlagInfo& rhs) {
-      return ToLowerCase(lhs.name) < ToLowerCase(rhs.name);
-    });
+  std::function<bool(const std::string&)> default_flag_filter = nullptr;
+  if (filter_default_flags) {
+    default_flag_filter = [webserver](const std::string& flag_name) {
+      return webserver->ContainsFlag(flag_name);
+    };
   }
 
-  return flag_infos;
+  return yb::GetFlagInfos(
+      [webserver](const std::string& flag_name) { return webserver->ContainsAutoFlag(flag_name); },
+      std::move(default_flag_filter), custom_varz);
 }
 
 // Registered to handle "/api/v1/varz", and prints out all command-line flags and their values in
 // JSON format.
 static void GetFlagsJsonHandler(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp, Webserver* webserver) {
-  const auto flag_infos = GetFlagInfos(req, webserver);
+  const auto flag_infos = GetFlagInfos(req, webserver, /*filter_default_flags=*/false);
   ConvertFlagsToJson(std::move(flag_infos), &resp->output);
 }
 
@@ -319,8 +251,10 @@ static void GetFlagsJsonHandler(
 static void FlagsHandler(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp, Webserver* webserver) {
   std::stringstream& output = resp->output;
-  auto flag_infos = GetFlagInfos(req, webserver);
-  if (req.parsed_args.find("raw") != req.parsed_args.end()) {
+  const auto is_raw = req.parsed_args.contains("raw");
+
+  auto flag_infos = GetFlagInfos(req, webserver, /*filter_default_flags=*/!is_raw);
+  if (is_raw) {
     for (const auto& [_, flags] : flag_infos) {
       for (const auto& flag : flags) {
         output << "--" << flag.name << "=" << flag.value << endl;
@@ -345,21 +279,9 @@ static void FlagsHandler(
     }
     auto html_table = html_print_helper.CreateTablePrinter(ToString(type), column_names);
     for (auto& flag : flag_infos.at(type)) {
-      if (type == FlagType::kDefault && !webserver->ContainsFlag(flag.name)) {
-        // Ignore default flags that are not relevant to this process.
-        continue;
-      }
-
       if (type == FlagType::kAuto) {
-        auto* auto_flag_desc = CHECK_NOTNULL(GetAutoFlagDescription(flag.name));
-        gflags::CommandLineFlagInfo flag_info;
-        if (!gflags::GetCommandLineFlagInfo(flag.name.c_str(), &flag_info)) {
-          LOG(DFATAL) << "Undefined flag " << flag.name;
-          return;
-        }
-        const auto is_promoted = IsFlagPromoted(flag_info, *auto_flag_desc);
-
-        html_table.AddRow(flag.name, flag.value, (is_promoted ? "PROMOTED" : "NOT PROMOTED"));
+        html_table.AddRow(
+            flag.name, flag.value, (flag.is_auto_flag_promoted ? "PROMOTED" : "NOT PROMOTED"));
       } else {
         html_table.AddRow(flag.name, flag.value);
       }
