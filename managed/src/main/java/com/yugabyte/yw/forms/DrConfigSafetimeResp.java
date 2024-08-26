@@ -6,6 +6,7 @@ import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import org.yb.master.MasterReplicationOuterClass.GetXClusterSafeTimeResponsePB.NamespaceSafeTimePB;
 
 @ApiModel(description = "Get DR config safetime response")
@@ -15,13 +16,14 @@ public class DrConfigSafetimeResp {
   public List<NamespaceSafetime> safetimes = new ArrayList<>();
 
   @Getter
+  @NoArgsConstructor
   public static class NamespaceSafetime {
-    private final String namespaceId;
-    private final String namespaceName;
-    private final long safetimeEpochUs;
-    private final long safetimeLagUs;
-    private final long safetimeSkewUs;
-    private final double estimatedDataLossMs;
+    private String namespaceId;
+    private String namespaceName;
+    private long safetimeEpochUs;
+    private long safetimeLagUs;
+    private long safetimeSkewUs;
+    private double estimatedDataLossMs;
 
     public NamespaceSafetime(NamespaceSafeTimePB namespaceSafeTimePB, double estimatedDataLossMs) {
       this.namespaceId = namespaceSafeTimePB.getNamespaceId();
