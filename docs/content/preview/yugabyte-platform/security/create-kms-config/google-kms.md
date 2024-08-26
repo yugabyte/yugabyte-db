@@ -82,7 +82,7 @@ You can create a KMS configuration that uses Google Cloud KMS, as follows:
 
 1. Click **Save**.
 
-    Your new configuration should appear in the list of configurations. A saved KMS configuration can only be deleted if it is not in use by any existing universes.
+    Your new configuration should appear in the list of configurations.
 
 1. Optionally, to confirm that the information is correct, click **Show details**. Note that sensitive configuration values are displayed partially masked.
 
