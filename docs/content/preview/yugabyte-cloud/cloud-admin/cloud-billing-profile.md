@@ -116,6 +116,7 @@ To download the invoice as a PDF, click **Download Invoice**.
 **Summary by Usage** shows detailed costs for each cluster. Click a cluster to view usage details for each dimension, including:
 
 - The vCPU minutes, price, and amount.
+- IOPS provisioned, price, and amount.
 - Data storage usage in GB-hours, price, and amount.
 - Backup storage usage in GB-hours, price, and amount.
 - Data transfer usage in GB, price, and amount.
