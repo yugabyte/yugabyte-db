@@ -28,9 +28,16 @@ Review limitations and implement suggested workarounds to successfully migrate d
 - [Foreign table in the source database requires SERVER and USER MAPPING](#foreign-table-in-the-source-database-requires-server-and-user-mapping)
 - [Exclusion constraints is not supported](#exclusion-constraints-is-not-supported)
 - [PostgreSQL extensions are not supported by target YugabyteDB](#postgresql-extensions-are-not-supported-by-target-yugabytedb)
-- [Deferrable constraint on contraints other than foreign keys is not supported](#deferrable-constraint-on-contraints-other-than-foreign-keys-is-not-supported)
+- [Deferrable constraint on constraints other than foreign keys is not supported](#deferrable-constraint-on-contsraints-other-than-foreign-keys-is-not-supported)
 - [Data ingestion on XML data type is not supported](#data-ingestion-on-xml-data-type-is-not-supported)
 - [GiST index type is not supported](#gist-index-type-is-not-supported)
+- [Indexes on some complex data types are not supported](#indexes-on-some-complex-data-types-are-not-supported)
+- [Constraint trigger is not supported](#constraint-trigger-is-not-supported)
+- [Table inheritance is not supported](#table-inheritance-is-not-supported)
+- [%Type syntax is not supported](#type-syntax-is-not-supported)
+- [GIN indexes on multiple columns are not supported](#gin-indexes-on-multiple-columns-are-not-supported)
+- [Policies on users in source require manual user creation](#policies-on-users-in-source-require-manual-user-creation)
+- [VIEW WITH CHECK OPTION is not supported](#view-with-check-option-is-not-supported)
 
 ### Adding primary key to a partitioned table results in an error
 
@@ -187,7 +194,7 @@ create table test( id int primary key, f1 text);
 
 **GitHub**: [Issue #10866](https://github.com/yugabyte/yugabyte-db/issues/10866)
 
-**Description**: If you have conversions in your PostgreSQL database, they will error out as follows as conversions are not supported in the target YugabyteDB yet:
+**Description**: If you have conversions in your PostgreSQL database, they will error out as follows as conversions are currently not supported in the target YugabyteDB:
 
 ```output
 ERROR:  CREATE CONVERSION not supported yet
@@ -505,11 +512,11 @@ CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA public;
 
 ---
 
-### Deferrable constraint on contraints other than foreign keys is not supported
+### Deferrable constraint on constraints other than foreign keys is not supported
 
 **GitHub**: [Issue #1709](https://github.com/yugabyte/yugabyte-db/issues/1709)
 
-**Description**: If you have deferrable constraints on constraints other than foreign keys, for example, UNIQUE constraints which are not supported in target YugabyteDB yet, it errors out in import schema phase as follows:
+**Description**: If you have deferrable constraints on constraints other than foreign keys, for example, UNIQUE constraints which are currently not supported in the target YugabyteDB, it errors out in import schema phase as follows:
 
 ```output
 ERROR: DEFERRABLE unique constraints are not supported yet
@@ -577,6 +584,330 @@ An example schema on the source database is as follows:
 
 ```sql
 CREATE INDEX gist_idx ON public.ts_query_table USING gist (query);
+```
+
+---
+
+### Indexes on some complex data types are not supported
+
+**GitHub**: [Issue #9698](https://github.com/yugabyte/yugabyte-db/issues/9698)
+
+**Description**: If you have indexes on some complex types such as TSQUERY, TSVECTOR, JSON, UDTs, citext, and sp on, those will error out in import schema phase to target YugabyteDB with the following error:
+
+```output
+ ERROR:  INDEX on column of type '<TYPE_NAME>' not yet supported
+```
+
+**Workaround**: Currently, there is no workaround, but you can cast these data types to supported types, which may require adjustments on the application side to query the column using the index. Ensure you address these changes before modifying the schema.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE public.citext_type (
+    id integer,
+    data public.citext
+);
+
+CREATE TABLE public.documents (
+    id integer NOT NULL,
+    title_tsvector tsvector,
+    content_tsvector tsvector
+);
+
+CREATE TABLE public.ts_query_table (
+    id integer,
+    query tsquery
+);
+
+CREATE TABLE public.test_json (
+    id integer,
+    data json
+);
+
+CREATE INDEX tsvector_idx ON public.documents  (title_tsvector);
+
+CREATE INDEX tsquery_idx ON public.ts_query_table (query);
+
+CREATE INDEX idx_citext ON public.citext_type USING btree (data);
+
+CREATE INDEX idx_json ON public.test_json (data);
+```
+
+---
+
+### Constraint trigger is not supported
+
+**GitHub**: [Issue #9698](https://github.com/yugabyte/yugabyte-db/issues/9698)
+
+**Description**: If you have constraint triggers in your source database, as they are currently unsupported in YugabyteDB, they will error out as follows:
+
+```output
+ ERROR:  CREATE CONSTRAINT TRIGGER not supported yet
+```
+
+**Workaround**: Currently, there is no workaround in target YugabyteDB, so remove it from the exported schema and modify the applications if they are utilizing these triggers before pointing it on YugabyteDB.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE public.users (
+    id    int,
+    email character varying(255)
+);
+
+CREATE FUNCTION public.check_unique_username() RETURNS trigger
+    LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM users
+        WHERE email = NEW.email AND id <> NEW.id
+    ) THEN
+        RAISE EXCEPTION 'Email % already exists.', NEW.email;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE CONSTRAINT TRIGGER check_unique_username_trigger
+    AFTER INSERT OR UPDATE ON public.users
+    DEFERRABLE INITIALLY DEFERRED
+    FOR EACH ROW
+    EXECUTE FUNCTION public.check_unique_username();
+```
+
+---
+
+### Table inheritance is not supported
+
+**GitHub**: [Issue #5956](https://github.com/yugabyte/yugabyte-db/issues/5956)
+
+**Description**: If you have table inheritance in the source database, it will error out in target as it is not currently supported in YugabyteDB:
+
+```output
+ERROR: INHERITS not supported yet
+```
+
+**Workaround**: Currently, there is no workaround for this feature.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE public.cities (
+    name text,
+    population real,
+    elevation integer
+);
+
+CREATE TABLE public.capitals (
+    state character(2) NOT NULL
+)
+INHERITS (public.cities);
+```
+
+---
+
+### %Type syntax is not supported
+
+**GitHub**: [Issue #23619](https://github.com/yugabyte/yugabyte-db/issues/23619)
+
+**Description**: If you have any function, procedure, or trigger using the `%TYPE` syntax for referencing a type of a column from a table, then it errors out in YugabyteDB with the following error:
+
+```output
+ERROR: invalid type name "employees.salary%TYPE" (SQLSTATE 42601)
+```
+
+**Workaround**: Fix the syntax to include the actual type name instead of referencing the type of a column.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE public.employees (
+    employee_id integer NOT NULL,
+    employee_name text,
+    salary numeric
+);
+
+
+CREATE FUNCTION public.get_employee_salary(emp_id integer) RETURNS numeric
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    emp_salary employees.salary%TYPE;  -- Declare a variable with the same type as employees.salary
+BEGIN
+    SELECT salary INTO emp_salary
+    FROM employees
+    WHERE employee_id = emp_id;
+
+    RETURN emp_salary;
+END;
+$$;
+```
+
+Suggested change to CREATE FUNCTION is as follows:
+
+```sql
+CREATE FUNCTION public.get_employee_salary(emp_id integer) RETURNS numeric
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    Emp_salary NUMERIC;  -- Declare a variable with the same type as employees.salary
+BEGIN
+    SELECT salary INTO emp_salary
+    FROM employees
+    WHERE employee_id = emp_id;
+
+    RETURN emp_salary;
+END;
+$$;
+```
+
+---
+
+### GIN indexes on multiple columns are not supported
+
+**GitHub**: [Issue #724](https://github.com/yugabyte/yb-voyager/issues/724)
+
+**Description**: If there are GIN indexes in the source schema on multiple columns, as it is not supported by YugabyteDB, it results in an error during import schema as follows:
+
+```output
+ERROR: access method "ybgin" does not support multicolumn indexes (SQLSTATE 0A000)
+```
+
+**Workaround**: Currently, as there is no workaround, modify the schema to not include such indexes.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE public.test_gin_json (
+    id     integer,
+    text   jsonb,
+    text1  jsonb
+);
+
+CREATE INDEX gin_multi_on_json
+    ON public.test_gin_json USING gin (text, text1);
+```
+
+---
+
+### Policies on users in source require manual user creation
+
+**GitHub**: [Issue #1655](https://github.com/yugabyte/yb-voyager/issues/1655)
+
+**Description**: If there are policies in the source schema for users in database, the users have to be created manually on target YugabyteDB, as currently migration USER/GRANT is not supported. Skipping the manual user creation will return an error in import schema as follows:
+
+```output
+ERROR: role "<role_name>" does not exist (SQLSTATE 42704)
+```
+
+**Workaround**: Create the USERs manually on target before import schema to create policies.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE public.z1 (
+    a integer,
+    b text
+);
+CREATE ROLE regress_rls_group;
+CREATE POLICY p2 ON public.z1 TO regress_rls_group USING (((a % 2) = 1));
+```
+
+---
+
+### VIEW WITH CHECK OPTION is not supported
+
+**GitHub**: [Issue #22716](https://github.com/yugabyte/yugabyte-db/issues/22716)
+
+**Description**: If there are VIEWs with check option in the source database, it will error out in the import schema phase in target YugabyteDB as follows:
+
+```output
+ERROR:  VIEW WITH CHECK OPTION not supported yet
+```
+
+**Workaround**: You can use a TRIGGER with INSTEAD OF clause on INSERT/UPDATE on view to achieve this functionality, but it may require application-side adjustments to handle different errors instead of constraint violations.
+
+**Example**
+
+An example schema on the source database is as follows:
+
+```sql
+CREATE TABLE public.employees (
+    employee_id    integer NOT NULL,
+    employee_name  text,
+    salary         numeric
+);
+
+CREATE VIEW public.employees_less_than_12000 AS
+    SELECT
+        employees.employee_id,
+        employees.employee_name,
+        employees.salary
+    FROM
+        public.employees
+    WHERE
+        employees.employee_id < 12000
+    WITH CASCADED CHECK OPTION;
+```
+
+Suggested change to the schema is as follows:
+
+```sql
+SELECT
+    employees.employee_id,
+    employees.employee_name,
+    employees.salary
+FROM
+    public.employees
+WHERE
+    employees.employee_id < 12000;
+
+CREATE OR REPLACE FUNCTION modify_employees_less_than_12000()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Handle INSERT operations
+    IF TG_OP = 'INSERT' THEN
+        IF NEW.employee_id < 12000 THEN
+            INSERT INTO employees(employee_id, employee_name, salary)
+            VALUES (NEW.employee_id, NEW.employee_name, NEW.salary);
+            RETURN NEW;
+        ELSE
+            RAISE EXCEPTION 'new row violates check option for view “employees_less_than_12000”; employee_id must be less than 12000';
+        END IF;
+
+    -- Handle UPDATE operations
+    ELSIF TG_OP = 'UPDATE' THEN
+        IF NEW.employee_id < 12000 THEN
+            UPDATE employees
+            SET employee_name = NEW.employee_name,
+                salary = NEW.salary
+            WHERE employee_id = OLD.employee_id;
+            RETURN NEW;
+        ELSE
+            RAISE EXCEPTION 'new row violates check option for view “employees_less_than_12000”; employee_id must be less than 12000';
+        END IF;
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_modify_employee_12000
+    INSTEAD OF INSERT OR UPDATE ON employees_less_than_12000
+    FOR EACH ROW
+    EXECUTE FUNCTION modify_employees_less_than_12000();
 ```
 
 ---
