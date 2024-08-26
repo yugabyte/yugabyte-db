@@ -80,10 +80,11 @@ class CloneStateManagerExternalFunctionsBase {
     UDTypeMap* type_map, ExternalTableSnapshotDataMap* tables_data,
     CoarseTimePoint deadline) = 0;
 
-  virtual TSDescriptorPtr PickTserver() = 0;
+  virtual Result<TSDescriptorPtr> PickTserver() = 0;
 
   // Sys catalog.
   virtual Status Upsert(int64_t leader_term, const CloneStateInfoPtr&) = 0;
+  virtual Status Upsert(int64_t leader_term, const CloneStateInfoPtr&, const NamespaceInfoPtr&) = 0;
   virtual Status Load(
       const std::string& type,
       std::function<Status(const std::string&, const SysCloneStatePB&)> inserter) = 0;
