@@ -67,17 +67,17 @@ For more information on how to schedule jobs, refer to the [pg_cron documentatio
 
 ## Best practices
 
-As a best practice, you can set up a periodic cleanup task for the `cron.job_run_details` table using the `pg_cron` extension ensuring old data doesn't accumulate and affect database performance. The `cron.job_run_details` table is part of the `pg_cron` extension in PostgreSQL. This table keeps a record of the execution details of the scheduled cron jobs. It logs information about each cron job run, including its start and end time, status, and any exit messages or errors that occurred during the execution.
+The `cron.job_run_details` table is part of the `pg_cron` extension in PostgreSQL. This table keeps a record of the execution details of the scheduled cron jobs. It logs information about each cron job run, including its start and end time, status, and any exit messages or errors that occurred during the execution. The records in `cron.job_run_details` are not cleaned automatically, so in scenarios where you have jobs that run every few seconds, set up a periodic cleanup task for the table using `pg_cron` to ensure old data doesn't accumulate and affect database performance.
 
 ### View job details and clean up records
 
-1. You can view the status of running and recently completed job runs in the `cron.job_run_details` table using the following command:
+1. You can view the status of running and recently completed jobs in the `cron.job_run_details` table using the following command:
 
     ```sql
     select * from cron.job_run_details order by start_time desc limit 5;
     ```
 
-1. The records in `cron.job_run_details` are not cleaned automatically. So in scenarios when you have jobs that run every few seconds, it can be a good idea to clean up regularly, which can easily be done using `pg_cron` as follows:
+1. Create a periodoc cleaning task for the table using `pg_cron` as follows:
 
     ```sql
     -- Delete old cron.job_run_details records of the current user every day at noon
@@ -118,7 +118,7 @@ $$);
 
 You can keep materialized views up to date ensuring that they reflect recent data changes.
 
-This example schedules a job to refresh the `your_materialized_view` every hour.
+The following example schedules a job to refresh the `your_materialized_view` every hour.
 
 ```sql
 SELECT cron.schedule('refresh_materialized_view', '0 * * * *', 'REFRESH MATERIALIZED VIEW your_materialized_view');
@@ -128,7 +128,7 @@ SELECT cron.schedule('refresh_materialized_view', '0 * * * *', 'REFRESH MATERIAL
 
 You can periodically clean up old logs or temporary data to free up space.
 
-This example schedules a job to delete logs older than 30 days every day at 2AM.
+The following example schedules a job to delete logs older than 30 days every day at 2AM.
 
 ```sql
 SELECT cron.schedule('cleanup_old_logs', '0 2 * * *', $$
