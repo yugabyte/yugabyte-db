@@ -105,7 +105,7 @@ To understand how the various features and configuration of the connector, see [
 
 - CDC is not supported on a target table for xCluster replication [11829](https://github.com/yugabyte/yugabyte-db/issues/11829).
 
-- Currently we don't support schema evolution for changes that require table rewrites (ex: ALTER TYPE). Additionally the operations DROP TABLE and TRUNCATE TABLE are not supported by CDC.
+- Currently, CDC doesn't support schema evolution for changes that require table rewrites (for example, ALTER TYPE), or DROP TABLE and TRUNCATE TABLE operations.
 
 - YCQL tables aren't currently supported. Issue [11320](https://github.com/yugabyte/yugabyte-db/issues/11320).
 
