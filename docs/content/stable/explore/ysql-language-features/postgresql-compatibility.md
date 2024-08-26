@@ -151,6 +151,10 @@ To enable EPCM in YugabyteDB Anywhere v2024.2 or later:
 
   You can also change the setting on deployed universes using the **More > Edit Postgres Compatibility** option.
 
+{{<warning title="Flag settings">}}
+Setting Enhanced Postgres Compatibility overrides any [flags you set](../../../yugabyte-platform/manage-deployments/edit-config-flags/) individually for the universe. The **G-Flags** tab will however continue to display the setting that you customized.
+{{</warning>}}
+
 #### YugabyteDB Aeon
 
 To enable EPCM in YugabyteDB Aeon:
