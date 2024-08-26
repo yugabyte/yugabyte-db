@@ -952,5 +952,12 @@ TEST_F(
   ASSERT_EQ(rows_t2[0], kRowT2);
 }
 
+TEST_F(PgCloneColocationTest, YB_DISABLE_TEST_IN_SANITIZERS(CreateTableAfterClone)) {
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName));
+  auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+  ASSERT_OK(target_conn.Execute("CREATE TABLE t2 (k int, v1 int)"));
+}
+
 }  // namespace master
 }  // namespace yb
