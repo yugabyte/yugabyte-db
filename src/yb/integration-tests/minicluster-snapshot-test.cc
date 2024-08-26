@@ -33,6 +33,9 @@
 #include <chrono>
 #include <cmath>
 #include <memory>
+#include <vector>
+
+#include <gmock/gmock.h>
 
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
@@ -134,23 +137,6 @@ Status WaitForRestoration(
   return WaitFor(condition, timeout, "Waiting for restoration to complete");
 }
 
-class MasterSnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
-  void SetUp() override {
-    YBMiniClusterTestBase::SetUp();
-    MiniClusterOptions opts;
-    opts.num_tablet_servers = 1;
-    cluster_ = std::make_unique<MiniCluster>(opts);
-    ASSERT_OK(cluster_->Start());
-    client_ =
-        ASSERT_RESULT(client::YBClientBuilder()
-                          .add_master_server_addr(cluster_->mini_master()->bound_rpc_addr_str())
-                          .Build());
-  }
-
- protected:
-  std::unique_ptr<client::YBClient> client_;
-};
-
 Result<SnapshotScheduleInfoPB> GetSnapshotSchedule(
     MasterBackupProxy* proxy, const SnapshotScheduleId& id) {
   rpc::RpcController controller;
@@ -193,29 +179,67 @@ Result<SnapshotInfoPB> WaitScheduleSnapshot(
   return snapshot;
 }
 
-TEST_F(MasterSnapshotTest, FailSysCatalogWriteWithStaleTable) {
-  auto messenger = ASSERT_RESULT(rpc::MessengerBuilder("test-msgr").set_num_reactors(1).Build());
-  auto proxy_cache = rpc::ProxyCache(messenger.get());
-  auto proxy = MasterBackupProxy(&proxy_cache, cluster_->mini_master()->bound_rpc_addr());
+class MasterSnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
+ public:
+  void SetUp() override {
+    YBMiniClusterTestBase::SetUp();
+    MiniClusterOptions opts;
+    opts.num_tablet_servers = 1;
+    cluster_ = std::make_unique<MiniCluster>(opts);
+    ASSERT_OK(cluster_->Start());
+    client_ =
+        ASSERT_RESULT(client::YBClientBuilder()
+                          .add_master_server_addr(cluster_->mini_master()->bound_rpc_addr_str())
+                          .Build());
+    messenger_ = ASSERT_RESULT(rpc::MessengerBuilder("test-msgr").set_num_reactors(1).Build());
+    proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
+    backup_proxy_ = std::make_unique<MasterBackupProxy>(
+        proxy_cache_.get(), cluster_->mini_master()->bound_rpc_addr());
+  }
 
-  auto first_epoch = LeaderEpoch(
-      cluster_->mini_master()->catalog_manager().leader_ready_term(),
-      cluster_->mini_master()->sys_catalog().pitr_count());
+  Result<client::YBSchema> CreateTestSchema() {
+    client::YBSchemaBuilder b;
+    b.AddColumn("key")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
+    b.AddColumn("v1")->Type(DataType::INT64)->NotNull();
+    b.AddColumn("v2")->Type(DataType::STRING)->NotNull();
+    client::YBSchema schema;
+    RETURN_NOT_OK(b.Build(&schema));
+    return schema;
+  }
+
+  LeaderEpoch CurrentLeaderEpoch() {
+    return LeaderEpoch(
+        cluster_->mini_master()->catalog_manager().leader_ready_term(),
+        cluster_->mini_master()->sys_catalog().pitr_count());
+  }
+
+ protected:
+  void DoTearDown() override {
+    messenger_->Shutdown();
+    YBMiniClusterTestBase::DoTearDown();
+  }
+
+  std::unique_ptr<client::YBClient> client_;
+  std::unique_ptr<MasterBackupProxy> backup_proxy_;
+
+ private:
+  std::unique_ptr<rpc::Messenger> messenger_;
+  std::unique_ptr<rpc::ProxyCache> proxy_cache_;
+};
+
+TEST_F(MasterSnapshotTest, FailSysCatalogWriteWithStaleTable) {
+  auto first_epoch = CurrentLeaderEpoch();
   const auto timeout = MonoDelta::FromSeconds(20);
   client::YBTableName table_name(YQL_DATABASE_CQL, "my_keyspace", "test_table");
   ASSERT_OK(client_->CreateNamespaceIfNotExists(
       table_name.namespace_name(), table_name.namespace_type()));
   SnapshotScheduleId schedule_id = ASSERT_RESULT(CreateSnapshotSchedule(
-      &proxy, table_name, MonoDelta::FromSeconds(60), MonoDelta::FromSeconds(600), timeout));
-  ASSERT_OK(WaitScheduleSnapshot(&proxy, schedule_id, timeout));
+      backup_proxy_.get(), table_name, MonoDelta::FromSeconds(60), MonoDelta::FromSeconds(600),
+      timeout));
+  ASSERT_OK(WaitScheduleSnapshot(backup_proxy_.get(), schedule_id, timeout));
 
   auto table_creator = client_->NewTableCreator();
-  client::YBSchemaBuilder b;
-  b.AddColumn("key")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
-  b.AddColumn("v1")->Type(DataType::INT64)->NotNull();
-  b.AddColumn("v2")->Type(DataType::STRING)->NotNull();
-  client::YBSchema schema;
-  ASSERT_OK(b.Build(&schema));
+  auto schema = ASSERT_RESULT(CreateTestSchema());
   ASSERT_OK(
       table_creator->table_name(table_name).schema(&schema).num_tablets(1).wait(true).Create());
 
@@ -227,28 +251,49 @@ TEST_F(MasterSnapshotTest, FailSysCatalogWriteWithStaleTable) {
   Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
   HybridTime ht = ASSERT_RESULT(HybridTime::ParseHybridTime(time.ToString()));
   LOG(INFO) << "Performing restoration.";
-  auto restoration_id = ASSERT_RESULT(RestoreSnapshotSchedule(&proxy, schedule_id, ht, timeout));
+  auto restoration_id =
+      ASSERT_RESULT(RestoreSnapshotSchedule(backup_proxy_.get(), schedule_id, ht, timeout));
   LOG(INFO) << "Waiting for restoration.";
-  ASSERT_OK(WaitForRestoration(&proxy, restoration_id, timeout));
+  ASSERT_OK(WaitForRestoration(backup_proxy_.get(), restoration_id, timeout));
 
   LOG(INFO) << "Restoration finished.";
   {
     auto table_lock = table_info->LockForWrite();
     table_lock.mutable_data()->pb.set_parent_table_id("fnord");
     LOG(INFO) << Format(
-        "Writing with stale epoch: $0, $1",
-        first_epoch.leader_term,
-        first_epoch.pitr_count);
+        "Writing with stale epoch: $0, $1", first_epoch.leader_term, first_epoch.pitr_count);
     ASSERT_NOK(cluster_->mini_master()->sys_catalog().Upsert(first_epoch, table_info));
-    auto post_restore_epoch = LeaderEpoch(
-        cluster_->mini_master()->catalog_manager().leader_ready_term(),
-        cluster_->mini_master()->sys_catalog().pitr_count());
+    auto post_restore_epoch = CurrentLeaderEpoch();
     LOG(INFO) << Format(
         "Writing with fresh epoch: $0, $1", post_restore_epoch.leader_term,
         post_restore_epoch.pitr_count);
     ASSERT_OK(cluster_->mini_master()->sys_catalog().Upsert(post_restore_epoch, table_info));
   }
-  messenger->Shutdown();
+}
+
+TEST_F(MasterSnapshotTest, ListSnapshotSchedulesHasNoSnapshotDetails) {
+  const auto timeout = MonoDelta::FromSeconds(20);
+  client::YBTableName table_name(YQL_DATABASE_CQL, "my_keyspace", "test_table");
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(
+      table_name.namespace_name(), table_name.namespace_type()));
+
+  auto table_creator = client_->NewTableCreator();
+  auto schema = ASSERT_RESULT(CreateTestSchema());
+  ASSERT_OK(
+      table_creator->table_name(table_name).schema(&schema).num_tablets(1).wait(true).Create());
+
+  SnapshotScheduleId schedule_id = ASSERT_RESULT(CreateSnapshotSchedule(
+      backup_proxy_.get(), table_name, MonoDelta::FromSeconds(1), MonoDelta::FromSeconds(60),
+      timeout));
+  LOG(INFO) << "Created schedule: " << schedule_id;
+
+  auto snapshot = ASSERT_RESULT(WaitScheduleSnapshot(backup_proxy_.get(), schedule_id, timeout));
+  auto& sys_snapshot_entry = snapshot.entry();
+  EXPECT_THAT(sys_snapshot_entry.entries(), testing::IsEmpty()) << Format(
+      "Schedule $0 has a snapshot $1 containing sys row entries: $2", schedule_id, snapshot.id(),
+      snapshot.DebugString());
+  EXPECT_THAT(snapshot.backup_entries(), testing::IsEmpty())
+      << Format("Snapshot $0 includes backup details: $1", snapshot.id(), snapshot.DebugString());
 }
 }  // namespace master
 }  // namespace yb

@@ -1858,8 +1858,9 @@ class MasterSnapshotCoordinator::Impl {
     RETURN_NOT_OK(schedule.ToPB(out));
     const auto& index = snapshots_.get<ScheduleTag>();
     auto p = index.equal_range(boost::make_tuple(schedule.id()));
+    auto detail_options = ListSnapshotsDetailOptionsFactory::CreateWithNoDetails();
     for (auto i = p.first; i != p.second; ++i) {
-      RETURN_NOT_OK((**i).ToPB(out->add_snapshots(), ListSnapshotsDetailOptionsPB()));
+      RETURN_NOT_OK((**i).ToPB(out->add_snapshots(), detail_options));
     }
     return Status::OK();
   }
