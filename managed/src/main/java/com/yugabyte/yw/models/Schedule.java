@@ -875,6 +875,7 @@ public class Schedule extends Model {
             .useTablespaces(params.useTablespaces)
             .expiryTimeUnit(params.expiryTimeUnit)
             .parallelism(params.parallelism)
+            .pointInTimeRestoreEnabled(params.enablePointInTimeRestore)
             .build();
     return backupInfo;
   }

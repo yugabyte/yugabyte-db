@@ -14,6 +14,7 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.TablesMetadata;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.backuprestore.BackupPointInTimeRestoreWindow;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -285,6 +286,11 @@ public class BackupTableYbc extends YbcTaskBase {
                         response.responseCloudStoreSpec.regionLocations, taskParams());
               }
               tableParams.setTablespacesList(response.tablespaceInfos);
+              // Set restorable windows
+              if (response.restorableWindow != null) {
+                tableParams.setBackupPointInTimeRestoreWindow(
+                    new BackupPointInTimeRestoreWindow(response.restorableWindow));
+              }
               BackupTableParams parentParams = b.getBackupInfo();
               parentParams
                   .backupDBStates

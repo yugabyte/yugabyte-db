@@ -1348,6 +1348,12 @@ Max size (in bytes) of changes sent from CDC Service to [Virtual WAL](../../../a
 
 Default: `1 MB`
 
+##### --ysql_cdc_active_replication_slot_window_ms
+
+Determines the window in milliseconds in which if a client has consumed the changes of a ReplicationSlot across any tablet, then it is considered to be actively used. ReplicationSlots which haven't been used in this interval are considered to be inactive.
+
+Default: `60000`
+
 ## File expiration based on TTL flags
 
 ##### --tablet_enable_ttl_file_filter

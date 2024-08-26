@@ -10,6 +10,10 @@ menu:
 type: docs
 ---
 
+{{< tip title="Requires replication connection." >}}
+This command can only be executed on a walsender backend which can be started by establishing a replication connection. A replication connection can be created by passing the parameter `replication=database` in the connection string. Refer to examples section.
+{{< /tip >}}
+
 ## Synopsis
 
 Use the `START_REPLICATION` command to start streaming changes from a logical replication slot.
@@ -50,12 +54,18 @@ Optional value, in the form of a string constant, associated with the specified 
 
 ## Example
 
-We need to follow a few steps before we can start streaming from a replication slot. Assume that a table with name `users` already exists in the database.
+We need to follow a few steps before we can start streaming from a replication slot. Assume that a table with name `users` already exists in the database `yugabyte`.
 
 Create a publication `mypublication` which includes the table `users`.
 
 ```sql
 yugabyte=# CREATE PUBLICATION mypublication FOR TABLE users;
+```
+
+The creation and replication from a slot requires a replication connection. Establish a replication connection to the database `yugabyte`.
+
+```sql
+bin/ysqlsh "dbname=yugabyte replication=database"
 ```
 
 Create a replication slot with name `test_slot` and output plugin `pgoutput`.

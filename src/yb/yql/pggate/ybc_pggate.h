@@ -47,8 +47,7 @@ void YBCDumpCurrentPgSessionState(YBCPgSessionState* session_data);
 
 void YBCRestorePgSessionState(const YBCPgSessionState* session_data);
 
-// Initialize a session to process statements that come from the same client connection.
-YBCStatus YBCPgInitSession(const char* database_name, YBCPgExecStatsState* session_stats);
+YBCStatus YBCPgInitSession(YBCPgExecStatsState* session_stats);
 
 uint64_t YBCPgGetSessionID();
 
@@ -162,9 +161,6 @@ size_t YBCBitmapGetVectorSize(ConstSliceVector vec);
 //--------------------------------------------------------------------------------------------------
 
 // DATABASE ----------------------------------------------------------------------------------------
-// Connect database. Switch the connected database to the given "database_name".
-YBCStatus YBCPgConnectDatabase(const char *database_name);
-
 // Get whether the given database is colocated
 // and whether the database is a legacy colocated database.
 YBCStatus YBCPgIsDatabaseColocated(const YBCPgOid database_oid, bool *colocated,

@@ -998,6 +998,8 @@ nextval_internal(Oid relid, bool check_permissions)
 		elm->last_valid = true;
 		last_used_seq = elm;
 		relation_close(seqrel, NoLock);
+		if(YbIsClientYsqlConnMgr())
+			increment_sticky_object_count();
 		return first_val;
 	}
 

@@ -922,11 +922,8 @@ YBInitPostgresBackend(
 		/*
 		 * For each process, we create one YBC session for PostgreSQL to use
 		 * when accessing YugaByte storage.
-		 *
-		 * TODO: do we really need to DB name / username here?
 		 */
-		HandleYBStatus(YBCPgInitSession(db_name ? db_name : user_name,
-										&yb_session_stats.current_state));
+		HandleYBStatus(YBCPgInitSession(&yb_session_stats.current_state));
 		YBCSetTimeout(StatementTimeout, NULL);
 
 		/*
@@ -4835,7 +4832,7 @@ static bool YbIsConnectionMadeStickyUsingGUC()
  * connection and returns whether or not the client connection
  * requires stickiness. i.e. if there is any `WITH HOLD CURSOR` or `TEMP TABLE`
  * at the end of the transaction.
- * 
+ *
  * Also check if any GUC variable is set that requires a sticky connection.
  */
 bool YbIsStickyConnection(int *change)

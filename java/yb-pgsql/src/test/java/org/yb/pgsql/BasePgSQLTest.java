@@ -1993,6 +1993,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     Thread.sleep(MiniYBCluster.TSERVER_HEARTBEAT_INTERVAL_MS * 2);
   }
 
+  void waitForTServerHeartbeatIfConnMgrEnabled() throws InterruptedException {
+    if (isTestRunningWithConnectionManager()) {
+      waitForTServerHeartbeat();
+    }
+  }
+
   /** Run a query and check row-count. */
   public int runQueryWithRowCount(Statement stmt, String query, int expectedRowCount)
       throws Exception {

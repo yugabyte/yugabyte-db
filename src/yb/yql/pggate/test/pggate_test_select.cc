@@ -463,7 +463,9 @@ TEST_F_EX(
   constexpr auto kMaxKeyLength = 1_KB;
   constexpr auto kRangeSizeBytes = 16_KB;
 
-  ASSERT_OK(Init("GetTableKeyRanges", kNumOfTablets, /* replication_factor = */ 0, kDatabaseName));
+  ASSERT_OK(Init(
+      "GetTableKeyRanges", kNumOfTablets, /* replication_factor = */ 0,
+      /* should_create_db = */ false));
 
   LOG(INFO) << "Connecting to YSQL...";
 
@@ -507,7 +509,8 @@ TEST_F_EX(PggateTestSelect, GetColocatedTableKeyRanges, PggateTestSelectWithYsql
   constexpr auto kMinNumRangesExpected = 10;
 
   ASSERT_OK(Init(
-      "GetColocatedTableKeyRanges", kNumOfTablets, /* replication_factor = */ 0, kDatabaseName));
+      "GetColocatedTableKeyRanges", kNumOfTablets, /* replication_factor = */ 0,
+       /* should_create_db = */ false));
 
   auto conn = ASSERT_RESULT(PgConnect(kDatabaseName));
   ASSERT_OK(

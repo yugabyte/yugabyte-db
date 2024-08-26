@@ -70,7 +70,8 @@ export const RuntimeConfigKey = {
   AZURE_DEFAULT_VOLUME_SIZE: 'yb.azure.default_volume_size_gb',
   AZURE_DEFAULT_STORAGE_TYPE: 'yb.azure.storage.default_storage_type',
   AZURE_PREMIUM_V2_STORAGE_TYPE: 'yb.azure.show_premiumv2_storage_type',
-  DOWNLOAD_METRICS_PDF: 'yb.ui.metrics.enable_download_pdf'
+  DOWNLOAD_METRICS_PDF: 'yb.ui.metrics.enable_download_pdf',
+  PER_PROCESS_METRICS_FEATURE_FLAG: 'yb.ui.feature_flags.enable_per_process_metrics'
 } as const;
 
 /**
