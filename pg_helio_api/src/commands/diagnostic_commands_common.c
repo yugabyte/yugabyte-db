@@ -125,6 +125,8 @@ GetWorkerBsonsFromAllWorkers(const char *query, Datum *paramValues,
 					StringView errorView = CreateStringViewFromString(workerError);
 					StringView connectivityView = CreateStringViewFromString(
 						"failed to connect to");
+					StringView recoveryErrorView = CreateStringViewFromString(
+						"terminating connection due to conflict with recovery");
 					if (StringViewStartsWithStringView(&errorView, &connectivityView))
 					{
 						ereport(ERROR, (errcode(ERRCODE_CONNECTION_FAILURE),
@@ -133,6 +135,17 @@ GetWorkerBsonsFromAllWorkers(const char *query, Datum *paramValues,
 											commandName),
 										errhint(
 											"%s on worker failed with an unexpected error: %s",
+											commandName, workerError)));
+					}
+					else if (StringViewStartsWithStringView(&errorView,
+															&recoveryErrorView))
+					{
+						ereport(ERROR, (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
+										errmsg(
+											"%s on worker failed with recovery errors",
+											commandName),
+										errhint(
+											"%s on worker failed with an recovery error: %s",
 											commandName, workerError)));
 					}
 					else

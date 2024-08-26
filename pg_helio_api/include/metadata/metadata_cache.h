@@ -36,6 +36,7 @@ Oid HelioApiExtensionOwner(void);
 
 /* functions and procedures */
 Oid ApiCollectionFunctionId(void);
+Oid HelioApiCollectionFunctionId(void);
 Oid ApiCreateIndexesProcedureId(void);
 Oid ApiReIndexProcedureId(void);
 Oid BsonEqualMatchRuntimeFunctionId(void);

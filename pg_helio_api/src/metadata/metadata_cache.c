@@ -188,6 +188,9 @@ typedef struct HelioApiOidCacheData
 	/* OID of ApiSchema.collection() UDF */
 	Oid CollectionFunctionId;
 
+	/* OID of the helio_api.collection() UDF */
+	Oid HelioApiCollectionFunctionId;
+
 	/* OID of ApiSchema.create_indexes() UDF */
 	Oid CreateIndexesProcedureId;
 
@@ -1132,6 +1135,28 @@ ApiCollectionFunctionId(void)
 	}
 
 	return Cache.CollectionFunctionId;
+}
+
+
+Oid
+HelioApiCollectionFunctionId(void)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (Cache.HelioApiCollectionFunctionId == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString("helio_api"),
+											makeString("collection"));
+		Oid paramOids[2] = { TEXTOID, TEXTOID };
+
+		/* Allow this to be missing (for compat) */
+		bool missingOK = true;
+
+		Cache.HelioApiCollectionFunctionId =
+			LookupFuncName(functionNameList, 2, paramOids, missingOK);
+	}
+
+	return Cache.HelioApiCollectionFunctionId;
 }
 
 

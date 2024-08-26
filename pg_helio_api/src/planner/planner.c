@@ -901,7 +901,8 @@ IsResolvableMongoCollectionBasedRTE(RangeTblEntry *rte, ParamListInfo boundParam
 	}
 
 	/* Perform Function-specific actions */
-	if (funcExpr->funcid == ApiCollectionFunctionId())
+	if (funcExpr->funcid == ApiCollectionFunctionId() ||
+		funcExpr->funcid == HelioApiCollectionFunctionId())
 	{
 		return true;
 	}
@@ -939,7 +940,8 @@ IsMongoCollectionBasedRTE(RangeTblEntry *rte)
 		return false;
 	}
 
-	if (funcExpr->funcid != ApiCollectionFunctionId())
+	if (funcExpr->funcid != ApiCollectionFunctionId() &&
+		funcExpr->funcid != HelioApiCollectionFunctionId())
 	{
 		return false;
 	}
