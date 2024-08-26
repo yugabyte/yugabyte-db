@@ -80,7 +80,7 @@ Note: When enabling the cost models, ensure that packed row for colocated tables
 
 #### Wait-on-conflict concurrency
 
-Flag: `enable_wait_queues`
+Flag: `enable_wait_queues=true`
 
 Enables use of wait queues so that conflicting transactions can wait for the completion of other dependent transactions, helping to improve P99 latencies. Wait-on-conflict concurrency control provides feature compatibility, and uses the same semantics as PostgreSQL.
 
