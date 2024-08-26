@@ -599,6 +599,11 @@ export const classifyTablesAndNamespaces = (
         if (sourceTableInfo) {
           selectedTableUuids.add(getTableUuid(sourceTableInfo));
           selectedNamespaceUuid.add(namespaceToNamespaceUuid[sourceTableInfo.keySpace]);
+
+          // If the main table is preselected, then we will preselect the index tables as well.
+          sourceTableInfo.indexTableIDs?.forEach((indexTableId) =>
+            selectedTableUuids.add(indexTableId)
+          );
         }
         tableUuidsDroppedOnTarget.add(tableUuid);
         return;
@@ -618,6 +623,11 @@ export const classifyTablesAndNamespaces = (
         if (sourceTableInfo) {
           selectedTableUuids.add(getTableUuid(sourceTableInfo));
           selectedNamespaceUuid.add(namespaceToNamespaceUuid[sourceTableInfo.keySpace]);
+
+          // If the main table is preselected, then we will preselect the index tables as well.
+          sourceTableInfo.indexTableIDs?.forEach((indexTableId) =>
+            selectedTableUuids.add(indexTableId)
+          );
         }
     }
   });
