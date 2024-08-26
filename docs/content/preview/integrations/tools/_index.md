@@ -8,6 +8,7 @@ image: /images/section_icons/troubleshoot/troubleshoot.png
 aliases:
   - /develop/tools/
   - /preview/develop/tools/
+  - /preview/tools/
 type: indexpage
 showRightNav: true
 cascade:

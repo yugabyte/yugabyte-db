@@ -562,7 +562,7 @@
   name = "GUI clients"
   weight = 7
   identifier = "tools"
-  url = "/preview/tools/"
+  url = "/preview/integrations/tools/"
   [preview_integrations.params]
     showSection = true
 

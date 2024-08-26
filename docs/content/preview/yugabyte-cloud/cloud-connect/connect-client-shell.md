@@ -98,7 +98,7 @@ To connect, follow the client's configuration steps for PostgreSQL or Cassandra,
 
 Your client may also require the use of the cluster's certificate. Refer to [Download the cluster certificate](../../cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
-For detailed steps for configuring popular third party tools, see [Third party tools](../../../tools/).
+For detailed steps for configuring popular third party tools, see [Third party tools](../../../integrations/tools/).
 
 ## Related information
 
