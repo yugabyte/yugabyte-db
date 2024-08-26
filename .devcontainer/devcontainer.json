@@ -2,13 +2,27 @@
     "build": {
         "dockerfile": "Dockerfile",
         "context": "..",
+        "args": {
+            // To include debug symbols for postgres, add -x
+            "POSTGRES_INSTALL_ARG": "-c",
+            "PG_VERSION": "16",
+            "CITUS_VERSION": "v12.1"
+        }
     },
     "customizations": {
         "vscode": {
             "extensions": [
                 "ms-vscode.cpptools",
-                "ms-vscode.cpptools-extension-pack",
+                "ms-vscode.cpptools-extension-pack"
             ]
+        }
+    },
+    "forwardPorts": [9712],
+        "portsAttributes": {
+        "9712": {
+            "label": "PostgresPort",
+            "onAutoForward": "notify",
+            "requireLocalPort": false
         }
     }
 }

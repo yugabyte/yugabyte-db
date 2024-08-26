@@ -48,6 +48,8 @@ jobs:
           postgresql-16 \
           postgresql-server-dev-16 \
           libpq-dev \
+          libicu-dev \
+          libkrb5-dev \
           postgresql-16-cron \
           postgresql-16-pgvector \
           postgresql-16-postgis-3 \
