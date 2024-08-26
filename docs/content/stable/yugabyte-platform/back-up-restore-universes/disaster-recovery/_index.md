@@ -105,12 +105,12 @@ xCluster DR adds higher-level orchestration workflows to this deployment to make
 
 For all deployment models _other than_ active-active single-master, unidirectional replication configured at any moment in time, for transactional YSQL, use xCluster Replication directly instead of xCluster DR.
 
-For example, use xCluster Replication for the following:
+For example, use xCluster Replication for the following deployments:
 
-- Multi-master (bidirectional) deployments, where you have two application instances, each one writing to a different universe.
-- Active-active single-master deployments in which a single master application can freely write (without coordinating with YugabyteDB for failover or switchover) to either universe, because both accept writes.
+- Multi-master (bidirectional), where you have two application instances, each one writing to a different universe.
+- Active-active single-master, in which a single master application can freely write (without coordinating with YugabyteDB for failover or switchover) to either universe, because both accept writes.
 - Non-transactional SQL. That is, SQL without write-order guarantees and without transactional atomicity guarantees.
-- CQL deployments.
+- CQL.
 
 Note that a universe configured for xCluster DR cannot be used for xCluster Replication, and vice versa. Although xCluster DR uses xCluster Replication under the hood, xCluster DR replication is managed exclusively from the **xCluster Disaster Recovery** tab, and not on the **xCluster Replication** tab.
 
