@@ -2551,12 +2551,12 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_ignore_heap_pg_class_oids", PGC_SUSET, DEVELOPER_OPTIONS,
-			gettext_noop("Ignores requests to set heap pg_class OIDs in yb_binary_restore mode"),
+		{"yb_ignore_pg_class_oids", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Ignores requests to set pg_class OIDs in yb_binary_restore mode"),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
-		&yb_ignore_heap_pg_class_oids,
+		&yb_ignore_pg_class_oids,
 		true,
 		NULL, NULL, NULL
 	},
