@@ -3,13 +3,15 @@ title: YugabyteDB node-postgres Smart Driver reference
 headerTitle: Node.js Drivers
 linkTitle: Node.js Drivers
 description: YugabyteDB node-postgres smart driver for YSQL
-headcontent: Node.js Drivers for YSQL
+badges: ysql
+aliases:
+- /preview/reference/drivers/nodejs/yugabyte-pg-reference/
 menu:
   preview:
     name: Node.js Drivers
     identifier: ref-yugabyte-pg-driver
-    parent: drivers
-    weight: 500
+    parent: nodejs-drivers
+    weight: 600
 type: docs
 ---
 
@@ -30,12 +32,12 @@ type: docs
 
 </ul>
 
-YugabyteDB node-postgres smart driver is a Node.js driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL node-postgres driver](https://github.com/brianc/node-postgres), with additional connection load balancing features.
+YugabyteDB node-postgres smart driver is a Node.js driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL node-postgres driver](https://github.com/brianc/node-postgres), with additional connection load balancing features.
 
 For more information on the YugabyteDB node-postgres smart driver, see the following:
 
-- [YugabyteDB smart drivers for YSQL](../../../../drivers-orms/smart-drivers/)
-- [CRUD operations](../../../../drivers-orms/nodejs/yugabyte-node-driver)
+- [YugabyteDB smart drivers for YSQL](../../../drivers-orms/smart-drivers/)
+- [CRUD operations](../../../drivers-orms/nodejs/yugabyte-node-driver)
 - [GitHub repository](https://github.com/yugabyte/node-postgres)
 - [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
 
@@ -104,7 +106,7 @@ To use the driver, do the following:
 
 ## Try it out
 
-This tutorial shows how to use the YugabyteDB node-postgres smart driver with YugabyteDB. It starts by creating a three-node cluster with a [replication factor](../../../../architecture/docdb-replication/replication/#replication-factor) of 3. This tutorial uses the [yb-ctl](../../../../admin/yb-ctl/#root) utility.
+This tutorial shows how to use the YugabyteDB node-postgres smart driver with YugabyteDB. It starts by creating a three-node cluster with a [replication factor](../../../architecture/docdb-replication/replication/#replication-factor) of 3. This tutorial uses the [yb-ctl](../../../admin/yb-ctl/#root) utility.
 
 Next, you use a Node.js application to demonstrate the driver's load balancing features.
 

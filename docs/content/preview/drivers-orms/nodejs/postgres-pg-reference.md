@@ -3,13 +3,15 @@ title: PostgreSQL node-postgres Driver
 headerTitle: Node.js Drivers
 linkTitle: Node.js Drivers
 description: PostgreSQL node-postgres Driver for YSQL
-headcontent: Node.js Drivers for YSQL
+badges: ysql
+aliases:
+- /preview/reference/drivers/nodejs/postgres-pg-reference/
 menu:
   preview:
     name: Node.js Drivers
     identifier: ref-postgres-pg-driver
-    parent: drivers
-    weight: 600
+    parent: nodejs-drivers
+    weight: 601
 type: docs
 ---
 
@@ -28,11 +30,11 @@ type: docs
   </li>
 </ul>
 
-The [PostgreSQL node-postgres driver](https://node-postgres.com/) is the official Node.js driver for PostgreSQL. The YSQL API is fully compatible with the PostgreSQL node-postgres (pg) driver, so you can connect to the YugabyteDB database to execute DMLs and DDLs using the node-postgres APIs. The driver supports the [SCRAM-SHA-256 authentication method](../../../../secure/authentication/password-authentication/#scram-sha-256).
+The [PostgreSQL node-postgres driver](https://node-postgres.com/) is the official Node.js driver for PostgreSQL. The YSQL API is fully compatible with the PostgreSQL node-postgres (pg) driver, so you can connect to the YugabyteDB database to execute DMLs and DDLs using the node-postgres APIs. The driver supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
 For details on installing and using node-postgres, see the [node-postgres documentation](https://node-postgres.com/).
 
-For a tutorial on building a Node.js application with node-postgres, see [Connect an application](../../../../drivers-orms/nodejs/postgres-node-driver/).
+For a tutorial on building a Node.js application with node-postgres, see [Connect an application](../../../drivers-orms/nodejs/postgres-node-driver/).
 
 ## Fundamentals
 
@@ -93,7 +95,7 @@ client
     })
 ```
 
-Read more on designing [Database schemas and tables](../../../../explore/ysql-language-features/databases-schemas-tables/).
+Read more on designing [Database schemas and tables](../../../explore/ysql-language-features/databases-schemas-tables/).
 
 ### Read and write data
 
@@ -140,9 +142,9 @@ client
 
 ## Configure SSL/TLS
 
-To build a Node.js application that communicates securely over SSL, get the root certificate (`ca.crt`) of the YugabyteDB Cluster. If certificates are not generated yet, follow the instructions in [Create server certificates](../../../../secure/tls-encryption/server-certificates/).
+To build a Node.js application that communicates securely over SSL, get the root certificate (`ca.crt`) of the YugabyteDB Cluster. If certificates are not generated yet, follow the instructions in [Create server certificates](../../../secure/tls-encryption/server-certificates/).
 
-Because a YugabyteDB Aeon cluster is always configured with SSL/TLS, you don't have to generate any certificate but only set the client-side SSL configuration. To fetch your root certificate, refer to [Download your cluster certificate](../../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
+Because a YugabyteDB Aeon cluster is always configured with SSL/TLS, you don't have to generate any certificate but only set the client-side SSL configuration. To fetch your root certificate, refer to [Download your cluster certificate](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
 The node-postgres driver allows you to avoid including the parameters like `sslcert`, `sslkey`, `sslrootcert`, or `sslmode` in the connection string. You can pass the object which includes `connectionString` and `ssl` object which has various fields including the following:
 
@@ -239,7 +241,7 @@ client.connect()
 
 ## Transaction and isolation levels
 
-YugabyteDB supports transactions for inserting and querying data from the tables. YugabyteDB supports different [isolation levels](../../../../architecture/transactions/isolation-levels/) for maintaining strong consistency for concurrent data access.
+YugabyteDB supports transactions for inserting and querying data from the tables. YugabyteDB supports different [isolation levels](../../../architecture/transactions/isolation-levels/) for maintaining strong consistency for concurrent data access.
 
 Node-postgres driver allows transaction using the queries, executed using `client.query()`.
 
