@@ -37,6 +37,7 @@ static const char *IgnoredCommonSpecFields[] = {
 	"$sort",
 	"allowDiskUse",
 	"allowPartialResults",
+	"apiVersion",
 	"autocommit",
 	"awaitData",
 	"batch_size",
