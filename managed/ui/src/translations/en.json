@@ -166,6 +166,22 @@
         "xClusterRotateCaWarning": "Note! Rotating node to node CA certs for universes participating in an xCluster configuration as the source universe will interrupt the replication and require a restart of the xCluster configuration to resume replication after TLS rotation is completed.",
         "xClusterToggleEncryptionWarning": "Note! Toggling on/off encryption for universes participating in an xCluster configuration will interrupt the replication. To enable replication again, please ensure all participating universes have matching TLS encryption setting and restart the affected xCluster configurations."
       },
+      "masterFailover": {
+        "warning": {
+          "title": "Potential master failure detected",
+          "threshold": "Auto master failover threshold will be attempted to remediate in {{duration}} unless user fixes it manually",
+          "snoozeBtnText": "Snooze for 1 hour",
+          "disable": "To disable auto master failover schedule temporarily, click 'Snooze for 1 hour'",
+          "runtimeConfigMsg": "Auto master failover can be permanently disabled by setting the universe scoped runtime config yb.auto_master_failover.enabled to false"
+        }
+      },
+      "postFailover": {
+        "warning": {
+          "title": "Post auto master failover actions will be attempted in {{duration}}",
+          "disable": "To disable post failover actions temporarily, click 'Snooze for 1 hour'",
+          "snoozeBtnText": "Snooze for 1 hour"
+        }
+      },
       "dbRollbackUpgrade": {
         "modalTitle": "Upgrade Database",
         "upgradeAction": "Upgrade",
