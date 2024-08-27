@@ -15,14 +15,13 @@ type: docs
 
 Export YSQL database logs to third-party tools for security monitoring, to build operations and health dashboards, troubleshooting, and more. You can export the following types of logs:
 
-<!-- Database query logging. This is the standard [PostgreSQL logging](https://www.postgresql.org/docs/11/runtime-config-logging.html) facility. Using these settings you can log query statements and errors.-->
 - Database audit logging. Using the [PostgreSQL Audit Extension](https://www.pgaudit.org/#) ([pgaudit](https://github.com/pgaudit/pgaudit/blob/1.3.2/README.md)), the audit log provides the exact database transactions, which is a compliance requirement for government, financial, or ISO certifications.
 
-Note that YugabyteDB is based on PostgreSQL 11 and uses pgaudit v1.3.2.
+Note that YugabyteDB is based on PostgreSQL 11 and uses PostgreSQL Audit Extension v1.3.2.
 
 ## Prerequisites
 
-The Audit log export feature is {{<badge/ea>}}. To enable the feature in YugabyteDB Anywhere, set the **Enable DB Audit Logging** Global Configuration option (config key `yb.universe.audit_logging_enabled`) to true. Refer to [Manage runtime configuration settings](../../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings. The flag can't be turned off if audit logging is enabled on a universe.
+The Audit log export feature is {{<badge/ea>}}. To enable the feature in YugabyteDB Anywhere, set the **Enable DB Audit Logging** Global Configuration option (config key `yb.universe.audit_logging_enabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings. The flag can't be turned off if audit logging is enabled on a universe.
 
 To export logs, you need to first create an export configuration. A configuration defines the sign in credentials and settings for the tool that you want to export your logs to. Refer to [Manage export configurations](../anywhere-export-configuration).
 
@@ -37,104 +36,6 @@ To export logs, you need to first create an export configuration. A configuratio
 - Configuring logging restarts your universe. Configure logging when the cluster isn't experiencing heavy traffic.
 - Configuring logging blocks other universe operations, such as backups and maintenance. Avoid changing your settings before maintenance windows and during scheduled backups. The operation will block a backup from running.
 - To limit performance impact and control costs, log and export only what you need. The default settings are based on best practices from open source PostgreSQL, the broader community, and YugabyteDB testing to ensure the impact is bounded and insignificant.
-
-<!--## Database Query Logging
-
-To enable database query logging for a cluster, do the following:
-
-1. On the cluster **Settings** tab, select **Database Query Logging**.
-1. Click **Enable Database Query Logging**.
-1. Set the [logging settings](#logging-settings).
-1. Select the [Log export configuration](../managed-integrations/) for the tool you want to export to.
-1. Click **Enable YSQL Query Logging**.
-
-YugabyteDB Aeon begins the (rolling) restart.
-
-Logs are exported to the third-party tool in near real time. After the setup is complete and YSQL database queries are submitted, verify that the YSQL database query logs are visible in the tool; they should be available in minutes. Logs are exported with preset tags and a [log line prefix](#include-in-the-log-prefix-log_line_prefix) so that you can filter them further by cloud, region, availability zone, cluster_id, node-type, and node-name. Depending on your tool, you can also perform text searches of the logs.
-
-### Logging settings
-
-Database query logging provides access to the following subset of the standard [PostegreSQL logging settings](https://www.postgresql.org/docs/11/runtime-config-logging.html).
-
-##### Log SQL statements (log_statement)
-
-Turn this option on to log SQL statements by type. You can choose the following options:
-
-- ddl - log data definition statements CREATE, ALTER, and DROP.
-- mod - in addition to ddl statements, log data-modifying statements INSERT, UPDATE, DELETE, TRUNCATE, and COPY FROM.
-- all - log all statements.
-
-Statements that fail before the execute phase, or that have syntax errors, are not included; to log error statements, use [Log SQL statements with severity](#log-sql-statements-with-severity-log-min-error-statement).
-
-Note that if this option is off, statements may still be logged, depending on the other logging settings.
-
-##### Include in the log prefix (log_line_prefix)
-
-Add metadata, such as the user or database name, to the start of each log line. This is applied to logs captured on YugabyteDB nodes and exported to your monitoring dashboard.
-
-To build the prefix, click **Edit** to open the **Edit Log Line Prefix** dialog. To add prefix items, click **Add Prefix** and choose the prefix items; these can also include punctuation. Click and drag items added to the log line prefix to arrange them in the order you want in the log.
-
-| Prefix | Description | Default |
-| :--- | :--- | :--- |
-| %p | Process ID | Always on |
-| %t | Timestamp of the log | Always on |
-| %e | SQLSTATE error code | off |
-| %r | Remote hostname or IP address, and remote port | on |
-| %a | Application name | off |
-| %u | Username | on |
-| %d | Database name | on |
-| : | Colon |  |
-| [] | Brackets |  |
-| () | Parentheses |  |
-| @ | Ampersand |  |
-
-The default prefix is as follows:
-
-```output
-%m : %r : %u @ %d :[%p]:
-
-timestamp : remote hostname and port : username@database : [process ID]:
-```
-
-##### Log SQL statements with severity (log_min_error_statement)
-
-Controls which SQL statements that cause an error condition are logged. The current SQL statement is included in the log entry for any message of the specified severity or higher. This parameter is set to ERROR, which means statements causing errors, log messages, fatal errors, or panics are logged.
-
-##### Set verbosity (log_error_verbosity)
-
-Set the amount of detail for each log statement. Valid values are TERSE, DEFAULT, and VERBOSE, each adding more fields to displayed messages. TERSE excludes the logging of DETAIL, HINT, QUERY, and CONTEXT error information. VERBOSE output includes the SQLSTATE error code and the source code file name, function name, and line number that generated the error.
-
-##### Log the duration of all completed statements (log_duration)
-
-Log the duration of all completed statements. Statement text is not included. Use this option with the following option to log all durations, and the statement text for statements exceeding a specified duration. Use this option for performance analysis.
-
-##### Log all statements with duration (log_min_duration_statement)
-
-Log the duration and statement text of all statements that ran for the specified duration (in ms) or longer. Use this setting to identify slow queries. If a statement has been logged for [Log SQL statements](#log-sql-statements-log-statement), the text is not repeated in the duration log message.
-
-Setting this option to 0 logs all statements, with their duration, which is not recommended unless you have low traffic. You should set this to a reasonable value for your application (for example, 1000 milliseconds)<!--, or use [log sampling](#sample-statements-with-duration-log_min_duration_sample-and-log_statement_sample_rate).This setting overrides [the sampling setting](#sample-statements-with-duration-log_min_duration_sample-and-log_statement_sample_rate); queries exceeding the minimum duration are not subject to sampling and are always logged -->.
-
-<!--
-##### Sample statements with duration (log_min_duration_sample and log_statement_sample_rate)
-
-Log a sampling of statements that ran for a specified duration (in ms) or longer. These options are used together, typically to identify slow queries while minimizing the performance impact on high traffic clusters.
-
-For example, to log 25% of queries exceeding 1000ms, set the sample rate to 25 per cent, and set the duration to 1000.
-
-When duration is off, the sample rate has no effect.
--->
-
-<!--##### Log the internal representation of the query plan (debug_print_plan)
-
-Log the debug-level execution plan used by the parser. Used for debugging. Not recommended for production.
-
-##### Log connections (log_connections)
-
-Log all connection attempts, along with successfully completed client authentication and authorization.
-
-##### Log disconnections (log_disconnections)
-
-Log session termination and duration of the session.-->
 
 ## Database audit log
 

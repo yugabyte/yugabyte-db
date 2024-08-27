@@ -446,6 +446,7 @@ parallelizations
 passwordless
 Patroni
 performant
+pgaudit
 PgBouncer
 pgLoader
 pg_cron
@@ -849,6 +850,7 @@ UUIDs
 Vagrantfile
 validator
 validators
+yb_db_admin
 vCPU
 vCPUs
 vendored
