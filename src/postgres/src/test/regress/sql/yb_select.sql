@@ -231,3 +231,22 @@ select
 from a
 where a in (1, 2)
 order by a.a;
+
+-- #22533 storage index filter in non-trivial subquery
+CREATE TABLE site (id int PRIMARY KEY);
+CREATE TABLE address (id int PRIMARY KEY, site_id int, recorded_at timestamp);
+CREATE INDEX idx_address_problem ON address (site_id HASH) INCLUDE (recorded_at);
+explain (costs off)
+SELECT s.id, aa.addresses
+FROM site s
+JOIN (
+    SELECT
+        array_agg(json_build_object(
+        'id', a.id,
+        'site_id', a.site_id)) AS addresses
+    FROM address a
+    WHERE a.site_id = 1
+    AND a.recorded_at IS NULL
+    ) aa ON true;
+DROP TABLE site;
+DROP TABLE address;

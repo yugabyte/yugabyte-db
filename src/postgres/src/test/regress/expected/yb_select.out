@@ -752,3 +752,32 @@ order by a.a;
  1 |   6
  2 |   5
 (2 rows)
+
+-- #22533 storage index filter in non-trivial subquery
+CREATE TABLE site (id int PRIMARY KEY);
+CREATE TABLE address (id int PRIMARY KEY, site_id int, recorded_at timestamp);
+CREATE INDEX idx_address_problem ON address (site_id HASH) INCLUDE (recorded_at);
+explain (costs off)
+SELECT s.id, aa.addresses
+FROM site s
+JOIN (
+    SELECT
+        array_agg(json_build_object(
+        'id', a.id,
+        'site_id', a.site_id)) AS addresses
+    FROM address a
+    WHERE a.site_id = 1
+    AND a.recorded_at IS NULL
+    ) aa ON true;
+                          QUERY PLAN
+---------------------------------------------------------------
+ Nested Loop
+   ->  Aggregate
+         ->  Index Scan using idx_address_problem on address a
+               Index Cond: (site_id = 1)
+               Remote Index Filter: (recorded_at IS NULL)
+   ->  Seq Scan on site s
+(6 rows)
+
+DROP TABLE site;
+DROP TABLE address;
