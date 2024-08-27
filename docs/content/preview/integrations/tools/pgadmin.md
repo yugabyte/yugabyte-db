@@ -57,4 +57,4 @@ You can begin exploring YugabyteDB databases.
 
 For details on using pgAdmin, click **Help** in the pgAdmin menu.
 
-If you're looking for sample databases to explore YugabyteDB using pgAdmin, refer to [Sample datasets](../../sample-data/).
+If you're looking for sample databases to explore YugabyteDB using pgAdmin, refer to [Sample datasets](../../../sample-data/).

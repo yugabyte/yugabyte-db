@@ -48,4 +48,4 @@ You have successfully created a database connection to the default database (`yu
 
 For help using DbSchema, see the [DbSchema documentation](https://dbschema.com/documentation/index.html).
 
-YugabyteDB includes sample databases for you to explore using DbSchema. Refer to [Sample datasets](../../sample-data/).
+YugabyteDB includes sample databases for you to explore using DbSchema. Refer to [Sample datasets](../../../sample-data/).

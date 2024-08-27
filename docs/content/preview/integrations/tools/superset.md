@@ -23,7 +23,7 @@ You can use Superset to quickly explore and visualize data stored in databases a
 
 Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB prerequisites](../#yugabytedb-prerequisites).
 
-Load some data to explore and visualize. For a local installation, you can load the Northwind sample database using the `./bin/yugabyted demo connect` command from your shell, or follow the [instructions](../../sample-data/northwind/).
+Load some data to explore and visualize. For a local installation, you can load the Northwind sample database using the `./bin/yugabyted demo connect` command from your shell, or follow the [instructions](../../../sample-data/northwind/).
 
 ### Install Superset
 
