@@ -473,7 +473,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status YsqlDdlTxnCompleteCallback(const std::string& pb_txn_id,
                                     bool is_committed,
-                                    const LeaderEpoch& epoch);
+                                    const LeaderEpoch& epoch,
+                                    const std::string& debug_caller_info);
 
   Status YsqlDdlTxnCompleteCallbackInternal(
       TableInfo* table, const TransactionId& txn_id, bool success, const LeaderEpoch& epoch);
