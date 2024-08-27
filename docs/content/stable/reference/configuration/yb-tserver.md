@@ -779,17 +779,17 @@ Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNC
 
 Default: `READ COMMITTED` {{<badge/ea>}}
 
-Read Committed support is currently in [Early Access](/preview/releases/versioning/#feature-maturity). Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
+Read Committed support is currently in [Early Access](/preview/releases/versioning/#feature-maturity). [Read Committed Isolation](../../../explore/transactions/isolation-levels/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
 
 ##### --yb_enable_read_committed_isolation
 
-{{<badge/ea>}} Enables Read Committed Isolation. When set to false, the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation. See [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag for more details.
+{{<badge/ea>}} Enables Read Committed Isolation. By default this flag is false and in this case `READ COMMITTED` (and `READ UNCOMMITTED`) isolation level of YSQL fall back to the stricter [Snapshot Isolation](../../../explore/transactions/isolation-levels/). See [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag for more details.
 
 Default: `false`
 
 ##### --pg_client_use_shared_memory
 
-{{<badge/ea>}} Enables the use of shared memory between PostgreSQL and the YB-TServer. Using shared memory can potentially improve the performance of your database operations. This is because shared memory reduces the need for disk I/O operations by keeping frequently accessed data in memory, which can be accessed more quickly than data stored on disk.
+{{<badge/ea>}} Enables the use of shared memory between PostgreSQL and the YB-TServer. Using shared memory can potentially improve the performance of your database operations.
 
 Default: `false`
 
@@ -1733,7 +1733,7 @@ Default: true
 
 ##### yb_enable_base_scans_cost_model
 
-{{<badge/ea>}} Enables the YugabyteDB cost model for sequential and index scans. When enabling this flag, it is also recommended to run ANALYZE on user tables to maintain up-to-date statistics.
+{{<badge/ea>}} Enables the YugabyteDB cost model for sequential and index scans. When enabling this parameter, you must run ANALYZE on user tables to maintain up-to-date statistics.
 
 When enabling the cost based optimizer, ensure that [packed row](../../../architecture/docdb/packed-rows) for colocated tables is enabled by setting `ysql_enable_packed_row_for_colocated_table = true`.
 
