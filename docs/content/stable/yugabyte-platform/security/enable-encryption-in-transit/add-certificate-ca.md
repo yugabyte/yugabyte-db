@@ -78,6 +78,12 @@ Add a CA-signed certificate to YugabyteDB Anywhere as follows:
 
 You can rotate certificates for universes configured with the same type of certificates. This involves replacing existing certificates with new database node certificates.
 
+### View certificate details
+
+To view the CA certificates' details, navigate to **Integrations > Security > Encryption in Transit**, select **Actions** for the certificate you created and click **Details**. You can the certificate details similar to the following illustration:
+
+![View CA certificate details](/images/yp/encryption-in-transit/cert-details.png)
+
 ### Verify certificate chain
 
 Perform the following steps to verify your certificates:
