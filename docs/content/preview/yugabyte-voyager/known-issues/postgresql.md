@@ -445,7 +445,7 @@ ERROR: EXCLUDE constraint not supported yet (SQLSTATE 0A000)
 
 Note that creating an index on the relevant columns is essential for maintaining performance. Without an index, the trigger's search operation can degrade performance.
 
-**Caveats** : Note that there are specific issues related to creating indexes on certain data types in YugabyteDB. Depending on the data types involved, additional workarounds may be required to ensure optimal performance for these constraints.
+**Caveats** : Note that there are specific issues related to creating indexes on certain data types certain index methods in YugabyteDB. Depending on the data types or methods involved, additional workarounds may be required to ensure optimal performance for these constraints.
 
 **Example**
 
