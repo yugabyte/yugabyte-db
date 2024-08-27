@@ -61,22 +61,19 @@ export const SchemaAnalysis: FC<SchemaAnalysisProps> = ({ /* migration, */ schem
   const theme = useTheme();
   const { t } = useTranslation();
 
-  // TODO: Remove `as any` and ensure 'current_analysis_report' is correct once we have the data models
-  const currentAnalysisReport = (schemaAPI as any)?.current_analysis_report;
-  // TODO: Remove the 'as any' and ensure 'analysis_history' is correct once we have the data models
-  const history = (schemaAPI as any)?.analysis_history ?? [];
+  const currentAnalysisReport = schemaAPI.current_analysis_report;
+  const history = schemaAPI?.analysis_history ?? [];
 
   const analysis: SchemaAnalysisData[] = [currentAnalysisReport, ...history].filter(Boolean)
     .map((analysisReport) => ({
       completedOn: "",
-      // TODO: Remove the 'as RefactoringCount[]' and ensure 'refactor_details' is correct once we have the data models
-      manualRefactorObjectsCount: (analysisReport?.recommended_refactoring?.refactor_details as RefactoringCount[] | undefined)
+      manualRefactorObjectsCount: analysisReport?.recommended_refactoring?.refactor_details
         ?.reduce((acc, { manual }) => acc + (manual ?? 0), 0) || 0,
       summary: {
         graph: analysisReport?.recommended_refactoring?.refactor_details ?? [],
       },
       reviewRecomm: {
-        unsupportedDataTypes: analysisReport?.unsupported_data_types ?? [],
+        unsupportedDataTypes: analysisReport?.unsupported_datatypes ?? [],
         unsupportedFeatures: analysisReport?.unsupported_features ?? [],
         unsupportedFunctions: analysisReport?.unsupported_functions ?? [],
       },
