@@ -811,7 +811,7 @@ ProcessDollarToLongElement(bson_value_t *result, const bson_value_t *currentElem
 		{
 			ValidateValueIsNotNaNOrInfinity(currentElement);
 			bool checkFixedInteger = false;
-			if (!IsBsonValue64BitInteger(currentElement, checkFixedInteger))
+			if (!IsBsonValueUnquantized64BitInteger(currentElement, checkFixedInteger))
 			{
 				ThrowOverflowTargetError(currentElement);
 			}
@@ -1090,7 +1090,7 @@ ProcessDollarToDateElement(bson_value_t *result, const bson_value_t *currentElem
 		case BSON_TYPE_INT64:
 		{
 			bool checkFixedInteger = false;
-			if (!IsBsonValue64BitInteger(currentElement, checkFixedInteger))
+			if (!IsBsonValueUnquantized64BitInteger(currentElement, checkFixedInteger))
 			{
 				ThrowOverflowTargetError(currentElement);
 			}

@@ -2155,6 +2155,13 @@ CompareBitwiseOperator(const bson_value_t *documentValue, const
 
 		case BSON_TYPE_DOUBLE:
 		{
+			/* Not match numerical values that cannot be represented as a signed 64-bit integer.  */
+			bool checkFixedInteger = false;
+			if (!IsBsonValueUnquantized64BitInteger(documentValue, checkFixedInteger))
+			{
+				return false;
+			}
+
 			double doubleVal = BsonValueAsDouble(documentValue);
 
 			if (floor(doubleVal) != doubleVal)

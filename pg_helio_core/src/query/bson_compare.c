@@ -42,6 +42,8 @@ static int GetSortOrderType(bson_type_t type);
 static int CompareBsonValue(const bson_value_t *left, const bson_value_t *right,
 							bool *isComparisonValid, const char *collationString);
 static double BsonValueAsDoubleCore(const bson_value_t *value, bool quiet);
+static bool IsBsonValue64BitIntegerCore(const bson_value_t *value, bool checkFixedInteger,
+										bool quantizeDoubleValue);
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -836,38 +838,19 @@ IsBsonValue32BitInteger(const bson_value_t *value, bool checkFixedInteger)
 }
 
 
-/* Indicates whether the value can be represented as an int64 value without overflow or truncating decimal digits. */
+/* Wrapper around IsBsonValue64BitIntegerCore with quantizeDoubleValue set to true */
 bool
 IsBsonValue64BitInteger(const bson_value_t *value, bool checkFixedInteger)
 {
-	switch (value->value_type)
-	{
-		case BSON_TYPE_INT32:
-		case BSON_TYPE_INT64:
-		{
-			return true;
-		}
+	return IsBsonValue64BitIntegerCore(value, checkFixedInteger, true);
+}
 
-		case BSON_TYPE_DOUBLE:
-		{
-			bson_value_t dec128Val;
-			dec128Val.value_type = BSON_TYPE_DECIMAL128;
-			dec128Val.value.v_decimal128 = GetBsonValueAsDecimal128Quantized(value);
-			return IsDecimal128InInt64Range(&dec128Val) &&
-				   (!checkFixedInteger || IsDecimal128AFixedInteger(&dec128Val));
-		}
 
-		case BSON_TYPE_DECIMAL128:
-		{
-			return IsDecimal128InInt64Range(value) &&
-				   (!checkFixedInteger || IsDecimal128AFixedInteger(value));
-		}
-
-		default:
-		{
-			return false;
-		}
-	}
+/* Wrapper around IsBsonValue64BitIntegerCore with quantizeDoubleValue set to false */
+bool
+IsBsonValueUnquantized64BitInteger(const bson_value_t *value, bool checkFixedInteger)
+{
+	return IsBsonValue64BitIntegerCore(value, checkFixedInteger, false);
 }
 
 
@@ -1585,6 +1568,54 @@ BsonValueAsDoubleCore(const bson_value_t *value, bool quiet)
 		default:
 		{
 			return 0;
+		}
+	}
+}
+
+
+/* Indicates whether the value can be represented as an int64 value without overflow or truncating decimal digits.
+ * When quantizeDoubleValue is true, any double value less than "-9223372036854775295" will result in an INT_64 underflow.
+ * When quantizeDoubleValue is false, any double value less than "-9223372036854776832" will result in an INT_64 underflow.
+ */
+static bool
+IsBsonValue64BitIntegerCore(const bson_value_t *value, bool checkFixedInteger,
+							bool quantizeDoubleValue)
+{
+	switch (value->value_type)
+	{
+		case BSON_TYPE_INT32:
+		case BSON_TYPE_INT64:
+		{
+			return true;
+		}
+
+		case BSON_TYPE_DOUBLE:
+		{
+			bson_value_t dec128Val;
+			dec128Val.value_type = BSON_TYPE_DECIMAL128;
+
+			if (quantizeDoubleValue)
+			{
+				dec128Val.value.v_decimal128 = GetBsonValueAsDecimal128Quantized(value);
+			}
+			else
+			{
+				dec128Val.value.v_decimal128 = GetBsonValueAsDecimal128(value);
+			}
+
+			return IsDecimal128InInt64Range(&dec128Val) &&
+				   (!checkFixedInteger || IsDecimal128AFixedInteger(&dec128Val));
+		}
+
+		case BSON_TYPE_DECIMAL128:
+		{
+			return IsDecimal128InInt64Range(value) &&
+				   (!checkFixedInteger || IsDecimal128AFixedInteger(value));
+		}
+
+		default:
+		{
+			return false;
 		}
 	}
 }

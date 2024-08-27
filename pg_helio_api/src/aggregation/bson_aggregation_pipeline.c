@@ -2318,7 +2318,7 @@ HandleSkip(const bson_value_t *existingValue, Query *query,
 	}
 
 	bool checkFixedInteger = true;
-	if (!IsBsonValue64BitInteger(existingValue, checkFixedInteger))
+	if (!IsBsonValueUnquantized64BitInteger(existingValue, checkFixedInteger))
 	{
 		double doubleValue = BsonValueAsDouble(existingValue);
 		ereport(ERROR, (errcode(MongoLocation5107200),
