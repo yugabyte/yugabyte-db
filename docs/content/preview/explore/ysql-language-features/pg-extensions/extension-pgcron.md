@@ -67,7 +67,7 @@ For more information on how to schedule jobs, refer to the [pg_cron documentatio
 
 ## Best practices
 
-The `cron.job_run_details` table is part of the `pg_cron` extension in PostgreSQL. This table keeps a record of the execution details of the scheduled cron jobs. It logs information about each cron job run, including its start and end time, status, and any exit messages or errors that occurred during the execution. The records in `cron.job_run_details` are not cleaned automatically, so in scenarios where you have jobs that run every few seconds, set up a periodic cleanup task for the table using `pg_cron` to ensure old data doesn't accumulate and affect database performance.
+The `cron.job_run_details` table is part of the `pg_cron` extension in PostgreSQL. This table keeps a record of the execution details of the scheduled cron jobs. It logs information about each cron job run, including its start and end time, status, and any exit messages or errors that occurred during the execution. The records in `cron.job_run_details` are not cleaned automatically, so in scenarios where you have jobs that run frequently, set up a periodic cleanup task for the table using `pg_cron` to ensure old data doesn't accumulate and affect database performance.
 
 ### View job details and clean up records
 
@@ -88,7 +88,7 @@ The `cron.job_run_details` table is part of the `pg_cron` extension in PostgreSQ
 
 The following examples decribe various ways `pg_cron` can be used to automate and improve database management tasks. The tool can help maintain database performance, consistency, and reliability through scheduled jobs.
 
-### Monitor and identify
+### Monitor and identify slow queries
 
 Use [pg_stat_statements](../extension-pgstatstatements/) to capture statistics about queries, and schedule regular reports with `pg_cron` to summarize slow queries.
 
