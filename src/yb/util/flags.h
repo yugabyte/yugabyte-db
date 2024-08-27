@@ -31,6 +31,9 @@
 //
 #pragma once
 
+#include <map>
+#include <unordered_map>
+
 #include <gflags/gflags.h>
 #include <gflags/gflags_declare.h>
 
@@ -145,5 +148,23 @@ bool ValidatePercentageFlag(const char* flag_name, int value);
 
 // Check if SetUsageMessage() was called. Useful for tools.
 bool IsUsageMessageSet();
+
+YB_DEFINE_ENUM(FlagType, (kInvalid)(kNodeInfo)(kCustom)(kAuto)(kDefault));
+
+struct FlagInfo {
+  std::string name;
+  std::string value;
+  bool is_auto_flag_promoted = false;  // Only set for AutoFlags
+};
+
+// Get a user friendly info about all the flags in the system grouped by FlagType.
+// auto_flags_filter_func is used to filter only AutoFlags that are relevant to this this process.
+// AutoFlags for which this function returns false are treated as kDefault type.
+// Flags of type kDefault are not part of the result if default_flags_filter returns false.
+// default_flags_filter and custom_varz are optional.
+std::unordered_map<FlagType, std::vector<FlagInfo>> GetFlagInfos(
+    std::function<bool(const std::string&)> auto_flags_filter,
+    std::function<bool(const std::string&)> default_flags_filter,
+    const std::map<std::string, std::string>& custom_varz);
 
 } // namespace yb
