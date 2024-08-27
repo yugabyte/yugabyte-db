@@ -1,29 +1,31 @@
 ---
-title: YugabyteDB Npgsql Smart Driver
+title: PostgreSQL Npgsql Driver
 headerTitle: C# Drivers
 linkTitle: C# Drivers
-description: C# Npgsql Smart Driver for YSQL
-headcontent: C# Drivers for YSQL
+description: C# PostgreSQL Npgsql Driver for YSQL
+badges: ysql
+aliases:
+  - /preview/reference/drivers/csharp/postgres-npgsql-reference/
 menu:
   preview:
     name: C# Drivers
-    identifier: ref-yb-npgsql-driver
-    parent: drivers
-    weight: 600
+    identifier: ref-postgres-npgsql-driver
+    parent: csharp-drivers
+    weight: 620
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="../yb-npgsql-reference/" class="nav-link active">
+    <a href="../yb-npgsql-reference/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YugabyteDB Npgsql Smart Driver
     </a>
   </li>
 
   <li >
-    <a href="../postgres-npgsql-reference/" class="nav-link">
+    <a href="../postgres-npgsql-reference/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       PostgreSQL Npgsql Driver
     </a>
@@ -31,62 +33,71 @@ type: docs
 
 </ul>
 
-Yugabyte Npgsql smart driver is a .NET driver for [YSQL](../../../../api/ysql/) based on [PostgreSQL Npgsql driver](https://github.com/npgsql/npgsql/tree/main/src/Npgsql), with additional connection load balancing features.
+Npgsql is an open source ADO.NET Data Provider for PostgreSQL; it allows programs written in C#, Visual Basic, and F# to access the YugabyteDB server. Npgsql is based on [libpq](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For more information on the Yugabyte Npgsql smart driver, see the following:
+For details on Npgsql, refer to the [Npgsql documentation](https://www.npgsql.org/doc/).
 
-- [YugabyteDB smart drivers for YSQL](../../../../drivers-orms/smart-drivers/)
-- [CRUD operations](../../../../drivers-orms/csharp/ysql/)
-- [GitHub repository](https://github.com/yugabyte/npgsql)
-- [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
+For building a sample C# application with Npgsql, see [Connect an application](../../../drivers-orms/csharp/postgres-npgsql/).
 
 ## Download the driver dependency
 
-If you are using Visual Studio IDE, add the NpgsqlYugabyteDB package to your project as follows:
+If you are using Visual Studio IDE, add the Npgsql package to your project as follows:
 
 1. Right-click **Dependencies** and choose **Manage Nuget Packages**
-1. Search for `NpgsqlYugabyteDB` and click **Add Package**. You may need to click the **Include prereleases** checkbox.
+1. Search for `Npgsql` and click **Add Package**
 
-To add the NpgsqlYugabyteDB package to your project when not using an IDE, use the following `dotnet` command:
+To add the Npgsql package to your project when not using an IDE, use the following `dotnet` command:
 
 ```csharp
-dotnet add package NpgsqlYugabyteDB
+dotnet add package Npgsql
 ```
 
-or any of the other methods mentioned on the [nuget page](https://www.nuget.org/packages/Npgsql/) for NpgsqlYugabyteDB.
+or any of the other methods mentioned on the [nuget page](https://www.nuget.org/packages/Npgsql/) for Npgsql.
 
 ## Fundamentals
 
-Learn how to perform common tasks required for C# application development using the Npgsql YugabyteDB driver.
+Learn how to perform common tasks required for C# application development using the Npgsql driver.
 
-### Load balancing connection properties
+### Connect to YugabyteDB database
 
-The following connection properties need to be added to enable load balancing:
+After setting up the dependencies, implement the C# client application that uses the Npgsql driver to connect to your YugabyteDB cluster and run a query on the sample data.
 
-- `Load Balance Hosts` - enable cluster-aware load balancing by setting this property to `true`; disabled by default.
-- `Topology Keys` - provide comma-separated geo-location values to enable topology-aware load balancing. Geo-locations can be provided as `cloud.region.zone`. Specify all zones in a region as `cloud.region.*`. To designate fallback locations for when the primary location is unreachable, specify a priority in the form `:n`, where `n` is the order of precedence. For example, `cloud1.datacenter1.rack1:1,cloud1.datacenter1.rack2:2`.
+Import Npgsql and use the `NpgsqlConnection` class to create the connection object to perform DDLs and DMLs against the database.
 
-By default, the driver refreshes the list of nodes every 300 seconds (5 minutes). You can change this value by including the `YB Servers Refresh Interval` connection parameter.
+The following table describes the connection parameters for connecting to the YugabyteDB database.
 
-### Use the driver
+| Parameters | Description | Default |
+| :---------- | :---------- | :------ |
+| Host  | Host name of the YugabyteDB instance | localhost
+| Port |  Listen port for YSQL | 5433
+| Database | Database name | yugabyte
+| Username | User connecting to the database | yugabyte
+| Password | Password for the user | yugabyte
 
-To use the driver, pass new connection properties for load balancing in the connection URL or properties pool.
-
-To enable uniform load balancing across all servers, you set the `Load Balance Hosts` property to `true` in the URL, as per the following example:
+The following is a basic example connection string for connecting to YugabyteDB.
 
 ```csharp
-var connStringBuilder = "Host=127.0.0.1,127.0.0.2,127.0.0.3;Port=5433;Database=yugabyte;Username=yugabyte;Password=password;Load Balance Hosts=true;"
-NpgsqlConnection conn = new NpgsqlConnection(connStringBuilder)
+var connStringBuilder = "Host=localhost;Port=5433;Database=yugabyte;Username=yugabyte;Password=password"
+NpgsqlConnection conn = new NpgsqlConnection(connStringBuilder);
 ```
 
-You can specify [multiple hosts](../../../../drivers-orms/csharp/ysql/#use-multiple-addresses) in the connection string in case the primary address fails. After the driver establishes the initial connection, it fetches the list of available servers from the universe, and performs load balancing of subsequent connection requests across these servers.
+{{< warning title="Warning" >}}
 
-To specify topology keys, you set the `Topology Keys` property to comma separated values, as per the following example:
+On every new connection, the Npgsql driver also makes [extra system table queries to map types](https://github.com/npgsql/npgsql/issues/1486), which adds significant overhead. It is recommended that you turn this behavior off to significantly reduce connection open execution time.
 
-```go
-var connStringBuilder = "Host=127.0.0.1,127.0.0.2,127.0.0.3;Port=5433;Database=yugabyte;Username=yugabyte;Password=password;Load Balance Hosts=true;Topology Keys=cloud.region.zone"
-NpgsqlConnection conn = new NpgsqlConnection(connStringBuilder)
+Set the following option in your connection string builder:
+
+```csharp
+connStringBuilder.ServerCompatibilityMode = ServerCompatibilityMode.NoTypeLoading;
 ```
+
+Alternatively, you can add the following to your connection string:
+
+```csharp
+Server Compatibility Mode=NoTypeLoading;
+```
+
+{{< /warning >}}
 
 ### Create table
 
@@ -127,7 +138,7 @@ SELECT * from employee where id=1;
 
 ```csharp
 NpgsqlCommand empPrepCmd = new NpgsqlCommand("SELECT name, age, language FROM employee WHERE id = @EmployeeId", conn);
-empPrepCmd.Parameters.Add("@EmployeeId", YBNpgsqlTypes.NpgsqlDbType.Integer);
+empPrepCmd.Parameters.Add("@EmployeeId", NpgsqlTypes.NpgsqlDbType.Integer);
 
 empPrepCmd.Parameters["@EmployeeId"].Value = 1;
 NpgsqlDataReader reader = empPrepCmd.ExecuteReader();
@@ -141,22 +152,18 @@ while (reader.Read())
 
 ### Configure SSL/TLS
 
-The YugabyteDB Npgsql smart driver support for SSL is the same as for the upstream driver. For information on using SSL/TLS for your application, refer to the .NET Npgsql driver's [Configure SSL/TLS](../postgres-npgsql-reference/#configure-ssl-tls) instructions.
+The following table describes the additional parameters the .NET Npgsql driver requires as part of the connection string when using SSL.
 
-<!-- The following table describes the additional parameters the YugabyteDB Npgsql smart driver requires as part of the connection string when using SSL.
-
-| YugabyteDB Npgsql Parameter | Description |
-| :-------------------------- | :---------- |
+| Npgsql Parameter | Description |
+| :---------- | :---------- |
 | SslMode     | SSL Mode |
 | RootCertificate | Path to the root certificate on your computer |
 | TrustServerCertificate | For use with the Require SSL mode |
 
-#### SSL modes
-
-YugabyteDB supports SSL modes in different ways depending on the driver version, as shown in the following table.
+Npgsql supports SSL modes in different ways depending on the driver version, as shown in the following table.
 
 | SSL mode | Versions before 6.0 | Version 6.0 or later |
-| :------- | :------------------ | :------------------- |
+| :------- | :------------------------ | :----|
 | Disable  | Supported (default) | Supported |
 | Allow    | Not Supported | Supported |
 | Prefer   | Supported | Supported (default) |
@@ -164,7 +171,7 @@ YugabyteDB supports SSL modes in different ways depending on the driver version,
 | VerifyCA | Not Supported - use Require | Supported |
 | VerifyFull | Not Supported - use Require | Supported |
 
-The YugabyteDB Npgsql smart driver validates certificates differently from other PostgreSQL drivers as follows:
+The .NET Npgsql driver validates certificates differently from other PostgreSQL drivers as follows:
 
 - Prior to version 6.0, when you specify SSL mode `Require`, you also need to specify `RootCertificate`, and the driver verifies the certificate by default (like the verify CA or verify full modes on other drivers), and fails for self-signed certificates.
 
@@ -201,4 +208,12 @@ var connStringBuilder = new NpgsqlConnectionStringBuilder();
     CRUD(connStringBuilder.ConnectionString);
 ```
 
-For more information on TLS/SSL support, see [Security and Encryption](https://www.npgsql.org/doc/security.html?tabs=tabid-1) in the Npgsql documentation. -->
+For more information on TLS/SSL support, see [Security and Encryption](https://www.npgsql.org/doc/security.html?tabs=tabid-1) in the Npgsql documentation.
+
+## Compatibility matrix
+
+| Driver Version | YugabyteDB Version | Support |
+| :------------- | :----------------- | :------ |
+| 6.0.3 | 2.11 (preview) | full
+| 6.0.3 |  2.8 (stable) | full
+| 6.0.3 | 2.6 | full

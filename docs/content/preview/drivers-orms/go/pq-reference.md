@@ -5,7 +5,7 @@ linkTitle: Go Drivers
 description: Go PQ Driver for YSQL
 badges: ysql
 aliases:
-  - /preview/reference/drivers/go/pg-reference/
+  - /preview/reference/drivers/go/pq-reference/
 menu:
   preview:
     name: Go Drivers
