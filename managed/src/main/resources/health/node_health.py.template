@@ -62,6 +62,7 @@ POSTGRES = "postgres"
 OTEL_COLLECTOR = "otelcol-contrib"
 YB_CONTROLLER = "yb-controller-server"
 NODE_EXPORTER = "node_exporter"
+CONNECTION_POOLING_MANAGER = "odyssey"
 
 ALERT_ENHANCEMENTS_RELEASE_BUILD = "2.6.0.0-b0"
 RELEASE_BUILD_PATTERN = "(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)[-](.+)"
@@ -119,6 +120,10 @@ HEALTH_CHECK_TSERVER_BOOT_TIME_SEC = MetricDefinition(
 HEALTH_CHECK_POSTMASTER_BOOT_TIME_SEC = MetricDefinition(
     "ybp_health_check_postmaster_boot_time_sec",
     "Primary postgres process boot time in seconds from epoch",
+    "sec")
+HEALTH_CHECK_CONNECTION_POOLING_MANAGER_BOOT_TIME_SEC = MetricDefinition(
+    "ybp_health_check_connection_pooling_manager_boot_time_sec",
+    "Connection pooling manager process boot time in seconds from epoch",
     "sec")
 HEALTH_CHECK_NODE_MASTER_FATAL_LOGS = MetricDefinition(
     "ybp_health_check_node_master_fatal_logs",
@@ -196,6 +201,9 @@ YB_NODE_YSQL_CONNECTIONS_COUNT = MetricDefinition(
 YB_NODE_YSQL_CONNECT = MetricDefinition(
     "yb_node_ysql_connect",
     "Status of test ysql connection")
+YB_NODE_INTERNAL_YSQL_CONNECT = MetricDefinition(
+    "yb_node_internal_ysql_connect",
+    "Status of test internal ysql connection")
 YB_NODE_YCQL_CONNECT = MetricDefinition(
     "yb_node_ycql_connect",
     "Status of test ycql connection")
@@ -530,9 +538,9 @@ def get_rss_from_statm(statm):
 class NodeChecker():
 
     def __init__(self, node, node_name, node_identifier, master_index, tserver_index, is_k8s,
-                 yb_home_dir, ybc_dir, start_time_ms, ysql_port, ycql_port, redis_port,
-                 enable_tls_client, enable_tls, root_and_client_root_ca_same, ssl_protocol,
-                 enable_ysql, enable_ysql_auth, master_http_port, tserver_http_port,
+                 yb_home_dir, ybc_dir, start_time_ms, ysql_port, internal_ysql_port, ycql_port,
+                 redis_port, enable_tls_client, enable_tls, root_and_client_root_ca_same,
+                 ssl_protocol, enable_ysql, enable_ysql_auth, master_http_port, tserver_http_port,
                  ysql_server_http_port, node_version, is_ybc_enabled, ybc_port,
                  time_drift_wrn_threshold, time_drift_err_threshold, otel_enabled,
                  temp_output_file, ddl_atomicity_check, master_leader_url,
@@ -551,6 +559,7 @@ class NodeChecker():
         self.ssl_protocol = ssl_protocol
         self.is_k8s = is_k8s
         self.ysql_port = ysql_port
+        self.internal_ysql_port = internal_ysql_port
         self.ycql_port = ycql_port
         self.redis_port = redis_port
         self.enable_ysql = enable_ysql
@@ -1042,7 +1051,7 @@ class NodeChecker():
 
     def check_uptime_for_process(self, process):
         logging.info("Checking uptime for {} process {}".format(self.node, process))
-        if process in [MASTER, TSERVER]:
+        if process in [MASTER, TSERVER, CONNECTION_POOLING_MANAGER]:
             e = self._new_entry("Uptime", process)
         else:
             e = self._new_metric_entry("Uptime", process)
@@ -1061,6 +1070,8 @@ class NodeChecker():
                 hc_metric_definition = HEALTH_CHECK_MASTER_BOOT_TIME_SEC
             elif process == TSERVER:
                 hc_metric_definition = HEALTH_CHECK_TSERVER_BOOT_TIME_SEC
+            elif process == CONNECTION_POOLING_MANAGER:
+                hc_metric_definition = HEALTH_CHECK_CONNECTION_POOLING_MANAGER_BOOT_TIME_SEC
             else:
                 hc_metric_definition = HEALTH_CHECK_POSTMASTER_BOOT_TIME_SEC
 
@@ -1382,9 +1393,9 @@ class NodeChecker():
         metric = Metric.from_definition(YB_NODE_REDIS_CONNECT).add_value(0 if has_errors else 1)
         return e.fill_and_return_entry(errors, has_error=has_errors, metrics=[metric])
 
-    def create_ysqlsh_command(self, db_name="system_platform"):
+    def create_ysqlsh_command(self, db_name="system_platform", use_internal_port = False):
         ysqlsh = '{}/bin/ysqlsh'.format(self.yb_tserver_dir())
-        port_args = "-p {}".format(self.ysql_port)
+        port_args = "-p {}".format(self.internal_ysql_port if use_internal_port else self.ysql_port)
         host = self.node
 
         if self.enable_ysql_auth:
@@ -1405,12 +1416,36 @@ class NodeChecker():
         return ysqlsh_cmd
 
     def check_ysqlsh_connect(self):
-        logging.info("Checking ysqlsh works for node {}".format(self.node))
-        e = self._new_entry("Connectivity with ysqlsh")
+        logging.info("Checking ysqlsh works for node {} with port {}"
+                    .format(self.node, self.ysql_port))
+        e = self._new_entry("Connectivity with ysqlsh on port {}".format(self.ysql_port))
 
         metric = Metric.from_definition(YB_NODE_YSQL_CONNECT)
         try:
             ysqlsh_cmd = self.create_ysqlsh_command()
+        except RuntimeError as re:
+            metric.add_value(0)
+            return e.fill_and_return_entry([str(re)], has_error=True, metrics=[metric])
+
+        cmd = "{} -c \"\\\\conninfo\"".format(ysqlsh_cmd)
+
+        errors = []
+        output = self._check_output(cmd).strip()
+        if 'You are connected to database' not in output:
+            errors = [output]
+        is_error = len(errors) > 0
+        metric.add_value(0 if is_error else 1)
+        return e.fill_and_return_entry(errors, has_error=is_error, metrics=[metric])
+
+    def check_ysqlsh_conn_mgr_connect(self):
+        logging.info("Checking ysqlsh works for node {} with internal port {}"
+                     .format(self.node, self.internal_ysql_port))
+        e = self._new_entry("Connectivity with ysqlsh on internal port {}"
+                            .format(self.internal_ysql_port))
+
+        metric = Metric.from_definition(YB_NODE_INTERNAL_YSQL_CONNECT)
+        try:
+            ysqlsh_cmd = self.create_ysqlsh_command(use_internal_port=True)
         except RuntimeError as re:
             metric.add_value(0)
             return e.fill_and_return_entry([str(re)], has_error=True, metrics=[metric])
@@ -2109,9 +2144,11 @@ class NodeInfo:
         self.yb_version = data["ybSoftwareVersion"]
         self.ssl_protocol = data["sslProtocol"]
         self.enable_ysql = data["enableYSQL"]
+        self.enable_connection_pooling = data["enableConnectionPooling"]
         self.enable_ycql = data["enableYCQL"]
         self.enable_yedis = data["enableYEDIS"]
         self.ysql_port = data["ysqlPort"]
+        self.internal_ysql_port = data["internalYsqlPort"]
         self.ycql_port = data["ycqlPort"]
         self.redis_port = data["redisPort"]
         self.enable_ysql_auth = data["enableYSQLAuth"]
@@ -2174,9 +2211,9 @@ def main():
     report = Report()
     checker = NodeChecker(
         n.node_host, n.node_name, n.node_identifier, n.master_index, n.tserver_index, n.is_k8s,
-        n.yb_home_dir, n.ybc_dir, n.node_start_time, n.ysql_port, n.ycql_port, n.redis_port,
-        n.enable_tls_client, n.enable_tls, n.root_and_client_root_ca_same, n.ssl_protocol,
-        n.enable_ysql, n.enable_ysql_auth, n.master_http_port, n.tserver_http_port,
+        n.yb_home_dir, n.ybc_dir, n.node_start_time, n.ysql_port, n.internal_ysql_port, n.ycql_port,
+        n.redis_port, n.enable_tls_client, n.enable_tls, n.root_and_client_root_ca_same,
+        n.ssl_protocol, n.enable_ysql, n.enable_ysql_auth, n.master_http_port, n.tserver_http_port,
         n.ysql_server_http_port, n.yb_version, n.is_ybc_enabled, n.ybc_port,
         n.time_drift_wrn_threshold, n.time_drift_err_threshold, n.otel_enabled,
         args.temp_output_file, args.ddl_atomicity_check, args.master_leader_url,
@@ -2233,8 +2270,24 @@ def main():
         if n.enable_yedis:
             coordinator.add_check(checker, "check_redis_cli")
         if n.enable_ysql:
-            if n.test_ysqlsh_connectivity:
-                coordinator.add_check(checker, "check_ysqlsh_connect")
+            if n.enable_connection_pooling:
+                # If CP is enabled, we need to check the connection manager's uptime by default
+                coordinator.add_check(checker,
+                    "check_uptime_for_process",
+                    CONNECTION_POOLING_MANAGER)
+                if n.test_ysqlsh_connectivity:
+                    # Always check for the ysqlsh connectivity on the internal postgres port when
+                    # CP is enabled.
+                    coordinator.add_check(checker, "check_ysqlsh_conn_mgr_connect")
+                    if not n.enable_ysql_auth:
+                        # If auth is not enabled, we need to check the ysqlsh connectivity on the
+                        # external connection manager port as well as the internal ysqlsh port.
+                        # We don't do this for the auth case, since we connect through the
+                        # postgres sockets directly instead of through the connection manager.
+                        coordinator.add_check(checker, "check_ysqlsh_connect")
+            else:
+                if n.test_ysqlsh_connectivity:
+                    coordinator.add_check(checker, "check_ysqlsh_connect")
             if n.test_read_write:
                 coordinator.add_check(checker, "check_ysqlsh_read_write")
             coordinator.add_check(checker, "check_postgres_worker_count")
