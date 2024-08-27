@@ -76,7 +76,9 @@ if test -f "{{ tmp_directory }}/create_provider.json"; then
 
     # Create the provider in case the provider create payload exists.
     provider_data=$(cat "{{ tmp_directory }}/create_provider.json")
-    response=$(curl -s -w "%{http_code}" -o response.txt -X POST "${header_options[@]}" -d "$provider_data" $tls_verify_option "$create_provider_endpoint")
+    response=$(curl -s -w "%{http_code}" -o response.txt -X POST \
+        "${header_options[@]}" -d "$provider_data" \
+        $tls_verify_option "$create_provider_endpoint")
     http_status="${response:(-3)}"
     response_body=$(<response.txt)
 
@@ -90,7 +92,8 @@ if test -f "{{ tmp_directory }}/create_provider.json"; then
         get_provider_endpoint=$(_get_provider_url $yba_url $customer_uuid $provider_id)
         
         # Perform GET request to fetch provider data by UUID
-        response=$(curl -s -w "%{http_code}" -o response.txt -X GET "${header_options[@]}" $tls_verify_option "$get_provider_endpoint")
+        response=$(curl -s -w "%{http_code}" -o response.txt -X GET \
+            "${header_options[@]}" $tls_verify_option "$get_provider_endpoint")
         http_status="${response:(-3)}"
         response_body=$(<response.txt)
 
@@ -121,7 +124,9 @@ if test -f "{{ tmp_directory }}/update_provider.json"; then
 
     # Create the provider in case the provider create payload exists.
     provider_data=$(cat "{{ tmp_directory }}/update_provider.json")
-    response=$(curl -s -w "%{http_code}" -o response.txt -X PUT "${header_options[@]}" -d "$provider_data" $tls_verify_option "$update_provider_endpoint")
+    response=$(curl -s -w "%{http_code}" -o response.txt -X PUT \
+        "${header_options[@]}" -d "$provider_data" \
+        $tls_verify_option "$update_provider_endpoint")
     http_status="${response:(-3)}"
     response_body=$(<response.txt)
 
@@ -135,7 +140,8 @@ if test -f "{{ tmp_directory }}/update_provider.json"; then
         get_provider_endpoint=$(_get_provider_url $yba_url $customer_uuid $provider_id)
         
         # Perform GET request to fetch provider data by UUID
-        response=$(curl -s -w "%{http_code}" -o response.txt -X GET "${header_options[@]}" $tls_verify_option "$get_provider_endpoint")
+        response=$(curl -s -w "%{http_code}" -o response.txt -X GET \
+            "${header_options[@]}" $tls_verify_option "$get_provider_endpoint")
         http_status="${response:(-3)}"
         response_body=$(<response.txt)
 
@@ -166,7 +172,9 @@ if test -f "{{ tmp_directory }}/create_instance.json"; then
     instance_data=$(echo "$instance_data" | sed "s/\\\$provider_id/$provider_id/")
 
     create_instance_url=$(_instance_create_url $yba_url $customer_uuid $provider_id)
-    response=$(curl -s -w "%{http_code}" -o response.txt -X POST "${header_options[@]}" -d "$instance_data" $tls_verify_option "$create_instance_url")
+    response=$(curl -s -w "%{http_code}" -o response.txt -X POST \
+        "${header_options[@]}" -d "$instance_data" \
+        $tls_verify_option "$create_instance_url")
     http_status="${response:(-3)}"
 
     if [ $http_status -ge 200 ] && [ $http_status -lt 300 ]; then
@@ -185,15 +193,22 @@ airgap_flag=""
 {% endif %}
 
 installer_dir="{{ ynp_dir }}/../../bin"
-su - {{ yb_user }} -c "\"$installer_dir/node-agent-installer.sh\" -c install -u {{ url }} -t {{ api_key }} --provider_id $provider_id  --instance_type {{ instance_type_name }} --zone_name {{ provider_region_zone_name }} --node_name {{ node_name }} --node_ip {{ node_ip }} --silent --skip_verify_cert $airgap_flag"
+su - {{ yb_user }} -c "\"$installer_dir/node-agent-installer.sh\" -c install \
+    -u {{ url }} -t {{ api_key }} --provider_id $provider_id \
+    --instance_type {{ instance_type_name }} --region_name {{ provider_region_name }} \
+    --zone_name {{ provider_region_zone_name }} --node_name {{ node_name }} \
+    --node_ip {{ node_ip }} --silent --skip_verify_cert $airgap_flag"
 
+loginctl enable-linger {{ yb_user }}
 # install node_agent service
-"$installer_dir/node-agent-installer.sh" -c install_service --user yugabyte
+su - {{ yb_user }} -c "\"$installer_dir/node-agent-installer.sh\" -c install_service \
+    --user {{ yb_user }}"
 
 if test -f "{{ tmp_directory }}/add_node_to_provider.json"; then
     get_nodes_in_provider=$(_get_nodes_in_provider $yba_url $customer_uuid $provider_id)
     # Perform GET request to fetch all the nodes associated with provider
-    response=$(curl -s -w "%{http_code}" -o response.txt -X GET "${header_options[@]}" $tls_verify_option "$get_nodes_in_provider")
+    response=$(curl -s -w "%{http_code}" -o response.txt -X GET \
+        "${header_options[@]}" $tls_verify_option "$get_nodes_in_provider")
     http_status="${response:(-3)}"
     response_body=$(<response.txt)
     matched=false
@@ -217,7 +232,8 @@ if test -f "{{ tmp_directory }}/add_node_to_provider.json"; then
     if [[ "$matched" == false ]]; then
         get_provider_endpoint=$(_get_provider_url $yba_url $customer_uuid $provider_id)
         # Perform GET request to fetch provider data by UUID
-        response=$(curl -s -w "%{http_code}" -o response.txt -X GET "${header_options[@]}" $tls_verify_option "$get_provider_endpoint")
+        response=$(curl -s -w "%{http_code}" -o response.txt -X GET \
+            "${header_options[@]}" $tls_verify_option "$get_provider_endpoint")
         http_status="${response:(-3)}"
         response_body=$(<response.txt)
 
@@ -251,7 +267,9 @@ if test -f "{{ tmp_directory }}/add_node_to_provider.json"; then
 
             add_node_data=$(cat "{{ tmp_directory }}/add_node_to_provider.json")
             add_node_url=$(_add_node_to_provider $yba_url $customer_uuid $zone_uuid)
-            response=$(curl -s -w "%{http_code}" -o response.txt -X POST "${header_options[@]}" -d "$add_node_data" $tls_verify_option "$add_node_url")
+            response=$(curl -s -w "%{http_code}" -o response.txt -X POST \
+                "${header_options[@]}" -d "$add_node_data" \
+                $tls_verify_option "$add_node_url")
             http_status="${response:(-3)}"
 
             if [ $http_status -ge 200 ] && [ $http_status -lt 300 ]; then
