@@ -17,7 +17,7 @@ A distributed SQL database needs to automatically split the data in a table and 
 
 ## Sharding
 
-YugabyteDB splits table data into smaller pieces called [tablets a.k.a shards](../key-concepts#tablet). Sharding is the process of mapping of a row of a table to a shard. Sharding helps in scalability and geo-distribution by horizontally partitioning data. These shards are distributed across multiple server nodes (containers, virtual machines, bare-metal) in a shared-nothing architecture. The application interacts with a SQL table as one logical unit and remains agnostic to the physical placement of the shards. DocDB supports range and hash sharding natively.
+YugabyteDB splits table data into smaller pieces called [tablets a.k.a shards](../key-concepts/#tablet). Sharding is the process of mapping of a row of a table to a shard. Sharding helps in scalability and geo-distribution by horizontally partitioning data. These shards are distributed across multiple server nodes (containers, virtual machines, bare-metal) in a shared-nothing architecture. The application interacts with a SQL table as one logical unit and remains agnostic to the physical placement of the shards. DocDB supports range and hash sharding natively.
 
 {{<lead link="sharding/">}}
 To know more about the different sharding strategies and how they work, see [Sharding strategies](sharding/).
@@ -30,4 +30,3 @@ As table data grows, the size of tablets increase. Once a tablet reaches a thres
 {{<lead link="tablet-splitting/">}}
 To understand how and when tablets split, see [Tablet splitting](tablet-splitting/).
 {{</lead>}}
-
