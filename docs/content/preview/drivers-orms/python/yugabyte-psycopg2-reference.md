@@ -3,14 +3,15 @@ title: YugabyteDB Psycopg2 Smart Driver
 headerTitle: Python Drivers
 linkTitle: Python Drivers
 description: YugabyteDB Psycopg2 Smart Driver for YSQL
-headcontent: Python Drivers for YSQL
+badges: ysql
 aliases:
   - /preview/reference/drivers/python/
+  - /preview/reference/drivers/python/yugabyte-psycopg2-reference/
 menu:
   preview:
     name: Python Drivers
     identifier: ref-yugabyte-psycopg2-driver
-    parent: drivers
+    parent: python-drivers
     weight: 650
 type: docs
 ---
@@ -30,12 +31,12 @@ type: docs
   </li>
 </ul>
 
-Yugabyte Psycopg2 smart driver is a Python driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2), with additional connection load balancing features.
+Yugabyte Psycopg2 smart driver is a Python driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2), with additional connection load balancing features.
 
 For more information on the YugabyteDB node-postgres smart driver, see the following:
 
-- [YugabyteDB smart drivers for YSQL](../../../../drivers-orms/smart-drivers/)
-- [CRUD operations](../../../../drivers-orms/python/yugabyte-psycopg2/)
+- [YugabyteDB smart drivers for YSQL](../../../drivers-orms/smart-drivers/)
+- [CRUD operations](../../../drivers-orms/python/yugabyte-psycopg2/)
 - [GitHub repository](https://github.com/yugabyte/psycopg2)
 - [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
 
@@ -87,7 +88,7 @@ To enable uniform load balancing across all servers, you set the `load-balance` 
     conn = psycopg2.connect(user = 'username', password='password', host = 'hostname', port = '5433', dbname = 'database_name', load_balance='True')
     ```
 
-You can specify [multiple hosts](../../../../drivers-orms/go/yb-pgx/#use-multiple-addresses) in the connection string in case the primary address fails. After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
+You can specify [multiple hosts](../../../drivers-orms/go/yb-pgx/#use-multiple-addresses) in the connection string in case the primary address fails. After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
 
 To specify topology keys, you set the `topology_keys` property to comma-separated values in the Connection string or dictionary, as per the following examples:
 
@@ -117,7 +118,7 @@ conn = yb_pool.getconn()
 
 ## Try it out
 
-This tutorial shows how to use the Yugabyte Psycopg2 driver with YugabyteDB. It starts by creating a 3 node cluster with a replication factor of 3. This tutorial uses the [yb-ctl](../../../../admin/yb-ctl/) utility.
+This tutorial shows how to use the Yugabyte Psycopg2 driver with YugabyteDB. It starts by creating a 3 node cluster with a replication factor of 3. This tutorial uses the [yb-ctl](../../../admin/yb-ctl/) utility.
 
 Next, you use a Python shell terminal to demonstrate the driver's load balancing features by running a few python scripts.
 

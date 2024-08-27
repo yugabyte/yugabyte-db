@@ -3,13 +3,16 @@ title: PGX Smart Driver
 headerTitle: Go Drivers
 linkTitle: Go Drivers
 description: Go PGX Smart Driver for YSQL
-headcontent: Go Drivers for YSQL
+badges: ysql
+aliases:
+  - /preview/reference/drivers/go/
+  - /preview/reference/drivers/go/yb-pgx-reference/
 menu:
   preview:
     name: Go Drivers
     identifier: ref-yb-pgx-go-driver
-    parent: drivers
-    weight: 600
+    parent: go-drivers
+    weight: 700
 type: docs
 ---
 
@@ -37,12 +40,12 @@ type: docs
 
 </ul>
 
-YugabyteDB PGX smart driver is a Go driver for [YSQL](../../../../api/ysql/) based on [PGX](https://github.com/jackc/pgx/), with additional connection load balancing features.
+YugabyteDB PGX smart driver is a Go driver for [YSQL](../../../api/ysql/) based on [PGX](https://github.com/jackc/pgx/), with additional connection load balancing features.
 
 For more information on the YugabyteDB PGX smart driver, see the following:
 
-- [YugabyteDB smart drivers for YSQL](../../../../drivers-orms/smart-drivers/)
-- [CRUD operations](../../../../drivers-orms/go/yb-pgx)
+- [YugabyteDB smart drivers for YSQL](../../../drivers-orms/smart-drivers/)
+- [CRUD operations](../../../drivers-orms/go/yb-pgx)
 - [GitHub repository](https://github.com/yugabyte/pgx)
 - [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
 
@@ -84,7 +87,7 @@ url := fmt.Sprintf("%s?load_balance=true", baseUrl)
 conn, err := pgx.Connect(context.Background(), url)
 ```
 
-You can specify [multiple hosts](../../../../drivers-orms/go/yb-pgx/#use-multiple-addresses) in the connection string in case the primary address fails. After the driver establishes the initial connection, it fetches the list of available servers from the universe, and performs load balancing of subsequent connection requests across these servers.
+You can specify [multiple hosts](../../../drivers-orms/go/yb-pgx/#use-multiple-addresses) in the connection string in case the primary address fails. After the driver establishes the initial connection, it fetches the list of available servers from the universe, and performs load balancing of subsequent connection requests across these servers.
 
 To specify topology keys, you set the `topology_keys` property to comma separated values, as per the following example:
 
@@ -114,7 +117,7 @@ if err != nil {
 
 The `conn.Exec()` function also returns an `error` object which, if not `nil`, needs to be handled in your code.
 
-Read more on designing [Database schemas and tables](../../../../explore/ysql-language-features/databases-schemas-tables/).
+Read more on designing [Database schemas and tables](../../../explore/ysql-language-features/databases-schemas-tables/).
 
 ### Read and write data
 
@@ -234,9 +237,9 @@ For more details, see the [pgxpool package](https://pkg.go.dev/github.com/jackc/
 
 ## Configure SSL/TLS
 
-To build a Go application that communicates securely over SSL with YugabyteDB database, you need the root certificate (`ca.crt`) of the YugabyteDB cluster. To generate these certificates and install them while launching the cluster, follow the instructions in [Create server certificates](../../../../secure/tls-encryption/server-certificates/).
+To build a Go application that communicates securely over SSL with YugabyteDB database, you need the root certificate (`ca.crt`) of the YugabyteDB cluster. To generate these certificates and install them while launching the cluster, follow the instructions in [Create server certificates](../../../secure/tls-encryption/server-certificates/).
 
-Because a YugabyteDB Aeon cluster is always configured with SSL/TLS, you don't have to generate any certificate but only set the client-side SSL configuration. To fetch your root certificate, refer to [CA certificate](../../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
+Because a YugabyteDB Aeon cluster is always configured with SSL/TLS, you don't have to generate any certificate but only set the client-side SSL configuration. To fetch your root certificate, refer to [CA certificate](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
 For a YugabyteDB Aeon cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as follows at the client side.
 
@@ -263,7 +266,7 @@ $ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded
 
 ## Transaction and isolation levels
 
-YugabyteDB supports transactions for inserting and querying data from the tables. YugabyteDB supports different [isolation levels](../../../../architecture/transactions/isolation-levels/) for maintaining strong consistency for concurrent data access.
+YugabyteDB supports transactions for inserting and querying data from the tables. YugabyteDB supports different [isolation levels](../../../architecture/transactions/isolation-levels/) for maintaining strong consistency for concurrent data access.
 
 The PGX driver provides the `conn.Begin()` function to start a transaction. The `conn.BeginEx()` function can create a transaction with a specified isolation level.
 

@@ -3,13 +3,15 @@ title: PGX Driver
 headerTitle: Go Drivers
 linkTitle: Go Drivers
 description: Go PGX Driver for YSQL
-headcontent: Go Drivers for YSQL
+badges: ysql
+aliases:
+  - /preview/reference/drivers/go/pgx-reference/
 menu:
   preview:
     name: Go Drivers
     identifier: ref-pgx-go-driver
-    parent: drivers
-    weight: 610
+    parent: go-drivers
+    weight: 710
 type: docs
 ---
 
@@ -41,7 +43,7 @@ The [PGX driver](https://github.com/jackc/pgx/) is one of the most popular and a
 
 The driver allows Go programmers to connect to YugabyteDB to execute DMLs and DDLs using the PGX APIs. It also supports the standard `database/sql` package.
 
-For a tutorial on building a sample Go application with PGX, see [Connect an application](../../../../drivers-orms/go/pgx/).
+For a tutorial on building a sample Go application with PGX, see [Connect an application](../../../drivers-orms/go/pgx/).
 
 ## Fundamentals
 
@@ -108,7 +110,7 @@ if err != nil {
 
 The `conn.Exec()` function also returns an `error` object which, if not `nil`, needs to be handled in your code.
 
-Read more on designing [Database schemas and tables](../../../../explore/ysql-language-features/databases-schemas-tables/).
+Read more on designing [Database schemas and tables](../../../explore/ysql-language-features/databases-schemas-tables/).
 
 ### Read and write data
 
@@ -211,7 +213,7 @@ For more details, see [pgxpool package doc](https://pkg.go.dev/github.com/jackc/
 
 To build a Go application that communicates securely over SSL with YugabyteDB database, you need the root certificate (`ca.crt`) of the YugabyteDB cluster.
 
-To generate these certificates and install them while launching the cluster, follow the instructions in [Create server certificates](../../../../secure/tls-encryption/server-certificates/).
+To generate these certificates and install them while launching the cluster, follow the instructions in [Create server certificates](../../../secure/tls-encryption/server-certificates/).
 
 For a YugabyteDB Aeon cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as follows at the client side.
 
@@ -244,7 +246,7 @@ YugabyteDB Aeon requires SSL/TLS, and connections using SSL mode `disable` will 
 
 ## Transaction and isolation levels
 
-YugabyteDB supports transactions for inserting and querying data from the tables. YugabyteDB supports different [isolation levels](../../../../architecture/transactions/isolation-levels/) for maintaining strong consistency for concurrent data access.
+YugabyteDB supports transactions for inserting and querying data from the tables. YugabyteDB supports different [isolation levels](../../../architecture/transactions/isolation-levels/) for maintaining strong consistency for concurrent data access.
 
 The PGX driver provides `conn.Begin()` function to start a transaction. The function `conn.BeginEx()` can create a transaction with a specified isolation level.`
 
