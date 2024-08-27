@@ -19,6 +19,12 @@ It is strongly recommended that you take appropriate measures as outlined in the
 {{%table%}}
 | Advisory&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | Synopsis | Product | Affected Versions | Date |
 | :------------------------------- | :------- | :-----: | :---------------: | :--- |
+| {{<ta 23476>}}
+|YCQL currenttimestamp() precision
+| {{<product "ycql">}}
+| {{<release "All">}}
+| {{<nobreak "01 Januaury 2024">}}
+|
 | {{<ta 22935>}}
 |Potential issues with server-side sequence caching in multi-database clusters
 | {{<product "ysql">}}
