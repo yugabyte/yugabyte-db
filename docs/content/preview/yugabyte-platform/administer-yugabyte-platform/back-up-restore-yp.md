@@ -65,7 +65,7 @@ To back up a YugabyteDB Anywhere server, perform the following:
 
     The `create` command runs the backup of the YugabyteDB Anywhere server.
 
-    `--output_path` specifies the location for the `.tar` output file.
+    `--output_path` specifies the location (absolute path) for the `.tar` output file.
 
     `--data_dir` specifies the data directory to be backed up. Default is `/opt/yugabyte`. Use this flag if YugabyteDB Anywhere is not installed in the default location.
 
