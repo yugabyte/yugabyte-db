@@ -8,7 +8,7 @@ aliases:
   - /preview/architecture/docdb-sharding/colocated-tables/
 menu:
   preview:
-    identifier: docdb-colocated-tables
+    identifier: colocation
     parent: explore
     weight: 250
 rightNav:
@@ -50,7 +50,7 @@ Applications that have a large dataset could have the following characteristics:
 - A handful of tables that are expected to grow large, and thereby need to be scaled out.
 - The remaining tables continue to remain small.
 
-Here, only the few large tables need to be sharded and scaled out. All other tables benefit from colocation as queries involving these tables do not need network hops.
+In this case, only the few large tables need to be sharded and scaled out. All other tables benefit from colocation as queries involving these tables do not need network hops.
 
 #### Scaling the number of databases, each database with a small dataset
 
