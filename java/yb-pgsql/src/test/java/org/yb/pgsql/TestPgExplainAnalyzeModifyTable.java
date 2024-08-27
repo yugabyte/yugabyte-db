@@ -221,6 +221,7 @@ public class TestPgExplainAnalyzeModifyTable extends BasePgExplainAnalyzeTest {
     // Clear the table.
     try (Statement stmt = connection.createStatement()) {
       stmt.execute(String.format("TRUNCATE %s CASCADE", TEST_TABLE));
+      waitForTServerHeartbeatIfConnMgrEnabled();
     }
 
     TopLevelCheckerBuilder topLevelChecker = makeTopLevelBuilder()
