@@ -7,7 +7,7 @@ menu:
   preview_integrations:
     identifier: caspio
     parent: development-platforms
-    weight: 900
+    weight: 200
 type: docs
 ---
 
