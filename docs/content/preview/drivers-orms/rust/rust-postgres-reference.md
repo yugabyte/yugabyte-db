@@ -3,17 +3,19 @@ title: YugabyteDB Rust Smart Driver
 headerTitle: Rust Drivers
 linkTitle: Rust Drivers
 description: Rust postgres Smart Driver for YSQL
-headcontent: Rust Smart Driver for YSQL
+badges: ysql
+aliases:
+- /preview/reference/drivers/rust/rust-postgres-reference/
 menu:
   preview:
     name: Rust Drivers
     identifier: ref-rust-postgres-driver
-    parent: drivers
+    parent: rust-drivers
     weight: 800
 type: docs
 ---
 
-YugabyteDB Rust smart driver is a Rust driver for [YSQL](../../../../api/ysql/) based on [rust-postgres](https://github.com/sfackler/rust-postgres), with additional connection load balancing features.
+YugabyteDB Rust smart driver is a Rust driver for [YSQL](../../../api/ysql/) based on [rust-postgres](https://github.com/sfackler/rust-postgres), with additional connection load balancing features.
 
 Rust smart drivers offers two different clients similar to rust-postgres:
 
@@ -22,8 +24,8 @@ Rust smart drivers offers two different clients similar to rust-postgres:
 
 For more information on the YugabyteDB Rust smart driver, see the following:
 
-- [YugabyteDB smart drivers for YSQL](../../../../drivers-orms/smart-drivers/)
-- [CRUD operations](../../../../drivers-orms/rust/yb-rust-postgres/#crud-operations)
+- [YugabyteDB smart drivers for YSQL](../../../drivers-orms/smart-drivers/)
+- [CRUD operations](../../../drivers-orms/rust/yb-rust-postgres/#crud-operations)
 - [GitHub repository](https://github.com/yugabyte/rust-postgres)
 - [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
 
@@ -57,8 +59,8 @@ Learn how to perform common tasks required for Rust application development usin
 
 The following connection properties need to be added to enable load balancing:
 
-- `load_balance` - enable [cluster-aware load balancing](../../../../drivers-orms/smart-drivers/#cluster-aware-connection-load-balancing) by setting this property to true; disabled by default.
-- `topology_keys` - provide comma-separated geo-location values to enable [topology-aware load balancing](../../../../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing). Geo-locations can be provided as `cloud.region.zone`. Specify all zones in a region as `cloud.region.*`. To designate fallback locations for when the primary location is unreachable, specify a priority in the form `:n`, where `n` is the order of precedence. For example, `cloud1.datacenter1.rack1:1,cloud1.datacenter1.rack2:2`.
+- `load_balance` - enable [cluster-aware load balancing](../../../drivers-orms/smart-drivers/#cluster-aware-connection-load-balancing) by setting this property to true; disabled by default.
+- `topology_keys` - provide comma-separated geo-location values to enable [topology-aware load balancing](../../../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing). Geo-locations can be provided as `cloud.region.zone`. Specify all zones in a region as `cloud.region.*`. To designate fallback locations for when the primary location is unreachable, specify a priority in the form `:n`, where `n` is the order of precedence. For example, `cloud1.datacenter1.rack1:1,cloud1.datacenter1.rack2:2`.
 
 By default, the driver refreshes the list of nodes every 300 seconds (5 minutes). You can change this value by including the `yb_servers_refresh_interval` parameter.
 
@@ -79,7 +81,7 @@ let url: String = String::from( "postgresql://localhost:5434/yugabyte?user=yugab
 let conn = yb_postgres::Client::connect(&connection_url,NoTls,)?;
 ```
 
-You can specify [multiple hosts](../../../../drivers-orms/rust/yb-rust-postgres/#use-multiple-addresses) in the connection string to use as fallbacks in case the primary address fails during the initial connection attempt. After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across those servers.
+You can specify [multiple hosts](../../../drivers-orms/rust/yb-rust-postgres/#use-multiple-addresses) in the connection string to use as fallbacks in case the primary address fails during the initial connection attempt. After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across those servers.
 
 To specify topology keys, you set the `topology_keys` property to comma-separated values in the connection string or dictionary, as per the following example:
 
@@ -90,11 +92,11 @@ let conn = yb_postgres::Client::connect(&connection_url,NoTls,)?;
 
 ## Try it out
 
-This tutorial shows how to use the asynchronous yb-tokio-postgres client with YugabyteDB. It starts by creating a three-node cluster with a [replication factor](../../../../architecture/docdb-replication/replication/#replication-factor) of 3. This tutorial uses the [yugabyted](../../../configuration/yugabyted/) utility.
+This tutorial shows how to use the asynchronous yb-tokio-postgres client with YugabyteDB. It starts by creating a three-node cluster with a [replication factor](../../../architecture/docdb-replication/replication/#replication-factor) of 3. This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted/) utility.
 
 Next, you use a Rust application to demonstrate the driver's load balancing features.
 
-For an example using the synchronous yb-postgres client, see [Connect an application](../../../../drivers-orms/rust/yb-rust-postgres).
+For an example using the synchronous yb-postgres client, see [Connect an application](../../../drivers-orms/rust/yb-rust-postgres).
 
 ### Create a local cluster
 
@@ -353,7 +355,7 @@ The following is an example connection URL for connecting to a YugabyteDB cluste
 "postgresql://127.0.0.1:5434/yugabyte?user=yugabyte&password=yugabyte&load_balance=true&sslmode=require"
 ```
 
-If you created a cluster on [YugabyteDB Aeon](../../../../yugabyte-cloud/), use the cluster credentials and download the [SSL Root certificate](../../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
+If you created a cluster on [YugabyteDB Aeon](../../../yugabyte-cloud/), use the cluster credentials and download the [SSL Root certificate](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
 The following is an example application for connecting to a YugabyteDB cluster with SSL enabled:
 
