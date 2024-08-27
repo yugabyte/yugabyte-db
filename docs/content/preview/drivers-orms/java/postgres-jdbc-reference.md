@@ -3,13 +3,15 @@ title: PostgreSQL JDBC Driver
 headerTitle: JDBC Drivers
 linkTitle: JDBC Drivers
 description: Java JDBC Driver for YSQL
-headcontent: JDBC Drivers for YSQL
+badges: ysql
+aliases:
+- /preview/reference/drivers/java/postgres-jdbc-reference/
 menu:
   preview:
     name: JDBC Drivers
     identifier: ref-postgres-jdbc-driver
-    parent: drivers
-    weight: 600
+    parent: java-drivers
+    weight: 300
 type: docs
 ---
 
@@ -31,9 +33,9 @@ type: docs
 
 </ul>
 
-The [PostgreSQL JDBC driver](https://jdbc.postgresql.org/) is the official JDBC driver for PostgreSQL, and can be used for connecting to YugabyteDB YSQL. YugabyteDB YSQL has full compatibility with the PostgreSQL JDBC Driver, allowing Java programmers to connect to YugabyteDB database to execute DMLs and DDLs using the JDBC APIs. The driver supports the [SCRAM-SHA-256 authentication method](../../../../secure/authentication/password-authentication/#scram-sha-256).
+The [PostgreSQL JDBC driver](https://jdbc.postgresql.org/) is the official JDBC driver for PostgreSQL, and can be used for connecting to YugabyteDB YSQL. YugabyteDB YSQL has full compatibility with the PostgreSQL JDBC Driver, allowing Java programmers to connect to YugabyteDB database to execute DMLs and DDLs using the JDBC APIs. The driver supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For building a sample Java application with the PostgreSQL JDBC driver, see [Connect an application](../../../../drivers-orms/java/postgres-jdbc/).
+For building a sample Java application with the PostgreSQL JDBC driver, see [Connect an application](../../../drivers-orms/java/postgres-jdbc/).
 
 ## Download the driver dependency
 
@@ -117,7 +119,7 @@ try {
 }
 ```
 
-`java.sql.Statement` throws the `java.sql.SQLException` exception, which needs to handled in the Java code. Read more on designing [Database schemas and tables](../../../../explore/ysql-language-features/databases-schemas-tables/).
+`java.sql.Statement` throws the `java.sql.SQLException` exception, which needs to handled in the Java code. Read more on designing [Database schemas and tables](../../../explore/ysql-language-features/databases-schemas-tables/).
 
 ### Read and write data
 
@@ -189,7 +191,7 @@ try {
 
 ## Configure SSL/TLS
 
-To build a Java application that communicates securely over SSL, get the root certificate (`ca.crt`) of the YugabyteDB Cluster. If certificates are not generated yet, follow the instructions in [Create server certificates](../../../../secure/tls-encryption/server-certificates/).
+To build a Java application that communicates securely over SSL, get the root certificate (`ca.crt`) of the YugabyteDB Cluster. If certificates are not generated yet, follow the instructions in [Create server certificates](../../../secure/tls-encryption/server-certificates/).
 
 Generally, when configuring the Java client to use SSL, all the certificates required for connecting to the database are available on the Classpath of the Java application, or in the default PostgreSQL working directory `(~/.postgresql/)` of the VM or container where the application is hosted.
 
@@ -224,7 +226,7 @@ YugabyteDB cluster can be configured to authenticate the identity of the JDBC cl
 
 Steps for configuring the JDBC client for server authentication are as follows:
 
-1. Download the certificate (`yugabytedb.crt`, `yugabytedb.key`, and `ca.crt`) files (see [Copy configuration files to the nodes](../../../../secure/tls-encryption/server-certificates/#copy-configuration-files-to-the-nodes)).
+1. Download the certificate (`yugabytedb.crt`, `yugabytedb.key`, and `ca.crt`) files (see [Copy configuration files to the nodes](../../../secure/tls-encryption/server-certificates/#copy-configuration-files-to-the-nodes)).
 
 1. If you do not have access to the system `cacerts` Java truststore you can create your own truststore.
 
@@ -268,7 +270,7 @@ Steps for configuring the JDBC client for server authentication are as follows:
 
 Steps for configuring the JDBC client for server authentication in a Kubernetes cluster are as follows:
 
-1. Create a minikube cluster by adding `tls.enabled=true` to the command line described in [Quick start](../../../../quick-start/kubernetes/).
+1. Create a minikube cluster by adding `tls.enabled=true` to the command line described in [Quick start](../../../quick-start/kubernetes/).
 
    ```sh
    $ kubectl create namespace yb-demo
@@ -346,7 +348,7 @@ Connection conn = DriverManager.getConnection(jdbc:postgresql://localhost:5433/y
 
 ## Transaction and isolation levels
 
-YugabyteDB supports transactions for inserting and querying data from the tables. YugabyteDB supports different [isolation levels](../../../../architecture/transactions/isolation-levels/) for maintaining strong consistency for concurrent data access.
+YugabyteDB supports transactions for inserting and querying data from the tables. YugabyteDB supports different [isolation levels](../../../architecture/transactions/isolation-levels/) for maintaining strong consistency for concurrent data access.
 
 JDBC Driver `java.sql.Connection` interface provides `connection.setAutoCommit()`, `connection.commit()` and `connection.rollback()` methods for enabling transactional access to YugabyteDB Database.
 

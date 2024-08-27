@@ -3,13 +3,15 @@ title: YugabyteDB JDBC Smart Driver
 headerTitle: JDBC Drivers
 linkTitle: JDBC Drivers
 description: YugabyteDB JDBC Smart Driver for YSQL reference
-headcontent: JDBC Drivers for YSQL
+badges: ysql
+aliases:
+- /preview/reference/drivers/java/yugabyte-jdbc-reference/
 menu:
   preview:
     name: JDBC Drivers
     identifier: ref-yugabyte-jdbc-driver
-    parent: drivers
-    weight: 500
+    parent: java-drivers
+    weight: 300
 type: docs
 ---
 
@@ -31,12 +33,12 @@ type: docs
 
 </ul>
 
-YugabyteDB JDBC smart driver is a JDBC driver for [YSQL](../../../../api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc), with additional connection load balancing features.
+YugabyteDB JDBC smart driver is a JDBC driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc), with additional connection load balancing features.
 
 For more information on the YugabyteDB Java smart driver, see the following:
 
-- [YugabyteDB smart drivers for YSQL](../../../../drivers-orms/smart-drivers/)
-- [CRUD operations](../../../../drivers-orms/java/yugabyte-jdbc)
+- [YugabyteDB smart drivers for YSQL](../../../drivers-orms/smart-drivers/)
+- [CRUD operations](../../../drivers-orms/java/yugabyte-jdbc)
 - [GitHub repository](https://github.com/yugabyte/pgjdbc)
 - [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
 
@@ -169,7 +171,7 @@ To use the driver, do the following:
 
 ## Try it out
 
-This tutorial shows how to use the YugabyteDB JDBC Driver with YugabyteDB. It starts by creating a three-node cluster with a replication factor of 3. This tutorial uses the [yb-ctl](../../../../admin/yb-ctl/#root) utility.
+This tutorial shows how to use the YugabyteDB JDBC Driver with YugabyteDB. It starts by creating a three-node cluster with a replication factor of 3. This tutorial uses the [yb-ctl](../../../admin/yb-ctl/#root) utility.
 
 Next, you use [yb-sample-apps](https://github.com/yugabyte/yb-sample-apps/tree/master) to demonstrate the driver's load balancing features and create a Maven project to learn how to use the driver in an application.
 
@@ -267,7 +269,7 @@ To access sample applications that use the YugabyteDB JDBC driver, visit [Yugaby
 
 To use the samples, complete the following steps:
 
-- Install YugabyteDB by following the instructions in [Quick start](../../../../quick-start/).
+- Install YugabyteDB by following the instructions in [Quick start](../../../quick-start/).
 
 - Build the examples by running `mvn package`.
 

@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: java-orm
     parent: java-drivers
-    weight: 500
+    weight: 200
 type: docs
 ---
 
