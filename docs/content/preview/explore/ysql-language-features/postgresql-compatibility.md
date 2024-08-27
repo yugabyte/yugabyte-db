@@ -45,16 +45,16 @@ If you have set these features independent of EPCM, you cannot use EPCM.
 Conversely, if you are using EPCM on a universe, you cannot set any of the features independently.
 {{</note>}}
 
-| Feature | Flag/Configuration Parameter | EA | Included in EPCM |
+| Feature | Flag/Configuration Parameter | EA | GA |
 | :--- | :--- | :--- | :--- |
-| Read committed | [yb_enable_read_committed_isolation](../../../reference/configuration/yb-tserver/#ysql-default-transaction-isolation) | v2.20 and 2024.1 | Yes |
-| Wait-on-conflict | [enable_wait_queues](../../../reference/configuration/yb-tserver/#enable-wait-queues) | v2024.1 | Yes |
-| Cost-based optimizer | [yb_enable_base_scans_cost_model](../../../reference/configuration/yb-tserver/#yb-enable-base-scans-cost-model) | v2.20 | Yes |
-| Batch nested loop join | [yb_enable_batchednl](../../../reference/configuration/yb-tserver/#yb-enable-batchednl) | v2.20 and 2024.1 | Yes |
-| Efficient communication<br>between PostgreSQL and DocDB | [pg_client_use_shared_memory](../../../reference/configuration/yb-tserver/#pg-client-use-shared-memory) | 2024.1 | Yes |
-| Ascending indexing by default | [yb_use_hash_splitting_by_default](../../../reference/configuration/yb-tserver/#yb-use-hash-splitting-by-default) | 2024.1 | Yes |
-| Bitmap scan | [enable_bitmapscan](../../../reference/configuration/yb-tserver/#enable-bitmapscan) | 2024.1.3 | Planned |
-| Parallel query | | | Planned |
+| Read committed | [yb_enable_read_committed_isolation](../../../reference/configuration/yb-tserver/#ysql-default-transaction-isolation) | 2.20 and<br>2024.1 | |
+| Wait-on-conflict | [enable_wait_queues](../../../reference/configuration/yb-tserver/#enable-wait-queues) | 2.20 | 2024.1 |
+| Cost-based optimizer | [yb_enable_base_scans_cost_model](../../../reference/configuration/yb-tserver/#yb-enable-base-scans-cost-model) | 2024.1 | |
+| Batch nested loop join | [yb_enable_batchednl](../../../reference/configuration/yb-tserver/#yb-enable-batchednl) | 2.20 | 2024.1 |
+| Efficient communication<br>between PostgreSQL and DocDB | [pg_client_use_shared_memory](../../../reference/configuration/yb-tserver/#pg-client-use-shared-memory) | 2024.1 | | Yes |
+| Ascending indexing by default | [yb_use_hash_splitting_by_default](../../../reference/configuration/yb-tserver/#yb-use-hash-splitting-by-default) | 2024.1 | |
+| Bitmap scan | [enable_bitmapscan](../../../reference/configuration/yb-tserver/#enable-bitmapscan) | 2024.1.3<br>(Planned) | |
+| Parallel query | | Planned | |
 
 ### Released
 
