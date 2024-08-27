@@ -52,12 +52,13 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         }
     }
 
-    private String getQueryIdOfPreparedStmt(Statement statement) throws Exception {
+    private String getQueryIdFromPgStatStatements(Statement statement, String pattern)
+                                                  throws Exception {
         /* Get query id of the prepared statement */
         ResultSet resultSet = statement.executeQuery("SELECT queryid FROM pg_stat_statements " +
-                                                     "WHERE query LIKE 'PREPARE%'");
+                                                     "WHERE query LIKE '" + pattern + "'");
         if (!resultSet.next())
-            fail("Query id not found for the prepared statement");
+            fail("Query id not found in pg_stat_statements");
 
         return resultSet.getString("queryid");
     }
@@ -129,7 +130,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
         try (Statement statement = connection.createStatement()) {
             /* Run query diagnostics on the prepared stmt */
-            String queryId = getQueryIdOfPreparedStmt(statement);
+            String queryId = getQueryIdFromPgStatStatements(statement, "PREPARE%");
             Path bundleDataPath = runQueryDiagnostics(statement, queryId, params);
 
             /* Generate some data to be dumped */
@@ -180,7 +181,7 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
         try (Statement statement = connection.createStatement()) {
             /* Run query diagnostics on the prepared stmt */
-            String queryId = getQueryIdOfPreparedStmt(statement);
+            String queryId = getQueryIdFromPgStatStatements(statement, "PREPARE%");
             QueryDiagnosticsParams successfulRunParams = new QueryDiagnosticsParams(
                 diagnosticsInterval,
                 100 /* explainSampleRate */,
@@ -364,5 +365,62 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             }
         }
         fail("Buffer never wrapped around");
+    }
+
+    @Test
+    public void checkPgssData() throws Exception {
+        int diagnosticsInterval = 10;
+        QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
+            diagnosticsInterval,
+            100 /* explainSampleRate */,
+            true /* explainAnalyze */,
+            true /* explainDist */,
+            false /* explainDebug */,
+            0 /* bindVarQueryMinDuration */);
+
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("SELECT pg_sleep(0.5)");
+
+            String queryId = getQueryIdFromPgStatStatements(statement, "%pg_sleep%");
+            Path bundleDataPath = runQueryDiagnostics(statement, queryId, queryDiagnosticsParams);
+
+            statement.execute("SELECT pg_sleep(0.1)");
+            statement.execute("select * from pg_class");
+            statement.execute("select pg_sleep(0.2)");
+
+            /* Thread sleeps for diagnosticsInterval + 1 sec to ensure that the bundle has expired*/
+            Thread.sleep((diagnosticsInterval + 1) * 1000);
+
+            Path pgssPath = bundleDataPath.resolve("pg_stat_statements.csv");
+
+            assertTrue("pg_stat_statements file does not exist", Files.exists(pgssPath));
+            assertGreaterThan("pg_stat_statements.csv file is empty",
+                              Files.size(pgssPath) , 0L);
+
+            /* Unit is ms */
+            float epsilon = 10;
+            int expectedTotalTime = 300;
+            int expectedMinTime = 100;
+            int expectedMaxTime = 200;
+            int expectedMeanTime = 150;
+            List<String> pgssData = Files.readAllLines(pgssPath);
+            String[] tokens = pgssData.get(1).split(",");
+
+            assertEquals("pg_stat_statements data size is not as expected",
+                         2, pgssData.size());
+            assertEquals("pg_stat_statements query is incorrect", queryId, tokens[0]);
+            assertTrue("pg_stat_statements contains unnecessary data",
+                       !tokens[1].contains("pg_class"));
+            assertEquals("Number of calls are incorrect", "2", tokens[2]);
+            /* pg_stat_statements outputs data in ms */
+            assertLessThan("total_time is incorrect",
+                           Math.abs(Float.parseFloat(tokens[3]) - expectedTotalTime), epsilon);
+            assertLessThan("min_time is incorrect",
+                           Math.abs(Float.parseFloat(tokens[4]) - expectedMinTime), epsilon);
+            assertLessThan("max_time is incorrect",
+                           Math.abs(Float.parseFloat(tokens[5]) - expectedMaxTime), epsilon);
+            assertLessThan("mean_time is incorrect",
+                           Math.abs(Float.parseFloat(tokens[6]) - expectedMeanTime), epsilon);
+        }
     }
 }
