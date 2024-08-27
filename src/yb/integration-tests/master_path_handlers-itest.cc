@@ -1380,8 +1380,8 @@ TEST_F(MasterPathHandlersItest, TestVarzAutoFlag) {
   static const auto kUnExpectedFlag = "TEST_assert_local_op";
 
   // Test the HTML endpoint.
-  static const auto kAutoFlagsStart = "<h2>Auto Flags</h2>";
-  static const auto kAutoFlagsEnd = "<h2>Default Flags</h2>";
+  static const auto kAutoFlagsStart = ">Auto Flags<";
+  static const auto kAutoFlagsEnd = ">Default Flags<";
   faststring result;
   TestUrl("/varz", &result);
   auto result_str = result.ToString();

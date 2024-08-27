@@ -104,8 +104,8 @@ TEST_F(TServerPathHandlersItest, TestVarzAutoFlag) {
   static const auto kUnExpectedAutoFlag = "use_parent_table_id_field";
 
   // Test the HTML endpoint.
-  static const auto kAutoFlagsStart = "<h2>Auto Flags</h2>";
-  static const auto kAutoFlagsEnd = "<h2>Default Flags</h2>";
+  static const auto kAutoFlagsStart = ">Auto Flags<";
+  static const auto kAutoFlagsEnd = ">Default Flags<";
 
   auto result = ASSERT_RESULT(FetchURL("/varz"));
 
