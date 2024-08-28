@@ -1202,7 +1202,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "yb.task.upgrade.batch_roll_enabled",
           ScopeType.UNIVERSE,
           "Stop multiple nodes in az simultaneously during upgrade",
-          "Stop multiple nodes simultaneously in az during upgrade",
+          "Stop multiple nodes in az simultaneously during upgrade",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> upgradeBatchRollK8sEnabled =
+      new ConfKeyInfo<>(
+          "yb.task.upgrade.batch_roll_enabled_k8s",
+          ScopeType.UNIVERSE,
+          "Stop multiple nodes in az simultaneously during upgrade (in k8s)",
+          "Stop multiple nodes in az simultaneously during upgrade (in k8s)",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Integer> upgradeBatchRollAutoPercent =

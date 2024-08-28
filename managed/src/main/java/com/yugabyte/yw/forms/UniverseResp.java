@@ -63,7 +63,14 @@ public class UniverseResp {
     Map<UUID, AllowedTasks> allowedTasks =
         getAllowedTasksOnFailure(Collections.singletonList(universe));
     RollMaxBatchSize rollMaxBatchSize = null;
-    if (confGetter.getConfForScope(universe, UniverseConfKeys.upgradeBatchRollEnabled)) {
+    boolean isK8s =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType
+            == Common.CloudType.kubernetes;
+    boolean batchRollEnabled =
+        isK8s
+            ? confGetter.getConfForScope(universe, UniverseConfKeys.upgradeBatchRollK8sEnabled)
+            : confGetter.getConfForScope(universe, UniverseConfKeys.upgradeBatchRollEnabled);
+    if (batchRollEnabled) {
       rollMaxBatchSize = UpgradeTaskBase.getMaxNodesToRoll(universe);
     }
     return new UniverseResp(
