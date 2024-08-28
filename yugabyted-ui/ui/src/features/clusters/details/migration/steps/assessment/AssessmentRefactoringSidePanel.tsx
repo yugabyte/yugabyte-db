@@ -89,7 +89,7 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
   const filteredData = useMemo(() => {
     const searchQuery = search.toLowerCase().trim();
     return mappedData?.filter((obj) =>
-      // Remove 'as any' once the ack functionality is implemented
+      // TODO: Remove 'as any' once the ack functionality is implemented
       (selectedAck ? (obj as any).ack === (selectedAck === "Acknowledged") : true) && search
         ? obj.groupKey?.toLowerCase().includes(searchQuery) ||
           obj.sqlStatements.some(sql => sql?.toLowerCase().includes(searchQuery))
