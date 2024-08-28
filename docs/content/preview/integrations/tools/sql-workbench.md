@@ -4,10 +4,12 @@ headerTitle: SQL Workbench/J
 linkTitle: SQL Workbench/J
 description: Query distributed SQL databases using SQL Workbench/J.
 menu:
-  stable:
+  preview_integrations:
     identifier: sql-workbench
     parent: tools
     weight: 90
+aliases:
+  - /preview/tools/sql-workbench/
 type: docs
 ---
 
@@ -105,4 +107,4 @@ That's all of the settings you need to start using the connection. For details o
 
 Now that you know how to configure SQL Workbench/J to work with your YugabyteDB databases, you can start exploring the features of SQL Workbench/J. For details on using SQL Workbench/J, see [SQL Workbench/J User's Manual](https://www.sql-workbench.eu/manual/workbench-manual.html).
 
-If you're looking for sample databases to explore YugabyteDB using SQL Workbench/J, see [Sample data](../../sample-data/).
+If you're looking for sample databases to explore YugabyteDB using SQL Workbench/J, see [Sample data](../../../sample-data/).

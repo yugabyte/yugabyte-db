@@ -4,10 +4,12 @@ headerTitle: Arctype
 linkTitle: Arctype
 description: Use Arctype to work with distributed SQL databases in YugabyteDB.
 menu:
-  v2.14:
+  preview_integrations:
     identifier: arctype
     parent: tools
     weight: 30
+aliases:
+  - /preview/tools/arctype/
 type: docs
 ---
 
@@ -57,4 +59,4 @@ To learn more about Arctype, refer to the [Arctype documentation](https://docs.a
 
 To learn about Arctype integration with Yugabyte, refer to the [YugabyteDB Integrates with Arctype SQL Client](https://www.yugabyte.com/blog/yugabytedb-arctype-sql-integration/) blog post and [YugabyteDB](https://docs.arctype.com/connect/yugabytedb/) in the Arctype documentation.
 
-YugabyteDB includes sample databases for you to explore. Refer to [Sample datasets](../../sample-data/).
+YugabyteDB includes sample databases for you to explore. Refer to [Sample datasets](../../../sample-data/).
