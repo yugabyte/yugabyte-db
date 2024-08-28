@@ -88,6 +88,8 @@ static int64 GetPostgresDocumentCountStats(ArrayType *relationIds,
 										   bool *isSmallCollection);
 static int32 GetAverageDocumentSizeFromStats(ArrayType *relationIds);
 static void WriteIndexSizesScaledWorker(ArrayType *relationIds, pgbson_writer *writer);
+static inline void WriteStatsAsIntOrDouble(pgbson_writer *writer, char *fieldName, int
+										   size, int64 value);
 
 /*
  * command_coll_stats is the implementation of the internal logic for
@@ -995,16 +997,17 @@ BuildEmptyResponseMessage(CollStatsResult *result)
 	/*
 	 * Note: Compared to non-empty response, MongoDB returns fewer fields in empty response,
 	 * and the sequence of fields is also not aligned with non-empty response.
+	 * Setting the writer to write Int32 as empty collection can fit within int32 range
 	 */
 	PgbsonWriterAppendUtf8(&writer, "ns", 2, result->ns);
-	PgbsonWriterAppendInt64(&writer, "size", 4, 0);
-	PgbsonWriterAppendInt64(&writer, "count", 5, 0);
-	PgbsonWriterAppendInt64(&writer, "storageSize", 11, 0);
-	PgbsonWriterAppendInt64(&writer, "totalSize", 9, 0);
+	PgbsonWriterAppendInt32(&writer, "size", 4, 0);
+	PgbsonWriterAppendInt32(&writer, "count", 5, 0);
+	PgbsonWriterAppendInt32(&writer, "storageSize", 11, 0);
+	PgbsonWriterAppendInt32(&writer, "totalSize", 9, 0);
 	PgbsonWriterAppendInt32(&writer, "nindexes", 8, 0);
-	PgbsonWriterAppendInt64(&writer, "totalIndexSize", 14, 0);
+	PgbsonWriterAppendInt32(&writer, "totalIndexSize", 14, 0);
 	PgbsonWriterAppendDocument(&writer, "indexSizes", 10, PgbsonInitEmpty());
-	PgbsonWriterAppendInt64(&writer, "scaleFactor", 11, result->scaleFactor);
+	PgbsonWriterAppendInt32(&writer, "scaleFactor", 11, result->scaleFactor);
 	PgbsonWriterAppendInt32(&writer, "ok", 2, result->ok);
 
 	return PgbsonWriterGetPgbson(&writer);
@@ -1029,15 +1032,33 @@ BuildResponseMessage(CollStatsResult *result)
 
 
 /*
+ * This is a helper function which takes in the writer, fieldName , size and value and decides if we want to write
+ * the response as int32 or double.
+ */
+static inline void
+WriteStatsAsIntOrDouble(pgbson_writer *writer, char *fieldName, int size, int64 value)
+{
+	if (value >= INT32_MIN && value <= INT32_MAX)
+	{
+		PgbsonWriterAppendInt32(writer, fieldName, size, value);
+	}
+	else
+	{
+		PgbsonWriterAppendDouble(writer, fieldName, size, value);
+	}
+}
+
+
+/*
  * WriteCoreStorageStats writes the collStats() storage output to the target writer.
  */
 static void
 WriteCoreStorageStats(CollStatsResult *result, pgbson_writer *writer)
 {
-	PgbsonWriterAppendInt64(writer, "size", 4, result->size);
-	PgbsonWriterAppendInt64(writer, "count", 5, result->count);
+	WriteStatsAsIntOrDouble(writer, "size", 4, result->size);
+	WriteStatsAsIntOrDouble(writer, "count", 5, result->count);
 	PgbsonWriterAppendInt32(writer, "avgObjSize", 10, result->avgObjSize);
-	PgbsonWriterAppendInt64(writer, "storageSize", 11, result->storageSize);
+	WriteStatsAsIntOrDouble(writer, "storageSize", 11, result->storageSize);
 	PgbsonWriterAppendInt32(writer, "nindexes", 8, result->nindexes);
 
 	pgbson_array_writer arrayWriter;
@@ -1055,10 +1076,10 @@ WriteCoreStorageStats(CollStatsResult *result, pgbson_writer *writer)
 	}
 	PgbsonWriterEndArray(writer, &arrayWriter);
 
-	PgbsonWriterAppendInt64(writer, "totalIndexSize", 14, result->totalIndexSize);
-	PgbsonWriterAppendInt64(writer, "totalSize", 9, result->totalSize);
+	WriteStatsAsIntOrDouble(writer, "totalIndexSize", 14, result->totalIndexSize);
+	WriteStatsAsIntOrDouble(writer, "totalSize", 9, result->totalSize);
 	PgbsonWriterAppendDocument(writer, "indexSizes", 10, result->indexSizes);
-	PgbsonWriterAppendInt64(writer, "scaleFactor", 11, result->scaleFactor);
+	WriteStatsAsIntOrDouble(writer, "scaleFactor", 11, result->scaleFactor);
 }
 
 
