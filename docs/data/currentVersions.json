@@ -2,14 +2,14 @@
   "dbVersions":
   [
     {
-      "series": "v2.21",
+      "series": "v2.23",
       "alias": "preview",
-      "display": "v2.21 (Preview)",
-      "version": "2.21.1.0",
-      "versionShort": "2.21.1",
-      "appVersion": "2.21.1.0-b271",
+      "display": "v2.23 (Preview)",
+      "version": "2.23.0.0",
+      "versionShort": "2.23.0",
+      "appVersion": "2.23.0.0-b707",
       "isStable": false,
-      "initialRelease": "2024-03-26"
+      "initialRelease": "2024-09-04"
     },
     {
       "series": "v2024.1",
