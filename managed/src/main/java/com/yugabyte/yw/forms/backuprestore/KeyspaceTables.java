@@ -4,6 +4,7 @@ package com.yugabyte.yw.forms.backuprestore;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.HashSet;
 import java.util.Map;
@@ -20,7 +21,9 @@ public class KeyspaceTables {
   private String keyspace;
 
   @JsonCreator
-  public KeyspaceTables(Set<String> tableNames, String keyspace) {
+  public KeyspaceTables(
+      @JsonProperty(value = "tableNames", required = false) Set<String> tableNames,
+      @JsonProperty(value = "keyspace", required = true) String keyspace) {
     if (CollectionUtils.isNotEmpty(tableNames)) {
       this.tableNames = new HashSet<>(tableNames);
     }

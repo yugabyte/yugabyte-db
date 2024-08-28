@@ -239,7 +239,7 @@ To connect, follow the client's configuration steps for PostgreSQL or Cassandra,
 
 Your client may also require the use of the [universe certificate](#download-the-universe-certificate).
 
-For information on using popular third-party tools with YugabyteDB, see [Third party tools](../../../tools/).
+For information on using popular third-party tools with YugabyteDB, see [GUI clients](/preview/integrations/tools/).
 
 ## Run workloads
 

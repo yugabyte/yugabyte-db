@@ -1106,7 +1106,7 @@ Status PgClientSession::FinishTransaction(
       // as the poller in the YB-Master will figure out the status of this transaction using the
       // transaction status tablet and PG catalog.
       ERROR_NOT_OK(client().ReportYsqlDdlTxnStatus(*metadata, req.commit()),
-                  "Sending ReportYsqlDdlTxnStatus call failed");
+                   Format("Sending ReportYsqlDdlTxnStatus call of $0 failed", req.commit()));
     }
 
     if (FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) {

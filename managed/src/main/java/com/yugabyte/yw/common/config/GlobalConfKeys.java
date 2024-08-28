@@ -1347,6 +1347,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " enable/disable DB audit logging on universes.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowConnectionPooling =
+      new ConfKeyInfo<>(
+          "yb.universe.allow_connection_pooling",
+          ScopeType.GLOBAL,
+          "Allow users to enable or disable connection pooling",
+          "If this flag is enabled, user will be able to enable/disable connection pooling on"
+              + " universes.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Duration> xClusterSyncSchedulerInterval =
       new ConfKeyInfo<>(
           "yb.xcluster.xcluster_sync_scheduler_interval",

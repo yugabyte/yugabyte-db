@@ -829,6 +829,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @ApiModelProperty() public boolean enableYSQL = true;
 
+    @ApiModelProperty() public boolean enableConnectionPooling = false;
+
     @ApiModelProperty(notes = "default: true")
     public boolean enableYEDIS = true;
 
@@ -994,6 +996,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.tserverGFlags = new HashMap<>(tserverGFlags);
       newUserIntent.useTimeSync = useTimeSync;
       newUserIntent.enableYSQL = enableYSQL;
+      newUserIntent.enableConnectionPooling = enableConnectionPooling;
       newUserIntent.enableYCQL = enableYCQL;
       newUserIntent.enableYSQLAuth = enableYSQLAuth;
       newUserIntent.enableYCQLAuth = enableYCQLAuth;

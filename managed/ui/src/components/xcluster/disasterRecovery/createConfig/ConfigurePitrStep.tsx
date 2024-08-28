@@ -15,7 +15,7 @@ import { I18N_DURATION_KEY_PREFIX } from '../../../../redesign/helpers/constants
 import { YBInputField, YBTooltip } from '../../../../redesign/components';
 import { getPitrRetentionPeriodMinValue } from '../utils';
 
-import { useModalStyles } from '../styles';
+import { useModalStyles } from '../../styles';
 
 interface ConfigureAlertStepProps {
   isFormDisabled: boolean;

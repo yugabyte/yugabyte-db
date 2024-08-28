@@ -35,6 +35,9 @@ const useAccordionStyles = makeStyles((theme: Theme) => ({
   graySummaryBg: {
     background: theme.palette.info[400]
   },
+  separator: {
+    borderBottom: `1px solid ${theme.palette.grey[200]}`,
+  },
   title: {
     display: 'flex',
     alignItems: 'center',
@@ -49,6 +52,7 @@ interface YBAccordionProps extends AccordionProps {
   titleContent: ReactNode;
   renderChips?: () => ReactNode;
   graySummaryBg?: boolean;
+  contentSeparator?: boolean;
 }
 
 export const YBAccordion: FC<YBAccordionProps> = ({
@@ -56,6 +60,7 @@ export const YBAccordion: FC<YBAccordionProps> = ({
   renderChips,
   graySummaryBg,
   children,
+  contentSeparator,
   ...rest
 }) => {
   const classes = useAccordionStyles();
@@ -63,8 +68,15 @@ export const YBAccordion: FC<YBAccordionProps> = ({
   return (
     <Box className={classes.container}>
       <Accordion {...rest} className={classes.primary}>
-        <AccordionSummary expandIcon={<ExpandMoreIcon />}
-          className={clsx(classes.summary, classes.container, graySummaryBg && classes.graySummaryBg)}>
+        <AccordionSummary
+          expandIcon={<ExpandMoreIcon />}
+          className={clsx(
+            classes.summary,
+            classes.container,
+            graySummaryBg && classes.graySummaryBg,
+            contentSeparator && classes.separator
+          )}
+        >
           <Box className={classes.title}>{titleContent}</Box>
           {renderChips && <Box className={classes.shrinkContainer}>{renderChips()}</Box>}
         </AccordionSummary>

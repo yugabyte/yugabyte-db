@@ -181,10 +181,25 @@ class GFlagsCollector : public Collector {
   using Collector::Collector;
 
   void Collect(CollectionLevel collection_level) {
-    auto gflags = CommandlineFlagsIntoString();
-    boost::replace_all(gflags, "\n", " ");
+    auto flag_infos = yb::GetFlagInfos(
+        [webserver = server_->web_server()](const std::string& flag_name) {
+          return webserver->ContainsAutoFlag(flag_name);
+        },
+        /*default_flag_filter=*/nullptr, /*custom_varz=*/{});
+
+    std::stringstream gflags;
+    for (const auto& [tag, flags] : flag_infos) {
+      if (tag != FlagType::kCustom) {
+        // Ignore default flags.
+        continue;
+      }
+      for (const auto& flag : flags) {
+        gflags << "--" << flag.name << "=" << flag.value << " ";
+      }
+    }
+
     string escaped_gflags;
-    JsonEscape(gflags, &escaped_gflags);
+    JsonEscape(gflags.str(), &escaped_gflags);
     json_ = Substitute("\"gflags\":\"$0\"", escaped_gflags);
   }
 

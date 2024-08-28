@@ -138,6 +138,18 @@ export const XCLUSTER_SUPPORTED_TABLE_TYPES = [
 
 // Validation
 export const BOOTSTRAP_MIN_FREE_DISK_SPACE_GB = 100;
+
+// This object stores strings which are used as keys to translation strings in en.json
+// Any change to this object must be reflected in the en.json file as well.
+export const BootstrapCategory = {
+  NO_BOOTSTRAP_REQUIRED: 'noBootstrapRequired',
+  TABLE_HAS_DATA_BIDIRECTIONAL: 'tableHasDataBidirectional',
+  TARGET_TABLE_MISSING_BIDIRECTIONAL: 'targetTableMissingBidirectional',
+  TABLE_HAS_DATA: 'tableHasData',
+  TARGET_TABLE_MISSING: 'targetTableMissing'
+} as const;
+export type BootstrapCategory = typeof BootstrapCategory[keyof typeof BootstrapCategory];
+
 //------------------------------------------------------------------------------------
 
 // Time range selector constants
@@ -296,3 +308,4 @@ export const YB_ADMIN_XCLUSTER_DOCUMENTATION_URL =
   'https://docs.yugabyte.com/preview/admin/yb-admin/#xcluster-replication-commands';
 
 export const I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS = 'clusterDetail.xCluster.config.tableStatus';
+export const I18N_KEY_PREFIX_XCLUSTER_TERMS = 'clusterDetail.xCluster.terms';
