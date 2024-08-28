@@ -18,8 +18,10 @@ export type DurationUnit = typeof DurationUnit[keyof typeof DurationUnit];
 
 /**
  * Map from duration units to seconds.
+ *
+ * The map should include all possible DurationUnit.
  */
-export const DURATION_UNIT_TO_SECONDS = {
+export const DURATION_UNIT_TO_SECONDS: { [key in DurationUnit]: number } = {
   [DurationUnit.SECOND]: 1,
   [DurationUnit.MINUTE]: 60,
   [DurationUnit.HOUR]: 60 * 60,

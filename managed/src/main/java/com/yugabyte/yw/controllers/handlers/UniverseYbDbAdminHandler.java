@@ -24,6 +24,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
@@ -203,6 +204,17 @@ public class UniverseYbDbAdminHandler {
       ConfigureDBApiParams requestParams, Customer customer, Universe universe) {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    // Check runtime flag for connection pooling.
+    if (requestParams.enableConnectionPooling) {
+      boolean allowConnectionPooling =
+          confGetter.getGlobalConf(GlobalConfKeys.allowConnectionPooling);
+      if (!allowConnectionPooling) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Connection pooling is not allowed. Please set runtime flag"
+                + " 'yb.universe.allow_connection_pooling' to true.");
+      }
+    }
     // Verify request params
     requestParams.verifyParams(universe, true);
     requestParams.validatePassword(policyService);

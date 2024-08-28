@@ -41,6 +41,7 @@
 #include "yb/gutil/strings/split.h"
 #include "yb/util/env_util.h"
 #include "yb/util/flags/flag_tags.h"
+#include "yb/util/string_case.h"
 
 #if YB_GPERFTOOLS_TCMALLOC
 #include <gperftools/heap-profiler.h>
@@ -899,6 +900,45 @@ bool RegisterFlagNewInstallValue(const std::string& flag_name, const std::string
   return true;
 }
 
+std::vector<google::CommandLineFlagInfo> GetAllFlags(
+    const std::map<std::string, std::string>& custom_varz) {
+  std::vector<google::CommandLineFlagInfo> flag_infos;
+  google::GetAllFlags(&flag_infos);
+
+  if (custom_varz.empty()) {
+    return flag_infos;
+  }
+
+  std::unordered_set<std::string> processed_custom_flags;
+  // Replace values for existing flags.
+  for (auto& flag_info : flag_infos) {
+    auto* custom_value = FindOrNull(custom_varz, flag_info.name);
+    if (!custom_value) {
+      continue;
+    }
+    if (flag_info.current_value != *custom_value) {
+      flag_info.current_value = *custom_value;
+      flag_info.is_default = false;
+    }
+    processed_custom_flags.insert(flag_info.name);
+  }
+
+  // Add new flags.
+  for (auto const& [flag_name, flag_value] : custom_varz) {
+    if (processed_custom_flags.contains(flag_name)) {
+      continue;
+    }
+    google::CommandLineFlagInfo flag_info;
+    flag_info.name = flag_name;
+    flag_info.current_value = flag_value;
+    flag_info.default_value = "";
+    flag_info.is_default = false;
+    flag_infos.push_back(flag_info);
+  }
+
+  return flag_infos;
+}
+
 }  // namespace flags_internal
 
 bool ValidatePercentageFlag(const char* flag_name, int value) {
@@ -962,6 +1002,52 @@ Result<std::unordered_set<std::string>> GetFlagNamesFromXmlFile(const std::strin
   }
 
   return flag_names;
+}
+
+std::unordered_map<FlagType, std::vector<FlagInfo>> GetFlagInfos(
+    std::function<bool(const std::string&)> auto_flags_filter,
+    std::function<bool(const std::string&)> default_flags_filter,
+    const std::map<std::string, std::string>& custom_varz) {
+  const std::set<string> node_info_flags{
+      "log_filename",    "rpc_bind_addresses", "webserver_interface", "webserver_port",
+      "placement_cloud", "placement_region",   "placement_zone"};
+
+  const auto flags = flags_internal::GetAllFlags(custom_varz);
+  std::unordered_map<FlagType, std::vector<FlagInfo>> flag_infos;
+  for (const auto& flag : flags) {
+    std::unordered_set<FlagTag> flag_tags;
+    GetFlagTags(flag.name, &flag_tags);
+
+    FlagInfo flag_info;
+    flag_info.name = flag.name;
+    flag_info.value = flags_internal::GetMaskedValueIfSensitive(flag_tags, flag.current_value);
+
+    auto type = FlagType::kDefault;
+    if (node_info_flags.contains(flag.name)) {
+      type = FlagType::kNodeInfo;
+    } else if (flag.current_value != flag.default_value) {
+      type = FlagType::kCustom;
+    } else if (flag_tags.contains(FlagTag::kAuto) && auto_flags_filter(flag_info.name)) {
+      type = FlagType::kAuto;
+      flag_info.is_auto_flag_promoted = IsFlagPromoted(flag, *GetAutoFlagDescription(flag.name));
+    }
+
+    if (default_flags_filter && type == FlagType::kDefault &&
+        !default_flags_filter(flag_info.name)) {
+      continue;
+    }
+
+    flag_infos[type].push_back(std::move(flag_info));
+  }
+
+  // Sort by type, name ascending
+  for (auto& [_, flags] : flag_infos) {
+    std::sort(flags.begin(), flags.end(), [](const FlagInfo& lhs, const FlagInfo& rhs) {
+      return ToLowerCase(lhs.name) < ToLowerCase(rhs.name);
+    });
+  }
+
+  return flag_infos;
 }
 
 } // namespace yb

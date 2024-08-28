@@ -16,6 +16,8 @@
 
 #pragma once
 
+#include <memory>
+#include <optional>
 #include <type_traits>
 
 #include "yb/util/env.h"
@@ -26,69 +28,66 @@
 
 #include "yb/common/vector_types.h"
 
+#include "yb/vector/coordinate_types.h"
+
 namespace yb::vectorindex {
 
-// Follows the (unsigned char|float | int) restriction at http://corpus-texmex.irisa.fr/.
-template<typename T>
-concept ValidVecsFileScalar =
-    std::same_as<T, uint8_t> ||
-    std::same_as<T, float> ||
-    std::same_as<T, int32_t>;
-
-// An iterator-like interface for returning a stream of vectors.
-template<ValidVecsFileScalar Scalar>
-class VectorSource {
+// A non-template base class for vector sources.
+class VectorSourceBase {
  public:
-  virtual ~VectorSource() = default;
-  // A successful result with an empty vector means it is the end of iteration.
-  virtual Result<std::vector<Scalar>> Next() = 0;
+  virtual ~VectorSourceBase() = default;
+  virtual Status Open() { return Status::OK(); }
   virtual size_t dimensions() const = 0;
   virtual size_t num_points() const = 0;
+  virtual bool is_file() const { return false; }
   virtual std::string file_path() const = 0;
+  virtual std::string ToString() const = 0;
+  virtual const char* CoordinateTypeShortStr() const = 0;
+};
 
-  const char* ScalarTypeStr() const {
-    // TODO: move scalar type name to string conversion to to a reusable header.
-    if constexpr (std::is_same_v<Scalar, int32_t>) {
-      return "int32_t";
-    }
-    if constexpr (std::is_same_v<Scalar, uint8_t>) {
-      return "uint8_t";
-    }
-    if constexpr (std::is_same_v<Scalar, float>) {
-      return "float";
-    }
-    static_assert("Cannot convert scalar type of a vector's coordinates to a string");
+// An iterator-like interface for returning a stream of vectors.
+template<IndexableVectorType Vector>
+class VectorSource : public VectorSourceBase {
+ public:
+  virtual ~VectorSource() = default;
+
+  // A successful result with an empty vector means it is the end of iteration.
+  virtual Result<Vector> Next() = 0;
+
+  const char* CoordinateTypeShortStr() const override {
+    return VectorCoordinateTypeShortStr<Vector>();
   }
 
-  Result<std::vector<std::vector<Scalar>>> LoadAllVectors() {
-    std::vector<std::vector<Scalar>> result;
-    std::vector<Scalar> v;
-    for (;;) {
+  Result<std::vector<Vector>> LoadVectors(
+      size_t max_num_to_load = std::numeric_limits<size_t>::max()) {
+    std::vector<Vector> result;
+    Vector v;
+    while (result.size() < max_num_to_load) {
       v = VERIFY_RESULT(Next());
       if (v.empty()) {
         break;
       }
       result.emplace_back(std::move(v));
     }
-    if (result.size() != num_points()) {
+    if (result.size() < max_num_to_load && result.size() != num_points()) {
       return STATUS_FORMAT(
           IllegalState,
-          "Expected to read $0 vectors of $1 with $2 dimensions from $3, but only read $4 vectors.",
+          "Expected to read $0 vectors but only read $1 vectors from $2, even with the max "
+          "number of points to load set to $3",
           num_points(),
-          ScalarTypeStr(),
-          dimensions(),
-          file_path(),
-          result.size());
+          result.size(),
+          ToString(),
+          max_num_to_load);
     }
     return result;
   }
 };
 
-using FloatVectorSource = VectorSource<float>;
-using Int32VectorSource = VectorSource<int32_t>;
+using FloatVectorSource = VectorSource<FloatVector>;
+using Int32VectorSource = VectorSource<Int32Vector>;
 
 template <typename Distribution>
-class RandomVectorGenerator : public VectorSource<float> {
+class RandomVectorGenerator : public FloatVectorSource {
  public:
   RandomVectorGenerator(size_t num_vectors, size_t dimensions, Distribution distribution)
       : num_vectors_(num_vectors),
@@ -108,6 +107,19 @@ class RandomVectorGenerator : public VectorSource<float> {
   size_t num_points() const override { return num_vectors_; }
   std::string file_path() const override { return "random vector generator"; }
 
+  std::string ToString() const override {
+    std::string how_many_points_str = std::to_string(num_points());
+    if (num_points() >= 1000000) {
+      how_many_points_str += Format(
+          " ($0 million)",
+          StringPrintf("%.3f", num_points() / 1000000.0));
+    }
+
+    return Format(
+        "random vector generator, coordinate type: $0, $1 points, $2 dimensions",
+        CoordinateTypeShortStr(), how_many_points_str, dimensions());
+  }
+
  private:
   size_t num_vectors_;
   size_t dimensions_;
@@ -121,16 +133,16 @@ using UniformRandomFloatVectorGenerator = RandomVectorGenerator<UniformRandomFlo
 std::unique_ptr<UniformRandomFloatVectorGenerator> CreateUniformRandomVectorSource(
     size_t num_vectors, size_t dimensions, float min_value, float max_value);
 
-template<typename Scalar, typename Enable = void>
-class VecsFileReader : public VectorSource<Scalar> {
+template<IndexableVectorType Vector>
+class VecsFileReader : public VectorSource<Vector> {
  public:
+  using Scalar = typename Vector::value_type;
   static constexpr size_t kCoordinateSize = sizeof(Scalar);
-  using Vector = std::vector<Scalar>;
 
   static_assert(
       (std::is_integral<Scalar>::value || std::is_floating_point<Scalar>::value) &&
-      (kCoordinateSize == 1 || kCoordinateSize == 4),
-      "Scalar must be an integral or floating-point type of size 1 or 4 bytes");
+      (1 <= kCoordinateSize || kCoordinateSize <= 8),
+      "Scalar must be an integral or floating-point type of size 1 to 8 bytes");
 
   explicit VecsFileReader(const std::string& file_path)
       : file_path_(file_path) {}
@@ -142,6 +154,8 @@ class VecsFileReader : public VectorSource<Scalar> {
     }
   }
 
+  bool is_file() const override { return true; }
+
   Result<Vector> Next() override {
     if (current_index_ >= num_points_) {
       return Vector();
@@ -151,7 +165,7 @@ class VecsFileReader : public VectorSource<Scalar> {
     return current_vector_;
   }
 
-  Status Open() {
+  Status Open() override {
     auto file_size = VERIFY_RESULT(Env::Default()->GetFileSize(file_path_));
     SCHECK_GE(file_size, sizeof(uint32_t), IOError,
               Format("File size too small for $0: $1", file_path_, file_size));
@@ -178,8 +192,9 @@ class VecsFileReader : public VectorSource<Scalar> {
     if (file_size % bytes_stored_per_vector != 0) {
       return STATUS_FORMAT(
           IOError,
-          "fvecs file format error: file size of $0 ($1) is not divisible by $2",
-          file_path_, file_size, bytes_stored_per_vector);
+          "vecs file format error: file size of $0 ($1) is not divisible by $2 "
+          "(4 bytes for vector length and $3 bytes for each of the $4 coordinates).",
+          file_path_, file_size, bytes_stored_per_vector, kCoordinateSize, dimensions_);
     }
     num_points_ = file_size / bytes_stored_per_vector;
     current_vector_.resize(dimensions_);
@@ -190,10 +205,10 @@ class VecsFileReader : public VectorSource<Scalar> {
   size_t dimensions() const override { return dimensions_; }
   size_t num_points() const override { return num_points_; }
 
-  std::string ToString() const {
+  std::string ToString() const override {
     return Format(
         "vecs file $0, coordinate type: $1, $2 points, $3 dimensions",
-        file_path_, this->ScalarTypeStr(), num_points_, dimensions_);
+        file_path_, this->CoordinateTypeShortStr(), num_points_, dimensions_);
   }
 
   std::string file_path() const override { return file_path_; }
@@ -203,7 +218,7 @@ class VecsFileReader : public VectorSource<Scalar> {
     uint32_t ndims_u32;
     if (fread(&ndims_u32, sizeof(uint32_t), 1, input_file_) != 1) {
       return STATUS_FROM_ERRNO(
-          Format("Error reading the number of dimensions from file $0", file_path_), errno);
+          Format("Error reading the number of dimensions from $0", ToString()), errno);
     }
     return ndims_u32;
   }
@@ -213,13 +228,13 @@ class VecsFileReader : public VectorSource<Scalar> {
       auto dims = VERIFY_RESULT(ReadDimensionsField());
       if (dims != dimensions_) {
         return STATUS_FORMAT(
-            IllegalState, "Invalid number of dimensions in vector #$0 of file $1: $2 (expected $3)",
-            current_index_, file_path_, dims, dimensions_);
+            IllegalState, "Invalid number of dimensions in vector #$0 of $1",
+            current_index_, ToString());
       }
     }
-    if (fread(current_vector_.data(), sizeof(float), dimensions_, input_file_) != dimensions_) {
+    if (fread(current_vector_.data(), kCoordinateSize, dimensions_, input_file_) != dimensions_) {
       return STATUS_FROM_ERRNO(
-          Format("Error reading vector #$0 from file $1", current_index_, file_path_), errno);
+          Format("Error reading vector #$0 from $1", current_index_, ToString()), errno);
     }
     return Status::OK();
   }
@@ -232,26 +247,31 @@ class VecsFileReader : public VectorSource<Scalar> {
   mutable Vector current_vector_;
 };
 
-using BvecsFileReader = VecsFileReader<uint8_t>;
-using FvecsFileReader = VecsFileReader<float>;
-using IvecsFileReader = VecsFileReader<int32_t>;
+using BvecsFileReader = VecsFileReader<std::vector<uint8_t>>;
+using FvecsFileReader = VecsFileReader<FloatVector>;
+using IvecsFileReader = VecsFileReader<Int32Vector>;
 
-template <ValidVecsFileScalar Scalar>
-Result<std::vector<std::vector<Scalar>>> LoadAllVectors(
-    VectorSource<Scalar>& vector_source) {
-}
+// Determine coordinate kind by file name (.fvecs/.bvecs/.ivecs).
+Result<CoordinateKind> GetCoordinateKindFromVecsFileName(const std::string& vecs_file_path);
 
-template <ValidVecsFileScalar Scalar>
-Result<std::vector<std::vector<Scalar>>> LoadVecsFile(
+template <IndexableVectorType Vector>
+Result<std::unique_ptr<VecsFileReader<Vector>>> OpenVecsFile(
     const std::string& file_path,
     const std::string& file_description = std::string()) {
-  VecsFileReader<Scalar> reader(file_path);
-  RETURN_NOT_OK(reader.Open());
+  auto reader = std::make_unique<VecsFileReader<Vector>>(file_path);
+  RETURN_NOT_OK(reader->Open());
   if (!file_description.empty()) {
-    LOG(INFO) << "Opened " << file_description << ": " << reader.ToString();
+    LOG(INFO) << "Opened " << file_description << ": " << reader->ToString();
   }
-  auto result = reader.LoadAllVectors();
-  return result;
+  return reader;
+}
+
+template <IndexableVectorType Vector>
+Result<std::vector<Vector>> LoadVecsFile(
+    const std::string& file_path,
+    const std::string& file_description = std::string()) {
+  auto reader = VERIFY_RESULT(OpenVecsFile<Vector>(file_path, file_description));
+  return reader->LoadVectors();
 }
 
 }  // namespace yb::vectorindex

@@ -32,7 +32,7 @@ You can manually provision each node using the pre-provisioning Python script, a
     sudo docker exec -it yugaware bash
     ```
 
-1. In YugabyteDB Anywhere, navigate to **Configs > Infrastructure > On-Premises Datacenters**, select the on-premises provider configuration you created, and choose **Instances**.
+1. In YugabyteDB Anywhere, navigate to **Integrations > Infrastructure > On-Premises Datacenters**, select the on-premises provider configuration you created, and choose **Instances**.
 
     ![On-prem pre-provisioning script](/images/yb-platform/config/yba-onprem-config-script.png)
 
