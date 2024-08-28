@@ -3,10 +3,14 @@ title: Use Apache Superset with YugabyteDB YSQL
 headerTitle: Apache Superset
 linkTitle: Apache Superset
 description: Use Apache Superset to explore and visulize data in YugabyteDB.
+aliases:
+  - /develop/tools/
+  - /preview/develop/tools/
+  - /preview/tools/
 menu:
-  preview:
+  preview_integrations:
     identifier: superset
-    parent: tools
+    parent: data-tools
     weight: 20
 type: docs
 ---
@@ -19,9 +23,9 @@ You can use Superset to quickly explore and visualize data stored in databases a
 
 ## Before you begin
 
-Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB prerequisites](../#yugabytedb-prerequisites).
+Your YugabyteDB cluster should be up and running. Refer to [Quick-start](/preview/quick-start-yugabytedb-managed/) for more info.
 
-Load some data to explore and visualize. For a local installation, you can load the Northwind sample database using the `./bin/yugabyted demo connect` command from your shell, or follow the [instructions](../../sample-data/northwind/).
+Load some data to explore and visualize. For a local installation, you can load the Northwind sample database using the `./bin/yugabyted demo connect` command from your shell, or follow the [instructions](../../../sample-data/northwind/).
 
 ### Install Superset
 

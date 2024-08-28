@@ -4,9 +4,9 @@ headerTitle: DbSchema
 linkTitle: DbSchema
 description: Use DbSchema to work with distributed SQL databases in YugabyteDB.
 menu:
-  preview:
+  preview_integrations:
     identifier: dbschema
-    parent: tools
+    parent: data-tools
     weight: 60
 type: docs
 ---
@@ -17,7 +17,7 @@ type: docs
 
 ## Before you begin
 
-Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB prerequisites](../#yugabytedb-prerequisites).
+Your YugabyteDB cluster should be up and running. Refer to [Quick-start](/preview/quick-start-yugabytedb-managed/) for more info.
 
 ## Install DbSchema
 
@@ -46,4 +46,4 @@ You have successfully created a database connection to the default database (`yu
 
 For help using DbSchema, see the [DbSchema documentation](https://dbschema.com/documentation/index.html).
 
-YugabyteDB includes sample databases for you to explore using DbSchema. Refer to [Sample datasets](../../sample-data/).
+YugabyteDB includes sample databases for you to explore using DbSchema. Refer to [Sample datasets](../../../sample-data/).

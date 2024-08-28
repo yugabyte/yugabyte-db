@@ -4,9 +4,9 @@ headerTitle: pgAdmin
 linkTitle: pgAdmin
 description: Administer and manage YugabyteDB distributed SQL databases using pgAdmin.
 menu:
-  preview:
+  preview_integrations:
     identifier: pgadmin
-    parent: tools
+    parent: data-tools
     weight: 80
 type: docs
 ---
@@ -19,7 +19,7 @@ To use pgAdmin with YugabyteDB, you need to have YugabyteDB up and running, the 
 
 ### YugabyteDB
 
-Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB prerequisites](../#yugabytedb-prerequisites).
+Your YugabyteDB cluster should be up and running. Refer to [Quick-start](/preview/quick-start-yugabytedb-managed/) for more info.
 
 ### PostgreSQL JDBC driver
 
@@ -39,7 +39,7 @@ Add a pgAdmin server to connect to a cluster as follows:
 
 1. On the **General** tab, enter a name for your server, such as YugabyteDB.
 
-1. On the **Connection** tab, fill in the [connection parameters](../#connection-parameters).
+1. On the **Connection** tab, fill in the connection parameters.
 
 1. For YugabyteDB Aeon clusters, on the **SSL** tab, set **Root certificate** to the cluster root certificate you downloaded.
 
@@ -55,4 +55,4 @@ You can begin exploring YugabyteDB databases.
 
 For details on using pgAdmin, click **Help** in the pgAdmin menu.
 
-If you're looking for sample databases to explore YugabyteDB using pgAdmin, refer to [Sample datasets](../../sample-data/).
+If you're looking for sample databases to explore YugabyteDB using pgAdmin, refer to [Sample datasets](../../../sample-data/).

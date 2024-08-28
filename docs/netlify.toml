@@ -1304,6 +1304,12 @@
    from = "/preview/explore/observability/prometheus-integration/*"
    to = "/preview/explore/observability/prometheus-integration/macos/"
 
+# Tools
+
+[[redirects]]
+   from = "/preview/tools/*"
+   to = "/preview/integration/tools/:splat"
+
 ##########################################################
 # Catch-all for old links to /latest (now called /preview)
 #

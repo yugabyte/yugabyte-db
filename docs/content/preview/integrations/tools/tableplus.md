@@ -7,9 +7,9 @@ aliases:
   - /develop/tools/tableplus/
   - /preview/develop/tools/tableplus/
 menu:
-  preview:
+  preview_integrations:
     identifier: tableplus
-    parent: tools
+    parent: data-tools
     weight: 95
 type: docs
 ---
@@ -20,7 +20,7 @@ This tutorial shows how to connect TablePlus to a YugabyteDB cluster.
 
 ## Before you begin
 
-Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB prerequisites](../#yugabytedb-prerequisites).
+Your YugabyteDB cluster should be up and running. Refer to [Quick-start](/preview/quick-start-yugabytedb-managed/) for more info.
 
 Note that if you are connecting to a YCQL keyspace that has tables with columns of type JSONB, because the Cassandra driver used by TablePlus does not support JSONB, the connection to the database may fail.
 
@@ -40,7 +40,7 @@ To create a connection, do the following:
 
     ![Choose DB](/images/develop/tools/tableplus/choose-db.png)
 
-1. Enter a **Name** for the connection and fill in the [connection parameters](../#connection-parameters).
+1. Enter a **Name** for the connection and fill in the connection parameters.
 
 1. Click **Test** to verify that TablePlus can connect with YugabyteDB. The color of the fields changes to green if the test succeeds.
 

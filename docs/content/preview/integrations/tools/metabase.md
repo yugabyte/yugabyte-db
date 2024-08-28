@@ -3,9 +3,9 @@ title: Metabase
 linkTitle: Metabase
 description: Metabase
 menu:
-  preview:
+  preview_integrations:
     identifier: metabase
-    parent: tools
+    parent: data-tools
     weight: 70
 aliases:
   - /integrations/metabase/
@@ -18,7 +18,7 @@ This document shows how to set up Metabase to integrate with YugabyteDB's Postgr
 
 ## 1. Start local cluster
 
-Follow [Quick Start](../../quick-start/) instructions to run a local YugabyteDB cluster.
+Follow [Quick Start](../../../quick-start/) instructions to run a local YugabyteDB cluster.
 
 ## 2. Load data
 
@@ -109,4 +109,4 @@ Detailed steps on how to use Metabase are available in the [Metabase documentati
 - Perform data aggregation using GROUP BY
 - Use built-in functions such as SUM, MIN, MAX, and so on
 
-Click **Ask a Question > Custom Query**. Choose the database you just set up, and enter the SQL queries noted in the [Retail Analytics](../../sample-data/retail-analytics/) section.
+Click **Ask a Question > Custom Query**. Choose the database you just set up, and enter the SQL queries noted in the [Retail Analytics](../../../sample-data/retail-analytics/) section.

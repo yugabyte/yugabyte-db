@@ -557,8 +557,10 @@
 [[preview_integrations]]
   name = "GUI clients"
   weight = 6
-  url = "/preview/tools/"
+  identifier = "data-tools"
   parent = "integrations"
+  [preview_integrations.params]
+    showSection = true
 
 [[preview_integrations]]
   name = "Application frameworks"

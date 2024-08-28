@@ -4,9 +4,9 @@ headerTitle: Using DBeaver
 linkTitle: DBeaver
 description: Use the DBeaver multi-platform database tool to explore and query YugabyteDB YCQL.
 menu:
-  preview:
+  preview_integrations:
     identifier: dbeaver-2-ycql
-    parent: tools
+    parent: data-tools
     weight: 50
 type: docs
 ---
@@ -23,7 +23,7 @@ Before you can start using DBeaver with YCQL, you need to perform the following:
 
 - Start YugabyteDB.
 
-  For more information, see [Quick Start](../../quick-start/).
+  For more information, see [Quick Start](../../../quick-start/).
 
 - Install JRE or JDK for Java 8 or later.
 
@@ -61,4 +61,4 @@ You can expand the list to see all keyspaces available in YugabyteDB cluster, as
 
 ## What's Next
 
-For sample data to explore YCQL using DBeaver, see [JSON support](../../explore/ycql-language/jsonb-ycql/).
+For sample data to explore YCQL using DBeaver, see [JSON support](../../../explore/ycql-language/jsonb-ycql/).

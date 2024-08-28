@@ -4,9 +4,9 @@ headerTitle: Arctype
 linkTitle: Arctype
 description: Use Arctype to work with distributed SQL databases in YugabyteDB.
 menu:
-  preview:
+  preview_integrations:
     identifier: arctype
-    parent: tools
+    parent: data-tools
     weight: 30
 type: docs
 ---
@@ -19,9 +19,9 @@ This document describes how to connect to YugabyteDB using Arctype.
 
 ![Arctype application](/images/develop/tools/arctype/Arctype-YB-Image-2.png)
 
-## Before you begin
+## Setup
 
-Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB Prerequisites](../#yugabytedb-prerequisites).
+Your YugabyteDB cluster should be up and running. Refer to [Quick-start](/preview/quick-start-yugabytedb-managed/) for more info.
 
 ## Install Arctype
 
@@ -39,7 +39,7 @@ Follow these steps to connect your Arctype desktop client to YugabyteDB:
 
     ![Connect YugabyteDB](/images/develop/tools/arctype/arctype-connect_step3.png)
 
-1. Enter your YugabyteDB [connection parameters](../#connection-parameters).
+1. Enter your YugabyteDB connection parameters.
 
 1. Click **Test Connection** and, if the connection is successful, click **Save**.
 
@@ -57,4 +57,4 @@ To learn more about Arctype, refer to the [Arctype documentation](https://docs.a
 
 To learn about Arctype integration with Yugabyte, refer to the [YugabyteDB Integrates with Arctype SQL Client](https://www.yugabyte.com/blog/yugabytedb-arctype-sql-integration/) blog post and [YugabyteDB](https://docs.arctype.com/connect/yugabytedb/) in the Arctype documentation.
 
-YugabyteDB includes sample databases for you to explore. Refer to [Sample datasets](../../sample-data/).
+YugabyteDB includes sample databases for you to explore. Refer to [Sample datasets](../../../sample-data/).

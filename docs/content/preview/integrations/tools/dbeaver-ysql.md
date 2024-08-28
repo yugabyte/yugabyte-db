@@ -6,9 +6,9 @@ description: Use the DBeaver multi-platform database tool to explore and query Y
 aliases:
   - /preview/tools/dbeaver
 menu:
-  preview:
+  preview_integrations:
     identifier: dbeaver-1-ysql
-    parent: tools
+    parent: data-tools
     weight: 50
 type: docs
 ---
@@ -25,7 +25,7 @@ Before you can start using DBeaver with YSQL, you need to perform the following:
 
 - Start YugabyteDB.
 
-  For more information, see [Quick Start](../../quick-start).
+  For more information, see [Quick Start](../../../quick-start).
 
 - Install JRE or JDK for Java 8 or later.
 

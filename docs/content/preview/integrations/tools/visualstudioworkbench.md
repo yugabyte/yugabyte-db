@@ -24,7 +24,7 @@ This tutorial shows how to install Cassandra Workbench and configure a connectio
 
 To use Cassandra Workbench with YugabyteDB, you need to have the following
 
-- YugabyteDB up and running. Refer to [YugabyteDB Prerequisites](../#yugabytedb-prerequisites).
+- Your YugabyteDB cluster should be up and running. Refer to [Quick-start](/preview/quick-start-yugabytedb-managed/) for more info.
 - Visual Studio Code [installed](https://code.visualstudio.com).
 
 ## Install the Cassandra Workbench extension
