@@ -23,7 +23,7 @@ rightNav:
 
 ### What is YugabyteDB
 
-YugabyteDB is a high-performant, highly available and scalable distributed SQL database designed for powering global, internet-scale applications. It is fully compatabile with [PostgreSQL] and provides strong [ACID](/preview/architecture/key-concepts/#acid) guarantees for distributed transactions. It can be deployed in a single region, multi-region, and multi-cloud setups. YugabyteDB is developed and distributed as an [Apache 2.0 open source project](https://github.com/yugabyte/yugabyte-db/).
+YugabyteDB is a high-performant, highly available and scalable distributed SQL database designed for powering global, internet-scale applications. It is fully compatabile with [PostgreSQL](https://www.postgresql.org/) and provides strong [ACID](/preview/architecture/key-concepts/#acid) guarantees for distributed transactions. It can be deployed in a single region, multi-region, and multi-cloud setups. YugabyteDB is developed and distributed as an [Apache 2.0 open source project](https://github.com/yugabyte/yugabyte-db/).
 
 {{<lead link="/preview/explore/">}}
 To learn more about the various functionalities of YugabyteDB, see [Explore YugabyteDB](/preview/explore/)
@@ -51,6 +51,14 @@ YugabyteDB released its first beta, [v0.9 Beta](https://www.yugabyte.com/blog/yu
 
 {{<lead link="/preview/releases/ybdb-releases/">}}
 For the full list of releases, see [YugabyteDB releases](/preview/releases/ybdb-releases/)
+{{</lead>}}
+
+### What is the difference between preview and stable versions
+
+Preview releases include features under active development and are recommended for development and testing only. Stable releases undergo rigorous testing for a longer period of time and are ready for production use.
+
+{{<lead link="/preview/releases/">}}
+See the [Releases](/preview/releases/) page for more information on support policy.
 {{</lead>}}
 
 ### What are the upcoming features
