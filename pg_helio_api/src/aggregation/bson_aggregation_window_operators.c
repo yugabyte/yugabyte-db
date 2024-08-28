@@ -137,26 +137,33 @@ static void UpdateWindowAggregationOperator(const pgbsonelement *element,
 static WindowFunc * GetSimpleBsonExpressionGetWindowFunc(const bson_value_t *opValue,
 														 WindowOperatorContext *context,
 														 Oid aggregateFunctionOid);
+static inline void ValidateInputForRankFunctions(const bson_value_t *opValue,
+												 WindowOperatorContext *context,
+												 char *opName);
 
 /*===================================*/
 /* Window Operator Handler functions */
 /*===================================*/
-static WindowFunc * HandleDollarSumWindowOperator(const bson_value_t *opValue,
+static WindowFunc * HandleDollarAddToSetWindowOperator(const bson_value_t *opValue,
+													   WindowOperatorContext *context);
+static WindowFunc * HandleDollarAvgWindowOperator(const bson_value_t *opValue,
 												  WindowOperatorContext *context);
 static WindowFunc * HandleDollarCountWindowOperator(const bson_value_t *opValue,
 													WindowOperatorContext *context);
-static WindowFunc * HandleDollarAvgWindowOperator(const bson_value_t *opValue,
-												  WindowOperatorContext *context);
-static WindowFunc * HandleDollarPushWindowOperator(const bson_value_t *opValue,
-												   WindowOperatorContext *context);
-static WindowFunc * HandleDollarAddToSetWindowOperator(const bson_value_t *opValue,
-													   WindowOperatorContext *context);
 static WindowFunc * HandleDollarCovariancePopWindowOperator(const bson_value_t *opValue,
 															WindowOperatorContext *
 															context);
 static WindowFunc * HandleDollarCovarianceSampWindowOperator(const bson_value_t *opValue,
 															 WindowOperatorContext *
 															 context);
+static WindowFunc * HandleDollarDenseRankWindowOperator(const bson_value_t *opValue,
+														WindowOperatorContext *context);
+static WindowFunc * HandleDollarPushWindowOperator(const bson_value_t *opValue,
+												   WindowOperatorContext *context);
+static WindowFunc * HandleDollarRankWindowOperator(const bson_value_t *opValue,
+												   WindowOperatorContext *context);
+static WindowFunc * HandleDollarSumWindowOperator(const bson_value_t *opValue,
+												  WindowOperatorContext *context);
 
 
 /* GUC to enable SetWindowFields stage */
@@ -199,7 +206,7 @@ static const WindowOperatorDefinition WindowOperatorDefinitions[] =
 	},
 	{
 		.operatorName = "$denseRank",
-		.windowOperatorFunc = NULL
+		.windowOperatorFunc = &HandleDollarDenseRankWindowOperator
 	},
 	{
 		.operatorName = "$derivative",
@@ -271,7 +278,7 @@ static const WindowOperatorDefinition WindowOperatorDefinitions[] =
 	},
 	{
 		.operatorName = "$rank",
-		.windowOperatorFunc = NULL
+		.windowOperatorFunc = &HandleDollarRankWindowOperator
 	},
 	{
 		.operatorName = "$shift",
@@ -1564,4 +1571,82 @@ HandleDollarCovarianceSampWindowOperator(const bson_value_t *opValue,
 
 	windowFunc->args = ParseCovarianceWindowOperator(opValue, context);
 	return windowFunc;
+}
+
+
+/*
+ * Handle for $rank window aggregation operator.
+ * Returns the WindowFunc for bson aggregate function `bson_dense_rank`
+ */
+static WindowFunc *
+HandleDollarRankWindowOperator(const bson_value_t *opValue,
+							   WindowOperatorContext *context)
+{
+	if (!IsClusterVersionAtleastThis(1, 21, 0))
+	{
+		ereport(ERROR, (errcode(MongoCommandNotSupported),
+						errmsg("$rank is not supported yet")));
+	}
+	char *opName = "$rank";
+	ValidateInputForRankFunctions(opValue, context, opName);
+	WindowFunc *windowFunc = makeNode(WindowFunc);
+	windowFunc->winfnoid = BsonRankFunctionOid();
+	windowFunc->wintype = BsonTypeId();
+	windowFunc->winref = context->winRef;
+	windowFunc->winstar = false;
+	windowFunc->winagg = false;
+
+	return windowFunc;
+}
+
+
+/*
+ * Handle for $denseRank window aggregation operator.
+ * Returns the WindowFunc for bson aggregate function `bson_rank`
+ */
+static WindowFunc *
+HandleDollarDenseRankWindowOperator(const bson_value_t *opValue,
+									WindowOperatorContext *context)
+{
+	if (!IsClusterVersionAtleastThis(1, 21, 0))
+	{
+		ereport(ERROR, (errcode(MongoCommandNotSupported),
+						errmsg("$denseRank is not supported yet")));
+	}
+	char *opName = "$denseRank";
+	ValidateInputForRankFunctions(opValue, context, opName);
+	WindowFunc *windowFunc = makeNode(WindowFunc);
+	windowFunc->winfnoid = BsonDenseRankFunctionOid();
+	windowFunc->wintype = BsonTypeId();
+	windowFunc->winref = context->winRef;
+	windowFunc->winstar = false;
+	windowFunc->winagg = false;
+
+	return windowFunc;
+}
+
+
+static inline void
+ValidateInputForRankFunctions(const bson_value_t *opValue,
+							  WindowOperatorContext *context, char *opName)
+{
+	if (context->isWindowPresent)
+	{
+		ereport(ERROR, (errcode(MongoLocation5371601),
+						errmsg("Rank style window functions take no other arguments")));
+	}
+
+	if (!IsBsonValueEmptyDocument(opValue))
+	{
+		ereport(ERROR, (errcode(MongoLocation5371603),
+						errmsg("(None) must be specified with '{}' as the value")));
+	}
+
+	if (list_length(context->sortOptions) != 1)
+	{
+		ereport(ERROR, (errcode(MongoLocation5371602),
+						errmsg(
+							"%s must be specified with a top level sortBy expression with exactly one element",
+							opName)));
+	}
 }

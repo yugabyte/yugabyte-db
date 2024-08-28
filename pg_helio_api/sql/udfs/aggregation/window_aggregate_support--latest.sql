@@ -39,3 +39,17 @@ CREATE OR REPLACE FUNCTION helio_api_internal.bson_covariance_samp_final(bytea)
  LANGUAGE c
  STABLE
 AS 'MODULE_PATHNAME', $function$bson_covariance_samp_final$function$;
+
+CREATE OR REPLACE FUNCTION helio_api_internal.bson_rank()
+ RETURNS __CORE_SCHEMA__.bson 
+ LANGUAGE c
+ STABLE
+ WINDOW
+AS 'MODULE_PATHNAME', $function$bson_rank$function$;
+
+CREATE OR REPLACE FUNCTION helio_api_internal.bson_dense_rank()
+ RETURNS __CORE_SCHEMA__.bson 
+ LANGUAGE c
+ STABLE
+ WINDOW
+AS 'MODULE_PATHNAME', $function$bson_dense_rank$function$;

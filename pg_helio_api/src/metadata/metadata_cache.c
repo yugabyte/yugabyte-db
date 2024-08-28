@@ -639,6 +639,12 @@ typedef struct HelioApiOidCacheData
 	/* OID of the bson_dollar_replace_root function */
 	Oid ApiCatalogBsonDollarReplaceRootWithLetFunctionOid;
 
+	/* OID of the bson_rank window function */
+	Oid ApiCatalogBsonRankFunctionOid;
+
+	/* OID of the bson_dense_rank window function */
+	Oid ApiCatalogBsonDenseRankFunctionOid;
+
 	/* OID of the BSONSUM aggregate function */
 	Oid ApiCatalogBsonSumAggregateFunctionOid;
 
@@ -3190,6 +3196,43 @@ GetAggregateFunctionByName(Oid *function, char *namespaceName, char *name)
 	}
 
 	return *function;
+}
+
+
+static Oid
+GetFunctionByName(Oid *function, char *namespaceName, char *name)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (*function == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString(namespaceName),
+											makeString(name));
+		bool missingOK = false;
+		ObjectWithArgs args = { 0 };
+		args.args_unspecified = true;
+		args.objname = functionNameList;
+
+		*function = LookupFuncWithArgs(OBJECT_FUNCTION, &args, missingOK);
+	}
+
+	return *function;
+}
+
+
+Oid
+BsonRankFunctionOid(void)
+{
+	return GetFunctionByName(&Cache.ApiCatalogBsonRankFunctionOid,
+							 "helio_api_internal", "bson_rank");
+}
+
+
+Oid
+BsonDenseRankFunctionOid(void)
+{
+	return GetFunctionByName(&Cache.ApiCatalogBsonDenseRankFunctionOid,
+							 "helio_api_internal", "bson_dense_rank");
 }
 
 
