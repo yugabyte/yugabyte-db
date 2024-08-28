@@ -79,6 +79,7 @@ DECLARE_bool(enable_ysql);
 DECLARE_bool(TEST_echo_service_enabled);
 DECLARE_bool(cdcsdk_enable_cleanup_of_non_eligible_tables_from_stream);
 DECLARE_bool(ysql_enable_auto_analyze_service);
+DECLARE_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup);
 
 namespace yb {
 namespace master {
@@ -306,7 +307,8 @@ void CatalogManagerBgTasks::Run() {
       }
 
       {
-        if (FLAGS_cdcsdk_enable_cleanup_of_non_eligible_tables_from_stream) {
+        if (FLAGS_cdcsdk_enable_cleanup_of_non_eligible_tables_from_stream &&
+            FLAGS_cdcsdk_enable_dynamic_table_addition_with_table_cleanup) {
           // Find if there are any non eligible tables (indexes, mat views) present in cdcsdk
           // stream that are not associated with a replication slot.
           TableStreamIdsMap non_user_tables_to_streams_map;
