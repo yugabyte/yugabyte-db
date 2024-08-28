@@ -139,6 +139,29 @@ public class SupportBundleController extends AuthenticatedController {
               + " 'yb.support_bundle.allow_cores_collection'.");
     }
 
+    if (bundleData.components.contains(ComponentType.PrometheusMetrics)
+        && ((bundleData.promDumpStartDate == null) ^ (bundleData.promDumpEndDate == null))) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Either define both 'promDumpStartDate' and 'promDumpEndDate', or neither (Will default"
+              + " to 'yb.support_bundle.default_prom_dump_range' in this case)");
+    }
+
+    if (bundleData.startDate != null
+        && bundleData.endDate != null
+        && !supportBundleUtil.checkDatesValid(bundleData.startDate, bundleData.endDate)) {
+      throw new PlatformServiceException(BAD_REQUEST, "'startDate' should be before the 'endDate'");
+    }
+
+    if (bundleData.components.contains(ComponentType.PrometheusMetrics)
+        && bundleData.promDumpStartDate != null
+        && bundleData.promDumpEndDate != null
+        && !supportBundleUtil.checkDatesValid(
+            bundleData.promDumpStartDate, bundleData.promDumpEndDate)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "'promDumpStartDate' should be before the 'promDumpEndDate'");
+    }
+
     SupportBundle supportBundle = SupportBundle.create(bundleData, universe);
     SupportBundleTaskParams taskParams =
         new SupportBundleTaskParams(supportBundle, bundleData, customer, universe);

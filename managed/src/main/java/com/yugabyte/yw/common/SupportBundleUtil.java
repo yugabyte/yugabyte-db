@@ -112,6 +112,16 @@ public class SupportBundleUtil {
     return !dateToCheck.before(startDate) && !dateToCheck.after(endDate);
   }
 
+  // Checks if the startDate is before the endDate
+  public boolean checkDatesValid(Date startDate, Date endDate) {
+    return startDate.before(endDate);
+  }
+
+  public Date getDateNMinutesAgo(Date date, int minutes) {
+    Date dateNMinutesAgo = new DateTime(date).minusMinutes(minutes).toDate();
+    return dateNMinutesAgo;
+  }
+
   public List<String> sortDatesWithPattern(List<String> datesList, String sdfPattern) {
     // Sort the list of dates based on the given 'SimpleDateFormat' pattern
     List<String> sortedList = new ArrayList<String>(datesList);
