@@ -33,6 +33,7 @@ export const ReviewRecommendedTab: FC<ReviewRecommendedTabProps> = ({ analysis }
           unsupportedDataTypes={unsupportedDataTypes}
           unsupportedFeatures={unsupportedFeatures}
           unsupportedFunctions={unsupportedFunctions}
+          enableMoreFeatureDetails
         />
       )}
     </Box>

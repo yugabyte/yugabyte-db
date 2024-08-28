@@ -4,6 +4,9 @@ import { useTranslation } from "react-i18next";
 import { YBAccordion, YBCodeBlock, YBInput, YBModal, YBSelect, YBToggle } from "@app/components";
 import SearchIcon from "@app/assets/search.svg";
 import { BadgeVariant, YBBadge } from "@app/components/YBBadge/YBBadge";
+import type { UnsupportedSqlWithDetails } from "@app/api/src";
+import WarningIcon from "@app/assets/alert-solid.svg";
+import { getMappedData } from "./refactoringUtils";
 
 const useStyles = makeStyles((theme) => ({
   heading: {
@@ -44,16 +47,33 @@ const useStyles = makeStyles((theme) => ({
   toggleSwitch: {
     flexShrink: 0,
   },
+  warningIcon: {
+    height: "14px",
+    width: "14px",
+    marginBottom: "2px",
+    color: theme.palette.warning[500],
+  },
+  warningBox: {
+    marginTop: theme.spacing(2),
+    background: theme.palette.warning[100],
+    color: theme.palette.warning[900],
+    padding: `${theme.spacing(0.6)}px ${theme.spacing(1)}px`,
+    borderRadius: theme.shape.borderRadius
+  }
 }));
 
 interface MigrationRefactoringSidePanelProps {
-  data: any | undefined;
+  data: UnsupportedSqlWithDetails | undefined;
   onClose: () => void;
+  header: string;
+  title: string;
 }
 
 export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProps> = ({
   data,
   onClose,
+  header,
+  title,
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
@@ -64,26 +84,29 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
   const [search, setSearch] = React.useState<string>("");
   const [selectedAck, setSelectedAck] = React.useState<string>("");
 
+  const mappedData = getMappedData(data?.suggestions_errors, "filePath")
+
   const filteredData = useMemo(() => {
     const searchQuery = search.toLowerCase().trim();
-    return data?.objects.filter((obj: any) =>
-      (selectedAck ? obj.ack === (selectedAck === "Acknowledged") : true) && search
-        ? obj.filePath.toLowerCase().includes(searchQuery) ||
-          obj.sql.toLowerCase().includes(searchQuery)
+    return mappedData?.filter((obj) =>
+      // Remove 'as any' once the ack functionality is implemented
+      (selectedAck ? (obj as any).ack === (selectedAck === "Acknowledged") : true) && search
+        ? obj.groupKey?.toLowerCase().includes(searchQuery) ||
+          obj.sqlStatements.some(sql => sql?.toLowerCase().includes(searchQuery))
         : true
     );
   }, [data, search, selectedAck]);
 
-  /* const filteredPaginatedData = useMemo(() => {
+  const filteredPaginatedData = useMemo(() => {
     return filteredData?.slice(page * perPage, page * perPage + perPage);
-  }, [filteredData, page, perPage]); */
+  }, [filteredData, page, perPage]);
+
+  const totalItemCount = filteredData?.reduce((acc, obj) => acc + obj.sqlStatements.length, 0);
 
   return (
     <YBModal
       open={!!data}
-      title={t("clusterDetail.voyager.planAndAssess.refactoring.details.heading", {
-        datatype: data?.datatype,
-      })}
+      title={header + (data?.unsupported_type ? `: ${data.unsupported_type}` : "")}
       onClose={onClose}
       enableBackdropDismiss
       titleSeparator
@@ -126,34 +149,45 @@ export const MigrationRefactoringSidePanel: FC<MigrationRefactoringSidePanelProp
 
       <Box>
         <YBAccordion
-          titleContent={"Table"}
+          titleContent={title}
           renderChips={() => (
-            <YBBadge icon={false} text={"0 / 1 Tables"} variant={BadgeVariant.Light} />
+            <YBBadge icon={false} text={`0 / ${totalItemCount} ${title}`} variant={BadgeVariant.Light} />
           )}
           graySummaryBg
           defaultExpanded
         >
-          <Box display="flex" flexDirection="column">
-            <Box my={2}>
-              <Typography variant="body2">/home/nikhil/tradex/schema/tables/table.sql</Typography>
-            </Box>
-            <YBCodeBlock
-              text={
-                <Box display="flex" gridGap={2}>
-                  <Box flex={1}>
-                    CREATE or REPLACE VIEW stock_trend (symbol_id, trend) AS (select trade_symbol as
-                    symbol_id, JSON_ARRAYAGG(trunc(high_price, 2) order by price_time DESC) as trend
-                    FROM trade_symbol_price_history tsph where interval_period = '1DAY' group by
-                    trade_symbol_id);
-                  </Box>
-                  <YBToggle
-                    className={classes.toggleSwitch}
-                    label={t("clusterDetail.voyager.planAndAssess.refactoring.details.acknowledge")}
-                  />
+          <Box display="flex" flexDirection="column" gridGap={10}>
+            {filteredPaginatedData?.map(({ groupKey: filePath, sqlStatements, reasons }) => (
+              <Box display="flex" flexDirection="column">
+                <Box my={2}>
+                  <Typography variant="body2">{filePath}</Typography>
                 </Box>
-              }
-              preClassName={classes.queryCodeBlock}
-            />
+                <Box display="flex" flexDirection="column" gridGap={10}>
+                  {sqlStatements.map((sql, index) => (
+                    <YBCodeBlock
+                      text={
+                        <Box display="flex" gridGap={2}>
+                          <Box flex={1}>
+                            {sql}
+                            {reasons[index] && (
+                              <Box display="flex" alignItems="center" gridGap={6} className={classes.warningBox}>
+                                <WarningIcon className={classes.warningIcon} />
+                                {reasons[index]}
+                              </Box>
+                            )}
+                          </Box>
+                          <YBToggle
+                            className={classes.toggleSwitch}
+                            label={t("clusterDetail.voyager.planAndAssess.refactoring.details.acknowledge")}
+                          />
+                        </Box>
+                      }
+                      preClassName={classes.queryCodeBlock}
+                    />
+                  ))}
+                </Box>
+              </Box>
+            ))}
             <Box ml="auto">
               <TablePagination
                 component="div"
