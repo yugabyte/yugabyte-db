@@ -18,7 +18,8 @@ const useAccordionStyles = makeStyles((theme: Theme) => ({
   },
   shrinkContainer: {
     display: 'flex',
-    flexShrink: 1
+    flexShrink: 1,
+    alignSelf: 'center'
   },
   //add more variants
   primary: {

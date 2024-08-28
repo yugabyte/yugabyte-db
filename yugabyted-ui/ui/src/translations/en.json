@@ -1070,7 +1070,19 @@
         },
         "migrateData": {
           "migratedData": "Migrate data completed successfully",
-          "migratedDataDesc": "Data migration is complete"
+          "migratedDataDesc": "Data migration is complete",
+          "dataExportSourceDB": "Data export from source database",
+          "dataExport": "Data Export",
+          "dataExportDesc": "Export data from source database.",
+          "dataExportLearn": "Learn how to export data",
+          "dataImportTargetDB": "Data import to target database",
+          "dataImport": "Data Import",
+          "dataImportDesc": "Import data to target database.",
+          "dataImportLearn": "Learn how to import data",
+          "indexTriggerTargetDB": "Index and trigger import to target database",
+          "indexTrigger": "Index and Trigger import",
+          "indexTriggerDesc": "Import index and trigger to target database.",
+          "indexTriggerLearn": "Learn how to import index and trigger"
         }
       },
       "maintenance": {
