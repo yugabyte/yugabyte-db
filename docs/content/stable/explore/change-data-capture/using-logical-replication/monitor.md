@@ -60,7 +60,7 @@ Provides a list of all replication slots that currently exist on the database cl
 | datoid | oid | The OID of the database this slot is associated with. |
 | database | text | The name of the database this slot is associated with. |
 | temporary | boolean | True if this is a temporary replication slot. Temporary slots are automatically dropped on error or when the session has finished. |
-| active | boolean | True if this slot is currently actively being used. In YSQL, an "active" replication slot means a slot which has been consumed at least once in a certain time frame. The time is defined using the `ysql_replication_slot_activity_threshold` flag, which has a default of 5 minutes. |
+| active | boolean | True if this slot is currently actively being used. In YSQL, an "active" replication slot means a slot which has been consumed at least once in a certain time frame. The time is defined using the `ysql_cdc_active_replication_slot_window_ms` flag, which has a default of 5 minutes. |
 | active_pid | integer | The process ID of the session using this slot if the slot is currently actively being used. `NULL` if no replication process is ongoing. |
 | xmin | xid | The oldest transaction that this slot needs the database to retain. |
 | catalog_xmin | xid | Not applicable for YSQL. Always set to xmin. |

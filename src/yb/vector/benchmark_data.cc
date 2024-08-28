@@ -15,6 +15,7 @@
 
 #include "yb/util/errno.h"
 #include "yb/util/random_util.h"
+#include "yb/util/string_util.h"
 
 namespace yb::vectorindex {
 
@@ -22,6 +23,23 @@ std::unique_ptr<UniformRandomFloatVectorGenerator> CreateUniformRandomVectorSour
     size_t num_vectors, size_t dimensions, float min_value, float max_value) {
   return std::make_unique<UniformRandomFloatVectorGenerator>(
       num_vectors, dimensions, UniformRandomFloatDistribution(min_value, max_value));
+}
+
+Result<CoordinateKind> GetCoordinateKindFromVecsFileName(const std::string& vecs_file_path) {
+  if (StringEndsWith(vecs_file_path, ".fvecs")) {
+    return CoordinateKind::kFloat32;
+  }
+  if (StringEndsWith(vecs_file_path, ".bvecs")) {
+    return CoordinateKind::kUInt8;
+  }
+  if (StringEndsWith(vecs_file_path, ".ivecs")) {
+    return CoordinateKind::kInt32;
+  }
+  return STATUS(
+      InvalidArgument,
+      "Could not determine vector coordinate type from file name: $0. Expected a file name that "
+      "ends in one of .fvecs/.bvecs/.ivecs.",
+      vecs_file_path);
 }
 
 }  // namespace yb::vectorindex

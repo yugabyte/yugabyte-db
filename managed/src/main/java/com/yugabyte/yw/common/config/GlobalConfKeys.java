@@ -1347,6 +1347,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " enable/disable DB audit logging on universes.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowConnectionPooling =
+      new ConfKeyInfo<>(
+          "yb.universe.allow_connection_pooling",
+          ScopeType.GLOBAL,
+          "Allow users to enable or disable connection pooling",
+          "If this flag is enabled, user will be able to enable/disable connection pooling on"
+              + " universes.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Duration> xClusterSyncSchedulerInterval =
       new ConfKeyInfo<>(
           "yb.xcluster.xcluster_sync_scheduler_interval",
@@ -1429,6 +1438,22 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Universe Poller Interval for Master Failover",
           "Poller interval for universes to schedule master failover",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> perProcessMetricsEnabled =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_per_process_metrics",
+          ScopeType.GLOBAL,
+          "Enable Per Process Metrics",
+          "Enable Per Process Metrics",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> nodeAgentEnablerScanInterval =
+      new ConfKeyInfo<>(
+          "yb.node_agent.enabler.scan_interval",
+          ScopeType.GLOBAL,
+          "Node Agent Enabler Scan Interval",
+          "Node agent enabler scan interval",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 }

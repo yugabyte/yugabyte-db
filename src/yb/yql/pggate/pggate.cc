@@ -558,13 +558,10 @@ const YBCPgTypeEntity *PgApiImpl::FindTypeEntity(int type_oid) {
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgApiImpl::InitSession(const string& database_name, YBCPgExecStatsState* session_stats) {
+Status PgApiImpl::InitSession(YBCPgExecStatsState* session_stats) {
   CHECK(!pg_session_);
   auto session = make_scoped_refptr<PgSession>(
-      &pg_client_, database_name, pg_txn_manager_, pg_callbacks_, session_stats);
-  if (!database_name.empty()) {
-    RETURN_NOT_OK(session->ConnectDatabase(database_name));
-  }
+      &pg_client_, pg_txn_manager_, pg_callbacks_, session_stats);
 
   pg_session_.swap(session);
   return Status::OK();
@@ -739,10 +736,6 @@ void PgApiImpl::DeleteStatement(PgStatement *handle) {
 }
 
 //--------------------------------------------------------------------------------------------------
-
-Status PgApiImpl::ConnectDatabase(const char *database_name) {
-  return pg_session_->ConnectDatabase(database_name);
-}
 
 Status PgApiImpl::IsDatabaseColocated(const PgOid database_oid, bool *colocated,
                                       bool *legacy_colocated_database) {

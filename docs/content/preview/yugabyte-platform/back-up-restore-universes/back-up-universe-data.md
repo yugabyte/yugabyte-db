@@ -35,7 +35,7 @@ The universe **Backups** page allows you to create new backups that start immedi
 
 1. Navigate to the universe and select **Backups**, then click **Backup now** to open the dialog shown in the following illustration:
 
-    ![Backup](/images/yp/create-backup-new-3.png)
+    ![Backup](/images/yp/create-backup-ysql-2.20.png)
 
 1. Select the API type for the backup.
 
@@ -45,9 +45,11 @@ The universe **Backups** page allows you to create new backups that start immedi
 
 1. For YCQL backups, you can choose to back up all tables in the keyspace to which the database belongs or only certain tables. Click **Select a subset of tables** to display the **Select Tables** dialog, where you can select one or more tables to back up. Click **Confirm** when you are done.
 
-1. Specify the period of time during which the backup is to be retained. Note that there's an option to never delete the backup.
+1. For YSQL backups of universes with geo-partitioning, you can choose to back up the tablespaces. Select the **Backup tablespaces information** option.
 
-1. If you are using YBA version prior to 2.16 to manage universes with YugabyteDB version prior to 2.16, you can optionally specify the number of threads that should be available for the backup process.
+    If you don't choose to back up tablespaces, the tablespaces are not preserved and their data is backed up to the primary region.
+
+1. Specify the period of time during which the backup is to be retained. Note that there's an option to never delete the backup.
 
 1. Click **Backup**.
 
@@ -142,7 +144,7 @@ s3://user_bucket
 
 A backup set consists of a successful full backup, and (if incremental backups were taken) one or more consecutive successful incremental backups. The backup set can be used to restore a database at the point in time of the full and/or incremental backup, as long as the chain of good incremental backups is unbroken. Use the creation time to identify increments that occurred after a full backup.
 
-When YBA writes a backup, the last step after all parallel tasks complete is to write a "success" file to the backup folder. The presence of this file is verification of a good backup. Any full or incremental backup that does not include a success file should not be assumed to be good, and you should use an older backup for restore instead.
+When YBA writes a backup, the last step after all tasks complete is to write a "success" file to the backup folder. The presence of this file is verification of a good backup. Any full or incremental backup that does not include a success file should not be assumed to be good, and you should use an older backup for restore instead.
 
 ![Success file metadata](/images/yp/success-file-backup.png)
 

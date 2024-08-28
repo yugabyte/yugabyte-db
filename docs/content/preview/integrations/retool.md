@@ -17,7 +17,7 @@ Because YugabyteDB is PostgreSQL-compatible, Retool can connect to YugabyteDB as
 
 ## Connect
 
-Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB Prerequisites](../../tools/#yugabytedb-prerequisites).
+Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB Prerequisites](../tools/#yugabytedb-prerequisites).
 
 To connect to YugabyteDB, create a new PostgreSQL resource in Retool as follows:
 

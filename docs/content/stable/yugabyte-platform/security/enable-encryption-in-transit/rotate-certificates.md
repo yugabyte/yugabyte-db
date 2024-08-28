@@ -16,6 +16,8 @@ You can rotate certificates for universes configured with the same type of certi
 
 Before rotating certificates, ensure that you have added the certificates to YugabyteDB Anywhere. Refer to [Add certificates](../add-certificate-self/).
 
+Rotating the CA certificate on the source universe with xCluster Replication causes replication to pause. You should [restart replication](../../../manage-deployments/xcluster-replication/xcluster-replication-setup/#restart-replication) after completing the CA certificate rotation on the source universe.
+
 **Client-to-node certificates**
 
 Regardless of whether the client-to-node certificates are expired or not expired, you can always trigger a rolling upgrade to rotate the certificates.

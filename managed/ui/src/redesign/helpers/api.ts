@@ -38,6 +38,7 @@ import {
   DrConfig,
   DrConfigSafetimeResponse
 } from '../../components/xcluster/disasterRecovery/dtos';
+import { XClusterConfigType } from '../../components/xcluster/constants';
 
 /**
  * @deprecated Use query key factories for more flexable key organization
@@ -129,7 +130,14 @@ export const suggestedKubernetesConfigQueryKey = {
 
 export const xClusterQueryKey = {
   ALL: ['xCluster'],
-  detail: (xClusterConfigUuid: string) => [...xClusterQueryKey.ALL, xClusterConfigUuid]
+  detail: (xClusterConfigUuid: string) => [...xClusterQueryKey.ALL, xClusterConfigUuid],
+  needBootstrap: (requestParams: {
+    sourceUniverseUuid?: string;
+    targetUniverseUuid?: string;
+    tableUuids?: string[];
+    configType?: XClusterConfigType;
+    includeDetails?: boolean;
+  }) => [...xClusterQueryKey.ALL, requestParams]
 };
 
 export const drConfigQueryKey = {

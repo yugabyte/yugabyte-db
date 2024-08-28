@@ -151,7 +151,7 @@ The **Universes** view allows you to examine various aspects of the universe:
 - **Metrics** displays graphs representing information on operations, latency, and other parameters for each type of node and server.
 - **Queries** displays details about live and slow queries that you can filter by column and text.
 - **xCluster Disaster Recovery** provides information about any [disaster recovery](../../back-up-restore-universes/disaster-recovery/) configured for the universe.
-- **xCluster Replication** provides information about any [asynchronous replication](../../create-deployments/async-replication-platform/) in the universe.
+- **xCluster Replication** provides information about any [asynchronous replication](../../manage-deployments/xcluster-replication/) in the universe.
 - **Tasks** provides details about the state of tasks running on the universe, as well as the tasks that have run in the past against this universe.
 - **Backups** displays information about scheduled backups, if any, and allows you to create, restore, and delete backups.
 - **Health** displays the detailed performance status of the nodes and components involved in their operation. **Health** also allows you to pause health check alerts.

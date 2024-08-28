@@ -21,9 +21,10 @@ export enum YBTag_Types {
 
 interface YBTagProps {
   type?: YBTag_Types;
+  className?: string | CSSStyleDeclaration;
 }
 
-export const YBTag: FC<YBTagProps> = ({ type = YBTag_Types.YB_ORANGE, children }) => {
+export const YBTag: FC<YBTagProps> = ({ type = YBTag_Types.YB_ORANGE, children, className }) => {
   if (!children) return null;
-  return <span className={clsx('yb-tag', type)}>{children}</span>;
+  return <span className={clsx('yb-tag', type, className)}>{children}</span>;
 };

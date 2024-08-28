@@ -18,10 +18,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
-	"sort"
 
 	"github.com/spf13/viper"
 	"github.com/vmware-labs/yaml-jsonpath/pkg/yamlpath"
@@ -729,7 +729,7 @@ func SetYamlValue(filePath string, yamlPath string, value interface{}) error {
 		root = yaml.Node{
 			Kind: yaml.DocumentNode,
 			Content: []*yaml.Node{&yaml.Node{
-					Kind: yaml.MappingNode,
+				Kind: yaml.MappingNode,
 			}},
 		}
 	}

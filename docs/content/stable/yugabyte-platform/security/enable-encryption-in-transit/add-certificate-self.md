@@ -51,7 +51,7 @@ If the key is protected by a passphrase in the PKCS12 archive, you are prompted 
 
 To add self-signed certificates to YugabyteDB Anywhere:
 
-1. Navigate to **Configs > Security > Encryption in Transit**.
+1. Navigate to **Integrations > Security > Encryption in Transit**.
 
 1. Click **Add Certificate** to open the **Add Certificate** dialog.
 

@@ -822,6 +822,18 @@ public class UniverseCRUDHandler {
       taskParams.otelCollectorEnabled =
           confGetter.getConfForScope(p, ProviderConfKeys.otelCollectorEnabled);
 
+      // Check runtime flag for connection pooling.
+      if (userIntent.enableConnectionPooling) {
+        boolean allowConnectionPooling =
+            confGetter.getGlobalConf(GlobalConfKeys.allowConnectionPooling);
+        if (!allowConnectionPooling) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "Connection pooling is not allowed. Please set runtime flag"
+                  + " 'yb.universe.allow_connection_pooling' to true.");
+        }
+      }
+
       // update otel port
       int otelPort = confGetter.getConfForScope(p, ProviderConfKeys.otelCollectorMetricsPort);
       taskParams.communicationPorts.otelCollectorMetricsPort = otelPort;

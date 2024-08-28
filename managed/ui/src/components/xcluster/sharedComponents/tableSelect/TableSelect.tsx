@@ -273,7 +273,6 @@ export const TableSelect = (props: TableSelectProps) => {
         currentSelectedTableUuids.add(getTableUuid(tableReplicationCandidate));
 
         // When adding an index table, also add the main table.
-        // Users are unable to toggle index tables for txn config and YCQL configs
         if (tableReplicationCandidate.isIndexTable && tableReplicationCandidate.mainTableUUID) {
           currentSelectedTableUuids.add(
             formatUuidForXCluster(tableReplicationCandidate.mainTableUUID)
@@ -393,7 +392,6 @@ export const TableSelect = (props: TableSelectProps) => {
           sourceUniverseTablesQuery.data,
           sharedXClusterConfigs,
           searchTokens,
-          isTransactionalConfig,
           tableType,
           props.xClusterConfigUuid,
           props.unreplicatedTableInReplicatedNamespace,
@@ -404,7 +402,6 @@ export const TableSelect = (props: TableSelectProps) => {
           sourceUniverseTablesQuery.data,
           sharedXClusterConfigs,
           searchTokens,
-          isTransactionalConfig,
           tableType
         );
 
@@ -643,7 +640,6 @@ const getReplicationItemsFromTables = (
   sourceUniverseTables: YBTable[],
   sharedXClusterConfigs: XClusterConfig[],
   searchTokens: SearchToken[],
-  isTransactionalConfig: boolean,
   tableType: XClusterTableType,
   currentXClusterConfigUUID?: string,
   unreplicatedTableInReplicatedNamespace?: Set<string>,
@@ -702,11 +698,7 @@ const getReplicationItemsFromTables = (
           // The client only needs to select and submit index tables when dealing with non-txn xCluster configs.
           // For txn xCluster configs, the index table is added/dropped automatically after performing the ddl operation
           // on the source/target databases and reconciling with YBA.
-          if (
-            !isTransactionalConfig &&
-            isUnreplicatedTableInReplicatedNamespace &&
-            indexTableReplicationEligibility
-          ) {
+          if (isUnreplicatedTableInReplicatedNamespace && indexTableReplicationEligibility) {
             unreplicatedIndexTablesInReplicatedNamespace.push(indexTableReplicationCandidate);
           }
 
