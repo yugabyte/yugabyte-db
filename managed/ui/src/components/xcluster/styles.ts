@@ -17,6 +17,9 @@ export const useModalStyles = makeStyles((theme) => ({
 
     marginBottom: theme.spacing(4)
   },
+  formSectionDescription: {
+    marginBottom: theme.spacing(3)
+  },
   fieldLabel: {
     display: 'flex',
     gap: theme.spacing(1),

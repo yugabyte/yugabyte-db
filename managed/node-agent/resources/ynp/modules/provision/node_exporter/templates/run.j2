@@ -13,7 +13,7 @@ fi
 
 # Check if the user "prometheus" already exists
 if ! id -u prometheus >/dev/null 2>&1; then
-    adduser -M --shell /bin/bash prometheus
+    adduser --shell /bin/bash prometheus
 fi
 
 # Set ownership and permissions

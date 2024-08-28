@@ -7,12 +7,15 @@ import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPerm
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { YBBanner, YBBannerVariant } from '../../common/descriptors';
 import { YBErrorIndicator } from '../../common/indicators';
-import { XClusterTableStatus } from '../constants';
+import { XClusterConfigAction, XClusterTableStatus } from '../constants';
+import { DrConfigAction } from './constants';
 
 import { DrConfig, DrConfigState } from './dtos';
 
 interface DrBannerSectionProps {
   drConfig: DrConfig;
+  enabledDrConfigActions: DrConfigAction[];
+  enabledXClusterConfigActions: XClusterConfigAction[];
   openRepairConfigModal: () => void;
   openRestartConfigModal: () => void;
 }
@@ -40,6 +43,8 @@ const TRANSLATION_KEY_PREFIX = 'clusterDetail.disasterRecovery';
 
 export const DrBannerSection = ({
   drConfig,
+  enabledDrConfigActions,
+  enabledXClusterConfigActions,
   openRepairConfigModal,
   openRestartConfigModal
 }: DrBannerSectionProps) => {
@@ -67,6 +72,9 @@ export const DrBannerSection = ({
     0
   );
   const shouldShowRestartReplicationBanner = numTablesRequiringBootstrap > 0;
+  const isRepairDrPossible =
+    enabledDrConfigActions.includes(DrConfigAction.EDIT_TARGET) ||
+    enabledXClusterConfigActions.includes(XClusterConfigAction.RESTART);
 
   return (
     <div className={classes.bannerContainer}>
@@ -153,7 +161,12 @@ export const DrBannerSection = ({
             </Typography>
 
             <div className={classes.bannerActionButtonContainer}>
-              <YBButton variant="secondary" size="large" onClick={openRepairConfigModal}>
+              <YBButton
+                variant="secondary"
+                size="large"
+                onClick={openRepairConfigModal}
+                disabled={!isRepairDrPossible}
+              >
                 {t('actionButton.repairDr')}
               </YBButton>
             </div>
@@ -175,7 +188,12 @@ export const DrBannerSection = ({
                 overrideStyle={{ display: 'block' }}
                 isControl
               >
-                <YBButton variant="secondary" size="large" onClick={openRestartConfigModal}>
+                <YBButton
+                  variant="secondary"
+                  size="large"
+                  onClick={openRestartConfigModal}
+                  disabled={!enabledXClusterConfigActions.includes(XClusterConfigAction.RESTART)}
+                >
                   {t('actionButton.restartReplication')}
                 </YBButton>
               </RbacValidator>

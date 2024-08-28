@@ -1003,5 +1003,20 @@ TEST_F(PgCloneColocationTest, YB_DISABLE_TEST_IN_SANITIZERS(CreateTableAfterClon
   ASSERT_OK(target_conn.Execute("CREATE TABLE t2 (k int, v1 int)"));
 }
 
+TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneOfClone)) {
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName));
+  SnapshotScheduleId schedule_id = ASSERT_RESULT(CreateSnapshotSchedule(
+      master_backup_proxy_.get(), YQL_DATABASE_PGSQL, kTargetNamespaceName1, kInterval, kRetention,
+      kTimeout));
+  ASSERT_OK(WaitScheduleSnapshot(master_backup_proxy_.get(), schedule_id, kTimeout));
+
+  auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+  ASSERT_OK(target_conn.Execute("CREATE TABLE t2 (k int, v1 int)"));
+  ASSERT_OK(target_conn.ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName2, kTargetNamespaceName1));
+  ASSERT_RESULT(ConnectToDB(kTargetNamespaceName2));
+}
+
 }  // namespace master
 }  // namespace yb

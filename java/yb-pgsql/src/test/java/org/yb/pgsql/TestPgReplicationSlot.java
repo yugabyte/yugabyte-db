@@ -36,6 +36,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized.Parameters;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
@@ -117,16 +118,25 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void replicationConnectionCreateDrop() throws Exception {
-    Connection conn =
-        getConnectionBuilder().withTServer(0).replicationConnect();
-    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    markClusterNeedsRecreation();
 
-    replConnection.createReplicationSlot()
-        .logical()
-        .withSlotName("test_slot_repl_conn")
-        .withOutputPlugin(YB_OUTPUT_PLUGIN_NAME)
-        .make();
-    replConnection.dropReplicationSlot("test_slot_repl_conn");
+    String[] wal_levels = {"minimal", "replica", "logical"};
+    for (String wal_level : wal_levels) {
+      LOG.info("Testing replicationConnectionCreateDrop with wal_level = {}", wal_level);
+      Map<String, String> tserverFlags = super.getTServerFlags();
+      tserverFlags.put("ysql_pg_conf", String.format("wal_level=%s", wal_level));
+      restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
+
+      Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+      PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+      replConnection.createReplicationSlot()
+          .logical()
+          .withSlotName("test_slot_repl_conn")
+          .withOutputPlugin(YB_OUTPUT_PLUGIN_NAME)
+          .make();
+      replConnection.dropReplicationSlot("test_slot_repl_conn");
+    }
   }
 
   @Test

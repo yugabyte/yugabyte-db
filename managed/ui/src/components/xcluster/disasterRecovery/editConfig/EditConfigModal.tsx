@@ -7,6 +7,7 @@ import { Trans, useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
 
+import InfoIcon from '../../../../redesign/assets/info-message.svg';
 import { YBModal, YBModalProps, YBTooltip } from '../../../../redesign/components';
 import { api, drConfigQueryKey, EditDrConfigRequest } from '../../../../redesign/helpers/api';
 import { IStorageConfig as BackupStorageConfig } from '../../../backupv2';
@@ -16,12 +17,13 @@ import {
 } from '../../sharedComponents/ReactSelectStorageConfig';
 import { handleServerError } from '../../../../utils/errorHandlingUtils';
 import { isActionFrozen } from '../../../../redesign/helpers/utils';
-import { AllowedTasks } from '../../../../redesign/helpers/dtos';
 import { UNIVERSE_TASKS } from '../../../../redesign/helpers/constants';
 import { INPUT_FIELD_WIDTH_PX } from '../../constants';
+
+import { AllowedTasks } from '../../../../redesign/helpers/dtos';
 import { DrConfig } from '../dtos';
 
-import InfoIcon from '../../../../redesign/assets/info-message.svg';
+import { useModalStyles } from '../../styles';
 
 interface EditConfigModalProps {
   drConfig: DrConfig;
@@ -33,24 +35,6 @@ interface EditConfigModalProps {
 interface EditConfigFormValues {
   storageConfig: StorageConfigOption;
 }
-
-const useStyles = makeStyles((theme) => ({
-  formSectionDescription: {
-    marginBottom: theme.spacing(3)
-  },
-  fieldLabel: {
-    display: 'flex',
-    gap: theme.spacing(1),
-    alignItems: 'center',
-
-    marginBottom: theme.spacing(1)
-  },
-  infoIcon: {
-    '&:hover': {
-      cursor: 'pointer'
-    }
-  }
-}));
 
 const MODAL_NAME = 'EditDrConfigModal';
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.disasterRecovery.config.editModal';
@@ -65,9 +49,8 @@ export const EditConfigModal = ({
   redirectUrl,
   allowedTasks
 }: EditConfigModalProps) => {
-  const classes = useStyles();
+  const classes = useModalStyles();
   const queryClient = useQueryClient();
-  const theme = useTheme();
   const { t } = useTranslation('translation', {
     keyPrefix: TRANSLATION_KEY_PREFIX
   });

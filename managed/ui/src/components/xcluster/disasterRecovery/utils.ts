@@ -1,6 +1,6 @@
 import { UnavailableUniverseStates } from '../../../redesign/helpers/constants';
 import { getUniverseStatus } from '../../universes/helpers/universeHelpers';
-import { DrConfigActions, DurationUnit, DURATION_UNIT_TO_SECONDS } from './constants';
+import { DrConfigAction, DurationUnit, DURATION_UNIT_TO_SECONDS } from './constants';
 import { assertUnreachableCase } from '../../../utils/errorHandlingUtils';
 import { XClusterConfigType } from '../constants';
 
@@ -15,7 +15,7 @@ export const getEnabledDrConfigActions = (
   drConfig: DrConfig,
   sourceUniverse: Universe | undefined,
   targetUniverse: Universe | undefined
-): DrConfigActions[] => {
+): DrConfigAction[] => {
   if (
     UnavailableUniverseStates.includes(getUniverseStatus(sourceUniverse).state) ||
     UnavailableUniverseStates.includes(getUniverseStatus(targetUniverse).state)
@@ -23,24 +23,24 @@ export const getEnabledDrConfigActions = (
     // xCluster 'Delete' action will fail on the backend. But if the user selects the
     // 'force delete' option, then they will be able to remove the config even if a
     // participating universe is unavailable.
-    return [DrConfigActions.DELETE];
+    return [DrConfigAction.DELETE];
   }
   switch (drConfig.state) {
     case DrConfigState.INITIALIZING:
     case DrConfigState.SWITCHOVER_IN_PROGRESS:
     case DrConfigState.FAILOVER_IN_PROGRESS:
     case DrConfigState.ERROR:
-      return [DrConfigActions.DELETE];
+      return [DrConfigAction.DELETE];
     case DrConfigState.REPLICATING:
       return [
-        DrConfigActions.DELETE,
-        DrConfigActions.EDIT,
-        DrConfigActions.EDIT_TARGET,
-        DrConfigActions.SWITCHOVER,
-        DrConfigActions.FAILOVER
+        DrConfigAction.DELETE,
+        DrConfigAction.EDIT,
+        DrConfigAction.EDIT_TARGET,
+        DrConfigAction.SWITCHOVER,
+        DrConfigAction.FAILOVER
       ];
     case DrConfigState.HALTED:
-      return [DrConfigActions.DELETE, DrConfigActions.EDIT, DrConfigActions.EDIT_TARGET];
+      return [DrConfigAction.DELETE, DrConfigAction.EDIT, DrConfigAction.EDIT_TARGET];
     default:
       return assertUnreachableCase(drConfig.state);
   }

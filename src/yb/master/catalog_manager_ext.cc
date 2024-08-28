@@ -1240,7 +1240,16 @@ Result<RepeatedPtrField<BackupRowEntryPB>> CatalogManager::GetBackupEntriesAsOfT
       &tablets_iter, doc_read_cntxt.schema(), SysRowEntryType::TABLET,
       [&tables_to_tablets](const Slice& id, const Slice& data) -> Status {
         auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<SysTabletsEntryPB>(data));
-        if (tables_to_tablets.contains(pb.table_id()) && pb.split_tablet_ids_size() == 0) {
+        // We always clone the set of active children as of the snapshot time. If tablet splits
+        // occurred between the restore time and snapshot time, this means we will have more
+        // children after the clone than were present at clone time, but:
+        // 1. The children still contain the correct data because history retention is preserved
+        // 2. This allows us to clone from a snapshot instead of active rocksdb (like we do for
+        //    cloning deleted tables), which is safer because it is more targeted.
+        // Ignore DELETED / REPLACED tablets since they would otherwise cause partition conflicts
+        // when running ImportSnapshot.
+        if (tables_to_tablets.contains(pb.table_id()) && pb.split_tablet_ids_size() == 0 &&
+            pb.state() != SysTabletsEntryPB::DELETED && pb.state() != SysTabletsEntryPB::REPLACED) {
           VLOG_WITH_FUNC(1) << "Found SysTabletsEntryPB: " << pb.ShortDebugString();
           tables_to_tablets[pb.table_id()].tablets_entries.push_back(
               std::make_pair(id.ToBuffer(), pb));
