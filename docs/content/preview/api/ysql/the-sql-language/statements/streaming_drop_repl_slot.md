@@ -10,6 +10,10 @@ menu:
 type: docs
 ---
 
+{{< tip title="Requires replication connection." >}}
+This command can only be executed on a walsender backend which can be started by establishing a replication connection. A replication connection can be created by passing the parameter `replication=database` in the connection string. Refer to examples section.
+{{< /tip >}}
+
 ## Synopsis
 
 Use the `DROP_REPLICATION_SLOT` statement to drop a replication slot.
@@ -26,7 +30,17 @@ Use the `DROP_REPLICATION_SLOT` statement to drop a replication slot.
 
 The name of the replication slot.
 
+{{< note title="Note" >}}
+A replication slot can only be dropped after the client consuming from it has been stopped for **at least** `ysql_cdc_active_replication_slot_window_ms` duration. The default value of the flag is 5 minutes.
+{{< /note >}}
+
 ## Examples
+
+Establish a replication connection to the database `yugabyte`.
+
+```sql
+bin/ysqlsh "dbname=yugabyte replication=database"
+```
 
 Drop a replication slot.
 

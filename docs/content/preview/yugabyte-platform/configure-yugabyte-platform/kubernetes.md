@@ -54,7 +54,7 @@ Refer to [To deploy nodes](../../prepare/cloud-permissions/cloud-permissions-nod
 
 ## Configure Kubernetes
 
-Navigate to **Configs > Infrastructure > Managed Kubernetes Service** to see a list of all currently configured Kubernetes providers.
+Navigate to **Integrations > Infrastructure > Managed Kubernetes Service** to see a list of all currently configured Kubernetes providers.
 
 ### View and edit providers
 

@@ -24,6 +24,7 @@
 #include "yb/common/vector_types.h"
 
 #include "yb/vector/benchmark_data.h"
+#include "yb/vector/coordinate_types.h"
 #include "yb/vector/distance.h"
 #include "yb/vector/vector_index_if.h"
 
@@ -37,15 +38,18 @@ using PrecomputedGroundTruthMatrix = std::vector<std::vector<VertexId>>;
 using AtomicUInt64Vector = std::vector<std::atomic<uint64_t>>;
 
 // Computes ground truth of approximate nearest neighbor search. Parameterized by the query.
+template<IndexableVectorType Vector>
 class GroundTruth {
  public:
+  using IndexReader = VectorIndexReaderIf<Vector>;
+
   GroundTruth(
-      const VertexIdToVectorDistanceFunction& distance_fn,
+      const VertexIdToVectorDistanceFunction<Vector>& distance_fn,
       size_t k,
-      const std::vector<FloatVector>& queries,
+      const std::vector<Vector>& queries,
       const PrecomputedGroundTruthMatrix& precomputed_ground_truth,
       bool validate_precomputed_ground_truth,
-      const VectorIndexReader& index_reader,
+      const IndexReader& index_reader,
       const std::vector<VertexId>& vertex_ids);
 
   // Returns a vector with i-recall@k stored at each element with index i - 1.
@@ -53,6 +57,8 @@ class GroundTruth {
   // true i results were included in that list, averaged over all queries.
   // precomputed_ground_truth is the ground truth loaded from a provided file, or it could be an
   // empty vector, if not available.
+  //
+  // The result is always a FloatVector -- it is a vector of recall values.
   Result<FloatVector> EvaluateRecall(size_t num_threads);
 
  private:
@@ -63,19 +69,19 @@ class GroundTruth {
       AtomicUInt64Vector& total_overlap_counters);
 
   void DoApproxSearchAndUpdateStats(
-      const FloatVector& query,
+      const Vector& query,
       const std::vector<VertexId>& correct_result,
       AtomicUInt64Vector& total_overlap_counters);
 
   VerticesWithDistances AugmentWithDistances(
-      const std::vector<VertexId>& vertex_ids, const FloatVector& query);
+      const std::vector<VertexId>& vertex_ids, const Vector& query);
 
-  VertexIdToVectorDistanceFunction distance_fn_;
+  VertexIdToVectorDistanceFunction<Vector> distance_fn_;
   size_t k_;
-  const std::vector<FloatVector>& queries_;
+  const std::vector<Vector>& queries_;
   const PrecomputedGroundTruthMatrix& precomputed_ground_truth_;
   bool validate_precomputed_ground_truth_;
-  const VectorIndexReader& index_reader_;
+  const IndexReader& index_reader_;
   const std::vector<VertexId>& vertex_ids_;
 };
 

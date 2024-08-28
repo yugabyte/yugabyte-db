@@ -298,6 +298,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.23.0.0")
   public boolean skipMatchWithUserIntent = false;
 
+  @ApiModelProperty(value = "YbaApi Internal. Install node agent if it is set to true")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2024.2.1.0")
+  public boolean installNodeAgent = false;
+
   /** A wrapper for all the clusters that will make up the universe. */
   @JsonInclude(value = JsonInclude.Include.NON_NULL)
   @Slf4j
@@ -825,6 +829,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @ApiModelProperty() public boolean enableYSQL = true;
 
+    @ApiModelProperty() public boolean enableConnectionPooling = false;
+
     @ApiModelProperty(notes = "default: true")
     public boolean enableYEDIS = true;
 
@@ -990,6 +996,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.tserverGFlags = new HashMap<>(tserverGFlags);
       newUserIntent.useTimeSync = useTimeSync;
       newUserIntent.enableYSQL = enableYSQL;
+      newUserIntent.enableConnectionPooling = enableConnectionPooling;
       newUserIntent.enableYCQL = enableYCQL;
       newUserIntent.enableYSQLAuth = enableYSQLAuth;
       newUserIntent.enableYCQLAuth = enableYCQLAuth;

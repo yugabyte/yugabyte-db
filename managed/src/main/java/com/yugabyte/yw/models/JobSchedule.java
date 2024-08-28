@@ -9,6 +9,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.common.AppInit;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.models.JobInstance.State;
 import com.yugabyte.yw.models.filters.JobScheduleFilter;
 import com.yugabyte.yw.models.helpers.schedule.JobConfig;
 import com.yugabyte.yw.models.helpers.schedule.JobConfig.JobConfigWrapper;

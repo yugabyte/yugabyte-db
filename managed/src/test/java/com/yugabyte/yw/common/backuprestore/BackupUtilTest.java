@@ -13,6 +13,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.backuprestore.KeyspaceTables;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupVersion;
 import com.yugabyte.yw.models.Customer;
@@ -21,10 +22,12 @@ import com.yugabyte.yw.models.configs.CustomerConfig;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
@@ -370,5 +373,29 @@ public class BackupUtilTest extends FakeDBApplication {
       assertEquals(2, tableParams.storageLocation.split("//").length);
     }
     assertTrue(tableParams.storageLocation.contains(expectedStorageLocation));
+  }
+
+  @Test
+  public void testMergeKeyspaceTablesList() {
+    KeyspaceTables kT1 = new KeyspaceTables(Set.of("table_1", "table_2"), "foo");
+    KeyspaceTables kT2 = new KeyspaceTables(Set.of("table_3", "table_4"), "foo");
+    KeyspaceTables kT3 = new KeyspaceTables(Set.of("table_2", "table_5"), "bar");
+    List<KeyspaceTables> keyspaceTablesList = Arrays.asList(kT1, kT2, kT3);
+    Map<String, Set<String>> response = BackupUtil.mergeKeyspaceTablesList(keyspaceTablesList);
+    assertEquals(2, response.size());
+    assertEquals(response.get("foo"), Set.of("table_1", "table_2", "table_3", "table_4"));
+    assertEquals(response.get("bar"), Set.of("table_2", "table_5"));
+  }
+
+  @Test
+  public void testMergeKeyspaceTablesListEmptyTables() {
+    KeyspaceTables kT1 = new KeyspaceTables(Set.of("table_1", "table_2"), "foo");
+    KeyspaceTables kT2 = new KeyspaceTables(null, "foo");
+    KeyspaceTables kT3 = new KeyspaceTables(Set.of("table_2", "table_5"), "bar");
+    List<KeyspaceTables> keyspaceTablesList = Arrays.asList(kT1, kT2, kT3);
+    Map<String, Set<String>> response = BackupUtil.mergeKeyspaceTablesList(keyspaceTablesList);
+    assertEquals(2, response.size());
+    assertEquals(0, response.get("foo").size());
+    assertEquals(response.get("bar"), Set.of("table_2", "table_5"));
   }
 }

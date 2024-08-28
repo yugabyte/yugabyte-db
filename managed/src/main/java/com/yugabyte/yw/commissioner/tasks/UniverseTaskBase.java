@@ -1320,6 +1320,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Sets the isMaster field
     params.isMaster = node.isMaster;
     params.enableYSQL = userIntent.enableYSQL;
+    params.enableConnectionPooling = userIntent.enableConnectionPooling;
     params.enableYCQL = userIntent.enableYCQL;
     params.enableYCQLAuth = userIntent.enableYCQLAuth;
     params.enableYSQLAuth = userIntent.enableYSQLAuth;
@@ -5208,30 +5209,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
-  /**
-   * Run universe updater and increment the cluster config version
-   *
-   * @param updater the universe updater to run
-   * @return the updated universe
-   */
-  protected Universe saveUniverseDetails(
-      UUID universeUUID, boolean shouldIncrementVersion, UniverseUpdater updater) {
-    Universe.UNIVERSE_KEY_LOCK.acquireLock(universeUUID);
-    try {
-      if (updater.getConfig().isIgnoreAbsence() && !Universe.maybeGet(universeUUID).isPresent()) {
-        return null;
-      }
-      if (shouldIncrementVersion) {
-        incrementClusterConfigVersion(universeUUID);
-      }
-      return Universe.saveDetails(universeUUID, updater, shouldIncrementVersion);
-    } finally {
-      Universe.UNIVERSE_KEY_LOCK.releaseLock(universeUUID);
-    }
-  }
-
   protected Universe saveUniverseDetails(UUID universeUUID, UniverseUpdater updater) {
-    return saveUniverseDetails(universeUUID, shouldIncrementVersion(universeUUID), updater);
+    Function<UUID, Boolean> versionIncrementCallback =
+        uuid -> {
+          if (shouldIncrementVersion(universeUUID)) {
+            incrementClusterConfigVersion(universeUUID);
+            return true;
+          }
+          return false;
+        };
+    return Universe.saveUniverseDetails(universeUUID, versionIncrementCallback, updater);
   }
 
   protected Universe saveUniverseDetails(UniverseUpdater updater) {

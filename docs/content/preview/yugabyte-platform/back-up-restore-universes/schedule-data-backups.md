@@ -31,7 +31,7 @@ Before scheduling a backup of your universe data, create a policy, as follows:
 
 1. Click **Create Scheduled Backup Policy** to open the dialog shown in the following illustration:
 
-    ![Create Backup form](/images/yp/scheduled-backup-ycql-1.png)
+    ![Create Scheduled Backup](/images/yp/scheduled-backup-ysql.png)
 
 1. Provide the backup policy name.
 
@@ -42,6 +42,10 @@ Before scheduling a backup of your universe data, create a policy, as follows:
 1. Select the database/keyspace to back up.
 
 1. For YCQL backups, you can choose to back up all tables in the keyspace to which the database belongs or only certain tables. If you choose **Select a subset of tables**, a **Select Tables** dialog opens allowing you to select one or more tables to back up. When finished, click **Confirm**.
+
+1. For YSQL backups of universes with geo-partitioning, you can choose to back up the tablespaces. Select the **Backup tablespaces information** option.
+
+    If you don't choose to back up tablespaces, the tablespaces are not preserved and their data is backed up to the primary region.
 
 1. Specify the period of time during which the backup is to be retained. Note that there's an option to never delete the backup.
 
@@ -56,8 +60,6 @@ Before scheduling a backup of your universe data, create a policy, as follows:
     If you delete the main full backup schedule, the incremental backup schedule is also deleted.
 
     You cannot modify any incremental backup-related property in the schedule; to overwrite any incremental backup property, you have to delete the existing schedule and create a new schedule if needed.
-
-1. If you are using YugabyteDB Anywhere version prior to 2.16 to manage universes with YugabyteDB version prior to 2.16, you can optionally specify the number of threads that should be available for the backup process.
 
 1. Click **Create**.
 

@@ -15,6 +15,9 @@ public class ConfigureYSQLFormData {
   @Constraints.Required
   public boolean enableYSQL;
 
+  @ApiModelProperty(value = "Enable Connection Pooling for the universe")
+  public boolean enableConnectionPooling = false;
+
   @ApiModelProperty(value = "Enable YSQL Auth for the universe")
   @Constraints.Required
   public boolean enableYSQLAuth;
@@ -29,10 +32,13 @@ public class ConfigureYSQLFormData {
   @JsonIgnore
   public void mergeWithConfigureDBApiParams(ConfigureDBApiParams params) {
     params.enableYSQL = this.enableYSQL;
+    params.enableConnectionPooling = this.enableConnectionPooling;
     params.enableYSQLAuth = this.enableYSQLAuth;
     params.ysqlPassword = this.ysqlPassword;
     params.communicationPorts.ysqlServerHttpPort = this.communicationPorts.ysqlServerHttpPort;
     params.communicationPorts.ysqlServerRpcPort = this.communicationPorts.ysqlServerRpcPort;
+    params.communicationPorts.internalYsqlServerRpcPort =
+        this.communicationPorts.internalYsqlServerRpcPort;
     params.configureServer = UniverseTaskBase.ServerType.YSQLSERVER;
   }
 }

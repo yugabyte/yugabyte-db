@@ -63,29 +63,4 @@ std::vector<VertexWithDistance> DrainMaxQueueToIncreasingDistanceList(MaxDistanc
   return result_list;
 }
 
-std::vector<VertexWithDistance> BruteForcePreciseNearestNeighbors(
-    const FloatVector& query,
-    const std::vector<VertexId>& vertex_ids,
-    const VertexIdToVectorDistanceFunction& distance_fn,
-    size_t num_results) {
-  MaxDistanceQueue queue;
-  for (const auto& vertex_id : vertex_ids) {
-    auto distance = distance_fn(vertex_id, query);
-    auto new_element = VertexWithDistance(vertex_id, distance);
-    if (queue.empty() || new_element < queue.top()) {
-      // Add a new element if there is a room in the result set, or if the new element is better
-      // than the worst element of the result set. The comparsion is done using the (distance,
-      // vertex_id) as a lexicographic pair, so we should prefer elements that have the lowest
-      // vertex_id among those that have the same distance from the query.
-      queue.push(new_element);
-    }
-    if (queue.size() > num_results) {
-      // Always remove the furthest element from the query.
-      queue.pop();
-    }
-  }
-
-  return DrainMaxQueueToIncreasingDistanceList(queue);
-}
-
 }  // namespace yb::vectorindex

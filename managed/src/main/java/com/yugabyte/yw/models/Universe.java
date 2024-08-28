@@ -26,6 +26,7 @@ import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -62,7 +63,9 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import lombok.Builder;
 import lombok.Data;
 import lombok.Getter;
@@ -488,6 +491,33 @@ public class Universe extends Model {
           },
           TransactionUtil.DEFAULT_RETRY_CONFIG);
       return universeRef.get();
+    } finally {
+      UNIVERSE_KEY_LOCK.releaseLock(universeUUID);
+    }
+  }
+
+  /**
+   * Run universe updater and invoke the version increment callback.
+   *
+   * @param universeUUID the universe UUID.
+   * @param versionIncrementCallback the version increment callback.
+   * @param updater the universe updater.
+   * @return the updated universe.
+   */
+  public static Universe saveUniverseDetails(
+      UUID universeUUID,
+      @Nullable Function<UUID, Boolean> versionIncrementCallback,
+      UniverseUpdater updater) {
+    UNIVERSE_KEY_LOCK.acquireLock(universeUUID);
+    try {
+      if (updater.getConfig().isIgnoreAbsence() && !Universe.maybeGet(universeUUID).isPresent()) {
+        return null;
+      }
+      boolean shouldIncrementVersion = false;
+      if (versionIncrementCallback != null) {
+        shouldIncrementVersion = versionIncrementCallback.apply(universeUUID);
+      }
+      return Universe.saveDetails(universeUUID, updater, shouldIncrementVersion);
     } finally {
       UNIVERSE_KEY_LOCK.releaseLock(universeUUID);
     }

@@ -136,10 +136,8 @@ void PggateTest::TearDown() {
   YBTest::TearDown();
 }
 
-Status PggateTest::Init(const char *test_name,
-                        int num_tablet_servers,
-                        int replication_factor,
-                        const std::string& use_existing_db) {
+Status PggateTest::Init(
+    const char *test_name, int num_tablet_servers, int replication_factor, bool should_create_db) {
   // Create cluster before setting client API.
   RETURN_NOT_OK(CreateCluster(num_tablet_servers, replication_factor));
 
@@ -175,15 +173,11 @@ Status PggateTest::Init(const char *test_name,
 
   YBCInitPgGate(type_table, count, callbacks, nullptr, &ash_config);
 
-  // Setup session.
-  CHECK_YBC_STATUS(YBCPgInitSession(nullptr /* database_name */, session_stats));
-
-  if (use_existing_db.empty()) {
-    // Setup database
-    SetupDB();
-  } else {
-    ConnectDB(use_existing_db);
+  CHECK_YBC_STATUS(YBCPgInitSession(session_stats));
+  if (should_create_db) {
+    CreateDB();
   }
+
   return Status::OK();
 }
 
@@ -209,21 +203,13 @@ Status PggateTest::CreateCluster(int num_tablet_servers, int replication_factor)
 
 //--------------------------------------------------------------------------------------------------
 
-void PggateTest::SetupDB(const string& db_name, const YBCPgOid db_oid) {
-  CreateDB(db_name, db_oid);
-  ConnectDB(db_name);
-}
 
-void PggateTest::CreateDB(const string& db_name, const YBCPgOid db_oid) {
+void PggateTest::CreateDB() {
   YBCPgStatement pg_stmt;
   CHECK_YBC_STATUS(YBCPgNewCreateDatabase(
-      db_name.c_str(), db_oid, 0 /* source_database_oid */,
+      kDefaultDatabase, kDefaultDatabaseOid, 0 /* source_database_oid */,
       0 /* next_oid */, false /* colocated */, NULL /* yb_clone_info */, &pg_stmt));
   CHECK_YBC_STATUS(YBCPgExecCreateDatabase(pg_stmt));
-}
-
-void PggateTest::ConnectDB(const string& db_name) {
-  CHECK_YBC_STATUS(YBCPgConnectDatabase(db_name.c_str()));
 }
 
 void PggateTest::BeginDDLTransaction() {

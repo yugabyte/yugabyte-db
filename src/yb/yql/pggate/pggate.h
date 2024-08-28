@@ -134,8 +134,7 @@ class PgApiImpl {
   void ResetCatalogReadTime();
 
   // Initialize a session to process statements that come from the same client connection.
-  // If database_name is empty, a session is created without connecting to any database.
-  Status InitSession(const std::string& database_name, YBCPgExecStatsState* session_stats);
+  Status InitSession(YBCPgExecStatsState* session_stats);
 
   uint64_t GetSessionID() const;
 
@@ -229,9 +228,6 @@ class PgApiImpl {
   const YBCPgTypeEntity *FindTypeEntity(int type_oid);
 
   //------------------------------------------------------------------------------------------------
-  // Connect database. Switch the connected database to the given "database_name".
-  Status ConnectDatabase(const char *database_name);
-
   // Determine whether the given database is colocated.
   Status IsDatabaseColocated(const PgOid database_oid, bool *colocated,
                              bool *legacy_colocated_database);

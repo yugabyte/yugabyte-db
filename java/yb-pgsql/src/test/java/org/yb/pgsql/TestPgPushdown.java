@@ -1744,6 +1744,7 @@ public class TestPgPushdown extends BasePgSQLTest {
             stmt, String.format("/*+IndexOnlyScan(%s %s)*/", tableName, indexName), quals);
         verifyPushdown(stmt, String.format("/*+IndexScan(%s %s)*/", tableName, indexName), quals);
         stmt.executeUpdate(String.format("DROP TABLE %s", tableName));
+        waitForTServerHeartbeatIfConnMgrEnabled();
       }
     }
 
