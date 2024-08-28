@@ -15,21 +15,18 @@
 #pragma once
 
 #include <queue>
+
 #include "yb/common/vector_types.h"
+
 #include "yb/rocksdb/status.h"
+
 #include "yb/util/result.h"
 #include "yb/util/slice.h"
+
 #include "yb/vector/coordinate_types.h"
 #include "yb/vector/distance.h"
 
 namespace yb::vectorindex {
-namespace detail {
-
-struct CompareDistanceForMinHeap {
-  bool operator()(const VertexWithDistance& a, const VertexWithDistance& b) { return a > b; }
-};
-
-}  // namespace detail
 
 // A simple struct to hold a DocKey that's stored in the value of a vectorann entry and its distance
 class DocKeyWithDistance {
@@ -57,17 +54,18 @@ class DocKeyWithDistance {
   bool operator>(const DocKeyWithDistance& other) const { return Compare(other) > 0; }
 };
 
-using MinDistanceQueue = std::priority_queue<
-    VertexWithDistance, std::vector<VertexWithDistance>, detail::CompareDistanceForMinHeap>;
-
 // Our default comparator for VertexWithDistance already orders the pairs by increasing distance.
-using MaxDistanceQueue = std::priority_queue<VertexWithDistance, std::vector<VertexWithDistance>>;
+template<ValidDistanceResultType DistanceResult>
+using MaxDistanceQueue =
+    std::priority_queue<VertexWithDistance<DistanceResult>,
+                        std::vector<VertexWithDistance<DistanceResult>>>;
+
 
 // Drain a max-queue of (vertex, distance) pairs and return a list of VertexWithDistance instances
 // ordered by increasing distance.
-inline std::vector<VertexWithDistance> DrainMaxQueueToIncreasingDistanceList(
-    MaxDistanceQueue& queue) {
-  std::vector<VertexWithDistance> result_list;
+template<ValidDistanceResultType DistanceResult>
+auto DrainMaxQueueToIncreasingDistanceList(MaxDistanceQueue<DistanceResult>& queue) {
+  std::vector<VertexWithDistance<DistanceResult>> result_list;
   while (!queue.empty()) {
     result_list.push_back(queue.top());
     queue.pop();
@@ -81,14 +79,19 @@ inline std::vector<VertexWithDistance> DrainMaxQueueToIncreasingDistanceList(
 // Computes precise nearest neighbors for the given query by brute force search. In case of
 // multiple results having the same distance from the query, results with lower vertex ids are
 // preferred.
-template <IndexableVectorType Vector>
-std::vector<VertexWithDistance> BruteForcePreciseNearestNeighbors(
-    const Vector& query, const std::vector<VertexId>& vertex_ids,
-    const VertexIdToVectorDistanceFunction<Vector>& distance_fn, size_t num_results) {
-  MaxDistanceQueue queue;
+template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
+std::vector<VertexWithDistance<DistanceResult>> BruteForcePreciseNearestNeighbors(
+    const Vector& query,
+    const std::vector<VertexId>& vertex_ids,
+    const VertexIdToVectorDistanceFunction<Vector, DistanceResult>& distance_fn,
+    size_t num_results) {
+  if (num_results == 0) {
+    return {};
+  }
+  MaxDistanceQueue<DistanceResult> queue;
   for (const auto& vertex_id : vertex_ids) {
     auto distance = distance_fn(vertex_id, query);
-    auto new_element = VertexWithDistance(vertex_id, distance);
+    auto new_element = VertexWithDistance<DistanceResult>(vertex_id, distance);
     if (queue.size() < num_results || new_element < queue.top()) {
       // Add a new element if there is a room in the result set, or if the new element is better
       // than the worst element of the result set. The comparsion is done using the (distance,
@@ -105,10 +108,10 @@ std::vector<VertexWithDistance> BruteForcePreciseNearestNeighbors(
   auto result = DrainMaxQueueToIncreasingDistanceList(queue);
   CHECK_GE(result.size(), std::min(vertex_ids.size(), num_results))
       << "Too few records returned by brute-force precise nearest neighbor search on a "
-      << "dataset with " << vertex_ids.size()
-      << " vectors. Requested number of results: " << num_results
-      << ", returned: " << result.size();
+      << "dataset with " << vertex_ids.size() << " vectors. Requested number of results: "
+      << num_results << ", returned: " << result.size();
 
   return result;
 }
+
 }  // namespace yb::vectorindex

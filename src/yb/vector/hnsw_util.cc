@@ -47,8 +47,4 @@ VectorIndexLevel SelectRandomLevel(double ml, VectorIndexLevel max_level) {
   return narrow_cast<VectorIndexLevel>(std::min<size_t>(level, max_level));
 }
 
-std::string VertexWithDistance::ToString() const {
-  return YB_STRUCT_TO_STRING(vertex_id, distance);
-}
-
 }  // namespace yb::vectorindex

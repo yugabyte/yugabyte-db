@@ -1953,7 +1953,7 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorSearch(
 
   auto query_vec = request_.vector_idx_options().vector().binary_value();
 
-  auto ysql_query_vec = pointer_cast<const YSQLVector*>(query_vec.data());
+  auto ysql_query_vec = pointer_cast<const vectorindex::YSQLVector*>(query_vec.data());
 
   SCHECK_EQ(ysql_query_vec->dim, dims, InvalidArgument, "Vector dimensions mismatch");
 
@@ -1999,7 +1999,7 @@ Result<size_t> PgsqlReadOperation::ExecuteVectorSearch(
       if (!vec_value.has_value()) continue;
       // Add the vector to the ANN store
       auto vec = VERIFY_RESULT(VectorANN<FloatVector>::GetVectorFromYSQLWire(
-          *pointer_cast<const YSQLVector*>(vec_value->binary_value().data()),
+          *pointer_cast<const vectorindex::YSQLVector*>(vec_value->binary_value().data()),
           vec_value->binary_value().size()));
       auto doc_iter = down_cast<DocRowwiseIterator*>(table_iter_.get());
       ann_store->Add(vec, doc_iter->GetRowKey());

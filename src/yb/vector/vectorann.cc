@@ -17,7 +17,9 @@
 #include <stack>
 
 #include "yb/util/memory/arena.h"
+
 #include "yb/vector/vectorann.h"
+
 namespace yb::vectorindex {
 
 template <IndexableVectorType Vector>
@@ -73,9 +75,10 @@ class DummyANN final : public VectorANN<Vector> {
   std::vector<DocKeyWithDistance> GetTopKVectors(
       Vector query_vec, size_t k, double lb_distance, Slice lb_key,
       bool is_lb_inclusive) const override {
+    using DistanceResult = double;
     auto lower_bound = DocKeyWithDistance(lb_key, lb_distance);
 
-    auto dist_fn = GetDistanceImpl<Vector>(VectorDistanceType::kL2Squared);
+    auto dist_fn = GetDistanceFunction<Vector, DistanceResult>(DistanceKind::kL2Squared);
     auto modified_dist = [this, &lower_bound, &is_lb_inclusive, dist_fn](
                              VertexId vertex_id, const Vector& v) -> float {
       auto& value = values_[vertex_id];
@@ -88,7 +91,8 @@ class DummyANN final : public VectorANN<Vector> {
       return dist;
     };
 
-    auto topk = BruteForcePreciseNearestNeighbors<Vector>(query_vec, vertex_ids_, modified_dist, k);
+    auto topk = BruteForcePreciseNearestNeighbors<Vector, DistanceResult>(
+        query_vec, vertex_ids_, modified_dist, k);
 
     std::vector<DocKeyWithDistance> out;
     for (auto vertex_id : topk) {

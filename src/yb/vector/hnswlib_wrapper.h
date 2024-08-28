@@ -13,13 +13,10 @@
 
 #pragma once
 
-#include <cstddef>
 #include <memory>
 
 #include "yb/util/result.h"
-#include "yb/util/status.h"
 
-#include "yb/vector/distance.h"
 #include "yb/vector/hnsw_options.h"
 #include "yb/vector/coordinate_types.h"
 #include "yb/vector/vector_index_if.h"
@@ -29,26 +26,26 @@ namespace yb::vectorindex {
 
 namespace detail {
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class UsearchIndexImpl;
+class HnswlibIndexImpl;
 }  // namespace detail
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class UsearchIndex : public VectorIndexBase<
-    detail::UsearchIndexImpl<Vector, DistanceResult>, Vector, DistanceResult> {
+class HnswlibIndex : public VectorIndexBase<
+    detail::HnswlibIndexImpl<Vector, DistanceResult>, Vector, DistanceResult> {
  public:
-  explicit UsearchIndex(const HNSWOptions& options);
-  virtual ~UsearchIndex();
+  explicit HnswlibIndex(const HNSWOptions& options);
+  virtual ~HnswlibIndex();
  private:
-  using Impl = detail::UsearchIndexImpl<Vector, DistanceResult>;
+  using Impl = detail::HnswlibIndexImpl<Vector, DistanceResult>;
 };
 
 template<IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
-class UsearchIndexFactory : public VectorIndexFactory<Vector, DistanceResult> {
+class HnswlibIndexFactory : public VectorIndexFactory<Vector, DistanceResult> {
  public:
-  UsearchIndexFactory() = default;
+  HnswlibIndexFactory() = default;
 
   std::unique_ptr<VectorIndexIf<Vector, DistanceResult>> Create() const override {
-    return std::make_unique<UsearchIndex<Vector, DistanceResult>>(this->hnsw_options_);
+    return std::make_unique<HnswlibIndex<Vector, DistanceResult>>(this->hnsw_options_);
   }
 };
 
