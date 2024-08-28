@@ -17,7 +17,7 @@ Budibase integrates with other tools and services, making it easier to connect y
 
 ## Setup
 
-- Set up Budibase using either the [cloud option](https://account.budibase.app/) or the [self-hosted options](https://docs.budibase.com/docs/hosting-methods).
+- Set up Budibase using either the [cloud](https://account.budibase.app/) or the [self-hosted options](https://docs.budibase.com/docs/hosting-methods).
 - Set up your YugabyteDB cluster by following the instructions at [YugabyteDB Prerequisites](/preview/integrations/tools/#yugabytedb-prerequisites).
 
 ## Connect Budibase to YugabyteDB
