@@ -8,8 +8,9 @@ generated_sql_files = $(patsubst %,build/%,$(template_sql_files))
 DATA_built = $(generated_sql_files)
 sql_file_inputs = $(wildcard sql/**/*.sql)
 
+HELIO_CORE_DIR := $(dir $(realpath $(firstword $(MAKEFILE_LIST))))
 BUILD_SCRIPT_DIR = ../
-OSS_SRC_DIR = ../
+OSS_SRC_DIR = $(HELIO_CORE_DIR)/../
 OSS_COMMON_SQL_HEADER = $(wildcard $(OSS_SRC_DIR)/common_header.sql)
 
 # Extension configuration
@@ -70,6 +71,12 @@ trim_installed_data_files:
 	rm -f $(DESTDIR)$(datadir)/$(datamoduledir)/$(EXTENSION)--*.sql
 
 build-sql: $(generated_sql_files)
+
+all: helio_errors.h
+
+helio_errors.h:
+	mkdir -p $(HELIO_CORE_DIR)/build
+	$(OSS_SRC_DIR)/scripts/generate_error_values.sh $(OSS_SRC_DIR)/mongoerrors.csv $(HELIO_CORE_DIR)include/utils/helio_errors.h $(HELIO_CORE_DIR)include/utils/helio_codes.txt
 
 $(generated_sql_files): build/%: %
 	@mkdir -p $(SQL_DEPDIR) $(SQL_BUILDDIR)
