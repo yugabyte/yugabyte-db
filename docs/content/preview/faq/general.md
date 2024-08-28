@@ -190,7 +190,7 @@ To understand how YugabyteDB survives node, zone, rack and region failures, see 
 Every write (insert, update, delete) to the data is replicated via [RAFT](/preview/architecture/docdb-replication/raft/) consensus to [tablet followers](/preview/architecture/key-concepts/#tablet-follower) as per the [replication factor(RF)]((/stable/architecture/key-concepts/#replication-factor-rf) of the cluster. Before acknowledging the write operation back to the client, YugabyteDB ensures that the data is replicated to a quorum (RF/2 + 1) followers.
 
 {{<lead link="(/stable/architecture/docdb-replication/replication/#replication-factor">}}
-To understand how data is replicated, see [Synchronous replication]((/stable/architecture/docdb-replication/replication/#replication-factor)
+To understand how data is replicated, see [Synchronous replication](/stable/architecture/docdb-replication/replication/#replication-factor)
 {{</lead>}}
 
 ### What is tablet splitting
