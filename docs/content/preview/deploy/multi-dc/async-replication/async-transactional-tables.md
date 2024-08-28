@@ -12,9 +12,26 @@ menu:
 type: docs
 ---
 
-When DDL operations are performed to databases in transactional xCluster replication (such as creating, altering, or dropping tables or partitions), the statements must be executed on both the Primary/Source and Standby/Target and the xCluster configuration must be updated.
+## Running v2024.1.2 or later
 
-You should perform these actions in a specific order, depending on the type of DDL, as indicated in the table below.
+When performing any DDL operation on databases in transactional xCluster replication (such as creating, altering, or dropping tables or partitions) in v2024.1.2 or later, do the following:
+
+1. Execute the DDL on Primary.
+1. Execute the DDL on Standby.
+
+The xCluster configuration is updated automatically. You can insert data into the table as soon as it is created.
+
+When new tables are created with CREATE TABLE, CREATE INDEX, CREATE TABLE PARTITION OF on the Primary universe, new streams are automatically created. Because this happens alongside the DDL, the new tables are checkpointed at the start of the WAL.
+
+When the same DDL is run on the Standby, the stream info is automatically fetched from the Primary and the table is added to replication using the pre-created stream.
+
+Similarly on table drop, after both sides drop the table, the streams are automatically removed.
+
+## Running v2024.1.1 or earlier
+
+When performing DDL operations on databases in transactional xCluster replication (such as creating, altering, or dropping tables or partitions)in v2024.1.1 or earlier, the statements must be executed on both the Primary/Source and Standby/Target and the xCluster configuration must be updated.
+
+You should perform these actions in a specific order, depending on the type of DDL, as indicated in the following table.
 
 | DDL | Step 1 | Step 2 |  Step 3 |
 | :--- | :--- | :--- | :--- |
