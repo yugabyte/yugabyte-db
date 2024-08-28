@@ -153,7 +153,8 @@ class ProvisionCommand(Command):
             sys.exit()
 
     def _validate_permissions(self):
-        gp_dir = os.path.dirname(os.path.dirname(self.config["ynp_dir"]))
+        key = next(iter(self.config), None)
+        gp_dir = os.path.dirname(os.path.dirname(self.config[key]["ynp_dir"]))
         installer_dir = os.path.join(gp_dir, "bin")
         mode = os.stat(installer_dir).st_mode
         yugabyte_has_read = bool(mode & stat.S_IROTH)

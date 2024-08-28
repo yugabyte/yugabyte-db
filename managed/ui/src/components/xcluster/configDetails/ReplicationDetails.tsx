@@ -13,7 +13,8 @@ import { closeDialog, openDialog } from '../../../actions/modal';
 import {
   fetchXClusterConfig,
   fetchTaskUntilItCompletes,
-  editXClusterState
+  editXClusterState,
+  isBootstrapRequired
 } from '../../../actions/xClusterReplication';
 import { YBButton } from '../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
@@ -28,13 +29,16 @@ import {
   XCLUSTER_METRIC_REFETCH_INTERVAL_MS,
   MetricName,
   liveMetricTimeRangeUnit,
-  liveMetricTimeRangeValue
+  liveMetricTimeRangeValue,
+  XClusterConfigType
 } from '../constants';
 import {
   MaxAcceptableLag,
   CurrentReplicationLag,
   getEnabledConfigActions,
-  getStrictestReplicationLagAlertThreshold
+  getStrictestReplicationLagAlertThreshold,
+  getInConfigTableUuid,
+  getIsXClusterConfigAllBidirectional
 } from '../ReplicationUtils';
 import { LagGraph } from './LagGraph';
 import { ReplicationTables } from './ReplicationTables';
@@ -96,11 +100,30 @@ export function ReplicationDetails({
     () => api.fetchUniverse(xClusterConfigQuery.data?.sourceUniverseUUID),
     { enabled: xClusterConfigQuery.data?.sourceUniverseUUID !== undefined }
   );
-
   const targetUniverseQuery = useQuery(
     universeQueryKey.detail(xClusterConfigQuery.data?.targetUniverseUUID),
     () => api.fetchUniverse(xClusterConfigQuery.data?.targetUniverseUUID),
     { enabled: xClusterConfigQuery.data?.targetUniverseUUID !== undefined }
+  );
+
+  const inConfigTableUuids = getInConfigTableUuid(xClusterConfigQuery.data?.tableDetails ?? []);
+  const bootstrapRequirementQuery = useQuery(
+    xClusterQueryKey.needBootstrap({
+      sourceUniverseUuid: xClusterConfigQuery.data?.sourceUniverseUUID,
+      targetUniverseUuid: xClusterConfigQuery.data?.targetUniverseUUID,
+      tableUuids: inConfigTableUuids,
+      configType: xClusterConfigQuery.data?.type,
+      includeDetails: true
+    }),
+    () =>
+      isBootstrapRequired(
+        xClusterConfigQuery.data?.sourceUniverseUUID ?? '',
+        xClusterConfigQuery.data?.targetUniverseUUID ?? '',
+        inConfigTableUuids,
+        xClusterConfigQuery.data?.type ?? XClusterConfigType.BASIC,
+        true
+      ),
+    { enabled: !!xClusterConfigQuery.data }
   );
 
   const replicationLagMetricSettings = {
@@ -257,12 +280,16 @@ export function ReplicationDetails({
     );
   }
 
+  const isXClusterConfigAllBidirectional = bootstrapRequirementQuery.data
+    ? getIsXClusterConfigAllBidirectional(bootstrapRequirementQuery.data)
+    : false;
   const sourceUniverse = sourceUniverseQuery.data;
   const targetUniverse = targetUniverseQuery.data;
   const enabledConfigActions = getEnabledConfigActions(
     xClusterConfig,
     sourceUniverse,
-    targetUniverse
+    targetUniverse,
+    isXClusterConfigAllBidirectional
   );
 
   let numTablesAboveLagThreshold = 0;
@@ -302,6 +329,7 @@ export function ReplicationDetails({
     showModal && visibleModal === XClusterModalName.RESTART_CONFIG;
   const isSyncConfigModalVisible =
     showModal && visibleModal === XClusterModalName.SYNC_XCLUSTER_CONFIG_WITH_DB;
+
   return (
     <>
       <div className="replication-details">

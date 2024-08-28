@@ -194,13 +194,13 @@ static bool ValidateMaxRefreshInterval(const char* flag_name, uint32 value) {
   // log_min_seconds_to_retain, update_min_cdc_indices_interval_secs.
   DELAY_FLAG_VALIDATION_ON_STARTUP(flag_name);
 
-  if (value == 0 || value < static_cast<uint32>(
-      FLAGS_log_min_seconds_to_retain + FLAGS_update_min_cdc_indices_interval_secs)) {
+  uint32 min_allowed = FLAGS_log_min_seconds_to_retain + FLAGS_update_min_cdc_indices_interval_secs;
+  if (value == 0 || value < min_allowed) {
     return true;
   }
   LOG_FLAG_VALIDATION_ERROR(flag_name, value)
-      << "Must be less than the sume of log_min_seconds_to_retain and "
-      << "update_min_cdc_indices_interval_secs";
+      << "Must be less than the sum of log_min_seconds_to_retain and "
+      << "update_min_cdc_indices_interval_secs. Minimum value allowed: " << min_allowed;
   return false;
 }
 

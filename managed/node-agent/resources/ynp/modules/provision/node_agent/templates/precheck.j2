@@ -1,17 +1,21 @@
 service_name="yb-node-agent.service"
 
 # Get the status of yb-node-agent Service
-status=$(systemctl show -p ActiveState "$service_name" | grep ActiveState | awk -F= '{print $2}')
+status=$(su - {{ yb_user }} -c \
+    "XDG_RUNTIME_DIR=/run/user/$(id -u {{ yb_user }}) systemctl --user show -p ActiveState \
+    \"$service_name\" | grep ActiveState | awk -F= '/ActiveState/ {print \$2}'")
 if [ "$status" = "active" ]; then
     echo "\"$service_name\" is active"
     add_result "Service Status Check" "PASS" "$service_name is active"
 else
-    echo "\"$service_name\"  is not active"
+    echo "\"$service_name\" is not active"
     add_result "Service Status Check" "FAIL" "$service_name is not active"
 fi
 
 # Check the memory usage for yb-node-agent service
-memory=$(systemctl show -p MemoryCurrent "$service_name" | grep MemoryCurrent | awk -F= '{print $2}')
+memory=$(su - {{ yb_user }} -c \
+    "XDG_RUNTIME_DIR=/run/user/$(id -u {{ yb_user }}) systemctl --user show -p MemoryCurrent \
+    \"$service_name\" | grep MemoryCurrent | awk -F= '/MemoryCurrent/ {print \$2}'")
 if [ "$memory" -gt 0 ]; then
     echo "MemoryCurrent is greater than 0: $memory"
     add_result "Memory Usage Check" "PASS" "MemoryCurrent is greater than 0: $memory"
