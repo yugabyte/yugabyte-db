@@ -716,6 +716,16 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 	{
 		char *tablegroup_name = NULL;
 
+		/*
+		 * If the default tablespace of the current database is explicitly
+		 * mentioned in CREATE TABLE ... TABLESPACE, then use InvalidOid as
+		 * tablespaceId instead.
+		 * This prevents creating redundant default tablegroup.
+		 * Postgres does the similar thing with its default tablespaces.
+		 */
+		if (tablespaceId == MyDatabaseTableSpace)
+			tablespaceId = InvalidOid;
+
 		if (is_colocated_tables_with_tablespace_enabled &&
 			OidIsValid(tablespaceId))
 		{
