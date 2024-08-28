@@ -91,29 +91,28 @@ List of wait events by the wait event components.
 
 These are the wait events introduced by YugabyteDB, however some of the following [wait events](https://www.postgresql.org/docs/current/monitoring-stats.html) inherited from PostgreSQL might also show up in the [yb_active_session_history](#yb-active-session-history) view.
 
-| Class | Wait Event | Wait Event Type | Wait Event Aux | Description |
+| Wait Event Class | Wait Event | Wait Event Type | Wait Event Aux | Description |
 | :--------------- |:---------- | :-------------- |:--- | :---------- |
-| Common | Rpc_Done | WaitOnCondition | | An RPC is done and waiting for the reactor to send the response to a YSQL backend. |
-| TServer Wait | StorageRead | Network  |  | Waiting for a DocDB read operation |
-| TServer Wait | CatalogRead | Network  |   | Waiting for a catalog read operation |
-| TServer Wait | IndexRead | Network |   | Waiting for a secondary index read operation  |
-| TServer Wait | StorageFlush  | Network |  | Waiting for a storage flush request |
+| TServerWait | StorageRead | Network  |  | A YSQL backend is waiting for a table read from DocDB. |
+| TServerWait | CatalogRead | Network  |   | A YSQL backend is waiting for a catalog read from master. |
+| TServerWait | IndexRead | Network |   | A YSQL backend is waiting for a secondary index read from DocDB.  |
+| TServerWait | StorageFlush  | Network |  | A YSQL backend is waiting for a table/index read/write from DocDB. |
 | YSQLQuery | QueryProcessing| CPU |  | Doing CPU work |
 | YSQLQuery | yb_ash_metadata | LWLock |  | Waiting to update ASH metadata for a query |
 | Timeout | YBTxnConflictBackoff | Timeout |  | Waiting due to conflict in DocDB |
 
 ### YB-TServer
 
-| Class | Wait Event | Wait Event Type | Wait Event Aux | Description |
+| Wait Event Class | Wait Event | Wait Event Type | Wait Event Aux | Description |
 |:---------------- | :--------- |:--------------- | :--- | :---------- |
-| Common | OnCpu_Passive | CPU | | Waiting for a thread to pick it up |
-| Common | OnCpu_Active | CPU |  | RPC is being actively processed on a thread |
-| Common | ResponseQueued | Network | | Waiting for response to be transferred |
+| Common | OnCpu_Passive | CPU | | An RPC or task is waiting for a thread to pick it up. |
+| Common | OnCpu_Active | CPU |  | An RPC or task is being actively processed on a thread. |
 | Common | Idle | WaitOnCondition | | The raft log appender/sync thread is idle |
+| Common | Rpc_Done | WaitOnCondition | | An RPC is done and waiting for the reactor to send the response to a YSQL backend. |
 | Common | RetryableRequests_SaveToDisk | DiskIO | | The in-memory state of the retryable requests is being saved to the disk. |
 | TabletWait | MVCC_WaitForSafeTime | WaitOnCondition | | A read/write RPC is waiting for the SafeTime to be at least the desired read-time. |
-| TabletWait | LockedBatchEntry_Lock | WaitOnCondition | | A read/write rpc is waiting for a DocDB row level lock. |
-| TabletWait | BackfillIndex_WaitForAFreeSlot | WaitOnCondition | | A backfill index rpc is waiting for a slot to open if there are too many backfill requests at the same time. |
+| TabletWait | LockedBatchEntry_Lock | WaitOnCondition | | A read/write RPC is waiting for a DocDB row level lock. |
+| TabletWait | BackfillIndex_WaitForAFreeSlot | WaitOnCondition | | A backfill index RPC is waiting for a slot to open if there are too many backfill requests at the same time. |
 | TabletWait | CreatingNewTablet | DiskIO | | The CreateTablet RPC is creating a new tablet, this may involve writing metadata files, causing I/O wait. |
 | TabletWait | SaveRaftGroupMetadataToDisk | DiskIO | | The raft/tablet metadata is being written to disk generally during snapshot or restore operations. |
 | TabletWait | TransactionStatusCache_DoGetCommitData | Network | | An RPC needs to look up the commit status of a particular transaction. |
@@ -122,11 +121,11 @@ These are the wait events introduced by YugabyteDB, however some of the followin
 | TabletWait | DumpRunningRpc_WaitOnReactor | WaitOnCondition | | DumpRunningRpcs is waiting on reactor threads. |
 | TabletWait | ConflictResolution_ResolveConficts | Network | | A read/write RPC is waiting to identify conflicting transactions. |
 | TabletWait | ConflictResolution_WaitOnConflictingTxns | WaitOnCondition |  | A read/write RPC is waiting for conflicting transactions to complete. |
-| Consensus | WAL_Append | I/O | \<tablet-id>| Persisting Wal edits |
-| Consensus | WAL_Sync | I/O | \<tablet-id>| Persisting Wal edits |
-| Consensus | Raft_WaitingForReplication | Network | \<tablet-id>| Waiting for Raft replication |
-| Consensus | Raft_ApplyingEdits | Lock/CPU | \<tablet-id>| Applying the edits locally |
-| Consensus | ConsensusMeta_Flush | DiskIO | | ConsensusMetadata is flushed, for example, during raft term, configuration change, Remote bootstrap, and so on. |
+| Consensus | WAL_Append | DiskIO | \<tablet-id>| A write RPC is persisting WAL edits. |
+| Consensus | WAL_Sync | DiskIO | \<tablet-id>| A write RPC is synchronizing WAL edits. |
+| Consensus | Raft_WaitingForReplication | Network | \<tablet-id>| A write RPC is waiting for Raft replication. |
+| Consensus | Raft_ApplyingEdits | Lock/CPU | \<tablet-id>| A write RPC is applying Raft edits locally. |
+| Consensus | ConsensusMeta_Flush | DiskIO | | ConsensusMetadata is flushed, for example, during raft term, configuration change, remote bootstrap, and so on. |
 | Consensus | ReplicaState_TakeUpdateLock | WaitOnCondition | | A write/alter RPC needs to wait for the ReplicaState lock to replicate a batch of writes through Raft. |
 | RocksDB | RocksDB_ReadBlockFromFile | DiskIO  | | RocksDB is reading a block from a file. |
 | RocksDB | RocksDB_OpenFile | DiskIO | | RocksDB is opening a file. |
@@ -141,12 +140,11 @@ These are the wait events introduced by YugabyteDB, however some of the followin
 
 ### YCQL
 
-| Class | Wait Event | Wait Event Type | Wait Event Aux | Description |
+| Wait Event Class | Wait Event | Wait Event Type | Wait Event Aux | Description |
 | :--------------- |:---------- | :-------------- |:--- | :---------- |
-| Common | Rpc_Done | WaitOnCondition | | An RPC is done and waiting for the reactor to send the response to a YCQL backend. |
-| YCQLQuery | YCQL_Parse | CPU  | | CQL call is being actively processed |
-| YCQLQuery | YCQL_Read | Network | \<table&#8209;id> | Waiting for DocDB read operation |
-| YCQLQuery | YCQL_Write | Network | \<table-id> | Waiting for DocDB write operation  |
+| YCQLQuery | YCQL_Parse | CPU  | | YCQL is parsing a query. |
+| YCQLQuery | YCQL_Read | CPU | \<table&#8209;id> | YCQL is processing a read query.|
+| YCQLQuery | YCQL_Write | CPU | \<table-id> | YCQL is processing a write query.  |
 | YCQLQuery | YCQL_Analyze | CPU |  | YCQL is analyzing a query. |
 | YCQLQuery | YCQL_Execute | CPU |  | YCQL is executing a query. |
 | Client | YBClient_WaitingOnDocDB | Network | | YB Client is waiting on DocDB to return a response. |
