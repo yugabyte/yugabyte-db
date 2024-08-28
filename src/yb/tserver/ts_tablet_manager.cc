@@ -865,10 +865,16 @@ void TSTabletManager::CleanupSplitTablets() {
   }
 }
 
-Status TSTabletManager::WaitForAllBootstrapsToFinish() {
+Status TSTabletManager::WaitForAllBootstrapsToFinish(MonoDelta timeout) {
   CHECK_EQ(state(), MANAGER_RUNNING);
 
-  open_tablet_pool_->Wait();
+  if (timeout.Initialized()) {
+    if (!open_tablet_pool_->WaitFor(timeout)) {
+      return STATUS(TimedOut, "Timeout waiting for all bootstraps to finish");
+    }
+  } else {
+    open_tablet_pool_->Wait();
+  }
 
   Status s = Status::OK();
 

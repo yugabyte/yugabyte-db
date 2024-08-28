@@ -6,6 +6,7 @@ import static org.junit.Assert.assertEquals;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.LocalNodeManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -48,19 +49,19 @@ public class AutoMasterFailoverLocalTest extends LocalProviderUniverseTestBase {
   private void enableMasterFailover(Universe universe) {
     settableRuntimeConfigFactory
         .globalRuntimeConf()
-        .setValue(GlobalConfKeys.autoMasterFailoverPollerInterval.getKey(), "10s");
+        .setValue(GlobalConfKeys.autoMasterFailoverPollerInterval.getKey(), "5s");
     settableRuntimeConfigFactory
         .forUniverse(universe)
-        .setValue(UniverseConfKeys.autoMasterFailoverTaskDelay.getKey(), "5s");
+        .setValue(UniverseConfKeys.autoMasterFailoverCooldown.getKey(), "3s");
     settableRuntimeConfigFactory
         .forUniverse(universe)
-        .setValue(UniverseConfKeys.autoMasterFailoverCooldown.getKey(), "5s");
+        .setValue(UniverseConfKeys.autoMasterFailoverDetectionInterval.getKey(), "3s");
     settableRuntimeConfigFactory
         .forUniverse(universe)
-        .setValue(UniverseConfKeys.autoMasterFailoverDetectionInterval.getKey(), "5s");
+        .setValue(UniverseConfKeys.autoMasterFailoverFollowerLagSoftThreshold.getKey(), "3s");
     settableRuntimeConfigFactory
         .forUniverse(universe)
-        .setValue(UniverseConfKeys.autoMasterFailoverMaxMasterHeartbeatDelay.getKey(), "5s");
+        .setValue(UniverseConfKeys.autoMasterFailoverFollowerLagHardThreshold.getKey(), "5s");
     settableRuntimeConfigFactory
         .forUniverse(universe)
         .setValue(UniverseConfKeys.enableAutoMasterFailover.getKey(), "true");
@@ -131,25 +132,26 @@ public class AutoMasterFailoverLocalTest extends LocalProviderUniverseTestBase {
     List<NodeDetails> pickedTserverNodes =
         pickEligibleTservers(universe, 1 /* count */, pickedMasterNode.azUuid /* exclude AZ */);
     assertEquals(1, pickedTserverNodes.size());
-    // Kill tserver process on a different node along with master and tserver on another node.
+    // Kill tserver process on a different node along with master on another node.
     for (NodeDetails pickedTserverNode : pickedTserverNodes) {
-      killProcessesOnNode(universe.getUniverseUUID(), pickedTserverNode.getNodeName());
+      killProcessOnNode(
+          universe.getUniverseUUID(), pickedTserverNode.getNodeName(), ServerType.TSERVER);
     }
-    killProcessesOnNode(universe.getUniverseUUID(), pickedMasterNode.getNodeName());
+    killProcessOnNode(
+        universe.getUniverseUUID(), pickedMasterNode.getNodeName(), ServerType.MASTER);
     TaskInfo taskInfo =
         waitForNextTask(
             universe.getUniverseUUID(), customerTask.getTaskUUID(), Duration.ofMinutes(5));
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     assertEquals(TaskType.MasterFailover, taskInfo.getTaskType());
+    // Start master first to get it stopped as sync address is triggered when tservers are up.
+    startProcessesOnNode(
+        universe.getUniverseUUID(), pickedMasterNode, UniverseTaskBase.ServerType.MASTER);
     // Start all the killed processes.
     for (NodeDetails pickedTserverNode : pickedTserverNodes) {
       startProcessesOnNode(
           universe.getUniverseUUID(), pickedTserverNode, UniverseTaskBase.ServerType.TSERVER);
     }
-    startProcessesOnNode(
-        universe.getUniverseUUID(), pickedMasterNode, UniverseTaskBase.ServerType.TSERVER);
-    startProcessesOnNode(
-        universe.getUniverseUUID(), pickedMasterNode, UniverseTaskBase.ServerType.MASTER);
     taskInfo =
         waitForNextTask(universe.getUniverseUUID(), taskInfo.getTaskUUID(), Duration.ofMinutes(5));
     assertEquals(TaskType.SyncMasterAddresses, taskInfo.getTaskType());

@@ -321,11 +321,11 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
 
           if (!azure.resourceGroups().contain(resourceGroup)) {
             String resourceGroupOverrideJsonPath =
-                regionJson.get("azuRGOverride").get("jsonPath").asText();
+                cloudInfoJson.get("azuRGOverride").get("jsonPath").asText();
             String err =
                 String.format(
                     "Resource group %s not found in Subscription %s",
-                    resourceGroupOverrideJsonPath, subscriptionID);
+                    resourceGroup, subscriptionID);
             validationErrorsMap.put(resourceGroupOverrideJsonPath, err);
           }
         }
@@ -340,7 +340,7 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
 
           if (!azure.resourceGroups().contain(resourceGroup)) {
             String networkGroupOverrideJsonPath =
-                regionJson.get("azuNetworkRGOverride").get("jsonPath").asText();
+                cloudInfoJson.get("azuNetworkRGOverride").get("jsonPath").asText();
             String err =
                 String.format(
                     "Resource group %s not found in Subscription %s",

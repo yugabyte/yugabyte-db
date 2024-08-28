@@ -142,7 +142,7 @@ typedef enum statementType
   CatCacheIdMisses_76,
   CatCacheIdMisses_77,
   CatCacheIdMisses_78,
-  CatCacheIdMisses_End,
+  CatCacheIdMisses_End = CatCacheIdMisses_78,
   kMaxStatementType
 } statementType;
 int num_entries = kMaxStatementType;
@@ -278,7 +278,7 @@ set_metric_names(void)
   strcpy(ybpgm_table[Transaction].name, YSQL_METRIC_PREFIX "Transactions");
   strcpy(ybpgm_table[AggregatePushdown].name, YSQL_METRIC_PREFIX "AggregatePushdowns");
   strcpy(ybpgm_table[CatCacheMisses].name, YSQL_METRIC_PREFIX "CatalogCacheMisses");
-  for (int i = CatCacheIdMisses_Start; i < CatCacheIdMisses_End; ++i)
+  for (int i = CatCacheIdMisses_Start; i <= CatCacheIdMisses_End; ++i)
   {
 	int cache_id = i - CatCacheIdMisses_Start;
 	char index_name[NAMEDATALEN + 16];
@@ -623,7 +623,7 @@ _PG_init(void)
 
   prev_ProcessUtility = ProcessUtility_hook;
   ProcessUtility_hook = ybpgm_ProcessUtility;
-  static_assert(SysCacheSize == CatCacheIdMisses_End - CatCacheIdMisses_Start,
+  static_assert(SysCacheSize == CatCacheIdMisses_End - CatCacheIdMisses_Start + 1,
 				"Wrong catalog cache number");
 }
 
@@ -783,7 +783,7 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
 	 */
 	ybpgm_StoreCount(CatCacheMisses, 0, total_delta);
 	if (total_delta > 0)
-		for (int i = CatCacheIdMisses_Start; i < CatCacheIdMisses_End; ++i)
+		for (int i = CatCacheIdMisses_Start; i <= CatCacheIdMisses_End; ++i)
 		{
 			int j = i - CatCacheIdMisses_Start;
 			ybpgm_StoreCount(i, 0, current_cache_id_misses[j] - last_cache_id_misses_val[j]);

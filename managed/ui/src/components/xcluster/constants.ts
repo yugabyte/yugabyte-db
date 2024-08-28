@@ -138,6 +138,18 @@ export const XCLUSTER_SUPPORTED_TABLE_TYPES = [
 
 // Validation
 export const BOOTSTRAP_MIN_FREE_DISK_SPACE_GB = 100;
+
+// This object stores strings which are used as keys to translation strings in en.json
+// Any change to this object must be reflected in the en.json file as well.
+export const BootstrapCategory = {
+  NO_BOOTSTRAP_REQUIRED: 'noBootstrapRequired',
+  TABLE_HAS_DATA_BIDIRECTIONAL: 'tableHasDataBidirectional',
+  TARGET_TABLE_MISSING_BIDIRECTIONAL: 'targetTableMissingBidirectional',
+  TABLE_HAS_DATA: 'tableHasData',
+  TARGET_TABLE_MISSING: 'targetTableMissing'
+} as const;
+export type BootstrapCategory = typeof BootstrapCategory[keyof typeof BootstrapCategory];
+
 //------------------------------------------------------------------------------------
 
 // Time range selector constants
@@ -215,7 +227,9 @@ export const MetricName = {
   CONSUMER_SAFE_TIME_LAG: 'consumer_safe_time_lag',
   CONSUMER_SAFE_TIME_SKEW: 'consumer_safe_time_skew',
   ASYNC_REPLICATION_SENT_LAG: 'async_replication_sent_lag',
-  DISK_USAGE: 'disk_usage'
+  DISK_USAGE: 'disk_usage',
+  HA_BACKUP_LAG: 'yba_ha_backup_lag',
+  HA_LAST_BACKUP_SIZE: 'yba_ha_last_backup_size_mb'
 } as const;
 export type MetricName = typeof MetricName[keyof typeof MetricName];
 
@@ -255,7 +269,8 @@ export const XCLUSTER_UNDEFINED_LAG_NUMERIC_REPRESENTATION = -1;
 /**
  * Constant value fallback. Used when runtime config value is invalid/undefined.
  */
-export const XCLUSTER_TRANSACTIONAL_PITR_SNAPSHOT_INTERVAL_SECONDS = 3600;
+export const XCLUSTER_TRANSACTIONAL_PITR_SNAPSHOT_INTERVAL_SECONDS_FALLBACK = 3600;
+export const XCLUSTER_TRANSACTIONAL_PITR_RETENTION_PERIOD_SECONDS_FALLBACK = 3 * 24 * 60 * 60;
 
 export const XClusterModalName = {
   EDIT_CONFIG: 'editXClusterConfigModal',
@@ -293,3 +308,4 @@ export const YB_ADMIN_XCLUSTER_DOCUMENTATION_URL =
   'https://docs.yugabyte.com/preview/admin/yb-admin/#xcluster-replication-commands';
 
 export const I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS = 'clusterDetail.xCluster.config.tableStatus';
+export const I18N_KEY_PREFIX_XCLUSTER_TERMS = 'clusterDetail.xCluster.terms';

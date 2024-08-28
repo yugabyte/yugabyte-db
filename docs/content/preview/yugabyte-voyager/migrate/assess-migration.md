@@ -195,16 +195,11 @@ For the most accurate migration assessment, the source database must be actively
 
 [yugabyted](/preview/reference/configuration/yugabyted/) UI allows you to visualize the database migrations performed by YugabyteDB Voyager. The UI provides details of migration complexity, SQL objects details from the source database, YugabyteDB sharding strategy, conversion issues (if any), and also allows you to track the percentage completion of data export from the source database and data import to the target YugabyteDB cluster.
 
-### Prerequisites
+### Prerequisite
 
-Before you begin the Voyager migration, do the following:
+Before you begin the Voyager migration, start a local YugabyteDB cluster. Refer to the steps described in [Use a local cluster](/preview/quick-start/).
 
-1. Start a local YugabyteDB cluster using the steps described in [Use a local cluster](/preview/quick-start/) section.
-
-1. [Install Voyager](../../install-yb-voyager/).
-
-
-### Send Voyager details to a local YugabyteDB cluster 
+### Send Voyager details to a local YugabyteDB cluster
 
 Set the following environment variables before starting the migration:
 
@@ -221,13 +216,11 @@ Voyager Migration Assessment conducts a detailed analysis of the source database
 
 After [generating a Migration Assessment Report](#generate-a-migration-assessment-report), from yugabyted UI, navigate to **Migrations** tab, available at [http://127.0.0.1:15433](http://127.0.0.1:15433) to see a list of the available migrations.
 
-#### Migrations
 ![Migration Landing Page](/images/migrate/ybd-landing-page.png)
 
 #### Migration Assessment UI
+
 ![Migration Assessment Page](/images/migrate/ybd-assessment-page.png)
-
-
 
 ## Learn more
 

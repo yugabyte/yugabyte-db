@@ -33,6 +33,14 @@ CREATE VIEW yb_local_tablets AS
     SELECT *
     FROM yb_local_tablets();
 
+CREATE VIEW yb_wait_event_desc AS
+    SELECT *
+    FROM yb_wait_event_desc();
+
+CREATE VIEW yb_query_diagnostics_status AS
+    SELECT *
+    FROM yb_get_query_diagnostics_status();
+
 CREATE VIEW pg_roles AS
     SELECT
         rolname,

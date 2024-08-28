@@ -38,7 +38,7 @@ For on-premises universes, clean up of existing data directories and running pro
 On-premises nodes have three states: In use, Free, and Decommissioned as described in the following illustration.
 
 ![Decommissioned node workflow](/images/ee/on-prem-replace-workflow.png)
-To check the state of an on-premises node, navigate to **Configs > Infrastructure > On-Premises Datacenters**, select the associated on-premises configuration, and click **Instances**.
+To check the state of an on-premises node, navigate to **Integrations > Infrastructure > On-Premises Datacenters**, select the associated on-premises configuration, and click **Instances**.
 
 ### Recommission a decommissioned on-premises node
 
@@ -46,7 +46,7 @@ You can return a Decommissioned node to the on-premises provider Free pool after
 
 Perform the following steps to recommission a node:
 
-1. Navigate to **Configs > Infrastructure > On-Premises Datacenters**, select the associated on-premises configuration, and click **Instances**.
+1. Navigate to **Integrations > Infrastructure > On-Premises Datacenters**, select the associated on-premises configuration, and click **Instances**.
 
 1. Under Instances, for the decommissioned node, click **Actions > Recommission Node**. YBA will now re-attempt to clean up existing data directories and processes on this node.
 
@@ -58,7 +58,7 @@ YugabyteDB Anywhere (YBA) starts the node recommissioning process, and you can v
 
 ## Eliminate an unresponsive node
 
-If a virtual machine or a physical server in a universe reaches its end of life and has unrecoverable hardware or other system issues (such as problems with its operating system, disk, and so on) it is detected and displayed in the YugabyteDB Anywhere UI as an unreachable node, as per the following illustration:
+If a virtual machine or a physical server in a universe reaches its end of life and has unrecoverable hardware or other system issues (such as problems with its operating system, disk, and so on) it is detected and displayed in YugabyteDB Anywhere as an unreachable node, as per the following illustration:
 
 ![Unreachable Node Actions](/images/ee/node-actions-unreachable.png)
 

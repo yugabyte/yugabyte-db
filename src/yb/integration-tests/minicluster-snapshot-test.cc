@@ -35,6 +35,8 @@
 #include <memory>
 #include <vector>
 
+#include <gmock/gmock.h>
+
 #include <google/protobuf/util/message_differencer.h>
 
 #include "yb/client/client.h"
@@ -297,6 +299,7 @@ Result<master::SnapshotInfoPB> ExportSnapshot(
 }
 
 class MasterSnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
+ public:
   void SetUp() override {
     YBMiniClusterTestBase::SetUp();
     MiniClusterOptions opts;
@@ -307,36 +310,55 @@ class MasterSnapshotTest : public YBMiniClusterTestBase<MiniCluster> {
         ASSERT_RESULT(client::YBClientBuilder()
                           .add_master_server_addr(cluster_->mini_master()->bound_rpc_addr_str())
                           .Build());
+    messenger_ = ASSERT_RESULT(rpc::MessengerBuilder("test-msgr").set_num_reactors(1).Build());
+    proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
+    backup_proxy_ = std::make_unique<MasterBackupProxy>(
+        proxy_cache_.get(), cluster_->mini_master()->bound_rpc_addr());
+  }
+
+  Result<client::YBSchema> CreateTestSchema() {
+    client::YBSchemaBuilder b;
+    b.AddColumn("key")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
+    b.AddColumn("v1")->Type(DataType::INT64)->NotNull();
+    b.AddColumn("v2")->Type(DataType::STRING)->NotNull();
+    client::YBSchema schema;
+    RETURN_NOT_OK(b.Build(&schema));
+    return schema;
+  }
+
+  LeaderEpoch CurrentLeaderEpoch() {
+    return LeaderEpoch(
+        cluster_->mini_master()->catalog_manager().leader_ready_term(),
+        cluster_->mini_master()->sys_catalog().pitr_count());
   }
 
  protected:
+  void DoTearDown() override {
+    messenger_->Shutdown();
+    YBMiniClusterTestBase::DoTearDown();
+  }
+
   std::unique_ptr<client::YBClient> client_;
+  std::unique_ptr<MasterBackupProxy> backup_proxy_;
+
+ private:
+  std::unique_ptr<rpc::Messenger> messenger_;
+  std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 };
 
 TEST_F(MasterSnapshotTest, FailSysCatalogWriteWithStaleTable) {
-  auto messenger = ASSERT_RESULT(rpc::MessengerBuilder("test-msgr").set_num_reactors(1).Build());
-  auto proxy_cache = rpc::ProxyCache(messenger.get());
-  auto proxy = MasterBackupProxy(&proxy_cache, cluster_->mini_master()->bound_rpc_addr());
-
-  auto first_epoch = LeaderEpoch(
-      cluster_->mini_master()->catalog_manager().leader_ready_term(),
-      cluster_->mini_master()->sys_catalog().pitr_count());
+  auto first_epoch = CurrentLeaderEpoch();
   const auto timeout = MonoDelta::FromSeconds(20);
   client::YBTableName table_name(YQL_DATABASE_CQL, "my_keyspace", "test_table");
   ASSERT_OK(client_->CreateNamespaceIfNotExists(
       table_name.namespace_name(), table_name.namespace_type()));
   SnapshotScheduleId schedule_id = ASSERT_RESULT(CreateSnapshotSchedule(
-      &proxy, table_name.namespace_type(), table_name.namespace_name(), MonoDelta::FromSeconds(60),
-      MonoDelta::FromSeconds(600), timeout));
-  ASSERT_OK(WaitScheduleSnapshot(&proxy, schedule_id, timeout));
+      backup_proxy_.get(), table_name.namespace_type(), table_name.namespace_name(),
+      MonoDelta::FromSeconds(60), MonoDelta::FromSeconds(600), timeout));
+  ASSERT_OK(WaitScheduleSnapshot(backup_proxy_.get(), schedule_id, timeout));
 
   auto table_creator = client_->NewTableCreator();
-  client::YBSchemaBuilder b;
-  b.AddColumn("key")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
-  b.AddColumn("v1")->Type(DataType::INT64)->NotNull();
-  b.AddColumn("v2")->Type(DataType::STRING)->NotNull();
-  client::YBSchema schema;
-  ASSERT_OK(b.Build(&schema));
+  auto schema = ASSERT_RESULT(CreateTestSchema());
   ASSERT_OK(
       table_creator->table_name(table_name).schema(&schema).num_tablets(1).wait(true).Create());
 
@@ -348,28 +370,49 @@ TEST_F(MasterSnapshotTest, FailSysCatalogWriteWithStaleTable) {
   Timestamp time(ASSERT_RESULT(WallClock()->Now()).time_point);
   HybridTime ht = ASSERT_RESULT(HybridTime::ParseHybridTime(time.ToString()));
   LOG(INFO) << "Performing restoration.";
-  auto restoration_id = ASSERT_RESULT(RestoreSnapshotSchedule(&proxy, schedule_id, ht, timeout));
+  auto restoration_id =
+      ASSERT_RESULT(RestoreSnapshotSchedule(backup_proxy_.get(), schedule_id, ht, timeout));
   LOG(INFO) << "Waiting for restoration.";
-  ASSERT_OK(WaitForRestoration(&proxy, restoration_id, timeout));
+  ASSERT_OK(WaitForRestoration(backup_proxy_.get(), restoration_id, timeout));
 
   LOG(INFO) << "Restoration finished.";
   {
     auto table_lock = table_info->LockForWrite();
     table_lock.mutable_data()->pb.set_parent_table_id("fnord");
     LOG(INFO) << Format(
-        "Writing with stale epoch: $0, $1",
-        first_epoch.leader_term,
-        first_epoch.pitr_count);
+        "Writing with stale epoch: $0, $1", first_epoch.leader_term, first_epoch.pitr_count);
     ASSERT_NOK(cluster_->mini_master()->sys_catalog().Upsert(first_epoch, table_info));
-    auto post_restore_epoch = LeaderEpoch(
-        cluster_->mini_master()->catalog_manager().leader_ready_term(),
-        cluster_->mini_master()->sys_catalog().pitr_count());
+    auto post_restore_epoch = CurrentLeaderEpoch();
     LOG(INFO) << Format(
         "Writing with fresh epoch: $0, $1", post_restore_epoch.leader_term,
         post_restore_epoch.pitr_count);
     ASSERT_OK(cluster_->mini_master()->sys_catalog().Upsert(post_restore_epoch, table_info));
   }
-  messenger->Shutdown();
+}
+
+TEST_F(MasterSnapshotTest, ListSnapshotSchedulesHasNoSnapshotDetails) {
+  const auto timeout = MonoDelta::FromSeconds(20);
+  client::YBTableName table_name(YQL_DATABASE_CQL, "my_keyspace", "test_table");
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(
+      table_name.namespace_name(), table_name.namespace_type()));
+
+  auto table_creator = client_->NewTableCreator();
+  auto schema = ASSERT_RESULT(CreateTestSchema());
+  ASSERT_OK(
+      table_creator->table_name(table_name).schema(&schema).num_tablets(1).wait(true).Create());
+
+  SnapshotScheduleId schedule_id = ASSERT_RESULT(CreateSnapshotSchedule(
+      backup_proxy_.get(), table_name.namespace_type(), table_name.namespace_name(),
+      MonoDelta::FromSeconds(1), MonoDelta::FromSeconds(60), timeout));
+  LOG(INFO) << "Created schedule: " << schedule_id;
+
+  auto snapshot = ASSERT_RESULT(WaitScheduleSnapshot(backup_proxy_.get(), schedule_id, timeout));
+  auto& sys_snapshot_entry = snapshot.entry();
+  EXPECT_THAT(sys_snapshot_entry.entries(), testing::IsEmpty()) << Format(
+      "Schedule $0 has a snapshot $1 containing sys row entries: $2", schedule_id, snapshot.id(),
+      snapshot.DebugString());
+  EXPECT_THAT(snapshot.backup_entries(), testing::IsEmpty())
+      << Format("Snapshot $0 includes backup details: $1", snapshot.id(), snapshot.DebugString());
 }
 
 class PostgresMiniClusterTest : public pgwrapper::PgMiniTestBase {
@@ -413,12 +456,12 @@ class MasterExportSnapshotTest
  public:
   void SetUp() override {
     PostgresMiniClusterTest::SetUp();
-    messenger = ASSERT_RESULT(rpc::MessengerBuilder("test-msgr").set_num_reactors(1).Build());
-    auto proxy_cache = rpc::ProxyCache(messenger.get());
-    bakup_proxy = std::make_unique<master::MasterBackupProxy>(
-        &proxy_cache, mini_cluster()->mini_master()->bound_rpc_addr());
+    messenger_ = ASSERT_RESULT(rpc::MessengerBuilder("test-msgr").set_num_reactors(1).Build());
+    proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
+    backup_proxy = std::make_unique<master::MasterBackupProxy>(
+        proxy_cache_.get(), mini_cluster()->mini_master()->bound_rpc_addr());
     admin_proxy = std::make_unique<master::MasterAdminProxy>(
-        &proxy_cache, mini_cluster()->mini_master()->bound_rpc_addr());
+        proxy_cache_.get(), mini_cluster()->mini_master()->bound_rpc_addr());
     client_ =
         ASSERT_RESULT(client::YBClientBuilder()
                           .add_master_server_addr(cluster_->mini_master()->bound_rpc_addr_str())
@@ -431,8 +474,8 @@ class MasterExportSnapshotTest
     RETURN_NOT_OK(CreateDatabase(kNamespaceName, colocated));
     LOG(INFO) << "Database created.";
     schedule_id = VERIFY_RESULT(CreateSnapshotSchedule(
-        bakup_proxy.get(), YQL_DATABASE_PGSQL, kNamespaceName, kInterval, kRetention, timeout));
-    RETURN_NOT_OK(WaitScheduleSnapshot(bakup_proxy.get(), schedule_id, timeout));
+        backup_proxy.get(), YQL_DATABASE_PGSQL, kNamespaceName, kInterval, kRetention, timeout));
+    RETURN_NOT_OK(WaitScheduleSnapshot(backup_proxy.get(), schedule_id, timeout));
     return Status::OK();
   }
 
@@ -440,8 +483,9 @@ class MasterExportSnapshotTest
   const std::string kNamespaceName = "testdb";
   const MonoDelta timeout = MonoDelta::FromSeconds(30);
   SnapshotScheduleId schedule_id = SnapshotScheduleId::Nil();
-  std::unique_ptr<rpc::Messenger> messenger;
-  std::unique_ptr<master::MasterBackupProxy> bakup_proxy;
+  std::unique_ptr<rpc::Messenger> messenger_;
+  std::unique_ptr<rpc::ProxyCache> proxy_cache_;
+  std::unique_ptr<master::MasterBackupProxy> backup_proxy;
   std::unique_ptr<master::MasterAdminProxy> admin_proxy;
   std::unique_ptr<client::YBClient> client_;
 };
@@ -470,10 +514,10 @@ TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTime) {
   LOG(INFO) << Format("current timestamp is: {$0}", time);
 
   // 3.
-  auto decoded_snapshot_id = ASSERT_RESULT(WaitNewSnapshot(bakup_proxy.get(), schedule_id));
-  ASSERT_OK(WaitForSnapshotComplete(bakup_proxy.get(), decoded_snapshot_id));
+  auto decoded_snapshot_id = ASSERT_RESULT(WaitNewSnapshot(backup_proxy.get(), schedule_id));
+  ASSERT_OK(WaitForSnapshotComplete(backup_proxy.get(), decoded_snapshot_id));
   master::SnapshotInfoPB ground_truth =
-      ASSERT_RESULT(ExportSnapshot(bakup_proxy.get(), decoded_snapshot_id));
+      ASSERT_RESULT(ExportSnapshot(backup_proxy.get(), decoded_snapshot_id));
   // 4.
   ASSERT_OK(conn.Execute("CREATE TABLE t3 (key INT PRIMARY KEY, c1 INT, c2 TEXT, c3 TEXT)"));
   ASSERT_OK(conn.Execute("ALTER TABLE t2 ADD COLUMN new_col TEXT"));
@@ -497,7 +541,7 @@ TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTime) {
       "SnapshotInfoPB as of time=$0 :$1", time, snapshot_info_as_of_time.ShortDebugString());
   ASSERT_TRUE(pb_util::ArePBsEqual(
       std::move(ground_truth), std::move(snapshot_info_as_of_time), /* diff_str */ nullptr));
-  messenger->Shutdown();
+  messenger_->Shutdown();
 }
 
 // Test that export_snapshot_from_schedule as of time doesn't include hidden tables in
@@ -516,10 +560,10 @@ TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTimeWithHiddenTables) {
 
   // 3. export_snapshot to generate the SnapshotInfoPB as of current time. It is the traditional
   // export_snapshot command (not the new command) to serve as ground truth.
-  auto decoded_snapshot_id = ASSERT_RESULT(WaitNewSnapshot(bakup_proxy.get(), schedule_id));
-  ASSERT_OK(WaitForSnapshotComplete(bakup_proxy.get(), decoded_snapshot_id));
+  auto decoded_snapshot_id = ASSERT_RESULT(WaitNewSnapshot(backup_proxy.get(), schedule_id));
+  ASSERT_OK(WaitForSnapshotComplete(backup_proxy.get(), decoded_snapshot_id));
   master::SnapshotInfoPB ground_truth =
-      ASSERT_RESULT(ExportSnapshot(bakup_proxy.get(), decoded_snapshot_id));
+      ASSERT_RESULT(ExportSnapshot(backup_proxy.get(), decoded_snapshot_id));
   // 4. Create another table that shouldn't be included in generate snapshot as of time
   ASSERT_OK(conn.Execute("CREATE TABLE t2 (key INT PRIMARY KEY, c1 TEXT, c2 TEXT)"));
   // 5. Generate snapshotInfo from schedule using the time t.
@@ -540,7 +584,7 @@ TEST_P(MasterExportSnapshotTest, ExportSnapshotAsOfTimeWithHiddenTables) {
       "SnapshotInfoPB as of time=$0 :$1", time, snapshot_info_as_of_time.ShortDebugString());
   ASSERT_TRUE(pb_util::ArePBsEqual(
       std::move(ground_truth), std::move(snapshot_info_as_of_time), /* diff_str */ nullptr));
-  messenger->Shutdown();
+  messenger_->Shutdown();
 }
 
 class PgCloneTest : public PostgresMiniClusterTest {
@@ -950,6 +994,28 @@ TEST_F(
       ASSERT_RESULT((target_conn.FetchRows<int32_t, int32_t, int32_t>("SELECT * FROM t2")));
   ASSERT_EQ(rows_t2.size(), 1);
   ASSERT_EQ(rows_t2[0], kRowT2);
+}
+
+TEST_F(PgCloneColocationTest, YB_DISABLE_TEST_IN_SANITIZERS(CreateTableAfterClone)) {
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName));
+  auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+  ASSERT_OK(target_conn.Execute("CREATE TABLE t2 (k int, v1 int)"));
+}
+
+TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneOfClone)) {
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName));
+  SnapshotScheduleId schedule_id = ASSERT_RESULT(CreateSnapshotSchedule(
+      master_backup_proxy_.get(), YQL_DATABASE_PGSQL, kTargetNamespaceName1, kInterval, kRetention,
+      kTimeout));
+  ASSERT_OK(WaitScheduleSnapshot(master_backup_proxy_.get(), schedule_id, kTimeout));
+
+  auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+  ASSERT_OK(target_conn.Execute("CREATE TABLE t2 (k int, v1 int)"));
+  ASSERT_OK(target_conn.ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName2, kTargetNamespaceName1));
+  ASSERT_RESULT(ConnectToDB(kTargetNamespaceName2));
 }
 
 }  // namespace master

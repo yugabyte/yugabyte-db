@@ -86,8 +86,11 @@ public abstract class EditUniverseTaskBase extends UniverseDefinitionTaskBase {
     preTaskActions(universe);
     // Confirm the nodes on hold.
     commitReservedNodes();
+    setCommunicationPortsForNodes(false);
+
     // Set the prepared data to universe in-memory.
     updateUniverseNodesAndSettings(universe, taskParams(), false);
+
     // Task params contain the exact blueprint of what is desired.
     // There is a rare possibility that this succeeds and
     // saving the Universe fails. It is ok because the retry

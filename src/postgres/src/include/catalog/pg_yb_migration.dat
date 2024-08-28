@@ -12,7 +12,7 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V54__23070__yb_ash_ysql_session_id_to_pid.sql
-{ major => '54', minor => '0', name => '<baseline>', time_applied => '_null_' }
+# here: V56__22325__yb_query_diagnostics_status.sql
+{ major => '56', minor => '0', name => '<baseline>', time_applied => '_null_' }
 
 ]

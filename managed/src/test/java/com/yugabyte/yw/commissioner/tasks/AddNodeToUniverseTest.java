@@ -13,6 +13,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -194,6 +195,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.InstanceExistCheck, // only if it wasn't decommissioned.
           TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
+          TaskType.UpdateConsistencyCheck,
           TaskType.SetNodeState, // to Adding
           TaskType.SetNodeStatus, // to Adding for 'To Be Added'
           TaskType.AnsibleCreateServer,
@@ -219,6 +221,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
   private static final List<JsonNode> ADD_NODE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -250,6 +253,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.CheckLeaderlessTablets,
           TaskType.PreflightNodeCheck,
           TaskType.FreezeUniverse,
+          TaskType.UpdateConsistencyCheck,
           TaskType.SetNodeState,
           TaskType.SetNodeStatus,
           TaskType.AnsibleCreateServer,
@@ -291,6 +295,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
           Json.toJson(ImmutableMap.of()),
@@ -306,6 +311,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.InstanceExistCheck,
           TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
+          TaskType.UpdateConsistencyCheck,
           TaskType.SetNodeState,
           TaskType.SetNodeStatus,
           TaskType.AnsibleCreateServer,
@@ -341,6 +347,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
   private static final List<JsonNode> WITH_MASTER_UNDER_REPLICATED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -405,6 +412,25 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           taskDetails.get(0));
       position++;
     }
+  }
+
+  private void verifyMasterAddressUpdateAffectedNodes(
+      Map<Integer, List<TaskInfo>> subTasksByPosition, int expectedTotalNodes) {
+    int expectedSubTaskMatchCount = 2;
+    for (Map.Entry<Integer, List<TaskInfo>> entry : subTasksByPosition.entrySet()) {
+      if (entry.getValue().stream().anyMatch(t -> t.getTaskType() == TaskType.SetFlagInMemory)) {
+        JsonNode node = entry.getValue().get(0).getTaskParams().get("serverType");
+        assertTrue(node != null && !node.isNull());
+        if (node.asText().equalsIgnoreCase("TSERVER")) {
+          assertEquals(expectedTotalNodes, entry.getValue().size());
+          expectedSubTaskMatchCount--;
+        } else if (node.asText().equalsIgnoreCase("MASTER")) {
+          assertEquals(expectedTotalNodes, entry.getValue().size());
+          expectedSubTaskMatchCount--;
+        }
+      }
+    }
+    assertEquals(0, expectedSubTaskMatchCount);
   }
 
   @Test
@@ -501,7 +527,12 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     verify(mockNodeManager, never()).nodeCommand(any(), any());
     Universe.saveDetails(
         defaultUniverse.getUniverseUUID(),
-        getNodeUpdater(DEFAULT_NODE_NAME, node -> node.isMaster = false));
+        getNodeUpdater(
+            DEFAULT_NODE_NAME,
+            node -> {
+              node.isMaster = false;
+              node.isTserver = false;
+            }));
 
     TaskInfo taskInfo = submitTask(defaultUniverse.getUniverseUUID(), DEFAULT_NODE_NAME, 4);
     assertEquals(Success, taskInfo.getTaskState());
@@ -512,6 +543,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertAddNodeSequence(subTasksByPosition, false, true);
+    verifyMasterAddressUpdateAffectedNodes(subTasksByPosition, 3);
   }
 
   @Test

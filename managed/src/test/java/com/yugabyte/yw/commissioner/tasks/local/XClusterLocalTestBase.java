@@ -11,6 +11,7 @@ import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
 import java.util.List;
@@ -127,7 +128,7 @@ public class XClusterLocalTestBase extends LocalProviderUniverseTestBase {
         localNodeUniverseManager.runYsqlCommand(
             getLiveNode(universe), universe, table.db.name, query, 10);
     assertTrue(ysqlResponse.isSuccess());
-    return Integer.parseInt(localNodeManager.getRawCommandOutput(ysqlResponse.getMessage()));
+    return Integer.parseInt(CommonUtils.extractJsonisedSqlResponse(ysqlResponse).trim());
   }
 
   public void createDatabase(Universe universe, Db db) {

@@ -14,7 +14,7 @@ type: docs
 
 To get started streaming data change events from a YugabyteDB database using a replication slot, you can use either of the following client options:
 
-- [pg_recvlogical](#get-started-with-pg_recvlogical)
+- [pg_recvlogical](#get-started-with-pg-recvlogical)
 - [YugabyteDB connector](#get-started-with-yugabytedb-connector)
 
 {{< note title="Note" >}}
@@ -329,7 +329,7 @@ After starting the Debezium and YugabyteDB service, you are ready to deploy the 
 - [Register the YugabyteDB connector to monitor the `yugabyte` database](#register-a-connector-to-monitor-yugabyte-database)
 - Watch the connector start
 
-#### Register a connector to monitor `yugabyte` database
+#### Register a connector to monitor yugabyte database
 
 By registering the YugabyteDB connector, the connector will start monitoring the YugabyteDB database's table `products`. When a row in the table changes, Debezium generates a change event.
 

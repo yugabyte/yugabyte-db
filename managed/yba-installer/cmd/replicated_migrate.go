@@ -141,6 +141,13 @@ NOTE: THIS FEATURE IS EARLY ACCESS
 				"storage_path %s. Please regenerate the config.", installRoot, replicatedInstallRoot))
 			log.Fatal("installRoot and replicated storage path cannot be the same")
 		}
+		if isSubdir, err := common.IsSubdirectory(replicatedInstallRoot, installRoot); err == nil {
+			if isSubdir {
+				log.Fatal(fmt.Sprintf(
+					"%s is a subdirectory of %s, please keep replicated and yba-installer completely separate",
+					installRoot, replicatedInstallRoot))
+			}
+		}
 		state.RootInstall = installRoot
 		if err := ybactlstate.StoreState(state); err != nil {
 			log.Fatal("before replicated migration, failed to update state: " + err.Error())

@@ -30,11 +30,3 @@ As table data grows, the size of tablets increase. Once a tablet reaches a thres
 {{<lead link="tablet-splitting/">}}
 To understand how and when tablets split, see [Tablet splitting](tablet-splitting/).
 {{</lead>}}
-
-## Colocated tables
-
-YugabyteDB allows for closely related data to reside together. Colocation helps to optimize for low-latency, high-performance data access by reducing the need for additional trips across the network. It also reduces the overhead of creating a tablet for every relation (tables, indexes, and so on) and the storage for these per node.
-
-{{<lead link="colocated-tables/">}}
-To know more about how and when to use colocated tables and database, see [Colocated tables](colocated-tables/).
-{{</lead>}}

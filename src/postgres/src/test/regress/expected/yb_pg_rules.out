@@ -2442,6 +2442,15 @@ yb_local_tablets| SELECT yb_local_tablets.tablet_id,
     yb_local_tablets.partition_key_start,
     yb_local_tablets.partition_key_end
    FROM yb_local_tablets() yb_local_tablets(tablet_id, table_id, table_type, namespace_name, ysql_schema_name, table_name, partition_key_start, partition_key_end);
+yb_query_diagnostics_status| SELECT yb_get_query_diagnostics_status.status,
+    yb_get_query_diagnostics_status.description,
+    yb_get_query_diagnostics_status.query_id,
+    yb_get_query_diagnostics_status.start_time,
+    yb_get_query_diagnostics_status.diagnostics_interval_sec,
+    yb_get_query_diagnostics_status.bind_var_query_min_duration_ms,
+    yb_get_query_diagnostics_status.explain_params,
+    yb_get_query_diagnostics_status.path
+   FROM yb_get_query_diagnostics_status() yb_get_query_diagnostics_status(status, description, query_id, start_time, diagnostics_interval_sec, bind_var_query_min_duration_ms, explain_params, path);
 yb_terminated_queries| SELECT d.datname AS databasename,
     s.backend_pid,
     s.query_text,
@@ -2450,6 +2459,11 @@ yb_terminated_queries| SELECT d.datname AS databasename,
     s.query_end AS query_end_time
    FROM (yb_pg_stat_get_queries(NULL::oid) s(db_oid, backend_pid, query_text, termination_reason, query_start, query_end)
      LEFT JOIN pg_database d ON ((s.db_oid = d.oid)));
+yb_wait_event_desc| SELECT yb_wait_event_desc.wait_event_class,
+    yb_wait_event_desc.wait_event_type,
+    yb_wait_event_desc.wait_event,
+    yb_wait_event_desc.wait_event_description
+   FROM yb_wait_event_desc() yb_wait_event_desc(wait_event_class, wait_event_type, wait_event, wait_event_description);
 SELECT tablename, rulename, definition FROM pg_rules
 	ORDER BY tablename, rulename;
 pg_settings|pg_settings_n|CREATE RULE pg_settings_n AS

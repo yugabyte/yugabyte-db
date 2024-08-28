@@ -8,7 +8,7 @@ mkdir -p /var/run/prometheus
 mkdir -p /tmp/yugabyte/metrics
 
 if [ -f "$thirdparty_dir/node_exporter-1.7.0.linux-amd64.tar.gz" ]; then
-    mv "$thirdparty_dir/node_exporter-1.7.0.linux-amd64.tar.gz" /opt/prometheus
+    cp "$thirdparty_dir/node_exporter-1.7.0.linux-amd64.tar.gz" /opt/prometheus
 fi
 
 # Check if the user "prometheus" already exists

@@ -41,6 +41,7 @@
 #include "yb/gutil/strings/split.h"
 #include "yb/util/env_util.h"
 #include "yb/util/flags/flag_tags.h"
+#include "yb/util/string_case.h"
 
 #if YB_GPERFTOOLS_TCMALLOC
 #include <gperftools/heap-profiler.h>
@@ -278,6 +279,7 @@ string GetStaticProgramName() {
 // Forward declarations.
 namespace flags_internal {
 Status ValidateFlagValue(const CommandLineFlagInfo& flag_info, const std::string& value);
+std::optional<std::string> GetFlagNewInstallValue(const std::string& flag_name);
 }  // namespace flags_internal
 
 namespace {
@@ -340,6 +342,11 @@ static string DescribeOneFlagInXML(
 
   if (!only_display_default_values) {
     AppendXMLTag("current", flag.current_value, &r);
+  }
+
+  auto new_install_value = flags_internal::GetFlagNewInstallValue(flag.name);
+  if (new_install_value) {
+    AppendXMLTag("new_install_default", *new_install_value, &r);
   }
 
   AppendXMLTag("type", flag.type, &r);
@@ -450,7 +457,7 @@ void InvokeAllCallbacks(const std::vector<google::CommandLineFlagInfo>& flag_inf
 bool IsPreviewFlagUpdateAllowed(
     const CommandLineFlagInfo& flag_info, const unordered_set<FlagTag>& tags,
     const std::string& new_value, const std::string& allowed_preview_flags, std::string* err_msg) {
-  if (!ContainsKey(tags, FlagTag::kPreview) || new_value == flag_info.default_value) {
+  if (!tags.contains(FlagTag::kPreview) || new_value == flag_info.default_value) {
     return true;
   }
 
@@ -739,7 +746,7 @@ void WarnFlagDeprecated(const std::string& flagname, const std::string& date_mm_
 static const std::string kMaskedFlagValue = "***";
 
 bool IsFlagSensitive(const unordered_set<FlagTag>& tags) {
-  return ContainsKey(tags, FlagTag::kSensitive_info);
+  return tags.contains(FlagTag::kSensitive_info);
 }
 
 bool IsFlagSensitive(const std::string& flag_name) {
@@ -815,7 +822,7 @@ SetFlagResult SetFlag(
   // Validate that the flag is runtime-changeable.
   unordered_set<FlagTag> tags;
   GetFlagTags(flag_name, &tags);
-  if (!ContainsKey(tags, FlagTag::kRuntime)) {
+  if (!tags.contains(FlagTag::kRuntime)) {
     if (force) {
       LOG(WARNING) << "Forcing change of non-runtime-safe flag " << flag_name;
     } else {
@@ -857,6 +864,81 @@ SetFlagResult SetFlag(
 
   return SetFlagResult::SUCCESS;
 }
+
+std::unordered_map<std::string, std::string>& GetFlagNewInstallValueMap() {
+  static std::unordered_map<std::string, std::string> flag_new_install_value_map;
+  return flag_new_install_value_map;
+}
+
+std::optional<std::string> GetFlagNewInstallValue(const std::string& flag_name) {
+  auto& flag_new_install_value_map = GetFlagNewInstallValueMap();
+  auto it = FindOrNull(flag_new_install_value_map, flag_name);
+  if (it) {
+    return *it;
+  }
+  return std::nullopt;
+}
+
+bool RegisterFlagNewInstallValue(const std::string& flag_name, const std::string& value) {
+  auto& flag_new_install_value_map = flags_internal::GetFlagNewInstallValueMap();
+  CHECK(!flag_new_install_value_map.contains(flag_name))
+      << "Flag " << flag_name
+      << " already has a new install value: " << flag_new_install_value_map[flag_name];
+
+  std::unordered_set<FlagTag> tags;
+  GetFlagTags(flag_name, &tags);
+  CHECK(!tags.contains(FlagTag::kAuto)) << "AutoFlags cannot have a new install value";
+  CHECK(!tags.contains(FlagTag::kPreview)) << "Preview flags cannot have a new install value";
+  CHECK(!tags.contains(FlagTag::kHidden)) << "Hidden flags cannot have a new install value";
+  CHECK(!tags.contains(FlagTag::kDeprecated)) << "Deprecated flags cannot have a new install value";
+
+  CHECK_OK_PREPEND(
+      ValidateFlagValue(flag_name, value),
+      Format("Invalid New install value '$0' for flag '$1'", value, flag_name));
+
+  flag_new_install_value_map[flag_name] = value;
+  return true;
+}
+
+std::vector<google::CommandLineFlagInfo> GetAllFlags(
+    const std::map<std::string, std::string>& custom_varz) {
+  std::vector<google::CommandLineFlagInfo> flag_infos;
+  google::GetAllFlags(&flag_infos);
+
+  if (custom_varz.empty()) {
+    return flag_infos;
+  }
+
+  std::unordered_set<std::string> processed_custom_flags;
+  // Replace values for existing flags.
+  for (auto& flag_info : flag_infos) {
+    auto* custom_value = FindOrNull(custom_varz, flag_info.name);
+    if (!custom_value) {
+      continue;
+    }
+    if (flag_info.current_value != *custom_value) {
+      flag_info.current_value = *custom_value;
+      flag_info.is_default = false;
+    }
+    processed_custom_flags.insert(flag_info.name);
+  }
+
+  // Add new flags.
+  for (auto const& [flag_name, flag_value] : custom_varz) {
+    if (processed_custom_flags.contains(flag_name)) {
+      continue;
+    }
+    google::CommandLineFlagInfo flag_info;
+    flag_info.name = flag_name;
+    flag_info.current_value = flag_value;
+    flag_info.default_value = "";
+    flag_info.is_default = false;
+    flag_infos.push_back(flag_info);
+  }
+
+  return flag_infos;
+}
+
 }  // namespace flags_internal
 
 bool ValidatePercentageFlag(const char* flag_name, int value) {
@@ -920,6 +1002,52 @@ Result<std::unordered_set<std::string>> GetFlagNamesFromXmlFile(const std::strin
   }
 
   return flag_names;
+}
+
+std::unordered_map<FlagType, std::vector<FlagInfo>> GetFlagInfos(
+    std::function<bool(const std::string&)> auto_flags_filter,
+    std::function<bool(const std::string&)> default_flags_filter,
+    const std::map<std::string, std::string>& custom_varz) {
+  const std::set<string> node_info_flags{
+      "log_filename",    "rpc_bind_addresses", "webserver_interface", "webserver_port",
+      "placement_cloud", "placement_region",   "placement_zone"};
+
+  const auto flags = flags_internal::GetAllFlags(custom_varz);
+  std::unordered_map<FlagType, std::vector<FlagInfo>> flag_infos;
+  for (const auto& flag : flags) {
+    std::unordered_set<FlagTag> flag_tags;
+    GetFlagTags(flag.name, &flag_tags);
+
+    FlagInfo flag_info;
+    flag_info.name = flag.name;
+    flag_info.value = flags_internal::GetMaskedValueIfSensitive(flag_tags, flag.current_value);
+
+    auto type = FlagType::kDefault;
+    if (node_info_flags.contains(flag.name)) {
+      type = FlagType::kNodeInfo;
+    } else if (flag.current_value != flag.default_value) {
+      type = FlagType::kCustom;
+    } else if (flag_tags.contains(FlagTag::kAuto) && auto_flags_filter(flag_info.name)) {
+      type = FlagType::kAuto;
+      flag_info.is_auto_flag_promoted = IsFlagPromoted(flag, *GetAutoFlagDescription(flag.name));
+    }
+
+    if (default_flags_filter && type == FlagType::kDefault &&
+        !default_flags_filter(flag_info.name)) {
+      continue;
+    }
+
+    flag_infos[type].push_back(std::move(flag_info));
+  }
+
+  // Sort by type, name ascending
+  for (auto& [_, flags] : flag_infos) {
+    std::sort(flags.begin(), flags.end(), [](const FlagInfo& lhs, const FlagInfo& rhs) {
+      return ToLowerCase(lhs.name) < ToLowerCase(rhs.name);
+    });
+  }
+
+  return flag_infos;
 }
 
 } // namespace yb

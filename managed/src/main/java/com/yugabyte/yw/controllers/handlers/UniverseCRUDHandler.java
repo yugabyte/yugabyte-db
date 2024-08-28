@@ -68,6 +68,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseResp;
+import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
@@ -820,6 +821,18 @@ public class UniverseCRUDHandler {
 
       taskParams.otelCollectorEnabled =
           confGetter.getConfForScope(p, ProviderConfKeys.otelCollectorEnabled);
+
+      // Check runtime flag for connection pooling.
+      if (userIntent.enableConnectionPooling) {
+        boolean allowConnectionPooling =
+            confGetter.getGlobalConf(GlobalConfKeys.allowConnectionPooling);
+        if (!allowConnectionPooling) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "Connection pooling is not allowed. Please set runtime flag"
+                  + " 'yb.universe.allow_connection_pooling' to true.");
+        }
+      }
 
       // update otel port
       int otelPort = confGetter.getConfForScope(p, ProviderConfKeys.otelCollectorMetricsPort);
@@ -2265,6 +2278,16 @@ public class UniverseCRUDHandler {
       throw new PlatformServiceException(
           BAD_REQUEST, "No changes that could be applied by EditUniverse");
     }
+
+    UniverseTaskParams.CommunicationPorts communicationPorts = taskParams.communicationPorts;
+    if (communicationPorts != null
+        && !Objects.equals(communicationPorts, universe.getUniverseDetails().communicationPorts)
+        && universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType
+            == Common.CloudType.kubernetes) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot change communication ports for k8s universe");
+    }
+
     for (Cluster newCluster : taskParams.clusters) {
       Cluster curCluster = universe.getCluster(newCluster.uuid);
       UserIntent newIntent = newCluster.userIntent;

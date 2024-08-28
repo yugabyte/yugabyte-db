@@ -390,12 +390,21 @@ __attribute__((hot)) static inline int kiwi_vars_cas(kiwi_vars_t *client,
 		memcpy(query + pos, "=", 1);
 		pos += 1;
 
-		int quote_len;
-		quote_len =
-			kiwi_enquote(var->value, query + pos, query_len - pos);
-		if (quote_len == -1)
-			return -1;
-		pos += quote_len;
+		if (strcmp(var->name, "search_path") == 0)
+		{
+			int copy_len = var->value_len - 1;
+			memcpy(query + pos, var->value, copy_len);
+			pos += copy_len;
+		}
+		else
+		{
+			int quote_len;
+			quote_len =
+				kiwi_enquote(var->value, query + pos, query_len - pos);
+			if (quote_len == -1)
+				return -1;
+			pos += quote_len;
+		}
 
 		memcpy(query + pos, ";", 1);
 		pos += 1;

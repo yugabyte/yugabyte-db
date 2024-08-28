@@ -174,7 +174,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Constructors.
   PgSession(
       PgClient* pg_client,
-      const std::string& database_name,
       scoped_refptr<PgTxnManager> pg_txn_manager,
       const YBCPgCallbacks& pg_callbacks,
       YBCPgExecStatsState* stats_state);
@@ -188,8 +187,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   //------------------------------------------------------------------------------------------------
   // Operations on Session.
   //------------------------------------------------------------------------------------------------
-
-  Status ConnectDatabase(const std::string& database_name);
 
   Status IsDatabaseColocated(const PgOid database_oid, bool *colocated,
                              bool *legacy_colocated_database);
@@ -331,34 +328,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   Status GetIndexBackfillProgress(std::vector<PgObjectId> index_ids, uint64_t** backfill_statuses);
 
-  //------------------------------------------------------------------------------------------------
-  // Access functions.
-  // TODO(neil) Need to double check these code later.
-  // - This code in CQL processor has a lock. CQL comment: It can be accessed by multiple calls in
-  //   parallel so they need to be thread-safe for shared reads / exclusive writes.
-  //
-  // - Currently, for each session, server executes the client requests sequentially, so the
-  //   the following mutex is not necessary. I don't think we're capable of parallel-processing
-  //   multiple statements within one session.
-  //
-  // TODO(neil) MUST ADD A LOCK FOR ACCESSING AND MODIFYING DATABASE BECAUSE WE USE THIS VARIABLE
-  // AS INDICATOR FOR ALIVE OR DEAD SESSIONS.
-
-  // Access functions for connected database.
-  const char* connected_dbname() const {
-    return connected_database_.c_str();
-  }
-
-  const std::string& connected_database() const {
-    return connected_database_;
-  }
-  void set_connected_database(const std::string& database) {
-    connected_database_ = database;
-  }
-  void reset_connected_database() {
-    connected_database_ = "";
-  }
-
   std::string GenerateNewYbrowid();
 
   void InvalidateAllTablesCache();
@@ -464,9 +433,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   PgClient& pg_client_;
   TableYbctidVectorProvider aux_ybctid_container_provider_;
-
-  // Connected database.
-  std::string connected_database_;
 
   // A transaction manager allowing to begin/abort/commit transactions.
   scoped_refptr<PgTxnManager> pg_txn_manager_;

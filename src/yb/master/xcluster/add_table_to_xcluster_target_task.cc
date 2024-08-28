@@ -179,8 +179,10 @@ Status AddTableToXClusterTargetTask::AddTableToReplicationGroup(
 }
 
 Status AddTableToXClusterTargetTask::WaitForSetupUniverseReplicationToFinish() {
-  auto operation_result = VERIFY_RESULT(IsSetupUniverseReplicationDone(
-      xcluster::GetAlterReplicationGroupId(universe_->ReplicationGroupId()), catalog_manager_));
+  // Skip the health checks since we will wait for the safe time to advance in the next step.
+  auto operation_result = VERIFY_RESULT(xcluster_manager_.IsSetupUniverseReplicationDone(
+      xcluster::GetAlterReplicationGroupId(universe_->ReplicationGroupId()),
+      /*skip_health_check=*/true));
 
   if (!operation_result.done()) {
     VLOG_WITH_PREFIX(2) << "Waiting for setup universe replication to finish";

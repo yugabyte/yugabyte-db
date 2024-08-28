@@ -24,6 +24,10 @@ servers:
 tags:
   - name: Authentication
     description: Authentication operations on YBA
+  - name: Continuous Backup
+    description: CRUD operations for Continuous YBA Backups
+  - name: Isolated Backup
+    description: Isolated backup/restore of YBA to local filesystem
   - name: Job Scheduler
     description: Job Scheduler
   - name: Universe

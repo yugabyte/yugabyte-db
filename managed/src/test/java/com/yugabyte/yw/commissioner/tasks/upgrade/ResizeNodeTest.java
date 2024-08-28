@@ -1220,7 +1220,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
     assertEquals(1, updateMounts.size());
     assertEquals(nodeName.get(), updateMounts.get(0).getTaskParams().get("nodeName").textValue());
-    assertEquals(2, updateMounts.get(0).getPosition().intValue());
+    assertEquals(3, updateMounts.get(0).getPosition().intValue());
     assertEquals(Success, taskInfo.getTaskState());
     assertUniverseData(true, true);
 
@@ -1304,7 +1304,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
             .findFirst()
             .get();
 
-    TaskInfo deviceTask = subTasksByPosition.get(2).get(0);
+    TaskInfo deviceTask = subTasksByPosition.get(3).get(0);
     JsonNode params = deviceTask.getTaskParams();
     assertEquals(azNodeName, params.get("nodeName").asText());
     JsonNode deviceParams = params.get("deviceInfo");
@@ -1484,9 +1484,6 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
   private UpgradeTaskBase.UpgradeContext instanceChangeContext(MockUpgrade mockUpgrade) {
     return UpgradeTaskBase.UpgradeContext.builder()
-        .reconfigureMaster(
-            defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.replicationFactor
-                > 1)
         .postAction(
             node -> {
               mockUpgrade.addTask(TaskType.UpdateNodeDetails, null);

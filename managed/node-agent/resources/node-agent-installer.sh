@@ -20,6 +20,7 @@ SKIP_VERIFY_CERT=""
 DISABLE_EGRESS="false"
 SILENT_INSTALL="false"
 AIRGAP_INSTALL="false"
+USER_SCOPED_UNIT="false"
 SKIP_PACKAGE_DOWNLOAD="false"
 CERT_DIR=""
 CUSTOMER_ID=""
@@ -63,6 +64,12 @@ run_as_super_user() {
   else
     sudo "$@"
   fi
+}
+
+# Function to run systemd commands as the target user
+run_as_target_user() {
+  local cmd=$1
+  XDG_RUNTIME_DIR=/run/user/$(id -u $INSTALL_USER) $cmd
 }
 
 export_path() {
@@ -149,9 +156,19 @@ uninstall_node_agent() {
   rm -rf "$RESPONSE_FILE"
   local RUNNING=""
   RUNNING=$(systemctl list-units | grep -F yb-node-agent.service)
+  # If not found, check in user-level units
+  if [ -z "$RUNNING" ]; then
+    RUNNING=$(systemctl --user list-units | grep -F yb-node-agent.service)
+  fi
+
   if [ -n "$RUNNING" ]; then
-    run_as_super_user systemctl stop yb-node-agent
-    run_as_super_user systemctl disable yb-node-agent
+     if [ "$USER_SCOPED_UNIT" = "false" ]; then
+      run_as_super_user systemctl stop yb-node-agent
+      run_as_super_user systemctl disable yb-node-agent
+    else
+      systemctl --user stop yb-node-agent
+      systemctl --user disable yb-node-agent
+    fi
   fi
   if [ -n "$NODE_AGENT_UUID" ]; then
     local STATUS_CODE=""
@@ -296,10 +313,17 @@ install_systemd_service() {
   fi
   modify_firewall
   echo "* Installing Node Agent Systemd Service"
-  run_as_super_user tee "$SYSTEMD_PATH/$SERVICE_NAME"  <<-EOF
+  # Define the path to the service file.
+  SERVICE_FILE_PATH="$SYSTEMD_PATH/$SERVICE_NAME"
+
+  # Check if USER_SCOPED_UNIT is defined.
+  if [ "$USER_SCOPED_UNIT" = "false" ]; then
+    run_as_super_user tee "$SERVICE_FILE_PATH" <<-EOF
   [Unit]
   Description=YB Anywhere Node Agent
   After=network-online.target
+  # Disable restart limits, using RestartSec to rate limit restarts.
+  StartLimitInterval=0
 
   [Service]
   User=$INSTALL_USER
@@ -314,11 +338,39 @@ install_systemd_service() {
   [Install]
   WantedBy=multi-user.target
 EOF
+  else
+    tee "$SERVICE_FILE_PATH" <<-EOF
+  [Unit]
+  Description=YB Anywhere Node Agent
+  After=network-online.target
+
+  [Service]
+  WorkingDirectory=$NODE_AGENT_HOME
+  LimitCORE=infinity
+  LimitNOFILE=1048576
+  LimitNPROC=12000
+  ExecStart=$NODE_AGENT_PKG_PATH/bin/node-agent server start
+  Restart=always
+  RestartSec=$SERVICE_RESTART_INTERVAL_SEC
+
+  [Install]
+  WantedBy=multi-user.target
+EOF
+  fi
+
   echo "* Starting the systemd service"
-  run_as_super_user systemctl daemon-reload
-  #To enable the node-agent service on reboot.
-  run_as_super_user systemctl enable yb-node-agent
-  run_as_super_user systemctl restart yb-node-agent
+
+  if [ "$USER_SCOPED_UNIT" = "false" ]; then
+    run_as_super_user systemctl daemon-reload
+    #To enable the node-agent service on reboot.
+    run_as_super_user systemctl enable yb-node-agent
+    run_as_super_user systemctl restart yb-node-agent
+  else
+    run_as_target_user "systemctl --user daemon-reload"
+    run_as_target_user "systemctl --user enable yb-node-agent"
+    run_as_target_user "systemctl --user restart yb-node-agent"
+  fi
+
   echo "* Started the systemd service"
   echo "* Run 'systemctl status yb-node-agent' to check\
  the status of the yb-node-agent"
@@ -329,6 +381,7 @@ EOF
 #The usage shows only the ones available to end users.
 show_usage() {
   cat <<-EOT
+
 Usage: ${0##*/} [<options>]
 
 Options:
@@ -336,11 +389,11 @@ Options:
     Command to run. Must be in ['install', 'uninstall', 'install_service'].
   -u, --url (REQUIRED)
     Yugabyte Anywhere URL.
-  -t, --api_token (REQUIRED with install command)
+  -t, --api_token (REQUIRED for install and uninstall commands)
     Api token to download the build files.
-  -ip, --node_ip (Required for uninstall command)
+  -ip, --node_ip (REQUIRED for uninstall command)
     Server IP.
-  -p, --node_port (OPTIONAL with install command)
+  -p, --node_port (OPTIONAL for install command)
     Server port.
   --user (REQUIRED only for install_service command)
     Username of the installation. A sudo user can install service for a non-sudo user.
@@ -348,8 +401,23 @@ Options:
     Specify to skip Yugabyte Anywhere server cert verification during install.
   --airgap (OPTIONAL)
     Specify to skip installing semanage utility.
+  --silent (OPTIONAL for install command)
+    Silent installation. By default, installation is interactive without this option.
   -h, --help
     Show usage.
+EOT
+}
+
+show_silent_args() {
+  cat <<-EOT
+
+Required for silent installation:
+  --node_ip for node ip.
+  --node_name for node name.
+  --provider_id for fully manual on-prem provider ID or name.
+  --instance_type for instance type.
+  --region_name for region name.
+  --zone_name for zone name.
 EOT
 }
 
@@ -362,8 +430,8 @@ main() {
   echo "* Starting YB Node Agent $COMMAND."
   if [ "$COMMAND" = "install_service" ]; then
     if [ "$SUDO_ACCESS" = "false" ]; then
-      echo "SUDO access is required."
-      exit 1
+      USER_SCOPED_UNIT="true"
+      SYSTEMD_PATH="$INSTALL_USER_HOME/.config/systemd/user"
     fi
     install_systemd_service
   elif [ "$COMMAND" = "upgrade" ]; then
@@ -386,25 +454,34 @@ main() {
       fi
       #For non-silent, the following inputs are read interactively.
       if [ "$SILENT_INSTALL" = "true" ]; then
-        # This mode is hidden from usage.
+        if [ -z "$NODE_IP" ]; then
+          echo "Node IP is required."
+          show_silent_args >&2
+          exit 1
+        fi
         if [ -z "$NODE_NAME" ]; then
           echo "Node name is required."
+          show_silent_args >&2
           exit 1
         fi
         if [ -z "$PROVIDER_ID" ]; then
           echo "Provider ID is required."
+          show_silent_args >&2
           exit 1
         fi
         if [ -z "$INSTANCE_TYPE" ]; then
           echo "Instance type is required."
+          show_silent_args >&2
           exit 1
         fi
         if [ -z "$REGION_NAME" ]; then
           echo "Region name is required."
+          show_silent_args >&2
           exit 1
         fi
         if [ -z "$ZONE_NAME" ]; then
           echo "Zone name is required."
+          show_silent_args >&2
           exit 1
         fi
       fi
@@ -417,7 +494,7 @@ main() {
         "$REGION_NAME" --zone_name "$ZONE_NAME")
       fi
     else
-        # This path is hidden from usage.
+        # This path is hidden from usage as this is used by YBA internally.
       if [ -z "$CUSTOMER_ID" ]; then
         echo "Customer ID is required."
         exit 1
@@ -446,17 +523,24 @@ main() {
         echo "$NODE_AGENT_CERT_PATH is not found."
         exit 1
       fi
-      if [ "$SUDO_ACCESS" = "true" ]; then
-        # Disable existing node-agent if sudo access is available.
-        local RUNNING=""
-        set +e
-        RUNNING=$(systemctl list-units | grep -F yb-node-agent.service)
-        if [ -n "$RUNNING" ]; then
+      # Disable existing node-agent if sudo access is available.
+      local RUNNING=""
+      set +e
+      RUNNING=$(systemctl list-units | grep -F yb-node-agent.service)
+      # If not found, check in user-level units
+      if [ -z "$RUNNING" ]; then
+        RUNNING=$(systemctl --user list-units | grep -F yb-node-agent.service)
+      fi
+      if [ -n "$RUNNING" ]; then
+        if [ "$USER_SCOPED_UNIT" = "false" ] && [ "$SUDO_ACCESS" = "true" ]; then
           run_as_super_user systemctl stop yb-node-agent
           run_as_super_user systemctl disable yb-node-agent
+        else
+          systemctl --user stop yb-node-agent
+          systemctl --user disable yb-node-agent
         fi
-        set -e
       fi
+      set -e
       NODE_AGENT_CONFIG_ARGS+=(--disable_egress --id "$NODE_AGENT_ID" --customer_id "$CUSTOMER_ID" \
       --cert_dir "$CERT_DIR" --node_name "$NODE_NAME" --node_ip "$NODE_IP" \
       --node_port "$NODE_PORT" "${SKIP_VERIFY_CERT:+ "--skip_verify_cert"}")

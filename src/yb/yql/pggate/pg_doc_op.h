@@ -18,6 +18,7 @@
 #include <list>
 #include <memory>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -29,6 +30,7 @@
 #include "yb/util/lw_function.h"
 #include "yb/util/ref_cnt_buffer.h"
 
+#include "yb/yql/pggate/pg_doc_metrics.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_session.h"
@@ -211,6 +213,8 @@ class PgDocResult {
 // different partitions and interact with different tablet servers.
 //--------------------------------------------------------------------------------------------------
 
+YB_STRONGLY_TYPED_BOOL(IsForWritePgDoc);
+
 // Helper class to wrap PerformFuture and custom response provider.
 // No memory allocations is required in case of using PerformFuture.
 class PgDocResponse {
@@ -223,17 +227,34 @@ class PgDocResponse {
     virtual Result<Data> Get() = 0;
   };
 
+  struct MetricInfo {
+    MetricInfo(TableType table_type_, IsForWritePgDoc is_write_)
+        : table_type(table_type_), is_write(is_write_) {}
+
+    TableType table_type;
+    IsForWritePgDoc is_write;
+  };
+
+  struct FutureInfo {
+    FutureInfo() : metrics(TableType::USER, IsForWritePgDoc::kFalse) {}
+    FutureInfo(PerformFuture&& future_, const MetricInfo& metrics_)
+        : future(std::move(future_)), metrics(metrics_) {}
+
+    PerformFuture future;
+    MetricInfo metrics;
+  };
+
   using ProviderPtr = std::unique_ptr<Provider>;
 
   PgDocResponse() = default;
-  explicit PgDocResponse(PerformFuture future);
+  PgDocResponse(PerformFuture&& future, const MetricInfo& info);
   explicit PgDocResponse(ProviderPtr provider);
 
   bool Valid() const;
-  Result<Data> Get();
+  Result<Data> Get(PgSession& session);
 
  private:
-  std::variant<PerformFuture, ProviderPtr> holder_;
+  std::variant<FutureInfo, ProviderPtr> holder_;
 };
 
 class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
@@ -241,7 +262,8 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   using SharedPtr = std::shared_ptr<PgDocOp>;
 
   using Sender = std::function<Result<PgDocResponse>(
-      PgSession*, const PgsqlOpPtr*, size_t, const PgTableDesc&, HybridTime, ForceNonBufferable)>;
+      PgSession*, const PgsqlOpPtr*, size_t, const PgTableDesc&, HybridTime,
+      ForceNonBufferable, IsForWritePgDoc)>;
 
   struct OperationRowOrder {
     OperationRowOrder(const PgsqlOpPtr& operation_, int64_t order_)
@@ -311,6 +333,10 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   Status CreateRequests();
 
   const PgTable& table() const { return table_; }
+
+  static Result<PgDocResponse> DefaultSender(
+      PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
+      HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable, IsForWritePgDoc is_write);
 
  protected:
   PgDocOp(
@@ -430,10 +456,6 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   //
   // See ReadHybridTimePB for more details about in_txn_limit.
   uint64_t& GetInTxnLimitHt();
-
-  static Result<PgDocResponse> DefaultSender(
-      PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-      HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable);
 
   // Result set either from selected or returned targets is cached in a list of strings.
   // Querying state variables.

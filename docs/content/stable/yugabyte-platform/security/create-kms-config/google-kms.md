@@ -63,7 +63,7 @@ The Google Cloud user associated with a KMS configuration requires a custom role
 
 You can create a KMS configuration that uses Google Cloud KMS, as follows:
 
-1. Use the YugabyteDB Anywhere UI to navigate to **Configs > Security > Encryption At Rest** to access the list of existing configurations.
+1. Navigate to **Integrations > Security > Encryption At Rest** to access the list of existing configurations.
 
 1. Click **Create New Config**.
 
@@ -82,7 +82,7 @@ You can create a KMS configuration that uses Google Cloud KMS, as follows:
 
 1. Click **Save**.
 
-    Your new configuration should appear in the list of configurations. A saved KMS configuration can only be deleted if it is not in use by any existing universes.
+    Your new configuration should appear in the list of configurations.
 
 1. Optionally, to confirm that the information is correct, click **Show details**. Note that sensitive configuration values are displayed partially masked.
 
@@ -90,7 +90,7 @@ You can create a KMS configuration that uses Google Cloud KMS, as follows:
 
 You can modify an existing KMS configuration as follows:
 
-1. Using the YugabyteDB Anywhere UI, navigate to **Configs > Security > Encryption At Rest** to open a list of existing configurations.
+1. Navigate to **Integrations > Security > Encryption At Rest** to open a list of existing configurations.
 
 1. Find the configuration you want to modify and click its corresponding **Actions > Edit Configuration**.
 
@@ -103,7 +103,7 @@ You can modify an existing KMS configuration as follows:
 ## Delete a KMS configuration
 
 {{<note title="Note">}}
-You can only delete a KMS configuration if it is not in use by any universes.
+Without a KMS configuration, you would longer be able to decrypt universe keys that were encrypted using the master key in the KMS configuration. Even after a key is rotated out of service, it may still be needed to decrypt data in backups and snapshots that were created while it was active. For this reason, you can only delete a KMS configuration if it has never been used by any universes.
 {{</note>}}
 
 To delete a KMS configuration, click its corresponding **Actions > Delete Configuration**.

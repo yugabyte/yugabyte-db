@@ -23,6 +23,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.subtasks.BackupTableYbc;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.StorageUtil;
 import com.yugabyte.yw.common.StorageUtilFactory;
@@ -46,6 +47,7 @@ import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.RestorePreflightResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.backuprestore.BackupPointInTimeRestoreWindow;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.backuprestore.Tablespace;
@@ -228,8 +230,6 @@ public class YbcBackupUtil {
     @Valid
     public String rollbackYbdbVersion;
 
-    ;
-
     @JsonProperty("master_auto_flags")
     @Valid
     public Set<String> masterAutoFlags;
@@ -245,6 +245,12 @@ public class YbcBackupUtil {
     @JsonProperty("master_key_metadata")
     @Valid
     public JsonNode masterKeyMetadata;
+
+    @JsonProperty("customer_uuid")
+    public String customerUUID;
+
+    @JsonProperty("backup_uuid")
+    public String backupUUID;
   }
 
   @JsonIgnoreProperties(ignoreUnknown = true)
@@ -269,6 +275,10 @@ public class YbcBackupUtil {
     @JsonAlias("tablespace_info")
     @Valid
     public List<Tablespace> tablespaceInfos;
+
+    @JsonAlias("restorable_window")
+    @Valid
+    public RestorableWindow restorableWindow;
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class ResponseCloudStoreSpec {
@@ -355,6 +365,44 @@ public class YbcBackupUtil {
         @JsonAlias("database_type")
         @NotNull
         public YQLDatabase snapshotDatabaseType;
+      }
+    }
+
+    public static class RestorableWindow {
+      @JsonAlias("snapshot_timestamp_micros")
+      @NotNull
+      public String timestampSnapshotCreation;
+
+      @JsonAlias("history_retention_secs")
+      @NotNull
+      public String timestampHistoryRetention;
+
+      @JsonIgnore
+      public long getTimestampSnapshotCreationMillis() {
+        return Long.parseLong(timestampSnapshotCreation) / 1000L;
+      }
+
+      @JsonIgnore
+      public long getTimestampHistoryRetentionMillis() {
+        return Long.parseLong(timestampHistoryRetention) * 1000L;
+      }
+    }
+
+    @JsonIgnore
+    public boolean isRestorableToPointInTime(long restoreToPointInTimeMillis) {
+      if (restoreToPointInTimeMillis > 0L) {
+        if (this.restorableWindow == null) {
+          return false;
+        }
+        long rangeEnd = this.restorableWindow.getTimestampSnapshotCreationMillis();
+        long rangeStart = rangeEnd - this.restorableWindow.getTimestampHistoryRetentionMillis();
+        if (restoreToPointInTimeMillis > rangeStart && restoreToPointInTimeMillis <= rangeEnd) {
+          return true;
+        } else {
+          return false;
+        }
+      } else {
+        return true;
       }
     }
   }
@@ -469,7 +517,7 @@ public class YbcBackupUtil {
    * @return BackupServiceTaskCreateRequest object
    */
   public BackupServiceTaskCreateRequest createYbcBackupRequest(
-      BackupTableParams backupTableParams) {
+      BackupTableYbc.Params backupTableParams) {
     return createYbcBackupRequest(backupTableParams, null);
   }
 
@@ -481,7 +529,7 @@ public class YbcBackupUtil {
    * @return BackupServiceTaskCreateRequest object
    */
   public BackupServiceTaskCreateRequest createYbcBackupRequest(
-      BackupTableParams backupTableParams, BackupTableParams previousTableParams) {
+      BackupTableYbc.Params backupTableParams, BackupTableParams previousTableParams) {
     CustomerConfig config =
         configService.getOrBadRequest(
             backupTableParams.customerUuid, backupTableParams.storageConfigUUID);
@@ -524,10 +572,12 @@ public class YbcBackupUtil {
       BackupStorageInfo backupStorageInfo,
       String taskId,
       YbcBackupResponse successMarker,
-      UUID universeUUID) {
+      UUID universeUUID,
+      long restoreToPointInTimeMillis) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     NamespaceType namespaceType = getNamespaceType(backupStorageInfo.backupType);
-    BackupServiceTaskExtendedArgs extendedArgs = getExtendedArgsForRestore(backupStorageInfo);
+    BackupServiceTaskExtendedArgs extendedArgs =
+        getExtendedArgsForRestore(backupStorageInfo, restoreToPointInTimeMillis);
     BackupServiceTaskCreateRequest.Builder backupServiceTaskCreateRequestBuilder =
         backupServiceTaskCreateBuilder(taskId, namespaceType, extendedArgs);
     CustomerConfig config = configService.getOrBadRequest(customerUUID, storageConfigUUID);
@@ -957,13 +1007,15 @@ public class YbcBackupUtil {
    * @param tableParams
    * @return Extended args object for YB-Controller
    */
-  public BackupServiceTaskExtendedArgs getExtendedArgsForBackup(BackupTableParams tableParams) {
+  public BackupServiceTaskExtendedArgs getExtendedArgsForBackup(BackupTableYbc.Params tableParams) {
     try {
       YbcSuccessBackupConfig config = new YbcSuccessBackupConfig();
       Universe universe = Universe.getOrBadRequest(tableParams.getUniverseUUID());
       String ybdbSoftwareVersion =
           universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
       config.ybdbVersion = ybdbSoftwareVersion;
+      config.backupUUID = tableParams.backupUuid.toString();
+      config.customerUUID = tableParams.customerUuid.toString();
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
       if (universeDetails.isSoftwareRollbackAllowed
           && universeDetails.prevYBSoftwareConfig != null) {
@@ -1000,6 +1052,9 @@ public class YbcBackupUtil {
       extendedArgsBuilder.setBackupConfigData(mapper.writeValueAsString(config));
       if (tableParams.useTablespaces) {
         extendedArgsBuilder.setUseTablespaces(true);
+      }
+      if (tableParams.isPointInTimeRestoreEnabled()) {
+        extendedArgsBuilder.setSaveRetentionWindow(true);
       }
       return extendedArgsBuilder.build();
     } catch (Exception e) {
@@ -1065,7 +1120,7 @@ public class YbcBackupUtil {
   }
 
   public BackupServiceTaskExtendedArgs getExtendedArgsForRestore(
-      BackupStorageInfo backupStorageInfo) {
+      BackupStorageInfo backupStorageInfo, long restoreToPointInTimeMillis) {
     BackupServiceTaskExtendedArgs.Builder extendedArgsBuilder =
         BackupServiceTaskExtendedArgs.newBuilder();
     if (backupStorageInfo.isUseTablespaces()) {
@@ -1077,6 +1132,10 @@ public class YbcBackupUtil {
               .setNewUsername(backupStorageInfo.newOwner)
               .setOldUsername(backupStorageInfo.oldOwner)
               .build());
+    }
+    if (restoreToPointInTimeMillis > 0L) {
+      String restoreTimeMicros = Long.toString(restoreToPointInTimeMillis * 1000);
+      extendedArgsBuilder.setRestoreTime(restoreTimeMicros);
     }
     return extendedArgsBuilder.build();
   }
@@ -1300,6 +1359,12 @@ public class YbcBackupUtil {
                       // Populate tablespaces related info
                       perLocationBackupInfoBuilder.tablespaceResponse(
                           tablespaceResponsesMap.get(e.getKey()));
+
+                      // Polulate restore window
+                      if (sMarker.restorableWindow != null) {
+                        perLocationBackupInfoBuilder.pointInTimeRestoreWindow(
+                            new BackupPointInTimeRestoreWindow(sMarker.restorableWindow));
+                      }
 
                       // Populate keyspace name
                       perBackupKeyspaceTablesBuilder.originalKeyspace(

@@ -270,9 +270,10 @@ class TsAdminClient {
   Status ClearUniverseUuid();
 
   Status AcquireObjectLock(
-      const std::string& session_id, const string& object_id, const std::string& lock_mode);
+      const std::string& session_id, const string& database_id, const string& object_id,
+      const std::string& lock_mode);
   Status ReleaseObjectLock(
-      const std::string& session_id, const string& object_id, int argc, char** argv);
+      const std::string& session_id, const string& database_id, int argc, char** argv);
   Status ReleaseAllLocksForSession(const std::string& session_id);
 
  private:
@@ -747,7 +748,8 @@ Status TsAdminClient::ClearUniverseUuid() {
 }
 
 Status TsAdminClient::AcquireObjectLock(
-    const string& session_id, const string& object_id, const std::string& lock_mode) {
+    const string& session_id, const string& database_id, const string& object_id,
+    const std::string& lock_mode) {
   SCHECK(initted_, IllegalState, "TsAdminClient not initialized");
   static const std::unordered_map<std::string, TableLockType> lock_key_entry_map = {
     {"ACCESS_SHARE", ACCESS_SHARE},
@@ -770,7 +772,8 @@ Status TsAdminClient::AcquireObjectLock(
   req.set_session_id(stoi(session_id));
   req.set_session_host_uuid(FLAGS_server_address);
   auto* object_lock_req = req.add_object_locks();
-  object_lock_req->set_id(stoi(object_id));
+  object_lock_req->set_database_oid(stoi(database_id));
+  object_lock_req->set_object_oid(stoi(object_id));
   object_lock_req->set_lock_type(it->second);
 
   RETURN_NOT_OK(ts_proxy_->AcquireObjectLocks(req, &resp, &rpc));
@@ -780,12 +783,14 @@ Status TsAdminClient::AcquireObjectLock(
   }
   std::cout << "Acquired lock for session id=" << session_id
             << " on object with id=" << object_id
+            << " database id=" << database_id
             << " and mode " << lock_mode << " at tserver local object lock manager" << std::endl;
   return Status::OK();
 }
 
 Status TsAdminClient::ReleaseObjectLock(
-    const std::string& session_id, const string& object_id, int argc, char** argv) {
+    const std::string& session_id, const string& database_id, int argc,
+    char** argv) {
   SCHECK(initted_, IllegalState, "TsAdminClient not initialized");
 
   tserver::ReleaseObjectLockRequestPB req;
@@ -795,9 +800,12 @@ Status TsAdminClient::ReleaseObjectLock(
 
   req.set_session_id(stoi(session_id));
   req.set_session_host_uuid(FLAGS_server_address);
-  req.add_object_ids(stoi(object_id));
+  std::ostringstream object_ids_stream;
   for (int i = 4; i < argc; i++) {
-    req.add_object_ids(atoi(argv[i]));
+    object_ids_stream << " " << argv[i];
+    auto* object_lock_req = req.add_object_locks();
+    object_lock_req->set_database_oid(stoi(database_id));
+    object_lock_req->set_object_oid(atoi(argv[i]));
   }
 
   RETURN_NOT_OK(ts_proxy_->ReleaseObjectLocks(req, &resp, &rpc));
@@ -805,7 +813,8 @@ Status TsAdminClient::ReleaseObjectLock(
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
-  std::cout << "Released all locks on object with id=" << object_id
+  std::cout << "Released all locks on objects with ids" << object_ids_stream.str()
+            << " database id=" <<  database_id
             << " for session id=" << session_id
             << " at tserver local object lock manager" << std::endl;
   return Status::OK();
@@ -861,8 +870,8 @@ void SetUsage(const char* argv0) {
       << "  " << kRemoteBootstrapOp << " <server address to bootstrap from> <tablet_id>\n"
       << "  " << kListMasterServersOp << "\n"
       << "  " << kClearUniverseUuidOp << "\n"
-      << "  " << kAcquireObjectLockOp << " <session id> <object_id> <lock type>\n"
-      << "  " << kReleaseObjectLockOp << " <session id> <object_id> [<object_id> <object_id>...]\n"
+      << "  " << kAcquireObjectLockOp << " <session id> <database_id> <object_id> <lock type>\n"
+      << "  " << kReleaseObjectLockOp << " <session id> <database_id> <object_id> [<object_id>..]\n"
       << "  " << kReleaseAllLocksForSessionOp << " <session id>\n";
   google::SetUsageMessage(str.str());
 }
@@ -1097,12 +1106,12 @@ static int TsCliMain(int argc, char** argv) {
     RETURN_NOT_OK_PREPEND_FROM_MAIN(client.ClearUniverseUuid(),
                                     "Unable to clear universe uuid on " + addr);
   } else if (op == kAcquireObjectLockOp) {
-    CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 5);
-    RETURN_NOT_OK_PREPEND_FROM_MAIN(client.AcquireObjectLock(argv[2], argv[3], argv[4]),
+    CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 6);
+    RETURN_NOT_OK_PREPEND_FROM_MAIN(client.AcquireObjectLock(argv[2], argv[3], argv[4], argv[5]),
                                     "Unable to acquire object lock");
   } else if (op == kReleaseObjectLockOp) {
-    if (argc < 4) {
-      CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 4);
+    if (argc < 5) {
+      CHECK_ARGC_OR_RETURN_WITH_USAGE(op, 5);
     }
     RETURN_NOT_OK_PREPEND_FROM_MAIN(client.ReleaseObjectLock(argv[2], argv[3], argc, argv),
                                     "Unable to release object lock");

@@ -35,6 +35,7 @@ import java.util.Set;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized.Parameters;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.YBTestRunner;
@@ -116,16 +117,25 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
 
   @Test
   public void replicationConnectionCreateDrop() throws Exception {
-    Connection conn =
-        getConnectionBuilder().withTServer(0).replicationConnect();
-    PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+    markClusterNeedsRecreation();
 
-    replConnection.createReplicationSlot()
-        .logical()
-        .withSlotName("test_slot_repl_conn")
-        .withOutputPlugin(YB_OUTPUT_PLUGIN_NAME)
-        .make();
-    replConnection.dropReplicationSlot("test_slot_repl_conn");
+    String[] wal_levels = {"minimal", "replica", "logical"};
+    for (String wal_level : wal_levels) {
+      LOG.info("Testing replicationConnectionCreateDrop with wal_level = {}", wal_level);
+      Map<String, String> tserverFlags = super.getTServerFlags();
+      tserverFlags.put("ysql_pg_conf", String.format("wal_level=%s", wal_level));
+      restartClusterWithFlags(Collections.emptyMap(), tserverFlags);
+
+      Connection conn = getConnectionBuilder().withTServer(0).replicationConnect();
+      PGReplicationConnection replConnection = conn.unwrap(PGConnection.class).getReplicationAPI();
+
+      replConnection.createReplicationSlot()
+          .logical()
+          .withSlotName("test_slot_repl_conn")
+          .withOutputPlugin(YB_OUTPUT_PLUGIN_NAME)
+          .make();
+      replConnection.dropReplicationSlot("test_slot_repl_conn");
+    }
   }
 
   @Test
@@ -988,12 +998,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               // The Oids for columns below are not fixed. Changing the order of creation of
               // objects (extensions, tables etc.) in the test will change these Oids. Hence,
               // skip comparing the Oids of these types.
-              PgOutputRelationMessageColumn.CreateForComparison(
-                "col_hstore", 16385, /* compareDataType */ false),
-              PgOutputRelationMessageColumn.CreateForComparison(
-                "col_discount", 16518, /* compareDataType */ false),
-              PgOutputRelationMessageColumn.CreateForComparison(
-                "col_discount_array", 16517, /* compareDataType */ false))));
+              PgOutputRelationMessageColumn.CreateForComparison("col_hstore"),
+              PgOutputRelationMessageColumn.CreateForComparison("col_discount"),
+              PgOutputRelationMessageColumn.CreateForComparison("col_discount_array"))));
         } else {
           // The replica identity for test_table in case of pgoutput is DEFAULT.
           add(PgOutputRelationMessage.CreateForComparison("public", "test_table", 'd',
@@ -1035,12 +1042,9 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
               // The Oids for columns below are not fixed. Changing the order of creation of
               // objects (extensions, tables etc.) in the test will change these Oids. Hence,
               // skip comparing the Oids of these types.
-              PgOutputRelationMessageColumn.CreateForComparison(
-                "col_hstore", 16385, /* compareDataType */ false),
-              PgOutputRelationMessageColumn.CreateForComparison(
-                "col_discount", 16518, /* compareDataType */ false),
-              PgOutputRelationMessageColumn.CreateForComparison(
-                "col_discount_array", 16517, /* compareDataType */ false))));
+              PgOutputRelationMessageColumn.CreateForComparison("col_hstore"),
+              PgOutputRelationMessageColumn.CreateForComparison("col_discount"),
+              PgOutputRelationMessageColumn.CreateForComparison("col_discount_array"))));
         }
         add(PgOutputInsertMessage.CreateForComparison(new PgOutputMessageTuple((short) 38,
             Arrays.asList(new PgOutputMessageTupleColumnValue("1"),

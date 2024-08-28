@@ -26,7 +26,8 @@ import {
   tableSort,
   getStrictestReplicationLagAlertThreshold,
   getNamespaceIdentifierToNamespaceUuidMap,
-  getNamespaceIdentifier
+  getNamespaceIdentifier,
+  formatUuidForXCluster
 } from '../../ReplicationUtils';
 import YBPagination from '../../../tables/YBPagination/YBPagination';
 import { ExpandedConfigTableSelect } from './ExpandedConfigTableSelect';
@@ -220,13 +221,27 @@ export const ConfigTableSelect = ({
 
       xClusterTables.forEach((xClusterTable) => {
         currentSelectedTableUuids.add(getTableUuid(xClusterTable));
+
+        // When adding an index table, also add the main table.
+        if (xClusterTable.isIndexTable && xClusterTable.mainTableUUID) {
+          currentSelectedTableUuids.add(formatUuidForXCluster(xClusterTable.mainTableUUID));
+        }
+
+        // When adding a main table, also add the index tables.
+        xClusterTable.indexTableIDs?.forEach((indexTableId) =>
+          currentSelectedTableUuids.add(indexTableId)
+        );
       });
 
       setSelectedTableUuids(Array.from(currentSelectedTableUuids));
     } else {
-      const removedTableUuids = new Set(
-        xClusterTables.map((xClusterTables) => getTableUuid(xClusterTables))
-      );
+      const removedTableUuids = new Set();
+      xClusterTables.forEach((xClusterTable) => {
+        removedTableUuids.add(getTableUuid(xClusterTable));
+
+        // When removing a main table, also remove the index tables.
+        xClusterTable.indexTableIDs?.forEach((indexTableId) => removedTableUuids.add(indexTableId));
+      });
 
       setSelectedTableUuids(
         selectedTableUuids.filter((tableUUID) => !removedTableUuids.has(tableUUID))
@@ -481,6 +496,7 @@ function getSelectionOptionsFromTables(
 
       const mainTableRestartReplicationCandidate: MainTableRestartReplicationCandidate = {
         ...xClusterTable,
+        tableUUID: getTableUuid(xClusterTable),
         indexTables
       };
 
@@ -496,6 +512,9 @@ function getSelectionOptionsFromTables(
             checkIsTableMatchedBySearchTokens(indexTableRestartReplicationCandidate, searchTokens)
         );
       if (isTableMatchedBySearchTokens) {
+        mainTableRestartReplicationCandidate.indexTableIDs?.forEach((tableUuid) =>
+          searchMatchingTableUuids.add(tableUuid)
+        );
         searchMatchingNamespaceUuids.add(namespaceUuid);
         searchMatchingTableUuids.add(getTableUuid(xClusterTable));
       }

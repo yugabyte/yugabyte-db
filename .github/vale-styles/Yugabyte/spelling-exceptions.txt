@@ -153,6 +153,7 @@ datacenters
 datasource
 datasources
 datetime
+DBeaver
 Debezium
 Debian
 Decompressor
@@ -446,6 +447,7 @@ parallelizations
 passwordless
 Patroni
 performant
+pgAdmin
 PgBouncer
 pgLoader
 pg_cron

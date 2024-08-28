@@ -98,6 +98,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.TransferXClusterCerts;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UnivSetCertificate;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateSucceeded;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistGFlags;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateConsistencyCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateMountedDisks;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdatePlacementInfo;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateSoftwareVersion;
@@ -1171,6 +1172,14 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         createFreezeUniverseTask(universeUuid)
             .setSubTaskGroupType(SubTaskGroupType.ValidateConfigurations);
       }
+      if (confGetter.getConfForScope(universe, UniverseConfKeys.enableConsistencyCheck)) {
+        TaskType taskType = getTaskExecutor().getTaskType(getClass());
+        if (taskType != TaskType.CreateUniverse && taskType != TaskType.CreateKubernetesUniverse) {
+          log.info("Creating consistency check task for task {}", taskType);
+          checkAndCreateConsistencyCheckTableTask(
+              universe.getUniverseDetails().getPrimaryCluster());
+        }
+      }
       return Universe.getOrBadRequest(universeUuid);
     } catch (RuntimeException e) {
       unlockUniverseForUpdate(universeUuid);
@@ -1311,6 +1320,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Sets the isMaster field
     params.isMaster = node.isMaster;
     params.enableYSQL = userIntent.enableYSQL;
+    params.enableConnectionPooling = userIntent.enableConnectionPooling;
     params.enableYCQL = userIntent.enableYCQL;
     params.enableYCQLAuth = userIntent.enableYCQLAuth;
     params.enableYSQLAuth = userIntent.enableYSQLAuth;
@@ -1901,10 +1911,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                         return false;
                       }
                       if (provider.getCloudCode() == CloudType.onprem) {
-                        AccessKey accessKey =
-                            AccessKey.getOrBadRequest(
-                                provider.getUuid(), cluster.userIntent.accessKeyCode);
-                        return !accessKey.getKeyInfo().skipProvisioning;
+
+                        return !provider.getDetails().skipProvisioning;
                       } else if (provider.getCloudCode() != CloudType.aws
                           && provider.getCloudCode() != CloudType.azu
                           && provider.getCloudCode() != CloudType.gcp) {
@@ -2809,6 +2817,23 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       createReadWriteTestTableTask(tserverLiveNodes.size(), true)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
+  }
+
+  public void checkAndCreateConsistencyCheckTableTask(Cluster primaryCluster) {
+    if (primaryCluster.userIntent.enableYSQL) {
+      createUpdateConsistencyCheckTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    }
+  }
+
+  public SubTaskGroup createUpdateConsistencyCheckTask() {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateConsistencyCheckTable");
+    UpdateConsistencyCheck task = createTask(UpdateConsistencyCheck.class);
+    UpdateConsistencyCheck.Params params = new UpdateConsistencyCheck.Params();
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
   }
 
   /**
@@ -5184,30 +5209,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
-  /**
-   * Run universe updater and increment the cluster config version
-   *
-   * @param updater the universe updater to run
-   * @return the updated universe
-   */
-  protected Universe saveUniverseDetails(
-      UUID universeUUID, boolean shouldIncrementVersion, UniverseUpdater updater) {
-    Universe.UNIVERSE_KEY_LOCK.acquireLock(universeUUID);
-    try {
-      if (updater.getConfig().isIgnoreAbsence() && !Universe.maybeGet(universeUUID).isPresent()) {
-        return null;
-      }
-      if (shouldIncrementVersion) {
-        incrementClusterConfigVersion(universeUUID);
-      }
-      return Universe.saveDetails(universeUUID, updater, shouldIncrementVersion);
-    } finally {
-      Universe.UNIVERSE_KEY_LOCK.releaseLock(universeUUID);
-    }
-  }
-
   protected Universe saveUniverseDetails(UUID universeUUID, UniverseUpdater updater) {
-    return saveUniverseDetails(universeUUID, shouldIncrementVersion(universeUUID), updater);
+    Function<UUID, Boolean> versionIncrementCallback =
+        uuid -> {
+          if (shouldIncrementVersion(universeUUID)) {
+            incrementClusterConfigVersion(universeUUID);
+            return true;
+          }
+          return false;
+        };
+    return Universe.saveUniverseDetails(universeUUID, versionIncrementCallback, updater);
   }
 
   protected Universe saveUniverseDetails(UniverseUpdater updater) {

@@ -19,6 +19,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+
 #ifdef __cplusplus
 extern "C" {
 
@@ -100,6 +102,14 @@ extern int yb_locks_txn_locks_per_tablet;
  * for a newly created target database to restore those tables.
  */
 extern bool yb_binary_restore;
+
+/*
+ * Guc variable for ignoring requests to set pg_class oids when yb_binary_restore is set.
+ *
+ * If true then calls to pg_catalog.binary_upgrade_set_next_{heap|index}_pg_class_oid will have no
+ * effect.
+ */
+extern bool yb_ignore_pg_class_oids;
 
 /*
  * Set to true only for runs with EXPLAIN ANALYZE
@@ -337,6 +347,7 @@ const char* YBCGetWaitEventComponent(uint32_t wait_event_info);
 const char* YBCGetWaitEventType(uint32_t wait_event_info);
 uint8_t YBCGetQueryIdForCatalogRequests();
 int YBCGetRandomUniformInt(int a, int b);
+YBCWaitEventDescriptor YBCGetWaitEventDescription(size_t index);
 
 int YBCGetCallStackFrames(void** result, int max_depth, int skip_count);
 

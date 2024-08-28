@@ -106,6 +106,113 @@ void MaybeSleepForTests(WaitStateInfo* state, WaitStateCode c) {
   state->TEST_SleepForTests(sleep_time_ms);
 }
 
+std::string GetWaitStateDescription(WaitStateCode code) {
+  switch (code) {
+    case WaitStateCode::kUnused:
+      return "This should not be present in view.";
+    case WaitStateCode::kYSQLReserved:
+      return "This is just a placeholder here for a wait event defined in PG.";
+    case WaitStateCode::kCatalogRead:
+      return "A YSQL backend is waiting for a catalog read from master.";
+    case WaitStateCode::kIndexRead:
+      return "A YSQL backend is waiting for a secondary index read from DocDB.";
+    case WaitStateCode::kStorageRead:
+      return "A YSQL backend is waiting for a table read from DocDB.";
+    case WaitStateCode::kStorageFlush:
+      return "A YSQL backend is waiting for a table/index read/write from DocDB.";
+    case WaitStateCode::kOnCpu_Active:
+      return "A rpc/task is being actively processed on a thread.";
+    case WaitStateCode::kOnCpu_Passive:
+      return "A rpc/task is waiting for a thread to pick it up.";
+    case WaitStateCode::kIdle:
+      return "The Raft log appender/sync thread is idle.";
+    case WaitStateCode::kRpc_Done:
+      return "An rpc is done and waiting for the reactor to send the response to a "
+          "YSQL/YCQL backend.";
+    case WaitStateCode::kDeprecated_Rpcs_WaitOnMutexInShutdown:
+      return "An rpc is waiting for the messenger to shutdown (Deprecated).";
+    case WaitStateCode::kRetryableRequests_SaveToDisk:
+      return "The in-memory state of the retryable requests is being saved to the disk. "
+          "This generally happens in the background during a WAL log roll, or remote bootstrap.";
+    case WaitStateCode::kMVCC_WaitForSafeTime:
+      return "A read/write rpc is waiting for the safe time to be at least the desired read-time.";
+    case WaitStateCode::kLockedBatchEntry_Lock:
+      return "A read/write rpc is waiting for a DocDB row level lock.";
+    case WaitStateCode::kBackfillIndex_WaitForAFreeSlot:
+      return "A backfill index rpc is waiting for a slot to open if there are too many backfill "
+          "requests at the same time.";
+    case WaitStateCode::kCreatingNewTablet:
+      return "The CreateTablet RPC is creating a new tablet, this may involve writing metadata "
+          "files, causing I/O wait.";
+    case WaitStateCode::kSaveRaftGroupMetadataToDisk:
+      return "The Raft/tablet metadata is being written to disk. Generally during "
+          "snapshot/restore operations.";
+    case WaitStateCode::kTransactionStatusCache_DoGetCommitData:
+      return "An rpc needs to look up the commit status of a particular transaction.";
+    case WaitStateCode::kWaitForYSQLBackendsCatalogVersion:
+      return "CREATE INDEX is waiting for YSQL backends to have up-to-date pg_catalog.";
+    case WaitStateCode::kWriteSysCatalogSnapshotToDisk:
+      return "Writing initial sys catalog snapshot during initdb.";
+    case WaitStateCode::kDumpRunningRpc_WaitOnReactor:
+      return "DumpRunningRpcs is waiting on reactor threads.";
+    case WaitStateCode::kConflictResolution_ResolveConficts:
+      return "A read/write rpc is waiting to identify conflicting transactions.";
+    case WaitStateCode::kConflictResolution_WaitOnConflictingTxns:
+      return "A read/write rpc is waiting for conflicting transactions to complete.";
+    case WaitStateCode::kRaft_WaitingForReplication:
+      return "A write rpc is waiting for Raft replication.";
+    case WaitStateCode::kRaft_ApplyingEdits:
+      return "A write rpc is applying Raft edits locally.";
+    case WaitStateCode::kWAL_Append:
+      return "A write rpc is persisting WAL edits.";
+    case WaitStateCode::kWAL_Sync:
+      return "A write rpc is synchronizing WAL edits.";
+    case WaitStateCode::kConsensusMeta_Flush:
+      return "ConsensusMetadata is flushed, say during Raft term/config change or remote "
+          "bootstrap etc.";
+    case WaitStateCode::kReplicaState_TakeUpdateLock:
+      return "A write/alter RPC needs to wait for the ReplicaState lock to replicate a "
+          "batch of writes through Raft.";
+    case WaitStateCode::kRocksDB_ReadBlockFromFile:
+      return "RocksDB is reading a block from a file.";
+    case WaitStateCode::kRocksDB_OpenFile:
+      return "RocksDB is opening a file.";
+    case WaitStateCode::kRocksDB_WriteToFile:
+      return "RocksDB is writing to a file.";
+    case WaitStateCode::kRocksDB_Flush:
+      return "RocksDB is doing a flush.";
+    case WaitStateCode::kRocksDB_Compaction:
+      return "RocksDB is doing a compaction.";
+    case WaitStateCode::kRocksDB_PriorityThreadPoolTaskPaused:
+      return "RocksDB paused one of flush/compaction tasks for another one with a higher "
+          "priority.";
+    case WaitStateCode::kRocksDB_CloseFile:
+      return "RocksDB is closing a file.";
+    case WaitStateCode::kRocksDB_RateLimiter:
+      return "RocksDB flush/compaction is slowing down due to rate limiter throttling "
+          "access to disk.";
+    case WaitStateCode::kRocksDB_WaitForSubcompaction:
+      return "RocksDB is waiting for a compaction to complete.";
+    case WaitStateCode::kRocksDB_NewIterator:
+      return "RocksDB is waiting for a new iterator to be created.";
+    case WaitStateCode::kYCQL_Parse:
+      return "YCQL is parsing a query.";
+    case WaitStateCode::kYCQL_Read:
+      return "YCQL is processing a read query.";
+    case WaitStateCode::kYCQL_Write:
+      return "YCQL is processing a write query.";
+    case WaitStateCode::kYCQL_Analyze:
+      return "YCQL is analyzing a query.";
+    case WaitStateCode::kYCQL_Execute:
+      return "YCQL is executing a query.";
+    case WaitStateCode::kYBClient_WaitingOnDocDB:
+      return "YB Client is waiting on DocDB to return a response.";
+    case WaitStateCode::kYBClient_LookingUpTablet:
+      return "YB Client is looking up tablet information from the master.";
+  }
+  FATAL_INVALID_ENUM_VALUE(WaitStateCode, code);
+}
+
 }  // namespace
 
 void WaitStateInfo::VTraceTo(Trace* trace, int level, GStringPiece data) {
@@ -260,6 +367,17 @@ void EnableConcurrentUpdates(const WaitStateInfoPtr& ptr) {
   }
 }
 
+std::vector<WaitStatesDescription> WaitStateInfo::GetWaitStatesDescription() {
+  std::vector<WaitStatesDescription> desc;
+  for (const auto& code : WaitStateCodeList()) {
+    // These shouldn't be seen in the view
+    if (code == WaitStateCode::kUnused || code == WaitStateCode::kYSQLReserved)
+      continue;
+    desc.emplace_back(code, GetWaitStateDescription(code));
+  }
+  return desc;
+}
+
 //
 // ScopedAdoptWaitState
 //
@@ -362,7 +480,7 @@ WaitStateType GetWaitStateType(WaitStateCode code) {
 
     case WaitStateCode::kIdle:
     case WaitStateCode::kRpc_Done:
-    case WaitStateCode::kRpcs_WaitOnMutexInShutdown:
+    case WaitStateCode::kDeprecated_Rpcs_WaitOnMutexInShutdown:
       return WaitStateType::kWaitOnCondition;
 
     case WaitStateCode::kRetryableRequests_SaveToDisk:

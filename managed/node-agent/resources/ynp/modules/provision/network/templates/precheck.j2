@@ -30,6 +30,16 @@ check_port() {
     fi
 }
 
+# Function to forcefully kill a process
+force_kill() {
+    local pid=$1
+    kill $pid 2>/dev/null
+    sleep 2
+    if ps -p $pid > /dev/null; then
+        kill -9 $pid 2>/dev/null
+    fi
+}
+
 # Iterate through the list of ports, start server, check port, and stop server
 for port in "${ports[@]}"; do
     # Start the server and get its PID
@@ -43,6 +53,6 @@ for port in "${ports[@]}"; do
 
     # Stop the server if the PID exists
     if ps -p $server_pid > /dev/null; then
-        kill $server_pid
+        force_kill $server_pid
     fi
 done

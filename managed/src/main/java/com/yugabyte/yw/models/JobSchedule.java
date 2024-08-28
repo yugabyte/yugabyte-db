@@ -9,6 +9,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.common.AppInit;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.models.JobInstance.State;
 import com.yugabyte.yw.models.filters.JobScheduleFilter;
 import com.yugabyte.yw.models.helpers.schedule.JobConfig;
 import com.yugabyte.yw.models.helpers.schedule.JobConfig.JobConfigWrapper;
@@ -240,6 +241,19 @@ public class JobSchedule extends Model {
   public JobSchedule updateScheduleConfig(ScheduleConfig scheduleConfig) {
     if (db().update(JobSchedule.class)
             .set("scheduleConfig", scheduleConfig)
+            .set("updatedAt", new Date())
+            .where()
+            .eq("uuid", getUuid())
+            .update()
+        > 0) {
+      refresh();
+    }
+    return this;
+  }
+
+  public JobSchedule updateJobConfig(JobConfig jobConfig) {
+    if (db().update(JobSchedule.class)
+            .set("jobConfig", new JobConfigWrapper(jobConfig))
             .set("updatedAt", new Date())
             .where()
             .eq("uuid", getUuid())

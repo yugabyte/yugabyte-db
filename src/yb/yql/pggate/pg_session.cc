@@ -465,7 +465,6 @@ bool ExplicitRowLockBuffer::IsEmpty() const {
 
 PgSession::PgSession(
     PgClient* pg_client,
-    const std::string& database_name,
     scoped_refptr<PgTxnManager> pg_txn_manager,
     const YBCPgCallbacks& pg_callbacks,
     YBCPgExecStatsState* stats_state)
@@ -476,8 +475,10 @@ PgSession::PgSession(
       pg_callbacks_(pg_callbacks),
       wait_starter_(pg_callbacks_.PgstatReportWaitStart),
       buffer_(
-          [this](BufferableOperations&& ops, bool transactional) {
-            return FlushOperations(std::move(ops), transactional);
+          [this](BufferableOperations&& ops, bool transactional)
+              -> Result<PgOperationBuffer::PerformFutureEx> {
+            return PgOperationBuffer::PerformFutureEx{
+                VERIFY_RESULT(FlushOperations(std::move(ops), transactional)), this};
           },
           &metrics_, wait_starter_, buffering_settings_) {
   Update(&buffering_settings_);
@@ -486,11 +487,6 @@ PgSession::PgSession(
 PgSession::~PgSession() = default;
 
 //--------------------------------------------------------------------------------------------------
-
-Status PgSession::ConnectDatabase(const std::string& database_name) {
-  connected_database_ = database_name;
-  return Status::OK();
-}
 
 Status PgSession::IsDatabaseColocated(const PgOid database_oid, bool *colocated,
                                       bool *legacy_colocated_database) {
@@ -858,7 +854,7 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   DCHECK(!options.has_read_time() || options.isolation() != IsolationLevel::SERIALIZABLE_ISOLATION);
 
   auto future = pg_client_.PerformAsync(&options, &ops.operations);
-  return PerformFuture(std::move(future), this, std::move(ops.relations));
+  return PerformFuture(std::move(future), std::move(ops.relations));
 }
 
 Result<bool> PgSession::ForeignKeyReferenceExists(const LightweightTableYbctid& key,
