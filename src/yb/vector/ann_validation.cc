@@ -24,13 +24,14 @@
 
 namespace yb::vectorindex {
 
-GroundTruth::GroundTruth(
-    const VertexIdToVectorDistanceFunction& distance_fn,
+template<IndexableVectorType Vector>
+GroundTruth<Vector>::GroundTruth(
+    const VertexIdToVectorDistanceFunction<Vector>& distance_fn,
     size_t k,
-    const std::vector<FloatVector>& queries,
+    const std::vector<Vector>& queries,
     const PrecomputedGroundTruthMatrix& precomputed_ground_truth,
     bool validate_precomputed_ground_truth,
-    const VectorIndexReader& index_reader,
+    const IndexReader& index_reader,
     const std::vector<VertexId>& vertex_ids)
     : distance_fn_(distance_fn),
       k_(k),
@@ -44,7 +45,8 @@ GroundTruth::GroundTruth(
   }
 }
 
-Result<FloatVector> GroundTruth::EvaluateRecall(size_t num_threads) {
+template<IndexableVectorType Vector>
+Result<FloatVector> GroundTruth<Vector>::EvaluateRecall(size_t num_threads) {
   // For each index i we maintain the total overlap (set intersection cardinality) between the
   // top (i + 1) ground truth results and the top (i + 1) ANN results, computed across all queries.
   // We apply denominators at the end.
@@ -64,7 +66,9 @@ Result<FloatVector> GroundTruth::EvaluateRecall(size_t num_threads) {
         return ProcessQuery(query_index, total_overlap);
       }));
 
-  std::vector<float> result;
+  // The result is always a vector of floats, regardless of the coordinate type.
+  FloatVector result;
+
   result.resize(k_);
   for (size_t i = 1; i <= k_; ++i) {
     // In the denominator below, we average across all queries. But we also need to divide by the
@@ -76,7 +80,8 @@ Result<FloatVector> GroundTruth::EvaluateRecall(size_t num_threads) {
   return result;
 }
 
-Status GroundTruth::ProcessQuery(
+template<IndexableVectorType Vector>
+Status GroundTruth<Vector>::ProcessQuery(
     size_t query_index,
     AtomicUInt64Vector& total_overlap_counters) {
   auto& query = queries_[query_index];
@@ -86,6 +91,7 @@ Status GroundTruth::ProcessQuery(
         query, precomputed_ground_truth_[query_index], total_overlap_counters);
     return Status::OK();
   }
+
 
   // At this point, we need to compute precise results either because precomputed results are not
   // available, or because we want to validate those precomputed results.
@@ -113,9 +119,10 @@ Status GroundTruth::ProcessQuery(
   return Status::OK();
 }
 
-VerticesWithDistances GroundTruth::AugmentWithDistances(
+template<IndexableVectorType Vector>
+VerticesWithDistances GroundTruth<Vector>::AugmentWithDistances(
     const std::vector<VertexId>& vertex_ids,
-    const FloatVector& query) {
+    const Vector& query) {
   VerticesWithDistances result;
   result.reserve(vertex_ids.size());
   for (auto vertex_id : vertex_ids) {
@@ -124,8 +131,9 @@ VerticesWithDistances GroundTruth::AugmentWithDistances(
   return result;
 }
 
-void GroundTruth::DoApproxSearchAndUpdateStats(
-    const FloatVector& query,
+template<IndexableVectorType Vector>
+void GroundTruth<Vector>::DoApproxSearchAndUpdateStats(
+    const Vector& query,
     const std::vector<VertexId>& correct_result,
     AtomicUInt64Vector& total_overlap_counters) {
   auto approx_result = index_reader_.Search(query, k_);
@@ -222,5 +230,7 @@ std::string ResultSetDifferenceStr(const VerticesWithDistances& a, const Vertice
   }
   return "No differences";
 }
+
+YB_INSTANTIATE_TEMPLATE_FOR_ALL_VECTOR_TYPES(GroundTruth);
 
 }  // namespace yb::vectorindex

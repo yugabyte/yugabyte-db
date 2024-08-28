@@ -11,14 +11,17 @@
 // under the License.
 //
 
+#include "yb/vector/usearch_wrapper.h"
+
 #include <memory>
 
-#include "yb/vector/usearch_wrapper.h"
+#include <boost/preprocessor/seq/for_each.hpp>
 
 #include "yb/gutil/casts.h"
 
 #include "yb/vector/distance.h"
 #include "yb/vector/usearch_include_wrapper_internal.h"
+#include "yb/vector/coordinate_types.h"
 
 namespace yb::vectorindex {
 
@@ -47,12 +50,28 @@ metric_kind_t MetricKindFromDistanceType(VectorDistanceType distance_type) {
   FATAL_INVALID_ENUM_VALUE(VectorDistanceType, distance_type);
 }
 
-class UsearchIndex::Impl {
+scalar_kind_t ConvertCoordinateKind(CoordinateKind coordinate_kind) {
+  switch (coordinate_kind) {
+#define YB_COORDINATE_KIND_TO_USEARCH_CASE(r, data, coordinate_info_tuple) \
+    case CoordinateKind::YB_COORDINATE_ENUM_ELEMENT_NAME(coordinate_info_tuple): \
+      return scalar_kind_t::BOOST_PP_CAT( \
+          YB_EXTRACT_COORDINATE_TYPE_SHORT_NAME(coordinate_info_tuple), _k);
+    BOOST_PP_SEQ_FOR_EACH(YB_COORDINATE_KIND_TO_USEARCH_CASE, _, YB_COORDINATE_TYPE_INFO)
+#undef YB_COORDINATE_KIND_TO_USEARCH_CASE
+  }
+  FATAL_INVALID_ENUM_VALUE(CoordinateKind, coordinate_kind);
+}
+
+template<IndexableVectorType Vector>
+class UsearchIndex<Vector>::Impl {
  public:
   explicit Impl(const HNSWOptions& options)
       : dimensions_(options.dimensions),
         distance_type_(options.distance_type),
-        metric_(dimensions_, MetricKindFromDistanceType(distance_type_), scalar_kind_t::f32_k),
+        metric_(dimensions_,
+                MetricKindFromDistanceType(distance_type_),
+                ConvertCoordinateKind(
+                    CoordinateTypeTraits<typename Vector::value_type>::Kind())),
         index_(decltype(index_)::make(
             metric_,
             CreateIndexDenseConfig(options))) {
@@ -63,14 +82,14 @@ class UsearchIndex::Impl {
     index_.reserve(num_vectors);
   }
 
-  Status Insert(VertexId vertex_id, const FloatVector& v) {
+  Status Insert(VertexId vertex_id, const Vector& v) {
     if (!index_.add(vertex_id, v.data())) {
       return STATUS_FORMAT(RuntimeError, "Failed to add a vector");
     }
     return Status::OK();
   }
 
-  std::vector<VertexWithDistance> Search(const FloatVector& query_vector, size_t max_num_results) {
+  std::vector<VertexWithDistance> Search(const Vector& query_vector, size_t max_num_results) {
     auto usearch_results = index_.search(query_vector.data(), max_num_results);
     std::vector<VertexWithDistance> result_vec;
     result_vec.reserve(usearch_results.size());
@@ -81,8 +100,8 @@ class UsearchIndex::Impl {
     return result_vec;
   }
 
-  FloatVector GetVector(VertexId vertex_id) const {
-    FloatVector result;
+  Vector GetVector(VertexId vertex_id) const {
+    Vector result;
     result.resize(dimensions_);
     if (index_.get(vertex_id, result.data())) {
       return result;
@@ -97,27 +116,36 @@ class UsearchIndex::Impl {
   index_dense_gt<VertexId> index_;
 };
 
-UsearchIndex::UsearchIndex(const HNSWOptions& options)
+template<IndexableVectorType Vector>
+UsearchIndex<Vector>::UsearchIndex(const HNSWOptions& options)
     : impl_(std::make_unique<UsearchIndex::Impl>(options)) {
 }
 
-UsearchIndex::~UsearchIndex() = default;
+template<IndexableVectorType Vector>
+UsearchIndex<Vector>::~UsearchIndex() = default;
 
-void UsearchIndex::Reserve(size_t num_vectors) {
+template<IndexableVectorType Vector>
+void UsearchIndex<Vector>::Reserve(size_t num_vectors) {
   impl_->Reserve(num_vectors);
 }
 
-Status UsearchIndex::Insert(VertexId vertex_id, const FloatVector& v) {
+template<IndexableVectorType Vector>
+Status UsearchIndex<Vector>::Insert(VertexId vertex_id, const Vector& v) {
   return impl_->Insert(vertex_id, v);
 }
 
-std::vector<VertexWithDistance> UsearchIndex::Search(
-    const FloatVector& query_vector, size_t max_num_results) const {
+template<IndexableVectorType Vector>
+std::vector<VertexWithDistance> UsearchIndex<Vector>::Search(
+    const Vector& query_vector, size_t max_num_results) const {
   return impl_->Search(query_vector, max_num_results);
 }
 
-FloatVector UsearchIndex::GetVector(VertexId vertex_id) const {
+template<IndexableVectorType Vector>
+Vector UsearchIndex<Vector>::GetVector(VertexId vertex_id) const {
   return impl_->GetVector(vertex_id);
 }
+
+BOOST_PP_SEQ_FOR_EACH(
+    YB_INSTANTIATE_TEMPLATE_FOR_VECTOR_OF, UsearchIndex, YB_USEARCH_SUPPORTED_COORDINATE_TYPES)
 
 }  // namespace yb::vectorindex

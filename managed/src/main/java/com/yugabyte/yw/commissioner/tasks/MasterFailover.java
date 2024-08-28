@@ -124,7 +124,9 @@ public class MasterFailover extends UniverseDefinitionTaskBase {
       createUpdateUniverseFieldsTask(
           u -> {
             NodeDetails unreachableNode = u.getNode(taskParams().nodeName);
-            unreachableNode.autoSyncMasterAddrs = updateMasterAddrsOnStoppedNode.get() == false;
+            // Always set it to true just in case master comes up before the sync so that it can be
+            // stopped.
+            unreachableNode.autoSyncMasterAddrs = true;
           });
       log.debug(
           "Update master addresses on stopped master node is {}", updateMasterAddrsOnStoppedNode);
@@ -138,7 +140,8 @@ public class MasterFailover extends UniverseDefinitionTaskBase {
           () -> super.findReplacementMaster(universe, currentNode),
           super.instanceExists(taskParams()),
           true /*ignoreStopErrors*/,
-          true /*ignoreMasterAddrsUpdateError*/);
+          true /*ignoreMasterAddrsUpdateError*/,
+          true /*keepTserverRunning*/);
       createSetNodeStateTask(currentNode, NodeState.Live)
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
       createSwamperTargetUpdateTask(false);

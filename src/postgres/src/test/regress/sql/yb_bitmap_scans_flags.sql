@@ -32,20 +32,14 @@ SET enable_bitmapscan = false;
 EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
 /*+ BitmapScan(test_disable) */
 EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
-/*+ Set(enable_seqscan false) */
-EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
 EXPLAIN (COSTS OFF) SELECT * FROM tmp_test_disable WHERE a < 5 OR b < 5;
 /*+ BitmapScan(tmp_test_disable) */
-EXPLAIN (COSTS OFF) SELECT * FROM tmp_test_disable WHERE a < 5 OR b < 5;
-/*+ Set(enable_seqscan false) */
 EXPLAIN (COSTS OFF) SELECT * FROM tmp_test_disable WHERE a < 5 OR b < 5;
 
 SET yb_enable_bitmapscan = false;
 SET enable_bitmapscan = true;
 EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
 /*+ BitmapScan(test_disable) */
-EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
-/*+ Set(enable_seqscan false) */
 EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
 EXPLAIN (COSTS OFF) SELECT * FROM tmp_test_disable WHERE a < 5 OR b < 5;
 /*+ BitmapScan(tmp_test_disable) */
@@ -58,12 +52,8 @@ SET enable_bitmapscan = false;
 EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
 /*+ BitmapScan(test_disable) */
 EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
-/*+ Set(enable_seqscan false) */
-EXPLAIN (COSTS OFF) SELECT * FROM test_disable WHERE a < 5 OR b < 5;
 EXPLAIN (COSTS OFF) SELECT * FROM tmp_test_disable WHERE a < 5 OR b < 5;
 /*+ BitmapScan(tmp_test_disable) */
-EXPLAIN (COSTS OFF) SELECT * FROM tmp_test_disable WHERE a < 5 OR b < 5;
-/*+ Set(enable_seqscan false) */
 EXPLAIN (COSTS OFF) SELECT * FROM tmp_test_disable WHERE a < 5 OR b < 5;
 
 RESET enable_bitmapscan;

@@ -4,8 +4,8 @@ package com.yugabyte.yw.common;
 
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.BackupUtil.PerLocationBackupInfo;
-import com.yugabyte.yw.forms.RestorePreflightParams;
 import com.yugabyte.yw.forms.RestorePreflightResponse;
+import com.yugabyte.yw.forms.backuprestore.AdvancedRestorePreflightParams;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
@@ -113,7 +113,7 @@ public interface CloudUtil extends StorageUtil {
 
   public default RestorePreflightResponse
       generateYBBackupRestorePreflightResponseWithoutBackupObject(
-          RestorePreflightParams preflightParams, CustomerConfigData configData) {
+          AdvancedRestorePreflightParams preflightParams, CustomerConfigData configData) {
     RestorePreflightResponse.RestorePreflightResponseBuilder preflightResponseBuilder =
         RestorePreflightResponse.builder();
     boolean isSelectiveRestoreSupported = false;

@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Box, Typography, useTheme } from '@material-ui/core';
 import { useFormContext } from 'react-hook-form';
+import i18next from 'i18next';
 import { useTranslation } from 'react-i18next';
 
 import InfoIcon from '../../../../redesign/assets/info-message.svg';
@@ -14,7 +15,7 @@ import { I18N_DURATION_KEY_PREFIX } from '../../../../redesign/helpers/constants
 import { YBInputField, YBTooltip } from '../../../../redesign/components';
 import { getPitrRetentionPeriodMinValue } from '../utils';
 
-import { useModalStyles } from '../styles';
+import { useModalStyles } from '../../styles';
 
 interface ConfigureAlertStepProps {
   isFormDisabled: boolean;
@@ -22,6 +23,23 @@ interface ConfigureAlertStepProps {
 
 const TRANSLATION_KEY_PREFIX =
   'clusterDetail.disasterRecovery.config.createModal.step.configurePitr';
+
+// The expectation is that all `DurationUnit`s are presented as options here.
+export const PITR_RETENTION_PERIOD_UNIT_OPTIONS: ReactSelectOption[] = [
+  {
+    label: i18next.t('seconds', { keyPrefix: I18N_DURATION_KEY_PREFIX }),
+    value: DurationUnit.SECOND
+  },
+  {
+    label: i18next.t('minutes', { keyPrefix: I18N_DURATION_KEY_PREFIX }),
+    value: DurationUnit.MINUTE
+  },
+  {
+    label: i18next.t('hours', { keyPrefix: I18N_DURATION_KEY_PREFIX }),
+    value: DurationUnit.HOUR
+  },
+  { label: i18next.t('days', { keyPrefix: I18N_DURATION_KEY_PREFIX }), value: DurationUnit.DAY }
+];
 
 export const ConfigurePitrStep = ({ isFormDisabled }: ConfigureAlertStepProps) => {
   const { control, watch, setValue, trigger, formState } = useFormContext<
@@ -33,22 +51,6 @@ export const ConfigurePitrStep = ({ isFormDisabled }: ConfigureAlertStepProps) =
   const { t } = useTranslation('translation', {
     keyPrefix: TRANSLATION_KEY_PREFIX
   });
-
-  const UNIT_OPTIONS: ReactSelectOption[] = [
-    {
-      label: t('seconds', { keyPrefix: I18N_DURATION_KEY_PREFIX }),
-      value: DurationUnit.SECOND
-    },
-    {
-      label: t('minutes', { keyPrefix: I18N_DURATION_KEY_PREFIX }),
-      value: DurationUnit.MINUTE
-    },
-    {
-      label: t('hours', { keyPrefix: I18N_DURATION_KEY_PREFIX }),
-      value: DurationUnit.HOUR
-    },
-    { label: t('days', { keyPrefix: I18N_DURATION_KEY_PREFIX }), value: DurationUnit.DAY }
-  ];
 
   const pitrRetentionPeriodValue = watch('pitrRetentionPeriodValue');
   const pitrRetentionPeriodUnit = watch('pitrRetentionPeriodUnit')?.value;
@@ -125,7 +127,7 @@ export const ConfigurePitrStep = ({ isFormDisabled }: ConfigureAlertStepProps) =
               control={control}
               name="pitrRetentionPeriodUnit"
               onChange={handlePitrRetentionPeriodUnitChange}
-              options={UNIT_OPTIONS}
+              options={PITR_RETENTION_PERIOD_UNIT_OPTIONS}
               autoSizeMinWidth={200}
               maxWidth="100%"
               rules={{ required: t('error.pitrRetentionPeriodUnitRequired') }}

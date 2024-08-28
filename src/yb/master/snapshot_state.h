@@ -115,10 +115,10 @@ class SnapshotState : public StateWithTablets {
   // The `options` argument for `ToPB` and `ToEntryPB` controls which entry types are serialized.
   // Pass `nullopt` to serialize all entry types.
   Status ToPB(
-      SnapshotInfoPB* out, ListSnapshotsDetailOptionsPB options) const;
+      SnapshotInfoPB* out, const ListSnapshotsDetailOptionsPB& options) const;
   Status ToEntryPB(
       SysSnapshotEntryPB* out, ForClient for_client,
-      ListSnapshotsDetailOptionsPB options) const;
+      const ListSnapshotsDetailOptionsPB& options) const;
   Status StoreToWriteBatch(docdb::KeyValueWriteBatchPB* out);
   Status TryStartDelete();
   bool delete_started() const;
@@ -155,6 +155,13 @@ class SnapshotState : public StateWithTablets {
 
 Result<dockv::KeyBytes> EncodedSnapshotKey(
     const TxnSnapshotId& id, SnapshotCoordinatorContext* context);
+
+class ListSnapshotsDetailOptionsFactory {
+ public:
+  static ListSnapshotsDetailOptionsPB CreateWithNoDetails();
+
+  ListSnapshotsDetailOptionsFactory() = delete;
+};
 
 } // namespace master
 } // namespace yb

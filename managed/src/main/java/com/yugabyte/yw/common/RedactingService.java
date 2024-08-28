@@ -6,12 +6,15 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.jayway.jsonpath.DocumentContext;
 import com.jayway.jsonpath.JsonPath;
+import com.jayway.jsonpath.PathNotFoundException;
 import com.yugabyte.yw.common.audit.AuditService;
 import java.util.List;
 import java.util.stream.Collectors;
 import javax.inject.Singleton;
+import lombok.extern.slf4j.Slf4j;
 
 @Singleton
+@Slf4j
 public class RedactingService {
 
   public static final String SECRET_REPLACEMENT = "REDACTED";
@@ -92,6 +95,7 @@ public class RedactingService {
           // LDAP - DB Universe Sync
           .add("$..dbuserPassword")
           .add("$..ldapBindPassword")
+          .add("$..ysql_hba_conf_csv")
           .build();
 
   // List of json paths to any secret fields we want to redact.
@@ -111,10 +115,24 @@ public class RedactingService {
 
     switch (target) {
       case APIS:
-        SECRET_JSON_PATHS_APIS.forEach(path -> context.set(path, SECRET_REPLACEMENT));
+        SECRET_JSON_PATHS_APIS.forEach(
+            path -> {
+              try {
+                context.set(path, SECRET_REPLACEMENT);
+              } catch (PathNotFoundException e) {
+                log.trace("skip redacting secret path {} - not present", path.getPath());
+              }
+            });
         break;
       case LOGS:
-        SECRET_JSON_PATHS_LOGS.forEach(path -> context.set(path, SECRET_REPLACEMENT));
+        SECRET_JSON_PATHS_LOGS.forEach(
+            path -> {
+              try {
+                context.set(path, SECRET_REPLACEMENT);
+              } catch (PathNotFoundException e) {
+                log.trace("skip redacting secret path {} - not present", path.getPath());
+              }
+            });
         break;
       default:
         throw new IllegalArgumentException("Target " + target.name() + " is not supported");

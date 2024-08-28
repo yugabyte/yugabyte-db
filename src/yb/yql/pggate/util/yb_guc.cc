@@ -29,7 +29,7 @@ bool suppress_nonpg_logs = false;
 
 bool yb_binary_restore = false;
 
-bool yb_ignore_heap_pg_class_oids = true;
+bool yb_ignore_pg_class_oids = true;
 
 bool yb_pushdown_strict_inequality = true;
 

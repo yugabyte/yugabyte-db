@@ -29,4 +29,7 @@ public class CustomerConfigPasswordPolicyData extends CustomerConfigData {
   @ApiModelProperty(value = "Minimal number of special characters", example = "1")
   @Min(value = 0)
   private int minSpecialCharacters = 1;
+
+  @ApiModelProperty(value = "Dis-allowed characters", example = "`")
+  private String disallowedCharacters = "`";
 }

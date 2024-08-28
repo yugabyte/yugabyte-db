@@ -13,21 +13,38 @@
 
 // Interface definitions for a vector index.
 
-#include "yb/vector/distance.h"
 #include "yb/common/vector_types.h"
+
+#include "yb/vector/distance.h"
+#include "yb/vector/coordinate_types.h"
 
 #pragma once
 
 namespace yb::vectorindex {
 
-class VectorIndexReader {
+template<IndexableVectorType Vector>
+class VectorIndexReaderIf {
  public:
-  virtual ~VectorIndexReader() = default;
+  virtual ~VectorIndexReaderIf() = default;
+
   virtual std::vector<VertexWithDistance> Search(
-      const FloatVector& query_vector, size_t max_num_results) const = 0;
+      const Vector& query_vector, size_t max_num_results) const = 0;
+};
+
+template<IndexableVectorType Vector>
+class VectorIndexWriterIf {
+ public:
+  virtual ~VectorIndexWriterIf() = default;
+
+  // Reserves capacity for this number of vectors.
+  virtual void Reserve(size_t num_vectors) = 0;
+
+  virtual Status Insert(VertexId vertex_id, const Vector& vector) = 0;
 
   // Returns the vector with the given id, or an empty vector if it does not exist.
-  virtual FloatVector GetVector(VertexId vertex_id) const = 0;
+  virtual Vector GetVector(VertexId vertex_id) const = 0;
 };
+
+using FloatVectorIndexReader = VectorIndexReaderIf<FloatVector>;
 
 }  // namespace yb::vectorindex

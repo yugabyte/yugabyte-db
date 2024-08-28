@@ -942,15 +942,55 @@ MigrateSchemaTaskInfo:
       type: array
       items:
         $ref: '#/ErrorsAndSuggestionsDetails'
+    current_analysis_report:
+      $ref: '#/SchemaAnalysisReport'
+    analysis_history:
+      type: array
+      items:
+        $ref: '#/SchemaAnalysisReport'
     sql_objects:
       type: array
       items:
         $ref: '#/SqlObjectsDetails'
+SchemaAnalysisReport:
+  title: Schema Analysis report
+  description: Voyager data migration metrics details
+  type: object
+  properties:
+    unsupported_functions:
+      type: array
+      items:
+        $ref: '#/UnsupportedSqlWithDetails'
+    unsupported_features:
+      type: array
+      items:
+        $ref: '#/UnsupportedSqlWithDetails'
+    unsupported_datatypes:
+      type: array
+      items:
+        $ref: '#/UnsupportedSqlWithDetails'
+    recommended_refactoring:
+      $ref: '#/RecommendedRefactoringGraph'
+UnsupportedSqlWithDetails:
+  title: Schema for Suggested refactoring tab in Migrate Schema page
+  description: Schema for Suggested refactoring tab in Migrate Schema page
+  type: object
+  properties:
+    suggestions_errors:
+      type: array
+      items:
+        $ref: '#/ErrorsAndSuggestionsDetails'
+    unsupported_type:
+      type: string
+    count:
+      type: integer
 ErrorsAndSuggestionsDetails:
   title: Errors and Suggestions details
   description: Errors and suggestions details
   type: object
   properties:
+    issueType:
+      type: string
     objectType:
       type: string
     objectName:

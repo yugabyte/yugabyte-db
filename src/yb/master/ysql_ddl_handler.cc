@@ -117,7 +117,8 @@ bool CatalogManager::CreateOrUpdateDdlTxnVerificationState(
         << "Transaction " << txn << " is already complete, but received request to verify table "
         << table;
     LOG(INFO) << "Enqueuing table " << table->ToString()
-              << " to the list of tables being verified for transaction " << txn;
+              << " to the list of tables being verified for transaction " << txn
+              << ", txn_state: " << state->txn_state << ", state: " << state->state;
     state->tables.push_back(table);
     return false;
   }
@@ -173,20 +174,22 @@ Status CatalogManager::YsqlTableSchemaChecker(TableInfoPtr table,
         table->ToString(), txn, is_committed.status());
   }
 
-  return YsqlDdlTxnCompleteCallback(pb_txn_id, is_committed.get(), epoch);
+  return YsqlDdlTxnCompleteCallback(pb_txn_id, is_committed.get(), epoch, __FUNCTION__);
 }
 
 Status CatalogManager::YsqlDdlTxnCompleteCallback(const string& pb_txn_id,
                                                   bool is_committed,
-                                                  const LeaderEpoch& epoch) {
+                                                  const LeaderEpoch& epoch,
+                                                  const std::string& debug_caller_info) {
   SCHECK(!pb_txn_id.empty(), IllegalState,
-      "YsqlDdlTxnCompleteCallback called without transaction id");
+      Format("YsqlDdlTxnCompleteCallback called without transaction id: $0", debug_caller_info));
   SleepFor(MonoDelta::FromMicroseconds(RandomUniformInt<int>(0,
     FLAGS_TEST_ysql_max_random_delay_before_ddl_verification_usecs)));
 
   auto txn = VERIFY_RESULT(FullyDecodeTransactionId(pb_txn_id));
   LOG(INFO) << "YsqlDdlTxnCompleteCallback for transaction "
-            << txn << " is_committed: " << (is_committed ? "true" : "false");
+            << txn << " is_committed: " << (is_committed ? "true" : "false")
+            << ", debug_caller_info " << debug_caller_info;
 
   vector<TableInfoPtr> tables;
   std::unordered_set<TableId> processed_tables;
@@ -287,7 +290,7 @@ Status CatalogManager::ReportYsqlDdlTxnStatus(
   const auto& req_txn = req->transaction_id();
   SCHECK(!req_txn.empty(), IllegalState,
       "Received ReportYsqlDdlTxnStatus request without transaction id");
-  return YsqlDdlTxnCompleteCallback(req_txn, req->is_committed(), epoch);
+  return YsqlDdlTxnCompleteCallback(req_txn, req->is_committed(), epoch, __FUNCTION__);
 }
 
 struct YsqlTableDdlTxnState {
@@ -311,11 +314,10 @@ Status CatalogManager::YsqlDdlTxnCompleteCallbackInternal(
             << " is already complete, ignoring";
     return Status::OK();
   }
-  LOG(INFO) << "YsqlDdlTxnCompleteCallback for " << id
-            << " for transaction " << txn_id
-            << ": Success: " << (success ? "true" : "false")
-            << " ysql_ddl_txn_verifier_state: "
-            << l->ysql_ddl_txn_verifier_state().DebugString();
+  LOG_WITH_FUNC(INFO) << id << " for transaction " << txn_id
+                      << ": Success: " << (success ? "true" : "false")
+                      << " ysql_ddl_txn_verifier_state: "
+                      << l->ysql_ddl_txn_verifier_state().DebugString();
 
   auto& metadata = l.mutable_data()->pb;
 
@@ -590,7 +592,8 @@ Status CatalogManager::TriggerDdlVerificationIfNeeded(
     auto state = verifier_state->state;
     if (state != YsqlDdlVerificationState::kDdlPostProcessingFailed) {
       VLOG(3) << "Not triggering Ddl Verification as it is in progress " << txn
-              << ", state: " << state;
+              << ", txn_state: " << verifier_state->txn_state
+              << ", state: " << verifier_state->state;
       return Status::OK();
     }
 
@@ -638,8 +641,9 @@ Status CatalogManager::TriggerDdlVerificationIfNeeded(
           continue;
         }
         return background_tasks_thread_pool_->SubmitFunc(
-          [this, table, pb_txn_id, is_committed, epoch]() {
-              WARN_NOT_OK(YsqlDdlTxnCompleteCallback(pb_txn_id, is_committed, epoch),
+          [this, table, pb_txn_id, is_committed, epoch, debug_caller_info = __FUNCTION__]() {
+              WARN_NOT_OK(YsqlDdlTxnCompleteCallback(pb_txn_id, is_committed, epoch,
+                                                     debug_caller_info),
                           Format("YsqlDdlTxnCompleteCallback failed, table: $0",
                                  table->id()));
           }
