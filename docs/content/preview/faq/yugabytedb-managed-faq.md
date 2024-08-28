@@ -242,7 +242,7 @@ psql --host=<HOST_ADDRESS> --port=5433 --username=<DB USER> \
 --set=sslrootcert=<ROOT_CERT_PATH>
 ```
 
-For detailed steps for configuring other popular third party tools, see [GUI clients](../../integrations/tools/).
+For detailed steps for configuring other popular third party tools, see [GUI clients](/preview/integrations/tools/).
 
   {{% /tab %}}
 

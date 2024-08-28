@@ -117,7 +117,7 @@ The following libraries are officially supported by YugabyteDB.
 | [YugabyteDB Java Driver for YCQL (4.15)](java/ycql-4.x/) | Full | [CRUD](java/ycql-4.x) |
 | [Ebean](java/ebean/) | Full | [CRUD](java/ebean/) |
 | [Hibernate](java/hibernate/) | Full | [CRUD](java/hibernate/) |
-| [Spring Data YugabyteDB](/preview/integrations/spring-framework/sdyb/) | Full | [CRUD](/previewspring-framework/sdyb/#examples) |
+| [Spring Data YugabyteDB](/preview/integrations/spring-framework/sdyb/) | Full | [CRUD](/preview/integrations/spring-framework/sdyb/#examples) |
 | [Spring Data JPA](/preview/integrations/spring-framework/sd-jpa/) | Full | [CRUD](/preview/integrations/spring-framework/sd-jpa/#fundamentals) |
 | [MyBatis](java/mybatis/) | Full | [CRUD](java/mybatis/) |
 <!-- | Micronaut | Beta |  | -->
