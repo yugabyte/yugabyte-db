@@ -5301,9 +5301,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected SubTaskGroup createWaitForDurationSubtask(Universe universe, Duration waitTime) {
+    return createWaitForDurationSubtask(universe.getUniverseUUID(), waitTime);
+  }
+
+  protected SubTaskGroup createWaitForDurationSubtask(UUID universeUUID, Duration waitTime) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("WaitForDuration");
     WaitForDuration.Params params = new WaitForDuration.Params();
-    params.setUniverseUUID(universe.getUniverseUUID());
+    params.setUniverseUUID(universeUUID);
     params.waitTime = waitTime;
 
     WaitForDuration task = createTask(WaitForDuration.class);

@@ -102,7 +102,7 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
     }
   }
 
-  void ExecuteStmtAndCheckMutationCounts(
+  Status ExecuteStmtAndCheckMutationCounts(
       const std::function<void()>& stmt_executor,
       const std::unordered_map<TableId, uint64>& expected_table_mutations) {
     std::unordered_map<TableId, uint64> table_mutations_in_cql_table_before;
@@ -119,19 +119,23 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
     std::this_thread::sleep_for(wait_for_mutation_reporting_and_persisting_ms * 1ms);
 
     std::unordered_map<TableId, uint64> table_mutations_in_cql_table_after;
-    GetTableMutationsFromCQLTable(&table_mutations_in_cql_table_after);
+    RETURN_NOT_OK(WaitFor([this, &table_mutations_in_cql_table_before,
+                           &table_mutations_in_cql_table_after,
+                           &expected_table_mutations]() -> Result<bool> {
+      GetTableMutationsFromCQLTable(&table_mutations_in_cql_table_after);
+      LOG(INFO) << "table_mutations_in_cql_table_before: "
+                << yb::ToString(table_mutations_in_cql_table_before)
+                << ", table_mutations_in_cql_table_after: "
+                << yb::ToString(table_mutations_in_cql_table_after);
+      for (const auto& [table_id, expected_mutations] : expected_table_mutations) {
+        if (table_mutations_in_cql_table_after[table_id]
+            - table_mutations_in_cql_table_before[table_id] != expected_mutations)
+          return false;
+      }
+      return true;
+    }, 5s * kTimeMultiplier, "Check mutations count"));
 
-    LOG(INFO) << "table_mutations_in_cql_table_before: "
-              << yb::ToString(table_mutations_in_cql_table_before)
-              << ", table_mutations_in_cql_table_after: "
-              << yb::ToString(table_mutations_in_cql_table_after);
-
-    for (const auto& [table_id, expected_mutations] : expected_table_mutations) {
-      ASSERT_EQ(
-          table_mutations_in_cql_table_after[table_id] -
-              table_mutations_in_cql_table_before[table_id],
-          expected_mutations);
-    }
+    return Status::OK();
   }
 
   Status WaitForTableReltuples(PGConn& conn, const std::string& table_name,
@@ -157,6 +161,8 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
 } // namespace
 
 TEST_F(PgAutoAnalyzeTest, CheckTableMutationsCount) {
+  // Set auto analyze threshold to a large number to prevent running ANALYZEs in this test.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_auto_analyze_threshold) = 100000;
   auto conn = ASSERT_RESULT(Connect());
   std::string table1_name = "accounts";
   std::string table2_name = "depts";
@@ -174,95 +180,95 @@ TEST_F(PgAutoAnalyzeTest, CheckTableMutationsCount) {
   const auto table2_id = tables.front().table_id();
 
   // 1. INSERT multiple rows
-  ExecuteStmtAndCheckMutationCounts(
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
       [&conn, table1_name] {
         ASSERT_OK(conn.ExecuteFormat(
             "INSERT INTO $0 SELECT s, s, s, s FROM generate_series(1, 100) AS s", table1_name));
       },
-      {{table1_id, 100}, {table2_id, 0}});
+      {{table1_id, 100}, {table2_id, 0}}));
 
   // 2. SELECTs should have no effect. Test for both pure reads and explicit row-locking SELECTs.
-  ExecuteStmtAndCheckMutationCounts(
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
       [&conn, table1_name] {
         ASSERT_RESULT(conn.FetchFormat("SELECT * FROM $0 WHERE h1 <= 10", table1_name));
       },
-      {{table1_id, 0}, {table2_id, 0}});
+      {{table1_id, 0}, {table2_id, 0}}));
 
-  ExecuteStmtAndCheckMutationCounts(
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
       [&conn, table1_name] {
         ASSERT_RESULT(conn.FetchFormat("SELECT * FROM $0 WHERE h1 <= 10 FOR UPDATE", table1_name));
       },
-      {{table1_id, 0}, {table2_id, 0}});
+      {{table1_id, 0}, {table2_id, 0}}));
 
   // 3. UPDATE multiple rows
-  ExecuteStmtAndCheckMutationCounts(
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
       [&conn, table1_name] {
         ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET v1 = v1+5 WHERE h1 > 50", table1_name));
       },
-      {{table1_id, 50}, {table2_id, 0}});
+      {{table1_id, 50}, {table2_id, 0}}));
 
   // 4. UPDATE multiple cols of 1 row in a single statement
-  ExecuteStmtAndCheckMutationCounts(
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
       [&conn, table1_name] {
         ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET v1=v1+5, v2=v2-5 WHERE h1 = 5", table1_name));
       },
-      {{table1_id, 1}, {table2_id, 0}});
+      {{table1_id, 1}, {table2_id, 0}}));
 
   // 5. DELETE multiple rows
-  ExecuteStmtAndCheckMutationCounts(
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
       [&conn, table1_name] {
         ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE h1 <= 10", table1_name));
       },
-      {{table1_id, 10}, {table2_id, 0}});
+      {{table1_id, 10}, {table2_id, 0}}));
 
   // 6. UPDATE/ DELETE on non-existing rows
-  ExecuteStmtAndCheckMutationCounts(
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
       [&conn, table1_name] {
         ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET v1=v1+5 WHERE h1 <= 10", table1_name));
       },
-      {{table1_id, 0}, {table2_id, 0}});
+      {{table1_id, 0}, {table2_id, 0}}));
 
-  ExecuteStmtAndCheckMutationCounts(
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
       [&conn, table1_name] {
         ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE h1 <= 10", table1_name));
       },
-      {{table1_id, 0}, {table2_id, 0}});
+      {{table1_id, 0}, {table2_id, 0}}));
 
   // 7. INSERT and UPDATE which fail
 
   // Insert duplicate key
-  ExecuteStmtAndCheckMutationCounts(
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
       [&conn, table1_name] {
         ASSERT_NOK(conn.ExecuteFormat("INSERT INTO $0 VALUES (11, 11, 11, 11)", table1_name));
       },
-      {{table1_id, 0}, {table2_id, 0}});
+      {{table1_id, 0}, {table2_id, 0}}));
 
   // Only some rows in this INSERT are duplicate, but they cause the whole statement to fail
-  ExecuteStmtAndCheckMutationCounts(
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
       [&conn, table1_name] {
         ASSERT_NOK(conn.ExecuteFormat(
           "INSERT INTO $0 SELECT s, s, s, s FROM generate_series(90, 110) AS s", table1_name));
       },
-      {{table1_id, 0}, {table2_id, 0}});
+      {{table1_id, 0}, {table2_id, 0}}));
 
-  ExecuteStmtAndCheckMutationCounts(
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
       [&conn, table1_name] {
         ASSERT_NOK(conn.ExecuteFormat("UPDATE $0 SET v1 = 1/0 WHERE h1=11", table1_name));
       },
-      {{table1_id, 0}, {table2_id, 0}});
+      {{table1_id, 0}, {table2_id, 0}}));
 
 
   // 8. Transaction block: rolled back savepoints shouldn't be counted
 
   // Uncommitted entries shouldn't be counted
-  ExecuteStmtAndCheckMutationCounts(
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
       [&conn, table1_name] {
         ASSERT_OK(conn.ExecuteFormat("BEGIN"));
         ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET v1=v1+5 WHERE h1 > 90", table1_name));
       },
-      {{table1_id, 0}, {table2_id, 0}});
+      {{table1_id, 0}, {table2_id, 0}}));
 
-  ExecuteStmtAndCheckMutationCounts(
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
       [&conn, table1_name] {
         ASSERT_OK(conn.ExecuteFormat("SAVEPOINT a"));
         ASSERT_OK(conn.Execute(
@@ -280,27 +286,27 @@ TEST_F(PgAutoAnalyzeTest, CheckTableMutationsCount) {
           Format("UPDATE $0 SET v1=v1+5 WHERE h1 = 14", table1_name)));
         ASSERT_OK(conn.ExecuteFormat("ROLLBACK TO c"));
       },
-      {{table1_id, 0}, {table2_id, 0}});
+      {{table1_id, 0}, {table2_id, 0}}));
 
   // Only writes that have committed should be counted i.e., those done as part of rolled back
   // savepoints shouldn't be counted.
-  ExecuteStmtAndCheckMutationCounts(
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
       [&conn, table1_name] {
         ASSERT_OK(conn.ExecuteFormat("COMMIT"));
       },
-      {{table1_id, 11}, {table2_id, 0}});
+      {{table1_id, 11}, {table2_id, 0}}));
 
   // 9. Transaction block: aborted transactions shouldn't be counted
-  ExecuteStmtAndCheckMutationCounts(
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
       [&conn, table1_name] {
         ASSERT_OK(conn.ExecuteFormat("BEGIN"));
         ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET v1=v1+5 WHERE h1 > 90", table1_name));
         ASSERT_OK(conn.ExecuteFormat("ROLLBACK"));
       },
-      {{table1_id, 0}, {table2_id, 0}});
+      {{table1_id, 0}, {table2_id, 0}}));
 
   // 10. Transaction block: test writes to multiple tables
-  ExecuteStmtAndCheckMutationCounts(
+  ASSERT_OK(ExecuteStmtAndCheckMutationCounts(
       [&conn, table1_name, table2_name] {
         ASSERT_OK(conn.ExecuteFormat("BEGIN"));
         ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET v1=v1+5 WHERE h1 > 90", table1_name));
@@ -308,7 +314,7 @@ TEST_F(PgAutoAnalyzeTest, CheckTableMutationsCount) {
           "INSERT INTO $0 SELECT s, s, s, s FROM generate_series(1, 5) AS s", table2_name));
         ASSERT_OK(conn.ExecuteFormat("COMMIT"));
       },
-      {{table1_id, 10}, {table2_id, 5}});
+      {{table1_id, 10}, {table2_id, 5}}));
 
   // TODO(auto-analyze, #19475): Test the following scenarios:
   // 1. Pg connections to more than 1 node.

@@ -1132,4 +1132,17 @@ Result<std::vector<NamespaceId>> XClusterOutboundReplicationGroup::GetNamespaces
   return namespace_ids;
 }
 
+Result<std::string> XClusterOutboundReplicationGroup::GetStreamId(
+    const NamespaceId& namespace_id, const TableId& table_id) const {
+  SharedLock mutex_lock(mutex_);
+  auto l = VERIFY_RESULT(LockForRead());
+
+  auto* ns_info = VERIFY_RESULT(GetNamespaceInfo(namespace_id));
+  auto* table_info = FindOrNull(ns_info->table_infos(), table_id);
+
+  SCHECK(table_info, NotFound, "Table $0 not found in $1", table_id, namespace_id);
+
+  return table_info->stream_id();
+}
+
 }  // namespace yb::master

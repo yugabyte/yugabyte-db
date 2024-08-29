@@ -4,7 +4,7 @@ copyright = "Yugabyte, Inc."
 privacy_policy = "https://www.yugabyte.com/privacy-policy/"
 kapa_ai = true
 drift_snippet = true
-search_banner = true
+search_banner = false
 version_menu = "Releases"
 
 # Change version_menu_pagelinks to true to go to the same page when you switch

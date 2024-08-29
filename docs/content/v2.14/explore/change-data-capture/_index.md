@@ -98,7 +98,7 @@ The Debezium connector for YugabyteDB pulls data from YugabyteDB and publishes i
 
 ![CDC Pipeline with Debezium and Kafka](/images/architecture/cdc-2dc/cdc-pipeline.png)
 
-See [Debezium connector for YugabyteDB](./debezium-connector-yugabytedb/) to learn more, and [Running Debezium with YugabyteDB](../../integrations/cdc/debezium/) to get started with the Debezium connector for YugabyteDB.
+See [Debezium connector for YugabyteDB](./debezium-connector-yugabytedb/) to learn more, and [Running Debezium with YugabyteDB](/preview/integrations/cdc/debezium/) to get started with the Debezium connector for YugabyteDB.
 
 ## TServer configuration
 

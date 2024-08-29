@@ -28,6 +28,7 @@ import "yb/common/common.proto";
 
 message CDCStreamInfoPB {
   optional bytes stream_id = 1;
+  // For CDCSDK, table_id contains the qualified list of tables for the stream.
   repeated bytes table_id = 2;
   repeated CDCStreamOptionsPB options = 3;
   optional bytes namespace_id = 4;
@@ -47,6 +48,10 @@ message CDCStreamInfoPB {
   // This field controls if dynamic tables should automatically be added to the CDC stream or not.
   // If set to true, dynamic table wont get added to the CDC stream.
   optional bool cdcsdk_disable_dynamic_table_addition = 12;
+
+  // This field stores the list of user created tables that have been removed from CDCSDK
+  // stream.
+  repeated bytes unqualified_table_id = 13;
 }
 
 message ValidateReplicationInfoRequestPB {
@@ -145,6 +150,7 @@ message GetCDCDBStreamInfoResponsePB {
   optional MasterErrorPB error = 1;
   repeated TableInfo table_info = 2;
   optional bytes namespace_id = 3;
+  repeated TableInfo unqualified_table_info = 4;
 }
 
 message UpdateCDCStreamRequestPB {
