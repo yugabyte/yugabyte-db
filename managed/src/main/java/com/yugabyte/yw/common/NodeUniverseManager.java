@@ -385,6 +385,46 @@ public class NodeUniverseManager extends DevopsBase {
       String ysqlCommand,
       long timeoutSec,
       boolean authEnabled) {
+    return runYsqlCommand(
+        node,
+        universe,
+        dbName,
+        ysqlCommand,
+        timeoutSec,
+        authEnabled,
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.enableConnectionPooling,
+        universe.getUniverseDetails().communicationPorts.internalYsqlServerRpcPort);
+  }
+
+  public ShellResponse runYsqlCommand(
+      NodeDetails node,
+      Universe universe,
+      String dbName,
+      String ysqlCommand,
+      boolean enableConnectionPooling,
+      int internalYsqlServerRpcPort) {
+    boolean authEnabled =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.isYSQLAuthEnabled();
+    return runYsqlCommand(
+        node,
+        universe,
+        dbName,
+        ysqlCommand,
+        confGetter.getConfForScope(universe, UniverseConfKeys.ysqlTimeoutSecs),
+        authEnabled,
+        enableConnectionPooling,
+        internalYsqlServerRpcPort);
+  }
+
+  public ShellResponse runYsqlCommand(
+      NodeDetails node,
+      Universe universe,
+      String dbName,
+      String ysqlCommand,
+      long timeoutSec,
+      boolean authEnabled,
+      boolean enableConnectionPooling,
+      int internalYsqlServerRpcPort) {
     Cluster curCluster = universe.getCluster(node.placementUuid);
     if (curCluster.userIntent.providerType == CloudType.local) {
       return localNodeUniverseManager.runYsqlCommand(
@@ -409,7 +449,11 @@ public class NodeUniverseManager extends DevopsBase {
       bashCommand.add(node.cloudInfo.private_ip);
     }
     bashCommand.add("-p");
-    bashCommand.add(String.valueOf(node.ysqlServerRpcPort));
+    if (enableConnectionPooling) {
+      bashCommand.add(String.valueOf(internalYsqlServerRpcPort));
+    } else {
+      bashCommand.add(String.valueOf(node.ysqlServerRpcPort));
+    }
     bashCommand.add("-U");
     bashCommand.add("yugabyte");
     if (StringUtils.isNotEmpty(dbName)) {

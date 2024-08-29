@@ -833,6 +833,12 @@ public class UniverseCRUDHandler {
               "Connection pooling is not allowed. Please set runtime flag"
                   + " 'yb.universe.allow_connection_pooling' to true.");
         }
+
+        if (taskParams.communicationPorts.ysqlServerRpcPort
+            == taskParams.communicationPorts.internalYsqlServerRpcPort) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "YSQL RPC port cannot be the same as internal YSQL RPC port");
+        }
       }
 
       // update otel port
