@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugaByteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -226,8 +226,8 @@ Status InitPgGateImpl(const YBCPgTypeEntity* data_type_table,
   });
 }
 
-Status PgInitSessionImpl(YBCPgExecStatsState* session_stats) {
-  return WithMaskedYsqlSignals([session_stats] { return pgapi->InitSession(session_stats); });
+Status PgInitSessionImpl(YBCPgExecStatsState& session_stats) {
+  return WithMaskedYsqlSignals([&session_stats] { return pgapi->InitSession(session_stats); });
 }
 
 // ql_value is modified in-place.
@@ -566,7 +566,7 @@ void YBCRestorePgSessionState(const YBCPgSessionState* session_data) {
 }
 
 YBCStatus YBCPgInitSession(YBCPgExecStatsState* session_stats) {
-  return ToYBCStatus(PgInitSessionImpl(session_stats));
+  return ToYBCStatus(PgInitSessionImpl(*session_stats));
 }
 
 uint64_t YBCPgGetSessionID() { return pgapi->GetSessionID(); }
