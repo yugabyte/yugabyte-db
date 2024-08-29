@@ -49,6 +49,8 @@ type: docs
 
 The [Yugabyte Psycopg2 smart driver](https://github.com/yugabyte/psycopg2) is a Python driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2), with additional [connection load balancing](../../smart-drivers/) features.
 
+A [binary version](https://pypi.org/project/psycopg2-yugabytedb-binary/#files) is available from PyPI.
+
 {{< note title="YugabyteDB Aeon" >}}
 
 To use smart driver load balancing features when connecting to clusters in YugabyteDB Aeon, applications must be deployed in a VPC that has been peered with the cluster VPC. For applications that access the cluster from outside the VPC network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from outside the VPC network fall back to the upstream driver behaviour automatically. For more information, refer to [Using smart drivers with YugabyteDB Aeon](../../smart-drivers/#using-smart-drivers-with-yugabytedb-aeon).
