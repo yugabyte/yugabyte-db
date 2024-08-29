@@ -7,7 +7,7 @@ menu:
   preview_integrations:
     identifier: retool
     parent: development-platforms
-    weight: 910
+    weight: 300
 type: docs
 ---
 

@@ -87,6 +87,7 @@ Version refers to the latest tested version of the integration.
 
 | IDE         | Version | Support | Tutorial |
 | :---------- | :------ | :------ | :------- |
+| Budibase    |         | Partial | [Budibase](budibase/) |
 | Caspio      |         | Partial | [Caspio](caspio/) |
 | Retool      | 3.1     | Partial | [Retool](retool/) |
 | Superblocks |         | Partial | [Superblocks](superblocks/) |

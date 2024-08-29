@@ -77,6 +77,7 @@ boolean
 booleans
 Bootsnap
 browsable
+Budibase
 bugfix
 bugfixed
 bugfixes
