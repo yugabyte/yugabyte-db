@@ -259,6 +259,9 @@ DECLARE_bool(ysql_yb_enable_alter_table_rewrite);
 DEFINE_test_flag(bool, cdc_sdk_fail_setting_retention_barrier, false,
     "Fail setting retention barrier on newly created tablets");
 
+DEFINE_RUNTIME_bool(reject_writes_when_disk_full, true,
+    "Reject incoming writes to the tablet if we are running out of disk space.");
+
 METRIC_DEFINE_gauge_uint64(server, ts_split_op_added, "Split OPs Added to Leader",
     yb::MetricUnit::kOperations, "Number of split operations added to the leader's Raft log.");
 
@@ -2201,6 +2204,13 @@ Status TabletServiceImpl::PerformWrite(
     // This doesn't need to go to Raft log.
     MakeRpcOperationCompletionCallback(std::move(*context), resp, server_->Clock())(Status::OK());
     return Status::OK();
+  }
+
+  if (FLAGS_reject_writes_when_disk_full) {
+    SCHECK(
+        tablet.peer->HasSufficientDiskSpaceForWrite(), IOError,
+        "Write to tablet $0 rejected. Node $1 has insufficient disk space", req->tablet_id(),
+        tablet.peer->tablet_metadata()->fs_manager()->uuid());
   }
 
   // For postgres requests check that the syscatalog version matches.

@@ -94,6 +94,7 @@ DECLARE_int32(rpc_workers_limit);
 DECLARE_uint64(transaction_manager_workers_limit);
 DECLARE_bool(cdc_populate_end_markers_transactions);
 DECLARE_string(vmodule);
+DECLARE_bool(reject_writes_when_disk_full);
 
 METRIC_DECLARE_entity(cdc);
 METRIC_DECLARE_gauge_int64(last_read_opid_index);
@@ -1945,6 +1946,7 @@ class CDCServiceTestMinSpace : public CDCServiceTest {
 };
 
 TEST_F(CDCServiceTestMinSpace, TestLogRetentionByOpId_MinSpace) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_reject_writes_when_disk_full) = false;
   docdb::DisableYcqlPackedRow();
   stream_id_ = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id()));
 

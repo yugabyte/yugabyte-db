@@ -487,6 +487,8 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   Preparer* DEBUG_GetPreparer();
 
+  bool HasSufficientDiskSpaceForWrite();
+
  protected:
   friend class RefCountedThreadSafe<TabletPeer>;
   friend class TabletPeerTest;

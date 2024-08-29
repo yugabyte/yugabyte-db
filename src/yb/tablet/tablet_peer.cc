@@ -1818,5 +1818,12 @@ TabletBootstrapFlushState TabletPeer::TEST_TabletBootstrapStateFlusherState() co
 
 Preparer* TabletPeer::DEBUG_GetPreparer() { return prepare_thread_.get(); }
 
+bool TabletPeer::HasSufficientDiskSpaceForWrite() {
+  if (log_) {
+    return log_->HasSufficientDiskSpaceForWrite();
+  }
+  return true;
+}
+
 }  // namespace tablet
 }  // namespace yb

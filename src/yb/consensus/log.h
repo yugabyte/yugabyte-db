@@ -335,6 +335,8 @@ class Log : public RefCountedThreadSafe<Log> {
 
   Status TEST_WriteCorruptedEntryBatchAndSync();
 
+  bool HasSufficientDiskSpaceForWrite();
+
  private:
   friend class LogTest;
   friend class LogTestBase;
@@ -663,6 +665,11 @@ class Log : public RefCountedThreadSafe<Log> {
   NewSegmentAllocationCallback new_segment_allocation_callback_;
 
   PreLogRolloverCallback pre_log_rollover_callback_;
+
+  std::atomic<CoarseTimePoint> last_disk_space_check_time_{CoarseTimePoint::min()};
+  std::atomic<bool> has_free_disk_space_{false};
+  std::atomic<uint32> disk_space_frequent_check_interval_sec_{0};
+  std::shared_timed_mutex disk_space_mutex_;
 
   DISALLOW_COPY_AND_ASSIGN(Log);
 };
