@@ -28,6 +28,7 @@ extern int MaxNumActiveUsersIndexBuilds;
 extern int IndexBuildScheduleInSec;
 extern char *ApiExtensionName;
 extern char *ApiGucPrefix;
+extern char *ClusterAdminRole;
 
 char *ApiDistributedSchemaName = "helio_api_distributed";
 char *DistributedExtensionName = "pg_helio_distributed";
@@ -231,6 +232,20 @@ SetupCluster(bool isInitialize)
 	if (ShouldRunSetupForVersion(lastUpgradeVersion, installedVersion, 1, 17, 1))
 	{
 		SetPermissionsForHelioReadOnlyRole();
+	}
+
+	if (ShouldRunSetupForVersion(lastUpgradeVersion, installedVersion, 1, 21, 0))
+	{
+		if (!isInitialize && ClusterAdminRole[0] != '\0')
+		{
+			StringInfo cmdStr = makeStringInfo();
+			bool isNull = false;
+			appendStringInfo(cmdStr,
+							 "GRANT helio_admin_role, helio_readonly_role TO %s WITH ADMIN OPTION;",
+							 quote_literal_cstr(ClusterAdminRole));
+			ExtensionExecuteQueryViaSPI(cmdStr->data, false, SPI_OK_UTILITY,
+										&isNull);
+		}
 	}
 
 	TriggerInvalidateClusterMetadata();

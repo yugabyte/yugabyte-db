@@ -308,6 +308,9 @@ bool SkipFailOnCollation = DEFAULT_SKIP_FAIL_ON_COLLATION;
 #define DEFAULT_ENABLE_USER_CRUD false
 bool EnableUserCrud = DEFAULT_ENABLE_USER_CRUD;
 
+#define DEFAULT_CLUSTER_ADMIN_ROLE ""
+char *ClusterAdminRole = DEFAULT_CLUSTER_ADMIN_ROLE;
+
 /* --------------------------------------------------------- */
 /* Top level exports */
 /* --------------------------------------------------------- */
@@ -846,6 +849,13 @@ InitApiConfigurations(char *prefix)
 		gettext_noop(
 			"Enables user crud through the data plane."),
 		NULL, &EnableUserCrud, DEFAULT_ENABLE_USER_CRUD,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomStringVariable(
+		"helio_api.clusterAdminRole",
+		gettext_noop(
+			"The cluster admin role."),
+		NULL, &ClusterAdminRole, DEFAULT_CLUSTER_ADMIN_ROLE,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 }
 

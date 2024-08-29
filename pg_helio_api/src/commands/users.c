@@ -502,104 +502,139 @@ helio_extension_get_users(PG_FUNCTION_ARGS)
 	}
 
 	char *userName = ParseGetUserSpec(PG_GETARG_PGBSON(0));
-	MemoryContext outerContext = CurrentMemoryContext;
-	MemoryContext spiContext = NULL;
-	StringInfo getUsersInfo = makeStringInfo();
-	appendStringInfo(getUsersInfo,
-					 "SELECT child.rolname AS child_role, parent.rolname AS parent_role " \
-					 "FROM pg_roles parent JOIN pg_auth_members am ON parent.oid = am.roleid " \
-					 "JOIN pg_roles child ON am.member = child.oid WHERE child.rolcanlogin = true " \
-					 "AND parent.rolname IN ('helio_admin_role', 'helio_readonly_role') AND child.rolname ");
+	const char *cmdStr = NULL;
+	Datum userInfoDatum;
 
-	if (userName != NULL)
+	if (userName == NULL)
 	{
-		appendStringInfo(getUsersInfo,
-						 "= '%s';",
-						 quote_identifier(userName));
+		cmdStr = FormatSqlQuery(
+			"WITH r AS (SELECT child.rolname::text AS child_role, parent.rolname::text AS parent_role FROM pg_roles parent JOIN pg_auth_members am ON parent.oid = am.roleid JOIN " \
+			"pg_roles child ON am.member = child.oid WHERE child.rolcanlogin = true AND parent.rolname IN ('helio_admin_role', 'helio_readonly_role') AND child.rolname NOT IN " \
+			"('helio_admin_role', 'helio_readonly_role')) SELECT ARRAY_AGG(row_get_bson(r)) FROM r;");
+		bool readOnly = true;
+		bool isNull = false;
+		userInfoDatum = ExtensionExecuteQueryViaSPI(cmdStr, readOnly,
+													SPI_OK_SELECT, &isNull);
 	}
 	else
 	{
-		appendStringInfo(getUsersInfo,
-						 "NOT IN ('helio_admin_role', 'helio_readonly_role');");
+		cmdStr = FormatSqlQuery(
+			"WITH r AS (SELECT child.rolname::text AS child_role, parent.rolname::text AS parent_role FROM pg_roles parent JOIN pg_auth_members am ON parent.oid = am.roleid JOIN " \
+			"pg_roles child ON am.member = child.oid WHERE child.rolcanlogin = true AND parent.rolname IN ('helio_admin_role', 'helio_readonly_role') AND child.rolname = $1) SELECT " \
+			"ARRAY_AGG(row_get_bson(r)) FROM r;");
+		int argCount = 1;
+		Oid argTypes[1];
+		Datum argValues[1];
+
+		argTypes[0] = TEXTOID;
+		argValues[0] = CStringGetTextDatum(userName);
+
+		bool readOnly = true;
+		bool isNull = false;
+		userInfoDatum = ExtensionExecuteQueryWithArgsViaSPI(cmdStr, argCount,
+															argTypes, argValues, NULL,
+															readOnly, SPI_OK_SELECT,
+															&isNull);
 	}
-
-	bool readOnly = true;
-
-	if (SPI_connect() != SPI_OK_CONNECT)
-	{
-		ereport(ERROR, (errmsg("could not connect to SPI manager")));
-	}
-
-	int spiErrorCode = SPI_execute(getUsersInfo->data, readOnly, 0);
-	if (spiErrorCode != SPI_OK_SELECT)
-	{
-		ereport(ERROR, (errmsg("could not run SPI query %d", spiErrorCode)));
-	}
-
-	spiContext = CurrentMemoryContext;
-	int nrows = SPI_processed;
-	TupleDesc tupdesc = SPI_tuptable->tupdesc;
-	SPITupleTable *tuptable = SPI_tuptable;
-
-	MemoryContextSwitchTo(outerContext);
 
 	pgbson_writer finalWriter;
 	PgbsonWriterInit(&finalWriter);
 
-	if (nrows > 0)
+	if (userInfoDatum == (Datum) 0)
+	{
+		PgbsonWriterAppendInt32(&finalWriter, "ok", 2, 1);
+		pgbson *result = PgbsonWriterGetPgbson(&finalWriter);
+		PG_RETURN_POINTER(result);
+	}
+
+	ArrayType *val_array = DatumGetArrayTypeP(userInfoDatum);
+	Datum *val_datums;
+	bool *val_is_null_marker;
+	int val_count;
+
+	bool arrayByVal = false;
+	int elementLength = -1;
+	Oid arrayElementType = ARR_ELEMTYPE(val_array);
+	deconstruct_array(val_array,
+					  arrayElementType, elementLength, arrayByVal,
+					  TYPALIGN_INT, &val_datums, &val_is_null_marker,
+					  &val_count);
+
+	if (val_count > 0)
 	{
 		pgbson_array_writer userArrayWriter;
 		PgbsonWriterStartArray(&finalWriter, "users", strlen("users"), &userArrayWriter);
-		for (int i = 0; i < nrows; i++)
+		for (int i = 0; i < val_count; i++)
 		{
-			HeapTuple tuple = tuptable->vals[i];
 			pgbson_writer userWriter;
 			PgbsonWriterInit(&userWriter);
 
-			char *childRole = SPI_getvalue(tuple, tupdesc, 1);
-			char *parentRole = SPI_getvalue(tuple, tupdesc, 2);
-			PgbsonWriterAppendUtf8(&userWriter, "_id", strlen("_id"), psprintf("admin.%s",
-																			   childRole));
-			PgbsonWriterAppendUtf8(&userWriter, "userId", strlen("userId"), psprintf(
-									   "admin.%s", childRole));
-			PgbsonWriterAppendUtf8(&userWriter, "user", strlen("user"), childRole);
-			PgbsonWriterAppendUtf8(&userWriter, "db", strlen("db"), "admin");
+			/* Convert Datum to a bson_t object */
+			pgbson *bson_doc = (pgbson *) DatumGetPointer(val_datums[i]);
+			bson_iter_t getIter;
+			PgbsonInitIterator(bson_doc, &getIter);
 
-			if (strcmp(parentRole, "helio_readonly_role") == 0)
+			/* Initialize iterator */
+			if (bson_iter_find(&getIter, "child_role"))
 			{
-				pgbson_array_writer roleArrayWriter;
-				PgbsonWriterStartArray(&userWriter, "roles", strlen("roles"),
-									   &roleArrayWriter);
-				pgbson_writer roleWriter;
-				PgbsonWriterInit(&roleWriter);
-				PgbsonWriterAppendUtf8(&roleWriter, "role", strlen("role"),
-									   "readAnyDatabase");
-				PgbsonWriterAppendUtf8(&roleWriter, "db", strlen("db"), "admin");
-				PgbsonArrayWriterWriteDocument(&roleArrayWriter, PgbsonWriterGetPgbson(
-												   &roleWriter));
-				PgbsonWriterEndArray(&userWriter, &roleArrayWriter);
+				if (BSON_ITER_HOLDS_UTF8(&getIter))
+				{
+					const char *childRole = bson_iter_utf8(&getIter, NULL);
+					PgbsonWriterAppendUtf8(&userWriter, "_id", strlen("_id"), psprintf(
+											   "admin.%s",
+											   childRole));
+					PgbsonWriterAppendUtf8(&userWriter, "userId", strlen("userId"),
+										   psprintf(
+											   "admin.%s", childRole));
+					PgbsonWriterAppendUtf8(&userWriter, "user", strlen("user"),
+										   childRole);
+					PgbsonWriterAppendUtf8(&userWriter, "db", strlen("db"), "admin");
+				}
 			}
-			else
+			if (bson_iter_find(&getIter, "parent_role"))
 			{
-				pgbson_array_writer roleArrayWriter;
-				PgbsonWriterStartArray(&userWriter, "roles", strlen("roles"),
-									   &roleArrayWriter);
-				pgbson_writer roleWriter;
-				PgbsonWriterInit(&roleWriter);
-				PgbsonWriterAppendUtf8(&roleWriter, "role", strlen("role"),
-									   "readWriteAnyDatabase");
-				PgbsonWriterAppendUtf8(&roleWriter, "db", strlen("db"), "admin");
-				PgbsonArrayWriterWriteDocument(&roleArrayWriter, PgbsonWriterGetPgbson(
-												   &roleWriter));
-				PgbsonWriterInit(&roleWriter);
-				PgbsonWriterAppendUtf8(&roleWriter, "role", strlen("role"),
-									   "clusterAdmin");
-				PgbsonWriterAppendUtf8(&roleWriter, "db", strlen("db"), "admin");
-				PgbsonArrayWriterWriteDocument(&roleArrayWriter, PgbsonWriterGetPgbson(
-												   &roleWriter));
-				PgbsonWriterEndArray(&userWriter, &roleArrayWriter);
+				if (BSON_ITER_HOLDS_UTF8(&getIter))
+				{
+					const char *parentRole = bson_iter_utf8(&getIter, NULL);
+					if (strcmp(parentRole, "helio_readonly_role") == 0)
+					{
+						pgbson_array_writer roleArrayWriter;
+						PgbsonWriterStartArray(&userWriter, "roles", strlen("roles"),
+											   &roleArrayWriter);
+						pgbson_writer roleWriter;
+						PgbsonWriterInit(&roleWriter);
+						PgbsonWriterAppendUtf8(&roleWriter, "role", strlen("role"),
+											   "readAnyDatabase");
+						PgbsonWriterAppendUtf8(&roleWriter, "db", strlen("db"), "admin");
+						PgbsonArrayWriterWriteDocument(&roleArrayWriter,
+													   PgbsonWriterGetPgbson(
+														   &roleWriter));
+						PgbsonWriterEndArray(&userWriter, &roleArrayWriter);
+					}
+					else
+					{
+						pgbson_array_writer roleArrayWriter;
+						PgbsonWriterStartArray(&userWriter, "roles", strlen("roles"),
+											   &roleArrayWriter);
+						pgbson_writer roleWriter;
+						PgbsonWriterInit(&roleWriter);
+						PgbsonWriterAppendUtf8(&roleWriter, "role", strlen("role"),
+											   "readWriteAnyDatabase");
+						PgbsonWriterAppendUtf8(&roleWriter, "db", strlen("db"), "admin");
+						PgbsonArrayWriterWriteDocument(&roleArrayWriter,
+													   PgbsonWriterGetPgbson(
+														   &roleWriter));
+						PgbsonWriterInit(&roleWriter);
+						PgbsonWriterAppendUtf8(&roleWriter, "role", strlen("role"),
+											   "clusterAdmin");
+						PgbsonWriterAppendUtf8(&roleWriter, "db", strlen("db"), "admin");
+						PgbsonArrayWriterWriteDocument(&roleArrayWriter,
+													   PgbsonWriterGetPgbson(
+														   &roleWriter));
+						PgbsonWriterEndArray(&userWriter, &roleArrayWriter);
+					}
+				}
 			}
-
 
 			PgbsonArrayWriterWriteDocument(&userArrayWriter, PgbsonWriterGetPgbson(
 											   &userWriter));
@@ -610,9 +645,6 @@ helio_extension_get_users(PG_FUNCTION_ARGS)
 
 	PgbsonWriterAppendInt32(&finalWriter, "ok", 2, 1);
 	pgbson *result = PgbsonWriterGetPgbson(&finalWriter);
-	MemoryContextSwitchTo(spiContext);
-	SPI_finish();
-	MemoryContextSwitchTo(outerContext);
 	PG_RETURN_POINTER(result);
 }
 
