@@ -15966,7 +15966,7 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 			PQExpBuffer result;
 
 			result = createViewAsClause(fout, tbinfo);
-			if (dopt->include_yb_metadata)
+			if (dopt->include_yb_metadata && !dopt->binary_upgrade)
 			{
 				appendPQExpBuffer(q, " AS\n%s;\n", result->data);
 			}
@@ -16133,10 +16133,24 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 		 * TOAST tables semi-independently, here we see them only as children
 		 * of other relations; so this "if" lacks RELKIND_TOASTVALUE, and the
 		 * child toast table is handled below.)
+		 *
+		 * YB: We have code in pg_backup_archiver.c:_printTocEntry to work
+		 * around YugabyteDB not currently supporting mixing DDLs with
+		 * modifications to the PG catalog in a single transaction. The
+		 * workaround causes ahwrite/ExecuteSqlCommandBuf to call
+		 * ExecuteSimpleCommands in pg_backup_db.c. ExecuteSimpleCommands does
+		 * its own parsing to split the statements, and is unaware of --
+		 * comments but is aware of quotation marks, so a single quote inside a
+		 * comment (here "heap's") puts it into a SQL_IN_SINGLE_QUOTE mode that
+		 * eats the rest of the string, eliminating the statement afterwards
+		 * which sets relispopulated. To work around this issue, since Yugabyte
+		 * doesn’t need xid fields, we skip the outputs here entirely, avoiding
+		 * the comments with single quotes.
 		 */
 		if (dopt->binary_upgrade &&
 			(tbinfo->relkind == RELKIND_RELATION ||
-			 tbinfo->relkind == RELKIND_MATVIEW))
+			 tbinfo->relkind == RELKIND_MATVIEW) &&
+			!dopt->include_yb_metadata)
 		{
 			appendPQExpBufferStr(q, "\n-- For binary upgrade, set heap's relfrozenxid and relminmxid\n");
 			appendPQExpBuffer(q, "UPDATE pg_catalog.pg_class\n"

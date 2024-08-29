@@ -7185,6 +7185,12 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
   LOG_WITH_PREFIX(INFO) << "Servicing " << __func__ << " request from " << RequestorString(rpc)
                         << ": " << req->ShortDebugString();
 
+  if (FLAGS_TEST_online_pg11_to_pg15_upgrade) {
+    // Alter table commands done during the upgrade are catalog changes only.
+    LOG(INFO) << "Ignoring alter table request during ysql major version upgrade";
+    return Status::OK();
+  }
+
   std::vector<DdlLogEntry> ddl_log_entries;
 
   // Lookup the table and verify if it exists.
