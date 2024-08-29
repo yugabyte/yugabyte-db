@@ -49,8 +49,6 @@ type: docs
 
 The [Yugabyte Psycopg2 smart driver](https://github.com/yugabyte/psycopg2) is a Python driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2), with additional [connection load balancing](../../smart-drivers/) features.
 
-A [binary version](https://pypi.org/project/psycopg2-yugabytedb-binary/#files) is available from PyPI.
-
 {{< note title="YugabyteDB Aeon" >}}
 
 To use smart driver load balancing features when connecting to clusters in YugabyteDB Aeon, applications must be deployed in a VPC that has been peered with the cluster VPC. For applications that access the cluster from outside the VPC network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from outside the VPC network fall back to the upstream driver behaviour automatically. For more information, refer to [Using smart drivers with YugabyteDB Aeon](../../smart-drivers/#using-smart-drivers-with-yugabytedb-aeon).
@@ -77,12 +75,40 @@ After you've installed the prerequisites, install psycopg2-yugabytedb like any o
 $ pip install psycopg2-yugabytedb
 ```
 
+You can also use pip to install the binary from [PyPI](https://pypi.org/project/psycopg2-yugabytedb-binary/#files):
+
+```sh
+$ pip install psycopg2-yugabytedb-binary
+```
+
+If you downloaded the binary locally, install using:
+
+```sh
+$ pip install /path/to/file.whi
+```
+
 Or, you can use the setup.py script if you've downloaded the source package locally:
 
 ```sh
 $ python setup.py build
 $ sudo python setup.py install
 ```
+
+To verify that the installation was successful:
+
+1. Create a test Python script:
+
+    ```sh
+    echo -e "import psycopg2\nprint(psycopg2.__version__)" > test_psycopg2.py
+    ```
+
+1. Run the test script:
+
+    ```sh
+    python test_psycopg2.py
+    ```
+
+If you see the version number, the installation was successful.
 
 ### Step 2: Set up the database connection
 
