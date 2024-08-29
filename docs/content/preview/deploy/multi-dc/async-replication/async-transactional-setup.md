@@ -7,7 +7,7 @@ headContent: Set up unidirectional transactional replication
 menu:
   preview:
     parent: async-replication-transactional
-    identifier: async-transactional-setup-1-manual
+    identifier: async-transactional-setup-2-manual
     weight: 10
 badges: ysql
 type: docs
@@ -15,15 +15,15 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="../async-transactional-setup/" class="nav-link active">
+    <a href="../async-transactional-setup-dblevel/" class="nav-link">
       <i class="icon-shell"></i>
-      Manual Setup
+      Semi-Automatic Setup
     </a>
   </li>
   <li >
-    <a href="../async-transactional-setup-dblevel/" class="nav-link">
+    <a href="../async-transactional-setup/" class="nav-link active">
       <i class="icon-shell"></i>
-      Database Level Setup
+      Manual Setup
     </a>
   </li>
 </ul>

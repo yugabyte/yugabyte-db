@@ -7,7 +7,7 @@ headContent: Set up unidirectional transactional replication
 menu:
   preview:
     parent: async-replication-transactional
-    identifier: async-transactional-setup-2-db
+    identifier: async-transactional-setup-1-db
     weight: 10
 badges: ysql
 type: docs
@@ -15,37 +15,45 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
+    <a href="../async-transactional-setup-dblevel/" class="nav-link active">
+      <i class="icon-shell"></i>
+      Semi-Automatic Setup
+    </a>
+  </li>
+  <li >
     <a href="../async-transactional-setup/" class="nav-link">
       <i class="icon-shell"></i>
       Manual Setup
     </a>
   </li>
-  <li >
-    <a href="../async-transactional-setup-dblevel/" class="nav-link active">
-      <i class="icon-shell"></i>
-      Database Level Setup
-    </a>
-  </li>
 </ul>
 
-Database-level setup of transactional xCluster replication simplifies the operational complexity of managing replication and making DDL changes.
+Semi-automatic setup of transactional xCluster replication simplifies the operational complexity of managing replication and making DDL changes.
 
-With database-level setup, xCluster replication operates at the YSQL database granularity. This means you only run xCluster management operations when adding and removing databases from replication, and not when tables in the databases are created or dropped.
+With Semi-automatic setup, xCluster replication operates at the YSQL database granularity. This means you only run xCluster management operations when adding and removing databases from replication, and not when tables in the databases are created or dropped.
 
-In particular, with database-level setup, [DDL changes](#making-ddl-changes) don't require the use of yb-admin. This means DDL changes can be made by any database administrator or user with database permissions, and don't require SSH access or intervention by an IT administrator.
+In particular, with Semi-automatic setup, [DDL changes](#making-ddl-changes) don't require the use of yb-admin. This means DDL changes can be made by any database administrator or user with database permissions, and don't require SSH access or intervention by an IT administrator.
 
 The following assumes you have set up Primary and Standby universes. Refer to [Set up universes](../async-deployment/#set-up-universes).
 
 ## Set up replication
 
-To set up database-level unidirectional transactional replication, do the following:
+To set up unidirectional transactional replication, do the following:
 
-1. Create a checkpoint using the following command.
+1. Enable point in time restore (PITR) on the Standby database:
+
+    ```sh
+    ./bin/yb-admin \
+        -master_addresses <standby_master_addresses> \
+        create_snapshot_schedule 1 10 ysql.yugabyte
+    ```
+
+1. Create a checkpoint using the `create_xcluster_checkpoint` command, providing a name for the replication group, and the names of the databases to replicate as a comma-separated list.
 
     ```sh
     ./bin/yb-admin \
         -master_addresses <primary_master_addresses> \
-        create_xcluster_checkpoint <replication_group_id> <namespace_names>
+        create_xcluster_checkpoint <replication_group_id> <comma_separated_namespace_names>
     ```
 
     The command informs you if any data needs to be copied to the Standby, or only the schema (empty tables and indexes) needs to be created. For example:
@@ -130,6 +138,14 @@ The database should have at least one table in order to be added to replication.
 
 To add a database to replication, do the following:
 
+1. Enable point in time restore (PITR) on the Standby database:
+
+    ```sh
+    ./bin/yb-admin \
+        -master_addresses <standby_master_addresses> \
+        create_snapshot_schedule 1 10 ysql.yugabyte
+    ```
+
 1. Create a checkpoint.
 
     ```sh
@@ -197,12 +213,12 @@ Outbound xCluster Replication group rg1 deleted successfully
 
 ## Making DDL changes
 
-When performing any DDL operation on databases using database-level transactional xCluster replication (such as creating, altering, or dropping tables or partitions), do the following:
+When performing any DDL operation on databases using semi-automatic transactional xCluster replication (such as creating, altering, or dropping tables, indexes, or partitions), do the following:
 
 1. Execute the DDL on Primary.
 1. Execute the DDL on Standby.
 
-The xCluster configuration is updated automatically. You can insert data into the table as soon as it is created.
+The xCluster configuration is updated automatically. You can insert data into the table as soon as it is created on Primary.
 
 When new tables are created with CREATE TABLE, CREATE INDEX, or CREATE TABLE PARTITION OF on the Primary universe, new streams are automatically created. Because this happens alongside the DDL, the new tables are checkpointed at the start of the WAL.
 

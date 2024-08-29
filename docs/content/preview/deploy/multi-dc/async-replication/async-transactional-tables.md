@@ -13,7 +13,7 @@ badges: ysql
 type: docs
 ---
 
-The following instructions are for performing DDL operations (such as creating, altering, or dropping tables or partitions) on databases in [manually configured](../async-transactional-setup/) transactional xCluster replication. For instruction on making DDL changes in a database-level setup, see [Making DDL changes](../async-transactional-setup-dblevel/#making-ddl-changes).
+The following instructions are for performing DDL operations (such as creating, altering, or dropping tables or partitions) on databases in [manually configured](../async-transactional-setup/) transactional xCluster replication. For instruction on making DDL changes in a semi-automatic setup, see [Making DDL changes](../async-transactional-setup-dblevel/#making-ddl-changes).
 
 When making DDL changes, the statements must be executed on both the Primary/Source and Standby/Target and the xCluster configuration must be updated.
 
