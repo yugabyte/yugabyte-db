@@ -931,7 +931,6 @@ TabletInfoPtr TableInfo::GetColocatedUserTablet() const {
   if (!tablets_.empty()) {
     return tablets_.begin()->second.lock();
   }
-  LOG(INFO) << "Colocated Tablet not found for table " << name();
   return nullptr;
 }
 
