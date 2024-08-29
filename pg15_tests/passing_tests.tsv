@@ -154,6 +154,9 @@ JAVA	org.yb.pgsql.TestYbBackup#testIgnoreExistingTablespaces
 JAVA	org.yb.pgsql.TestYbBackup#testOrafce
 JAVA	org.yb.pgsql.TestYbBackup#testPgHintPlan
 JAVA	org.yb.pgsql.TestYbBackup#testPostgresfdw
+JAVA	org.yb.pgsql.TestYbPgStatActivity#testMemUsageFuncsReturnValues
+JAVA	org.yb.pgsql.TestYbPgStatActivity#testMemUsageFuncsWithMultipleBackends
+JAVA	org.yb.pgsql.TestYbPgStatActivity#testMemUsageOfQueryFromPgStatActivity
 JAVA	org.yb.pgsql.TestYbRoleProfile#testAdminCanChangeUserProfile[0]
 JAVA	org.yb.pgsql.TestYbRoleProfile#testAdminCanChangeUserProfile[1]
 JAVA	org.yb.pgsql.TestYbRoleProfile#testAdminCanLockAndUnlock[0]
