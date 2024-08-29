@@ -219,31 +219,32 @@ DEFINE_RUNTIME_int32(min_segment_size_bytes_to_rollover_at_flush, 0,
                     "Only rotate wals at least of this size (in bytes) at tablet flush."
                     "-1 to disable WAL rollover at flush. 0 to always rollover WAL at flush.");
 
-// Default 3GB. Assuming 300MBps disk throughput rate.
-DEFINE_RUNTIME_uint64(reject_writes_min_disk_space_mb, 3 * 1024,
-    "Reject writes if less than this much disk space is available on the WAL directory. "
-    "'reject_writes_when_disk_full' must be enabled. Set this flag to a value larger than "
-    "'disk throughput rate' * 10");
+DEFINE_RUNTIME_uint32(max_disk_throughput_mbps, 300,
+    "The maximum disk throughput the disk attached to this node can support in MBps.");
 
 DEFINE_RUNTIME_uint32(reject_writes_min_disk_space_check_interval_sec, 60,
-    "Interval in seconds to check for disk space availability. The check will default to a 10s "
-    "if the disk space is less than 'reject_writes_min_disk_space_aggressive_check_mb'");
+    "Interval in seconds to check for disk space availability. The check will switch to aggressive "
+    "mode (every 10s) if the available disk space is less than --max_disk_throughput_mbps * "
+    "--reject_writes_min_disk_space_check_interval_sec. NOTE: Use a value higher than 10. If a "
+    "value less than 10 is used, then we always run in aggressive check mode, potentially causing "
+    "performance degradations.");
 
-// Default 18GB. Assuming 300MBps disk throughput rate.
-DEFINE_RUNTIME_uint64(reject_writes_min_disk_space_aggressive_check_mb, 18 * 1024,
-    "Once the available disk space falls below this value we will check the disk space every 10s "
-    "instead of 'reject_writes_min_disk_space_check_interval_sec'. Set this flag to a value larger "
-    "than 'disk throughput rate' * 'reject_writes_min_disk_space_check_interval_sec'");
+DEFINE_RUNTIME_uint64(reject_writes_min_disk_space_mb, 0,
+    "Reject writes if less than this much disk space is available on the WAL directory and "
+    "--reject_writes_when_disk_full is enabled. If set to 0, defaults to "
+    "--max_disk_throughput_mbps * min(10, --reject_writes_min_disk_space_check_interval_sec).");
 
-// Validate that log_min_segments_to_retain >= 1
-static bool ValidateLogsToRetain(const char* flag_name, int value) {
+template <typename T>
+static bool ValidateGreaterThan0(const char* flag_name, T value) {
   if (value >= 1) {
     return true;
   }
   LOG_FLAG_VALIDATION_ERROR(flag_name, value) << "Must be at least 1";
   return false;
 }
-DEFINE_validator(log_min_segments_to_retain, &ValidateLogsToRetain);
+DEFINE_validator(log_min_segments_to_retain, &ValidateGreaterThan0);
+DEFINE_validator(max_disk_throughput_mbps, &ValidateGreaterThan0);
+DEFINE_validator(reject_writes_min_disk_space_check_interval_sec, &ValidateGreaterThan0);
 
 static std::string kSegmentPlaceholderFilePrefix = ".tmp.newsegment";
 static std::string kSegmentPlaceholderFileTemplate = kSegmentPlaceholderFilePrefix + "XXXXXX";
@@ -2147,9 +2148,18 @@ bool Log::HasSufficientDiskSpaceForWrite() {
   }
 
   bool has_space = true;
-  // Lets assume we need to check frequently. If we have enough space, we will adjust this value.
+  const uint32 kAggressiveCheckIntervalSec = 10;
+  // Lets assume we need to check frequently. If we have enough space, we will increment to a
+  // higher value.
   check_interval_sec =
-      std::min(static_cast<uint32>(10), FLAGS_reject_writes_min_disk_space_check_interval_sec);
+      std::min(kAggressiveCheckIntervalSec, FLAGS_reject_writes_min_disk_space_check_interval_sec);
+
+  const uint64 min_allowed_disk_space_mb =
+      FLAGS_reject_writes_min_disk_space_mb ? FLAGS_reject_writes_min_disk_space_mb
+                                            : FLAGS_max_disk_throughput_mbps * check_interval_sec;
+
+  const uint64 min_space_to_trigger_aggressive_check_mb =
+      FLAGS_max_disk_throughput_mbps * FLAGS_reject_writes_min_disk_space_check_interval_sec;
 
   auto free_space_result = get_env()->GetFreeSpaceBytes(path);
   if (!free_space_result.ok()) {
@@ -2160,11 +2170,11 @@ bool Log::HasSufficientDiskSpaceForWrite() {
   }
   const auto free_space_mb = *free_space_result / 1024 / 1024;
 
-  if (free_space_mb < FLAGS_reject_writes_min_disk_space_mb) {
+  if (free_space_mb < min_allowed_disk_space_mb) {
     YB_LOG_EVERY_N_SECS(ERROR, 600) << "Not enough disk space available on " << path
                                     << ". Free space: " << *free_space_result << " bytes";
     has_space = false;
-  } else if (free_space_mb < FLAGS_reject_writes_min_disk_space_aggressive_check_mb) {
+  } else if (free_space_mb < min_space_to_trigger_aggressive_check_mb) {
     YB_LOG_EVERY_N_SECS(WARNING, 600)
         << "Low disk space on " << path << ". Free space: " << *free_space_result << " bytes";
   } else {
