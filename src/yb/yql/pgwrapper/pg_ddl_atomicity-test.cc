@@ -1722,5 +1722,58 @@ TEST_F(PgDdlAtomicityMiniClusterTest, ClearTableMetadataOnDrop) {
   ASSERT_FALSE(table->LockForRead()->has_ysql_ddl_txn_verifier_state());
 }
 
+// Test that the schema verification works correctly for partition tables and its children.
+TEST_F(PgDdlAtomicityTest, TestPartitionedTableSchemaVerification) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  // Set report_ysql_ddl_txn_status_to_master to false, so that we can test the schema verification
+  // codepaths on master.
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "report_ysql_ddl_txn_status_to_master", "false"));
+  // Create a parent partitioned table.
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test_parent (key INT PRIMARY KEY, value TEXT, num real, serialcol SERIAL) "
+      "PARTITION BY LIST(key)"));
+  // Create a child partition.
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test_child PARTITION OF test_parent FOR VALUES IN (1)"));
+
+  // Perform an unsuccessful alter table operation.
+  ASSERT_OK(conn.TestFailDdl("ALTER TABLE test_parent DROP COLUMN value"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "true"));
+  ASSERT_OK(conn.ExecuteFormat("SET yb_test_fail_table_rewrite_after_creation=true"));
+  // Perform an unsuccessful alter table rewrite operation.
+  ASSERT_NOK(conn.ExecuteFormat("ALTER TABLE test_parent ADD COLUMN col1 SERIAL"));
+
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables("test_parent")).size(), 1);
+  // Verify that the failed alter table rewrite operation created an orphaned child table.
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables("test_child")).size(), 2);
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "false"));
+  ASSERT_OK(conn.ExecuteFormat("SET yb_test_fail_table_rewrite_after_creation=false"));
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+      return VERIFY_RESULT(client->ListTables("test_child")).size() == 1;
+  }, MonoDelta::FromSeconds(60), "Wait for orphaned child table to be cleaned up."));
+
+  // Perform a successful alter table operation.
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE test_parent ADD COLUMN col1 int"));
+  // Perform a successful alter table rewrite operation.
+  ASSERT_OK(conn.ExecuteFormat("ALTER TABLE test_parent ADD COLUMN col2 SERIAL"));
+
+  // Perform a successful drop table operation.
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE test_parent"));
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables("test_parent")).size(), 0);
+  ASSERT_EQ(ASSERT_RESULT(client->ListTables("test_child")).size(), 0);
+}
+
+TEST_F(PgDdlAtomicityTest, TestCreateColocatedTable) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "report_ysql_ddl_txn_status_to_master", "false"));
+  ASSERT_OK(conn.Execute("CREATE DATABASE colocated_db colocation = true"));
+  conn = ASSERT_RESULT(ConnectToDB("colocated_db"));
+  ASSERT_OK(conn.Execute("CREATE TABLE foo(id int)"));
+}
+
 } // namespace pgwrapper
 } // namespace yb
