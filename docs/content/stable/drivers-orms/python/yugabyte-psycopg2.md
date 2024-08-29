@@ -69,13 +69,20 @@ Building Psycopg2 requires a few prerequisites (a C compiler and some developmen
 
 The YugabyteDB Psycopg2 requires PostgreSQL version 12 or later (preferably 14).
 
-After you've installed the prerequisites, install psycopg2-yugabytedb like any other Python package, using pip to download it from [PyPI](https://pypi.org/project/psycopg2-yugabytedb/):
+After you've installed the prerequisites, install psycopg2-yugabytedb like any other Python package, using pip to download it from PyPI.
+
+| PyPI Project | Type | Files |
+| :--- | :--- | :--- |
+| [psycopg2-yugabytedb](https://pypi.org/project/psycopg2-yugabytedb/) | Source | [Download](https://pypi.org/project/psycopg2-yugabytedb/#files) |
+| [psycopg2-yugabytedb-binary](https://pypi.org/project/psycopg2-yugabytedb-binary/) | Binary | [Download](https://pypi.org/project/psycopg2-yugabytedb-binary/#files) |
+
+Install source using pip:
 
 ```sh
 $ pip install psycopg2-yugabytedb
 ```
 
-You can also use pip to install the binary from [PyPI](https://pypi.org/project/psycopg2-yugabytedb-binary/#files):
+Install binary using pip:
 
 ```sh
 $ pip install psycopg2-yugabytedb-binary
