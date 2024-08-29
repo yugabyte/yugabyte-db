@@ -7,10 +7,26 @@ headContent: Set up unidirectional transactional replication
 menu:
   preview:
     parent: async-replication-transactional
-    identifier: async-transactional-setup
+    identifier: async-transactional-setup-1-manual
     weight: 10
+badges: ysql
 type: docs
 ---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="../async-transactional-setup/" class="nav-link active">
+      <i class="icon-shell"></i>
+      Manual Setup
+    </a>
+  </li>
+  <li >
+    <a href="../async-transactional-setup-dblevel/" class="nav-link">
+      <i class="icon-shell"></i>
+      Database Level Setup
+    </a>
+  </li>
+</ul>
 
 The following assumes you have set up Primary and Standby universes. Refer to [Set up universes](../async-deployment/#set-up-universes).
 

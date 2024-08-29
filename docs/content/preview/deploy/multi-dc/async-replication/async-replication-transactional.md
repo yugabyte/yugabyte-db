@@ -6,6 +6,7 @@ description: Enable deployment using transactional (active-standby) replication 
 headContent: Transactional (active-standby) replication
 aliases:
   - /preview/deploy/multi-dc/async-replication-transactional/
+badges: ysql
 menu:
   preview:
     parent: async-replication
@@ -28,12 +29,19 @@ Transactional xCluster support further allows for the role of each universe to s
 
 The xCluster role is a property with values ACTIVE or STANDBY that determines and identifies the Primary (source) and Standby (target) universes:
 
-- ACTIVE: The active universe serves both reads & writes. Reads/writes happen as of the latest time and according to the chosen isolation levels.
+- ACTIVE: The active universe serves both reads and writes. Reads/writes happen as of the latest time and according to the chosen isolation levels.
 - STANDBY: The standby universe is meant for reads only. Reads happen as of xCluster safe time for the given database.
 
 xCluster safe time is the transactionally consistent time across all tables in a given database at which Reads are served. In the following illustration, T1 is a transactionally consistent time across all tables.
 
 ![Transactional xCluster](/images/deploy/xcluster/xcluster-transactional.png)
+
+## Setup
+
+Transactional xCluster can be set up in the following ways:
+
+- [Fully manual setup](../async-transactional-setup/).
+- [Database-level setup](../async-transactional-setup-dblevel/), providing operationally simpler setup and management of replication, as well as simpler steps for performing DDL changes.
 
 ## Limitations
 
