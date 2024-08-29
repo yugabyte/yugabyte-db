@@ -5,6 +5,7 @@
  * include/utils/helio_errors.h
  *
  * Utilities for Helio Error Definition.
+ * This file is generated - please modify the source (mongoerrors.csv)
  *
  *-------------------------------------------------------------------------
  */

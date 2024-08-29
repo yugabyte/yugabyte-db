@@ -17,6 +17,7 @@ cat << EOF > $filePath
  * include/utils/helio_errors.h
  *
  * Utilities for Helio Error Definition.
+ * This file is generated - please modify the source (mongoerrors.csv)
  *
  *-------------------------------------------------------------------------
  */
@@ -164,7 +165,7 @@ for fileIndex in $( echo ${sorted[@]} ); do
     echo "#define MONGO_CODE_${errorNameUpper} $code"  >> $filePath
     echo >> $filePath
 
-    echo "${errorNameUpper},${baseLetter}${secondChar}${thirdChar}${fourthChar}${fifthChar},${code}" >> $errorNamesPath
+    echo "${name},${baseLetter}${secondChar}${thirdChar}${fourthChar}${fifthChar},${code}" >> $errorNamesPath
 
     IncrementErrorCode
 done
