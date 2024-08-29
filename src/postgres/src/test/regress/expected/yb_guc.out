@@ -181,16 +181,16 @@ EXPLAIN SELECT * FROM test_scan;
 EXPLAIN SELECT * FROM test_scan WHERE j = 1;
                                   QUERY PLAN
 -------------------------------------------------------------------------------
- YB Bitmap Table Scan on test_scan  (cost=3.38..7.50 rows=10 width=8)
-   ->  Bitmap Index Scan on test_scan_j_idx  (cost=0.00..3.38 rows=10 width=0)
+ YB Bitmap Table Scan on test_scan  (cost=1.13..15.76 rows=10 width=8)
+   ->  Bitmap Index Scan on test_scan_j_idx  (cost=0.00..1.12 rows=10 width=0)
          Index Cond: (j = 1)
 (3 rows)
 
 EXPLAIN SELECT j FROM test_scan;
                                     QUERY PLAN
 -----------------------------------------------------------------------------------
- YB Bitmap Table Scan on test_scan  (cost=300.25..314.25 rows=1000 width=4)
-   ->  Bitmap Index Scan on test_scan_j_idx  (cost=0.00..300.00 rows=1000 width=0)
+ YB Bitmap Table Scan on test_scan  (cost=100.25..342.75 rows=1000 width=4)
+   ->  Bitmap Index Scan on test_scan_j_idx  (cost=0.00..100.00 rows=1000 width=0)
 (2 rows)
 
 set enable_indexonlyscan = off;

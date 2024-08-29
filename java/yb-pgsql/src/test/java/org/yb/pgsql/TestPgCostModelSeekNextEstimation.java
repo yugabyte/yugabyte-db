@@ -1,6 +1,7 @@
 package org.yb.pgsql;
 
 import static org.junit.Assume.assumeTrue;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_BITMAP_AND;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_BITMAP_INDEX_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_BITMAP_OR;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_SCAN;
@@ -40,6 +41,9 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
   private static final String T3_INDEX_NAME = T3_NAME + "_pkey";
   private static final String T4_NAME = "t4";
   private static final String T4_INDEX_NAME = T4_NAME + "_pkey";
+  private static final String T_NO_PKEY_NAME = "t_no_pkey";
+  private static final String T_K1_INDEX_NAME = "t_k1_idx";
+  private static final String T_K2_INDEX_NAME = "t_k2_idx";
   private static final double SEEK_FAULT_TOLERANCE_OFFSET = 1;
   private static final double SEEK_FAULT_TOLERANCE_RATE = 0.2;
   private static final double SEEK_LOWER_BOUND_FACTOR = 1 - SEEK_FAULT_TOLERANCE_RATE;
@@ -610,6 +614,73 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
         makePlanBuilder().nodeType(NODE_BITMAP_OR).plans(
           makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 2, 8000),
           makeBitmapIndexScanChecker_IgnoreActualResults(T4_INDEX_NAME, 8000, 40000)).build());
+    }
+  }
+
+  // There's a middle ground for queries with AND. If few rows are to be
+  // selected, then it's cheap to apply remote filters. If a lot of rows are to
+  // be selected, then it's pointless to gather a large portion of the table for
+  // each Bitmap Index Scan under a BitmapAnd.
+  @Test
+  public void testSeekNextEstimationBitmapScanWithAnd() throws Exception {
+    try (Statement stmt = this.connection2.createStatement()) {
+      stmt.execute(String.format("CREATE TABLE %s (k1 INT, k2 INT)", T_NO_PKEY_NAME));
+      stmt.execute(String.format("CREATE INDEX %s ON %s (k1 ASC)",
+                                 T_K1_INDEX_NAME, T_NO_PKEY_NAME));
+      stmt.execute(String.format("CREATE INDEX %s ON %s (k2 ASC)",
+                                 T_K2_INDEX_NAME, T_NO_PKEY_NAME));
+      stmt.execute(String.format("INSERT INTO %s SELECT s1, s2 FROM generate_series(1, 100) s1, "
+      + "generate_series(1, 100) s2", T_NO_PKEY_NAME));
+      stmt.execute(String.format("ANALYZE %s", T_NO_PKEY_NAME));
+
+      final String query = "/*+ BitmapScan(t) */ SELECT * FROM %s AS t WHERE %s";
+      testSeekAndNextEstimationBitmapScanHelper(stmt,
+        String.format(query, T_NO_PKEY_NAME, "k1 <= 1 AND k2 <= 1"),
+        T_NO_PKEY_NAME, 100, 300, 10,
+        makePlanBuilder().nodeType(NODE_BITMAP_INDEX_SCAN).build());
+
+      testSeekAndNextEstimationBitmapScanHelper(stmt,
+        String.format(query, T_NO_PKEY_NAME, "k1 <= 2 AND k2 <= 2"),
+        T_NO_PKEY_NAME, 200, 600, 10,
+        makePlanBuilder().nodeType(NODE_BITMAP_INDEX_SCAN).build());
+
+      testSeekAndNextEstimationBitmapScanHelper(stmt,
+        String.format(query, T_NO_PKEY_NAME, "k1 <= 5 AND k2 <= 5"),
+        T_NO_PKEY_NAME, 25, 75, 10,
+        makePlanBuilder().nodeType(NODE_BITMAP_AND).build());
+
+      testSeekAndNextEstimationBitmapScanHelper(stmt,
+        String.format(query, T_NO_PKEY_NAME, "k1 <= 10 AND k2 <= 10"),
+        T_NO_PKEY_NAME, 100, 300, 10,
+        makePlanBuilder().nodeType(NODE_BITMAP_AND).build());
+
+      testSeekAndNextEstimationBitmapScanHelper(stmt,
+        String.format(query, T_NO_PKEY_NAME, "k1 <= 20 AND k2 <= 20"),
+        T_NO_PKEY_NAME, 400, 1200, 10,
+        makePlanBuilder().nodeType(NODE_BITMAP_AND).build());
+
+      testSeekAndNextEstimationBitmapScanHelper(stmt,
+        String.format(query, T_NO_PKEY_NAME, "k1 <= 40 AND k2 <= 40"),
+        T_NO_PKEY_NAME, 4000, 14000, 10,
+        makePlanBuilder().nodeType(NODE_BITMAP_INDEX_SCAN).build());
+
+      testSeekAndNextEstimationBitmapScanHelper(stmt,
+        String.format(query, T_NO_PKEY_NAME, "k1 <= 80 AND k2 <= 80"),
+        T_NO_PKEY_NAME, 8000, 24000, 10,
+        makePlanBuilder().nodeType(NODE_BITMAP_INDEX_SCAN).build());
+
+      // If the two sets of ybctids are not similar sizes, it doesn't make sense
+      // to collect both sets. Instead, we collect the smaller and filter out
+      // the larger.
+      testSeekAndNextEstimationBitmapScanHelper(stmt,
+        String.format(query, T_NO_PKEY_NAME, "k1 <= 20 AND k2 <= 40"),
+        T_NO_PKEY_NAME, 2000, 6000, 10,
+        makePlanBuilder().nodeType(NODE_BITMAP_INDEX_SCAN).indexName(T_K1_INDEX_NAME).build());
+
+      testSeekAndNextEstimationBitmapScanHelper(stmt,
+        String.format(query, T_NO_PKEY_NAME, "k1 <= 20 AND k2 <= 10"),
+        T_NO_PKEY_NAME, 1000, 3000, 10,
+        makePlanBuilder().nodeType(NODE_BITMAP_INDEX_SCAN).indexName(T_K2_INDEX_NAME).build());
     }
   }
 
