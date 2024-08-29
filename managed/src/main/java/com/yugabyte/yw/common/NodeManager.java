@@ -328,7 +328,9 @@ public class NodeManager extends DevopsBase {
       String sshUser = null;
       // Currently we only need this for provision node operation.
       // All others use yugabyte user.
-      if (useSudoUser(type) || type == NodeCommandType.Wait_For_Connection) {
+      if (useSudoUser(type)
+          || type == NodeCommandType.Wait_For_Connection
+          || type == NodeCommandType.Manage_Otel_Collector) {
         // in case of sshUserOverride in ImageBundle.
         if (StringUtils.isNotBlank(params.sshUserOverride)) {
           sshUser = params.sshUserOverride;
@@ -445,6 +447,7 @@ public class NodeManager extends DevopsBase {
       }
     } else if (type == NodeCommandType.Wait_For_Connection
         || type == NodeCommandType.Manage_Otel_Collector) {
+
       boolean installOtelCol =
           params instanceof ManageOtelCollector.Params
               && ((ManageOtelCollector.Params) params).installOtelCollector;
@@ -454,7 +457,8 @@ public class NodeManager extends DevopsBase {
           && !installOtelCol) {
         subCommand.add("--ssh_user");
         subCommand.add("yugabyte");
-      } else if (StringUtils.isNotBlank(providerDetails.sshUser)) {
+      } else if (StringUtils.isNotBlank(providerDetails.sshUser)
+          || StringUtils.isNotBlank(sshUser)) {
         subCommand.add("--ssh_user");
         if (StringUtils.isNotBlank(sshUser)) {
           subCommand.add(sshUser);
