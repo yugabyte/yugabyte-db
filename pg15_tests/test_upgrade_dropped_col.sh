@@ -83,9 +83,6 @@ INSERT INTO t VALUES (11, 110, 1100);
 SELECT * FROM t ORDER BY c;
 SELECT attname, attnum FROM pg_attribute WHERE attrelid = 't'::pg_catalog.regclass AND attnum >= 0;
 
--- Note double output here due to ALTER TABLE public.t OWNER TO yugabyte; on another node, it's done
--- as part of pg_restore, but the bug is present on the pg15 branch as well if you execute this
--- statement on another node.
 SELECT * FROM t2;
 SELECT attname, attnum FROM pg_attribute WHERE attrelid = 't2'::pg_catalog.regclass AND attnum >= 0;
 EOT

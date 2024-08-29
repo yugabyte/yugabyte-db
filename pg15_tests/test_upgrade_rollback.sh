@@ -33,7 +33,7 @@ pushd $pg11path
 yb_ctl stop_node 2
 rm "$data_dir/node-2/disk-1/pg_data"
 mv "$data_dir/node-2/disk-1/pg_data_11" "$data_dir/node-2/disk-1/pg_data"
-yb_ctl start_node 2
+yb_ctl start_node 2 --tserver_flags="$pg11_enable_db_catalog_flag" --master_flags="$pg11_enable_db_catalog_flag"
 popd
 # Issue the rollback RPC
 echo rollback starting at $(date +"%r")

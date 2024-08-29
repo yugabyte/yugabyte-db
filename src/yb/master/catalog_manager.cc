@@ -9932,7 +9932,6 @@ Status CatalogManager::GetYsqlDBCatalogVersion(uint32_t db_oid,
   // of upgrade mode, in which case we might need to do a one-time bump of the PG15
   // pg_yb_catalog_version number.
   //
-  // TODO(20710): Support per-DB catalog versions using the same philosophy.
   TableId table_id;
   if (FLAGS_TEST_online_pg11_to_pg15_upgrade) {
     table_id = kPgYbCatalogVersionTableIdPg11;
