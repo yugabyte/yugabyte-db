@@ -40,7 +40,7 @@ The following assumes you have set up Primary and Standby universes. Refer to [S
 
 To set up database-level unidirectional transactional replication, do the following:
 
-1. Create a checkpoint.
+1. Create a checkpoint using the following command.
 
     ```sh
     ./bin/yb-admin \
@@ -60,7 +60,7 @@ To set up database-level unidirectional transactional replication, do the follow
     Once the above step(s) complete run 'setup_xcluster_replication'
     ```
 
-1. You can also manually check the status as follows:
+    You can also manually check the status as follows:
 
     ```sh
     ./bin/yb-admin \
@@ -68,11 +68,15 @@ To set up database-level unidirectional transactional replication, do the follow
     is_xcluster_bootstrap_required repl_group1 yugabyte
     ```
 
+    You should see output similar to the following:
+
     ```output
     Waiting for checkpointing of database(s) to complete
 
     Checkpointing of yugabyte completed. Bootstrap is not required for setting up xCluster replication
     ```
+
+1. If needed, perform a full copy of the database on the Primary to the Standby using distributed backup and restore. See [Distributed snapshots for YSQL](../../../manage/backup-restore/snapshot-ysql/). Otherwise, create the necessary schema objects (tables and indexes) on the Standby.
 
 1. Set up the xCluster replication group.
 
@@ -98,6 +102,8 @@ To list outgoing groups on the Primary universe, enter the following command:
 list_xcluster_outbound_replication_groups [namespace_id]
 ```
 
+You should see output similar to the following:
+
 ```output
 1 Outbound Replication Groups found: 
 [repl_group1]
@@ -110,6 +116,8 @@ To list inbound groups on the Standby universe, enter the following command:
 -master_addresses <standby_master_addresses> \
 list_universe_replications [namespace_id]
 ```
+
+You should see output similar to the following:
 
 ```output
 1 Universe Replication Groups found: 
@@ -130,6 +138,8 @@ To add a database to replication, do the following:
     add_namespace_to_xcluster_checkpoint <replication_group_id> <namespace_name>
     ```
 
+    You should see output similar to the following:
+
     ```output
     Waiting for checkpointing of database to complete
 
@@ -147,9 +157,11 @@ To add a database to replication, do the following:
     add_namespace_to_xcluster_replication <replication_group_id> <namespace_name> <standby_master_addresses>
     ```
 
-```output
-Successfully added db2 to xCluster Replication group repl_group1
-```
+    You should see output similar to the following:
+
+    ```output
+    Successfully added db2 to xCluster Replication group repl_group1
+    ```
 
 ### Remove a database from replication
 
@@ -160,6 +172,8 @@ To remove a database from a replication group, use the following command:
 -master_addresses <primary_master_addresses> \
 remove_namespace_from_xcluster_replication <replication_group_id> <namespace_name> <standby_master_addresses>
 ```
+
+You should see output similar to the following:
 
 ```output
 Successfully removed db2 from xCluster Replication group repl_group1
@@ -174,6 +188,8 @@ To drop a replication group, use the following command:
 -master_addresses <primary_master_addresses> \
 drop_xcluster_replication <replication_group_id> <standby_master_addresses>
 ```
+
+You should see output similar to the following:
 
 ```output
 Outbound xCluster Replication group rg1 deleted successfully
