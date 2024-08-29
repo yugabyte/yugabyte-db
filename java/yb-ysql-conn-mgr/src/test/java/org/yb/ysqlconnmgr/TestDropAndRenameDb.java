@@ -12,6 +12,7 @@
 //
 package org.yb.ysqlconnmgr;
 
+import static org.junit.Assume.assumeFalse;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertFalse;
 import static org.yb.AssertionWrappers.assertNotEquals;
@@ -27,6 +28,7 @@ import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.BasePgSQLTest;
 import org.yb.pgsql.ConnectionEndpoint;
+import org.yb.util.BuildTypeUtil;
 
 @RunWith(value = YBTestRunnerYsqlConnMgr.class)
 public class TestDropAndRenameDb extends BaseYsqlConnMgr {
@@ -62,6 +64,9 @@ public class TestDropAndRenameDb extends BaseYsqlConnMgr {
 
     builder.addCommonTServerFlag("ysql_conn_mgr_stats_interval",
         Integer.toString(BasePgSQLTest.CONNECTIONS_STATS_UPDATE_INTERVAL_SECS));
+
+    builder.addCommonTServerFlag (
+        "TEST_ysql_conn_mgr_dowarmup_all_pools_random_attach", "true");
   }
 
   private void executeDDL(String query, boolean shouldSucceed) {
@@ -308,6 +313,7 @@ public class TestDropAndRenameDb extends BaseYsqlConnMgr {
 
   @Test
   public void testRenameWithRecreateDb() {
+    assumeFalse(BaseYsqlConnMgr.DISABLE_TEST_WITH_ASAN, BuildTypeUtil.isASAN());
     testRenameDbWithNoPhysicalConnection();
     testRenameDbWithPhysicalConnection();
   }
