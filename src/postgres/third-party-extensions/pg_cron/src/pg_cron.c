@@ -591,7 +591,7 @@ PgCronLauncherMain(Datum arg)
 	pqsignal(SIGHUP, pg_cron_sighup);
 	pqsignal(SIGINT, SIG_IGN);
 	/* YB Note: Exit immediately. */
-	pqsignal(SIGTERM, die);
+	pqsignal(SIGTERM, quickdie);
 	pqsignal(SIGQUIT, quickdie);
 
 	/* We're now ready to receive signals */
