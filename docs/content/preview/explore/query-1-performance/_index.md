@@ -128,4 +128,3 @@ For more information, refer to [Optimizing YSQL queries using pg_hint_plan](./pg
     icon="/images/section_icons/develop/learn.png">}}
 
 {{</index/block>}}
-
