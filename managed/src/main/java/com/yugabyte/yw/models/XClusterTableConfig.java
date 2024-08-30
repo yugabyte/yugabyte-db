@@ -49,7 +49,7 @@ import lombok.extern.slf4j.Slf4j;
 @Setter
 public class XClusterTableConfig extends Model {
 
-  private static final Finder<String, XClusterTableConfig> find =
+  public static final Finder<String, XClusterTableConfig> find =
       new Finder<String, XClusterTableConfig>(XClusterTableConfig.class) {};
 
   @Id

@@ -96,6 +96,8 @@ public class RedactingService {
           .add("$..dbuserPassword")
           .add("$..ldapBindPassword")
           .add("$..ysql_hba_conf_csv")
+          // HA Config
+          .add("$..cluster_key")
           .build();
 
   // List of json paths to any secret fields we want to redact.
