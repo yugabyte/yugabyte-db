@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/bson/bson_expression_conditional_operators.c
+ * src/operators/bson_expression_conditional_operators.c
  *
  * Conditional Operator expression implementations of BSON.
  *
@@ -20,30 +20,30 @@
 /* Type definitions */
 /* --------------------------------------------------------- */
 
-/* Represents a branch for $switch operator */
-typedef struct SwitchBranch
+/* Represents an arg entry(branch and default) for $switch operator */
+typedef struct SwitchEntry
 {
-	bson_value_t caseExpression;
-	bson_value_t thenExpression;
-} SwitchBranch;
+	AggregationExpressionData *caseExpression;
+	AggregationExpressionData *thenExpression;
+} SwitchEntry;
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
 /* --------------------------------------------------------- */
-static SwitchBranch * ParseBranchForSwitch(bson_iter_t *iter);
+static SwitchEntry * ParseBranchForSwitch(bson_iter_t *iter, bool *allArgumentsConstant,
+										  ParseAggregationExpressionContext *context);
+
 
 /*
- * Evaluates the output of a $ifNull expression.
- * Since $ifNull is expressed as { "$ifNull": [ <expression1>, <expression2>, ..., <replacement-expression-if-null> ] }
- * We evaluate every expression and return the first that is not null or undefined, otherwise we return the last expression in the array.
- * $ifNull requires at least 2 arguments.
+ * Parses an $ifNull expression. expression and sets the parsed data in the data argument.
+ * $ifNull is expressed as { "$ifNull": [ <expression1>, <expression2>, ..., <replacement-expression-if-null> ] }
  */
 void
-HandleDollarIfNull(pgbson *doc, const bson_value_t *operatorValue,
-				   ExpressionResult *expressionResult)
+ParseDollarIfNull(const bson_value_t *argument, AggregationExpressionData *data,
+				  ParseAggregationExpressionContext *context)
 {
-	int numArgs = operatorValue->value_type == BSON_TYPE_ARRAY ?
-				  BsonDocumentValueCountKeys(operatorValue) : 1;
+	int numArgs = argument->value_type == BSON_TYPE_ARRAY ?
+				  BsonDocumentValueCountKeys(argument) : 1;
 
 	if (numArgs < 2)
 	{
@@ -52,26 +52,70 @@ HandleDollarIfNull(pgbson *doc, const bson_value_t *operatorValue,
 							numArgs)));
 	}
 
-	bson_iter_t arrayIter;
-	BsonValueInitIterator(operatorValue, &arrayIter);
+	bool areArgumentsConstant;
+	List *argumentsList = ParseVariableArgumentsForExpression(argument,
+															  &areArgumentsConstant,
+															  context);
 
-	bson_value_t result;
-	result.value_type = BSON_TYPE_NULL;
-
-	bool isNullOnEmpty = false;
-	while (bson_iter_next(&arrayIter))
+	if (areArgumentsConstant)
 	{
-		bson_value_t evaluatedValue =
-			EvaluateExpressionAndGetValue(doc, bson_iter_value(&arrayIter),
-										  expressionResult, isNullOnEmpty);
+		data->value.value_type = BSON_TYPE_NULL;
+
+		int idx = 0;
+		while (argumentsList != NIL && idx < argumentsList->length)
+		{
+			AggregationExpressionData *currentData = list_nth(argumentsList, idx);
+
+			if (IsExpressionResultNullOrUndefined(&data->value))
+			{
+				data->value = currentData->value;
+			}
+
+			idx++;
+		}
+
+		data->kind = AggregationExpressionKind_Constant;
+		list_free_deep(argumentsList);
+	}
+	else
+	{
+		data->operator.arguments = argumentsList;
+		data->operator.argumentsKind = AggregationExpressionArgumentsKind_List;
+	}
+}
+
+
+/*
+ * Evaluates the output of a $ifNull expression.
+ * Since $ifNull is expressed as { "$ifNull": [ <expression1>, <expression2>, ..., <replacement-expression-if-null> ] }
+ * We evaluate every expression and return the first that is not null or undefined, otherwise we return the last expression in the array.
+ * $ifNull requires at least 2 arguments.
+ */
+void
+HandlePreParsedDollarIfNull(pgbson *doc, void *arguments,
+							ExpressionResult *expressionResult)
+{
+	List *argumentList = (List *) arguments;
+	bson_value_t result =
+	{
+		.value_type = BSON_TYPE_NULL
+	};
+
+	int idx = 0;
+	while (argumentList != NIL && idx < argumentList->length)
+	{
+		AggregationExpressionData *currentData = list_nth(argumentList, idx);
+
+		bool isNullOnEmpty = false;
+		ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+		EvaluateAggregationExpressionData(currentData, doc, &childResult, isNullOnEmpty);
 
 		if (IsExpressionResultNullOrUndefined(&result))
 		{
-			/* don't break iteration in case a non-null is found
-			 * in order to emit errors for any expression that could've
-			 * resulted in one as part of the arguments. */
-			result = evaluatedValue;
+			result = childResult.value;
 		}
+
+		idx++;
 	}
 
 	/* if the last argument resulted in EOD, native mongo doesn't return any result, i.e: missing field. */
@@ -83,51 +127,47 @@ HandleDollarIfNull(pgbson *doc, const bson_value_t *operatorValue,
 
 
 /*
- * Evaluates the output of a $cond expression.
- * Since $cond is expressed as { "$cond": [ <if-expression>, <then-expression>, <else-expression> ] } or
+ * Parses an $cond expression. expression and sets the parsed data in the data argument.
+ * $cond is expressed as { "$cond": [ <if-expression>, <then-expression>, <else-expression> ] } or
  * { "$cond": { "if": <expression>, "then": <expression>, "else": <expression> }}
- * We evaluate the <if-expression>, if its result is true we return the <then-expression>,
- * otherwise we return the <else-expression>.
  */
 void
-HandleDollarCond(pgbson *doc, const bson_value_t *operatorValue,
-				 ExpressionResult *expressionResult)
+ParseDollarCond(const bson_value_t *argument, AggregationExpressionData *data,
+				ParseAggregationExpressionContext *context)
 {
-	bson_value_t ifValue;
-	bson_value_t thenValue;
-	bson_value_t elseValue;
-	bool isNullOnEmpty = false;
-	if (operatorValue->value_type == BSON_TYPE_DOCUMENT)
+	List *argumentsList = NIL;
+	AggregationExpressionData *ifData = palloc0(sizeof(AggregationExpressionData));
+	AggregationExpressionData *thenData = palloc0(sizeof(AggregationExpressionData));
+	AggregationExpressionData *elseData = palloc0(sizeof(AggregationExpressionData));
+
+	if (argument->value_type == BSON_TYPE_DOCUMENT)
 	{
 		bool isIfMissing = true;
 		bool isThenMissing = true;
 		bool isElseMissing = true;
 
 		bson_iter_t documentIter;
-		BsonValueInitIterator(operatorValue, &documentIter);
+		BsonValueInitIterator(argument, &documentIter);
+
 		while (bson_iter_next(&documentIter))
 		{
 			const char *key = bson_iter_key(&documentIter);
 			const bson_value_t *currentValue = bson_iter_value(&documentIter);
+
 			if (strcmp(key, "if") == 0)
 			{
 				isIfMissing = false;
-				ifValue = EvaluateExpressionAndGetValue(doc, currentValue,
-														expressionResult, isNullOnEmpty);
+				ParseAggregationExpressionData(ifData, currentValue, context);
 			}
 			else if (strcmp(key, "then") == 0)
 			{
 				isThenMissing = false;
-				thenValue = EvaluateExpressionAndGetValue(doc, currentValue,
-														  expressionResult,
-														  isNullOnEmpty);
+				ParseAggregationExpressionData(thenData, currentValue, context);
 			}
 			else if (strcmp(key, "else") == 0)
 			{
 				isElseMissing = false;
-				elseValue = EvaluateExpressionAndGetValue(doc, currentValue,
-														  expressionResult,
-														  isNullOnEmpty);
+				ParseAggregationExpressionData(elseData, currentValue, context);
 			}
 			else
 			{
@@ -151,73 +191,109 @@ HandleDollarCond(pgbson *doc, const bson_value_t *operatorValue,
 			ereport(ERROR, (errcode(MongoDollarCondMissingElseParameter),
 							errmsg("Missing 'else' parameter to $cond")));
 		}
+
+		argumentsList = list_make3(ifData, thenData, elseData);
 	}
 	else
 	{
-		int numArgs = operatorValue->value_type == BSON_TYPE_ARRAY ?
-					  BsonDocumentValueCountKeys(operatorValue) : 1;
-
 		int requiredArgs = 3;
-		if (numArgs != requiredArgs)
-		{
-			ThrowExpressionTakesExactlyNArgs("$cond", 3, numArgs);
-		}
-
-		bson_iter_t arrayIter;
-		BsonValueInitIterator(operatorValue, &arrayIter);
-
-		bson_iter_next(&arrayIter);
-		ifValue = EvaluateExpressionAndGetValue(
-			doc, bson_iter_value(&arrayIter), expressionResult, isNullOnEmpty);
-
-		/* We need to evaluate both expressions, even if one of them is not going to be used in the result
-		 * as we need to make sure we throw any errors that the then/else expressions could throw when
-		 * evaluating them to match native mongo behavior. */
-		bson_iter_next(&arrayIter);
-		thenValue = EvaluateExpressionAndGetValue(
-			doc, bson_iter_value(&arrayIter), expressionResult, isNullOnEmpty);
-
-		bson_iter_next(&arrayIter);
-		elseValue = EvaluateExpressionAndGetValue(
-			doc, bson_iter_value(&arrayIter), expressionResult, isNullOnEmpty);
+		argumentsList = ParseFixedArgumentsForExpression(argument, requiredArgs, "$cond",
+														 &data->operator.argumentsKind,
+														 context);
+		ifData = list_nth(argumentsList, 0);
+		thenData = list_nth(argumentsList, 1);
+		elseData = list_nth(argumentsList, 2);
 	}
 
-	bson_value_t result = BsonValueAsBool(&ifValue) ? thenValue : elseValue;
-
-	/* If resulted in EOD because of field not found, should be a no-op. */
-	if (result.value_type != BSON_TYPE_EOD)
+	if (IsAggregationExpressionConstant(ifData) && IsAggregationExpressionConstant(
+			thenData) && IsAggregationExpressionConstant(elseData))
 	{
-		if (IsExpressionResultUndefined(&result))
+		bson_value_t result = { 0 };
+		result = BsonValueAsBool(&ifData->value) ? thenData->value :
+				 elseData->value;
+
+		/* If resulted is EOD because of field not found, should be a no-op. */
+		if (result.value_type != BSON_TYPE_EOD)
 		{
-			result.value_type = BSON_TYPE_NULL;
+			data->value = result;
 		}
 
+		data->kind = AggregationExpressionKind_Constant;
+		list_free_deep(argumentsList);
+	}
+	else
+	{
+		data->operator.arguments = argumentsList;
+		data->operator.argumentsKind = AggregationExpressionArgumentsKind_List;
+	}
+}
+
+
+/*
+ * Evaluates the output of a $cond expression.
+ * Since $cond is expressed as { "$cond": [ <if-expression>, <then-expression>, <else-expression> ] } or
+ * { "$cond": { "if": <expression>, "then": <expression>, "else": <expression> }}
+ * We evaluate the <if-expression>, if its result is true we return the <then-expression>,
+ * otherwise we return the <else-expression>.
+ */
+void
+HandlePreParsedDollarCond(pgbson *doc, void *arguments,
+						  ExpressionResult *expressionResult)
+{
+	List *argumentList = (List *) arguments;
+
+	bool isNullOnEmpty = false;
+	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+
+	AggregationExpressionData *ifData = list_nth(argumentList, 0);
+	EvaluateAggregationExpressionData(ifData, doc, &childResult, isNullOnEmpty);
+	bson_value_t ifValue = childResult.value;
+
+	ExpressionResultReset(&childResult);
+
+	AggregationExpressionData *thenData = list_nth(argumentList, 1);
+	EvaluateAggregationExpressionData(thenData, doc, &childResult, isNullOnEmpty);
+	bson_value_t thenValue = childResult.value;
+
+	ExpressionResultReset(&childResult);
+
+	AggregationExpressionData *elseData = list_nth(argumentList, 2);
+	EvaluateAggregationExpressionData(elseData, doc, &childResult, isNullOnEmpty);
+	bson_value_t elseValue = childResult.value;
+
+	bson_value_t result = { 0 };
+	result = BsonValueAsBool(&ifValue) ? thenValue :
+			 elseValue;
+
+	/* If resulted is EOD because of field not found, should be a no-op. */
+	if (result.value_type != BSON_TYPE_EOD)
+	{
 		ExpressionResultSetValue(expressionResult, &result);
 	}
 }
 
 
 /*
- * Evaluates the output of a $switch expression.
+ * Parses an $switch expression. expression and sets the parsed data in the data argument.
  * $switch is expressed as { "$switch": { "branches": [ {"case": <expression>, "then": <expression>}, ...], "default": <expression>} }
- * We evaluate every case expression, if any returns true, we return it's corresponding then expression, else, we return the default expression.
  */
 void
-HandleDollarSwitch(pgbson *doc, const bson_value_t *operatorValue,
-				   ExpressionResult *expressionResult)
+ParseDollarSwitch(const bson_value_t *argument, AggregationExpressionData *data,
+				  ParseAggregationExpressionContext *context)
 {
-	if (operatorValue->value_type != BSON_TYPE_DOCUMENT)
+	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
 		ereport(ERROR, (errcode(MongoDollarSwitchRequiresObject), errmsg(
 							"$switch requires an object as an argument, found: %s",
-							BsonTypeName(operatorValue->value_type))));
+							BsonTypeName(argument->value_type))));
 	}
 
-	List *branches = NIL;
-	const bson_value_t *defaultExpression = NULL;
+	bool allArgumentsConstant = true;
+	List *arguments = NIL;
+	SwitchEntry *defaultExpression = NULL;
 
 	bson_iter_t documentIter;
-	BsonValueInitIterator(operatorValue, &documentIter);
+	BsonValueInitIterator(argument, &documentIter);
 	while (bson_iter_next(&documentIter))
 	{
 		const char *key = bson_iter_key(&documentIter);
@@ -236,16 +312,38 @@ HandleDollarSwitch(pgbson *doc, const bson_value_t *operatorValue,
 
 			while (bson_iter_next(&childIter))
 			{
-				SwitchBranch *branchDef = ParseBranchForSwitch(&childIter);
+				SwitchEntry *branchDef = ParseBranchForSwitch(&childIter,
+															  &allArgumentsConstant,
+															  context);
 
 				/* First we need to parse the branches without evaluating them, as in native mongo,
 				 * parsing errors come first. */
-				branches = lappend(branches, branchDef);
+				arguments = lappend(arguments, branchDef);
 			}
 		}
 		else if (strcmp(key, "default") == 0)
 		{
-			defaultExpression = bson_iter_value(&documentIter);
+			/* It will be hit if no branch has previously been hit. */
+			bson_value_t defaultCase = {
+				.value_type = BSON_TYPE_BOOL, .value.v_bool = true
+			};
+
+			defaultExpression = palloc0(sizeof(SwitchEntry));
+			defaultExpression->caseExpression = palloc0(
+				sizeof(AggregationExpressionData)),
+			defaultExpression->thenExpression = palloc0(
+				sizeof(AggregationExpressionData));
+
+			ParseAggregationExpressionData(defaultExpression->caseExpression,
+										   &defaultCase, context);
+			ParseAggregationExpressionData(defaultExpression->thenExpression,
+										   bson_iter_value(&documentIter), context);
+
+			allArgumentsConstant = allArgumentsConstant &&
+								   IsAggregationExpressionConstant(
+				defaultExpression->caseExpression) &&
+								   IsAggregationExpressionConstant(
+				defaultExpression->thenExpression);
 		}
 		else
 		{
@@ -254,58 +352,133 @@ HandleDollarSwitch(pgbson *doc, const bson_value_t *operatorValue,
 		}
 	}
 
-	if (list_length(branches) <= 0)
+	if (list_length(arguments) <= 0)
 	{
 		ereport(ERROR, (errcode(MongoDollarSwitchRequiresAtLeastOneBranch), errmsg(
 							"$switch requires at least one branch.")));
 	}
 
-	bson_value_t result;
-	bool foundTrueCase = false;
+	/* The default expression will be the last item in our arguments list. */
+	if (defaultExpression != NULL)
+	{
+		arguments = lappend(arguments, defaultExpression);
+	}
+
+	if (allArgumentsConstant)
+	{
+		bson_value_t result = { 0 };
+		bool foundTrueCase = false;
+		ListCell *branchCell = NULL;
+		foreach(branchCell, arguments)
+		{
+			CHECK_FOR_INTERRUPTS();
+
+			SwitchEntry *branchDef = (SwitchEntry *) lfirst(branchCell);
+
+			/* No default expression. */
+			if (branchDef == NULL)
+			{
+				continue;
+			}
+
+			bson_value_t caseValue = branchDef->caseExpression->value;
+			if (BsonValueAsBool(&caseValue))
+			{
+				result = branchDef->thenExpression->value;
+				foundTrueCase = true;
+				break;
+			}
+		}
+
+		/* If no switch branch matches, the default expression will match as it has caseValue true*/
+		if (!foundTrueCase)
+		{
+			ereport(ERROR, (errcode(MongoDollarSwitchNoMatchingBranchAndNoDefault),
+							errmsg(
+								"$switch could not find a matching branch for an input, and no default was specified.")));
+		}
+
+		if (result.value_type != BSON_TYPE_EOD)
+		{
+			data->value = result;
+		}
+
+		data->kind = AggregationExpressionKind_Constant;
+		list_free_deep(arguments);
+	}
+	else
+	{
+		data->operator.arguments = arguments;
+		data->operator.argumentsKind = AggregationExpressionArgumentsKind_List;
+	}
+}
+
+
+/*
+ * Evaluates the output of a $switch expression.
+ * Since $switch is expressed as { "$switch": { "branches": [ {"case": <expression>, "then": <expression>}, ...], "default": <expression>} }
+ * We evaluate the <case-expression> for each branch, if it is true we return the <then-expression>,
+ * otherwise we return the <default-expression> if it exists.
+ */
+void
+HandlePreParsedDollarSwitch(pgbson *doc, void *arguments,
+							ExpressionResult *expressionResult)
+{
+	List *argumentList = (List *) arguments;
+
 	bool isNullOnEmpty = false;
+	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+
+	bson_value_t result = { 0 };
+	bool foundTrueCase = false;
 	ListCell *branchCell = NULL;
-	foreach(branchCell, branches)
+	foreach(branchCell, argumentList)
 	{
 		CHECK_FOR_INTERRUPTS();
 
-		SwitchBranch *branchDef = (SwitchBranch *) lfirst(branchCell);
-		bson_value_t caseValue = EvaluateExpressionAndGetValue(doc,
-															   &(branchDef->caseExpression),
-															   expressionResult,
-															   isNullOnEmpty);
+		SwitchEntry *branchDef = (SwitchEntry *) lfirst(branchCell);
+
+		/* No default expression. */
+		if (branchDef == NULL)
+		{
+			continue;
+		}
+
+		AggregationExpressionData *caseData = branchDef->caseExpression;
+		EvaluateAggregationExpressionData(caseData, doc, &childResult, isNullOnEmpty);
+		bson_value_t caseValue = childResult.value;
+
+		ExpressionResultReset(&childResult);
 
 		if (BsonValueAsBool(&caseValue))
 		{
-			result = EvaluateExpressionAndGetValue(doc,
-												   &(branchDef->thenExpression),
-												   expressionResult, isNullOnEmpty);
+			AggregationExpressionData *thenData = branchDef->thenExpression;
+			EvaluateAggregationExpressionData(thenData, doc, &childResult, isNullOnEmpty);
+			result = childResult.value;
 			foundTrueCase = true;
 			break;
 		}
 	}
 
-	if (!foundTrueCase && defaultExpression)
+	/* If no match was found, then no switch branch matched and no default was provided.*/
+	if (!foundTrueCase)
 	{
-		result = EvaluateExpressionAndGetValue(doc, defaultExpression,
-											   expressionResult, isNullOnEmpty);
-	}
-	else if (!foundTrueCase)
-	{
-		ereport(ERROR, (errcode(MongoDollarSwitchNoMatchingBranchAndNoDefault), errmsg(
+		ereport(ERROR, (errcode(MongoDollarSwitchNoMatchingBranchAndNoDefault),
+						errmsg(
 							"$switch could not find a matching branch for an input, and no default was specified.")));
 	}
 
+	/* If resulted is EOD because of field not found, should be a no-op. */
 	if (result.value_type != BSON_TYPE_EOD)
 	{
 		ExpressionResultSetValue(expressionResult, &result);
 	}
-
-	list_free_deep(branches);
 }
 
 
-static SwitchBranch *
-ParseBranchForSwitch(bson_iter_t *iter)
+static SwitchEntry *
+ParseBranchForSwitch(bson_iter_t *iter, bool *allArgumentsConstant,
+					 ParseAggregationExpressionContext *context)
 {
 	if (!BSON_ITER_HOLDS_DOCUMENT(iter))
 	{
@@ -317,7 +490,10 @@ ParseBranchForSwitch(bson_iter_t *iter)
 	bson_iter_t childIter;
 	bson_iter_recurse(iter, &childIter);
 
-	SwitchBranch *branchDef = palloc(sizeof(SwitchBranch));
+	SwitchEntry *branchDef = palloc(sizeof(SwitchEntry));
+	branchDef->caseExpression = palloc0(sizeof(AggregationExpressionData));
+	branchDef->thenExpression = palloc0(sizeof(AggregationExpressionData));
+
 	bool isCaseMissing = true;
 	bool isThenMissing = true;
 	while (bson_iter_next(&childIter))
@@ -327,12 +503,20 @@ ParseBranchForSwitch(bson_iter_t *iter)
 		if (strcmp(key, "case") == 0)
 		{
 			isCaseMissing = false;
-			branchDef->caseExpression = *currentValue;
+			ParseAggregationExpressionData(branchDef->caseExpression, currentValue,
+										   context);
+			*allArgumentsConstant = *allArgumentsConstant &&
+									IsAggregationExpressionConstant(
+				branchDef->caseExpression);
 		}
 		else if (strcmp(key, "then") == 0)
 		{
 			isThenMissing = false;
-			branchDef->thenExpression = *currentValue;
+			ParseAggregationExpressionData(branchDef->thenExpression, currentValue,
+										   context);
+			*allArgumentsConstant = *allArgumentsConstant &&
+									IsAggregationExpressionConstant(
+				branchDef->thenExpression);
 		}
 		else
 		{
