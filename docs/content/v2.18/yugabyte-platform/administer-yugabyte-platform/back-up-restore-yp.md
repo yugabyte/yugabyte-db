@@ -70,6 +70,12 @@ To back up a YugabyteDB Anywhere server, perform the following:
 
     `--exclude_prometheus` is optional. It excludes Prometheus metrics from the backup.
 
+    {{<note title="Note">}}
+
+If you are using versions 2.18.9, 2.20.6, or 2024.1.2 or earlier, add the `--disable_version_check` flag if you are specifying a custom data directory (that is, you are not using `/opt/yugabyte`).
+
+    {{</note>}}
+
 1. Verify that the backup `.tar` file, with the correct timestamp, is in the specified output directory.
 
 1. Upload the backup file to your preferred storage location and delete it from the local disk.

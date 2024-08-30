@@ -60,7 +60,7 @@ To back up a YugabyteDB Anywhere server, perform the following:
 1. Run the `yb_platform_backup.sh` script using the `backup` command, as follows:
 
     ```sh
-    ./yb_platform_backup.sh create --output <output_path> [--data_dir <data_dir>] [--exclude_prometheus] [--disable_version_check]
+    ./yb_platform_backup.sh create --output <output_path> [--data_dir <data_dir>] [--exclude_prometheus]
     ```
 
     The `create` command runs the backup of the YugabyteDB Anywhere server.
@@ -71,7 +71,11 @@ To back up a YugabyteDB Anywhere server, perform the following:
 
     `--exclude_prometheus` excludes Prometheus metrics from the backup. Optional.
 
-    `--disable_version_check` is optional. Use this flag if you are specifying a custom data directory (that is, you are not using `/opt/yugabyte`).
+    {{<note title="Note">}}
+
+If you are using versions 2.18.9, 2.20.6, or 2024.1.2 or earlier, add the `--disable_version_check` flag if you are specifying a custom data directory (that is, you are not using `/opt/yugabyte`).
+
+    {{</note>}}
 
 1. Verify that the backup `.tar` file, with the correct timestamp, is in the specified output directory.
 
