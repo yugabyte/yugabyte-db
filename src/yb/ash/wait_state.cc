@@ -270,14 +270,14 @@ WaitStateInfo::WaitStateInfo()
     : metadata_(AshMetadata{}) {}
 
 void WaitStateInfo::set_code(WaitStateCode code, const char* location) {
-  if (FLAGS_TEST_trace_ash_wait_code_updates) {
+  auto prev_code = code_.exchange(code, std::memory_order_release);
+  if (FLAGS_TEST_trace_ash_wait_code_updates && prev_code != code) {
     if (FLAGS_tracing_level >= 1) {
       VTrace(1, yb::Format("$0 at $1", ash::ToString(code), location));
     } else {
       VTrace(0, yb::Format("$0", ash::ToString(code)));
     }
   }
-  code_ = code;
   MaybeSleepForTests(this, code);
 }
 
@@ -351,8 +351,8 @@ const WaitStateInfoPtr& WaitStateInfo::CurrentWaitState() {
 }
 
 void WaitStateInfo::EnableConcurrentUpdates() {
-  concurrent_updates_allowed_ = true;
-  if (FLAGS_TEST_trace_ash_wait_code_updates) {
+  auto old_value = concurrent_updates_allowed_.exchange(true, std::memory_order_release);
+  if (FLAGS_TEST_trace_ash_wait_code_updates && !old_value) {
     VTrace(0, yb::Format("Enabling concurrent updates"));
   }
 }
