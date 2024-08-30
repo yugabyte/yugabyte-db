@@ -47,7 +47,7 @@
 <!-- XML to table -->
 
 {{ range $data.flag}}
-## {{.name}}
+#### {{.name}}
 {{.meaning}} (**_Default_: {{ default "None" (or .default .target)}}**{{if .tags}} - _{{replaceRE "," ", " .tags}}_{{end}})
 
 {{ end }}
