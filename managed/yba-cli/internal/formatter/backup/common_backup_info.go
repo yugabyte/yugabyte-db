@@ -9,18 +9,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"text/template"
 	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
 const (
-	defaultCommonBackupInfo = "table {{.BackupUUID}}\t{{.State}}\t{{.StorageConfigUUID}}\t{{.TableByTableBackup}}\t{{.TotalBackupSizeInBytes}}" +
-		"\t{{.CreateTime}}\t{{.UpdateTime}}\t{{.CompletionTime}}"
+	defaultCommonBackupInfo  = "table {{.BackupUUID}}\t{{.State}}\t{{.StorageConfig}}"
+	commonBackupInfoDetails1 = "table {{.TableByTableBackup}}\t{{.TotalBackupSizeInBytes}}"
+	commonBackupInfoDetails2 = "table {{.CreateTime}}\t{{.UpdateTime}}\t{{.CompletionTime}}"
 
 	tableByTableBackupHeader     = "Is Table by Table"
 	totalBackupSizeInBytesHeader = "Total Backup Size In Bytes"
@@ -68,8 +71,35 @@ func (cb *CommonBackupInfoContext) Write(index int) error {
 		logrus.Errorf("%s", err.Error())
 		return err
 	}
-	cb.Output.Write([]byte(formatter.Colorize(fmt.Sprintf("Common backup %d Details", index+1), formatter.BlueColor)))
+	cb.Output.Write([]byte(
+		formatter.Colorize(
+			fmt.Sprintf("Common Backup %d Details", index+1),
+			formatter.BlueColor)))
 	cb.Output.Write([]byte("\n"))
+	if err := cb.ContextFormat(tmpl, cbc.CommonBackupInfo); err != nil {
+		logrus.Errorf("%s", err.Error())
+		return err
+	}
+	cb.PostFormat(tmpl, NewCommonBackupInfoContext())
+	cb.Output.Write([]byte("\n"))
+
+	tmpl, err = cb.startSubsection(commonBackupInfoDetails1)
+	if err != nil {
+		logrus.Errorf("%s", err.Error())
+		return err
+	}
+	if err := cb.ContextFormat(tmpl, cbc.CommonBackupInfo); err != nil {
+		logrus.Errorf("%s", err.Error())
+		return err
+	}
+	cb.PostFormat(tmpl, NewCommonBackupInfoContext())
+	cb.Output.Write([]byte("\n"))
+
+	tmpl, err = cb.startSubsection(commonBackupInfoDetails2)
+	if err != nil {
+		logrus.Errorf("%s", err.Error())
+		return err
+	}
 	if err := cb.ContextFormat(tmpl, cbc.CommonBackupInfo); err != nil {
 		logrus.Errorf("%s", err.Error())
 		return err
@@ -113,7 +143,7 @@ func NewCommonBackupInfoContext() *CommonBackupInfoContext {
 	commonBackupInfoCtx.Header = formatter.SubHeaderContext{
 		"BackupUUID":             backupUUIDHeader,
 		"State":                  stateHeader,
-		"StorageConfigUUID":      storageConfigUUIDHeader,
+		"StorageConfig":          storageConfigHeader,
 		"TableByTableBackup":     tableByTableBackupHeader,
 		"TotalBackupSizeInBytes": totalBackupSizeInBytesHeader,
 		"CreateTime":             createTimeHeader,
@@ -130,11 +160,25 @@ func (cb *CommonBackupInfoContext) BackupUUID() string {
 
 // State fetches Backup State
 func (cb *CommonBackupInfoContext) State() string {
-	return cb.c.GetState()
+	state := cb.c.GetState()
+	if strings.Compare(state, util.CompletedBackupState) == 0 ||
+		strings.Compare(state, util.StoppedBackupState) == 0 {
+		return formatter.Colorize(state, formatter.GreenColor)
+	}
+	if strings.Compare(state, util.FailedBackupState) == 0 ||
+		strings.Compare(state, util.FailedToDeleteBackupState) == 0 {
+		return formatter.Colorize(state, formatter.RedColor)
+	}
+	return formatter.Colorize(state, formatter.YellowColor)
 }
 
-// StorageConfigUUID fetches Backup StorageConfigUUID
-func (cb *CommonBackupInfoContext) StorageConfigUUID() string {
+// StorageConfig fetches Backup StorageConfig
+func (cb *CommonBackupInfoContext) StorageConfig() string {
+	for _, config := range StorageConfigs {
+		if strings.Compare(config.GetConfigUUID(), cb.c.GetStorageConfigUUID()) == 0 {
+			return fmt.Sprintf("%s(%s)", config.GetConfigName(), config.GetConfigUUID())
+		}
+	}
 	return cb.c.GetStorageConfigUUID()
 }
 

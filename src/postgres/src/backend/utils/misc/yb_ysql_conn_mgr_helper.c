@@ -705,15 +705,17 @@ SetLogicalClientUserDetailsIfValid(const char *rolename, bool *is_superuser,
 	uint32_t yb_num_logical_conn = 0,
 				 yb_num_physical_conn_from_ysqlconnmgr = 0;
 
-		yb_net_client_connections = CountUserBackends(*roleid);
+	yb_net_client_connections = CountUserBackends(*roleid);
 
-		if (IsYugaByteEnabled() &&
-		YbGetNumYsqlConnMgrConnections(NULL, rname, &yb_num_logical_conn,
-									   &yb_num_physical_conn_from_ysqlconnmgr)) {
-			yb_net_client_connections +=
-			yb_num_logical_conn - yb_num_physical_conn_from_ysqlconnmgr;
-		
-		}
+	if (IsYugaByteEnabled() &&
+	YbGetNumYsqlConnMgrConnections(NULL, rname, &yb_num_logical_conn,
+									&yb_num_physical_conn_from_ysqlconnmgr)) {
+		yb_net_client_connections +=
+		yb_num_logical_conn - yb_num_physical_conn_from_ysqlconnmgr;
+
+		if (YbIsYsqlConnMgrWarmupRandomEnabled())
+			yb_net_client_connections = yb_num_logical_conn;
+	}
 	
 	if (rform->rolconnlimit >= 0 &&
 			!rform->rolsuper &&

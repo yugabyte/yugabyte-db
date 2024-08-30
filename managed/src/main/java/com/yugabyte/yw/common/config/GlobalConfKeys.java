@@ -1456,4 +1456,31 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Node agent enabler scan interval",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> supportBundleDefaultPromDumpRange =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.default_prom_dump_range",
+          ScopeType.GLOBAL,
+          "Support bundle prometheus dump range",
+          "The start-end duration to collect the prometheus dump inside the support bundle (in"
+              + " minutes)",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> supportBundlePromDumpBatchDurationInMins =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.batch_duration_prom_dump_mins",
+          ScopeType.GLOBAL,
+          "Batch duration for the prometheus dump (in minutes)",
+          "For longer time periods of the prometheus dump in the support bundle, the exports can be"
+              + " collected batchwise with a specific batch duration",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> supportBundlePromDumpStepInSecs =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.step_prom_dump_secs",
+          ScopeType.GLOBAL,
+          "Query resolution width for prometheus query",
+          "The \"step\" parameter in the query specifies the interval in secs at which data points"
+              + " will be evaluated and returned",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

@@ -2174,6 +2174,41 @@
         }
       }
     },
+    "integrations": {
+      "title": "Integrations",
+      "tab": {
+        "infrastructure": {
+          "tabLabel": "Infrastructure",
+          "tab": {
+            "aws": "Amazon Web Services",
+            "gcp": "Google Cloud Platform",
+            "azu": "Microsoft Azure",
+            "vmwareTanzu": "VMware Tanzu",
+            "redHatOpenShift": "Red Hat OpenShift",
+            "managedK8s": "Managed Kubernetes Service",
+            "onPrem": "On-Premises Datacenters"
+          }
+        },
+        "backup": {
+          "tabLabel": "Backup"
+        },
+        "log": {
+          "tabLabel": "Log"
+        },
+        "security": {
+          "tabLabel": "Security"
+        },
+        "backupNew": {
+          "tabLabel": "New Backup Config"
+        },
+        "troubleshoot": {
+          "tabLabel": "Troubleshoot"
+        }
+      },
+      "error": {
+        "pageNotFound": "404 Page Not Found."
+      }
+    },
     "ha": {
       "config": {
         "globalState": {

@@ -2978,10 +2978,24 @@ quickdie(SIGNAL_ARGS)
 	switch (GetQuitSignalReason())
 	{
 		case PMQUIT_NOT_SENT:
-			/* Hmm, SIGQUIT arrived out of the blue */
-			ereport(WARNING,
-					(errcode(ERRCODE_ADMIN_SHUTDOWN),
-					 errmsg("terminating connection because of unexpected SIGQUIT signal")));
+			if (postgres_signal_arg == SIGTERM)
+			{
+				/*
+				 * pg_cron uses quickdie for not only SIGQUIT handler but also
+				 * SIGTERM handler to avoid stuck process.  SIGTERM is received
+				 * when tserver tries to kill PG during shutdown.
+				 */
+				ereport(WARNING_CLIENT_ONLY,
+						(errcode(ERRCODE_ADMIN_SHUTDOWN),
+						 errmsg("terminating connection due to shutdown command")));
+			}
+			else
+			{
+				/* Hmm, SIGQUIT arrived out of the blue */
+				ereport(WARNING,
+						(errcode(ERRCODE_ADMIN_SHUTDOWN),
+						 errmsg("terminating connection because of unexpected SIGQUIT signal")));
+			}
 			break;
 		case PMQUIT_FOR_CRASH:
 			/* YB_TODO(Deepthi) Commit c5f22319c2b77de0f2ebeeb797791d925dfd070d */

@@ -37,14 +37,15 @@ var listRestoreCmd = &cobra.Command{
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		restoreCtx := *restore.NewRestoreContext()
-		restoreCtx.Output = os.Stdout
-		restoreCtx.Format = restore.NewRestoreFormat(viper.GetString("output"))
+		restoreCtx := formatter.Context{
+			Output: os.Stdout,
+			Format: restore.NewRestoreFormat(viper.GetString("output")),
+		}
 
 		var limit int32 = 10
 		var offset int32 = 0
-		restoreApiDirection := "DESC"
-		restoreApiSort := "createTime"
+		restoreAPIDirection := "DESC"
+		restoreAPISort := "createTime"
 
 		universeNamesList := []string{}
 		universeUUIDsList := []string{}
@@ -55,26 +56,26 @@ var listRestoreCmd = &cobra.Command{
 		if (len(strings.TrimSpace(universeUUIDs))) > 0 {
 			universeUUIDsList = strings.Split(universeUUIDs, ",")
 		}
-		restoreApiFilter := ybaclient.RestoreApiFilter{
+		restoreAPIFilter := ybaclient.RestoreApiFilter{
 			UniverseNameList: universeNamesList,
 			UniverseUUIDList: universeUUIDsList,
 		}
 
-		restoreApiQuery := ybaclient.RestorePagedApiQuery{
-			Filter:    restoreApiFilter,
-			Direction: restoreApiDirection,
+		restoreAPIQuery := ybaclient.RestorePagedApiQuery{
+			Filter:    restoreAPIFilter,
+			Direction: restoreAPIDirection,
 			Limit:     limit,
 			Offset:    offset,
-			SortBy:    restoreApiSort,
+			SortBy:    restoreAPISort,
 		}
 
-		restoreListRequest := authAPI.ListRestores().PageRestoresRequest(restoreApiQuery)
+		restoreListRequest := authAPI.ListRestores().PageRestoresRequest(restoreAPIQuery)
 
 		for {
 			// Execute backup list request
 			r, response, err := restoreListRequest.Execute()
 			if err != nil {
-				errMessage := util.ErrorFromHTTPResponse(response, err, "Restore", "List Restore")
+				errMessage := util.ErrorFromHTTPResponse(response, err, "Restore", "List")
 				logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 			}
 
@@ -88,11 +89,8 @@ var listRestoreCmd = &cobra.Command{
 				return
 			}
 
-			// Write restore entities
-			for index, value := range r.GetEntities() {
-				restoreCtx.SetRestore(value)
-				restoreCtx.Write(index + int(offset))
-			}
+			// Write backup entities
+			restore.Write(restoreCtx, r.GetEntities())
 
 			// Check if there are more pages
 			hasNext := r.GetHasNext()
@@ -109,8 +107,8 @@ var listRestoreCmd = &cobra.Command{
 			offset += int32(len(r.GetEntities()))
 
 			// Prepare next page request
-			restoreApiQuery.Offset = offset
-			restoreListRequest = authAPI.ListRestores().PageRestoresRequest(restoreApiQuery)
+			restoreAPIQuery.Offset = offset
+			restoreListRequest = authAPI.ListRestores().PageRestoresRequest(restoreAPIQuery)
 		}
 
 	},

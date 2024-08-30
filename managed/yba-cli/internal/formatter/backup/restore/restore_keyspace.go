@@ -17,7 +17,10 @@ import (
 )
 
 const (
-	defaultRestoreKeyspace = "table {{.SourceKeyspace}}\t{{.TargetKeyspace}}\t{{.StorageLocation}}\t{{.BackupSizeFromStorageLocation}}\t{{.TableNameList}}"
+	defaultRestoreKeyspace = "table {{.SourceKeyspace}}" +
+		"\t{{.TargetKeyspace}}\t{{.BackupSizeFromStorageLocation}}"
+	restoreKeyspaceDetails1 = "table {{.StorageLocation}}"
+	restoreKeyspaceDetails2 = "table {{.TableNameList}}"
 
 	sourceKeyspaceHeader  = "Source Keyspace"
 	targetKeyspaceHeader  = "Target Keyspace"
@@ -69,6 +72,30 @@ func (r *RestoreKeyspaceContext) Write(index int) error {
 	}
 	r.Output.Write([]byte(formatter.Colorize(fmt.Sprintf("Keyspace %d Details", index+1), formatter.BlueColor)))
 	r.Output.Write([]byte("\n"))
+	if err := r.ContextFormat(tmpl, rc.RestoreKeyspace); err != nil {
+		logrus.Errorf("%s", err.Error())
+		return err
+	}
+	r.PostFormat(tmpl, NewRestoreKeyspaceContext())
+	r.Output.Write([]byte("\n"))
+
+	tmpl, err = r.startSubsection(restoreKeyspaceDetails1)
+	if err != nil {
+		logrus.Errorf("%s", err.Error())
+		return err
+	}
+	if err := r.ContextFormat(tmpl, rc.RestoreKeyspace); err != nil {
+		logrus.Errorf("%s", err.Error())
+		return err
+	}
+	r.PostFormat(tmpl, NewRestoreKeyspaceContext())
+	r.Output.Write([]byte("\n"))
+
+	tmpl, err = r.startSubsection(restoreKeyspaceDetails2)
+	if err != nil {
+		logrus.Errorf("%s", err.Error())
+		return err
+	}
 	if err := r.ContextFormat(tmpl, rc.RestoreKeyspace); err != nil {
 		logrus.Errorf("%s", err.Error())
 		return err

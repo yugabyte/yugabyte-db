@@ -7,6 +7,7 @@ package backup
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -18,31 +19,27 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/backup"
 )
 
-// getBackupCmd represents the edit backup command
-var getBackupCmd = &cobra.Command{
+// describeBackupCmd represents the edit backup command
+var describeBackupCmd = &cobra.Command{
 	Use:     "describe",
 	Aliases: []string{"get"},
 	Short:   "Describe a YugabyteDB Anywhere universe backup",
 	Long:    "Describe an universe backup in YugabyteDB Anywhere",
 	PreRun: func(cmd *cobra.Command, args []string) {
-		backupUUID, err := cmd.Flags().GetString("backup-uuid")
+		backupUUID, err := cmd.Flags().GetString("uuid")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 		if len(backupUUID) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No backup uuid specified to describe backup\n", formatter.RedColor))
+				formatter.Colorize("No backup UUID specified to describe backup\n", formatter.RedColor))
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		authAPI, err := ybaAuthClient.NewAuthAPIClient()
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		authAPI.GetCustomerUUID()
+		authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 
-		backupUUID, err := cmd.Flags().GetString("backup-uuid")
+		backupUUID, err := cmd.Flags().GetString("uuid")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
@@ -51,26 +48,41 @@ var getBackupCmd = &cobra.Command{
 		var offset int32 = 0
 
 		backupUUIDList := []string{backupUUID}
-		backupApiFilter := ybaclient.BackupApiFilter{
+		backupAPIFilter := ybaclient.BackupApiFilter{
 			BackupUUIDList: backupUUIDList,
 		}
 
-		backupApiDirection := "DESC"
-		backupApiSort := "createTime"
+		backupAPIDirection := "DESC"
+		backupAPISort := "createTime"
 
-		backupApiQuery := ybaclient.BackupPagedApiQuery{
-			Filter:    backupApiFilter,
-			Direction: backupApiDirection,
+		backupAPIQuery := ybaclient.BackupPagedApiQuery{
+			Filter:    backupAPIFilter,
+			Direction: backupAPIDirection,
 			Limit:     limit,
 			Offset:    offset,
-			SortBy:    backupApiSort,
+			SortBy:    backupAPISort,
 		}
 
-		backupListRequest := authAPI.ListBackups().PageBackupsRequest(backupApiQuery)
+		backupListRequest := authAPI.ListBackups().PageBackupsRequest(backupAPIQuery)
 		r, response, err := backupListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "Describe Backup")
+			errMessage := util.ErrorFromHTTPResponse(response, err, "Backup", "Describe")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		}
+
+		storageConfigListRequest := authAPI.GetListOfCustomerConfig()
+		rList, response, err := storageConfigListRequest.Execute()
+		if err != nil {
+			errMessage := util.ErrorFromHTTPResponse(
+				response, err, "Backup", "Get - Get Storage Configuration")
+			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+		}
+
+		backup.StorageConfigs = make([]ybaclient.CustomerConfigUI, 0)
+		for _, s := range rList {
+			if strings.Compare(s.GetType(), util.StorageCustomerConfigType) == 0 {
+				backup.StorageConfigs = append(backup.StorageConfigs, s)
+			}
 		}
 
 		if len(r.GetEntities()) > 0 && util.IsOutputType("table") {
@@ -85,7 +97,7 @@ var getBackupCmd = &cobra.Command{
 		if len(r.GetEntities()) < 1 {
 			logrus.Fatalf(
 				formatter.Colorize(
-					fmt.Sprintf("No backups with uuid: %s found\n", backupUUID),
+					fmt.Sprintf("No backups with UUID: %s found\n", backupUUID),
 					formatter.RedColor,
 				))
 		}
@@ -99,8 +111,8 @@ var getBackupCmd = &cobra.Command{
 }
 
 func init() {
-	getBackupCmd.Flags().SortFlags = false
-	getBackupCmd.Flags().String("backup-uuid", "",
-		"[Required] The uuid of the backup to be described.")
-	getBackupCmd.MarkFlagRequired("backup-uuid")
+	describeBackupCmd.Flags().SortFlags = false
+	describeBackupCmd.Flags().String("uuid", "",
+		"[Required] The UUID of the backup to be described.")
+	describeBackupCmd.MarkFlagRequired("uuid")
 }

@@ -91,6 +91,15 @@ DEFINE_UNKNOWN_bool(ysql_disable_server_file_access, false,
 
 DEFINE_NON_RUNTIME_bool(ysql_enable_profile, false, "Enable PROFILE feature.");
 
+DEFINE_test_flag(bool, ysql_conn_mgr_dowarmup_all_pools_random_attach, false,
+  "Enable precreation of server connections in every pool in Ysql Connection Manager and "
+  " randomly attach any idle server connection to client to serve it's queries. "
+  "ysql_conn_mgr_dowarmup is responsible for creating server connections only in "
+  "yugabyte (user), yugabyte (database) pool during the initialization of connection "
+  "manager process. Whereas this flag will create max of ysql_conn_mgr_min_conns_per_db"
+  " and 3 number of server connections in any pool whenever there is a requirement to create "
+  "first backend process in that particular pool.");
+
 // This gflag should be deprecated but kept to avoid breaking some customer
 // clusters using it. Use ysql_catalog_preload_additional_table_list if possible.
 DEFINE_NON_RUNTIME_bool(ysql_catalog_preload_additional_tables, false,
@@ -1954,6 +1963,8 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .TEST_generate_ybrowid_sequentially =
           &FLAGS_TEST_generate_ybrowid_sequentially,
       .ysql_use_fast_backward_scan = &FLAGS_use_fast_backward_scan,
+      .TEST_ysql_conn_mgr_dowarmup_all_pools_random_attach =
+          &FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_random_attach,
   };
   // clang-format on
   return &accessor;

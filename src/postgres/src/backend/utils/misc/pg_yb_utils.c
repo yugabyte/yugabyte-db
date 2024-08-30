@@ -5246,6 +5246,11 @@ bool YbUseFastBackwardScan() {
   return *(YBCGetGFlags()->ysql_use_fast_backward_scan);
 }
 
+bool YbIsYsqlConnMgrWarmupRandomEnabled()
+{
+	return *(YBCGetGFlags()->TEST_ysql_conn_mgr_dowarmup_all_pools_random_attach);
+}
+
 /* Used in YB to check if an attribute is a key column. */
 bool YbIsAttrPrimaryKeyColumn(Relation rel, AttrNumber attnum)
 {
