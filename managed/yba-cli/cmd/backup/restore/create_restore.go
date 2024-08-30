@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	ybaAuthClient "github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/client"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/backup/restore"
 )
 
 // createBackupRestoreCmd represents the universe backup command
@@ -61,7 +63,7 @@ var createBackupRestoreCmd = &cobra.Command{
 
 		r, response, err := universeListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Universe", "Get")
+			errMessage := util.ErrorFromHTTPResponse(response, err, "Restore", "Create - Get Universe")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
@@ -86,7 +88,7 @@ var createBackupRestoreCmd = &cobra.Command{
 		rList, response, err := storageConfigListRequest.Execute()
 		if err != nil {
 			errMessage := util.ErrorFromHTTPResponse(
-				response, err, "Storage Configuration", "Describe")
+				response, err, "Restore", "Create - Get Storage Configuration")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
@@ -151,14 +153,53 @@ var createBackupRestoreCmd = &cobra.Command{
 
 		if viper.GetBool("wait") {
 			if taskUUID != "" {
-				logrus.Info(fmt.Sprintf("\nWaiting for restore task %s on universe (%s) to be completed\n",
-					formatter.Colorize(taskUUID, formatter.GreenColor), universeNameFlag))
+				logrus.Info(fmt.Sprintf("\nWaiting for restore task %s on universe %s(%s) to be completed\n",
+					formatter.Colorize(taskUUID, formatter.GreenColor), universeNameFlag, universeUUID))
 				err = authAPI.WaitForTask(taskUUID, msg)
 				if err != nil {
 					logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 				}
-				logrus.Infof("The restore task %s is complete now\n", formatter.Colorize(taskUUID, formatter.GreenColor))
+
+				var limit int32 = 10
+				var offset int32 = 0
+				restoreAPIDirection := "DESC"
+				restoreAPISort := "createTime"
+
+				universeUUIDList := make([]string, 0)
+				if len(strings.TrimSpace(universeUUID)) > 0 {
+					universeUUIDList = append(universeUUIDList, universeUUID)
+				}
+
+				restoreAPIFilter := ybaclient.RestoreApiFilter{
+					UniverseUUIDList: universeUUIDList,
+				}
+
+				restoreAPIQuery := ybaclient.RestorePagedApiQuery{
+					Filter:    restoreAPIFilter,
+					Direction: restoreAPIDirection,
+					Limit:     limit,
+					Offset:    offset,
+					SortBy:    restoreAPISort,
+				}
+
+				restoreListRequest := authAPI.ListRestores().PageRestoresRequest(restoreAPIQuery)
+
+				// Execute restore list request
+				r, response, err := restoreListRequest.Execute()
+				if err != nil {
+					errMessage := util.ErrorFromHTTPResponse(
+						response, err, "Restore", "Create - Get Restore")
+					logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
+				}
+
+				restoreCtx := formatter.Context{
+					Output: os.Stdout,
+					Format: restore.NewRestoreFormat(viper.GetString("output")),
+				}
+				restore.Write(restoreCtx, r.GetEntities())
 			}
+		} else {
+			logrus.Infoln(msg + "\n")
 		}
 
 	},
@@ -172,7 +213,7 @@ func buildBackupInfoList(backupInfos []string) (res []ybaclient.BackupStorageInf
 			kvp := strings.Split(keyspaceInfo, "=")
 			if len(kvp) != 2 {
 				logrus.Fatalln(
-					formatter.Colorize("Incorrect format in region description.",
+					formatter.Colorize("Incorrect format in keyspace description.",
 						formatter.RedColor))
 			}
 			key := kvp[0]
@@ -253,23 +294,21 @@ func init() {
 	createBackupRestoreCmd.MarkFlagRequired("storage-config-name")
 	createBackupRestoreCmd.Flags().StringArray("keyspace-info", []string{},
 		"[Required] Keyspace info to perform restore operation."+
-			"If no keyspace info is provided, then all the keyspaces of the table type "+
-			"specified are backed up. If the user wants to take backup of a subset of keyspaces, "+
-			"then the user has to specify the keyspace info. Provide the following semicolon "+
-			"separated fields as key value pairs: "+
-			"\"keyspace-name=<keyspace-name>;storage-location=<storage_location>;"+
+			" Provide the following semicolon separated fields as key value pairs, and"+
+			" enclose the string with quotes: "+
+			"\"'keyspace-name=<keyspace-name>;storage-location=<storage_location>;"+
 			"backup-type=<ycql/ysql>;use-tablespaces=<use-tablespaces>;"+
-			"selective-restore=<selective-restore>;table-name-list=<table-name1>,<table-name2>"+
-			" The table-name-list attribute has to be specified as comma separated values."+
+			"selective-restore=<selective-restore>;table-name-list=<table-name1>,<table-name2>'\"."+
+			" The table-name-list attribute has to be specified as comma separated values. "+
 			formatter.Colorize("Keyspace name, storage-location and backup-type are required "+
 				"values. ", formatter.GreenColor)+
 			"The attribute use-tablespaces, selective-restore and table-name-list are optional values. "+
 			"Attributes selective-restore and table-name-list and are needed only for YCQL. "+
 			"The attribute use-tablespaces is to be used if needed only in the case of YSQL"+
-			"Example: --keyspace-info keyspace-name=cassandra1;storage-location=s3://bucket/location1;"+
-			"backup-type=ycql;selective-restore=true;table-name-list=table1,table2 "+
-			"--keyspace-info keyspace-name=postgres;storage-location=s3://bucket/location2"+
-			"backup-type=ysql;use-tablespaces=true")
+			"Example: --keyspace-info 'keyspace-name=cassandra1;storage-location=s3://bucket/location1;"+
+			"backup-type=ycql;selective-restore=true;table-name-list=table1,table2' "+
+			"--keyspace-info 'keyspace-name=postgres;storage-location=s3://bucket/location2"+
+			"backup-type=ysql;use-tablespaces=true'")
 	createBackupRestoreCmd.MarkFlagRequired("keyspace-info")
 
 }

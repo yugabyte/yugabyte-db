@@ -24,4 +24,5 @@ func init() {
 
 	RestoreCmd.AddCommand(createBackupRestoreCmd)
 	RestoreCmd.AddCommand(listRestoreCmd)
+	RestoreCmd.AddCommand(describeRestoreCmd)
 }

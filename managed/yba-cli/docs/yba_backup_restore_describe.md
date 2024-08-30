@@ -1,19 +1,19 @@
-## yba backup describe
+## yba backup restore describe
 
-Describe a YugabyteDB Anywhere universe backup
+List YugabyteDB Anywhere restores
 
 ### Synopsis
 
-Describe an universe backup in YugabyteDB Anywhere
+List restores in YugabyteDB Anywhere
 
 ```
-yba backup describe [flags]
+yba backup restore describe [flags]
 ```
 
 ### Options
 
 ```
-      --uuid string   [Required] The UUID of the backup to be described.
+      --uuid string   [Required] UUID of restore to be described
   -h, --help          help for describe
 ```
 
@@ -33,5 +33,5 @@ yba backup describe [flags]
 
 ### SEE ALSO
 
-* [yba backup](yba_backup.md)	 - Manage YugabyteDB Anywhere universe backups
+* [yba backup restore](yba_backup_restore.md)	 - Manage YugabyteDB Anywhere universe backup restores
 
