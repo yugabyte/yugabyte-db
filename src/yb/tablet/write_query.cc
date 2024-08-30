@@ -317,7 +317,20 @@ void WriteQuery::Finished(WriteOperation* operation, const Status& status) {
 
   for (const auto& sv : operation->request()->write_batch().table_schema_version()) {
     if (!status.IsAborted()) {
-      CHECK_LE(metadata.schema_version(), sv.schema_version()) << ", status: " << status;
+      auto schema_version = 0;
+      if (sv.table_id().empty()) {
+        schema_version = metadata.schema_version();
+      } else {
+        auto uuid = Uuid::FromSlice(sv.table_id());
+        CHECK(uuid.ok());
+        auto schema_version_result = metadata.schema_version(*uuid);
+        if (!schema_version_result.ok()) {
+          Complete(schema_version_result.status());
+          return;
+        }
+        schema_version = *schema_version_result;
+      }
+      CHECK_LE(schema_version, sv.schema_version()) << ", status: " << status;
     }
   }
 

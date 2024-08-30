@@ -473,7 +473,7 @@ bool MemTracker::UpdateConsumption(bool force) {
           &FLAGS_mem_tracker_update_consumption_interval_us));
       auto value = consumption_functor_();
       VLOG(1) << "Setting consumption of tracker " << id_ << " to " << value
-              << "from consumption functor";
+              << " from consumption functor";
       consumption_.set_value(value);
       if (metrics_) {
         metrics_->metric_->set_value(value);

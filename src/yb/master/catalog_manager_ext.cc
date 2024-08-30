@@ -1998,6 +1998,8 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
         }
         tablet->mutable_metadata()->mutable_dirty()->pb.set_colocated(table->colocated());
         new_tablets.push_back(tablet);
+        LOG(INFO) << Format("Created tablet $0 to replace tablet $1 in repartitioning of table $2",
+                            tablet->id(), source_tablet_id, table->id());
       }
 
       // Add tablets to catalog manager tablet_map_. This should be safe to do after creating
@@ -2083,7 +2085,7 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
   // The create tablet requests should be handled by bg tasks which find the PREPARING tablets after
   // commit.
 
-  // Update the colocated tablet in the tablegroup manager.
+  // Update the tablegroup manager to point to the new colocated tablet instead of the old one.
   if (table->colocated()) {
     SharedLock l(mutex_);
     SCHECK(
