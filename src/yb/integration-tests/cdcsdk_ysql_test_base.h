@@ -577,7 +577,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void VerifyTablesInStreamMetadata(
       const xrepl::StreamId& stream_id, const std::unordered_set<std::string>& expected_table_ids,
-      const std::string& timeout_msg);
+      const std::string& timeout_msg,
+      const std::unordered_set<std::string>& expected_unqualified_table_ids = {});
 
   Status ChangeLeaderOfTablet(size_t new_leader_index, const TabletId tablet_id);
 
@@ -624,9 +625,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const int expected_num_tablets = 2);
 
   void CheckTabletsInCDCStateTable(
-      const std::unordered_set<TabletId> expected_tablet_ids,
-      client::YBClient* client,
-      const xrepl::StreamId& stream_id = xrepl::StreamId::Nil());
+      const std::unordered_set<TabletId> expected_tablet_ids, client::YBClient* client,
+      const xrepl::StreamId& stream_id = xrepl::StreamId::Nil(),
+      const std::string timeout_msg =
+          "Tablets in cdc_state for the stream doesnt match the expected set");
 
   Result<std::vector<TableId>> GetCDCStreamTableIds(const xrepl::StreamId& stream_id);
 

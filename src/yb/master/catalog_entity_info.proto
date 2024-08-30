@@ -540,6 +540,10 @@ message SysCDCStreamEntryPB {
   // This field controls if dynamic tables should automatically be added to the CDC stream or not.
   // If set to true, dynamic table wont get added to the CDC stream.
   optional bool cdcsdk_disable_dynamic_table_addition = 11;
+
+  // This field stores the list of user created tables that have been removed from CDCSDK
+  // stream.
+  repeated bytes unqualified_table_id = 12;
 }
 
 

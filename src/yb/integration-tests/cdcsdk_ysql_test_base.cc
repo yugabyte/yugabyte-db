@@ -2448,18 +2448,41 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
   void CDCSDKYsqlTest::VerifyTablesInStreamMetadata(
       const xrepl::StreamId& stream_id, const std::unordered_set<std::string>& expected_table_ids,
-      const std::string& timeout_msg) {
+      const std::string& timeout_msg,
+      const std::unordered_set<std::string>& expected_unqualified_table_ids) {
     ASSERT_OK(WaitFor(
         [&]() -> Result<bool> {
           auto get_resp = GetDBStreamInfo(stream_id);
           if (get_resp.ok() && !get_resp->has_error()) {
+            bool qualified_tables_matched = false;
+            bool unqualified_tables_matched = expected_unqualified_table_ids.empty() ? true : false;
+
             const uint64_t table_info_size = get_resp->table_info_size();
             if (table_info_size == expected_table_ids.size()) {
               std::unordered_set<std::string> table_ids;
               for (auto entry : get_resp->table_info()) {
                 table_ids.insert(entry.table_id());
               }
-              if (expected_table_ids == table_ids) return true;
+              if (expected_table_ids == table_ids) {
+                qualified_tables_matched = true;
+              }
+            }
+
+            if (!expected_unqualified_table_ids.empty()) {
+              const uint64_t unqualified_table_info_size = get_resp->unqualified_table_info_size();
+              if (unqualified_table_info_size == expected_unqualified_table_ids.size()) {
+                std::unordered_set<std::string> unqualified_table_ids;
+                for (auto entry : get_resp->unqualified_table_info()) {
+                  unqualified_table_ids.insert(entry.table_id());
+                }
+                if (expected_unqualified_table_ids == unqualified_table_ids) {
+                  unqualified_tables_matched = true;
+                }
+              }
+            }
+
+            if(qualified_tables_matched && unqualified_tables_matched) {
+              return true;
             }
           }
           return false;
@@ -2752,7 +2775,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
 
   void CDCSDKYsqlTest::CheckTabletsInCDCStateTable(
       const std::unordered_set<TabletId> expected_tablet_ids, client::YBClient* client,
-      const xrepl::StreamId& stream_id) {
+      const xrepl::StreamId& stream_id, const std::string timeout_msg) {
     CDCStateTable cdc_state_table(test_client());
     Status s;
     auto table_range = ASSERT_RESULT(cdc_state_table.GetTableRange({}, &s));
@@ -2775,8 +2798,7 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
           return (
               expected_tablet_ids == seen_tablet_ids && seen_rows == expected_tablet_ids.size());
         },
-        MonoDelta::FromSeconds(60),
-        "Tablets in cdc_state table associated with the stream are not the same as expected"));
+        MonoDelta::FromSeconds(60), timeout_msg));
   }
 
   Result<std::vector<TableId>> CDCSDKYsqlTest::GetCDCStreamTableIds(
