@@ -313,7 +313,7 @@ public class XClusterConfigController extends AuthenticatedController {
                 columnName = "uuid"))
   })
   @YbaApi(visibility = YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.16.0.0")
-  public Result get(UUID customerUUID, UUID xclusterConfigUUID) {
+  public Result get(UUID customerUUID, UUID xclusterConfigUUID, boolean syncWithDB) {
     log.info("Received get XClusterConfig({}) request", xclusterConfigUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
     XClusterConfig xClusterConfig =
@@ -375,8 +375,10 @@ public class XClusterConfigController extends AuthenticatedController {
       lagMetricData = Json.newObject().put("error", errorMsg);
     }
 
-    XClusterConfigTaskBase.updateReplicationDetailsFromDB(
-        this.xClusterUniverseService, this.ybService, this.tableHandler, xClusterConfig);
+    if (syncWithDB) {
+      XClusterConfigTaskBase.updateReplicationDetailsFromDB(
+          this.xClusterUniverseService, this.ybService, this.tableHandler, xClusterConfig);
+    }
 
     // Wrap XClusterConfig with lag metric data.
     XClusterConfigGetResp resp = new XClusterConfigGetResp();

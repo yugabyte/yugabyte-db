@@ -19738,6 +19738,12 @@
           "name" : "drUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "default" : true,
+          "in" : "query",
+          "name" : "syncWithDB",
+          "required" : false,
+          "type" : "boolean"
         } ],
         "responses" : {
           "200" : {
@@ -28317,6 +28323,12 @@
           "name" : "xccUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "default" : true,
+          "in" : "query",
+          "name" : "syncWithDB",
+          "required" : false,
+          "type" : "boolean"
         } ],
         "responses" : {
           "200" : {

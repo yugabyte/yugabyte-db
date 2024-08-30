@@ -1202,18 +1202,20 @@ public class DrConfigController extends AuthenticatedController {
                 identifier = "dr_configs",
                 columnName = "dr_config_uuid")),
   })
-  public Result get(UUID customerUUID, UUID drUUID) {
+  public Result get(UUID customerUUID, UUID drUUID, boolean syncWithDB) {
     log.info("Received get DrConfig({}) request", drUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drUUID);
 
     XClusterConfig activeXClusterConfig = drConfig.getActiveXClusterConfig();
-    xClusterScheduler.syncXClusterConfig(activeXClusterConfig);
-    activeXClusterConfig.refresh();
+    if (syncWithDB) {
+      xClusterScheduler.syncXClusterConfig(activeXClusterConfig);
+      activeXClusterConfig.refresh();
 
-    for (XClusterConfig xClusterConfig : drConfig.getXClusterConfigs()) {
-      XClusterConfigTaskBase.updateReplicationDetailsFromDB(
-          this.xClusterUniverseService, this.ybService, this.tableHandler, xClusterConfig);
+      for (XClusterConfig xClusterConfig : drConfig.getXClusterConfigs()) {
+        XClusterConfigTaskBase.updateReplicationDetailsFromDB(
+            this.xClusterUniverseService, this.ybService, this.tableHandler, xClusterConfig);
+      }
     }
 
     DrConfigGetResp resp = new DrConfigGetResp(drConfig, activeXClusterConfig);
