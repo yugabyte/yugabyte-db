@@ -1,9 +1,9 @@
 ---
-title: Handling DDLs in transactional xCluster
-headerTitle: Handling DDLs in manual setup
-linkTitle: Manual handling of DDLs
-description: How to handle DDLs when using transactional xCluster replication between universes
-headContent: Fully manual transactional xCluster
+title: Handling DDLs for manually-configured transactional xCluster
+headerTitle: Make manual DDL changes
+linkTitle: Manual DDL changes
+description: How to handle DDLs when using manually-configured transactional xCluster replication
+headContent: Handling DDLs in manually-configured transactional xCluster
 menu:
   preview:
     parent: async-replication-transactional
@@ -13,7 +13,7 @@ badges: ysql
 type: docs
 ---
 
-The following instructions are for performing DDL operations (such as creating, altering, or dropping tables or partitions) on databases in [manually configured](../async-transactional-setup/) transactional xCluster replication. For instruction on making DDL changes in a semi-automatic setup, see [Making DDL changes](../async-transactional-setup-dblevel/#making-ddl-changes).
+The following instructions are for performing DDL operations (such as creating, altering, or dropping tables, indexes, or partitions) on databases in [manually configured](../async-transactional-setup/) transactional xCluster replication. For instruction on making DDL changes in semi-automatic transactional xCluster replication, see [Making DDL changes](../async-transactional-setup-dblevel/#making-ddl-changes).
 
 When making DDL changes, the statements must be executed on both the Primary/Source and Standby/Target and the xCluster configuration must be updated.
 

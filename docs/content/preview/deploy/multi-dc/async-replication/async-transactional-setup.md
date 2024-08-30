@@ -3,7 +3,7 @@ title: Set up transactional xCluster replication
 headerTitle: Set up transactional xCluster replication
 linkTitle: Set up replication
 description: Setting up transactional (active-standby) replication between universes
-headContent: Set up unidirectional transactional replication
+headContent: Set up transactional replication manually
 menu:
   preview:
     parent: async-replication-transactional
@@ -17,20 +17,22 @@ type: docs
   <li >
     <a href="../async-transactional-setup-dblevel/" class="nav-link">
       <i class="icon-shell"></i>
-      Semi-Automatic Setup
+      Semi-Automatic
     </a>
   </li>
   <li >
     <a href="../async-transactional-setup/" class="nav-link active">
       <i class="icon-shell"></i>
-      Manual Setup
+      Manual
     </a>
   </li>
 </ul>
 
 The following assumes you have set up Primary and Standby universes. Refer to [Set up universes](../async-deployment/#set-up-universes).
 
-## Set up replication
+Note that when making DDL changes on universes in manually-configured transactional xCluster, the statements must be executed on both the Primary/Source and Standby/Target and the xCluster configuration must be updated. See [Make manual DDL changes](../async-transactional-tables/).
+
+## Set up replication manually
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>

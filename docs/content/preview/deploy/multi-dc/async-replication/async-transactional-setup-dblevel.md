@@ -3,7 +3,7 @@ title: Set up transactional xCluster replication
 headerTitle: Set up transactional xCluster replication
 linkTitle: Set up replication
 description: Setting up transactional (active-standby) replication between universes
-headContent: Set up unidirectional transactional replication
+headContent: Set up semi-automatic transactional replication
 menu:
   preview:
     parent: async-replication-transactional
@@ -17,22 +17,22 @@ type: docs
   <li >
     <a href="../async-transactional-setup-dblevel/" class="nav-link active">
       <i class="icon-shell"></i>
-      Semi-Automatic Setup
+      Semi-Automatic
     </a>
   </li>
   <li >
     <a href="../async-transactional-setup/" class="nav-link">
       <i class="icon-shell"></i>
-      Manual Setup
+      Manual
     </a>
   </li>
 </ul>
 
-Semi-automatic setup of transactional xCluster replication simplifies the operational complexity of managing replication and making DDL changes.
+Semi-automatic transactional xCluster replication simplifies the operational complexity of managing replication and making DDL changes.
 
-With Semi-automatic setup, xCluster replication operates at the YSQL database granularity. This means you only run xCluster management operations when adding and removing databases from replication, and not when tables in the databases are created or dropped.
+In this mode, xCluster replication operates at the YSQL database granularity. This means you only run xCluster management operations when adding and removing databases from replication, and not when tables in the databases are created or dropped.
 
-In particular, with Semi-automatic setup, [DDL changes](#making-ddl-changes) don't require the use of yb-admin. This means DDL changes can be made by any database administrator or user with database permissions, and don't require SSH access or intervention by an IT administrator.
+In particular, [DDL changes](#making-ddl-changes) don't require the use of yb-admin. This means DDL changes can be made by any database administrator or user with database permissions, and don't require SSH access or intervention by an IT administrator.
 
 The following assumes you have set up Primary and Standby universes. Refer to [Set up universes](../async-deployment/#set-up-universes).
 
