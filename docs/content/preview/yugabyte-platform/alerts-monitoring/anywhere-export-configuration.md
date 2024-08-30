@@ -31,6 +31,10 @@ For information on how to export logs from a universe using an export configurat
 
 Export configuration is {{<badge/ea>}}. To enable export configuration management, set the **Enable DB Audit Logging** Global Configuration option (config key `yb.universe.audit_logging_enabled`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings. The flag can't be turned off if audit logging is enabled on a universe.
 
+## Best practices
+
+- To limit performance impact and control costs, locate export configurations in a region close to your universe(s).
+
 ## Configure integrations
 
 Create and manage export configurations on the **Integrations > Log** page.
@@ -86,7 +90,7 @@ The AWS CloudWatch export configuration requires the following:
 
 - Access Key ID and Secret Access Key for the AWS Service Account
 - The [log group and log stream](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/Working-with-log-groups-and-streams.html)
-- The AWS region
+- The AWS region where the stream is located
 
 To create an export configuration, do the following:
 

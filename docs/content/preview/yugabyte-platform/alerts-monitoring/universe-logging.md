@@ -30,10 +30,10 @@ If you want to set pgaudit.log_level to a [severity level](https://www.postgresq
 ## Limitations
 
 - Log export is only supported for cloud-based universes and automatically provisioned on-premises universes. Manually provisioned universes and Kubernetes universes are not supported.
-- Log export uses a PostgreSQL extension and is only compatible with YSQL.
-- There are also no alerts or metrics currently available for this feature.
+- Log export uses a PostgreSQL extension (pgaudit) and is only compatible with YSQL.
+- Currently, no alerts or metrics are available for this feature.
 
-## Recommendations
+## Best practices
 
 - Configuring logging restarts your universe. Configure logging when the cluster isn't experiencing heavy traffic.
 - Configuring logging blocks other universe operations, such as backups and maintenance. Avoid changing your settings before maintenance windows and during scheduled backups. The operation will block a backup from running.
