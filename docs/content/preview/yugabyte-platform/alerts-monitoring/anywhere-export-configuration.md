@@ -16,7 +16,7 @@ type: docs
 You can export universe logs to third-party tools for analysis and customization. Exporting data is a two-stage process:
 
 1. Create an export configuration. A configuration defines the sign in credentials and settings for the tool that you want to export to.
-1. Use the configuration to export data from a universe. While the connection is active, metrics or logs are automatically streamed to the tool.
+1. Use the configuration to export logs from a universe. While the connection is active, logs are automatically streamed to the tool.
 
 Currently, you can export data to the following tools:
 
@@ -85,6 +85,8 @@ To create an export configuration, do the following:
 The AWS CloudWatch export configuration requires the following:
 
 - Access Key ID and Secret Access Key for the AWS Service Account
+- The [log group and log stream](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/Working-with-log-groups-and-streams.html)
+- The AWS region
 
 To create an export configuration, do the following:
 
