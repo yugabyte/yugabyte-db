@@ -7009,7 +7009,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		 */
 		list_free(index_conditions);
 		index_conditions = NIL;
-		for (int index_col = 0; index_col < index->ncolumns; ++index_col)
+		for (int index_col = 0; index_col < index->nkeycolumns; ++index_col)
 		{
 			if (list_length(index_conditions_on_each_column[index_col]) > 0)
 			{
