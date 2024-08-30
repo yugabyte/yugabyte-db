@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterNamespaceConfig;
 import com.yugabyte.yw.models.XClusterTableConfig;
@@ -15,8 +16,18 @@ public class XClusterUtil {
   public static boolean supportsDbScopedXCluster(Universe universe) {
     // The minimum YBDB version that supports db scoped replication is 2024.1.1.0-b49 stable and
     //   2.23.0.0-b394 for preview.
+    String softwareVersion =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    if (universe
+        .getUniverseDetails()
+        .softwareUpgradeState
+        .equals(SoftwareUpgradeState.PreFinalize)) {
+      if (universe.getUniverseDetails().prevYBSoftwareConfig != null) {
+        softwareVersion = universe.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion();
+      }
+    }
     return Util.compareYBVersions(
-            universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
+            softwareVersion,
             MINIMUN_VERSION_DB_XCLUSTER_SUPPORT_STABLE,
             MINIMUN_VERSION_DB_XCLUSTER_SUPPORT_PREVIEW,
             true /* suppressFormatError */)
