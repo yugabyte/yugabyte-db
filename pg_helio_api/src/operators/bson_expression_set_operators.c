@@ -23,6 +23,12 @@
 /* --------------------------------------------------------- */
 /* Type definitions */
 /* --------------------------------------------------------- */
+typedef void (*ProcessSetDualOperands)(void *state, bson_value_t *result);
+typedef bool (*ProcessSetVariableOperands)(const bson_value_t *currentValue,
+										   void *state,
+										   bson_value_t *result, bool
+										   isFieldPathExpression);
+
 
 typedef struct DollarSetOperatorState
 {
@@ -52,29 +58,80 @@ typedef struct BsonValueHashEntry
 /* Forward declaration */
 /* --------------------------------------------------------- */
 
+static void InitializeDualArgumentState(bson_value_t firstValue, bson_value_t secondValue,
+										bool
+										hasFieldExpression,
+										DualArgumentExpressionState *state);
 static HTAB * CreateBsonValueElementHashSet(void);
 static int BsonValueHashEntryCompareFunc(const void *obj1, const void *obj2,
 										 Size objsize);
 static uint32 BsonValueHashEntryHashFunc(const void *obj, size_t objsize);
-static bool ProcessDollarSetIntersectionElement(bson_value_t *result,
-												const bson_value_t *currentValue,
-												bool isFieldPathExpression, void *state);
-static void ProcessDollarSetIntersectionResult(bson_value_t *result, void *state);
-static bool ProcessDollarSetUnionElement(bson_value_t *result,
-										 const bson_value_t *currentValue,
-										 bool isFieldPathExpression, void *state);
-static void ProcessDollarSetUnionResult(bson_value_t *result, void *state);
-static bool ProcessDollarSetEqualsElement(bson_value_t *result,
-										  const bson_value_t *currentValue,
-										  bool isFieldPathExpression, void *state);
-static void ProcessDollarSetEqualsResult(bson_value_t *result, void *state);
-static void ProcessDollarSetDifference(bson_value_t *result, void *state);
-static void ProcessDollarSetIsSubset(bson_value_t *result, void *state);
+static void ParseSetDualOperands(const bson_value_t *argument,
+								 AggregationExpressionData *data, const
+								 char *operatorName,
+								 ProcessSetDualOperands processOperatorFunc,
+								 ParseAggregationExpressionContext *context);
+static void HandlePreParsedSetDualOperands(pgbson *doc, void *arguments,
+										   ExpressionResult *expressionResult,
+										   bson_value_t *result,
+										   ProcessSetDualOperands processOperatorFunc);
+static void ParseSetVariableOperands(const bson_value_t *argument,
+									 AggregationExpressionData *data,
+									 DollarSetOperatorState *state,
+									 ParseAggregationExpressionContext *context,
+									 ProcessSetVariableOperands processOperatorFunc);
+static void HandlePreParsedSetVariableOperands(pgbson *doc, void *arguments,
+											   void *state, bson_value_t *result,
+											   ExpressionResult *expressionResult,
+											   ProcessSetVariableOperands
+											   processOperatorFunc);
+static bool ProcessDollarSetIntersection(const bson_value_t *currentElement,
+										 void *state, bson_value_t *result,
+										 bool isFieldPathExpression);
+static void ProcessDollarSetIntersectionResult(void *state, bson_value_t *result);
+static bool ProcessDollarSetUnion(const bson_value_t *currentValue, void *state,
+								  bson_value_t *result,
+								  bool isFieldPathExpression);
+static void ProcessDollarSetUnionResult(void *state, bson_value_t *result);
+static bool ProcessDollarSetEqualsElement(const bson_value_t *currentValue, void *state,
+										  bson_value_t *result, bool
+										  isFieldPathExpression);
+static void ProcessDollarSetEqualsResult(void *state, bson_value_t *result);
+static void ProcessDollarSetDifference(void *state, bson_value_t *result);
+static void ProcessDollarSetIsSubset(void *state, bson_value_t *result);
 static void ProcessSetElement(const bson_value_t *currentValue,
 							  DollarSetOperatorState *state);
-static bool ProcessDollarAllOrAnyElementsTrue(bson_value_t *result,
-											  const bson_value_t *currentValue,
-											  bool isFieldPathExpression, void *state);
+static bool ProcessDollarAllOrAnyElementsTrue(const bson_value_t *currentValue,
+											  void *state, bson_value_t *result,
+											  bool isFieldPathExpression);
+
+/*
+ * Parses a $setIntersection expression and sets the parsed data in the data argument.
+ * $setIntersection is expressed as { "$setIntersection": [ [<expression1>], [<expression2>], ... ] }
+ */
+void
+ParseDollarSetIntersection(const bson_value_t *argument,
+						   AggregationExpressionData *data,
+						   ParseAggregationExpressionContext *parseContext)
+{
+	data->value.value_type = BSON_TYPE_ARRAY;
+
+	DollarSetOperatorState state =
+	{
+		.arrayCount = 0,
+		.isMatchWithPreviousSet = true,
+		.arrayElementsHashTable = CreateBsonValueElementHashSet(),
+	};
+
+	ParseSetVariableOperands(argument, data, &state, parseContext,
+							 ProcessDollarSetIntersection);
+
+	if (data->kind == AggregationExpressionKind_Constant)
+	{
+		ProcessDollarSetIntersectionResult(&state, &data->value);
+	}
+}
+
 
 /*
  * Evaluates the output of an $setIntersection expression.
@@ -82,8 +139,8 @@ static bool ProcessDollarAllOrAnyElementsTrue(bson_value_t *result,
  * We evaluate the inner expressions and then return the Intersection of them.
  */
 void
-HandleDollarSetIntersection(pgbson *doc, const bson_value_t *operatorValue,
-							ExpressionResult *expressionResult)
+HandlePreParsedDollarSetIntersection(pgbson *doc, void *arguments,
+									 ExpressionResult *expressionResult)
 {
 	DollarSetOperatorState state =
 	{
@@ -92,17 +149,45 @@ HandleDollarSetIntersection(pgbson *doc, const bson_value_t *operatorValue,
 		.arrayElementsHashTable = CreateBsonValueElementHashSet(),
 	};
 
-	ExpressionArgumentHandlingContext context =
+	bson_value_t result;
+	result.value_type = BSON_TYPE_ARRAY;
+
+	HandlePreParsedSetVariableOperands(doc, arguments, &state, &result, expressionResult,
+									   ProcessDollarSetIntersection);
+
+	if (result.value_type != BSON_TYPE_NULL)
 	{
-		.processElementFunc = ProcessDollarSetIntersectionElement,
-		.processExpressionResultFunc = ProcessDollarSetIntersectionResult,
-		.state = &state,
+		ProcessDollarSetIntersectionResult(&state, &result);
+	}
+
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+/*
+ * Parses a $setUnion expression and sets the parsed data in the data argument.
+ * $setUnion is expressed as { "$setUnion": [ [<expression1>], [<expression2>], ... ] }
+ */
+void
+ParseDollarSetUnion(const bson_value_t *argument,
+					AggregationExpressionData *data,
+					ParseAggregationExpressionContext *parseContext)
+{
+	data->value.value_type = BSON_TYPE_ARRAY;
+
+	DollarSetOperatorState state =
+	{
+		.arrayCount = 0,
+		.isMatchWithPreviousSet = true,
+		.arrayElementsHashTable = CreateBsonValueElementHashSet(),
 	};
 
-	bson_value_t startValue;
-	startValue.value_type = BSON_TYPE_ARRAY;
-	HandleVariableArgumentExpression(doc, operatorValue, expressionResult, &startValue,
-									 &context);
+	ParseSetVariableOperands(argument, data, &state, parseContext, ProcessDollarSetUnion);
+
+	if (data->kind == AggregationExpressionKind_Constant)
+	{
+		ProcessDollarSetUnionResult(&state, &data->value);
+	}
 }
 
 
@@ -112,8 +197,8 @@ HandleDollarSetIntersection(pgbson *doc, const bson_value_t *operatorValue,
  * We evaluate the inner expressions and then return the Union of them.
  */
 void
-HandleDollarSetUnion(pgbson *doc, const bson_value_t *operatorValue,
-					 ExpressionResult *expressionResult)
+HandlePreParsedDollarSetUnion(pgbson *doc, void *arguments,
+							  ExpressionResult *expressionResult)
 {
 	DollarSetOperatorState state =
 	{
@@ -122,67 +207,57 @@ HandleDollarSetUnion(pgbson *doc, const bson_value_t *operatorValue,
 		.arrayElementsHashTable = CreateBsonValueElementHashSet(),
 	};
 
-	ExpressionArgumentHandlingContext context =
-	{
-		.processElementFunc = ProcessDollarSetUnionElement,
-		.processExpressionResultFunc = ProcessDollarSetUnionResult,
-		.state = &state,
-	};
+	bson_value_t result;
+	result.value_type = BSON_TYPE_ARRAY;
 
-	bson_value_t startValue;
-	startValue.value_type = BSON_TYPE_ARRAY;
-	HandleVariableArgumentExpression(doc, operatorValue, expressionResult, &startValue,
-									 &context);
+	HandlePreParsedSetVariableOperands(doc, arguments, &state, &result, expressionResult,
+									   ProcessDollarSetUnion);
+
+	if (result.value_type != BSON_TYPE_NULL)
+	{
+		ProcessDollarSetUnionResult(&state, &result);
+	}
+
+	ExpressionResultSetValue(expressionResult, &result);
 }
 
 
 /*
- * Evaluates the output of an $setDifference expression.
- * Since $setDifference is expressed as { "$setDifference": [ [<expression1>], [<expression2>] ] }
- * We evaluate the inner expressions and then return the difference of them.
+ * Parses a $setEquals expression and sets the parsed data in the data argument.
+ * $setEquals is expressed as { "$setEquals": [ [<expression1>], [<expression2>], ... ] }
  */
 void
-HandleDollarSetDifference(pgbson *doc, const bson_value_t *operatorValue,
-						  ExpressionResult *expressionResult)
+ParseDollarSetEquals(const bson_value_t *argument,
+					 AggregationExpressionData *data,
+					 ParseAggregationExpressionContext *parseContext)
 {
-	DualArgumentExpressionState state;
-	memset(&state, 0, sizeof(DualArgumentExpressionState));
+	int numArgs = argument->value_type == BSON_TYPE_ARRAY ?
+				  BsonDocumentValueCountKeys(argument) : 1;
 
-	ExpressionArgumentHandlingContext context =
+	if (numArgs < 2)
 	{
-		.processElementFunc = ProcessDualArgumentElement,
-		.processExpressionResultFunc = ProcessDollarSetDifference,
-		.state = &state,
+		ereport(ERROR, (errcode(MongoLocation17045), errmsg(
+							"$setEquals needs at least two arguments had: %d",
+							numArgs)));
+	}
+
+	data->value.value_type = BSON_TYPE_BOOL;
+	data->value.value.v_bool = false;
+
+	DollarSetOperatorState state =
+	{
+		.arrayCount = 0,
+		.isMatchWithPreviousSet = true,
+		.arrayElementsHashTable = CreateBsonValueElementHashSet(),
 	};
 
-	int numberOfRequiredArgs = 2;
-	HandleFixedArgumentExpression(doc, operatorValue, expressionResult,
-								  numberOfRequiredArgs, "$setDifference", &context);
-}
+	ParseSetVariableOperands(argument, data, &state, parseContext,
+							 ProcessDollarSetEqualsElement);
 
-
-/*
- * Evaluates the output of an $setIsSubset expression.
- * Since $setIsSubset is expressed as { "$setIsSubset": [ [<expression1>], [<expression2>] ] }
- * We evaluate the inner expressions and then return true if set1 is subset of set2.
- */
-void
-HandleDollarSetIsSubset(pgbson *doc, const bson_value_t *operatorValue,
-						ExpressionResult *expressionResult)
-{
-	DualArgumentExpressionState state;
-	memset(&state, 0, sizeof(DualArgumentExpressionState));
-
-	ExpressionArgumentHandlingContext context =
+	if (data->kind == AggregationExpressionKind_Constant)
 	{
-		.processElementFunc = ProcessDualArgumentElement,
-		.processExpressionResultFunc = ProcessDollarSetIsSubset,
-		.state = &state,
-	};
-
-	int numberOfRequiredArgs = 2;
-	HandleFixedArgumentExpression(doc, operatorValue, expressionResult,
-								  numberOfRequiredArgs, "$setIsSubset", &context);
+		ProcessDollarSetEqualsResult(&state, &data->value);
+	}
 }
 
 
@@ -192,19 +267,9 @@ HandleDollarSetIsSubset(pgbson *doc, const bson_value_t *operatorValue,
  * We evaluate the inner expressions and then return true if sets are equal.
  */
 void
-HandleDollarSetEquals(pgbson *doc, const bson_value_t *operatorValue,
-					  ExpressionResult *expressionResult)
+HandlePreParsedDollarSetEquals(pgbson *doc, void *arguments,
+							   ExpressionResult *expressionResult)
 {
-	int numArgs = operatorValue->value_type == BSON_TYPE_ARRAY ?
-				  BsonDocumentValueCountKeys(operatorValue) : 1;
-
-	if (numArgs < 2)
-	{
-		ereport(ERROR, (errcode(MongoLocation17045), errmsg(
-							"$setEquals needs at least two arguments had: %d",
-							numArgs)));
-	}
-
 	DollarSetOperatorState state =
 	{
 		.arrayCount = 0,
@@ -212,73 +277,338 @@ HandleDollarSetEquals(pgbson *doc, const bson_value_t *operatorValue,
 		.arrayElementsHashTable = CreateBsonValueElementHashSet(),
 	};
 
-	ExpressionArgumentHandlingContext context =
-	{
-		.processElementFunc = ProcessDollarSetEqualsElement,
-		.processExpressionResultFunc = ProcessDollarSetEqualsResult,
-		.state = &state,
-	};
+	bson_value_t result;
+	result.value_type = BSON_TYPE_BOOL;
+	result.value.v_bool = false;
 
-	bson_value_t startValue;
-	startValue.value_type = BSON_TYPE_BOOL;
-	startValue.value.v_bool = false;
+	HandlePreParsedSetVariableOperands(doc, arguments, &state, &result, expressionResult,
+									   ProcessDollarSetEqualsElement);
 
-	HandleVariableArgumentExpression(doc, operatorValue, expressionResult, &startValue,
-									 &context);
+	ProcessDollarSetEqualsResult(&state, &result);
+
+	ExpressionResultSetValue(expressionResult, &result);
 }
 
 
 /*
- * Evaluates the output of an $allElementsTrue expression.
- * Since $allElementsTrue is expressed as { "$allElementsTrue": [ [<expression1>,<expression2>] ] }
- * We evaluate the inner expressions and then return true if all the elements are true.
+ * Parses a $setDifference expression and sets the parsed data in the data argument.
+ * $setDifference is expressed as { "$setDifference": [ [<expression1>], [<expression2>] ] }
  */
 void
-HandleDollarAllElementsTrue(pgbson *doc, const bson_value_t *operatorValue,
-							ExpressionResult *expressionResult)
+ParseDollarSetDifference(const bson_value_t *argument,
+						 AggregationExpressionData *data,
+						 ParseAggregationExpressionContext *parseContext)
 {
-	bool checkAllElementsTrueInArray = true;
-	ExpressionArgumentHandlingContext context =
-	{
-		.processElementFunc = ProcessDollarAllOrAnyElementsTrue,
-		.processExpressionResultFunc = NULL,
-		.state = &checkAllElementsTrueInArray,
-	};
+	data->value.value_type = BSON_TYPE_ARRAY;
+	ParseSetDualOperands(argument, data, "$setDifference", ProcessDollarSetDifference,
+						 parseContext);
+}
 
-	int numberOfRequiredArgs = 1;
-	HandleFixedArgumentExpression(doc, operatorValue, expressionResult,
-								  numberOfRequiredArgs, "$allElementsTrue", &context);
+
+/*
+ * Evaluates the output of an $setDifference expression.
+ * Since $setDifference is expressed as { "$setDifference": [ [<expression1>], [<expression2>] ] }
+ * We evaluate the inner expressions and then return the difference of them.
+ */
+void
+HandlePreParsedDollarSetDifference(pgbson *doc, void *arguments,
+								   ExpressionResult *expressionResult)
+{
+	bson_value_t result;
+	result.value_type = BSON_TYPE_ARRAY;
+	HandlePreParsedSetDualOperands(doc, arguments, expressionResult, &result,
+								   ProcessDollarSetDifference);
+}
+
+
+/*
+ * Parses a $setIsSubset expression and sets the parsed data in the data argument.
+ * $setIsSubset is expressed as { "$setIsSubset": [ [<expression1>], [<expression2>] ] }
+ */
+void
+ParseDollarSetIsSubset(const bson_value_t *argument,
+					   AggregationExpressionData *data,
+					   ParseAggregationExpressionContext *parseContext)
+{
+	data->value.value_type = BSON_TYPE_BOOL;
+	data->value.value.v_bool = false;
+
+	ParseSetDualOperands(argument, data, "$setIsSubset", ProcessDollarSetIsSubset,
+						 parseContext);
+}
+
+
+/*
+ * Evaluates the output of an $setIsSubset expression.
+ * Since $setIsSubset is expressed as { "$setIsSubset": [ [<expression1>], [<expression2>] ] }
+ * We evaluate the inner expressions and then return true if set1 is subset of set2.
+ */
+void
+HandlePreParsedDollarSetIsSubset(pgbson *doc, void *arguments,
+								 ExpressionResult *expressionResult)
+{
+	bson_value_t result;
+	result.value_type = BSON_TYPE_BOOL;
+	HandlePreParsedSetDualOperands(doc, arguments, expressionResult, &result,
+								   ProcessDollarSetIsSubset);
+}
+
+
+/*
+ * Parses a $anyElementTrue expression and sets the parsed data in the data argument.
+ * $anyElementTrue is expressed as { "$anyElementTrue": [ [<expression1>], [<expression2>], ... ] }
+ */
+void
+ParseDollarAnyElementTrue(const bson_value_t *argument,
+						  AggregationExpressionData *data,
+						  ParseAggregationExpressionContext *parseContext)
+{
+	int numOfRequiredArgs = 1;
+	data->operator.arguments = ParseFixedArgumentsForExpression(argument,
+																numOfRequiredArgs,
+																"$anyElementTrue",
+																&data->operator.
+																argumentsKind,
+																parseContext);
 }
 
 
 /*
  * Evaluates the output of an $anyElementTrue expression.
- * Since $anyElementTrue is expressed as { "$anyElementTrue": [ [<expression1>,<expression2>] ] }
+ * Since $anyElementTrue is expressed as { "$anyElementTrue": [ [<expression1>], [<expression2>], ... ] }
  * We evaluate the inner expressions and then return true if any element is true.
  */
 void
-HandleDollarAnyElementTrue(pgbson *doc, const bson_value_t *operatorValue,
-						   ExpressionResult *expressionResult)
+HandlePreParsedDollarAnyElementTrue(pgbson *doc, void *arguments,
+									ExpressionResult *expressionResult)
 {
-	bool checkAllElementsTrueInArray = false;
-	ExpressionArgumentHandlingContext context =
-	{
-		.processElementFunc = ProcessDollarAllOrAnyElementsTrue,
-		.processExpressionResultFunc = NULL,
-		.state = &checkAllElementsTrueInArray,
-	};
+	AggregationExpressionData *argument = (AggregationExpressionData *) arguments;
 
-	int numberOfRequiredArgs = 1;
-	HandleFixedArgumentExpression(doc, operatorValue, expressionResult,
-								  numberOfRequiredArgs, "$anyElementsTrue", &context);
+	bool hasFieldExpression = false;
+	bool isNullOnEmpty = false;
+	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(argument, doc, &childResult, isNullOnEmpty);
+
+	bson_value_t argumentValue = childResult.value;
+	hasFieldExpression = childResult.isFieldPathExpression;
+
+	bson_value_t result;
+	result.value_type = BSON_TYPE_BOOL;
+	bool checkAllElementsTrueInArray = false;
+
+	ProcessDollarAllOrAnyElementsTrue(&argumentValue,
+									  &checkAllElementsTrueInArray, &result,
+									  hasFieldExpression);
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+/*
+ * Parses a $allElementsTrue expression and sets the parsed data in the data argument.
+ * $allElementsTrue is expressed as { "$allElementsTrue": [ [<expression1>], [<expression2>], ... ] }
+ */
+void
+ParseDollarAllElementsTrue(const bson_value_t *argument,
+						   AggregationExpressionData *data,
+						   ParseAggregationExpressionContext *parseContext)
+{
+	int numOfRequiredArgs = 1;
+	data->operator.arguments = ParseFixedArgumentsForExpression(argument,
+																numOfRequiredArgs,
+																"$allElementsTrue",
+																&data->operator.
+																argumentsKind,
+																parseContext);
+}
+
+
+/*
+ * Evaluates the output of an $allElementsTrue expression.
+ * Since $allElementsTrue is expressed as { "$allElementsTrue": [ [<expression1>], [<expression2>], ... ] }
+ * We evaluate the inner expressions and then return true if all elements are true.
+ */
+void
+HandlePreParsedDollarAllElementsTrue(pgbson *doc, void *arguments,
+									 ExpressionResult *expressionResult)
+{
+	AggregationExpressionData *argument = (AggregationExpressionData *) arguments;
+
+	bool hasFieldExpression = false;
+	bool isNullOnEmpty = false;
+	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(argument, doc, &childResult, isNullOnEmpty);
+
+	bson_value_t argumentValue = childResult.value;
+	hasFieldExpression = childResult.isFieldPathExpression;
+
+	bson_value_t result;
+	result.value_type = BSON_TYPE_BOOL;
+	bool checkAllElementsTrueInArray = true;
+
+	ProcessDollarAllOrAnyElementsTrue(&argumentValue, &checkAllElementsTrueInArray,
+									  &result, hasFieldExpression);
+	ExpressionResultSetValue(expressionResult, &result);
+}
+
+
+/* Helper to parse arithmetic operators that take strictly two arguments. */
+static void
+ParseSetDualOperands(const bson_value_t *argument,
+					 AggregationExpressionData *data, const
+					 char *operatorName,
+					 ProcessSetDualOperands processOperatorFunc,
+					 ParseAggregationExpressionContext *context)
+{
+	int numOfRequiredArgs = 2;
+	List *arguments = ParseFixedArgumentsForExpression(argument,
+													   numOfRequiredArgs,
+													   operatorName,
+													   &data->operator.argumentsKind,
+													   context);
+
+	AggregationExpressionData *firstArg = list_nth(arguments, 0);
+	AggregationExpressionData *secondArg = list_nth(arguments, 1);
+
+	/* If both arguments are constants: compute comparison result, change
+	 * expression type to constant, store the result in the expression value
+	 * and free the arguments list as it won't be needed anymore. */
+	if (IsAggregationExpressionConstant(firstArg) && IsAggregationExpressionConstant(
+			secondArg))
+	{
+		DualArgumentExpressionState state;
+		memset(&state, 0, sizeof(DualArgumentExpressionState));
+
+		InitializeDualArgumentState(firstArg->value, secondArg->value, false, &state);
+		processOperatorFunc(&state, &data->value);
+
+		data->kind = AggregationExpressionKind_Constant;
+		list_free_deep(arguments);
+	}
+	else
+	{
+		data->operator.arguments = arguments;
+	}
+}
+
+
+/* Helper to evaluate pre-parsed expressions of set operators that take strictly two operands. */
+static void
+HandlePreParsedSetDualOperands(pgbson *doc, void *arguments,
+							   ExpressionResult *expressionResult, bson_value_t *result,
+							   ProcessSetDualOperands
+							   processOperatorFunc)
+{
+	List *argumentList = (List *) arguments;
+	AggregationExpressionData *firstArg = list_nth(argumentList, 0);
+	AggregationExpressionData *secondArg = list_nth(argumentList, 1);
+
+	bool hasFieldExpression = false;
+	bool isNullOnEmpty = false;
+	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(firstArg, doc, &childResult, isNullOnEmpty);
+
+	bson_value_t firstValue = childResult.value;
+	hasFieldExpression = childResult.isFieldPathExpression;
+
+	ExpressionResultReset(&childResult);
+	EvaluateAggregationExpressionData(secondArg, doc, &childResult, isNullOnEmpty);
+	hasFieldExpression = hasFieldExpression || childResult.isFieldPathExpression;
+
+	bson_value_t secondValue = childResult.value;
+
+	DualArgumentExpressionState state;
+	memset(&state, 0, sizeof(DualArgumentExpressionState));
+
+	InitializeDualArgumentState(firstValue, secondValue, hasFieldExpression, &state);
+	processOperatorFunc(&state, result);
+
+	ExpressionResultSetValue(expressionResult, result);
+}
+
+
+/* Helper to parse set operators that take variable number of operands. */
+static void
+ParseSetVariableOperands(const bson_value_t *argument,
+						 AggregationExpressionData *data,
+						 DollarSetOperatorState *state,
+						 ParseAggregationExpressionContext *parseContext,
+						 ProcessSetVariableOperands processOperatorFunc)
+{
+	bool areArgumentsConstant = true;
+	List *argumentsList = ParseVariableArgumentsForExpression(argument,
+															  &areArgumentsConstant,
+															  parseContext);
+
+	if (areArgumentsConstant)
+	{
+		int idx = 0;
+
+		while (argumentsList != NIL && idx < argumentsList->length)
+		{
+			AggregationExpressionData *currentData = list_nth(argumentsList, idx);
+
+			bool continueEnumerating = processOperatorFunc(&currentData->value, state,
+														   &data->value, false);
+			if (!continueEnumerating)
+			{
+				break;
+			}
+
+			idx++;
+		}
+
+		data->kind = AggregationExpressionKind_Constant;
+		list_free_deep(argumentsList);
+	}
+	else
+	{
+		data->operator.arguments = argumentsList;
+		data->operator.argumentsKind = AggregationExpressionArgumentsKind_List;
+	}
+}
+
+
+/* Helper to evaluate pre-parsed expressions of set operators that take variable number of operands. */
+static void
+HandlePreParsedSetVariableOperands(pgbson *doc, void *arguments,
+								   void *state,
+								   bson_value_t *result,
+								   ExpressionResult *expressionResult,
+								   ProcessSetVariableOperands
+								   processOperatorFunc)
+{
+	List *argumentList = (List *) arguments;
+
+	int idx = 0;
+	while (argumentList != NIL && idx < argumentList->length)
+	{
+		AggregationExpressionData *currentData = list_nth(argumentList, idx);
+
+		bool isNullOnEmpty = false;
+		ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+		EvaluateAggregationExpressionData(currentData, doc, &childResult, isNullOnEmpty);
+
+		bson_value_t currentValue = childResult.value;
+
+		bool continueEnumerating = processOperatorFunc(&currentValue, state,
+													   result,
+													   childResult.
+													   isFieldPathExpression);
+		if (!continueEnumerating)
+		{
+			return;
+		}
+
+		idx++;
+	}
 }
 
 
 /* Function that processes a single argument for $setIntersection. */
 static bool
-ProcessDollarSetIntersectionElement(bson_value_t *result, const
-									bson_value_t *currentElement,
-									bool isFieldPathExpression, void *state)
+ProcessDollarSetIntersection(const bson_value_t *currentElement, void *state,
+							 bson_value_t *result,
+							 bool isFieldPathExpression)
 {
 	if (IsExpressionResultNullOrUndefined(currentElement))
 	{
@@ -300,7 +630,7 @@ ProcessDollarSetIntersectionElement(bson_value_t *result, const
 
 /* Function that validates the final state before returning the result for $setIntersection. */
 static void
-ProcessDollarSetIntersectionResult(bson_value_t *result, void *state)
+ProcessDollarSetIntersectionResult(void *state, bson_value_t *result)
 {
 	DollarSetOperatorState *intersectionState = (DollarSetOperatorState *) state;
 
@@ -335,31 +665,30 @@ ProcessDollarSetIntersectionResult(bson_value_t *result, void *state)
 
 /* Function that processes a single argument for $setUnion. */
 static bool
-ProcessDollarSetUnionElement(bson_value_t *result, const
-							 bson_value_t *currentElement,
-							 bool isFieldPathExpression, void *state)
+ProcessDollarSetUnion(const bson_value_t *currentValue, void *state, bson_value_t *result,
+					  bool isFieldPathExpression)
 {
-	if (IsExpressionResultNullOrUndefined(currentElement))
+	if (IsExpressionResultNullOrUndefined(currentValue))
 	{
 		result->value_type = BSON_TYPE_NULL;
 		return false; /* stop processing more arguments. */
 	}
 
-	if (currentElement->value_type != BSON_TYPE_ARRAY)
+	if (currentValue->value_type != BSON_TYPE_ARRAY)
 	{
 		ereport(ERROR, (errcode(MongoLocation17043), errmsg(
 							"All operands of $setUnion must be arrays. One argument is of type: %s",
-							BsonTypeName(currentElement->value_type))));
+							BsonTypeName(currentValue->value_type))));
 	}
 
-	ProcessSetElement(currentElement, (DollarSetOperatorState *) state);
+	ProcessSetElement(currentValue, (DollarSetOperatorState *) state);
 	return true;
 }
 
 
 /* Function that validates the final state before returning the result for $setUnion. */
 static void
-ProcessDollarSetUnionResult(bson_value_t *result, void *state)
+ProcessDollarSetUnionResult(void *state, bson_value_t *result)
 {
 	DollarSetOperatorState *unionState = (DollarSetOperatorState *) state;
 
@@ -391,9 +720,9 @@ ProcessDollarSetUnionResult(bson_value_t *result, void *state)
 
 /* Function that processes a single argument for $setEquals. */
 static bool
-ProcessDollarSetEqualsElement(bson_value_t *result, const
-							  bson_value_t *currentElement,
-							  bool isFieldPathExpression, void *state)
+ProcessDollarSetEqualsElement(const bson_value_t *currentElement, void *state,
+							  bson_value_t *result,
+							  bool isFieldPathExpression)
 {
 	if (currentElement->value_type != BSON_TYPE_ARRAY)
 	{
@@ -419,7 +748,7 @@ ProcessDollarSetEqualsElement(bson_value_t *result, const
 
 /* Function that validates the final state before returning the result for $setEquals. */
 static void
-ProcessDollarSetEqualsResult(bson_value_t *result, void *state)
+ProcessDollarSetEqualsResult(void *state, bson_value_t *result)
 {
 	DollarSetOperatorState *setEqualsState = (DollarSetOperatorState *) state;
 
@@ -453,7 +782,7 @@ ProcessDollarSetEqualsResult(bson_value_t *result, void *state)
 
 /* Function that validates the final state before returning the result for $setDifference. */
 static void
-ProcessDollarSetDifference(bson_value_t *result, void *state)
+ProcessDollarSetDifference(void *state, bson_value_t *result)
 {
 	DualArgumentExpressionState *context = (DualArgumentExpressionState *) state;
 
@@ -520,7 +849,7 @@ ProcessDollarSetDifference(bson_value_t *result, void *state)
 
 /* Function that validates the final state before returning the result for $setIsSubset. */
 static void
-ProcessDollarSetIsSubset(bson_value_t *result, void *state)
+ProcessDollarSetIsSubset(void *state, bson_value_t *result)
 {
 	DualArgumentExpressionState *context = (DualArgumentExpressionState *) state;
 
@@ -593,12 +922,12 @@ ProcessDollarSetIsSubset(bson_value_t *result, void *state)
  * increment the frequency of each added element in the HTable.
  */
 static void
-ProcessSetElement(const bson_value_t *currentElement,
+ProcessSetElement(const bson_value_t *currentValue,
 				  DollarSetOperatorState *state)
 {
 	HTAB *arrayElementsHashTable = state->arrayElementsHashTable;
 	bson_iter_t arrayIterator;
-	BsonValueInitIterator(currentElement, &arrayIterator);
+	BsonValueInitIterator(currentValue, &arrayIterator);
 	state->arrayCount++;
 
 	while (bson_iter_next(&arrayIterator))
@@ -634,26 +963,25 @@ ProcessSetElement(const bson_value_t *currentElement,
  * Function that processes a single argument for $allElementsTrue $anyElementTrue and find the result.
  */
 static bool
-ProcessDollarAllOrAnyElementsTrue(bson_value_t *result, const
-								  bson_value_t *currentElement,
-								  bool isFieldPathExpression, void *state)
+ProcessDollarAllOrAnyElementsTrue(const bson_value_t *currentValue, void *state,
+								  bson_value_t *result, bool isFieldPathExpression)
 {
 	bool IsAllElementsTrueOp = *((bool *) state);
 
-	if (currentElement->value_type != BSON_TYPE_ARRAY)
+	if (currentValue->value_type != BSON_TYPE_ARRAY)
 	{
 		ereport(ERROR, (errcode(IsAllElementsTrueOp ? MongoLocation17040 :
 								MongoLocation17041),
 						errmsg("%s's argument must be an array, but is %s",
 							   IsAllElementsTrueOp ? "$allElementsTrue" :
 							   "$anyElementTrue",
-							   currentElement->value_type == BSON_TYPE_EOD ?
+							   currentValue->value_type == BSON_TYPE_EOD ?
 							   MISSING_TYPE_NAME :
-							   BsonTypeName(currentElement->value_type))));
+							   BsonTypeName(currentValue->value_type))));
 	}
 
 	bson_iter_t arrayIterator;
-	BsonValueInitIterator(currentElement, &arrayIterator);
+	BsonValueInitIterator(currentValue, &arrayIterator);
 	result->value_type = BSON_TYPE_BOOL;
 	result->value.v_bool = IsAllElementsTrueOp;
 
@@ -677,6 +1005,19 @@ ProcessDollarAllOrAnyElementsTrue(bson_value_t *result, const
 	}
 
 	return true;
+}
+
+
+/* Initializes the state for dual argument expressions. */
+static void
+InitializeDualArgumentState(bson_value_t firstValue, bson_value_t secondValue, bool
+							hasFieldExpression, DualArgumentExpressionState *state)
+{
+	state->firstArgument = firstValue;
+	state->secondArgument = secondValue;
+	state->hasFieldExpression = hasFieldExpression;
+	state->hasNullOrUndefined = IsExpressionResultNullOrUndefined(&firstValue) ||
+								IsExpressionResultNullOrUndefined(&secondValue);
 }
 
 
