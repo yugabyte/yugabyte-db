@@ -155,7 +155,7 @@ func ServerKeyPath(config *Config) string {
 // The JWT is signed using the key in the certs directory.
 func GenerateJWT(ctx context.Context, config *Config) (string, error) {
 	keyFilepath := ServerKeyPath(config)
-	privateKey, err := ioutil.ReadFile(keyFilepath)
+	privateKey, err := os.ReadFile(keyFilepath)
 	if err != nil {
 		FileLogger().Errorf(ctx, "Error while reading the private key: %s", err.Error())
 		return "", err

@@ -438,6 +438,9 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 				return "", errors.New("Region name is not found")
 			},
 		)
+		if err != nil {
+			util.ConsoleLogger().Fatalf(ctx, "Unable to store region ID - %s", err.Error())
+		}
 		_, err = config.StoreCommandFlagString(
 			ctx,
 			cmd,
@@ -490,7 +493,9 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 			util.ConsoleLogger().Fatalf(ctx, "Unable to register node agent - %s", err.Error())
 		}
 	} else {
-		util.ConsoleLogger().Fatalf(ctx, "Unable to check for existing node agent - %s", err.Error())
+		// Node agent already exists on YBA. But, it cannot be verified with the local key.
+		util.ConsoleLogger().Fatalf(ctx, "Node agent already exists on YBA but local "+
+			"credentials may be invalid. It may need to be unregistered first - %s", err.Error())
 	}
 	util.ConsoleLogger().Info(ctx, "Node Agent Configuration Successful")
 }
