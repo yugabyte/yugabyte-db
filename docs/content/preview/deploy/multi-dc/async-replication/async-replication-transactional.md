@@ -6,12 +6,12 @@ description: Enable deployment using transactional (active-standby) replication 
 headContent: Transactional (active-standby) replication
 aliases:
   - /preview/deploy/multi-dc/async-replication-transactional/
-badges: ysql
 menu:
   preview:
     parent: async-replication
     identifier: async-replication-transactional
     weight: 20
+badges: ysql
 type: docs
 ---
 
