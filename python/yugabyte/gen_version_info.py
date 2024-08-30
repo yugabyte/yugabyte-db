@@ -202,7 +202,8 @@ def main() -> int:
             "build_number": build_number,
             "platform": os_platform,
             "architecture": architecture,
-            "minimum_yba_version": min_yba_version
+            "minimum_yba_version": min_yba_version,
+            "ysql_major_version": "15",
             }
 
     # Record our glibc version.  This doesn't apply to mac/darwin.
