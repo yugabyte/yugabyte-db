@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudImageBundleSetup;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ImageBundle;
@@ -18,6 +19,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import java.util.HashMap;
@@ -314,5 +316,29 @@ public class ImageBundleUtil {
     }
 
     return imageBundleMap;
+  }
+
+  /** Find and return the SSH user that works for the node. */
+  public String findEffectiveSshUser(
+      Provider provider, Universe universe, NodeDetails nodeDetails) {
+    ProviderDetails providerDetails = provider.getDetails();
+    String sshUser = providerDetails.getSshUser();
+    if (StringUtils.isBlank(sshUser)) {
+      CloudType cloudType = universe.getNodeDeploymentMode(nodeDetails);
+      sshUser = cloudType.getSshUser();
+    }
+    Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
+    UUID imageBundleUUID =
+        Util.retreiveImageBundleUUID(
+            universe.getUniverseDetails().arch, cluster.userIntent, provider);
+    if (imageBundleUUID != null) {
+      ImageBundle.NodeProperties toOverwriteNodeProperties =
+          getNodePropertiesOrFail(
+              imageBundleUUID,
+              nodeDetails.cloudInfo.region,
+              cluster.userIntent.providerType.toString());
+      sshUser = toOverwriteNodeProperties.getSshUser();
+    }
+    return sshUser;
   }
 }

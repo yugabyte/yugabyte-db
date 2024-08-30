@@ -24,6 +24,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask;
+import com.yugabyte.yw.commissioner.NodeAgentEnabler;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -196,12 +197,10 @@ import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
-import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Schedule.State;
@@ -381,7 +380,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           TaskType.EditBackupSchedule,
           TaskType.EditBackupScheduleKubernetes,
           TaskType.DeleteBackupSchedule,
-          TaskType.DeleteBackupScheduleKubernetes);
+          TaskType.DeleteBackupScheduleKubernetes,
+          TaskType.EnableNodeAgentInUniverse);
 
   private static final Set<TaskType> RERUNNABLE_PLACEMENT_MODIFICATION_TASKS =
       ImmutableSet.of(
@@ -1901,6 +1901,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   protected Collection<NodeDetails> filterNodesForInstallNodeAgent(
       Universe universe, Collection<NodeDetails> nodes) {
+    if (universe.getUniverseDetails().disableNodeAgent) {
+      log.info(
+          "Skipping node agent installation for universe {} as it is managed by node agent enabler",
+          universe.getUniverseUUID());
+      return Collections.emptySet();
+    }
     NodeAgentClient nodeAgentClient = application.injector().instanceOf(NodeAgentClient.class);
     Map<UUID, Boolean> clusterSkip = new HashMap<>();
     return nodes.stream()
@@ -1917,7 +1923,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                         return false;
                       }
                       if (provider.getCloudCode() == CloudType.onprem) {
-
                         return !provider.getDetails().skipProvisioning;
                       } else if (provider.getCloudCode() != CloudType.aws
                           && provider.getCloudCode() != CloudType.azu
@@ -1971,6 +1976,19 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
     int serverPort = confGetter.getGlobalConf(GlobalConfKeys.nodeAgentServerPort);
     Universe universe = getUniverse();
+    NodeAgentEnabler nodeAgentEnabler = application.injector().instanceOf(NodeAgentEnabler.class);
+    Optional<Boolean> optional = nodeAgentEnabler.isNodeAgentEnabled(universe);
+    if (!optional.isPresent()) {
+      log.info("Node agent is not supported on this universe {}", universe.getUniverseUUID());
+      return subTaskGroup;
+    }
+    if (optional.get() == false) {
+      log.info(
+          "Skipping node agent installation for universe {} as it is not enabled",
+          universe.getUniverseUUID());
+      NodeAgentEnabler.markUniverse(universe.getUniverseUUID());
+      return subTaskGroup;
+    }
     Customer customer = Customer.get(universe.getCustomerId());
     filterNodesForInstallNodeAgent(universe, nodes)
         .forEach(
@@ -1984,26 +2002,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                         return Provider.getOrBadRequest(
                             UUID.fromString(cluster.userIntent.provider));
                       });
-              ProviderDetails providerDetails = provider.getDetails();
-              CloudType cloudType = universe.getNodeDeploymentMode(n);
-              params.sshUser =
-                  StringUtils.isNotBlank(providerDetails.sshUser)
-                      ? providerDetails.sshUser
-                      : cloudType.getSshUser();
-              UniverseDefinitionTaskParams.Cluster cluster =
-                  universe.getUniverseDetails().getClusterByUuid(n.placementUuid);
-              UUID imageBundleUUID =
-                  Util.retreiveImageBundleUUID(
-                      universe.getUniverseDetails().arch, cluster.userIntent, provider);
-              if (imageBundleUUID != null) {
-                ImageBundle.NodeProperties toOverwriteNodeProperties =
-                    imageBundleUtil.getNodePropertiesOrFail(
-                        imageBundleUUID,
-                        n.cloudInfo.region,
-                        cluster.userIntent.providerType.toString());
-                params.sshUser = toOverwriteNodeProperties.getSshUser();
-              }
-
+              params.sshUser = imageBundleUtil.findEffectiveSshUser(provider, universe, n);
               params.airgap = provider.getAirGapInstall();
               params.nodeName = n.nodeName;
               params.customerUuid = customer.getUuid();

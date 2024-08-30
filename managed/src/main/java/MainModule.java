@@ -17,6 +17,8 @@ import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.DefaultExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.ExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.HealthChecker;
+import com.yugabyte.yw.commissioner.NodeAgentEnabler.NodeAgentInstaller;
+import com.yugabyte.yw.commissioner.NodeAgentInstallerImpl;
 import com.yugabyte.yw.commissioner.PerfAdvisorNodeManager;
 import com.yugabyte.yw.commissioner.PerfAdvisorScheduler;
 import com.yugabyte.yw.commissioner.PitrConfigPoller;
@@ -174,6 +176,7 @@ public class MainModule extends AbstractModule {
     bind(PlaySessionStore.class).to(PlayCacheSessionStore.class);
     bind(ExecutorServiceProvider.class).to(DefaultExecutorServiceProvider.class);
     bind(NodeManagerInterface.class).to(PerfAdvisorNodeManager.class);
+    bind(NodeAgentInstaller.class).to(NodeAgentInstallerImpl.class);
 
     bind(PerfAdvisor.class).asEagerSingleton();
     bind(SwamperHelper.class).asEagerSingleton();

@@ -589,6 +589,11 @@ public enum TaskType {
       CustomerTask.TaskType.CreateYbaBackup,
       CustomerTask.TargetType.Yba),
 
+  EnableNodeAgentInUniverse(
+      com.yugabyte.yw.commissioner.tasks.EnableNodeAgentInUniverse.class,
+      CustomerTask.TaskType.EnableNodeAgent,
+      CustomerTask.TargetType.Universe),
+
   /* Subtasks start here */
 
   KubernetesCheckVolumeExpansion(
