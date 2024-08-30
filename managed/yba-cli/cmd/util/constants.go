@@ -251,6 +251,20 @@ const (
 	AARCH64 = "aarch64"
 )
 
+// Certificate Types
+const (
+	// SelfSignedCertificateType type
+	SelfSignedCertificateType = "SelfSigned"
+	// HashicorpVaultCertificateType type
+	HashicorpVaultCertificateType = "HashicorpVault"
+	// K8sCertManagerCertificateType type
+	K8sCertManagerCertificateType = "K8sCertManager"
+	// CustomCertHostPathCertificateType type
+	CustomCertHostPathCertificateType = "CustomCertHostPath"
+	// CustomServerCertCertificateType type
+	CustomServerCertCertificateType = "CustomServerCert"
+)
+
 // CompletedTaskStates returns set of states that mark the task as completed
 func CompletedTaskStates() []string {
 	return []string{SuccessTaskStatus, FailureTaskStatus, AbortedTaskStatus}
