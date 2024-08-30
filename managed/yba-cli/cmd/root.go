@@ -11,6 +11,7 @@ import (
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/auth"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/backup"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/ear"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/eit"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/provider"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/releases"
@@ -100,6 +101,7 @@ func init() {
 	rootCmd.AddCommand(backup.BackupCmd)
 	rootCmd.AddCommand(task.TaskCmd)
 	rootCmd.AddCommand(eit.EITCmd)
+	rootCmd.AddCommand(ear.EARCmd)
 	util.AddCommandIfFeatureFlag(rootCmd, tools.ToolsCmd, util.TOOLS)
 
 	// Example for adding preview commands to the list of available commands

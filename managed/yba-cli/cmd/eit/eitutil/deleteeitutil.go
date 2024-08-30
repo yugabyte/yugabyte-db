@@ -86,7 +86,7 @@ func DeleteEITUtil(cmd *cobra.Command, commandCall, certType string) {
 	if len(r) < 1 {
 		errMessage := ""
 		if len(strings.TrimSpace(certType)) == 0 {
-				errMessage = fmt.Sprintf("No configurations with name: %s found\n", eitName)
+			errMessage = fmt.Sprintf("No configurations with name: %s found\n", eitName)
 		} else {
 			errMessage = fmt.Sprintf(
 				"No configurations with name: %s and type: %s found\n", eitName, certType)
