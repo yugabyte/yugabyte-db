@@ -26,11 +26,13 @@ ysqlsh: could not connect to server: Operation timed out
     TCP/IP connections on port 5433?
 ```
 
-If you are trying to connect to a cluster from your local computer, add your computer to the cluster [IP allow list](../cloud-secure-clusters/add-connections/). If your IP address has changed, add the new IP address.
+- If you are trying to connect to a cluster from your local computer, add your computer to the cluster [IP allow list](../cloud-secure-clusters/add-connections/). If your IP address has changed, add the new IP address.
 
-If your cluster is deployed in a VPC and you are trying to connect from a public address (that is, outside your VPC network), you need to enable **Public Access** on the **Settings > Network Access** tab and connect to the cluster public IP address that is exposed.
+- If your cluster is deployed in a VPC and you are trying to connect from a public address (that is, outside your VPC network), you need to enable **Public Access** on the **Settings > Network Access** tab and connect to the cluster public IP address that is exposed.
 
-If your cluster is deployed in a VPC and you are trying to connect from a peered VPC, add one or more IP addresses from the peered VPC to the cluster IP allow list.
+- If your cluster is deployed in a VPC and you are trying to connect from a peered VPC, add one or more IP addresses from the peered VPC to the cluster IP allow list.
+
+- If you are using a secure internet gateway, whitelist `*.ybdb.io`.
 
 ### Connection closed in Cloud Shell
 
