@@ -84,14 +84,15 @@ public class TestPgYbOptimizerStatistics extends BasePgSQLTest {
           DEFAULT_TUPLE_COUNT);
 
       stmt.execute(String.format("ANALYZE TEST"));
+      // ANALYZEd empty table shouldn't look like a 1000 row table.
       stmt.execute(String.format("SET yb_enable_optimizer_statistics=OFF"));
       helperCheckSeqScanPlanRowsEstimate(String.format(
           "/*+ SeqScan(TEST) */ SELECT * FROM TEST"),
-          DEFAULT_TUPLE_COUNT);
+          1);
       stmt.execute(String.format("SET yb_enable_optimizer_statistics=ON"));
       helperCheckSeqScanPlanRowsEstimate(String.format(
           "/*+ SeqScan(TEST) */ SELECT * FROM TEST"),
-          DEFAULT_TUPLE_COUNT);
+          1);
 
       // With 100 rows in table, and ANALYZE not yet called, estimated rows
       // should still be 1000.
@@ -99,11 +100,11 @@ public class TestPgYbOptimizerStatistics extends BasePgSQLTest {
       stmt.execute(String.format("SET yb_enable_optimizer_statistics=OFF"));
       helperCheckSeqScanPlanRowsEstimate(String.format(
           "/*+ SeqScan(TEST) */ SELECT * FROM TEST"),
-          DEFAULT_TUPLE_COUNT);
+          1);
       stmt.execute(String.format("SET yb_enable_optimizer_statistics=ON"));
       helperCheckSeqScanPlanRowsEstimate(String.format(
           "/*+ SeqScan(TEST) */ SELECT * FROM TEST"),
-          DEFAULT_TUPLE_COUNT);
+          1);
 
       // After ANALYZE is called, the estimated rows should be 100.
       stmt.execute(String.format("ANALYZE TEST"));
