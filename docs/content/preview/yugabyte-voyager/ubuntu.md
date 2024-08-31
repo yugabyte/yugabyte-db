@@ -44,7 +44,7 @@ Perform the following steps to install yb-voyager using apt for Ubuntu:
     sudo apt-get install ora2pg=23.2-yb.2
     ```
 
-    And then, try installing yb-voyager using the following command:
+    Then try installing yb-voyager using the following command:
 
     ```sh
     sudo apt-get install yb-voyager
