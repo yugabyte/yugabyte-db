@@ -23,12 +23,12 @@ Review limitations and implement suggested workarounds to successfully migrate d
 - [Indexes on INET type are not supported](#indexes-on-inet-type-are-not-supported)
 - [Create or alter conversion is not supported](#create-or-alter-conversion-is-not-supported)
 - [GENERATED ALWAYS AS STORED type column is not supported](#generated-always-as-stored-type-column-is-not-supported)
-- [Unsupported ALTER TABLE DDLs variants in source schema](#unsupported-alter-table-ddls-variants-in-schema-in-source-schema)
+- [Unsupported ALTER TABLE DDL variants in source schema](#unsupported-alter-table-ddl-variants-in-source-schema)
 - [Storage parameters on indexes or constraints in the source PostgreSQL](#storage-parameters-on-indexes-or-constraints-in-the-source-postgresql)
 - [Foreign table in the source database requires SERVER and USER MAPPING](#foreign-table-in-the-source-database-requires-server-and-user-mapping)
 - [Exclusion constraints is not supported](#exclusion-constraints-is-not-supported)
 - [PostgreSQL extensions are not supported by target YugabyteDB](#postgresql-extensions-are-not-supported-by-target-yugabytedb)
-- [Deferrable constraint on constraints other than foreign keys is not supported](#deferrable-constraint-on-contsraints-other-than-foreign-keys-is-not-supported)
+- [Deferrable constraint on constraints other than foreign keys is not supported](#deferrable-constraint-on-constraints-other-than-foreign-keys-is-not-supported)
 - [Data ingestion on XML data type is not supported](#data-ingestion-on-xml-data-type-is-not-supported)
 - [GiST index type is not supported](#gist-index-type-is-not-supported)
 - [Indexes on some complex data types are not supported](#indexes-on-some-complex-data-types-are-not-supported)
@@ -220,7 +220,7 @@ CREATE FUNCTION public.latin1_to_utf8(src_encoding integer, dest_encoding intege
 
 **GitHub**: [Issue #10695](https://github.com/yugabyte/yugabyte-db/issues/10695)
 
-**Description**: If you have tables in the source database with columns of GENERATED ALWAYS AS STORED type (which means the data of this column is derived from some other columns of the table), it will throw syntax error in YugabyteDB as follows:
+**Description**: If you have tables in the source database with columns of GENERATED ALWAYS AS STORED type (which means the data of this column is derived from some other columns of the table), it will throw a syntax error in YugabyteDB as follows:
 
 ```output
 ERROR: syntax error at or near "(" (SQLSTATE 42601)
@@ -266,11 +266,11 @@ CREATE TRIGGER compute_height_in_trigger
 
 ---
 
-### Unsupported ALTER TABLE DDLs variants in source schema
+### Unsupported ALTER TABLE DDL variants in source schema
 
 **GitHub**: [Issue #1124](https://github.com/yugabyte/yugabyte-db/issues/1124)
 
-**Description**: If you have done the following alterations on the source schema, they will come up in the exported schema and are not supported by target YugabyteDB:
+**Description**: If you have made the following alterations on the source schema, they will come up in the exported schema and are not supported by the target YugabyteDB:
 
 1. `ALTER TABLE ONLY table_name ALTER COLUMN column_name SET (prop = value …)`
 1. `ALTER TABLE table_name DISABLE RULE rule_name;`
@@ -282,7 +282,7 @@ ERROR: ALTER TABLE DISABLE RULE not supported yet (SQLSTATE 0A000)
 ERROR: ALTER TABLE CLUSTER not supported yet (SQLSTATE 0A000)
 ```
 
-**Workaround**: For (1) and (3), you have to remove the alterations from the exported schema. For (2), remove the ALTER and the respective RULE as well so that it is not enabled on the table.
+**Workaround**: For (1) and (3), remove the alterations from the exported schema. For (2), remove the ALTER and the respective RULE as well so that it is not enabled on the table.
 
 **Example**
 
@@ -349,7 +349,7 @@ CREATE INDEX abc
     ON public.example USING btree (new_id) WITH (fillfactor = 70);
 ```
 
-Suggested change to schema as follows:
+Suggested change to schema is as follows:
 
 ```sql
 CREATE TABLE public.example (
@@ -373,7 +373,7 @@ CREATE INDEX abc
 
 **GitHub**: [Issue #1627](https://github.com/yugabyte/yb-voyager/issues/1627)
 
-**Description**: If you have foreign tables in the schema, during the export schema phase, exported schema does not include the SERVER and USER MAPPING objects. So, you must manually create these objects before importing schema, else FOREIGN TABLE creation fails with the following error:
+**Description**: If you have foreign tables in the schema, during the export schema phase the exported schema does not include the SERVER and USER MAPPING objects. You must manually create these objects before importing schema, otherwise FOREIGN TABLE creation fails with the following error:
 
 ```output
 ERROR: server "remote_server" does not exist (SQLSTATE 42704)
@@ -431,21 +431,21 @@ Suggested change is to manually create the SERVER and USER MAPPING on the target
 
 **GitHub**: [Issue #3944](https://github.com/yugabyte/yugabyte-db/issues/3944)
 
-**Description**: If you have exclusion constraints on the tables in the source database, those will error out during import schema to target with the following error:
+**Description**: If you have exclusion constraints on the tables in the source database, those will error out during import schema to the target with the following error:
 
 ```output
 ERROR: EXCLUDE constraint not supported yet (SQLSTATE 0A000)
 ```
 
-**Workaround**: To implement exclude constraints, follow this workaround:
+**Workaround**: To implement exclusion constraints, follow this workaround:
 
 1. Create a trigger: Set up a TRIGGER for INSERT or UPDATE operations on the table. This trigger will use the specified expression to search the relevant columns for any potential violations.
 
-1. Add indexes: It is crucial to create an INDEX on the columns involved in the expression. This helps ensure that the search operation performed by the trigger does not negatively impact performance.
+1. Add indexes: Create an INDEX on the columns involved in the expression. This helps ensure that the search operation performed by the trigger does not negatively impact performance.
 
-Note that creating an index on the relevant columns is essential for maintaining performance. Without an index, the trigger's search operation can degrade performance.
+Note that creating an index on the relevant columns _is essential_ for maintaining performance. Without an index, the trigger's search operation can degrade performance.
 
-**Caveats** : Note that there are specific issues related to creating indexes on certain data types certain index methods in YugabyteDB. Depending on the data types or methods involved, additional workarounds may be required to ensure optimal performance for these constraints.
+**Caveats**: Note that there are specific issues related to creating indexes on certain data types using certain index methods in YugabyteDB. Depending on the data types or methods involved, additional workarounds may be required to ensure optimal performance for these constraints.
 
 **Example**
 
@@ -462,7 +462,7 @@ ALTER TABLE ONLY public.meeting
     ADD CONSTRAINT no_time_overlap EXCLUDE USING gist (room_id WITH =, time_range WITH &&);
 ```
 
-Suggested change to schema as follows:
+Suggested change to schema is as follows:
 
 ```sql
 CREATE OR REPLACE FUNCTION check_no_time_overlap() RETURNS TRIGGER AS $$
@@ -494,7 +494,7 @@ CREATE INDEX idx_no_time_overlap on public.meeting USING gist(room_id,time_range
 
 **Documentation**: [PostgreSQL extensions](../../../explore/ysql-language-features/pg-extensions/)
 
-**Description**: If you have any PostgreSQL extension that is not supported by the target YugabyteDB, then it errors out during import schema as follows:
+**Description**: If you have any PostgreSQL extension that is not supported by the target YugabyteDB, they result in the following errors during import schema:
 
 ```output
 ERROR:  could not open extension control file "/home/centos/yb/postgres/share/extension/<extension_name>.control": No such file or directory
@@ -516,13 +516,13 @@ CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA public;
 
 **GitHub**: [Issue #1709](https://github.com/yugabyte/yugabyte-db/issues/1709)
 
-**Description**: If you have deferrable constraints on constraints other than foreign keys, for example, UNIQUE constraints which are currently not supported in the target YugabyteDB, it errors out in import schema phase as follows:
+**Description**: If you have deferrable constraints on constraints other than foreign keys (for example, UNIQUE constraints) which are currently not supported in the target YugabyteDB, it errors out in the import schema phase as follows:
 
 ```output
 ERROR: DEFERRABLE unique constraints are not supported yet
 ```
 
-**Workaround**: Currrently, there is no workaround in target YugabyteDB, so remove it from the exported schema and modify the application for such constraints before pointing it on YugabyteDB.
+**Workaround**: Currently, there is no workaround in the target YugabyteDB. Remove it from the exported schema and modify the application for such constraints before pointing it to YugabyteDB.
 
 **Example**
 
@@ -544,13 +544,13 @@ ALTER TABLE ONLY public.users
 
 **GitHub**: [Issue #1043](https://github.com/yugabyte/yugabyte-db/issues/1043)
 
-**Description**: If you have XML datatype in source database, it errors out in import data to target YugabyteDB phase as data ingestion is not allowed on this data type:
+**Description**: If you have XML datatype in the source database, it errors out in the import data to target YugabyteDB phase as data ingestion is not allowed on this data type:
 
 ```output
  ERROR: unsupported XML feature (SQLSTATE 0A000)
 ```
 
-**Workaround**: To migrate the data, a workaround is to convert the type as text data type and get the data imported to target, but to read the data on target YugabyteDB you need to create some user defined functions similar to XML functions.
+**Workaround**: To migrate the data, a workaround is to convert the type to text and import the data to target; to read the data on the target YugabyteDB, you need to create some user defined functions similar to XML functions.
 
 **Example**
 
@@ -569,14 +569,14 @@ CREATE TABLE xml_example (
 
 **GitHub**: [Issue #1337](https://github.com/yugabyte/yugabyte-db/issues/1337)
 
-**Description**: If you have GiST indexes on the source database, it errors out in import schema phase in target with the following error:
+**Description**: If you have GiST indexes on the source database, it errors out in the import schema phase with the following error:
 
 ```output
  ERROR: index method "gist" not supported yet (SQLSTATE XX000)
 
 ```
 
-**Workaround**: Currently, there is no workaround, so remove it from the exported schema.
+**Workaround**: Currently, there is no workaround; remove the index from the exported schema.
 
 **Example**
 
@@ -592,13 +592,13 @@ CREATE INDEX gist_idx ON public.ts_query_table USING gist (query);
 
 **GitHub**: [Issue #9698](https://github.com/yugabyte/yugabyte-db/issues/9698)
 
-**Description**: If you have indexes on some complex types such as TSQUERY, TSVECTOR, JSON, UDTs, citext, and sp on, those will error out in import schema phase to target YugabyteDB with the following error:
+**Description**: If you have indexes on some complex types such as TSQUERY, TSVECTOR, JSON, UDTs, citext, and so on, those will error out in import schema phase with the following error:
 
 ```output
  ERROR:  INDEX on column of type '<TYPE_NAME>' not yet supported
 ```
 
-**Workaround**: Currently, there is no workaround, but you can cast these data types to in the index definition to supported types, which may require adjustments on the application side when querying the column using the index. Ensure you address these changes before modifying the schema.
+**Workaround**: Currently, there is no workaround, but you can cast these data types in the index definition to supported types, which may require adjustments on the application side when querying the column using the index. Ensure you address these changes before modifying the schema.
 
 **Example**
 
@@ -641,13 +641,13 @@ CREATE INDEX idx_json ON public.test_json (data);
 
 **GitHub**: [Issue #4700](https://github.com/yugabyte/yugabyte-db/issues/4700)
 
-**Description**: If you have constraint triggers in your source database, as they are currently unsupported in YugabyteDB, they will error out as follows:
+**Description**: If you have constraint triggers in your source database, as they are currently unsupported in YugabyteDB, and they will error out as follows:
 
 ```output
  ERROR:  CREATE CONSTRAINT TRIGGER not supported yet
 ```
 
-**Workaround**: Currently, there is no workaround in target YugabyteDB, so remove it from the exported schema and modify the applications if they are utilizing these triggers before pointing it on YugabyteDB.
+**Workaround**: Currently, there is no workaround; remove the constraint trigger from the exported schema and modify the applications if they are using these triggers before pointing it to YugabyteDB.
 
 **Example**
 
@@ -687,13 +687,13 @@ CREATE CONSTRAINT TRIGGER check_unique_username_trigger
 
 **GitHub**: [Issue #5956](https://github.com/yugabyte/yugabyte-db/issues/5956)
 
-**Description**: If you have table inheritance in the source database, it will error out in target as it is not currently supported in YugabyteDB:
+**Description**: If you have table inheritance in the source database, it will error out in the target as it is not currently supported in YugabyteDB:
 
 ```output
 ERROR: INHERITS not supported yet
 ```
 
-**Workaround**: Currently, there is no workaround for this feature.
+**Workaround**: Currently, there is no workaround.
 
 **Example**
 
@@ -777,7 +777,7 @@ $$;
 
 **GitHub**: [Issue #724](https://github.com/yugabyte/yb-voyager/issues/724)
 
-**Description**: If there are GIN indexes in the source schema on multiple columns, as it is not supported by YugabyteDB, it results in an error during import schema as follows:
+**Description**: If there are GIN indexes in the source schema on multiple columns, they result in an error during import schema as follows:
 
 ```output
 ERROR: access method "ybgin" does not support multicolumn indexes (SQLSTATE 0A000)
@@ -806,7 +806,7 @@ CREATE INDEX gin_multi_on_json
 
 **GitHub**: [Issue #1655](https://github.com/yugabyte/yb-voyager/issues/1655)
 
-**Description**: If there are policies in the source schema for USERs in the database, the USERs have to be created manually on target YugabyteDB, as currently the migration USER/GRANT is not supported. Skipping the manual user creation will return an error in import schema as follows:
+**Description**: If there are policies in the source schema for USERs in the database, the USERs have to be created manually on the target YugabyteDB, as currently the migration of USER/GRANT is not supported. Skipping the manual user creation will return an error during import schema as follows:
 
 ```output
 ERROR: role "<role_name>" does not exist (SQLSTATE 42704)
@@ -833,7 +833,7 @@ CREATE POLICY p2 ON public.z1 TO regress_rls_group USING (((a % 2) = 1));
 
 **GitHub**: [Issue #22716](https://github.com/yugabyte/yugabyte-db/issues/22716)
 
-**Description**: If there are VIEWs with check option in the source database, it will error out in the import schema phase in target YugabyteDB as follows:
+**Description**: If there are VIEWs with check option in the source database, they error out during the import schema phase as follows:
 
 ```output
 ERROR:  VIEW WITH CHECK OPTION not supported yet
@@ -886,7 +886,7 @@ BEGIN
             VALUES (NEW.employee_id, NEW.employee_name, NEW.salary);
             RETURN NEW;
         ELSE
-            RAISE EXCEPTION 'new row violates check option for view “employees_less_than_12000”; employee_id must be less than 12000';
+            RAISE EXCEPTION 'new row violates check option for view "employees_less_than_12000"; employee_id must be less than 12000';
         END IF;
 
     -- Handle UPDATE operations
@@ -898,7 +898,7 @@ BEGIN
             WHERE employee_id = OLD.employee_id;
             RETURN NEW;
         ELSE
-            RAISE EXCEPTION 'new row violates check option for view “employees_less_than_12000”; employee_id must be less than 12000';
+            RAISE EXCEPTION 'new row violates check option for view "employees_less_than_12000"; employee_id must be less than 12000';
         END IF;
     END IF;
 END;
