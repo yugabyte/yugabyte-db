@@ -14,6 +14,7 @@
 #include "utils/mongo_errors.h"
 #include "commands/commands_common.h"
 #include "commands/parse_error.h"
+#include "utils/feature_counter.h"
 #include "libpq/scram.h"
 
 enum Helio_Roles
@@ -75,6 +76,8 @@ helio_extension_create_user(PG_FUNCTION_ARGS)
 						errmsg("CreateUser command is not supported"),
 						errhint("CreateUser command is not supported")));
 	}
+
+	ReportFeatureUsage(FEATURE_USER_CREATE);
 
 	pgbson *createUserSpec = PG_GETARG_PGBSON(0);
 	CreateUserSpec *spec = ParseCreateUserSpec(createUserSpec);
@@ -309,6 +312,8 @@ helio_extension_drop_user(PG_FUNCTION_ARGS)
 						errhint("DropUser command is not supported")));
 	}
 
+	ReportFeatureUsage(FEATURE_USER_DROP);
+
 	pgbson *dropUserSpec = PG_GETARG_PGBSON(0);
 	char *dropUser = ParseDropUserSpec(dropUserSpec);
 	StringInfo dropUserInfo = makeStringInfo();
@@ -400,6 +405,8 @@ helio_extension_update_user(PG_FUNCTION_ARGS)
 						errmsg("UpdateUser command is not supported"),
 						errhint("UpdateUser command is not supported")));
 	}
+
+	ReportFeatureUsage(FEATURE_USER_UPDATE);
 
 	pgbson *updateUserSpec = PG_GETARG_PGBSON(0);
 	UpdateUserSpec *spec = ParseUpdateUserSpec(updateUserSpec);
@@ -500,6 +507,8 @@ helio_extension_get_users(PG_FUNCTION_ARGS)
 						errmsg("UsersInfo command is not supported"),
 						errhint("UsersInfo command is not supported")));
 	}
+
+	ReportFeatureUsage(FEATURE_USER_GET);
 
 	char *userName = ParseGetUserSpec(PG_GETARG_PGBSON(0));
 	const char *cmdStr = NULL;

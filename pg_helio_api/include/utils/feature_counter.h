@@ -15,7 +15,7 @@
 #include <port/atomics.h>
 
 #define MAX_FEATURE_NAME_LENGTH 255
-#define MAX_FEATURE_COUNT 231
+#define MAX_FEATURE_COUNT 235
 
 /* Internal features that are not exposed */
 #define INTERNAL_FEATURE_TYPE MAX_FEATURE_COUNT
@@ -275,6 +275,12 @@ typedef enum
 
 	/* Feature usage stats */
 	FEATURE_TTL_PURGER_CALLS,
+
+	/* Feature mapping region - User CRUD*/
+	FEATURE_USER_CREATE,
+	FEATURE_USER_DROP,
+	FEATURE_USER_GET,
+	FEATURE_USER_UPDATE,
 
 	/* This must be the last value in the FeatureType. */
 	MAX_FEATURE_INDEX

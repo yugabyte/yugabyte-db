@@ -287,7 +287,13 @@ static char FeatureMapping[MAX_FEATURE_COUNT][MAX_FEATURE_NAME_LENGTH] = {
 	[FEATURE_STAGE_VECTOR_SEARCH_MONGO] = "vector_search_mongo",
 
 	/* Feature usage stats */
-	[FEATURE_TTL_PURGER_CALLS] = "ttl_purger_calls"
+	[FEATURE_TTL_PURGER_CALLS] = "ttl_purger_calls",
+
+	/* Feature mapping region - User CRUD*/
+	[FEATURE_USER_CREATE] = "user_create",
+	[FEATURE_USER_DROP] = "user_drop",
+	[FEATURE_USER_GET] = "user_get",
+	[FEATURE_USER_UPDATE] = "user_update"
 };
 
 
