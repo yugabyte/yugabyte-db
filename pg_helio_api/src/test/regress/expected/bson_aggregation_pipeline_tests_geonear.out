@@ -279,15 +279,17 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggr
          Filter: (bson_validate_geometry(collection.document, 'a.b'::text) IS NOT NULL)
 (6 rows)
 
-EXPLAIN SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db',
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": { "type": "Point", "coordinates": [35, 35] }, "distanceField": "dist.calculated", "key": "a.geo"} } ]}');    
-                                                                                                                  QUERY PLAN                                                                                                                  
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Sort  (cost=10100000001.32..10100000001.33 rows=4 width=40)
-   Sort Key: ((bson_validate_geography(document, 'a.geo'::text) <|-|> '{ "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] }, "distanceField" : "dist.calculated", "key" : "a.geo" }'::bson))
-   ->  Seq Scan on documents_4900 collection  (cost=10000000000.00..10100000001.28 rows=4 width=40)
-         Filter: (bson_validate_geography(document, 'a.geo'::text) IS NOT NULL)
-(4 rows)
+                                                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                                                          
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: (bson_dollar_project_geonear(document, '{ "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] }, "distanceField" : "dist.calculated", "key" : "a.geo" }'::bson)), ((bson_validate_geography(document, 'a.geo'::text) <|-|> '{ "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] }, "distanceField" : "dist.calculated", "key" : "a.geo" }'::bson))
+   Sort Key: ((bson_validate_geography(collection.document, 'a.geo'::text) <|-|> '{ "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] }, "distanceField" : "dist.calculated", "key" : "a.geo" }'::bson))
+   ->  Seq Scan on helio_data.documents_4900 collection
+         Output: bson_dollar_project_geonear(document, '{ "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] }, "distanceField" : "dist.calculated", "key" : "a.geo" }'::bson), (bson_validate_geography(document, 'a.geo'::text) <|-|> '{ "near" : { "type" : "Point", "coordinates" : [ { "$numberInt" : "35" }, { "$numberInt" : "35" } ] }, "distanceField" : "dist.calculated", "key" : "a.geo" }'::bson)
+         Filter: (bson_validate_geography(collection.document, 'a.geo'::text) IS NOT NULL)
+(6 rows)
 
 -- min / maxDistance Explains
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db',

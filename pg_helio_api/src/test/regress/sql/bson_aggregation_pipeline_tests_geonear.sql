@@ -65,7 +65,7 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggr
     '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": { "type": "Point", "coordinates": [5, 6] }, "distanceField": "dist.calculated", "spherical": true, "key": "a.b", "includeLocs": "dist.location" } } ]}');
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": [5, 6], "distanceField": "dist.calculated", "spherical": true, "key": "a.b", "includeLocs": "dist.location" } } ]}');
-EXPLAIN SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db',
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM helio_api_catalog.bson_aggregation_pipeline('db',
     '{ "aggregate": "agg_geonear", "pipeline": [ { "$geoNear": { "near": { "type": "Point", "coordinates": [35, 35] }, "distanceField": "dist.calculated", "key": "a.geo"} } ]}');    
 
 -- min / maxDistance Explains
