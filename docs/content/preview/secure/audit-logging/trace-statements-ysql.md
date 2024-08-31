@@ -43,7 +43,7 @@ To log the appropriate session information, you need to set the following config
 
 ## Review logs
 
-Session information is written to the PostgreSQL logs, located in the YugabyteDB base folder in the `yb-data/tserver/logs` directory. For information on inspecting logs, refer to [Inspect YugabyteDB logs](../../../troubleshoot/nodes/check-logs/).
+Session information is written to the PostgreSQL logs, located in the YugabyteDB base folder in the `yb-data/tserver/logs` directory. For information on inspecting logs, refer to [Inspect YugabyteDB logs](/preview/troubleshoot/nodes/check-logs/).
 
 ## Example session
 
