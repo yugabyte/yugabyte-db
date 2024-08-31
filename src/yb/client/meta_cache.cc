@@ -110,6 +110,8 @@ DEFINE_test_flag(bool, force_master_lookup_all_tablets, false,
                  "If set, force the client to go to the master for all tablet lookup "
                  "instead of reading from cache.");
 
+DEFINE_test_flag(int32, sleep_before_metacache_lookup_ms, 0,
+                 "If set, will sleep in LookupTabletByKey for a random amount up to this value.");
 DEFINE_test_flag(double, simulate_lookup_timeout_probability, 0,
                  "If set, mark an RPC as failed and force retry on the first attempt.");
 DEFINE_test_flag(double, simulate_lookup_partition_list_mismatch_probability, 0,
@@ -1875,9 +1877,12 @@ bool MetaCache::DoLookupTabletByKey(
     LookupTabletCallback* callback, PartitionGroupStartKeyPtr* partition_group_start) {
   DCHECK_ONLY_NOTNULL(partition_group_start);
   RemoteTabletPtr tablet;
-  auto scope_exit = ScopeExit([callback, &tablet] {
+  Status status = Status::OK();
+  auto scope_exit = ScopeExit([callback, &tablet, &status] {
     if (tablet) {
       (*callback)(tablet);
+    } else if (!status.ok()) {
+      (*callback)(status);
     }
   });
   int64_t request_no;
@@ -1904,13 +1909,13 @@ bool MetaCache::DoLookupTabletByKey(
         (PREDICT_FALSE(RandomActWithProbability(
             FLAGS_TEST_simulate_lookup_partition_list_mismatch_probability)) &&
          table->table_type() != YBTableType::TRANSACTION_STATUS_TABLE_TYPE)) {
-      (*callback)(STATUS(
+      status = STATUS(
           TryAgain,
           Format(
               "MetaCache's table $0 partitions version does not match, cached: $1, got: $2, "
               "refresh required",
               table->ToString(), table_data->partition_list->version, partitions->version),
-          ClientError(ClientErrorCode::kTablePartitionListIsStale)));
+          ClientError(ClientErrorCode::kTablePartitionListIsStale));
       return true;
     }
 
@@ -2017,6 +2022,12 @@ void MetaCache::LookupTabletByKey(const std::shared_ptr<YBTable>& table,
     return;
   }
 
+  if (FLAGS_TEST_sleep_before_metacache_lookup_ms > 0) {
+    MonoDelta sleep_time = MonoDelta::FromMilliseconds(1) *
+                           RandomUniformInt(1, FLAGS_TEST_sleep_before_metacache_lookup_ms);
+    SleepFor(sleep_time);
+    VLOG_WITH_FUNC(2) << "Slept for " << sleep_time;
+  }
   if (table->ArePartitionsStale()) {
     RefreshTablePartitions(
         table,
@@ -2110,9 +2121,12 @@ bool MetaCache::DoLookupTabletById(
     UseCache use_cache,
     LookupTabletCallback* callback) {
   std::optional<RemoteTabletPtr> tablet = std::nullopt;
-  auto scope_exit = ScopeExit([callback, &tablet] {
+  Status status = Status::OK();
+  auto scope_exit = ScopeExit([callback, &tablet, &status] {
     if (tablet) {
       (*callback)(*tablet);
+    } else if (!status.ok()) {
+      (*callback)(status);
     }
   });
   int64_t request_no;
@@ -2128,7 +2142,7 @@ bool MetaCache::DoLookupTabletById(
         if (use_cache) {
           if (!include_deleted) {
             tablet = std::nullopt;
-            (*callback)(STATUS(NotFound, "Tablet deleted"));
+            status = STATUS(NotFound, "Tablet deleted");
           }
           return true;
         }
