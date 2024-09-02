@@ -88,8 +88,6 @@ static int64 GetPostgresDocumentCountStats(ArrayType *relationIds,
 										   bool *isSmallCollection);
 static int32 GetAverageDocumentSizeFromStats(ArrayType *relationIds);
 static void WriteIndexSizesScaledWorker(ArrayType *relationIds, pgbson_writer *writer);
-static inline void WriteStatsAsIntOrDouble(pgbson_writer *writer, char *fieldName, int
-										   size, int64 value);
 
 /*
  * command_coll_stats is the implementation of the internal logic for
@@ -1032,33 +1030,15 @@ BuildResponseMessage(CollStatsResult *result)
 
 
 /*
- * This is a helper function which takes in the writer, fieldName , size and value and decides if we want to write
- * the response as int32 or double.
- */
-static inline void
-WriteStatsAsIntOrDouble(pgbson_writer *writer, char *fieldName, int size, int64 value)
-{
-	if (value >= INT32_MIN && value <= INT32_MAX)
-	{
-		PgbsonWriterAppendInt32(writer, fieldName, size, value);
-	}
-	else
-	{
-		PgbsonWriterAppendDouble(writer, fieldName, size, value);
-	}
-}
-
-
-/*
  * WriteCoreStorageStats writes the collStats() storage output to the target writer.
  */
 static void
 WriteCoreStorageStats(CollStatsResult *result, pgbson_writer *writer)
 {
-	WriteStatsAsIntOrDouble(writer, "size", 4, result->size);
-	WriteStatsAsIntOrDouble(writer, "count", 5, result->count);
+	PgbsonWriterAppendInt32OrDouble(writer, "size", 4, result->size);
+	PgbsonWriterAppendInt32OrDouble(writer, "count", 5, result->count);
 	PgbsonWriterAppendInt32(writer, "avgObjSize", 10, result->avgObjSize);
-	WriteStatsAsIntOrDouble(writer, "storageSize", 11, result->storageSize);
+	PgbsonWriterAppendInt32OrDouble(writer, "storageSize", 11, result->storageSize);
 	PgbsonWriterAppendInt32(writer, "nindexes", 8, result->nindexes);
 
 	pgbson_array_writer arrayWriter;
@@ -1076,10 +1056,10 @@ WriteCoreStorageStats(CollStatsResult *result, pgbson_writer *writer)
 	}
 	PgbsonWriterEndArray(writer, &arrayWriter);
 
-	WriteStatsAsIntOrDouble(writer, "totalIndexSize", 14, result->totalIndexSize);
-	WriteStatsAsIntOrDouble(writer, "totalSize", 9, result->totalSize);
+	PgbsonWriterAppendInt32OrDouble(writer, "totalIndexSize", 14, result->totalIndexSize);
+	PgbsonWriterAppendInt32OrDouble(writer, "totalSize", 9, result->totalSize);
 	PgbsonWriterAppendDocument(writer, "indexSizes", 10, result->indexSizes);
-	WriteStatsAsIntOrDouble(writer, "scaleFactor", 11, result->scaleFactor);
+	PgbsonWriterAppendInt32OrDouble(writer, "scaleFactor", 11, result->scaleFactor);
 }
 
 

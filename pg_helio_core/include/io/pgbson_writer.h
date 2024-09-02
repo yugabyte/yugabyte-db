@@ -75,6 +75,8 @@ void PgbsonWriterAppendDouble(pgbson_writer *writer, const char *path, uint32_t
 							  double value);
 void PgbsonWriterAppendInt32(pgbson_writer *writer, const char *path, uint32_t pathLength,
 							 int value);
+void PgbsonWriterAppendInt32OrDouble(pgbson_writer *writer, const char *path, uint32_t
+									 pathLength, int64 value);
 void PgbsonWriterAppendUtf8(pgbson_writer *writer, const char *path, uint32_t pathLength,
 							const char *value);
 void PgbsonWriterAppendTimestampTz(pgbson_writer *writer, const char *path,

@@ -819,6 +819,24 @@ PgbsonWriterAppendDouble(pgbson_writer *writer, const char *path, uint32_t pathL
 
 
 /*
+ * Appends the given value as an int32 or double if the former would result in overflow.
+ */
+void
+PgbsonWriterAppendInt32OrDouble(pgbson_writer *writer, const char *path, uint32_t
+								pathLength, int64 value)
+{
+	if (value >= INT32_MIN && value <= INT32_MAX)
+	{
+		PgbsonWriterAppendInt32(writer, path, pathLength, (int) value);
+	}
+	else
+	{
+		PgbsonWriterAppendDouble(writer, path, pathLength, value);
+	}
+}
+
+
+/*
  * Appends a given string to the writer with the specified path.
  */
 void
