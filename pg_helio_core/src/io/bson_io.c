@@ -26,6 +26,7 @@
 #include "utils/type_cache.h"
 #include "utils/mongo_errors.h"
 #include "io/helio_bson_core.h"
+#include "utils/helio_errors.h"
 
 
 extern bool BsonTextUseJsonRepresentation;
@@ -408,13 +409,10 @@ bson_repath_and_build(PG_FUNCTION_ARGS)
 	if (nargs % 2 != 0)
 	{
 		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				(errcode(ERRCODE_HELIO_BADVALUE),
 				 errmsg("argument list must have an even number of elements"),
-
-		         /* translator: %s is a SQL function name */
-				 errhint(
-					 "The arguments of %s must consist of alternating keys and values.",
-					 "bson_repath_and_build()")));
+				 errdetail(
+					 "The arguments of bson_repath_and_build() must consist of alternating keys and values.")));
 	}
 
 	pgbson_writer writer;
@@ -424,15 +422,15 @@ bson_repath_and_build(PG_FUNCTION_ARGS)
 		if (nulls[i])
 		{
 			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					(errcode(ERRCODE_HELIO_BADVALUE),
 					 errmsg("argument %d cannot be null", i + 1),
-					 errhint("Object keys should be text.")));
+					 errdetail("Object keys should be text.")));
 		}
 
 		if (types[i] != TEXTOID)
 		{
 			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					(errcode(ERRCODE_HELIO_BADVALUE),
 					 errmsg("argument %d must be a text", i)));
 		}
 
@@ -463,8 +461,8 @@ bson_repath_and_build(PG_FUNCTION_ARGS)
 			}
 			else
 			{
-				ereport(ERROR, (errcode(MongoBadValue), (errmsg(
-															 "Expecting a single element value"))));
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+								(errmsg("Expecting a single element value"))));
 			}
 		}
 		else

@@ -161,11 +161,12 @@ CheckCollationType(const bson_value_t *bsonValue)
 {
 	if (bsonValue->value_type != BSON_TYPE_UTF8)
 	{
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg("Collation is of wrong type: '%s', expected: 'String'",
 							   BsonTypeName(bsonValue->value_type)),
-						errhint("Collation is of wrong type: '%s', expected: 'String'",
-								BsonTypeName(bsonValue->value_type))));
+						errdetail_log(
+							"Collation is of wrong type: '%s', expected: 'String'",
+							BsonTypeName(bsonValue->value_type))));
 	}
 }
 

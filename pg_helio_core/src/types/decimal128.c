@@ -1739,7 +1739,7 @@ GetBsonValueAsDecimal128Core(const bson_value_t *value, bool shouldQuantizeDoubl
 
 		default:
 		{
-			ereport(ERROR, (errcode(MongoBadValue),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 							errmsg("Unexpected type")));
 		}
 	}

@@ -6,9 +6,14 @@ set -u
 set -e
 
 sourceFile=$1
-filePath=$2
+filePathDest=$2
 errorNamesPath=$3
 
+filePathName=$(basename $filePathDest)
+filePathName="${RANDOM}-${filePathName}"
+filePath="/tmp/$filePathName"
+
+echo "Writing header for $filePath"
 cat << EOF > $filePath
 
 /*-------------------------------------------------------------------------
@@ -170,4 +175,8 @@ for fileIndex in $( echo ${sorted[@]} ); do
     IncrementErrorCode
 done
 
+echo "Writing footer for $filePath"
 echo "#endif" >> $filePath
+
+echo "Moving $filePath to $filePathDest"
+mv $filePath $filePathDest

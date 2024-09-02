@@ -23,6 +23,7 @@
 #include <lib/stringinfo.h>
 
 #include "io/helio_bson_core.h"
+#include "utils/helio_errors.h"
 #include "io/pgbsonelement.h"
 
 extern bool EnableCollation;
@@ -57,7 +58,7 @@ BsonIterToSinglePgbsonElement(bson_iter_t *iterator, pgbsonelement *element)
 {
 	if (!bson_iter_next(iterator))
 	{
-		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg("invalid input BSON: Should not have empty document")));
 	}
 
@@ -68,7 +69,7 @@ BsonIterToSinglePgbsonElement(bson_iter_t *iterator, pgbsonelement *element)
 	if (bson_iter_next(iterator) &&
 		!(EnableCollation && strcmp(bson_iter_key(iterator), "collation") == 0))
 	{
-		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg(
 							"invalid input BSON: Should have only 1 entry in the bson document")));
 	}
@@ -101,7 +102,7 @@ PgbsonToSinglePgbsonElementWithCollation(const pgbson *filter, pgbsonelement *el
 
 	if (!bson_iter_next(&iter))
 	{
-		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg("invalid input BSON: Should not have empty document")));
 	}
 
@@ -115,14 +116,14 @@ PgbsonToSinglePgbsonElementWithCollation(const pgbson *filter, pgbsonelement *el
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 							errmsg(
 								"invalid input BSON: 2nd entry in the bson document must have key \"collation\"")));
 		}
 
 		if (bson_iter_next(&iter))
 		{
-			ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 							errmsg(
 								"invalid input BSON: Should have only 2 entries in the bson document")));
 		}
@@ -186,7 +187,7 @@ BsonValueToPgbsonElement(const bson_value_t *bsonValue,
 								  bsonValue->value.v_doc.data,
 								  bsonValue->value.v_doc.data_len))
 	{
-		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg("Could not initialize bson iterator.")));
 	}
 

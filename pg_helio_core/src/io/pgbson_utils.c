@@ -66,7 +66,7 @@ BsonValueHoldsNumberArray(const bson_value_t *currentValue, int32_t *numElements
 {
 	if (currentValue->value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg(
 							"value must be of type array")));
 	}
@@ -479,7 +479,7 @@ BsonTypeFromName(const char *name)
 		return BSON_TYPE_CODEWSCOPE;
 	}
 
-	ereport(ERROR, (errcode(MongoBadValue),
+	ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 					errmsg("Unknown type name alias: %s", name)));
 }
 

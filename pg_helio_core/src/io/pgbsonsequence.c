@@ -280,13 +280,13 @@ PgbsonSequenceInitFromHexadecimalString(const char *hexString)
 	uint32_t hexStringLength = (strLength - BsonSeqHexPrefixLength);
 	if (hexStringLength <= 0 || (hexStringLength % 2 != 0))
 	{
-		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 							"Invalid Hex string for pgbson input")));
 	}
 
 	if (strncmp(hexString, BsonSeqHexPrefix, BsonSeqHexPrefixLength) != 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg("BsonSequence Hex string does not have valid prefix %s",
 							   BsonSeqHexPrefix)));
 	}
@@ -345,7 +345,7 @@ PgbsonSequenceInitFromJson(const char *jsonString)
 
 	if (element.bsonValue.value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg("Json value for bsonsequence must be an array. got %s",
 							   BsonTypeName(element.bsonValue.value_type))));
 	}
@@ -366,7 +366,7 @@ PgbsonSequenceInitFromJson(const char *jsonString)
 		const bson_value_t *currentValue = bson_iter_value(&arrayIterator);
 		if (currentValue->value_type != BSON_TYPE_DOCUMENT)
 		{
-			ereport(ERROR, (errcode(MongoBadValue),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 							errmsg("bsonsequence must be an array of documents. got %s",
 								   BsonTypeName(currentValue->value_type))));
 		}

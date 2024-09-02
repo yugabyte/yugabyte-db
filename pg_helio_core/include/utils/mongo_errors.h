@@ -8,9 +8,11 @@
  *
  *-------------------------------------------------------------------------
  */
+
+#include "utils/helio_errors.h"
+
 #ifndef MONGO_ERRORS_H
 #define MONGO_ERRORS_H
-
 
 #include <postgres.h>
 #include <lib/stringinfo.h>
