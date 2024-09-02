@@ -32,6 +32,9 @@ public class RedactingService {
           "$..ysqlCurrentPassword",
           "$..sshPrivateKeyContent");
 
+  public static final List<String> SECRET_QUERY_PARAMS_FOR_LOGS =
+      ImmutableList.of(/* SAS Token */ "sig");
+
   public static final List<String> SECRET_PATHS_FOR_LOGS =
       ImmutableList.<String>builder()
           .addAll(SECRET_PATHS_FOR_APIS)
@@ -147,6 +150,16 @@ public class RedactingService {
     String length = ((Integer) input.length()).toString();
     String regex = "(.){" + length + "}";
     String output = input.replaceAll(regex, SECRET_REPLACEMENT);
+    return output;
+  }
+
+  public static String redactQueryParams(String input) {
+    String output = input;
+    for (String param : SECRET_QUERY_PARAMS_FOR_LOGS) {
+      String regex = "([?&]" + param + "=)([^&]+)";
+      String replacement = "$1" + SECRET_REPLACEMENT;
+      output = output.replaceAll(regex, replacement);
+    }
     return output;
   }
 
