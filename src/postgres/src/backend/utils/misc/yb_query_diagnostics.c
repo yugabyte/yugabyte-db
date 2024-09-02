@@ -30,9 +30,12 @@
 #include <unistd.h>
 
 #include "access/hash.h"
+#include "commands/explain.h"
 #include "common/file_perm.h"
+#include "common/pg_prng.h"
 #include "common/pg_yb_common.h"
 #include "funcapi.h"
+#include "pg_yb_utils.h"
 #include "pgstat.h"
 #include "postmaster/bgworker.h"
 #include "storage/ipc.h"
@@ -44,6 +47,7 @@
 #define BIND_VAR_FILE "bind_variables.csv"
 #define PGSS_FILE "pg_stat_statements.csv"
 #define ASH_FILE "active_session_history.csv"
+#define EXPLAIN_PLAN_FILE "explain_plan.txt"
 /* Constants used for yb_query_diagnostics_status view */
 #define YB_QUERY_DIAGNOSTICS_STATUS_COLS 8
 #define DIAGNOSTICS_SUCCESS 0
@@ -70,6 +74,7 @@ int yb_query_diagnostics_bg_worker_interval_ms;
 int yb_query_diagnostics_circular_buffer_size;
 
 /* Saved hook value in case of unload */
+static ExecutorStart_hook_type prev_ExecutorStart = NULL;
 static ExecutorEnd_hook_type prev_ExecutorEnd = NULL;
 
 /* Flags set by interrupt handlers for later service in the main loop. */
@@ -82,7 +87,9 @@ static HTAB *bundles_in_progress = NULL;
 static LWLock *bundles_in_progress_lock; /* protects bundles_in_progress hash table */
 static YbQueryDiagnosticsBundles *bundles_completed = NULL;
 static const char *status_msg[] = {"Success", "In Progress", "Error"};
+static bool current_query_sampled = false;
 
+static void YbQueryDiagnostics_ExecutorStart(QueryDesc *queryDesc, int eflags);
 static void YbQueryDiagnostics_ExecutorEnd(QueryDesc *queryDesc);
 
 static void InsertNewBundleInfo(YbQueryDiagnosticsMetadata *metadata);
@@ -94,6 +101,8 @@ static bool DumpToFile(const char *path, const char *file_name, const char *data
 static void RemoveExpiredEntries();
 static void AccumulateBindVariables(YbQueryDiagnosticsEntry *entry,
 									const double totaltime_ms, const ParamListInfo params);
+static void AccumulateExplain(QueryDesc *queryDesc, YbQueryDiagnosticsEntry *entry,
+							  bool explain_analyze, bool explain_dist, double totaltime_ms);
 static void YbQueryDiagnosticsBgWorkerSighup(SIGNAL_ARGS);
 static void YbQueryDiagnosticsBgWorkerSigterm(SIGNAL_ARGS);
 static inline TimestampTz BundleEndTime(const YbQueryDiagnosticsEntry *entry);
@@ -116,6 +125,9 @@ static void AppendToErrorDescription(char *description, const char *format, ...)
 void
 YbQueryDiagnosticsInstallHook(void)
 {
+	prev_ExecutorStart = ExecutorStart_hook;
+	ExecutorStart_hook = YbQueryDiagnostics_ExecutorStart;
+
 	prev_ExecutorEnd = ExecutorEnd_hook;
 	ExecutorEnd_hook = YbQueryDiagnostics_ExecutorEnd;
 }
@@ -507,6 +519,40 @@ YbSetPgssNormalizedQueryText(int64 query_id, const Size query_offset, int query_
 }
 
 static void
+YbQueryDiagnostics_ExecutorStart(QueryDesc *queryDesc, int eflags)
+{
+	uint64		query_id = queryDesc->plannedstmt->queryId;
+	YbQueryDiagnosticsEntry *entry;
+
+	LWLockAcquire(bundles_in_progress_lock, LW_SHARED);
+
+	/*
+	 * This can slow down the query execution, even if the query is not being bundled.
+	 */
+	entry = (YbQueryDiagnosticsEntry *) hash_search(bundles_in_progress,
+													&query_id, HASH_FIND,
+													NULL);
+
+	if (entry)
+		current_query_sampled = (pg_prng_double(&pg_global_prng_state) <
+								 entry->metadata.params.explain_sample_rate / 100.0);
+	else
+		current_query_sampled = false;
+
+	/* Enable per-node instrumentation iff explain_analyze is required. */
+	if (current_query_sampled &&
+	    (entry->metadata.params.explain_analyze && (eflags & EXEC_FLAG_EXPLAIN_ONLY) == 0))
+		queryDesc->instrument_options |= INSTRUMENT_ALL;
+
+	LWLockRelease(bundles_in_progress_lock);
+
+	if (prev_ExecutorStart)
+		prev_ExecutorStart(queryDesc, eflags);
+	else
+		standard_ExecutorStart(queryDesc, eflags);
+}
+
+static void
 YbQueryDiagnostics_ExecutorEnd(QueryDesc *queryDesc)
 {
 	uint64		query_id = queryDesc->plannedstmt->queryId;
@@ -532,6 +578,11 @@ YbQueryDiagnostics_ExecutorEnd(QueryDesc *queryDesc)
 			AccumulateBindVariables(entry, totaltime_ms, queryDesc->params);
 
 		AccumulatePgss(queryDesc, entry);
+
+		if (current_query_sampled)
+		AccumulateExplain(queryDesc, entry,
+						  entry->metadata.params.explain_analyze,
+						  entry->metadata.params.explain_dist, totaltime_ms);
 	}
 
 	LWLockRelease(bundles_in_progress_lock);
@@ -649,6 +700,47 @@ PgssToString(int64 query_id, char *pgss_str, YbQueryDiagnosticsPgss pgss, const 
 			pgss.counters.blk_read_time, pgss.counters.blk_write_time);
 }
 
+static void
+AccumulateExplain(QueryDesc *queryDesc, YbQueryDiagnosticsEntry *entry, bool explain_analyze,
+				  bool explain_dist, double totaltime_ms)
+{
+	ExplainState *es = NewExplainState();
+
+	es->analyze = (queryDesc->instrument_options && explain_analyze);
+	es->verbose = false;
+	es->buffers = es->analyze;
+	es->timing = es->analyze;
+	es->summary = es->analyze;
+	es->format = EXPLAIN_FORMAT_TEXT;
+	es->rpc = (es->analyze && explain_dist);
+
+	/* Note: this part of code comes from auto_explain.c */
+	ExplainPrintPlan(es, queryDesc);
+	if (es->analyze)
+		ExplainPrintTriggers(es, queryDesc);
+	if (es->costs)
+		ExplainPrintJITSummary(es, queryDesc);
+
+	/* Removes the trailing newline that might be introduced by ExplainPrintJITSummary */
+	if (es->str->len > 0 && es->str->data[es->str->len - 1] == '\n')
+		es->str->data[--es->str->len] = '\0';
+
+	SpinLockAcquire(&entry->mutex);
+
+	/* TODO(GH#23720): Add support for handling oversized explain plans */
+	int remaining_space = sizeof(entry->explain_plan) - strlen(entry->explain_plan) - 1;
+	if (remaining_space > 0)
+		snprintf(entry->explain_plan + strlen(entry->explain_plan), remaining_space,
+				 "duration: %.3f ms\nplan:\n%s\n\n", totaltime_ms, es->str->data);
+
+	SpinLockRelease(&entry->mutex);
+
+	pfree(es->str->data);
+	pfree(es->str);
+	pfree(es);
+}
+
+
 /*
  * FormatParams
  *		Iterates over all of the params and prints them in CSV fromat.
@@ -705,6 +797,7 @@ InsertNewBundleInfo(YbQueryDiagnosticsMetadata *metadata)
 	{
 		entry->metadata = *metadata;
 		MemSet(entry->bind_vars, 0, YB_QD_MAX_BIND_VARS_LEN);
+		MemSet(entry->explain_plan, 0, YB_QD_MAX_EXPLAIN_PLAN_LEN);
 		SpinLockInit(&entry->mutex);
 		entry->pgss = (YbQueryDiagnosticsPgss) {.counters = {0}, .query_offset = 0, .query_len = 0};
 	}
@@ -775,11 +868,13 @@ RemoveExpiredEntries()
 			char		bind_var_copy[YB_QD_MAX_BIND_VARS_LEN];
 			char		description[YB_QD_DESCRIPTION_LEN];
 			int			status = DIAGNOSTICS_SUCCESS;
+			char		explain_plan_copy[YB_QD_MAX_EXPLAIN_PLAN_LEN];
 			YbQueryDiagnosticsMetadata metadata_copy = entry->metadata;
 			YbQueryDiagnosticsPgss pgss_copy = entry->pgss;
 
 			memcpy(bind_var_copy, entry->bind_vars, YB_QD_MAX_BIND_VARS_LEN);
 			memcpy(&metadata_copy, &entry->metadata, sizeof(YbQueryDiagnosticsMetadata));
+			memcpy(explain_plan_copy, entry->explain_plan, YB_QD_MAX_EXPLAIN_PLAN_LEN);
 			description[0] = '\0';
 
 			SpinLockRelease(&entry->mutex);
@@ -826,6 +921,13 @@ RemoveExpiredEntries()
 				/* Dump pg_stat_statements */
 				has_data_to_dump |= DumpToFile(entry->metadata.path, PGSS_FILE,
 											   pgss_str, &status, description);
+
+				if (status == DIAGNOSTICS_ERROR)
+					goto removeEntry;
+
+				/* Dump explain plan */
+				has_data_to_dump |= DumpToFile(metadata_copy.path, EXPLAIN_PLAN_FILE,
+											   explain_plan_copy, &status, description);
 
 				if (status == DIAGNOSTICS_ERROR)
 					goto removeEntry;
