@@ -31,6 +31,8 @@ bool ValidateTestFlag(const char* flag_name, const int32 new_val) {
   return false;
 }
 DEFINE_validator(flagstest_testflag, &ValidateTestFlag);
+DEFINE_NEW_INSTALL_VALUE(flagstest_testflag, 50);
+
 DECLARE_string(vmodule);
 
 DECLARE_string(allowed_preview_flags_csv);
@@ -278,6 +280,47 @@ TEST_F(FlagsTest, ValidateFlagValue) {
   ASSERT_OK(flags_internal::ValidateFlagValue("vmodule", "files=1"));
   ASSERT_NOK(flags_internal::ValidateFlagValue("vmodule", "files="));
   ASSERT_EQ(FLAGS_vmodule, kVmoduleValue);
+
+  // Test Preview flags.
+  // When not in allow list we should only be able to set to the default value.
+  ASSERT_OK(flags_internal::ValidateFlagValue("preview_flag", "false"));
+  constexpr auto kPreviewFlagMissingError =
+      "Flag 'preview_flag' protects a feature that is currently in preview. In order for it to be "
+      "modified, you must acknowledge the risks by adding 'preview_flag' to the flag "
+      "'allowed_preview_flags_csv'";
+  ASSERT_NOK_STR_CONTAINS(
+      flags_internal::ValidateFlagValue("preview_flag", "true"), kPreviewFlagMissingError);
+
+  // Test the allowed_preview_flags_csv flag.
+  ASSERT_OK(flags_internal::ValidateFlagValue("allowed_preview_flags_csv", "na_flag"));
+  ASSERT_OK(flags_internal::ValidateFlagValue("allowed_preview_flags_csv", "preview_flag"));
+  std::string old_value, output_msg;
+  ASSERT_EQ(
+      SetFlag(
+          "allowed_preview_flags_csv", "preview_flag", flags_internal::SetFlagForce::kFalse,
+          &old_value, &output_msg),
+      flags_internal::SetFlagResult::SUCCESS);
+  ASSERT_OK(flags_internal::ValidateFlagValue("preview_flag", "true"));
+
+  ASSERT_EQ(
+      SetFlag(
+          "preview_flag", "true", flags_internal::SetFlagForce::kFalse, &old_value, &output_msg),
+      flags_internal::SetFlagResult::SUCCESS);
+  ASSERT_NOK_STR_CONTAINS(
+      flags_internal::ValidateFlagValue("allowed_preview_flags_csv", ""), kPreviewFlagMissingError);
+}
+
+namespace flags_internal {
+std::optional<std::string> GetFlagNewInstallValue(const std::string& flag_name);
+}  // namespace flags_internal
+
+TEST_F(FlagsTest, NewInstallValue) {
+  auto new_install_value = flags_internal::GetFlagNewInstallValue("flagstest_testflag");
+  ASSERT_TRUE(new_install_value.has_value());
+  ASSERT_EQ(*new_install_value, "50");
+
+  new_install_value = flags_internal::GetFlagNewInstallValue("flagstest_secret_flag");
+  ASSERT_FALSE(new_install_value.has_value());
 }
 
 } // namespace yb

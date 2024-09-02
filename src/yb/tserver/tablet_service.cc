@@ -273,6 +273,8 @@ constexpr bool kRejectWritesWhenDiskFullDefault = true;
 DEFINE_RUNTIME_bool(reject_writes_when_disk_full, kRejectWritesWhenDiskFullDefault,
     "Reject incoming writes to the tablet if we are running out of disk space.");
 
+DECLARE_bool(TEST_enable_object_locking_for_table_locks);
+
 METRIC_DEFINE_gauge_uint64(server, ts_split_op_added, "Split OPs Added to Leader",
     yb::MetricUnit::kOperations, "Number of split operations added to the leader's Raft log.");
 
@@ -3335,6 +3337,54 @@ void TabletServiceImpl::ClearAllMetaCachesOnServer(
     rpc::RpcContext context) {
   server_->ClearAllMetaCachesOnServer();
   context.RespondSuccess();
+}
+
+void TabletServiceImpl::AcquireObjectLocks(
+    const AcquireObjectLockRequestPB* req, AcquireObjectLockResponsePB* resp,
+    rpc::RpcContext context) {
+  if (!FLAGS_TEST_enable_object_locking_for_table_locks) {
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"), &context);
+  }
+  TRACE("Start AcquireObjectLocks");
+  VLOG(2) << "Received AcquireObjectLocks RPC: " << req->DebugString();
+
+  auto* ts_local_lock_manager = server_->ts_local_lock_manager();
+  if (!ts_local_lock_manager) {
+    SetupErrorAndRespond(
+        resp->mutable_error(), STATUS(IllegalState, "TSLocalLockManager not found..."), &context);
+  }
+  auto s = ts_local_lock_manager->AcquireObjectLocks(*req, context.GetClientDeadline());
+  if (!s.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), s, &context);
+  } else {
+    context.RespondSuccess();
+  }
+}
+
+void TabletServiceImpl::ReleaseObjectLocks(
+    const ReleaseObjectLockRequestPB* req, ReleaseObjectLockResponsePB* resp,
+    rpc::RpcContext context) {
+  if (!PREDICT_FALSE(FLAGS_TEST_enable_object_locking_for_table_locks)) {
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS(NotSupported, "Flag enable_object_locking_for_table_locks disabled"), &context);
+  }
+  TRACE("Start ReleaseObjectLocks");
+  VLOG(2) << "Received ReleaseObjectLocks RPC: " << req->DebugString();
+
+  auto* ts_local_lock_manager = server_->ts_local_lock_manager();
+  if (!ts_local_lock_manager) {
+    SetupErrorAndRespond(
+        resp->mutable_error(), STATUS(IllegalState, "TSLocalLockManager not found..."), &context);
+  }
+  auto s = ts_local_lock_manager->ReleaseObjectLocks(*req);
+  if (!s.ok()) {
+    SetupErrorAndRespond(resp->mutable_error(), s, &context);
+  } else {
+    context.RespondSuccess();
+  }
 }
 
 void TabletServiceAdminImpl::TestRetry(

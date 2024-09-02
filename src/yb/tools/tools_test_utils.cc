@@ -138,6 +138,19 @@ Status RunYbControllerCommand(
       backupDir, backup_command, ns, ns_type, tmp_dir, use_tablespaces);
 }
 
+Result<std::string> RunYSQLDump(HostPort& pg_host_port, const std::string& database_name) {
+  const auto kHostFlag = "--host=" + pg_host_port.host();
+  const auto kPortFlag = "--port=" + std::to_string(pg_host_port.port());
+  std::vector<std::string> args = {
+      GetPgToolPath("ysql_dump"), kHostFlag,    kPortFlag, "--schema-only",
+      "--include-yb-metadata",    database_name};
+  LOG(INFO) << "Run tool: " << AsString(args);
+  std::string output;
+  RETURN_NOT_OK(Subprocess::Call(args, &output));
+  LOG(INFO) << "Tool output: " << output;
+  return output;
+}
+
 TmpDirProvider::~TmpDirProvider() {
   if (!dir_.empty()) {
     LOG(INFO) << "Deleting temporary folder: " << dir_;

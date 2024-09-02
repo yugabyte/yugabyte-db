@@ -43,6 +43,27 @@ func NewTaskFormat(source string) formatter.Format {
 
 // Write renders the context for a list of Tasks
 func Write(ctx formatter.Context, tasks []ybaclient.CustomerTaskData) error {
+	// Check if the format is JSON or Pretty JSON
+	if ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON() {
+		// Marshal the slice of tasks into JSON
+		var output []byte
+		var err error
+
+		if ctx.Format.IsPrettyJSON() {
+			output, err = json.MarshalIndent(tasks, "", "  ")
+		} else {
+			output, err = json.Marshal(tasks)
+		}
+
+		if err != nil {
+			logrus.Errorf("Error marshaling tasks to json: %v\n", err)
+			return err
+		}
+
+		// Write the JSON output to the context
+		_, err = ctx.Output.Write(output)
+		return err
+	}
 	render := func(format func(subContext formatter.SubContext) error) error {
 		for _, task := range tasks {
 			err := format(&Context{t: task})
@@ -89,6 +110,7 @@ func (c *Context) Target() string {
 
 // Status fetches the task state
 func (c *Context) Status() string {
+	// Put colours here too
 	return c.t.GetStatus()
 }
 

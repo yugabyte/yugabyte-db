@@ -27,6 +27,7 @@
 
 #include "yb/rpc/outbound_call.h"
 
+#include "yb/util/lw_function.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -124,11 +125,63 @@ auto BuildRowOrders(const LWPgsqlResponsePB& response,
   return orders;
 }
 
+[[nodiscard]] inline ash::WaitStateCode ResolveWaitEventCode(TableType table_type) {
+  switch (table_type) {
+    case TableType::SYSTEM: return ash::WaitStateCode::kCatalogRead;
+    case TableType::INDEX: return ash::WaitStateCode::kIndexRead;
+    case TableType::USER: return ash::WaitStateCode::kStorageRead;
+  }
+  FATAL_INVALID_ENUM_VALUE(TableType, table_type);
+}
+
+Status UpdateMetricOnGettingResponse(
+    const LWFunction<Status()>& getter, const PgDocResponse::MetricInfo& info,
+    PgDocMetrics& metrics) {
+  if (info.is_write) {
+    // Update session stats instrumentation for write requests only. Writes are buffered and flushed
+    // asynchronously, and thus it is not possible to correlate wait/execution times directly with
+    // the request. We update instrumentation for writes exactly once, after successfully sending an
+    // RPC request to the underlying storage layer.
+    metrics.WriteRequest(info.table_type);
+    return getter();
+  }
+  // Update session stats instrumentation only for read requests. Reads are executed
+  // synchronously with respect to Postgres query execution, and thus it is possible to
+  // correlate wait/execution times directly with the request. We update instrumentation for
+  // reads exactly once, upon receiving a success response from the underlying storage layer.
+  uint64_t wait_time = 0;
+  RETURN_NOT_OK(metrics.CallWithDuration(getter, &wait_time));
+  metrics.ReadRequest(info.table_type, wait_time);
+  return Status::OK();
+}
+
+Status UpdateMetricOnRequestBuffering(
+    const PgDocResponse::MetricInfo& info, PgDocMetrics& metrics) {
+  DCHECK(info.is_write);
+  return UpdateMetricOnGettingResponse(
+      make_lw_function([]() -> Status { return Status::OK(); }), info, metrics);
+}
+
+Result<PgDocResponse::Data> GetResponse(
+    PgDocResponse::FutureInfo& future_info, PgSession& session) {
+  PgDocResponse::Data result;
+  const auto& metric_info = future_info.metrics;
+
+  RETURN_NOT_OK(UpdateMetricOnGettingResponse(make_lw_function(
+      [&result, &future = future_info.future, &metric_info, &session] () -> Status {
+        auto event_watcher = session.StartWaitEvent(ResolveWaitEventCode(metric_info.table_type));
+        result = VERIFY_RESULT(future.Get(session));
+        return Status::OK();
+      }),
+      metric_info, session.metrics()));
+  return result;
+}
+
 // Helper function to determine the type of relation that the given Pgsql operation is being
 // performed on. This function classifies the operation into one of three buckets: system catalog,
 // secondary index or user table requests.
-[[nodiscard]] TableType ResolveRelationType(const PgsqlOp& op, const PgTable& table) {
-  if (table->schema().table_properties().is_ysql_catalog_table()) {
+[[nodiscard]] TableType ResolveRelationType(const PgsqlOp& op, const PgTableDesc& table) {
+  if (table.schema().table_properties().is_ysql_catalog_table()) {
     // We don't distinguish between table reads and index reads for a catalog table.
     return TableType::SYSTEM;
   }
@@ -141,41 +194,10 @@ auto BuildRowOrders(const LWPgsqlResponsePB& response,
   // read_request().has_index_request() : is true for colocated secondary index requests.
   // table->isIndex() : is true for all secondary index writes and non-colocated secondary index
   //                    reads.
-  if ((op.is_read() && down_cast<const PgsqlReadOp &>(op).read_request().has_index_request()) ||
-      table->IsIndex()) {
-    return TableType::INDEX;
-  }
-
-  return TableType::USER;
-}
-
-[[nodiscard]] inline ash::WaitStateCode ResolveWaitEventCode(TableType table_type) {
-  switch (table_type) {
-    case TableType::SYSTEM: return ash::WaitStateCode::kCatalogRead;
-    case TableType::INDEX: return ash::WaitStateCode::kIndexRead;
-    case TableType::USER: return ash::WaitStateCode::kStorageRead;
-  }
-  FATAL_INVALID_ENUM_VALUE(TableType, table_type);
-}
-
-Result<PgDocResponse::Data> FetchResponseData(
-    PgDocResponse* response, PgSession* session, TableType table_type, bool is_write) {
-  if (is_write) {
-    return response->Get();
-  }
-  // Update session stats instrumentation only for read requests. Reads are executed
-  // synchronously with respect to Postgres query execution, and thus it is possible to
-  // correlate wait/execution times directly with the request. We update instrumentation for
-  // reads exactly once, upon receiving a success response from the underlying storage layer.
-  auto& metrics = session->metrics();
-  uint64_t wait_time = 0;
-  const auto result = VERIFY_RESULT(metrics.CallWithDuration(
-      [response,
-       event_watcher = session->StartWaitEvent(ResolveWaitEventCode(table_type))] {
-        return response->Get(); },
-      &wait_time));
-  metrics.ReadRequest(table_type, wait_time);
-  return result;
+  return
+      table.IsIndex() ||
+      (op.is_read() && down_cast<const PgsqlReadOp&>(op).read_request().has_index_request())
+          ? TableType::INDEX : TableType::USER;
 }
 
 } // namespace
@@ -248,21 +270,22 @@ Status PgDocResult::ProcessSparseSystemColumns(std::string *reservoir) {
 
 //--------------------------------------------------------------------------------------------------
 
-PgDocResponse::PgDocResponse(PerformFuture future)
-    : holder_(std::move(future)) {}
+PgDocResponse::PgDocResponse(PerformFuture&& future, const MetricInfo& info)
+    : holder_(std::in_place_type<FutureInfo>, std::move(future), info) {}
 
 PgDocResponse::PgDocResponse(ProviderPtr provider)
     : holder_(std::move(provider)) {}
 
 bool PgDocResponse::Valid() const {
-  return std::holds_alternative<PerformFuture>(holder_)
-      ? std::get<PerformFuture>(holder_).Valid()
+  return std::holds_alternative<FutureInfo>(holder_)
+      ? std::get<FutureInfo>(holder_).future.Valid()
       : static_cast<bool>(std::get<ProviderPtr>(holder_));
 }
 
-Result<PgDocResponse::Data> PgDocResponse::Get() {
-  if (std::holds_alternative<PerformFuture>(holder_)) {
-    return std::get<PerformFuture>(holder_).Get();
+Result<PgDocResponse::Data> PgDocResponse::Get(PgSession& session) {
+  DCHECK(Valid());
+  if (std::holds_alternative<FutureInfo>(holder_)) {
+    return GetResponse(std::get<FutureInfo>(holder_), session);
   }
 
   // Detach provider pointer after first usage to make PgDocResponse::Valid return false.
@@ -311,8 +334,7 @@ Result<std::list<PgDocResult>> PgDocOp::GetResult() {
       RETURN_NOT_OK(SendRequest());
     }
 
-    const auto result_data = VERIFY_RESULT(FetchResponseData(
-        &response_, &*pg_session_, ResolveRelationType(*pgsql_ops_.front(), table_), IsWrite()));
+    const auto result_data = VERIFY_RESULT(response_.Get(*pg_session_));
 
     result = VERIFY_RESULT(ProcessResponse(result_data));
 
@@ -357,43 +379,37 @@ Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
   VLOG(1) << "Number of operations to send: " << send_count;
   response_ = VERIFY_RESULT(sender_(
       pg_session_.get(), pgsql_ops_.data(), send_count, *table_,
-      HybridTime::FromPB(GetInTxnLimitHt()), force_non_bufferable));
-
-  // Update session stats instrumentation for write requests only. Writes are buffered and flushed
-  // asynchronously, and thus it is not possible to correlate wait/execution times directly with
-  // the request. We update instrumentation for writes exactly once, after successfully sending an
-  // RPC request to the underlying storage layer.
-  if (IsWrite()) {
-    pg_session_->metrics().WriteRequest(ResolveRelationType(*pgsql_ops_.front(), table_));
-  }
+      HybridTime::FromPB(GetInTxnLimitHt()), force_non_bufferable, IsForWritePgDoc(IsWrite())));
   return Status::OK();
 }
 
 void PgDocOp::RecordRequestMetrics() {
   auto& metrics = pg_session_->metrics();
   for (const auto& op : pgsql_ops_) {
-    auto* response = op->response();
-    if (op->is_active() && response && response->has_metrics()) {
-      metrics.RecordRequestMetrics(op->response()->metrics());
+    const auto* response = op->response();
+    if (!(op->is_active() && response && response->has_metrics())) {
+      continue;
+    }
+    const auto& response_metrics = response->metrics();
+    metrics.RecordRequestMetrics(response_metrics);
 
-      // Record the number of DocDB rows read.
-      // Index Scans on secondary indexes in colocated tables need special handling: the target
-      // table for such ops is the secondary index, however the scanned_table_rows field returns
-      // the number of main table rows scanned scanned. Hence, if a request has both table and index
-      // rows_scanned set, then we do not resolve the target table type. In all other cases, the
-      // index_rows_scanned field is not populated and the table type can be resolved to figure out
-      // the kind of rows scanned.
-      if (!response->metrics().has_scanned_table_rows()) {
-        continue;
-      }
+    // Record the number of DocDB rows read.
+    // Index Scans on secondary indexes in colocated tables need special handling: the target
+    // table for such ops is the secondary index, however the scanned_table_rows field returns
+    // the number of main table rows scanned scanned. Hence, if a request has both table and index
+    // rows_scanned set, then we do not resolve the target table type. In all other cases, the
+    // index_rows_scanned field is not populated and the table type can be resolved to figure out
+    // the kind of rows scanned.
+    if (!response_metrics.has_scanned_table_rows()) {
+      continue;
+    }
 
-      if (table_->IsColocated() && response->metrics().has_scanned_index_rows()) {
-        metrics.RecordStorageRowsRead(TableType::USER, response->metrics().scanned_table_rows());
-        metrics.RecordStorageRowsRead(TableType::INDEX, response->metrics().scanned_index_rows());
-      } else {
-        metrics.RecordStorageRowsRead(
-            ResolveRelationType(*op, table_), response->metrics().scanned_table_rows());
-      }
+    if (table_->IsColocated() && response_metrics.has_scanned_index_rows()) {
+      metrics.RecordStorageRowsRead(TableType::USER, response_metrics.scanned_table_rows());
+      metrics.RecordStorageRowsRead(TableType::INDEX, response_metrics.scanned_index_rows());
+    } else {
+      metrics.RecordStorageRowsRead(
+          ResolveRelationType(*op, *table_), response_metrics.scanned_table_rows());
     }
   }
 }
@@ -511,9 +527,14 @@ Status PgDocOp::CompleteRequests() {
 
 Result<PgDocResponse> PgDocOp::DefaultSender(
     PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-    HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable) {
-  return PgDocResponse(VERIFY_RESULT(session->RunAsync(
-      ops, ops_count, table, in_txn_limit, force_non_bufferable)));
+    HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable, IsForWritePgDoc is_write) {
+  const PgDocResponse::MetricInfo metrics{ResolveRelationType(**ops, table), is_write};
+  auto result = PgDocResponse{VERIFY_RESULT(session->RunAsync(
+      ops, ops_count, table, in_txn_limit, force_non_bufferable)), metrics};
+  if (!result.Valid()) {
+    RETURN_NOT_OK(UpdateMetricOnRequestBuffering(metrics, session->metrics()));
+  }
+  return result;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -529,10 +550,10 @@ PgDocReadOp::PgDocReadOp(const PgSession::ScopedRefPtr& pg_session,
                          const Sender& sender)
     : PgDocOp(pg_session, table, sender), read_op_(std::move(read_op)) {}
 
-Status PgDocReadOp::ExecuteInit(const PgExecParameters *exec_params) {
-  SCHECK(pgsql_ops_.empty() || !exec_params,
-         IllegalState,
-         "Exec params can't be changed for already created operations");
+Status PgDocReadOp::ExecuteInit(const PgExecParameters* exec_params) {
+  RSTATUS_DCHECK(
+      pgsql_ops_.empty() || !exec_params,
+      IllegalState, "Exec params can't be changed for already created operations");
   RETURN_NOT_OK(PgDocOp::ExecuteInit(exec_params));
 
   read_op_->read_request().set_return_paging_state(true);
@@ -1181,17 +1202,10 @@ Result<bool> PgDocReadOp::PopulateSamplingOps() {
   return true;
 }
 
-Status PgDocReadOp::GetEstimatedRowCount(double *liverows, double *deadrows) {
-  if (liverows != nullptr) {
-    // Return estimated number of live tuples
-    VLOG(1) << "Returning liverows " << sample_rows_;
-    *liverows = sample_rows_;
-  }
-  if (deadrows != nullptr) {
-    // TODO count dead tuples while sampling
-    *deadrows = 0;
-  }
-  return Status::OK();
+Result<EstimatedRowCount> PgDocReadOp::GetEstimatedRowCount() const {
+  VLOG(1) << "Returning liverows " << sample_rows_;
+  // TODO count dead tuples while sampling
+  return EstimatedRowCount{.live = sample_rows_, .dead = 0};
 }
 
 // When postgres requests to scan a specific partition, set the partition parameter accordingly.

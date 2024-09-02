@@ -4098,6 +4098,34 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         });
   }
 
+  @Test(expected = UnsupportedOperationException.class)
+  public void testConfigureChangeRFAndOther() {
+    setupAndApplyActions(
+        "r1-z1r1-1-1;r1-z2r1-1-1;r1-z3r1-1-1",
+        null,
+        Collections.emptyMap(),
+        Collections.emptyList(),
+        Arrays.asList(
+            new Pair(UserAction.UPD_RF, 0), // inc RF
+            new Pair(UserAction.MODIFY_AZ_COUNT, 1), // inc az
+            new Pair(UserAction.MODIFY_COMMUNICATION_PORTS, 1) // port -> 7000
+            ),
+        (idx, params) -> {
+          switch (idx) {
+            case 0:
+              assertEquals(Set.of(UPDATE), UniverseCRUDHandler.getUpdateOptions(params, EDIT));
+              assertEquals(5, params.getPrimaryCluster().userIntent.replicationFactor);
+              assertEquals(5, params.nodeDetailsSet.size());
+              break;
+            case 1:
+              assertEquals(Set.of(UPDATE), UniverseCRUDHandler.getUpdateOptions(params, EDIT));
+              // One more node
+              assertEquals(6, params.nodeDetailsSet.size());
+              break;
+          }
+        });
+  }
+
   @Test
   public void testChaosConfigureEdit() {
     Customer customer =
@@ -4169,6 +4197,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
                     .filter(ua -> ua.forDedicated == false)
                     .collect(Collectors.toList());
           }
+          // Currently we allow changing RF only with placement changes.
+          userActions.remove(UserAction.UPD_RF);
           UserAction chaosAction = userActions.get(random.nextInt(userActions.size()));
           int var = random.nextInt(20);
 
@@ -4610,6 +4640,43 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
 
     assertEquals(2, addedTservers.get());
     assertEquals(2, addedMasters.get());
+  }
+
+  @Test
+  public void testConfigureIncreaseRF6nodes() {
+    Customer customer = ModelFactory.testCustomer("Test Customer");
+    Provider provider = ModelFactory.newProvider(customer, CloudType.aws);
+
+    Universe existing = createFromConfig(provider, "Existing", "r1-az1-6-3");
+    Region region = getOrCreate(provider, "r1");
+    AvailabilityZone az1 = AvailabilityZone.getByCode(provider, "az1");
+
+    AvailabilityZone az2 = AvailabilityZone.createOrThrow(region, "az2", "az2", "subnet-az2");
+
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.setUniverseUUID(existing.getUniverseUUID());
+    params.currentClusterType = ClusterType.PRIMARY;
+    params.clusters = existing.getUniverseDetails().clusters;
+    params.getPrimaryCluster().userIntent.numNodes = 7;
+    params.getPrimaryCluster().userIntent.replicationFactor = 7;
+    params.nodeDetailsSet = new HashSet<>(existing.getUniverseDetails().nodeDetailsSet);
+
+    PlacementInfoUtil.updateUniverseDefinition(
+        params, customer.getId(), params.getPrimaryCluster().uuid, EDIT);
+
+    List<NodeDetails> addedNodes =
+        params.nodeDetailsSet.stream()
+            .filter(n -> n.state == NodeState.ToBeAdded)
+            .collect(Collectors.toList());
+
+    assertEquals(1, addedNodes.size());
+
+    assertEquals(7, params.nodeDetailsSet.size());
+    assertEquals(az2.getUuid(), addedNodes.get(0).azUuid);
+    assertEquals(
+        1, params.getPrimaryCluster().placementInfo.findByAZUUID(az2.getUuid()).replicationFactor);
+    assertEquals(
+        6, params.getPrimaryCluster().placementInfo.findByAZUUID(az1.getUuid()).replicationFactor);
   }
 
   private void markNodeInstancesAsOccupied(Map<UUID, Integer> azUuidToNumNodes) {

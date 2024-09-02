@@ -207,7 +207,7 @@ libraryDependencies ++= Seq(
   "commons-validator" % "commons-validator" % "1.8.0",
   "org.apache.velocity" % "velocity-engine-core" % "2.3",
   "com.fasterxml.woodstox" % "woodstox-core" % "6.4.0",
-  "com.jayway.jsonpath" % "json-path" % "2.6.0",
+  "com.jayway.jsonpath" % "json-path" % "2.9.0",
   "commons-io" % "commons-io" % "2.15.1",
   "commons-codec" % "commons-codec" % "1.16.0",
   "com.google.apis" % "google-api-services-compute" % "v1-rev20220506-1.32.1",
@@ -256,6 +256,7 @@ libraryDependencies ++= Seq(
   "com.icegreen" % "greenmail-junit4" % "2.0.1" % Test,
   "com.squareup.okhttp3" % "mockwebserver" % "4.9.2" % Test,
   "io.grpc" % "grpc-testing" % "1.48.0" % Test,
+  "io.grpc" % "grpc-inprocess" % "1.63.1" % Test,
   "io.zonky.test" % "embedded-postgres" % "2.0.1" % Test,
   "org.springframework" % "spring-test" % "5.3.9" % Test,
   "com.yugabyte" % "yba-client-v2" % "0.1.0-SNAPSHOT" % Test,
@@ -925,8 +926,8 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.92-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.1.0.0-b9"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.94-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.0-b4"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b33"
 
 libraryDependencies ++= Seq(
@@ -1230,3 +1231,5 @@ uIBuild := (uIBuild dependsOn (buildDependentArtifacts)).value
  *  Make SBT packaging depend on the UI build hook.
  */
 Universal / packageZipTarball := (Universal / packageZipTarball).dependsOn(uIBuild).value
+
+addCommandAlias("api", "cleanV2ServerStubs;openApiProcessServer;compile")

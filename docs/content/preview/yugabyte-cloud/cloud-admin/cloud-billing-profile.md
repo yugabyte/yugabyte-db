@@ -66,7 +66,7 @@ Click **Invoice Details** to view the invoice [Summary](#invoice-summary) for th
 
 Shows a breakdown of costs for the current billing cycle. YugabyteDB Aeon billing is based on your actual usage across the following dimensions:
 
-- Instance Capacity
+- vCPU Minutes
 - Disk Storage
 - Backup Storage
 - Data Transfer
@@ -115,7 +115,8 @@ To download the invoice as a PDF, click **Download Invoice**.
 
 **Summary by Usage** shows detailed costs for each cluster. Click a cluster to view usage details for each dimension, including:
 
-- The instance minutes, price, and amount.
+- The vCPU minutes, price, and amount.
+- IOPS provisioned, price, and amount.
 - Data storage usage in GB-hours, price, and amount.
 - Backup storage usage in GB-hours, price, and amount.
 - Data transfer usage in GB, price, and amount.

@@ -86,6 +86,7 @@ export enum StorageType {
   Persistent = 'Persistent',
   StandardSSD_LRS = 'StandardSSD_LRS',
   Premium_LRS = 'Premium_LRS',
+  PremiumV2_LRS = 'PremiumV2_LRS',
   UltraSSD_LRS = 'UltraSSD_LRS'
 }
 
@@ -509,12 +510,14 @@ export enum OnPremNodeState {
 // Source:
 // - Response JSON from MetricsQueryExecutor.java
 export interface MetricTrace {
-  name: string;
+  metricName: string;
+  name?: string;
   type: string;
   x: number[];
   y: string[] | number[];
 
   instanceName?: string;
+  ybaInstanceAddress?: string;
   tableId?: string;
   tableName?: string;
   namespaceId?: string;
@@ -529,17 +532,19 @@ export interface MetricTrace {
 export interface Metric {
   data: MetricTrace[];
   directURLs: string[];
-  layout: {
-    title: string;
-    xaxis: {
-      alias: { [x: string]: string };
-      type: string;
-    };
-    yaxis: {
-      alias: { [x: string]: string };
-      ticksuffix: string;
-    };
-  };
+  layout:
+    | {
+        title: string;
+        xaxis: {
+          alias: { [x: string]: string };
+          type: string;
+        };
+        yaxis: {
+          alias: { [x: string]: string };
+          ticksuffix: string;
+        };
+      }
+    | {}; // Temp
   metricsLinkUseBrowserFqdn: boolean;
   queryKey: string;
 }

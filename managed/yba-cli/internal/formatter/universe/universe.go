@@ -43,6 +43,7 @@ const (
 	numMastersHeader         = "Number of Masters"
 	numTserversHeader        = "Number of Tservers"
 	liveNodesHeader          = "Number of Live Nodes"
+	cpuArchitectureHeader    = "CPU Architecture"
 )
 
 // Context for universe outputs
@@ -65,6 +66,29 @@ func NewUniverseFormat(source string) formatter.Format {
 
 // Write renders the context for a list of Universes
 func Write(ctx formatter.Context, universes []ybaclient.UniverseResp) error {
+	// Check if the format is JSON or Pretty JSON
+	if ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON() {
+		// Marshal the slice of universes into JSON
+		var output []byte
+		var err error
+
+		if ctx.Format.IsPrettyJSON() {
+			output, err = json.MarshalIndent(universes, "", "  ")
+		} else {
+			output, err = json.Marshal(universes)
+		}
+
+		if err != nil {
+			logrus.Errorf("Error marshaling universes to json: %v\n", err)
+			return err
+		}
+
+		// Write the JSON output to the context
+		_, err = ctx.Output.Write(output)
+		return err
+	}
+
+	// Existing logic for table and other formats
 	render := func(format func(subContext formatter.SubContext) error) error {
 		for _, universe := range universes {
 			err := format(&Context{u: universe})
@@ -110,6 +134,7 @@ func NewUniverseContext() *Context {
 		"NumMasters":         numMastersHeader,
 		"NumTservers":        numTserversHeader,
 		"LiveNodes":          liveNodesHeader,
+		"CPUArchitecture":    cpuArchitectureHeader,
 	}
 	return &universeCtx
 }
@@ -129,6 +154,12 @@ func (c *Context) PricePerDay() string {
 	return fmt.Sprintf("%f", c.u.GetPricePerHour()*24)
 }
 
+// CPUArchitecture fetches CPU architecture of the universe
+func (c *Context) CPUArchitecture() string {
+	details := c.u.GetUniverseDetails()
+	return details.GetArch()
+}
+
 // ProviderCode fetches the Cloud provider used in the universe
 func (c *Context) ProviderCode() string {
 	details := c.u.GetUniverseDetails()
@@ -142,6 +173,11 @@ func (c *Context) ProviderUUID() string {
 	details := c.u.GetUniverseDetails()
 	primaryCluster := details.GetClusters()[0]
 	userIntent := primaryCluster.GetUserIntent()
+	for _, p := range Providers {
+		if strings.Compare(p.GetUuid(), userIntent.GetProvider()) == 0 {
+			return fmt.Sprintf("%s(%s)", p.GetName(), p.GetUuid())
+		}
+	}
 	return userIntent.GetProvider()
 }
 
@@ -225,7 +261,7 @@ func (c *Context) YSQLAuthEnabled() string {
 	return fmt.Sprintf("%t", userIntent.GetEnableYSQLAuth())
 }
 
-// YCQLAutheEnabled fetches password of the primary cluster
+// YCQLAuthEnabled fetches password of the primary cluster
 func (c *Context) YCQLAuthEnabled() string {
 	details := c.u.GetUniverseDetails()
 	primaryCluster := details.GetClusters()[0]

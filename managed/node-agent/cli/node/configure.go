@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"node-agent/app/executor"
 	"node-agent/app/server"
 	"node-agent/app/task"
@@ -47,8 +46,9 @@ func SetupConfigureCommand(parentCmd *cobra.Command) {
 	configureCmd.PersistentFlags().String("customer_id", "", "Customer ID")
 	configureCmd.PersistentFlags().String("cert_dir", "", "Node agent cert directory")
 	/* Required only for silent configuration mode. */
-	configureCmd.PersistentFlags().String("provider_id", "", "Provider config ID")
+	configureCmd.PersistentFlags().String("provider_id", "", "Provider config ID or name")
 	configureCmd.PersistentFlags().String("instance_type", "", "Instance type")
+	configureCmd.PersistentFlags().String("region_name", "", "Region name")
 	configureCmd.PersistentFlags().String("zone_name", "", "Zone name")
 
 	parentCmd.AddCommand(configureCmd)
@@ -66,6 +66,7 @@ func configurePreValidator(cmd *cobra.Command, args []string) {
 			Fatalf(server.Context(), "Error in reading silent - %s", err.Error())
 	}
 	if disabled {
+		// This mode is for automatic installation of node-agent by YBA.
 		cmd.MarkPersistentFlagRequired("id")
 		cmd.MarkPersistentFlagRequired("customer_id")
 		cmd.MarkPersistentFlagRequired("cert_dir")
@@ -80,6 +81,7 @@ func configurePreValidator(cmd *cobra.Command, args []string) {
 		cmd.MarkPersistentFlagRequired("node_port")
 		cmd.MarkPersistentFlagRequired("provider_id")
 		cmd.MarkPersistentFlagRequired("instance_type")
+		cmd.MarkPersistentFlagRequired("region_name")
 		cmd.MarkPersistentFlagRequired("zone_name")
 	} else {
 		cmd.MarkPersistentFlagRequired("api_token")
@@ -162,28 +164,26 @@ func configureDisabledEgress(ctx context.Context, cmd *cobra.Command) {
 		util.ConsoleLogger().Fatalf(ctx, "Unable to store node agent IP - %s", err.Error())
 	}
 	nodeIp := config.String(util.NodeIpKey)
-	parsedIp := net.ParseIP(nodeIp)
-	if parsedIp == nil {
-		// Get the bind IP if it is DNS. It defaults to the DNS if it is not present.
-		_, err = config.StoreCommandFlagString(
-			ctx,
-			cmd,
-			"bind_ip",
-			util.NodeBindIpKey,
-			&nodeIp,
-			true, /* isRequired */
-			nil,  /* validator */
-		)
-		if err != nil {
-			util.ConsoleLogger().
-				Fatalf(ctx, "Unable to store node agent bind IP - %s", err.Error())
-		}
-	} else {
-		// Use the node IP as the bind IP.
-		err = config.Update(util.NodeBindIpKey, nodeIp)
-		if err != nil {
-			util.ConsoleLogger().Fatalf(ctx, "Unable to store node agent bind IP - %s", err.Error())
-		}
+	bindIp, err := cmd.Flags().GetString("bind_ip")
+	if err != nil {
+		util.FileLogger().Infof(ctx, "Unable to get bind IP - %s", err.Error())
+		util.FileLogger().Infof(ctx, "Using parsed node ip")
+		bindIp = nodeIp
+	}
+	util.FileLogger().Infof(ctx, "Bind IP: %s", bindIp)
+	// Get the bind IP if it is DNS. It defaults to the DNS if it is not present.
+	_, err = config.StoreCommandFlagString(
+		ctx,
+		cmd,
+		"bind_ip",
+		util.NodeBindIpKey,
+		&bindIp,
+		true, /* isRequired */
+		nil,  /* validator */
+	)
+	if err != nil {
+		util.ConsoleLogger().
+			Fatalf(ctx, "Unable to store node agent bind IP - %s", err.Error())
 	}
 	_, err = config.StoreCommandFlagString(
 		ctx,
@@ -297,32 +297,29 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 		checkConfigAndUpdate(ctx, util.NodeIpKey, nil, "Node IP")
 	}
 	nodeIp := config.String(util.NodeIpKey)
-	parsedIp := net.ParseIP(nodeIp)
-	if parsedIp == nil {
-		// Get the bind IP if it is DNS. It defaults to the DNS if it is not present.
-		if silent {
-			_, err = config.StoreCommandFlagString(
-				ctx,
-				cmd,
-				"bind_ip",
-				util.NodeBindIpKey,
-				&nodeIp,
-				true, /* isRequired */
-				nil,  /* validator */
-			)
-			if err != nil {
-				util.ConsoleLogger().
-					Fatalf(ctx, "Unable to store node agent bind IP - %s", err.Error())
-			}
-		} else {
-			checkConfigAndUpdate(ctx, util.NodeBindIpKey, &nodeIp, "Bind IP")
+	bindIp, err := cmd.Flags().GetString("bind_ip")
+	if err != nil {
+		util.FileLogger().Errorf(ctx, "Unable to get bind IP - %s", err.Error())
+		util.FileLogger().Infof(ctx, "Using node ip")
+		bindIp = nodeIp
+	}
+	util.FileLogger().Infof(ctx, "Bind IP: %s", bindIp)
+	if silent {
+		_, err = config.StoreCommandFlagString(
+			ctx,
+			cmd,
+			"bind_ip",
+			util.NodeBindIpKey,
+			&bindIp, /* default value */
+			true,    /* isRequired */
+			nil,     /* validator */
+		)
+		if err != nil {
+			util.ConsoleLogger().
+				Fatalf(ctx, "Unable to store node agent bind IP - %s", err.Error())
 		}
 	} else {
-		// Use the node IP as the bind IP.
-		err = config.Update(util.NodeBindIpKey, nodeIp)
-		if err != nil {
-			util.ConsoleLogger().Fatalf(ctx, "Unable to store node agent bind IP - %s", err.Error())
-		}
+		checkConfigAndUpdate(ctx, util.NodeBindIpKey, &bindIp, "Bind IP")
 	}
 	providersHandler := task.NewGetProvidersHandler(apiToken)
 	// Get Providers from the platform (only on-prem providers displayed)
@@ -351,7 +348,8 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 			true, /* isRequired */
 			func(in string) (string, error) {
 				for _, pr := range onpremProviders {
-					if pr.Id() == in {
+					// Overload the option to use either name or provider ID for backward compatibility.
+					if pr.Id() == in || pr.Name() == in {
 						selectedProvider = pr
 						return pr.Id(), nil
 					}
@@ -416,6 +414,27 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 	}
 	// Update availability Zone.
 	if silent {
+		var selectedRegion model.Region
+		_, err = config.StoreCommandFlagString(
+			ctx,
+			cmd,
+			"region_name",
+			util.NodeRegionKey,
+			nil,  /* default value */
+			true, /* isRequired */
+			func(in string) (string, error) {
+				for _, region := range selectedProvider.Regions {
+					if region.Id() == in {
+						selectedRegion = region
+						return region.Id(), nil
+					}
+				}
+				return "", errors.New("Region name is not found")
+			},
+		)
+		if err != nil {
+			util.ConsoleLogger().Fatalf(ctx, "Unable to store region ID - %s", err.Error())
+		}
 		_, err = config.StoreCommandFlagString(
 			ctx,
 			cmd,
@@ -424,12 +443,10 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 			nil,  /* default value */
 			true, /* isRequired */
 			func(in string) (string, error) {
-				for _, region := range selectedProvider.Regions {
-					for _, zone := range region.Zones {
-						if zone.Id() == in {
-							config.Update(util.NodeAzIdKey, zone.Uuid)
-							return zone.Id(), nil
-						}
+				for _, zone := range selectedRegion.Zones {
+					if zone.Id() == in {
+						config.Update(util.NodeAzIdKey, zone.Uuid)
+						return zone.Id(), nil
 					}
 				}
 				return "", errors.New("Zone name is not found")
@@ -470,7 +487,9 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 			util.ConsoleLogger().Fatalf(ctx, "Unable to register node agent - %s", err.Error())
 		}
 	} else {
-		util.ConsoleLogger().Fatalf(ctx, "Unable to check for existing node agent - %s", err.Error())
+		// Node agent already exists on YBA. But, it cannot be verified with the local key.
+		util.ConsoleLogger().Fatalf(ctx, "Node agent already exists on YBA but local "+
+			"credentials may be invalid. It may need to be unregistered first - %s", err.Error())
 	}
 	util.ConsoleLogger().Info(ctx, "Node Agent Configuration Successful")
 }

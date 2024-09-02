@@ -168,6 +168,7 @@ Status AddColumnToMap(
     // send NULL values to the walsender. This is needed to be able to differentiate between NULL
     // and Omitted values.
     if (request_source == CDCSDKRequestSource::WALSENDER) {
+      cdc_datum_message->set_col_attr_num(col_schema.order());
       cdc_datum_message->set_column_type(col_schema.pg_type_oid());
       cdc_datum_message->mutable_pg_ql_value()->CopyFrom(ql_value);
       return Status::OK();
@@ -1983,62 +1984,63 @@ Status GetConsistentWALRecords(
           << ", last_seen_op_id: " << last_seen_op_id->ToString()
           << ", historical_max_op_id: " << historical_max_op_id;
   auto consensus = VERIFY_RESULT(tablet_peer->GetConsensus());
-  do {
-    auto read_ops = VERIFY_RESULT(consensus->ReadReplicatedMessagesForCDC(
-        *last_seen_op_id, *last_readable_opid_index, deadline));
+  // Read the committed WAL messages with hybrid time <= consistent_stream_safe_time. If there exist
+  // messages in the WAL which are replicated but not yet committed,
+  // ReadReplicatedMessagesForConsistentCDC waits for them to get committed and eventually includes
+  // them in the result.
+  auto read_ops = VERIFY_RESULT(consensus->ReadReplicatedMessagesForConsistentCDC(
+      *last_seen_op_id, consistent_safe_time, deadline, false, *last_readable_opid_index));
 
-    if (read_ops.messages.empty()) {
-      VLOG_WITH_FUNC(1) << "Did not get any messages with current batch of 'read_ops'."
-                        << "last_seen_op_id: " << *last_seen_op_id << ", last_readable_opid_index "
-                        << **last_readable_opid_index;
-      break;
+  if (read_ops.read_from_disk_size && mem_tracker) {
+    (*consumption) = ScopedTrackedConsumption(mem_tracker, read_ops.read_from_disk_size);
+  }
+
+  for (const auto& msg : read_ops.messages) {
+    last_seen_op_id->term = msg->id().term();
+    last_seen_op_id->index = msg->id().index();
+
+    if (IsIntent(msg) || (IsUpdateTransactionOp(msg) &&
+                          msg->transaction_state().status() != TransactionStatus::APPLYING)) {
+      continue;
     }
 
-    if (read_ops.read_from_disk_size && mem_tracker) {
-      (*consumption) = ScopedTrackedConsumption(mem_tracker, read_ops.read_from_disk_size);
+    if (VLOG_IS_ON(3) && IsUpdateTransactionOp(msg) &&
+        msg->transaction_state().status() == TransactionStatus::APPLYING) {
+      auto txn_id =
+          VERIFY_RESULT(FullyDecodeTransactionId(msg->transaction_state().transaction_id()));
+      VLOG(3) << "Read transaction in WAL on "
+              << "tablet_id: " << tablet_peer->tablet_id() << ", transaction_id: " << txn_id
+              << ", OpId: " << msg->id().term() << "." << msg->id().index()
+              << ", commit_time: " << GetTransactionCommitTime(msg)
+              << ", consistent safe_time: " << consistent_safe_time
+              << ", safe_hybrid_time_req: " << safe_hybrid_time_req;
+    } else if (VLOG_IS_ON(3)) {
+      VLOG(3) << "Read WAL msg on "
+              << "tablet_id: " << tablet_peer->tablet_id() << ", op_type: " << msg->op_type()
+              << ", OpId: " << msg->id().term() << "." << msg->id().index()
+              << ", commit_time: " << GetTransactionCommitTime(msg)
+              << ", consistent safe_time: " << consistent_safe_time
+              << ", safe_hybrid_time_req: " << safe_hybrid_time_req;
     }
 
-    for (const auto& msg : read_ops.messages) {
-      last_seen_op_id->term = msg->id().term();
-      last_seen_op_id->index = msg->id().index();
+    all_checkpoints->push_back(msg);
+    consistent_wal_records->push_back(msg);
+  }
 
-      if (IsIntent(msg) || (IsUpdateTransactionOp(msg) &&
-                            msg->transaction_state().status() != TransactionStatus::APPLYING)) {
-        continue;
-      }
-
-      if (VLOG_IS_ON(3) && IsUpdateTransactionOp(msg) &&
-          msg->transaction_state().status() == TransactionStatus::APPLYING) {
-        auto txn_id =
-            VERIFY_RESULT(FullyDecodeTransactionId(msg->transaction_state().transaction_id()));
-        VLOG(3) << "Read transaction in WAL on "
-                << "tablet_id: " << tablet_peer->tablet_id() << ", transaction_id: " << txn_id
-                << ", OpId: " << msg->id().term() << "." << msg->id().index()
-                << ", commit_time: " << GetTransactionCommitTime(msg)
-                << ", consistent safe_time: " << consistent_safe_time
-                << ", safe_hybrid_time_req: " << safe_hybrid_time_req;
-      } else if (VLOG_IS_ON(3)) {
-        VLOG(3) << "Read WAL msg on "
-                << "tablet_id: " << tablet_peer->tablet_id() << ", op_type: " << msg->op_type()
-                << ", OpId: " << msg->id().term() << "." << msg->id().index()
-                << ", commit_time: " << GetTransactionCommitTime(msg)
-                << ", consistent safe_time: " << consistent_safe_time
-                << ", safe_hybrid_time_req: " << safe_hybrid_time_req;
-      }
-
-      all_checkpoints->push_back(msg);
-      consistent_wal_records->push_back(msg);
-    }
-
-    if (read_ops.messages.size() > 0) {
-      *msgs_holder = consensus::ReplicateMsgsHolder(
-          nullptr, std::move(read_ops.messages), std::move((*consumption)));
-    }
-  } while (((*last_readable_opid_index) && last_seen_op_id->index < **last_readable_opid_index));
+  if (read_ops.messages.size() > 0) {
+    *msgs_holder = consensus::ReplicateMsgsHolder(
+        nullptr, std::move(read_ops.messages), std::move((*consumption)));
+  }
 
   // Handle the case where WAL doesn't have the apply record for all the committed transactions.
   if (historical_max_op_id.valid() && historical_max_op_id > *last_seen_op_id) {
     (*wait_for_wal_update) = true;
+  }
+
+  if (consistent_wal_records->empty() && read_ops.have_more_messages) {
+    VLOG(1) << "Received empty read_ops with have_more_messages set to true, indicating presence "
+               "of replicated but not committed records in the WAL";
+    *wait_for_wal_update = true;
   }
 
   SortConsistentWALRecords(consistent_wal_records);

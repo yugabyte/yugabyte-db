@@ -715,3 +715,167 @@
         checkOnlyPermission: false
     x-yba-api-since: 2024.2.0.0
     x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/encryption/in-transit':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: encryptionInTransitToggle
+    summary: Enable or disable encryption in transit
+    description: |
+      Enable or disable encryption in transit. Encryption in transit can be both node to node or 
+      node to client.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseEncryptionInTransitReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: UpgradeTLS
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/encryption/in-transit/rotate':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: encryptionInTransitCertRotate
+    summary: Rotate TLS Certs
+    description: Rotate the certs used for encryption in transit.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseCertRotateReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: UpgradeCerts
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/kubernetes-overrides':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: editKubernetesOverrides
+    summary: Edit Kubernetes Helm Overrides
+    description: |
+      Update the kubernetes helm override values. This can be used to add custom settings to 
+      kubernetes resources managed by YugabyteDB Anywhere. These override values can apply globally 
+      to a universe or per AZ.
+
+      See https://github.com/yugabyte/charts/blob/master/stable/yugabyte/values.yaml for possible
+      override options.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseKubernetesOverridesReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: UpgradeKubernetesOverrides
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview

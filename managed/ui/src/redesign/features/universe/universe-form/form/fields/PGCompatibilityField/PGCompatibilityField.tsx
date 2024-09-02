@@ -1,9 +1,10 @@
 import { FC } from 'react';
+import { useUpdateEffect } from 'react-use';
 import { useTranslation, Trans } from 'react-i18next';
 import { Box, makeStyles, Typography, Link } from '@material-ui/core';
 import { useFormContext, useWatch } from 'react-hook-form';
 import { YBToggleField, YBLabel, YBTooltip } from '../../../../../../components';
-import { isVerionPGSupported } from '../../../utils/helpers';
+import { isVersionPGSupported } from '../../../utils/helpers';
 import { UniverseFormData } from '../../../utils/dto';
 import { PG_COMPATIBILITY_FIELD, SOFTWARE_VERSION_FIELD } from '../../../utils/constants';
 
@@ -39,18 +40,24 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 export const PGCompatibiltyField: FC<PGCompatibiltyFieldProps> = ({ disabled }) => {
-  const { control } = useFormContext<UniverseFormData>();
+  const { control, setValue } = useFormContext<UniverseFormData>();
   const classes = useStyles();
   const { t } = useTranslation();
 
   //watchers
   const dbVersionValue = useWatch({ name: SOFTWARE_VERSION_FIELD });
 
-  const isPGSupported = isVerionPGSupported(dbVersionValue);
+  const isPGSupported = isVersionPGSupported(dbVersionValue);
+
+  useUpdateEffect(() => {
+    //set toggle to false if unsupported db version is selected
+    if (!isVersionPGSupported(dbVersionValue)) setValue(PG_COMPATIBILITY_FIELD, false);
+  }, [dbVersionValue]);
 
   return (
     <Box display="flex" width="100%" data-testid="PGCompatibiltyField-Container">
       <YBTooltip
+        interactive={true}
         title={
           isPGSupported ? (
             ''
@@ -58,7 +65,7 @@ export const PGCompatibiltyField: FC<PGCompatibiltyFieldProps> = ({ disabled }) 
             <Typography className={classes.subText}>
               <Trans>
                 {t('universeForm.advancedConfig.pgTooltip')}
-                <Link underline="always" className={classes.linkText}></Link>
+                {/* <Link underline="always" className={classes.linkText}></Link> */}
               </Trans>
             </Typography>
           )
@@ -84,7 +91,7 @@ export const PGCompatibiltyField: FC<PGCompatibiltyFieldProps> = ({ disabled }) 
           <Typography className={classes.subText}>
             <Trans>
               {t('universeForm.advancedConfig.pgSubText')}
-              <Link underline="always" className={classes.linkText}></Link>
+              {/* <Link underline="always" className={classes.linkText}></Link> */}
             </Trans>
           </Typography>
         </Box>

@@ -41,11 +41,13 @@ BEGIN
  * Options to move table to different schema, drop only indexes or actually drop the table from the database.
  */
 
+/* YB(GH#3642): advisory lock not supported
 v_adv_lock := pg_try_advisory_xact_lock(hashtext('pg_partman drop_partition_time'));
 IF v_adv_lock = 'false' THEN
     RAISE NOTICE 'drop_partition_time already running.';
     RETURN 0;
 END IF;
+*/
 
 -- Allow override of configuration options
 IF p_retention IS NULL THEN

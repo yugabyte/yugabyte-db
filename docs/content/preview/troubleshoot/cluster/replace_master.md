@@ -18,7 +18,7 @@ You can replace a failed YB-Master server in a YugabyteDB cluster.
 
 Examples included in this document use the following scenario:
 
-- The cluster includes three `yb-master` servers: `M1`, `M2`, `M3`.
+- The cluster includes three yb-master servers: `M1`, `M2`, `M3`.
 - YB-Master server `M1` failed and needs to be replaced.
 - A new YB-Master server (`M4`) will replace `M1`.
 - The default master RPC port is `7100`

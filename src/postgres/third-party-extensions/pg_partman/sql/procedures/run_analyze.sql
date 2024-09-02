@@ -11,11 +11,13 @@ v_sql                   text;
 
 BEGIN
 
+/* YB(GH#3642): advisory lock not supported
 v_adv_lock := pg_try_advisory_lock(hashtext('pg_partman run_analyze'));
 IF v_adv_lock = false THEN
     RAISE NOTICE 'Partman analyze already running or another session has not released its advisory lock.';
     RETURN;
 END IF;
+*/
 
 FOR v_row IN SELECT parent_table FROM @extschema@.part_config
 LOOP
@@ -47,7 +49,9 @@ LOOP
 
 END LOOP;
 
+/* YB(GH#3642): advisory lock not supported
 PERFORM pg_advisory_unlock(hashtext('pg_partman run_analyze'));
+*/
 END
 $$;
 

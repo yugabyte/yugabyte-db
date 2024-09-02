@@ -753,3 +753,50 @@ order by a.a;
  1 |   6
  2 |   5
 (2 rows)
+
+-- #23287 string_to_text pushdown
+create table string_to_text_test(data text);
+insert into string_to_text_test values ('foo bar');
+explain (costs off)
+select * from string_to_text_test where 'foo' = ANY(string_to_array(data, ' '));
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Seq Scan on string_to_text_test
+   Storage Filter: ('foo'::text = ANY (string_to_array(data, ' '::text)))
+(2 rows)
+
+select * from string_to_text_test where 'foo' = ANY(string_to_array(data, ' '));
+  data
+---------
+ foo bar
+(1 row)
+
+drop table string_to_text_test;
+-- #22533 storage index filter in non-trivial subquery
+CREATE TABLE site (id int PRIMARY KEY);
+CREATE TABLE address (id int PRIMARY KEY, site_id int, recorded_at timestamp);
+CREATE INDEX idx_address_problem ON address (site_id HASH) INCLUDE (recorded_at);
+explain (costs off)
+SELECT s.id, aa.addresses
+FROM site s
+JOIN (
+    SELECT
+        array_agg(json_build_object(
+        'id', a.id,
+        'site_id', a.site_id)) AS addresses
+    FROM address a
+    WHERE a.site_id = 1
+    AND a.recorded_at IS NULL
+    ) aa ON true;
+                          QUERY PLAN
+---------------------------------------------------------------
+ Nested Loop
+   ->  Aggregate
+         ->  Index Scan using idx_address_problem on address a
+               Index Cond: (site_id = 1)
+               Storage Index Filter: (recorded_at IS NULL)
+   ->  Seq Scan on site s
+(6 rows)
+
+DROP TABLE site;
+DROP TABLE address;

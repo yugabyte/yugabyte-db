@@ -17,7 +17,7 @@ GET     /fetch_jwt_token                                                       c
 + forceAudit
 GET     /insecure_login                                                        com.yugabyte.yw.controllers.SessionController.insecure_login(request: Request)
 PUT     /customers/:cUUID/security                                             com.yugabyte.yw.controllers.SessionController.set_security(cUUID: java.util.UUID, request: Request)
-PUT     /customers/:cUUID/api_token                                            com.yugabyte.yw.controllers.SessionController.api_token(cUUID: java.util.UUID, apiTokenVersion: java.lang.Long ?= null, request: Request)
+PUT     /customers/:cUUID/api_token                                            com.yugabyte.yw.controllers.SessionController.api_token(cUUID: java.util.UUID, apiTokenVersion: java.lang.Long ?= -1, request: Request)
 GET     /logout                                                                com.yugabyte.yw.controllers.SessionController.logout()
 + nocsrf
 POST    /register                                                              com.yugabyte.yw.controllers.SessionController.register(generateApiToken: java.lang.Boolean ?= false, request: Request)
@@ -333,6 +333,7 @@ GET     /customers/:cUUID/universes/:uniUUID/masters                           c
 GET     /customers/:cUUID/universes/:uniUUID/yqlservers                        com.yugabyte.yw.controllers.MetaMasterController.getYQLServerAddresses(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/ysqlservers                       com.yugabyte.yw.controllers.MetaMasterController.getYSQLServerAddresses(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 GET     /customers/:cUUID/universes/:uniUUID/redisservers                      com.yugabyte.yw.controllers.MetaMasterController.getRedisServerAddresses(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+GET     /customers/:cUUID/universes/:uniUUID/master_lb_state                   com.yugabyte.yw.controllers.MetaMasterController.getMasterLBState(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
 # Universe - Yugabyte DB management
 POST    /customers/:cUUID/universes/:uniUUID/run_query                         com.yugabyte.yw.controllers.UniverseYbDbAdminController.runQuery(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
@@ -357,6 +358,7 @@ POST    /customers/:cUUID/xcluster_configs                                     c
 GET     /customers/:cUUID/xcluster_configs/:xccUUID                            com.yugabyte.yw.controllers.XClusterConfigController.get(cUUID: java.util.UUID, xccUUID: java.util.UUID)
 PUT     /customers/:cUUID/xcluster_configs/:xccUUID                            com.yugabyte.yw.controllers.XClusterConfigController.edit(cUUID: java.util.UUID, xccUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/xcluster_configs/sync                                com.yugabyte.yw.controllers.XClusterConfigController.sync(cUUID: java.util.UUID, targetUniverseUUID: java.util.UUID ?= null, request: Request)
+POST    /customers/:cUUID/xcluster_configs/:xccUUID/sync                       com.yugabyte.yw.controllers.XClusterConfigController.syncXClusterConfig(cUUID: java.util.UUID, xccUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/xcluster_configs/:xccUUID                            com.yugabyte.yw.controllers.XClusterConfigController.restart(cUUID: java.util.UUID, xccUUID: java.util.UUID, isForceDelete:Boolean ?= false, request: Request)
 DELETE  /customers/:cUUID/xcluster_configs/:xccUUID                            com.yugabyte.yw.controllers.XClusterConfigController.delete(cUUID: java.util.UUID, xccUUID: java.util.UUID, isForceDelete:Boolean ?= false, request: Request)
 POST    /customers/:cUUID/xcluster_configs/:xccUUID/need_bootstrap             com.yugabyte.yw.controllers.XClusterConfigController.needBootstrap(cUUID: java.util.UUID, xccUUID: java.util.UUID, request: Request)
@@ -369,6 +371,8 @@ POST    /customers/:cUUID/dr_configs/:drUUID/edit                              c
 POST    /customers/:cUUID/dr_configs/:drUUID/replace_replica                   com.yugabyte.yw.controllers.DrConfigController.replaceReplica(cUUID: java.util.UUID, drUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/dr_configs/:drUUID/switchover                        com.yugabyte.yw.controllers.DrConfigController.switchover(cUUID: java.util.UUID, drUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/dr_configs/:drUUID/failover                          com.yugabyte.yw.controllers.DrConfigController.failover(cUUID: java.util.UUID, drUUID: java.util.UUID, request: Request)
+POST    /customers/:cUUID/dr_configs/:drUUID/pause                             com.yugabyte.yw.controllers.DrConfigController.pause(cUUID: java.util.UUID, drUUID: java.util.UUID, request: Request)
+POST    /customers/:cUUID/dr_configs/:drUUID/resume                            com.yugabyte.yw.controllers.DrConfigController.resume(cUUID: java.util.UUID, drUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/dr_configs/:drUUID/restart                           com.yugabyte.yw.controllers.DrConfigController.restart(cUUID: java.util.UUID, drUUID: java.util.UUID, isForceDelete:Boolean ?= false, request: Request)
 POST    /customers/:cUUID/dr_configs/:drUUID/set_tables                        com.yugabyte.yw.controllers.DrConfigController.setTables(cUUID: java.util.UUID, drUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/dr_configs/:drUUID/sync                              com.yugabyte.yw.controllers.DrConfigController.sync(cUUID: java.util.UUID, drUUID: java.util.UUID, request: Request)
@@ -424,7 +428,6 @@ DELETE  /customers/:cUUID/universes/:uniUUID/pitr_config/:pUUID                 
 POST    /customers/:cUUID/backups                                              com.yugabyte.yw.controllers.BackupsController.createBackupYb(cUUID: java.util.UUID, request: Request)
 POST    /customers/:customerUUID/universes/:universeUUID/universe_backup       com.yugabyte.yw.controllers.BackupsController.backupUniverse(customerUUID: java.util.UUID, universeUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/create_backup_schedule                               com.yugabyte.yw.controllers.BackupsController.createBackupSchedule(cUUID: java.util.UUID, request: Request)
-POST    /customers/:cUUID/create_backup_schedule_async                         com.yugabyte.yw.controllers.BackupsController.createBackupScheduleAsync(cUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/backups/page                                         com.yugabyte.yw.controllers.BackupsController.pageBackupList(cUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/restore                                              com.yugabyte.yw.controllers.BackupsController.restoreBackup(cUUID: java.util.UUID, request: Request)
 GET     /customers/:cUUID/backups/:backupUUID                                  com.yugabyte.yw.controllers.BackupsController.get(cUUID: java.util.UUID, backupUUID: java.util.UUID)
@@ -434,10 +437,19 @@ PUT     /customers/:cUUID/schedules/:sUUID                                     c
 + forceNoAudit
 POST    /customers/:cUUID/schedules/page                                       com.yugabyte.yw.controllers.ScheduleController.pageScheduleList(cUUID: java.util.UUID, request: Request)
 + forceNoAudit
-POST    /customers/:cUUID/restore/page                                         com.yugabyte.yw.controllers.BackupsController.pageRestoreList(cUUID: java.util.UUID, request: Request)
-DELETE  /customers/:cUUID/schedules/:sUUID/delete                              com.yugabyte.yw.controllers.ScheduleController.deleteYb(cUUID: java.util.UUID, sUUID: java.util.UUID, request: Request)
-GET     /customers/:cUUID/backups/:backupUUID/list_increments                  com.yugabyte.yw.controllers.BackupsController.listIncrementalBackups(cUUID: java.util.UUID, backupUUID: java.util.UUID)
-POST    /customers/:cUUID/restore/preflight                                    com.yugabyte.yw.controllers.BackupsController.restorePreflight(cUUID: java.util.UUID, request: Request)
+POST    /customers/:cUUID/restore/page                                              com.yugabyte.yw.controllers.BackupsController.pageRestoreList(cUUID: java.util.UUID, request: Request)
+DELETE  /customers/:cUUID/schedules/:sUUID/delete                                   com.yugabyte.yw.controllers.ScheduleController.deleteYb(cUUID: java.util.UUID, sUUID: java.util.UUID, request: Request)
+GET     /customers/:cUUID/backups/:backupUUID/list_increments                       com.yugabyte.yw.controllers.BackupsController.listIncrementalBackups(cUUID: java.util.UUID, backupUUID: java.util.UUID)
+POST    /customers/:cUUID/restore/preflight                                         com.yugabyte.yw.controllers.BackupsController.restorePreflight(cUUID: java.util.UUID, request: Request)
+POST    /customers/:cUUID/restore/validate_restorable_keyspace_tables               com.yugabyte.yw.controllers.BackupsController.validateRestorableKeyspaceTables(cUUID: java.util.UUID, request: Request)
+POST    /customers/:cUUID/restore/advanced_restore_preflight                        com.yugabyte.yw.controllers.BackupsController.advancedRestorePreflight(cUUID: java.util.UUID, request: Request)
+GET     /customers/:cUUID/backups/:baseBackupUUID/restorable_keyspace_tables        com.yugabyte.yw.controllers.BackupsController.listRestorableKeyspaceTables(cUUID: java.util.UUID, baseBackupUUID: java.util.UUID)
+
+# New Backup Schedule Create/Edit/Delete/Toggle APIs
+POST      /customers/:cUUID/create_backup_schedule_async                                          com.yugabyte.yw.controllers.BackupsController.createBackupScheduleAsync(cUUID: java.util.UUID, request: Request)
+DELETE    /customers/:cUUID/universes/:uniUUID/schedules/:sUUID/delete_backup_schedule_async      com.yugabyte.yw.controllers.ScheduleController.deleteBackupScheduleAsync(cUUID: java.util.UUID, uniUUID: java.util.UUID, sUUID: java.util.UUID, request: Request)
+PUT       /customers/:cUUID/universes/:uniUUID/schedules/:sUUID/edit_backup_schedule_async        com.yugabyte.yw.controllers.ScheduleController.editBackupScheduleAsync(cUUID: java.util.UUID, uniUUID: java.util.UUID, sUUID: java.util.UUID, request: Request)
+PUT       /customers/:cUUID/universes/:uniUUID/schedules/:sUUID/pause_resume                      com.yugabyte.yw.controllers.ScheduleController.toggleSchedule(cUUID: java.util.UUID, uniUUID: java.util.UUID, sUUID: java.util.UUID, request: Request)
 
 # Task History API
 GET    /customers/:cUUID/tasks                                                 com.yugabyte.yw.controllers.CustomerTaskController.list(cUUID: java.util.UUID)

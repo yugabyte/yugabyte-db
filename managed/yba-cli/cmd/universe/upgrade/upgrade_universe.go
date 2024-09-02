@@ -23,6 +23,7 @@ func init() {
 
 	UpgradeUniverseCmd.AddCommand(upgradeSoftwareCmd)
 	UpgradeUniverseCmd.AddCommand(upgradeGflagsCmd)
+	UpgradeUniverseCmd.AddCommand(upgradeVMImageCmd)
 
 	UpgradeUniverseCmd.PersistentFlags().StringP("name", "n", "",
 		"[Required] The name of the universe to be ugraded.")

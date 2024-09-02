@@ -1,6 +1,6 @@
 import { UnavailableUniverseStates } from '../../../redesign/helpers/constants';
 import { getUniverseStatus } from '../../universes/helpers/universeHelpers';
-import { DrConfigActions } from './constants';
+import { DrConfigAction, DurationUnit, DURATION_UNIT_TO_SECONDS } from './constants';
 import { assertUnreachableCase } from '../../../utils/errorHandlingUtils';
 import { XClusterConfigType } from '../constants';
 
@@ -15,7 +15,7 @@ export const getEnabledDrConfigActions = (
   drConfig: DrConfig,
   sourceUniverse: Universe | undefined,
   targetUniverse: Universe | undefined
-): DrConfigActions[] => {
+): DrConfigAction[] => {
   if (
     UnavailableUniverseStates.includes(getUniverseStatus(sourceUniverse).state) ||
     UnavailableUniverseStates.includes(getUniverseStatus(targetUniverse).state)
@@ -23,24 +23,24 @@ export const getEnabledDrConfigActions = (
     // xCluster 'Delete' action will fail on the backend. But if the user selects the
     // 'force delete' option, then they will be able to remove the config even if a
     // participating universe is unavailable.
-    return [DrConfigActions.DELETE];
+    return [DrConfigAction.DELETE];
   }
   switch (drConfig.state) {
     case DrConfigState.INITIALIZING:
     case DrConfigState.SWITCHOVER_IN_PROGRESS:
     case DrConfigState.FAILOVER_IN_PROGRESS:
     case DrConfigState.ERROR:
-      return [DrConfigActions.DELETE];
+      return [DrConfigAction.DELETE];
     case DrConfigState.REPLICATING:
       return [
-        DrConfigActions.DELETE,
-        DrConfigActions.EDIT,
-        DrConfigActions.EDIT_TARGET,
-        DrConfigActions.SWITCHOVER,
-        DrConfigActions.FAILOVER
+        DrConfigAction.DELETE,
+        DrConfigAction.EDIT,
+        DrConfigAction.EDIT_TARGET,
+        DrConfigAction.SWITCHOVER,
+        DrConfigAction.FAILOVER
       ];
     case DrConfigState.HALTED:
-      return [DrConfigActions.DELETE, DrConfigActions.EDIT, DrConfigActions.EDIT_TARGET];
+      return [DrConfigAction.DELETE, DrConfigAction.EDIT, DrConfigAction.EDIT_TARGET];
     default:
       return assertUnreachableCase(drConfig.state);
   }
@@ -53,6 +53,49 @@ export const getNamespaceIdSafetimeEpochUsMap = (
     namespaceIdSafetimeEpochUsMap[namespace.namespaceId] = namespace.safetimeEpochUs;
     return namespaceIdSafetimeEpochUsMap;
   }, {});
+
+/**
+ * YBA prescribes a 5 minute minimum for PITR retention period/
+ */
+export const getPitrRetentionPeriodMinValue = (pitrRetentionPeriodUnit: DurationUnit | undefined) =>
+  pitrRetentionPeriodUnit === DurationUnit.SECOND
+    ? 5 * 60
+    : pitrRetentionPeriodUnit === DurationUnit.MINUTE
+    ? 5
+    : 1;
+
+export const convertSecondsToLargestDurationUnit = (
+  seconds: number,
+  options: { noThrow?: boolean } = {}
+): { value: number; unit: DurationUnit } => {
+  const { noThrow = false } = options;
+
+  if (seconds < 0 || isNaN(seconds)) {
+    if (noThrow) {
+      return { value: 0, unit: DurationUnit.SECOND };
+    }
+    throw new Error('Input must be a non-negative number');
+  }
+
+  if (seconds === 0) {
+    return { value: 0, unit: DurationUnit.SECOND };
+  }
+
+  // Create an ordered array of units from largest to smallest based on DURATION_UNIT_TO_SECONDS
+  const orderedUnits = Object.entries(DURATION_UNIT_TO_SECONDS)
+    .sort(([, valueA], [, valueB]) => valueB - valueA)
+    .map(([unit, _]) => unit as DurationUnit);
+
+  for (const unit of orderedUnits) {
+    const unitInSeconds = DURATION_UNIT_TO_SECONDS[unit];
+    if (seconds % unitInSeconds === 0) {
+      return { value: seconds / unitInSeconds, unit };
+    }
+  }
+
+  // This line should never be reached due to SECOND being in the orderedUnits,
+  return { value: seconds, unit: DurationUnit.SECOND };
+};
 
 /**
  * Extract an XClusterConfig object from the fields of the provided DrConfig object.

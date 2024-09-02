@@ -61,6 +61,7 @@ add_executable(yb-admin
 target_link_libraries(yb-admin
   yb-admin_lib
   master_error
+  master_util
   ${LINK_LIBS})
 
 add_library(yb-admin_lib
@@ -234,3 +235,8 @@ set(YB_BACKUP_TEST_BASE_DEPS
 ADD_YB_TEST_LIBRARY(yb-backup-test_base
                     SRCS ${YB_BACKUP_TEST_BASE_SRCS}
                     DEPS ${YB_BACKUP_TEST_BASE_DEPS})
+
+add_executable(hnsw_tool hnsw_tool.cc)
+# We use yb_test_util here for TestThreadHolder.
+# hnsw_tool is a test tool in a way, so this is OK.
+target_link_libraries(hnsw_tool boost_program_options yb_util yb_docdb yb_vector yb_test_util)

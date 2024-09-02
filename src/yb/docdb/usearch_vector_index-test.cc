@@ -11,29 +11,13 @@
 // under the License.
 //
 
-#pragma GCC diagnostic push
-
-#ifdef __clang__
-// For https://gist.githubusercontent.com/mbautin/87278fc41654c6c74cf7232960364c95/raw
-#pragma GCC diagnostic ignored "-Wpass-failed"
-
-#if __clang_major__ == 14
-// For https://gist.githubusercontent.com/mbautin/7856257553a1d41734b1cec7c73a0fb4/raw
-#pragma GCC diagnostic ignored "-Wambiguous-reversed-operator"
-#endif
-#endif  // __clang__
-
-#include "usearch/index.hpp"
-#include "usearch/index_dense.hpp"
-
-#pragma GCC diagnostic pop
+#include <cassert>
 
 #include <iostream>
 #include <fstream>
 #include <string>
 #include <vector>
 #include <random>
-#include <cassert>
 
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
@@ -42,15 +26,7 @@
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
-// Helper function to generate random vectors
-template<typename Distribution>
-std::vector<float> GenerateRandomVector(size_t dimensions, Distribution& dis) {
-  std::vector<float> vec(dimensions);
-  for (auto& v : vec) {
-    v = static_cast<float>(dis(yb::ThreadLocalRandom()));
-  }
-  return vec;
-}
+#include "yb/vector/usearch_include_wrapper_internal.h"
 
 namespace yb {
 
@@ -68,7 +44,7 @@ void ReportPerf(
 }
 
 TEST_F(UsearchVectorIndexTest, CreateAndQuery) {
-  using namespace unum::usearch;
+  using namespace unum::usearch;  // NOLINT
 
   // Create a metric and index
   const size_t kDimensions = 96;
@@ -94,7 +70,7 @@ TEST_F(UsearchVectorIndexTest, CreateAndQuery) {
             std::random_device rd;
             size_t vector_id;
             while ((vector_id = num_vectors_inserted.fetch_add(1)) < kNumVectors) {
-              auto vec = GenerateRandomVector(kDimensions, uniform_distrib);
+              auto vec = RandomFloatVector(kDimensions, uniform_distrib);
               ASSERT_TRUE(index.add(vector_id, vec.data()));
             }
             latch.CountDown();
@@ -136,7 +112,7 @@ TEST_F(UsearchVectorIndexTest, CreateAndQuery) {
       [&num_vectors_queried, &loaded_index, &latch, &uniform_distrib, kNumResultsPerQuery]() {
         // Perform searches on the loaded index
         while (num_vectors_queried.fetch_add(1) < kNumQueries) {
-          auto query_vec = GenerateRandomVector(kDimensions, uniform_distrib);
+          auto query_vec = RandomFloatVector(kDimensions, uniform_distrib);
           auto results = loaded_index.search(query_vec.data(), kNumResultsPerQuery);
           ASSERT_LE(results.size(), kNumResultsPerQuery);
         }
@@ -147,6 +123,6 @@ TEST_F(UsearchVectorIndexTest, CreateAndQuery) {
   auto query_elapsed_usec = (MonoTime::Now() - query_start_time).ToMicroseconds();
   ReportPerf("Performed", kNumQueries, "queries", kDimensions, query_elapsed_usec,
               kNumIndexingThreads);
-};
+}
 
 }  // namespace yb

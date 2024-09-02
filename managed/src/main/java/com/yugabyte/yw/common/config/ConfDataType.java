@@ -271,9 +271,7 @@ public class ConfDataType<T> {
     } catch (Exception e) {
       throw new PlatformServiceException(
           BAD_REQUEST,
-          "Not a valid list of tags."
-              + "All possible tags are "
-              + "PUBLIC, UIDriven, BETA, INTERNAL, YBM");
+          "Not a valid list of tags." + "All possible tags are " + "PUBLIC, BETA, INTERNAL");
     }
   }
 

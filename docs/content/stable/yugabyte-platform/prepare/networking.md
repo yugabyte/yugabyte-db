@@ -18,7 +18,7 @@ YugabyteDB Anywhere (YBA) needs to be able to access nodes that will be used to 
 
 ![YugabyteDB Anywhere network and ports](/images/yb-platform/prepare/yba-networking.png)
 
-The following ports need to be open. (The default port numbers can be customized.)
+The following ports need to be open.
 
 | From | To | Requirements |
 | :--- | :--- | :--- |
@@ -31,7 +31,7 @@ The following ports need to be open. (The default port numbers can be customized
 
 ### Networking for xCluster
 
-When two database clusters are connected via [xCluster replication](../../create-deployments/async-replication-platform/), you need to ensure that the yb-master and yb-tserver RPC ports (default 7100 and 9100 respectively) are open in both directions between all nodes in both clusters.
+When two database clusters are connected via [xCluster replication](../../manage-deployments/xcluster-replication/), you need to ensure that the yb-master and yb-tserver RPC ports (default 7100 and 9100 respectively) are open in both directions between all nodes in both clusters. If nodes use DNS addresses, those addresses must be resolvable on all nodes.
 
 ### Overriding default port assignments
 

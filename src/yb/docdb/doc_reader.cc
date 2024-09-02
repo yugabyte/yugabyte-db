@@ -30,7 +30,6 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/read_operation_data.h"
-#include "yb/docdb/shared_lock_manager_fwd.h"
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_ttl_util.h"
@@ -220,7 +219,7 @@ Result<DocHybridTime> GetTableTombstoneTime(
 
   auto iter = CreateIntentAwareIterator(
       doc_db, BloomFilterMode::USE_BLOOM_FILTER, table_id, rocksdb::kDefaultQueryId, txn_op_context,
-      read_operation_data);
+      read_operation_data.WithStatistics(nullptr));
   iter->Seek(table_id);
   const auto& entry_data = VERIFY_RESULT_REF(iter->Fetch());
   if (!entry_data || !entry_data.value.FirstByteIs(dockv::ValueEntryTypeAsChar::kTombstone) ||

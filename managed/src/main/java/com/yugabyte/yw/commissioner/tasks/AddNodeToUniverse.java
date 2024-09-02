@@ -148,6 +148,9 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
   @Override
   public void run() {
+    if (maybeRunOnlyPrechecks()) {
+      return;
+    }
     log.info(
         "Started {} task for node {} in universe {}",
         getName(),
@@ -258,6 +261,8 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
           createWaitForServersTasks(nodeSet, ServerType.YSQLSERVER)
               .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
         }
+        // Set this in memory too.
+        currentNode.isTserver = true;
       }
 
       if (universe.isYbcEnabled()) {
@@ -288,7 +293,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       // been added to DB and this block might not have been run.
       if (addMaster || (currentNode.isMaster && !isFirstTry())) {
         // Update master addresses including xcluster with new master information.
-        createMasterInfoUpdateTask(universe, currentNode, null);
+        createMasterInfoUpdateTask(universe, currentNode, null /* stopped node */);
       }
 
       // Add node to load balancer.

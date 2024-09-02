@@ -29,7 +29,6 @@
 #include "yb/docdb/intent_iterator.h"
 #include "yb/docdb/iter_util.h"
 #include "yb/docdb/key_bounds.h"
-#include "yb/docdb/shared_lock_manager_fwd.h"
 #include "yb/docdb/transaction_dump.h"
 
 #include "yb/dockv/doc_key.h"
@@ -162,8 +161,7 @@ IntentAwareIterator::IntentAwareIterator(
     const rocksdb::ReadOptions& read_opts,
     const ReadOperationData& read_operation_data,
     const TransactionOperationContext& txn_op_context,
-    const FastBackwardScan use_fast_backward_scan,
-    rocksdb::Statistics* intentsdb_statistics)
+    const FastBackwardScan use_fast_backward_scan)
     : read_time_(read_operation_data.read_time),
       encoded_read_time_(read_operation_data.read_time),
       txn_op_context_(txn_op_context),
@@ -173,14 +171,15 @@ IntentAwareIterator::IntentAwareIterator(
       transaction_status_cache_(
           txn_op_context_, read_operation_data.read_time, read_operation_data.deadline) {
   VTRACE(1, __func__);
-  VLOG(4) << "IntentAwareIterator, read_operation_data: " << read_operation_data.ToString()
+  VLOG(2) << "IntentAwareIterator, read_operation_data: " << read_operation_data.ToString()
           << ", txn_op_context: " << txn_op_context_ << ", " << TRACE_BOUNDS
           << ", use_fast_backward_scan: " << use_fast_backward_scan;
 
   if (txn_op_context) {
     intent_iter_ = docdb::CreateIntentsIteratorWithHybridTimeFilter(
         doc_db.intents, txn_op_context.txn_status_manager, doc_db.key_bounds, &intent_upperbound_,
-        intentsdb_statistics);
+        read_operation_data.statistics ? read_operation_data.statistics->IntentsDBStatistics()
+                                       : nullptr);
   }
   // WARNING: Is is important for regular DB iterator to be created after intents DB iterator,
   // otherwise consistency could break, for example in following scenario:
@@ -635,6 +634,11 @@ bool IntentAwareIterator::IsRegularEntryOrderedBeforeResolvedIntent() const {
   DCHECK(HasValidIntent());
   return IsKeyOrderedBefore<kDescending>(
       regular_entry_.key, resolved_intent_sub_doc_key_encoded_.AsSlice());
+}
+
+Result<const FetchedEntry&> IntentAwareIterator::FetchNext() {
+  Next();
+  return Fetch();
 }
 
 Result<const FetchedEntry&> IntentAwareIterator::Fetch() {

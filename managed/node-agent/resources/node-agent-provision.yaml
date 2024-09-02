@@ -10,7 +10,7 @@ ynp:
   # Airgapped
   is_airgap: false
   use_system_level_systemd: false
-  ip_address: "127.0.0.1"
+  node_ip: 127.0.0.1
   tmp_directory: /tmp
 
 yba:
@@ -18,7 +18,7 @@ yba:
   customer_uuid: <customer_uuid>
   api_key: <api_key>
   node_name: <name>
-  node_ip: <ip>
+  node_external_fqdn: <ip/dns>
   provider:
     name: provider_name
     region:
@@ -31,4 +31,5 @@ yba:
     cores: cores
     memory_size: size
     volume_size: size
-    mount_points: /data # Comma separated values.
+    mount_points:
+    - /mnt/d1

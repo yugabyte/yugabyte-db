@@ -40,6 +40,7 @@ import "yb/common/common_net.proto";
 import "yb/common/common_types.proto";
 import "yb/common/transaction.proto";
 import "yb/common/wire_protocol.proto";
+import "yb/rpc/service.proto";
 import "yb/tablet/tablet_types.proto";
 import "yb/tablet/operations.proto";
 import "yb/tserver/tserver.proto";
@@ -126,6 +127,11 @@ service TabletServerService {
       returns (ClearAllMetaCachesOnServerResponsePB);
 
   rpc ClearUniverseUuid(ClearUniverseUuidRequestPB) returns (ClearUniverseUuidResponsePB);
+
+  rpc AcquireObjectLocks(AcquireObjectLockRequestPB)
+      returns (AcquireObjectLockResponsePB);
+  rpc ReleaseObjectLocks(ReleaseObjectLockRequestPB)
+      returns (ReleaseObjectLockResponsePB);
 }
 
 // Note: Either among transactions_by_tablet or transaction_ids should be set. Both the fields

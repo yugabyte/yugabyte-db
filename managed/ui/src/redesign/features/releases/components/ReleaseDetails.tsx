@@ -9,6 +9,8 @@ import { DeploymentStatus } from './ReleaseDeploymentStatus';
 import { ImportedArchitecture } from './ImportedArchitecture';
 import { InUseUniverses } from './InUseUniverses';
 import { YBButton } from '../../../components';
+import { hasNecessaryPerm } from '../../rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../rbac/ApiAndUserPermMapping';
 import { ModalTitle, ReleasePlatformArchitecture, ReleaseState, Releases } from './dtos';
 import { ybFormatDate, YBTimeFormats } from '../../../helpers/DateUtils';
 import { isNonEmptyString } from '../../../../utils/ObjectUtils';
@@ -270,7 +272,9 @@ export const ReleaseDetails = ({
           <YBButton
             className={helperClasses.deleteButton}
             variant="secondary"
-            disabled={data?.universes?.length > 0}
+            disabled={
+              data?.universes?.length > 0 || !hasNecessaryPerm(ApiPermissionMap.MODIFY_YBDB_RELEASE)
+            }
             size="large"
             startIcon={<Delete />}
             onClick={() => {
@@ -283,7 +287,9 @@ export const ReleaseDetails = ({
           <YBButton
             variant="secondary"
             size="large"
-            disabled={data?.universes?.length > 0}
+            disabled={
+              data?.universes?.length > 0 || !hasNecessaryPerm(ApiPermissionMap.MODIFY_YBDB_RELEASE)
+            }
             onClick={() => {
               onDisableReleaseButtonClick();
               onSidePanelClose();
@@ -343,7 +349,10 @@ export const ReleaseDetails = ({
             <TabPanel value={ReleaseDetailsTab.IMPORTED_ARCHITECTURE}>
               <YBButton
                 className={helperClasses.floatBoxRight}
-                disabled={data?.artifacts.length >= 3}
+                disabled={
+                  data?.artifacts.length >= 3 ||
+                  !hasNecessaryPerm(ApiPermissionMap.MODIFY_YBDB_RELEASE)
+                }
                 variant="secondary"
                 size="large"
                 startIcon={<Add />}
@@ -357,7 +366,10 @@ export const ReleaseDetails = ({
               </YBButton>
               <Box mt={8}>
                 <ImportedArchitecture
-                  isDisabled={data?.universes?.length > 0}
+                  isDisabled={
+                    data?.universes?.length > 0 ||
+                    !hasNecessaryPerm(ApiPermissionMap.MODIFY_YBDB_RELEASE)
+                  }
                   artifacts={data?.artifacts}
                   onSetModalTitle={onSetModalTitle}
                   onSidePanelClose={onSidePanelClose}

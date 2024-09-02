@@ -14,24 +14,11 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-  <li >
-    <a href="../point-in-time-recovery-ysql/" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-  <li >
-    <a href="../point-in-time-recovery-ycql/" class="nav-link">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-</ul>
+{{<api-tabs>}}
 
 Point-in-time recovery (PITR) allows you to restore the state of your cluster's data and [certain types](../../../manage/backup-restore/point-in-time-recovery/#limitations) of metadata from a specific point in time. This can be relative, such as "three hours ago", or an absolute timestamp.
 
-For more information, see [Point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/#features). For details on the `yb-admin` commands, refer to the [Backup and snapshot commands](../../../admin/yb-admin/#backup-and-snapshot-commands) section of the yb-admin documentation.
+For more information, see [Point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/). For details on the yb-admin commands, refer to the [Backup and snapshot commands](../../../admin/yb-admin/#backup-and-snapshot-commands) section of the yb-admin documentation.
 
 The following examples show how you can use the PITR feature by creating a database and populating it, creating a snapshot schedule, and restoring from a snapshot on the schedule.
 

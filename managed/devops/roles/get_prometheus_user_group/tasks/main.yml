@@ -13,7 +13,7 @@
   failed_when: False
 
 - set_fact:
-    node_exporter_group: "prometheus"
+    node_exporter_group: "yugabyte"
   when: user_group.rc != 0
 
 - set_fact:

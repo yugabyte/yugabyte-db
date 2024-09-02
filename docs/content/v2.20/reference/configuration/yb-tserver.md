@@ -45,6 +45,10 @@ Displays help on all flags.
 
 Displays help on modules named by the specified flag value.
 
+## All flags
+
+The following sections describe the flags considered relevant to configuring YugabyteDB for production deployments. For a list of all flags, see [All YB-TServer flags](../all-flags-yb-tserver/).
+
 ## General flags
 
 ##### --flagfile
@@ -732,6 +736,22 @@ Default: `-1` (disables logging statement durations)
 
 Specifies the lowest YSQL message level to log.
 
+##### --ysql_output_buffer_size
+
+Size of YSQL layer output buffer, in bytes. YSQL buffers query responses in this output buffer until either a buffer flush is requested by the client or the buffer overflows.
+
+As long as no data has been flushed from the buffer, the database can retry queries on retryable errors. For example, you can increase the size of the buffer so that YSQL can retry [read restart errors](../../../architecture/transactions/read-restart-error).
+
+Default: `262144` (256kB, type: int32)
+
+##### --ysql_yb_bnl_batch_size
+
+Sets the size of a tuple batch that's taken from the outer side of a [batched nested loop (BNL) join](../../../explore/ysql-language-features/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
+
+See also the [yb_bnl_batch_size](#yb-bnl-batch-size) configuration parameter. If both flag and parameter are set, the parameter takes precedence.
+
+Default: 1024
+
 ### YCQL
 
 The following flags support the use of the [YCQL API](../../../api/ycql/):
@@ -1362,13 +1382,13 @@ Default: `1GB`
 
 ##### yb_bnl_batch_size
 
-Set the size of a tuple batch that's taken from the outer side of a [YB Batched Nested Loop (BNL) Join](../../../explore/ysql-language-features/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
+Set the size of a tuple batch that's taken from the outer side of a [batched nested loop (BNL) join](../../../explore/ysql-language-features/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
 
 Default: 1024
 
 ##### yb_enable_batchednl
 
-Enable or disable the query planner's use of Batched Nested Loop Join.
+Enable or disable the query planner's use of batched nested loop join.
 
 Default: true
 

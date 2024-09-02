@@ -21,13 +21,21 @@ You can connect to the database on a universe in the following ways:
 
 ## Download the universe certificate
 
-If the universe uses encryption in transit, to connect you need to first download the universe TLS root certificate. Do the following:
+If the universe uses Client-to-Node encryption in transit, to connect you need to first download the universe TLS certificate. Do the following:
 
-1. Navigate to **Configs > Security > Encryption in Transit**.
+1. Navigate to **Integrations > Security > Encryption in Transit**.
 
-1. Find the certificate for your universe in the list and click **Actions** and download the certificate.
+1. Find your universe in the list.
 
-For more information on connecting to TLS-enabled universes, refer to [Connect to clusters](../../security/enable-encryption-in-transit/#connect-to-clusters).
+1. Click **Actions** and choose **Download Root CA Cert**.
+
+    This downloads the `root.crt` file.
+
+For information on connecting using a client shell using this certificate, see [Connect from your desktop](#connect-from-your-desktop).
+
+To use TLS to connect an application, refer to the [driver documentation](../../../reference/drivers/). If you are using a PostgreSQL JDBC driver to connect to YugabyteDB, you can also refer to [Configuring the client](https://jdbc.postgresql.org/documentation/head/ssl-client.html) for more details.
+
+If you are using PostgreSQL/YugabyteDB JDBC driver with SSL, you need to convert the certificates to DER format. To do this, you need to perform only steps 6 and 7 from [Set up SSL certificates for Java applications](../../../reference/drivers/java/postgres-jdbc-reference/#set-up-ssl-certificates-for-java-applications) section after downloading the certificates.
 
 ## Connect to a universe node
 
@@ -118,21 +126,9 @@ curl --location --request PUT 'http://<ip>/api/v1/customers/<customer_uuid>/runt
 
 ### Prerequisites
 
-- If you are using a Yugabyte client shell, ensure you are running the latest versions of the shells (Yugabyte Client 2.6 or later).
+- If you are using [ysqlsh](../../../admin/ysqlsh/) or [ycqlsh](../../../admin/ycqlsh/), ensure you are running the latest versions of the shells.
 
-    You can download using the following command on Linux or macOS:
-
-    ```sh
-    $ curl -sSL https://downloads.yugabyte.com/get_clients.sh | bash
-    ```
-
-    Windows client shells require Docker. For example:
-
-    ```sh
-    docker run -it yugabytedb/yugabyte-client ysqlsh -h <hostname> -p <port>
-    ```
-
-- If your universe has TLS/SSL (encryption in-transit) enabled, you need to [download the certificate](#download-the-universe-certificate) to your computer.
+- If your universe has Client-to-Node encryption in transit enabled, you need to [download the certificate](#download-the-universe-certificate) to your computer.
 
 - The host address of an endpoint on your universe.
 
@@ -181,7 +177,7 @@ Replace the following:
 - `<HOST_ADDRESS>` with the IP address of an endpoint on your universe.
 - `<DB USER>` with your database username.
 - `yugabyte` with the database name, if you're connecting to a database other than the default (yugabyte).
-- `<ROOT_CERT_PATH>` with the path to the root certificate on your computer.
+- `<ROOT_CERT_PATH>` with the path to the universe root certificate you downloaded to your computer.
 
 To load sample data and explore an example using ysqlsh, follow the instructions in [Install the Retail Analytics sample database](../../../sample-data/retail-analytics/#install-the-retail-analytics-sample-database).
 
@@ -203,7 +199,7 @@ Replace the following:
 
 - `<HOST_ADDRESS>` with the IP address of an endpoint on your universe.
 - `<DB USER>` with your database username.
-- `<ROOT_CERT_PATH>` with the path to the root certificate on your computer.
+- `<ROOT_CERT_PATH>` with the path to the universe root certificate you downloaded to your computer.
 
   </div>
 
@@ -224,7 +220,7 @@ Replace the following:
 - `<HOST_ADDRESS>` with the IP address of an endpoint on your universe.
 - `<DB USER>` with your database username.
 - `yugabyte` with the database name, if you're connecting to a database other than the default (yugabyte).
-- `<ROOT_CERT_PATH>` with the path to the root certificate on your computer.
+- `<ROOT_CERT_PATH>` with the path to the universe root certificate you downloaded to your computer.
 
   </div>
 
@@ -243,7 +239,7 @@ To connect, follow the client's configuration steps for PostgreSQL or Cassandra,
 
 Your client may also require the use of the [universe certificate](#download-the-universe-certificate).
 
-For information on using popular third-party tools with YugabyteDB, see [Third party tools](../../../tools/).
+For information on using popular third-party tools with YugabyteDB, see [Third party tools](/preview/integrations/tools/).
 
 ## Run workloads
 
@@ -358,6 +354,7 @@ ycqlsh> SELECT * FROM ybdemo_keyspace.cassandrakeyvalue LIMIT 5;
 
 ## Learn more
 
+- [Securing YugabyteDB: Client-to-Server Encryption in Transit](https://www.yugabyte.com/blog/securing-yugabytedb-client-to-server-encryption/#verification-of-server-certificates)
 - [ysqlsh](../../../admin/ysqlsh/) — Overview of the command line interface (CLI), syntax, and commands.
 - [YSQL API](../../../api/ysql/) — Reference for supported YSQL statements, data types, functions, and operators.
 - [ycqlsh](../../../admin/ycqlsh/) — Overview of the command line interface (CLI), syntax, and commands.

@@ -229,18 +229,6 @@ Connect to your YugabyteDB cluster using the YugabyteDB [ysqlsh](../../admin/ysq
 
 Before you can connect using a client shell, you need to add your computer to the cluster IP allow list. Refer to [Assign IP Allow Lists](../../yugabyte-cloud/cloud-secure-clusters/add-connections/).
 
-You must be running the latest versions of the client shells (Yugabyte Client 2.6 or later), which you can download using the following command on Linux or macOS:
-
-```sh
-$ curl -sSL https://downloads.yugabyte.com/get_clients.sh | bash
-```
-
-Windows client shells require Docker:
-
-```sh
-docker run -it yugabytedb/yugabyte-client ysqlsh -h <hostname> -p <port>
-```
-
   {{% /tab %}}
 
   {{% tab header="psql" lang="psql" %}}
@@ -254,7 +242,7 @@ psql --host=<HOST_ADDRESS> --port=5433 --username=<DB USER> \
 --set=sslrootcert=<ROOT_CERT_PATH>
 ```
 
-For detailed steps for configuring other popular third party tools, see [Third party tools](../../tools/).
+For detailed steps for configuring other popular third party tools, see [GUI clients](/preview/integrations/tools/).
 
   {{% /tab %}}
 

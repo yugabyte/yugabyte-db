@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -30,12 +31,15 @@ import lombok.extern.slf4j.Slf4j;
 @Retryable
 public class UpdateKubernetesDiskSize extends EditKubernetesUniverse {
 
+  private YbcManager ybcManager;
+
   @Inject
   protected UpdateKubernetesDiskSize(
       BaseTaskDependencies baseTaskDependencies,
       KubernetesManagerFactory kubernetesManagerFactory,
-      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
-    super(baseTaskDependencies, kubernetesManagerFactory, operatorStatusUpdaterFactory);
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory,
+      YbcManager ybcManager) {
+    super(baseTaskDependencies, kubernetesManagerFactory, operatorStatusUpdaterFactory, ybcManager);
   }
 
   @Override

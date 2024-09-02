@@ -859,7 +859,6 @@ class TabletBootstrap {
         append_pool_,
         allocation_pool_,
         log_sync_pool_,
-        metadata.cdc_min_replicated_index(),
         &log_,
         data_.pre_log_rollover_callback,
         new_segment_allocation_callback,
@@ -1842,6 +1841,9 @@ class TabletBootstrap {
     auto* req = replicate_msg->mutable_truncate();
 
     TruncateOperation operation(tablet_, req);
+
+    operation.set_op_id(OpId::FromPB(replicate_msg->id()));
+    operation.set_hybrid_time(HybridTime::FromPB(replicate_msg->hybrid_time()));
 
     Status s = tablet_->Truncate(&operation);
 

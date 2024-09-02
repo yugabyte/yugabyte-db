@@ -71,7 +71,7 @@ Note that YugabyteDB Anywhere does not manage the key ring and deleting the KMS 
 
 You can create a KMS configuration that uses Google Cloud KMS, as follows:
 
-1. Use the YugabyteDB Anywhere UI to navigate to **Configs > Security > Encryption At Rest** to access the list of existing configurations.
+1. Navigate to **Configs > Security > Encryption At Rest** to access the list of existing configurations.
 
 1. Click **Create New Config**.
 
@@ -93,3 +93,25 @@ You can create a KMS configuration that uses Google Cloud KMS, as follows:
     Your new configuration should appear in the list of configurations. A saved KMS configuration can only be deleted if it is not in use by any existing universes.
 
 1. Optionally, to confirm that the information is correct, click **Show details**. Note that sensitive configuration values are displayed partially masked.
+
+## Modify a KMS configuration
+
+You can modify an existing KMS configuration as follows:
+
+1. Navigate to **Configs > Security > Encryption At Rest** to open a list of existing configurations.
+
+1. Find the configuration you want to modify and click its corresponding **Actions > Edit Configuration**.
+
+1. Provide new values for the **Vault Address** and **Secret Token** fields.
+
+1. Click **Save**.
+
+1. Optionally, to confirm that the information is correct, click **Show details** or **Actions > Details**.
+
+## Delete a KMS configuration
+
+{{<note title="Note">}}
+You can only delete a KMS configuration if it has never been used by any universes.
+{{</note>}}
+
+To delete a KMS configuration, click its corresponding **Actions > Delete Configuration**.

@@ -253,7 +253,14 @@ ERROR:  constraint "checkb2" for table "atacc1" does not exist
 alter table atacc1 drop constraint if exists checkb3;
 delete from atacc1 where b = 5;
 -- test rename
-alter table atacc1 rename b to e;
+alter table atacc1 rename b to d; -- should fail: d already exists
+ERROR:  column "d" of relation "atacc1" already exists
+alter table atacc1 rename b to f;
+alter table atacc1 rename column f to e;
+alter table if exists doesnt_exist_tab rename b to f;
+NOTICE:  relation "doesnt_exist_tab" does not exist, skipping
+alter table if exists doesnt_exist_tab rename column f to e;
+NOTICE:  relation "doesnt_exist_tab" does not exist, skipping
 select * from atacc1;
  e  | c  | d
 ----+----+----
@@ -910,16 +917,18 @@ SELECT * FROM demo;
  1
 (2 rows)
 
--- Test that an attemp to drop primary key column with sequence generator
+-- Test dropping a primary key column with sequence generator
 -- does not delete the associated sequence.
 CREATE TABLE tbl_serial_primary_key (k serial PRIMARY KEY, v text);
 ALTER TABLE tbl_serial_primary_key DROP COLUMN k;
-ERROR:  cannot drop key column "k"
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 INSERT INTO tbl_serial_primary_key(v) VALUES ('ABC');
 SELECT * FROM tbl_serial_primary_key;
- k |  v
----+-----
- 1 | ABC
+  v  
+-----
+ ABC
 (1 row)
 
 DROP TABLE tbl_serial_primary_key;

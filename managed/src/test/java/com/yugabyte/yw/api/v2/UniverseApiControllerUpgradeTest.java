@@ -18,6 +18,9 @@ import com.yugabyte.yba.v2.client.ApiClient;
 import com.yugabyte.yba.v2.client.ApiException;
 import com.yugabyte.yba.v2.client.Configuration;
 import com.yugabyte.yba.v2.client.api.UniverseApi;
+import com.yugabyte.yba.v2.client.models.UniverseCertRotateSpec;
+import com.yugabyte.yba.v2.client.models.UniverseEditEncryptionInTransit;
+import com.yugabyte.yba.v2.client.models.UniverseEditKubernetesOverrides;
 import com.yugabyte.yba.v2.client.models.UniverseRollbackUpgradeReq;
 import com.yugabyte.yba.v2.client.models.UniverseSoftwareFinalizeImpactedXCluster;
 import com.yugabyte.yba.v2.client.models.UniverseSoftwareUpgradeFinalize;
@@ -32,11 +35,15 @@ import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.controllers.UniverseControllerTestBase;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
+import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
+import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.SystemdUpgradeParams;
 import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
+import com.yugabyte.yw.forms.TlsToggleParams;
+import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Release;
 import com.yugabyte.yw.models.ReleaseArtifact;
@@ -45,6 +52,8 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.FinalizeUpgradeInfoResponse;
 import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoResponse;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
@@ -336,5 +345,81 @@ public class UniverseApiControllerUpgradeTest extends UniverseControllerTestBase
     SystemdUpgradeParams params = captor.getValue();
     assertTrue(10000 == params.sleepAfterTServerRestartMillis);
     assertEquals(taskUUID, resp.getTaskUuid());
+  }
+
+  @Test
+  public void testV2TlsToggleAll() throws ApiException {
+    UUID taskUUID = UUID.randomUUID();
+    when(mockUpgradeUniverseHandler.toggleTls(any(), eq(customer), eq(universe)))
+        .thenReturn(taskUUID);
+    UniverseEditEncryptionInTransit req = new UniverseEditEncryptionInTransit();
+    req.setSleepAfterTserverRestartMillis(10000);
+    req.setSleepAfterMasterRestartMillis(90000);
+    req.setNodeToNode(true);
+    req.setClientToNode(false);
+    req.setRollingUpgrade(true);
+    UUID nodeCert = UUID.randomUUID();
+    req.setRootCa(nodeCert);
+    ;
+    YBATask resp =
+        apiClient.encryptionInTransitToggle(customer.getUuid(), universe.getUniverseUUID(), req);
+    ArgumentCaptor<TlsToggleParams> captor = ArgumentCaptor.forClass(TlsToggleParams.class);
+    verify(mockUpgradeUniverseHandler).toggleTls(captor.capture(), eq(customer), eq(universe));
+    TlsToggleParams params = captor.getValue();
+    assertTrue(10000 == params.sleepAfterTServerRestartMillis);
+    assertTrue(90000 == params.sleepAfterMasterRestartMillis);
+    assertEquals(nodeCert, params.rootCA);
+    assertTrue(params.enableNodeToNodeEncrypt);
+    assertFalse(params.enableClientToNodeEncrypt);
+    assertFalse(params.rootAndClientRootCASame);
+    assertEquals(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, params.upgradeOption);
+    assertEquals(taskUUID, resp.getTaskUuid());
+  }
+
+  @Test
+  public void testV2CertRotation() throws ApiException {
+    UUID taskUUID = UUID.randomUUID();
+    when(mockUpgradeUniverseHandler.rotateCerts(any(), eq(customer), eq(universe)))
+        .thenReturn(taskUUID);
+    UniverseCertRotateSpec req = new UniverseCertRotateSpec();
+    req.setRollingUpgrade(true);
+    UUID clientCert = UUID.randomUUID();
+    UUID nodeCert = UUID.randomUUID();
+    req.setRootCa(nodeCert);
+    req.setClientRootCa(clientCert);
+    YBATask resp =
+        apiClient.encryptionInTransitCertRotate(
+            customer.getUuid(), universe.getUniverseUUID(), req);
+    ArgumentCaptor<CertsRotateParams> captor = ArgumentCaptor.forClass(CertsRotateParams.class);
+    verify(mockUpgradeUniverseHandler).rotateCerts(captor.capture(), eq(customer), eq(universe));
+    CertsRotateParams params = captor.getValue();
+    assertEquals(UpgradeTaskParams.UpgradeOption.ROLLING_UPGRADE, params.upgradeOption);
+    assertEquals(taskUUID, resp.getTaskUuid());
+    assertEquals(clientCert, params.getClientRootCA());
+    assertEquals(nodeCert, params.rootCA);
+    assertFalse(params.rootAndClientRootCASame);
+  }
+
+  @Test
+  public void testV2KubernetesOverrides() throws ApiException {
+    UUID taskUUID = UUID.randomUUID();
+    when(mockUpgradeUniverseHandler.upgradeKubernetesOverrides(any(), eq(customer), eq(universe)))
+        .thenReturn(taskUUID);
+    UniverseEditKubernetesOverrides req = new UniverseEditKubernetesOverrides();
+    req.setOverrides("my_overrides");
+    Map<String, String> azOverrides = new HashMap<String, String>();
+    azOverrides.put("az1", "az1_overrides");
+    req.setAzOverrides(azOverrides);
+    YBATask resp =
+        apiClient.editKubernetesOverrides(customer.getUuid(), universe.getUniverseUUID(), req);
+    ArgumentCaptor<KubernetesOverridesUpgradeParams> captor =
+        ArgumentCaptor.forClass(KubernetesOverridesUpgradeParams.class);
+    verify(mockUpgradeUniverseHandler)
+        .upgradeKubernetesOverrides(captor.capture(), eq(customer), eq(universe));
+    KubernetesOverridesUpgradeParams params = captor.getValue();
+    assertEquals(taskUUID, resp.getTaskUuid());
+    assertEquals("my_overrides", params.universeOverrides);
+    assertTrue(params.azOverrides.containsKey("az1"));
+    assertEquals("az1_overrides", params.azOverrides.get("az1"));
   }
 }

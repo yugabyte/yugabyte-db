@@ -14,7 +14,8 @@ import {
   InstanceTag,
   InstanceTags,
   MasterPlacementMode,
-  NodeDetails
+  NodeDetails,
+  CommunicationPorts
 } from './dto';
 import { UniverseFormContextState } from '../UniverseFormContainer';
 import {
@@ -399,7 +400,6 @@ export const createUniverse = async ({
     //patch - end
 
     // now everything is ready to create universe
-    console.log(finalPayload, 'Final');
     const response = await api.createUniverse(finalPayload);
 
     //redirect to task page
@@ -450,7 +450,9 @@ export const getDiffClusterData = (currentClusterConfig?: Cluster, newClusterCon
       currentNodeCount: 0,
       newNodeCount: 0,
       oldNumReadReplicas: 0,
-      newNumReadReplicas: 0
+      newNumReadReplicas: 0,
+      oldInstanceTags: null,
+      newInstanceTags: null
     };
   }
 
@@ -463,7 +465,9 @@ export const getDiffClusterData = (currentClusterConfig?: Cluster, newClusterCon
     currentNodeCount: currentClusterConfig?.userIntent?.numNodes,
     newNodeCount: newClusterConfig?.userIntent?.numNodes,
     oldNumReadReplicas: currentClusterConfig?.userIntent?.replicationFactor,
-    newNumReadReplicas: newClusterConfig?.userIntent?.replicationFactor
+    newNumReadReplicas: newClusterConfig?.userIntent?.replicationFactor,
+    oldInstanceTags: currentClusterConfig?.userIntent?.instanceTags,
+    newInstanceTags: newClusterConfig?.userIntent?.instanceTags
   };
 };
 
@@ -511,7 +515,7 @@ export const getKubernetesDiffClusterData = (
   };
 };
 
-export const isVerionPGSupported = (dbVersion: string) => {
+export const isVersionPGSupported = (dbVersion: string) => {
   return (
     compareYBSoftwareVersions({
       versionA: dbVersion,
@@ -523,4 +527,21 @@ export const isVerionPGSupported = (dbVersion: string) => {
       }
     }) >= 0
   );
+};
+
+export const getChangedPorts = (
+  oldCommunicationPorts: CommunicationPorts,
+  newCommunicationPorts: CommunicationPorts
+) => {
+  const oldPorts = {};
+  const newPorts = {};
+
+  Object.keys(newCommunicationPorts).forEach((key) => {
+    if (JSON.stringify(oldCommunicationPorts[key]) !== JSON.stringify(newCommunicationPorts[key])) {
+      newPorts[key] = newCommunicationPorts[key];
+      oldPorts[key] = oldCommunicationPorts[key];
+    }
+  });
+
+  return { oldPorts, newPorts };
 };

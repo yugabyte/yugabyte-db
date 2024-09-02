@@ -294,6 +294,7 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
       AzureCloudInfo info,
       ArrayNode regionArrayJson,
       SetMultimap<String, String> validationErrorsMap) {
+    String baseResourceGroup = resourceGroup;
     try {
       if (subscriptionID.equals(info.azuNetworkSubscriptionId)) {
         AzureCloudInfo cloudinfo =
@@ -304,10 +305,49 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
       int regionIndex = 0;
 
       for (Region region : provider.getRegions()) {
+        resourceGroup = baseResourceGroup;
         AzureRegionCloudInfo regionInfo = region.getDetails().cloudInfo.azu;
         JsonNode regionJson = regionArrayJson.get(regionIndex++);
         JsonNode cloudInfoJson = regionJson.get("details").get("cloudInfo").get("azu");
         String securityGroup = regionInfo.getSecurityGroupId();
+
+        if (regionInfo.getAzuRGOverride() != null) {
+          resourceGroup = regionInfo.getAzuRGOverride();
+          AzureCloudInfo.AzureCloudInfoBuilder cloudInfoBuilder =
+              info.toBuilder().azuRG(resourceGroup);
+          AZUResourceGroupApiClient client =
+              new AZUResourceGroupApiClient(cloudInfoBuilder.build());
+          azure = client.getAzureResourceManager();
+
+          if (!azure.resourceGroups().contain(resourceGroup)) {
+            String resourceGroupOverrideJsonPath =
+                cloudInfoJson.get("azuRGOverride").get("jsonPath").asText();
+            String err =
+                String.format(
+                    "Resource group %s not found in Subscription %s",
+                    resourceGroup, subscriptionID);
+            validationErrorsMap.put(resourceGroupOverrideJsonPath, err);
+          }
+        }
+
+        if (regionInfo.getAzuNetworkRGOverride() != null) {
+          resourceGroup = regionInfo.getAzuNetworkRGOverride();
+          AzureCloudInfo.AzureCloudInfoBuilder cloudInfoBuilder =
+              info.toBuilder().azuRG(resourceGroup);
+          AZUResourceGroupApiClient client =
+              new AZUResourceGroupApiClient(cloudInfoBuilder.build());
+          azure = client.getAzureResourceManager();
+
+          if (!azure.resourceGroups().contain(resourceGroup)) {
+            String networkGroupOverrideJsonPath =
+                cloudInfoJson.get("azuNetworkRGOverride").get("jsonPath").asText();
+            String err =
+                String.format(
+                    "Resource group %s not found in Subscription %s",
+                    resourceGroup, subscriptionID);
+            validationErrorsMap.put(networkGroupOverrideJsonPath, err);
+          }
+        }
 
         // verify security group exists
         if (securityGroup != null) {

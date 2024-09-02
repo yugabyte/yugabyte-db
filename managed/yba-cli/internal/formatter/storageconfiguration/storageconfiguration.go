@@ -45,6 +45,27 @@ func NewStorageConfigFormat(source string) formatter.Format {
 
 // Write renders the context for a list of StorageConfigs
 func Write(ctx formatter.Context, storageConfigs []ybaclient.CustomerConfigUI) error {
+	// Check if the format is JSON or Pretty JSON
+	if ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON() {
+		// Marshal the slice of storage configurations into JSON
+		var output []byte
+		var err error
+
+		if ctx.Format.IsPrettyJSON() {
+			output, err = json.MarshalIndent(storageConfigs, "", "  ")
+		} else {
+			output, err = json.Marshal(storageConfigs)
+		}
+
+		if err != nil {
+			logrus.Errorf("Error marshaling storage configurations to json: %v\n", err)
+			return err
+		}
+
+		// Write the JSON output to the context
+		_, err = ctx.Output.Write(output)
+		return err
+	}
 	render := func(format func(subContext formatter.SubContext) error) error {
 		for _, storageConfig := range storageConfigs {
 			err := format(&Context{s: storageConfig})

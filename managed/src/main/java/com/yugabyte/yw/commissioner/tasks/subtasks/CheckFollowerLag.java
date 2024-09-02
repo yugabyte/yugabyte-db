@@ -170,7 +170,7 @@ public class CheckFollowerLag extends ServerSubTaskBase {
   /*
    * Returns the largest follower lag in ms along with the tablet id associated to it.
    */
-  private static Pair<String, Long> maxFollowerLag(Map<String, Long> tabletFollowerLagMap) {
+  public static Pair<String, Long> maxFollowerLag(Map<String, Long> tabletFollowerLagMap) {
     Long maxFollowerLagMs = 0L;
     String maxFollowerLagTablet = "";
     for (Map.Entry<String, Long> entry : tabletFollowerLagMap.entrySet()) {

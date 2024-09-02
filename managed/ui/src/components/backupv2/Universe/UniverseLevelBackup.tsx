@@ -9,12 +9,13 @@
 
 import { FC, useState } from 'react';
 import { DropdownButton, MenuItem, Tab } from 'react-bootstrap';
+import { useQuery } from 'react-query';
 import { withRouter } from 'react-router';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { BackupList, Restore } from '..';
 import { YBTabsPanel } from '../../panels';
 import { ScheduledBackup } from '../scheduled/ScheduledBackup';
-import { BackupAndRestoreBanner } from '../restore/BackupAndRestoreBanner';
 import { PointInTimeRecovery } from '../pitr/PointInTimeRecovery';
 import { isYbcInstalledInUniverse, getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { BackupThrottleParameters } from '../components/BackupThrottleParameters';
@@ -24,13 +25,12 @@ import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPer
 import { Universe } from '../../../redesign/helpers/dtos';
 import { compareYBSoftwareVersions } from '../../../utils/universeUtilsTyped';
 
-import './UniverseLevelBackup.scss';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
-import { useQuery } from 'react-query';
 import { api } from '../../../redesign/helpers/api';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
-import { useTranslation } from 'react-i18next';
+import ScheduledBackupList from '../../../redesign/features/backup/scheduled/ScheduledBackupList';
 
+import './UniverseLevelBackup.scss';
 interface UniverseBackupProps {
   params: {
     uuid: string;
@@ -85,11 +85,12 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
     (featureFlags.test.enableYbc || featureFlags.released.enableYbc) &&
     isYbcInstalledInUniverse(currentUniverse.data.universeDetails);
 
+  const isNewBackupPITREnabled = featureFlags.test.enableBackupPITR || featureFlags.released.enableBackupPITR;
+
   const allowedTasks = currentUniverse?.data?.allowedTasks;
 
   return (
     <>
-      <BackupAndRestoreBanner />
       {featureFlags.test.enableNewAdvancedRestoreModal ? (
         showAdvancedRestore && (
           <AdvancedRestoreNewModal
@@ -130,6 +131,13 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
           <Tab eventKey="backupSchedule" title="Scheduled Backup Policies" unmountOnExit>
             <ScheduledBackup universeUUID={uuid} allowedTasks={allowedTasks} />
           </Tab>
+          {
+            isNewBackupPITREnabled && (
+              <Tab eventKey="backupScheduleNew" title="Scheduled Backup Policies" unmountOnExit>
+                <ScheduledBackupList universeUUID={uuid} allowedTasks={allowedTasks} />
+              </Tab>
+            )
+          }
           {enablePITR && (
             <Tab eventKey="point-in-time-recovery" title="Point-in-time Recovery" unmountOnExit>
               <PointInTimeRecovery universeUUID={uuid} allowedTasks={allowedTasks} />

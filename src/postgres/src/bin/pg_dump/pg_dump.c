@@ -1096,7 +1096,6 @@ help(const char *progname)
 	printf(_("  --no-tablegroup-creations    do not dump tablegroup creations\n"));
 	printf(_("  --no-unlogged-table-data     do not dump unlogged table data\n"));
 	printf(_("  --quote-all-identifiers      quote all identifiers, even if not key words\n"));
-	printf(_("  --read-time=TIMEPOINT        dump data/schema as of provided TIMEPOINT. Takes linux timestamp in microseconds\n"));
 	printf(_("  --section=SECTION            dump named section (pre-data, data, or post-data)\n"));
 	printf(_("  --serializable-deferrable    wait until the dump can run without anomalies\n"));
 	printf(_("  --no-serializable-deferrable disable serializable-deferrable mode\n"
@@ -11382,8 +11381,7 @@ dumpCompositeType(Archive *fout, TypeInfo *tyinfo)
 		binary_upgrade_set_type_oids_by_type_oid(fout, q,
 												 tyinfo->dobj.catId.oid,
 												 false);
-		if (dopt->binary_upgrade)
-			binary_upgrade_set_pg_class_oids(fout, q, tyinfo->typrelid, false);
+		binary_upgrade_set_pg_class_oids(fout, q, tyinfo->typrelid, false);
 	}
 
 	qtypname = pg_strdup(fmtId(tyinfo->dobj.name));
@@ -15256,7 +15254,7 @@ dumpACL(Archive *fout, CatalogId objCatId, DumpId objDumpId,
 	if (sql->len > 0)
 	{
 		PQExpBuffer tag = createPQExpBuffer();
-		PQExpBuffer use_roles_sql;
+		PQExpBuffer yb_use_roles_sql;
 
 		if (subname)
 			appendPQExpBuffer(tag, "COLUMN %s.%s", name, subname);
@@ -15265,8 +15263,8 @@ dumpACL(Archive *fout, CatalogId objCatId, DumpId objDumpId,
 
 		if (dopt->include_yb_metadata)
 		{
-			use_roles_sql = createPQExpBuffer();
-			appendPQExpBuffer(use_roles_sql, "\\if :use_roles\n%s\\endif\n", sql->data);
+			yb_use_roles_sql = createPQExpBuffer();
+			appendPQExpBuffer(yb_use_roles_sql, "\\if :use_roles\n%s\\endif\n", sql->data);
 		}
 
 		ArchiveEntry(fout, nilCatalogId, createDumpId(),
@@ -15274,11 +15272,11 @@ dumpACL(Archive *fout, CatalogId objCatId, DumpId objDumpId,
 					 NULL,
 					 owner ? owner : "",
 					 false, "ACL", SECTION_NONE,
-					 dopt->include_yb_metadata ? use_roles_sql->data : sql->data,
+					 dopt->include_yb_metadata ? yb_use_roles_sql->data : sql->data,
 					 "", NULL, &(objDumpId), 1,
 					 NULL, NULL);
 		if (dopt->include_yb_metadata)
-			destroyPQExpBuffer(use_roles_sql);
+			destroyPQExpBuffer(yb_use_roles_sql);
 
 		destroyPQExpBuffer(tag);
 	}
@@ -15947,7 +15945,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 
 		appendPQExpBuffer(delq, "DROP VIEW %s;\n", qualrelname);
 
-		if (dopt->binary_upgrade)
+		if (dopt->binary_upgrade || dopt->include_yb_metadata)
 			binary_upgrade_set_pg_class_oids(fout, q,
 											 tbinfo->dobj.catId.oid, false);
 
@@ -16024,10 +16022,21 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 
 		appendPQExpBuffer(delq, "DROP %s %s;\n", reltypename, qualrelname);
 
-		if (dopt->binary_upgrade)
+		if (dopt->binary_upgrade || dopt->include_yb_metadata)
 		{
 			binary_upgrade_set_pg_class_oids(fout, q,
 											 tbinfo->dobj.catId.oid, false);
+			/*
+			 * We may create a primary key index as part of the CREATE TABLE
+			 * statement we generate here; accordingly, set things up so we
+			 * will set its OID correctly in binary update mode.
+			 */
+			if (tbinfo->primaryKeyIndex)
+			{
+				IndxInfo *index = tbinfo->primaryKeyIndex;
+				binary_upgrade_set_pg_class_oids(fout, q,
+												 index->dobj.catId.oid, true);
+			}
 		}
 
 		/* Get the table properties from YB, if relevant. */
@@ -16224,7 +16233,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			bool parent_has_primary_key = false;
 			if (tbinfo->ispartition)
 			{
-				TableInfo  *parentRel = tbinfo->parents[0];
+				TableInfo  *parentRel = parents[0];
 				parent_has_primary_key = parentRel->primaryKeyIndex;
 			}
 
@@ -16906,7 +16915,7 @@ dumpIndex(Archive *fout, IndxInfo *indxinfo)
 		int			nstatcols;
 		int			nstatvals;
 
-		if (dopt->binary_upgrade)
+		if (dopt->binary_upgrade || dopt->include_yb_metadata)
 			binary_upgrade_set_pg_class_oids(fout, q,
 											 indxinfo->dobj.catId.oid, true);
 
@@ -17132,7 +17141,7 @@ dumpConstraint(Archive *fout, ConstraintInfo *coninfo)
 			exit_horribly(NULL, "missing index for constraint \"%s\"\n",
 						  coninfo->dobj.name);
 
-		if (dopt->binary_upgrade)
+		if (dopt->binary_upgrade || dopt->include_yb_metadata)
 			binary_upgrade_set_pg_class_oids(fout, q,
 											 indxinfo->dobj.catId.oid, true);
 
@@ -17634,9 +17643,8 @@ dumpSequence(Archive *fout, TableInfo *tbinfo)
 
 	if (dopt->binary_upgrade || dopt->include_yb_metadata)
 	{
-		if (dopt->binary_upgrade)
-			binary_upgrade_set_pg_class_oids(fout, query,
-											 tbinfo->dobj.catId.oid, false);
+		binary_upgrade_set_pg_class_oids(fout, query,
+										 tbinfo->dobj.catId.oid, false);
 		binary_upgrade_set_type_oids_by_rel_oid(fout, query,
 												tbinfo->dobj.catId.oid);
 	}

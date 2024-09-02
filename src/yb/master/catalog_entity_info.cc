@@ -87,7 +87,7 @@ string TabletReplica::ToString() const {
       "full_compaction_state: $7, "
       "last_full_compaction_time: $8, "
       "time since update: $9ms }",
-      ts_desc->permanent_uuid(),
+      ts_desc->id(),
       tablet::RaftGroupStatePB_Name(state),
       PeerRole_Name(role),
       consensus::PeerMemberType_Name(member_type),
@@ -277,11 +277,11 @@ void TabletInfo::UpdateReplicaLocations(const TabletReplica& replica) {
   // Make a new shared_ptr, copying the data, to ensure we don't race against access to data from
   // clients that already have the old shared_ptr.
   replica_locations_ = std::make_shared<TabletReplicaMap>(*replica_locations_);
-  auto it = replica_locations_->find(replica.ts_desc->permanent_uuid());
+  auto it = replica_locations_->find(replica.ts_desc->id());
   if (it == replica_locations_->end()) {
     LOG(INFO) << Format("TS $0 reported replica $1 but it does not exist in the replica map. "
         "Adding it to the map. Replica map before adding new replica: $2",
-        replica.ts_desc->permanent_uuid(), replica, replica_locations_);
+        replica.ts_desc->id(), replica, replica_locations_);
     return;
   }
   it->second.UpdateFrom(replica);
@@ -931,7 +931,6 @@ TabletInfoPtr TableInfo::GetColocatedUserTablet() const {
   if (!tablets_.empty()) {
     return tablets_.begin()->second.lock();
   }
-  LOG(INFO) << "Colocated Tablet not found for table " << name();
   return nullptr;
 }
 
@@ -1153,14 +1152,6 @@ bool NamespaceInfo::colocated() const {
 
 string NamespaceInfo::ToString() const {
   return Substitute("$0 [id=$1]", name(), namespace_id_);
-}
-
-uint32_t NamespaceInfo::FetchAndIncrementCloneSeqNo() {
-  auto lock = LockForWrite();
-  uint32_t new_clone_request_seq_no = lock->pb.clone_request_seq_no() + 1;
-  lock.mutable_data()->pb.set_clone_request_seq_no(new_clone_request_seq_no);
-  lock.Commit();
-  return new_clone_request_seq_no;
 }
 
 // ================================================================================================

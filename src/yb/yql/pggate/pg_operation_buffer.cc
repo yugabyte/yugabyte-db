@@ -152,8 +152,8 @@ struct MetricContext {
 
 class FlushFuture {
  public:
-  FlushFuture(PerformFuture&& future, MetricContext* context)
-      : future_(std::move(future)), context_(context) {}
+  FlushFuture(PgOperationBuffer::PerformFutureEx&& future, MetricContext* context)
+      : future_(std::move(future.first)), session_(future.second), context_(context) {}
 
   bool Ready() const {
     return future_.Ready();
@@ -166,7 +166,7 @@ class FlushFuture {
       PgWaitEventWatcher watcher(context_->wait_starter,
                                  ash::WaitStateCode::kStorageFlush);
       RETURN_NOT_OK(metrics.CallWithDuration(
-          [&future = future_] { return future.Get(); }, &duration));
+          [this] { return future_.Get(*session_); }, &duration));
     }
     metrics.FlushRequest(duration);
     return Status::OK();
@@ -174,6 +174,7 @@ class FlushFuture {
 
  private:
   PerformFuture future_;
+  PgSession* session_;
   MetricContext* context_;
 };
 

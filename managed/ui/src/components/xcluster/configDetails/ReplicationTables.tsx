@@ -42,6 +42,7 @@ import {
   MetricName,
   XClusterModalName,
   XClusterTableStatus,
+  XCLUSTER_UNDEFINED_LAG_NUMERIC_REPRESENTATION,
   XCLUSTER_UNIVERSE_TABLE_FILTERS
 } from '../constants';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
@@ -97,7 +98,7 @@ export function ReplicationTables(props: ReplicationTablesProps) {
   const [searchTokens, setSearchTokens] = useState<SearchToken[]>([]);
 
   const dispatch = useDispatch();
-  const { showModal, visibleModal } = useSelector((state: any) => state.modal);
+  const { visibleModal } = useSelector((state: any) => state.modal);
   const queryClient = useQueryClient();
   const theme = useTheme();
 
@@ -230,11 +231,10 @@ export function ReplicationTables(props: ReplicationTablesProps) {
   };
   const maxAcceptableLag = getStrictestReplicationLagAlertThreshold(alertConfigQuery.data);
   const tablesInConfig = augmentTablesWithXClusterDetails(
-    sourceUniverseTablesQuery.data,
     xClusterConfig.tableDetails,
     maxAcceptableLag,
     tableReplicationLagQuery.data?.async_replication_sent_lag?.data,
-    { includeDroppedTables: true }
+    { includeUnconfiguredTables: true, includeDroppedTables: true }
   );
 
   const sourceUniverse = sourceUniverseQuery.data;
@@ -252,7 +252,14 @@ export function ReplicationTables(props: ReplicationTablesProps) {
       <YBSmartSearchBar
         searchTokens={searchTokens}
         onSearchTokensChange={handleSearchTokenChange}
-        recognizedModifiers={['database', 'table']}
+        recognizedModifiers={[
+          'database',
+          'table',
+          'schema',
+          'sizeBytes',
+          'status',
+          'replicationLagMs'
+        ]}
         placeholder="Search tables..."
         autoExpandMinWidth={INPUT_FIELD_WIDTH_PX}
       />
@@ -316,7 +323,7 @@ export function ReplicationTables(props: ReplicationTablesProps) {
             Replication Status
           </TableHeaderColumn>
           <TableHeaderColumn
-            dataField="replicationlag"
+            dataField="replicationLag"
             dataFormat={(_, xClusterTable: XClusterReplicationTable) => {
               if (
                 tableReplicationLagQuery.isLoading ||
@@ -337,7 +344,10 @@ export function ReplicationTables(props: ReplicationTablesProps) {
 
               const formattedLag = formatLagMetric(xClusterTable.replicationLag);
 
-              if (xClusterTable.replicationLag === undefined) {
+              if (
+                xClusterTable.replicationLag === undefined ||
+                xClusterTable.replicationLag === XCLUSTER_UNDEFINED_LAG_NUMERIC_REPRESENTATION
+              ) {
                 return <span className="replication-lag-value warning">{formattedLag}</span>;
               }
 
@@ -455,7 +465,7 @@ export function ReplicationTables(props: ReplicationTablesProps) {
 /**
  * Fields to do substring search on if search token modifier is not specified.
  */
-const SUBSTRING_SEARCH_FIELDS = ['table', 'database'];
+const SUBSTRING_SEARCH_FIELDS = ['table', 'database', 'schema', 'status'];
 
 const isTableMatchedBySearchTokens = (
   table: XClusterReplicationTable,
@@ -463,7 +473,11 @@ const isTableMatchedBySearchTokens = (
 ) => {
   const candidate = {
     ...(table.status !== XClusterTableStatus.DROPPED && {
-      database: { value: table.keySpace, type: FieldType.STRING }
+      database: { value: table.keySpace, type: FieldType.STRING },
+      schema: { value: table.pgSchemaName, type: FieldType.STRING },
+      sizeBytes: { value: table.sizeBytes, type: FieldType.NUMBER },
+      status: { value: table.statusLabel, type: FieldType.STRING },
+      replicationLagMs: { value: table.replicationLag, type: FieldType.NUMBER }
     }),
     table: {
       value: table.status === XClusterTableStatus.DROPPED ? table.tableUUID : table.tableName,

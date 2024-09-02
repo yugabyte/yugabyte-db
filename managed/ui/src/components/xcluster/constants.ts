@@ -38,16 +38,37 @@ export const XClusterTableStatus = {
   VALIDATED: 'Validated',
   BOOTSTRAPPING: 'Bootstrapping',
   UNABLE_TO_FETCH: 'UnableToFetch',
-  // DROPPPED - Client internal status. Does not exist on the backend.
-  //            Used to mark tables which are dropped on the source universe.
+  // DROPPED - Client internal status. Does not exist on the backend.
+  //            Used to mark tables which are dropped on both the source and target.
   DROPPED: 'Dropped',
   EXTRA_TABLE_ON_SOURCE: 'ExtraTableOnSource',
-  EXTRA_TABLE_ON_TARGET: 'DroppedFromSource',
+  EXTRA_TABLE_ON_TARGET: 'ExtraTableOnTarget',
   DROPPED_FROM_SOURCE: 'DroppedFromSource',
   DROPPED_FROM_TARGET: 'DroppedFromTarget',
   REPLICATION_ERROR: 'ReplicationError'
 } as const;
 export type XClusterTableStatus = typeof XClusterTableStatus[keyof typeof XClusterTableStatus];
+
+/**
+ * Tables status which indicate the table only exists on the target.
+ */
+export const SOURCE_MISSING_XCLUSTER_TABLE_STATUSES: readonly XClusterTableStatus[] = [
+  XClusterTableStatus.DROPPED,
+  XClusterTableStatus.DROPPED_FROM_SOURCE,
+  XClusterTableStatus.EXTRA_TABLE_ON_TARGET
+];
+
+export const UNCONFIGURED_XCLUSTER_TABLE_STATUSES: readonly XClusterTableStatus[] = [
+  XClusterTableStatus.EXTRA_TABLE_ON_SOURCE,
+  XClusterTableStatus.EXTRA_TABLE_ON_TARGET
+];
+
+export const DROPPED_XCLUSTER_TABLE_STATUSES: readonly XClusterTableStatus[] = [
+  XClusterTableStatus.DROPPED,
+  XClusterTableStatus.DROPPED_FROM_SOURCE,
+  XClusterTableStatus.DROPPED_FROM_TARGET
+];
+
 //------------------------------------------------------------------------------------
 
 /**
@@ -117,6 +138,18 @@ export const XCLUSTER_SUPPORTED_TABLE_TYPES = [
 
 // Validation
 export const BOOTSTRAP_MIN_FREE_DISK_SPACE_GB = 100;
+
+// This object stores strings which are used as keys to translation strings in en.json
+// Any change to this object must be reflected in the en.json file as well.
+export const BootstrapCategory = {
+  NO_BOOTSTRAP_REQUIRED: 'noBootstrapRequired',
+  TABLE_HAS_DATA_BIDIRECTIONAL: 'tableHasDataBidirectional',
+  TARGET_TABLE_MISSING_BIDIRECTIONAL: 'targetTableMissingBidirectional',
+  TABLE_HAS_DATA: 'tableHasData',
+  TARGET_TABLE_MISSING: 'targetTableMissing'
+} as const;
+export type BootstrapCategory = typeof BootstrapCategory[keyof typeof BootstrapCategory];
+
 //------------------------------------------------------------------------------------
 
 // Time range selector constants
@@ -194,7 +227,9 @@ export const MetricName = {
   CONSUMER_SAFE_TIME_LAG: 'consumer_safe_time_lag',
   CONSUMER_SAFE_TIME_SKEW: 'consumer_safe_time_skew',
   ASYNC_REPLICATION_SENT_LAG: 'async_replication_sent_lag',
-  DISK_USAGE: 'disk_usage'
+  DISK_USAGE: 'disk_usage',
+  HA_BACKUP_LAG: 'yba_ha_backup_lag',
+  HA_LAST_BACKUP_SIZE: 'yba_ha_last_backup_size_mb'
 } as const;
 export type MetricName = typeof MetricName[keyof typeof MetricName];
 
@@ -228,6 +263,14 @@ export const PollingIntervalMs = {
 
 export const XCLUSTER_METRIC_REFETCH_INTERVAL_MS = PollingIntervalMs.XCLUSTER_METRICS;
 export const XCLUSTER_CONFIG_REFETCH_INTERVAL_MS = PollingIntervalMs.XCLUSTER_CONFIG;
+
+export const XCLUSTER_UNDEFINED_LAG_NUMERIC_REPRESENTATION = -1;
+
+/**
+ * Constant value fallback. Used when runtime config value is invalid/undefined.
+ */
+export const XCLUSTER_TRANSACTIONAL_PITR_SNAPSHOT_INTERVAL_SECONDS_FALLBACK = 3600;
+export const XCLUSTER_TRANSACTIONAL_PITR_RETENTION_PERIOD_SECONDS_FALLBACK = 3 * 24 * 60 * 60;
 
 export const XClusterModalName = {
   EDIT_CONFIG: 'editXClusterConfigModal',
@@ -263,3 +306,6 @@ export const XCLUSTER_REPLICATION_DOCUMENTATION_URL =
   'https://docs.yugabyte.com/preview/yugabyte-platform/create-deployments/async-replication-platform/';
 export const YB_ADMIN_XCLUSTER_DOCUMENTATION_URL =
   'https://docs.yugabyte.com/preview/admin/yb-admin/#xcluster-replication-commands';
+
+export const I18N_KEY_PREFIX_XCLUSTER_TABLE_STATUS = 'clusterDetail.xCluster.config.tableStatus';
+export const I18N_KEY_PREFIX_XCLUSTER_TERMS = 'clusterDetail.xCluster.terms';

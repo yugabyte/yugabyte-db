@@ -458,8 +458,9 @@ interface AWSRegionCloudInfo extends AWSRegionCloudInfoBase {
 interface AZURegionCloudInfoBase {
   securityGroupId?: string;
   vnet?: string;
-
   ybImage?: string;
+  azuNetworkRGOverride?: string;
+  azuRGOverride?: string;
 }
 type AZURegionCloudInfoMutation = AZURegionCloudInfoBase;
 interface AZURegionCloudInfo extends AZURegionCloudInfoBase {

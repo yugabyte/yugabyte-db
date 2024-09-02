@@ -84,27 +84,52 @@ Specify the instance to use for the universe nodes:
 
 ### Security Configurations
 
+#### IP Settings
+
 To enable public access to the universe, select the **Assign Public IP** option.
 
-Enable the YSQL and YCQL endpoints and database authentication. You can also enable and disable authentication after deployment. Navigate to your universe, click **Actions**, and choose **Edit YSQL Configuration** or **Edit YCQL Configuration**.
+#### Authentication Settings
+
+Enable the YSQL and YCQL endpoints and database authentication.
 
 Enter the password to use for the default database admin superuser (yugabyte for YSQL, and cassandra for YCQL). For more information, refer to [Database authorization](../../security/authorization-platform/).
 
-Enable encryption in transit to encrypt universe traffic. Refer to [Enable encryption in transit](../../security/enable-encryption-in-transit/).
+You can also enable and disable the API endpoints and authentication after deployment. Navigate to your universe, click **Actions**, and choose **Edit YSQL Configuration** or **Edit YCQL Configuration**.
 
-Enable encryption at rest to encrypt the universe data. Refer to [Enable encryption at rest](../../security/enable-encryption-at-rest/).
+By default, the API endpoints use ports 5433 (YSQL) and 9042 (YCQL). You can [customize these ports](#advanced-configuration), and, after deployment, you can modify the YCQL API and admin UI endpoint ports. To change YCQL ports, navigate to your universe, click **Actions**, choose **Edit YCQL Configuration**, and select the **Override YCQL Default Ports** option.
+
+#### Encryption Settings
+
+Enable encryption in transit to encrypt universe traffic. You can enable the following:
+
+- **Node-to-Node TLS** to encrypt traffic between universe nodes.
+- **Client-to-Node TLS** to encrypt traffic between universe nodes and external clients.
+
+    Note that if you want to enable Client-to-Node encryption, you first must enable Node-to-Node encryption.
+
+Encryption requires a certificate. YugabyteDB Anywhere can generate a self-signed certificate automatically, or you can use your own certificate.
+
+To use your own, you must first add it to YugabyteDB Anywhere; refer to [Add certificates](../../security/enable-encryption-in-transit/add-certificate-self/).
+
+To have YugabyteDB Anywhere generate a certificate for the universe, use the default **Root Certificate** setting of **Create New Certificate**. To use a certificate you added or a previously generated certificate, select it from the **Root Certificate** menu.
+
+For more information on using and managing certificates, refer to [Encryption in transit](../../security/enable-encryption-in-transit/).
+
+To encrypt the universe data, select the **Enable encryption at rest** option and select the [KMS configuration](../../security/create-kms-config/aws-kms/) to use for encryption. For more information, refer to [Encryption at rest](../../security/enable-encryption-at-rest/).
 
 ### Advanced Configuration
 
-Choose the version of YugabyteDB to install on the nodes.
+Choose the version of YugabyteDB to install on the nodes. If the version you want to add is not listed, you can add it to YugabyteDB Anywhere. Refer to [Manage YugabyteDB releases](../../manage-deployments/ybdb-releases/).
 
 The access key is the SSH key that is created in the provider. Usually, each provider has its own access key, but if you are reusing keys across providers, they are listed here.
 
 For AWS providers, you can assign an ARN to the nodes in the universe; this allow them to be seamlessly backed up without explicit credentials.
 
+If database version is v2024.2 or later, you can enable early access features for PostgreSQL compatibility. For more information, refer to [Enhanced PostgreSQL Compatibility Mode](../../../explore/ysql-language-features/postgresql-compatibility/#enhanced-postgresql-compatibility-mode).
+
 To use cron instead of systemd for managing nodes, you can disable systemd services. This not recommended.
 
-To customize the ports used for the universe, select the **Override Deployment Ports** option and enter the custom port numbers for the services you want to change.
+To customize the [ports used for the universe](../../prepare/networking/), select the **Override Deployment Ports** option and enter the custom port numbers for the services you want to change. Any value from `1024` to `65535` is valid, as long as it doesn't conflict with anything else running on nodes to be provisioned.
 
 ### G-Flags
 
@@ -128,7 +153,7 @@ The **Universes** view allows you to examine various aspects of the universe:
 - **Metrics** displays graphs representing information on operations, latency, and other parameters for each type of node and server.
 - **Queries** displays details about live and slow queries that you can filter by column and text.
 - **xCluster Disaster Recovery** provides information about any [disaster recovery](../../back-up-restore-universes/disaster-recovery/) configured for the universe.
-- **xCluster Replication** provides information about any [asynchronous replication](../../create-deployments/async-replication-platform/) in the universe.
+- **xCluster Replication** provides information about any [asynchronous replication](../../manage-deployments/xcluster-replication/) in the universe.
 - **Tasks** provides details about the state of tasks running on the universe, as well as the tasks that have run in the past against this universe.
 - **Backups** displays information about scheduled backups, if any, and allows you to create, restore, and delete backups.
 - **Health** displays the detailed performance status of the nodes and components involved in their operation. **Health** also allows you to pause health check alerts.

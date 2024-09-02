@@ -366,6 +366,7 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
   TSRegistrationPB fake_reg;
   MakeHostPortPB("localhost", 1000, fake_reg.mutable_common()->add_private_rpc_addresses());
   MakeHostPortPB("localhost", 2000, fake_reg.mutable_common()->add_http_addresses());
+  *fake_reg.mutable_resources() = master::ResourcesPB();
 
   {
     TSHeartbeatRequestPB req;
@@ -382,8 +383,9 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
 
   descs = mini_master_->master()->ts_manager()->GetAllDescriptors();
   ASSERT_EQ(1, descs.size()) << "Should have registered the TS";
-  TSRegistrationPB reg = descs[0]->GetRegistration();
-  ASSERT_EQ(fake_reg.DebugString(), reg.DebugString()) << "Master got different registration";
+  auto reg = descs[0]->GetTSRegistrationPB();
+  ASSERT_EQ(fake_reg.DebugString(), reg.DebugString())
+      << "Master got different registration";
 
   ASSERT_TRUE(mini_master_->master()->ts_manager()->LookupTSByUUID(kTsUUID, &ts_desc));
   ASSERT_EQ(ts_desc, descs[0]);

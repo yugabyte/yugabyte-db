@@ -489,9 +489,6 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 		case T_IndexScan:
 			{
 				IndexScan  *splan = (IndexScan *) plan;
-				indexed_tlist *index_itlist;
-
-				index_itlist = build_tlist_index(splan->indextlist);
 				splan->scan.scanrelid += rtoffset;
 				splan->scan.plan.targetlist =
 					fix_scan_list(root, splan->scan.plan.targetlist, rtoffset);
@@ -499,18 +496,32 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 					fix_scan_list(root, splan->scan.plan.qual, rtoffset);
 				splan->yb_rel_pushdown.quals =
 					fix_scan_list(root, splan->yb_rel_pushdown.quals, rtoffset);
-				splan->yb_idx_pushdown.quals = (List *)
-					fix_upper_expr(root,
-								   (Node *) splan->yb_idx_pushdown.quals,
-								   index_itlist,
-								   INDEX_VAR,
-								   rtoffset);
-				splan->yb_idx_pushdown.colrefs = (List *)
-					fix_upper_expr(root,
-								   (Node *) splan->yb_idx_pushdown.colrefs,
-								   index_itlist,
-								   INDEX_VAR,
-								   rtoffset);
+				/*
+				 * Index quals has to be fixed to refer index columns, not main
+				 * table columns, so we need to index the indextlist.
+				 * Also, indextlist has to be converted, as ANALYZE may use it.
+				 * Skip that if we don't have index pushdown quals.
+				 */
+				if (splan->yb_idx_pushdown.quals)
+				{
+					indexed_tlist *index_itlist;
+					index_itlist = build_tlist_index(splan->indextlist);
+					splan->yb_idx_pushdown.quals = (List *)
+						fix_upper_expr(root,
+									   (Node *) splan->yb_idx_pushdown.quals,
+									   index_itlist,
+									   INDEX_VAR,
+									   rtoffset);
+					splan->yb_idx_pushdown.colrefs = (List *)
+						fix_upper_expr(root,
+									   (Node *) splan->yb_idx_pushdown.colrefs,
+									   index_itlist,
+									   INDEX_VAR,
+									   rtoffset);
+					splan->indextlist =
+						fix_scan_list(root, splan->indextlist, rtoffset);
+					pfree(index_itlist);
+				}
 				splan->indexqual =
 					fix_scan_list(root, splan->indexqual, rtoffset);
 				splan->indexqualorig =

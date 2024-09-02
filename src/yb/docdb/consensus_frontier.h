@@ -120,6 +120,10 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
   void AddSchemaVersion(const Uuid& table_id, SchemaVersion version);
   void ResetSchemaVersion();
 
+  // Update cotable_id to new_cotable_id in current frontier's cotable_schema_versions_ map.
+  // Return true if the map is modified, otherwise, return false.
+  bool UpdateCoTableId(const Uuid& cotable_id, const Uuid& new_cotable_id);
+
   // Merge current frontier with provided map, preferring min values.
   void MakeExternalSchemaVersionsAtMost(
       std::unordered_map<Uuid, SchemaVersion, UuidHash>* min_schema_versions) const;

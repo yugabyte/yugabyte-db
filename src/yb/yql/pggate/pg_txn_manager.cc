@@ -404,6 +404,12 @@ Status PgTxnManager::ResetTransactionReadPoint() {
   return Status::OK();
 }
 
+Status PgTxnManager::EnsureReadPoint() {
+  DCHECK(read_time_manipulation_ != tserver::ReadTimeManipulation::RESTART);
+  read_time_manipulation_ = tserver::ReadTimeManipulation::ENSURE_READ_TIME_IS_SET;
+  return Status::OK();
+}
+
 /* This is called when a read committed transaction wants to restart its read point */
 Status PgTxnManager::RestartReadPoint() {
   read_time_manipulation_ = tserver::ReadTimeManipulation::RESTART;
@@ -622,10 +628,17 @@ void PgTxnManager::IncTxnSerialNo() {
   active_sub_transaction_id_ = kMinSubTransactionId;
 }
 
-void PgTxnManager::RestoreSessionParallelData(const YBCPgSessionParallelData& data) {
+void PgTxnManager::DumpSessionState(YBCPgSessionState* session_data) {
+  session_data->txn_serial_no = serial_no_.txn();
+  session_data->read_time_serial_no = serial_no_.read_time();
+  session_data->active_sub_transaction_id = active_sub_transaction_id_;
+}
+
+void PgTxnManager::RestoreSessionState(const YBCPgSessionState& session_data) {
+  read_time_manipulation_ = tserver::ReadTimeManipulation::ENSURE_READ_TIME_IS_SET;
   serial_no_ =
-      SerialNo(data.txn_serial_no, data.read_time_serial_no);
-  active_sub_transaction_id_ = data.active_sub_transaction_id;
+      SerialNo(session_data.txn_serial_no, session_data.read_time_serial_no);
+  active_sub_transaction_id_ = session_data.active_sub_transaction_id;
   VLOG_TXN_STATE(2);
 }
 

@@ -19,11 +19,29 @@ CREATE TABLE yb_xcluster_ddl_replication.replicated_ddls(
 /* ------------------------------------------------------------------------- */
 /* Create event triggers. */
 
+CREATE FUNCTION yb_xcluster_ddl_replication.handle_ddl_start()
+  RETURNS event_trigger
+  LANGUAGE C
+  AS 'MODULE_PATHNAME', 'handle_ddl_start';
+
+CREATE EVENT TRIGGER yb_xcluster_ddl_replication_handle_ddl_start_trigger
+  ON ddl_command_start
+  EXECUTE FUNCTION yb_xcluster_ddl_replication.handle_ddl_start();
+
 CREATE FUNCTION yb_xcluster_ddl_replication.handle_ddl_end()
   RETURNS event_trigger
   LANGUAGE C
   AS 'MODULE_PATHNAME', 'handle_ddl_end';
 
-CREATE EVENT TRIGGER yb_xcluster_ddl_replication_handle_ddl_end
+CREATE EVENT TRIGGER yb_xcluster_ddl_replication_handle_ddl_end_trigger
   ON ddl_command_end
   EXECUTE FUNCTION yb_xcluster_ddl_replication.handle_ddl_end();
+
+CREATE FUNCTION yb_xcluster_ddl_replication.handle_sql_drop()
+  RETURNS event_trigger
+  LANGUAGE C
+  AS 'MODULE_PATHNAME', 'handle_sql_drop';
+
+CREATE EVENT TRIGGER yb_xcluster_ddl_replication_handle_sql_drop_trigger
+  ON sql_drop
+  EXECUTE FUNCTION yb_xcluster_ddl_replication.handle_sql_drop();

@@ -897,47 +897,22 @@ NOTICE:  AUDIT: SESSION,38,1,DDL,ALTER TABLE,TABLE,public.test2,"ALTER TABLE pub
 	RENAME TO test2;",<none>
 ALTER TABLE public.test2
 	SET SCHEMA test;
-ERROR:  ALTER TABLE SET SCHEMA not supported yet at character 1
--- YB note: bump audit number to stay same with upstream.
-SELECT 'yb';
-NOTICE:  AUDIT: SESSION,39,1,READ,SELECT,,,SELECT 'yb';,<none>
- ?column?
-----------
- yb
-(1 row)
-
+NOTICE:  AUDIT: SESSION,39,1,DDL,ALTER TABLE,TABLE,test.test2,"ALTER TABLE public.test2
+	SET SCHEMA test;",<none>
 ALTER TABLE test.test2
 	ADD COLUMN description TEXT;
-ERROR:  relation "test.test2" does not exist
--- YB note: bump audit number to stay same with upstream.
-SELECT 'yb';
-NOTICE:  AUDIT: SESSION,40,1,READ,SELECT,,,SELECT 'yb';,<none>
- ?column?
-----------
- yb
-(1 row)
-
+NOTICE:  AUDIT: SESSION,40,1,DDL,ALTER TABLE,TABLE,test.test2,"ALTER TABLE test.test2
+	ADD COLUMN description TEXT;",<none>
 ALTER TABLE test.test2
 	DROP COLUMN description;
-ERROR:  relation "test.test2" does not exist
--- YB note: bump audit number to stay same with upstream.
-SELECT 'yb';
-NOTICE:  AUDIT: SESSION,41,1,READ,SELECT,,,SELECT 'yb';,<none>
- ?column?
-----------
- yb
-(1 row)
-
+NOTICE:  AUDIT: SESSION,41,1,DDL,ALTER TABLE,TABLE COLUMN,test.test2.description,"ALTER TABLE test.test2
+	DROP COLUMN description;",<none>
+NOTICE:  AUDIT: SESSION,41,1,DDL,ALTER TABLE,TABLE,test.test2,"ALTER TABLE test.test2
+	DROP COLUMN description;",<none>
 DROP TABLE test.test2;
-ERROR:  table "test2" does not exist
--- YB note: bump audit number to stay same with upstream.
-SELECT 'yb';
-NOTICE:  AUDIT: SESSION,42,1,READ,SELECT,,,SELECT 'yb';,<none>
- ?column?
-----------
- yb
-(1 row)
-
+NOTICE:  AUDIT: SESSION,42,1,DDL,DROP TABLE,TABLE,test.test2,DROP TABLE test.test2;,<none>
+NOTICE:  AUDIT: SESSION,42,1,DDL,DROP TABLE,TABLE CONSTRAINT,test_pkey on test.test2,DROP TABLE test.test2;,<none>
+NOTICE:  AUDIT: SESSION,42,1,DDL,DROP TABLE,INDEX,test.test_pkey,DROP TABLE test.test2;,<none>
 --
 -- Test multiple statements with one semi-colon
 CREATE SCHEMA foo

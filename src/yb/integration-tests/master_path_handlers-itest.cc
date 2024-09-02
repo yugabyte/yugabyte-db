@@ -744,7 +744,7 @@ TEST_F_EX(
       {table_name}, false /* add_indexes */, 30 /* timeout_secs */, false /* is_compaction */));
   ASSERT_OK(catalog_manager.TEST_SplitTablet(tablet, 1 /* split_hash_code */));
 
-  SleepFor(kLeaderlessTabletAlertDelaySecs * 1s);
+  SleepFor(kLeaderlessTabletAlertDelaySecs * yb::kTimeMultiplier * 1s);
   string result = ASSERT_RESULT(GetLeaderlessTabletsString());
   ASSERT_EQ(result.find(tablet->id()), string::npos);
 }
@@ -1379,8 +1379,8 @@ TEST_F(MasterPathHandlersItest, TestVarzAutoFlag) {
   static const auto kUnExpectedFlag = "TEST_assert_local_op";
 
   // Test the HTML endpoint.
-  static const auto kAutoFlagsStart = "<h2>Auto Flags</h2>";
-  static const auto kAutoFlagsEnd = "<h2>Default Flags</h2>";
+  static const auto kAutoFlagsStart = ">Auto Flags<";
+  static const auto kAutoFlagsEnd = ">Default Flags<";
   faststring result;
   ASSERT_OK(GetUrl("/varz", &result));
   auto result_str = result.ToString();

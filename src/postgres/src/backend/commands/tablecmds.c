@@ -432,7 +432,8 @@ static ObjectAddress ATExecSetStorage(Relation rel, const char *colName,
 				 Node *newValue, LOCKMODE lockmode);
 static void ATPrepDropColumn(List **wqueue, Relation rel, bool recurse, bool recursing,
 				 AlterTableCmd *cmd, LOCKMODE lockmode);
-static ObjectAddress ATExecDropColumn(List **wqueue, Relation rel, const char *colName,
+static ObjectAddress ATExecDropColumn(List **wqueue, AlteredTableInfo *yb_tab, Relation rel,
+				 const char *colName,
 				 DropBehavior behavior,
 				 bool recurse, bool recursing,
 				 bool missing_ok, LOCKMODE lockmode);
@@ -4585,12 +4586,12 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation *mutable_rel,
 			address = ATExecSetStorage(rel, cmd->name, cmd->def, lockmode);
 			break;
 		case AT_DropColumn:		/* DROP COLUMN */
-			address = ATExecDropColumn(wqueue, rel, cmd->name,
+			address = ATExecDropColumn(wqueue, tab, rel, cmd->name,
 									   cmd->behavior, false, false,
 									   cmd->missing_ok, lockmode);
 			break;
 		case AT_DropColumnRecurse:	/* DROP COLUMN with recursion */
-			address = ATExecDropColumn(wqueue, rel, cmd->name,
+			address = ATExecDropColumn(wqueue, tab, rel, cmd->name,
 									   cmd->behavior, true, false,
 									   cmd->missing_ok, lockmode);
 			break;
@@ -7321,7 +7322,8 @@ ATPrepDropColumn(List **wqueue, Relation rel, bool recurse, bool recursing,
  * Return value is the address of the dropped column.
  */
 static ObjectAddress
-ATExecDropColumn(List **wqueue, Relation rel, const char *colName,
+ATExecDropColumn(List **wqueue, AlteredTableInfo *yb_tab, Relation rel,
+				 const char *colName,
 				 DropBehavior behavior,
 				 bool recurse, bool recursing,
 				 bool missing_ok, LOCKMODE lockmode)
@@ -7363,20 +7365,19 @@ ATExecDropColumn(List **wqueue, Relation rel, const char *colName,
 	attnum = targetatt->attnum;
 
 	/*
-	 * In YB, a table cannot drop key columns.
-	 * This check makes sure a consistent state after attempting to drop
-	 * key columns by preventing dropping key columns on postgres side.
+	 * In YB, dropping a key column requires a table rewrite.
 	 */
-	if (IsYBRelation(rel))
+	if (IsYBRelation(rel) && YbIsAttrPrimaryKeyColumn(rel, attnum))
 	{
-		Bitmapset  *pkey   = YBGetTablePrimaryKeyBms(rel);
-
-		/* Can't drop primary-key columns */
-		if (bms_is_member(attnum - YBGetFirstLowInvalidAttributeNumber(rel), pkey))
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("cannot drop key column \"%s\"",
-							colName)));
+		/*
+		 * In YB, the ADD/DROP primary key operation involves a table
+		 * rewrite. So if this is partitioned table, we need to add
+		 * its children to the work queue as well.
+		 */
+		if ((rel)->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
+			YbATSetPKRewriteChildPartitions(wqueue,
+				yb_tab, false /* skip_copy_split_options */);
+		yb_tab->rewrite |= YB_AT_REWRITE_ALTER_PRIMARY_KEY;
 	}
 
 	/* Can't drop a system attribute, except OID */
@@ -7463,7 +7464,7 @@ ATExecDropColumn(List **wqueue, Relation rel, const char *colName,
 				if (childatt->attinhcount == 1 && !childatt->attislocal)
 				{
 					/* Time to delete this child column, too */
-					ATExecDropColumn(wqueue, childrel, colName,
+					ATExecDropColumn(wqueue, yb_tab, childrel, colName,
 									 behavior, true, true,
 									 false, lockmode);
 				}
@@ -14719,6 +14720,16 @@ AlterRelationNamespaceInternal(Relation classRel, Oid relOid,
 		classForm->relnamespace = newNspOid;
 
 		CatalogTupleUpdate(classRel, &classTup->t_self, classTup);
+
+		/*
+		 * Call SetSchema handler for the related internal YB DocDB table.
+		 * No YB DocDB table for a primary key dummy index.
+		 */
+		const Relation rel = RelationIdGetRelation(relOid);
+		if (IsYBRelation(rel) && !(rel->rd_index && rel->rd_index->indisprimary))
+			YBCAlterTableNamespace(classForm, relOid);
+
+		RelationClose(rel);
 
 		/* Update dependency on schema if caller said so */
 		if (hasDependEntry &&

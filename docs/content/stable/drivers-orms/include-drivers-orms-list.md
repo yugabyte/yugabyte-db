@@ -72,6 +72,17 @@ private = true
 
   {{% /tab %}}
 
+  {{% tab header="Elixir" lang="elixir" %}}
+
+|            | Version | Support Level | Example apps |
+| :--------- | :------ | :------------ | :----------- |
+| **Drivers** | | | |
+| Postgrex Driver | [0.18.0](https://github.com/elixir-ecto/postgrex) | Full | [CRUD](/preview/tutorials/build-apps/elixir/cloud-ysql-elixir/) |
+| **ORMs** | | | |
+| Phoenix with Ecto | [1.7.14](https://www.phoenixframework.org) | Full | [CRUD](/preview/drivers-orms/elixir/phoenix/) |
+
+  {{% /tab %}}
+
   {{% tab header="C" lang="c" %}}
 
 | Driver        | Version | Support Level | Example apps |
@@ -94,7 +105,7 @@ private = true
 |            | Version | Support Level | Example apps |
 | :--------- | :------ | :------------ | :----------- |
 | **Drivers** | | | |
-| YugabyteDB C# Smart Driver for YSQL | [8.0.0-yb-1-beta](https://www.nuget.org/packages/NpgsqlYugabyteDB/) | Full | [CRUD](/preview/drivers-orms/csharp/ysql/) |
+| YugabyteDB C# Smart Driver for YSQL | [8.0.3-yb-1](https://www.nuget.org/packages/NpgsqlYugabyteDB/) | Full | [CRUD](/preview/drivers-orms/csharp/ysql/) |
 | PostgreSQL Npgsql Driver            | [6.0.3](https://www.nuget.org/packages/Npgsql/6.0.3) | Full | [CRUD](/preview/drivers-orms/csharp/postgres-npgsql/) |
 | YugabyteDB C# Driver for YCQL       | [3.6.0](https://github.com/yugabyte/cassandra-csharp-driver/releases/tag/3.6.0) | Full | [CRUD](/preview/drivers-orms/csharp/ycql/) |
 | **ORM** | | | |

@@ -121,6 +121,8 @@ class RandomAccessFileReader {
       uint64_t offset, size_t n, Slice* result, char* scratch, const yb::ReadValidator& validator,
       Statistics* statistics = nullptr);
 
+  void Readahead(size_t offset, size_t length) { file_->Readahead(offset, length); }
+
   RandomAccessFile* file() { return file_.get(); }
 };
 

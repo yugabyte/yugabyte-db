@@ -17,7 +17,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UpdateLoadBalancerConfig;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.operator.annotations.BlockOperatorResource;
 import com.yugabyte.yw.common.operator.annotations.OperatorResourceTypes;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
@@ -57,7 +57,7 @@ import play.mvc.Result;
 @Slf4j
 public class UniverseActionsController extends AuthenticatedController {
   @Inject private UniverseActionsHandler universeActionsHandler;
-  @Inject private RuntimeConfigFactory runtimeConfigFactory;
+  @Inject private RuntimeConfGetter confGetter;
 
   @ApiOperation(
       notes =
@@ -205,8 +205,7 @@ public class UniverseActionsController extends AuthenticatedController {
             universeUUID.toString(),
             Audit.ActionType.SetUniverseKey,
             taskUUID);
-    UniverseResp resp =
-        UniverseResp.create(universe, taskUUID, runtimeConfigFactory.globalRuntimeConf());
+    UniverseResp resp = UniverseResp.create(universe, taskUUID, confGetter);
     return PlatformResults.withData(resp);
   }
 

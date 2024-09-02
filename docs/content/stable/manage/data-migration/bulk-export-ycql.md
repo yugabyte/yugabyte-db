@@ -1,30 +1,18 @@
 ---
 title: Bulk export YCQL
-headerTitle: Bulk export for YCQL
-linkTitle: Bulk export
+headerTitle: Export data
+linkTitle: Export data
 description: Bulk export for YCQL using cassandra-loader and cassandra-unloader.
+badges: ycql
 menu:
   stable:
     identifier: manage-bulk-export-ycql
     parent: manage-bulk-import-export
-    weight: 705
+    weight: 720
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-   <li >
-    <a href="../bulk-export-ysql/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-  <li >
-    <a href="../bulk-export-ycql/" class="nav-link active">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-</ul>
+{{<api-tabs>}}
 
 Bulk export is available for YugabyteDB's [Cassandra-compatible YCQL API](../../../api/ycql/). To export data from a YugabyteDB or an Apache Cassandra table, you can use the [`cassandra-unloader`](https://github.com/yugabyte/cassandra-loader#cassandra-unloader) tool.
 

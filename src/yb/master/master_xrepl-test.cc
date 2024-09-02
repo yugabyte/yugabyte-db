@@ -19,8 +19,6 @@
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
-#include "yb/gutil/casts.h"
-
 #include "yb/master/master-test_base.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_defaults.h"
@@ -96,12 +94,6 @@ class MasterTestXRepl  : public MasterTestBase {
   Result<ListCDCStreamsResponsePB> ListCDCStreams();
   Result<ListCDCStreamsResponsePB> ListCDCSDKStreams();
   Result<bool> IsObjectPartOfXRepl(const TableId& table_id);
-
-  Status SetupUniverseReplication(
-      const std::string& producer_id, const std::vector<std::string>& master_addr,
-      const std::vector<std::string>& tables);
-  Status DeleteUniverseReplication(const std::string& producer_id);
-  Result<GetUniverseReplicationResponsePB> GetUniverseReplication(const std::string& producer_id);
 
   Status CreateTableWithTableId(TableId* table_id);
   Status DeleteNamespace(std::string namespace_id, YQLDatabase db_type);
@@ -288,56 +280,6 @@ Result<bool> MasterTestXRepl::IsObjectPartOfXRepl(const TableId& table_id) {
   RETURN_NOT_OK(proxy_replication_->IsObjectPartOfXRepl(req, &resp, ResetAndGetController()));
   return resp.has_error() ? StatusFromPB(resp.error().status()) :
       Result<bool>(resp.is_object_part_of_xrepl());
-}
-
-Status MasterTestXRepl::SetupUniverseReplication(
-    const std::string& producer_id, const std::vector<std::string>& producer_master_addrs,
-    const std::vector<TableId>& tables) {
-  SetupUniverseReplicationRequestPB req;
-  SetupUniverseReplicationResponsePB resp;
-
-  req.set_replication_group_id(producer_id);
-  req.mutable_producer_master_addresses()->Reserve(narrow_cast<int>(producer_master_addrs.size()));
-  for (const auto& addr : producer_master_addrs) {
-    std::vector<std::string> hp;
-    boost::split(hp, addr, boost::is_any_of(":"));
-    CHECK_EQ(hp.size(), 2);
-    auto* master = req.add_producer_master_addresses();
-    master->set_host(hp[0]);
-    master->set_port(boost::lexical_cast<uint32_t>(hp[1]));
-  }
-  req.mutable_producer_table_ids()->Reserve(narrow_cast<int>(tables.size()));
-  for (const auto& table : tables) {
-    req.add_producer_table_ids(table);
-  }
-
-  RETURN_NOT_OK(proxy_replication_->SetupUniverseReplication(req, &resp, ResetAndGetController()));
-  if (resp.has_error()) {
-    RETURN_NOT_OK(StatusFromPB(resp.error().status()));
-  }
-  return Status::OK();
-}
-
-Result<GetUniverseReplicationResponsePB> MasterTestXRepl::GetUniverseReplication(
-    const std::string& producer_id) {
-  GetUniverseReplicationRequestPB req;
-  GetUniverseReplicationResponsePB resp;
-  req.set_replication_group_id(producer_id);
-
-  RETURN_NOT_OK(proxy_replication_->GetUniverseReplication(req, &resp, ResetAndGetController()));
-  return resp;
-}
-
-Status MasterTestXRepl::DeleteUniverseReplication(const std::string& producer_id) {
-  DeleteUniverseReplicationRequestPB req;
-  DeleteUniverseReplicationResponsePB resp;
-  req.set_replication_group_id(producer_id);
-
-  RETURN_NOT_OK(proxy_replication_->DeleteUniverseReplication(req, &resp, ResetAndGetController()));
-  if (resp.has_error()) {
-    RETURN_NOT_OK(StatusFromPB(resp.error().status()));
-  }
-  return Status::OK();
 }
 
 Status MasterTestXRepl::CreateTableWithTableId(TableId* table_id) {
@@ -556,7 +498,6 @@ TEST_F(MasterTestXRepl, YB_DISABLE_TEST_IN_TSAN(TestCDCStreamCreationWithOldReco
   CreateCDCStreamRequestPB req;
   CreateCDCStreamResponsePB resp;
   req.set_namespace_id(ns_id);
-  req.set_cdcsdk_ysql_replication_slot_name(kPgReplicationSlotName);
   AddKeyValueToCreateCDCStreamRequestOption(&req, cdc::kIdType, cdc::kNamespaceId);
   AddKeyValueToCreateCDCStreamRequestOption(
       &req, cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK));
@@ -574,7 +515,8 @@ TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceInvalidDuplicationSlotNam
   auto ns_id = create_namespace_resp.id();
 
   for (auto i = 0; i < num_tables; ++i) {
-    ASSERT_OK(CreatePgsqlTable(ns_id, Format("cdc_table_$0", i), kTableIds[i], kTableSchema));
+    ASSERT_OK(
+        CreatePgsqlTable(ns_id, Format("cdc_table_$0", i), kTableIds[i], kTableSchemaWithTypeOids));
   }
 
   ASSERT_RESULT(
@@ -644,7 +586,8 @@ TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceLimitReached) {
   auto ns_id = create_namespace_resp.id();
 
   for (auto i = 0; i < num_tables; ++i) {
-    ASSERT_OK(CreatePgsqlTable(ns_id, Format("cdc_table_$0", i), kTableIds[i], kTableSchema));
+    ASSERT_OK(
+        CreatePgsqlTable(ns_id, Format("cdc_table_$0", i), kTableIds[i], kTableSchemaWithTypeOids));
   }
 
   ASSERT_RESULT(
@@ -791,7 +734,8 @@ TEST_F(MasterTestXRepl, TestCreateDropCDCStreamWithReplicationSlotName) {
   ASSERT_OK(CreatePgsqlNamespace(kNamespaceName, kPgsqlNamespaceId, &create_namespace_resp));
   auto ns_id = create_namespace_resp.id();
   for (auto i = 0; i < num_tables; ++i) {
-    ASSERT_OK(CreatePgsqlTable(ns_id, Format("cdc_table_$0", i), kTableIds[i], kTableSchema));
+    ASSERT_OK(
+        CreatePgsqlTable(ns_id, Format("cdc_table_$0", i), kTableIds[i], kTableSchemaWithTypeOids));
   }
 
   // Create and Delete CDC stream with replication slot name in quick succession.
@@ -845,9 +789,9 @@ TEST_F(MasterTestXRepl, TestListCDCStreamsCDCSDKWithReplicationSlot) {
   auto ns_id2 = create_namespace_resp.id();
 
   // 2 tables in cdc_namespace and 1 table in cdc_namespace2
-  ASSERT_OK(CreatePgsqlTable(ns_id, "cdc_table_1", kTableIds[0], kTableSchema));
-  ASSERT_OK(CreatePgsqlTable(ns_id, "cdc_table_2", kTableIds[1], kTableSchema));
-  ASSERT_OK(CreatePgsqlTable(ns_id2, "cdc_table_3", kTableIds[2], kTableSchema));
+  ASSERT_OK(CreatePgsqlTable(ns_id, "cdc_table_1", kTableIds[0], kTableSchemaWithTypeOids));
+  ASSERT_OK(CreatePgsqlTable(ns_id, "cdc_table_2", kTableIds[1], kTableSchemaWithTypeOids));
+  ASSERT_OK(CreatePgsqlTable(ns_id2, "cdc_table_3", kTableIds[2], kTableSchemaWithTypeOids));
 
   auto stream_id = ASSERT_RESULT(
       CreateCDCStreamForNamespace(ns_id, kPgReplicationSlotName, kPgReplicationSlotPgOutput));
@@ -1089,52 +1033,14 @@ TEST_F(MasterTestXRepl, TestIsObjectPartOfXRepl) {
   ASSERT_TRUE(ASSERT_RESULT(IsObjectPartOfXRepl(table_id)));
 }
 
-TEST_F(MasterTestXRepl, TestSetupUniverseReplication) {
-  std::string producer_id = "producer_universe";
-  std::vector<std::string> producer_masters {"127.0.0.1:7100"};
-  std::vector<std::string> tables {"some_table_id"};
-  // Always fails because we don't have actual producer.
-  ASSERT_NOK(SetupUniverseReplication(producer_id, producer_masters, tables));
-
-  auto resp = ASSERT_RESULT(GetUniverseReplication(producer_id));
-  ASSERT_EQ(resp.entry().replication_group_id(), producer_id);
-
-  ASSERT_EQ(resp.entry().producer_master_addresses_size(), 1);
-  std::string addr;
-  const auto& hp = resp.entry().producer_master_addresses(0);
-  addr = hp.host() + ":" + std::to_string(hp.port());
-  ASSERT_EQ(addr, "127.0.0.1:7100");
-
-  ASSERT_EQ(resp.entry().tables_size(), 1);
-  ASSERT_EQ(resp.entry().tables(0), "some_table_id");
-}
-
-TEST_F(MasterTestXRepl, TestDeleteUniverseReplication) {
-  std::string producer_id = "producer_universe";
-  std::vector<std::string> producer_masters {"127.0.0.1:7100"};
-  std::vector<std::string> tables {"some_table_id"};
-  // Always fails because we don't have actual producer.
-  ASSERT_NOK(SetupUniverseReplication(producer_id, producer_masters, tables));
-
-  // Verify that universe was created.
-  auto resp = ASSERT_RESULT(GetUniverseReplication(producer_id));
-  ASSERT_EQ(resp.entry().replication_group_id(), producer_id);
-
-  ASSERT_OK(DeleteUniverseReplication(producer_id));
-
-  resp.Clear();
-  resp = ASSERT_RESULT(GetUniverseReplication(producer_id));
-  ASSERT_TRUE(resp.has_error());
-  ASSERT_EQ(MasterErrorPB::OBJECT_NOT_FOUND, resp.error().code());
-}
-
 TEST_F(MasterTestXRepl, DropNamespaceWithLiveCDCStream) {
   CreateNamespaceResponsePB create_namespace_resp;
   ASSERT_OK(CreatePgsqlNamespace(kNamespaceName, kPgsqlNamespaceId, &create_namespace_resp));
   auto ns_id = create_namespace_resp.id();
 
   for (auto i = 0; i < num_tables; ++i) {
-    ASSERT_OK(CreatePgsqlTable(ns_id, Format("cdc_table_$0", i), kTableIds[i], kTableSchema));
+    ASSERT_OK(
+        CreatePgsqlTable(ns_id, Format("cdc_table_$0", i), kTableIds[i], kTableSchemaWithTypeOids));
   }
   ASSERT_RESULT(
       CreateCDCStreamForNamespace(ns_id, kPgReplicationSlotName, kPgReplicationSlotPgOutput));

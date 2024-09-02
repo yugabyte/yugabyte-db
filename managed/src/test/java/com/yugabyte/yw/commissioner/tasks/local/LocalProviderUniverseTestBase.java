@@ -13,12 +13,15 @@ import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.base.Stopwatch;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
+import com.yugabyte.yw.commissioner.AutoMasterFailoverScheduler;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.LocalNodeManager;
@@ -42,6 +45,8 @@ import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.controllers.apiModels.MasterLBStateResponse;
+import com.yugabyte.yw.controllers.handlers.MetaMasterHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseTableHandler;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
@@ -54,6 +59,7 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
@@ -64,9 +70,11 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.YugawareProperty;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.LocalCloudInfo;
+import com.yugabyte.yw.scheduler.JobScheduler;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -77,6 +85,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.text.SimpleDateFormat;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -128,12 +137,18 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
 
   private static final String DEFAULT_BASE_DIR = "/tmp/local";
   protected static String YBC_VERSION;
-  public static String DB_VERSION = "2.20.1.3-b3";
+  public static String DB_VERSION = "2024.1.0.0-b129";
   private static final String DOWNLOAD_URL =
-      "https://downloads.yugabyte.com/releases/2.20.1.3/" + "yugabyte-2.20.1.3-b3-%s-%s.tar.gz";
+      "https://downloads.yugabyte.com/releases/"
+          + DB_VERSION.split("-")[0]
+          + "/yugabyte-"
+          + DB_VERSION
+          + "-%s-%s.tar.gz";
+
   private static final String YBC_BASE_S3_URL = "https://downloads.yugabyte.com/ybc/";
   private static final String YBC_BIN_ENV_KEY = "YBC_PATH";
   private static final boolean KEEP_FAILED_UNIVERSE = true;
+  private static final boolean KEEP_ALWAYS = false;
 
   public static Map<String, String> GFLAGS = new HashMap<>();
 
@@ -202,6 +217,8 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
   protected Commissioner commissioner;
   protected SettableRuntimeConfigFactory settableRuntimeConfigFactory;
   protected RuntimeConfService runtimeConfService;
+  protected JobScheduler jobScheduler;
+  protected AutoMasterFailoverScheduler autoMasterFailoverScheduler;
 
   @BeforeClass
   public static void setUpEnv() {
@@ -222,7 +239,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     subDir = DATE_FORMAT.format(new Date());
   }
 
-  @Rule public Timeout globalTimeout = Timeout.seconds(600);
+  @Rule public Timeout globalTimeout = Timeout.seconds(900);
 
   private static void setUpBaseDir() {
     if (System.getenv(BASE_DIR_ENV_KEY) != null) {
@@ -349,7 +366,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     try (InputStream in = new URL(downloadURL).openStream()) {
       downloadPathDir.mkdirs();
       Files.copy(in, Paths.get(baseDownloadPath), StandardCopyOption.REPLACE_EXISTING);
-      log.debug("downloaded to {}", baseDownloadPath);
+      log.debug("downloaded from {} to {}", downloadURL, baseDownloadPath);
       Path destination = downloadPathDir.toPath();
       try (TarArchiveInputStream tarInput =
           new TarArchiveInputStream(
@@ -404,6 +421,8 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     commissioner = app.injector().instanceOf(Commissioner.class);
     settableRuntimeConfigFactory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
     runtimeConfService = app.injector().instanceOf(RuntimeConfService.class);
+    jobScheduler = app.injector().instanceOf(JobScheduler.class);
+    autoMasterFailoverScheduler = app.injector().instanceOf(AutoMasterFailoverScheduler.class);
   }
 
   @Before
@@ -411,6 +430,9 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     injectDependencies();
 
     settableRuntimeConfigFactory.globalRuntimeConf().setValue("yb.releases.use_redesign", "false");
+    settableRuntimeConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.universe.consistency_check_enabled", "true");
     Pair<Integer, Integer> ipRange = getIpRange();
     localNodeManager.setIpRangeStart(ipRange.getFirst());
     localNodeManager.setIpRangeEnd(ipRange.getSecond());
@@ -420,7 +442,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     File curDir = new File(baseDirFile, subDir);
     if (!baseDirFile.exists() || !curDir.exists()) {
       curDir.mkdirs();
-      if (!KEEP_FAILED_UNIVERSE) {
+      if (!KEEP_FAILED_UNIVERSE && !KEEP_ALWAYS) {
         curDir.deleteOnExit();
       }
     }
@@ -531,7 +553,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     if (simpleSqlPayload != null) {
       simpleSqlPayload.stop();
     }
-    if (!failed || !KEEP_FAILED_UNIVERSE) {
+    if ((!failed || !KEEP_FAILED_UNIVERSE) && !KEEP_ALWAYS) {
       try {
         FileUtils.deleteDirectory(new File(new File(new File(baseDir), subDir), testName));
       } catch (Exception ignored) {
@@ -562,8 +584,14 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
 
   protected UniverseDefinitionTaskParams.UserIntent getDefaultUserIntent(
       String univName, boolean disableTls) {
+    return getDefaultUserIntent(univName, disableTls, 3, 3);
+  }
+
+  protected UniverseDefinitionTaskParams.UserIntent getDefaultUserIntent(
+      String univName, boolean disableTls, int rf, int numNodes) {
     UniverseDefinitionTaskParams.UserIntent userIntent =
-        ApiUtils.getTestUserIntent(region, provider, instanceType, 3);
+        ApiUtils.getTestUserIntent(region, provider, instanceType, numNodes);
+    userIntent.replicationFactor = rf;
     userIntent.universeName = "test-universe";
     if (univName != null) {
       userIntent.universeName = univName;
@@ -719,7 +747,8 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
             10,
             authEnabled);
     assertTrue(response.isSuccess());
-    assertEquals("3", LocalNodeManager.getRawCommandOutput(response.getMessage()));
+    assertEquals("3", CommonUtils.extractJsonisedSqlResponse(response).trim());
+    // Check universe sequence and DB sequence number
   }
 
   protected void initYCQL(Universe universe) {
@@ -1035,5 +1064,90 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
 
   protected String getBackupBaseDirectory() {
     return String.format("%s/%s/%s", baseDir, subDir, testName);
+  }
+
+  protected void killProcessesOnNode(UUID universeUuid, String nodeName)
+      throws IOException, InterruptedException {
+    Universe universe = Universe.getOrBadRequest(universeUuid);
+    NodeDetails node = universe.getNode(nodeName);
+    if (node.isTserver) {
+      localNodeManager.killProcess(nodeName, ServerType.TSERVER);
+    }
+    if (node.isMaster) {
+      localNodeManager.killProcess(nodeName, ServerType.MASTER);
+    }
+  }
+
+  protected void killProcessOnNode(UUID universeUuid, String nodeName, ServerType serverType)
+      throws IOException, InterruptedException {
+    Universe universe = Universe.getOrBadRequest(universeUuid);
+    NodeDetails node = universe.getNode(nodeName);
+    if (serverType == ServerType.TSERVER) {
+      if (!node.isTserver) {
+        throw new IllegalArgumentException("Server type " + serverType + " is not running");
+      }
+    } else if (serverType == ServerType.MASTER) {
+      if (!node.isMaster) {
+        throw new IllegalArgumentException("Server type " + serverType + " is not running");
+      }
+    } else {
+      throw new IllegalArgumentException("Server type " + serverType + " is not supported");
+    }
+    localNodeManager.killProcess(nodeName, serverType);
+  }
+
+  protected void startProcessesOnNode(
+      UUID universeUuid, NodeDetails node, UniverseTaskBase.ServerType serverType)
+      throws IOException, InterruptedException {
+    localNodeManager.startProcess(universeUuid, node.getNodeName(), serverType);
+  }
+
+  protected boolean isMasterProcessRunning(String nodeName) {
+    return localNodeManager.isProcessRunning(nodeName, ServerType.MASTER);
+  }
+
+  // This method waits for the next task to complete.
+  protected TaskInfo waitForNextTask(UUID universeUuid, UUID lastTaskUuid, Duration timeout)
+      throws InterruptedException {
+    Stopwatch stopwatch = Stopwatch.createStarted();
+    do {
+      Universe universe = Universe.getOrBadRequest(universeUuid);
+      UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+      if (details.placementModificationTaskUuid != null
+          && !lastTaskUuid.equals(details.placementModificationTaskUuid)) {
+        // A new task has already started, wait for it to complete.
+        TaskInfo taskInfo = TaskInfo.getOrBadRequest(details.placementModificationTaskUuid);
+        return CommissionerBaseTest.waitForTask(taskInfo.getTaskUUID());
+      }
+      CustomerTask customerTask = CustomerTask.getLastTaskByTargetUuid(universeUuid);
+      if (!lastTaskUuid.equals(customerTask.getTaskUUID())) {
+        // Last task has already completed.
+        return TaskInfo.getOrBadRequest(customerTask.getTaskUUID());
+      }
+      Thread.sleep(1000);
+    } while (stopwatch.elapsed().compareTo(timeout) < 0);
+    throw new RuntimeException("Timed-out waiting for next task to start");
+  }
+
+  protected void verifyNodeModifications(Universe universe, int added, int removed) {
+    assertEquals(
+        added,
+        universe.getUniverseDetails().nodeDetailsSet.stream()
+            .filter(n -> n.state == NodeDetails.NodeState.ToBeAdded)
+            .count());
+    assertEquals(
+        removed,
+        universe.getUniverseDetails().nodeDetailsSet.stream()
+            .filter(n -> n.state == NodeDetails.NodeState.ToBeRemoved)
+            .count());
+  }
+
+  protected void verifyMasterLBStatus(
+      Customer customer, Universe universe, boolean isEnabled, boolean isLoadBalancerIdle) {
+    MetaMasterHandler metaMasterHandler = app.injector().instanceOf(MetaMasterHandler.class);
+    MasterLBStateResponse resp =
+        metaMasterHandler.getMasterLBState(customer.getUuid(), universe.getUniverseUUID());
+    assertEquals(resp.isEnabled, isEnabled);
+    assertEquals(resp.isIdle, isLoadBalancerIdle);
   }
 }

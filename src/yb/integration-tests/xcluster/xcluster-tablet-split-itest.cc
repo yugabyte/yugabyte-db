@@ -27,6 +27,7 @@
 #include "yb/dockv/partition.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/consensus/log.h"
 #include "yb/docdb/docdb_test_util.h"
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
@@ -37,11 +38,13 @@
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_defaults.h"
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tools/admin-test-base.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/ts_tablet_manager.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/logging.h"
 #include "yb/util/sync_point.h"
@@ -63,6 +66,7 @@ DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
 DECLARE_bool(enable_collect_cdc_metrics);
 DECLARE_int32(update_metrics_interval_ms);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
+DECLARE_int32(update_min_cdc_indices_interval_secs);
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
@@ -72,6 +76,7 @@ DECLARE_int64(db_write_buffer_size);
 
 namespace yb {
 using test::Partitioning;
+using cdc::CDCServiceImpl;
 
 template <class TabletSplitBase>
 class XClusterTabletSplitITestBase : public TabletSplitBase {
@@ -82,10 +87,16 @@ class XClusterTabletSplitITestBase : public TabletSplitBase {
  protected:
   Status SetupReplication(const string& bootstrap_id = "") {
     SwitchToProducer();
-    VERIFY_RESULT(tools::RunAdminToolCommand(
-        consumer_cluster_->GetMasterAddresses(), "setup_universe_replication", kProducerClusterId,
-        TabletSplitBase::cluster_->GetMasterAddresses(), TabletSplitBase::table_->id(),
-        bootstrap_id));
+    if (!bootstrap_id.empty()) {
+      VERIFY_RESULT(tools::RunAdminToolCommand(
+          consumer_cluster_->GetMasterAddresses(), "setup_universe_replication", kProducerClusterId,
+          TabletSplitBase::cluster_->GetMasterAddresses(), TabletSplitBase::table_->id(),
+          bootstrap_id));
+    } else {
+      VERIFY_RESULT(tools::RunAdminToolCommand(
+          consumer_cluster_->GetMasterAddresses(), "setup_universe_replication", kProducerClusterId,
+          TabletSplitBase::cluster_->GetMasterAddresses(), TabletSplitBase::table_->id()));
+    }
     return Status::OK();
   }
 
@@ -252,9 +263,30 @@ class CdcTabletSplitITest : public XClusterTabletSplitITestBase<TabletSplitITest
   }
 };
 
+namespace {
+void WaitForCDCIndex(const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+                     CDCServiceImpl* cdc_service,
+                     int64_t expected_index,
+                     int timeout_secs) {
+  LOG(INFO) << "Waiting until index equals " << expected_index
+            << ". Timeout: " << timeout_secs;
+
+  ASSERT_OK(WaitFor([&]() {
+      return cdc_service->GetXClusterMinRequiredIndex(tablet_peer->tablet_id()) == expected_index;
+  }, MonoDelta::FromSeconds(timeout_secs) * kTimeMultiplier,
+      "Wait until cdc min replicated index."));
+  LOG(INFO) << "Done waiting";
+}
+} // namespace
+
+CDCServiceImpl* CDCService(tserver::TabletServer* tserver) {
+  return down_cast<CDCServiceImpl*>(tserver->GetCDCService().get());
+}
+
 TEST_F(CdcTabletSplitITest, GetChangesOnSplitParentTablet) {
   docdb::DisableYcqlPackedRow();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   constexpr auto kNumRows = kDefaultNumRows;
   auto cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(&client_->proxy_cache(),
       HostPort::FromBoundEndpoint(cluster_->mini_tablet_servers().front()->bound_rpc_addr()));
@@ -316,6 +348,18 @@ TEST_F(CdcTabletSplitITest, GetChangesOnSplitParentTablet) {
   }
   ASSERT_OK(s);
   ASSERT_EQ(children_found, 2);
+
+  // Verify cdc_min_replicated_index after split.
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
+    for (const auto& child_tablet_id : child_tablet_ids) {
+      const auto& tserver = cluster_->mini_tablet_server(i)->server();
+      auto tablet_peer = ASSERT_RESULT(
+          tserver->tablet_manager()->GetTablet(child_tablet_id));
+      WaitForCDCIndex(
+          tablet_peer, CDCService(tserver),
+          split_op_checkpoint.index, 4 * FLAGS_update_min_cdc_indices_interval_secs);
+    }
+  }
 
   // Now let the parent tablet get deleted by the background task.
   // To do so, we need to issue a GetChanges to both children tablets.

@@ -190,131 +190,59 @@ static void LogsHandler(const Webserver::WebRequest& req, Webserver::WebResponse
   }
 }
 
-std::vector<google::CommandLineFlagInfo> GetAllFlags(const Webserver::WebRequest& req) {
-  std::vector<google::CommandLineFlagInfo> flag_infos;
-  google::GetAllFlags(&flag_infos);
-
-  if (FLAGS_TEST_mini_cluster_mode) {
-    const string* custom_varz_ptr = FindOrNull(req.parsed_args, "TEST_custom_varz");
-    if (custom_varz_ptr != nullptr) {
-      map<string, string> varz;
-      SplitStringToMapUsing(*custom_varz_ptr, "\n", &varz);
-
-      // Replace values for existing flags.
-      for (auto& flag_info : flag_infos) {
-        auto varz_it = varz.find(flag_info.name);
-        if (varz_it != varz.end()) {
-          if (flag_info.current_value != varz_it->second) {
-            flag_info.current_value = varz_it->second;
-            flag_info.is_default = false;
-          }
-          varz.erase(varz_it);
-        }
-      }
-
-      // Add new flags.
-      for (auto const& flag : varz) {
-        google::CommandLineFlagInfo flag_info;
-        flag_info.name = flag.first;
-        flag_info.current_value = flag.second;
-        flag_info.default_value = "";
-        flag_info.is_default = false;
-        flag_infos.push_back(flag_info);
-      }
-    }
-  }
-
-  return flag_infos;
-}
-
-YB_DEFINE_ENUM(FlagType, (kInvalid)(kNodeInfo)(kCustom)(kAuto)(kDefault));
-
-struct FlagInfo {
-  string name;
-  string value;
-  FlagType type;
-};
-
-void ConvertFlagsToJson(const vector<FlagInfo>& flag_infos, std::stringstream* output) {
+void ConvertFlagsToJson(
+    const std::unordered_map<FlagType, std::vector<FlagInfo>>& flag_infos,
+    std::stringstream* output) {
   JsonWriter jw(output, JsonWriter::COMPACT);
   jw.StartObject();
   jw.String("flags");
   jw.StartArray();
 
-  for (const auto& flag_info : flag_infos) {
-    jw.StartObject();
-    jw.String("name");
-    jw.String(flag_info.name);
-    jw.String("value");
-    jw.String(flag_info.value);
-    jw.String("type");
-    // Remove the prefix 'k' from the type name
-    jw.String(ToString(flag_info.type).substr(1));
-    jw.EndObject();
+  for (const auto& [type, flags] : flag_infos) {
+    for (const auto& flag : flags) {
+      jw.StartObject();
+      jw.String("name");
+      jw.String(flag.name);
+      jw.String("value");
+      jw.String(flag.value);
+      jw.String("type");
+      // Remove the prefix 'k' from the type name
+      jw.String(ToString(type).substr(1));
+      jw.EndObject();
+    }
   }
 
   jw.EndArray();
   jw.EndObject();
 }
 
-vector<FlagInfo> GetFlagInfos(
-    const Webserver::WebRequest& req, Webserver* webserver, bool skip_default_test_flags) {
-  const std::set<string> node_info_flags{
-      "log_filename",    "rpc_bind_addresses", "webserver_interface", "webserver_port",
-      "placement_cloud", "placement_region",   "placement_zone"};
-
-  const auto flags = GetAllFlags(req);
-
-  vector<FlagInfo> flag_infos;
-  flag_infos.reserve(flags.size());
-
-  for (const auto& flag : flags) {
-    std::unordered_set<FlagTag> flag_tags;
-    GetFlagTags(flag.name, &flag_tags);
-
-    FlagInfo flag_info;
-    flag_info.name = flag.name;
-    flag_info.type = FlagType::kDefault;
-
-    if (PREDICT_FALSE(ContainsKey(flag_tags, FlagTag::kSensitive_info))) {
-      flag_info.value = "****";
-    } else {
-      flag_info.value = flag.current_value;
+std::unordered_map<FlagType, std::vector<FlagInfo>> GetFlagInfos(
+    const Webserver::WebRequest& req, Webserver* webserver, bool filter_default_flags) {
+  std::map<std::string, std::string> custom_varz;
+  if (FLAGS_TEST_mini_cluster_mode) {
+    const string* custom_varz_ptr = FindOrNull(req.parsed_args, "TEST_custom_varz");
+    if (custom_varz_ptr != nullptr) {
+      SplitStringToMapUsing(*custom_varz_ptr, "\n", &custom_varz);
     }
-
-    if (node_info_flags.contains(flag.name)) {
-      flag_info.type = FlagType::kNodeInfo;
-    } else if (flag.current_value != flag.default_value) {
-      flag_info.type = FlagType::kCustom;
-    } else if (flag_tags.contains(FlagTag::kAuto) && webserver->ContainsAutoFlag(flag_info.name)) {
-      flag_info.type = FlagType::kAuto;
-    }
-
-    if (skip_default_test_flags && flag_info.type == FlagType::kDefault &&
-        flag_tags.contains(FlagTag::kHidden) && flag_info.name.starts_with("TEST_")) {
-      // Skip Default TEST flags.
-      continue;
-    }
-
-    flag_infos.push_back(std::move(flag_info));
   }
 
-  // Sort by type, name ascending
-  std::sort(flag_infos.begin(), flag_infos.end(), [](const FlagInfo& lhs, const FlagInfo& rhs) {
-    if (lhs.type == rhs.type) {
-      return ToLowerCase(lhs.name) < ToLowerCase(rhs.name);
-    }
-    return to_underlying(lhs.type) < to_underlying(rhs.type);
-  });
+  std::function<bool(const std::string&)> default_flag_filter = nullptr;
+  if (filter_default_flags) {
+    default_flag_filter = [webserver](const std::string& flag_name) {
+      return webserver->ContainsFlag(flag_name);
+    };
+  }
 
-  return flag_infos;
+  return yb::GetFlagInfos(
+      [webserver](const std::string& flag_name) { return webserver->ContainsAutoFlag(flag_name); },
+      std::move(default_flag_filter), custom_varz);
 }
 
 // Registered to handle "/api/v1/varz", and prints out all command-line flags and their values in
 // JSON format.
 static void GetFlagsJsonHandler(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp, Webserver* webserver) {
-  const auto flag_infos = GetFlagInfos(req, webserver, /*skip_default_test_flags=*/false);
+  const auto flag_infos = GetFlagInfos(req, webserver, /*filter_default_flags=*/false);
   ConvertFlagsToJson(std::move(flag_infos), &resp->output);
 }
 
@@ -323,40 +251,42 @@ static void GetFlagsJsonHandler(
 static void FlagsHandler(
     const Webserver::WebRequest& req, Webserver::WebResponse* resp, Webserver* webserver) {
   std::stringstream& output = resp->output;
-  auto flag_infos = GetFlagInfos(req, webserver, /*skip_default_test_flags=*/true);
-  if (req.parsed_args.find("raw") != req.parsed_args.end()) {
-    for (const auto& flag_info : flag_infos) {
-      output << "--" << flag_info.name << "=" << flag_info.value << endl;
+  const auto is_raw = req.parsed_args.contains("raw");
+
+  auto flag_infos = GetFlagInfos(req, webserver, /*filter_default_flags=*/!is_raw);
+  if (is_raw) {
+    for (const auto& [_, flags] : flag_infos) {
+      for (const auto& flag : flags) {
+        output << "--" << flag.name << "=" << flag.value << endl;
+      }
     }
     return;
   }
 
   Tags tags(false /* as_text */);
 
-  // List is sorted by type. Convert to HTML table for each type.
-  FlagType previous_type = FlagType::kInvalid;
-  bool first_table = true;
-  for (auto& flag_info : flag_infos) {
-    if (previous_type != flag_info.type) {
-      if (!first_table) {
-        output << tags.end_table;
-      }
-      first_table = false;
-
-      previous_type = flag_info.type;
-
-      string type_str = ToString(flag_info.type).substr(1);
-      output << tags.header << type_str << " Flags" << tags.end_header;
-      output << tags.table << tags.row << tags.table_header << "Name" << tags.end_table_header
-             << tags.table_header << "Value" << tags.end_table_header << tags.end_row;
+  HtmlPrintHelper html_print_helper(output);
+  for (const auto& type : FlagTypeList()) {
+    if (!ContainsKey(flag_infos, type)) {
+      continue;
     }
 
-    output << tags.row << tags.cell << flag_info.name << tags.end_cell;
-    output << tags.cell << EscapeForHtmlToString(flag_info.value) << tags.end_cell << tags.end_row;
-  }
+    auto field_set = html_print_helper.CreateFieldset(ToString(type).substr(1) + " Flags");
 
-  if (!first_table) {
-    output << tags.end_table;
+    std::vector<std::string> column_names = {"Name", "Value"};
+    if (type == FlagType::kAuto) {
+      column_names.push_back("State");
+    }
+    auto html_table = html_print_helper.CreateTablePrinter(ToString(type), column_names);
+    for (auto& flag : flag_infos.at(type)) {
+      if (type == FlagType::kAuto) {
+        html_table.AddRow(
+            flag.name, flag.value, (flag.is_auto_flag_promoted ? "PROMOTED" : "NOT PROMOTED"));
+      } else {
+        html_table.AddRow(flag.name, flag.value);
+      }
+    }
+    html_table.Print();
   }
 }
 

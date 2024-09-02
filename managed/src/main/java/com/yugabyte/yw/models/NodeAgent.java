@@ -304,6 +304,12 @@ public class NodeAgent extends Model {
     return finder.query().findSet();
   }
 
+  public static List<NodeAgent> getByIps(UUID customerUuid, Set<String> ips) {
+    ExpressionList<NodeAgent> query = finder.query().where().eq("customerUuid", customerUuid);
+    appendInClause(query, "ip", ips);
+    return query.findList();
+  }
+
   public static Set<NodeAgent> getUpdatableNodeAgents(UUID customerUuid, String softwareVersion) {
     return finder
         .query()

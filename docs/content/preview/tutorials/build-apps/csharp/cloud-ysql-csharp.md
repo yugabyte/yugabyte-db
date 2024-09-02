@@ -8,7 +8,7 @@ menu:
     parent: build-apps
     name: C#
     identifier: cloud-csharp
-    weight: 600
+    weight: 800
 type: docs
 ---
 

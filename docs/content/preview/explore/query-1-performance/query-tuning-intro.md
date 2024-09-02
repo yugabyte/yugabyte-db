@@ -21,7 +21,7 @@ Before trying to optimize individual statements, make sure the YugabyteDB cluste
 * Verify that all nodes that are supposed to be running are indeed running.
 * Verify that the YB-TServer and, where applicable, YB-Master processes are running on the nodes.
 
-To view the nodes and servers that make up your cluster, use the `yb-admin` command to request the master and tablet servers. For example:
+To view the nodes and servers that make up your cluster, use yb-admin to request the master and tablet servers. For example:
 
 ```sh
 $ ./bin/yb-admin -init_master_addrs=$(hostname):7100 list_all_masters
@@ -47,7 +47,7 @@ d80150e0eeda4477a231968440dd89a9 172.158.50.212:9100 0.20s           ALIVE    ..
 
 Next, make sure enough disk space is available, elementary components such as CPU, disk, and the network do not report errors, and the operating system does not report any malfunction.
 
-For more information on troubleshooting cluster- and node-level issues, refer to [Troubleshoot YugabyteDB](../../../troubleshoot/).
+For more information on troubleshooting cluster- and node-level issues, refer to [Troubleshoot YugabyteDB](/preview/troubleshoot/).
 
 After you know the entire cluster is running correctly, you can move to statement tuning.
 

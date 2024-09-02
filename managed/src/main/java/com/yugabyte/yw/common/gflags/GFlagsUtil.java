@@ -38,6 +38,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -52,6 +53,7 @@ import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
@@ -84,6 +86,8 @@ public class GFlagsUtil {
       "default_memory_limit_to_ram_ratio";
   public static final String ENABLE_YSQL = "enable_ysql";
   public static final String YSQL_ENABLE_AUTH = "ysql_enable_auth";
+  public static final String ENABLE_YSQL_CONN_MGR = "enable_ysql_conn_mgr";
+  public static final String YSQL_CONN_MGR_PORT = "ysql_conn_mgr_port";
   public static final String START_CQL_PROXY = "start_cql_proxy";
   public static final String USE_CASSANDRA_AUTHENTICATION = "use_cassandra_authentication";
   public static final String USE_NODE_TO_NODE_ENCRYPTION = "use_node_to_node_encryption";
@@ -139,6 +143,10 @@ public class GFlagsUtil {
       "leader_failure_max_missed_heartbeat_periods";
   public static final String LOAD_BALANCER_INITIAL_DELAY_SECS = "load_balancer_initial_delay_secs";
 
+  public static final String TIMESTAMP_HISTORY_RETENTION_INTERVAL_SEC =
+      "timestamp_history_retention_interval_sec";
+  public static final long DEFAULT_TIMESTAMP_HISTORY_RETENTION_INTERVAL_SEC = 900L;
+
   public static final String YBC_LOG_SUBDIR = "/controller/logs";
   public static final String CORES_DIR_PATH = "/cores";
 
@@ -175,6 +183,8 @@ public class GFlagsUtil {
   public static final String NOTIFY_PEER_OF_REMOVAL_FROM_CLUSTER =
       "notify_peer_of_removal_from_cluster";
   public static final String MASTER_JOIN_EXISTING_UNIVERSE = "master_join_existing_universe";
+
+  public static final String ALLOWED_PREVIEW_FLAGS_CSV = "allowed_preview_flags_csv";
 
   private static final Pattern LOG_LINE_PREFIX_PATTERN =
       Pattern.compile("^\"?\\s*log_line_prefix\\s*=\\s*'?([^']+)'?\\s*\"?$");
@@ -315,6 +325,9 @@ public class GFlagsUtil {
           && confGetter.getStaticConf().getInt(NodeManager.POSTGRES_RR_MAX_MEM_MB) >= 0) {
         configCgroup = config.getInt(NodeManager.POSTGRES_RR_MAX_MEM_MB) > 0;
       }
+      long historyRetentionBufferSecs =
+          confGetter.getConfForScope(
+              universe, UniverseConfKeys.pitEnabledBackupsRetentionBufferTimeSecs);
       extra_gflags.putAll(
           getTServerDefaultGflags(
               taskParam,
@@ -323,7 +336,8 @@ public class GFlagsUtil {
               useHostname,
               useSecondaryIp,
               isDualNet,
-              configCgroup));
+              configCgroup,
+              historyRetentionBufferSecs));
     } else {
       Map<String, String> masterGFlags =
           getMasterDefaultGFlags(
@@ -363,27 +377,19 @@ public class GFlagsUtil {
 
     if (universe.getUniverseDetails().xClusterInfo.isSourceRootCertDirPathGflagConfigured()) {
       extra_gflags.put(
-          XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG,
+          XClusterConfigTaskBase.XCLUSTER_ROOT_CERTS_DIR_GFLAG,
           universe.getUniverseDetails().xClusterInfo.sourceRootCertDirPath);
     }
 
     return extra_gflags;
   }
 
-  private static SpecificGFlags.PerProcessFlags processGFlagGroups(
-      SpecificGFlags specificGFlags, String ybdbVersion) {
-    // check if any groups are set in specificGFlags
-    if (specificGFlags == null) {
+  private static List<GFlagGroup> extractGroups(
+      List<GroupName> requestedGroups, String ybdbVersion) {
+    if (ybdbVersion == null || requestedGroups == null || requestedGroups.isEmpty()) {
       return null;
     }
-    if (ybdbVersion == null) {
-      return null;
-    }
-    SpecificGFlags result = specificGFlags;
-    List<GroupName> requestedGroups = specificGFlags.getGflagGroups();
-    if (requestedGroups.isEmpty()) {
-      return null;
-    }
+    List<GFlagGroup> result = new ArrayList<>();
     if (Util.compareYBVersions(
             ybdbVersion, GFLAG_GROUPS_STABLE_VERSION, GFLAG_GROUPS_PREVIEW_VERSION, true)
         < 0) {
@@ -409,57 +415,15 @@ public class GFlagsUtil {
         if (!gFlagGroup.isPresent()) {
           throw new PlatformServiceException(BAD_REQUEST, "Unknown gflag group: " + requestedGroup);
         }
-        result = addGFlagGroup(result, gFlagGroup.get());
+        result.add(gFlagGroup.get());
       }
+      return result;
     } catch (IOException e) {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
           String.format(
               "Failed to fetch GFlag groups for YBDB version %s: %s", ybdbVersion, e.getMessage()));
     }
-
-    return result.getPerProcessFlags();
-  }
-
-  public static SpecificGFlags addGFlagGroup(SpecificGFlags specificGFlags, GFlagGroup gFlagGroup) {
-    SpecificGFlags result = specificGFlags;
-    LOG.info("Adding GFlagGroup {} to SpecificGFlags", gFlagGroup.groupName);
-    GFlagGroup.ServerTypeFlags flags = gFlagGroup.flags;
-    if (flags.masterGFlags != null && !flags.masterGFlags.isEmpty()) {
-      // NOTE: if the same flag is used by multiple groups (like ysql_pg_conf_csv) check
-      // if existing values are not overridden
-      Map<String, String> existingMasterGFlags =
-          result.getPerProcessFlags().value.get(ServerType.MASTER);
-      if (existingMasterGFlags == null) {
-        existingMasterGFlags = new HashMap<>();
-      }
-      existingMasterGFlags.putAll(flags.masterGFlags);
-      result.getPerProcessFlags().value.put(ServerType.MASTER, existingMasterGFlags);
-    }
-    if (flags.tserverGFlags != null && !flags.tserverGFlags.isEmpty()) {
-      Map<String, String> existingTserverGFlags =
-          result.getPerProcessFlags().value.get(ServerType.TSERVER);
-      String requestedGroupYsqlPgConfCsv = flags.tserverGFlags.remove(YSQL_PG_CONF_CSV);
-      if (existingTserverGFlags == null) {
-        existingTserverGFlags = new HashMap<>();
-      }
-      String existingTserverYsqlPgConfCsv = existingTserverGFlags.get(YSQL_PG_CONF_CSV);
-      existingTserverGFlags.putAll(flags.tserverGFlags);
-      if (existingTserverYsqlPgConfCsv != null && requestedGroupYsqlPgConfCsv != null) {
-        String ysqlPgConfCsv =
-            mergeCSVs(requestedGroupYsqlPgConfCsv, existingTserverYsqlPgConfCsv, true);
-        existingTserverGFlags.put(YSQL_PG_CONF_CSV, ysqlPgConfCsv);
-        flags.tserverGFlags.put(YSQL_PG_CONF_CSV, requestedGroupYsqlPgConfCsv);
-      } else {
-        if (requestedGroupYsqlPgConfCsv != null && !requestedGroupYsqlPgConfCsv.isEmpty()) {
-          existingTserverGFlags.put(YSQL_PG_CONF_CSV, requestedGroupYsqlPgConfCsv);
-          flags.tserverGFlags.put(YSQL_PG_CONF_CSV, requestedGroupYsqlPgConfCsv);
-        }
-      }
-      result.getPerProcessFlags().value.put(ServerType.TSERVER, existingTserverGFlags);
-    }
-    LOG.info("Added GFlag Group {} to SpecificGFlags", gFlagGroup.groupName);
-    return result;
   }
 
   /** Return the map of ybc flags which will be passed to the db nodes. */
@@ -628,7 +592,8 @@ public class GFlagsUtil {
       boolean useHostname,
       boolean useSecondaryIp,
       boolean isDualNet,
-      boolean configureCGroup) {
+      boolean configureCGroup,
+      long historyRetentionBufferSecs) {
     Map<String, String> gflags = new TreeMap<>();
     NodeDetails node = universe.getNode(taskParam.nodeName);
     String masterAddresses = getMasterAddrs(taskParam, universe, useSecondaryIp);
@@ -649,6 +614,8 @@ public class GFlagsUtil {
         taskParam.overrideNodePorts
             ? taskParam.communicationPorts.redisServerRpcPort
             : node.redisServerRpcPort;
+
+    gflags.putAll(universe.getNewInstallGFlags(ServerType.TSERVER));
 
     if (useHostname) {
       gflags.put(SERVER_BROADCAST_ADDRESSES, String.format("%s:%s", privateIp, tserverRpcPort));
@@ -684,6 +651,15 @@ public class GFlagsUtil {
     }
     if (configureCGroup) {
       gflags.put(POSTMASTER_CGROUP, YSQL_CGROUP_PATH);
+    }
+    // Add timestamp_history_retention_sec gflag if required.
+    Duration timestampHistoryRetentionForPITR =
+        Schedule.getMaxBackupIntervalInUniverseForPITRestore(
+            universe.getUniverseUUID(), true /* includeIntermediate */);
+    if (timestampHistoryRetentionForPITR.toSeconds() > 0L) {
+      gflags.put(
+          TIMESTAMP_HISTORY_RETENTION_INTERVAL_SEC,
+          Long.toString(timestampHistoryRetentionForPITR.toSeconds() + historyRetentionBufferSecs));
     }
     return gflags;
   }
@@ -751,14 +727,33 @@ public class GFlagsUtil {
 
     if (taskParam.enableYSQL) {
       gflags.put(ENABLE_YSQL, "true");
-      gflags.put(
-          PSQL_PROXY_BIND_ADDRESS,
-          String.format(
-              "%s:%s",
-              pgsqlProxyBindAddress,
-              taskParam.overrideNodePorts
-                  ? taskParam.communicationPorts.ysqlServerRpcPort
-                  : node.ysqlServerRpcPort));
+      if (taskParam.enableConnectionPooling) {
+        gflags.put(ENABLE_YSQL_CONN_MGR, "true");
+        gflags.put(ALLOWED_PREVIEW_FLAGS_CSV, ENABLE_YSQL_CONN_MGR);
+        gflags.put(
+            PSQL_PROXY_BIND_ADDRESS,
+            String.format(
+                "%s:%s",
+                pgsqlProxyBindAddress,
+                taskParam.overrideNodePorts
+                    ? taskParam.communicationPorts.internalYsqlServerRpcPort
+                    : node.internalYsqlServerRpcPort));
+        gflags.put(
+            YSQL_CONN_MGR_PORT,
+            String.valueOf(
+                taskParam.overrideNodePorts
+                    ? taskParam.communicationPorts.ysqlServerRpcPort
+                    : node.ysqlServerRpcPort));
+      } else {
+        gflags.put(
+            PSQL_PROXY_BIND_ADDRESS,
+            String.format(
+                "%s:%s",
+                pgsqlProxyBindAddress,
+                taskParam.overrideNodePorts
+                    ? taskParam.communicationPorts.ysqlServerRpcPort
+                    : node.ysqlServerRpcPort));
+      }
       gflags.put(
           PSQL_PROXY_WEBSERVER_PORT,
           Integer.toString(
@@ -974,6 +969,8 @@ public class GFlagsUtil {
             ? taskParam.communicationPorts.masterHttpPort
             : node.masterHttpPort;
 
+    gflags.putAll(universe.getNewInstallGFlags(ServerType.MASTER));
+
     if (useHostname) {
       gflags.put(
           SERVER_BROADCAST_ADDRESSES,
@@ -1126,38 +1123,47 @@ public class GFlagsUtil {
     // Merge the `ysql_hba_conf_csv` post pre-processing the hba conf for jwt if required.
     mergeCSVs(userGFlags, platformGFlags, YSQL_HBA_CONF_CSV, false);
     mergeCSVs(userGFlags, platformGFlags, YSQL_PG_CONF_CSV, true);
+    mergeCSVs(userGFlags, platformGFlags, ALLOWED_PREVIEW_FLAGS_CSV, true);
+
+    // timestamp_hitory_retention_sec gflag should be max of platform and user values
+    processTimestampHistoryRetentionSecGflagIfRequired(userGFlags, platformGFlags);
   }
 
   public static void processGFlagGroups(
-      Map<String, String> userGFlags, UserIntent userIntent, String processType) {
+      Map<String, String> userGFlags,
+      UserIntent userIntent,
+      UniverseTaskBase.ServerType processType) {
     if (processType == null) {
       return;
     }
-    SpecificGFlags.PerProcessFlags gflagGroupsPerProcess =
-        processGFlagGroups(userIntent.specificGFlags, userIntent.ybSoftwareVersion);
-    if (gflagGroupsPerProcess == null) {
+    if (userIntent.specificGFlags == null) {
       return;
     }
-    if (processType.equals(UniverseTaskBase.ServerType.TSERVER.name())) {
-      Map<String, String> groupTserverGFlags = gflagGroupsPerProcess.value.get(ServerType.TSERVER);
-      if (groupTserverGFlags != null) {
-        String groupYsqlPgConfCsv = groupTserverGFlags.remove(YSQL_PG_CONF_CSV);
-        String userYsqlPgConfCsv = userGFlags.remove(YSQL_PG_CONF_CSV);
-        userGFlags.putAll(groupTserverGFlags);
-        if (userYsqlPgConfCsv != null && groupYsqlPgConfCsv != null) {
-          String ysqlPgConfCsv = mergeCSVs(groupYsqlPgConfCsv, userYsqlPgConfCsv, true);
-          userGFlags.put(YSQL_PG_CONF_CSV, ysqlPgConfCsv);
-        } else {
-          if (groupYsqlPgConfCsv != null && !groupYsqlPgConfCsv.isEmpty()) {
-            userGFlags.put(YSQL_PG_CONF_CSV, groupYsqlPgConfCsv);
-          }
-        }
+    List<GFlagGroup> gFlagGroups =
+        extractGroups(userIntent.specificGFlags.getGflagGroups(), userIntent.ybSoftwareVersion);
+    if (gFlagGroups == null) {
+      return;
+    }
+    for (GFlagGroup gFlagGroup : gFlagGroups) {
+      GFlagGroup.ServerTypeFlags flags = gFlagGroup.flags;
+      if (flags == null) {
+        continue;
       }
-    } else {
-      Map<String, String> groupMasterGFlags = gflagGroupsPerProcess.value.get(ServerType.MASTER);
-      if (groupMasterGFlags != null) {
-        userGFlags.putAll(groupMasterGFlags);
+      Map<String, String> groupGFlags =
+          processType == ServerType.MASTER ? flags.masterGFlags : flags.tserverGFlags;
+      if (groupGFlags == null) {
+        continue;
       }
+      groupGFlags.forEach(
+          (k, v) -> {
+            // If user gflags contains that flag we need to merge.
+            if (k.equals(YSQL_PG_CONF_CSV) && userGFlags.containsKey(k)) {
+              // Merging while taking precendence for group
+              userGFlags.put(k, mergeCSVs(v, userGFlags.get(k), true));
+            } else {
+              userGFlags.put(k, v);
+            }
+          });
     }
   }
 
@@ -1242,7 +1248,12 @@ public class GFlagsUtil {
         }
         return getGFlagsForAZ(azUuid, serverType, primary, allClusters);
       }
-      return userIntent.specificGFlags.getGFlags(azUuid, serverType);
+      Map<String, String> azGFlags = userIntent.specificGFlags.getGFlags(azUuid, serverType);
+      if (primary.userIntent.specificGFlags != null
+          && primary.userIntent.specificGFlags.getGflagGroups() != null) {
+        processGFlagGroups(azGFlags, primary.userIntent, serverType);
+      }
+      return azGFlags;
     } else {
       if (cluster.clusterType == UniverseDefinitionTaskParams.ClusterType.ASYNC) {
         return getGFlagsForAZ(azUuid, serverType, primary, allClusters);
@@ -1360,29 +1371,6 @@ public class GFlagsUtil {
     return writer.toString();
   }
 
-  public static String removeCSVs(String csv1, String csv2) {
-    StringWriter writer = new StringWriter();
-    try {
-      CSVFormat csvFormat = CSVFormat.DEFAULT.builder().setRecordSeparator("").build();
-      try (CSVPrinter csvPrinter = new CSVPrinter(writer, csvFormat)) {
-        Set<String> records = new LinkedHashSet<>();
-        CSVParser parser = new CSVParser(new StringReader(csv1), csvFormat);
-        for (CSVRecord record : parser) {
-          removeEntries(record, records);
-        }
-        parser = new CSVParser(new StringReader(csv2), csvFormat);
-        for (CSVRecord record : parser) {
-          removeEntries(record, records);
-        }
-        csvPrinter.printRecord(records);
-        csvPrinter.flush();
-      }
-    } catch (IOException ignored) {
-      // can't really happen
-    }
-    return writer.toString();
-  }
-
   private static void appendEntries(
       CSVRecord record, Set<String> result, Set<String> existingKeys, boolean mergeKeyValues) {
     record
@@ -1400,10 +1388,6 @@ public class GFlagsUtil {
               }
               result.add(entry);
             });
-  }
-
-  private static void removeEntries(CSVRecord record, Set<String> result) {
-    record.toList().forEach(result::remove);
   }
 
   private static Optional<String> getKey(String keyValue) {
@@ -1429,62 +1413,6 @@ public class GFlagsUtil {
     }
   }
 
-  public static void checkCSVStrings(
-      String groupYsqlPgConfCsv, String newYsqlPgConfCsv, GroupName group) {
-    StringWriter writer = new StringWriter();
-    CSVFormat csvFormat = CSVFormat.DEFAULT.builder().setRecordSeparator("").build();
-
-    try (CSVPrinter csvPrinter = new CSVPrinter(writer, csvFormat)) {
-      Set<String> existingKeys = new HashSet<>();
-      Set<String> records = new LinkedHashSet<>();
-
-      Map<String, String> groupMap = parseCSVStringToMap(groupYsqlPgConfCsv, csvFormat);
-      Map<String, String> newMap = parseCSVStringToMap(newYsqlPgConfCsv, csvFormat);
-
-      // Compare groupMap with newMap
-      for (Map.Entry<String, String> entry : groupMap.entrySet()) {
-        String key = entry.getKey();
-        String value = entry.getValue();
-
-        if (!newMap.containsKey(key)) {
-          throw new PlatformServiceException(
-              BAD_REQUEST,
-              String.format("Key %s from group %s is not present in ysql_pg_conf_csv", key, group));
-        }
-
-        if (!newMap.get(key).equals(value)) {
-          throw new PlatformServiceException(
-              BAD_REQUEST,
-              String.format(
-                  "Value for key %s from group %s does not match in ysql_pg_conf_csv. Have %s found"
-                      + " %s. Disable the group to edit values.",
-                  key, group, value, newMap.get(key)));
-        }
-      }
-    } catch (IOException ignored) {
-      // can't really happen
-    }
-  }
-
-  private static Map<String, String> parseCSVStringToMap(String csv, CSVFormat csvFormat)
-      throws IOException {
-    Map<String, String> map = new HashMap<>();
-    CSVParser parser = new CSVParser(new StringReader(csv), csvFormat);
-
-    for (CSVRecord record : parser) {
-      for (String pair : record) {
-        String[] keyValue = pair.split("=");
-        if (keyValue.length == 2) {
-          map.put(keyValue[0], keyValue[1]);
-        } else {
-          throw new IllegalArgumentException("Invalid key-value pair: " + pair);
-        }
-      }
-    }
-
-    return map;
-  }
-
   private static void mergeHostAndPort(
       Map<String, String> userGFlags, String addressKey, int port) {
     String val = userGFlags.get(addressKey);
@@ -1497,6 +1425,23 @@ public class GFlagsUtil {
       }
     } catch (URISyntaxException ex) {
       LOG.warn("Not a uri {}", uriStr);
+    }
+  }
+
+  // Get max of platform configured value and user set value for
+  // "timstamp_history_retention_sec" gflag.
+  public static void processTimestampHistoryRetentionSecGflagIfRequired(
+      Map<String, String> userGFlags, Map<String, String> platformGFlags) {
+    if (userGFlags.containsKey(TIMESTAMP_HISTORY_RETENTION_INTERVAL_SEC)
+        && platformGFlags.containsKey(TIMESTAMP_HISTORY_RETENTION_INTERVAL_SEC)) {
+      long userTimestampHistoryRetentionGFlag =
+          Long.valueOf(userGFlags.get(TIMESTAMP_HISTORY_RETENTION_INTERVAL_SEC));
+      long platformTimestampHistoryRetentionGFlag =
+          Long.valueOf(platformGFlags.get(TIMESTAMP_HISTORY_RETENTION_INTERVAL_SEC));
+      String value =
+          Long.toString(
+              Math.max(userTimestampHistoryRetentionGFlag, platformTimestampHistoryRetentionGFlag));
+      userGFlags.put(TIMESTAMP_HISTORY_RETENTION_INTERVAL_SEC, value);
     }
   }
 
@@ -1709,6 +1654,99 @@ public class GFlagsUtil {
         return String.format(
             "Node %s: value %s for %s is conflicting with autogenerated value %s",
             node.nodeName, userGFlags.get(gflag), gflag, platformGFlags.get(gflag));
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Checks the preview flags in the user-provided gflags map against the allowed preview flags.
+   *
+   * @param userGFlags The map of user-provided gflags.
+   * @param ybSoftwareVersion The version of the YB software.
+   * @param serverType The type of server.
+   * @param gFlagsValidation The gflags validation object.
+   * @return A string indicating any issues with the preview flags, or null if there are no issues.
+   * @throws IOException If an I/O error occurs.
+   */
+  public static String checkPreviewGFlags(
+      Map<String, String> userGFlags,
+      String ybSoftwareVersion,
+      ServerType serverType,
+      GFlagsValidation gFlagsValidation)
+      throws IOException {
+    if (MapUtils.isEmpty(userGFlags)) {
+      return null;
+    }
+    List<String> previewGFlags = new ArrayList<>();
+    for (String key : userGFlags.keySet()) {
+      Optional<GFlagDetails> gflagDetails =
+          gFlagsValidation.getGFlagDetails(ybSoftwareVersion, serverType.name(), key);
+      if (gflagDetails.isPresent()
+          && gflagDetails.get().tags != null
+          && gflagDetails.get().tags.contains("preview")) {
+        previewGFlags.add(key);
+      }
+    }
+    if (previewGFlags.size() == 0) {
+      return null;
+    }
+    String allowedPreviewFlags = userGFlags.get(ALLOWED_PREVIEW_FLAGS_CSV);
+    if (StringUtils.isEmpty(allowedPreviewFlags)) {
+      return String.format(
+          "Universe is equipped with preview flags but %s is missing. ", ALLOWED_PREVIEW_FLAGS_CSV);
+    }
+    List<String> allowedPreviewFlagsList =
+        (Arrays.asList(allowedPreviewFlags.split(",")))
+            .stream().map(String::trim).collect(Collectors.toList());
+    for (String previewFlag : previewGFlags) {
+      if (!allowedPreviewFlagsList.contains(previewFlag)) {
+        return String.format(
+            "Universe is equipped with preview flags %s but it is not set in %s : %s ",
+            previewFlag, ALLOWED_PREVIEW_FLAGS_CSV, allowedPreviewFlags);
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Checks the preview GFlags on specific GFlags.
+   *
+   * @param specificGFlags The specific GFlags to check.
+   * @param gFlagsValidation The GFlags validation object.
+   * @param ybSoftwareVersion The YB software version.
+   * @return An error message if any of the preview GFlags are invalid, otherwise null.
+   * @throws IOException If an I/O error occurs.
+   */
+  public static String checkPreviewGFlagsOnSpecificGFlags(
+      SpecificGFlags specificGFlags, GFlagsValidation gFlagsValidation, String ybSoftwareVersion)
+      throws IOException {
+    if (specificGFlags == null) {
+      return null;
+    }
+    if (specificGFlags.hasPerAZOverrides()) {
+      for (UUID azUUID : specificGFlags.getPerAZ().keySet()) {
+        for (ServerType serverType : Arrays.asList(ServerType.MASTER, ServerType.TSERVER)) {
+          Map<String, String> perAZGFlags = specificGFlags.getGFlags(azUUID, serverType);
+          String errMsg =
+              checkPreviewGFlags(perAZGFlags, ybSoftwareVersion, serverType, gFlagsValidation);
+          if (errMsg != null) {
+            return errMsg;
+          }
+        }
+      }
+    } else {
+      if (specificGFlags.getPerProcessFlags() != null
+          && specificGFlags.getPerProcessFlags().value != null) {
+        for (ServerType serverType : Arrays.asList(ServerType.MASTER, ServerType.TSERVER)) {
+          Map<String, String> perProcessGFlags =
+              specificGFlags.getPerProcessFlags().value.get(serverType);
+          String errMsg =
+              checkPreviewGFlags(perProcessGFlags, ybSoftwareVersion, serverType, gFlagsValidation);
+          if (errMsg != null) {
+            return errMsg;
+          }
+        }
       }
     }
     return null;

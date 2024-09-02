@@ -52,7 +52,7 @@ Refer to [To deploy nodes](../../prepare/cloud-permissions/cloud-permissions-nod
 
 ## Configure Kubernetes
 
-Navigate to **Configs > Infrastructure > Managed Kubernetes Service** to see a list of all currently configured Kubernetes providers.
+Navigate to **Integrations > Infrastructure > Managed Kubernetes Service** to see a list of all currently configured Kubernetes providers.
 
 ### View and edit providers
 
@@ -78,7 +78,9 @@ To create a Kubernetes provider:
 
     ![Auto-fill Kubernetes provider](/images/yb-platform/kubernetes-config-autofill.png)
 
-1. Click **Create Provider Configuration** when you are done and wait for the configuration to complete.
+1. Click **Validate and Save Configuration** when you are done and wait for the configuration to validate and complete.
+
+    If you want to save your progress, you can skip validation by choosing the **Ignore and save provider configuration anyway** option, which saves the provider configuration without validating. Note that you may not be able to create universes using an incomplete or unvalidated provider.
 
 ## Provider settings
 
@@ -120,7 +122,7 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
 
 1. Complete the **Overrides** field using one of the provided [options](#overrides). If you do not specify anything, YBA uses defaults specified inside the Helm chart. For additional information, see [Open source Kubernetes](../../../deploy/kubernetes/single-zone/oss/helm-chart/).
 
-1. If you are using [Kubernetes cert-manager](https://cert-manager.io) to manage TLS certificates, specify the issuer type and enter the issuer name. For more information, refer to [Enable encryption in transit](../../security/enable-encryption-in-transit/#kubernetes-cert-manager).
+1. If you are using [Kubernetes cert-manager](https://cert-manager.io) to manage TLS certificates, specify the issuer type and enter the issuer name. For more information, refer to [Enable encryption in transit](../../security/enable-encryption-in-transit/add-certificate-kubernetes/).
 
 If required, add a new zone by clicking **Add Zone**, as your configuration may have multiple zones.
 

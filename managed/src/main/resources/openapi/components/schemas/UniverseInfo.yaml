@@ -19,6 +19,10 @@ properties:
     format: date-time
     example: '2022-12-12T13:07:18Z'
     readOnly: true
+  creating_user:
+    description: User who created the Universe
+    type: object
+    $ref: "./User.yaml"
   arch:
     description: CPU Arch of DB nodes.
     type: string
@@ -37,8 +41,8 @@ properties:
     type: string
     example: 2.1.0.0-b6
     readOnly: true
-  platform_url:
-    description: YBA that is managing this Universe
+  yba_url:
+    description: YBAnywhere host name that is managing this Universe
     type: string
     example: yba.dev.company.com
     readOnly: true
@@ -70,6 +74,12 @@ properties:
     type: boolean
     example: true
     readOnly: true
+  previous_task_uuid:
+    description: UUID of the last task that will be retried on this Universe
+    type: string
+    format: uuid
+    example: 489a0632-2d6c-460f-b3d3-d8413b8559c0
+    readOnly: true
   universe_paused:
     description: Whether the universe is in the paused state
     type: boolean
@@ -100,6 +110,16 @@ properties:
     type: boolean
     example: true
     readOnly: true
+  previous_yb_software_details:
+    description: The YugabyteDB software details that was running before the last software upgrade operation
+    type: object
+    $ref: "./YbSoftwareDetails.yaml"
+    readOnly: true
+  allowed_tasks_on_failure:
+    description: Allowed tasks when the last Universe operation has failed
+    $ref: "./AllowedTasksOnFailure.yaml"
+    x-yba-api-since: 2024.1.0.0
+    x-yba-api-visibility: preview
   nodes_resize_available:
     description: Set to true if nodes of this Universe can be resized without a full move
     type: boolean
@@ -116,6 +136,9 @@ properties:
     x-yba-api-visibility: internal
   x_cluster_info:
     $ref: "./XClusterInfo.yaml"
+  roll_max_batch_size:
+    $ref: "./RollMaxBatchSize.yaml"
+    x-yba-api-visibility: internal
   clusters:
     type: array
     items:
@@ -127,3 +150,23 @@ properties:
     type: array
     items:
       $ref: "./NodeDetails.yaml"
+  dr_config_uuids_as_source:
+    description: UUIDs of DR configs where this universe is the source (primary)
+    type: array
+    items:
+      format: uuid
+      type: string
+    uniqueItems: true
+  dr_config_uuids_as_target:
+    description: UUIDs of DR configs where this universe is the target (secondary)
+    type: array
+    items:
+      format: uuid
+      type: string
+    uniqueItems: true
+  resources:
+    description: Universe resource details
+    $ref: "./UniverseResourceDetails.yaml"
+  sample_app_command_txt:
+    description: Sample command
+    type: string

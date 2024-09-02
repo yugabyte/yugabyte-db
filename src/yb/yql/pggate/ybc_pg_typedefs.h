@@ -196,10 +196,7 @@ typedef enum TxnPriorityRequirement {
   kHighestPriority
 } TxnPriorityRequirement;
 
-// API to read type information.
 const YBCPgTypeEntity *YBCPgFindTypeEntity(int type_oid);
-YBCPgDataType YBCPgGetType(const YBCPgTypeEntity *type_entity);
-bool YBCPgAllowForPrimaryKey(const YBCPgTypeEntity *type_entity);
 
 // PostgreSQL can represent text strings up to 1 GB minus a four-byte header.
 static const int64_t kYBCMaxPostgresTextSizeBytes = 1024ll * 1024 * 1024 - 4;
@@ -395,6 +392,9 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_enable_pg_per_database_oid_allocator;
   const bool*     ysql_enable_db_catalog_version_mode;
   const bool*     TEST_ysql_hide_catalog_version_increment_log;
+  const bool*     TEST_generate_ybrowid_sequentially;
+  const bool*     ysql_use_fast_backward_scan;
+  const bool*     TEST_ysql_conn_mgr_dowarmup_all_pools_random_attach;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {
@@ -516,12 +516,12 @@ typedef struct PgSessionTxnInfo {
 } YBCPgSessionTxnInfo;
 
 // Values to copy from main backend session into background workers
-typedef struct PgSessionParallelData {
+typedef struct PgSessionState {
   uint64_t session_id;
   uint64_t txn_serial_no;
   uint64_t read_time_serial_no;
   uint32_t active_sub_transaction_id;
-} YBCPgSessionParallelData;
+} YBCPgSessionState;
 
 typedef struct PgJwtAuthOptions {
   char* jwks;
@@ -670,8 +670,8 @@ typedef struct AshMetadata {
   // root_request_id but with the same query_id.
   uint64_t query_id;
 
-  // PgClient session id.
-  uint64_t session_id;
+  // pid of the YSQL/YCQL backend which is executing the query
+  int32_t pid;
 
   // OID of database.
   uint32_t database_id;
@@ -742,6 +742,11 @@ typedef struct PgAshConfig {
   char host[46];
 } YBCPgAshConfig;
 
+typedef struct WaitEventDescriptor {
+  uint32_t code;
+  const char *description;
+} YBCWaitEventDescriptor;
+
 typedef struct YBCBindColumn {
   int attr_num;
   const YBCPgTypeEntity* type_entity;
@@ -794,6 +799,14 @@ typedef struct YbCloneInfo {
   const char* src_owner;
   const char* tgt_owner;
 } YbCloneInfo;
+
+// A thread-safe way to cache compiled regexes.
+typedef struct PgThreadLocalRegexpCache {
+  int num;
+  void* array;
+} YBCPgThreadLocalRegexpCache;
+
+typedef void (*YBCPgThreadLocalRegexpCacheCleanup)(YBCPgThreadLocalRegexpCache*);
 
 #ifdef __cplusplus
 }  // extern "C"

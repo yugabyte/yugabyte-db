@@ -7,11 +7,19 @@
   {{ $tocClasses = printf "%s hide-h4" $tocClasses }}
 {{ end }}
 
+{{ partial "contribute_list" }}
+
 {{ if not .Params.notoc }}
 {{ with .TableOfContents }}
 {{ if ge (len .) 100 }}
-<div class="td-toc{{ $tocClasses }}">{{ . }}</div>
+<div class="td-toc{{ $tocClasses }}">
+	<div class="head-title">
+		<img src="/icons/list-icon.svg" alt="On this page">
+		<span>On this page</span>
+	</div>
+	{{ . }}
+</div>
 {{ end }}
 {{ end }}
 {{ end }}
-<script>if (!$.trim($('#TableOfContents').text())){$('aside.td-sidebar-toc .td-toc').remove();}</script>
+<script>if (!$.trim($('#TableOfContents').text())){$('aside.td-sidebar-toc .td-toc').remove()}</script>

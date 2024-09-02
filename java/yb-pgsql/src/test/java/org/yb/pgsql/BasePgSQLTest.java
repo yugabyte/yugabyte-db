@@ -143,6 +143,15 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         " connections will share the same physical connection in a single threaded test if" +
         " no active transactions are there on the first connection";
 
+  protected static final String CANNOT_GURANTEE_EXPECTED_PHYSICAL_CONN_FOR_CACHE =
+      "Test is designed in a way which requires every logical connection to have a dedicated " +
+      "physical connection. In the test backends are loaded with meta data of the object " +
+      "(tables) on executing DML with the premise (a) when withCachedMetadata is true, then " +
+      "the same backend processes the queries in a session (b) when withCachedMetadata is " +
+      "false, a new backend processes queries for a new connection (session). in both these " +
+      "cases the premise cannot be guaranteed when run with Connection Manager, hence skipping " +
+      "the tests with connection manager";
+
   protected static final String LESSER_PHYSICAL_CONNS =
       "Skipping this test with Ysql Connection Manager as logical connections " +
         "created are lesser than physical connections and the real maximum limit for creating " +
@@ -298,6 +307,8 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       builder.enableYsqlConnMgr(true);
       builder.addCommonTServerFlag("ysql_conn_mgr_stats_interval",
         Integer.toString(CONNECTIONS_STATS_UPDATE_INTERVAL_SECS));
+      builder.addCommonTServerFlag(
+        "TEST_ysql_conn_mgr_dowarmup_all_pools_random_attach", "true");
     }
   }
 
@@ -410,6 +421,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   public int getPgPort(int tserverIndex) {
     return miniCluster.getPostgresContactPoints().get(tserverIndex).getPort();
+  }
+
+  public int getYsqlConnMgrPort(int tserverIndex) {
+    return miniCluster.getYsqlConnMgrContactPoints().get(tserverIndex).getPort();
   }
 
   @After
@@ -1960,6 +1975,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     // Wait an extra heartbeat interval to avoid race conditions due to deviations
     // in the real heartbeat frequency (due to latency, scheduling, etc.).
     Thread.sleep(MiniYBCluster.TSERVER_HEARTBEAT_INTERVAL_MS * 2);
+  }
+
+  void waitForTServerHeartbeatIfConnMgrEnabled() throws InterruptedException {
+    if (isTestRunningWithConnectionManager()) {
+      waitForTServerHeartbeat();
+    }
   }
 
   /** Run a query and check row-count. */

@@ -36,10 +36,6 @@ class PgCronTest : public MiniClusterTestWithClient<ExternalMiniCluster> {
   PgCronTest() = default;
 
   void SetUp() override {
-    // #22462. Skip in TSAN as starting the pg_cron background worker gets into a deadlock with
-    // LLVMSymbolizer.
-    YB_SKIP_TEST_IN_TSAN();
-
     YBMiniClusterTestBase<ExternalMiniCluster>::SetUp();
     ExternalMiniClusterOptions opts;
     opts.num_tablet_servers = 3;

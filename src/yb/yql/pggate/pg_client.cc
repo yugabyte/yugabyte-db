@@ -157,12 +157,12 @@ void AshMetadataToPB(const YBCPgAshConfig& ash_config, tserver::PgPerformOptions
     return;
   }
 
-  // session_id is not set here as it's already set in PgPerformRequestPB
   auto* ash_metadata = options->mutable_ash_metadata();
   const auto* pg_metadata = ash_config.metadata;
   ash_metadata->set_yql_endpoint_tserver_uuid(ash_config.yql_endpoint_tserver_uuid, 16);
   ash_metadata->set_root_request_id(pg_metadata->root_request_id, 16);
   ash_metadata->set_query_id(pg_metadata->query_id);
+  ash_metadata->set_pid(pg_metadata->pid);
   ash_metadata->set_database_id(pg_metadata->database_id);
 
   uint8_t addr_family = pg_metadata->addr_family;
@@ -1021,10 +1021,10 @@ class PgClient::Impl : public BigDataFetcher {
     return Status::OK();
   }
 
-  Result<TableKeyRangesWithHt> GetTableKeyRanges(
+  Result<TableKeyRanges> GetTableKeyRanges(
       const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
       uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward,
-      uint32_t max_key_length, uint64_t read_time_serial_no) {
+      uint32_t max_key_length) {
     tserver::PgGetTableKeyRangesRequestPB req;
     tserver::PgGetTableKeyRangesResponsePB resp;
     req.set_session_id(session_id_);
@@ -1039,7 +1039,6 @@ class PgClient::Impl : public BigDataFetcher {
     req.set_range_size_bytes(range_size_bytes);
     req.set_is_forward(is_forward);
     req.set_max_key_length(max_key_length);
-    req.set_read_time_serial_no(read_time_serial_no);
 
     auto* controller = PrepareController();
 
@@ -1048,11 +1047,10 @@ class PgClient::Impl : public BigDataFetcher {
       return StatusFromPB(resp.status());
     }
 
-    TableKeyRangesWithHt result;
-    result.current_ht = HybridTime(resp.current_ht());
-
+    TableKeyRanges result;
+    result.reserve(controller->GetSidecarsCount());
     for (size_t i = 0; i < controller->GetSidecarsCount(); ++i) {
-      result.encoded_range_end_keys.push_back(VERIFY_RESULT(controller->ExtractSidecar(i)));
+      result.push_back(VERIFY_RESULT(controller->ExtractSidecar(i)));
     }
     return result;
   }
@@ -1467,13 +1465,12 @@ Result<bool> PgClient::IsObjectPartOfXRepl(const PgObjectId& table_id) {
   return impl_->IsObjectPartOfXRepl(table_id);
 }
 
-Result<TableKeyRangesWithHt> PgClient::GetTableKeyRanges(
+Result<TableKeyRanges> PgClient::GetTableKeyRanges(
     const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
-    uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length,
-    uint64_t read_time_serial_no) {
+    uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length) {
   return impl_->GetTableKeyRanges(
       table_id, lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes, is_forward,
-      max_key_length, read_time_serial_no);
+      max_key_length);
 }
 
 Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> PgClient::GetTserverCatalogVersionInfo(

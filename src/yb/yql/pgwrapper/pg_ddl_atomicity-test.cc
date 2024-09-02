@@ -30,7 +30,10 @@
 #include "yb/common/pgsql_error.h"
 #include "yb/common/schema.h"
 
+#include "yb/master/master.h"
 #include "yb/master/master_client.pb.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/mini_master.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
@@ -47,8 +50,6 @@
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
-#include "yb/master/mini_master.h"
-#include "yb/master/master.h"
 
 using namespace std::literals;
 using std::string;
@@ -312,7 +313,6 @@ TEST_F(PgDdlAtomicitySanityTest, BasicTest1) {
   ASSERT_OK(conn.Execute(CreateTableStmt(kCreateTable)));
   ASSERT_OK(conn.TestFailDdl(DropColumnStmt(kCreateTable)));
   auto client = ASSERT_RESULT(cluster_->CreateClient());
-  // ASSERT_OK(VerifySchema(client.get(), kDatabase, kCreateTable, {"key", "num"}));
   ASSERT_OK(VerifySchema(client.get(), kDatabase, kCreateTable, {"key", "value", "num"}));
 }
 
@@ -965,7 +965,7 @@ TEST_F(PgDdlAtomicityTxnTest,
   const auto client = ASSERT_RESULT(cluster_->CreateClient());
   ASSERT_OK(VerifySchema(client.get(), "yugabyte", table(), {"a", "b", "c"}));
   ASSERT_OK(cluster_->SetFlagOnMasters(
-      "TEST_ysql_ddl_rollback_failure_percentage", "100"));
+      "TEST_ysql_ddl_rollback_failure_probability", "1.0"));
   ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 DROP COLUMN c", table()));
   ASSERT_OK(VerifySchema(client.get(), "yugabyte", table(), {"a", "b"}));
   ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET b = 2 WHERE a = 1", table()));
@@ -1694,6 +1694,34 @@ TEST_F(PgDdlAtomicityMiniClusterTest, TestTableCacheAfterTxnVerification) {
   ASSERT_EQ(rows, (decltype(rows){{2, 2, 2}, {3, 3, 3}, {4, 4, 4}}));
 }
 
+// Test that DDL-related metadata in TableInfo objects is cleared on drop.
+TEST_F(PgDdlAtomicityMiniClusterTest, ClearTableMetadataOnDrop) {
+  const auto kTableName = "test";
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto conn = ASSERT_RESULT(Connect());
+  auto& catalog_mgr = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+
+  // DDL-related metadata should be cleared after drop.
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableName));
+  auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", kTableName));
+  auto table = catalog_mgr.GetTableInfo(table_id);
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", kTableName));
+  ASSERT_FALSE(table->LockForRead()->has_ysql_ddl_txn_verifier_state());
+
+  // Same test but with the table being hidden instead of deleted.
+  auto snapshot_util = std::make_unique<client::SnapshotTestUtil>();
+  snapshot_util->SetProxy(&client->proxy_cache());
+  snapshot_util->SetCluster(cluster_.get());
+  ASSERT_RESULT(snapshot_util->CreateSchedule(
+      "yugabyte", client::WaitSnapshot::kTrue, 1min /* snapshot_interval */));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableName));
+  table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), "yugabyte", kTableName));
+  table = catalog_mgr.GetTableInfo(table_id);
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", kTableName));
+  ASSERT_TRUE(table->LockForRead()->is_hidden_but_not_deleting());
+  ASSERT_FALSE(table->LockForRead()->has_ysql_ddl_txn_verifier_state());
+}
+
 // Test that the schema verification works correctly for partition tables and its children.
 TEST_F(PgDdlAtomicityTest, TestPartitionedTableSchemaVerification) {
   auto conn = ASSERT_RESULT(Connect());
@@ -1736,5 +1764,16 @@ TEST_F(PgDdlAtomicityTest, TestPartitionedTableSchemaVerification) {
   ASSERT_EQ(ASSERT_RESULT(client->ListTables("test_parent")).size(), 0);
   ASSERT_EQ(ASSERT_RESULT(client->ListTables("test_child")).size(), 0);
 }
+
+TEST_F(PgDdlAtomicityTest, TestCreateColocatedTable) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "report_ysql_ddl_txn_status_to_master", "false"));
+  ASSERT_OK(conn.Execute("CREATE DATABASE colocated_db colocation = true"));
+  conn = ASSERT_RESULT(ConnectToDB("colocated_db"));
+  ASSERT_OK(conn.Execute("CREATE TABLE foo(id int)"));
+}
+
 } // namespace pgwrapper
 } // namespace yb

@@ -30,43 +30,111 @@
 #include "postgres.h"
 
 #include "storage/s_lock.h"
+#include "utils/guc.h"
 #include "utils/timestamp.h"
 
 #define YB_QD_MAX_BIND_VARS_LEN 2048
+#define YB_QD_MAX_PGSS_LEN 2048
 
 /* GUC variables */
 extern int yb_query_diagnostics_bg_worker_interval_ms;
+extern int yb_query_diagnostics_circular_buffer_size;
+
+typedef struct YbCounters
+{
+	int64		calls;			/* # of times executed */
+	double		total_time;		/* total execution time, in msec */
+	double		min_time;		/* minimum execution time in msec */
+	double		max_time;		/* maximum execution time in msec */
+	double		mean_time;		/* mean execution time in msec */
+	double		sum_var_time;	/* sum of variances in execution time in msec */
+	int64		rows;			/* total # of retrieved or affected rows */
+	int64		shared_blks_hit;	/* # of shared buffer hits */
+	int64		shared_blks_read;	/* # of shared disk blocks read */
+	int64		shared_blks_dirtied;	/* # of shared disk blocks dirtied */
+	int64		shared_blks_written;	/* # of shared disk blocks written */
+	int64		local_blks_hit; /* # of local buffer hits */
+	int64		local_blks_read;	/* # of local disk blocks read */
+	int64		local_blks_dirtied; /* # of local disk blocks dirtied */
+	int64		local_blks_written; /* # of local disk blocks written */
+	int64		temp_blks_read; /* # of temp blocks read */
+	int64		temp_blks_written;	/* # of temp blocks written */
+	double		blk_read_time;	/* time spent reading, in msec */
+	double		blk_write_time; /* time spent writing, in msec */
+} YbCounters;
+
+typedef struct YbQueryDiagnosticsPgss
+{
+	YbCounters  counters;		/* the statistics for this query */
+	Size		query_offset;	/* query text offset in external file */
+	int			query_len;		/* # of valid bytes in query string, or -1 */
+} YbQueryDiagnosticsPgss;
+
+typedef struct YbQueryDiagnosticsParams
+{
+	/* Hash code to identify identical normalized queries */
+	int64 		query_id;
+
+	/* Indicates the duration for which the bundle will run */
+	int 		diagnostics_interval_sec;
+
+	/* Percentage of queries to be explain’ed */
+	int 		explain_sample_rate;
+
+	/* Whether to run EXPLAIN ANALYZE on the query */
+	bool 		explain_analyze;
+
+	/* Whether to run EXPLAIN (DIST) on the query */
+	bool 		explain_dist;
+
+	/* Whether to run EXPLAIN (DEBUG) on the query */
+	bool 		explain_debug;
+
+	/* Minimum duration for a query to be considered for bundling bind variables */
+	int 		bind_var_query_min_duration_ms;
+} YbQueryDiagnosticsParams;
 
 /*
- * Structure to hold the parameters for query diagnostics.
+ * Structure to hold the parameters and configuration metadata for a query diagnostic bundle
  */
-typedef struct YbQueryDiagnosticsParameters
+typedef struct YbQueryDiagnosticsMetadata
 {
-	int64 		query_id;			/* Hash code to identify identical normalized queries */
-	int 		diagnostics_interval_sec; /* Indicates the duration for which the bundle will run */
-	int 		explain_sample_rate; /* Percentage of queries to be explain’ed */
-	bool 		explain_analyze;	/* Whether to run EXPLAIN ANALYZE on the query */
-	bool 		explain_dist;		/* Whether to run EXPLAIN (DIST) on the query */
-	bool 		explain_debug;		/* Whether to run EXPLAIN (DEBUG) on the query */
-	int 		bind_var_query_min_duration_ms; /* Minimum duration for a query to be considered for bundling bind variables */
-} YbQueryDiagnosticsParameters;
+	/* Stores the parameters passed to the yb_query_diagnostics() function */
+	YbQueryDiagnosticsParams params;
+
+	/* Path to the folder where the bundle is stored */
+	char		path[MAXPGPATH];
+
+	/* Time when the query diagnostics bundle started */
+	TimestampTz	start_time;
+} YbQueryDiagnosticsMetadata;
 
 /*
  * Structure to represent each entry within the hash table.
  */
 typedef struct YbQueryDiagnosticsEntry
 {
-	YbQueryDiagnosticsParameters params; /* parameters for this query-diagnostics entry */
-	TimestampTz	start_time;			/* time when the query-diagnostics for this entry started */
-	char		path[MAXPGPATH]; 	/* path to the file where bundle data is stored */
-	slock_t		mutex;				/* protects following fields only: */
-	char		bind_vars[YB_QD_MAX_BIND_VARS_LEN];	/* holds the bind_variables data until flushed to disc */
+	/* Stores parameter and configuration metadata of this bundle */
+	YbQueryDiagnosticsMetadata metadata;
+
+	/* Protects following fields only: */
+	slock_t		mutex;
+
+	/* Holds the bind_variables data until flushed to disc */
+	char		bind_vars[YB_QD_MAX_BIND_VARS_LEN];
+
+	/* Holds the pg_stat_statements data until flushed to disc */
+	YbQueryDiagnosticsPgss pgss;
 } YbQueryDiagnosticsEntry;
+
+typedef void (*YbGetNormalizedQueryFuncPtr)(Size query_offset, int query_len, char *normalized_query);
+extern YbGetNormalizedQueryFuncPtr yb_get_normalized_query;
 
 extern void YbQueryDiagnosticsInstallHook(void);
 extern Size YbQueryDiagnosticsShmemSize(void);
 extern void YbQueryDiagnosticsShmemInit(void);
 extern void YbQueryDiagnosticsBgWorkerRegister(void);
 extern void YbQueryDiagnosticsMain(Datum main_arg);
+extern void YbSetPgssNormalizedQueryText(int64 query_id, const Size query_offset, int query_len);
 
 #endif                            /* YB_QUERY_DIAGNOSTICS_H */

@@ -80,5 +80,5 @@ public interface ITask extends Runnable {
   void setUserTaskUUID(UUID userTaskUUID);
 
   /** Returns true if this task has been tried before, else false. */
-  public boolean isFirstTry();
+  boolean isFirstTry();
 }

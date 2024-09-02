@@ -191,6 +191,37 @@ For the most accurate migration assessment, the source database must be actively
     - [Live migration with fall-forward](../../migrate/live-fall-forward/)
     - [Live migration with fall-back](../../migrate/live-fall-back/)
 
+## Visualize the Migration Assessment report
+
+[yugabyted](/preview/reference/configuration/yugabyted/) UI allows you to visualize the database migrations performed by YugabyteDB Voyager. The UI provides details of migration complexity, SQL objects details from the source database, YugabyteDB sharding strategy, conversion issues (if any), and also allows you to track the percentage completion of data export from the source database and data import to the target YugabyteDB cluster.
+
+### Prerequisite
+
+Before you begin the Voyager migration, start a local YugabyteDB cluster. Refer to the steps described in [Use a local cluster](/preview/quick-start/).
+
+### Send Voyager details to a local YugabyteDB cluster
+
+Set the following environment variables before starting the migration:
+
+```sh
+export CONTROL_PLANE_TYPE=yugabyted
+export YUGABYTED_DB_CONN_STRING=<ysql-connection-string-to-yugabyted-instance>
+```
+
+For example, `postgresql://yugabyte:yugabyte@127.0.0.1:5433`
+
+### Assess Migration
+
+Voyager Migration Assessment conducts a detailed analysis of the source database by capturing essential metadata and metrics. Yugabyted UI allows you to go over the assessment report which includes recommendations of effective migration strategies, migration complexity, and provides an overview on effort involved in migrating from the source database.
+
+After [generating a Migration Assessment Report](#generate-a-migration-assessment-report), from yugabyted UI, navigate to **Migrations** tab, available at [http://127.0.0.1:15433](http://127.0.0.1:15433) to see a list of the available migrations.
+
+![Migration Landing Page](/images/migrate/ybd-landing-page.png)
+
+#### Migration Assessment UI
+
+![Migration Assessment Page](/images/migrate/ybd-assessment-page.png)
+
 ## Learn more
 
 - [Assess migration CLI](../../reference/assess-migration/)

@@ -8,7 +8,6 @@ import { GFlagsField } from '../../fields';
 import { YBToggleField } from '../../../../../../components';
 import { ReadOnlyGflagsModal } from './ReadOnlyGflagsModal';
 import {
-  CloudType,
   ClusterModes,
   ClusterType,
   RunTimeConfigEntry,
@@ -16,10 +15,10 @@ import {
   UniverseFormData
 } from '../../../utils/dto';
 import {
-  PROVIDER_FIELD,
   SOFTWARE_VERSION_FIELD,
   GFLAGS_FIELD,
-  INHERIT_FLAGS_FROM_PRIMARY
+  INHERIT_FLAGS_FROM_PRIMARY,
+  PG_COMPATIBILITY_FIELD
 } from '../../../utils/constants';
 import { RuntimeConfigKey } from '../../../../../../helpers/constants';
 import { useSectionStyles } from '../../../universeMainStyle';
@@ -81,9 +80,9 @@ export const GFlags = ({ runtimeConfigs }: UniverseFormConfigurationProps) => {
 
   //form Data
   const { control, getValues } = useFormContext<Partial<UniverseFormData>>();
-  const provider = useWatch({ name: PROVIDER_FIELD });
   const dbVersion = useWatch({ name: SOFTWARE_VERSION_FIELD });
   const isInherited = useWatch({ name: INHERIT_FLAGS_FROM_PRIMARY });
+  const isPGSupported = useWatch({ name: PG_COMPATIBILITY_FIELD });
 
   if (isEditPrimary && _.isEmpty(getValues(GFLAGS_FIELD))) return null;
   if (!enableRRGflags && !isPrimary) return null;
@@ -136,6 +135,7 @@ export const GFlags = ({ runtimeConfigs }: UniverseFormConfigurationProps) => {
             isReadReplica={!isPrimary}
             isReadOnly={isEditMode}
             isGFlagMultilineConfEnabled={isGFlagMultilineConfEnabled}
+            isPGSupported={isPGSupported}
           />
         </Box>
       )}

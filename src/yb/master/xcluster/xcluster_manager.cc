@@ -21,6 +21,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/xcluster/xcluster_status.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/master/xcluster/xcluster_config.h"
 
@@ -29,7 +30,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 
-DEFINE_RUNTIME_PREVIEW_bool(enable_xcluster_api_v2, false,
+DEFINE_RUNTIME_AUTO_bool(enable_xcluster_api_v2, kExternal, false, true,
     "Allow the usage of v2 xCluster APIs that support DB Scoped replication groups");
 
 DEFINE_RUNTIME_bool(disable_xcluster_db_scoped_new_table_processing, false,
@@ -46,6 +47,23 @@ DEFINE_RUNTIME_AUTO_bool(enable_tablet_split_of_xcluster_replicated_tables, kExt
 
 namespace yb::master {
 
+namespace {
+
+template <typename RequestType>
+Status ValidateUniverseUUID(const RequestType& req, CatalogManager& catalog_manager) {
+  if (req->has_universe_uuid() && !req->universe_uuid().empty()) {
+    auto universe_uuid = catalog_manager.GetUniverseUuidIfExists();
+    SCHECK(
+        universe_uuid && universe_uuid->ToString() == req->universe_uuid(), InvalidArgument,
+        "Invalid Universe UUID $0. Expected $1", req->universe_uuid(),
+        (universe_uuid ? universe_uuid->ToString() : "empty"));
+  }
+
+  return Status::OK();
+}
+
+}  // namespace
+
 XClusterManager::XClusterManager(
     Master& master, CatalogManager& catalog_manager, SysCatalogTable& sys_catalog)
     : XClusterSourceManager(master, catalog_manager, sys_catalog),
@@ -57,7 +75,33 @@ XClusterManager::XClusterManager(
 
 XClusterManager::~XClusterManager() {}
 
-void XClusterManager::Shutdown() { XClusterTargetManager::Shutdown(); }
+void XClusterManager::StartShutdown() {
+  XClusterTargetManager::StartShutdown();
+
+  // Copy the tasks out since Abort will trigger UnRegister which needs the mutex.
+  decltype(monitored_tasks_) tasks;
+  {
+    std::lock_guard l(monitored_tasks_mutex_);
+    tasks = monitored_tasks_;
+  }
+  for (auto& task : tasks) {
+    task->AbortAndReturnPrevState(STATUS(Aborted, "Master is shutting down"));
+  }
+}
+
+void XClusterManager::CompleteShutdown() {
+  XClusterTargetManager::CompleteShutdown();
+
+  CHECK_OK(WaitFor(
+      [this]() {
+        std::lock_guard l(monitored_tasks_mutex_);
+        YB_LOG_EVERY_N_SECS(WARNING, 10)
+            << "Waiting for " << monitored_tasks_.size() << " monitored tasks to complete";
+        return monitored_tasks_.empty();
+      },
+      MonoDelta::kMax, "Waiting for monitored tasks to complete",
+      MonoDelta::FromMilliseconds(100)));
+}
 
 Status XClusterManager::Init() {
   RETURN_NOT_OK(XClusterSourceManager::Init());
@@ -675,6 +719,107 @@ Status XClusterManager::HandleTabletSchemaVersionReport(
     const TableInfo& table_info, SchemaVersion consumer_schema_version, const LeaderEpoch& epoch) {
   return XClusterTargetManager::ResumeStreamsAfterNewSchema(
       table_info, consumer_schema_version, epoch);
+}
+
+Status XClusterManager::SetupUniverseReplication(
+    const SetupUniverseReplicationRequestPB* req, SetupUniverseReplicationResponsePB* resp,
+    rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+
+  return XClusterTargetManager::SetupUniverseReplication(req, resp, epoch);
+}
+
+/*
+ * Checks if the universe replication setup has completed.
+ * Returns Status::OK() if this call succeeds, and uses resp->done() to determine if the setup has
+ * completed (either failed or succeeded). If the setup has failed, then resp->replication_error()
+ * is also set. If it succeeds, replication_error() gets set to OK.
+ */
+Status XClusterManager::IsSetupUniverseReplicationDone(
+    const IsSetupUniverseReplicationDoneRequestPB* req,
+    IsSetupUniverseReplicationDoneResponsePB* resp, rpc::RpcContext* rpc) {
+  LOG_FUNC_AND_RPC;
+
+  SCHECK_PB_FIELDS_NOT_EMPTY(*req, replication_group_id);
+
+  auto is_operation_done = VERIFY_RESULT(IsSetupUniverseReplicationDone(
+      xcluster::ReplicationGroupId(req->replication_group_id()), /*skip_health_check=*/false));
+
+  resp->set_done(is_operation_done.done());
+  StatusToPB(is_operation_done.status(), resp->mutable_replication_error());
+  return Status::OK();
+}
+
+Result<IsOperationDoneResult> XClusterManager::IsSetupUniverseReplicationDone(
+    const xcluster::ReplicationGroupId& replication_group_id, bool skip_health_check) {
+  return XClusterTargetManager::IsSetupUniverseReplicationDone(
+      replication_group_id, skip_health_check);
+}
+
+Status XClusterManager::SetupNamespaceReplicationWithBootstrap(
+    const SetupNamespaceReplicationWithBootstrapRequestPB* req,
+    SetupNamespaceReplicationWithBootstrapResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+
+  return XClusterTargetManager::SetupNamespaceReplicationWithBootstrap(req, resp, epoch);
+}
+
+Status XClusterManager::IsSetupNamespaceReplicationWithBootstrapDone(
+    const IsSetupNamespaceReplicationWithBootstrapDoneRequestPB* req,
+    IsSetupNamespaceReplicationWithBootstrapDoneResponsePB* resp, rpc::RpcContext* rpc) {
+  LOG_FUNC_AND_RPC;
+
+  SCHECK_PB_FIELDS_NOT_EMPTY(*req, replication_group_id);
+
+  *resp = VERIFY_RESULT(XClusterTargetManager::IsSetupNamespaceReplicationWithBootstrapDone(
+      xcluster::ReplicationGroupId(req->replication_group_id())));
+
+  return Status::OK();
+}
+
+Status XClusterManager::AlterUniverseReplication(
+    const AlterUniverseReplicationRequestPB* req, AlterUniverseReplicationResponsePB* resp,
+    rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+
+  SCHECK_PB_FIELDS_NOT_EMPTY(*req, replication_group_id);
+
+  RETURN_NOT_OK(ValidateUniverseUUID(req, catalog_manager_));
+
+  return XClusterTargetManager::AlterUniverseReplication(req, resp, epoch);
+}
+
+Status XClusterManager::DeleteUniverseReplication(
+    const DeleteUniverseReplicationRequestPB* req, DeleteUniverseReplicationResponsePB* resp,
+    rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+
+  SCHECK_PB_FIELDS_NOT_EMPTY(*req, replication_group_id);
+
+  RETURN_NOT_OK(ValidateUniverseUUID(req, catalog_manager_));
+
+  RETURN_NOT_OK(XClusterTargetManager::DeleteUniverseReplication(
+      xcluster::ReplicationGroupId(req->replication_group_id()), req->ignore_errors(),
+      req->skip_producer_stream_deletion(), resp, epoch));
+
+  LOG(INFO) << "Successfully completed DeleteUniverseReplication request from "
+            << RequestorString(rpc);
+
+  return Status::OK();
+}
+
+Status XClusterManager::RegisterMonitoredTask(server::MonitoredTaskPtr task) {
+  std::lock_guard l(monitored_tasks_mutex_);
+  SCHECK_FORMAT(
+      monitored_tasks_.insert(task).second, AlreadyPresent, "Task $0 already registered",
+      task->description());
+  return Status::OK();
+}
+
+void XClusterManager::UnRegisterMonitoredTask(server::MonitoredTaskPtr task) {
+  std::lock_guard l(monitored_tasks_mutex_);
+  monitored_tasks_.erase(task);
 }
 
 }  // namespace yb::master

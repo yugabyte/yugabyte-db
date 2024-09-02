@@ -38,7 +38,7 @@ const RETRIEVE_ANALYZE_SCHEMA_PAYLOAD string = "SELECT payload " +
 const RETRIEVE_MIGRATE_SCHEMA_PHASES_INFO string = "SELECT migration_UUID, " +
     "migration_phase, MAX(invocation_sequence) AS invocation_sequence " +
     "FROM ybvoyager_visualizer.ybvoyager_visualizer_metadata " +
-    "WHERE migration_uuid=$1 AND migration_phase IN (0,1,3) " +
+    "WHERE migration_uuid=$1 AND migration_phase IN (2,3,5) " +
     "GROUP BY migration_uuid, migration_phase;"
 
 const RETRIEVE_DATA_MIGRATION_METRICS string = "SELECT * FROM " +
@@ -49,6 +49,10 @@ const RETRIEVE_DATA_MIGRATION_METRICS string = "SELECT * FROM " +
 const RETRIEVE_ASSESSMENT_REPORT string = "SELECT payload " +
     "FROM ybvoyager_visualizer.ybvoyager_visualizer_metadata " +
     "WHERE migration_UUID=$1 AND migration_phase=1 AND status='COMPLETED'"
+
+const RETRIEVE_IMPORT_SCHEMA_STATUS string = "SELECT status " +
+    "FROM ybvoyager_visualizer.ybvoyager_visualizer_metadata " +
+    "WHERE migration_UUID=$1 AND migration_phase=$2 AND invocation_sequence=$3"
 
 type VoyagerMigrationsQueryFuture struct {
     Migrations []models.VoyagerMigrationDetails
@@ -239,10 +243,10 @@ func getVoyagerMigrationsQueryFuture(log logger.Logger, conn *pgxpool.Pool,
             }
 
             rowStruct.Status = "In Progress"
-            if allVoygaerMigration.migrationPhase == 4 &&
+            if allVoygaerMigration.migrationPhase == 6 &&
                 allVoygaerMigration.invocationSeq >= 2 {
                 rowStruct.Status = "Complete"
-                rowStruct.MigrationPhase = 5
+                rowStruct.MigrationPhase = 6
             }
 
             rand.Seed(time.Now().UnixNano())
@@ -359,6 +363,48 @@ func getMigrateSchemaTaskInfoFuture(log logger.Logger, conn *pgxpool.Pool, migra
     determineStatusOfMigrateSchmeaPhases(log, conn, &schemaPhaseInfoList,
         &migrateSchemaTaskInfo)
 
+    recommendedRefactoringList := []models.RefactoringCount{}
+    for _, sqlObject := range migrateSchemaTaskInfo.SqlObjects {
+        var refactorCount models.RefactoringCount
+        refactorCount.SqlObjectType = sqlObject.ObjectType
+        refactorCount.Automatic = sqlObject.TotalCount - sqlObject.InvalidCount
+        refactorCount.Manual = sqlObject.InvalidCount
+        recommendedRefactoringList = append(recommendedRefactoringList, refactorCount)
+    }
+    migrateSchemaTaskInfo.CurrentAnalysisReport.RecommendedRefactoring.RefactorDetails =
+        recommendedRefactoringList
+
+    conversionIssuesDetailsWithCountMap := map[string]models.UnsupportedSqlWithDetails{}
+    fmt.Println(migrateSchemaTaskInfo.SuggestionsErrors)
+    for _, conversionIssue := range migrateSchemaTaskInfo.SuggestionsErrors {
+        fmt.Println(conversionIssue)
+        conversionIssuesByType, ok :=
+            conversionIssuesDetailsWithCountMap[conversionIssue.ObjectType]
+        if ok {
+            conversionIssuesByType.Count = conversionIssuesByType.Count + 1
+            conversionIssuesByType.SuggestionsErrors = append(
+                conversionIssuesByType.SuggestionsErrors, conversionIssue)
+        } else {
+            var newConversionIssuesByType models.UnsupportedSqlWithDetails
+            newConversionIssuesByType.Count = 1
+            newConversionIssuesByType.UnsupportedType = conversionIssue.ObjectType
+            newConversionIssuesByType.SuggestionsErrors =
+                append(newConversionIssuesByType.SuggestionsErrors, conversionIssue)
+            conversionIssuesDetailsWithCountMap[conversionIssue.ObjectType] =
+                    newConversionIssuesByType
+        }
+    }
+    fmt.Println(conversionIssuesDetailsWithCountMap)
+
+    var conversionIssuesDetailsWithCountList []models.UnsupportedSqlWithDetails
+    for _, value := range conversionIssuesDetailsWithCountMap {
+        conversionIssuesDetailsWithCountList = append(conversionIssuesDetailsWithCountList, value)
+    }
+    fmt.Print(conversionIssuesDetailsWithCountList)
+
+    migrateSchemaTaskInfo.CurrentAnalysisReport.UnsupportedFeatures =
+        conversionIssuesDetailsWithCountList
+
     MigrateSchemaTaskInfoResponse.Data = migrateSchemaTaskInfo
     future <- MigrateSchemaTaskInfoResponse
 }
@@ -375,6 +421,12 @@ func determineStatusOfMigrateSchmeaPhases(log logger.Logger, conn *pgxpool.Pool,
     for _, phaseInfo := range *schemaPhaseInfoList {
         switch phaseInfo.migrationPhase {
         case 2:
+            if phaseInfo.invocationSeq%2 == 0 {
+                migrateSchemaTaskInfo.ExportSchema = "complete"
+            } else {
+                migrateSchemaTaskInfo.ExportSchema = "in-progress"
+            }
+        case 3:
             if phaseInfo.invocationSeq >= 2 {
                 var invocationSqToBeUsed int
                 if phaseInfo.invocationSeq%2 == 0 {
@@ -392,15 +444,23 @@ func determineStatusOfMigrateSchmeaPhases(log logger.Logger, conn *pgxpool.Pool,
                     log.Errorf(migrateSchemaUIDetails.Error.Error())
                     migrateSchemaTaskInfo.SuggestionsErrors = nil
                     migrateSchemaTaskInfo.SqlObjects = nil
+                    migrateSchemaTaskInfo.AnalyzeSchema = "N/A"
+                    continue
                 }
                 migrateSchemaTaskInfo.SuggestionsErrors = migrateSchemaUIDetails.SuggestionsErrors
                 migrateSchemaTaskInfo.SqlObjects = migrateSchemaUIDetails.SqlObjects
+
                 migrateSchemaTaskInfo.AnalyzeSchema = "complete"
             } else {
                 migrateSchemaTaskInfo.ExportSchema = "in-progress"
             }
-        case 3:
-            if phaseInfo.invocationSeq%2 == 0 {
+        case 5:
+            future := make(chan string)
+            go fetchSchemaImportStatus(log, conn, phaseInfo.migrationUuid,
+                phaseInfo.migrationPhase, phaseInfo.invocationSeq, future)
+            importSchemaStatus := <- future
+
+            if importSchemaStatus == "COMPLETED" {
                 migrateSchemaTaskInfo.ImportSchema = "complete"
                 migrateSchemaTaskInfo.OverallStatus = "complete"
             } else {
@@ -413,6 +473,25 @@ func determineStatusOfMigrateSchmeaPhases(log logger.Logger, conn *pgxpool.Pool,
         }
     }
 }
+
+func fetchSchemaImportStatus(log logger.Logger, conn *pgxpool.Pool, migrationUuid string,
+    migrationPhase int, invocationSq int, future chan string) {
+        log.Infof(fmt.Sprintf("[%s] Executing Query: [%s]", LOGGER_FILE_NAME,
+            RETRIEVE_IMPORT_SCHEMA_STATUS))
+        var schemaImportStatus string
+        row := conn.QueryRow(context.Background(), RETRIEVE_IMPORT_SCHEMA_STATUS, migrationUuid,
+                                migrationPhase, invocationSq)
+        err := row.Scan(&schemaImportStatus)
+        log.Infof(fmt.Sprintf("schema import status: [%s]", schemaImportStatus))
+        if err != nil {
+            log.Errorf(fmt.Sprintf("[%s] Error while scaning results for query: [%s]",
+                LOGGER_FILE_NAME, "RETRIEVE_ALL_VOYAGER_MIGRATIONS_SQL"))
+            log.Errorf(err.Error())
+            future <- "none"
+            return
+        }
+        future <- schemaImportStatus
+    }
 
 func fetchMigrateSchemaUIDetailsByUUID(log logger.Logger, conn *pgxpool.Pool, migrationUuid string,
     migrationPhase int, invocationSq int, future chan MigrateSchemaUIDetailFuture) {
@@ -568,8 +647,9 @@ func (c *Container) GetVoyagerAssessmentReport(ctx echo.Context) error {
 
     assessmentReportVisualisationData := <- future
 
-    if assessmentReportVisualisationData.Error == nil {
-        fmt.Println(assessmentReportVisualisationData.Report)
+    if assessmentReportVisualisationData.Error != nil {
+        return ctx.String(http.StatusInternalServerError,
+            assessmentReportVisualisationData.Error.Error())
     }
 
     assessmentReport := assessmentReportVisualisationData.Report.AssessmentJsonReport
@@ -600,47 +680,47 @@ func (c *Container) GetVoyagerAssessmentReport(ctx echo.Context) error {
     voyagerAssessmentReportResponse.SourceEnvironment.NoOfConnections = ""
 
     voyagerAssessmentReportResponse.SourceDatabase.TableSize =
-        int32(assessmentReportVisualisationData.Report.SourceSizeDetails.TotalTableSize)
+        assessmentReportVisualisationData.Report.SourceSizeDetails.TotalTableSize
     voyagerAssessmentReportResponse.SourceDatabase.TableRowCount =
-        int32(assessmentReportVisualisationData.Report.SourceSizeDetails.TotalTableRowCount)
+        assessmentReportVisualisationData.Report.SourceSizeDetails.TotalTableRowCount
     voyagerAssessmentReportResponse.SourceDatabase.TotalTableSize =
-        int32(assessmentReportVisualisationData.Report.SourceSizeDetails.TotalDBSize)
+        assessmentReportVisualisationData.Report.SourceSizeDetails.TotalDBSize
     voyagerAssessmentReportResponse.SourceDatabase.TotalIndexSize =
-        int32(assessmentReportVisualisationData.Report.SourceSizeDetails.TotalIndexSize)
+        assessmentReportVisualisationData.Report.SourceSizeDetails.TotalIndexSize
 
 
     voyagerAssessmentReportResponse.TargetRecommendations.RecommendationSummary =
         assessmentReport.Sizing.SizingRecommendation.ColocatedReasoning
     voyagerAssessmentReportResponse.TargetRecommendations.
         TargetClusterRecommendation.NumNodes =
-        int32(assessmentReport.Sizing.SizingRecommendation.NumNodes)
+        int64(assessmentReport.Sizing.SizingRecommendation.NumNodes)
     voyagerAssessmentReportResponse.TargetRecommendations.
         TargetClusterRecommendation.VcpuPerNode =
-        int32(assessmentReport.Sizing.SizingRecommendation.VCPUsPerInstance)
+        int64(assessmentReport.Sizing.SizingRecommendation.VCPUsPerInstance)
     voyagerAssessmentReportResponse.TargetRecommendations.
         TargetClusterRecommendation.MemoryPerNode =
-        int32(assessmentReport.Sizing.SizingRecommendation.MemoryPerInstance)
+        int64(assessmentReport.Sizing.SizingRecommendation.MemoryPerInstance)
     voyagerAssessmentReportResponse.TargetRecommendations.
         TargetClusterRecommendation.InsertsPerNode =
-        int32(assessmentReport.Sizing.SizingRecommendation.OptimalInsertConnectionsPerNode)
+        assessmentReport.Sizing.SizingRecommendation.OptimalInsertConnectionsPerNode
     voyagerAssessmentReportResponse.TargetRecommendations.
         TargetClusterRecommendation.ConnectionsPerNode =
-        int32(assessmentReport.Sizing.SizingRecommendation.OptimalSelectConnectionsPerNode)
+        assessmentReport.Sizing.SizingRecommendation.OptimalSelectConnectionsPerNode
 
     voyagerAssessmentReportResponse.TargetRecommendations.
         TargetSchemaRecommendation.NoOfColocatedTables =
-            int32(len(assessmentReport.Sizing.SizingRecommendation.ColocatedTables))
+            int64(len(assessmentReport.Sizing.SizingRecommendation.ColocatedTables))
     voyagerAssessmentReportResponse.TargetRecommendations.
         TargetSchemaRecommendation.NoOfShardedTables =
-            int32(len(assessmentReport.Sizing.SizingRecommendation.ShardedTables))
+            int64(len(assessmentReport.Sizing.SizingRecommendation.ShardedTables))
     voyagerAssessmentReportResponse.TargetRecommendations.
         TargetSchemaRecommendation.TotalSizeColocatedTables =
-            int32(assessmentReportVisualisationData.Report.
-                TargetSizingRecommendations.TotalColocatedSize)
+            assessmentReportVisualisationData.Report.
+                TargetSizingRecommendations.TotalColocatedSize
     voyagerAssessmentReportResponse.TargetRecommendations.
         TargetSchemaRecommendation.TotalSizeShardedTables =
-            int32(assessmentReportVisualisationData.Report.
-                TargetSizingRecommendations.TotalShardedSize)
+            assessmentReportVisualisationData.Report.
+                TargetSizingRecommendations.TotalShardedSize
 
     dbObjectsMap := map[string]int{}
     for _, dbObject := range assessmentReport.SchemaSummary.DBObjects {
@@ -662,49 +742,48 @@ func (c *Container) GetVoyagerAssessmentReport(ctx echo.Context) error {
         _, ok := dbObjectsMap[dbObjectType]
         if ok {
             dbObjectsMap[dbObjectType] = dbObjectsMap[dbObjectType] - count
+
         }
     }
 
-    voyagerAssessmentReportResponse.RecommendedRefactoring.Function.Automatic =
-        int32(dbObjectsMap["FUNCTION"])
-    voyagerAssessmentReportResponse.RecommendedRefactoring.Function.Manual =
-        int32(dbObjectConversionIssuesMap["FUNCTION"])
-    voyagerAssessmentReportResponse.RecommendedRefactoring.SqlType.Automatic =
-        int32(dbObjectsMap["TYPE"])
-    voyagerAssessmentReportResponse.RecommendedRefactoring.SqlType.Manual =
-        int32(dbObjectConversionIssuesMap["TYPE"])
-    voyagerAssessmentReportResponse.RecommendedRefactoring.Table.Automatic =
-        int32(dbObjectsMap["TABLE"])
-    voyagerAssessmentReportResponse.RecommendedRefactoring.Table.Manual =
-        int32(dbObjectConversionIssuesMap["TABLE"])
-    voyagerAssessmentReportResponse.RecommendedRefactoring.Triggers.Automatic =
-        int32(dbObjectsMap["TRIGGER"])
-    voyagerAssessmentReportResponse.RecommendedRefactoring.Triggers.Manual =
-        int32(dbObjectConversionIssuesMap["TRIGGER"])
-    voyagerAssessmentReportResponse.RecommendedRefactoring.View.Automatic =
-        int32(dbObjectsMap["VIEW"])
-    voyagerAssessmentReportResponse.RecommendedRefactoring.View.Manual =
-        int32(dbObjectConversionIssuesMap["VIEW"])
+    recommendedRefactoringList := []models.RefactoringCount{}
+    for sqlObjectType, sqlObjectcount := range dbObjectsMap {
+        var refactorCount models.RefactoringCount
+        refactorCount.SqlObjectType = sqlObjectType
+        issueCount, ok := dbObjectConversionIssuesMap[sqlObjectType]
+        if ok {
+            refactorCount.Automatic = int32(sqlObjectcount - issueCount)
+            refactorCount.Manual = int32(issueCount)
+        } else {
+            refactorCount.Automatic = int32(sqlObjectcount)
+            refactorCount.Manual = 0
+        }
+        recommendedRefactoringList = append(recommendedRefactoringList, refactorCount)
+    }
 
-    // Convert the backend model []UnsupportedDataTypes into UX model []UnsupportedSqlInfo
-    unsupportedDataTypeMap := make(map[string]models.UnsupportedSqlInfo)
+    voyagerAssessmentReportResponse.RecommendedRefactoring.RefactorDetails =
+            recommendedRefactoringList
+
+    unsupportedDataTypeMap := make(map[string]int32)
     for _, unsupportedDataType := range assessmentReport.UnsupportedDataTypes {
 
-        unsupportedSqlInfo, ok := unsupportedDataTypeMap[unsupportedDataType.DataType]
+        count, ok := unsupportedDataTypeMap[unsupportedDataType.DataType]
         if ok {
-            unsupportedSqlInfo.Count++
-            unsupportedDataTypeMap[unsupportedDataType.DataType] = unsupportedSqlInfo
+
+            unsupportedDataTypeMap[unsupportedDataType.DataType] = count + 1
         } else {
-            unsupportedSqlInfoTmp := models.UnsupportedSqlInfo{}
-            unsupportedSqlInfoTmp.Count = 1
-            unsupportedSqlInfoTmp.UnsupportedType = unsupportedDataType.DataType
-            unsupportedDataTypeMap[unsupportedDataType.DataType] = models.UnsupportedSqlInfo{}
+            unsupportedDataTypeMap[unsupportedDataType.DataType] = 1
         }
     }
+
     var unsupportedDataTypesList []models.UnsupportedSqlInfo
-    for _, value := range unsupportedDataTypeMap {
-        unsupportedDataTypesList = append(unsupportedDataTypesList, value)
+    for key, value := range unsupportedDataTypeMap {
+        unsupportedSqlInfoTmp := models.UnsupportedSqlInfo{}
+        unsupportedSqlInfoTmp.Count = value
+        unsupportedSqlInfoTmp.UnsupportedType = key
+        unsupportedDataTypesList = append(unsupportedDataTypesList, unsupportedSqlInfoTmp)
     }
+
     voyagerAssessmentReportResponse.UnsupportedDataTypes = unsupportedDataTypesList
 
     // Convert the backend model []UnsupportedFeatures into UX model []UnsupportedSqlInfo
@@ -713,11 +792,10 @@ func (c *Container) GetVoyagerAssessmentReport(ctx echo.Context) error {
     for _, unsupportedFeatureType := range assessmentReport.UnsupportedFeatures{
         unsupportedFeature := models.UnsupportedSqlInfo{}
         unsupportedFeature.UnsupportedType = unsupportedFeatureType.FeatureName
-        unsupportedFeature.Count = int32(len(unsupportedFeatureType.ObjectNames))
-        if (unsupportedFeature.Count == 0) {
-            unsupportedFeature.Count = 1
+        unsupportedFeature.Count = int32(len(unsupportedFeatureType.Objects))
+        if (unsupportedFeature.Count != 0) {
+            unsupportedFeaturesList = append(unsupportedFeaturesList, unsupportedFeature)
         }
-        unsupportedFeaturesList = append(unsupportedFeaturesList, unsupportedFeature)
     }
     voyagerAssessmentReportResponse.UnsupportedFeatures = unsupportedFeaturesList
 
@@ -735,7 +813,7 @@ func getMigrationAssessmentReportFuture(log logger.Logger, migrationUuid string,
         var assessmentReportPayload string
         row := conn.QueryRow(context.Background(), RETRIEVE_ASSESSMENT_REPORT, migrationUuid)
         err := row.Scan(&assessmentReportPayload)
-        log.Infof(fmt.Sprintf("assessment payload: [%s]", assessmentReportPayload))
+        // log.Infof(fmt.Sprintf("assessment payload: [%s]", assessmentReportPayload))
         if err != nil {
             log.Errorf(fmt.Sprintf("[%s] Error while scaning results for query: [%s]",
                 LOGGER_FILE_NAME, "RETRIEVE_ALL_VOYAGER_MIGRATIONS_SQL"))
@@ -755,4 +833,131 @@ func getMigrationAssessmentReportFuture(log logger.Logger, migrationUuid string,
 
         MigrationAsessmentReportResponse.Report = assessmentVisualisationData
         future <- MigrationAsessmentReportResponse
+    }
+
+    func (c *Container) GetAssessmentSourceDBDetails(ctx echo.Context) error {
+
+        migrationUuid := ctx.QueryParam("uuid")
+
+        conn, err := c.GetConnection("yugabyte")
+        if err != nil {
+            return ctx.String(http.StatusInternalServerError, err.Error())
+        }
+
+        future := make(chan AssessmentReportQueryFuture)
+        go getMigrationAssessmentReportFuture(c.logger, migrationUuid, conn, future)
+
+        assessmentSourceDBDetails := models.AssessmentSourceDbObject {
+            SqlObjectsCount: []models.SqlObjectCount{},
+            SqlObjectsMetadata: []models.SqlObjectMetadata{},
+        }
+
+        assessmentReportVisualisationData := <- future
+
+        if assessmentReportVisualisationData.Error != nil {
+            return ctx.String(http.StatusInternalServerError,
+                assessmentReportVisualisationData.Error.Error())
+        }
+
+        assessmentReport := assessmentReportVisualisationData.Report.AssessmentJsonReport
+
+        sqlMetadataList := []models.SqlObjectMetadata{}
+        tableIndexList := assessmentReport.TableIndexStats
+        for _, dbObjectStat := range tableIndexList {
+            var sqlMetadata1 models.SqlObjectMetadata
+            sqlMetadata1.ObjectName = dbObjectStat.ObjectName
+            if dbObjectStat.IsIndex {
+                sqlMetadata1.SqlType = "Index"
+            } else {
+                sqlMetadata1.SqlType = "Table"
+            }
+            sqlMetadata1.RowCount = dbObjectStat.RowCount
+            sqlMetadata1.Iops = dbObjectStat.Reads
+            sqlMetadata1.Size = dbObjectStat.SizeInBytes
+            sqlMetadataList = append(sqlMetadataList, sqlMetadata1)
+        }
+        assessmentSourceDBDetails.SqlObjectsMetadata = sqlMetadataList
+
+        sqlObjectsList := []models.SqlObjectCount{}
+
+        dbObjectsFromReport :=
+            assessmentReportVisualisationData.Report.AssessmentJsonReport.SchemaSummary.DBObjects
+        for _, value := range dbObjectsFromReport {
+            var sqlObject1 models.SqlObjectCount
+            sqlObject1.SqlType = value.ObjectType
+            sqlObject1.Count = int32(value.TotalCount)
+            sqlObjectsList = append(sqlObjectsList, sqlObject1)
+        }
+
+        assessmentSourceDBDetails.SqlObjectsCount = sqlObjectsList
+        return ctx.JSON(http.StatusOK, assessmentSourceDBDetails)
+    }
+
+    func (c *Container) GetTargetRecommendations(ctx echo.Context) error {
+
+        migrationUuid := ctx.QueryParam("uuid")
+
+        conn, err := c.GetConnection("yugabyte")
+        if err != nil {
+            return ctx.String(http.StatusInternalServerError, err.Error())
+        }
+
+        future := make(chan AssessmentReportQueryFuture)
+        go getMigrationAssessmentReportFuture(c.logger, migrationUuid, conn, future)
+
+        assessmentReportVisualisationData := <- future
+
+        targetRecommendationDetails := models.AssessmentTargetRecommendationObject {
+            NumOfColocatedTables: 0,
+            TotalSizeColocatedTables: 0,
+            NumOfShardedTable: 0,
+            TotalSizeShardedTables: 0,
+            RecommendationDetails: []models.TargetRecommendationItem{},
+        }
+
+        if assessmentReportVisualisationData.Error != nil {
+            return ctx.String(http.StatusInternalServerError,
+                assessmentReportVisualisationData.Error.Error())
+        }
+
+        assessmentReport := assessmentReportVisualisationData.Report.AssessmentJsonReport
+
+        targetRecommendationDetails.NumOfColocatedTables =
+            int32(len(assessmentReport.Sizing.SizingRecommendation.ColocatedTables))
+        targetRecommendationDetails.TotalSizeColocatedTables =
+        assessmentReportVisualisationData.Report.
+            TargetSizingRecommendations.TotalColocatedSize
+        targetRecommendationDetails.NumOfShardedTable =
+            int32(len(assessmentReport.Sizing.SizingRecommendation.ShardedTables))
+        targetRecommendationDetails.TotalSizeShardedTables =
+            assessmentReportVisualisationData.Report.
+                TargetSizingRecommendations.TotalShardedSize
+
+        tableRecommendations := map[string]string{}
+
+        for _, value := range assessmentReport.Sizing.SizingRecommendation.ColocatedTables {
+            tableName := strings.Split(value, ".")[1]
+            tableRecommendations[tableName] = "Colocated"
+        }
+
+        for _, value := range assessmentReport.Sizing.SizingRecommendation.ShardedTables {
+            tableName := strings.Split(value, ".")[1]
+            tableRecommendations[tableName] = "Sharded"
+        }
+
+        recommendationsList := []models.TargetRecommendationItem{}
+        for _, dbObjectStat := range assessmentReport.TableIndexStats {
+            var recommendation1 models.TargetRecommendationItem
+            _, ok := tableRecommendations[dbObjectStat.ObjectName]
+            if ok {
+                recommendation1.TableName = dbObjectStat.ObjectName
+                recommendation1.SchemaRecommendation =
+                    tableRecommendations[dbObjectStat.ObjectName]
+                recommendation1.DiskSize = dbObjectStat.SizeInBytes
+                recommendationsList = append(recommendationsList, recommendation1)
+            }
+        }
+        targetRecommendationDetails.RecommendationDetails = recommendationsList
+
+        return ctx.JSON(http.StatusOK, targetRecommendationDetails)
     }

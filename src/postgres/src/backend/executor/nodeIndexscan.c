@@ -1260,7 +1260,15 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
  * For these, we create a header ScanKey plus a subsidiary ScanKey array,
  * as specified in access/skey.h.  The elements of the row comparison
  * can have either constant or non-constant comparison values.
- * YB: If op is an op ANY operator then we use the ScalarArrayOpExpr instead.
+ * YB: there is also a row array comparison case (see access/skey.h):
+ * ("ROW(indexkey, indexkey, ...) op ANY Array(rowexpr, rowexpr, rowexpr...)").
+ * Each rowexpr is expected to have the same set of types in it as the indexkeys
+ * do in the lhs row.
+ * These are found in the case of batched nested loop joins on multiple keys for
+ * now.
+ * For now, these cases are generated for batched nested loop joins in
+ * yb_zip_batched_exprs() in restrictinfo.c during indexscan
+ * plan node generation.
  *
  * 4. ScalarArrayOpExpr ("indexkey op ANY (array-expression)").  If the index
  * supports amsearcharray, we handle these the same as simple operators,
@@ -1269,20 +1277,6 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
  * and set up an IndexArrayKeyInfo struct to drive processing of the qual.
  * (Note that if we use an IndexArrayKeyInfo struct, the array expression is
  * always treated as requiring runtime evaluation, even if it's a constant.)
- * YB: The left hand side of a ScalarArrayOpExpr can also be of the form
- * ("ROW(indexkey, indexkey, ...) op ANY Array(rowexpr, rowexpr, rowexpr...)").
- * Each rowexpr is expected to have the same set of types in it as the indexkeys
- * do in the lhs row.
- * These are found in the case of batched nested loop joins on multiple keys for
- * now. These are not considered as RowCompareExprs as the structure of the
- * RowCompareExpr only allows for operators where there is a 1-1 correspondence
- * between keys in the lhs and values in the rhs. That cannnot be the case here.
- * Unfortunately, this means that we have to special case certain SAOP
- * processing logic to check for this RowExpr case.
- * For now, these cases are generated for batched nested loop joins in
- * yb_zip_batched_exprs() in restrictinfo.c during indexscan
- * plan node generation.
- *
  *
  * 5. NullTest ("indexkey IS NULL/IS NOT NULL").  We just fill in the
  * ScanKey properly.
@@ -1753,43 +1747,36 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 		else if (IsA(clause, RowCompareExpr))
 		{
 			Assert(IsYugaByteEnabled());
-			/* indexkey op ANY (array-expression) */
+			/*
+			 * (indexkey, indexkey, ...) op ANY [(expression, expression, ...),
+			 *									 (expression, expression, ...),
+			 *									 ...]
+			 */
 			RowCompareExpr *rcexpr = (RowCompareExpr *) clause;
-			int			flags = 0;
+			int			flags = SK_ROW_MEMBER;
 			Datum		scanvalue;
 
 			/* used when lhs is a RowExpr */
 			ScanKey		first_sub_key;
+			ScanKey		this_key;
 			int			n_sub_key = 0;
 			int			total_keys;
 
 			Assert(!isorderby);
 
-			/*
-			 * leftop should be the index key Var, possibly relabeled
-			 */
-
-			ScanKey this_key = this_scan_key;
-
 			total_keys = list_length(castNode(List, rcexpr->largs));
 			first_sub_key = (ScanKey)
 				palloc0(total_keys * sizeof(ScanKeyData));
-			this_key = first_sub_key;
-			flags |= SK_ROW_MEMBER;
-
-			/*
-			* We don't use ScanKeyEntryInitialize for the header because it
-			* isn't going to contain a valid sk_func pointer.
-			*/
-			MemSet(this_scan_key, 0, sizeof(ScanKeyData));
-			this_scan_key->sk_flags = flags | SK_ROW_HEADER | SK_SEARCHARRAY;
-			this_scan_key->sk_strategy = BTEqualStrategyNumber;
-			/* sk_subtype, sk_collation, sk_func not used in a header */
-			this_scan_key->sk_argument = PointerGetDatum(first_sub_key);
-			this_scan_key->sk_subtype = RECORDOID;
 
 			while (n_sub_key < total_keys)
 			{
+				/*
+				 * leftop should be the index key Var, possibly relabeled
+				 */
+				/*
+				 * TODO(tanuj): if it really is possibly a RelabelType, this
+				 * needs relabel handling
+				 */
 				varattno = ((Var *) list_nth(rcexpr->largs, n_sub_key))->varattno;
 				this_key = &first_sub_key[n_sub_key];
 				op_strategy = BTEqualStrategyNumber;
@@ -1825,6 +1812,15 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 
 				Assert(rightop != NULL);
 
+				/*
+				 * YB: we expect amsearcharray to be implemented and rightop to
+				 * always be ArrayExpr.
+				 * TODO(jason): clean up the below code to remove unreachable
+				 * branches.  It is preserved for now because it is a copy of
+				 * the above ScalarArrayOpExpr case.
+				 */
+				Assert(index->rd_amroutine->amsearcharray);
+				Assert(IsA(rightop, ArrayExpr));
 				if (index->rd_amroutine->amsearcharray)
 				{
 					/* Index AM will handle this like a simple operator */
@@ -1900,9 +1896,29 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 				n_sub_key++;
 			}
 
-			this_scan_key->sk_attno = first_sub_key->sk_attno;
 			/* Mark the last subsidiary scankey correctly */
 			first_sub_key[n_sub_key - 1].sk_flags |= SK_ROW_END;
+
+			/*
+			* We don't use ScanKeyEntryInitialize for the header because it
+			* isn't going to contain a valid sk_func pointer.
+			*/
+			MemSet(this_scan_key, 0, sizeof(ScanKeyData));
+			this_scan_key->sk_flags = SK_ROW_HEADER | SK_SEARCHARRAY;
+			this_scan_key->sk_attno = first_sub_key->sk_attno;
+			/*
+			 * YB: we only support = operator for now, and it shouldn't be
+			 * possible to get here with something else.
+			 */
+			Assert(rcexpr->rctype == BTEqualStrategyNumber);
+			this_scan_key->sk_strategy = rcexpr->rctype;
+			/* sk_subtype, sk_collation, sk_func not used in a header */
+			this_scan_key->sk_argument = PointerGetDatum(first_sub_key);
+			/*
+			 * TODO(jason): sk_subtype = RECORDOID should not be necessary and
+			 * is currently tied to a hack in yb_scan.c.
+			 */
+			this_scan_key->sk_subtype = RECORDOID;
 		}
 		else if (IsA(clause, NullTest))
 		{

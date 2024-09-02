@@ -8,6 +8,7 @@
 | "Max Number of Customer Tasks to fetch" | "yb.customer_task_db_query_limit" | "CUSTOMER" | "Knob that can be used when there are too many customer tasks overwhelming the server" | "Integer" |
 | "Show costs in UI" | "yb.ui.show_cost" | "CUSTOMER" | "Option to enable/disable costs in UI" | "Boolean" |
 | "Helm chart http download timeout" | "yb.releases.download_helm_chart_http_timeout" | "CUSTOMER" | "The timeout for downloading the Helm chart while importing a release using HTTP" | "Duration" |
+| "Enable downloading metrics as a PDF" | "yb.ui.metrics.enable_download_pdf" | "CUSTOMER" | "When enabled, the download metrics option is shown on the universe metrics page." | "Boolean" |
 | "Use Redesigned Provider UI" | "yb.ui.feature_flags.provider_redesign" | "CUSTOMER" | "The redesigned provider UI adds a provider list view, a provider details view and improves the provider creation form for AWS, AZU, GCP, and K8s" | "Boolean" |
 | "Enable partial editing of in use providers" | "yb.ui.feature_flags.edit_in_use_provider" | "CUSTOMER" | "A subset of fields from in use providers can be edited. Users can edit in use providers directly through the YBA API. This config is used to enable this functionality through YBA UI as well." | "Boolean" |
 | "Show underlying xCluster configs from DR setup" | "yb.ui.xcluster.dr.show_xcluster_config" | "CUSTOMER" | "YBA creates an underlying transactional xCluster config when setting up an active-active single-master disaster recovery (DR) config. During regular operation you should manage the DR config through the DR UI instead of the xCluster UI. This feature flag serves as a way to expose the underlying xCluster config for troubleshooting." | "Boolean" |
@@ -47,6 +48,7 @@
 | "Azure Disk Params blob" | "yb.azure.custom_params.disk" | "PROVIDER" | "Custom JSON of Azure parameters to apply on top of data disk creation." | "String" |
 | "Azure Network Interface Params blob" | "yb.azure.custom_params.network" | "PROVIDER" | "Custom JSON of Azure parameters to apply on top of network interface creation." | "String" |
 | "Ignore VM plan information" | "yb.azure.vm.ignore_plan" | "PROVIDER" | "Skip passing in any plan information when creating virtual machine, even if found." | "Boolean" |
+| "Show Premium V2 storage type" | "yb.azure.show_premiumv2_storage_type" | "PROVIDER" | "Show Premium V2 storage type during create/edit universe flow." | "Boolean" |
 | "Monitored mount roots" | "yb.provider.monitored_mount_roots" | "PROVIDER" | "Mount roots, which we show on the merics dashboard and which we're alerting on." | "String" |
 | "Enable Geo-partitioning" | "yb.universe.geo_partitioning_enabled" | "PROVIDER" | "Enables geo-partitioning for universes created with this provider." | "Boolean" |
 | "Enable YBC" | "ybc.provider.enabled" | "PROVIDER" | "Enable YBC for universes created with this provider" | "Boolean" |
@@ -129,9 +131,14 @@
 | "HA Shutdown Level" | "yb.ha.shutdown_level" | "GLOBAL" | "When to shutdown - 0 for never, 1 for promotion, 2 for promotion and demotion" | "Integer" |
 | "OIDC Refresh Access Token Interval" | "yb.security.oidcRefreshTokenInterval" | "GLOBAL" | "If configured, YBA will refresh the access token at the specified duration, defaulted to 5 minutes." | "Duration" |
 | "Allow Editing of in-use Linux Versions" | "yb.edit_provider.new.allow_used_bundle_edit" | "GLOBAL" | "Caution: If enabled, YBA will blindly allow editing the name/AMI associated with the bundle, without propagating it to the in-use Universes" | "Boolean" |
+| "Enable DB Audit Logging" | "yb.universe.audit_logging_enabled" | "GLOBAL" | "If this flag is enabled, user will be able to create telemetry providers and enable/disable DB audit logging on universes." | "Boolean" |
+| "Enable Per Process Metrics" | "yb.ui.feature_flags.enable_per_process_metrics" | "GLOBAL" | "Enable Per Process Metrics" | "Boolean" |
+| "Support bundle prometheus dump range" | "yb.support_bundle.default_prom_dump_range" | "GLOBAL" | "The start-end duration to collect the prometheus dump inside the support bundle (in minutes)" | "Integer" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |
 | "Health Log Output" | "yb.health.logOutput" | "UNIVERSE" | "It determines whether to log the output of the node health check script to the console" | "Boolean" |
 | "Node Checkout Time" | "yb.health.nodeCheckTimeoutSec" | "UNIVERSE" | "The timeout (in seconds) for node check operation as part of universe health check" | "Integer" |
+| "DDL Atomicity Check Enabled" | "yb.health.ddl_atomicity_check_enabled" | "UNIVERSE" | "If we want to perform DDL atomicity check for the universe periodically" | "Boolean" |
+| "DDL Atomicity Check Interval" | "yb.health.ddl_atomicity_interval_sec" | "UNIVERSE" | "The interval (in seconds) between DDL atomicity checks" | "Integer" |
 | "YB Upgrade Blacklist Leaders" | "yb.upgrade.blacklist_leaders" | "UNIVERSE" | "Determines (boolean) whether we enable/disable leader blacklisting when performing universe/node tasks" | "Boolean" |
 | "YB Upgrade Blacklist Leader Wait Time in Ms" | "yb.upgrade.blacklist_leader_wait_time_ms" | "UNIVERSE" | "The timeout (in milliseconds) that we wait of leader blacklisting on a node to complete" | "Integer" |
 | "Fail task on leader blacklist timeout" | "yb.node_ops.leader_blacklist.fail_on_timeout" | "UNIVERSE" | "Determines (boolean) whether we fail the task after waiting for leader blacklist timeout is reached" | "Boolean" |
@@ -230,7 +237,7 @@
 | "Default PITR snapshot interval for txn xCluster" | "yb.xcluster.transactional.pitr.default_snapshot_interval" | "UNIVERSE" | "The default snapshot interval used to create PITR configs for transactional xCluster replication; it will be used when there is no existing PITR configs and it is not specified in the task parameters" | "Duration" |
 | "Skip backup metadata validation" | "yb.backup.skip_metadata_validation" | "UNIVERSE" | "Skip backup metadata based validation during restore" | "Boolean" |
 | "Parallelism for Node Agent Reinstallation" | "yb.node_agent.reinstall_parallelism" | "UNIVERSE" | "Number of parallel node agent reinstallations at a time" | "Integer" |
-| "To perform sync of user-groups between the Universe DB nodes and LDAP Server" | "yb.security.ldap.ldap_universe_sync" | "UNIVERSE" | "If configured, this feature allows users to synchronise user groups configured on the upstream LDAP Server with user roles in YBDB nodes associated with the universe." | "Boolean" |
+| "Sync user-groups between the Universe DB nodes and LDAP Server" | "yb.security.ldap.ldap_universe_sync" | "UNIVERSE" | "If configured, this feature allows users to synchronise user groups configured on the upstream LDAP Server with user roles in YBDB nodes associated with the universe." | "Boolean" |
 | "Cluster membership check timeout" | "yb.checks.cluster_membership.timeout" | "UNIVERSE" | "Controls the max time to check that there are no tablets assigned to the node" | "Duration" |
 | "Wait time for xcluster/DR replication setup and edit RPCs." | "yb.xcluster.operation_timeout" | "UNIVERSE" | "Wait time for xcluster/DR replication setup and edit RPCs." | "Duration" |
 | "Leaderless tablets check enabled" | "yb.checks.leaderless_tablets.enabled" | "UNIVERSE" | " Whether to run CheckLeaderlessTablets subtask before running universe tasks" | "Boolean" |
@@ -242,3 +249,6 @@
 | "Enable health checks for time drift between nodes" | "yb.health_checks.check_clock_time_drift" | "UNIVERSE" | "Enable health checks for time drift between nodes." | "Boolean" |
 | "Time drift threshold for warning health check" | "yb.health_checks.time_drift_wrn_threshold_ms" | "UNIVERSE" | "Threshold to raise a warning when time drift exceeds this amount" | "Integer" |
 | "Time drift threshold for error health check" | "yb.health_checks.time_drift_err_threshold_ms" | "UNIVERSE" | "Threshold to raise a error when time drift exceeds this amount" | "Integer" |
+| "Enable consistency check for universe" | "yb.universe.consistency_check_enabled" | "UNIVERSE" | "When enabled, all universe operations will attempt consistency check validation before proceeding. Turn off in disaster scenarios to force perform actions." | "Boolean" |
+| "Fail the the health check if no clock sync service is found" | "yb.health_checks.clock_sync_service_required" | "UNIVERSE" | "Require chrony or ntp(d) to be installed for health check to pass" | "Boolean" |
+| "Node Agent Enabler Installation Time-out" | "yb.node_agent.enabler.install_timeout" | "UNIVERSE" | "Node agent enabler installation time-out for the universe" | "Duration" |

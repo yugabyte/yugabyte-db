@@ -2,25 +2,24 @@
 # This is an auto-generated file. Do not edit manually.
 
 [DEFAULT]
+version = 1.0.0
 loglevel = DEBUG
 logfile = app.log
 is_airgap = {{ ynp.is_airgap }}
 ynp_dir = {{ ynp_dir }}
 execution_start_time = {{ start_time }}
+yb_home_dir = {{ ynp.yb_home_dir }}
+yb_user = yugabyte
 
 [ConfigureChrony]
 chrony_servers = "{{ ynp.chrony_servers | join(', ') }}"
 
 [CreateYugabyteUser]
-yb_home_dir = {{ ynp.yb_home_dir }}
-yb_user = yugabyte
 yb_user_id = {{ ynp.yb_user_id }}
 yb_user_password =
 public_key_filepath = {{ ynp.public_key_filepath }}
 
 [ConfigureSystemd]
-yb_home_dir = {{ ynp.yb_home_dir }}
-yb_user = yugabyte
 user_name = yugabyte
 use_system_level_systemd = {{ ynp.use_system_level_systemd }}
 service_files = "yb-tserver.service, yb-master.service, clock-sync.sh.j2, yb-bind_check.service, yb-clean_cores.service, yb-clean_cores.timer, yb-collect_metrics.service, yb-collect_metrics.timer, yb-controller.service, yb-zip_purge_yb_logs.service, yb-zip_purge_yb_logs.timer"
@@ -32,6 +31,7 @@ nproc_limit = 12000
 vm_swappiness = 0
 kernel_core_pattern = {{ ynp.yb_home_dir }}/cores/core_%%p_%%t_%%E
 vm_max_map_count = 262144
+mount_points = {{ yba.instance_type.mount_points | join(' ') }}
 
 [ConfigureOs.limits]
 core = unlimited
@@ -49,10 +49,9 @@ locks = unlimited
 
 [ConfigureNodeExporter]
 prometheus_user = prometheus
-yb_home_dir = {{ ynp.yb_home_dir }}
 
 [ConfigureNetwork]
-ip_address={{ ynp.ip_address }}
+ip_address={{ ynp.node_ip }}
 ports = 7000 7100 9000 9100 18018 22 5433 9042 9070 9300 12000 13000
 
 {% macro render_section(section, prefix="") -%}
@@ -67,7 +66,6 @@ ports = 7000 7100 9000 9100 18018 22 5433 9042 9070 9300 12000 13000
 
 [InstallNodeAgent]
 {{ render_section(yba) -}}
-yb_user = yugabyte
-yb_home_dir = {{ ynp.yb_home_dir }}
 tmp_directory = {{ ynp.tmp_directory }}
-
+node_ip = {{ ynp.node_ip }}
+bind_ip = {{ ynp.node_ip }}

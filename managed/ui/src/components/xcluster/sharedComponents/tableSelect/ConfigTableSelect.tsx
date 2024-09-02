@@ -26,7 +26,8 @@ import {
   tableSort,
   getStrictestReplicationLagAlertThreshold,
   getNamespaceIdentifierToNamespaceUuidMap,
-  getNamespaceIdentifier
+  getNamespaceIdentifier,
+  formatUuidForXCluster
 } from '../../ReplicationUtils';
 import YBPagination from '../../../tables/YBPagination/YBPagination';
 import { ExpandedConfigTableSelect } from './ExpandedConfigTableSelect';
@@ -220,13 +221,27 @@ export const ConfigTableSelect = ({
 
       xClusterTables.forEach((xClusterTable) => {
         currentSelectedTableUuids.add(getTableUuid(xClusterTable));
+
+        // When adding an index table, also add the main table.
+        if (xClusterTable.isIndexTable && xClusterTable.mainTableUUID) {
+          currentSelectedTableUuids.add(formatUuidForXCluster(xClusterTable.mainTableUUID));
+        }
+
+        // When adding a main table, also add the index tables.
+        xClusterTable.indexTableIDs?.forEach((indexTableId) =>
+          currentSelectedTableUuids.add(indexTableId)
+        );
       });
 
       setSelectedTableUuids(Array.from(currentSelectedTableUuids));
     } else {
-      const removedTableUuids = new Set(
-        xClusterTables.map((xClusterTables) => getTableUuid(xClusterTables))
-      );
+      const removedTableUuids = new Set();
+      xClusterTables.forEach((xClusterTable) => {
+        removedTableUuids.add(getTableUuid(xClusterTable));
+
+        // When removing a main table, also remove the index tables.
+        xClusterTable.indexTableIDs?.forEach((indexTableId) => removedTableUuids.add(indexTableId));
+      });
 
       setSelectedTableUuids(
         selectedTableUuids.filter((tableUUID) => !removedTableUuids.has(tableUUID))
@@ -297,11 +312,10 @@ export const ConfigTableSelect = ({
     replicationLagAlertConfigQuery.data
   );
   const tablesInConfig = augmentTablesWithXClusterDetails(
-    sourceUniverseTablesQuery.data,
     xClusterConfig.tableDetails,
     maxAcceptableLag,
     tableReplicationLagQuery.data?.async_replication_sent_lag?.data,
-    { includeDroppedTables: false }
+    { includeUnconfiguredTables: false, includeDroppedTables: false }
   );
 
   const tablesForSelection = tablesInConfig.filter(
@@ -337,7 +351,7 @@ export const ConfigTableSelect = ({
         <YBSmartSearchBar
           searchTokens={searchTokens}
           onSearchTokensChange={handleSearchTokenChange}
-          recognizedModifiers={['database', 'table']}
+          recognizedModifiers={['database', 'table', 'sizeBytes', 'status']}
           placeholder={t('tablesSearchBarPlaceholder')}
         />
       </Box>
@@ -482,6 +496,7 @@ function getSelectionOptionsFromTables(
 
       const mainTableRestartReplicationCandidate: MainTableRestartReplicationCandidate = {
         ...xClusterTable,
+        tableUUID: getTableUuid(xClusterTable),
         indexTables
       };
 
@@ -497,6 +512,9 @@ function getSelectionOptionsFromTables(
             checkIsTableMatchedBySearchTokens(indexTableRestartReplicationCandidate, searchTokens)
         );
       if (isTableMatchedBySearchTokens) {
+        mainTableRestartReplicationCandidate.indexTableIDs?.forEach((tableUuid) =>
+          searchMatchingTableUuids.add(tableUuid)
+        );
         searchMatchingNamespaceUuids.add(namespaceUuid);
         searchMatchingTableUuids.add(getTableUuid(xClusterTable));
       }
@@ -537,12 +555,14 @@ function getSelectionOptionsFromTables(
 /**
  * Fields to do substring search on if search token modifier is not specified.
  */
-const SUBSTRING_SEARCH_FIELDS = ['table', 'database'];
+const SUBSTRING_SEARCH_FIELDS = ['table', 'database', 'status'];
 
 const checkIsTableMatchedBySearchTokens = (table: XClusterTable, searchTokens: SearchToken[]) => {
   const candidate = {
     database: { value: table.keySpace, type: FieldType.STRING },
-    table: { value: table.tableName, type: FieldType.STRING }
+    table: { value: table.tableName, type: FieldType.STRING },
+    sizeBytes: { value: table.sizeBytes, type: FieldType.NUMBER },
+    status: { value: table.statusLabel, type: FieldType.STRING }
   };
   return searchTokens.every((searchToken) =>
     isMatchedBySearchToken(candidate, searchToken, SUBSTRING_SEARCH_FIELDS)

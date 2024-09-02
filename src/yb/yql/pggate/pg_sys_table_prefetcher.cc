@@ -338,7 +338,7 @@ Result<rpc::CallResponsePtr> Run(
           make_lw_function(MakeGenerator(ops)),
           BuildCacheOptions(arena, session->catalog_read_time(), ops, *options.caching_info))
       : session->RunAsync(make_lw_function(MakeGenerator(ops)), HybridTime()));
-  return VERIFY_RESULT(result.Get()).response;
+  return VERIFY_RESULT(result.Get(*session)).response;
 }
 
 struct RegisteredItem {

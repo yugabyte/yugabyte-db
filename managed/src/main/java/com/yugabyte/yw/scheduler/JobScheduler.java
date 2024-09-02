@@ -2,12 +2,16 @@
 
 package com.yugabyte.yw.scheduler;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Injector;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ShutdownHookHandler;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.JobInstance;
@@ -23,14 +27,13 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.DelayQueue;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -53,11 +56,13 @@ public class JobScheduler {
       "yb.job_scheduler.instance_record_ttl";
 
   private final Injector injector;
+  private final ShutdownHookHandler shutdownHookHandler;
   private final RuntimeConfGetter confGetter;
   private final PlatformExecutorFactory platformExecutorFactory;
   private final PlatformScheduler platformScheduler;
   private final DelayQueue<JobInstance> jobInstanceQueue;
-  private final Set<UUID> inflightJobSchedules;
+  // JobSchedule UUID to removable status.
+  private final Map<UUID, Boolean> inflightJobSchedules;
 
   private Duration pollerInterval;
   private Duration scanWindow;
@@ -67,15 +72,17 @@ public class JobScheduler {
   @Inject
   public JobScheduler(
       Injector injector,
+      ShutdownHookHandler shutdownHookHandler,
       RuntimeConfGetter confGetter,
       PlatformExecutorFactory platformExecutorFactory,
       PlatformScheduler platformScheduler) {
     this.injector = injector;
+    this.shutdownHookHandler = shutdownHookHandler;
     this.confGetter = confGetter;
     this.platformExecutorFactory = platformExecutorFactory;
     this.platformScheduler = platformScheduler;
     this.jobInstanceQueue = new DelayQueue<>();
-    this.inflightJobSchedules = ConcurrentHashMap.newKeySet();
+    this.inflightJobSchedules = new ConcurrentHashMap<>();
     this.pollerInterval = DEFAULT_POLLER_INTERVAL;
   }
 
@@ -98,6 +105,15 @@ public class JobScheduler {
             JobInstance.class.getSimpleName(),
             1,
             new ThreadFactoryBuilder().setNameFormat("job-instance-%d").build());
+    // Override the default handler to shut it down faster.
+    shutdownHookHandler.addShutdownHook(
+        jobInstanceQueueExecutor,
+        exec -> {
+          if (exec != null) {
+            exec.shutdownNow();
+          }
+        },
+        99 /* weight */);
     jobInstanceQueueExecutor.submit(this::processJobInstanceQueue);
     platformScheduler.schedule(
         JobScheduler.class.getSimpleName(),
@@ -119,10 +135,10 @@ public class JobScheduler {
     Preconditions.checkNotNull(jobSchedule.getCustomerUuid(), "Customer UUID must be set");
     Preconditions.checkNotNull(jobSchedule.getScheduleConfig(), "Schedule config must be set");
     Preconditions.checkNotNull(jobSchedule.getJobConfig(), "Job config must be set");
-    Instant nextMaxPollTime = Instant.now().plus(pollerInterval.getSeconds(), ChronoUnit.SECONDS);
-    Date nextTime = createNextStartTime(jobSchedule);
+    Date nextTime = createNextStartTime(jobSchedule, true);
     jobSchedule.setNextStartTime(nextTime);
     jobSchedule.save();
+    Instant nextMaxPollTime = Instant.now().plus(pollerInterval.getSeconds(), ChronoUnit.SECONDS);
     if (nextMaxPollTime.isAfter(nextTime.toInstant())) {
       // If the next execution time is arriving too soon, add it in the memory as well.
       addJobInstanceIfAbsent(jobSchedule.getUuid());
@@ -145,10 +161,23 @@ public class JobScheduler {
    *
    * @param customerUuid the customer UUID.
    * @param name the name of the schedule.
-   * @return
+   * @return the optional schedule.
    */
   public Optional<JobSchedule> maybeGetSchedule(UUID customerUuid, String name) {
     return JobSchedule.maybeGet(customerUuid, name);
+  }
+
+  /**
+   * Get the schedule with the name for the given customer if it is found else throw exception.
+   *
+   * @param customerUuid the customer UUID.
+   * @param name the name of the schedule.
+   * @return the schedule.
+   */
+  public JobSchedule getOrBadRequest(UUID customerUuid, String name) {
+    return maybeGetSchedule(customerUuid, name)
+        .orElseThrow(
+            () -> new PlatformServiceException(BAD_REQUEST, "Cannot find job schedule " + name));
   }
 
   /**
@@ -156,12 +185,14 @@ public class JobScheduler {
    *
    * @param uuid the UUID of the schedule.
    */
-  public void deleteSchedule(UUID uuid) {
+  public synchronized void deleteSchedule(UUID uuid) {
     JobSchedule.maybeGet(uuid)
         .ifPresent(
             jobSchedule -> {
               jobSchedule.delete();
-              removeJobInstanceIfPresent(uuid);
+              if (!removeJobInstanceIfPresent(uuid)) {
+                inflightJobSchedules.remove(uuid);
+              }
             });
   }
 
@@ -170,12 +201,37 @@ public class JobScheduler {
    *
    * @param uuid the UUID of the schedule.
    * @param scheduleConfig the new schedule config.
+   * @return the JobSchedule
    */
-  public void updateSchedule(UUID uuid, ScheduleConfig scheduleConfig) {
+  public synchronized JobSchedule updateSchedule(UUID uuid, ScheduleConfig scheduleConfig) {
     Preconditions.checkNotNull(scheduleConfig, "Schedule config must be set");
     JobSchedule jobSchedule = JobSchedule.getOrBadRequest(uuid);
-    jobSchedule.updateScheduleConfig(scheduleConfig);
-    removeJobInstanceIfPresent(uuid);
+    ScheduleConfig oldScheduleConfig = jobSchedule.getScheduleConfig();
+    if (!oldScheduleConfig.equals(scheduleConfig)) {
+      jobSchedule.setScheduleConfig(scheduleConfig);
+      jobSchedule.setNextStartTime(createNextStartTime(jobSchedule, false));
+      jobSchedule.update();
+      removeJobInstanceIfPresent(jobSchedule.getUuid());
+      Instant nextMaxPollTime = Instant.now().plus(pollerInterval.getSeconds(), ChronoUnit.SECONDS);
+      if (nextMaxPollTime.isAfter(jobSchedule.getNextStartTime().toInstant())) {
+        // If the next execution time is arriving too soon, add it in the memory as well.
+        addJobInstanceIfAbsent(jobSchedule.getUuid());
+      }
+    }
+    return jobSchedule;
+  }
+
+  /**
+   * Update the job config.
+   *
+   * @param uuid the UUID of the schedule.
+   * @param jobConfig the new job config.
+   * @return the JobSchedule
+   */
+  public synchronized JobSchedule updateJobConfig(UUID uuid, JobConfig jobConfig) {
+    Preconditions.checkNotNull(jobConfig, "Job config must be set");
+    JobSchedule jobSchedule = JobSchedule.getOrBadRequest(uuid);
+    return jobSchedule.updateJobConfig(jobConfig);
   }
 
   /**
@@ -183,11 +239,43 @@ public class JobScheduler {
    *
    * @param uuid the UUID of the schedule.
    * @param isDisable true to disable else false.
+   * @return the updated job schedule.
    */
-  public void disableSchedule(UUID uuid, boolean disable) {
+  public synchronized JobSchedule disableSchedule(UUID uuid, boolean disable) {
     JobSchedule jobSchedule = JobSchedule.getOrBadRequest(uuid);
-    jobSchedule.updateScheduleConfig(
+    return updateSchedule(
+        jobSchedule.getUuid(),
         jobSchedule.getScheduleConfig().toBuilder().disabled(disable).build());
+  }
+
+  /**
+   * Snooze the schedule to start after the given duration.
+   *
+   * @param uuid the UUID of the schedule.
+   * @param snoozeSecs the seconds to snooze.
+   * @return the updated job schedule.
+   */
+  public synchronized JobSchedule snooze(UUID uuid, long snoozeSecs) {
+    JobSchedule jobSchedule = JobSchedule.getOrBadRequest(uuid);
+    jobSchedule.setScheduleConfig(
+        jobSchedule.getScheduleConfig().toBuilder()
+            .snoozeUntil(Date.from(Instant.now().plus(snoozeSecs, ChronoUnit.SECONDS)))
+            .build());
+    jobSchedule.setNextStartTime(createNextStartTime(jobSchedule, true));
+    jobSchedule.update();
+    removeJobInstanceIfPresent(jobSchedule.getUuid());
+    return jobSchedule;
+  }
+
+  /**
+   * Reset counters like failedCount for the given schedule UUID.
+   *
+   * @param uuid the schedule UUID.
+   * @return the updated job schedule.
+   */
+  public synchronized JobSchedule resetCounters(UUID uuid) {
+    JobSchedule jobSchedule = JobSchedule.getOrBadRequest(uuid);
+    return jobSchedule.resetCounters();
   }
 
   /**
@@ -203,21 +291,31 @@ public class JobScheduler {
         .forEach(s -> deleteSchedule(s.getUuid()));
   }
 
-  // Update dangling instance records on process restart.
-  private void handleRestart() {
+  @VisibleForTesting
+  void handleRestart() {
+    // Update dangling instance records on process restart.
     JobInstance.updateAllPending(State.SKIPPED, State.SCHEDULED);
     JobInstance.updateAllPending(State.FAILED);
+    // Make currently active schedules inactive.
+    JobSchedule.getAll().stream()
+        .filter(s -> s.getScheduleConfig().isDisabled() == false)
+        .forEach(
+            s -> {
+              s.setState(JobSchedule.State.INACTIVE);
+              s.setNextStartTime(s.getJobConfig().createNextStartTime(s, true));
+              s.save();
+            });
   }
 
   // Create the next start time for the schedule. An implementation of JobConfig can choose to
   // override the default behavior.
-  private Date createNextStartTime(JobSchedule jobSchedule) {
-    return jobSchedule.getJobConfig().createNextStartTime(jobSchedule);
+  private Date createNextStartTime(JobSchedule jobSchedule, boolean restart) {
+    return jobSchedule.getJobConfig().createNextStartTime(jobSchedule, restart);
   }
 
   // Create and add a job instance to the queue when the schedule is picked up for execution soon.
   private synchronized void addJobInstanceIfAbsent(UUID jobScheduleUuid) {
-    if (!inflightJobSchedules.contains(jobScheduleUuid)) {
+    if (!inflightJobSchedules.containsKey(jobScheduleUuid)) {
       // Get the record again if the UUID was fetched right before the record deletion but after the
       // removal from the in-flight tracker.
       JobSchedule.maybeGet(jobScheduleUuid)
@@ -228,25 +326,29 @@ public class JobScheduler {
                 jobInstance.setJobScheduleUuid(s.getUuid());
                 jobInstance.setStartTime(s.getNextStartTime());
                 jobInstance.save();
-                inflightJobSchedules.add(s.getUuid());
+                inflightJobSchedules.put(s.getUuid(), true /* Removable */);
                 jobInstanceQueue.add(jobInstance);
               });
     }
   }
 
-  private synchronized void removeJobInstanceIfPresent(UUID jobScheduleUuid) {
-    if (inflightJobSchedules.contains(jobScheduleUuid)) {
+  private synchronized boolean removeJobInstanceIfPresent(UUID jobScheduleUuid) {
+    if (inflightJobSchedules.getOrDefault(jobScheduleUuid, false)) {
       // Delete only the records which were found in the queue.
       removeQueuedJobInstances(
               jobInstance -> jobInstance.getJobScheduleUuid().equals(jobScheduleUuid))
           .stream()
+          .filter(jobInstance -> jobInstance.getState() == State.SCHEDULED)
           .forEach(JobInstance::delete);
       inflightJobSchedules.remove(jobScheduleUuid);
+      return true;
     }
+    return false;
   }
 
   // Return the job instances which were found in the queue.
-  private List<JobInstance> removeQueuedJobInstances(Predicate<JobInstance> predicate) {
+  private synchronized List<JobInstance> removeQueuedJobInstances(
+      Predicate<JobInstance> predicate) {
     List<JobInstance> tobeRemovedJobInstances = new ArrayList<>();
     Iterator<JobInstance> iter = jobInstanceQueue.iterator();
     while (iter.hasNext()) {
@@ -264,7 +366,7 @@ public class JobScheduler {
   private void poll(Duration scanWindow) {
     try {
       JobSchedule.getNextEnabled(scanWindow).stream()
-          .filter(uuid -> !inflightJobSchedules.contains(uuid))
+          .filter(uuid -> !inflightJobSchedules.containsKey(uuid))
           .forEach(
               uuid -> {
                 try {
@@ -283,7 +385,7 @@ public class JobScheduler {
 
   private void processJobInstanceQueue() {
     while (!jobInstanceQueueExecutor.isShutdown()) {
-      Future<?> future = null;
+      CompletableFuture<?> future = null;
       JobInstance jobInstance = null;
       try {
         jobInstance = jobInstanceQueue.take();
@@ -297,18 +399,6 @@ public class JobScheduler {
           inflightJobSchedules.remove(jobInstance.getJobScheduleUuid());
         }
       }
-    }
-  }
-
-  private synchronized void finalizeJob(JobSchedule jobSchedule, JobInstance jobInstance) {
-    if (inflightJobSchedules.contains(jobSchedule.getUuid())) {
-      Date endTime = new Date();
-      jobSchedule.setLastEndTime(endTime);
-      jobInstance.setEndTime(endTime);
-      jobSchedule.setNextStartTime(createNextStartTime(jobSchedule));
-      jobSchedule.update();
-      jobInstance.update();
-      inflightJobSchedules.remove(jobSchedule.getUuid());
     }
   }
 
@@ -327,9 +417,29 @@ public class JobScheduler {
       return null;
     }
     JobInstance jobInstance = jobInstanceOptional.get();
-    JobSchedule jobSchedule = JobSchedule.getOrBadRequest(jobInstance.getJobScheduleUuid());
+    Optional<JobSchedule> jobScheduleOptional = Optional.empty();
+    synchronized (this) {
+      jobScheduleOptional = JobSchedule.maybeGet(jobInstance.getJobScheduleUuid());
+      if (!jobScheduleOptional.isPresent()) {
+        log.warn(
+            "Ignoring job {} for schedule {} as it is already deleted",
+            jobInstance.getUuid(),
+            jobInstance.getJobScheduleUuid());
+        return null;
+      }
+      if (inflightJobSchedules.computeIfPresent(
+              jobScheduleOptional.get().getUuid(), (k, v) -> false)
+          == null) {
+        log.debug(
+            "Ignoring job {} for schedule {} as it is already removed",
+            jobInstance.getUuid(),
+            jobInstance.getJobScheduleUuid());
+        return null;
+      }
+    }
+    JobSchedule jobSchedule = jobScheduleOptional.get();
     if (jobInstance.getState() != State.SCHEDULED) {
-      finalizeJob(jobSchedule, jobInstance);
+      updateFinalState(jobSchedule, jobInstance, null);
       log.debug(
           "Skipping job {} for schedule {} as it is not scheduled",
           jobInstance.getUuid(),
@@ -338,7 +448,7 @@ public class JobScheduler {
     }
     if (jobSchedule.getScheduleConfig().isDisabled()) {
       jobInstance.setState(State.SKIPPED);
-      finalizeJob(jobSchedule, jobInstance);
+      updateFinalState(jobSchedule, jobInstance, null);
       log.debug(
           "Skipping job {} as the schedule {} is disabled",
           jobInstance.getUuid(),
@@ -382,33 +492,49 @@ public class JobScheduler {
     } catch (Exception e) {
       jobInstance.setState(State.FAILED);
       updateFinalState(jobSchedule, jobInstance, e);
-    } finally {
-      log.debug(
-          "Run completed for job instance {} for schedule {} with result {}",
-          jobInstance.getUuid(),
-          jobSchedule.getUuid(),
-          jobInstance.getState());
     }
     return future;
   }
 
-  private void updateFinalState(JobSchedule jobSchedule, JobInstance jobInstance, Throwable t) {
+  private synchronized void updateFinalState(
+      JobSchedule jobSchedule, JobInstance jobInstance, Throwable t) {
     if (t != null) {
       log.info(
-          "Error in excuting kob instance {} for schedule {} - {}",
+          "Error in excuting job instance {} for schedule {} - {}",
           jobInstance.getUuid(),
           jobSchedule.getUuid(),
           t.getMessage());
     }
-    if (jobInstance.getState() != State.SKIPPED) {
-      jobSchedule.setExecutionCount(jobSchedule.getExecutionCount() + 1);
+    if (inflightJobSchedules.containsKey(jobSchedule.getUuid())) {
+      JobSchedule.State jobScheduleState = jobSchedule.getState();
+      State jobInstanceState = jobInstance.getState();
+      jobSchedule.refresh();
+      jobInstance.refresh();
+      jobSchedule.setState(jobScheduleState);
+      jobInstance.setState(jobInstanceState);
+      if (jobInstance.getState() != State.SKIPPED) {
+        jobSchedule.setExecutionCount(jobSchedule.getExecutionCount() + 1);
+      }
+      if (jobInstance.getState() == State.SUCCESS) {
+        jobSchedule.setFailedCount(0);
+      } else if (jobInstance.getState() == State.FAILED) {
+        jobSchedule.setFailedCount(jobSchedule.getFailedCount() + 1);
+      }
+      jobSchedule.setState(JobSchedule.State.INACTIVE);
+      Date endTime = new Date();
+      jobSchedule.setLastEndTime(endTime);
+      if (!jobSchedule.getScheduleConfig().isDisabled()) {
+        jobSchedule.setNextStartTime(createNextStartTime(jobSchedule, false));
+      }
+      jobSchedule.update();
+      jobInstance.setEndTime(endTime);
+      jobInstance.update();
+      inflightJobSchedules.remove(jobSchedule.getUuid());
     }
-    if (jobInstance.getState() == State.SUCCESS) {
-      jobSchedule.setFailedCount(0);
-    } else if (jobInstance.getState() == State.FAILED) {
-      jobSchedule.setFailedCount(jobSchedule.getFailedCount() + 1);
-    }
-    jobSchedule.setState(JobSchedule.State.INACTIVE);
-    finalizeJob(jobSchedule, jobInstance);
+    log.debug(
+        "Run completed for job instance {} for schedule {} with result {}",
+        jobInstance.getUuid(),
+        jobSchedule.getUuid(),
+        jobInstance.getState());
   }
 }

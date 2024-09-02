@@ -88,7 +88,6 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
                      log_thread_pool_.get(),
                      log_thread_pool_.get(),
                      log_thread_pool_.get(),
-                     std::numeric_limits<int64_t>::max(), // cdc_min_replicated_index
                      &log,
                      {}, // pre_log_rollover_callback,
                      new_segment_allocation_callback));

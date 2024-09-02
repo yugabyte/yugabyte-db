@@ -23,6 +23,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesPostExpansionCheckV
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.helm.HelmUtils;
@@ -65,16 +66,18 @@ import play.libs.Json;
 public class EditKubernetesUniverse extends KubernetesTaskBase {
 
   static final int DEFAULT_WAIT_TIME_MS = 10000;
-  static final int WAIT_FOR_MASTER_ADDRESSES_CHANGE_SECS = 120;
   private final OperatorStatusUpdater kubernetesStatus;
+  private final YbcManager ybcManager;
 
   @Inject
   protected EditKubernetesUniverse(
       BaseTaskDependencies baseTaskDependencies,
       KubernetesManagerFactory kubernetesManagerFactory,
-      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory,
+      YbcManager ybcManager) {
     super(baseTaskDependencies, kubernetesManagerFactory);
     this.kubernetesStatus = operatorStatusUpdaterFactory.create();
+    this.ybcManager = ybcManager;
   }
 
   @Override
@@ -103,7 +106,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       // some precheck operations to verify kubeconfig, svcaccount, connectivity to universe here ?
       Universe universe =
           lockAndFreezeUniverseForUpdate(
-              taskParams().expectedUniverseVersion, null /* Txn callback */);
+              taskParams().expectedUniverseVersion,
+              u -> setCommunicationPortsForNodes(false) /* Txn callback */);
 
       kubernetesStatus.startYBUniverseEventStatus(
           universe,
@@ -448,7 +452,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             universe.getName(),
             tserversToAdd,
             isReadOnlyCluster,
-            universe.getUniverseDetails().getYbcSoftwareVersion(),
+            ybcManager.getStableYbcVersion(),
             isReadOnlyCluster
                 ? universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.ybcFlags
                 : universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags);
@@ -701,11 +705,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           universe.isYbcEnabled(),
           universe.getUniverseDetails().getYbcSoftwareVersion());
 
-      // Wait for gflags change to be reflected on mounted locations
-      createWaitForDurationSubtask(
-              universe, Duration.ofSeconds(WAIT_FOR_MASTER_ADDRESSES_CHANGE_SECS))
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
       Set<NodeDetails> mastersToModify =
           Stream.concat(
                   mastersToAdd.stream(),
@@ -744,11 +743,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           isReadOnlyCluster,
           universe.isYbcEnabled(),
           universe.getUniverseDetails().getYbcSoftwareVersion());
-
-      // Wait for gflags change to be reflected on mounted locations
-      createWaitForDurationSubtask(
-              universe, Duration.ofSeconds(WAIT_FOR_MASTER_ADDRESSES_CHANGE_SECS))
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Set flag in memory for tserver
       createSetFlagInMemoryTasks(

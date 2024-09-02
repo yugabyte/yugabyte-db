@@ -4,7 +4,7 @@ private = true
 +++
 -->
 
-* Initialize YEDIS API in the YugabyteDB universe you just set up by running the following `yb-admin` command.
+* Initialize YEDIS API in the YugabyteDB universe you just set up by running the following yb-admin command.
 
 ```sh
 $ kubectl exec -it yb-master-0 -- /home/yugabyte/bin/yb-admin --master_addresses yb-master-0.yb-masters.default.svc.cluster.local:7100 setup_redis_table

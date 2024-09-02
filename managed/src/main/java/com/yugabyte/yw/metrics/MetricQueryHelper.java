@@ -14,10 +14,12 @@ import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.MetricQueryParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -32,12 +34,15 @@ import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.inject.Inject;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.client.GetXClusterOutboundReplicationGroupInfoResponse;
+import org.yb.master.MasterReplicationOuterClass.GetXClusterOutboundReplicationGroupInfoResponsePB.NamespaceInfoPB;
 import play.libs.Json;
 import play.libs.ws.WSClient;
 
@@ -49,6 +54,7 @@ public class MetricQueryHelper {
   public static final Integer QUERY_EXECUTOR_THREAD_POOL = 5;
 
   public static final String METRICS_QUERY_PATH = "query";
+  public static final String METRICS_QUERY_RANGE_PATH = "query_range";
   public static final String ALERTS_PATH = "alerts";
 
   public static final String MANAGEMENT_COMMAND_RELOAD = "reload";
@@ -63,6 +69,7 @@ public class MetricQueryHelper {
   public static final String TABLE_NAME = "table_name";
   public static final String NAMESPACE_NAME = "namespace_name";
   public static final String NAMESPACE_ID = "namespace_id";
+  public static final String YBA_INSTANCE_ADDRESS = "instance_address";
   private static final String POD_NAME = "pod_name";
   private static final String CONTAINER_NAME = "container_name";
   private static final String PVC = "persistentvolumeclaim";
@@ -91,23 +98,27 @@ public class MetricQueryHelper {
 
   private final PlatformExecutorFactory platformExecutorFactory;
 
+  private final YBClientService ybService;
+
   @Inject
   public MetricQueryHelper(
       Config appConfig,
       RuntimeConfGetter confGetter,
       WSClientRefresher wsClientRefresher,
       MetricUrlProvider metricUrlProvider,
-      PlatformExecutorFactory platformExecutorFactory) {
+      PlatformExecutorFactory platformExecutorFactory,
+      YBClientService ybService) {
     this.appConfig = appConfig;
     this.confGetter = confGetter;
     this.wsClientRefresher = wsClientRefresher;
     this.metricUrlProvider = metricUrlProvider;
     this.platformExecutorFactory = platformExecutorFactory;
+    this.ybService = ybService;
   }
 
   @VisibleForTesting
   public MetricQueryHelper() {
-    this(null, null, null, null, null);
+    this(null, null, null, null, null, null);
   }
 
   /**
@@ -154,6 +165,17 @@ public class MetricQueryHelper {
       params.put("end", String.valueOf(metricQueryParams.getEnd()));
     }
     HashMap<String, Map<String, String>> filterOverrides = new HashMap<>();
+
+    // If all requested metrics are platform level metrics, then we can skip the logic for adding
+    // node/universe level filters.
+    if (isExclusivelyPlatformLevelMetrics(metricQueryParams)) {
+      return query(
+          new ArrayList<>(metricSettingsMap.values()),
+          params,
+          filterOverrides,
+          metricQueryParams.isRecharts());
+    }
+
     // Given we have a limitation on not being able to rename the pod labels in
     // kubernetes cadvisor metrics, we try to see if the metric being queried is for
     // container or not, and use pod_name vs exported_instance accordingly.
@@ -305,9 +327,32 @@ public class MetricQueryHelper {
     if (metricQueryParams.getXClusterConfigUuid() != null) {
       XClusterConfig xClusterConfig =
           XClusterConfig.getOrBadRequest(metricQueryParams.getXClusterConfigUuid());
-      String tableIdRegex = String.join("|", xClusterConfig.getTableIds());
+
+      Set<String> tableIds = new HashSet<>();
+      Set<String> streamIds = new HashSet<>();
+      if (xClusterConfig.getType() == XClusterConfig.ConfigType.Db) {
+        try {
+          GetXClusterOutboundReplicationGroupInfoResponse rgInfo =
+              XClusterConfigTaskBase.getXClusterOutboundReplicationGroupInfo(
+                  ybService,
+                  Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID()),
+                  xClusterConfig.getReplicationGroupName());
+
+          for (NamespaceInfoPB namespaceInfo : rgInfo.getNamespaceInfos()) {
+            tableIds.addAll(namespaceInfo.getTableStreamsMap().keySet());
+            streamIds.addAll(namespaceInfo.getTableStreamsMap().values());
+          }
+
+        } catch (Exception e) {
+          LOG.error("Could not get outbound replication group info", e);
+        }
+      } else {
+        tableIds = xClusterConfig.getTableIds();
+        streamIds = xClusterConfig.getStreamIdsWithReplicationSetup();
+      }
+      String tableIdRegex = String.join("|", tableIds);
       filterJson.put("table_id", tableIdRegex);
-      String streamIdRegex = String.join("|", xClusterConfig.getStreamIdsWithReplicationSetup());
+      String streamIdRegex = String.join("|", streamIds);
       // We add `|` to the end of streamIdRegex for backward compatibility where a YBDB version
       // does not have stream id as a label matcher.
       filterJson.put("stream_id", streamIdRegex + "|");
@@ -567,6 +612,26 @@ public class MetricQueryHelper {
         && !n.cloudInfo.mount_roots.isEmpty();
   }
 
+  private static boolean isPlatformMetric(String metric) {
+    return metric.startsWith("yba_");
+  }
+
+  private static boolean isExclusivelyPlatformLevelMetrics(MetricQueryParams metricQueryParams) {
+    boolean isAllMetricsPlatformLevel =
+        Optional.ofNullable(metricQueryParams.getMetrics())
+            .map(Collection::stream)
+            .orElseGet(Stream::empty)
+            .allMatch(metric -> isPlatformMetric(metric));
+
+    boolean isAllMetricsWithSettingsPlatformLevel =
+        Optional.ofNullable(metricQueryParams.getMetricsWithSettings())
+            .map(Collection::stream)
+            .orElseGet(Stream::empty)
+            .allMatch(metricSettings -> isPlatformMetric(metricSettings.getMetric()));
+
+    return isAllMetricsPlatformLevel && isAllMetricsWithSettingsPlatformLevel;
+  }
+
   public static String getDataMountPoints(Universe universe) {
     if (universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType
         == CloudType.onprem) {
@@ -617,5 +682,22 @@ public class MetricQueryHelper {
     String username = confGetter.getGlobalConf(GlobalConfKeys.metricsAuthUsername);
     String password = confGetter.getGlobalConf(GlobalConfKeys.metricsAuthPassword);
     return AuthUtil.getBasicAuthHeader(username, password);
+  }
+
+  /*
+   * The following endpoint evaluates an expression query over a range of time:
+   * GET /api/v1/query_range  & URL query parameters:
+   * query=<string>: Prometheus expression query string.
+   * start=<rfc3339 | unix_timestamp>: Start timestamp, inclusive.
+   * end=<rfc3339 | unix_timestamp>: End timestamp, inclusive.
+   * step=<float>: Query resolution step width in float number of seconds.
+   * Example:
+   * {url}/api/v1/query_range?query=up&start=2015-07-01T20:10:30Z&end=2015-07-01T20:11:00Z&step=7
+   */
+  public JsonNode queryRange(Map<String, String> queryParams) {
+    final String queryUrl = getPrometheusQueryUrl(METRICS_QUERY_RANGE_PATH);
+    final JsonNode responseJson =
+        getApiHelper().getRequest(queryUrl, getAuthHeaders(), queryParams);
+    return responseJson;
   }
 }

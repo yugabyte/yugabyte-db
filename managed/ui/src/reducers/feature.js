@@ -36,7 +36,9 @@ const initialStateFeatureInTest = {
   enableNewRestoreModal: true,
   enableCACertRotation: true,
   enableNewAdvancedRestoreModal: false,
-  showReplicationSlots: true
+  showReplicationSlots: true,
+  newTaskDetailsUI: false,
+  enableNewAuthAndMappings: false
 };
 
 const initialStateFeatureReleased = {
@@ -64,7 +66,8 @@ const initialStateFeatureReleased = {
   enableNotificationTemplates: false,
   enableRestore: true,
   enablePrefillKubeConfig: true,
-  enableCustomEmailTemplates: true
+  enableCustomEmailTemplates: true,
+  enableBackupPITR: false
   // enableRRGflags: true
 };
 

@@ -9,7 +9,6 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.api.client.util.Throwables;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
@@ -815,6 +814,10 @@ public class TaskExecutor {
       return data.get(key);
     }
 
+    public <T> void putObject(String key, T object) {
+      data.put(key, Json.toJson(object));
+    }
+
     public <T> T get(String key, Class<T> clazz) {
       JsonNode node = get(key);
       if (node == null || node.isNull()) {
@@ -1045,9 +1048,8 @@ public class TaskExecutor {
           "Task state must be one of " + TaskInfo.ERROR_STATES);
       taskInfo.refresh();
       TaskError taskError = new TaskError();
-      // Method maskConfig does not modify the input as it makes a deep-copy.
-      String maskedTaskParams =
-          CommonUtils.maskConfig((ObjectNode) taskInfo.getTaskParams()).toString();
+      // Method getRedactedParams does not modify the input as it makes a deep-copy.
+      String redactedTaskParams = taskInfo.getRedactedParams().toString();
       if (state == TaskInfo.State.Aborted && isShutdown.get()) {
         taskError.setCode(TaskErrorCode.PLATFORM_SHUTDOWN);
         taskError.setMessage("Platform shutdown");
@@ -1065,7 +1067,7 @@ public class TaskExecutor {
         String errorString =
             String.format(
                 "Failed to execute task %s, hit error:\n\n %s.",
-                StringUtils.abbreviate(maskedTaskParams, 500),
+                StringUtils.abbreviate(redactedTaskParams, 500),
                 StringUtils.abbreviateMiddle(cause.getMessage(), "...", 3000));
         taskError.setMessage(errorString);
       }
@@ -1073,7 +1075,7 @@ public class TaskExecutor {
           "Failed to execute task type {} UUID {} details {}, hit error.",
           taskInfo.getTaskType(),
           taskInfo.getTaskUUID(),
-          maskedTaskParams,
+          redactedTaskParams,
           t);
 
       if (log.isDebugEnabled()) {
@@ -1367,7 +1369,14 @@ public class TaskExecutor {
             throw e;
           }
 
-          log.warn("Task {} attempt {} has failed", getTask(), currentAttempt);
+          String redactedParams =
+              RedactingService.filterSecretFields(getTask().getTaskParams(), RedactionTarget.LOGS)
+                  .toString();
+          log.warn(
+              "Task {} with params {} attempt {} has failed",
+              getTask().getName(),
+              redactedParams,
+              currentAttempt);
           if (!getTask().onFailure(getTaskInfo(), e)) {
             throw e;
           }

@@ -69,11 +69,13 @@ BEGIN
  * Be aware that constraint exclusion may not work properly until an analyze on the partition set is run. 
  */
 
+/* YB(GH#3642): advisory lock not supported
 v_adv_lock := pg_try_advisory_xact_lock(hashtext('pg_partman run_maintenance'));
 IF v_adv_lock = 'false' THEN
     RAISE NOTICE 'Partman maintenance already running.';
     RETURN;
 END IF;
+*/
 
 SELECT current_setting('search_path') INTO v_old_search_path;
 IF length(v_old_search_path) > 0 THEN

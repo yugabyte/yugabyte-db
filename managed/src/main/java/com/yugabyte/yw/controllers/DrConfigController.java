@@ -1,5 +1,8 @@
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase.getRequestedTableInfoList;
+import static org.yb.master.MasterReplicationOuterClass.GetUniverseReplicationInfoResponsePB.*;
+
 import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -9,6 +12,7 @@ import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.XClusterUtil;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -17,6 +21,7 @@ import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.controllers.handlers.UniverseTableHandler;
 import com.yugabyte.yw.forms.DrConfigCreateForm;
 import com.yugabyte.yw.forms.DrConfigEditForm;
 import com.yugabyte.yw.forms.DrConfigFailoverForm;
@@ -33,6 +38,7 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams;
+import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.forms.XClusterConfigRestartFormData;
 import com.yugabyte.yw.forms.XClusterConfigSyncFormData;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
@@ -99,6 +105,7 @@ public class DrConfigController extends AuthenticatedController {
   private final XClusterUniverseService xClusterUniverseService;
   private final AutoFlagUtil autoFlagUtil;
   private final XClusterScheduler xClusterScheduler;
+  private final UniverseTableHandler tableHandler;
 
   @Inject
   public DrConfigController(
@@ -110,7 +117,8 @@ public class DrConfigController extends AuthenticatedController {
       RuntimeConfGetter confGetter,
       XClusterUniverseService xClusterUniverseService,
       AutoFlagUtil autoFlagUtil,
-      XClusterScheduler xClusterScheduler) {
+      XClusterScheduler xClusterScheduler,
+      UniverseTableHandler tableHandler) {
     this.commissioner = commissioner;
     this.metricQueryHelper = metricQueryHelper;
     this.backupHelper = backupHelper;
@@ -120,6 +128,7 @@ public class DrConfigController extends AuthenticatedController {
     this.xClusterUniverseService = xClusterUniverseService;
     this.autoFlagUtil = autoFlagUtil;
     this.xClusterScheduler = xClusterScheduler;
+    this.tableHandler = tableHandler;
   }
 
   /**
@@ -141,8 +150,14 @@ public class DrConfigController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(path = "sourceUniverseUUID", sourceType = SourceType.REQUEST_BODY)),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(path = "targetUniverseUUID", sourceType = SourceType.REQUEST_BODY))
   })
   public Result create(UUID customerUUID, Http.Request request) {
     log.info("Received create drConfig request");
@@ -170,6 +185,10 @@ public class DrConfigController extends AuthenticatedController {
           BAD_REQUEST,
           "Support for db scoped disaster recovery configs is disabled in YBA. You may enable it "
               + "by setting yb.xcluster.db_scoped.enabled to true in the application.conf");
+    }
+
+    if (isDbScoped) {
+      XClusterUtil.dbScopedXClusterPreChecks(sourceUniverse, targetUniverse);
     }
 
     DrConfig drConfig;
@@ -291,8 +310,24 @@ public class DrConfigController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "sourceUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid")),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "targetUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid"))
   })
   public Result edit(UUID customerUUID, UUID drConfigUuid, Http.Request request) {
     log.info("Received edit drConfig request");
@@ -332,8 +367,24 @@ public class DrConfigController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "sourceUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid")),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "targetUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid"))
   })
   public Result setTables(UUID customerUUID, UUID drConfigUuid, Http.Request request) {
     log.info("Received set tables drConfig request");
@@ -415,8 +466,24 @@ public class DrConfigController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "sourceUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid")),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "targetUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid"))
   })
   public Result restart(
       UUID customerUUID, UUID drConfigUuid, boolean isForceDelete, Http.Request request) {
@@ -442,30 +509,46 @@ public class DrConfigController extends AuthenticatedController {
       autoFlagUtil.checkSourcePromotedAutoFlagsPromotedOnTarget(sourceUniverse, targetUniverse);
     }
 
-    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
-        XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
-
-    // Todo: Always add non existing tables to the xCluster config on restart.
-    // Empty `dbs` field indicates a request to restart the entire config.
-    // This is consistent with the restart xCluster config behaviour.
-    Set<String> tableIds =
-        CollectionUtils.isEmpty(restartForm.dbs)
-            ? xClusterConfig.getTableIds()
-            : XClusterConfigTaskBase.getTableIds(
-                getRequestedTableInfoList(restartForm.dbs, sourceTableInfoList));
-
     log.info("DR state is {}", drConfig.getState());
-    XClusterConfigTaskParams taskParams =
-        XClusterConfigController.getRestartTaskParams(
-            ybService,
-            xClusterConfig,
-            sourceUniverse,
-            targetUniverse,
-            tableIds,
-            restartForm.bootstrapParams,
-            false /* dryRun */,
-            isForceDelete,
-            drConfig.isHalted() /*isForceBootstrap*/);
+
+    XClusterConfigTaskParams taskParams;
+    if (xClusterConfig.getType() != ConfigType.Db) {
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
+          XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
+
+      // Todo: Always add non existing tables to the xCluster config on restart.
+      // Empty `dbs` field indicates a request to restart the entire config.
+      // This is consistent with the restart xCluster config behaviour.
+      Set<String> tableIds =
+          CollectionUtils.isEmpty(restartForm.dbs)
+              ? xClusterConfig.getTableIds()
+              : XClusterConfigTaskBase.getTableIds(
+                  getRequestedTableInfoList(restartForm.dbs, sourceTableInfoList));
+
+      taskParams =
+          XClusterConfigController.getRestartTaskParams(
+              ybService,
+              xClusterConfig,
+              sourceUniverse,
+              targetUniverse,
+              tableIds,
+              restartForm.bootstrapParams,
+              false /* dryRun */,
+              isForceDelete,
+              drConfig.isHalted() /*isForceBootstrap*/);
+    } else {
+      taskParams =
+          XClusterConfigController.getDbScopedRestartTaskParams(
+              ybService,
+              xClusterConfig,
+              sourceUniverse,
+              targetUniverse,
+              restartForm.dbs,
+              restartForm.bootstrapParams,
+              false /* dryRun */,
+              isForceDelete,
+              drConfig.isHalted() /*isForceBootstrap*/);
+    }
 
     UUID taskUUID = commissioner.submit(TaskType.RestartDrConfig, taskParams);
     CustomerTask.create(
@@ -506,8 +589,24 @@ public class DrConfigController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "sourceUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid")),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "targetUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid"))
   })
   public Result replaceReplica(UUID customerUUID, UUID drConfigUuid, Http.Request request) {
     log.info("Received replaceReplica drConfig request");
@@ -534,64 +633,91 @@ public class DrConfigController extends AuthenticatedController {
       autoFlagUtil.checkPromotedAutoFlagsEquality(sourceUniverse, newTargetUniverse);
     }
 
-    Set<String> tableIds = xClusterConfig.getTableIds();
-
-    // Add index tables.
-    Map<String, List<String>> mainTableIndexTablesMap =
-        XClusterConfigTaskBase.getMainTableIndexTablesMap(this.ybService, sourceUniverse, tableIds);
-    Set<String> indexTableIdSet =
-        mainTableIndexTablesMap.values().stream().flatMap(List::stream).collect(Collectors.toSet());
-    tableIds.addAll(indexTableIdSet);
-
-    log.debug("tableIds are {}", tableIds);
-
-    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
-        XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
-    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
-        XClusterConfigTaskBase.filterTableInfoListByTableIds(sourceTableInfoList, tableIds);
-
-    XClusterConfigTaskBase.verifyTablesNotInReplication(
-        tableIds, sourceUniverse.getUniverseUUID(), newTargetUniverse.getUniverseUUID());
-    XClusterConfigController.certsForCdcDirGFlagCheck(sourceUniverse, newTargetUniverse);
-
-    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> newTargetTableInfoList =
-        XClusterConfigTaskBase.getTableInfoList(ybService, newTargetUniverse);
-    Map<String, String> sourceTableIdNewTargetTableIdMap =
-        XClusterConfigTaskBase.getSourceTableIdTargetTableIdMap(
-            requestedTableInfoList, newTargetTableInfoList);
-
-    BootstrapParams bootstrapParams =
-        getBootstrapParamsFromRestartBootstrapParams(replaceReplicaForm.bootstrapParams, tableIds);
-    XClusterConfigController.xClusterBootstrappingPreChecks(
-        requestedTableInfoList,
-        sourceTableInfoList,
-        newTargetUniverse,
-        sourceUniverse,
-        sourceTableIdNewTargetTableIdMap,
-        ybService,
-        bootstrapParams,
-        null /* currentReplicationGroupName */);
-
-    // Todo: add a dryRun option here.
-
+    DrConfigTaskParams taskParams;
     // Create xCluster config object.
     XClusterConfig newTargetXClusterConfig =
         drConfig.addXClusterConfig(
-            sourceUniverse.getUniverseUUID(), newTargetUniverse.getUniverseUUID());
-    newTargetXClusterConfig.updateTables(tableIds, tableIds /* tableIdsNeedBootstrap */);
-    newTargetXClusterConfig.updateIndexTablesFromMainTableIndexTablesMap(mainTableIndexTablesMap);
-    newTargetXClusterConfig.setSecondary(true);
+            sourceUniverse.getUniverseUUID(),
+            newTargetUniverse.getUniverseUUID(),
+            xClusterConfig.getType());
+
+    try {
+      if (xClusterConfig.getType() != ConfigType.Db) {
+        Set<String> tableIds = xClusterConfig.getTableIds();
+
+        // Add index tables.
+        Map<String, List<String>> mainTableIndexTablesMap =
+            XClusterConfigTaskBase.getMainTableIndexTablesMap(
+                this.ybService, sourceUniverse, tableIds);
+        Set<String> indexTableIdSet =
+            mainTableIndexTablesMap.values().stream()
+                .flatMap(List::stream)
+                .collect(Collectors.toSet());
+        tableIds.addAll(indexTableIdSet);
+
+        log.debug("tableIds are {}", tableIds);
+
+        List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
+            XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
+        List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
+            XClusterConfigTaskBase.filterTableInfoListByTableIds(sourceTableInfoList, tableIds);
+
+        XClusterConfigTaskBase.verifyTablesNotInReplication(
+            tableIds, sourceUniverse.getUniverseUUID(), newTargetUniverse.getUniverseUUID());
+        XClusterConfigController.certsForCdcDirGFlagCheck(sourceUniverse, newTargetUniverse);
+
+        List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> newTargetTableInfoList =
+            XClusterConfigTaskBase.getTableInfoList(ybService, newTargetUniverse);
+        Map<String, String> sourceTableIdNewTargetTableIdMap =
+            XClusterConfigTaskBase.getSourceTableIdTargetTableIdMap(
+                requestedTableInfoList, newTargetTableInfoList);
+
+        BootstrapParams bootstrapParams =
+            getBootstrapParamsFromRestartBootstrapParams(
+                replaceReplicaForm.bootstrapParams, tableIds);
+        XClusterConfigController.xClusterBootstrappingPreChecks(
+            requestedTableInfoList,
+            sourceTableInfoList,
+            newTargetUniverse,
+            sourceUniverse,
+            sourceTableIdNewTargetTableIdMap,
+            ybService,
+            bootstrapParams,
+            null /* currentReplicationGroupName */);
+
+        newTargetXClusterConfig.updateTables(tableIds, tableIds /* tableIdsNeedBootstrap */);
+        newTargetXClusterConfig.updateIndexTablesFromMainTableIndexTablesMap(
+            mainTableIndexTablesMap);
+        taskParams =
+            new DrConfigTaskParams(
+                drConfig,
+                xClusterConfig,
+                newTargetXClusterConfig,
+                bootstrapParams,
+                requestedTableInfoList,
+                mainTableIndexTablesMap,
+                sourceTableIdNewTargetTableIdMap);
+      } else {
+        newTargetXClusterConfig.updateNamespaces(xClusterConfig.getDbIds());
+        taskParams =
+            new DrConfigTaskParams(
+                drConfig,
+                xClusterConfig,
+                newTargetXClusterConfig,
+                newTargetXClusterConfig.getDbIds(),
+                Collections.emptyMap());
+      }
+
+      // Todo: add a dryRun option here.
+
+      newTargetXClusterConfig.setSecondary(true);
+      newTargetXClusterConfig.update();
+    } catch (Exception e) {
+      newTargetXClusterConfig.delete();
+      throw e;
+    }
 
     // Submit task to set up xCluster config.
-    DrConfigTaskParams taskParams =
-        new DrConfigTaskParams(
-            drConfig,
-            xClusterConfig,
-            newTargetXClusterConfig,
-            bootstrapParams,
-            requestedTableInfoList,
-            mainTableIndexTablesMap,
-            sourceTableIdNewTargetTableIdMap);
     UUID taskUUID = commissioner.submit(TaskType.EditDrConfig, taskParams);
     CustomerTask.create(
         customer,
@@ -631,8 +757,24 @@ public class DrConfigController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "sourceUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid")),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "targetUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid"))
   })
   public Result switchover(UUID customerUUID, UUID drConfigUuid, Http.Request request) {
     log.info("Received switchover drConfig request");
@@ -771,7 +913,7 @@ public class DrConfigController extends AuthenticatedController {
                     ybService, targetUniverse, xClusterConfig.getReplicationGroupName())
                 .getDbScopedInfos()
                 .stream()
-                .map(i -> i.getTargetNamespaceId())
+                .map(DbScopedInfoPB::getTargetNamespaceId)
                 .collect(Collectors.toSet()));
       } catch (Exception e) {
         throw new PlatformServiceException(
@@ -836,8 +978,24 @@ public class DrConfigController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "sourceUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid")),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "targetUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid"))
   })
   public Result failover(UUID customerUUID, UUID drConfigUuid, Http.Request request) {
     log.info("Received failover drConfig request");
@@ -853,55 +1011,111 @@ public class DrConfigController extends AuthenticatedController {
     Universe targetUniverse =
         Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
 
-    // Todo: Add pre-checks for user's input safetime.
-
-    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList =
-        XClusterConfigTaskBase.getTableInfoList(ybService, targetUniverse);
-
-    // Because during failover, the source universe could be down, we should rely on the target
-    // universe to get the table map between source to target.
-    Map<String, String> sourceTableIdTargetTableIdMap =
-        xClusterUniverseService.getSourceTableIdTargetTableIdMap(
-            targetUniverse, xClusterConfig.getReplicationGroupName());
-
-    // All tables must have corresponding tables on the target universe.
-    Set<String> sourceTableIdsWithNoTableOnTargetUniverse =
-        sourceTableIdTargetTableIdMap.entrySet().stream()
-            .filter(entry -> Objects.isNull(entry.getValue()))
-            .map(Entry::getKey)
-            .collect(Collectors.toSet());
-    if (!sourceTableIdsWithNoTableOnTargetUniverse.isEmpty()) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          String.format(
-              "The following tables are in replication with no corresponding table on the "
-                  + "target universe: %s. This can happen if the table is dropped without being "
-                  + "removed from replication first. You may fix this issue by running `Reconcile "
-                  + "config with DB` from UI",
-              sourceTableIdsWithNoTableOnTargetUniverse));
-    }
-    // Use table IDs on the target universe for failover xCluster.
-    Set<String> tableIds = new HashSet<>(sourceTableIdTargetTableIdMap.values());
-    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
-        XClusterConfigTaskBase.filterTableInfoListByTableIds(targetTableInfoList, tableIds);
-
-    drSwitchoverFailoverPreChecks(
-        CustomerTask.TaskType.Failover,
-        requestedTableInfoList,
-        targetTableInfoList,
-        targetUniverse,
-        sourceUniverse);
-    Map<String, List<String>> mainTableIndexTablesMap =
-        XClusterConfigTaskBase.getMainTableIndexTablesMap(ybService, targetUniverse, tableIds);
-
-    // Make sure the safetime for all the namespaces is specified.
+    DrConfigTaskParams taskParams;
     Set<String> namespaceIdsWithSafetime = failoverForm.namespaceIdSafetimeEpochUsMap.keySet();
-    Set<String> namespaceIdsWithoutSafetime =
-        XClusterConfigTaskBase.getNamespaces(requestedTableInfoList).stream()
-            .map(namespace -> namespace.getId().toStringUtf8())
-            .filter(namespaceId -> !namespaceIdsWithSafetime.contains(namespaceId))
-            .collect(Collectors.toSet());
+    Set<String> namespaceIdsWithoutSafetime;
+    // Todo: Add pre-checks for user's input safetime.
+    XClusterConfig failoverXClusterConfig =
+        drConfig.addXClusterConfig(
+            xClusterConfig.getTargetUniverseUUID(),
+            xClusterConfig.getSourceUniverseUUID(),
+            xClusterConfig.getType());
+
+    try {
+      if (xClusterConfig.getType() != ConfigType.Db) {
+        List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList =
+            XClusterConfigTaskBase.getTableInfoList(ybService, targetUniverse);
+
+        // Because during failover, the source universe could be down, we should rely on the target
+        // universe to get the table map between source to target.
+        Map<String, String> sourceTableIdTargetTableIdMap =
+            xClusterUniverseService.getSourceTableIdTargetTableIdMap(
+                targetUniverse, xClusterConfig.getReplicationGroupName());
+
+        // All tables must have corresponding tables on the target universe.
+        Set<String> sourceTableIdsWithNoTableOnTargetUniverse =
+            sourceTableIdTargetTableIdMap.entrySet().stream()
+                .filter(entry -> Objects.isNull(entry.getValue()))
+                .map(Entry::getKey)
+                .collect(Collectors.toSet());
+        if (!sourceTableIdsWithNoTableOnTargetUniverse.isEmpty()) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              String.format(
+                  "The following tables are in replication with no corresponding table on the"
+                      + " target universe: %s. This can happen if the table is dropped without"
+                      + " being removed from replication first. You may fix this issue by running"
+                      + " `Reconcile config with DB` from UI",
+                  sourceTableIdsWithNoTableOnTargetUniverse));
+        }
+
+        // Use table IDs on the target universe for failover xCluster.
+        Set<String> tableIds = new HashSet<>(sourceTableIdTargetTableIdMap.values());
+        List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
+            XClusterConfigTaskBase.filterTableInfoListByTableIds(targetTableInfoList, tableIds);
+
+        drSwitchoverFailoverPreChecks(
+            CustomerTask.TaskType.Failover,
+            requestedTableInfoList,
+            targetTableInfoList,
+            targetUniverse,
+            sourceUniverse);
+        Map<String, List<String>> mainTableIndexTablesMap =
+            XClusterConfigTaskBase.getMainTableIndexTablesMap(ybService, targetUniverse, tableIds);
+
+        // Make sure the safetime for all the namespaces is specified.
+        namespaceIdsWithoutSafetime =
+            XClusterConfigTaskBase.getNamespaces(requestedTableInfoList).stream()
+                .map(namespace -> namespace.getId().toStringUtf8())
+                .filter(namespaceId -> !namespaceIdsWithSafetime.contains(namespaceId))
+                .collect(Collectors.toSet());
+        taskParams =
+            new DrConfigTaskParams(
+                drConfig,
+                xClusterConfig,
+                failoverXClusterConfig,
+                failoverForm.namespaceIdSafetimeEpochUsMap,
+                requestedTableInfoList,
+                mainTableIndexTablesMap);
+        failoverXClusterConfig.updateTables(tableIds, null /* tableIdsNeedBootstrap */);
+        failoverXClusterConfig.updateIndexTablesFromMainTableIndexTablesMap(
+            mainTableIndexTablesMap);
+      } else {
+        try {
+          Set<String> namespacesInReplication =
+              XClusterConfigTaskBase.getUniverseReplicationInfo(
+                      ybService, targetUniverse, xClusterConfig.getReplicationGroupName())
+                  .getDbScopedInfos()
+                  .stream()
+                  .map(i -> i.getTargetNamespaceId())
+                  .collect(Collectors.toSet());
+          namespaceIdsWithoutSafetime =
+              Sets.difference(namespacesInReplication, namespaceIdsWithSafetime);
+
+          failoverXClusterConfig.updateNamespaces(namespacesInReplication);
+        } catch (Exception e) {
+          throw new PlatformServiceException(
+              INTERNAL_SERVER_ERROR,
+              String.format(
+                  "Failed to get target namespace IDs for group %s",
+                  xClusterConfig.getReplicationGroupName()));
+        }
+
+        taskParams =
+            new DrConfigTaskParams(
+                drConfig,
+                xClusterConfig,
+                failoverXClusterConfig,
+                failoverXClusterConfig.getDbIds(),
+                failoverForm.namespaceIdSafetimeEpochUsMap);
+      }
+    } catch (Exception e) {
+      failoverXClusterConfig.delete();
+      throw e;
+    }
+
     if (!namespaceIdsWithoutSafetime.isEmpty()) {
+      failoverXClusterConfig.delete();
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
@@ -910,25 +1124,10 @@ public class DrConfigController extends AuthenticatedController {
               namespaceIdsWithoutSafetime));
     }
 
-    XClusterConfig failoverXClusterConfig =
-        drConfig.addXClusterConfig(
-            xClusterConfig.getTargetUniverseUUID(),
-            xClusterConfig.getSourceUniverseUUID(),
-            xClusterConfig.getType());
-    failoverXClusterConfig.updateTables(tableIds, null /* tableIdsNeedBootstrap */);
-    failoverXClusterConfig.updateIndexTablesFromMainTableIndexTablesMap(mainTableIndexTablesMap);
     failoverXClusterConfig.setSecondary(true);
+    failoverXClusterConfig.update();
 
     // Submit task to set up xCluster config.
-    DrConfigTaskParams taskParams =
-        new DrConfigTaskParams(
-            drConfig,
-            xClusterConfig,
-            failoverXClusterConfig,
-            failoverForm.namespaceIdSafetimeEpochUsMap,
-            requestedTableInfoList,
-            mainTableIndexTablesMap);
-
     UUID taskUUID = commissioner.submit(TaskType.FailoverDrConfig, taskParams);
     CustomerTask.create(
         customer,
@@ -963,22 +1162,38 @@ public class DrConfigController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation =
+            @Resource(
+                path = "sourceUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid")),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation =
+            @Resource(
+                path = "targetUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid")),
   })
   public Result get(UUID customerUUID, UUID drUUID) {
     log.info("Received get DrConfig({}) request", drUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drUUID);
 
-    for (XClusterConfig xClusterConfig : drConfig.getXClusterConfigs()) {
-      XClusterConfigTaskBase.setReplicationStatus(
-          this.xClusterUniverseService, this.ybService, xClusterConfig);
-    }
-
     XClusterConfig activeXClusterConfig = drConfig.getActiveXClusterConfig();
     xClusterScheduler.syncXClusterConfig(activeXClusterConfig);
     activeXClusterConfig.refresh();
+
+    for (XClusterConfig xClusterConfig : drConfig.getXClusterConfigs()) {
+      XClusterConfigTaskBase.updateReplicationDetailsFromDB(
+          this.xClusterUniverseService, this.ybService, this.tableHandler, xClusterConfig);
+    }
 
     DrConfigGetResp resp = new DrConfigGetResp(drConfig, activeXClusterConfig);
     return PlatformResults.withData(resp);
@@ -997,8 +1212,24 @@ public class DrConfigController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "sourceUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid")),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "targetUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid"))
   })
   public Result sync(UUID customerUUID, UUID drConfigUuid, Http.Request request) {
     log.info("Received sync drConfig request");
@@ -1044,8 +1275,24 @@ public class DrConfigController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "sourceUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid")),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "targetUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid"))
   })
   public Result delete(
       UUID customerUUID, UUID drConfigUuid, boolean isForceDelete, Http.Request request) {
@@ -1098,6 +1345,85 @@ public class DrConfigController extends AuthenticatedController {
     return new YBPTask(taskUUID, drConfigUuid).asResult();
   }
 
+  private Result toggleDrState(
+      UUID customerUUID, UUID drConfigUUID, Http.Request request, CustomerTask.TaskType taskType) {
+    String operation = taskType == CustomerTask.TaskType.Resume ? "resume" : "pause";
+    log.info("Received {} DrConfig({}) request", operation, drConfigUUID);
+
+    // Parse and validate request.
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUUID);
+    XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
+    editFormData.status = taskType == CustomerTask.TaskType.Resume ? "Running" : "Paused";
+    XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
+    XClusterConfigController.verifyTaskAllowed(xClusterConfig, TaskType.EditXClusterConfig);
+
+    Universe sourceUniverse =
+        Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
+    Universe targetUniverse =
+        Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
+
+    if (confGetter.getGlobalConf(GlobalConfKeys.xclusterEnableAutoFlagValidation)) {
+      autoFlagUtil.checkSourcePromotedAutoFlagsPromotedOnTarget(sourceUniverse, targetUniverse);
+    }
+
+    XClusterConfigTaskParams params =
+        new XClusterConfigTaskParams(
+            xClusterConfig,
+            editFormData,
+            null /* requestedTableInfoList */,
+            null /* mainTableToAddIndexTablesMap */,
+            null /* tableIdsToAdd */,
+            Collections.emptyMap() /* sourceTableIdTargetTableIdMap */,
+            null /* tableIdsToRemove */);
+
+    // Submit task to edit xCluster config.
+    UUID taskUUID = commissioner.submit(TaskType.EditXClusterConfig, params);
+    CustomerTask.create(
+        customer,
+        xClusterConfig.getSourceUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.DrConfig,
+        taskType,
+        drConfig.getName());
+
+    log.info("Submitted {} DrConfig({}), task {}", operation, drConfigUUID, taskUUID);
+
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.DrConfig,
+            drConfigUUID.toString(),
+            taskType == CustomerTask.TaskType.Resume
+                ? Audit.ActionType.Resume
+                : Audit.ActionType.Pause,
+            Json.toJson(editFormData),
+            taskUUID);
+    return new YBPTask(taskUUID, drConfigUUID).asResult();
+  }
+
+  @ApiOperation(nickname = "pauseDrConfig", value = "Pause DR config", response = YBPTask.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.PAUSE_RESUME),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result pause(UUID customerUUID, UUID drConfigUUID, Http.Request request) {
+    return toggleDrState(customerUUID, drConfigUUID, request, CustomerTask.TaskType.Pause);
+  }
+
+  @ApiOperation(nickname = "resumeDrConfig", value = "Resume DR config", response = YBPTask.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.PAUSE_RESUME),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result resume(UUID customerUUID, UUID drConfigUUID, Http.Request request) {
+    return toggleDrState(customerUUID, drConfigUUID, request, CustomerTask.TaskType.Resume);
+  }
+
   /**
    * API that gets the safetime for a disaster recovery configuration.
    *
@@ -1111,8 +1437,24 @@ public class DrConfigController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation =
+            @Resource(
+                path = "sourceUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid")),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation =
+            @Resource(
+                path = "targetUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid")),
   })
   public Result getSafetime(UUID customerUUID, UUID drUUID) {
     log.info("Received getSafetime DrConfig({}) request", drUUID);
@@ -1154,8 +1496,24 @@ public class DrConfigController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "sourceUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid")),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.XCLUSTER),
+        resourceLocation =
+            @Resource(
+                path = "targetUniverseUUID",
+                sourceType = SourceType.DB,
+                dbClass = XClusterConfig.class,
+                identifier = "dr_configs",
+                columnName = "dr_config_uuid"))
   })
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.23.0.0")
   public Result setDatabases(UUID customerUUID, UUID drConfigUuid, Http.Request request) {
@@ -1342,32 +1700,6 @@ public class DrConfigController extends AuthenticatedController {
       BootstrapParams.BootstrapBackupParams bootstrapBackupParams, UUID customerUUID) {
     XClusterConfigTaskBase.validateBackupRequestParamsForBootstrapping(
         customerConfigService, backupHelper, bootstrapBackupParams, customerUUID);
-  }
-
-  private List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> getRequestedTableInfoList(
-      Set<String> dbIds,
-      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList) {
-    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
-        sourceTableInfoList.stream()
-            .filter(
-                tableInfo ->
-                    XClusterConfigTaskBase.isXClusterSupported(tableInfo)
-                        && dbIds.contains(tableInfo.getNamespace().getId().toStringUtf8()))
-            .collect(Collectors.toList());
-    Set<String> foundDbIds =
-        requestedTableInfoList.stream()
-            .map(tableInfo -> tableInfo.getNamespace().getId().toStringUtf8())
-            .collect(Collectors.toSet());
-    // Ensure all DB names are found.
-    if (foundDbIds.size() != dbIds.size()) {
-      Set<String> missingDbIds =
-          dbIds.stream().filter(dbId -> !foundDbIds.contains(dbId)).collect(Collectors.toSet());
-      throw new IllegalArgumentException(
-          String.format(
-              "Some of the DB ids were not found: was %d, found %d, missing dbs: %s",
-              dbIds.size(), foundDbIds.size(), missingDbIds));
-    }
-    return requestedTableInfoList;
   }
 
   private static BootstrapParams getBootstrapParamsFromRestartBootstrapParams(

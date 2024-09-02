@@ -22,11 +22,21 @@ import java.sql.*;
 import java.util.Properties;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.AutoCommit;
 import org.yb.pgsql.ConnectionEndpoint;
 
 @RunWith(value = YBTestRunnerYsqlConnMgr.class)
 public class TestMisc extends BaseYsqlConnMgr {
+
+    @Override
+    protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
+        super.customizeMiniClusterBuilder(builder);
+
+        builder.addCommonTServerFlag (
+            "TEST_ysql_conn_mgr_dowarmup_all_pools_random_attach", "true");
+    }
+
   private final static String ERROR_YBTSERVERKEY_AUTH_EXPECTED =
       "FATAL: yb_use_tserver_key_auth can only be set if the connection is made over " +
       "unix domain socket";
@@ -166,6 +176,38 @@ public class TestMisc extends BaseYsqlConnMgr {
     } catch (Exception e) {
       assertEquals("Got wrong error message",
           e.getMessage(), ERROR_YBTSERVERKEY_AUTH_EXPECTED);
+    }
+  }
+
+  /**
+   * Test creates, drops and creates same index. If ysql connection manager is enabled,
+   * the second create index can occur at different backend and if by that time tserver
+   * heartbeat RPC is not triggered, the shared memory will not be updated with bumped up
+   * catalog version causing Catalog Version Mismatch error.
+   */
+  @Test
+  public void testCreateDropIndex() throws Exception {
+    String query = "CREATE TABLE sample_table(k INT PRIMARY KEY, v INT, v2 INT)";
+    try (Connection connection = getConnectionBuilder()
+                    .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                    .withUser("yugabyte")
+                    .withPassword("yugabyte")
+                    .connect();
+              Statement statement = connection.createStatement()) {
+      statement.execute(query);
+      query = "CREATE INDEX sample_table_v_idx ON sample_table(v ASC)";
+      statement.execute(query);
+
+      // There are 10 rows with v IS NOT NULL, 100 rows with v IS NULL.
+      query = "INSERT INTO sample_table SELECT i, NULL, i + 1000 FROM generate_series(1, 100) i";
+      statement.execute(query);
+      query = "INSERT INTO sample_table SELECT i, i, i + 1000 FROM generate_series(101, 110) i";
+      statement.execute(query);
+
+      query = "DROP INDEX sample_table_v_idx";
+      statement.execute(query);
+      query = "CREATE INDEX sample_table_v_idx ON sample_table(v DESC)";
+      statement.execute(query);
     }
   }
 }

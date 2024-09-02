@@ -121,7 +121,7 @@ The following table describes the connection parameters required to connect, inc
 | user | User connecting to the database | yugabyte
 | password | User password | yugabyte
 | `load-balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to 'true'
-| `yb-servers-refresh-interval` | If `load_balance` is true, the interval in seconds to refresh the servers list | 300
+| `yb-servers-refresh-interval` | If `load-balance` is true, the interval in seconds to refresh the servers list | 300
 | `topology-keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `load-balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`.
 
 The following is an example JDBC URL for connecting to YugabyteDB:
@@ -248,6 +248,6 @@ If you receive no output or an error, check the parameters in the connection str
 - [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
 - Refer to [YugabyteDB JDBC driver reference](../../../reference/drivers/java/yugabyte-jdbc-reference/) and [Try it out](../../../reference/drivers/java/yugabyte-jdbc-reference/#try-it-out) for detailed smart driver examples.
 - [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
-- [Develop Spring Boot applications using the YugabyteDB JDBC Driver](../../../integrations/spring-framework/sdyb/)
+- [Develop Spring Boot applications using the YugabyteDB JDBC Driver](/preview/integrations/spring-framework/sdyb/)
 - Build Java applications using [Hibernate ORM](../hibernate/)
 - Build Java applications using [Ebean ORM](../ebean/)

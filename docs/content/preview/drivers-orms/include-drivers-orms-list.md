@@ -48,7 +48,7 @@ private = true
 |            | Version | Support Level | Example apps |
 | :--------- | :------ | :------------ | :----------- |
 | **Drivers** | | | |
-| YugabyteDB Psycopg2 Smart Driver<br/>[Recommended] | [2.9.3](https://github.com/yugabyte/psycopg2) |Full | [CRUD](/preview/drivers-orms/python/yugabyte-psycopg2/) |
+| YugabyteDB Psycopg2 Smart Driver<br/>[Recommended] | [2.9.3](https://github.com/yugabyte/psycopg2)<br>[Binary](https://pypi.org/project/psycopg2-yugabytedb-binary/#files) |Full | [CRUD](/preview/drivers-orms/python/yugabyte-psycopg2/) |
 | PostgreSQL Psycopg2 Driver | [2.9.3](https://github.com/psycopg/psycopg2) | Full | [CRUD](/preview/drivers-orms/python/postgres-psycopg2/) |
 | aiopg      | 1.4          | Full | [Hello World](/preview/drivers-orms/python/aiopg/) |
 | YugabyteDB Python Driver for YCQL | [3.25.0](https://github.com/yugabyte/cassandra-python-driver/tree/master) | Full | [CRUD](/preview/drivers-orms/python/ycql/) |
@@ -69,6 +69,17 @@ private = true
 | **ORMs** | | | |
 | Sequelize | 6.6.5 | Full | [CRUD](/preview/drivers-orms/nodejs/sequelize/) |
 | Prisma    | 3.14  | Full | [CRUD](/preview/drivers-orms/nodejs/prisma/) |
+
+  {{% /tab %}}
+
+  {{% tab header="Elixir" lang="elixir" %}}
+
+|            | Version | Support Level | Example apps |
+| :--------- | :------ | :------------ | :----------- |
+| **Drivers** | | | |
+| Postgrex Driver | [0.18.0](https://github.com/elixir-ecto/postgrex) | Full | [CRUD](/preview/tutorials/build-apps/elixir/cloud-ysql-elixir/) |
+| **ORMs** | | | |
+| Phoenix with Ecto | [1.7.14](https://www.phoenixframework.org) | Full | [CRUD](/preview/drivers-orms/elixir/phoenix/) |
 
   {{% /tab %}}
 
@@ -94,7 +105,7 @@ private = true
 |            | Version | Support Level | Example apps |
 | :--------- | :------ | :------------ | :----------- |
 | **Drivers** | | | |
-| YugabyteDB C# Smart Driver for YSQL | [8.0.0-yb-1-beta](https://www.nuget.org/packages/NpgsqlYugabyteDB/) | Full | [CRUD](/preview/drivers-orms/csharp/ysql/) |
+| YugabyteDB C# Smart Driver for YSQL | [8.0.3-yb-1](https://www.nuget.org/packages/NpgsqlYugabyteDB/) | Full | [CRUD](/preview/drivers-orms/csharp/ysql/) |
 | PostgreSQL Npgsql Driver            | [6.0.3](https://www.nuget.org/packages/Npgsql/6.0.3) | Full | [CRUD](/preview/drivers-orms/csharp/postgres-npgsql/) |
 | YugabyteDB C# Driver for YCQL       | [3.6.0](https://github.com/yugabyte/cassandra-csharp-driver/releases/tag/3.6.0) | Full | [CRUD](/preview/drivers-orms/csharp/ycql/) |
 | **ORM** | | | |

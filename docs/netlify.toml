@@ -750,7 +750,7 @@
 
 [[redirects]]
   from = "/:version/reference/connectors/*"
-  to = "/preview/integrations/apache-kafka/"
+  to = "/preview/explore/change-data-capture/"
 
 # Redirect for troubleshoot
 
@@ -1357,8 +1357,6 @@
             https://www.yugabyte.com
             https://api.segment.io/
             https://cdn.segment.com/
-            https://c.6sc.co/
-            https://ipv6.6sc.co/
             https://ingesteer.services-prod.nsvcs.net/rum_collection
             https://yugabyteklhgka.dataplane.rudderstack.com/v1/page
             https://api.rudderstack.com/
@@ -1424,7 +1422,6 @@
             https://www.yugabyte.com
             https://www.gstatic.com
             https://www.google.com/s2/favicons
-            https://b.6sc.co/
         ;
 
         child-src 'self' 'unsafe-inline'

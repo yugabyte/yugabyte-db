@@ -29,6 +29,7 @@
 #include "yb/docdb/docdb_filter_policy.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/key_bounds.h"
+#include "yb/docdb/read_operation_data.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/sysinfo.h"
@@ -112,6 +113,12 @@ DEFINE_UNKNOWN_uint64(rocksdb_max_file_size_for_compaction, 0,
 // db_max_flushing_bytes will be actual default.
 DEFINE_NON_RUNTIME_int32(rocksdb_max_write_buffer_number, 100500,
              "Maximum number of write buffers that are built up in memory.");
+
+DEFINE_RUNTIME_bool(
+    rocksdb_advise_random_on_open, true,
+    "If set to true, will hint the underlying file system that the file access pattern is random, "
+    "when a sst file is opened.");
+
 DECLARE_int64(db_block_size_bytes);
 
 DEFINE_UNKNOWN_int64(db_filter_block_size_bytes, 64_KB,
@@ -314,15 +321,14 @@ unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     const ReadOperationData& read_operation_data,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter,
     const Slice* iterate_upper_bound,
-    const FastBackwardScan use_fast_backward_scan,
-    const DocDBStatistics* statistics) {
+    const FastBackwardScan use_fast_backward_scan) {
   // TODO(dtxn) do we need separate options for intents db?
   rocksdb::ReadOptions read_opts = PrepareReadOptions(doc_db.regular, bloom_filter_mode,
       user_key_for_filter, query_id, std::move(file_filter), iterate_upper_bound,
-      statistics ? statistics->RegularDBStatistics() : nullptr);
+      read_operation_data.statistics ? read_operation_data.statistics->RegularDBStatistics()
+                                     : nullptr);
   return std::make_unique<IntentAwareIterator>(
-      doc_db, read_opts, read_operation_data, txn_op_context, use_fast_backward_scan,
-      statistics ? statistics->IntentsDBStatistics() : nullptr);
+      doc_db, read_opts, read_operation_data, txn_op_context, use_fast_backward_scan);
 }
 
 BoundedRocksDbIterator CreateIntentsIteratorWithHybridTimeFilter(
@@ -739,6 +745,8 @@ void InitRocksDBOptions(
     options->max_flushing_bytes = FLAGS_db_max_flushing_bytes;
   }
 
+  options->advise_random_on_open = FLAGS_rocksdb_advise_random_on_open;
+
   options->memtable_factory = std::make_shared<rocksdb::SkipListFactory>(
       0 /* lookahead */, rocksdb::ConcurrentWrites::kFalse);
 
@@ -932,7 +940,8 @@ class RocksDBPatcher::Impl {
     return helper.Apply(options_, imm_cf_options_);
   }
 
-  Status ModifyFlushedFrontier(const ConsensusFrontier& frontier) {
+  Status ModifyFlushedFrontier(
+      const ConsensusFrontier& frontier, const CotableIdsMap& cotable_ids_map) {
     RocksDBPatcherHelper helper(&version_set_);
 
     docdb::ConsensusFrontier final_frontier = frontier;
@@ -952,7 +961,8 @@ class RocksDBPatcher::Impl {
     helper.Edit().ModifyFlushedFrontier(
         final_frontier.Clone(), rocksdb::FrontierModificationMode::kForce);
 
-    helper.IterateFiles([&helper, &frontier](int level, rocksdb::FileMetaData fmd) {
+    helper.IterateFiles([&helper, &frontier, &cotable_ids_map](
+        int level, rocksdb::FileMetaData fmd) {
       bool modified = false;
       for (auto* user_frontier : {&fmd.smallest.user_frontier, &fmd.largest.user_frontier}) {
         if (!*user_frontier) {
@@ -966,6 +976,11 @@ class RocksDBPatcher::Impl {
         if (frontier.history_cutoff_valid()) {
           consensus_frontier.set_history_cutoff_information(frontier.history_cutoff());
           modified = true;
+        }
+        for (const auto& [table_id, new_table_id] : cotable_ids_map) {
+          if (consensus_frontier.UpdateCoTableId(table_id, new_table_id)) {
+            modified = true;
+          }
         }
       }
       if (modified) {
@@ -1043,8 +1058,9 @@ Status RocksDBPatcher::SetHybridTimeFilter(std::optional<uint32_t> db_oid, Hybri
   return impl_->SetHybridTimeFilter(db_oid, value);
 }
 
-Status RocksDBPatcher::ModifyFlushedFrontier(const ConsensusFrontier& frontier) {
-  return impl_->ModifyFlushedFrontier(frontier);
+Status RocksDBPatcher::ModifyFlushedFrontier(
+    const ConsensusFrontier& frontier, const CotableIdsMap& cotable_ids_map) {
+  return impl_->ModifyFlushedFrontier(frontier, cotable_ids_map);
 }
 
 Status RocksDBPatcher::UpdateFileSizes() {

@@ -6,6 +6,7 @@ import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -26,9 +27,11 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
@@ -41,7 +44,7 @@ import org.mockito.ArgumentCaptor;
 public class UniverseApiControllerTest extends UniverseTestBase {
 
   @Test
-  public void testGetUniverseV2() throws ApiException {
+  public void testGetUniverseV2() throws ApiException, IOException {
     UUID uUUID = createUniverse(customer.getId()).getUniverseUUID();
     Universe dbUniverse =
         Universe.saveDetails(
@@ -49,6 +52,8 @@ public class UniverseApiControllerTest extends UniverseTestBase {
             universe -> {
               // arch
               universe.getUniverseDetails().arch = PublicCloudConstants.Architecture.aarch64;
+              // systemd
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd = true;
               // ysql
               universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL = true;
               universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQLAuth = true;
@@ -85,6 +90,8 @@ public class UniverseApiControllerTest extends UniverseTestBase {
                   .setPerAZ(
                       Map.of(universe.getUniverseDetails().getPrimaryCluster().uuid, azFlags));
             });
+    when(mockGFlagsValidation.getGFlagDetails(anyString(), anyString(), anyString()))
+        .thenReturn(Optional.empty());
     UniverseApi api = new UniverseApi();
     com.yugabyte.yba.v2.client.models.Universe universeResp =
         api.getUniverse(customer.getUuid(), uUUID);
@@ -93,7 +100,7 @@ public class UniverseApiControllerTest extends UniverseTestBase {
   }
 
   @Test
-  public void testCreateUniverseV2() throws ApiException {
+  public void testCreateUniverseV2() throws ApiException, IOException {
     UniverseApi api = new UniverseApi();
     UniverseCreateSpec universeCreateSpec = getUniverseCreateSpecV2();
 
@@ -101,6 +108,8 @@ public class UniverseApiControllerTest extends UniverseTestBase {
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     when(mockRuntimeConfig.getInt("yb.universe.otel_collector_metrics_port")).thenReturn(8889);
+    when(mockGFlagsValidation.getGFlagDetails(anyString(), anyString(), anyString()))
+        .thenReturn(Optional.empty());
     YBATask createTask = api.createUniverse(customer.getUuid(), universeCreateSpec);
     assertThat(createTask.getTaskUuid(), is(fakeTaskUUID));
     ArgumentCaptor<UniverseDefinitionTaskParams> v1CreateParamsCapture =

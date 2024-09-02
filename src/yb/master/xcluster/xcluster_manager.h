@@ -50,7 +50,8 @@ class XClusterManager : public XClusterManagerIf,
 
   Status Init();
 
-  void Shutdown();
+  void StartShutdown() EXCLUDES(monitored_tasks_mutex_);
+  void CompleteShutdown() EXCLUDES(monitored_tasks_mutex_);
 
   void Clear();
 
@@ -100,6 +101,34 @@ class XClusterManager : public XClusterManagerIf,
       const XClusterSafeTimeFilter& filter) override;
 
   Status RefreshXClusterSafeTimeMap(const LeaderEpoch& epoch) override;
+
+  Status SetupUniverseReplication(
+      const SetupUniverseReplicationRequestPB* req, SetupUniverseReplicationResponsePB* resp,
+      rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+
+  Status IsSetupUniverseReplicationDone(
+      const IsSetupUniverseReplicationDoneRequestPB* req,
+      IsSetupUniverseReplicationDoneResponsePB* resp, rpc::RpcContext* rpc);
+
+  Result<IsOperationDoneResult> IsSetupUniverseReplicationDone(
+      const xcluster::ReplicationGroupId& replication_group_id, bool skip_health_check) override;
+
+  Status SetupNamespaceReplicationWithBootstrap(
+      const SetupNamespaceReplicationWithBootstrapRequestPB* req,
+      SetupNamespaceReplicationWithBootstrapResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+
+  Status IsSetupNamespaceReplicationWithBootstrapDone(
+      const IsSetupNamespaceReplicationWithBootstrapDoneRequestPB* req,
+      IsSetupNamespaceReplicationWithBootstrapDoneResponsePB* resp, rpc::RpcContext* rpc);
+
+  Status AlterUniverseReplication(
+      const AlterUniverseReplicationRequestPB* req, AlterUniverseReplicationResponsePB* resp,
+      rpc::RpcContext* rpc, const LeaderEpoch& epoch) override;
+
+  Status DeleteUniverseReplication(
+      const DeleteUniverseReplicationRequestPB* req, DeleteUniverseReplicationResponsePB* resp,
+      rpc::RpcContext* rpc, const LeaderEpoch& epoch);
 
   // OutboundReplicationGroup RPCs.
   Status XClusterCreateOutboundReplicationGroup(
@@ -198,7 +227,7 @@ class XClusterManager : public XClusterManagerIf,
       const xrepl::StreamId& stream_id);
 
   void RemoveTableConsumerStream(
-      const TableId& table_id, const xcluster::ReplicationGroupId& replication_group_id);
+      const TableId& table_id, const xcluster::ReplicationGroupId& replication_group_id) override;
 
   void RemoveTableConsumerStreams(
       const xcluster::ReplicationGroupId& replication_group_id,
@@ -223,6 +252,9 @@ class XClusterManager : public XClusterManagerIf,
   Status HandleTabletSchemaVersionReport(
       const TableInfo& table_info, SchemaVersion consumer_schema_version, const LeaderEpoch& epoch);
 
+  Status RegisterMonitoredTask(server::MonitoredTaskPtr task) EXCLUDES(monitored_tasks_mutex_);
+  void UnRegisterMonitoredTask(server::MonitoredTaskPtr task) EXCLUDES(monitored_tasks_mutex_);
+
  private:
   CatalogManager& catalog_manager_;
   SysCatalogTable& sys_catalog_;
@@ -230,6 +262,9 @@ class XClusterManager : public XClusterManagerIf,
   bool in_memory_state_cleared_ = true;
 
   std::unique_ptr<XClusterConfig> xcluster_config_;
+
+  std::mutex monitored_tasks_mutex_;
+  std::unordered_set<server::MonitoredTaskPtr> monitored_tasks_ GUARDED_BY(monitored_tasks_mutex_);
 };
 
 }  // namespace master

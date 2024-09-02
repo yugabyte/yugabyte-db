@@ -61,6 +61,15 @@ DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 DEFINE_UNKNOWN_bool(ysql_log_failed_docdb_requests, false, "Log failed docdb requests.");
 DEFINE_test_flag(bool, ysql_ignore_add_fk_reference, false,
                  "Don't fill YSQL's internal cache for FK check to force read row from a table");
+DEFINE_test_flag(bool, generate_ybrowid_sequentially, false,
+                 "For new tables without PK, make the ybrowid column ASC and generated using a"
+                 " naive per-node sequential counter. This can fail with collisions for a"
+                 " multi-node cluster, and the ordering can be inconsistent in case multiple"
+                 " connections generate ybrowid at the same time. In case a SPLIT INTO clause is"
+                 " provided, fall back to the old behavior. The primary use case of this flag is"
+                 " for ported pg_regress tests that expect deterministic output ordering based on"
+                 " ctid. This is a best-effort reproduction of that, but it still falls short in"
+                 " case of UPDATEs because PG regenerates ctid while YB doesn't.");
 
 namespace yb::pggate {
 namespace {
@@ -456,7 +465,6 @@ bool ExplicitRowLockBuffer::IsEmpty() const {
 
 PgSession::PgSession(
     PgClient* pg_client,
-    const std::string& database_name,
     scoped_refptr<PgTxnManager> pg_txn_manager,
     const YBCPgCallbacks& pg_callbacks,
     YBCPgExecStatsState* stats_state)
@@ -467,8 +475,10 @@ PgSession::PgSession(
       pg_callbacks_(pg_callbacks),
       wait_starter_(pg_callbacks_.PgstatReportWaitStart),
       buffer_(
-          [this](BufferableOperations&& ops, bool transactional) {
-            return FlushOperations(std::move(ops), transactional);
+          [this](BufferableOperations&& ops, bool transactional)
+              -> Result<PgOperationBuffer::PerformFutureEx> {
+            return PgOperationBuffer::PerformFutureEx{
+                VERIFY_RESULT(FlushOperations(std::move(ops), transactional)), this};
           },
           &metrics_, wait_starter_, buffering_settings_) {
   Update(&buffering_settings_);
@@ -477,11 +487,6 @@ PgSession::PgSession(
 PgSession::~PgSession() = default;
 
 //--------------------------------------------------------------------------------------------------
-
-Status PgSession::ConnectDatabase(const std::string& database_name) {
-  connected_database_ = database_name;
-  return Status::OK();
-}
 
 Status PgSession::IsDatabaseColocated(const PgOid database_oid, bool *colocated,
                                       bool *legacy_colocated_database) {
@@ -707,6 +712,17 @@ bool PgSession::IsHashBatchingEnabled() {
       GetIsolationLevel() != PgIsolationLevel::SERIALIZABLE;
 }
 
+std::string PgSession::GenerateNewYbrowid() {
+  if (PREDICT_FALSE(FLAGS_TEST_generate_ybrowid_sequentially)) {
+    unsigned char buf[sizeof(uint64_t)];
+    BigEndian::Store64(buf, MonoTime::Now().ToUint64());
+    return std::string(reinterpret_cast<char*>(buf), sizeof(buf));
+  }
+
+  // Generate a new random and unique v4 UUID.
+  return GenerateObjectId(true /* binary_id */);
+}
+
 Result<bool> PgSession::IsInitDbDone() {
   return pg_client_.IsInitDbDone();
 }
@@ -838,7 +854,7 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   DCHECK(!options.has_read_time() || options.isolation() != IsolationLevel::SERIALIZABLE_ISOLATION);
 
   auto future = pg_client_.PerformAsync(&options, &ops.operations);
-  return PerformFuture(std::move(future), this, std::move(ops.relations));
+  return PerformFuture(std::move(future), std::move(ops.relations));
 }
 
 Result<bool> PgSession::ForeignKeyReferenceExists(const LightweightTableYbctid& key,
@@ -1069,14 +1085,14 @@ Result<bool> PgSession::IsObjectPartOfXRepl(const PgObjectId& table_id) {
   return pg_client_.IsObjectPartOfXRepl(table_id);
 }
 
-Result<TableKeyRangesWithHt> PgSession::GetTableKeyRanges(
+Result<TableKeyRanges> PgSession::GetTableKeyRanges(
     const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
     uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length) {
   // TODO(ysql_parallel_query): consider async population of range boundaries to avoid blocking
   // calling worker on waiting for range boundaries.
   return pg_client_.GetTableKeyRanges(
       table_id, lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes, is_forward,
-      max_key_length, pg_txn_manager_->GetReadTimeSerialNo());
+      max_key_length);
 }
 
 Result<tserver::PgListReplicationSlotsResponsePB> PgSession::ListReplicationSlots() {

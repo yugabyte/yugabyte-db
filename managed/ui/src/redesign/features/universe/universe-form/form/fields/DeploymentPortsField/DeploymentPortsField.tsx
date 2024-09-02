@@ -38,21 +38,22 @@ export const DeploymentPortsField: FC<DeploymentPortsFieldids> = ({ disabled, is
   const ycqlEnabled = useWatch({ name: YCQL_FIELD });
   const yedisEnabled = useWatch({ name: YEDIS_FIELD });
   const provider = useWatch({ name: PROVIDER_FIELD });
-
   const customizePort = useWatch({ name: CUSTOMIZE_PORT_FIELD });
 
+  // Master and TSerever ports can be modified in EDIT mode when the provider is not Kubernetes.
+  // Redis, YCQL, YSQL ports cannot be modified in EDIT mode but can be edited via Universe actions in Overview section.
   const portsConfig = [
-    { id: 'masterHttpPort', visible: true },
-    { id: 'masterRpcPort', visible: true },
-    { id: 'tserverHttpPort', visible: true },
-    { id: 'tserverRpcPort', visible: true },
-    { id: 'redisServerHttpPort', visible: yedisEnabled },
-    { id: 'redisServerRpcPort', visible: yedisEnabled },
-    { id: 'yqlServerHttpPort', visible: ycqlEnabled },
-    { id: 'yqlServerRpcPort', visible: ycqlEnabled },
-    { id: 'ysqlServerHttpPort', visible: ysqlEnabled },
-    { id: 'ysqlServerRpcPort', visible: ysqlEnabled },
-    { id: 'nodeExporterPort', visible: provider?.code !== CloudType.onprem }
+    { id: 'masterHttpPort', visible: true, disabled: disabled },
+    { id: 'masterRpcPort', visible: true, disabled: disabled },
+    { id: 'tserverHttpPort', visible: true, disabled: disabled },
+    { id: 'tserverRpcPort', visible: true, disabled: disabled },
+    { id: 'redisServerHttpPort', visible: yedisEnabled, disabled: isEditMode },
+    { id: 'redisServerRpcPort', visible: yedisEnabled, disabled: isEditMode },
+    { id: 'yqlServerHttpPort', visible: ycqlEnabled, disabled: isEditMode },
+    { id: 'yqlServerRpcPort', visible: ycqlEnabled, disabled: isEditMode },
+    { id: 'ysqlServerHttpPort', visible: ysqlEnabled, disabled: isEditMode },
+    { id: 'ysqlServerRpcPort', visible: ysqlEnabled, disabled: isEditMode },
+    { id: 'nodeExporterPort', visible: provider?.code !== CloudType.onprem, disabled: disabled }
   ].filter((ports) => ports.visible);
 
   const isPortsCustomized = (communicationPorts: CommunicationPorts) => {
@@ -100,7 +101,7 @@ export const DeploymentPortsField: FC<DeploymentPortsFieldids> = ({ disabled, is
                         </YBLabel>
                         <Box flex={1}>
                           <YBInput
-                            disabled={disabled}
+                            disabled={item.disabled}
                             className={
                               Number(value[item.id]) ===
                               Number(DEFAULT_COMMUNICATION_PORTS[item.id])

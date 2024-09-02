@@ -45,6 +45,10 @@ Displays help on all flags.
 
 Displays help on modules named by the specified flag value.
 
+## All flags
+
+The following sections describe the flags considered relevant to configuring YugabyteDB for production deployments. For a list of all flags, see [All YB-TServer flags](../all-flags-yb-tserver/).
+
 ## General flags
 
 ##### --flagfile
@@ -575,7 +579,7 @@ Default: `50`
 
 When enabled, all databases created in the cluster are colocated by default. If you enable the flag after creating a cluster, you need to restart the YB-Master and YB-TServer services.
 
-For more details, see [clusters in colocated tables](../../../architecture/docdb-sharding/colocated-tables/#clusters).
+For more details, see [clusters in colocated tables](../../../explore/colocation/#clusters).
 
 Default: `false`
 
@@ -779,7 +783,19 @@ Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNC
 
 Default: `READ COMMITTED` {{<badge/ea>}}
 
-Read Committed support is currently in [Early Access](/preview/releases/versioning/#feature-maturity). Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
+Read Committed support is currently in [Early Access](/preview/releases/versioning/#feature-maturity). [Read Committed Isolation](../../../explore/transactions/isolation-levels/) is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
+
+##### --yb_enable_read_committed_isolation
+
+{{<badge/ea>}} Enables Read Committed Isolation. By default this flag is false and in this case `READ COMMITTED` (and `READ UNCOMMITTED`) isolation level of YSQL fall back to the stricter [Snapshot Isolation](../../../explore/transactions/isolation-levels/). See [--ysql_default_transaction_isolation](#ysql-default-transaction-isolation) flag for more details.
+
+Default: `false`
+
+##### --pg_client_use_shared_memory
+
+{{<badge/ea>}} Enables the use of shared memory between PostgreSQL and the YB-TServer. Using shared memory can potentially improve the performance of your database operations.
+
+Default: `false`
 
 ##### --ysql_disable_index_backfill
 
@@ -854,6 +870,22 @@ Default: `-1` (disables logging statement durations)
 ##### --ysql_log_min_messages
 
 Specifies the lowest YSQL message level to log.
+
+##### --ysql_output_buffer_size
+
+Size of YSQL layer output buffer, in bytes. YSQL buffers query responses in this output buffer until either a buffer flush is requested by the client or the buffer overflows.
+
+As long as no data has been flushed from the buffer, the database can retry queries on retryable errors. For example, you can increase the size of the buffer so that YSQL can retry [read restart errors](../../../architecture/transactions/read-restart-error).
+
+Default: `262144` (256kB, type: int32)
+
+##### --ysql_yb_bnl_batch_size
+
+Sets the size of a tuple batch that's taken from the outer side of a [batched nested loop (BNL) join](../../../explore/ysql-language-features/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
+
+See also the [yb_bnl_batch_size](#yb-bnl-batch-size) configuration parameter. If both flag and parameter are set, the parameter takes precedence.
+
+Default: 1024
 
 ### YCQL
 
@@ -1288,6 +1320,38 @@ Number of tables to be added to the stream ID per run of the background thread w
 
 Default: `2`
 
+The following set of flags are only relevant for CDC using the PostgreSQL replication protocol. To learn about CDC using the PostgreSQL replication protocol, see [CDC using logical replication](../../../architecture/docdb-replication/cdc-logical-replication).
+
+##### --ysql_yb_default_replica_identity
+
+The default replica identity to be assigned to user defined tables at the time of creation. The flag is case sensitive and can take only one of the four possible values, `FULL`, `DEFAULT`,`'NOTHING` and `CHANGE`.
+
+Default: `CHANGE`
+
+##### --cdcsdk_enable_dynamic_table_support
+
+Tables created after the creation of a replication slot are referred as Dynamic tables. This preview flag can be used to switch the dynamic addition of tables to the publication ON or OFF.
+
+Default: `false`
+
+##### --cdcsdk_publication_list_refresh_interval_secs
+
+Interval in seconds at which the table list in the publication will be refreshed.
+
+Default: `3600`
+
+##### --cdcsdk_max_consistent_records
+
+Controls the maximum number of records sent from Virtual WAL (VWAL) to walsender in consistent order.
+
+Default: `500`
+
+##### --cdcsdk_vwal_getchanges_resp_max_size_bytes
+
+Max size (in bytes) of changes sent from CDC Service to [Virtual WAL](../../../architecture/docdb-replication/cdc-logical-replication)(VWAL) for a particular tablet.
+
+Default: `1 MB`
+
 ## File expiration based on TTL flags
 
 ##### --tablet_enable_ttl_file_filter
@@ -1364,20 +1428,23 @@ Default: `100`
 
 ## Metric export flags
 
+YB-TServer metrics are available in Prometheus format at `http://localhost:9000/prometheus-metrics`.
+
 ##### --export_help_and_type_in_prometheus_metrics
 
-YB-TServer metrics are available in Prometheus format at
-`http://localhost:9000/prometheus-metrics`.  This flag controls whether
-#TYPE and #HELP information is included as part of the Prometheus
-metrics output by default.
+This flag controls whether #TYPE and #HELP information is included as part of the Prometheus metrics output by default.
 
-To override this flag on a per-scrape basis, set the URL parameter
-`show_help` to `true` to include or to `false` to not include type and
-help information.  For example, querying
-`http://localhost:9000/prometheus-metrics?show_help=true` will return
-type and help information regardless of the setting of this flag.
+To override this flag on a per-scrape basis, set the URL parameter `show_help` to `true` to include or to `false` to not include type and help information.  For example, querying `http://localhost:9000/prometheus-metrics?show_help=true` returns type and help information regardless of the setting of this flag.
 
 Default: `true`
+
+##### --max_prometheus_metric_entries
+
+This flag limits the number of Prometheus metric entries returned per scrape. If adding a metric with all its entities exceeds this limit, all entries from that metric are excluded. This could result in fewer entries than the set limit.
+
+To override this flag on a per-scrape basis, you can adjust the URL parameter `max_metric_entries`.
+
+Default: `UINT32_MAX`
 
 ## Catalog flags
 
@@ -1658,19 +1725,19 @@ Default: false
 
 ##### yb_bnl_batch_size
 
-Set the size of a tuple batch that's taken from the outer side of a [YB Batched Nested Loop (BNL) Join](../../../explore/ysql-language-features/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
+Set the size of a tuple batch that's taken from the outer side of a [batched nested loop (BNL) join](../../../explore/ysql-language-features/join-strategies/#batched-nested-loop-join-bnl). When set to 1, BNLs are effectively turned off and won't be considered as a query plan candidate.
 
 Default: 1024
 
 ##### yb_enable_batchednl
 
-Enable or disable the query planner's use of Batched Nested Loop Join.
+{{<badge/ea>}} Enable or disable the query planner's use of batched nested loop join.
 
 Default: true
 
 ##### yb_enable_base_scans_cost_model
 
-{{<badge/ea>}} Enables the YugabyteDB cost model for sequential and index scans. When enabling this flag, it is also recommended to run ANALYZE on user tables to maintain up-to-date statistics.
+{{<badge/ea>}} Enables the YugabyteDB cost model for sequential and index scans. When enabling this parameter, you must run ANALYZE on user tables to maintain up-to-date statistics.
 
 When enabling the cost based optimizer, ensure that [packed row](../../../architecture/docdb/packed-rows) for colocated tables is enabled by setting `ysql_enable_packed_row_for_colocated_table = true`.
 
@@ -1704,7 +1771,7 @@ Default: 1024
 
 ##### yb_use_hash_splitting_by_default
 
-When set to true, tables and indexes are hash-partitioned based on the first column in the primary key or index. Setting this flag to false changes the first column in the primary key or index to be stored in ascending order.
+{{<badge/ea>}} When set to true, tables and indexes are hash-partitioned based on the first column in the primary key or index. Setting this flag to false changes the first column in the primary key or index to be stored in ascending order.
 
 Default: true
 

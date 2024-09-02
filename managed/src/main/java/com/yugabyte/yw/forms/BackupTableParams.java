@@ -3,9 +3,11 @@
 package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
+import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.forms.backuprestore.BackupPointInTimeRestoreWindow;
+import com.yugabyte.yw.forms.backuprestore.KeyspaceTables;
 import com.yugabyte.yw.models.Backup.StorageConfigType;
 import com.yugabyte.yw.models.backuprestore.Tablespace;
 import com.yugabyte.yw.models.helpers.TimeUnit;
@@ -176,6 +178,16 @@ public class BackupTableParams extends TableManagerParams {
   @Setter
   private List<Tablespace> tablespacesList = null;
 
+  @ApiModelProperty(value = "History Retention window for the backup")
+  @Getter
+  @Setter
+  private BackupPointInTimeRestoreWindow backupPointInTimeRestoreWindow = null;
+
+  @ApiModelProperty(value = "Point in time restore available")
+  @Getter
+  @Setter
+  private boolean pointInTimeRestoreEnabled = false;
+
   // For each list item
   public long timeTakenPartial = 0L;
 
@@ -239,6 +251,7 @@ public class BackupTableParams extends TableManagerParams {
     this.disableParallelism = backupRequestParams.disableParallelism;
     this.baseBackupUUID = backupRequestParams.baseBackupUUID;
     this.enableVerboseLogs = backupRequestParams.enableVerboseLogs;
+    this.setPointInTimeRestoreEnabled(backupRequestParams.enablePointInTimeRestore);
   }
 
   @JsonIgnore
@@ -292,6 +305,7 @@ public class BackupTableParams extends TableManagerParams {
     this.tableUUID = tableParams.tableUUID;
     this.backupParamsIdentifier = tableParams.backupParamsIdentifier;
     this.tableByTableBackup = tableParams.tableByTableBackup;
+    this.setPointInTimeRestoreEnabled(tableParams.isPointInTimeRestoreEnabled());
   }
 
   @JsonIgnore
@@ -341,12 +355,20 @@ public class BackupTableParams extends TableManagerParams {
     return new ArrayList<String>();
   }
 
-  @JsonProperty("isFullBackup")
+  @JsonIgnore
+  public KeyspaceTables getKeyspaceTables() {
+    return new KeyspaceTables(new HashSet<>(getTableNameList()), this.getKeyspace());
+  }
+
+  @JsonIgnore
+  public Pair<KeyspaceTables, BackupPointInTimeRestoreWindow> getKeyspaceTablesAndRestoreWindow() {
+    return new Pair<>(this.getKeyspaceTables(), this.getBackupPointInTimeRestoreWindow());
+  }
+
   public boolean isFullBackup() {
     return isFullBackup;
   }
 
-  @JsonProperty("isFullBackup")
   public void setFullBackup(boolean isFullBackup) {
     this.isFullBackup = isFullBackup;
   }

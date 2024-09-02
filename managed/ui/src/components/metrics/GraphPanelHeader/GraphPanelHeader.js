@@ -1,6 +1,9 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, Fragment } from 'react';
+import { jsPDF } from 'jspdf';
+import { Canvg, presets } from 'canvg';
+import { Box, Typography } from '@material-ui/core';
 import { Link, withRouter, browserHistory } from 'react-router';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import momentLocalizer from 'react-widgets-moment';
@@ -22,7 +25,8 @@ import { SplitType } from '../dtos';
 import { YBButton, YBButtonLink } from '../../common/forms/fields';
 import { YBPanelItem } from '../../panels';
 import { FlexContainer, FlexGrow } from '../../common/flexbox/YBFlexBox';
-
+import CustomerMetricsPanel from '../CustomerMetricsPanel/CustomerMetricsPanel';
+import { YBModal, YBProgress } from '../../../redesign/components';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { isValidObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { isDedicatedNodePlacement, isKubernetesUniverse } from '../../../utils/UniverseUtils';
@@ -33,9 +37,8 @@ import { NodeTypeSelector } from '../NodeTypeSelector/NodeTypeSelector';
 import { CustomDatePicker } from '../CustomDatePicker/CustomDatePicker';
 import { MetricsMeasureSelector } from '../MetricsMeasureSelector/MetricsMeasureSelector';
 import { OutlierSelector } from '../OutlierSelector/OutlierSelector';
-import { RuntimeConfigKey } from '../../../redesign/helpers/constants';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
-
+import { RuntimeConfigKey } from '../../../redesign/helpers/constants';
 import './GraphPanelHeader.scss';
 
 require('react-widgets/dist/css/react-widgets.css');
@@ -138,7 +141,10 @@ class GraphPanelHeader extends Component {
       metricMeasure: metricMeasureTypes[DEFAULT_METRIC_MEASURE_KEY].value,
       outlierType: outlierTypes[DEFAULT_OUTLIER_TYPE].value,
       outlierNumNodes: DEFAULT_OUTLIER_NUM_NODES,
-      isSingleNodeSelected: false
+      isSingleNodeSelected: false,
+      openPreviewMetricsModal: false,
+      pdfDownloadInProgress: false,
+      downloadPercent: 0
     };
     this.props.setGraphFilter(defaultFilters);
 
@@ -553,11 +559,12 @@ class GraphPanelHeader extends Component {
       origin,
       universe: { currentUniverse },
       prometheusQueryEnabled,
-      customer: { currentUser, runtimeConfigs },
       showModal,
       closeModal,
       visibleModal,
-      enableNodeComparisonModal
+      enableNodeComparisonModal,
+      printMode,
+      customer: { customerRuntimeConfigs }
     } = this.props;
     const {
       filterType,
@@ -583,6 +590,11 @@ class GraphPanelHeader extends Component {
         />
       );
     }
+
+    const isDownloadMetricsAllowed =
+      customerRuntimeConfigs?.data?.configEntries?.find(
+        (config) => config.key === RuntimeConfigKey.DOWNLOAD_METRICS_PDF
+      )?.value === 'true';
 
     const self = this;
     const menuItems = filterTypes.map((filter, idx) => {
@@ -644,208 +656,341 @@ class GraphPanelHeader extends Component {
         <YBPanelItem
           className="graph-panel"
           header={
-            <div>
-              {this.props.origin === MetricOrigin.CUSTOMER ? (
-                <h2 className="task-list-header content-title">Metrics</h2>
-              ) : (
-                ''
-              )}
-              <FlexContainer>
-                <FlexGrow power={1}>
-                  <div className="filter-container">
-                    {universePicker}
-                    {this.props.origin !== MetricOrigin.TABLE && (
-                      <RegionSelector
-                        selectedUniverse={currentSelectedUniverse}
-                        onRegionChanged={this.onRegionChanged}
-                        currentSelectedRegion={currentSelectedRegion}
-                        selectedRegionClusterUUID={selectedRegionClusterUUID}
-                      />
-                    )}
-                    {this.props.origin !== MetricOrigin.TABLE && isDedicatedNodes && (
-                      <NodeTypeSelector
-                        selectedUniverse={currentSelectedUniverse}
-                        currentSelectedNodeType={currentSelectedNodeType}
-                        selectedRegionClusterUUID={selectedRegionClusterUUID}
-                        selectedRegionCode={this.state.selectedRegionCode}
-                        onNodeTypeChanged={this.onNodeTypeChanged}
-                      />
-                    )}
-                    {this.props.origin !== MetricOrigin.TABLE && (
-                      <NodeSelector
-                        {...this.props}
-                        nodeItemChanged={this.nodeItemChanged}
-                        nodeItemChangedOld={this.nodeItemChangedOld}
-                        selectedUniverse={currentSelectedUniverse}
-                        selectedNode={this.state.nodeName}
-                        selectedRegionClusterUUID={selectedRegionClusterUUID}
-                        selectedZoneName={this.state.selectedZoneName}
-                        selectedRegionCode={this.state.selectedRegionCode}
-                        currentSelectedNodeType={currentSelectedNodeType}
-                        isDedicatedNodes={isDedicatedNodes}
-                      />
-                    )}
-                    {liveQueriesLink && !universePaused && (
-                      <span className="live-queries">
-                        <Link to={liveQueriesLink}>
-                          <span className="live-queries-label">See Queries</span>
-                        </Link>
-                      </span>
-                    )}
-                    {enableNodeComparisonModal && (
-                      <YBButton
-                        btnIcon={'fa fa-refresh'}
-                        btnClass="btn btn-default"
-                        btnText="Compare"
-                        disabled={
-                          filterType === 'custom' || currentSelectedUniverse === MetricConsts.ALL
-                        }
-                        onClick={() => showModal('metricsComparisonModal')}
-                      />
-                    )}
-                  </div>
-                </FlexGrow>
-                <FlexGrow>
-                  <form name="GraphPanelFilterForm">
-                    <div id="reportrange" className="pull-right">
-                      <div className="timezone">
-                        Current Timestamp:&nbsp;{ybFormatDate(new Date())}
-                      </div>
-                      <div className="graph-interval-container">
+            !printMode && (
+              <div>
+                {this.props.origin === MetricOrigin.CUSTOMER ? (
+                  <h2 className="task-list-header content-title">Metrics</h2>
+                ) : (
+                  ''
+                )}
+                <FlexContainer>
+                  <FlexGrow power={1}>
+                    <div className="filter-container">
+                      {universePicker}
+                      {this.props.origin !== MetricOrigin.TABLE && (
+                        <RegionSelector
+                          selectedUniverse={currentSelectedUniverse}
+                          onRegionChanged={this.onRegionChanged}
+                          currentSelectedRegion={currentSelectedRegion}
+                          selectedRegionClusterUUID={selectedRegionClusterUUID}
+                        />
+                      )}
+                      {this.props.origin !== MetricOrigin.TABLE && isDedicatedNodes && (
+                        <NodeTypeSelector
+                          selectedUniverse={currentSelectedUniverse}
+                          currentSelectedNodeType={currentSelectedNodeType}
+                          selectedRegionClusterUUID={selectedRegionClusterUUID}
+                          selectedRegionCode={this.state.selectedRegionCode}
+                          onNodeTypeChanged={this.onNodeTypeChanged}
+                        />
+                      )}
+                      {this.props.origin !== MetricOrigin.TABLE && (
+                        <NodeSelector
+                          {...this.props}
+                          nodeItemChanged={this.nodeItemChanged}
+                          nodeItemChangedOld={this.nodeItemChangedOld}
+                          selectedUniverse={currentSelectedUniverse}
+                          selectedNode={this.state.nodeName}
+                          selectedRegionClusterUUID={selectedRegionClusterUUID}
+                          selectedZoneName={this.state.selectedZoneName}
+                          selectedRegionCode={this.state.selectedRegionCode}
+                          currentSelectedNodeType={currentSelectedNodeType}
+                          isDedicatedNodes={isDedicatedNodes}
+                        />
+                      )}
+                      {liveQueriesLink && !universePaused && (
+                        <span className="live-queries">
+                          <Link to={liveQueriesLink}>
+                            <span className="live-queries-label">See Queries</span>
+                          </Link>
+                        </span>
+                      )}
+                      {enableNodeComparisonModal && (
+                        <YBButton
+                          btnIcon={'fa fa-refresh'}
+                          btnClass="btn btn-default"
+                          btnText="Compare"
+                          disabled={
+                            filterType === 'custom' || currentSelectedUniverse === MetricConsts.ALL
+                          }
+                          onClick={() => showModal('metricsComparisonModal')}
+                        />
+                      )}
+                    </div>
+                  </FlexGrow>
+                  <FlexGrow>
+                    <form name="GraphPanelFilterForm">
+                      <div id="reportrange" className="pull-right">
+                        <div className="timezone">
+                          Current Timestamp:&nbsp;{ybFormatDate(new Date())}
+                        </div>
+                        <div className="graph-interval-container">
+                          <Dropdown
+                            id="graph-interval-dropdown"
+                            disabled={filterType === 'custom'}
+                            pullRight
+                          >
+                            <Dropdown.Toggle className="dropdown-toggle-button">
+                              Auto Refresh:&nbsp;
+                              <span className="chip" key={`interval-token`}>
+                                <span className="value">{refreshIntervalLabel}</span>
+                              </span>
+                            </Dropdown.Toggle>
+                            <Dropdown.Menu>{intervalMenuItems}</Dropdown.Menu>
+                          </Dropdown>
+                          <YBButtonLink
+                            btnIcon={'fa fa-refresh'}
+                            btnClass="btn btn-default refresh-btn"
+                            disabled={filterType === 'custom'}
+                            onClick={this.refreshGraphQuery}
+                          />
+                          &nbsp;
+                          {isDownloadMetricsAllowed && (
+                            <YBButton
+                              btnText="Download Metrics"
+                              onClick={() => {
+                                this.setState({
+                                  openPreviewMetricsModal: true,
+                                  pdfDownloadInProgress: false,
+                                  downloadPercent: 0
+                                });
+                              }}
+                            />
+                          )}
+                        </div>
                         <Dropdown
-                          id="graph-interval-dropdown"
-                          disabled={filterType === 'custom'}
+                          id="graphSettingDropdown"
+                          className="graph-setting-dropdown"
                           pullRight
                         >
-                          <Dropdown.Toggle className="dropdown-toggle-button">
-                            Auto Refresh:&nbsp;
-                            <span className="chip" key={`interval-token`}>
-                              <span className="value">{refreshIntervalLabel}</span>
-                            </span>
+                          <Dropdown.Toggle noCaret>
+                            <i className="graph-settings-icon fa fa-cog"></i>
                           </Dropdown.Toggle>
-                          <Dropdown.Menu>{intervalMenuItems}</Dropdown.Menu>
-                        </Dropdown>
-                        <YBButtonLink
-                          btnIcon={'fa fa-refresh'}
-                          btnClass="btn btn-default refresh-btn"
-                          disabled={filterType === 'custom'}
-                          onClick={this.refreshGraphQuery}
-                        />
-                      </div>
-                      <Dropdown
-                        id="graphSettingDropdown"
-                        className="graph-setting-dropdown"
-                        pullRight
-                      >
-                        <Dropdown.Toggle noCaret>
-                          <i className="graph-settings-icon fa fa-cog"></i>
-                        </Dropdown.Toggle>
-                        <Dropdown.Menu>
-                          <MenuItem className="dropdown-header" header>
-                            VIEW OPTIONS
-                          </MenuItem>
-                          <MenuItem divider />
-                          <MenuItem onSelect={self.props.togglePrometheusQuery}>
-                            {prometheusQueryEnabled
-                              ? 'Disable Prometheus query'
-                              : 'Enable Prometheus query'}
-                          </MenuItem>
-                          <MenuItem
-                            onClick={() => {
-                              self.props
-                                .getGrafanaJson()
-                                .then((response) => {
-                                  return new Blob([JSON.stringify(response.data, null, 2)], {
-                                    type: 'application/json'
+                          <Dropdown.Menu>
+                            <MenuItem className="dropdown-header" header>
+                              VIEW OPTIONS
+                            </MenuItem>
+                            <MenuItem divider />
+                            <MenuItem onSelect={self.props.togglePrometheusQuery}>
+                              {prometheusQueryEnabled
+                                ? 'Disable Prometheus query'
+                                : 'Enable Prometheus query'}
+                            </MenuItem>
+                            <MenuItem
+                              onClick={() => {
+                                self.props
+                                  .getGrafanaJson()
+                                  .then((response) => {
+                                    return new Blob([JSON.stringify(response.data, null, 2)], {
+                                      type: 'application/json'
+                                    });
+                                  })
+                                  .catch((error) => {
+                                    toast.error(
+                                      'Error in downloading Grafana JSON: ' + error.message
+                                    );
+                                    return null;
+                                  })
+                                  .then((blob) => {
+                                    // eslint-disable-next-line eqeqeq
+                                    if (blob != null) {
+                                      const url = window.URL.createObjectURL(blob);
+                                      const a = document.createElement('a');
+                                      a.style.display = 'none';
+                                      a.href = url;
+                                      a.download = 'Grafana_Dashboard.json';
+                                      document.body.appendChild(a);
+                                      a.click();
+                                      window.URL.revokeObjectURL(url);
+                                      a.remove();
+                                    }
                                   });
-                                })
-                                .catch((error) => {
-                                  toast.error(
-                                    'Error in downloading Grafana JSON: ' + error.message
-                                  );
-                                  return null;
-                                })
-                                .then((blob) => {
-                                  // eslint-disable-next-line eqeqeq
-                                  if (blob != null) {
-                                    const url = window.URL.createObjectURL(blob);
-                                    const a = document.createElement('a');
-                                    a.style.display = 'none';
-                                    a.href = url;
-                                    a.download = 'Grafana_Dashboard.json';
-                                    document.body.appendChild(a);
-                                    a.click();
-                                    window.URL.revokeObjectURL(url);
-                                    a.remove();
-                                  }
-                                });
-                            }}
-                          >
-                            {'Download Grafana JSON'}
-                          </MenuItem>
-                        </Dropdown.Menu>
+                              }}
+                            >
+                              {'Download Grafana JSON'}
+                            </MenuItem>
+                          </Dropdown.Menu>
+                        </Dropdown>
+                      </div>
+                    </form>
+                  </FlexGrow>
+                </FlexContainer>
+                <FlexContainer>
+                  <FlexGrow power={1}>
+                    {this.state.currentSelectedUniverse !== MetricConsts.ALL &&
+                      this.props.origin !== MetricOrigin.TABLE && (
+                        <MetricsMeasureSelector
+                          metricMeasureTypes={metricMeasureTypes}
+                          selectedMetricMeasureValue={this.state.metricMeasure}
+                          onMetricMeasureChanged={this.onMetricMeasureChanged}
+                          isSingleNodeSelected={this.state.isSingleNodeSelected}
+                          isK8Universe={isK8Universe}
+                        />
+                      )}
+                  </FlexGrow>
+                  <FlexGrow>
+                    <div className=" date-picker pull-right">
+                      {datePicker}
+                      <Dropdown id="graphFilterDropdown" pullRight>
+                        <Dropdown.Toggle>
+                          <i className="fa fa-clock-o"></i>&nbsp;
+                          {this.state.filterLabel}
+                        </Dropdown.Toggle>
+                        <Dropdown.Menu>{menuItems}</Dropdown.Menu>
                       </Dropdown>
                     </div>
-                  </form>
-                </FlexGrow>
-              </FlexContainer>
-              <FlexContainer>
-                <FlexGrow power={1}>
-                  {this.state.currentSelectedUniverse !== MetricConsts.ALL &&
-                    this.props.origin !== MetricOrigin.TABLE && (
-                      <MetricsMeasureSelector
-                        metricMeasureTypes={metricMeasureTypes}
-                        selectedMetricMeasureValue={this.state.metricMeasure}
-                        onMetricMeasureChanged={this.onMetricMeasureChanged}
-                        isSingleNodeSelected={this.state.isSingleNodeSelected}
-                        isK8Universe={isK8Universe}
-                      />
-                    )}
-                </FlexGrow>
-                <FlexGrow>
-                  <div className=" date-picker pull-right">
-                    {datePicker}
-                    <Dropdown id="graphFilterDropdown" pullRight>
-                      <Dropdown.Toggle>
-                        <i className="fa fa-clock-o"></i>&nbsp;
-                        {this.state.filterLabel}
-                      </Dropdown.Toggle>
-                      <Dropdown.Menu>{menuItems}</Dropdown.Menu>
-                    </Dropdown>
-                  </div>
-                </FlexGrow>
-              </FlexContainer>
-              <FlexContainer>
-                <FlexGrow power={1}>
-                  {/* Show Outlier Selector component if user has selected Outlier section
+                  </FlexGrow>
+                </FlexContainer>
+                <FlexContainer>
+                  <FlexGrow power={1}>
+                    {/* Show Outlier Selector component if user has selected Outlier section
                   or if user has selected TopTables tab in Overall section  */}
-                  {currentSelectedUniverse !== MetricConsts.ALL &&
-                    (this.state.metricMeasure === MetricMeasure.OUTLIER ||
-                      this.state.metricMeasure === MetricMeasure.OUTLIER_TABLES) && (
-                      <OutlierSelector
-                        outlierTypes={outlierTypes}
-                        selectedOutlierType={this.state.outlierType}
-                        onOutlierTypeChanged={this.onOutlierTypeChanged}
-                        setNumNodeValue={this.setNumNodeValue}
-                        defaultOutlierNumNodes={this.state.outlierNumNodes}
-                        splitType={splitType}
-                        isK8Universe={isK8Universe}
-                      />
-                    )}
-                </FlexGrow>
-              </FlexContainer>
-              {enableNodeComparisonModal ? (
-                <MetricsComparisonModal
-                  visible={showModal && visibleModal === 'metricsComparisonModal'}
-                  onHide={closeModal}
-                  selectedUniverse={this.state.currentSelectedUniverse}
-                  origin={origin}
-                  selectedRegionClusterUUID={selectedRegionClusterUUID}
-                />
-              ) : (
-                ''
-              )}
-            </div>
+                    {currentSelectedUniverse !== MetricConsts.ALL &&
+                      (this.state.metricMeasure === MetricMeasure.OUTLIER ||
+                        this.state.metricMeasure === MetricMeasure.OUTLIER_TABLES) && (
+                        <OutlierSelector
+                          outlierTypes={outlierTypes}
+                          selectedOutlierType={this.state.outlierType}
+                          onOutlierTypeChanged={this.onOutlierTypeChanged}
+                          setNumNodeValue={this.setNumNodeValue}
+                          defaultOutlierNumNodes={this.state.outlierNumNodes}
+                          splitType={splitType}
+                          isK8Universe={isK8Universe}
+                        />
+                      )}
+                  </FlexGrow>
+                </FlexContainer>
+                <YBModal
+                  open={this.state.openPreviewMetricsModal}
+                  size="fit"
+                  title="Preview All Metrics"
+                  submitLabel={`${
+                    this.state.pdfDownloadInProgress ? 'Downloading' : 'Download'
+                  } Metrics pdf`}
+                  cancelLabel="Close"
+                  buttonProps={{
+                    primary: {
+                      disabled: this.state.pdfDownloadInProgress
+                    }
+                  }}
+                  isSubmitting={this.state.pdfDownloadInProgress}
+                  onClose={() => {
+                    this.setState({
+                      openPreviewMetricsModal: false
+                    });
+                  }}
+                  footerAccessory={
+                    this.state.pdfDownloadInProgress && (
+                      <Box display={'flex'} flexDirection={'row'} alignItems={'center'}>
+                        <Typography variant="body2">
+                          Please wait while Download metrics to pdf is in Progress, Closing the
+                          preview modal may abort the operation.
+                        </Typography>{' '}
+                        &nbsp; &nbsp;
+                        <YBProgress value={Math.round(this.state.downloadPercent)} />
+                      </Box>
+                    )
+                  }
+                  onSubmit={async () => {
+                    try {
+                      this.setState({
+                        pdfDownloadInProgress: true
+                      });
+                      const tabs = document.getElementById('print-metrics');
+
+                      const pdf = new jsPDF('p', 'pt', 'a4');
+                      pdf.setFontSize(22);
+                      pdf.text('Metrics', 250, 25, null, null, 'center');
+                      const allCharts = [];
+                      const charts = tabs.querySelectorAll('.metrics-panel-container');
+                      for (let j = 0; j < charts.length; j++) {
+                        const svgs = charts[j].querySelectorAll('svg');
+                        allCharts.push(svgs);
+                      }
+
+                      const positions = [
+                        [0, 0],
+                        [1, 0],
+                        [0, 1],
+                        [1, 1]
+                      ];
+
+                      for (let i = 0; i < allCharts.length; i++) {
+                        if (allCharts[i].type !== 'br') {
+                          if (i !== 0 && i % 4 === 0) {
+                            pdf.addPage();
+                          }
+
+                          for (let j = 0; j < allCharts[i].length; j++) {
+                            const svg = allCharts[i][j];
+                            const pos = i % 4;
+                            const svgData = new XMLSerializer().serializeToString(svg);
+                            const svgDataBase64 = btoa(unescape(encodeURIComponent(svgData)));
+                            const svgDataUrl = `data:image/svg+xml;charset=utf-8;base64,${svgDataBase64}`;
+
+                            const image = new Image();
+                            image.src = svgDataUrl;
+                            await image.decode();
+
+                            const preset = presets.offscreen();
+
+                            const canvas = new OffscreenCanvas(1500, 1500);
+
+                            const dimension = pdf.internal.pageSize.width / 2 - 10;
+                            const ctx = canvas.getContext('2d');
+                            const v = await Canvg.fromString(ctx, svgData, preset);
+                            v.resize(500, 500, 'xMidYMid meet');
+                            await v.render();
+
+                            const blob = await canvas.convertToBlob();
+                            const imgURL = URL.createObjectURL(blob);
+
+                            pdf.addImage(
+                              imgURL,
+                              'PNG',
+                              positions[pos][0] * dimension + 5,
+                              positions[pos][1] * dimension + 40,
+                              dimension,
+                              dimension,
+                              '',
+                              'FAST'
+                            );
+                            this.setState({
+                              downloadPercent: (i / charts.length) * 100
+                            });
+                          }
+                        } else {
+                          pdf.addPage();
+                        }
+                      }
+
+                      pdf.save(`metrics-${Date.now()}.pdf`);
+                      this.setState({
+                        pdfDownloadInProgress: false
+                      });
+                    } catch (e) {
+                      console.warn(e);
+                      this.setState({
+                        pdfDownloadInProgress: false
+                      });
+                    }
+                  }}
+                >
+                  <CustomerMetricsPanel {...this.props} printMode={true} />
+                </YBModal>
+                {enableNodeComparisonModal ? (
+                  <MetricsComparisonModal
+                    visible={showModal && visibleModal === 'metricsComparisonModal'}
+                    onHide={closeModal}
+                    selectedUniverse={this.state.currentSelectedUniverse}
+                    origin={origin}
+                    selectedRegionClusterUUID={selectedRegionClusterUUID}
+                  />
+                ) : (
+                  ''
+                )}
+              </div>
+            )
           }
           /* React.cloneELement for passing state down to child components in HOC */
           body={React.cloneElement(this.props.children, {

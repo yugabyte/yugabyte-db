@@ -942,15 +942,55 @@ MigrateSchemaTaskInfo:
       type: array
       items:
         $ref: '#/ErrorsAndSuggestionsDetails'
+    current_analysis_report:
+      $ref: '#/SchemaAnalysisReport'
+    analysis_history:
+      type: array
+      items:
+        $ref: '#/SchemaAnalysisReport'
     sql_objects:
       type: array
       items:
         $ref: '#/SqlObjectsDetails'
+SchemaAnalysisReport:
+  title: Schema Analysis report
+  description: Voyager data migration metrics details
+  type: object
+  properties:
+    unsupported_functions:
+      type: array
+      items:
+        $ref: '#/UnsupportedSqlWithDetails'
+    unsupported_features:
+      type: array
+      items:
+        $ref: '#/UnsupportedSqlWithDetails'
+    unsupported_datatypes:
+      type: array
+      items:
+        $ref: '#/UnsupportedSqlWithDetails'
+    recommended_refactoring:
+      $ref: '#/RecommendedRefactoringGraph'
+UnsupportedSqlWithDetails:
+  title: Schema for Suggested refactoring tab in Migrate Schema page
+  description: Schema for Suggested refactoring tab in Migrate Schema page
+  type: object
+  properties:
+    suggestions_errors:
+      type: array
+      items:
+        $ref: '#/ErrorsAndSuggestionsDetails'
+    unsupported_type:
+      type: string
+    count:
+      type: integer
 ErrorsAndSuggestionsDetails:
   title: Errors and Suggestions details
   description: Errors and suggestions details
   type: object
   properties:
+    issueType:
+      type: string
     objectType:
       type: string
     objectName:
@@ -1021,21 +1061,17 @@ RecommendedRefactoringGraph:
   description: Refectoring recommendations for migrating SQL objects
   type: object
   properties:
-    sql_type:
-      $ref: '#/RefactoringCount'
-    table:
-      $ref: '#/RefactoringCount'
-    view:
-      $ref: '#/RefactoringCount'
-    function:
-      $ref: '#/RefactoringCount'
-    triggers:
-      $ref: '#/RefactoringCount'
+    refactor_details:
+      type: array
+      items:
+        $ref: '#/RefactoringCount'
 RefactoringCount:
   title: Count of automatic and manual refactoring
   description: count for automatic and manual refactoring
   type: object
   properties:
+    sql_object_type:
+      type: string
     manual:
       type: integer
     automatic:
@@ -1058,14 +1094,19 @@ TargetClusterSpec:
   properties:
     num_nodes:
       type: integer
+      format: int64
     vcpu_per_node:
       type: integer
+      format: int64
     memory_per_node:
       type: integer
+      format: int64
     connections_per_node:
       type: integer
+      format: int64
     inserts_per_node:
       type: integer
+      format: int64
 TargetSchemaRecommendations:
   title: Target YugabyteDB cluster schema recommendations
   description: Target YugabyteDB cluster schema recommendations
@@ -1073,12 +1114,16 @@ TargetSchemaRecommendations:
   properties:
     no_of_colocated_tables:
       type: integer
+      format: int64
     total_size_colocated_tables:
       type: integer
+      format: int64
     no_of_sharded_tables:
       type: integer
+      format: int64
     total_size_sharded_tables:
       type: integer
+      format: int64
 AssessmentReportSummary:
   title: Migration assessment summary
   description: API for getting migration assessment summary
@@ -1110,12 +1155,16 @@ SourceDatabaseInfo:
   properties:
     table_size:
       type: integer
+      format: int64
     table_row_count:
       type: integer
+      format: int64
     total_table_size:
       type: integer
+      format: int64
     total_index_size:
       type: integer
+      format: int64
 MigrationAssesmentInfo:
   title: Details for Voyager migrations assesment
   description: Details for Voyager migrations assesment
@@ -1147,6 +1196,77 @@ AssesmentComplexityInfo:
     table_count:
       type: integer
     complexity:
+      type: string
+AssessmentSourceDbObject:
+  title: Details about Source DB's SQL Objects
+  description:  Details about Source DB's SQL Objects
+  type: object
+  properties:
+    sql_objects_count:
+      type: array
+      items:
+        $ref: '#/SqlObjectCount'
+    sql_objects_metadata:
+      type: array
+      items:
+        $ref: '#/SqlObjectMetadata'
+SqlObjectCount:
+  title: Count of specific Sql Object type in the source DB
+  description: Count of specific Sql Object type in the source DB
+  type: object
+  properties:
+    sql_type:
+      type: string
+    count:
+      type: integer
+SqlObjectMetadata:
+  title: metadata of specific Sql Object type in the source DB
+  description: size, count, iops details of tables and indexes
+  type: object
+  properties:
+    object_name:
+      type: string
+    sql_type:
+      type: string
+    row_count:
+      type: integer
+      format: int64
+    size:
+      type: integer
+      format: int64
+    iops:
+      type: integer
+      format: int64
+AssessmentTargetRecommendationObject:
+  title: Details about Target table recommendations
+  description:  Details about Target table recommendations
+  type: object
+  properties:
+    num_of_colocated_tables:
+      type: integer
+    total_size_colocated_tables:
+      type: integer
+      format: int64
+    num_of_sharded_table:
+      type: integer
+    total_size_sharded_tables:
+      type: integer
+      format: int64
+    recommendation_details:
+      type: array
+      items:
+        $ref: '#/TargetRecommendationItem'
+TargetRecommendationItem:
+  title: Target recommendation table metadata information
+  description: Target recommendation table metadata information
+  type: object
+  properties:
+    table_name:
+      type: string
+    disk_size:
+      type: integer
+      format: int64
+    schema_recommendation:
       type: string
 ConnectionsStats:
   title: YSQL connection manager stats

@@ -1,25 +1,22 @@
-import { useRef, useState } from 'react';
-import _ from 'lodash';
+import { useState } from 'react';
 import { useUpdateEffect } from 'react-use';
-import { useWatch, useFormContext } from 'react-hook-form';
+import { useWatch } from 'react-hook-form';
 import {
-  PLACEMENTS_FIELD,
-  TOTAL_NODES_FIELD,
-  INSTANCE_TYPE_FIELD,
   DEVICE_INFO_FIELD,
-  PROVIDER_FIELD
+  INSTANCE_TYPE_FIELD,
+  PLACEMENTS_FIELD,
+  PROVIDER_FIELD,
+  TOTAL_NODES_FIELD
 } from '../../../utils/constants';
 import {
   CloudType,
   DeviceInfo,
   InstanceType,
   RunTimeConfigEntry,
-  StorageType,
-  UniverseFormData,
-  UpdateActions
+  StorageType
 } from '../../../utils/dto';
 import { isEphemeralAwsStorageInstance } from '../InstanceTypeField/InstanceTypeFieldHelper';
-import { isNonEmptyArray } from '../../../../../../../utils/ObjectUtils';
+import { RuntimeConfigKey } from '../../../../../../helpers/constants';
 
 export const IO1_DEFAULT_DISK_IOPS = 1000;
 export const IO1_MAX_DISK_IOPS = 64000;
@@ -36,6 +33,13 @@ export const UltraSSD_MIN_DISK_IOPS = 100;
 export const UltraSSD_DISK_IOPS_MAX_PER_GB = 300;
 export const UltraSSD_IOPS_TO_MAX_DISK_THROUGHPUT = 4;
 export const UltraSSD_DISK_THROUGHPUT_CAP = 2500;
+
+export const PremiumV2_LRS_DEFAULT_DISK_IOPS = 3000;
+export const PremiumV2_LRS_DEFAULT_DISK_THROUGHPUT = 125;
+export const PremiumV2_LRS_MIN_DISK_IOPS = 3000;
+export const PremiumV2_LRS_DISK_IOPS_MAX_PER_GB = 500;
+export const PremiumV2_LRS_IOPS_TO_MAX_DISK_THROUGHPUT = 4;
+export const PremiumV2_LRS_DISK_THROUGHPUT_CAP = 2500;
 
 export interface StorageTypeOption {
   value: StorageType;
@@ -62,13 +66,19 @@ export const GCP_STORAGE_TYPE_OPTIONS: StorageTypeOption[] = [
 export const AZURE_STORAGE_TYPE_OPTIONS: StorageTypeOption[] = [
   { value: StorageType.StandardSSD_LRS, label: 'Standard' },
   { value: StorageType.Premium_LRS, label: 'Premium' },
+  { value: StorageType.PremiumV2_LRS, label: 'PremiumV2' },
   { value: StorageType.UltraSSD_LRS, label: 'Ultra' }
 ];
 
 export const getMinDiskIops = (storageType: StorageType, volumeSize: number) => {
-  return storageType === StorageType.UltraSSD_LRS
-    ? Math.max(UltraSSD_MIN_DISK_IOPS, volumeSize)
-    : 0;
+  switch (storageType) {
+    case StorageType.UltraSSD_LRS:
+      return Math.max(UltraSSD_MIN_DISK_IOPS, volumeSize);
+    case StorageType.PremiumV2_LRS:
+      return Math.max(PremiumV2_LRS_MIN_DISK_IOPS, volumeSize);
+    default:
+      return 0;
+  }
 };
 
 export const getMaxDiskIops = (storageType: StorageType, volumeSize: number) => {
@@ -77,19 +87,28 @@ export const getMaxDiskIops = (storageType: StorageType, volumeSize: number) => 
       return IO1_MAX_DISK_IOPS;
     case StorageType.UltraSSD_LRS:
       return volumeSize * UltraSSD_DISK_IOPS_MAX_PER_GB;
+    case StorageType.PremiumV2_LRS:
+      return volumeSize * PremiumV2_LRS_DISK_IOPS_MAX_PER_GB;
     default:
       return GP3_MAX_IOPS;
   }
 };
 
-export const getStorageTypeOptions = (providerCode?: CloudType): StorageTypeOption[] => {
+export const getStorageTypeOptions = (providerCode?: CloudType, providerRuntimeConfigs?: any): StorageTypeOption[] => {
+  const showPremiumV2Option = providerRuntimeConfigs?.configEntries?.find(
+    (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.AZURE_PREMIUM_V2_STORAGE_TYPE
+  )?.value === 'true';
+  const filteredAzureStorageTypes = showPremiumV2Option ? AZURE_STORAGE_TYPE_OPTIONS :  AZURE_STORAGE_TYPE_OPTIONS.filter((storageType) => {
+    return storageType.value !== StorageType.PremiumV2_LRS;
+  });
+
   switch (providerCode) {
     case CloudType.aws:
       return AWS_STORAGE_TYPE_OPTIONS;
     case CloudType.gcp:
       return GCP_STORAGE_TYPE_OPTIONS;
     case CloudType.azu:
-      return AZURE_STORAGE_TYPE_OPTIONS;
+      return filteredAzureStorageTypes;
     default:
       return [];
   }
@@ -102,6 +121,8 @@ export const getIopsByStorageType = (storageType: StorageType) => {
     return GP3_DEFAULT_DISK_IOPS;
   } else if (storageType === StorageType.UltraSSD_LRS) {
     return UltraSSD_DEFAULT_DISK_IOPS;
+  } else if (storageType === StorageType.PremiumV2_LRS) {
+    return PremiumV2_LRS_DEFAULT_DISK_IOPS;
   }
   return null;
 };
@@ -111,6 +132,8 @@ export const getThroughputByStorageType = (storageType: StorageType) => {
     return GP3_DEFAULT_DISK_THROUGHPUT;
   } else if (storageType === StorageType.UltraSSD_LRS) {
     return UltraSSD_DEFAULT_DISK_THROUGHPUT;
+  } else if (storageType === StorageType.PremiumV2_LRS) {
+    return PremiumV2_LRS_DEFAULT_DISK_THROUGHPUT;
   }
   return null;
 };
@@ -136,6 +159,12 @@ export const getThroughputByIops = (
       UltraSSD_DISK_THROUGHPUT_CAP
     );
     return Math.max(0, Math.min(maxThroughput, currentThroughput));
+  } else if (storageType === StorageType.PremiumV2_LRS) {
+    const maxThroughput = Math.min(
+      diskIops / PremiumV2_LRS_IOPS_TO_MAX_DISK_THROUGHPUT,
+      PremiumV2_LRS_DISK_THROUGHPUT_CAP
+    );
+    return Math.max(0, Math.min(maxThroughput, currentThroughput));
   }
 
   return currentThroughput;
@@ -146,19 +175,19 @@ const getVolumeSize = (instance: InstanceType, providerRuntimeConfigs: any) => {
 
   if (instance.providerCode === CloudType.aws) {
     volumeSize = providerRuntimeConfigs?.configEntries?.find(
-      (c: RunTimeConfigEntry) => c.key === 'yb.aws.default_volume_size_gb'
+      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.AWS_DEFAULT_VOLUME_SIZE
     )?.value;
   } else if (instance.providerCode === CloudType.gcp) {
     volumeSize = providerRuntimeConfigs?.configEntries?.find(
-      (c: RunTimeConfigEntry) => c.key === 'yb.gcp.default_volume_size_gb'
+      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.GCP_DEFAULT_VOLUME_SIZE
     )?.value;
   } else if (instance.providerCode === CloudType.kubernetes) {
     volumeSize = providerRuntimeConfigs?.configEntries?.find(
-      (c: RunTimeConfigEntry) => c.key === 'yb.kubernetes.default_volume_size_gb'
+      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.KUBERNETES_DEFAULT_VOLUME_SIZE
     )?.value;
   } else if (instance.providerCode === CloudType.azu) {
     volumeSize = providerRuntimeConfigs?.configEntries?.find(
-      (c: RunTimeConfigEntry) => c.key === 'yb.azure.default_volume_size_gb'
+      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.AZURE_DEFAULT_VOLUME_SIZE
     )?.value;
   }
   return volumeSize;
@@ -172,15 +201,15 @@ const getStorageType = (instance: InstanceType, providerRuntimeConfigs: any) => 
 
   if (instance.providerCode === CloudType.aws) {
     storageType = providerRuntimeConfigs?.configEntries?.find(
-      (c: RunTimeConfigEntry) => c.key === 'yb.aws.storage.default_storage_type'
+      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.AWS_DEFAULT_STORAGE_TYPE
     )?.value;
   } else if (instance.providerCode === CloudType.gcp) {
     storageType = providerRuntimeConfigs?.configEntries?.find(
-      (c: RunTimeConfigEntry) => c.key === 'yb.gcp.storage.default_storage_type'
+      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.GCP_DEFAULT_STORAGE_TYPE
     )?.value;
   } else if (instance.providerCode === CloudType.azu) {
     storageType = providerRuntimeConfigs?.configEntries?.find(
-      (c: RunTimeConfigEntry) => c.key === 'yb.azure.storage.default_storage_type'
+      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.AZURE_DEFAULT_STORAGE_TYPE
     )?.value;
   }
   return storageType;
@@ -188,7 +217,9 @@ const getStorageType = (instance: InstanceType, providerRuntimeConfigs: any) => 
 
 export const getDeviceInfoFromInstance = (
   instance: InstanceType,
-  providerRuntimeConfigs: any
+  providerRuntimeConfigs: any,
+  isEditMode: boolean,
+  selectedStorageType: StorageType
 ): DeviceInfo | null => {
   if (!instance.instanceTypeDetails.volumeDetailsList.length) return null;
 
@@ -197,7 +228,7 @@ export const getDeviceInfoFromInstance = (
   const defaultInstanceVolumeSize = isEphemeralAwsStorageInstance(instance)
     ? volumeSize
     : getVolumeSize(instance, providerRuntimeConfigs);
-  const storageType = getStorageType(instance, providerRuntimeConfigs);
+  const storageType = isEditMode ? selectedStorageType : getStorageType(instance, providerRuntimeConfigs);
 
   return {
     numVolumes: volumeDetailsList.length,

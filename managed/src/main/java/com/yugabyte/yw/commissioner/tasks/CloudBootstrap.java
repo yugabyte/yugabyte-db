@@ -30,6 +30,7 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import io.swagger.annotations.ApiModel;
 import java.util.ArrayList;
@@ -179,6 +180,10 @@ public class CloudBootstrap extends CloudTaskBase {
       // Default: x86_64
       public Architecture architecture;
 
+      public String networkRGOverride;
+
+      public String resourceGroupOverride;
+
       public static PerRegionMetadata fromRegion(Region region) {
         PerRegionMetadata perRegionMetadata = new PerRegionMetadata();
         perRegionMetadata.customImageId = region.getYbImage();
@@ -191,6 +196,11 @@ public class CloudBootstrap extends CloudTaskBase {
         if (region.getProviderCloudCode().equals(Common.CloudType.gcp)) {
           GCPRegionCloudInfo g = CloudInfoInterface.get(region);
           perRegionMetadata.instanceTemplate = g.instanceTemplate;
+        }
+        if (region.getProviderCloudCode() == CloudType.azu) {
+          AzureRegionCloudInfo cloudInfo = CloudInfoInterface.get(region);
+          perRegionMetadata.networkRGOverride = cloudInfo.getAzuNetworkRGOverride();
+          perRegionMetadata.resourceGroupOverride = cloudInfo.getAzuRGOverride();
         }
         //    perRegionMetadata.vpcCidr = never used
         if (region.getZones() == null || region.getZones().size() == 0) {
@@ -298,13 +308,17 @@ public class CloudBootstrap extends CloudTaskBase {
                   createRegionSetupTask(regionCode, metadata, taskParams().destVpcId, isFirstTry())
                       .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingRegion);
                 });
-        taskParams()
-            .perRegionMetadata
-            .forEach(
-                (regionCode, metadata) -> {
-                  createAccessKeySetupTask(taskParams(), regionCode, isFirstTry())
-                      .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreateAccessKey);
-                });
+        // For the case of manually provisioned onprem provider, we don't
+        // need to setup access key.
+        if (!(cloudType == CloudType.onprem && p.getDetails().skipProvisioning)) {
+          taskParams()
+              .perRegionMetadata
+              .forEach(
+                  (regionCode, metadata) -> {
+                    createAccessKeySetupTask(taskParams(), regionCode, isFirstTry())
+                        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreateAccessKey);
+                  });
+        }
 
         // Need not to init CloudInitializer task for onprem provider.
         if (!p.getCloudCode().equals(CloudType.onprem)) {

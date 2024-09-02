@@ -1219,7 +1219,17 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           .get(preSnapshot.catalog.get(MIGRATIONS_TABLE).size() - 1).getInt(0);
       final int latestMinorVersion = preSnapshot.catalog.get(MIGRATIONS_TABLE)
           .get(preSnapshot.catalog.get(MIGRATIONS_TABLE).size() - 1).getInt(1);
-      final int totalMigrations = latestMajorVersion + latestMinorVersion;
+      // totalMigrations does not include <baseline> entry.
+      final int totalMigrations = preSnapshot.catalog.get(MIGRATIONS_TABLE).size() - 1;
+      final int baselineMajorVersion = preSnapshot.catalog.get(MIGRATIONS_TABLE)
+          .get(0).getInt(0);
+      final int baselineMinorVersion = preSnapshot.catalog.get(MIGRATIONS_TABLE)
+          .get(0).getInt(1);
+      final int firstMigrationVersion = preSnapshot.catalog.get(MIGRATIONS_TABLE)
+          .get(1).getInt(0);
+      final String baselineName = preSnapshot.catalog.get(MIGRATIONS_TABLE)
+          .get(0).getString(2);
+      assertEquals(baselineName, "<baseline>");
 
       // Make sure the latest version is at least as big as the last hardcoded one (it will be
       // greater if more migrations were introduced after YSQL upgrade is released).
@@ -1227,19 +1237,57 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       preSnapshot.catalog.remove(MIGRATIONS_TABLE);
       preSnapshot.catalog.remove(CATALOG_VERSION_TABLE);
 
-      executeSystemTableDml(stmt, "DELETE FROM " + MIGRATIONS_TABLE);
+      // If we started the test from an initdb snapshot that did not have
+      // pg_yb_migration table (release 2.0.9.0), we have <baseline> version
+      // as 0.0. If we started the test from an initdb snapshot that has a
+      // valid <baseline>, keep the baseline so we do not re-apply the migration
+      // scripts prior to that <baseline>. This is to let the following
+      // check between preSnapshot and postSnapshot to pass: initdb runs
+      // yb_system_views.sql, which has "CREATE VIEW yb_terminated_queries"
+      // while the migration script V33__14209__yb_terminated_queries.sql
+      // has "CREATE OR REPLACE VIEW pg_catalog.yb_terminated_queries".
+      // These two statements differ textually and therefore their parse
+      // results will have different character position, statement length, etc.
+      // If we ran V33__14209__yb_terminated_queries.sql when the view already
+      // exists in preSnapshot (the initdb snapshot), then it would differ
+      // from postSnapshot (migration snapshot), causing the test to fail.
+      if (baselineMajorVersion == 0) {
+        assertEquals(baselineMinorVersion, 0);
+        assertEquals(totalMigrations, latestMajorVersion + latestMinorVersion);
+        // This keeps the old test behavior when we upgrade from 2.0.9.0.
+        executeSystemTableDml(stmt, "DELETE FROM " + MIGRATIONS_TABLE);
+      } else {
+        // This allows only running the migrations that come after the initdb
+        // snapshot. For example, if the initdb snapshot is 43.1 (for release
+        // 2.20.3.1), we will run migrations V44, V45, ..., etc.
+        executeSystemTableDml(stmt, "DELETE FROM " + MIGRATIONS_TABLE +
+                                    " WHERE name != '<baseline>'");
+      }
       runMigrations(useSingleConnection);
 
       SysCatalogSnapshot postSnapshot = takeSysCatalogSnapshot(stmt);
       List<Row> appliedMigrations = postSnapshot.catalog.get(MIGRATIONS_TABLE);
-      assertEquals("Expected an entry for the last hardcoded migration"
-          + " and each migration past that!",
-          totalMigrations - lastHardcodedMigrationVersion + 1,
-          appliedMigrations.size());
-      assertEquals(
-          lastHardcodedMigrationVersion,
-          appliedMigrations
-              .get(0).getInt(0).intValue());
+      if (baselineMajorVersion == 0) {
+        assertEquals("Expected an entry for the last hardcoded migration"
+            + " and each migration past that!",
+            totalMigrations - lastHardcodedMigrationVersion + 1,
+            appliedMigrations.size());
+        assertEquals(
+            lastHardcodedMigrationVersion,
+            appliedMigrations
+                .get(0).getInt(0).intValue());
+      } else {
+        assertEquals("Expected an entry for the <baseline> migration"
+            + " and each migration past that!",
+            totalMigrations + 1,
+            appliedMigrations.size());
+        // Since we kept the first <baseline> row at index 0, the first applied
+        // migration starts from index 1.
+        assertEquals(
+            firstMigrationVersion,
+            appliedMigrations
+                .get(1).getInt(0).intValue());
+      }
       assertEquals(
           latestMajorVersion,
           appliedMigrations

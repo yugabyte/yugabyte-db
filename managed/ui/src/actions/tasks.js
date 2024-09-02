@@ -19,6 +19,8 @@ export const RETRY_TASK_RESPONSE = 'RETRY_TASK_RESPONSE';
 export const ABORT_TASK = 'ABORT_TASK';
 export const ABORT_TASK_RESPONSE = 'ABORT_TASK_RESPONSE';
 
+export const PATCH_TASKS_FOR_CUSTOMER = 'PATCH_TASKS_FOR_CUSTOMER';
+
 export function fetchTaskProgress(taskUUID) {
   const request = axios.get(`${getCustomerEndpoint()}/tasks/${taskUUID}`);
   return {
@@ -45,6 +47,19 @@ export function fetchCustomerTasks() {
   return {
     type: FETCH_CUSTOMER_TASKS,
     payload: request
+  };
+}
+
+/**
+ * used to patch a particular universe's tasks to the list of tasks
+ */
+export function patchTasksForCustomer(universeUUID, tasks) {
+  return {
+    type: PATCH_TASKS_FOR_CUSTOMER,
+    payload: {
+      universeUUID,
+      tasks
+    }
   };
 }
 

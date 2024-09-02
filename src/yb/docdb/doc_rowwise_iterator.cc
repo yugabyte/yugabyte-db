@@ -43,17 +43,13 @@
 #include "yb/util/status_log.h"
 #include "yb/util/strongly_typed_bool.h"
 
-using std::string;
-
 DEFINE_RUNTIME_bool(ysql_use_flat_doc_reader, true,
     "Use DocDBTableReader optimization that relies on having at most 1 subkey for YSQL.");
 
-DEFINE_RUNTIME_PREVIEW_bool(use_fast_backward_scan, false,
-    "Use backward scan optimization to build a row in the reverse order. "
-    "Applicable for YSQL flat doc reader only.");
-
 DEFINE_test_flag(int32, fetch_next_delay_ms, 0, "Amount of time to delay inside FetchNext");
 DEFINE_test_flag(string, fetch_next_delay_column, "", "Only delay when schema has specific column");
+
+DECLARE_bool(use_fast_backward_scan);
 
 using namespace std::chrono_literals;
 
@@ -65,11 +61,9 @@ DocRowwiseIterator::DocRowwiseIterator(
     const TransactionOperationContext& txn_op_context,
     const DocDB& doc_db,
     const ReadOperationData& read_operation_data,
-    std::reference_wrapper<const ScopedRWOperation> pending_op,
-    const DocDBStatistics* statistics)
+    std::reference_wrapper<const ScopedRWOperation> pending_op)
     : DocRowwiseIteratorBase(
           projection, doc_read_context, txn_op_context, doc_db, read_operation_data, pending_op),
-      statistics_(statistics),
       deadline_info_(read_operation_data.deadline) {
 }
 
@@ -79,12 +73,10 @@ DocRowwiseIterator::DocRowwiseIterator(
     const TransactionOperationContext& txn_op_context,
     const DocDB& doc_db,
     const ReadOperationData& read_operation_data,
-    ScopedRWOperation&& pending_op,
-    const DocDBStatistics* statistics)
+    ScopedRWOperation&& pending_op)
     : DocRowwiseIteratorBase(
           projection, doc_read_context, txn_op_context, doc_db, read_operation_data,
           std::move(pending_op)),
-      statistics_(statistics),
       deadline_info_(read_operation_data.deadline) {
 }
 
@@ -118,8 +110,7 @@ void DocRowwiseIterator::InitIterator(
       read_operation_data_,
       file_filter,
       nullptr /* iterate_upper_bound */,
-      FastBackwardScan{use_fast_backward_scan_},
-      statistics_);
+      FastBackwardScan{use_fast_backward_scan_});
   InitResult();
 
   auto prefix = shared_key_prefix();
@@ -381,7 +372,7 @@ Status DocRowwiseIterator::FillRow(QLTableRowPair out) {
   return FillRow(out.table_row, out.projection);
 }
 
-string DocRowwiseIterator::ToString() const {
+std::string DocRowwiseIterator::ToString() const {
   return "DocRowwiseIterator";
 }
 

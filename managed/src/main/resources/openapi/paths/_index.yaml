@@ -1,3 +1,639 @@
+'/customers/{cUUID}/auth/group-mappings':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  get:
+    operationId: listMappings
+    summary: List Group Mappings
+    description: Get list of all OIDC and LDAP Group Mappings.
+    tags:
+      - Authentication
+    responses:
+      '200':
+        $ref: "../components/responses/AuthGroupToRolesMappingResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+  put:
+    operationId: updateGroupMappings
+    summary: Create Group Mappings
+    description: Map LDAP and OIDC groups to YBA roles
+    tags:
+      - Authentication
+    requestBody:
+      $ref: "../components/requestBodies/AuthGroupToRolesMappingReq.yaml"
+    responses:
+      '200':
+        description: Operation Successfull
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: GroupMapping
+      auditTargetId: cUUID.toString()
+      auditActionType: Set
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: super_admin_actions
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/auth/group-mappings/{gUUID}':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: gUUID
+      in: path
+      description: Group UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  delete:
+    operationId: deleteGroupMappings
+    summary: Delete Group Mappings
+    description: Delete LDAP and OIDC group mapping
+    tags:
+      - Authentication
+    responses:
+      '200':
+        description: OK
+      '400':
+        description: Invalid input
+      '404':
+        description: Not found
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: GroupMapping
+      auditTargetId: gUUID.toString()
+      auditActionType: Delete
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: super_admin_actions
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/auto-yba-backups':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  get:
+    operationId: GetContinuousBackup
+    summary: Get Continuous Backup
+    description: Get details of the continuous backup configuration
+    tags:
+      - Continuous Backup
+    responses:
+      '200':
+        description: successful operation
+        $ref: "../components/responses/ContinuousBackupResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+  post:
+    operationId: CreateContinuousBackup
+    summary: Create Continous Backup
+    description: Create a continuous backup configuration
+    tags:
+      - Continuous Backup
+    requestBody:
+      $ref: "../components/requestBodies/ContinuousBackupCreateReq.yaml"
+    responses:
+      '200':
+        description: successful operation
+        $ref: "../components/responses/ContinuousBackupResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: ContinuousBackup
+      auditTargetId: 'null'
+      auditActionType: Create
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/auto-yba-backups/restore':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: RestoreContinuousBackup
+    summary: Restore Continuous Backup
+    description: Restore a backup from a continuous backup configuration
+    tags:
+      - Continuous Backup
+    requestBody:
+      $ref: "../components/requestBodies/ContinuousBackupRestoreReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: ContinuousBackup
+      auditTargetId: 'null'
+      auditActionType: Restore
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/auto-yba-backups/{bUUID}':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: bUUID
+      in: path
+      description: Continuous Backup UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  put:
+    operationId: EditContinuousBackup
+    summary: Edit Continuous Backup config
+    description: Edit continuous backup config
+    tags:
+      - Continuous Backup
+    requestBody:
+      $ref: "../components/requestBodies/ContinuousBackupCreateReq.yaml"
+    responses:
+      '200':
+        description: successful operation
+        $ref: "../components/responses/ContinuousBackupResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: ContinuousBackup
+      auditTargetId: bUUID.toString()
+      auditActionType: Edit
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+  delete:
+    operationId: DeleteContinuousBackup
+    summary: Delete Continuous Backup config
+    description: Delete continuous backup config
+    tags:
+      - Continuous Backup
+    responses:
+      '200':
+        description: successful operation
+        $ref: "../components/responses/ContinuousBackupResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: ContinuousBackup
+      auditTargetId: bUUID.toString()
+      auditActionType: Edit
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/yba-backups':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: CreateYbaBackup
+    summary: Create YBA Backup
+    description: Trigger a one time backup of YBA to the desired storage location
+    tags:
+      - Isolated Backup
+    requestBody:
+      $ref: "../components/requestBodies/IsolatedBackupCreateReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: IsolatedBackup
+      auditTargetId: 'null'
+      auditActionType: Create
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/yba-backups/restore':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: RestoreYbaBackup
+    summary: Restore YBA Backup
+    description: Trigger a one time restore of YBA from the desired storage location
+    tags:
+      - Isolated Backup
+    requestBody:
+      $ref: "../components/requestBodies/IsolatedBackupRestoreReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: IsolatedBackup
+      auditTargetId: 'null'
+      auditActionType: Restore
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/job-schedules/{jUUID}':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: jUUID
+      in: path
+      description: Job Schedule UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  get:
+    operationId: GetJobSchedule
+    summary: Get Job Schedule
+    description: 'WARNING: This is a preview API that could change.'
+    tags:
+      - Job Scheduler
+    responses:
+      '200':
+        description: successful operation
+        $ref: "../components/responses/JobScheduleResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+  delete:
+    operationId: DeleteJobSchedule
+    summary: Delete Job Schedule
+    description: 'WARNING: This is a preview API that could change.'
+    tags:
+      - Job Scheduler
+    responses:
+      '200':
+        description: successful operation
+        $ref: "../components/responses/JobScheduleResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: JobSchedule
+      auditTargetId: jUUID.toString()
+      auditActionType: Delete
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+  put:
+    operationId: UpdateJobSchedule
+    summary: Update Job Schedule
+    description: 'WARNING: This is a preview API that could change.'
+    tags:
+      - Job Scheduler
+    requestBody:
+      $ref: "../components/requestBodies/JobScheduleUpdateReq.yaml"
+    responses:
+      '200':
+        description: successful operation
+        $ref: "../components/responses/JobScheduleResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: JobSchedule
+      auditTargetId: jUUID.toString()
+      auditActionType: Update
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/job-schedules/page':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: PageListJobSchedules
+    summary: List Job Schedules (paginated)
+    description: 'WARNING: This is a preview API that could change.'
+    tags:
+      - Job Scheduler
+    requestBody:
+      $ref: "../components/requestBodies/JobSchedulePagedReq.yaml"
+    responses:
+      '200':
+        description: successful operation
+        $ref: "../components/responses/JobSchedulePagedResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/job-schedules/{jUUID}/job-instances/page':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: jUUID
+      in: path
+      description: Job Schedule UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: PageListJobInstances
+    summary: List Job Instances (paginated)
+    description: 'WARNING: This is a preview API that could change.'
+    tags:
+      - Job Scheduler
+    requestBody:
+      $ref: "../components/requestBodies/JobInstancePagedReq.yaml"
+    responses:
+      '200':
+        description: successful operation
+        $ref: "../components/responses/JobInstancePagedResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      noAudit: true
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/job-schedules/{jUUID}/snooze':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: jUUID
+      in: path
+      description: Job Schedule UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: SnoozeJobSchedule
+    summary: Snooze Job Schedule
+    description: 'WARNING: This is a preview API that could change.'
+    tags:
+      - Job Scheduler
+    requestBody:
+      $ref: "../components/requestBodies/JobScheduleSnoozeReq.yaml"
+    responses:
+      '200':
+        description: successful operation
+        $ref: "../components/responses/JobScheduleResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: JobSchedule
+      auditTargetId: jUUID.toString()
+      auditActionType: Update
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: other
+          action: read
+        resourceLocation:
+          path: customers
+          sourceType: endpoint
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
 '/customers/{cUUID}/universes/{uniUUID}':
   parameters:
     - name: cUUID
@@ -704,6 +1340,170 @@
       auditTargetType: Universe
       auditTargetId: uniUUID.toString()
       auditActionType: UpgradeSystemd
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/encryption/in-transit':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: encryptionInTransitToggle
+    summary: Enable or disable encryption in transit
+    description: |
+      Enable or disable encryption in transit. Encryption in transit can be both node to node or 
+      node to client.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseEncryptionInTransitReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: UpgradeTLS
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/encryption/in-transit/rotate':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: encryptionInTransitCertRotate
+    summary: Rotate TLS Certs
+    description: Rotate the certs used for encryption in transit.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseCertRotateReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: UpgradeCerts
+      taskUuid: obj.getTaskUuid()
+    x-yba-api-authz:
+      - requiredPermission:
+          resourceType: universe
+          action: UPDATE
+        resourceLocation:
+          path: universes
+          sourceType: endpoint
+        checkOnlyPermission: false
+    x-yba-api-since: 2024.2.0.0
+    x-yba-api-visibility: preview
+'/customers/{cUUID}/universes/{uniUUID}/kubernetes-overrides':
+  parameters:
+    - name: cUUID
+      in: path
+      description: Customer UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+    - name: uniUUID
+      in: path
+      description: Universe UUID
+      schema:
+        type: string
+        format: uuid
+      explode: false
+      style: simple
+      required: true
+  post:
+    operationId: editKubernetesOverrides
+    summary: Edit Kubernetes Helm Overrides
+    description: |
+      Update the kubernetes helm override values. This can be used to add custom settings to 
+      kubernetes resources managed by YugabyteDB Anywhere. These override values can apply globally 
+      to a universe or per AZ.
+
+      See https://github.com/yugabyte/charts/blob/master/stable/yugabyte/values.yaml for possible
+      override options.
+    tags:
+      - Universe
+    requestBody:
+      $ref: "../components/requestBodies/UniverseKubernetesOverridesReq.yaml"
+    responses:
+      '202':
+        $ref: "../components/responses/YBATaskResp.yaml"
+      '400':
+        description: Invalid input
+      '500':
+        description: Server error
+    security:
+      - apiKeyAuth: []
+    x-yba-api-audit:
+      auditTargetType: Universe
+      auditTargetId: uniUUID.toString()
+      auditActionType: UpgradeKubernetesOverrides
       taskUuid: obj.getTaskUuid()
     x-yba-api-authz:
       - requiredPermission:

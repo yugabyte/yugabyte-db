@@ -703,6 +703,13 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::Load(
   return ret;
 }
 
+Result<RaftGroupMetadataPtr> RaftGroupMetadata::LoadFromPath(
+    FsManager* fs_manager, const std::string& path) {
+  RaftGroupMetadataPtr ret(new RaftGroupMetadata(fs_manager, ""));
+  RETURN_NOT_OK(ret->LoadFromDisk(path));
+  return ret;
+}
+
 Result<RaftGroupMetadataPtr> RaftGroupMetadata::TEST_LoadOrCreate(
     const RaftGroupMetadataData& data) {
   if (data.fs_manager->LookupTablet(data.raft_group_id)) {
@@ -770,6 +777,18 @@ Result<TableInfoPtr> RaftGroupMetadata::GetTableInfoUnlocked(const TableId& tabl
     RETURN_TABLE_NOT_FOUND(table_id, tables);
   }
   return iter->second;
+}
+
+std::vector<TableInfoPtr> RaftGroupMetadata::GetColocatedTableInfos() const {
+  std::vector<TableInfoPtr> table_infos;
+  {
+    std::lock_guard lock(data_mutex_);
+    for (const auto& [_, table_info] : kv_store_.colocation_to_table) {
+      DCHECK(table_info->schema().has_colocation_id());
+      table_infos.push_back(table_info);
+    }
+  }
+  return table_infos;
 }
 
 Result<TableInfoPtr> RaftGroupMetadata::GetTableInfoUnlocked(ColocationId colocation_id) const {
@@ -916,6 +935,10 @@ RaftGroupMetadata::RaftGroupMetadata(
   CHECK_GT(data.table_info->schema().num_key_columns(), 0);
   kv_store_.tables.emplace(primary_table_id_, data.table_info);
   kv_store_.UpdateColocationMap(data.table_info);
+  for (const auto& colocated_table : data.colocated_tables_infos) {
+    kv_store_.tables.emplace(colocated_table->table_id, colocated_table);
+    kv_store_.UpdateColocationMap(colocated_table);
+  }
   if (FLAGS_TEST_invalidate_last_change_metadata_op) {
     last_applied_change_metadata_op_id_ = OpId::Invalid();
   } else {
@@ -965,7 +988,7 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
     std::lock_guard lock(data_mutex_);
 
     // Verify that the Raft group id matches with the one in the protobuf.
-    if (superblock.raft_group_id() != raft_group_id_) {
+    if (!raft_group_id_.empty() && superblock.raft_group_id() != raft_group_id_) {
       return STATUS(Corruption, "Expected id=" + raft_group_id_ +
                                 " found " + superblock.raft_group_id(),
                                 superblock.DebugString());
@@ -1533,17 +1556,51 @@ Status RaftGroupMetadata::set_cdc_sdk_safe_time(const HybridTime& cdc_sdk_safe_t
   return Flush();
 }
 
+Status RaftGroupMetadata::set_all_cdc_retention_barriers(
+    int64 cdc_min_replicated_index,
+    bool set_cdc_min_replicated_index_check,
+    const OpId& cdc_min_checkpoint_op_id,
+    bool set_cdc_min_checkpoint_op_id_check,
+    const HybridTime& cdc_sdk_safe_time,
+    bool set_cdc_sdk_safe_time_check) {
+  {
+    std::lock_guard lock(data_mutex_);
+    if (set_cdc_min_replicated_index_check) {
+      cdc_min_replicated_index_ = cdc_min_replicated_index;
+    }
+
+    if (set_cdc_min_checkpoint_op_id_check) {
+      cdc_sdk_min_checkpoint_op_id_ = cdc_min_checkpoint_op_id;
+      if (cdc_min_checkpoint_op_id == OpId::Max() || cdc_min_checkpoint_op_id == OpId::Invalid()) {
+        // This means we no longer have an active CDC stream for the tablet.
+        is_under_cdc_sdk_replication_ = false;
+      } else if (cdc_min_checkpoint_op_id.valid()) {
+        // Any OpId less than OpId::Max() indicates we are actively streaming from this tablet.
+        is_under_cdc_sdk_replication_ = true;
+      }
+    }
+
+    if (set_cdc_sdk_safe_time_check) {
+      cdc_sdk_safe_time_ = cdc_sdk_safe_time;
+    }
+  }
+  return Flush();
+}
+
 Result<bool> RaftGroupMetadata::SetAllCDCRetentionBarriers(
     int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, HybridTime cdc_sdk_history_cutoff,
     bool require_history_cutoff, bool initial_retention_barrier) {
 
+  bool set_cdc_min_replicated_index_check = false;
+  bool set_cdc_min_checkpoint_op_id_check = false;
+  bool set_cdc_sdk_safe_time_check = false;
   // WAL retention
   //  cdc_min_replicated_index : indicates if a WAL segment is being used by CDC
   //                             and thus impacts GC of the WAL segments
   if (!initial_retention_barrier || cdc_min_replicated_index() > cdc_wal_index) {
     VLOG_WITH_PREFIX(1) << "Setting cdc_min_replicated index WAL retention barrier to "
                         << cdc_wal_index;
-    RETURN_NOT_OK(set_cdc_min_replicated_index(cdc_wal_index));
+    set_cdc_min_replicated_index_check = true;
   } else {
     VLOG_WITH_PREFIX(1) << "Skipping setting cdc_min_replicated index WAL retention barrier. "
                         << "Stricter requirement at " << cdc_min_replicated_index()
@@ -1556,7 +1613,7 @@ Result<bool> RaftGroupMetadata::SetAllCDCRetentionBarriers(
         cdc_sdk_safe_time() == HybridTime::kInvalid ||
         cdc_sdk_safe_time() > cdc_sdk_history_cutoff) {
       VLOG_WITH_PREFIX(1) << "Setting history retention barrier to " << cdc_sdk_history_cutoff;
-      RETURN_NOT_OK(set_cdc_sdk_safe_time(cdc_sdk_history_cutoff));
+      set_cdc_sdk_safe_time_check = true;
     } else {
       VLOG_WITH_PREFIX(1) << "Skipping setting history retention barrier. "
                           << "Stricter requirement at " << cdc_sdk_safe_time()
@@ -1570,15 +1627,25 @@ Result<bool> RaftGroupMetadata::SetAllCDCRetentionBarriers(
       cdc_sdk_min_checkpoint_op_id() == OpId::Invalid() ||
       cdc_sdk_min_checkpoint_op_id() > cdc_sdk_intents_op_id) {
     VLOG_WITH_PREFIX(1) << "Setting intents retention barrier to " << cdc_sdk_intents_op_id;
-    RETURN_NOT_OK(set_cdc_sdk_min_checkpoint_op_id(cdc_sdk_intents_op_id));
+    set_cdc_min_checkpoint_op_id_check = true;
   } else {
     VLOG_WITH_PREFIX(1) << "Skipping setting intents retention barrier. "
                         << "Stricter requirement at " << cdc_sdk_min_checkpoint_op_id()
                         << ", current requirement is for " << cdc_sdk_intents_op_id;
-    return false;
   }
 
-  return true;
+  if (set_cdc_min_replicated_index_check ||
+     set_cdc_min_checkpoint_op_id_check ||
+     set_cdc_sdk_safe_time_check) {
+    RETURN_NOT_OK(set_all_cdc_retention_barriers(cdc_wal_index,
+                                                set_cdc_min_replicated_index_check,
+                                                cdc_sdk_intents_op_id,
+                                                set_cdc_min_checkpoint_op_id_check,
+                                                cdc_sdk_history_cutoff,
+                                                set_cdc_sdk_safe_time_check));
+  }
+
+  return set_cdc_min_checkpoint_op_id_check;
 }
 
 Status RaftGroupMetadata::SetIsUnderXClusterReplicationAndFlush(

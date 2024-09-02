@@ -2,9 +2,11 @@
 
 package com.yugabyte.yw.forms;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModel;
@@ -69,6 +71,9 @@ public class UniverseTaskParams extends AbstractTaskParams {
     @ApiModelProperty(value = "YSQL RPC port")
     public int ysqlServerRpcPort;
 
+    @ApiModelProperty(value = "Internal YSQL RPC port")
+    public int internalYsqlServerRpcPort;
+
     @ApiModelProperty(value = "Node exporter port")
     public int nodeExporterPort;
 
@@ -97,6 +102,7 @@ public class UniverseTaskParams extends AbstractTaskParams {
       portsObj.yqlServerRpcPort = node.yqlServerRpcPort;
       portsObj.ysqlServerHttpPort = node.ysqlServerHttpPort;
       portsObj.ysqlServerRpcPort = node.ysqlServerRpcPort;
+      portsObj.internalYsqlServerRpcPort = node.internalYsqlServerRpcPort;
       portsObj.nodeExporterPort = node.nodeExporterPort;
       portsObj.otelCollectorMetricsPort = node.otelCollectorMetricsPort;
 
@@ -116,6 +122,7 @@ public class UniverseTaskParams extends AbstractTaskParams {
       node.yqlServerRpcPort = ports.yqlServerRpcPort;
       node.ysqlServerHttpPort = ports.ysqlServerHttpPort;
       node.ysqlServerRpcPort = ports.ysqlServerRpcPort;
+      node.internalYsqlServerRpcPort = ports.internalYsqlServerRpcPort;
       node.nodeExporterPort = ports.nodeExporterPort;
       node.otelCollectorMetricsPort = ports.otelCollectorMetricsPort;
     }
@@ -145,6 +152,7 @@ public class UniverseTaskParams extends AbstractTaskParams {
           && yqlServerRpcPort == ports.yqlServerRpcPort
           && ysqlServerHttpPort == ports.ysqlServerHttpPort
           && ysqlServerRpcPort == ports.ysqlServerRpcPort
+          && internalYsqlServerRpcPort == ports.internalYsqlServerRpcPort
           && nodeExporterPort == ports.nodeExporterPort
           && otelCollectorMetricsPort == ports.otelCollectorMetricsPort;
     }
@@ -305,4 +313,13 @@ public class UniverseTaskParams extends AbstractTaskParams {
   public Users creatingUser;
 
   public String platformUrl;
+
+  @ApiModelProperty(value = "YbaApi Internal. Run only prechecks during task run")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.23.0.0")
+  public Boolean runOnlyPrechecks = false;
+
+  @JsonIgnore
+  public boolean isRunOnlyPrechecks() {
+    return runOnlyPrechecks;
+  }
 }

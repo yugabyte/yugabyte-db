@@ -107,7 +107,8 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
 
       Universe universe =
           lockAndFreezeUniverseForUpdate(
-              taskParams().expectedUniverseVersion, null /* Txn callback */);
+              taskParams().expectedUniverseVersion,
+              u -> setCommunicationPortsForNodes(true) /* Txn callback */);
       kubernetesStatus.startYBUniverseEventStatus(
           universe,
           taskParams().getKubernetesResourceDetails(),

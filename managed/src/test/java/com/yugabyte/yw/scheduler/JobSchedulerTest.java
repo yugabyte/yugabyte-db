@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ShutdownHookHandler;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.JobInstance;
@@ -23,12 +24,13 @@ import com.yugabyte.yw.models.JobSchedule;
 import com.yugabyte.yw.models.helpers.schedule.JobConfig;
 import com.yugabyte.yw.models.helpers.schedule.ScheduleConfig;
 import com.yugabyte.yw.models.helpers.schedule.ScheduleConfig.ScheduleType;
-import java.time.Duration;
+import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import lombok.Getter;
 import lombok.Setter;
@@ -41,6 +43,7 @@ import play.mvc.Http.Status;
 @RunWith(MockitoJUnitRunner.class)
 public class JobSchedulerTest extends FakeDBApplication {
   private Injector injector;
+  private ShutdownHookHandler shutdownHookHandler;
   private Customer customer;
   private RuntimeConfGetter confGetter;
   private PlatformExecutorFactory platformExecutorFactory;
@@ -51,11 +54,18 @@ public class JobSchedulerTest extends FakeDBApplication {
   public void setUp() {
     customer = ModelFactory.testCustomer();
     injector = app.injector().instanceOf(Injector.class);
+    shutdownHookHandler = app.injector().instanceOf(ShutdownHookHandler.class);
     confGetter = app.injector().instanceOf(RuntimeConfGetter.class);
     platformExecutorFactory = app.injector().instanceOf(PlatformExecutorFactory.class);
     platformScheduler = app.injector().instanceOf(PlatformScheduler.class);
     jobScheduler =
-        spy(new JobScheduler(injector, confGetter, platformExecutorFactory, platformScheduler));
+        spy(
+            new JobScheduler(
+                injector,
+                shutdownHookHandler,
+                confGetter,
+                platformExecutorFactory,
+                platformScheduler));
   }
 
   @SuppressWarnings("serial")
@@ -103,8 +113,7 @@ public class JobSchedulerTest extends FakeDBApplication {
 
   @Test
   public void testJobScheduleSubmit() {
-    ScheduleConfig scheduleConfig =
-        ScheduleConfig.builder().interval(Duration.ofSeconds(5)).build();
+    ScheduleConfig scheduleConfig = ScheduleConfig.builder().intervalSecs(5).build();
     JobSchedule jobSchedule1 = createJobSchedule(scheduleConfig, new TestJobConfig());
     Set<Class<? extends JobConfig>> submittedJobConfigClasses = new HashSet<>();
     submittedJobConfigClasses.add(TestJobConfig.class);
@@ -112,8 +121,8 @@ public class JobSchedulerTest extends FakeDBApplication {
     UUID uuid = jobScheduler.submitSchedule(jobSchedule1);
     JobSchedule dbJobSchedule = JobSchedule.getOrBadRequest(uuid);
     assertEquals(
-        jobSchedule1.getScheduleConfig().getInterval(),
-        dbJobSchedule.getScheduleConfig().getInterval());
+        jobSchedule1.getScheduleConfig().getIntervalSecs(),
+        dbJobSchedule.getScheduleConfig().getIntervalSecs());
     assertEquals(jobSchedule1.getJobConfig().getClass(), dbJobSchedule.getJobConfig().getClass());
     jobScheduler.submitSchedule(createJobSchedule(scheduleConfig, new DummyTestJobConfig()));
     List<JobSchedule> jobSchedules = JobSchedule.getAll();
@@ -130,8 +139,7 @@ public class JobSchedulerTest extends FakeDBApplication {
 
   @Test
   public void testJobScheduleDelete() {
-    ScheduleConfig scheduleConfig =
-        ScheduleConfig.builder().interval(Duration.ofSeconds(5)).build();
+    ScheduleConfig scheduleConfig = ScheduleConfig.builder().intervalSecs(5).build();
     UUID jobScheduleUuid1 =
         jobScheduler.submitSchedule(createJobSchedule(scheduleConfig, new TestJobConfig()));
     UUID jobScheduleUuid2 =
@@ -152,10 +160,7 @@ public class JobSchedulerTest extends FakeDBApplication {
   @Test
   public void testJobInstanceSuccessExecution() throws Exception {
     ScheduleConfig scheduleConfig =
-        ScheduleConfig.builder()
-            .type(ScheduleType.FIXED_DELAY)
-            .interval(Duration.ofMillis(1))
-            .build();
+        ScheduleConfig.builder().type(ScheduleType.FIXED_DELAY).intervalSecs(1).build();
     JobSchedule jobSchedule = createJobSchedule(scheduleConfig, new TestJobConfig());
     UUID uuid = jobScheduler.submitSchedule(jobSchedule);
     JobSchedule dbJobSchedule = JobSchedule.getOrBadRequest(uuid);
@@ -168,6 +173,7 @@ public class JobSchedulerTest extends FakeDBApplication {
     assertEquals(dbJobSchedule.getNextStartTime(), jobInstance.getStartTime());
     CompletableFuture<?> future = jobScheduler.executeJobInstance(jobInstance);
     assertNotNull(future);
+    future.get(10, TimeUnit.SECONDS);
     // Fetch the latest.
     dbJobSchedule = JobSchedule.getOrBadRequest(uuid);
     jobInstance = JobInstance.getOrBadRequest(jobInstance.getUuid());
@@ -182,10 +188,7 @@ public class JobSchedulerTest extends FakeDBApplication {
   @Test
   public void testJobInstanceFailedExecution() throws Exception {
     ScheduleConfig scheduleConfig =
-        ScheduleConfig.builder()
-            .type(ScheduleType.FIXED_DELAY)
-            .interval(Duration.ofMillis(1))
-            .build();
+        ScheduleConfig.builder().type(ScheduleType.FIXED_DELAY).intervalSecs(1).build();
     TestJobConfig jobConfig = new TestJobConfig();
     jobConfig.setFail(true);
     JobSchedule jobSchedule = createJobSchedule(scheduleConfig, jobConfig);
@@ -207,10 +210,7 @@ public class JobSchedulerTest extends FakeDBApplication {
   @Test
   public void testJobInstanceSkippedExecution() throws Exception {
     ScheduleConfig scheduleConfig =
-        ScheduleConfig.builder()
-            .type(ScheduleType.FIXED_DELAY)
-            .interval(Duration.ofMillis(1))
-            .build();
+        ScheduleConfig.builder().type(ScheduleType.FIXED_DELAY).intervalSecs(1).build();
     TestJobConfig jobConfig = new TestJobConfig();
     jobConfig.setSkip(true);
     JobSchedule jobSchedule = createJobSchedule(scheduleConfig, jobConfig);
@@ -232,5 +232,115 @@ public class JobSchedulerTest extends FakeDBApplication {
     assertNotNull(jobInstance.getEndTime());
     assertTrue(jobSchedule.getNextStartTime().after(jobInstance.getEndTime()));
     assertEquals(JobInstance.State.SKIPPED, jobInstance.getState());
+  }
+
+  @Test
+  public void testJobScheduleResetCounters() throws Exception {
+    ScheduleConfig scheduleConfig =
+        ScheduleConfig.builder().type(ScheduleType.FIXED_DELAY).intervalSecs(1).build();
+    TestJobConfig jobConfig = new TestJobConfig();
+    jobConfig.setFail(true);
+    JobSchedule jobSchedule = createJobSchedule(scheduleConfig, jobConfig);
+    UUID uuid = jobScheduler.submitSchedule(jobSchedule);
+    List<JobInstance> jobInstances = JobInstance.getAll(uuid);
+    assertEquals(1, jobInstances.size());
+    JobInstance jobInstance = jobInstances.get(0);
+    jobScheduler.executeJobInstance(jobInstance);
+    jobInstance = JobInstance.getOrBadRequest(jobInstance.getUuid());
+    assertEquals(JobInstance.State.FAILED, jobInstance.getState());
+    // Fetch the latest.
+    jobSchedule = JobSchedule.getOrBadRequest(uuid);
+    assertEquals(1, jobSchedule.getExecutionCount());
+    assertEquals(1, jobSchedule.getFailedCount());
+    jobScheduler.resetCounters(uuid);
+    jobSchedule = JobSchedule.getOrBadRequest(uuid);
+    assertEquals(0, jobSchedule.getExecutionCount());
+    assertEquals(0, jobSchedule.getFailedCount());
+  }
+
+  @Test
+  public void testJobScheduleSnooze() throws Exception {
+    ScheduleConfig scheduleConfig =
+        ScheduleConfig.builder().type(ScheduleType.FIXED_DELAY).intervalSecs(3).build();
+    TestJobConfig jobConfig = new TestJobConfig();
+    JobSchedule jobSchedule = createJobSchedule(scheduleConfig, jobConfig);
+    UUID uuid = jobScheduler.submitSchedule(jobSchedule);
+    long snoozeSecs = 5 * 60;
+    Instant beforeSnooze = Instant.now().plusSeconds(snoozeSecs);
+    Thread.sleep(1000);
+    jobScheduler.snooze(uuid, snoozeSecs);
+    Thread.sleep(1000);
+    Instant afterSnooze = Instant.now().plusSeconds(snoozeSecs);
+    List<JobInstance> jobInstances = JobInstance.getAll(uuid);
+    assertEquals(0, jobInstances.size());
+    jobSchedule = JobSchedule.getOrBadRequest(uuid);
+    assertTrue(
+        "Start time " + jobSchedule.getNextStartTime() + " must be after " + beforeSnooze,
+        jobSchedule.getNextStartTime().toInstant().isAfter(beforeSnooze));
+    assertTrue(
+        "Start time " + jobSchedule.getNextStartTime() + " must be before " + afterSnooze,
+        jobSchedule.getNextStartTime().toInstant().isBefore(afterSnooze));
+    // Toggling disable must not change the snooze time.
+    jobScheduler.disableSchedule(uuid, true);
+    jobScheduler.disableSchedule(uuid, false);
+    jobSchedule = JobSchedule.getOrBadRequest(uuid);
+    assertTrue(
+        "Start time " + jobSchedule.getNextStartTime() + " must be after " + beforeSnooze,
+        jobSchedule.getNextStartTime().toInstant().isAfter(beforeSnooze));
+    assertTrue(
+        "Start time " + jobSchedule.getNextStartTime() + " must be before " + afterSnooze,
+        jobSchedule.getNextStartTime().toInstant().isBefore(afterSnooze));
+    jobScheduler.updateSchedule(
+        uuid, jobSchedule.getScheduleConfig().toBuilder().intervalSecs(5).build());
+    jobSchedule = JobSchedule.getOrBadRequest(uuid);
+    // Updating schedule config must not change the snooze time.
+    assertTrue(
+        "Start time " + jobSchedule.getNextStartTime() + " must be after " + beforeSnooze,
+        jobSchedule.getNextStartTime().toInstant().isAfter(beforeSnooze));
+    assertTrue(
+        "Start time " + jobSchedule.getNextStartTime() + " must be before " + afterSnooze,
+        jobSchedule.getNextStartTime().toInstant().isBefore(afterSnooze));
+  }
+
+  @Test
+  public void testHandleRestart() {
+    ScheduleConfig scheduleConfig = ScheduleConfig.builder().intervalSecs(5).build();
+    UUID uuid1 =
+        jobScheduler.submitSchedule(createJobSchedule(scheduleConfig, new TestJobConfig()));
+    UUID uuid2 =
+        jobScheduler.submitSchedule(createJobSchedule(scheduleConfig, new DummyTestJobConfig()));
+    JobInstance.getAll()
+        .forEach(
+            i -> {
+              if (uuid1.equals(i.getJobScheduleUuid())) {
+                i.setState(JobInstance.State.RUNNING);
+              } else if (uuid2.equals(i.getJobScheduleUuid())) {
+                i.setState(JobInstance.State.SCHEDULED);
+              } else {
+                fail();
+              }
+              i.save();
+              JobSchedule jobSchedule = JobSchedule.getOrBadRequest(i.getJobScheduleUuid());
+              jobSchedule.setState(JobSchedule.State.ACTIVE);
+              jobSchedule.save();
+            });
+    jobScheduler.handleRestart();
+    JobSchedule.getAll()
+        .forEach(
+            s -> {
+              assertEquals(JobSchedule.State.INACTIVE, s.getState());
+            });
+    JobInstance.getAll()
+        .forEach(
+            i -> {
+              if (uuid1.equals(i.getJobScheduleUuid())) {
+                i.setState(JobInstance.State.FAILED);
+              } else if (uuid2.equals(i.getJobScheduleUuid())) {
+                i.setState(JobInstance.State.SKIPPED);
+              } else {
+                fail();
+              }
+              assertTrue("End time for job instance must be set", i.getEndTime() != null);
+            });
   }
 }

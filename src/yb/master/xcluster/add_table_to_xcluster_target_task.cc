@@ -168,7 +168,7 @@ Status AddTableToXClusterTargetTask::AddTableToReplicationGroup(
   req.set_replication_group_id(replication_group_id.ToString());
   req.add_producer_table_ids_to_add(producer_table_id);
   req.add_producer_bootstrap_ids_to_add(bootstrap_id);
-  RETURN_NOT_OK(catalog_manager_.AlterUniverseReplication(&req, &resp, nullptr /* rpc */, epoch_));
+  RETURN_NOT_OK(xcluster_manager_.AlterUniverseReplication(&req, &resp, nullptr /* rpc */, epoch_));
 
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
@@ -179,8 +179,10 @@ Status AddTableToXClusterTargetTask::AddTableToReplicationGroup(
 }
 
 Status AddTableToXClusterTargetTask::WaitForSetupUniverseReplicationToFinish() {
-  auto operation_result = VERIFY_RESULT(IsSetupUniverseReplicationDone(
-      xcluster::GetAlterReplicationGroupId(universe_->ReplicationGroupId()), catalog_manager_));
+  // Skip the health checks since we will wait for the safe time to advance in the next step.
+  auto operation_result = VERIFY_RESULT(xcluster_manager_.IsSetupUniverseReplicationDone(
+      xcluster::GetAlterReplicationGroupId(universe_->ReplicationGroupId()),
+      /*skip_health_check=*/true));
 
   if (!operation_result.done()) {
     VLOG_WITH_PREFIX(2) << "Waiting for setup universe replication to finish";
@@ -259,8 +261,8 @@ Status AddTableToXClusterTargetTask::WaitForXClusterSafeTimeCaughtUp() {
     return Status::OK();
   }
 
-  LOG(INFO) << "Table " << table_info_->ToString()
-            << " successfully added to xCluster universe replication";
+  LOG_WITH_PREFIX(INFO) << "Table " << table_info_->ToString()
+                        << " successfully added to xCluster universe replication";
 
   RETURN_NOT_OK(CleanupAndComplete());
   return Status::OK();
@@ -268,8 +270,7 @@ Status AddTableToXClusterTargetTask::WaitForXClusterSafeTimeCaughtUp() {
 
 Status AddTableToXClusterTargetTask::CleanupAndComplete() {
   // Ensure that we clean up the xcluster_source_table_id field.
-  RETURN_NOT_OK(
-      catalog_manager_.GetXClusterManager()->ClearXClusterSourceTableId(table_info_, epoch_));
+  RETURN_NOT_OK(xcluster_manager_.ClearXClusterSourceTableId(table_info_, epoch_));
 
   Complete();
   return Status::OK();

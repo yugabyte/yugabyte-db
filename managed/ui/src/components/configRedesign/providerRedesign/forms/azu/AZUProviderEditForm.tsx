@@ -377,7 +377,7 @@ export const AZUProviderEditForm = ({
   const inUseZones = getInUseAzs(providerConfig.uuid, linkedUniverses, regionSelection?.code);
   const isEditInUseProviderEnabled = runtimeConfigEntries.some(
     (config: any) =>
-      config.key === RuntimeConfigKey.EDIT_IN_USE_PORIVDER_UI_FEATURE_FLAG &&
+      config.key === RuntimeConfigKey.EDIT_IN_USE_PROVIDER_UI_FEATURE_FLAG &&
       config.value === 'true'
   );
 
@@ -882,6 +882,8 @@ const constructDefaultFormValues = (
     vnet: region.details.cloudInfo.azu.vnet,
     securityGroupId: region.details.cloudInfo.azu.securityGroupId,
     ybImage: region.details.cloudInfo.azu.ybImage ?? '',
+    azuNetworkRGOverride: region.details.cloudInfo.azu.azuNetworkRGOverride ?? '',
+    azuRGOverride: region.details.cloudInfo.azu.azuRGOverride ?? '',
     zones: region.zones
   })),
   sshKeypairManagement: getLatestAccessKey(providerConfig.allAccessKeys)?.keyInfo.managementState,
@@ -978,6 +980,12 @@ const constructProviderPayload = async (
                 }),
                 ...(regionFormValues.ybImage && {
                   ybImage: regionFormValues.ybImage
+                }),
+                ...(regionFormValues.azuNetworkRGOverride && {
+                  azuNetworkRGOverride: regionFormValues.azuNetworkRGOverride
+                }),
+                ...(regionFormValues.azuRGOverride && {
+                  azuRGOverride: regionFormValues.azuRGOverride
                 })
               }
             }

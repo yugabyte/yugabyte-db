@@ -19,6 +19,7 @@
 #include <boost/assign.hpp>
 #include <gtest/gtest.h>
 
+#include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/cdc/cdc_state_table.h"
@@ -124,8 +125,6 @@ DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_int32(log_min_segments_to_retain);
 DECLARE_uint64(log_segment_size_bytes);
 DECLARE_int64(log_stop_retaining_min_disk_mb);
-DECLARE_int32(ns_replication_sync_backoff_secs);
-DECLARE_int32(ns_replication_sync_retry_secs);
 DECLARE_uint32(replication_failure_delay_exponent);
 DECLARE_int64(rpc_throttle_threshold_bytes);
 DECLARE_int32(transaction_table_num_tablets);
@@ -153,6 +152,7 @@ DECLARE_bool(xcluster_skip_health_check_on_replication_setup);
 
 namespace yb {
 
+using cdc::CDCServiceImpl;
 using client::YBClient;
 using client::YBSchema;
 using client::YBSchemaBuilder;
@@ -162,6 +162,7 @@ using client::YBTableAlterer;
 using client::YBTableName;
 using master::MiniMaster;
 
+
 using SessionTransactionPair = std::pair<client::YBSessionPtr, client::YBTransactionPtr>;
 
 struct XClusterTestParams {
@@ -170,6 +171,10 @@ struct XClusterTestParams {
 
   bool transactional_table;  // For XCluster + CQL only. All YSQL tables are transactional.
 };
+
+CDCServiceImpl* CDCService(tserver::TabletServer* tserver) {
+  return down_cast<CDCServiceImpl*>(tserver->GetCDCService().get());
+}
 
 class XClusterTestNoParam : public XClusterYcqlTestBase {
  public:
@@ -645,8 +650,10 @@ TEST_P(XClusterTest, SetupUniverseReplicationErrorChecking) {
     ASSERT_OK(
         master_proxy->SetupUniverseReplication(setup_universe_req, &setup_universe_resp, &rpc));
     ASSERT_TRUE(setup_universe_resp.has_error());
-    std::string prefix = "Producer universe ID must be provided";
-    ASSERT_TRUE(setup_universe_resp.error().status().message().substr(0, prefix.size()) == prefix);
+    ASSERT_STR_CONTAINS(
+        setup_universe_resp.error().status().message(),
+        "Empty required arguments: [replication_group_id, producer_master_addresses, "
+        "producer_table_ids]");
   }
 
   {
@@ -658,8 +665,9 @@ TEST_P(XClusterTest, SetupUniverseReplicationErrorChecking) {
     ASSERT_OK(
         master_proxy->SetupUniverseReplication(setup_universe_req, &setup_universe_resp, &rpc));
     ASSERT_TRUE(setup_universe_resp.has_error());
-    std::string prefix = "Producer master address must be provided";
-    ASSERT_TRUE(setup_universe_resp.error().status().message().substr(0, prefix.size()) == prefix);
+    ASSERT_STR_CONTAINS(
+        setup_universe_resp.error().status().message(),
+        "Empty required arguments: [producer_master_addresses, producer_table_ids]");
   }
 
   {
@@ -672,13 +680,14 @@ TEST_P(XClusterTest, SetupUniverseReplicationErrorChecking) {
     HostPortsToPBs(hp_vec, setup_universe_req.mutable_producer_master_addresses());
     setup_universe_req.add_producer_table_ids("a");
     setup_universe_req.add_producer_table_ids("b");
-    setup_universe_req.add_producer_bootstrap_ids("c");
+    setup_universe_req.add_producer_bootstrap_ids(xrepl::StreamId::GenerateRandom().ToString());
     master::SetupUniverseReplicationResponsePB setup_universe_resp;
     ASSERT_OK(
         master_proxy->SetupUniverseReplication(setup_universe_req, &setup_universe_resp, &rpc));
     ASSERT_TRUE(setup_universe_resp.has_error());
-    std::string prefix = "Number of bootstrap ids must be equal to number of tables";
-    ASSERT_TRUE(setup_universe_resp.error().status().message().substr(0, prefix.size()) == prefix);
+    ASSERT_STR_CONTAINS(
+        setup_universe_resp.error().status().message(),
+        "Number of bootstrap ids must be equal to number of tables");
   }
 
   {
@@ -694,14 +703,14 @@ TEST_P(XClusterTest, SetupUniverseReplicationErrorChecking) {
 
     setup_universe_req.add_producer_table_ids("prod_table_id_1");
     setup_universe_req.add_producer_table_ids("prod_table_id_2");
-    setup_universe_req.add_producer_bootstrap_ids("prod_bootstrap_id_1");
-    setup_universe_req.add_producer_bootstrap_ids("prod_bootstrap_id_2");
+    setup_universe_req.add_producer_bootstrap_ids(xrepl::StreamId::GenerateRandom().ToString());
+    setup_universe_req.add_producer_bootstrap_ids(xrepl::StreamId::GenerateRandom().ToString());
 
     ASSERT_OK(
         master_proxy->SetupUniverseReplication(setup_universe_req, &setup_universe_resp, &rpc));
     ASSERT_TRUE(setup_universe_resp.has_error());
-    std::string substring = "belongs to the target universe";
-    ASSERT_TRUE(setup_universe_resp.error().status().message().find(substring) != string::npos);
+    ASSERT_STR_CONTAINS(
+        setup_universe_resp.error().status().message(), "belongs to the target universe");
   }
 
   {
@@ -720,14 +729,15 @@ TEST_P(XClusterTest, SetupUniverseReplicationErrorChecking) {
 
     setup_universe_req.add_producer_table_ids("prod_table_id_1");
     setup_universe_req.add_producer_table_ids("prod_table_id_2");
-    setup_universe_req.add_producer_bootstrap_ids("prod_bootstrap_id_1");
-    setup_universe_req.add_producer_bootstrap_ids("prod_bootstrap_id_2");
+    setup_universe_req.add_producer_bootstrap_ids(xrepl::StreamId::GenerateRandom().ToString());
+    setup_universe_req.add_producer_bootstrap_ids(xrepl::StreamId::GenerateRandom().ToString());
 
     ASSERT_OK(
         master_proxy->SetupUniverseReplication(setup_universe_req, &setup_universe_resp, &rpc));
     ASSERT_TRUE(setup_universe_resp.has_error());
-    std::string prefix = "The request UUID and cluster UUID are identical.";
-    ASSERT_TRUE(setup_universe_resp.error().status().message().substr(0, prefix.size()) == prefix);
+    ASSERT_STR_CONTAINS(
+        setup_universe_resp.error().status().message(),
+        "Replication group Id cannot be the same as the cluster UUID");
   }
 }
 
@@ -1385,8 +1395,7 @@ TEST_P(XClusterTest, PollAndObserveIdleDampening) {
   ASSERT_ONLY_NOTNULL(cdc_ts);
 
   // Find the CDCTabletMetric associated with the above pair.
-  auto cdc_service = dynamic_cast<cdc::CDCServiceImpl*>(
-      cdc_ts->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+  auto cdc_service = CDCService(cdc_ts);
   auto metrics = ASSERT_RESULT(GetXClusterTabletMetrics(*cdc_service, tablet_id, stream_id));
 
   /***********************************
@@ -2527,10 +2536,12 @@ TEST_P(XClusterTest, TestAlterWhenProducerIsInaccessible) {
 
   // Ensure that we just return an error and don't have a fatal.
   ASSERT_OK(master_proxy->AlterUniverseReplication(alter_req, &alter_resp, &rpc));
-  ASSERT_TRUE(alter_resp.has_error());
+  auto is_done = ASSERT_RESULT(
+      WaitForSetupUniverseReplication(xcluster::GetAlterReplicationGroupId(kReplicationGroupId)));
+  ASSERT_FALSE(is_done.status().ok());
 }
 
-TEST_P(XClusterTest, TestFailedUniverseDeletionOnRestart) {
+TEST_P(XClusterTest, TestFailedUniverseDeletion) {
   ASSERT_OK(SetUpWithParams({8, 4}, {6, 6}, 3));
 
   auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
@@ -2550,25 +2561,17 @@ TEST_P(XClusterTest, TestFailedUniverseDeletionOnRestart) {
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
   ASSERT_OK(master_proxy->SetupUniverseReplication(req, &resp, &rpc));
-  // Sleep to allow the universe to be marked as failed
-  std::this_thread::sleep_for(2s);
+
+  auto is_done = ASSERT_RESULT(WaitForSetupUniverseReplication());
+  ASSERT_TRUE(is_done.status().IsNotFound());
 
   master::GetUniverseReplicationRequestPB new_req;
   new_req.set_replication_group_id(kReplicationGroupId.ToString());
   master::GetUniverseReplicationResponsePB new_resp;
   rpc.Reset();
   ASSERT_OK(master_proxy->GetUniverseReplication(new_req, &new_resp, &rpc));
-  ASSERT_TRUE(new_resp.entry().state() == master::SysUniverseReplicationEntryPB::FAILED);
-
-  // Restart the ENTIRE Consumer cluster.
-  ASSERT_OK(consumer_cluster()->RestartSync());
-
-  // Should delete on restart
-  ASSERT_OK(WaitForSetupUniverseReplicationCleanUp(kReplicationGroupId));
-  rpc.Reset();
-  Status s = master_proxy->GetUniverseReplication(new_req, &new_resp, &rpc);
-  ASSERT_OK(s);
   ASSERT_TRUE(new_resp.has_error());
+  ASSERT_TRUE(StatusFromPB(new_resp.error().status()).IsNotFound());
 }
 
 TEST_P(XClusterTest, TestFailedDeleteOnRestart) {
@@ -2652,26 +2655,24 @@ TEST_P(XClusterTest, TestFailedAlterUniverseOnRestart) {
 
   ASSERT_OK(master_proxy->AlterUniverseReplication(alter_req, &alter_resp, &rpc));
 
+  ASSERT_OK(
+      WaitForSetupUniverseReplication(xcluster::GetAlterReplicationGroupId(kReplicationGroupId)));
+
   // Restart the ENTIRE Consumer cluster.
   ASSERT_OK(consumer_cluster()->RestartSync());
 
-  // Wait for alter universe to be deleted on start up
-  ASSERT_OK(WaitForSetupUniverseReplicationCleanUp(
-      xcluster::GetAlterReplicationGroupId(kReplicationGroupId)));
-
   // Change should not have gone through
-  new_req.set_replication_group_id(kReplicationGroupId.ToString());
   rpc.Reset();
   ASSERT_OK(master_proxy->GetUniverseReplication(new_req, &new_resp, &rpc));
-  ASSERT_NE(new_resp.entry().tables_size(), 2);
+  ASSERT_NE(new_resp.entry().tables_size(), 2) << new_resp.ShortDebugString();
 
   // Check that the unfinished alter universe was deleted on start up
   rpc.Reset();
   new_req.set_replication_group_id(
       xcluster::GetAlterReplicationGroupId(kReplicationGroupId).ToString());
-  Status s = master_proxy->GetUniverseReplication(new_req, &new_resp, &rpc);
-  ASSERT_OK(s);
+  ASSERT_OK(master_proxy->GetUniverseReplication(new_req, &new_resp, &rpc));
   ASSERT_TRUE(new_resp.has_error());
+  ASSERT_TRUE(StatusFromPB(new_resp.error().status()).IsNotFound());
 }
 
 TEST_P(XClusterTest, TestAlterUniverseRemoveTableAndDrop) {
@@ -2743,8 +2744,7 @@ TEST_P(XClusterTest, TestNonZeroLagMetricsWithoutGetChange) {
 
   // Check that the CDC enabled flag is true.
   tserver::TabletServer* cdc_ts = producer_cluster()->mini_tablet_server(0)->server();
-  auto cdc_service = dynamic_cast<cdc::CDCServiceImpl*>(
-      cdc_ts->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+  auto cdc_service = CDCService(cdc_ts);
 
   ASSERT_OK(WaitFor(
       [&]() { return cdc_service->CDCEnabled(); }, MonoDelta::FromSeconds(30), "IsCDCEnabled"));
@@ -3489,13 +3489,15 @@ TEST_F_EX(XClusterTest, CdcCheckpointPeerMove, XClusterTestNoParam) {
           int64_t min_found = std::numeric_limits<int64_t>::max();
           int64_t max_found = std::numeric_limits<int64_t>::min();
           for (auto& tablet_server : producer_cluster()->mini_tablet_servers()) {
+            auto cdc_service = CDCService(tablet_server->server());
             for (const auto& tablet_peer :
                  tablet_server->server()->tablet_manager()->GetTabletPeers()) {
               if (tablet_peer->tablet_id() != tablet_id) {
                 continue;
               }
               peer_count++;
-              auto cdc_checkpoint = tablet_peer->get_cdc_min_replicated_index();
+              auto cdc_checkpoint =
+                  cdc_service->GetXClusterMinRequiredIndex(tablet_peer->tablet_id());
               LOG(INFO) << "TServer: " << tablet_server->server()->ToString()
                         << ", CDC min replicated index: " << cdc_checkpoint;
               if (cdc_checkpoint == std::numeric_limits<int64_t>::max() ||
@@ -4069,7 +4071,7 @@ TEST_F_EX(XClusterTest, FailedSetupStreamUpdate, XClusterTestNoParam) {
 
   ASSERT_NOK_STR_CONTAINS(
       SetupUniverseReplication(producer_tables_, bootstrap_ids),
-      "Unable to update xrepl stream options on source universe");
+      "Test flag to fail setup stream update is set");
 
   master::ListCDCStreamsResponsePB stream_resp;
   ASSERT_OK(GetCDCStreamForTable(producer_table_->id(), &stream_resp));

@@ -1,20 +1,20 @@
 import { useState } from 'react';
 import { AxiosError } from 'axios';
-import { Box, makeStyles, Typography, useTheme } from '@material-ui/core';
+import { Box, Typography, useTheme } from '@material-ui/core';
 import { toast } from 'react-toastify';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { useTranslation } from 'react-i18next';
-import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
+import { FormProvider, useForm } from 'react-hook-form';
 
 import {
   createXClusterConfig,
   CreateXClusterConfigRequest,
   fetchTablesInUniverse,
   fetchTaskUntilItCompletes,
-  fetchUniverseDiskUsageMetric
+  isBootstrapRequired
 } from '../../../actions/xClusterReplication';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
-import { getTablesForBootstrapping, parseFloatIfDefined } from '../ReplicationUtils';
+import { getCategorizedNeedBootstrapPerTableResponse } from '../ReplicationUtils';
 import { assertUnreachableCase, handleServerError } from '../../../utils/errorHandlingUtils';
 import {
   api,
@@ -26,21 +26,14 @@ import { YBButton, YBModal, YBModalProps } from '../../../redesign/components';
 import { StorageConfigOption } from '../sharedComponents/ReactSelectStorageConfig';
 import { CurrentFormStep } from './CurrentFormStep';
 import {
-  BOOTSTRAP_MIN_FREE_DISK_SPACE_GB,
   XClusterConfigAction,
   XClusterConfigType,
   XCLUSTER_UNIVERSE_TABLE_FILTERS
 } from '../constants';
-import { RuntimeConfigKey } from '../../../redesign/helpers/constants';
 
-import { XClusterTableType } from '../XClusterTypes';
-import {
-  TableType,
-  TableTypeLabel,
-  Universe,
-  UniverseNamespace,
-  YBTable
-} from '../../../redesign/helpers/dtos';
+import { CategorizedNeedBootstrapPerTableResponse, XClusterTableType } from '../XClusterTypes';
+import { TableType, TableTypeLabel, Universe, YBTable } from '../../../redesign/helpers/dtos';
+import { XClusterConfigNeedBootstrapPerTableResponse } from '../dtos';
 
 import toastStyles from '../../../redesign/styles/toastStyles.module.scss';
 
@@ -51,12 +44,13 @@ interface CreateConfigModalProps {
 
 export interface CreateXClusterConfigFormValues {
   configName: string;
-  targetUniverse: { label: string; value: Universe };
+  targetUniverse: { label: string; value: Universe; isDisabled: boolean; disabledReason?: string };
   tableType: { label: string; value: XClusterTableType };
   isTransactionalConfig: boolean;
   namespaceUuids: string[];
   tableUuids: string[];
   storageConfig: StorageConfigOption;
+  skipBootstrap: boolean;
 }
 
 export interface CreateXClusterConfigFormErrors {
@@ -76,16 +70,10 @@ export interface CreateXClusterConfigFormWarnings {
 export const FormStep = {
   SELECT_TARGET_UNIVERSE: 'selectTargetUniverse',
   SELECT_TABLES: 'selectDatabases',
-  CONFIGURE_BOOTSTRAP: 'configureBootstrap',
+  BOOTSTRAP_SUMMARY: 'bootstrapSummary',
   CONFIRM_ALERT: 'configureAlert'
 } as const;
 export type FormStep = typeof FormStep[keyof typeof FormStep];
-
-const useStyles = makeStyles(() => ({
-  secondarySubmitButton: {
-    marginLeft: 'auto'
-  }
-}));
 
 const MODAL_NAME = 'CreateConfigModal';
 const FIRST_FORM_STEP = FormStep.SELECT_TARGET_UNIVERSE;
@@ -102,9 +90,11 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
     title: string;
     body: string;
   } | null>(null);
-  const [bootstrapRequiredTableUUIDs, setBootstrapRequiredTableUUIDs] = useState<string[]>([]);
+  const [
+    categorizedNeedBootstrapPerTableResponse,
+    setCategorizedNeedBootstrapPerTableResponse
+  ] = useState<CategorizedNeedBootstrapPerTableResponse | null>(null);
   const [isTableSelectionValidated, setIsTableSelectionValidated] = useState<boolean>(false);
-  const [skipBootstrapping, setSkipBootStrapping] = useState<boolean>(false);
   // The purpose of committedTargetUniverse is to store the targetUniverse field value prior
   // to the user submitting their target universe step.
   // This value updates whenever the user submits SelectTargetUniverseStep with a new
@@ -115,10 +105,11 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
   const queryClient = useQueryClient();
   const theme = useTheme();
-  const classes = useStyles();
 
   const xClusterConfigMutation = useMutation(
     (formValues: CreateXClusterConfigFormValues) => {
+      const bootstrapRequiredTableUuids =
+        categorizedNeedBootstrapPerTableResponse?.bootstrapTableUuids ?? [];
       const createXClusterConfigRequest: CreateXClusterConfigRequest = {
         name: formValues.configName,
         sourceUniverseUUID: sourceUniverseUuid,
@@ -128,10 +119,10 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
           : XClusterConfigType.BASIC,
         tables: formValues.tableUuids,
 
-        ...(!skipBootstrapping &&
-          bootstrapRequiredTableUUIDs.length > 0 && {
+        ...(!formValues.skipBootstrap &&
+          bootstrapRequiredTableUuids.length > 0 && {
             bootstrapParams: {
-              tables: bootstrapRequiredTableUUIDs,
+              tables: bootstrapRequiredTableUuids,
               allowBootstrap: true,
 
               backupRequestParams: {
@@ -307,12 +298,7 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
     setIsTableSelectionValidated(false);
   };
 
-  const sourceUniverseTables = sourceUniverseTablesQuery.data;
-
-  const onSubmit = async (
-    formValues: CreateXClusterConfigFormValues,
-    skipBootstrapping: boolean
-  ) => {
+  const onSubmit = async (formValues: CreateXClusterConfigFormValues) => {
     // When the user changes target universe or table type, the old table selection is no longer valid.
     const isTableSelectionInvalidated =
       formValues.targetUniverse.value.universeUUID !== committedTargetUniverseUuid ||
@@ -353,25 +339,25 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
           return;
         }
 
-        setSkipBootStrapping(skipBootstrapping);
-        if (skipBootstrapping) {
-          setCurrentFormStep(FormStep.CONFIRM_ALERT);
-          return;
-        }
-
         if (!isTableSelectionValidated) {
-          let bootstrapTableUuids: string[] | null = null;
+          let xClusterConfigNeedBootstrapPerTableResponse: XClusterConfigNeedBootstrapPerTableResponse = {};
           const hasSelectionError = false;
 
           if (formValues.tableUuids.length) {
             try {
-              bootstrapTableUuids = await getTablesForBootstrapping(
-                formValues.tableUuids,
+              xClusterConfigNeedBootstrapPerTableResponse = await isBootstrapRequired(
                 sourceUniverseUuid,
                 targetUniverseUuid,
-                sourceUniverseTables,
-                formValues.isTransactionalConfig ? XClusterConfigType.TXN : XClusterConfigType.BASIC
+                formValues.tableUuids,
+                formValues.isTransactionalConfig
+                  ? XClusterConfigType.TXN
+                  : XClusterConfigType.BASIC,
+                true /* includeDetails */
               );
+              const categorizedNeedBootstrapPerTableResponse = getCategorizedNeedBootstrapPerTableResponse(
+                xClusterConfigNeedBootstrapPerTableResponse
+              );
+              setCategorizedNeedBootstrapPerTableResponse(categorizedNeedBootstrapPerTableResponse);
             } catch (error: any) {
               toast.error(
                 <Box display="flex" flexDirection="column" gridGap={theme.spacing(1)}>
@@ -404,59 +390,24 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
             }
           }
 
-          if (bootstrapTableUuids?.length && bootstrapTableUuids?.length > 0) {
-            setBootstrapRequiredTableUUIDs(bootstrapTableUuids);
-
-            // Validate that the source universe has at least the recommended amount of
-            // disk space if bootstrapping is required.
-            const currentUniverseNodePrefix = sourceUniverse.universeDetails.nodePrefix;
-            const diskUsageMetric = await fetchUniverseDiskUsageMetric(currentUniverseNodePrefix);
-            const freeSpaceTrace = diskUsageMetric.disk_usage.data.find(
-              (trace) => trace.name === 'free'
-            );
-            const freeDiskSpace = parseFloatIfDefined(
-              freeSpaceTrace?.y[freeSpaceTrace.y.length - 1]
-            );
-
-            if (freeDiskSpace !== undefined && freeDiskSpace < BOOTSTRAP_MIN_FREE_DISK_SPACE_GB) {
-              setTableSelectionWarning({
-                title: t('warning.insufficientDiskSpace.title', {
-                  keyPrefix: TRANSLATION_KEY_PREFIX_SELECT_TABLE
-                }),
-                body: t('warning.insufficientDiskSpace.body', {
-                  keyPrefix: TRANSLATION_KEY_PREFIX_SELECT_TABLE,
-                  bootstrapMinFreeDiskSpaceGb: BOOTSTRAP_MIN_FREE_DISK_SPACE_GB
-                })
-              });
-            }
-          }
           if (hasSelectionError === false) {
             setIsTableSelectionValidated(true);
           }
+
+          setCurrentFormStep(FormStep.BOOTSTRAP_SUMMARY);
           return;
         }
-
-        if (bootstrapRequiredTableUUIDs.length > 0) {
-          setCurrentFormStep(FormStep.CONFIGURE_BOOTSTRAP);
-        } else {
-          setCurrentFormStep(FormStep.CONFIRM_ALERT);
-        }
+        setCurrentFormStep(FormStep.BOOTSTRAP_SUMMARY);
         return;
-      case FormStep.CONFIGURE_BOOTSTRAP:
+      case FormStep.BOOTSTRAP_SUMMARY:
         setCurrentFormStep(FormStep.CONFIRM_ALERT);
         return;
-      case FormStep.CONFIRM_ALERT: {
+      case FormStep.CONFIRM_ALERT:
         return xClusterConfigMutation.mutateAsync(formValues);
-      }
       default:
         return assertUnreachableCase(currentFormStep);
     }
   };
-  const onFormSubmit: SubmitHandler<CreateXClusterConfigFormValues> = async (formValues) =>
-    onSubmit(formValues, false);
-  const onSkipBootstrapAndSubmit: SubmitHandler<CreateXClusterConfigFormValues> = async (
-    formValues
-  ) => onSubmit(formValues, true);
   const handleBackNavigation = () => {
     // We can clear errors here because prior steps have already been validated
     // and future steps will be revalidated when the user clicks the next page button.
@@ -468,15 +419,11 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
       case FormStep.SELECT_TABLES:
         setCurrentFormStep(FormStep.SELECT_TARGET_UNIVERSE);
         return;
-      case FormStep.CONFIGURE_BOOTSTRAP:
+      case FormStep.BOOTSTRAP_SUMMARY:
         setCurrentFormStep(FormStep.SELECT_TABLES);
         return;
       case FormStep.CONFIRM_ALERT:
-        if (bootstrapRequiredTableUUIDs.length > 0 && !skipBootstrapping) {
-          setCurrentFormStep(FormStep.CONFIGURE_BOOTSTRAP);
-        } else {
-          setCurrentFormStep(FormStep.SELECT_TABLES);
-        }
+        setCurrentFormStep(FormStep.BOOTSTRAP_SUMMARY);
         return;
       default:
         assertUnreachableCase(currentFormStep);
@@ -484,11 +431,7 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
   };
 
   const tableType = formMethods.watch('tableType')?.value;
-  const getFormSubmitLabel = (
-    formStep: FormStep,
-    isTableSelectionValidated: boolean,
-    isBootstrapStepRequired: boolean
-  ) => {
+  const getFormSubmitLabel = (formStep: FormStep) => {
     switch (formStep) {
       case FormStep.SELECT_TARGET_UNIVERSE:
         return t(
@@ -497,15 +440,9 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
           }`
         );
       case FormStep.SELECT_TABLES:
-        if (!isTableSelectionValidated) {
-          return t('step.selectTables.submitButton.validateSelection');
-        }
-        if (isBootstrapStepRequired) {
-          return t('step.selectTables.submitButton.configureBootstrap');
-        }
-        return t('step.selectTables.submitButton.confirmAlert');
-      case FormStep.CONFIGURE_BOOTSTRAP:
-        return t('step.configureBootstrap.submitButton');
+        return t('step.selectTables.submitButton.bootstrapSummary');
+      case FormStep.BOOTSTRAP_SUMMARY:
+        return t('step.bootstrapSummary.submitButton');
       case FormStep.CONFIRM_ALERT:
         return t('confirmAlert.submitButton', { keyPrefix: 'clusterDetail.xCluster.shared' });
       default:
@@ -513,38 +450,29 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
     }
   };
 
-  const isBootstrapStepRequired = bootstrapRequiredTableUUIDs.length > 0;
-  const sourceUniverse = sourceUniverseQuery.data;
-  const submitLabel = getFormSubmitLabel(
-    currentFormStep,
-    isTableSelectionValidated,
-    isBootstrapStepRequired
-  );
   const selectedTableUuids = formMethods.watch('tableUuids');
   const selectedNamespaceUuids = formMethods.watch('namespaceUuids');
   const targetUniverseUuid = formMethods.watch('targetUniverse.value.universeUUID');
   const isTransactionalConfig = formMethods.watch('isTransactionalConfig');
-
+  const sourceUniverse = sourceUniverseQuery.data;
+  const submitLabel = getFormSubmitLabel(currentFormStep);
   const isFormDisabled = formMethods.formState.isSubmitting;
-  const runtimeConfigEntries = runtimeConfigQuery.data.configEntries ?? [];
-  const isSkipBootstrappingEnabled = runtimeConfigEntries.some(
-    (config: any) =>
-      config.key === RuntimeConfigKey.ENABLE_XCLUSTER_SKIP_BOOTSTRAPPING && config.value === 'true'
-  );
   return (
     <YBModal
       title={modalTitle}
       submitLabel={submitLabel}
       buttonProps={{ primary: { disabled: isFormDisabled } }}
-      onSubmit={formMethods.handleSubmit(onFormSubmit)}
+      onSubmit={formMethods.handleSubmit(onSubmit)}
       submitTestId={`${MODAL_NAME}-SubmitButton`}
       isSubmitting={formMethods.formState.isSubmitting}
-      showSubmitSpinner={currentFormStep !== FormStep.SELECT_TABLES || !skipBootstrapping}
+      showSubmitSpinner={currentFormStep === FormStep.SELECT_TABLES}
       maxWidth="xl"
       size={
-        ([FormStep.SELECT_TARGET_UNIVERSE, FormStep.SELECT_TABLES] as FormStep[]).includes(
-          currentFormStep
-        )
+        ([
+          FormStep.SELECT_TARGET_UNIVERSE,
+          FormStep.SELECT_TABLES,
+          FormStep.BOOTSTRAP_SUMMARY
+        ] as FormStep[]).includes(currentFormStep)
           ? 'fit'
           : 'md'
       }
@@ -556,19 +484,6 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
               {t('back', { keyPrefix: 'common' })}
             </YBButton>
           )}
-          {currentFormStep === FormStep.SELECT_TABLES &&
-            isBootstrapStepRequired &&
-            isSkipBootstrappingEnabled && (
-              <YBButton
-                className={classes.secondarySubmitButton}
-                variant="secondary"
-                onClick={formMethods.handleSubmit(onSkipBootstrapAndSubmit)}
-                showSpinner={formMethods.formState.isSubmitting && skipBootstrapping}
-                disabled={isFormDisabled}
-              >
-                {t('step.selectTables.submitButton.skipBootstrapping')}
-              </YBButton>
-            )}
         </>
       }
       {...modalProps}
@@ -593,6 +508,7 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
             tableType: tableType,
             targetUniverseUuid: targetUniverseUuid
           }}
+          categorizedNeedBootstrapPerTableResponse={categorizedNeedBootstrapPerTableResponse}
         />
       </FormProvider>
     </YBModal>

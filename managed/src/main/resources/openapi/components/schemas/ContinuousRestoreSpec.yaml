@@ -1,0 +1,20 @@
+title: ContinuousRestoreSpec
+description: |
+  ContinuousRestoreSpec
+
+  Continuous Backup Restore time properties. Used to Restore from continuous backup configuration.
+type: object
+required:
+  - backup_dir
+  - storage_config_uuid
+properties:
+  storage_config_uuid:
+    description: UUID of the storage config to use
+    type: string
+    format: uuid
+    example: f33e3c9b-75ab-4c30-80ad-cba85646ea39
+    readOnly: false
+  backup_dir:
+    description: The name of the directory to restore the most recent back from.
+    type: string
+    example: YBA.1.2.3.4

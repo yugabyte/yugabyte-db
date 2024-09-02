@@ -18,6 +18,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/provider"
 )
 
+// DescribeProviderUtil executes the describe provider command
 func DescribeProviderUtil(cmd *cobra.Command, commandCall, providerCode string) {
 	authAPI := ybaAuthClient.NewAuthAPIClientAndCustomer()
 
@@ -73,6 +74,7 @@ func DescribeProviderUtil(cmd *cobra.Command, commandCall, providerCode string) 
 	provider.Write(providerCtx, r)
 }
 
+// DescribeProviderValidation validates the describe provider command
 func DescribeProviderValidation(cmd *cobra.Command) {
 	providerNameFlag, err := cmd.Flags().GetString("name")
 	if err != nil {
