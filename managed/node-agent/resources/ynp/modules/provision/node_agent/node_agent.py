@@ -16,12 +16,16 @@ class InstallNodeAgent(BaseYnpModule):
         }
 
     def _get_provider_url(self, context):
-        return (f'{context.get("url")}/api/v1/customers/{context.get("customer_uuid")}'
-                f'/providers?name={context.get("provider_name")}')
+        return (
+            f'{context.get("url")}/api/v1/customers/{context.get("customer_uuid")}/providers'
+            f'?name={context.get("provider_name")}'
+        )
 
     def _get_instance_type(self, yba_url, customer_uuid, p_uuid, code):
-        return (f'{yba_url}/api/v1/customers/{customer_uuid}/providers/'
-                f'{p_uuid}/instance_types/{code}')
+        return (
+            f'{yba_url}/api/v1/customers/{customer_uuid}/providers/'
+            f'{p_uuid}/instance_types/{code}'
+        )
 
     def _generate_provider_payload(self, context):
         # Generates the body for provider payload.
@@ -106,8 +110,8 @@ class InstallNodeAgent(BaseYnpModule):
                 'volumeDetailsList': []
             }
         }
-        mount_points = context.get('instance_type_mount_points').strip(
-            "[]").replace("'", "").split(", ")
+        mount_points = (context.get('instance_type_mount_points')
+                        .strip("[]").replace("'", "").split(", "))
         for mp in mount_points:
             volume_detail = {
                 'volumeSizeGB': context.get('instance_type_volume_size'),
@@ -123,7 +127,7 @@ class InstallNodeAgent(BaseYnpModule):
             "nodes": [
                 {
                     "instanceType": context.get('instance_type_name'),
-                    "ip": context.get('node_external_fqdn'),
+                    "ip": context.get('node_ip'),
                     "region": context.get('provider_region_name'),
                     "zone": context.get('provider_region_zone_name'),
                     "nodeName": context.get("node_name"),
@@ -146,8 +150,10 @@ class InstallNodeAgent(BaseYnpModule):
     def _create_instance_if_not_exists(self, context, provider):
         yba_url = context.get('url')
         skip_tls_verify = not yba_url.lower().startswith('https')
-        get_instance_type_url = self._get_instance_type(context.get('url'), context.get(
-            'customer_uuid'), provider.get('uuid'), context.get('instance_type_name'))
+        get_instance_type_url = self._get_instance_type(context.get('url'),
+                                                        context.get('customer_uuid'),
+                                                        provider.get('uuid'),
+                                                        context.get('instance_type_name'))
 
         try:
             response = requests.get(get_instance_type_url,
@@ -160,10 +166,11 @@ class InstallNodeAgent(BaseYnpModule):
         except requests.exceptions.HTTPError as http_err:
             if response.status_code == 400:
                 logging.info("Instance type does not exist, creating it.")
-                instance_data = self._generate_instance_type_payload(context, provider['uuid'])
+                context['provider_id'] = provider['uuid']
+                instance_data = self._generate_instance_type_payload(context)
 
-                instance_payload_file = os.path.join(
-                    context.get('tmp_directory'), 'create_instance.json')
+                instance_payload_file = os.path.join(context.get('tmp_directory'),
+                                                     'create_instance.json')
                 with open(instance_payload_file, 'w') as f:
                     json.dump(instance_data, f, indent=4)
             else:
@@ -216,8 +223,8 @@ class InstallNodeAgent(BaseYnpModule):
                     if not region_exists or not zone_exist:
                         update_provider_data = self._generate_provider_update_payload(
                             context, provider_data)
-                        update_provider_data_file = os.path.join(
-                            context.get('tmp_directory'), 'update_provider.json')
+                        update_provider_data_file = os.path.join(context.get('tmp_directory'),
+                                                                 'update_provider.json')
                         with open(update_provider_data_file, 'w') as f:
                             json.dump(update_provider_data, f, indent=4)
                     self._create_instance_if_not_exists(context, provider_data)
@@ -226,13 +233,13 @@ class InstallNodeAgent(BaseYnpModule):
                 else:
                     logging.info("Generating provider create payload...")
                     provider_payload = self._generate_provider_payload(context)
-                    provider_payload_file = os.path.join(
-                        context.get('tmp_directory'), 'create_provider.json')
+                    provider_payload_file = os.path.join(context.get('tmp_directory'),
+                                                         'create_provider.json')
                     with open(provider_payload_file, 'w') as f:
                         json.dump(provider_payload, f, indent=4)
                     instance_create_payload = self._generate_instance_type_payload(context)
-                    instance_payload_file = os.path.join(
-                        context.get('tmp_directory'), 'create_instance.json')
+                    instance_payload_file = os.path.join(context.get('tmp_directory'),
+                                                         'create_instance.json')
                     with open(instance_payload_file, 'w') as f:
                         json.dump(instance_create_payload, f, indent=4)
                     node_agent_enabled = True
@@ -243,8 +250,8 @@ class InstallNodeAgent(BaseYnpModule):
             logging.error(f"Request error: {req_err}")
 
         add_node_payload = self._generate_add_node_payload(context)
-        add_node_payload_file = os.path.join(context.get(
-            'tmp_directory'), 'add_node_to_provider.json')
+        add_node_payload_file = os.path.join(context.get('tmp_directory'),
+                                             'add_node_to_provider.json')
         with open(add_node_payload_file, 'w') as f:
             json.dump(add_node_payload, f, indent=4)
 
