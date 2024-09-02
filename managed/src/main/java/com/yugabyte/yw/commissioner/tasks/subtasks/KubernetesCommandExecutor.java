@@ -1117,6 +1117,12 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       overrides.put("updateStrategy", updateStrategy);
     }
 
+    if (taskParams().ybSoftwareVersion != null) {
+      // GFlags groups may depend on software version, so need to calculate them using fresh one.
+      for (UniverseDefinitionTaskParams.Cluster curCluster : taskUniverseDetails.clusters) {
+        curCluster.userIntent.ybSoftwareVersion = taskParams().ybSoftwareVersion;
+      }
+    }
     UUID placementUuid = cluster.uuid;
     UUID azUUID = azByCode != null ? azByCode.getUuid() : null;
     Map<String, Object> gflagOverrides = new HashMap<>();

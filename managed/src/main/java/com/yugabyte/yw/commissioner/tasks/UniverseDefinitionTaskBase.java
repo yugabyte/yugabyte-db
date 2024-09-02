@@ -2809,6 +2809,20 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
     } else {
       params.ybSoftwareVersion = softwareVersion;
+      if (processType == ServerType.MASTER || processType == ServerType.TSERVER) {
+        // GFlags groups may depend on software version, so need to calculate them using fresh one.
+        Universe universe = getUniverse();
+        universe
+            .getUniverseDetails()
+            .clusters
+            .forEach(cluster -> cluster.userIntent.ybSoftwareVersion = softwareVersion);
+        params.gflags =
+            GFlagsUtil.getGFlagsForNode(
+                node,
+                processType,
+                universe.getCluster(node.placementUuid),
+                universe.getUniverseDetails().clusters);
+      }
     }
     params.setYbcSoftwareVersion(ybcSoftwareVersion);
     if (!StringUtils.isEmpty(params.getYbcSoftwareVersion())) {
