@@ -126,41 +126,74 @@ YbIsColumnComparisonAllowed(const Bitmapset *modified_cols,
 }
 
 /* ----------------------------------------------------------------
- * YBEqualDatums
+ * YBAreDatumsStoredIdentically
  *
- * Function compares values of lhs and rhs datums with respect to value type
- * and collation.
+ * Function determines if the underlying storage representation of the two
+ * datums is identical.
  *
- * Returns true in case value of lhs and rhs datums match.
+ * Notes:
+ * - This function assumes that the value held in both datums are of the same
+ *   data type ('attdesc->atttypid'). This function does not account for type
+ *   casting.
+ * - This function returns true if both datums are NULL. Semantically, NULL
+ *   values are always treated as distinct, unless supplied with a NULLS NOT
+ *   DISTINCT modifier. However, the storage representation of NULL values is
+ *   identical.
+ * - Data types may have multiple representations for a value. Examples include
+ *    - NaNs in floating point data types
+ *    - {"a": 1, "b": 2}, {"b": 2, "a": 1} in jsonb.
+ *   Postgres normalizes the representation of these values for primitive data
+ *   types. This function does not normalize the representation of datums before
+ *   comparing them. Beware if you are using user-defined data types!
+ * - Similarly, this function does not account for type modifiers and alignment
+ *   rules. Input datums are expected to be modified and aligned.
+ * - Additionally, this function assumes that both datums are either compressed
+ *   or uncompressed. It does not handle the case where one datum is compressed
+ *   and the other is not.
+ * - Furthermore, this function assumes that both data types have the same
+ *   collation.
  * ----------------------------------------------------------------
  */
 static bool
-YBEqualDatums(Datum lhs, Datum rhs, Oid atttypid, Oid collation)
+YBAreDatumsStoredIdentically(Datum lhs,
+							 Datum rhs,
+							 const FormData_pg_attribute *attdesc)
 {
-	TypeCacheEntry *typentry =
-		lookup_type_cache(atttypid, TYPECACHE_CMP_PROC_FINFO);
-	if (!OidIsValid(typentry->cmp_proc_finfo.fn_oid))
-		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_FUNCTION),
-						errmsg("could not identify a comparison function for "
-							   "type %s",
-							   format_type_be(typentry->type_id))));
+	/*
+	 * Within a tuple, postgres may store a field's data in 3 different ways:
+	 * 1. Inline/byval within the tuple. This is used for fixed length types.
+	 * 2. Out-of-line/by reference but on the same page. Postgres uses fixed
+	 *    page sizes (usually 8 KB). If the data fits within the page, it is
+	 *    preferred to be stored on the same page, with a reference from the
+	 *    tuple to its location. This is used for variable length data types.
+	 * 3. Out-of-line and TOASTed. If the data is too large to fit within the
+	 *    page, it is stored in a TOAST table with a reference from the
+	 *    tuple to its location.
+	 *
+	 * For fields with inline data (1), it can be determined if the two datums
+	 * are identical by casting the datums to machine-word sized integers and
+	 * comparing their values.
+	 * For fields with out-of-line data (2 and 3), the datums are pointers to
+	 * variable length byte arrays which can be memcmp'd.
+	 * Yugabyte does not TOAST oversized values, nor does it use the concept of
+	 * storage pages, so we do not need to handle (3) in this function.
+	 */
 
-	/* To ensure that there is an upper bound on the size of data compared */
-	const int lhslength = datumGetSize(lhs, typentry->typbyval, typentry->typlen);
-	const int rhslength = datumGetSize(rhs, typentry->typbyval, typentry->typlen);
+	Assert(attdesc->attbyval || (attdesc->attstorage != 'e'));
 
+	/*
+	 * To ensure that there is an upper bound on the size of data compared,
+	 * compute the size of the datums. The length computation is repeated in
+	 * datumIsEqual, but it does not accept an upper bound arg, and we would
+	 * like to keep that function unchanged.
+	 */
+	const int lhslength = datumGetSize(lhs, attdesc->attbyval, attdesc->attlen);
+	const int rhslength = datumGetSize(rhs, attdesc->attbyval, attdesc->attlen);
 	if (lhslength != rhslength ||
 		lhslength > yb_update_optimization_options.max_cols_size_to_compare)
 		return false;
 
-	FunctionCallInfoData locfcinfo;
-	InitFunctionCallInfoData(locfcinfo, &typentry->cmp_proc_finfo, 2, collation,
-							 NULL, NULL);
-	locfcinfo.arg[0] = lhs;
-	locfcinfo.arg[1] = rhs;
-	locfcinfo.argnull[0] = false;
-	locfcinfo.argnull[1] = false;
-	return DatumGetInt32(FunctionCallInvoke(&locfcinfo)) == 0;
+	return datumIsEqual(lhs, rhs, attdesc->attbyval, attdesc->attlen);
 }
 
 /* ----------------------------------------------------------------------------
@@ -192,8 +225,7 @@ YBIsColumnModified(Relation rel, HeapTuple oldtuple, HeapTuple newtuple,
 
 	return (
 		(old_is_null != new_is_null) ||
-		(!old_is_null && !YBEqualDatums(old_value, new_value, attdesc->atttypid,
-										attdesc->attcollation)));
+		(!old_is_null && !YBAreDatumsStoredIdentically(old_value, new_value, attdesc)));
 }
 
 /* ----------------------------------------------------------------
