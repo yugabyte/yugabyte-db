@@ -96,3 +96,187 @@ CREATE INDEX NONCONCURRENTLY non_number_type_table_uuid_enum ON non_number_type_
 
 INSERT INTO non_number_type_table VALUES('1999-01-08 04:05:06 -8:00', 'varchar1', 'charpad', 'I am batman', '{1, 2, 3}'::line, '1.2.3.0/24'::cidr, 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid, 'happy'::mood_type);
 EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE non_number_type_table SET tscol = 'January 8 04:05:06 1999 PST', varcharcol = 'varchar1', charcol = 'charpad', textcol = 'I am not batman :(', linecol = '{1, 2, 3}'::line, ipcol = '1.2.3'::cidr, uuidcol = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid, enumcol = 'happy' WHERE tscol = 'January 8 07:05:06 1999 EST';
+
+DROP TABLE pkey_only_table;
+DROP TABLE secindex_only_table;
+DROP TABLE nullable_table;
+DROP TABLE non_number_type_table;
+DROP TABLE number_type_table;
+
+---
+--- Test to validate behavior of equality comparisons across data types
+---
+-- Test for json data types
+CREATE TABLE json_types_table (h INT PRIMARY KEY, v1 INT, v2 JSONB, v3 JSON);
+CREATE INDEX NONCONCURRENTLY ON json_types_table (v1) INCLUDE (v2, v3);
+
+INSERT INTO json_types_table VALUES (1, 1, '{"a": 1, "b": 2}'::jsonb, '{"a": 1, "b": 2}'::json);
+INSERT INTO json_types_table VALUES (2, 2, '{"b": 2, "a": 1}', '{"b": 2, "a": 1}');
+
+-- Equality comparisons on data type with no equality operator (json) should succeed
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_types_table SET v1 = 1 WHERE h = 1;
+-- Two different representations of the same data type should be considered equal
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_types_table SET v1 = 1, v2 = '{"b": 2, "a": 1}'::jsonb WHERE h = 1;
+-- JSONB is normalized, while JSON is not, causing an index update
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_types_table SET v1 = 1, v3 = '{"b": 2, "a": 1}'::json WHERE h = 1;
+-- One with white spaces
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_types_table SET v1 = 1, v2 = '{    "b" : 2   ,     "a" :  1}'::jsonb WHERE h = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_types_table SET v1 = 1, v2 = '{"b":2,"a":1}'::json WHERE h = 1; , 
+-- Casting via not specifying type
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_types_table SET v1 = 1, v2 = '{"b": 2, "a": 1}', v3 = '{"a": 1, "b": 1}' WHERE h = 2;
+-- Casting via specifying input as a castable type
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_types_table SET v1 = 1, v2 = '{"b": 2, "a": 1}'::json, v3 = '{"a": 1, "b": 2}'::jsonb WHERE h = 2;
+-- Casting an un-normalized JSONB to JSON should cause an index update as the input will never be normalized
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE json_types_table SET v1 = 1, v2 = '{"b": 2, "a": 1}'::json, v3 = '{"a": 1, "b": 2}'::jsonb WHERE h = 2;
+
+-- TODO(kramanathan): PG 15 has jsonpath support. Add tests for jsonpath
+
+-- Tests for geometric data types
+CREATE TABLE geometric_types_table (h INT PRIMARY KEY, v1 INT, v2 POINT, v3 LINE, v4 LSEG, v5 BOX, v6 PATH, v7 POLYGON, v8 CIRCLE);
+CREATE INDEX NONCONCURRENTLY ON geometric_types_table (v1) INCLUDE (v2, v3, v4, v5, v6, v7, v8);
+INSERT INTO geometric_types_table VALUES (1, 1, '(3.0, 4.0)'::point, '[(1.0, 2.0), (3.0, 4.0)]'::line, '[(1, 2), (3, 4)]'::lseg, '(1, 2), (3, 4)'::box, '[(1, 2), (3, 4)]'::path, '((1, 2), (3, 4), (5, 6))'::polygon, '<(1, 2), 3>'::circle);
+
+-- Convert point and line from float representation to int representation (implicit casting)
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v2 = '(3, 4)'::point, v3 = '[(1.0, 2), (3, 4.0)]'::line WHERE h = 1;
+-- Individual coordinates are stored as float8. Test cases where input has higher precision
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v2 = '(2.999999999999999999, 3.999999999999999999)'::point, v3 = '[(0.999999999999999999, 2.00), (2.999999999999999999, 4)]'::line WHERE h = 1;
+-- Alternate line and line segment representations; note that line segment is directed
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v3 = '[(3, 4), (1, 2)]'::line, v4 = '[(1, 2), (3, 4)]'::lseg WHERE h = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v3 = '((3, 4), (1, 2))'::line, v4 = '((1, 2), (3, 4))'::lseg WHERE h = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v3 = '(3, 4), (1, 2)'::line, v4 = '(1, 2), (3, 4)'::lseg WHERE h = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v3 = '3, 4, 1, 2'::line, v4 = '1, 2, 3, 4'::lseg WHERE h = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v3 = '[(3, 4), (1, 2)]'::line, v4 = '[(1, 2), (3, 4)]'::lseg WHERE h = 1;
+-- Line is equivalent to x - y + 1 = 0 => A = 1, B = -1, C = 1
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v3 = '{1, -1, 1}'::line WHERE h = 1;
+-- A line can be represented by other points that lie outside the boundary of the supplied points
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v3 = '[(5, 6), (7, 8)]'::line WHERE h = 1;
+-- Alternate box representations
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v5 = '(3, 2), (1, 4)'::box WHERE h = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v5 = '((3, 2), (1, 4))'::box WHERE h = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v5 = '3, 2, 1, 4'::box WHERE h = 1;
+-- Alterate representations of a circle
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v8 = '(1, 2), 3'::circle WHERE h = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v8 = '((1, 2), 3)'::circle WHERE h = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE geometric_types_table SET v1 = 1, v8 = '1, 2, 3'::circle WHERE h = 1;
+
+-- Test for array data types
+CREATE TABLE array_types_table (h INT PRIMARY KEY, v1 INT, v2 INT4[], v3 FLOAT4[], v4 TEXT[], v5 JSONB[], v6 BYTEA[]);
+CREATE INDEX NONCONCURRENTLY ON array_types_table (v1) INCLUDE (v2, v3, v4, v5, v6);
+INSERT INTO array_types_table VALUES (1, 1, ARRAY[1, 2, 3], ARRAY[1.0, 2.0, 3.0], ARRAY['a', 'b', 'c'], ARRAY['{"a": 1, "b": 2}', '{"c": 3, "d": 4}']::jsonb[], ARRAY['abc'::bytea, 'def'::bytea, 'ghi'::bytea]);
+
+-- Replace the entire array
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE array_types_table SET v1 = 1, v2 = '{1, 2, 3}', v3 = '{1, 2, 3}', v4 = '{"a", "b", "c"}' WHERE h = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE array_types_table SET v1 = 1, v2 = ARRAY[1, 2, 3], v3 = ARRAY[1, 2, 3], v4 = ARRAY['a', 'b', 'c'] WHERE h = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE array_types_table SET v1 = 1, v5 = ARRAY['{"a": 1, "b": 2}', '{"c": 3, "d": 4}']::jsonb[], v6 = ARRAY['abc', 'def', 'ghi']::bytea[] WHERE h = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE array_types_table SET v1 = 1, v6 = ARRAY['\x616263'::bytea, '\x646566'::bytea, '\x676869'::bytea] WHERE h = 1;
+-- Replace specific elements in the array
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE array_types_table SET v1 = 1, v2[2] = 2, v3[2] = 1.999999999999999999, v4[3] = 'c' WHERE h = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE array_types_table SET v1 = 1, v6[1] = '\x616263'::bytea WHERE h = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE array_types_table SET v1 = 1, v2[2:3] = '{2, 3}', v3[1:2] = '{0.999999999999999999, 1.999999999999999999}', v4[1:3] = ARRAY['a', 'b', 'c'] WHERE h = 1;
+
+-- Test for type modifiers
+-- REAL has 6 decimal digits of precision, NUMERIC has type modifiers 'precision' and 'scale'.
+-- Precision is the total number of digits, scale is the number of digits after the decimal point.
+CREATE TABLE numeric_table (h INT PRIMARY KEY, v1 REAL, v2 NUMERIC(4, 2), v3 NUMERIC(10, 4), v4 FLOAT4);
+CREATE INDEX NONCONCURRENTLY ON numeric_table (v1) INCLUDE (v2, v3, v4);
+INSERT INTO numeric_table VALUES (1, 1.234567, 12.34, 1.234567, 1.23456789012);
+SELECT * FROM numeric_table;
+
+-- Query to check that the storage representation remains identical after type modifiers have been applied.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE numeric_table SET v1 = 1.2345670, v2 = 12.344, v4 = 1.23456789567 WHERE h = 1;
+-- Query to check that casting from a wider type to a narrower type results in "rounding" behavior.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE numeric_table SET v1 = 1.2345670, v2 = 12.336, v3 = 1.234650 WHERE h = 1;
+-- Casting from infinity to infinity should not cause a change in representation.
+-- Note that NUMERIC does not support infinity prior to PG 14.
+INSERT INTO numeric_table VALUES (2, 'inf', 'Infinity', '-Infinity', '-inf');
+INSERT INTO numeric_table VALUES (2, 'inf', 0, 0, '-inf');
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE numeric_table SET v1 = 'inf'::real + 1, v4 = '-Infinity'::float4 + 1 WHERE h = 2;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE numeric_table SET v1 = v1 + 'inf'::real + 1, v4 = v4 + '-Infinity'::float4 + 1 WHERE h = 2;
+-- Casting from infinity to NaN should however cause a change in representation.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE numeric_table SET v1 = v1 - 'inf'::real, v4 = v4 - '-Infinity'::float4 WHERE h = 2;
+SELECT * FROM numeric_table;
+-- Casting from NaN to NaN should not cause a change in representation.
+-- Similarly, note that NaN is not supported for NUMERIC types in Yugabyte (GH-711) does not support NaN prior to PG 14.
+-- This should error out
+INSERT INTO numeric_table VALUES (3, 'nan', 'NaN', 'naN', 'NaN');
+INSERT INTO numeric_table VALUES (3, 'nan', 0, 0, 'NaN');
+-- ('inf'::real - 'inf'::real) produces a different representation of NaN than 'NaN'::real in some
+-- compilers/optimization levels. So the query below updates the index in some cases, but not in others.
+-- Commenting it out to avoid test failures.
+-- EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE numeric_table SET v1 = 'inf'::real - 'inf'::real, v4 = v4 - '-Infinity'::float4 - '+Inf'::float4 WHERE h = 3;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE numeric_table SET v1 = v1 - 'inf'::real, v4 = v4 - '-Infinity'::float4 - '+Inf'::float4 WHERE h = 3;
+SELECT * FROM numeric_table;
+
+-- Test for casting between data types
+CREATE TABLE number_table (h INT PRIMARY KEY, v1 INT, v2 INT4, v3 INT8, v4 FLOAT4, v5 FLOAT8);
+CREATE INDEX NONCONCURRENTLY ON number_table (v1) INCLUDE (v2, v3, v4, v5);
+INSERT INTO number_table VALUES (1, 1, 1, 1, 1.0, 1.0);
+
+-- Casting from a larger type to a smaller type should either retain the same representation
+-- if the value is identical or produce an overflow.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE number_table SET v2 = (2147483647 + 1)::int8 WHERE h = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE number_table SET v4 = (3.4e39)::float8 WHERE h = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE number_table SET v2 = (1)::int8, v4 = (1.0)::float8 WHERE h = 1;
+
+-- Casting from a smaller to a larger type should either retain the same representation when the
+-- value is identical.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE number_table SET v3 = (1)::int4, v5 = (1.0)::float4 WHERE h = 1;
+
+-- Casting between types should not cause an index update if the value remains the same.
+INSERT INTO number_table VALUES (2, 2, 17, 15, 17.25, 15.75);
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE number_table SET v2 = (17.0)::float4, v3 = (15.0)::float8 WHERE h = 2;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE number_table SET v2 = 17.0, v3 = 15.0 WHERE h = 2;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE number_table SET v4 = 17::int4 + 0.25::float(8), v5 = 15::int8 + 0.75::float(4) WHERE h = 2;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE number_table SET v4 = 17 + 0.25, v5 = 15 + 0.75 WHERE h = 2;
+
+-- Test for padding in text data types.
+CREATE TABLE text_table (h INT PRIMARY KEY, v1 INT, v2 TEXT, v3 CHAR(8), v4 VARCHAR(8));
+CREATE INDEX NONCONCURRENTLY ON text_table (v1) INCLUDE (v2, v3, v4);
+INSERT INTO text_table VALUES (1, 1, 'some-text', 'abcdef', 'abcde');
+
+-- The following queries should not cause an index update as the text type's value remains unmodified
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE text_table SET v2 = 'some-text', v3 = 'abcdef', v4 = 'abcde' WHERE h = 1;
+-- Postgres does not support NULL characters in strings. The padding does not end up adding any characters.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE text_table SET v2 = rpad('some-text'::char(12), 12, ''), v3 = rpad('abcdef'::char(8), 8, ''), v4 = rpad('abcde'::char(8), 8, '') WHERE h = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE text_table SET v2 = lpad('some-text'::text, 12, ''), v3 = lpad('abcdef'::text, 8, ''), v4 = lpad('abcde'::text, 8, '') WHERE h = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE text_table SET v2 = ''::char(4) || 'some-text' || ''::char(4), v3 = 'abcdef' || ''::char(2), v4 = 'abcde' || ''::char(3) WHERE h = 1;
+
+-- The following query ends up updating the index because postgres truncates the trailing NULL characters.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE text_table SET v4 = 'abcde'::char(8) || '000' WHERE h = 1;
+SELECT * FROM text_table;
+
+-- Test for composite data types
+CREATE TYPE complex1 AS (v1 INT4, v2 FLOAT4, v3 TEXT, v4 JSONB, v5 BYTEA);
+CREATE TABLE composite_table (h INT PRIMARY KEY, v INT, c1 complex1);
+CREATE INDEX NONCONCURRENTLY ON composite_table (v) INCLUDE (c1);
+
+INSERT INTO composite_table VALUES (1, 1, ROW(100, 123.45, 'some-text', '{"a": 1, "b": 2}'::jsonb, '{"c": 3, "d": 4}'::bytea));
+
+-- The following queries should not cause an index update as the composite type's value remains unmodified
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET c1.v1 = 100 WHERE h = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET v = 1, c1.v3 = 'some-text' WHERE h = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET c1.v2 = 123.45, c1.v5 = '{"c": 3, "d": 4}'::bytea, c1.v4 = '{"a": 1, "b": 2}'::jsonb WHERE h = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET c1 = ROW(100, 123.45, 'some-text', '{"a": 1, "b": 2}'::jsonb, '{"c": 3, "d": 4}'::bytea) WHERE h = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET c1 = (100, 123.45, 'some-text', '{"a": 1, "b": 2}'::jsonb, '{"c": 3, "d": 4}'::bytea) WHERE h = 1;
+-- Queries with implicit casting
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET c1 = (100, 123.45, 'some-text', '{"a": 1, "b": 2}', '{"c": 3, "d": 4}') WHERE h = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET c1 = (100.40, 123.45, 'some-text', '{"b": 2, "a": 1}', '{"c": 3, "d": 4}') WHERE h = 1;
+
+SELECT * FROM composite_table;
+
+-- The following queries should produce an index update as the composite type's value is modified
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET c1.v1 = (c1).v2 + 1 WHERE h = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET v = v + 1, c1.v3 = 'some-text' WHERE h = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET v = v + 1, c1.v3 = 'someother-text' WHERE h = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET c1.v2 = 123.451, c1.v5 = '{"d": 4, "c": 3}'::bytea, c1.v4 = '{"a": 2, "b": 1}'::jsonb WHERE h = 1;
+EXPLAIN (ANALYZE, DIST, COSTS OFF) UPDATE composite_table SET c1 = ROW((v) + 100, (c1).v1 + 123.45, 'someother-text', '{"a": 2, "b": 1}'::jsonb, '{"d": 4, "c": 3}'::bytea) WHERE h = 1;
+
+SELECT * FROM composite_table;
+
+DROP TABLE composite_table;
+DROP TABLE text_table;
+DROP TABLE number_table;
+DROP TABLE numeric_table;
+DROP TABLE array_types_table;
+DROP TABLE geometric_types_table;
+DROP TABLE json_types_table;
