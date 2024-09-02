@@ -1,0 +1,24 @@
+trigger:
+  branches:
+    include:
+      - "main"
+  batch: true
+
+pr:
+  batch: true
+  branches:
+    include:
+      - "main"
+
+pool:
+  vmImage: 'windows-2022'
+
+steps:
+- checkout: self
+- task: PoliCheck@2
+  inputs:
+    targetType: 'F'
+    targetArgument: '$(Build.SourcesDirectory)'
+    result: 'PolicheckOutput'
+    optionsFC: '1'
+    optionsXS: '1'
