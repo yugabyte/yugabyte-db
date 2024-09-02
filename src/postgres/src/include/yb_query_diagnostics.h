@@ -35,6 +35,7 @@
 
 #define YB_QD_MAX_BIND_VARS_LEN 2048
 #define YB_QD_MAX_PGSS_LEN 2048
+#define YB_QD_DESCRIPTION_LEN 128
 
 /* GUC variables */
 extern int yb_query_diagnostics_bg_worker_interval_ms;
