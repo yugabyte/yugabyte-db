@@ -32,7 +32,7 @@ ysqlsh: could not connect to server: Operation timed out
 
 - If your cluster is deployed in a VPC and you are trying to connect from a peered VPC, add one or more IP addresses from the peered VPC to the cluster IP allow list.
 
-- If you are using a secure internet gateway, whitelist `*.ybdb.io`.
+- If you are using a secure internet/web gateway, whitelist `*.ybdb.io` to allow access to clusters.
 
 ### Connection closed in Cloud Shell
 
