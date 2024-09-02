@@ -2,8 +2,8 @@
 
 package com.yugabyte.yw.common;
 
-import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
+import com.google.common.collect.Multimaps;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.ITask;
@@ -20,7 +20,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
@@ -49,8 +48,9 @@ public class ProviderEditRestrictionManager {
 
   private final RuntimeConfGetter runtimeConfGetter;
   private final Map<UUID, ReentrantLock> providerLocks = new ConcurrentHashMap<>();
-  private final Map<UUID, UUID> editTaskIdByProvider = new HashMap<>();
-  private final Multimap<UUID, UUID> inUseTaskIdsByProvider = ArrayListMultimap.create();
+  private final Map<UUID, UUID> editTaskIdByProvider = new ConcurrentHashMap<>();
+  private final Multimap<UUID, UUID> inUseTaskIdsByProvider =
+      Multimaps.newSetMultimap(new ConcurrentHashMap<>(), ConcurrentHashMap::newKeySet);
   private final Map<UUID, Collection<UUID>> providersByTask = new ConcurrentHashMap<>();
 
   @Inject

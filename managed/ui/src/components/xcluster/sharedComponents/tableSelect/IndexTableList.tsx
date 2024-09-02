@@ -70,7 +70,10 @@ export const IndexTableList = ({
         xClusterConfigAction !== XClusterConfigAction.MANAGE_TABLE
     )
     .map((table) => table.tableUUID);
-  const isSelectable = isMainTableSelectable && !isTransactionalConfig;
+  const isSelectable =
+    isMainTableSelectable &&
+    !isTransactionalConfig &&
+    xClusterConfigAction === XClusterConfigAction.MANAGE_TABLE;
   return (
     <div className={styles.expandComponent}>
       <BootstrapTable

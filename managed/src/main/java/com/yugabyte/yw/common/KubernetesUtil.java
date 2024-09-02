@@ -41,6 +41,8 @@ public class KubernetesUtil {
 
   public static String MIN_VERSION_NON_RESTART_GFLAGS_UPGRADE_SUPPORT_PREVIEW = "2.23.0.0-b539";
   public static String MIN_VERSION_NON_RESTART_GFLAGS_UPGRADE_SUPPORT_STABLE = "2024.2.0.0-b999";
+  // Kubelet secret sync time + k8s_parent template sync time.
+  public static final int WAIT_FOR_GFLAG_SYNC_SECS = 90;
 
   public static boolean isNonRestartGflagsUpgradeSupported(String universeSoftwareVersion) {
     return Util.compareYBVersions(

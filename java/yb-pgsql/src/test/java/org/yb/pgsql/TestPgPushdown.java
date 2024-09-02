@@ -1396,7 +1396,9 @@ public class TestPgPushdown extends BasePgSQLTest {
    */
   private abstract class InClausePushdownTester {
     /** How many times would each query be iterated to get a total running time? */
-    public final int queryRunCount = 20;
+    // Connection Manager may keep switching physical connections during query
+    // exec time check, so we need to run more iterations to get stable results.
+    public final int queryRunCount = isTestRunningWithConnectionManager() ? 100 : 20;
 
     /** Minimum speedup multiplier expected for pushed down SELECT-type queries */
     // As of GHI #20438 the IN clause is getting pushed down and base select works faster.
@@ -1630,6 +1632,7 @@ public class TestPgPushdown extends BasePgSQLTest {
       // Plain optimized query
       {
         stmt.executeUpdate(truncateQuery);
+        waitForTServerHeartbeatIfConnMgrEnabled();
         fillTable(stmt);
         String query = getOptimizedDeleteQuery();
         assertPushdownPlan(stmt, query, true);
@@ -1642,6 +1645,7 @@ public class TestPgPushdown extends BasePgSQLTest {
       // Prepared optimized query
       {
         stmt.executeUpdate(truncateQuery);
+        waitForTServerHeartbeatIfConnMgrEnabled();
         fillTable(stmt);
         String queryString = getOptimizedPreparedDeleteQueryString();
         assertPushdownPlan(stmt, queryString, (q) -> {
@@ -1744,6 +1748,7 @@ public class TestPgPushdown extends BasePgSQLTest {
             stmt, String.format("/*+IndexOnlyScan(%s %s)*/", tableName, indexName), quals);
         verifyPushdown(stmt, String.format("/*+IndexScan(%s %s)*/", tableName, indexName), quals);
         stmt.executeUpdate(String.format("DROP TABLE %s", tableName));
+        waitForTServerHeartbeatIfConnMgrEnabled();
       }
     }
 

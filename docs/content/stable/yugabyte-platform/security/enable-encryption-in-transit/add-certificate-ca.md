@@ -19,7 +19,10 @@ type: docs
 {{<tabitem href="../add-certificate-kubernetes/" text="Kubernetes cert-manager" >}}
 {{</tabs>}}
 
-For universes created with an on-premises provider, instead of using self-signed certificates, you can use third-party certificates from external certificate authorities (CA). The third-party CA root certificate must be configured in YugabyteDB Anywhere. You also have to copy the custom CA root certificate, node certificate, and node key to the appropriate on-premises provider nodes.
+For universes created with an on-premises provider, instead of using self-signed certificates, you can use third-party certificates from an external certificate authority (CA). To use CA certificates, you need to do the following:
+
+- Copy the custom CA root certificate, node certificate, and node key to the appropriate on-premises provider nodes.
+- Add the third-party CA root certificate to YugabyteDB Anywhere.
 
 ## Prerequisites
 
@@ -33,7 +36,7 @@ The server certificates must adhere to the following criteria:
 
 - Contain IP addresses of the database nodes in the Common Name or in the Subject Alternative Name. For on-premises universes where nodes are identified using DNS addresses, the server certificates should include the DNS names of the database nodes in the Common Name or Subject Alternate Name (wildcards are acceptable).
 
-## Add CA-signed certificates
+## Copy CA-signed certificates to nodes
 
 The following procedure describes how to install certificates on the database nodes. You have to repeat these steps for every database node that is to be used in the creation of a universe.
 
@@ -52,11 +55,11 @@ In addition, ensure the following:
 - The file names and file paths of different certificates and keys are identical across all the database nodes. For example, if you name your CA root certificate as `ca.crt` on one node, then you must name it `ca.crt` on all the nodes. Similarly, if you copy `ca.crt` to `/opt/yugabyte/keys` on one node, then you must copy `ca.crt` to the same path on other nodes.
 - The `yugabyte` system user has read permissions to all the certificates and keys.
 
-### Add the CA certificate to YugabyteDB Anywhere
+## Add CA certificates to YugabyteDB Anywhere
 
 Add a CA-signed certificate to YugabyteDB Anywhere as follows:
 
-1. Navigate to **Configs > Security > Encryption in Transit**.
+1. Navigate to **Integrations > Security > Encryption in Transit**.
 
 1. Click **Add Certificate** to open the **Add Certificate** dialog.
 
@@ -76,9 +79,11 @@ Add a CA-signed certificate to YugabyteDB Anywhere as follows:
 
 1. Click **Add** to make the certificate available.
 
-You can rotate certificates for universes configured with the same type of certificates. This involves replacing existing certificates with new database node certificates.
+To view the certificate details, navigate to **Integrations > Security > Encryption in Transit**, find the certificate in the list, and click **Show details**.
 
-### Verify certificate chain
+You can [rotate certificates](../rotate-certificates/) for universes configured with the same type of certificates. This involves replacing existing certificates with new database node certificates.
+
+## Verify certificate chain
 
 Perform the following steps to verify your certificates:
 
@@ -103,10 +108,12 @@ Perform the following steps to verify your certificates:
 1. Verify that the node certificate Common Name (CN) or Subject Alternate Name  (SAN) contains the IP address or DNS name of each on-premises node on which the nodes are deployed.
 
     {{< note >}}
+
 Each entry you provide for the CN or SAN must match the on-premises node as entered in the provider configuration. For example, if the node address is entered as a DNS address in the on-premises provider configuration, you must use the same DNS entry in the CN or SAN, not the resolved IP address.
+
     {{< /note >}}
 
-    If you face any issue with the above verification, you can customize the level of certificate validation while creating a universe that uses these certificates. Refer to [Customizing the verification of RPC server certificate by the client](https://www.yugabyte.com/blog/yugabytedb-server-to-server-encryption/#customizing-the-verification-of-rpc-server-certificate-by-the-client).
+If you have issues with verification, you can customize the level of certificate validation while creating a universe that uses these certificates. Refer to [Customizing the verification of RPC server certificate by the client](https://www.yugabyte.com/blog/yugabytedb-server-to-server-encryption/#customizing-the-verification-of-rpc-server-certificate-by-the-client).
 
 {{< note >}}
 The client certificates and keys are required only if you intend to use [PostgreSQL certificate-based authentication](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html#:~:text=independent%20authentication%20option-,clientcert,-%2C%20which%20can%20be).

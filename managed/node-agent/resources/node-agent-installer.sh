@@ -20,11 +20,13 @@ SKIP_VERIFY_CERT=""
 DISABLE_EGRESS="false"
 SILENT_INSTALL="false"
 AIRGAP_INSTALL="false"
+USER_SCOPED_UNIT="false"
 SKIP_PACKAGE_DOWNLOAD="false"
 CERT_DIR=""
 CUSTOMER_ID=""
 NODE_NAME=""
 NODE_IP=""
+BIND_IP=""
 NODE_PORT=""
 API_TOKEN=""
 PLATFORM_URL=""
@@ -63,6 +65,12 @@ run_as_super_user() {
   else
     sudo "$@"
   fi
+}
+
+# Function to run systemd commands as the target user
+run_as_target_user() {
+  local cmd=$1
+  XDG_RUNTIME_DIR=/run/user/$(id -u $INSTALL_USER) $cmd
 }
 
 export_path() {
@@ -149,9 +157,19 @@ uninstall_node_agent() {
   rm -rf "$RESPONSE_FILE"
   local RUNNING=""
   RUNNING=$(systemctl list-units | grep -F yb-node-agent.service)
+  # If not found, check in user-level units
+  if [ -z "$RUNNING" ]; then
+    RUNNING=$(systemctl --user list-units | grep -F yb-node-agent.service)
+  fi
+
   if [ -n "$RUNNING" ]; then
-    run_as_super_user systemctl stop yb-node-agent
-    run_as_super_user systemctl disable yb-node-agent
+     if [ "$USER_SCOPED_UNIT" = "false" ]; then
+      run_as_super_user systemctl stop yb-node-agent
+      run_as_super_user systemctl disable yb-node-agent
+    else
+      systemctl --user stop yb-node-agent
+      systemctl --user disable yb-node-agent
+    fi
   fi
   if [ -n "$NODE_AGENT_UUID" ]; then
     local STATUS_CODE=""
@@ -296,10 +314,17 @@ install_systemd_service() {
   fi
   modify_firewall
   echo "* Installing Node Agent Systemd Service"
-  run_as_super_user tee "$SYSTEMD_PATH/$SERVICE_NAME"  <<-EOF
+  # Define the path to the service file.
+  SERVICE_FILE_PATH="$SYSTEMD_PATH/$SERVICE_NAME"
+
+  # Check if USER_SCOPED_UNIT is defined.
+  if [ "$USER_SCOPED_UNIT" = "false" ]; then
+    run_as_super_user tee "$SERVICE_FILE_PATH" <<-EOF
   [Unit]
   Description=YB Anywhere Node Agent
   After=network-online.target
+  # Disable restart limits, using RestartSec to rate limit restarts.
+  StartLimitInterval=0
 
   [Service]
   User=$INSTALL_USER
@@ -314,11 +339,39 @@ install_systemd_service() {
   [Install]
   WantedBy=multi-user.target
 EOF
+  else
+    tee "$SERVICE_FILE_PATH" <<-EOF
+  [Unit]
+  Description=YB Anywhere Node Agent
+  After=network-online.target
+
+  [Service]
+  WorkingDirectory=$NODE_AGENT_HOME
+  LimitCORE=infinity
+  LimitNOFILE=1048576
+  LimitNPROC=12000
+  ExecStart=$NODE_AGENT_PKG_PATH/bin/node-agent server start
+  Restart=always
+  RestartSec=$SERVICE_RESTART_INTERVAL_SEC
+
+  [Install]
+  WantedBy=multi-user.target
+EOF
+  fi
+
   echo "* Starting the systemd service"
-  run_as_super_user systemctl daemon-reload
-  #To enable the node-agent service on reboot.
-  run_as_super_user systemctl enable yb-node-agent
-  run_as_super_user systemctl restart yb-node-agent
+
+  if [ "$USER_SCOPED_UNIT" = "false" ]; then
+    run_as_super_user systemctl daemon-reload
+    #To enable the node-agent service on reboot.
+    run_as_super_user systemctl enable yb-node-agent
+    run_as_super_user systemctl restart yb-node-agent
+  else
+    run_as_target_user "systemctl --user daemon-reload"
+    run_as_target_user "systemctl --user enable yb-node-agent"
+    run_as_target_user "systemctl --user restart yb-node-agent"
+  fi
+
   echo "* Started the systemd service"
   echo "* Run 'systemctl status yb-node-agent' to check\
  the status of the yb-node-agent"
@@ -343,6 +396,7 @@ Options:
     Server IP.
   -p, --node_port (OPTIONAL for install command)
     Server port.
+  --bind_ip (OPTIONAL if bind_ip is different than node_ip)
   --user (REQUIRED only for install_service command)
     Username of the installation. A sudo user can install service for a non-sudo user.
   --skip_verify_cert (OPTIONAL)
@@ -378,8 +432,8 @@ main() {
   echo "* Starting YB Node Agent $COMMAND."
   if [ "$COMMAND" = "install_service" ]; then
     if [ "$SUDO_ACCESS" = "false" ]; then
-      echo "SUDO access is required."
-      exit 1
+      USER_SCOPED_UNIT="true"
+      SYSTEMD_PATH="$INSTALL_USER_HOME/.config/systemd/user"
     fi
     install_systemd_service
   elif [ "$COMMAND" = "upgrade" ]; then
@@ -471,20 +525,31 @@ main() {
         echo "$NODE_AGENT_CERT_PATH is not found."
         exit 1
       fi
-      if [ "$SUDO_ACCESS" = "true" ]; then
-        # Disable existing node-agent if sudo access is available.
-        local RUNNING=""
-        set +e
-        RUNNING=$(systemctl list-units | grep -F yb-node-agent.service)
-        if [ -n "$RUNNING" ]; then
+      # Disable existing node-agent if sudo access is available.
+      local RUNNING=""
+      set +e
+      RUNNING=$(systemctl list-units | grep -F yb-node-agent.service)
+      # If not found, check in user-level units
+      if [ -z "$RUNNING" ]; then
+        RUNNING=$(systemctl --user list-units | grep -F yb-node-agent.service)
+      fi
+      if [ -n "$RUNNING" ]; then
+        if [ "$USER_SCOPED_UNIT" = "false" ] && [ "$SUDO_ACCESS" = "true" ]; then
           run_as_super_user systemctl stop yb-node-agent
           run_as_super_user systemctl disable yb-node-agent
+        else
+          systemctl --user stop yb-node-agent
+          systemctl --user disable yb-node-agent
         fi
-        set -e
       fi
+      set -e
       NODE_AGENT_CONFIG_ARGS+=(--disable_egress --id "$NODE_AGENT_ID" --customer_id "$CUSTOMER_ID" \
       --cert_dir "$CERT_DIR" --node_name "$NODE_NAME" --node_ip "$NODE_IP" \
       --node_port "$NODE_PORT" "${SKIP_VERIFY_CERT:+ "--skip_verify_cert"}")
+      # if bind ip is provided use that.
+      if [ -n "$BIND_IP" ]; then
+        NODE_AGENT_CONFIG_ARGS+=(--bind_ip "$BIND_IP")
+      fi
     fi
     setup_node_agent_dir
     extract_package
@@ -598,6 +663,10 @@ while [[ $# -gt 0 ]]; do
     ;;
     -ip|--node_ip)
       NODE_IP=$2
+      shift
+    ;;
+    --bind_ip)
+      BIND_IP=$2
       shift
     ;;
     -p|--node_port)

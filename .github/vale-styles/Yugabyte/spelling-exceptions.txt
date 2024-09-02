@@ -77,6 +77,7 @@ boolean
 booleans
 Bootsnap
 browsable
+Budibase
 bugfix
 bugfixed
 bugfixes
@@ -421,6 +422,7 @@ negatable
 Netlify
 nginx
 Nokogiri
+Northwind
 noteable
 noteables
 npm
@@ -439,6 +441,7 @@ onboarding
 OpenID
 OpenShift
 Opsgenie
+Orafce
 Overcommit
 Packagist
 parallelization
@@ -446,6 +449,7 @@ parallelizations
 passwordless
 Patroni
 performant
+pgAdmin
 PgBouncer
 pgLoader
 pg_cron

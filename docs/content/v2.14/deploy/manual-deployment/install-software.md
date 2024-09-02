@@ -13,20 +13,48 @@ type: docs
 
 Install YugabyteDB on each of the nodes using the steps shown below.
 
-## Download
+## Download YugabyteDB
 
-Download the YugabyteDB binary package as described in the [Quick Start section](../../../quick-start/install/).
+YugabyteDB supports both x86 and ARM (aarch64) CPU architectures. Download packages ending in `x86_64.tar.gz` to run on x86, and packages ending in `aarch64.tar.gz` to run on ARM.
 
-Copy the YugabyteDB package into each instance and then run the following commands.
+The following instructions are for downloading the latest stable release of YugabyteDB, which is recommended for production deployments. For other versions, see [Releases](/preview/releases/).
+
+{{<note title="Which release should I use?">}}
+For production deployments, install a stable release.
+
+Preview releases are recommended for development and testing only, and are not supported for production deployments. There is currently no migration path from a preview release to a stable release.
+{{</note>}}
+
+Download YugabyteDB as follows:
+
+1. Download the YugabyteDB package using one of the following `wget` commands:
+
+    ```sh
+    wget https://downloads.yugabyte.com/releases/{{< yb-version version="v2.14">}}/yugabyte-{{< yb-version version="v2.14" format="build">}}-linux-x86_64.tar.gz
+    ```
+
+    Or:
+
+    ```sh
+    wget https://downloads.yugabyte.com/releases/{{< yb-version version="v2.14">}}/yugabyte-{{< yb-version version="v2.14" format="build">}}-el8-aarch64.tar.gz
+    ```
+
+1. Extract the package and then change directories to the YugabyteDB home.
+
+    ```sh
+    tar xvfz yugabyte-{{< yb-version version="v2.14" format="build">}}-linux-x86_64.tar.gz && cd yugabyte-{{< yb-version version="v2.14">}}/
+    ```
+
+    Or:
+
+    ```sh
+    tar xvfz yugabyte-{{< yb-version version="v2.14" format="build">}}-el8-aarch64.tar.gz && cd yugabyte-{{< yb-version version="v2.14">}}/
+    ```
+
+## Configure YugabyteDB
+
+To configure YugabyteDB, run the following shell script:
 
 ```sh
-$ tar xvfz yugabyte-<version>-<os>.tar.gz && cd yugabyte-<version>/
-```
-
-## Configure
-
-- Run the **post_install.sh** script to make some final updates to the installed software.
-
-```sh
-$ ./bin/post_install.sh
+./bin/post_install.sh
 ```

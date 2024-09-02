@@ -23,7 +23,7 @@ You can connect to the database on a universe in the following ways:
 
 If the universe uses Client-to-Node encryption in transit, to connect you need to first download the universe TLS certificate. Do the following:
 
-1. Navigate to **Configs > Security > Encryption in Transit**.
+1. Navigate to **Integrations > Security > Encryption in Transit**.
 
 1. Find your universe in the list.
 
@@ -239,7 +239,7 @@ To connect, follow the client's configuration steps for PostgreSQL or Cassandra,
 
 Your client may also require the use of the [universe certificate](#download-the-universe-certificate).
 
-For information on using popular third-party tools with YugabyteDB, see [Third party tools](../../../tools/).
+For information on using popular third-party tools with YugabyteDB, see [Third party tools](/preview/integrations/tools/).
 
 ## Run workloads
 

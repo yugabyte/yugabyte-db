@@ -1347,6 +1347,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " enable/disable DB audit logging on universes.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowConnectionPooling =
+      new ConfKeyInfo<>(
+          "yb.universe.allow_connection_pooling",
+          ScopeType.GLOBAL,
+          "Allow users to enable or disable connection pooling",
+          "If this flag is enabled, user will be able to enable/disable connection pooling on"
+              + " universes.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Duration> xClusterSyncSchedulerInterval =
       new ConfKeyInfo<>(
           "yb.xcluster.xcluster_sync_scheduler_interval",
@@ -1430,5 +1439,48 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Universe Poller Interval for Master Failover",
           "Poller interval for universes to schedule master failover",
           ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> perProcessMetricsEnabled =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_per_process_metrics",
+          ScopeType.GLOBAL,
+          "Enable Per Process Metrics",
+          "Enable Per Process Metrics",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> nodeAgentEnablerScanInterval =
+      new ConfKeyInfo<>(
+          "yb.node_agent.enabler.scan_interval",
+          ScopeType.GLOBAL,
+          "Node Agent Enabler Scan Interval",
+          "Node agent enabler scan interval",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> supportBundleDefaultPromDumpRange =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.default_prom_dump_range",
+          ScopeType.GLOBAL,
+          "Support bundle prometheus dump range",
+          "The start-end duration to collect the prometheus dump inside the support bundle (in"
+              + " minutes)",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> supportBundlePromDumpBatchDurationInMins =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.batch_duration_prom_dump_mins",
+          ScopeType.GLOBAL,
+          "Batch duration for the prometheus dump (in minutes)",
+          "For longer time periods of the prometheus dump in the support bundle, the exports can be"
+              + " collected batchwise with a specific batch duration",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> supportBundlePromDumpStepInSecs =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.step_prom_dump_secs",
+          ScopeType.GLOBAL,
+          "Query resolution width for prometheus query",
+          "The \"step\" parameter in the query specifies the interval in secs at which data points"
+              + " will be evaluated and returned",
+          ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 }

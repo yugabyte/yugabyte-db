@@ -36,25 +36,32 @@ void XClusterDDLReplicationTestBase::SetUp() {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_ddl_queue_handler_log_queries) = true;
 }
 
-Status XClusterDDLReplicationTestBase::SetUpClusters() {
-  static const SetupParams kDefaultParams;
-  return SetUpClusters(kDefaultParams);
-}
-
-Status XClusterDDLReplicationTestBase::SetUpClusters(const SetupParams& params) {
-  return XClusterYsqlTestBase::SetUpWithParams(
-      params.num_consumer_tablets, params.num_producer_tablets, params.replication_factor,
-      params.num_masters, params.ranged_partitioned);
+Status XClusterDDLReplicationTestBase::SetUpClusters(bool is_colocated) {
+  if (is_colocated) {
+    namespace_name = "colocated_test_db";
+  }
+  const SetupParams kDefaultParams{
+      // By default start with no consumer or producer tables.
+      .num_consumer_tablets = {},
+      .num_producer_tablets = {},
+      // We only create one pg proxy per cluster, so we need to ensure that the target ddl_queue
+      // table leader is on that tserver (so that setting xcluster context works properly).
+      .replication_factor = 1,
+      .num_masters = 1,
+      .ranged_partitioned = false,
+      .is_colocated = is_colocated,
+  };
+  return XClusterYsqlTestBase::SetUpClusters(kDefaultParams);
 }
 
 Status XClusterDDLReplicationTestBase::EnableDDLReplicationExtension() {
   // TODO(#19184): This will be done as part of creating the replication groups.
-  auto p_conn = VERIFY_RESULT(producer_cluster_.Connect());
+  auto p_conn = VERIFY_RESULT(producer_cluster_.ConnectToDB(namespace_name));
   RETURN_NOT_OK(p_conn.ExecuteFormat("CREATE EXTENSION $0", xcluster::kDDLQueuePgSchemaName));
   RETURN_NOT_OK(p_conn.ExecuteFormat(
       "ALTER DATABASE $0 SET $1.replication_role = SOURCE", namespace_name,
       xcluster::kDDLQueuePgSchemaName));
-  auto c_conn = VERIFY_RESULT(consumer_cluster_.Connect());
+  auto c_conn = VERIFY_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
   RETURN_NOT_OK(c_conn.ExecuteFormat("CREATE EXTENSION $0", xcluster::kDDLQueuePgSchemaName));
   RETURN_NOT_OK(c_conn.ExecuteFormat(
       "ALTER DATABASE $0 SET $1.replication_role = TARGET", namespace_name,
@@ -117,7 +124,7 @@ void XClusterDDLReplicationTestBase::InsertRowsIntoProducerTableAndVerifyConsume
 
 Status XClusterDDLReplicationTestBase::PrintDDLQueue(Cluster& cluster) {
   const int kMaxJsonStrLen = 500;
-  auto conn = VERIFY_RESULT(cluster.Connect());
+  auto conn = VERIFY_RESULT(cluster.ConnectToDB(namespace_name));
   const auto rows = VERIFY_RESULT((conn.FetchRows<int64_t, int64_t, std::string>(Format(
       "SELECT $0, $1, $2 FROM yb_xcluster_ddl_replication.ddl_queue ORDER BY $0 ASC",
       xcluster::kDDLQueueStartTimeColumn, xcluster::kDDLQueueQueryIdColumn,

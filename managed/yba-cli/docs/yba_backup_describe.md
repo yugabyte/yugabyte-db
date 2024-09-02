@@ -13,8 +13,8 @@ yba backup describe [flags]
 ### Options
 
 ```
-      --backup-uuid string   [Required] The uuid of the backup to be described.
-  -h, --help                 help for describe
+      --uuid string   [Required] The UUID of the backup to be described.
+  -h, --help          help for describe
 ```
 
 ### Options inherited from parent commands
@@ -33,5 +33,5 @@ yba backup describe [flags]
 
 ### SEE ALSO
 
-* [yba backup](yba_backup.md)	 - Manage YugabyteDB Anywhere backups
+* [yba backup](yba_backup.md)	 - Manage YugabyteDB Anywhere universe backups
 

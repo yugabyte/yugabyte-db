@@ -194,13 +194,13 @@ static bool ValidateMaxRefreshInterval(const char* flag_name, uint32 value) {
   // log_min_seconds_to_retain, update_min_cdc_indices_interval_secs.
   DELAY_FLAG_VALIDATION_ON_STARTUP(flag_name);
 
-  if (value == 0 || value < static_cast<uint32>(
-      FLAGS_log_min_seconds_to_retain + FLAGS_update_min_cdc_indices_interval_secs)) {
+  uint32 min_allowed = FLAGS_log_min_seconds_to_retain + FLAGS_update_min_cdc_indices_interval_secs;
+  if (value == 0 || value < min_allowed) {
     return true;
   }
   LOG_FLAG_VALIDATION_ERROR(flag_name, value)
-      << "Must be less than the sume of log_min_seconds_to_retain and "
-      << "update_min_cdc_indices_interval_secs";
+      << "Must be less than the sum of log_min_seconds_to_retain and "
+      << "update_min_cdc_indices_interval_secs. Minimum value allowed: " << min_allowed;
   return false;
 }
 
@@ -1070,10 +1070,18 @@ Status CDCServiceImpl::CreateCDCStreamForNamespace(
      snapshot_option = req->cdcsdk_consistent_snapshot_option();
   }
 
+  // Dynamic Tables option
+  CDCSDKDynamicTablesOption dynamic_tables_option =
+      CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED;
+  if (req->has_cdcsdk_stream_create_options() &&
+      req->cdcsdk_stream_create_options().has_cdcsdk_dynamic_tables_option()) {
+     dynamic_tables_option = req->cdcsdk_stream_create_options().cdcsdk_dynamic_tables_option();
+  }
+
   xrepl::StreamId db_stream_id = VERIFY_RESULT_OR_SET_CODE(
       client()->CreateCDCSDKStreamForNamespace(
           ns_id, options, populate_namespace_id_as_table_id, ReplicationSlotName(""), std::nullopt,
-          snapshot_option, deadline),
+          snapshot_option, deadline, dynamic_tables_option),
       CDCError(CDCErrorPB::INTERNAL_ERROR));
   resp->set_db_stream_id(db_stream_id.ToString());
   return Status::OK();
@@ -3733,14 +3741,22 @@ void CDCServiceImpl::GetCDCDBStreamInfo(
       CDCErrorPB::INVALID_REQUEST,
       context);
 
-  std::vector<pair<std::string, std::string>> db_stream_info;
-  Status s = client()->GetCDCDBStreamInfo(req->db_stream_id(), &db_stream_info);
+  std::vector<pair<std::string, std::string>> db_stream_qualified_table_info;
+  std::vector<pair<std::string, std::string>> db_stream_unqualified_table_info;
+  Status s = client()->GetCDCDBStreamInfo(
+      req->db_stream_id(), &db_stream_qualified_table_info, &db_stream_unqualified_table_info);
   RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
-  for (const auto& tabinfo : db_stream_info) {
+  for (const auto& tabinfo : db_stream_qualified_table_info) {
     auto* const table_info = resp->add_table_info();
     table_info->set_stream_id(tabinfo.first);
     table_info->set_table_id(tabinfo.second);
+  }
+
+  for (const auto& tabinfo : db_stream_unqualified_table_info) {
+    auto* const unqualified_table_info = resp->add_unqualified_table_info();
+    unqualified_table_info->set_stream_id(tabinfo.first);
+    unqualified_table_info->set_table_id(tabinfo.second);
   }
 
   context.RespondSuccess();

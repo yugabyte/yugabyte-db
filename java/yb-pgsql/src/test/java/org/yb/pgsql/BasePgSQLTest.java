@@ -423,6 +423,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return miniCluster.getPostgresContactPoints().get(tserverIndex).getPort();
   }
 
+  public int getYsqlConnMgrPort(int tserverIndex) {
+    return miniCluster.getYsqlConnMgrContactPoints().get(tserverIndex).getPort();
+  }
+
   @After
   public void cleanUpAfter() throws Exception {
     LOG.info("Cleaning up after {}", getCurrentTestMethodName());
@@ -1971,6 +1975,12 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     // Wait an extra heartbeat interval to avoid race conditions due to deviations
     // in the real heartbeat frequency (due to latency, scheduling, etc.).
     Thread.sleep(MiniYBCluster.TSERVER_HEARTBEAT_INTERVAL_MS * 2);
+  }
+
+  void waitForTServerHeartbeatIfConnMgrEnabled() throws InterruptedException {
+    if (isTestRunningWithConnectionManager()) {
+      waitForTServerHeartbeat();
+    }
   }
 
   /** Run a query and check row-count. */

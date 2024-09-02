@@ -13,7 +13,22 @@ fi
 
 # Check if the user "prometheus" already exists
 if ! id -u prometheus >/dev/null 2>&1; then
-    adduser -M --shell /bin/bash prometheus
+    os_type=$(grep -oP '(?<=^ID=).+' /etc/os-release | tr -d '"')
+    case "$os_type" in
+        ubuntu|debian)
+            adduser --no-create-home --disabled-password --shell /bin/bash --ingroup {{ yb_user }} \
+            --gecos "" prometheus
+            ;;
+        rhel|centos|fedora|rocky|alma)
+            useradd --shell /bin/bash --no-create-home -g {{ yb_user }} prometheus
+            ;;
+        *)
+            echo "Unsupported OS: $os_type"
+            exit 1
+            ;;
+    esac
+else
+    echo "User 'prometheus' already exists."
 fi
 
 # Set ownership and permissions
@@ -51,7 +66,9 @@ Restart=on-failure
 User=prometheus
 Group=prometheus
 
-ExecStart=/opt/prometheus/node_exporter-1.7.0.linux-amd64/node_exporter  --web.listen-address=:9300 --collector.textfile.directory={{ yb_home_dir }}/metrics
+ExecStart=/opt/prometheus/node_exporter-1.7.0.linux-amd64/node_exporter  \
+--web.listen-address=:9300 \
+--collector.textfile.directory={{ yb_home_dir }}/metrics
 EOL
 
 # Enable and start the node_exporter service

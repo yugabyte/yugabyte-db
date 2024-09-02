@@ -424,7 +424,7 @@ Result<bool> PgAutoAnalyzeService::RunPeriodicTask() {
     // for all YSQL tables.
     RETURN_NOT_OK(FlushMutationsToServiceTable());
 
-    // Trigger ANALYZE for tables whose mutation counts have crossed the their thresholds.
+    // Trigger ANALYZE for tables whose mutation counts have crossed their thresholds.
     RETURN_NOT_OK(TriggerAnalyze());
   }
 

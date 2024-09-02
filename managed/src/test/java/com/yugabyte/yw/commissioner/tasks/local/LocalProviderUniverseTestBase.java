@@ -139,14 +139,16 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
   protected static String YBC_VERSION;
   public static String DB_VERSION = "2024.1.0.0-b129";
   private static final String DOWNLOAD_URL =
-      "https://downloads.yugabyte.com/releases/2024.1.0.0/"
-          + "yugabyte-"
+      "https://downloads.yugabyte.com/releases/"
+          + DB_VERSION.split("-")[0]
+          + "/yugabyte-"
           + DB_VERSION
           + "-%s-%s.tar.gz";
 
   private static final String YBC_BASE_S3_URL = "https://downloads.yugabyte.com/ybc/";
   private static final String YBC_BIN_ENV_KEY = "YBC_PATH";
   private static final boolean KEEP_FAILED_UNIVERSE = true;
+  private static final boolean KEEP_ALWAYS = false;
 
   public static Map<String, String> GFLAGS = new HashMap<>();
 
@@ -364,7 +366,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     try (InputStream in = new URL(downloadURL).openStream()) {
       downloadPathDir.mkdirs();
       Files.copy(in, Paths.get(baseDownloadPath), StandardCopyOption.REPLACE_EXISTING);
-      log.debug("downloaded to {}", baseDownloadPath);
+      log.debug("downloaded from {} to {}", downloadURL, baseDownloadPath);
       Path destination = downloadPathDir.toPath();
       try (TarArchiveInputStream tarInput =
           new TarArchiveInputStream(
@@ -440,7 +442,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     File curDir = new File(baseDirFile, subDir);
     if (!baseDirFile.exists() || !curDir.exists()) {
       curDir.mkdirs();
-      if (!KEEP_FAILED_UNIVERSE) {
+      if (!KEEP_FAILED_UNIVERSE && !KEEP_ALWAYS) {
         curDir.deleteOnExit();
       }
     }
@@ -551,7 +553,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     if (simpleSqlPayload != null) {
       simpleSqlPayload.stop();
     }
-    if (!failed || !KEEP_FAILED_UNIVERSE) {
+    if ((!failed || !KEEP_FAILED_UNIVERSE) && !KEEP_ALWAYS) {
       try {
         FileUtils.deleteDirectory(new File(new File(new File(baseDir), subDir), testName));
       } catch (Exception ignored) {
@@ -1074,6 +1076,24 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     if (node.isMaster) {
       localNodeManager.killProcess(nodeName, ServerType.MASTER);
     }
+  }
+
+  protected void killProcessOnNode(UUID universeUuid, String nodeName, ServerType serverType)
+      throws IOException, InterruptedException {
+    Universe universe = Universe.getOrBadRequest(universeUuid);
+    NodeDetails node = universe.getNode(nodeName);
+    if (serverType == ServerType.TSERVER) {
+      if (!node.isTserver) {
+        throw new IllegalArgumentException("Server type " + serverType + " is not running");
+      }
+    } else if (serverType == ServerType.MASTER) {
+      if (!node.isMaster) {
+        throw new IllegalArgumentException("Server type " + serverType + " is not running");
+      }
+    } else {
+      throw new IllegalArgumentException("Server type " + serverType + " is not supported");
+    }
+    localNodeManager.killProcess(nodeName, serverType);
   }
 
   protected void startProcessesOnNode(

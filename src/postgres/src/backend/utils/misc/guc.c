@@ -2237,12 +2237,12 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_ignore_heap_pg_class_oids", PGC_SUSET, DEVELOPER_OPTIONS,
-			gettext_noop("Ignores requests to set heap pg_class OIDs in yb_binary_restore mode"),
+		{"yb_ignore_pg_class_oids", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Ignores requests to set pg_class OIDs in yb_binary_restore mode"),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
-		&yb_ignore_heap_pg_class_oids,
+		&yb_ignore_pg_class_oids,
 		true,
 		NULL, NULL, NULL
 	},
@@ -4216,6 +4216,19 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&yb_query_diagnostics_bg_worker_interval_ms,
 		1000, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_query_diagnostics_circular_buffer_size", PGC_POSTMASTER, STATS_MONITORING,
+			gettext_noop("Size of query diagnostics circular buffer that stores statuses of bundles"),
+			gettext_noop("The circular buffer is filled sequentially until "
+									"it reaches this size, then it wraps around and "
+									"starts overwriting the oldest entries."),
+			GUC_UNIT_KB
+		},
+		&yb_query_diagnostics_circular_buffer_size,
+		64, 1, INT_MAX,
 		NULL, NULL, NULL
 	},
 

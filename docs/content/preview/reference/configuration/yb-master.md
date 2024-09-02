@@ -37,6 +37,10 @@ To display the online help, run `yb-master --help` from the YugabyteDB home dire
 ./bin/yb-master --help
 ```
 
+## All flags
+
+The following sections describe the flags considered relevant to configuring YugabyteDB for production deployments. For a list of all flags, see [All YB-Master flags](../all-flags-yb-master/).
+
 ## General flags
 
 ##### --version
@@ -605,7 +609,7 @@ Clusters created using yugabyted always use a default value of `1`.
 
 When enabled, all databases created in the cluster are colocated by default. If you enable the flag after creating a cluster, you need to restart the YB-Master and YB-TServer services.
 
-For more details, see [clusters in colocated tables](../../../architecture/docdb-sharding/colocated-tables/#clusters).
+For more details, see [clusters in colocated tables](../../../explore/colocation/).
 
 Default: `false`
 

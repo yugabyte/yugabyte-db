@@ -13,17 +13,49 @@
 
 #pragma once
 
+#include <cmath>
+
 #include "yb/util/enums.h"
 
 #include "yb/common/vector_types.h"
 #include "yb/vector/graph_repr_defs.h"
+#include "yb/vector/coordinate_types.h"
 
 namespace yb::vectorindex {
 
 namespace distance {
 
-float DistanceL2Squared(const FloatVector& a, const FloatVector& b);
-float DistanceCosine(const FloatVector& a, const FloatVector& b);
+template<IndexableVectorType Vector1Type, IndexableVectorType Vector2Type>
+inline float DistanceL2Squared(const Vector1Type& a, const Vector2Type& b) {
+  float sum = 0;
+  CHECK_EQ(a.size(), b.size());
+  for (size_t i = 0; i < a.size(); ++i) {
+    float diff = a[i] - b[i];
+    sum += diff * diff;
+  }
+  return sum;
+}
+
+template<IndexableVectorType Vector>
+inline float DistanceCosine(const Vector& a, const Vector& b) {
+  // Adapted from metric_cos_gt in index_plugins.hpp (usearch).
+  CHECK_EQ(a.size(), b.size());
+  float ab = 0, a2 = 0, b2 = 0;
+  for (size_t i = 0; i < a.size(); ++i) {
+    float ai = a[i];
+    float bi = b[i];
+    ab += ai * bi;
+    a2 += ai * ai;
+    b2 += bi * bi;
+  }
+
+  float result_if_zero[2][2];
+  result_if_zero[0][0] = 1 - ab / (std::sqrt(a2) * std::sqrt(b2));
+  result_if_zero[0][1] = result_if_zero[1][0] = 1;
+  result_if_zero[1][1] = 0;
+
+  return result_if_zero[a2 == 0][b2 == 0];
+}
 
 }  // namespace distance
 
@@ -32,14 +64,25 @@ YB_DEFINE_ENUM(
     (kL2Squared)
     (kCosine));
 
-using DistanceFunction = std::function<float(const FloatVector&, const FloatVector&)>;
+template<IndexableVectorType Vector>
+using DistanceFunction = std::function<float(const Vector&, const Vector&)>;
 
 // A variant of a distance function that knows how to resolve a vertex id to a vector, and then
 // compute the distance.
+template<IndexableVectorType Vector>
 using VertexIdToVectorDistanceFunction =
-    std::function<float(VertexId vertex_id, const FloatVector&)>;
+    std::function<float(VertexId vertex_id, const Vector&)>;
 
-DistanceFunction GetDistanceImpl(VectorDistanceType distance_type);
+template<IndexableVectorType Vector>
+DistanceFunction<Vector> GetDistanceImpl(VectorDistanceType distance_type) {
+  switch (distance_type) {
+    case VectorDistanceType::kL2Squared:
+      return distance::DistanceL2Squared<Vector, Vector>;
+    case VectorDistanceType::kCosine:
+      return distance::DistanceCosine<Vector>;
+  }
+  FATAL_INVALID_ENUM_VALUE(VectorDistanceType, distance_type);
+}
 
 struct VertexWithDistance {
   VertexId vertex_id = 0;

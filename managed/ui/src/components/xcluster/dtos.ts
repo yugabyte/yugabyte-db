@@ -51,3 +51,31 @@ export interface XClusterConfig {
   // `imported` is dropped from the model defined in XClusterConfig.java.
   // This is intended for backend usage and API users shouldn't need to use this field.
 }
+
+/**
+ * Source: managed/src/main/java/com/yugabyte/yw/forms/XClusterConfigNeedBootstrapPerTableResponse.java
+ */
+export const XClusterNeedBootstrapReason = {
+  TABLE_MISSING_ON_TARGET: 'TABLE_MISSING_ON_TARGET',
+  TABLE_HAS_DATA: 'TABLE_HAS_DATA',
+  BIDIRECTIONAL_REPLICATION: 'BIDIRECTIONAL_REPLICATION'
+} as const;
+export type XClusterNeedBootstrapReason = typeof XClusterNeedBootstrapReason[keyof typeof XClusterNeedBootstrapReason];
+
+/**
+ * Source: managed/src/main/java/com/yugabyte/yw/forms/XClusterConfigNeedBootstrapPerTableResponse.java
+ */
+export interface XClusterConfigNeedBootstrapPerTableResponse {
+  [tableUuid: string]: {
+    description: string;
+    reasons: XClusterNeedBootstrapReason[];
+    bootstrapRequired: boolean;
+  };
+}
+
+/**
+ * Source: managed/src/main/java/com/yugabyte/yw/controllers/XClusterConfigController.java
+ */
+export interface XClusterConfigNeedBootstrapPerTableSimpleResponse {
+  [tableUuid: string]: boolean;
+}

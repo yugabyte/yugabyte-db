@@ -207,7 +207,7 @@ libraryDependencies ++= Seq(
   "commons-validator" % "commons-validator" % "1.8.0",
   "org.apache.velocity" % "velocity-engine-core" % "2.3",
   "com.fasterxml.woodstox" % "woodstox-core" % "6.4.0",
-  "com.jayway.jsonpath" % "json-path" % "2.6.0",
+  "com.jayway.jsonpath" % "json-path" % "2.9.0",
   "commons-io" % "commons-io" % "2.15.1",
   "commons-codec" % "commons-codec" % "1.16.0",
   "com.google.apis" % "google-api-services-compute" % "v1-rev20220506-1.32.1",

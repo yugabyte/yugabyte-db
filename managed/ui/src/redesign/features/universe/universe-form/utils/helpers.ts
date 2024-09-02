@@ -14,7 +14,8 @@ import {
   InstanceTag,
   InstanceTags,
   MasterPlacementMode,
-  NodeDetails
+  NodeDetails,
+  CommunicationPorts
 } from './dto';
 import { UniverseFormContextState } from '../UniverseFormContainer';
 import {
@@ -526,4 +527,21 @@ export const isVersionPGSupported = (dbVersion: string) => {
       }
     }) >= 0
   );
+};
+
+export const getChangedPorts = (
+  oldCommunicationPorts: CommunicationPorts,
+  newCommunicationPorts: CommunicationPorts
+) => {
+  const oldPorts = {};
+  const newPorts = {};
+
+  Object.keys(newCommunicationPorts).forEach((key) => {
+    if (JSON.stringify(oldCommunicationPorts[key]) !== JSON.stringify(newCommunicationPorts[key])) {
+      newPorts[key] = newCommunicationPorts[key];
+      oldPorts[key] = oldCommunicationPorts[key];
+    }
+  });
+
+  return { oldPorts, newPorts };
 };

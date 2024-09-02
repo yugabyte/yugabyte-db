@@ -68,6 +68,7 @@ In addition, CDC support for the following features will be added in upcoming re
 
 ## Learn more
 
+* [CDC architecture](../../../architecture/docdb-replication/change-data-capture/)
 * [Examples of CDC usage and patterns](https://github.com/yugabyte/cdc-examples/tree/main) {{<icon/github>}}
 * [Tutorials to deploy in different Kafka environments](/preview/tutorials/cdc-tutorials/) {{<icon/tutorial>}}
 * [Data Streaming Using YugabyteDB CDC, Kafka, and SnowflakeSinkConnector](https://www.yugabyte.com/blog/data-streaming-using-yugabytedb-cdc-kafka-and-snowflakesinkconnector/) {{<icon/blog>}}

@@ -276,7 +276,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
 
     if (xClusterConfig.getType() != ConfigType.Db) {
       dbToTablesInfoMapNeedBootstrap =
-          getDbToTablesInfoMapNeedBootstrap(
+          getDbToTablesInfoMapNeedBootstrapAndUpdateTableNeedBootstrap(
               xClusterConfig,
               getTableIds(requestedTableInfoList),
               requestedTableInfoList,
@@ -787,7 +787,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
   }
 
   protected Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
-      getDbToTablesInfoMapNeedBootstrap(
+      getDbToTablesInfoMapNeedBootstrapAndUpdateTableNeedBootstrap(
           XClusterConfig xClusterConfig,
           Set<String> tableIds,
           List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList,

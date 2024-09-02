@@ -1240,7 +1240,16 @@ Result<RepeatedPtrField<BackupRowEntryPB>> CatalogManager::GetBackupEntriesAsOfT
       &tablets_iter, doc_read_cntxt.schema(), SysRowEntryType::TABLET,
       [&tables_to_tablets](const Slice& id, const Slice& data) -> Status {
         auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<SysTabletsEntryPB>(data));
-        if (tables_to_tablets.contains(pb.table_id()) && pb.split_tablet_ids_size() == 0) {
+        // We always clone the set of active children as of the snapshot time. If tablet splits
+        // occurred between the restore time and snapshot time, this means we will have more
+        // children after the clone than were present at clone time, but:
+        // 1. The children still contain the correct data because history retention is preserved
+        // 2. This allows us to clone from a snapshot instead of active rocksdb (like we do for
+        //    cloning deleted tables), which is safer because it is more targeted.
+        // Ignore DELETED / REPLACED tablets since they would otherwise cause partition conflicts
+        // when running ImportSnapshot.
+        if (tables_to_tablets.contains(pb.table_id()) && pb.split_tablet_ids_size() == 0 &&
+            pb.state() != SysTabletsEntryPB::DELETED && pb.state() != SysTabletsEntryPB::REPLACED) {
           VLOG_WITH_FUNC(1) << "Found SysTabletsEntryPB: " << pb.ShortDebugString();
           tables_to_tablets[pb.table_id()].tablets_entries.push_back(
               std::make_pair(id.ToBuffer(), pb));
@@ -1736,7 +1745,10 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
         } else {
           tablet = CreateTabletInfo(table.get(), partition_pb, SysTabletsEntryPB::PREPARING);
         }
+        tablet->mutable_metadata()->mutable_dirty()->pb.set_colocated(table->colocated());
         new_tablets.push_back(tablet);
+        LOG(INFO) << Format("Created tablet $0 to replace tablet $1 in repartitioning of table $2",
+                            tablet->id(), source_tablet_id, table->id());
       }
 
       // Add tablets to catalog manager tablet_map_. This should be safe to do after creating
@@ -1822,6 +1834,17 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
   // The create tablet requests should be handled by bg tasks which find the PREPARING tablets after
   // commit.
 
+  // Update the tablegroup manager to point to the new colocated tablet instead of the old one.
+  if (table->colocated()) {
+    SharedLock l(mutex_);
+    SCHECK(
+        table->IsColocationParentTable(), IllegalState,
+        "Only the parent table in a colocated table should be repartitioned");
+    SCHECK_EQ(new_tablets.size(), 1, IllegalState, "Expected 1 new tablet after repartitioning");
+    auto tablegroup_id = GetTablegroupIdFromParentTableId(table->id());
+    RETURN_NOT_OK(tablegroup_manager_->Remove(tablegroup_id));
+    RETURN_NOT_OK(tablegroup_manager_->Add(table->namespace_id(), tablegroup_id, new_tablets[0]));
+  }
   return Status::OK();
 }
 

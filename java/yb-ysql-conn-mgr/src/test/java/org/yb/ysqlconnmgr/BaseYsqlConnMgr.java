@@ -40,6 +40,9 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   protected static final int NUM_TSERVER = 3;
   private static final String DEFAULT_PG_USER = "yugabyte";
 
+  protected static final String DISABLE_TEST_WITH_ASAN =
+        "Test is not working correctly with asan build";
+
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);

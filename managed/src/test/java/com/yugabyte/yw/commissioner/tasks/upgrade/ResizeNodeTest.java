@@ -1484,9 +1484,6 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
   private UpgradeTaskBase.UpgradeContext instanceChangeContext(MockUpgrade mockUpgrade) {
     return UpgradeTaskBase.UpgradeContext.builder()
-        .reconfigureMaster(
-            defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.replicationFactor
-                > 1)
         .postAction(
             node -> {
               mockUpgrade.addTask(TaskType.UpdateNodeDetails, null);

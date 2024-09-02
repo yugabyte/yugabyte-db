@@ -71,7 +71,7 @@ Monitor specific parts of application behavior continuously after a new feature 
 
 ## Logging
 
-Logs from different services, such as the [YB-TServer](../../troubleshoot/nodes/check-logs/#yb-tserver-logs) and [YB-Master](../../troubleshoot/nodes/check-logs/#yb-master-logs) provide a historical record of what has happened and can be very helpful in debugging and troubleshooting. These logs are rotated regularly, based on their size as configured. See [Logs management](../../troubleshoot/nodes/check-logs#logs-management).
+Logs from different services, such as the [YB-TServer](/preview/troubleshoot/nodes/check-logs/#yb-tserver-logs) and [YB-Master](/preview/troubleshoot/nodes/check-logs/#yb-master-logs) provide a historical record of what has happened and can be very helpful in debugging and troubleshooting. These logs are rotated regularly, based on their size as configured. See [Logs management](/preview/troubleshoot/nodes/check-logs#logs-management).
 
 ## Query-level metrics
 

@@ -1006,7 +1006,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
       new ConfKeyInfo<>(
           "yb.security.ldap.ldap_universe_sync",
           ScopeType.UNIVERSE,
-          "To perform sync of user-groups between the Universe DB nodes and LDAP Server",
+          "Sync user-groups between the Universe DB nodes and LDAP Server",
           "If configured, this feature allows users to synchronise user groups configured"
               + " on the upstream LDAP Server with user roles in YBDB nodes associated"
               + " with the universe.",
@@ -1300,5 +1300,13 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Fail the the health check if no clock sync service is found",
           "Require chrony or ntp(d) to be installed for health check to pass",
           ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> nodeAgentEnablerInstallTimeout =
+      new ConfKeyInfo<>(
+          "yb.node_agent.enabler.install_timeout",
+          ScopeType.UNIVERSE,
+          "Node Agent Enabler Installation Time-out",
+          "Node agent enabler installation time-out for the universe",
+          ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

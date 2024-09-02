@@ -16,7 +16,7 @@ Because YugabyteDB's YSQL API is wire-compatible with PostgreSQL, DQ Analyzer ca
 
 ## Connect
 
-Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB Prerequisites](../../tools/#yugabytedb-prerequisites).
+Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB Prerequisites](../tools/#yugabytedb-prerequisites).
 
 Follow the steps in [Ataccama documentation](https://support.ataccama.com/home/docs/dqa/user-guide/working-with-databases) to connect the database.
 
