@@ -212,6 +212,18 @@ const (
 	OnpremProviderType = "onprem"
 )
 
+// Different kms types
+const (
+	// util.AWSEARType type
+	AWSEARType = "AWS"
+	// AzureEARType type
+	AzureEARType = "AZU"
+	// GCPEARType type
+	GCPEARType = "GCP"
+	// HashicorpVaultEARType type
+	HashicorpVaultEARType = "HASHICORP"
+)
+
 // Different storage configuration types
 const (
 	// S3StorageConfigType type
