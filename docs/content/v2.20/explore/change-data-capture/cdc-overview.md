@@ -47,7 +47,7 @@ The core primitive of CDC is the _stream_. Streams can be enabled and disabled o
 * A single stream can only be used to stream data from one namespace only.
 * There should be a primary key on the table you want to stream the changes from.
 * CDC is not supported on a target table for xCluster replication [11829](https://github.com/yugabyte/yugabyte-db/issues/11829).
-* Currently, CDC doesn't support schema evolution for changes that require table rewrites (for example, [ALTER TYPE](../../../v2.20/api/ysql/the-sql-language/statements/ddl_alter_table#alter-type-with-table-rewrite)), or DROP TABLE and TRUNCATE TABLE operations.
+* Currently, CDC doesn't support schema evolution for changes that require table rewrites (for example, [ALTER TYPE](../../../api/ysql/the-sql-language/statements/ddl_alter_table#alter-type-with-table-rewrite)), or DROP TABLE and TRUNCATE TABLE operations.
 * YCQL tables aren't currently supported. Issue [11320](https://github.com/yugabyte/yugabyte-db/issues/11320).
 
 In addition, CDC support for the following features will be added in upcoming releases:
