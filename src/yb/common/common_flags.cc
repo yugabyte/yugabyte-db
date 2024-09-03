@@ -178,6 +178,15 @@ DEFINE_RUNTIME_AUTO_bool(enable_xcluster_auto_flag_validation, kLocalPersisted, 
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_ddl_atomicity_infra, kLocalPersisted, false, true,
     "Enables YSQL DDL atomicity");
 
+DEFINE_RUNTIME_AUTO_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup,
+                        kLocalPersisted,
+                        false,
+                        true,
+                        "This flag needs to be true in order to support addition of dynamic tables "
+                        "along with removal of not of interest/expired tables from a CDCSDK "
+                        "stream.");
+TAG_FLAG(cdcsdk_enable_dynamic_table_addition_with_table_cleanup, advanced);
+
 namespace yb {
 
 void InitCommonFlags() {

@@ -177,21 +177,13 @@ DEFINE_RUNTIME_AUTO_bool(cdcsdk_enable_identification_of_non_eligible_tables,
 TAG_FLAG(cdcsdk_enable_identification_of_non_eligible_tables, advanced);
 TAG_FLAG(cdcsdk_enable_identification_of_non_eligible_tables, hidden);
 
-DEFINE_RUNTIME_AUTO_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup,
-                        kLocalPersisted,
-                        false,
-                        true,
-                        "This flag needs to be true in order to support addition of dynamic tables "
-                        "along with removal of not of interest/expired tables from a CDCSDK "
-                        "stream.");
-TAG_FLAG(cdcsdk_enable_dynamic_table_addition_with_table_cleanup, advanced);
-
 DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_int32(master_rpc_timeout_ms);
 DECLARE_bool(ysql_yb_enable_replication_commands);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(enable_xcluster_auto_flag_validation);
 DECLARE_bool(ysql_yb_enable_replica_identity);
+DECLARE_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup);
 
 
 
@@ -6660,6 +6652,10 @@ Status CatalogManager::RemoveUserTableFromCDCSDKStream(
         "Error updating/deleting tablet entries from cdc state table");
   }
 
+  TEST_SYNC_POINT("RemoveUserTableFromCDCSDKStream::UpdateCheckpointDone");
+
+  TEST_SYNC_POINT("RemoveUserTableFromCDCSDKStream::BeforeRemoveTableFromStream");
+
   // Now remove the table from the CDC stream metadata & cdcsdk_tables_to_stream_map_ and persist
   // the updated metadata.
   RETURN_NOT_OK_PREPEND(
@@ -6724,6 +6720,38 @@ Status CatalogManager::ValidateAndSyncCDCStateEntriesForCDCSDKStream(
   LOG_WITH_FUNC(INFO)
       << "Successfully validated and synced cdc state table entries for CDC stream: " << stream_id;
 
+  return Status::OK();
+}
+
+Status CatalogManager::RemoveTablesFromCDCSDKStream(
+    const RemoveTablesFromCDCSDKStreamRequestPB* req, RemoveTablesFromCDCSDKStreamResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  LOG(INFO) << "Servicing RemoveTablesFromCDCSDKStream request from " << RequestorString(rpc)
+            << ": " << req->ShortDebugString();
+
+  if (!req->has_stream_id()) {
+    RETURN_INVALID_REQUEST_STATUS(
+        "Stream ID is requirred for removing tables from CDCSDK stream");
+  }
+
+  const auto& table_ids = req->table_ids();
+  if (table_ids.empty()) {
+    RETURN_INVALID_REQUEST_STATUS("No Table ID provided for removal from CDCSDK stream");
+  }
+
+  for (const auto& table_id : table_ids) {
+    RemoveUserTableFromCDCSDKStreamRequestPB remove_req;
+    RemoveUserTableFromCDCSDKStreamResponsePB remove_resp;
+    remove_req.set_stream_id(req->stream_id());
+    remove_req.set_table_id(table_id);
+    auto status = RemoveUserTableFromCDCSDKStream(&remove_req, &remove_resp, rpc);
+    if (!status.ok()) {
+      // No need to return the non-ok status to the caller (Update Peers and Metrics), since it will
+      // be retried if the state table entry is found again in next iteration.
+      LOG(WARNING) << "Could not remove table: " << table_id << " from stream: " << req->stream_id()
+                   << " : " << status.ToString();
+    }
+  }
   return Status::OK();
 }
 

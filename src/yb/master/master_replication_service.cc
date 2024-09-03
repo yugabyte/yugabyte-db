@@ -60,6 +60,7 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
     (DisableDynamicTableAdditionOnCDCSDKStream)
     (RemoveUserTableFromCDCSDKStream)
     (ValidateAndSyncCDCStateEntriesForCDCSDKStream)
+    (RemoveTablesFromCDCSDKStream)
   )
 
   MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(

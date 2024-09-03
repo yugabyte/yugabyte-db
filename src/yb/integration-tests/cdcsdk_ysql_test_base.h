@@ -124,6 +124,7 @@ DECLARE_bool(cdcsdk_enable_cleanup_of_non_eligible_tables_from_stream);
 DECLARE_bool(TEST_cdcsdk_skip_stream_active_check);
 DECLARE_bool(TEST_cdcsdk_disable_drop_table_cleanup);
 DECLARE_bool(TEST_cdcsdk_disable_deleted_stream_cleanup);
+DECLARE_bool(cdcsdk_enable_cleanup_of_expired_table_entries);
 
 namespace yb {
 
@@ -629,6 +630,13 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const xrepl::StreamId& stream_id = xrepl::StreamId::Nil(),
       const std::string timeout_msg =
           "Tablets in cdc_state for the stream doesnt match the expected set");
+
+  Result<int> GetStateTableRowCount();
+
+  Status VerifyStateTableAndStreamMetadataEntriesCount(
+      const xrepl::StreamId& stream_id, const int& state_table_entries,
+      const int& qualified_table_ids_count, const int& unqualified_table_ids_count,
+      const double& timeout, const std::string& timeout_msg);
 
   Result<std::vector<TableId>> GetCDCStreamTableIds(const xrepl::StreamId& stream_id);
 
