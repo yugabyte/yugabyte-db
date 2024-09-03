@@ -468,7 +468,7 @@ YbComputeModifiedEntities(ResultRelInfo *resultRelInfo, HeapTuple oldtuple,
  * skipped as a result of unmodified columns.
  * A list of modified columns (updated_cols) is required:
  * - To construct the payload of updated values to be send to the storage layer.
- * - To determine if column-specific after-row triggers are elgible to fire.
+ * - To determine if column-specific after-row triggers are eligible to fire.
  * ----------------------------------------------------------------
  */
 void
@@ -532,8 +532,20 @@ YbComputeModifiedColumnsAndSkippableEntities(
 								   plan->onConflictAction == ONCONFLICT_UPDATE));
 	}
 
-	*updated_cols = bms_del_members(*updated_cols, unmodified_cols);
 	*updated_cols = bms_add_members(*updated_cols, modified_cols);
+
+	/*
+	 * Exclude unmodified primary key columns from the set of main table columns
+	 * to be updated. This potentially prevents an extra RPC to the main table.
+	 * Do not bother if the any part of the primary key is modified.
+	 */
+	if (!bms_overlap(YBGetTablePrimaryKeyBms(rel), modified_cols))
+	{
+		Bitmapset *unmodified_pkcols =
+			bms_intersect(YBGetTablePrimaryKeyBms(rel), unmodified_cols);
+		*updated_cols = bms_del_members(*updated_cols, unmodified_pkcols);
+		bms_free(unmodified_pkcols);
+	}
 
 	YbLogInspectedColumns(rel, *updated_cols, modified_cols, unmodified_cols);
 
