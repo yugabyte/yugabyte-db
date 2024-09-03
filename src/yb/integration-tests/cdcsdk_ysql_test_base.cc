@@ -2799,6 +2799,41 @@ Result<string> CDCSDKYsqlTest::GetUniverseId(PostgresMiniCluster* cluster) {
         MonoDelta::FromSeconds(60), timeout_msg));
   }
 
+  Result<int> CDCSDKYsqlTest::GetStateTableRowCount() {
+    int num = 0;
+
+    CDCStateTable cdc_state_table(test_client());
+    Status s;
+    auto table_range = VERIFY_RESULT(
+        cdc_state_table.GetTableRange(CDCStateTableEntrySelector().IncludeCheckpoint(), &s));
+
+    for (auto row_result : table_range) {
+      RETURN_NOT_OK(row_result);
+      auto row = *row_result;
+      if (*row.checkpoint == OpId::Max()) {
+        continue;
+      }
+      num += 1;
+    }
+
+    return num;
+  }
+
+  Status CDCSDKYsqlTest::VerifyStateTableAndStreamMetadataEntriesCount(
+      const xrepl::StreamId& stream_id, const int& state_table_entries,
+      const int& qualified_table_ids_count, const int& unqualified_table_ids_count,
+      const double& timeout, const std::string& timeout_msg) {
+    return WaitFor(
+        [&]() -> Result<bool> {
+          auto stream_metadata = VERIFY_RESULT(GetDBStreamInfo(stream_id));
+          bool result = stream_metadata.table_info_size() == qualified_table_ids_count;
+          result &= stream_metadata.unqualified_table_info_size() == unqualified_table_ids_count;
+          result &= VERIFY_RESULT(GetStateTableRowCount()) == state_table_entries;
+          return result;
+        },
+        MonoDelta::FromSeconds(timeout), timeout_msg);
+  }
+
   Result<std::vector<TableId>> CDCSDKYsqlTest::GetCDCStreamTableIds(
       const xrepl::StreamId& stream_id) {
     NamespaceId ns_id;

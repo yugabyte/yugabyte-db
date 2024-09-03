@@ -187,6 +187,20 @@ DEFINE_RUNTIME_uint32(xcluster_checkpoint_max_staleness_secs, 300,
     "and all WAL segments will be retained until the next refresh. "
     "Setting to 0 will disable Opid-based WAL segment retention for XCluster.");
 
+DEFINE_RUNTIME_int32(
+    cdcsdk_max_expired_tables_to_clean_per_run, 1,
+    "This flag determines the maximum number of tables to be cleaned up per run of "
+    "UpdatePeersAndMetrics. Since a lot of tables can become not of interest at the same time, "
+    "this flag is used to prevent storming of cleanup requests to master. When the flag value is "
+    "1, the number of cleanup requests sent will be min(num_tables_to_cleanup, num_of_nodes)");
+
+DEFINE_RUNTIME_AUTO_bool(
+    cdcsdk_enable_cleanup_of_expired_table_entries, kLocalPersisted, false, true,
+    "When enabled, Update Peers and Metrics will look for entries in the state table that have "
+    "either become not of interest or have expired for a stream. The cleanup logic will then "
+    "update these entries in cdc_state table and also move the corresponing table's entry to "
+    "unqualified tables list in stream metadata.");
+
 DECLARE_int32(log_min_seconds_to_retain);
 
 static bool ValidateMaxRefreshInterval(const char* flag_name, uint32 value) {
@@ -223,6 +237,8 @@ DECLARE_bool(ysql_yb_enable_replica_identity);
 DEFINE_RUNTIME_bool(enable_cdcsdk_lag_collection, false,
     "When enabled, vlog containing the lag for the getchanges call as well as last commit record "
     "in response will be printed.");
+
+DECLARE_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup);
 
 METRIC_DEFINE_entity(xcluster);
 
@@ -2418,7 +2434,8 @@ void CDCServiceImpl::ProcessEntryForCdcsdk(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
     TabletIdCDCCheckpointMap& tablet_min_checkpoint_map,
     StreamIdSet* slot_entries_to_be_deleted,
-    const std::unordered_map<NamespaceId, uint64_t>& namespace_to_min_record_id_commit_time) {
+    const std::unordered_map<NamespaceId, uint64_t>& namespace_to_min_record_id_commit_time,
+    TableIdToStreamIdMap* expired_tables_map) {
   const auto& stream_id = entry.key.stream_id;
   const auto& tablet_id = entry.key.tablet_id;
   const auto& checkpoint = *entry.checkpoint;
@@ -2497,6 +2514,12 @@ void CDCServiceImpl::ProcessEntryForCdcsdk(
     auto status = CheckTabletNotOfInterest(
         producer_tablet, last_active_time_cdc_state_table, true);
     if (!status.ok()) {
+      // If checkpoint is max, it indicates that cleanup is already in progress. No need to add
+      // such entries to the expired_tables_map.
+      if (expired_tables_map && checkpoint != OpId::Max()) {
+        AddTableToExpiredTablesMap(tablet_peer, stream_id, expired_tables_map);
+      }
+
       if (!tablet_min_checkpoint_map.contains(tablet_id)) {
         VLOG(2) << "Stream: " << stream_id << ", is not of interest for tablet: " << tablet_id
                 << ", hence we are adding default entries to tablet_min_checkpoint_map";
@@ -2508,6 +2531,12 @@ void CDCServiceImpl::ProcessEntryForCdcsdk(
     }
     status = CheckStreamActive(producer_tablet, last_active_time_cdc_state_table);
     if (!status.ok()) {
+      // If checkpoint is max, it indicates that cleanup is already in progress. No need to add
+      // such entries to the expired_tables_map.
+      if (expired_tables_map && checkpoint != OpId::Max()) {
+        AddTableToExpiredTablesMap(tablet_peer, stream_id, expired_tables_map);
+      }
+
       // It is possible that all streams associated with a tablet have expired, in which case we
       // have to create a default entry in 'tablet_min_checkpoint_map' corresponding to the
       // tablet. This way the fact that all the streams have expired will be communicated to the
@@ -2777,10 +2806,36 @@ int64_t CDCServiceImpl::GetXClusterMinRequiredIndex(const TabletId& tablet_id) {
   return min_replicated_opid->index;
 }
 
+void CDCServiceImpl::AddTableToExpiredTablesMap(
+    const tablet::TabletPeerPtr& tablet_peer, const xrepl::StreamId& stream_id,
+    TableIdToStreamIdMap* expired_tables_map) {
+  auto table_ids = tablet_peer->tablet_metadata()->colocated()
+                       ? tablet_peer->tablet_metadata()->GetAllColocatedTables()
+                       : std::vector<TableId>{tablet_peer->tablet_metadata()->table_id()};
+
+  for (const auto& table_id : table_ids) {
+    auto it = expired_tables_map->find(table_id);
+    if (it != expired_tables_map->end()) {
+      // The cleanup request to master should be sent exactly once per {table, stream} pair. To
+      // ensure this, the node hosting the leader of the tablet with lexicographically smallest
+      // tablet_id will send the request.
+      if ((tablet_peer->tablet_id() <= it->second.first)) {
+        it->second.first = tablet_peer->tablet_id();
+        it->second.second.insert(stream_id);
+      }
+    } else {
+      expired_tables_map->emplace(
+          table_id,
+          std::make_pair(tablet_peer->tablet_id(), std::unordered_set<xrepl::StreamId>{stream_id}));
+    }
+  }
+}
+
 Status CDCServiceImpl::PopulateTabletCheckPointInfo(
     TabletIdCDCCheckpointMap& cdcsdk_min_checkpoint_map,
     std::unordered_map<TabletId, OpId>& xcluster_tablet_min_opid_map,
-    TabletIdStreamIdSet& tablet_stream_to_be_deleted, StreamIdSet& slot_entries_to_be_deleted) {
+    TabletIdStreamIdSet& tablet_stream_to_be_deleted, StreamIdSet& slot_entries_to_be_deleted,
+    TableIdToStreamIdMap& expired_tables_map) {
   std::unordered_set<xrepl::StreamId> refreshed_metadata_set;
 
   int count = 0;
@@ -2874,7 +2929,7 @@ Status CDCServiceImpl::PopulateTabletCheckPointInfo(
 
       ProcessEntryForCdcsdk(
           entry, stream_metadata, tablet_peer, cdcsdk_min_checkpoint_map,
-          &slot_entries_to_be_deleted, namespace_to_min_record_id_commit_time);
+          &slot_entries_to_be_deleted, namespace_to_min_record_id_commit_time, &expired_tables_map);
     } else if (stream_metadata.GetSourceType() == XCLUSTER) {
       ProcessEntryForXCluster(entry, xcluster_tablet_min_opid_map);
     }
@@ -3189,11 +3244,12 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
     StreamIdSet slot_entries_to_be_deleted;
     TabletIdCDCCheckpointMap cdcsdk_min_checkpoint_map;
     std::unordered_map<TabletId, OpId> xcluster_tablet_min_opid_map;
+    TableIdToStreamIdMap expired_tables_map;
     const auto now = MonoTime::Now();
 
     auto status = PopulateTabletCheckPointInfo(
-        cdcsdk_min_checkpoint_map, xcluster_tablet_min_opid_map,
-        cdc_state_entries_to_delete, slot_entries_to_be_deleted);
+        cdcsdk_min_checkpoint_map, xcluster_tablet_min_opid_map, cdc_state_entries_to_delete,
+        slot_entries_to_be_deleted, expired_tables_map);
     if (!status.ok()) {
       LOG(WARNING) << "Failed to populate tablets checkpoint info: " << status;
       continue;
@@ -3227,6 +3283,13 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
         DeleteCDCStateTableMetadata(
             cdc_state_entries_to_delete, failed_tablet_ids, slot_entries_to_be_deleted),
         "Unable to cleanup CDC State table metadata");
+
+    if (GetAtomicFlag(&FLAGS_cdcsdk_enable_cleanup_of_expired_table_entries) &&
+        GetAtomicFlag(&FLAGS_cdcsdk_enable_dynamic_table_addition_with_table_cleanup)) {
+      WARN_NOT_OK(
+          CleanupExpiredTables(expired_tables_map),
+          "Failed to remove an expired table entry from stream");
+    }
 
     rate_limiter_->SetBytesPerSecond(
         GetAtomicFlag(&FLAGS_xcluster_get_changes_max_send_rate_mbps) * 1_MB);
@@ -3282,6 +3345,64 @@ Status CDCServiceImpl::DeleteCDCStateTableMetadata(
     if (!s.ok()) {
       LOG(WARNING) << "Unable to flush operations to delete slot entries from state table: " << s;
       return s.CloneAndPrepend("Error deleting slot rows from cdc_state table");
+    }
+  }
+  return Status::OK();
+}
+
+Status CDCServiceImpl::CleanupExpiredTables(const TableIdToStreamIdMap& expired_tables_map) {
+  if (expired_tables_map.empty()) {
+    return Status::OK();
+  }
+
+  int num_cleanup_requests = 0;
+  for (const auto& entry : expired_tables_map) {
+    const auto& table_id = entry.first;
+    const auto& tablet_id = entry.second.first;
+    const auto& streams = entry.second.second;
+
+    auto tablet_peer = context_->LookupTablet(tablet_id);
+    if (!tablet_peer) {
+      LOG(WARNING) << "Could not find tablet peer for tablet_id: " << tablet_id
+                   << ", for table: " << table_id
+                   << ". Will not remove its entries from state table in this round.";
+      continue;
+    }
+
+    if (tablet_peer->IsNotLeader()) {
+      continue;
+    }
+
+    for (const auto& stream_id : streams) {
+      if (num_cleanup_requests >=
+          GetAtomicFlag(&FLAGS_cdcsdk_max_expired_tables_to_clean_per_run)) {
+        return Status::OK();
+      }
+
+      auto colocated = tablet_peer->tablet_metadata()->colocated();
+
+      auto table_ids = colocated
+                           ? tablet_peer->tablet_metadata()->GetAllColocatedTables()
+                           : std::vector<TableId>{table_id};
+
+      if (colocated) {
+        for (auto it = table_ids.begin(); it != table_ids.end();) {
+          if (boost::ends_with(*it, kColocatedDbParentTableIdSuffix) ||
+              boost::ends_with(*it, kTablegroupParentTableIdSuffix) ||
+              boost::ends_with(*it, kColocationParentTableIdSuffix)) {
+            it = table_ids.erase(it);
+          } else {
+            ++it;
+          }
+        }
+      }
+
+      auto status = client()->RemoveTablesFromCDCSDKStream(table_ids, stream_id);
+      if (!status.ok()) {
+        LOG(WARNING) << "Failed to remove table: " << table_id << " from stream: " << stream_id
+                     << " : " << status;
+      }
+      num_cleanup_requests++;
     }
   }
   return Status::OK();
