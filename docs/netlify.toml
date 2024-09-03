@@ -1320,7 +1320,7 @@
 # Hugo resource caching plugin configuration
 # https://github.com/cdeleeuwe/netlify-plugin-hugo-cache-resources#readme
 
-[[plugins1]]
+[[plugins]]
   package = "netlify-plugin-hugo-cache-resources"
 
     [plugins.inputs]
