@@ -11,7 +11,7 @@
 			{{ partial "reading-time.html" . }}
 		{{ end }}
 	</header>
-  {{  partial "earlier-version-warning" .  }}
+  {{ partial "earlier-version-warning" . }}
   <!-- Wrap table in div for responsive -->
   {{ .Content | replaceRE "(<table(?:.|\n)+?</table>)" "<div class=table-responsive> ${1} </div>"  | safeHTML }}
   {{ partial "section-index.html" . }}
