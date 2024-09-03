@@ -84,6 +84,12 @@ A sample Migration Assessment report for PostgreSQL is as follows:
     SELECT 'GRANT SELECT ON ALL TABLES IN SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
     ```
 
+1. Execute the following command to refresh statistics for all tables in your database or schema:
+
+    ```sql
+    ANALYZE;
+    ```
+
     {{% /tab %}}
 
     {{% tab header="Oracle" %}}
@@ -137,6 +143,15 @@ A sample Migration Assessment report for PostgreSQL is as follows:
    GRANT CONNECT TO ybvoyager;
    GRANT <SCHEMA_NAME>_reader_role TO ybvoyager;
    ```
+
+1. Execute the following PL/SQL block to gather up-to-date statistics for your schema:
+
+```sql
+BEGIN
+  DBMS_STATS.GATHER_SCHEMA_STATS('YOUR_SCHEMA_NAME');
+END;
+/
+```
 
     {{% /tab %}}
 

@@ -13,6 +13,37 @@ type: docs
 
 What follows are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
+## v1.8 - September 4, 2024
+
+### New Features
+
+- Introduced the notion of Migration complexity in assessment and analyze-schema reports, which range from LOW to MEDIUM to HIGH. For PostgreSQL source, this depends on the number and complexity of the PostgreSQL features present in the schema that are unsupported in YugabyteDB.
+- Introduced a bulk assessment command (`assess-migration-bulk`) for Oracle which allows you to assess multiple schemas in one or more database instances simultaneously.
+- Streamlined the airgapped installation process. This includes clearer instructions for installing dependencies; providing a script to verify dependencies are installed; and providing a bundle that includes all the Voyager packages and scripts.
+- Support fall-forward/fall-back live migration workflows using the PostgreSQL replication protocol-based CDC connector.
+
+### Enhancements
+
+- Enhanced assessment and analyze reports to detect, and specify workarounds for PostgreSQL features that are incompatible with YugabyteDB. For example, Multi-column GIN indexes, GENERATED ALWAYS AS STORED columns, ALTER TABLE variants, Deferrable constraints, ALTER TABLE ADD PRIMARY KEY on a partitioned table, and so on.
+- Enhanced Manual Review Guidelines section for PostgreSQL source to list known issues that are unsupported by YugabyteDB, with workarounds.
+- Enhanced export schema for categorizing the FOREIGN TABLE, POLICY, CONVERSION, and OPERATOR object types from PostgreSQL source.
+- Improved cluster sizing recommendation logic in assessment reports.
+  - Tables with more than 5 indexes will be recommended to be sharded.
+  - Improved data load time estimates by also considering row counts, presence of indexes, number of columns, sharded/colocated properties, and so on.
+- Added a Migration Caveats section to Migration Assessment Reports that mentions features that are not supported by Voyager or can cause issues during the migration process.
+- Enhanced the information sent to the YugabyteD control plane to include source and target IP addresses, ports, version details, as well as Voyager client machine specifics like IP, OS, and remaining disk space.
+- Added schema file path in the `failed.sql` file for all failed SQL statements in import schema.
+
+### Bug fixes
+
+- Do not send call-home diagnostics if proper `export-dir` is not provided.
+- Validate Schema existence before assess-migration/export-schema/export-data.
+- Fixed a bug where export-schema/export-data was failing on PG version 9 because `pg_sequences` table was not found.
+- Fixed a bug in assessment report where certain data types (which were only unsupported in live migration workflows) were incorrectly being reported as unsupported in YugabyteDB.
+- Fixed a bug in the assessment report where indexes on different tables with the same names were only listed once.
+- Fixed a bug in analyze-schema where the presence of JSON_ARRAYAGG in an MVIEW definition was causing a nil pointer exception.
+- Fixed a bug where unsupported data types were not being correctly detected in export-data-from-target.
+
 ## v1.7.2 - July 4, 2024
 
 ### New features
