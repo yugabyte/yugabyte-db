@@ -39,7 +39,7 @@ Export configuration is {{<badge/ea>}}. To enable export configuration managemen
 
 Create and manage export configurations on the **Integrations > Log** page.
 
-![Export configurations](/images/yp/export-configurations.png)
+<!--![Export configurations](/images/yp/export-configurations.png)-->
 
 The page lists the configured and available third-party integrations.
 
@@ -58,8 +58,9 @@ The Datadog export configuration requires the following:
 
 To create an export configuration, do the following:
 
-1. On the **Integrations** page, on the **Log** tab, click **Create Export Configuration**, and choose **Datadog**.
+1. On the **Integrations** page, on the **Log** tab, click **Create Export Configuration**.
 1. Enter a name for the configuration.
+1. Choose **Datadog**.
 1. Enter your Datadog [API key](https://docs.datadoghq.com/account_management/api-app-keys/).
 1. Choose the Datadog site to connect to, or choose Self-hosted and enter your URL.
 1. Click **Create Configuration**.
@@ -75,8 +76,9 @@ The Splunk export configuration requires the following:
 
 To create an export configuration, do the following:
 
-1. On the **Integrations** page, on the **Log** tab, click **Create Export Configuration**, and choose **Splunk**.
+1. On the **Integrations** page, on the **Log** tab, click **Create Export Configuration**.
 1. Enter a name for the configuration.
+1. Choose **Splunk**.
 1. Enter your Splunk [Access token](https://docs.splunk.com/observability/en/admin/authentication/authentication-tokens/org-tokens.html).
 1. Enter the Endpoint URL.
 1. Optionally, enter the Source, Source Type, and Index.
@@ -94,8 +96,9 @@ The AWS CloudWatch export configuration requires the following:
 
 To create an export configuration, do the following:
 
-1. On the **Integrations** page, on the **Log** tab, click **Create Export Configuration**, and choose **AWS CloudWatch**.
+1. On the **Integrations** page, on the **Log** tab, click **Create Export Configuration**.
 1. Enter a name for the configuration.
+1. Choose **AWS CloudWatch**.
 1. Enter your access key and secret access key.
 1. Enter the Log group and Log stream.
 1. Enter the region.
@@ -113,8 +116,9 @@ The GCP Cloud Logging export configuration requires the following:
 
 To create an export configuration, do the following:
 
-1. On the **Integrations** page, on the **Log** tab, click **Create Export Configuration**, and choose **GCP Cloud Logging**.
+1. On the **Integrations** page, on the **Log** tab, click **Create Export Configuration**.
 1. Enter a name for the configuration.
+1. Choose **GCP Cloud Logging**.
 1. Optionally, provide the project name.
 1. Upload the JSON file containing your Google Cloud credentials.
 1. Click **Validate and Create Configuration**.

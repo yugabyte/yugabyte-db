@@ -1,9 +1,9 @@
 ---
-title: Export PostgreSQL logs from YugabyteDB Anywhere universes
+title: Export YSQL logs from YugabyteDB Anywhere universes
 headerTitle: Export audit logs
 linkTitle: Export logs
-description: Export universe logs to third-party tools.
-headcontent: Export PostgreSQL logs from your universe
+description: Export universe audit logs to third-party tools.
+headcontent: Configure pgaudit logging
 badges: ea
 menu:
   stable_yugabyte-platform:
@@ -30,8 +30,7 @@ If you want to set pgaudit.log_level to a [severity level](https://www.postgresq
 ## Limitations
 
 - Log export is only supported for cloud-based universes and automatically provisioned on-premises universes. Manually provisioned universes and Kubernetes universes are not supported.
-- Log export uses a PostgreSQL extension (pgaudit) and is only compatible with YSQL.
-- Currently, no alerts or metrics are available for this feature.
+- Only YSQL database audit logs can be exported, not YCQL.
 
 ## Best practices
 
