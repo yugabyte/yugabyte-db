@@ -46,13 +46,11 @@ The following table describes the type of data that is collected during a migrat
 | Performance metrics | Optional | Voyager captures performance metrics from the database (IOPS) for rightsizing the target environment. |
 | Server or database credentials | No | No server or database credentials are collected. |
 
-### PostgreSQL Sample Migration Assessment report
+### PostgreSQL sample Migration Assessment Report
 
-A sample Migration Assessment report for PostgreSQL is as follows:
+You can view a sample Migration Assessment report for PostgreSQL [here](/files/sample-report.html).
 
-![Migration report](/images/migrate/assess-migration.jpg)
-
-## Generate a Migration Assessment report
+## Generate a Migration Assessment Report
 
 1. [Install yb-voyager](../../install-yb-voyager/).
 1. Prepare the source database.
@@ -82,6 +80,12 @@ A sample Migration Assessment report for PostgreSQL is as follows:
     /* Grant SELECT permission on all the tables. */
 
     SELECT 'GRANT SELECT ON ALL TABLES IN SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
+    ```
+
+1. Execute the following command to refresh statistics for all tables in your database or schema:
+
+    ```sql
+    ANALYZE;
     ```
 
     {{% /tab %}}
@@ -138,6 +142,15 @@ A sample Migration Assessment report for PostgreSQL is as follows:
    GRANT <SCHEMA_NAME>_reader_role TO ybvoyager;
    ```
 
+1. Execute the following PL/SQL block to gather up-to-date statistics for your schema:
+
+```sql
+BEGIN
+  DBMS_STATS.GATHER_SCHEMA_STATS('YOUR_SCHEMA_NAME');
+END;
+/
+```
+
     {{% /tab %}}
 
 {{< /tabpane >}}
@@ -148,9 +161,9 @@ A sample Migration Assessment report for PostgreSQL is as follows:
 
         ```sh
         yb-voyager assess-migration --source-db-type postgresql \
-        --source-db-host hostname --source-db-user ybvoyager \
-        --source-db-password password --source-db-name dbname \
-        --source-db-schema schema1,schema2 --export-dir /path/to/export/dir
+            --source-db-host hostname --source-db-user ybvoyager \
+            --source-db-password password --source-db-name dbname \
+            --source-db-schema schema1,schema2 --export-dir /path/to/export/dir
         ```
 
     1. **Without source database connectivity** (only PostgreSQL): In situations where direct access to the source database is restricted, there is an alternative approach. Voyager includes packages with scripts for PostgreSQL at `/etc/yb-voyager/gather-assessment-metadata`. You can perform the following steps with these scripts:
@@ -190,6 +203,82 @@ For the most accurate migration assessment, the source database must be actively
     - [Live migration](../../migrate/live-migrate/)
     - [Live migration with fall-forward](../../migrate/live-fall-forward/)
     - [Live migration with fall-back](../../migrate/live-fall-back/)
+
+## Bulk assessment
+
+The Bulk Assessment command (`assess-migration-bulk`) allows you assess multiple schemas in one or more database instances simultaneously. Bulk assessment enables the following:
+
+- Multi-schema assessment - Assess multiple schemas across one or more database instances with a single command, streamlining the migration planning process.
+- Centralized reporting - All assessment reports are generated and stored in a single organized directory, so you can review the migration assessments for all schemas in one place.
+
+![Oracle bulk assessment](/images/migrate/assess-migration-bulk.png)
+
+### Prerequisites
+
+Prepare source databases for each schema as described in [Generate a migration assessment](#generate-a-migration-assessment-report).
+
+### Fleet configuration file
+
+Bulk assessment is managed using a fleet configuration file, which specifies the details of schemas to be assessed. The file is in CSV format.
+
+The first row of the file includes the headers that describe the fields to be included in each subsequent row. Each row after the header represents a different schema to be assessed.
+
+The following table describes the fields that can be included in the fleet configuration file.
+
+| Field | Description |
+| :--- | :--- |
+| source-db-type | Required. The type of source database. Currently, only Oracle is supported. |
+| source-db-user | Required. The username used to connect to the source database. |
+| source&#8209;db&#8209;password | Optional. The password for the source database user. If not provided, you will be prompted for the password during assessment of that schema. |
+| source-db-schema | Required. The specific schema in the source database to be assessed. |
+| source-db-host | Optional. The hostname or IP address of the source database server. |
+| source-db-port | Optional. The port number on which the source database is running. This is required if `oracle-tns-alias` is not used. |
+| source-db-name | Optional. The database name for connecting to the Oracle database. This is required if `oracle-db-sid` or `oracle-tns-alias` is not used. |
+| oracle-db-sid | Optional. The Oracle System Identifier (SID). This is required if `source-db-name` or `oracle-tns-alias` is not used. |
+| oracle-tns-alias | Optional. The TNS alias used for Oracle databases, which can include connection details such as host, port, and service name. This is required if `source-db-name` or `oracle-db-sid` is not used. |
+
+The following is an example fleet configuration file.
+
+```text
+source-db-type,source-db-host,source-db-port,source-db-name,oracle-db-sid,oracle-tns-alias,source-db-user,source-db-password,source-db-schema
+oracle,example-host1,1521,ORCL,,,admin,password,schema1
+oracle,example-host2,1521,,ORCL_SID,,admin,password,schema2
+oracle,,,,,tns_alias,oracle_user,password,schema3
+```
+
+### Command
+
+To perform a bulk assessment, use the following command syntax:
+
+```sh
+yb-voyager assess-migration-bulk \
+    --fleet-config-file /path/to/fleet_config_file.csv \
+    --bulk-assessment-dir /path/to/bulk-assessment-dir \
+    [--continue-on-error true|false] \
+    [--start-clean true|false]
+```
+
+### Directory structure
+
+After the bulk assessment is completed, the top-level directory specified using the `--bulk-assessment-dir` flag includes subdirectories for each assessed schema. Additionally, a top-level report is generated that provides links to the individual assessment reports for each schema.
+
+```sh
+/bulk-assessment-dir/
+├── bulkAssessmentReport.html
+├── bulkAssessmentReport.json
+├── DBNAME-SCHEMA1-export-dir/
+│    └── assessment/
+│          └── reports/
+│                 ├── assessmentReport.html
+│                 └── assessmentReport.json
+├── SID-SCHEMA2-export-dir/
+│    └── assessment/
+│          └── reports/
+│                 ├── assessmentReport.html
+│                 └── assessmentReport.json
+└── logs/
+     └── yb-voyager-assess-migration-bulk.log
+```
 
 ## Visualize the Migration Assessment report
 
