@@ -28,6 +28,10 @@ type: docs
   </li>
 </ul>
 
+{{< note title="Note" >}}
+To use semi-automatic transactional xCluster replication, both the Primary and Standby universes must be running v2024.1.2 or later.
+{{< /note >}}
+
 Semi-automatic transactional xCluster replication simplifies the operational complexity of managing replication and making DDL changes.
 
 In this mode, xCluster replication operates at the YSQL database granularity. This means you only run xCluster management operations when adding and removing databases from replication, and not when tables in the databases are created or dropped.
