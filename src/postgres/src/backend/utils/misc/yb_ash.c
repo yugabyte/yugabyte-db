@@ -416,19 +416,32 @@ yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 					  QueryEnvironment *queryEnv, DestReceiver *dest,
 					  QueryCompletion *qc)
 {
-	uint64 query_id;
+	uint64		query_id;
+	bool		skip_nested_level;
+	Node	   *parsetree = pstmt->utilityStmt;
 
-	if (yb_enable_ash)
+	/*
+	 * We don't want to set query id if the node is PREPARE, EXECUTE or
+	 * DEALLOCATE because pg_stat_statements also doesn't do it. Check
+	 * comments in pgss_ProcessUtility for more info.
+	 */
+	skip_nested_level = IsA(parsetree, PrepareStmt) || IsA(parsetree, ExecuteStmt) ||
+						IsA(parsetree, DeallocateStmt);
+
+	if (!skip_nested_level)
 	{
-		query_id = pstmt->queryId != 0
-				   ? pstmt->queryId
-				   : yb_ash_utility_query_id(queryString,
-					   						 pstmt->stmt_len,
-											 pstmt->stmt_location);
-		YbAshSetQueryId(query_id);
+		if (yb_enable_ash)
+		{
+			query_id = pstmt->queryId != 0
+					   ? pstmt->queryId
+					   : yb_ash_utility_query_id(queryString,
+												 pstmt->stmt_len,
+												 pstmt->stmt_location);
+			YbAshSetQueryId(query_id);
+		}
+		++nested_level;
 	}
 
-	++nested_level;
 	PG_TRY();
 	{
 		if (prev_ProcessUtility)
@@ -441,18 +454,21 @@ yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 									readOnlyTree,
 									context, params, queryEnv,
 									dest, qc);
-		--nested_level;
-
-		if (yb_enable_ash)
-			YbAshResetQueryId(query_id);
+		if (!skip_nested_level)
+		{
+			--nested_level;
+			if (yb_enable_ash)
+				YbAshResetQueryId(query_id);
+		}
 	}
 	PG_CATCH();
 	{
-		--nested_level;
-
-		if (yb_enable_ash)
-			YbAshResetQueryId(query_id);
-
+		if (!skip_nested_level)
+		{
+			--nested_level;
+			if (yb_enable_ash)
+				YbAshResetQueryId(query_id);
+		}
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
