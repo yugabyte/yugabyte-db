@@ -10078,5 +10078,252 @@ TEST_F(CDCSDKYsqlTest, TestWithMajorityReplicatedButNonCommittedSingleShardTxn) 
   ASSERT_GE(total, 12);
 }
 
+TEST_F(CDCSDKYsqlTest, TestCleanupOfTableNotOfInterest) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ASSERT_OK(SetUpWithParams(3, 3, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  auto stream_metadata = ASSERT_RESULT(GetDBStreamInfo(stream_id));
+  ASSERT_EQ(stream_metadata.table_info_size(), 1);
+  ASSERT_EQ(ASSERT_RESULT(GetStateTableRowCount()), 1);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_tablet_not_of_interest_timeout_secs) = 0;
+
+  ASSERT_OK(VerifyStateTableAndStreamMetadataEntriesCount(
+      stream_id, /* state_table_entries */ 0, /* qualified_table_ids_count */ 0,
+      /* unqualified_table_ids_count */ 1, /* timeout */ 60 * kTimeMultiplier,
+      /* timeout_msg */ "Timed out waiting for expired table cleanup"));
+
+  auto get_changes_result = GetChangesFromCDC(stream_id, tablets);
+  ASSERT_NOK(get_changes_result);
+  ASSERT_STR_CONTAINS(get_changes_result.ToString(), "is not part of stream ID");
+}
+
+TEST_F(CDCSDKYsqlTest, TestCleanupOfExpiredTable) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  auto stream_metadata = ASSERT_RESULT(GetDBStreamInfo(stream_id));
+  ASSERT_EQ(stream_metadata.table_info_size(), 1);
+  ASSERT_EQ(ASSERT_RESULT(GetStateTableRowCount()), 1);
+
+  auto get_changes_result = GetChangesFromCDC(stream_id, tablets);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 0;
+
+  ASSERT_OK(VerifyStateTableAndStreamMetadataEntriesCount(
+      stream_id, /* state_table_entries */ 0, /* qualified_table_ids_count */ 0,
+      /* unqualified_table_ids_count */ 1, /* timeout */ 60 * kTimeMultiplier,
+      /* timeout_msg */ "Timed out waiting for expired table cleanup"));
+
+  get_changes_result = GetChangesFromCDC(stream_id, tablets);
+  ASSERT_NOK(get_changes_result);
+  ASSERT_STR_CONTAINS(get_changes_result.ToString(), "is expired for Tablet ID");
+
+  // Perform a tserver restart to refresh stream metadata cache and call GetChanges.
+  for (auto tserver : test_cluster_.mini_cluster_->mini_tablet_servers()) {
+    ASSERT_OK(tserver->Restart());
+  }
+
+  get_changes_result = GetChangesFromCDC(stream_id, tablets);
+  ASSERT_NOK(get_changes_result);
+  ASSERT_STR_CONTAINS(get_changes_result.ToString(), "is not part of stream ID");
+}
+
+TEST_F(CDCSDKYsqlTest, TestCleanupOfUnpolledTableWithTabletSplit) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  auto table_1 =  ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test_table_1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_1;
+  ASSERT_OK(test_client()->GetTablets(table_1, 0, &tablets_1, /* partition_list_version=*/nullptr));
+  ASSERT_EQ(tablets_1.size(), 1);
+
+  auto table_2 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "test_table_2"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_2;
+  ASSERT_OK(test_client()->GetTablets(table_2, 0, &tablets_2, /* partition_list_version=*/nullptr));
+  ASSERT_EQ(tablets_2.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  auto stream_metadata = ASSERT_RESULT(GetDBStreamInfo(stream_id));
+  ASSERT_EQ(stream_metadata.table_info_size(), 2);
+  ASSERT_EQ(ASSERT_RESULT(GetStateTableRowCount()), 2);
+
+  // Load some records in test_table_2 before split.
+  ASSERT_OK(WriteRows(100, 1000, &test_cluster_, 2, "test_table_2"));
+
+  // Split test_table_2's tablet.
+  ASSERT_OK(WaitForFlushTables(
+      {table_2.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+  WaitUntilSplitIsSuccesful(tablets_2.Get(0).tablet_id(), table_2, 2);
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_2_after_split;
+  ASSERT_OK(test_client()->GetTablets(
+      table_2, 0, &tablets_2_after_split, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets_2_after_split.size(), 2);
+
+  // Call Get Changes once and reduce the cdcsdk_tablet_not_of_interest_timeout_secs.
+  auto checkpoint = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets_1[0].tablet_id()));
+  auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets_1, &checkpoint));
+  checkpoint = change_resp.cdc_sdk_checkpoint();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_tablet_not_of_interest_timeout_secs) = 10;
+
+  // Keep calling GetChanges on test_table_1 so that it is not marked not of interest.
+  std::thread t1([&]() -> void {
+    int total_get_changes_calls = 500;
+    for (int i=0; i < total_get_changes_calls; i++) {
+      ASSERT_OK(WriteRowsHelper(i, i+1, &test_cluster_, true, 2, "test_table_1"));
+      auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets_1, &checkpoint));
+      checkpoint = change_resp.cdc_sdk_checkpoint();
+    }
+  });
+
+  // In main thread verify that test_table_2 has been marked not of interest and hence cleaned
+  // up.
+  ASSERT_OK(VerifyStateTableAndStreamMetadataEntriesCount(
+      stream_id, /* state_table_entries */ 1, /* qualified_table_ids_count */ 1,
+      /* unqualified_table_ids_count */ 1, /* timeout */ 60 * kTimeMultiplier,
+      /* timeout_msg */ "Timed out waiting for expired table cleanup"));
+
+  // Check that the only tablet present in cdc_state table belongs to test_table_1.
+  CheckTabletsInCDCStateTable({tablets_1.Get(0).tablet_id()}, test_client(), stream_id);
+
+  // Increase the cdcsdk_tablet_not_of_interest_timeout_secs so that test_table_1 does not get
+  // cleaned up.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_tablet_not_of_interest_timeout_secs) = 300;
+
+  t1.join();
+
+  // Load some more records in test_table_2 before split.
+  ASSERT_OK(WriteRows(1001, 2000, &test_cluster_, 2, "test_table_2"));
+
+  // Split table_2's child tablet and ensure that state table entries do not increase.
+  ASSERT_OK(WaitForFlushTables(
+      {table_2.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+  WaitUntilSplitIsSuccesful(tablets_2_after_split.Get(0).tablet_id(), table_2, 3);
+  ASSERT_OK(test_client()->GetTablets(
+      table_2, 0, &tablets_2_after_split, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets_2_after_split.size(), 3);
+  ASSERT_EQ(ASSERT_RESULT(GetStateTableRowCount()), 1);
+}
+
+/*
+ * This test verifies that, even if a tablet splits during the RemoveUserTableFromCDCSDKStream call,
+ * particularly between updating the state table entry's checkpoint and removing the table's entry
+ * from stream metadata, the cleanup works fine.
+ */
+TEST_F(CDCSDKYsqlTest, TestSplitOfTabletNotOfInterestDuringCleanup) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+
+  SyncPoint::GetInstance()->LoadDependency(
+      {{"RemoveUserTableFromCDCSDKStream::UpdateCheckpointDone", "SplitTablet::Start"},
+       {"SplitTablet::Done", "RemoveUserTableFromCDCSDKStream::BeforeRemoveTableFromStream"}});
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  // Load some records in the table before split.
+  ASSERT_OK(WriteRows(1, 1000, &test_cluster_, 2, kTableName));
+
+  auto stream_metadata = ASSERT_RESULT(GetDBStreamInfo(stream_id));
+  ASSERT_EQ(stream_metadata.table_info_size(), 1);
+  ASSERT_EQ(ASSERT_RESULT(GetStateTableRowCount()), 1);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_tablet_not_of_interest_timeout_secs) = 10;
+
+  // Sleep to ensure that table becomes not of interest before we split its tablet.
+  TEST_SYNC_POINT("SplitTablet::Start");
+
+  // Split the tablet.
+  ASSERT_OK(WaitForFlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+  WaitUntilSplitIsSuccesful(tablets.Get(0).tablet_id(), table, 2);
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_after_split;
+  ASSERT_OK(test_client()->GetTablets(
+      table, 0, &tablets_after_split, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets_after_split.size(), 2);
+
+  TEST_SYNC_POINT("SplitTablet::Done");
+
+  ASSERT_OK(VerifyStateTableAndStreamMetadataEntriesCount(
+      stream_id, /* state_table_entries */ 0, /* qualified_table_ids_count */ 0,
+      /* unqualified_table_ids_count */ 1, /* timeout */ 60 * kTimeMultiplier,
+      /* timeout_msg */ "Timed out waiting for expired table cleanup"));
+}
+
+TEST_F(CDCSDKYsqlTest, TestCleanupOfNotOfInterestColocatedTabletWithMultipleStreams) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+
+  ASSERT_OK(SetUpWithParams(3, 3, true));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table_1 (id int primary key)"));
+  auto table_1 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test_table_1"));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table_2 (id int primary key)"));
+  auto table_2 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test_table_2"));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE test_table_3 (id int primary key)"));
+  auto table_3 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test_table_3"));
+
+  auto stream_id_1 = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  auto stream_id_2 = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  auto stream_metadata_1 = ASSERT_RESULT(GetDBStreamInfo(stream_id_1));
+  ASSERT_EQ(stream_metadata_1.table_info_size(), 3);
+
+  auto stream_metadata_2 = ASSERT_RESULT(GetDBStreamInfo(stream_id_2));
+  ASSERT_EQ(stream_metadata_2.table_info_size(), 3);
+
+  ASSERT_EQ(ASSERT_RESULT(GetStateTableRowCount()), 8);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_tablet_not_of_interest_timeout_secs) = 0;
+
+  ASSERT_OK(VerifyStateTableAndStreamMetadataEntriesCount(
+      stream_id_1, /* state_table_entries */ 0, /* qualified_table_ids_count */ 0,
+      /* unqualified_table_ids_count */ 3, /* timeout */ 60 * kTimeMultiplier,
+      /* timeout_msg */ "Timed out waiting for expired table cleanup"));
+
+  ASSERT_OK(VerifyStateTableAndStreamMetadataEntriesCount(
+      stream_id_2, /* state_table_entries */ 0, /* qualified_table_ids_count */ 0,
+      /* unqualified_table_ids_count */ 3, /* timeout */ 60 * kTimeMultiplier,
+      /* timeout_msg */ "Timed out waiting for expired table cleanup"));
+}
+
 }  // namespace cdc
 }  // namespace yb

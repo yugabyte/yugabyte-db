@@ -1371,6 +1371,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const ValidateAndSyncCDCStateEntriesForCDCSDKStreamRequestPB* req,
       ValidateAndSyncCDCStateEntriesForCDCSDKStreamResponsePB* resp, rpc::RpcContext* rpc);
 
+  Status RemoveTablesFromCDCSDKStream(
+      const RemoveTablesFromCDCSDKStreamRequestPB* req,
+      RemoveTablesFromCDCSDKStreamResponsePB* resp, rpc::RpcContext* rpc);
+
   // Query if Bootstrapping is required for a CDC stream (e.g. Are we missing logs).
   Status IsBootstrapRequired(
       const IsBootstrapRequiredRequestPB* req,

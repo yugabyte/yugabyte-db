@@ -665,6 +665,10 @@ class YBClient {
       const std::vector<xrepl::StreamId>& stream_ids,
       const std::vector<master::SysCDCStreamEntryPB>& new_entries);
 
+  Status RemoveTablesFromCDCSDKStream(
+      const std::vector<TableId>& table_id,
+      const xrepl::StreamId stream_id);
+
   Result<bool> IsObjectPartOfXRepl(const TableId& table_id);
 
   Result<bool> IsBootstrapRequired(

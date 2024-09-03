@@ -786,6 +786,15 @@ message ValidateAndSyncCDCStateEntriesForCDCSDKStreamResponsePB {
   repeated string updated_tablet_entries = 2;
 }
 
+message RemoveTablesFromCDCSDKStreamRequestPB {
+  optional string stream_id = 1;
+  repeated string table_ids = 2;
+}
+
+message RemoveTablesFromCDCSDKStreamResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 service MasterReplication {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -911,4 +920,7 @@ service MasterReplication {
   rpc ValidateAndSyncCDCStateEntriesForCDCSDKStream(
       ValidateAndSyncCDCStateEntriesForCDCSDKStreamRequestPB)
       returns (ValidateAndSyncCDCStateEntriesForCDCSDKStreamResponsePB);
+  // Introduced for bug (#22876, #22773)
+  rpc RemoveTablesFromCDCSDKStream (RemoveTablesFromCDCSDKStreamRequestPB)
+      returns (RemoveTablesFromCDCSDKStreamResponsePB);
 }
