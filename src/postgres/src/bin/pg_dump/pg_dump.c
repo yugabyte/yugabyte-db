@@ -174,6 +174,8 @@ static int	ncomments = 0;
 static SecLabelItem *seclabels = NULL;
 static int	nseclabels = 0;
 
+static bool IsYugabyteEnabled = true;
+
 /*
  * The default number of rows per INSERT when
  * --inserts is specified without --rows-per-insert
@@ -14786,13 +14788,17 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 		else
 			appendPQExpBuffer(tag, "%s %s", type, name);
 
-		if (dopt->include_yb_metadata)
-		{
+		if (dopt->include_yb_metadata || dopt->binary_upgrade)
 			yb_use_roles_sql = createPQExpBuffer();
-			/* YB_TODO: \if is a psql meta-command and doesn't work with pg_restore */
-			if (!dopt->binary_upgrade)
-				appendPQExpBuffer(yb_use_roles_sql, "\\if :use_roles\n%s\\endif\n", sql->data);
-		}
+		/*
+		 * YB_TODO: \if is a psql meta-command and doesn't work with pg_restore,
+		 * for the dopt->binary_upgrade == true case. For now in the
+		 * dopt->binary_upgrade == true case, emit an empty statement. When we
+		 * implement restoration of global objects including roles, we will
+		 * probably want to set an ACL correctly.
+		 */
+		if (dopt->include_yb_metadata)
+			appendPQExpBuffer(yb_use_roles_sql, "\\if :use_roles\n%s\\endif\n", sql->data);
 
 		aclDeps[nDeps++] = objDumpId;
 		if (altDumpId != InvalidDumpId)
@@ -14806,12 +14812,12 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 								  .owner = owner,
 								  .description = "ACL",
 								  .section = SECTION_NONE,
-								  .createStmt = (dopt->include_yb_metadata ?
+								  .createStmt = ((dopt->include_yb_metadata || dopt->binary_upgrade) ?
 												 yb_use_roles_sql->data :
 												 sql->data),
 								  .deps = aclDeps,
 								  .nDeps = nDeps));
-		if (dopt->include_yb_metadata)
+		if (dopt->include_yb_metadata || dopt->binary_upgrade)
 			destroyPQExpBuffer(yb_use_roles_sql);
 
 		destroyPQExpBuffer(tag);
@@ -15632,7 +15638,7 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 			 * parent defines the primary key. (See use of
 			 * parent_has_primary_key, below.)
 			 */
-			if (dopt->include_yb_metadata && tbinfo->primaryKeyIndex)
+			if (dopt->binary_upgrade && tbinfo->primaryKeyIndex)
 			{
 				IndxInfo *indxinfo = tbinfo->primaryKeyIndex;
 				binary_upgrade_set_pg_class_oids(fout, q,
@@ -15966,7 +15972,7 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 			PQExpBuffer result;
 
 			result = createViewAsClause(fout, tbinfo);
-			if (dopt->include_yb_metadata && !dopt->binary_upgrade)
+			if (dopt->include_yb_metadata)
 			{
 				appendPQExpBuffer(q, " AS\n%s;\n", result->data);
 			}
@@ -16148,9 +16154,9 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 		 * the comments with single quotes.
 		 */
 		if (dopt->binary_upgrade &&
+			!IsYugabyteEnabled &&
 			(tbinfo->relkind == RELKIND_RELATION ||
-			 tbinfo->relkind == RELKIND_MATVIEW) &&
-			!dopt->include_yb_metadata)
+			 tbinfo->relkind == RELKIND_MATVIEW))
 		{
 			appendPQExpBufferStr(q, "\n-- For binary upgrade, set heap's relfrozenxid and relminmxid\n");
 			appendPQExpBuffer(q, "UPDATE pg_catalog.pg_class\n"
