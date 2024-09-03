@@ -4,6 +4,12 @@
 
 package util
 
+import (
+	"strings"
+
+	"golang.org/x/exp/slices"
+)
+
 // KMSConfig is a struct to hold values retrieved by parsing the KMS config map
 type KMSConfig struct {
 	ConfigUUID   string                  `json:"config_uuid"`
@@ -30,12 +36,12 @@ type AwsKmsAuthConfigField struct {
 
 // GcpKmsAuthConfigField is a struct to hold values retrieved by parsing the GCP KMS config map
 type GcpKmsAuthConfigField struct {
-	GCPConfig       string `json:"GCP_CONFIG"`
-	LocationID      string `json:"LOCATION_ID"`
-	ProtectionLevel string `json:"PROTECTION_LEVEL"`
-	GcpKmsEndpoint  string `json:"GCP_KMS_ENDPOINT"`
-	KeyRingID       string `json:"KEY_RING_ID"`
-	CryptoKeyID     string `json:"CRYPTO_KEY_ID"`
+	GCPConfig       map[string]interface{} `json:"GCP_CONFIG"`
+	LocationID      string                 `json:"LOCATION_ID"`
+	ProtectionLevel string                 `json:"PROTECTION_LEVEL"`
+	GcpKmsEndpoint  string                 `json:"GCP_KMS_ENDPOINT"`
+	KeyRingID       string                 `json:"KEY_RING_ID"`
+	CryptoKeyID     string                 `json:"CRYPTO_KEY_ID"`
 }
 
 // AzuKmsAuthConfigField is a struct to hold values retrieved by parsing the Azure KMS config map
@@ -63,8 +69,8 @@ type HcVaultAuthConfigField struct {
 
 	HcVaultPkiRole string `json:"HC_VAULT_PKI_ROLE"`
 
-	HcVaultTTL       string `json:"HC_VAULT_TTL"`
-	HcVaultTTLExpiry string `json:"HC_VAULT_TTL_EXPIRY"`
+	HcVaultTTL       int64 `json:"HC_VAULT_TTL"`
+	HcVaultTTLExpiry int64 `json:"HC_VAULT_TTL_EXPIRY"`
 }
 
 // ConvertToKMSConfig converts the kms config map to KMSConfig struct
@@ -99,105 +105,105 @@ func ConvertToKMSConfig(r map[string]interface{}) (KMSConfig, error) {
 		switch kmsConfig.KeyProvider {
 		case AWSEARType:
 			aws := AwsKmsAuthConfigField{}
-			if accessKeyID, ok := credentials["AWS_ACCESS_KEY_ID"].(string); ok {
+			if accessKeyID, ok := credentials[AWSAccessKeyEnv].(string); ok {
 				aws.AccessKeyID = accessKeyID
 			}
-			if secretAccessKey, ok := credentials["AWS_SECRET_ACCESS_KEY"].(string); ok {
+			if secretAccessKey, ok := credentials[AWSSecretAccessKeyEnv].(string); ok {
 				aws.SecretAccessKey = secretAccessKey
 			}
-			if region, ok := credentials["AWS_REGION"].(string); ok {
+			if region, ok := credentials[AWSRegionEnv].(string); ok {
 				aws.Region = region
 			}
-			if cmkID, ok := credentials["cmk_id"].(string); ok {
+			if cmkID, ok := credentials[AWSCMKIDField].(string); ok {
 				aws.CMKID = cmkID
 			}
-			if cmkPolicy, ok := credentials["cmk_policy"].(string); ok {
+			if cmkPolicy, ok := credentials[AWSCMKPolicyField].(string); ok {
 				aws.CMKPolicy = cmkPolicy
 			}
-			if endPoint, ok := credentials["AWS_KMS_ENDPOINT"].(string); ok {
+			if endPoint, ok := credentials[AWSEndpointEnv].(string); ok {
 				aws.EndPoint = endPoint
 			}
 			kmsConfig.AWS = &aws
 
 		case GCPEARType:
 			gcp := GcpKmsAuthConfigField{}
-			if gcpConfig, ok := credentials["GCP_CONFIG"].(string); ok {
+			if gcpConfig, ok := credentials[GCPConfigField].(map[string]interface{}); ok {
 				gcp.GCPConfig = gcpConfig
 			}
-			if locationID, ok := credentials["LOCATION_ID"].(string); ok {
+			if locationID, ok := credentials[GCPLocationIDField].(string); ok {
 				gcp.LocationID = locationID
 			}
-			if protectionLevel, ok := credentials["PROTECTION_LEVEL"].(string); ok {
+			if protectionLevel, ok := credentials[GCPProtectionLevelField].(string); ok {
 				gcp.ProtectionLevel = protectionLevel
 			}
-			if gcpKmsEndpoint, ok := credentials["GCP_KMS_ENDPOINT"].(string); ok {
+			if gcpKmsEndpoint, ok := credentials[GCPKmsEndpointField].(string); ok {
 				gcp.GcpKmsEndpoint = gcpKmsEndpoint
 			}
-			if keyRingID, ok := credentials["KEY_RING_ID"].(string); ok {
+			if keyRingID, ok := credentials[GCPKeyRingIDField].(string); ok {
 				gcp.KeyRingID = keyRingID
 			}
-			if cryptoKeyID, ok := credentials["CRYPTO_KEY_ID"].(string); ok {
+			if cryptoKeyID, ok := credentials[GCPCryptoKeyIDField].(string); ok {
 				gcp.CryptoKeyID = cryptoKeyID
 			}
 			kmsConfig.GCP = &gcp
 		case AzureEARType:
 			azure := AzuKmsAuthConfigField{}
-			if clientID, ok := credentials["CLIENT_ID"].(string); ok {
+			if clientID, ok := credentials[AzureClientIDField].(string); ok {
 				azure.ClientID = clientID
 			}
-			if clientSecret, ok := credentials["CLIENT_SECRET"].(string); ok {
+			if clientSecret, ok := credentials[AzureClientSecretField].(string); ok {
 				azure.ClientSecret = clientSecret
 			}
-			if tenantID, ok := credentials["TENANT_ID"].(string); ok {
+			if tenantID, ok := credentials[AzureTenantIDField].(string); ok {
 				azure.TenantID = tenantID
 			}
-			if azuVaultURL, ok := credentials["AZU_VAULT_URL"].(string); ok {
+			if azuVaultURL, ok := credentials[AzureVaultURLField].(string); ok {
 				azure.AzuVaultURL = azuVaultURL
 			}
-			if azuKeyName, ok := credentials["AZU_KEY_NAME"].(string); ok {
+			if azuKeyName, ok := credentials[AzureKeyNameField].(string); ok {
 				azure.AzuKeyName = azuKeyName
 			}
-			if azuKeyAlgorithm, ok := credentials["AZU_KEY_ALGORITHM"].(string); ok {
+			if azuKeyAlgorithm, ok := credentials[AzureKeyAlgorithmField].(string); ok {
 				azure.AzuKeyAlgorithm = azuKeyAlgorithm
 			}
-			if azuKeySize, ok := credentials["AZU_KEY_SIZE"].(int); ok {
+			if azuKeySize, ok := credentials[AzureKeySizeField].(int); ok {
 				azure.AzuKeySize = azuKeySize
 			}
 
 			kmsConfig.Azure = &azure
 		case HashicorpVaultEARType:
 			hashicorp := HcVaultAuthConfigField{}
-			if vaultToken, ok := credentials["HC_VAULT_TOKEN"].(string); ok {
+			if vaultToken, ok := credentials[HashicorpVaultTokenField].(string); ok {
 				hashicorp.HcVaultToken = vaultToken
 			}
-			if vaultAddress, ok := credentials["HC_VAULT_ADDRESS"].(string); ok {
+			if vaultAddress, ok := credentials[HashicorpVaultAddressField].(string); ok {
 				hashicorp.HcVaultAddress = vaultAddress
 			}
-			if vaultEngine, ok := credentials["HC_VAULT_ENGINE"].(string); ok {
+			if vaultEngine, ok := credentials[HashicorpVaultEngineField].(string); ok {
 				hashicorp.HcVaultEngine = vaultEngine
 			}
-			if vaultMountPath, ok := credentials["HC_VAULT_MOUNT_PATH"].(string); ok {
+			if vaultMountPath, ok := credentials[HashicorpVaultMountPathField].(string); ok {
 				hashicorp.HcVaultMountPath = vaultMountPath
 			}
-			if vaultKeyName, ok := credentials["HC_VAULT_KEY_NAME"].(string); ok {
+			if vaultKeyName, ok := credentials[HashicorpVaultKeyNameField].(string); ok {
 				hashicorp.HcVaultKeyName = vaultKeyName
 			}
-			if vaultRoleID, ok := credentials["HC_VAULT_ROLE_ID"].(string); ok {
+			if vaultRoleID, ok := credentials[HashicorpVaultRoleIDField].(string); ok {
 				hashicorp.HcVaultRoleID = vaultRoleID
 			}
-			if vaultSecretID, ok := credentials["HC_VAULT_SECRET_ID"].(string); ok {
+			if vaultSecretID, ok := credentials[HashicorpVaultSecretIDField].(string); ok {
 				hashicorp.HcVaultSecretID = vaultSecretID
 			}
-			if vaultAuthNamespace, ok := credentials["HC_VAULT_AUTH_NAMESPACE"].(string); ok {
+			if vaultAuthNamespace, ok := credentials[HashicorpVaultAuthNamespaceField].(string); ok {
 				hashicorp.HcVaultAuthNamespace = vaultAuthNamespace
 			}
 			if vaultPkiRole, ok := credentials["HC_VAULT_PKI_ROLE"].(string); ok {
 				hashicorp.HcVaultPkiRole = vaultPkiRole
 			}
-			if vaultTTL, ok := credentials["HC_VAULT_TTL"].(string); ok {
+			if vaultTTL, ok := credentials["HC_VAULT_TTL"].(int64); ok {
 				hashicorp.HcVaultTTL = vaultTTL
 			}
-			if vaultTTLExpiry, ok := credentials["HC_VAULT_TTL_EXPIRY"].(string); ok {
+			if vaultTTLExpiry, ok := credentials["HC_VAULT_TTL_EXPIRY"].(int64); ok {
 				hashicorp.HcVaultTTLExpiry = vaultTTLExpiry
 			}
 
@@ -207,4 +213,37 @@ func ConvertToKMSConfig(r map[string]interface{}) (KMSConfig, error) {
 	}
 
 	return kmsConfig, nil
+}
+
+// AzureAlgorithm type
+type AzureAlgorithm struct {
+	KeyType        string
+	KeySize        []int
+	DefaultKeySize int
+}
+
+var azuAlgorithmKeySize = []AzureAlgorithm{
+	{"RSA", []int{2048, 3072, 4096}, 2048},
+}
+
+// AzureCheckKeySizeForAlgo check key size for algorithm
+func AzureCheckKeySizeForAlgo(keySize int, algo string) bool {
+	for _, v := range azuAlgorithmKeySize {
+		if strings.Compare(v.KeyType, algo) == 0 {
+			if slices.Contains(v.KeySize, keySize) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// AzureGetDefaultKeySizeForAlgo get key size for algorithm
+func AzureGetDefaultKeySizeForAlgo(algo string) int {
+	for _, v := range azuAlgorithmKeySize {
+		if strings.Compare(v.KeyType, algo) == 0 {
+			return v.DefaultKeySize
+		}
+	}
+	return 0
 }

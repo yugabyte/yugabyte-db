@@ -14,6 +14,18 @@ const (
 	GCSCredentialsJSON = "GCS_CREDENTIALS_JSON"
 	// UseGCPIAM field name to denote in Json request
 	UseGCPIAM = "USE_GCP_IAM"
+	// GCPConfigField field name to denote in Json request
+	GCPConfigField = "GCP_CONFIG"
+	// GCPLocationIDField field name to denote in Json request
+	GCPLocationIDField = "LOCATION_ID"
+	// GCPProtectionLevelField field name to denote in Json request
+	GCPProtectionLevelField = "PROTECTION_LEVEL"
+	// GCPKmsEndpointField field name to denote in Json request
+	GCPKmsEndpointField = "GCP_KMS_ENDPOINT"
+	// GCPKeyRingIDField field name to denote in Json request
+	GCPKeyRingIDField = "KEY_RING_ID"
+	// GCPCryptoKeyIDField field name to denote in Json request
+	GCPCryptoKeyIDField = "CRYPTO_KEY_ID"
 
 	// AWSAccessKeyEnv env variable name for aws provider/storage config/releases
 	AWSAccessKeyEnv = "AWS_ACCESS_KEY_ID"
@@ -21,6 +33,14 @@ const (
 	AWSSecretAccessKeyEnv = "AWS_SECRET_ACCESS_KEY"
 	// IAMInstanceProfile field name to denote in Json request
 	IAMInstanceProfile = "IAM_INSTANCE_PROFILE"
+	// AWSRegionEnv env variable name for aws kmsc config
+	AWSRegionEnv = "AWS_REGION"
+	// AWSCMKIDField field name to denote in Json request
+	AWSCMKIDField = "cmk_id"
+	// AWSCMKPolicyField field name to denote in Json request
+	AWSCMKPolicyField = "cmk_policy"
+	// AWSEndpointEnv field name to denote in Json request
+	AWSEndpointEnv = "AWS_KMS_ENDPOINT"
 
 	// AzureSubscriptionIDEnv env variable name for azure provider
 	AzureSubscriptionIDEnv = "AZURE_SUBSCRIPTION_ID"
@@ -35,6 +55,47 @@ const (
 
 	// AzureStorageSasTokenEnv env variable name azure storage config
 	AzureStorageSasTokenEnv = "AZURE_STORAGE_SAS_TOKEN"
+
+	// AzureClientIDField field name to denote in Json request
+	AzureClientIDField = "CLIENT_ID"
+	// AzureClientSecretField field name to denote in Json request
+	AzureClientSecretField = "CLIENT_SECRET"
+	// AzureTenantIDField field name to denote in Json request
+	AzureTenantIDField = "TENANT_ID"
+	// AzureVaultURLField field name to denote in Json request
+	AzureVaultURLField = "AZU_VAULT_URL"
+	// AzureKeyNameField field name to denote in Json request
+	AzureKeyNameField = "AZU_KEY_NAME"
+	// AzureKeyAlgorithmField field name to denote in Json request
+	AzureKeyAlgorithmField = "AZU_KEY_ALGORITHM"
+	// AzureKeySizeField field name to denote in Json request
+	AzureKeySizeField = "AZU_KEY_SIZE"
+
+	// HashicorpVaultTokenEnv env variable name for hashicorp vault
+	HashicorpVaultTokenEnv = "VAULT_TOKEN"
+	// HashicorpVaultAddressEnv env variable name for hashicorp vault
+	HashicorpVaultAddressEnv = "VAULT_ADDR"
+	// HashicorpVaulNamespaceEnv env variable name for hashicorp vault
+	HashicorpVaultNamespaceEnv = "VAULT_NAMESPACE"
+
+	// HashicorpVaultAddressField variable name for hashicorp vault
+	HashicorpVaultAddressField = "HC_VAULT_ADDRESS"
+	// HashicorpVaultTokenField variable name for hashicorp vault
+	HashicorpVaultTokenField = "HC_VAULT_TOKEN"
+	// HashicorpVaultNamespaceField variable name for hashicorp vault
+	HashicorpVaultNamespaceField = "HC_VAULT_NAMESPACE"
+	// HashicorpVaultEngineField variable name for hashicorp vault
+	HashicorpVaultEngineField = "HC_VAULT_ENGINE"
+	// HashicorpVaultMountPathField variable name for hashicorp vault
+	HashicorpVaultMountPathField = "HC_VAULT_MOUNT_PATH"
+	// HashicorpVaultKeyNameField variable name for hashicorp vault
+	HashicorpVaultKeyNameField = "HC_VAULT_KEY_NAME"
+	// HashicorpVaultRoleIDField variable name for hashicorp vault
+	HashicorpVaultRoleIDField = "HC_VAULT_ROLE_ID"
+	// HashicorpVaultSecretIDField variable name for hashicorp vault
+	HashicorpVaultSecretIDField = "HC_VAULT_SECRET_ID"
+	// HashicorpVaultAuthNamespaceField variable name for hashicorp vault
+	HashicorpVaultAuthNamespaceField = "HC_VAULT_AUTH_NAMESPACE"
 )
 
 // Minimum YugabyteDB Anywhere versions to support operation
