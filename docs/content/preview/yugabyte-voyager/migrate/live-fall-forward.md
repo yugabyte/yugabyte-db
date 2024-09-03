@@ -935,6 +935,10 @@ yb-voyager export data from source --export-dir <EXPORT_DIR> \
         --export-type snapshot-and-changes
 ```
 
+{{< note title="PostgreSQL and parallel jobs" >}}
+For PostgreSQL, make sure that no other processes are running on the source database that can lead to issues with more than one parallel job, where Voyager will not take locks to dump the data.
+{{< /note >}}
+
 The export data from source command first ensures that it exports a snapshot of the data already present on the source database. Next, you start a streaming phase (CDC phase) where you begin capturing new changes made to the data on the source after the migration has started. Some important metrics such as number of events, export rate, and so on will be displayed during the CDC phase similar to the following:
 
 ```output
