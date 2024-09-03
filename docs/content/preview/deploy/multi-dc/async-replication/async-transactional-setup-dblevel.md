@@ -29,7 +29,7 @@ type: docs
 </ul>
 
 {{< note title="Note" >}}
-Both primary and standby universes must be on version `2024.1.2` or higher in order to use semi-automatic xCluster mode.
+To use semi-automatic transactional xCluster replication, both the Primary and Standby universes must be running v2024.1.2 or later.
 {{< /note >}}
 
 Semi-automatic transactional xCluster replication simplifies the operational complexity of managing replication and making DDL changes.
