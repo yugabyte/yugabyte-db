@@ -42,56 +42,83 @@ The following table describes the type of data that is collected during a migrat
 
 ## Get started with migration assessment
 
-1. [Install yb-voyager](../../install-yb-voyager/).
-1. Install YugabyteDB to view migration assessment report in yugabyted UI
-  1. [yugabyted](/preview/reference/configuration/yugabyted/) UI lets you visualize  and review database migration workflow performed by YugabyteDB Voyager. 
-  2. Before you begin the Voyager migration, start a local YugabyteDB cluster. Refer to the steps described in [Use a local cluster](/preview/quick-start/).
-  3. In order to see the Voyager migration workflow details in the UI, Set the following environment variables before starting the migration:
-```sh
-export CONTROL_PLANE_TYPE=yugabyted
-export YUGABYTED_DB_CONN_STRING=<ysql-connection-string-to-yugabyted-instance>
-```
-For example, `postgresql://yugabyte:yugabyte@127.0.0.1:5433`
-1. Assess migration - Voyager supports two primary modes for conducting migration assessments, depending on your access to the source database as follows:
+To get started with migration assessment, do the following:
 
-    1. **With source database connectivity**: This mode requires direct connectivity to the source database from the client machine where voyager is installed. You initiate the assessment by executing the `assess-migration` command of `yb-voyager`. This command facilitates a live analysis by interacting directly with the source database, to gather metadata required for assessment. A sample command is as follows:
+1. [Install yb-voyager](../../install-yb-voyager/).
+1. Install YugabyteDB to view migration assessment report in the [yugabyted](/preview/reference/configuration/yugabyted/) UI. Using the yugabyted UI, you can visualize and review the database migration workflow performed by YugabyteDB Voyager.
+    1. Start a local YugabyteDB cluster. Refer to the steps described in [Use a local cluster](/preview/quick-start/).
+    1. To see the Voyager migration workflow details in the UI, set the following environment variables before starting the migration:
 
         ```sh
-        yb-voyager assess-migration --source-db-type postgresql \
-            --source-db-host hostname --source-db-user ybvoyager \
-            --source-db-password password --source-db-name dbname \
-            --source-db-schema schema1,schema2 --export-dir /path/to/export/dir
+        export CONTROL_PLANE_TYPE=yugabyted
+        export YUGABYTED_DB_CONN_STRING=<ysql-connection-parameters>
         ```
 
-    1. **Without source database connectivity** (only PostgreSQL): In situations where direct access to the source database is restricted, there is an alternative approach. Voyager includes packages with scripts for PostgreSQL at `/etc/yb-voyager/gather-assessment-metadata`. You can perform the following steps with these scripts:
+        Provide the standard PostgreSQL connection parameters, including database, user name, host name, and port. For example, `postgresql://yugabyte:yugabyte@127.0.0.1:5433`
 
-        1. On a machine which has access to the source database, copy the scripts and install dependencies psql, and pg_dump version 14 or later. Alternatively, you can install yb-voyager on the machine to automatically get the dependencies.
-        1. Run the `yb-voyager-pg-gather-assessment-metadata.sh` script by providing the source connection string, the schema names, path to a directory where metadata will be saved, and an optional argument of an interval to capture the IOPS metadata of the source (in seconds with a default value of 120). For example,
+1. Assess migration - Voyager supports two primary modes for conducting migration assessments, depending on your access to the source database as follows:<br><br>
 
-            ```sh
-            /path/to/yb-voyager-pg-gather-assessment-metadata.sh 'postgresql://ybvoyager@host:port/dbname' 'schema1|schema2' '/path/to/assessment_metadata_dir' '60'
-            ```
+    {{< tabpane text=true >}}
 
-        1. Copy the metadata directory to the client machine on which voyager is installed, and run the `assess-migration` command by specifying the path to the metadata directory as follows:
+    {{% tab header="With source database connectivity" %}}
 
-            ```sh
-            yb-voyager assess-migration --source-db-type postgresql \
-                 --assessment-metadata-dir /path/to/assessment_metadata_dir --export-dir /path/to/export/dir
-            ```
+This mode requires direct connectivity to the source database from the client machine where voyager is installed. You initiate the assessment by executing the `assess-migration` command of `yb-voyager`. This command facilitates a live analysis by interacting directly with the source database, to gather metadata required for assessment. A sample command is as follows:
 
-        The output of both the methods is a migration assessment report, and its path is printed on the console.
+```sh
+yb-voyager assess-migration --source-db-type postgresql \
+    --source-db-host hostname --source-db-user ybvoyager \
+    --source-db-password password --source-db-name dbname \
+    --source-db-schema schema1,schema2 --export-dir /path/to/export/dir
+```
 
-      {{< warning title="Important" >}}
+    {{% /tab %}}
+
+    {{% tab header="Without source database connectivity" %}}
+
+PostgreSQL only. In situations where direct access to the source database is restricted, there is an alternative approach. Voyager includes packages with scripts for PostgreSQL at `/etc/yb-voyager/gather-assessment-metadata`.
+
+You can perform the following steps with these scripts:
+
+1. On a machine which has access to the source database, copy the scripts and install dependencies psql and pg_dump version 14 or later. Alternatively, you can install yb-voyager on the machine to automatically get the dependencies.
+
+1. Run the `yb-voyager-pg-gather-assessment-metadata.sh` script by providing the source connection string, the schema names, path to a directory where metadata will be saved, and an optional argument of an interval to capture the IOPS metadata of the source (in seconds with a default value of 120). For example,
+
+    ```sh
+    /path/to/yb-voyager-pg-gather-assessment-metadata.sh 'postgresql://ybvoyager@host:port/dbname' 'schema1|schema2' '/path/to/assessment_metadata_dir' '60'
+    ```
+
+1. Copy the metadata directory to the client machine on which voyager is installed, and run the `assess-migration` command by specifying the path to the metadata directory as follows:
+
+    ```sh
+    yb-voyager assess-migration --source-db-type postgresql \
+        --assessment-metadata-dir /path/to/assessment_metadata_dir --export-dir /path/to/export/dir
+    ```
+
+    {{% /tab %}}
+
+    {{< /tabpane >}}
+
+    The output of both the methods is a migration assessment report, and its path is printed on the console.
+
+    {{< warning title="Important" >}}
 For the most accurate migration assessment, the source database must be actively handling its typical workloads at the time the metadata is gathered. This ensures that the recommendations for sharding strategies and cluster sizing are well-aligned with the database's real-world performance and operational needs.
-      {{< /warning >}}
+    {{< /warning >}}
 
-1. View the assessment report
-   The YugabyteDB UI lets you review the assessment report, which includes migration strategies, complexity, and effort estimates.
-   After generating the report, visit the "Migrations" tab in the YugabyteDB UI at http://127.0.0.1:15433 to see the available migrations.
-     ![Migration Assessment Page](/images/migrate/ybd-assessment-page.png)
+1. View the assessment report.
+
+    Use the YugabyteDB UI to review the assessment report, which includes migration strategies, complexity, and effort estimates.
+
+    After generating the report, navigate to the **Migrations** tab in the YugabyteDB UI at http://127.0.0.1:15433 to see the available migrations.
+
+    ![Migration Landing Page](/images/migrate/ybd-landing-page.png)
+    ![Migration Assessment Page](/images/migrate/ybd-assessment-page.png)
+
 1. Create a target YugabyteDB cluster as follows:
 
-    1. Create a cluster in [Enhanced Postgres Compatibility Mode](/preview/releases/ybdb-releases/v2024.1/#highlights) based on the sizing recommendations in the assessment report. For a universe in YugabyteDB Anywhere, [enable the compatibility mode](/preview/releases/yba-releases/v2024.1/#highlights) by setting some flags on the universe.
+    1. Create a cluster in [Enhanced PostgreSQL Compatibility Mode](../../../explore/ysql-language-features/postgresql-compatibility/#enhanced-postgresql-compatibility-mode), based on the sizing recommendations in the assessment report.
+
+        For a universe in YugabyteDB Anywhere, [enable compatibility mode](../../../explore/ysql-language-features/postgresql-compatibility/#yugabytedb-anywhere) by setting flags on the universe.
+
     1. Create a database with colocation set to TRUE.
 
         ```sql
@@ -105,9 +132,10 @@ For the most accurate migration assessment, the source database must be actively
     - [Live migration with fall-forward](../../migrate/live-fall-forward/)
     - [Live migration with fall-back](../../migrate/live-fall-back/)
 
+## Assess a fleet of databases (Oracle only)
 
-## Migration assessment of a fleet of databases (Oracle only)
-The Bulk Assessment command ('assess-migration-bulk') allows you to assess multiple schemas across one or more database instances simultaneously. It offers:
+Use the Bulk Assessment command ([assess-migration-bulk](../reference/assess-migration/#assess-migration-bulk)) to assess multiple schemas across one or more database instances simultaneously. It offers:
+
 - Multi-Schema Assessment: Assess multiple schemas in different database instances with a single command, simplifying migration planning.
 - Centralized Reporting: All assessment reports are generated and stored in one organized directory, making
 
@@ -129,8 +157,8 @@ Bulk assessment is managed using a fleet configuration file, which specifies the
 
 - Header Row: The first row contains headers that define the fields for each schema.
 - Schema Rows: Each subsequent row corresponds to a different schema to be assessed.
-  
-The table below outlines the fields that can be included in the fleet configuration file.
+
+The following table outlines the fields that can be included in the fleet configuration file.
 
 | Field | Description |
 | :--- | :--- |
@@ -174,6 +202,7 @@ After the bulk assessment is completed, the top-level directory specified using 
 └── logs/
      └── yb-voyager-assess-migration-bulk.log
 ```
+
 ## Learn more
 
 - [Assess migration CLI](../../reference/assess-migration/)
