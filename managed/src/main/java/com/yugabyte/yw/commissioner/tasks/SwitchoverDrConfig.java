@@ -3,6 +3,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
 import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.XClusterUniverseService;
@@ -63,6 +64,11 @@ public class SwitchoverDrConfig extends EditDrConfig {
         // Lock the target universe.
         lockAndFreezeUniverseForUpdate(
             targetUniverse.getUniverseUUID(), targetUniverse.getVersion(), null /* Txn callback */);
+
+        // Swap the source and target universe.
+        createCheckXUniverseAutoFlag(
+                targetUniverse, sourceUniverse, false /* checkAutoFlagsEqualityOnBothUniverses */)
+            .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
 
         createSetDrStatesTask(
                 currentXClusterConfig,

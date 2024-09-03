@@ -1532,12 +1532,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   /** Create a task to check auto flags before XCluster replication. */
   public SubTaskGroup createCheckXUniverseAutoFlag(
-      Universe sourceUniverse, Universe targetUniverse) {
+      Universe sourceUniverse,
+      Universe targetUniverse,
+      boolean checkAutoFlagsEqualityOnBothUniverses) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("CheckXUniverseAutoFlag");
     CheckXUniverseAutoFlags task = createTask(CheckXUniverseAutoFlags.class);
     CheckXUniverseAutoFlags.Params params = new CheckXUniverseAutoFlags.Params();
     params.sourceUniverseUUID = sourceUniverse.getUniverseUUID();
     params.targetUniverseUUID = targetUniverse.getUniverseUUID();
+    params.checkAutoFlagsEqualityOnBothUniverses = checkAutoFlagsEqualityOnBothUniverses;
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
