@@ -20,6 +20,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <regex>
 #include <thread>
 #include <string>
 #include <unordered_map>
@@ -3948,11 +3949,75 @@ TEST_F(PgLibPqTest, CatalogCacheMemoryLeak) {
   }
 }
 
-static int GetCacheMissCount(const string& metric_instance) {
-  auto begin = metric_instance.find("} ");
-  int count;
-  std::istringstream(metric_instance.substr(begin + 2)) >> count;
-  return count;
+static std::optional<std::string> GetCatalogTableNameFromIndexName(const string& index_name) {
+  static const std::regex table_name_regex(
+      "(pg_foreign_data_wrapper|pg_largeobject_metadata|pg_replication_origin|"
+      "pg_yb_catalog_version|pg_partitioned_table|pg_subscription_rel|"
+      "pg_db_role_setting|pg_publication_rel|pg_yb_role_profile|pg_foreign_server|"
+      "pg_event_trigger|pg_foreign_table|pg_shdescription|pg_statistic_ext|"
+      "pg_ts_config_map|pg_yb_tablegroup|pg_auth_members|pg_subscription|"
+      "pg_user_mapping|pg_yb_migration|pg_default_acl|pg_description|"
+      "pg_largeobject|pg_publication|pg_ts_template|pg_constraint|pg_conversion|"
+      "pg_init_privs|pg_pltemplate|pg_shseclabel|pg_tablespace|pg_yb_profile|"
+      "pg_aggregate|pg_attribute|pg_collation|pg_extension|pg_namespace|"
+      "pg_statistic|pg_transform|pg_ts_config|pg_ts_parser|pg_database|"
+      "pg_inherits|pg_language|pg_operator|pg_opfamily|pg_seclabel|pg_sequence|"
+      "pg_shdepend|pg_attrdef|pg_opclass|pg_rewrite|pg_trigger|pg_ts_dict|"
+      "pg_amproc|pg_authid|pg_depend|pg_policy|pg_class|pg_index|pg_range|"
+      "pg_amop|pg_cast|pg_enum|pg_proc|pg_type|pg_am)_.*");
+
+  std::smatch match;
+  if (std::regex_search(index_name, match, table_name_regex)) {
+    return match[1].str();
+  }
+  return std::nullopt;
+}
+
+struct YsqlMetric {
+  std::string name;
+  std::unordered_map<std::string, std::string> labels;
+  int64_t value;
+  int64_t time;
+
+  YsqlMetric(
+      std::string name, std::unordered_map<std::string, std::string> labels, int64_t value,
+      int64_t time)
+      : name(std::move(name)), labels(std::move(labels)), value(value), time(time) {}
+};
+
+static std::vector<YsqlMetric> ParsePrometheusMetrics(const std::string& metrics_output) {
+  // Splits a metric line into name, labels, value and timestamp.
+  // Example line:
+  // metric_name{label_1="value_1",label_2="value_2"} 123 456
+  const std::regex metric_regex(R"((\w+)\{([^}]+)\}\s+(\d+)\s+(\d+))");
+
+  // Splits the list of labels into individual label-value pairs.
+  const std::regex label_regex(R"((\w+)=\"([^\"]+)\")");
+
+  std::vector<YsqlMetric> parsed_metrics;
+  std::istringstream stream(metrics_output);
+  std::string line;
+
+  while (std::getline(stream, line)) {
+    std::smatch metric_match;
+    if (std::regex_search(line, metric_match, metric_regex)) {
+      std::unordered_map<std::string, std::string> labels;
+      const std::string labels_str = metric_match[2].str();
+      auto search_start = labels_str.cbegin();
+      std::smatch label_match;
+
+      while (std::regex_search(search_start, labels_str.cend(), label_match, label_regex)) {
+        labels[label_match[1].str()] = label_match[2].str();
+        search_start = label_match.suffix().first;
+      }
+
+      parsed_metrics.emplace_back(
+          metric_match[1].str(), std::move(labels), std::stoll(metric_match[3].str()),
+          std::stoll(metric_match[4].str()));
+    }
+  }
+
+  return parsed_metrics;
 }
 
 TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
@@ -3965,33 +4030,58 @@ TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
   auto result = ASSERT_RESULT(conn.Fetch("SELECT * FROM t"));
   ExternalTabletServer* ts = cluster_->tablet_server(0);
   auto hostport = Format("$0:$1", ts->bind_host(), ts->pgsql_http_port());
-  auto pg_metrics_url = Substitute(
-      "http://$0/prometheus-metrics?reset_histograms=false&show_help=false",
-      hostport);
+  auto pg_metrics_url =
+      Substitute("http://$0/prometheus-metrics?reset_histograms=false&show_help=false", hostport);
   EasyCurl c;
   faststring buf;
   ASSERT_OK(c.FetchURL(pg_metrics_url, &buf));
   string page_content = buf.ToString();
-  auto cache_miss_metric =
-    "handler_latency_yb_ysqlserver_SQLProcessor_CatalogCacheMisses_count";
-  auto begin = page_content.find(cache_miss_metric);
-  auto end = page_content.find("\n", begin);
-  auto expected = GetCacheMissCount(page_content.substr(begin, end - begin));
-  ASSERT_GT(expected, 0);
-  LOG(INFO) << "Expected total cache misses: " << expected;
-  int total_cache_misses = 0;
-  while (true) {
-    auto cache_id_miss_metric = "handler_latency_yb_ysqlserver_SQLProcessor_CatalogCacheMisses_";
-    begin = page_content.find(cache_id_miss_metric, end);
-    if (begin == std::string::npos) {
+  auto metrics = ParsePrometheusMetrics(page_content);
+
+  int64_t expected_total_cache_misses = 0;
+  for (const auto& metric : metrics) {
+    if (metric.name == "handler_latency_yb_ysqlserver_SQLProcessor_CatalogCacheMisses_count" &&
+        metric.labels.find("table_name") == metric.labels.end()) {
+      expected_total_cache_misses = metric.value;
       break;
     }
-    end = page_content.find("\n", begin);
-    auto cache_misses = GetCacheMissCount(page_content.substr(begin, end - begin));
-    ASSERT_GE(cache_misses, 0);
-    total_cache_misses += cache_misses;
   }
-  ASSERT_EQ(total_cache_misses, expected);
+  ASSERT_GT(expected_total_cache_misses, 0);
+  LOG(INFO) << "Expected total cache misses: " << expected_total_cache_misses;
+
+  // Sum the cache miss metrics for each index.
+  int64_t total_index_cache_misses = 0;
+  std::unordered_map<std::string, int64_t> per_table_index_cache_misses;
+  for (const auto& metric : metrics) {
+    if (metric.name == "handler_latency_yb_ysqlserver_SQLProcessor_CatalogCacheMisses_count" &&
+        metric.labels.find("table_name") != metric.labels.end()) {
+      auto table_name = GetCatalogTableNameFromIndexName(metric.labels.at("table_name"));
+      ASSERT_TRUE(table_name) << "Failed to get table name from index name: "
+                              << metric.labels.at("table_name");
+
+      per_table_index_cache_misses[*table_name] += metric.value;
+      total_index_cache_misses += metric.value;
+      LOG_IF(INFO, metric.value > 0) << "Index " << metric.labels.at("table_name") << " has "
+                                     << metric.value << " cache misses";
+    }
+  }
+  ASSERT_EQ(expected_total_cache_misses, total_index_cache_misses);
+
+  // Check that the sum of the cache misses for all the indexes on each table is equal to the
+  // table-level cache miss metric.
+  int64_t total_table_cache_misses = 0;
+  for (const auto& metric : metrics) {
+    if (metric.name == "handler_latency_yb_ysqlserver_SQLProcessor_CatalogCacheTableMisses_count") {
+      auto table_name = metric.labels.at("table_name");
+      ASSERT_EQ(per_table_index_cache_misses[table_name], metric.value)
+          << "Expected sum of index cache misses for table " << table_name
+          << " to be equal to the table cache misses";
+      total_table_cache_misses += metric.value;
+      LOG_IF(INFO, metric.value > 0)
+          << "Table " << table_name << " has " << metric.value << " cache misses";
+    }
+  }
+  ASSERT_EQ(expected_total_cache_misses, total_table_cache_misses);
 }
 
 class PgLibPqCreateSequenceNamespaceRaceTest : public PgLibPqTest {

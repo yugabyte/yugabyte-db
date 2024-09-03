@@ -243,6 +243,7 @@ extern void PrintCatCacheListLeakWarning(CatCList *list);
 
 extern long YbGetCatCacheMisses();
 extern long* YbGetCatCacheIdMisses();
+extern long *YbGetCatCacheTableMisses();
 
 extern YbCatCListIterator YbCatCListIteratorBegin(CatCList *list);
 extern HeapTuple YbCatCListIteratorGetNext(YbCatCListIterator *iterator);
