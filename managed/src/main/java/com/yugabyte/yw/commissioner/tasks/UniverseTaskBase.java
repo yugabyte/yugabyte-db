@@ -1909,10 +1909,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                   universe.getUniverseDetails().getClusterByUuid(n.placementUuid);
               UUID imageBundleUUID =
                   Util.retreiveImageBundleUUID(
-                      universe.getUniverseDetails().arch,
-                      cluster.userIntent,
-                      provider,
-                      confGetter.getStaticConf().getBoolean("yb.cloud.enabled"));
+                      universe.getUniverseDetails().arch, cluster.userIntent, provider);
               if (imageBundleUUID != null) {
                 ImageBundle.NodeProperties toOverwriteNodeProperties =
                     imageBundleUtil.getNodePropertiesOrFail(
@@ -1920,10 +1917,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                         n.cloudInfo.region,
                         cluster.userIntent.providerType.toString());
                 params.sshUser = toOverwriteNodeProperties.getSshUser();
-              } else {
-                // ImageBundleUUID will be null for the case when YBM specifies machineImage
-                // on fly during universe creation.
-                params.sshUser = providerDetails.getSshUser();
               }
 
               params.airgap = provider.getAirGapInstall();
