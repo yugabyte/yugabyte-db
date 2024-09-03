@@ -88,7 +88,6 @@ For the most accurate migration assessment, the source database must be actively
 1. View the assessment report
    The YugabyteDB UI lets you review the assessment report, which includes migration strategies, complexity, and effort estimates.
    After generating the report, visit the "Migrations" tab in the YugabyteDB UI at http://127.0.0.1:15433 to see the available migrations.
-     ![Migration Landing Page](/images/migrate/ybd-landing-page.png)
      ![Migration Assessment Page](/images/migrate/ybd-assessment-page.png)
 1. Create a target YugabyteDB cluster as follows:
 
