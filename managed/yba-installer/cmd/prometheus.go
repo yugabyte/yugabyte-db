@@ -102,9 +102,6 @@ func (prom Prometheus) Install() error {
 	if err := prom.moveAndExtractPrometheusPackage(); err != nil {
 		return err
 	}
-	if err := prom.createDataDirs(); err != nil {
-		return err
-	}
 	if err := prom.createPrometheusSymlinks(); err != nil {
 		return err
 	}
@@ -123,10 +120,20 @@ func (prom Prometheus) Install() error {
 		}
 	}
 
+	log.Info("Finishing Prometheus install")
+	return nil
+}
+
+func (prom Prometheus) Initialize() error {
+	log.Info("Starting Prometheus initialize")
+	if err := prom.createDataDirs(); err != nil {
+		return err
+	}
+
 	if err := prom.Start(); err != nil {
 		return err
 	}
-	log.Info("Finishing Prometheus install")
+	log.Info("Finishing Prometheus initialize")
 	return nil
 }
 
