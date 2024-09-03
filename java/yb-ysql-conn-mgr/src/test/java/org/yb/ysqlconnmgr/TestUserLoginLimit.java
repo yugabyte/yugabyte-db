@@ -38,8 +38,6 @@ public class TestUserLoginLimit extends BaseYsqlConnMgr {
 
         builder.addCommonTServerFlag("ysql_conn_mgr_stats_interval",
             Integer.toString(BasePgSQLTest.CONNECTIONS_STATS_UPDATE_INTERVAL_SECS));
-        builder.addCommonTServerFlag (
-            "TEST_ysql_conn_mgr_dowarmup_all_pools_random_attach", "true");
     }
 
     @Test
