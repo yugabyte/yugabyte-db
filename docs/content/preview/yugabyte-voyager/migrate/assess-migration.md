@@ -46,13 +46,11 @@ The following table describes the type of data that is collected during a migrat
 | Performance metrics | Optional | Voyager captures performance metrics from the database (IOPS) for rightsizing the target environment. |
 | Server or database credentials | No | No server or database credentials are collected. |
 
-### PostgreSQL Sample Migration Assessment report
+### PostgreSQL sample Migration Assessment Report
 
-A sample Migration Assessment report for PostgreSQL is as follows:
+You can view a sample Migration Assessment report for PostgreSQL [here](/files/sample-report.html).
 
-![Migration report](/images/migrate/assess-migration.jpg)
-
-## Generate a Migration Assessment report
+## Generate a Migration Assessment Report
 
 1. [Install yb-voyager](../../install-yb-voyager/).
 1. Prepare the source database.
