@@ -52,82 +52,38 @@ Install yb-voyager using a Docker image in an airgapped environment using the fo
 
 {{% tab header="Yum" %}}
 
-{{< note title = "Package dependencies" >}}
-
-To resolve package dependencies, yum takes into account the list of packages (and their versions) already installed on a machine.
-
-For yum to download all the required dependencies, ensure that the list of *all* packages (and their versions) already installed on the airgapped machine and the connected machine are *exactly the same*. For example, it will not work if you prepare the installer bundle on RHEL 7.5 and try to install it on RHEL 7.2.
-
-{{< /note >}}
-
-1. Download rpm files for `yb-voyager` and its dependencies on a machine with internet connection using the following steps:
-
-    1. Install the `yugabyte` yum repository on your machine using the following command:
-
-        ```sh
-        sudo yum install https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/reporpms/yb-yum-repo-1.1-0.noarch.rpm
-        ```
-
-        This repository contains the yb-voyager rpm and other dependencies required to run `yb-voyager`.
-
-    1. Install the `epel-release` repository using the following command:
-
-        ```sh
-        # For RHEL 7 or CentOS 7
-        sudo yum install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
-        ```
-
-        ```sh
-        # For RHEL 8 or CentOS 8
-        sudo yum install https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
-        ```
-
-    1. Install the Oracle instant client repositories using the following command:
-
-        ```sh
-        sudo yum install oracle-instant-clients-repo
-        ```
-
-    1. Install the PostgreSQL repositories using the following command:
-
-        ```sh
-        # For RHEL 7
-        sudo yum --disablerepo=* -y install https://download.postgresql.org/pub/repos/yum/reporpms/EL-7-x86_64/pgdg-redhat-repo-latest.noarch.rpm
-        ```
-
-        ```sh
-        # For RHEL 8
-        sudo yum --disablerepo=* -y install https://download.postgresql.org/pub/repos/yum/reporpms/EL-8-x86_64/pgdg-redhat-repo-latest.noarch.rpm
-        ```
-
-        These repositories contain the rest of the dependencies required to run `yb-voyager`.
-
-    1. If you're using **RHEL 8** or **CentOS 8**, do the following:
-
-        - Disable the default `PostgreSQL` yum module on your machine using the following command:
-
-            ```sh
-            sudo dnf -qy module disable postgresql
-            ```
-
-        - Download rpm files for `perl-open` on your machine using the following command:
-
-            ```sh
-            sudo yum install --downloadonly --downloaddir=<path_to_directory> perl-open.noarch
-            ```
-
-    1. Download the rpm files for `yb-voyager` and its dependencies using the following command:
-
-        ```sh
-        sudo yum install --downloadonly --downloaddir=<path_to_directory> yb-voyager
-        ```
-
-1. Transfer the downloaded files to your airgapped machine.
-
-1. Navigate to the folder containing all the files and install the rpm files using the following command:
+1. Download the airgapped bundle:
 
     ```sh
-    sudo yum --disablerepo=* install *
+    wget https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/airgapped/yb-voyager-1.8.0-rc1-rhel-8-x86_64.tar.gz
+    ```
+
+1. Extract the bundle.
+
+    ```sh
+    tar -xvf <tar-bundle-name>
+    ```
+
+    It contains three packages - debezium, ora2pg, and yb-voyager.
+
+1. Download the airgapped installation script into the extracted bundle directory:
+
+    ```sh
+    wget -P </path/to/directory> raw.githubusercontent.com/yugabyte/yb-voyager/main/installer_scripts/install-voyager-airgapped.sh
+    ```
+
+1. Make the script executable:
+
+    ```sh
+    chmod +x /path/to/directory/install-voyager-airgapped.sh
+    ```
+
+1. Transfer the folder (which contains the 3 packages and the installer script) to the airgapped machine.
+1. Install all the [dependencies](#dependencies-for-rhel-and-centos-8) on the airgapped machine.
+1. Run the [installer script](#installation-script) on the airgapped machine to check the dependencies and install voyager:
+
+    ```sh
+    ./install-voyager-airgapped.sh
     ```
 
 1. Check that yb-voyager is installed using the following command:
@@ -135,6 +91,185 @@ For yum to download all the required dependencies, ensure that the list of *all*
     ```sh
     yb-voyager version
     ```
+
+### Dependencies for RHEL and CentOS 8
+
+Binutils: Minimum version: 2.25
+
+Java: Minimum version: 17
+
+pg_dump: Minimum version: 14
+
+pg_restore: Minimum version: 14
+
+psql: Minimum version: 14
+
+#### Yum packages
+
+- gcc (no version dependency)
+- make (no version dependency)
+- sqlite (no version dependency)
+- perl (no version dependency)
+- perl-DBI (no version dependency)
+- perl-App-cpanminus (no version dependency)
+- perl-ExtUtils-MakeMaker (no version dependency)
+- mysql-devel (no version dependency)
+- oracle-instantclient-tools with exact version 21.5.0.0.0
+- oracle-instantclient-basic with exact version 21.5.0.0.0
+- oracle-instantclient-devel with exact version 21.5.0.0.0
+- oracle-instantclient-jdbc with exact version 21.5.0.0.0
+- oracle-instantclient-sqlplus with exact version 21.5.0.0.0
+
+#### CPAN modules
+
+- DBD::mysql with minimum version 5.005
+- Test::NoWarnings with minimum version 1.06
+- DBD::Oracle with minimum version 1.83
+- String::Random (no version dependency)
+- IO::Compress::Base (no version dependency)
+
+### Installation Script
+
+The script by default checks what dependencies are installed on the system and throws an error mentioning the missing dependencies. If all the dependencies are found to be installed, it proceeds with the installation of ora2pg, debezium, and yb-voyager.
+
+Usage:
+
+```sh
+./install-voyager-airgapped.sh [options]
+```
+
+The options are as follows.
+
+| Argument | Description/valid options |
+| :------- | :------------------------ |
+| -d, --check-only-dependencies | Check only dependencies and exit. |
+| -f, --force-install | Force install packages without checking dependencies. |
+| -h, --help | Display this help message. |
+
+### Oracle Instant Client installation help for Centos/RHEL
+
+You can download the oracle instant client rpms from the following links:
+
+- [oracle-instantclient-tools](https://download.oracle.com/otn_software/linux/instantclient/215000/oracle-instantclient-tools-21.5.0.0.0-1.x86_64.rpm)
+
+- [oracle-instantclient-basic](https://download.oracle.com/otn_software/linux/instantclient/215000/oracle-instantclient-basic-21.5.0.0.0-1.x86_64.rpm)
+
+- [oracle-instantclient-devel](https://download.oracle.com/otn_software/linux/instantclient/215000/oracle-instantclient-devel-21.5.0.0.0-1.x86_64.rpm)
+
+- [oracle-instantclient-jdbc](https://download.oracle.com/otn_software/linux/instantclient/215000/oracle-instantclient-jdbc-21.5.0.0.0-1.x86_64.rpm)
+
+- [oracle-instantclient-sqlplus](https://download.oracle.com/otn_software/linux/instantclient/215000/oracle-instantclient-sqlplus-21.5.0.0.0-1.x86_64.rpm)
+
+{{% /tab %}}
+
+{{% tab header="Ubuntu" %}}
+
+1. Download the airgapped bundle:
+
+    ```sh
+    wget https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/airgapped/yb-voyager-1.8.0_rc1_debian.tar.gz
+    ```
+
+1. Extract the bundle.
+
+    ```sh
+    tar -xvf <tar-bundle-name>
+    ```
+
+    It contains three packages - debezium, ora2pg, and yb-voyager.
+
+1. Download the airgapped installation script into the extracted bundle directory:
+
+    ```sh
+    wget -P </path/to/directory> raw.githubusercontent.com/yugabyte/yb-voyager/main/installer_scripts/install-voyager-airgapped.sh
+    ```
+
+1. Make the script executable:
+
+    ```sh
+    chmod +x /path/to/directory/install-voyager-airgapped.sh
+    ```
+
+1. Transfer the folder (which contains the 3 packages and the installer script) to the airgapped machine.
+1. Install all the [dependencies](#dependencies-for-ubuntu) on the airgapped machine.
+1. Run the [install script](#install-script) on the airgapped machine to check the dependencies and install voyager:
+
+    ```sh
+    ./install-voyager-airgapped.sh
+    ```
+
+1. Check that yb-voyager is installed using the following command:
+
+    ```sh
+    yb-voyager version
+    ```
+
+### Dependencies for Ubuntu
+
+Binutils: Minimum version: 2.25
+
+Java: Minimum version: 17
+
+pg_dump: Minimum version: 14
+
+pg_restore: Minimum version: 14
+
+psql: Minimum version: 14
+
+#### Yum packages
+
+- gcc (no version dependency)
+- sqlite3 (no version dependency)
+- perl (no version dependency)
+- libdbi-perl (no version dependency)
+- libaio1 (no version dependency)
+- cpanminus (no version dependency)
+- libmysqlclient-dev (no version dependency)
+- oracle-instantclient-tools with exact version 21.5.0.0.0
+- oracle-instantclient-basic with exact version 21.5.0.0.0
+- oracle-instantclient-devel with exact version 21.5.0.0.0
+- oracle-instantclient-jdbc with exact version 21.5.0.0.0
+- oracle-instantclient-sqlplus with exact version 21.5.0.0.0
+
+#### CPAN modules
+
+- DBD::mysql with minimum version 5.005
+- Test::NoWarnings with minimum version 1.06
+- DBD::Oracle with minimum version 1.83
+- String::Random (no version dependency)
+- IO::Compress::Base (no version dependency)
+
+### Install script
+
+The script by default checks what dependencies are installed on the system and throws an error mentioning the missing dependencies. If all the dependencies are found to be installed, it proceeds with the installation of ora2pg, debezium, and yb-voyager.
+
+Usage:
+
+```sh
+./install-voyager-airgapped.sh [options]
+```
+
+The options are as follows.
+
+| Argument | Description/valid options |
+| :------- | :------------------------ |
+| -d, --check-only-dependencies | Check only dependencies and exit. |
+| -f, --force-install | Force install packages without checking dependencies. |
+| -h, --help | Display this help message. |
+
+### Oracle Instant Client installation help for Ubuntu
+
+You can download the oracle instant client rpms from the following links:
+
+- [oracle-instantclient-tools](https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/apt/pool/main/oracle-instantclient-tools_21.5.0.0.0-1_amd64.debrpm)
+
+- [oracle-instantclient-basic](https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/apt/pool/main/oracle-instantclient-basic_21.5.0.0.0-1_amd64.deb)
+
+- [oracle-instantclient-devel](https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/apt/pool/main/oracle-instantclient-devel_21.5.0.0.0-1_amd64.deb)
+
+- [oracle-instantclient-jdbc](https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/apt/pool/main/oracle-instantclient-jdbc_21.5.0.0.0-1_amd64.deb)
+
+- [oracle-instantclient-sqlplus](https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/apt/pool/main/oracle-instantclient-sqlplus_21.5.0.0.0-1_amd64.deb)
 
 {{% /tab %}}
 
