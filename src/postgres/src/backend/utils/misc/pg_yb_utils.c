@@ -5158,8 +5158,7 @@ bool
 YbIsUpdateOptimizationEnabled()
 {
 	/* TODO(kramanathan): Placeholder until a flag strategy is agreed upon */
-	return (!YBCIsEnvVarTrue("FLAGS_ysql_skip_row_lock_for_update")) &&
-		   yb_update_optimization_options.num_cols_to_compare > 0 &&
+	return yb_update_optimization_options.num_cols_to_compare > 0 &&
 		   yb_update_optimization_options.max_cols_size_to_compare > 0;
 }
 
