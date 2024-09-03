@@ -220,7 +220,7 @@ pg_restore: Minimum version: 14
 
 psql: Minimum version: 14
 
-#### Yum packages
+#### APT packages
 
 - gcc (no version dependency)
 - sqlite3 (no version dependency)

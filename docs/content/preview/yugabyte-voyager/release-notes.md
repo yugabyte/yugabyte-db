@@ -13,7 +13,7 @@ type: docs
 
 What follows are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
-## v1.8 - September 4, 2024
+## v1.8 - September 3, 2024
 
 ### New Features
 
@@ -25,7 +25,7 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 ### Enhancements
 
 - Enhanced assessment and analyze reports to detect, and specify workarounds for PostgreSQL features that are incompatible with YugabyteDB. For example, Multi-column GIN indexes, GENERATED ALWAYS AS STORED columns, ALTER TABLE variants, Deferrable constraints, ALTER TABLE ADD PRIMARY KEY on a partitioned table, and so on.
-- Enhanced Manual Review Guidelines section for PostgreSQL source to list known issues that are unsupported by YugabyteDB, with workarounds.
+- Enhanced [Manual Review Guidelines for PostgreSQL](../known-issues/postgresql/) source to list known issues that are unsupported by YugabyteDB, with workarounds.
 - Enhanced export schema for categorizing the FOREIGN TABLE, POLICY, CONVERSION, and OPERATOR object types from PostgreSQL source.
 - Improved cluster sizing recommendation logic in assessment reports.
   - Tables with more than 5 indexes will be recommended to be sharded.
