@@ -1,8 +1,8 @@
 ---
 title: YB Voyager Migration Assessment
 headerTitle: Migration assessment
-linkTitle: Assess migration
-headcontent: Create a migration assessment report
+linkTitle: Migration assessment
+headcontent: Assess the migration complexity and get schema chnages, data distirbution and cluster sizing
 description: Steps to create a migration assessment report to ensure successful migration using YugabyteDB Voyager.
 menu:
   preview_yugabyte-voyager:
@@ -13,27 +13,26 @@ badges: tp
 type: docs
 ---
 
-The Voyager Migration Assessment feature is specifically designed to optimize the database migration process from various source databases, currently supporting PostgreSQL and Oracle to YugabyteDB. Voyager conducts a detailed analysis of the source database by capturing essential metadata and metrics. It generates a comprehensive assessment report that recommends effective migration strategies, and provides key insights on ideal cluster configurations for optimal performance with YugabyteDB.
+The Voyager Migration Assessment feature streamlines database migration from PostgreSQL and Oracle to YugabyteDB. It analyzes the source database, captures essential metadata, and generates a report with recommended migration strategies and cluster configurations for optimal performance with YugabyteDB.
 
 ## Overview
+When you run an assessment, Voyager gathers key metadata and metrics from the source database, such as table column details, sizes of tables and indexes, and read/write IOPS. It then generates a report that includes:
 
-When you run an assessment, Voyager collects metadata or metrics from the source database. This includes table columns metadata, sizes of tables and indexes, read and write IOPS for tables and indexes, and so on. With this data, Voyager generates an assessment report with the following key details:
+- **Recommended schema changes:** Analyzes compatibility with YugabyteDB, highlighting unsupported features and data types.
 
-- **Database compatibility**. An assessment of the compatibility of the source database with YugabyteDB, identifying unsupported features and data types.
+- **Recommended cluster sizing:** Estimates the resources needed for the target environment based on table sizes, number of tables, and throughput requirements.
 
-- **Cluster size evaluation**. Estimated resource requirements for the target environment, to help with planning and scaling your infrastructure. The sizing logic depends on various factors such as the size and number of tables in the source database, as well as the throughput requirements (read/write IOPS).
+- **Recommended data distribution:** Suggests effective sharding strategies for tables and indexes.
 
-- **Schema evaluation**. Reviews the database schema to suggest effective sharding strategies for tables and indexes.
+- **Performance metrics:** Analyzes workload characteristics to recommend optimizations in YugabyteDB.
 
-- **Performance metrics**. Voyager analyzes performance metrics to understand workload characteristics and provide recommendations for optimization in YugabyteDB.
+- **Migration time estimate:** Provides an estimated time for data import into YugabyteDB based on experimental data.
 
-- **Migration time estimate**. An estimate of the time needed to import data into YugabyteDB after export from the source database. These estimates are calculated based on various experiments during data import to YugabyteDB.
 
-{{< warning title="Caveat" >}}
+{{< warning title="Note" >}}
 The recommendations are based on testing using a [RF3](../../../architecture/docdb-replication/replication/#replication-factor) YugabyteDB cluster on instance types with 4GiB memory per core and running v2024.1.
 {{< /warning >}}
 
-Note that if providing database access to the client machine running Voyager is not possible, you can gather metadata from the source database using the provided bash scripts and then use Voyager to assess the migration.
 
 The following table describes the type of data that is collected during a migration assessment.
 
@@ -46,11 +45,8 @@ The following table describes the type of data that is collected during a migrat
 | Performance metrics | Optional | Voyager captures performance metrics from the database (IOPS) for rightsizing the target environment. |
 | Server or database credentials | No | No server or database credentials are collected. |
 
-### PostgreSQL sample Migration Assessment Report
 
-You can view a sample Migration Assessment report for PostgreSQL [here](/files/sample-report.html).
-
-## Generate a Migration Assessment Report
+## Get started with migration assessment
 
 1. [Install yb-voyager](../../install-yb-voyager/).
 1. Prepare the source database.
@@ -204,26 +200,32 @@ For the most accurate migration assessment, the source database must be actively
     - [Live migration with fall-forward](../../migrate/live-fall-forward/)
     - [Live migration with fall-back](../../migrate/live-fall-back/)
 
-## Bulk assessment
 
-The Bulk Assessment command (`assess-migration-bulk`) allows you assess multiple schemas in one or more database instances simultaneously. Bulk assessment enables the following:
+## Migration assessment of a fleet of databases (Oracle only)
+The Bulk Assessment command ('assess-migration-bulk') allows you to assess multiple schemas across one or more database instances simultaneously. It offers:
+- Multi-Schema Assessment: Assess multiple schemas in different database instances with a single command, simplifying migration planning.
+- Centralized Reporting: All assessment reports are generated and stored in one organized directory, making
 
-- Multi-schema assessment - Assess multiple schemas across one or more database instances with a single command, streamlining the migration planning process.
-- Centralized reporting - All assessment reports are generated and stored in a single organized directory, so you can review the migration assessments for all schemas in one place.
+### Command
 
-![Oracle bulk assessment](/images/migrate/assess-migration-bulk.png)
+To perform a bulk assessment, use the following command syntax:
 
-### Prerequisites
-
-Prepare source databases for each schema as described in [Generate a migration assessment](#generate-a-migration-assessment-report).
+```sh
+yb-voyager assess-migration-bulk \
+    --fleet-config-file /path/to/fleet_config_file.csv \
+    --bulk-assessment-dir /path/to/bulk-assessment-dir \
+    [--continue-on-error true|false] \
+    [--start-clean true|false]
+```
 
 ### Fleet configuration file
 
-Bulk assessment is managed using a fleet configuration file, which specifies the details of schemas to be assessed. The file is in CSV format.
+Bulk assessment is managed using a fleet configuration file, which specifies the schemas to be assessed. The file is in CSV format.
 
-The first row of the file includes the headers that describe the fields to be included in each subsequent row. Each row after the header represents a different schema to be assessed.
-
-The following table describes the fields that can be included in the fleet configuration file.
+- Header Row: The first row contains headers that define the fields for each schema.
+- Schema Rows: Each subsequent row corresponds to a different schema to be assessed.
+  
+The table below outlines the fields that can be included in the fleet configuration file.
 
 | Field | Description |
 | :--- | :--- |
@@ -244,18 +246,6 @@ source-db-type,source-db-host,source-db-port,source-db-name,oracle-db-sid,oracle
 oracle,example-host1,1521,ORCL,,,admin,password,schema1
 oracle,example-host2,1521,,ORCL_SID,,admin,password,schema2
 oracle,,,,,tns_alias,oracle_user,password,schema3
-```
-
-### Command
-
-To perform a bulk assessment, use the following command syntax:
-
-```sh
-yb-voyager assess-migration-bulk \
-    --fleet-config-file /path/to/fleet_config_file.csv \
-    --bulk-assessment-dir /path/to/bulk-assessment-dir \
-    [--continue-on-error true|false] \
-    [--start-clean true|false]
 ```
 
 ### Directory structure
@@ -279,7 +269,6 @@ After the bulk assessment is completed, the top-level directory specified using 
 └── logs/
      └── yb-voyager-assess-migration-bulk.log
 ```
-
 ## Visualize the Migration Assessment report
 
 [yugabyted](/preview/reference/configuration/yugabyted/) UI allows you to visualize the database migrations performed by YugabyteDB Voyager. The UI provides details of migration complexity, SQL objects details from the source database, YugabyteDB sharding strategy, conversion issues (if any), and also allows you to track the percentage completion of data export from the source database and data import to the target YugabyteDB cluster.
