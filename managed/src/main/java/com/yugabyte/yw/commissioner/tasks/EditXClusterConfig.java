@@ -56,7 +56,8 @@ public class EditXClusterConfig extends CreateXClusterConfig {
 
         // Check Auto flags on source and target universes while resuming xCluster.
         if (editFormData.status != null && editFormData.status.equals("Running")) {
-          createCheckXUniverseAutoFlag(sourceUniverse, targetUniverse)
+          createCheckXUniverseAutoFlag(
+                  sourceUniverse, targetUniverse, false /* checkAutoFlagsEqualityOnBothUniverses */)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.PreflightChecks);
         }
 
