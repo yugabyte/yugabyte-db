@@ -147,7 +147,7 @@ Note: When enabling the cost models, ensure that packed row for colocated tables
 
 #### YugabyteDB Anywhere
 
-To enable EPCM in YugabyteDB Anywhere v2024.1, see the [Release notes](/preview/releases/yba-releases/v2024.1/#highlights).
+To enable EPCM in YugabyteDB Anywhere v2024.1, see the [Release notes](/preview/releases/yba-releases/v2024.1/#v2024.1.0.0).
 
 To enable EPCM in YugabyteDB Anywhere v2024.2 or later:
 
