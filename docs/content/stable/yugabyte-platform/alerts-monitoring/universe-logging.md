@@ -80,4 +80,3 @@ The YSQL audit logging settings are derived from the settings for logging used b
 
 - [Logging in YugabyteDB](../../../secure/audit-logging/)
 - [PostgreSQL Error Reporting and Logging](https://www.postgresql.org/docs/11/runtime-config-logging.html)
-- [Annotated PostgreSQL configuration settings](https://github.com/jberkus/annotated.conf)

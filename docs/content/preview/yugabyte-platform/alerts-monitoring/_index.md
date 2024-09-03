@@ -56,7 +56,7 @@ Use the Live Queries and Slow Queries dashboards to monitor and display current 
     icon="/images/section_icons/introduction/benefits.png">}}
 
   {{<index/item
-    title="Export logs"
+    title="Export YSQL audit logs"
     body="Export universe audit logs to third-party logging tools."
     href="universe-logging/"
     icon="/images/section_icons/explore/monitoring.png">}}
