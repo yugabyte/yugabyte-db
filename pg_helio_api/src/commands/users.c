@@ -79,6 +79,12 @@ helio_extension_create_user(PG_FUNCTION_ARGS)
 
 	ReportFeatureUsage(FEATURE_USER_CREATE);
 
+	if (PG_ARGISNULL(0))
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+						errmsg("User spec must be specified")));
+	}
+
 	pgbson *createUserSpec = PG_GETARG_PGBSON(0);
 	CreateUserSpec *spec = ParseCreateUserSpec(createUserSpec);
 	StringInfo createUserInfo = makeStringInfo();
@@ -314,6 +320,12 @@ helio_extension_drop_user(PG_FUNCTION_ARGS)
 
 	ReportFeatureUsage(FEATURE_USER_DROP);
 
+	if (PG_ARGISNULL(0))
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+						errmsg("User spec must be specified")));
+	}
+
 	pgbson *dropUserSpec = PG_GETARG_PGBSON(0);
 	char *dropUser = ParseDropUserSpec(dropUserSpec);
 	StringInfo dropUserInfo = makeStringInfo();
@@ -407,6 +419,11 @@ helio_extension_update_user(PG_FUNCTION_ARGS)
 	}
 
 	ReportFeatureUsage(FEATURE_USER_UPDATE);
+	if (PG_ARGISNULL(0))
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+						errmsg("User spec must be specified")));
+	}
 
 	pgbson *updateUserSpec = PG_GETARG_PGBSON(0);
 	UpdateUserSpec *spec = ParseUpdateUserSpec(updateUserSpec);
@@ -509,6 +526,11 @@ helio_extension_get_users(PG_FUNCTION_ARGS)
 	}
 
 	ReportFeatureUsage(FEATURE_USER_GET);
+	if (PG_ARGISNULL(0))
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+						errmsg("User spec must be specified")));
+	}
 
 	char *userName = ParseGetUserSpec(PG_GETARG_PGBSON(0));
 	const char *cmdStr = NULL;
