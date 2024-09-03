@@ -13,12 +13,15 @@ badges: tp
 type: docs
 ---
 The Voyager Migration Assessment feature streamlines database migration from PostgreSQL and Oracle to YugabyteDB. It analyzes the source database, captures essential metadata, and generates a report with recommended migration strategies and cluster configurations for optimal performance with YugabyteDB.
+
 ## Overview
+
 When you run an assessment, Voyager gathers key metadata and metrics from the source database, such as table column details, sizes of tables and indexes, and read/write IOPS.
 
 ![Migration Assessment Overview](/images/migrate/voyager-migration-assessment-overview.png)
 
 Voyager then generates a report that includes:
+
 - **Recommended schema changes:** Analyzes compatibility with YugabyteDB, highlighting unsupported features and data types.
 - **Recommended cluster sizing:** Estimates the resources needed for the target environment based on table sizes, number of tables, and throughput requirements.
 - **Recommended data distribution:** Suggests effective sharding strategies for tables and indexes.
