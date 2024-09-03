@@ -4,11 +4,11 @@ private=true
 +++
 -->
 
-You can perform an airgapped installation on RHEL 7/8 and CentOS 7/8.
-
 {{< tabpane text=true >}}
 
 {{% tab header="Docker" %}}
+
+You can perform an airgapped installation on Docker.
 
 Install yb-voyager using a Docker image in an airgapped environment using the following steps:
 
@@ -52,10 +52,12 @@ Install yb-voyager using a Docker image in an airgapped environment using the fo
 
 {{% tab header="Yum" %}}
 
+You can perform an airgapped installation on RHEL 8 and CentOS 8.
+
 1. Download the airgapped bundle:
 
     ```sh
-    wget https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/airgapped/yb-voyager-1.8.0-rc1-rhel-8-x86_64.tar.gz
+    wget https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/airgapped/yb-voyager-1.8.0-rhel-8-x86_64.tar.gz
     ```
 
 1. Extract the bundle.
@@ -164,10 +166,12 @@ You can download the oracle instant client rpms from the following links:
 
 {{% tab header="Ubuntu" %}}
 
+You can perform an airgapped installation on Ubhuntu 22 and leter.
+
 1. Download the airgapped bundle:
 
     ```sh
-    wget https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/airgapped/yb-voyager-1.8.0_rc1_debian.tar.gz
+    wget https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/airgapped/yb-voyager-1.8.0_debian.tar.gz
     ```
 
 1. Extract the bundle.

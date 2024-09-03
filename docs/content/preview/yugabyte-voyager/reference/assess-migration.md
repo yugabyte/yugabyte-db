@@ -1,5 +1,5 @@
 ---
-title: Assess migration
+title: assess migration reference
 headcontent: yb-voyager assess-migration
 linkTitle: Assess migration
 description: YugabyteDB Voyager assess migration reference

@@ -196,17 +196,17 @@ For the most accurate migration assessment, the source database must be actively
 The Bulk Assessment command (`access-migration-bulk`) allows you assess multiple schemas in one or more database instances simultaneously. Bulk assessment enables the following:
 
 - Multi-schema assessment - Assess multiple schemas across one or more database instances with a single command, streamlining the migration planning process.
-- Centralized reporting - All assessment reports are generated and stored in a single organized directory, so you can access and review the migration assessments for all schemas in one place.
+- Centralized reporting - All assessment reports are generated and stored in a single organized directory, so you can review the migration assessments for all schemas in one place.
 
 ![Oracle bulk assessment](/images/migrate/assess-migration-bulk.png)
 
 ### Prerequisites
 
-Prepare source databases as described in [Generate a migration assessment](#generate-a-migration-assessment-report).
+Prepare source databases for each schema as described in [Generate a migration assessment](#generate-a-migration-assessment-report).
 
 ### Fleet configuration file
 
-Bulk assessment is managed using a fleet configuration file, which specifies the schemas to be assessed in CSV format.
+Bulk assessment is managed using a fleet configuration file, which specifies the details of schemas to be assessed. The file is in CSV format.
 
 The first row of the file includes the headers that describe the fields to be included in each subsequent row. Each row after the header represents a different schema to be assessed.
 
@@ -230,7 +230,7 @@ The following is an example fleet configuration file.
 source-db-type,source-db-host,source-db-port,source-db-name,oracle-db-sid,oracle-tns-alias,source-db-user,source-db-password,source-db-schema
 oracle,example-host1,1521,ORCL,,,admin,password,schema1
 oracle,example-host2,1521,,ORCL_SID,,admin,password,schema2
-oracle,example-host3,1521,,,tns_alias,oracle_user,password,schema3
+oracle,,,,,tns_alias,oracle_user,password,schema3
 ```
 
 ### Command
@@ -242,7 +242,6 @@ yb-voyager assess-migration-bulk \
     --fleet-config-file /path/to/fleet_config_file.csv \
     --bulk-assessment-dir /path/to/bulk-assessment-dir \
     [--continue-on-error true|false] \
-    [--ignore-exists true|false] \
     [--start-clean true|false]
 ```
 
