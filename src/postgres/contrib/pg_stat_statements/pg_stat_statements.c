@@ -92,6 +92,7 @@
 
 
 #include "yb/yql/pggate/webserver/pgsql_webserver_wrapper.h"
+#include "yb_query_diagnostics.h"
 
 PG_MODULE_MAGIC;
 
@@ -426,6 +427,7 @@ static int query_buffer_helper(FILE *file, FILE *qfile, int qlen,
 	pgssReaderContext *context);
 static void enforce_bucket_factor(int * value);
 static bool yb_track_nested_queries(void);
+static void YbGetPgssNormalizedQueryText(Size query_offset, int query_len, char *normalized_query);
 
 /*
  * Module load callback
@@ -579,6 +581,12 @@ _PG_init(void)
 
 	/* Function pointer to check if nested queries should be tracked in ASH */
 	yb_ash_track_nested_queries = yb_track_nested_queries;
+
+	/*
+	 * Initializing the function pointer required by yb_query_diagnostics.c
+	 * to get normalized query text.
+	 */
+	yb_get_normalized_query = &YbGetPgssNormalizedQueryText;
 }
 
 /*
@@ -1661,6 +1669,10 @@ pgss_store(const char *query, uint64 queryId,
 		if (do_gc)
 			gc_qtexts();
 	}
+
+	if (YBIsQueryDiagnosticsEnabled())
+		YbSetPgssNormalizedQueryText(queryId, entry->query_offset,
+									 entry->query_len);
 
 	/* Increment the counts, except when jstate is not NULL */
 	if (!jstate)
@@ -3806,4 +3818,19 @@ static bool
 yb_track_nested_queries(void)
 {
 	return pgss_track == PGSS_TRACK_ALL;
+}
+
+
+static void
+YbGetPgssNormalizedQueryText(Size query_offset, int query_len, char *normalized_query)
+{
+	char	   *qbuffer = NULL;
+	Size		qbuffer_size = 0;
+
+	qbuffer = qtext_load_file(&qbuffer_size);
+	memcpy(normalized_query, qtext_fetch(query_offset, query_len,
+										 qbuffer, qbuffer_size), query_len);
+	normalized_query[query_len - 1] = '\0'; /* Ensure null-termination */
+
+	free(qbuffer);
 }

@@ -57,8 +57,6 @@ public class TestEnquote extends BaseYsqlConnMgr {
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
-    builder.addCommonTServerFlag(
-      "TEST_ysql_conn_mgr_dowarmup_all_pools_random_attach", "true");
   }
 
   private static String getSearchPath (Statement stmt) {

@@ -4,6 +4,7 @@ package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.yugabyte.yw.models.helpers.BundleDetails.ComponentType;
+import com.yugabyte.yw.models.helpers.BundleDetails.PrometheusMetricsType;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Date;
@@ -40,4 +41,24 @@ public class SupportBundleFormData {
       value = "Max size in bytes of the recent collected cores (if any)",
       required = false)
   public long maxCoreFileSize = 25000000000L;
+
+  @ApiModelProperty(
+      value = "Start date to filter prometheus metrics from",
+      required = false,
+      example = "2022-12-12T13:07:18Z")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  public Date promDumpStartDate;
+
+  @ApiModelProperty(
+      value = "End date to filter prometheus metrics till",
+      required = false,
+      example = "2022-12-12T13:07:18Z")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  public Date promDumpEndDate;
+
+  @ApiModelProperty(
+      value = "List of exports to be included in the prometheus dump",
+      required = false)
+  public EnumSet<PrometheusMetricsType> prometheusMetricsTypes =
+      EnumSet.allOf(PrometheusMetricsType.class);
 }

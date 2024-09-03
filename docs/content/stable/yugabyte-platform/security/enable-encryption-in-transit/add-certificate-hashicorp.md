@@ -187,3 +187,5 @@ When you create a universe, you can enable TLS using certificates provided by Ha
 1. Optionally, provide the secret engine path on which the PKI is mounted. If you do not supply this information, `pki/` will be used.
 
 1. Click **Add** to make the certificate available.
+
+To view the certificate details, navigate to **Integrations > Security > Encryption in Transit**, find the certificate in the list, and click **Show details**.

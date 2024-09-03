@@ -169,6 +169,8 @@ class CQLProcessor : public ql::QLProcessor {
    public:
     ProcessRequestTask& Bind(CQLProcessor* processor) {
       processor_ = processor;
+      wait_state_ = ash::WaitStateInfo::CurrentWaitState();
+      ASH_ENABLE_CONCURRENT_UPDATES();
       return *this;
     }
 
@@ -178,6 +180,9 @@ class CQLProcessor : public ql::QLProcessor {
     void Run() override {
       auto processor = processor_;
       processor_ = nullptr;
+      auto wait_state = wait_state_;
+      wait_state_ = nullptr;
+      ADOPT_WAIT_STATE(wait_state);
       std::unique_ptr<ql::CQLResponse> response(processor->ProcessRequest(*processor->request_));
       if (response != nullptr) {
         processor->SendResponse(*response);
@@ -187,6 +192,7 @@ class CQLProcessor : public ql::QLProcessor {
     void Done(const Status& status) override {}
 
     CQLProcessor* processor_ = nullptr;
+    ash::WaitStateInfoPtr wait_state_{nullptr};
   };
 
   friend class ProcessRequestTask;

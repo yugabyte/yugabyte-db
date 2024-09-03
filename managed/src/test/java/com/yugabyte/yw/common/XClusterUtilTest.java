@@ -5,6 +5,8 @@ package com.yugabyte.yw.common;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.fail;
 
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PrevYBSoftwareConfig;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
@@ -75,5 +77,48 @@ public class XClusterUtilTest extends FakeDBApplication {
     assertThrows(
         PlatformServiceException.class,
         () -> XClusterUtil.checkDbScopedXClusterSupported(sourceUniverse, targetUniverse));
+  }
+
+  @Test
+  public void testDbScopedXClusterSupportedOnUniverseInPreFinalizeState() {
+    Universe sourceUniverse = ModelFactory.createUniverse("source Universe");
+    Universe targetUniverse = ModelFactory.createUniverse("target Universe");
+
+    // Source universe support db scoped xCluster.
+    TestHelper.updateUniverseVersion(
+        sourceUniverse, XClusterUtil.MINIMUN_VERSION_DB_XCLUSTER_SUPPORT_STABLE);
+    // Target universe did not support db scoped xCluster but is in pre finalize state to a version
+    // that supports db scoped xCluster.
+    TestHelper.updateUniverseVersion(
+        targetUniverse, XClusterUtil.MINIMUN_VERSION_DB_XCLUSTER_SUPPORT_STABLE);
+    PrevYBSoftwareConfig prevYBSoftwareConfig = new PrevYBSoftwareConfig();
+    prevYBSoftwareConfig.setSoftwareVersion("2024.1.1.0-b1");
+    prevYBSoftwareConfig.setAutoFlagConfigVersion(4);
+    TestHelper.updateUniversePrevSoftwareConfig(targetUniverse, prevYBSoftwareConfig);
+    TestHelper.updateUniverseSoftwareUpgradeState(targetUniverse, SoftwareUpgradeState.PreFinalize);
+
+    assertThrows(
+        PlatformServiceException.class,
+        () -> XClusterUtil.checkDbScopedXClusterSupported(sourceUniverse, targetUniverse));
+
+    TestHelper.updateUniverseSoftwareUpgradeState(targetUniverse, SoftwareUpgradeState.Ready);
+    try {
+      XClusterUtil.checkDbScopedXClusterSupported(sourceUniverse, targetUniverse);
+    } catch (Exception e) {
+      fail("Source and target universe versions should be valid for db scoped");
+    }
+
+    TestHelper.updateUniverseVersion(sourceUniverse, "2024.1.1.0-b100");
+    TestHelper.updateUniverseSoftwareUpgradeState(targetUniverse, SoftwareUpgradeState.PreFinalize);
+    TestHelper.updateUniverseVersion(targetUniverse, "2024.1.1.0-b100");
+    prevYBSoftwareConfig.setSoftwareVersion(
+        XClusterUtil.MINIMUN_VERSION_DB_XCLUSTER_SUPPORT_STABLE);
+    TestHelper.updateUniversePrevSoftwareConfig(targetUniverse, prevYBSoftwareConfig);
+
+    try {
+      XClusterUtil.checkDbScopedXClusterSupported(sourceUniverse, targetUniverse);
+    } catch (Exception e) {
+      fail("Source and target universe versions should be valid for db scoped");
+    }
   }
 }

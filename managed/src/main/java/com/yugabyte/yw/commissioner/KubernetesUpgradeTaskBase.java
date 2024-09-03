@@ -13,6 +13,7 @@ import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
+import com.yugabyte.yw.forms.RollMaxBatchSize;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
@@ -72,8 +73,17 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
               .filter(n -> n.state != NodeDetails.NodeState.Live)
               .findFirst();
       if (nonLive.isEmpty()) {
-        List<MastersAndTservers> split = nodesToBeRestarted.splitToSingle();
-        createCheckNodesAreSafeToTakeDownTask(split, getTargetSoftwareVersion(), false);
+        RollMaxBatchSize rollMaxBatchSize = getCurrentRollBatchSize(universe);
+        // Use only primary nodes
+        MastersAndTservers forCluster =
+            nodesToBeRestarted.getForCluster(
+                universe.getUniverseDetails().getPrimaryCluster().uuid);
+
+        if (!forCluster.isEmpty()) {
+          List<MastersAndTservers> split =
+              UpgradeTaskBase.split(universe, forCluster, rollMaxBatchSize);
+          createCheckNodesAreSafeToTakeDownTask(split, getTargetSoftwareVersion(), true);
+        }
       }
     }
   }
@@ -127,6 +137,10 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
   }
 
   public abstract SubTaskGroupType getTaskSubGroupType();
+
+  private RollMaxBatchSize getCurrentRollBatchSize(Universe universe) {
+    return getCurrentRollBatchSize(universe, taskParams().rollMaxBatchSize);
+  }
 
   // Wrapper that takes care of common pre and post upgrade tasks and user has
   // flexibility to manipulate subTaskGroupQueue through the lambda passed in parameter
@@ -323,7 +337,6 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           null,
           ServerType.MASTER,
           softwareVersion,
-          taskParams().sleepAfterMasterRestartMillis,
           universeOverrides,
           azOverrides,
           isMasterChanged,
@@ -333,7 +346,9 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           commandType,
           enableYbc,
           ybcSoftwareVersion,
-          /* addDelayAfterStartup */ true);
+          PodUpgradeParams.builder()
+              .delayAfterStartup(taskParams().sleepAfterMasterRestartMillis)
+              .build());
     }
 
     if (isTServerChanged) {
@@ -348,7 +363,6 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           null,
           ServerType.TSERVER,
           softwareVersion,
-          taskParams().sleepAfterTServerRestartMillis,
           universeOverrides,
           azOverrides,
           false, // master change is false since it has already been upgraded.
@@ -358,7 +372,10 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           commandType,
           enableYbc,
           ybcSoftwareVersion,
-          /* addDelayAfterStartup */ true);
+          PodUpgradeParams.builder()
+              .delayAfterStartup(taskParams().sleepAfterTServerRestartMillis)
+              .rollMaxBatchSize(getCurrentRollBatchSize(universe))
+              .build());
 
       if (enableYbc) {
         Set<NodeDetails> primaryTservers = new HashSet<>(universe.getTServersInPrimaryCluster());
@@ -392,7 +409,6 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
             null,
             ServerType.TSERVER,
             softwareVersion,
-            taskParams().sleepAfterTServerRestartMillis,
             universeOverrides,
             azOverrides,
             false, // master change is false since it has already been upgraded.
@@ -402,7 +418,10 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
             commandType,
             enableYbc,
             ybcSoftwareVersion,
-            /* addDelayAfterStartup */ true);
+            PodUpgradeParams.builder()
+                .delayAfterStartup(taskParams().sleepAfterTServerRestartMillis)
+                .rollMaxBatchSize(getCurrentRollBatchSize(universe))
+                .build());
 
         if (enableYbc) {
           Set<NodeDetails> replicaTservers =
@@ -428,7 +447,6 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           null,
           ServerType.MASTER,
           softwareVersion,
-          taskParams().sleepAfterMasterRestartMillis,
           universeOverrides,
           azOverrides,
           isMasterChanged,
@@ -438,7 +456,9 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           commandType,
           enableYbc,
           ybcSoftwareVersion,
-          true);
+          PodUpgradeParams.builder()
+              .delayAfterStartup(taskParams().sleepAfterMasterRestartMillis)
+              .build());
     }
   }
 

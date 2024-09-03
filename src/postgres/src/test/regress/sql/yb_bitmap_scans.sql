@@ -524,5 +524,42 @@ CREATE INDEX ON t2 (k1 ASC);
 CREATE INDEX ON t2 (k2 ASC);
 EXPLAIN (COSTS OFF) /*+ BitmapScan(t2) */ SELECT * FROM t2 AS a JOIN t2 AS b ON a.k1 = b.k1 OR (a.k2 = b.k1 AND a.k1 = 1);
 
+--
+-- BitmapAnd
+-- These tests require CBO because the basic cost model does not properly cost
+-- remote filters, so BitmapAnds were comparatively more expensive.
+--
+-- Hints can tell the planner to use a Bitmap Scan, but they cannot tell the
+-- planner how to design the plan. The planner chooses for itself how it should
+-- apply remote filters, Bitmap Ands, Bitmap Ors. For these queries, we are
+-- interested in testing the behaviour of a BitmapAnd, not testing the planner's
+-- ability to choose between a bitmap scan and a sequential scan. IF the planner
+-- must choose a bitmap scan, what plan does it choose? Does that plan work?
+--
+SET yb_enable_base_scans_cost_model = true;
+
+CREATE TABLE test_and (a INT, b INT, c INT);
+CREATE INDEX ON test_and (a ASC);
+CREATE INDEX ON test_and (b ASC);
+CREATE INDEX ON test_and (c ASC);
+INSERT INTO test_and SELECT i, j, k FROM generate_series(1, 20) i, generate_series(1, 20) j, generate_series(1, 20) k;
+ANALYZE test_and;
+
+/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, SUMMARY OFF, COSTS OFF) SELECT * FROM test_and t WHERE a < 6 AND b < 6;
+/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, SUMMARY OFF, COSTS OFF) SELECT * FROM test_and t WHERE a < 6 AND c < 6;
+/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, SUMMARY OFF, COSTS OFF) SELECT * FROM test_and t WHERE b < 6 AND c < 6;
+/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, SUMMARY OFF, COSTS OFF) SELECT * FROM test_and t WHERE a < 6 AND b < 6 AND c < 7;
+
+/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, SUMMARY OFF, COSTS OFF) SELECT * FROM test_and t WHERE a < 10 AND b < 10;
+/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, SUMMARY OFF, COSTS OFF) SELECT * FROM test_and t WHERE a < 10 AND c < 10;
+/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, SUMMARY OFF, COSTS OFF) SELECT * FROM test_and t WHERE b < 10 AND c < 10;
+/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, SUMMARY OFF, COSTS OFF) SELECT * FROM test_and t WHERE a < 10 AND b < 10 AND c < 10;
+
+-- complex nested queries
+/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, SUMMARY OFF, COSTS OFF) SELECT * FROM test_and t WHERE a < 5 AND (b < 3 OR b > 16);
+/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, SUMMARY OFF, COSTS OFF) SELECT * FROM test_and t WHERE (b < 3 AND a < 5) OR (b > 16 AND a < 5);
+/*+ BitmapScan(t) */ EXPLAIN (ANALYZE, SUMMARY OFF, COSTS OFF) SELECT * FROM test_and t WHERE (b < 3 AND a < 5) OR (b > 16 AND a < 6);
+
+RESET yb_enable_base_scans_cost_model;
 RESET yb_explain_hide_non_deterministic_fields;
 RESET enable_bitmapscan;

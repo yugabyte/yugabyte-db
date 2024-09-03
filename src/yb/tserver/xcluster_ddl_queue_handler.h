@@ -34,8 +34,8 @@ class XClusterDDLQueueHandler {
  public:
   XClusterDDLQueueHandler(
       client::YBClient* local_client, const NamespaceName& namespace_name,
-      const NamespaceId& namespace_id, TserverXClusterContextIf& xcluster_context,
-      ConnectToPostgresFunc connect_to_pg_func);
+      const NamespaceId& namespace_id, const std::string& log_prefix,
+      TserverXClusterContextIf& xcluster_context, ConnectToPostgresFunc connect_to_pg_func);
   virtual ~XClusterDDLQueueHandler();
 
   Status ProcessDDLQueueTable(const XClusterOutputClientResponse& response);
@@ -77,11 +77,14 @@ class XClusterDDLQueueHandler {
       rapidjson::Document& doc, const std::string& schema,
       std::vector<YsqlFullTableName>& new_relations);
 
+  const std::string& LogPrefix() const { return log_prefix_; }
+
   client::YBClient* local_client_;
 
   std::unique_ptr<pgwrapper::PGConn> pg_conn_;
   NamespaceName namespace_name_;
   NamespaceId namespace_id_;
+  const std::string log_prefix_;
   TserverXClusterContextIf& xcluster_context_;
   ConnectToPostgresFunc connect_to_pg_func_;
 

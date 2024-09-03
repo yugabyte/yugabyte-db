@@ -139,7 +139,7 @@ ALTER ROLE yugabyte_test WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN NOREPL
 -- Dumped by ysql_dump version 11.2-YB-2.21.1.0-b0
 
 SET yb_binary_restore = true;
-SET yb_ignore_heap_pg_class_oids = false;
+SET yb_ignore_pg_class_oids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -199,7 +199,7 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 -- Dumped by ysql_dump version 11.2-YB-2.21.1.0-b0
 
 SET yb_binary_restore = true;
-SET yb_ignore_heap_pg_class_oids = false;
+SET yb_ignore_pg_class_oids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -257,7 +257,7 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 -- Dumped by ysql_dump version 11.2-YB-2.21.1.0-b0
 
 SET yb_binary_restore = true;
-SET yb_ignore_heap_pg_class_oids = false;
+SET yb_ignore_pg_class_oids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -295,7 +295,7 @@ CREATE DATABASE system_platform WITH TEMPLATE = template0 ENCODING = 'UTF8' LC_C
 \connect system_platform
 
 SET yb_binary_restore = true;
-SET yb_ignore_heap_pg_class_oids = false;
+SET yb_ignore_pg_class_oids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -348,7 +348,7 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 -- Dumped by ysql_dump version 11.2-YB-2.21.1.0-b0
 
 SET yb_binary_restore = true;
-SET yb_ignore_heap_pg_class_oids = false;
+SET yb_ignore_pg_class_oids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -386,7 +386,7 @@ CREATE DATABASE yugabyte WITH TEMPLATE = template0 ENCODING = 'UTF8' LC_COLLATE 
 \connect yugabyte
 
 SET yb_binary_restore = true;
-SET yb_ignore_heap_pg_class_oids = false;
+SET yb_ignore_pg_class_oids = false;
 SET yb_non_ddl_txn_for_sys_tables_allowed = true;
 SET statement_timeout = 0;
 SET lock_timeout = 0;

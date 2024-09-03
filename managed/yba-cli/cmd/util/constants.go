@@ -89,6 +89,44 @@ const (
 	DeletingProviderState = "DELETING"
 )
 
+// BackupStates
+const (
+	// InProgressBackupState state
+	InProgressBackupState = "InProgress"
+	// CompletedBackupState state
+	CompletedBackupState = "Completed"
+	// FailedBackupState state
+	FailedBackupState = "Failed"
+	// SkippedBackupState state
+	SkippedBackupState = "Skipped"
+	// FailedToDeleteBackupState state
+	FailedToDeleteBackupState = "FailedToDelete"
+	// StoppingBackupState state
+	StoppingBackupState = "Stopping"
+	// StoppedBackupState state
+	StoppedBackupState = "Stopped"
+	// QueuedForDeletionBackupState state
+	QueuedForDeletionBackupState = "QueuedForDeletion"
+	// QueuedForForcedDeletionBackupState state
+	QueuedForForcedDeletionBackupState = "QueuedForForcedDeletion"
+	// DeleteInProgressBackupState state
+	DeleteInProgressBackupState = "DeleteInProgress"
+)
+
+// RestoreStates
+const (
+	// InProgressRestoreState state
+	InProgressRestoreState = "InProgress"
+	// CompletedRestoreState state
+	CompletedRestoreState = "Completed"
+	// FailedRestoreState state
+	FailedRestoreState = "Failed"
+	// AbortedRestoreState state
+	AbortedRestoreState = "Aborted"
+	// CreatedRestoreState state
+	CreatedRestoreState = "Created"
+)
+
 // Allowed states for YugabyteDB Anywhere Tasks
 const (
 	// CreateTaskStatus task status
@@ -174,6 +212,18 @@ const (
 	OnpremProviderType = "onprem"
 )
 
+// Different kms types
+const (
+	// util.AWSEARType type
+	AWSEARType = "AWS"
+	// AzureEARType type
+	AzureEARType = "AZU"
+	// GCPEARType type
+	GCPEARType = "GCP"
+	// HashicorpVaultEARType type
+	HashicorpVaultEARType = "HASHICORP"
+)
+
 // Different storage configuration types
 const (
 	// S3StorageConfigType type
@@ -213,18 +263,32 @@ const (
 	AARCH64 = "aarch64"
 )
 
-// CompletedStates returns set of states that mark the task as completed
-func CompletedStates() []string {
+// Certificate Types
+const (
+	// SelfSignedCertificateType type
+	SelfSignedCertificateType = "SelfSigned"
+	// HashicorpVaultCertificateType type
+	HashicorpVaultCertificateType = "HashicorpVault"
+	// K8sCertManagerCertificateType type
+	K8sCertManagerCertificateType = "K8sCertManager"
+	// CustomCertHostPathCertificateType type
+	CustomCertHostPathCertificateType = "CustomCertHostPath"
+	// CustomServerCertCertificateType type
+	CustomServerCertCertificateType = "CustomServerCert"
+)
+
+// CompletedTaskStates returns set of states that mark the task as completed
+func CompletedTaskStates() []string {
 	return []string{SuccessTaskStatus, FailureTaskStatus, AbortedTaskStatus}
 }
 
-// ErrorStates return set of states that mark state as failure
-func ErrorStates() []string {
+// ErrorTaskStates return set of states that mark state as failure
+func ErrorTaskStates() []string {
 	return []string{FailureTaskStatus, AbortedTaskStatus}
 }
 
-// IncompleteStates return set of states for ongoing tasks
-func IncompleteStates() []string {
+// IncompleteTaskStates return set of states for ongoing tasks
+func IncompleteTaskStates() []string {
 	return []string{CreatedTaskStatus, InitializingTaskStatus, RunningTaskStatus, AbortTaskStatus}
 }
 

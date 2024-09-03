@@ -6,36 +6,32 @@ package restore
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
-	"os"
+	"strings"
 	"text/template"
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"github.com/spf13/viper"
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter/backup"
 )
 
 const (
-	defaultRestoreListing = "table {{.RestoreUUID}}\t{{.UniverseUUID}}\t{{.UniverseName}}\t{{.SourceUniverseUUID}}" +
-		"\t{{.SourceUniverseName}}\t{{.BackupType}}\t{{.State}}\t{{.CreateTime}}\t{{.CompletionTime}}"
+	defaultRestoreListing = "table {{.RestoreUUID}}\t{{.Universe}}\t{{.SourceUniverse}}\t{{.State}}"
 
-	keyspaceDetails = "table {{.SourceKeyspace}}\t{{.TargetKeyspace}}\t{{.StorageLocation}}\t{{.TableNameList}}"
-
-	restoreUUIDHeader        = "Restore UUID"
-	universeUUIDHeader       = "Universe UUID"
-	universeNameHeader       = "Universe Name"
-	sourceUniverseUUIDHeader = "Source Universe UUID"
-	sourceUniverseNameHeader = "Source Universe Name"
-	backupTypeHeader         = "Backup Type"
-	stateHeader              = "State"
-	createTimeHeader         = "Create Time"
-	completionTimeHeader     = "Completion Time"
+	restoreUUIDHeader    = "Restore UUID"
+	sourceUniverseHeader = "Source Universe"
+	backupTypeHeader     = "Backup Type"
+	stateHeader          = "State"
+	createTimeHeader     = "Create Time"
+	completionTimeHeader = "Completion Time"
 )
 
-// RestoreContext for restore outputs
-type RestoreContext struct {
+// Context for restore outputs
+type Context struct {
 	formatter.HeaderContext
 	formatter.Context
 	r ybaclient.RestoreResp
@@ -53,53 +49,52 @@ func NewRestoreFormat(source string) formatter.Format {
 }
 
 // SetRestore initializes the context with the restore info
-func (r *RestoreContext) SetRestore(restore ybaclient.RestoreResp) {
+func (r *Context) SetRestore(restore ybaclient.RestoreResp) {
 	r.r = restore
 }
 
 type restoreContext struct {
-	Restore *RestoreContext
+	Restore *Context
 }
 
-// Write populates the output table to be displayed in the command line
-func (r *RestoreContext) Write(index int) error {
-	var err error
-	rc := &restoreContext{
-		Restore: &RestoreContext{},
-	}
-	rc.Restore.r = r.r
+// Write renders the context for a list of restores
+func Write(ctx formatter.Context, restores []ybaclient.RestoreResp) error {
+	// Check if the format is JSON or Pretty JSON
+	if ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON() {
+		// Marshal the slice of restores into JSON
+		var output []byte
+		var err error
 
-	// Section 1
-	tmpl, err := r.startSubsection(defaultRestoreListing)
-	if err != nil {
-		logrus.Errorf("%s", err.Error())
+		if ctx.Format.IsPrettyJSON() {
+			output, err = json.MarshalIndent(restores, "", "  ")
+		} else {
+			output, err = json.Marshal(restores)
+		}
+
+		if err != nil {
+			logrus.Errorf("Error marshaling restores to json: %v\n", err)
+			return err
+		}
+
+		// Write the JSON output to the context
+		_, err = ctx.Output.Write(output)
 		return err
 	}
-	r.Output.Write([]byte(formatter.Colorize(fmt.Sprintf("Restore Details %d", index+1), formatter.BlueColor)))
-	r.Output.Write([]byte("\n"))
-	if err := r.ContextFormat(tmpl, rc.Restore); err != nil {
-		logrus.Errorf("%s", err.Error())
-		return err
+	render := func(format func(subContext formatter.SubContext) error) error {
+		for _, restore := range restores {
+			err := format(&Context{r: restore})
+			if err != nil {
+				logrus.Debugf("Error rendering restore: %v", err)
+				return err
+			}
+		}
+		return nil
 	}
-	r.PostFormat(tmpl, NewRestoreContext())
-	r.Output.Write([]byte("\n"))
+	return ctx.Write(NewRestoreContext(), render)
 
-	// Section 2: Keyspace details subSection 1
-	logrus.Debugf("Number of keyspaces: %d", len(rc.Restore.r.GetRestoreKeyspaceList()))
-	r.subSection("Keyspace Details")
-	for i, v := range rc.Restore.r.GetRestoreKeyspaceList() {
-		restoreKeyspaceContext := *NewRestoreKeyspaceContext()
-		restoreKeyspaceContext.Output = os.Stdout
-		restoreKeyspaceContext.Format = NewRestoreFormat(viper.GetString("output"))
-		restoreKeyspaceContext.SetRestoreKeyspace(v)
-		restoreKeyspaceContext.Write(i)
-		r.Output.Write([]byte("\n"))
-	}
-
-	return nil
 }
 
-func (r *RestoreContext) startSubsection(format string) (*template.Template, error) {
+func (r *Context) startSubsection(format string) (*template.Template, error) {
 	r.Buffer = bytes.NewBufferString("")
 	r.ContextHeader = ""
 	r.Format = formatter.Format(format)
@@ -108,71 +103,78 @@ func (r *RestoreContext) startSubsection(format string) (*template.Template, err
 	return r.ParseFormat()
 }
 
-func (r *RestoreContext) subSection(name string) {
+func (r *Context) subSection(name string) {
 	r.Output.Write([]byte("\n\n"))
 	r.Output.Write([]byte(formatter.Colorize(name, formatter.GreenColor)))
 	r.Output.Write([]byte("\n"))
 }
 
 // NewRestoreContext creates a new context for rendering restore
-func NewRestoreContext() *RestoreContext {
-	restoreCtx := RestoreContext{}
+func NewRestoreContext() *Context {
+	restoreCtx := Context{}
 	restoreCtx.Header = formatter.SubHeaderContext{
-		"RestoreUUID":        restoreUUIDHeader,
-		"UniverseUUID":       universeUUIDHeader,
-		"UniverseName":       universeNameHeader,
-		"SourceUniverseUUID": sourceUniverseUUIDHeader,
-		"SourceUniverseName": sourceUniverseNameHeader,
-		"BackupType":         backupTypeHeader,
-		"State":              stateHeader,
-		"CreateTime":         createTimeHeader,
-		"CompletionTime":     completionTimeHeader,
+		"RestoreUUID":    restoreUUIDHeader,
+		"Universe":       backup.UniverseHeader,
+		"SourceUniverse": sourceUniverseHeader,
+		"BackupType":     backupTypeHeader,
+		"State":          stateHeader,
+		"CreateTime":     createTimeHeader,
+		"CompletionTime": completionTimeHeader,
 	}
 	return &restoreCtx
 }
 
 // RestoreUUID fetches Restore UUID
-func (r *RestoreContext) RestoreUUID() string {
+func (r *Context) RestoreUUID() string {
 	return r.r.GetRestoreUUID()
 }
 
-// UniverseUUID fetches Universe UUID
-func (r *RestoreContext) UniverseUUID() string {
+// Universe fetches Universe name and UUID
+func (r *Context) Universe() string {
+	if len(strings.TrimSpace(r.r.GetTargetUniverseName())) != 0 {
+		return fmt.Sprintf("%s(%s)", r.r.GetTargetUniverseName(), r.r.GetUniverseUUID())
+	}
 	return r.r.GetUniverseUUID()
 }
 
-// UniverseName fetches Universe Name
-func (r *RestoreContext) UniverseName() string {
-	return r.r.GetTargetUniverseName()
-}
-
-// SourceUniverseUUID fetches Source Universe UUID
-func (r *RestoreContext) SourceUniverseUUID() string {
+// SourceUniverse fetches Source Universe UUID and name
+func (r *Context) SourceUniverse() string {
+	if len(strings.TrimSpace(r.r.GetSourceUniverseName())) != 0 {
+		return fmt.Sprintf("%s(%s)", r.r.GetSourceUniverseName(), r.r.GetSourceUniverseUUID())
+	}
 	return r.r.GetSourceUniverseUUID()
 }
 
 // SourceUniverseName fetches Source Universe Name
-func (r *RestoreContext) SourceUniverseName() string {
+func (r *Context) SourceUniverseName() string {
 	return r.r.GetSourceUniverseName()
 }
 
 // BackupType fetches Backup Type
-func (r *RestoreContext) BackupType() string {
+func (r *Context) BackupType() string {
 	return r.r.GetBackupType()
 }
 
 // State fetches Restore State
-func (r *RestoreContext) State() string {
-	return r.r.GetState()
+func (r *Context) State() string {
+	state := r.r.GetState()
+	if strings.Compare(state, util.CompletedRestoreState) == 0 {
+		return formatter.Colorize(state, formatter.GreenColor)
+	}
+	if strings.Compare(state, util.FailedRestoreState) == 0 ||
+		strings.Compare(state, util.AbortedRestoreState) == 0 {
+		return formatter.Colorize(state, formatter.RedColor)
+	}
+	return formatter.Colorize(state, formatter.YellowColor)
 }
 
 // CreateTime fetches Restore Create Time
-func (r *RestoreContext) CreateTime() string {
+func (r *Context) CreateTime() string {
 	return r.r.GetCreateTime().Format(time.RFC1123Z)
 }
 
 // CompletionTime fetches Restore Completion Time
-func (r *RestoreContext) CompletionTime() string {
+func (r *Context) CompletionTime() string {
 	completionTime := r.r.GetUpdateTime()
 	if completionTime.IsZero() {
 		return ""

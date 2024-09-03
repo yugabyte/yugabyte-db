@@ -22,12 +22,15 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/common_types.pb.h"
+
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 
-#include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_heartbeat.proxy.h"
@@ -324,6 +327,46 @@ TEST_F(MasterHeartbeatITest, ProcessHeartbeatAfterTSRestart) {
   ASSERT_NE(ts_replica_it, replica_locations->cend());
   ASSERT_EQ(ts_replica_it->second.role, PeerRole::LEADER);
   ASSERT_EQ(ts->latest_report_seqno(), 0);
+}
+
+TEST_F(MasterHeartbeatITest, PopulateHeartbeatResponseWhenRegistrationRequired) {
+  master::MasterBackupProxy backup_proxy(
+      proxy_cache_.get(), mini_cluster_->mini_master()->bound_rpc_addr());
+  ASSERT_OK(client_->CreateNamespaceIfNotExists("yugabyte", YQL_DATABASE_CQL));
+
+  // Create a snapshot schedule. Heartbeat responses should always include information on
+  // snapshot schedules so long as the call is successful and the response's error object is not
+  // set.
+  master::CreateSnapshotScheduleRequestPB req;
+  master::CreateSnapshotScheduleResponsePB resp;
+  rpc::RpcController rpc;
+  auto* namespace_filter =
+      req.mutable_options()->mutable_filter()->mutable_tables()->add_tables()->mutable_namespace_();
+  *namespace_filter->mutable_name() = "yugabyte";
+  namespace_filter->set_database_type(YQL_DATABASE_CQL);
+  req.mutable_options()->set_interval_sec(60);
+  req.mutable_options()->set_retention_duration_sec(5 * 60);
+  ASSERT_OK(backup_proxy.CreateSnapshotSchedule(req, &resp, &rpc));
+  ASSERT_FALSE(resp.has_error()) << resp.DebugString();
+
+  // Fabricate a dummy heartbeat request from a new tserver. The master leader should ask us to
+  // register.
+  master::TSHeartbeatRequestPB hb_req;
+  hb_req.mutable_common()->mutable_ts_instance()->set_permanent_uuid("fake-uuid");
+  hb_req.mutable_common()->mutable_ts_instance()->set_instance_seqno(0);
+  auto& catalog_mgr = ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())->catalog_manager();
+  hb_req.set_universe_uuid(ASSERT_RESULT(catalog_mgr.GetClusterConfig()).universe_uuid());
+  master::TSHeartbeatResponsePB hb_resp;
+  rpc.Reset();
+  master::MasterHeartbeatProxy heartbeat_proxy(
+      proxy_cache_.get(), mini_cluster_->mini_master()->bound_rpc_addr());
+  // The heartbeat response should ask us to re-register but it should also include metadata that
+  // piggy-backs on heartbeats such as the list of snapshot schedules.
+  ASSERT_OK(heartbeat_proxy.TSHeartbeat(hb_req, &hb_resp, &rpc));
+  ASSERT_FALSE(hb_resp.has_error()) << StatusFromPB(hb_resp.error().status());
+  ASSERT_TRUE(hb_resp.needs_reregister());
+  ASSERT_GT(hb_resp.snapshots_info().schedules_size(), 0);
+  ASSERT_EQ(hb_resp.snapshots_info().schedules(0).id(), resp.snapshot_schedule_id());
 }
 
 class MasterHeartbeatITestWithUpgrade : public YBTableTestBase {

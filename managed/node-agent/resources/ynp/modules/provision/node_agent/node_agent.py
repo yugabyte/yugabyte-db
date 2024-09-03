@@ -154,7 +154,7 @@ class InstallNodeAgent(BaseYnpModule):
                                                         context.get('customer_uuid'),
                                                         provider.get('uuid'),
                                                         context.get('instance_type_name'))
-        
+
         try:
             response = requests.get(get_instance_type_url,
                                     headers=self._get_headers(context.get('api_key')),
@@ -168,7 +168,7 @@ class InstallNodeAgent(BaseYnpModule):
                 logging.info("Instance type does not exist, creating it.")
                 context['provider_id'] = provider['uuid']
                 instance_data = self._generate_instance_type_payload(context)
-                
+
                 instance_payload_file = os.path.join(context.get('tmp_directory'),
                                                      'create_instance.json')
                 with open(instance_payload_file, 'w') as f:
