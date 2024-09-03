@@ -1,14 +1,16 @@
 import React, { FC, useRef } from 'react';
 import clsx from 'clsx';
-import { Box, makeStyles } from '@material-ui/core';
+import { Box, IconButton, makeStyles } from '@material-ui/core';
 import '@app/assets/fonts/Menlo-Regular.woff';
 import { YBButton } from '../YBButton/YBButton';
 import { AlertVariant } from '..';
 import { useToast } from '@app/helpers';
 import { useTranslation } from 'react-i18next';
+import CopyIcon from '@app/assets/copy.svg';
 
 export interface CodeBlockProps {
   showCopyButton?: boolean;
+  showCopyIconButton?: boolean;
   multiBlock?: boolean;
   blockClassName?: string;
   codeClassName?: string;
@@ -59,6 +61,13 @@ const useStyles = makeStyles((theme) => ({
       fontSize: 11.5
     }
   },
+  copyIcon: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    color: theme.palette.primary[600],
+    padding: theme.spacing(1)
+  },
   inlineButton: {
     top: theme.spacing(0.5),
     right: theme.spacing(0.75),
@@ -85,7 +94,8 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 export const YBCodeBlock: FC<CodeBlockProps> = ({
-  showCopyButton,  
+  showCopyButton,
+  showCopyIconButton,
   multiBlock,
   text,
   blockClassName,
@@ -105,7 +115,7 @@ export const YBCodeBlock: FC<CodeBlockProps> = ({
     addToast(AlertVariant.Success, t('common.copyCodeSuccess'));
   };
 
-  const copyBlock = () => copy(ref?.current?.innerText ?? '');
+  const copyBlock = () => {copy(ref?.current?.innerText ?? '')};
 
   const copyLineBlock = (ev: React.MouseEvent) => copy((ev?.currentTarget?.previousSibling as HTMLElement).innerText);
 
@@ -141,6 +151,11 @@ export const YBCodeBlock: FC<CodeBlockProps> = ({
               <YBButton variant="ghost" className={classes.copyButton} onClick={copyBlock}>
                 {t('common.copy')}
               </YBButton>
+            )}
+            {showCopyIconButton && (
+              <IconButton className={classes.copyIcon} onClick={copyBlock}>
+                <CopyIcon fontSize="small" />
+              </IconButton>
             )}
           </code>
         )}
