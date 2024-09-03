@@ -208,7 +208,7 @@ For the most accurate migration assessment, the source database must be actively
 
 ## Bulk assessment
 
-The Bulk Assessment command (`access-migration-bulk`) allows you assess multiple schemas in one or more database instances simultaneously. Bulk assessment enables the following:
+The Bulk Assessment command (`assess-migration-bulk`) allows you assess multiple schemas in one or more database instances simultaneously. Bulk assessment enables the following:
 
 - Multi-schema assessment - Assess multiple schemas across one or more database instances with a single command, streamlining the migration planning process.
 - Centralized reporting - All assessment reports are generated and stored in a single organized directory, so you can review the migration assessments for all schemas in one place.
