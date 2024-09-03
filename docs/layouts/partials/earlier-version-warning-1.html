@@ -1,0 +1,74 @@
+{{ $docVersion := $.Scratch.Get "docVersion" }}
+{{ $urlArray := split (urls.Parse .Permalink).Path "/" }}
+{{ $previewUrl := path.Join "preview" (after 2 $urlArray) }}
+{{ $previewUrl = add (add "/" $previewUrl) "/" }}
+{{ $stableUrl := path.Join "stable" (after 2 $urlArray) }}
+{{ $stableUrl = add (add "/" $stableUrl) "/" }}
+{{ $previewVersion := "" }}
+{{ $stableVersion := "" }}
+{{ $previewBehindStable := false }}
+
+{{ $pathsplit := after 1 (split .Page.File "/")}}
+{{/** Keep track of whether preview version exists for this file **/}}
+{{ $previewPath := path.Join "content/preview" $pathsplit }}
+{{ $previewExists := fileExists $previewPath }}
+
+{{/** Keep track of whether stable version exists for this file **/}}
+{{ $stablePath := path.Join "content/stable" $pathsplit }}
+{{ $stableExists := fileExists $stablePath }}
+
+{{  warnf "%s(%s) - %s(%s)" $previewPath $previewExists $stablePath $stableExists  }}
+
+{{/** Identify is preview is behind stable and which versions are preview and stable **/}}
+{{ range .Site.Data.currentVersions.dbVersions }}
+  {{- if eq .alias "stable" -}}
+    {{ $stableVersion = .series -}}
+    {{- if in .PreviewBehindStable true -}}
+      {{ $previewBehindStable = true }}
+    {{- end -}}
+  {{- else if eq .alias "preview" -}}
+    {{- $previewVersion = .series -}}
+  {{- end -}}
+
+{{- end -}}
+
+{{/** Do nothing if this is the latest stable and preview is behind stable **/}}
+{{- if not (and (eq $docVersion "stable") $previewBehindStable) -}}
+  {{ range .Site.Data.currentVersions.dbVersions }}
+      {{- if or (eq $docVersion .series) (eq $docVersion .alias)  -}}
+          {{/** for LTS and STS **/}}
+          {{- if or (eq .isLTS true) (eq .isSTS true) -}}
+            {{/** Do nothing if preview does not exist for this file **/}}
+            {{- if $previewExists -}}
+              <div class="admonition note">
+                <p>This page documents a stable (production) version. For testing and development with the latest features,
+                  use the <a href="{{ $previewUrl }}">preview ({{ $previewVersion }}) version.</a>
+                  {{/** For older stable versions, Add link to latest stable **/}}
+                  {{ if not (eq .alias "stable") }}
+                  For the latest stable version, see <a href="{{ $stableUrl }}">({{ $stableVersion }})</a>.
+                  {{- end -}}
+                </p>
+              </div>
+            {{- end -}}
+          {{- else if eq .alias "preview" -}}
+            {{/** If a stable page does not exist, this is an unversioned page!!!! **/}}
+            {{- if $stableExists -}}
+              <div class="admonition warning">
+                <p>This page documents the preview ({{ $previewVersion }}) version. Preview includes features under active development and is for development and testing only.
+                 For production, use the <a href="{{ $stableUrl }}"> stable ({{ $stableVersion }})</a> version.</p>
+              </div>
+            {{- end -}}
+          {{- else -}}
+            {{- if and $previewBehindStable $stableExists }}
+              <div class="admonition note">
+                <p>This page documents an earlier version. Go to the <a href="{{ $stableUrl }}">stable ({{ $stableVersion }})</a> version.</p>
+              </div>
+            {{- else if $previewExists -}}
+            <div class="admonition note">
+                <p>This page documents an earlier version. Go to the <a href="{{ $previewUrl }}">preview ({{ $previewVersion }})</a> version.</p>
+              </div>
+            {{- end -}}
+          {{- end -}}
+      {{- end -}}
+  {{- end -}}
+{{- end -}}
