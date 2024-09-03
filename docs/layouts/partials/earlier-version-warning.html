@@ -45,7 +45,7 @@
                   use the <a href="{{ $previewUrl }}">preview ({{ $previewVersion }}) version.</a>
                   {{/** For older stable versions, Add link to latest stable **/}}
                   {{ if not (eq .alias "stable") }}
-                  For the latest stable version, go to <a href="{{ $stableUrl }}">stable ({{ $stableVersion }})</a> version.
+                  For the latest stable version, see <a href="{{ $stableUrl }}">({{ $stableVersion }})</a>.
                   {{- end -}}
                 </p>
               </div>
@@ -54,8 +54,8 @@
             {{/** If a stable page does not exist, this is an unversioned page!!!! **/}}
             {{- if $stableExists -}}
               <div class="admonition warning">
-                <p>This page documents the preview ({{ $previewVersion }}) version that is to be used for testing and development with the
-                  latest features only. For production, use the <a href="{{ $stableUrl }}"> stable ({{ $stableVersion }})</a> version.</p>
+                <p>This page documents the preview ({{ $previewVersion }}) version. Preview includes features under active development and is for development and testing only.
+                 For production, use the <a href="{{ $stableUrl }}"> stable ({{ $stableVersion }})</a> version.</p>
               </div>
             {{- end -}}
           {{- else -}}
