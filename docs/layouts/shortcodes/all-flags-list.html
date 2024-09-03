@@ -1,6 +1,6 @@
 {{/*
 	Syntax:
-	  {{<flags/flag-table process="<process>">}}
+	  {{<all-flags-list process="<process>">}}
 
 	process:
 	  * "tserver"
@@ -45,23 +45,9 @@
 
 <!-- <pre>{{ debug.Dump $data }}</pre> -->
 <!-- XML to table -->
-<table class="sno-1">
-	<thead>
-		<tr>
-			<th style="text-align:right" >NAME</th>
-			<th>ATTRIBUTES</th>
-		</tr>
-	</thead>
-	<tbody>
-		{{ range $data.flag}}
-		<tr >
-			<td style="text-align:right">{{ .name }}</td>
-			<td>
-				<b>DEFAULT:</b> {{ or .default .target}} <br>
-				<b>TAGS:</b> {{ or .tags "N/A"}} <br>
-				<b>DESCRIPTION:</b> {{ .meaning }}
-			</td>
-		</tr>
-		{{ end }}
-	</tbody>
-</table>
+
+{{ range $data.flag}}
+#### {{.name}}
+{{.meaning}} (**_Default_: {{ default "None" (or .default .target)}}**{{if .tags}} - _{{replaceRE "," ", " .tags}}_{{end}})
+
+{{ end }}

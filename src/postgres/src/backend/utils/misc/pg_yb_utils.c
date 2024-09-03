@@ -1910,7 +1910,19 @@ YBDecrementDdlNestingLevel()
 		 * if DDL txn commit succeeds.)
 		 */
 		if (increment_done)
+		{
 			YbUpdateCatalogCacheVersion(YbGetCatalogCacheVersion() + 1);
+			if (YbIsClientYsqlConnMgr())
+			{
+				/* Wait for tserver hearbeat */
+				int32_t sleep = 1000 * 2 * YBGetHeartbeatIntervalMs();
+				elog(LOG,
+					 "connection manager: adding sleep of %d microseconds "
+					 "after DDL commit",
+					 sleep);
+				pg_usleep(sleep);
+			}
+		}
 
 		List *handles = YBGetDdlHandles();
 		ListCell *lc = NULL;

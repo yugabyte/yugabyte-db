@@ -48,6 +48,8 @@ Add TLS certificates issued by the cert-manager as follows:
 
 1. Click **Add** to make the certificate available.
 
+To view the certificate details, navigate to **Integrations > Security > Encryption in Transit**, find the certificate in the list, and click **Show details**.
+
 ## Configure the provider
 
 After the certificate is added to YugabyteDB Anywhere, configure the Kubernetes provider configuration by following instructions provided in [Configure region and zones](../../../configure-yugabyte-platform/kubernetes/#configure-region-and-zones).

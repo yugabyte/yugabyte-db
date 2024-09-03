@@ -10023,5 +10023,62 @@ TEST_F(CDCSDKYsqlTest, TestDynamicTablesShouldBeEnabledForStreamsWithSlotName) {
   ASSERT_EQ(stream_info.table_info_size(), 3);
 }
 
+TEST_F(CDCSDKYsqlTest, TestWithMajorityReplicatedButNonCommittedSingleShardTxn) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  // Perform a multishard txn and consume it by calling GetChanges.
+  ASSERT_OK(WriteRowsHelper(0, 3, &test_cluster_, true));
+  auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 6);
+  auto total = change_resp.cdc_sdk_proto_records_size();
+
+  // Temporarily stop updating the committed_op_id in the consensus_queue and perform a singl shard
+  // txn. This will create the situation where majority_replicated_op_id is higher than the
+  // committed_op_id.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_stop_committed_op_id_updation) = true;
+  ASSERT_OK(WriteRows(3, 4, &test_cluster_));
+
+  // Call GetChanges with the change request containing safe_hybrid_time from previous response.
+  GetChangesRequestPB change_req;
+  PrepareChangeRequest(
+      &change_req, stream_id, tablets, change_resp.cdc_sdk_checkpoint(), 0, "",
+      change_resp.safe_hybrid_time());
+  change_resp = ASSERT_RESULT(GetChangesFromCDC(change_req, true));
+
+  // This GetChanges response should not contain any records, since we stopped update of
+  // committed_op_id.
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 0);
+  total += change_resp.cdc_sdk_proto_records_size();
+
+  // Resume update of committed_op_id and perform another single shard insert. Wait for some time to
+  // ensure that committed_op_id update has gone through.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_stop_committed_op_id_updation) = false;
+  ASSERT_OK(WriteRows(4, 5, &test_cluster_));
+  SleepFor(MonoDelta::FromSeconds(20 * kTimeMultiplier));
+
+  // Call GetChanges with the change request containing safe_hybrid_time from previous response.
+  PrepareChangeRequest(
+      &change_req, stream_id, tablets, change_resp.cdc_sdk_checkpoint(), 0, "",
+      change_resp.safe_hybrid_time());
+  change_resp = ASSERT_RESULT(GetChangesFromCDC(change_req, true));
+
+  // This response will contain 6 records  2 * (BEGIN, INSERT, COMMIT) corresponding to the two
+  // single shard transactions. In tsan / asan builds a DDL is added to the response if the
+  // cached_schema_details is invalidated.
+  ASSERT_GE(change_resp.cdc_sdk_proto_records_size(), 6);
+  total += change_resp.cdc_sdk_proto_records_size();
+
+  ASSERT_GE(total, 12);
+}
+
 }  // namespace cdc
 }  // namespace yb

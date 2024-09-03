@@ -320,7 +320,9 @@ void XClusterOutboundReplicationGroup::MarkCheckpointNamespaceAsFailed(
   // FAILED is a terminal state. RemoveNamespace or Delete Replication Group is the way to clean it
   // up.
   ns_info->set_state(NamespaceInfoPB::FAILED);
-  StatusToPB(status, ns_info->mutable_error_status());
+  StatusToPB(
+      STATUS_FORMAT(InternalError, "Failed to checkpoint namespace $0: $1", namespace_id, status),
+      ns_info->mutable_error_status());
 
   WARN_NOT_OK(Upsert(*lock_result, epoch), ToString());
 }

@@ -28,6 +28,7 @@ import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyKubernetesClusterDelete;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.ImageBundleUtil;
@@ -952,6 +953,8 @@ public class UniverseCRUDHandler {
             isNodeUIHttpsEnabled)) {
           universe.updateConfig(ImmutableMap.of(Universe.HTTPS_ENABLED_UI, "true"));
         }
+
+        maybeSetMemoryLimitGflags(universe, primaryCluster);
       }
 
       // other configs enabled by default
@@ -975,6 +978,7 @@ public class UniverseCRUDHandler {
           ImmutableMap.of(
               Universe.USE_CUSTOM_IMAGE,
               Boolean.toString(taskParams.nodeDetailsSet.stream().allMatch(n -> n.ybPrebuiltAmi))));
+
       universe.save();
 
       DB.commitTransaction();
@@ -2406,6 +2410,45 @@ public class UniverseCRUDHandler {
                     key, nodeName, curVal, newVal));
           }
         });
+  }
+
+  private void maybeSetMemoryLimitGflags(Universe universe, Cluster primaryCluster) {
+
+    if (null == primaryCluster) {
+      return;
+    }
+
+    if (Util.compareYBVersions(
+                primaryCluster.userIntent.ybSoftwareVersion, "2.23.0.0", "2024.1.0.0", true)
+            >= 0
+        && primaryCluster.userIntent.providerType.isVM()
+        && !primaryCluster.userIntent.dedicatedNodes) {
+      Map<String, String> masterNewInstGflags =
+          new HashMap<>(
+              Map.of(
+                  "enforce_tablet_replica_limits",
+                  "true",
+                  "split_respects_tablet_replica_limits",
+                  "true"));
+      Map<String, String> tserverNewInstGFlags = new HashMap<>();
+
+      Map<String, String> memNewInstFlag = Map.of("use_memory_defaults_optimized_for_ysql", "true");
+      tserverNewInstGFlags.putAll(memNewInstFlag);
+      masterNewInstGflags.putAll(memNewInstFlag);
+
+      SpecificGFlags.PerProcessFlags newInstallGFlags = new SpecificGFlags.PerProcessFlags();
+      if (!tserverNewInstGFlags.isEmpty()) {
+        newInstallGFlags.value.put(ServerType.TSERVER, tserverNewInstGFlags);
+      }
+      if (!masterNewInstGflags.isEmpty()) {
+        newInstallGFlags.value.put(ServerType.MASTER, masterNewInstGflags);
+      }
+      LOG.info(
+          "Setting new install gflags to {} on universe {}",
+          newInstallGFlags.value,
+          universe.getName());
+      universe.setNewInstallGFlags(newInstallGFlags);
+    }
   }
 
   // This method enforces the user tags provided in runtime config.

@@ -18,7 +18,6 @@ const (
 	defaultEITListing = "table {{.Name}}\t{{.UUID}}\t{{.CreationDate}}" +
 		"\t{{.ExpirationDate}}\t{{.CertType}}\t{{.InUse}}"
 
-	inUseHeader          = "In Use"
 	certTypeHeader       = "Certificate Type"
 	creationDateHeader   = "Creation Date"
 	expirationDateHeader = "Expiration Date"
@@ -89,7 +88,7 @@ func NewEITContext() *Context {
 		"CreationDate":   creationDateHeader,
 		"ExpirationDate": expirationDateHeader,
 		"CertType":       certTypeHeader,
-		"InUse":          inUseHeader,
+		"InUse":          formatter.InUseHeader,
 		"Certificate":    certificateHeader,
 		"PrivateKey":     privateKeyHeader,
 	}

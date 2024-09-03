@@ -52,6 +52,8 @@ const (
 	UUIDHeader = "UUID"
 	// StatusHeader
 	StatusHeader = "Status"
+	// InUseHeader
+	InUseHeader = "In Use"
 
 	// GreenColor for colored output
 	GreenColor = "green"
