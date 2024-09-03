@@ -3815,7 +3815,8 @@ Status ClusterAdminClient::WriteUniverseKeyToFile(
 Status ClusterAdminClient::CreateCDCSDKDBStream(
     const TypedNamespaceName& ns, const std::string& checkpoint_type,
     const cdc::CDCRecordType record_type,
-    const std::string& consistent_snapshot_option) {
+    const std::string& consistent_snapshot_option,
+    const bool& is_dynamic_tables_enabled) {
   HostPort ts_addr = VERIFY_RESULT(GetFirstRpcAddressForTS());
   auto cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(proxy_cache_.get(), ts_addr);
 
@@ -3838,6 +3839,15 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(
     req.set_cdcsdk_consistent_snapshot_option(CDCSDKSnapshotOption::USE_SNAPSHOT);
   } else {
     req.set_cdcsdk_consistent_snapshot_option(CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT);
+  }
+
+  auto stream_create_options = req.mutable_cdcsdk_stream_create_options();
+  if (is_dynamic_tables_enabled) {
+        stream_create_options->set_cdcsdk_dynamic_tables_option(
+            CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED);
+  } else {
+        stream_create_options->set_cdcsdk_dynamic_tables_option(
+            CDCSDKDynamicTablesOption::DYNAMIC_TABLES_DISABLED);
   }
 
   RpcController rpc;

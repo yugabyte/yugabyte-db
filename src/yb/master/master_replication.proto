@@ -76,6 +76,9 @@ message CreateCDCStreamRequestPB {
   optional string cdcsdk_ysql_replication_slot_name = 8;
   optional CDCSDKSnapshotOption cdcsdk_consistent_snapshot_option = 9;
   optional string cdcsdk_ysql_replication_slot_plugin_name = 10;
+  // cdcsdk_stream_create_options field should be used for adding more stream creation options
+  // related to CDCSDK in future.
+  optional CDCSDKStreamCreateOptionsPB cdcsdk_stream_create_options = 11;
 }
 
 message CreateCDCStreamResponsePB {

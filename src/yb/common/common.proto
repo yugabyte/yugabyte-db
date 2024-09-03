@@ -671,3 +671,9 @@ message WaitStateInfoPB {
   // A string representation of wait_status_code for easy human consumption.
   optional string wait_status_code_as_string = 4;
 }
+
+// This message should be used for specifying stream creation options for CDCSDK streams.
+message CDCSDKStreamCreateOptionsPB {
+  optional
+      CDCSDKDynamicTablesOption cdcsdk_dynamic_tables_option = 1 [default = DYNAMIC_TABLES_ENABLED];
+}

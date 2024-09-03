@@ -611,7 +611,9 @@ class YBClient {
       const std::optional<std::string>& replication_slot_plugin_name = std::nullopt,
       const std::optional<CDCSDKSnapshotOption>& consistent_snapshot_option = std::nullopt,
       CoarseTimePoint deadline = CoarseTimePoint(),
-      uint64_t *consistent_snapshot_time = nullptr);
+      const CDCSDKDynamicTablesOption& dynamic_tables_option =
+          CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED,
+      uint64_t* consistent_snapshot_time_out = nullptr);
 
   // Delete multiple CDC streams.
   Status DeleteCDCStream(

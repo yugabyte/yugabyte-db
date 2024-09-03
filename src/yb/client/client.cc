@@ -1497,7 +1497,8 @@ Result<xrepl::StreamId> YBClient::CreateCDCSDKStreamForNamespace(
     const std::optional<std::string>& replication_slot_plugin_name,
     const std::optional<CDCSDKSnapshotOption>& consistent_snapshot_option,
     CoarseTimePoint deadline,
-    uint64_t *consistent_snapshot_time) {
+    const CDCSDKDynamicTablesOption& dynamic_tables_option,
+    uint64_t *consistent_snapshot_time_out) {
   CreateCDCStreamRequestPB req;
 
   if (populate_namespace_id_as_table_id) {
@@ -1521,13 +1522,15 @@ Result<xrepl::StreamId> YBClient::CreateCDCSDKStreamForNamespace(
   if (replication_slot_plugin_name.has_value()) {
     req.set_cdcsdk_ysql_replication_slot_plugin_name(*replication_slot_plugin_name);
   }
+  req.mutable_cdcsdk_stream_create_options()->set_cdcsdk_dynamic_tables_option(
+      dynamic_tables_option);
 
   CreateCDCStreamResponsePB resp;
   deadline = PatchAdminDeadline(deadline);
   CALL_SYNC_LEADER_MASTER_RPC_WITH_DEADLINE(Replication, req, resp, deadline, CreateCDCStream);
 
-  if (consistent_snapshot_time && resp.has_cdcsdk_consistent_snapshot_time()) {
-    *consistent_snapshot_time = resp.cdcsdk_consistent_snapshot_time();
+  if (consistent_snapshot_time_out && resp.has_cdcsdk_consistent_snapshot_time()) {
+    *consistent_snapshot_time_out = resp.cdcsdk_consistent_snapshot_time();
   }
   return xrepl::StreamId::FromString(resp.stream_id());
 }

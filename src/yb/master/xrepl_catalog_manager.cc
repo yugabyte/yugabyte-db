@@ -965,6 +965,7 @@ Status CatalogManager::CreateNewCdcsdkStream(
   bool has_consistent_snapshot_option = false;
   bool consistent_snapshot_option_use = false;
   bool has_replica_identity_full = false;
+  bool disable_dynamic_tables = false;
 
   CDCStreamInfoPtr stream;
   xrepl::StreamId stream_id = xrepl::StreamId::Nil();
@@ -1050,6 +1051,13 @@ Status CatalogManager::CreateNewCdcsdkStream(
   has_consistent_snapshot_option =
       has_consistent_snapshot_option && FLAGS_yb_enable_cdc_consistent_snapshot_streams;
 
+  // Check for dynamic tables option
+  if (req.has_cdcsdk_stream_create_options() &&
+      req.cdcsdk_stream_create_options().has_cdcsdk_dynamic_tables_option()) {
+    disable_dynamic_tables = req.cdcsdk_stream_create_options().cdcsdk_dynamic_tables_option() ==
+                             CDCSDKDynamicTablesOption::DYNAMIC_TABLES_DISABLED;
+  }
+
   stream_id = GenerateNewXreplStreamId();
   auto se_recover_stream_id = ScopeExit([&stream_id, this] { RecoverXreplStreamId(stream_id); });
 
@@ -1094,6 +1102,8 @@ Status CatalogManager::CreateNewCdcsdkStream(
   if (has_replication_slot_name) {
     metadata->set_cdcsdk_ysql_replication_slot_name(req.cdcsdk_ysql_replication_slot_name());
   }
+
+  metadata->set_cdcsdk_disable_dynamic_table_addition(disable_dynamic_tables);
 
   if (req.has_cdcsdk_ysql_replication_slot_plugin_name()) {
     metadata->set_cdcsdk_ysql_replication_slot_plugin_name(
