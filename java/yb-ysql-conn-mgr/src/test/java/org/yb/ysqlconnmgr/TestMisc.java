@@ -29,14 +29,6 @@ import org.yb.pgsql.ConnectionEndpoint;
 @RunWith(value = YBTestRunnerYsqlConnMgr.class)
 public class TestMisc extends BaseYsqlConnMgr {
 
-    @Override
-    protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
-        super.customizeMiniClusterBuilder(builder);
-
-        builder.addCommonTServerFlag (
-            "TEST_ysql_conn_mgr_dowarmup_all_pools_random_attach", "true");
-    }
-
   private final static String ERROR_YBTSERVERKEY_AUTH_EXPECTED =
       "FATAL: yb_use_tserver_key_auth can only be set if the connection is made over " +
       "unix domain socket";
