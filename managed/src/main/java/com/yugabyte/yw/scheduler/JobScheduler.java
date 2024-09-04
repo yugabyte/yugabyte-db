@@ -207,19 +207,15 @@ public class JobScheduler {
     Preconditions.checkNotNull(scheduleConfig, "Schedule config must be set");
     JobSchedule jobSchedule = JobSchedule.getOrBadRequest(uuid);
     ScheduleConfig oldScheduleConfig = jobSchedule.getScheduleConfig();
-    jobSchedule.updateScheduleConfig(scheduleConfig);
-    if (oldScheduleConfig.isDisabled() ^ scheduleConfig.isDisabled()) {
-      if (scheduleConfig.isDisabled()) {
-        removeJobInstanceIfPresent(jobSchedule.getUuid());
-      } else {
-        jobSchedule.setNextStartTime(createNextStartTime(jobSchedule, false));
-        jobSchedule.update();
-        Instant nextMaxPollTime =
-            Instant.now().plus(pollerInterval.getSeconds(), ChronoUnit.SECONDS);
-        if (nextMaxPollTime.isAfter(jobSchedule.getNextStartTime().toInstant())) {
-          // If the next execution time is arriving too soon, add it in the memory as well.
-          addJobInstanceIfAbsent(jobSchedule.getUuid());
-        }
+    if (!oldScheduleConfig.equals(scheduleConfig)) {
+      jobSchedule.setScheduleConfig(scheduleConfig);
+      jobSchedule.setNextStartTime(createNextStartTime(jobSchedule, false));
+      jobSchedule.update();
+      removeJobInstanceIfPresent(jobSchedule.getUuid());
+      Instant nextMaxPollTime = Instant.now().plus(pollerInterval.getSeconds(), ChronoUnit.SECONDS);
+      if (nextMaxPollTime.isAfter(jobSchedule.getNextStartTime().toInstant())) {
+        // If the next execution time is arriving too soon, add it in the memory as well.
+        addJobInstanceIfAbsent(jobSchedule.getUuid());
       }
     }
     return jobSchedule;
@@ -295,10 +291,20 @@ public class JobScheduler {
         .forEach(s -> deleteSchedule(s.getUuid()));
   }
 
-  // Update dangling instance records on process restart.
-  private void handleRestart() {
+  @VisibleForTesting
+  void handleRestart() {
+    // Update dangling instance records on process restart.
     JobInstance.updateAllPending(State.SKIPPED, State.SCHEDULED);
     JobInstance.updateAllPending(State.FAILED);
+    // Make currently active schedules inactive.
+    JobSchedule.getAll().stream()
+        .filter(s -> s.getScheduleConfig().isDisabled() == false)
+        .forEach(
+            s -> {
+              s.setState(JobSchedule.State.INACTIVE);
+              s.setNextStartTime(s.getJobConfig().createNextStartTime(s, true));
+              s.save();
+            });
   }
 
   // Create the next start time for the schedule. An implementation of JobConfig can choose to

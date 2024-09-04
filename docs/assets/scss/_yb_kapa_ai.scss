@@ -61,7 +61,7 @@ body {
       cursor: pointer;
       display: flex;
       padding: 4px 15px 4px 12px;
-      background: linear-gradient(91deg, #ED35EC 3.97%, #ED35C5 50.03%, #5E60F0 60.12%);
+      background: linear-gradient(91deg, #ED35EC 3.97%, #ED35C5 33%, #5E60F0 50%);
       background-clip: text;
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
@@ -118,22 +118,6 @@ body {
     @media (max-width: 550px) {
       >span.tritiery-btn:not(.btn-priority) > img {
         display: block;
-      }
-
-      >span.tritiery-btn:not(.btn-priority) > span {
-        font-size: 0px;
-      }
-
-      >span.tritiery-btn:not(.btn-priority) > span:after {
-        content: 'Use AI';
-        font-size: 13px;
-        display: block !important;
-        position: relative;
-        top: -7px;
-        background: linear-gradient(91deg, #ED35EC 3.97%, #ED35C5 50.03%, #5E60F0 80.11%);
-        background-clip: text;
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
       }
     }
 

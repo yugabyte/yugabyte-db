@@ -1320,6 +1320,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Sets the isMaster field
     params.isMaster = node.isMaster;
     params.enableYSQL = userIntent.enableYSQL;
+    params.enableConnectionPooling = userIntent.enableConnectionPooling;
     params.enableYCQL = userIntent.enableYCQL;
     params.enableYCQLAuth = userIntent.enableYCQLAuth;
     params.enableYSQLAuth = userIntent.enableYSQLAuth;
@@ -2270,6 +2271,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    */
   public SubTaskGroup createWaitForServerReady(NodeDetails node, ServerType serverType) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("WaitForServerReady");
+    subTaskGroup.addSubTask(getWaitForServerReadyTask(node, serverType));
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public WaitForServerReady getWaitForServerReadyTask(NodeDetails node, ServerType serverType) {
     WaitForServerReady.Params params = new WaitForServerReady.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.nodeName = node.nodeName;
@@ -2277,9 +2284,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.waitTimeMs = getOrCreateExecutionContext().getWaitForServerReadyTimeout().toMillis();
     WaitForServerReady task = createTask(WaitForServerReady.class);
     task.initialize(params);
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
+    return task;
   }
 
   public SubTaskGroup createCheckFollowerLagTask(NodeDetails node, ServerType serverType) {
@@ -5208,30 +5213,16 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
-  /**
-   * Run universe updater and increment the cluster config version
-   *
-   * @param updater the universe updater to run
-   * @return the updated universe
-   */
-  protected Universe saveUniverseDetails(
-      UUID universeUUID, boolean shouldIncrementVersion, UniverseUpdater updater) {
-    Universe.UNIVERSE_KEY_LOCK.acquireLock(universeUUID);
-    try {
-      if (updater.getConfig().isIgnoreAbsence() && !Universe.maybeGet(universeUUID).isPresent()) {
-        return null;
-      }
-      if (shouldIncrementVersion) {
-        incrementClusterConfigVersion(universeUUID);
-      }
-      return Universe.saveDetails(universeUUID, updater, shouldIncrementVersion);
-    } finally {
-      Universe.UNIVERSE_KEY_LOCK.releaseLock(universeUUID);
-    }
-  }
-
   protected Universe saveUniverseDetails(UUID universeUUID, UniverseUpdater updater) {
-    return saveUniverseDetails(universeUUID, shouldIncrementVersion(universeUUID), updater);
+    Function<UUID, Boolean> versionIncrementCallback =
+        uuid -> {
+          if (shouldIncrementVersion(universeUUID)) {
+            incrementClusterConfigVersion(universeUUID);
+            return true;
+          }
+          return false;
+        };
+    return Universe.saveUniverseDetails(universeUUID, versionIncrementCallback, updater);
   }
 
   protected Universe saveUniverseDetails(UniverseUpdater updater) {
@@ -5314,9 +5305,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected SubTaskGroup createWaitForDurationSubtask(Universe universe, Duration waitTime) {
+    return createWaitForDurationSubtask(universe.getUniverseUUID(), waitTime);
+  }
+
+  protected SubTaskGroup createWaitForDurationSubtask(UUID universeUUID, Duration waitTime) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("WaitForDuration");
     WaitForDuration.Params params = new WaitForDuration.Params();
-    params.setUniverseUUID(universe.getUniverseUUID());
+    params.setUniverseUUID(universeUUID);
     params.waitTime = waitTime;
 
     WaitForDuration task = createTask(WaitForDuration.class);

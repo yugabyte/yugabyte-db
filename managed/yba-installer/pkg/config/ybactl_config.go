@@ -3,6 +3,7 @@ package config
 import (
 	_ "embed"
 	"os"
+	"os/user"
 	"path/filepath"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
@@ -36,6 +37,12 @@ func WriteDefaultConfig() {
 		common.SetYamlValue(common.InputFile(), "installRoot",
 			filepath.Join(common.GetUserHomeDir(), "yugabyte"))
 		common.SetYamlValue(common.InputFile(), "as_root", false)
+		currUser, err := user.Current()
+		if err != nil {
+			log.Fatal("failed to get user: " + err.Error())
+		}
+		common.SetYamlValue(common.InputFile(), "service_username", currUser.Username)
+		common.SetYamlValue(common.InputFile(), "platform.port", 9443)
 	}
 
 }

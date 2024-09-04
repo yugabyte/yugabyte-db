@@ -49,8 +49,7 @@ add_custom_target(fips_install DEPENDS ${CMAKE_BINARY_DIR}/openssl-config/openss
 
 file(COPY
   ${CMAKE_SOURCE_DIR}/src/yb/integration-tests/xcluster/sql
-  DESTINATION ${CMAKE_BINARY_DIR}/test_xcluster_ddl_replication_sql
-  FILE_PERMISSIONS OWNER_READ)
+  DESTINATION ${CMAKE_BINARY_DIR}/test_xcluster_ddl_replication_sql)
 
 add_custom_target(
   xcluster_ddl_replication_sql DEPENDS ${CMAKE_BINARY_DIR}/test_xcluster_ddl_replication_sql)

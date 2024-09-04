@@ -599,7 +599,9 @@ class YBClient {
       const std::optional<std::string>& replication_slot_plugin_name = std::nullopt,
       const std::optional<CDCSDKSnapshotOption>& consistent_snapshot_option = std::nullopt,
       CoarseTimePoint deadline = CoarseTimePoint(),
-      uint64_t *consistent_snapshot_time = nullptr);
+      const CDCSDKDynamicTablesOption& dynamic_tables_option =
+          CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED,
+      uint64_t* consistent_snapshot_time_out = nullptr);
 
   // Delete multiple CDC streams.
   Status DeleteCDCStream(
@@ -621,7 +623,8 @@ class YBClient {
   // Create a new CDC stream.
   Status GetCDCDBStreamInfo(
       const std::string& db_stream_id,
-      std::vector<std::pair<std::string, std::string>>* db_stream_info);
+      std::vector<std::pair<std::string, std::string>>* db_stream_qualified_table_info,
+      std::vector<std::pair<std::string, std::string>>* db_stream_unqualified_table_info);
 
   void GetCDCDBStreamInfo(
       const std::string& db_stream_id,
@@ -639,7 +642,8 @@ class YBClient {
       std::optional<CDCSDKSnapshotOption>* consistent_snapshot_option = nullptr,
       std::optional<uint64_t>* stream_creation_time = nullptr,
       std::unordered_map<std::string, PgReplicaIdentity>* replica_identity_map = nullptr,
-      std::optional<std::string>* replication_slot_name = nullptr);
+      std::optional<std::string>* replication_slot_name = nullptr,
+      std::vector<TableId>* unqualified_table_ids = nullptr);
 
   Result<CDCSDKStreamInfo> GetCDCStream(
       const ReplicationSlotName& replication_slot_name,
@@ -660,6 +664,10 @@ class YBClient {
   Status UpdateCDCStream(
       const std::vector<xrepl::StreamId>& stream_ids,
       const std::vector<master::SysCDCStreamEntryPB>& new_entries);
+
+  Status RemoveTablesFromCDCSDKStream(
+      const std::vector<TableId>& table_id,
+      const xrepl::StreamId stream_id);
 
   Result<bool> IsObjectPartOfXRepl(const TableId& table_id);
 

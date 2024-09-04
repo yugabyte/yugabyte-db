@@ -57,8 +57,8 @@ The following table shows the mapping between the PostgreSQL isolation levels in
 
 | PostgreSQL Isolation | YugabyteDB Equivalent     | Dirty Read | Non-repeatable Read | Phantom Read | Serialization Anomaly |
 | :------------------- | :------------------------ | :--------- | :------------------ | :----------- | :-------------------- |
-| Read uncommitted | Read Committed {{<badge/tp>}} | Allowed, but not in YSQL |  Possible | Possible | Possible |
-| Read committed   | Read Committed {{<badge/tp>}} | Not possible | Possible     | Possible | Possible |
+| Read uncommitted | Read Committed {{<badge/ea>}} | Allowed, but not in YSQL |  Possible | Possible | Possible |
+| Read committed   | Read Committed {{<badge/ea>}} | Not possible | Possible     | Possible | Possible |
 | Repeatable read  | Snapshot                      | Not possible | Not possible | Allowed, but not in YSQL | Possible |
 | Serializable     | Serializable                  | Not possible | Not possible | Not possible | Not possible |
 

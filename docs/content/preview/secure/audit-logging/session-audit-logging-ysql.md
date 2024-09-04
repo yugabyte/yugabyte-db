@@ -41,7 +41,7 @@ SQL statements are shown below.
 
 {{% explore-setup-single %}}
 
-Connect to the database using ysqlsh and enable the `pgaudit` extension on the YugabyteDB cluster as follows:
+Connect to the database using ysqlsh and enable the pgaudit extension on the YugabyteDB cluster as follows:
 
 ```sql
 \c yugabyte yugabyte;

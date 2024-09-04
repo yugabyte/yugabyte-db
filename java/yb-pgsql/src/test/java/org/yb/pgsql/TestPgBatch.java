@@ -55,6 +55,7 @@ public class TestPgBatch extends BasePgSQLTest {
   protected void setUpTable(int numRows, IsolationLevel isolationLevel) throws Throwable {
     try (Statement s = connection.createStatement()) {
       s.execute("DROP TABLE IF EXISTS t");
+      waitForTServerHeartbeatIfConnMgrEnabled();
       s.execute("CREATE TABLE t(k int PRIMARY KEY, v int)");
       s.execute(String.format("INSERT INTO t SELECT generate_series(1, %d), 0", numRows));
     }

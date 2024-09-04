@@ -1864,15 +1864,21 @@ public class XClusterConfigController extends AuthenticatedController {
                   HashMap::new,
                   (map, entry) -> map.put(entry.getKey(), entry.getValue()),
                   HashMap::putAll);
-      if (!bootstrapParams.allowBootstrap) {
-        bootstrapParams.tables =
-            XClusterConfigTaskBase.getTableIdsWithoutTablesOnTargetInReplication(
-                ybService,
-                requestedTableInfoList,
-                sourceTableIdTargetTableIdWithBootstrapMap,
-                targetUniverse,
-                currentReplicationGroupName);
-      }
+
+      // Exclude tables that already exist in any replication on the target universe.
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> bootstrapParamsTableInfoList =
+          sourceTableInfoList.stream()
+              .filter(
+                  tableInfo ->
+                      bootstrapParams.tables.contains(XClusterConfigTaskBase.getTableId(tableInfo)))
+              .collect(Collectors.toList());
+      bootstrapParams.tables =
+          XClusterConfigTaskBase.getTableIdsWithoutTablesOnTargetInReplication(
+              ybService,
+              bootstrapParamsTableInfoList,
+              sourceTableIdTargetTableIdWithBootstrapMap,
+              targetUniverse,
+              currentReplicationGroupName);
 
       // If some tables do not exist on the target universe, bootstrapping is required.
       Set<String> sourceTableIdsWithNoTableOnTargetUniverse =

@@ -13,4 +13,4 @@ Use the yb-master binary and its flags to configure the [YB-Master](../../../arc
 
 For a list of all YB-TServer flags, see [All YB-TServer flags](../all-flags-yb-tserver/).
 
-{{<flags/flag-table process="master">}}
+{{%all-flags-list process="master"%}}

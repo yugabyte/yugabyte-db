@@ -2146,6 +2146,20 @@
       "required" : [ "entities", "hasNext", "hasPrev", "totalCount" ],
       "type" : "object"
     },
+    "BackupPointInTimeRestoreWindow" : {
+      "properties" : {
+        "timestampRetentionWindowEndMillis" : {
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "timestampRetentionWindowStartMillis" : {
+          "format" : "int64",
+          "type" : "integer"
+        }
+      },
+      "required" : [ "timestampRetentionWindowEndMillis", "timestampRetentionWindowStartMillis" ],
+      "type" : "object"
+    },
     "BackupRequestParams" : {
       "description" : "Backup table parameters",
       "properties" : {
@@ -2536,7 +2550,7 @@
           "type" : "string"
         },
         "selectiveTableRestore" : {
-          "description" : "Is selective table restore",
+          "description" : "Only restore selected tables instead of restoring all tables in backup",
           "type" : "boolean"
         },
         "sse" : {
@@ -2583,6 +2597,10 @@
             "$ref" : "#/definitions/BackupTableParams"
           },
           "type" : "array"
+        },
+        "backupPointInTimeRestoreWindow" : {
+          "$ref" : "#/definitions/BackupPointInTimeRestoreWindow",
+          "description" : "History Retention window for the backup"
         },
         "backupSizeInBytes" : {
           "description" : "Backup size in bytes",
@@ -2732,6 +2750,10 @@
         },
         "platformVersion" : {
           "type" : "string"
+        },
+        "pointInTimeRestoreEnabled" : {
+          "description" : "Point in time restore available",
+          "type" : "boolean"
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
@@ -3075,7 +3097,7 @@
       "properties" : {
         "components" : {
           "items" : {
-            "enum" : [ "UniverseLogs", "OutputFiles", "ErrorFiles", "CoreFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo", "NodeAgent", "YbaMetadata", "ApplicationLogs" ],
+            "enum" : [ "UniverseLogs", "OutputFiles", "ErrorFiles", "CoreFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo", "NodeAgent", "YbaMetadata", "PrometheusMetrics", "ApplicationLogs" ],
             "type" : "string"
           },
           "type" : "array"
@@ -3089,6 +3111,26 @@
           "description" : "Max number of most recent cores to collect (if any)",
           "format" : "int32",
           "type" : "integer"
+        },
+        "promDumpEndDate" : {
+          "description" : "End date to filter prometheus metrics till",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "promDumpStartDate" : {
+          "description" : "Start date to filter prometheus metrics from",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "prometheusMetricsTypes" : {
+          "description" : "List of exports to be included in the prometheus dump",
+          "items" : {
+            "enum" : [ "MASTER_EXPORT", "NODE_EXPORT", "PLATFORM", "PROMETHEUS", "TSERVER_EXPORT", "CQL_EXPORT", "YSQL_EXPORT" ],
+            "type" : "string"
+          },
+          "type" : "array"
         }
       },
       "required" : [ "components" ],
@@ -3824,6 +3866,11 @@
     "CommunicationPorts" : {
       "description" : "Communication ports",
       "properties" : {
+        "internalYsqlServerRpcPort" : {
+          "description" : "Internal YSQL RPC port",
+          "format" : "int32",
+          "type" : "integer"
+        },
         "masterHttpPort" : {
           "description" : "Master table HTTP port",
           "format" : "int32",
@@ -4008,6 +4055,10 @@
         "communicationPorts" : {
           "$ref" : "#/definitions/CommunicationPorts",
           "description" : "Communication ports for the universe"
+        },
+        "enableConnectionPooling" : {
+          "description" : "Enable Connection Pooling for the universe",
+          "type" : "boolean"
         },
         "enableYSQL" : {
           "description" : "Enable YSQL Api for the universe",
@@ -6435,10 +6486,30 @@
       },
       "type" : "object"
     },
+    "KeyspaceTables" : {
+      "properties" : {
+        "keyspace" : {
+          "description" : "Keyspace",
+          "type" : "string"
+        },
+        "tableNames" : {
+          "description" : "Tables",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        }
+      },
+      "type" : "object"
+    },
     "KeyspaceTablesList" : {
       "properties" : {
         "allTables" : {
           "type" : "boolean"
+        },
+        "backupPointInTimeRestoreWindow" : {
+          "$ref" : "#/definitions/BackupPointInTimeRestoreWindow"
         },
         "backupSizeInBytes" : {
           "format" : "int64",
@@ -6470,7 +6541,7 @@
           "type" : "array"
         }
       },
-      "required" : [ "allTables", "backupSizeInBytes", "defaultLocation", "keyspace", "perRegionLocations", "tableUUIDList", "tablesList" ],
+      "required" : [ "allTables", "backupPointInTimeRestoreWindow", "backupSizeInBytes", "defaultLocation", "keyspace", "perRegionLocations", "tableUUIDList", "tablesList" ],
       "type" : "object"
     },
     "KubernetesInfo" : {
@@ -7280,6 +7351,10 @@
           },
           "type" : "array"
         },
+        "backupPointInTimeRestoreWindow" : {
+          "$ref" : "#/definitions/BackupPointInTimeRestoreWindow",
+          "description" : "History Retention window for the backup"
+        },
         "backupSizeInBytes" : {
           "description" : "Backup size in bytes",
           "format" : "int64",
@@ -7428,6 +7503,10 @@
         },
         "platformVersion" : {
           "type" : "string"
+        },
+        "pointInTimeRestoreEnabled" : {
+          "description" : "Point in time restore available",
+          "type" : "boolean"
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
@@ -7994,6 +8073,11 @@
           "description" : "Disks are mounted by uuid",
           "type" : "boolean"
         },
+        "internalYsqlServerRpcPort" : {
+          "description" : "Internal YSQL RPC port",
+          "format" : "int32",
+          "type" : "integer"
+        },
         "isMaster" : {
           "description" : "True if this node is a master",
           "type" : "boolean"
@@ -8179,6 +8263,11 @@
         "disksAreMountedByUUID" : {
           "description" : "Disks are mounted by uuid",
           "type" : "boolean"
+        },
+        "internalYsqlServerRpcPort" : {
+          "description" : "Internal YSQL RPC port",
+          "format" : "int32",
+          "type" : "integer"
         },
         "isMaster" : {
           "description" : "True if this node is a master",
@@ -8578,6 +8667,86 @@
       "required" : [ "buildNumber" ],
       "type" : "object"
     },
+    "Parameters for Advanced Restore preflight checks" : {
+      "properties" : {
+        "backupLocations" : {
+          "description" : "List of backup locations to restore from",
+          "items" : {
+            "type" : "string"
+          },
+          "type" : "array",
+          "uniqueItems" : true
+        },
+        "restoreToPointInTimeMillis" : {
+          "description" : "Point in restore timestamp in millis",
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "storageConfigUUID" : {
+          "description" : "Storage config UUID",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "universeUUID" : {
+          "description" : "Target universe UUID",
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [ "backupLocations", "storageConfigUUID", "universeUUID" ],
+      "type" : "object"
+    },
+    "Parameters for Restore preflight checks" : {
+      "properties" : {
+        "backupUUID" : {
+          "description" : "UUID of the backup being restored",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "keyspaceTables" : {
+          "description" : "List of keyspace(s) and tables to be restored",
+          "items" : {
+            "$ref" : "#/definitions/KeyspaceTables"
+          },
+          "type" : "array"
+        },
+        "restoreToPointInTimeMillis" : {
+          "description" : "Point in restore timestamp in millis",
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "universeUUID" : {
+          "description" : "Target universe UUID",
+          "format" : "uuid",
+          "type" : "string"
+        }
+      },
+      "required" : [ "backupUUID", "universeUUID" ],
+      "type" : "object"
+    },
+    "Parameters for validating Restorable keyspace and tables in backup" : {
+      "properties" : {
+        "backupUUID" : {
+          "description" : "UUID of the backup being restored",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "keyspaceTables" : {
+          "description" : "List of keyspace(s) and tables to be restored",
+          "items" : {
+            "$ref" : "#/definitions/KeyspaceTables"
+          },
+          "type" : "array"
+        },
+        "restoreToPointInTimeMillis" : {
+          "description" : "Point in restore timestamp in millis",
+          "format" : "int64",
+          "type" : "integer"
+        }
+      },
+      "required" : [ "backupUUID" ],
+      "type" : "object"
+    },
     "PerBackupLocationKeyspaceTables" : {
       "properties" : {
         "originalKeyspace" : {
@@ -8611,6 +8780,10 @@
         "perBackupLocationKeyspaceTables" : {
           "$ref" : "#/definitions/PerBackupLocationKeyspaceTables",
           "description" : "Keyspace and tables list for given backup location"
+        },
+        "pointInTimeRestoreWindow" : {
+          "$ref" : "#/definitions/BackupPointInTimeRestoreWindow",
+          "description" : "Restore window within which the given backup can be restored to"
         },
         "tablespaceResponse" : {
           "$ref" : "#/definitions/TablespaceResponse",
@@ -10807,9 +10980,10 @@
           "format" : "uuid",
           "type" : "string"
         },
-        "restoreTimeStamp" : {
-          "description" : "Restore TimeStamp",
-          "type" : "string"
+        "restoreToPointInTimeMillis" : {
+          "description" : "Restore timestamp in millis",
+          "format" : "int64",
+          "type" : "integer"
         },
         "sleepAfterMasterRestartMillis" : {
           "format" : "int32",
@@ -10979,35 +11153,6 @@
         }
       },
       "required" : [ "entities", "hasNext", "hasPrev", "totalCount" ],
-      "type" : "object"
-    },
-    "RestorePreflightParams" : {
-      "properties" : {
-        "backupLocations" : {
-          "description" : "List of backup locations",
-          "items" : {
-            "type" : "string"
-          },
-          "type" : "array",
-          "uniqueItems" : true
-        },
-        "backupUUID" : {
-          "description" : "The backup of which the restore is being attempted",
-          "format" : "uuid",
-          "type" : "string"
-        },
-        "storageConfigUUID" : {
-          "description" : "Storage config UUID",
-          "format" : "uuid",
-          "type" : "string"
-        },
-        "universeUUID" : {
-          "description" : "Target universe UUID",
-          "format" : "uuid",
-          "type" : "string"
-        }
-      },
-      "required" : [ "backupLocations", "storageConfigUUID", "universeUUID" ],
       "type" : "object"
     },
     "RestorePreflightResponse" : {
@@ -12454,7 +12599,7 @@
         "components" : {
           "description" : "List of components to be included in the support bundle",
           "items" : {
-            "enum" : [ "UniverseLogs", "OutputFiles", "ErrorFiles", "CoreFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo", "NodeAgent", "YbaMetadata", "ApplicationLogs" ],
+            "enum" : [ "UniverseLogs", "OutputFiles", "ErrorFiles", "CoreFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo", "NodeAgent", "YbaMetadata", "PrometheusMetrics", "ApplicationLogs" ],
             "type" : "string"
           },
           "type" : "array"
@@ -12474,6 +12619,26 @@
           "description" : "Max number of the most recent cores to collect (if any)",
           "format" : "int32",
           "type" : "integer"
+        },
+        "promDumpEndDate" : {
+          "description" : "End date to filter prometheus metrics till",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "promDumpStartDate" : {
+          "description" : "Start date to filter prometheus metrics from",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "prometheusMetricsTypes" : {
+          "description" : "List of exports to be included in the prometheus dump",
+          "items" : {
+            "enum" : [ "MASTER_EXPORT", "NODE_EXPORT", "PLATFORM", "PROMETHEUS", "TSERVER_EXPORT", "CQL_EXPORT", "YSQL_EXPORT" ],
+            "type" : "string"
+          },
+          "type" : "array"
         },
         "startDate" : {
           "description" : "Start date to filter logs from",
@@ -15040,6 +15205,9 @@
           "description" : "Device specification that is used for tserver nodes in current cluster"
         },
         "enableClientToNodeEncrypt" : {
+          "type" : "boolean"
+        },
+        "enableConnectionPooling" : {
           "type" : "boolean"
         },
         "enableExposingService" : {
@@ -18570,6 +18738,52 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Stop a backup",
+        "tags" : [ "Backups" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/backups/{baseBackupUUID}/restorable_keyspace_tables" : {
+      "get" : {
+        "description" : "WARNING: This is a preview API that could change. List of all restorable entities in the incremental backup chain.",
+        "operationId" : "listRestorableKeyspaceTables",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "baseBackupUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/KeyspaceTables"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/KeyspaceTables"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "List of all restorable entities in the incremental backup chain",
         "tags" : [ "Backups" ]
       }
     },
@@ -23322,6 +23536,52 @@
         "tags" : [ "Backups" ]
       }
     },
+    "/api/v1/customers/{cUUID}/restore/advanced_restore_preflight" : {
+      "post" : {
+        "description" : "WARNING: This is a preview API that could change. Advanced Restore Preflight checks.",
+        "operationId" : "advancedRestorePreflight",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "Parameters for advanced restore preflight checks",
+          "in" : "body",
+          "name" : "AdvancedRestorePreflightParams",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/Parameters for Advanced Restore preflight checks"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/RestorePreflightResponse"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/RestorePreflightResponse"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Advanced Restore Preflight checks",
+        "tags" : [ "Backups" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/restore/page" : {
       "post" : {
         "description" : "",
@@ -23369,7 +23629,7 @@
     },
     "/api/v1/customers/{cUUID}/restore/preflight" : {
       "post" : {
-        "description" : "",
+        "description" : "Restore preflight checks.",
         "operationId" : "restorePreflight",
         "parameters" : [ {
           "format" : "uuid",
@@ -23382,12 +23642,12 @@
           "name" : "request",
           "required" : false
         }, {
-          "description" : "Parameters fr restore preflight check",
+          "description" : "Parameters for restore preflight check",
           "in" : "body",
-          "name" : "restorePreflightParams",
+          "name" : "RestorePreflightParams",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/RestorePreflightParams"
+            "$ref" : "#/definitions/Parameters for Restore preflight checks"
           }
         } ],
         "responses" : {
@@ -23410,6 +23670,52 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Restore preflight checks",
+        "tags" : [ "Backups" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/restore/validate_restorable_keyspace_tables" : {
+      "post" : {
+        "description" : "WARNING: This is a preview API that could change. Validate keyspace and tables to Restore against Backup.",
+        "operationId" : "validateKeyspaceTablesToRestore",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "Parameters for validating Restorable keyspace and tables",
+          "in" : "body",
+          "name" : "RestoreItemsValidationParams",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/Parameters for validating Restorable keyspace and tables in backup"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Validate keyspace and tables to Restore against Backup",
         "tags" : [ "Backups" ]
       }
     },
@@ -23755,7 +24061,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "enum" : [ "UniverseLogs", "OutputFiles", "ErrorFiles", "CoreFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo", "NodeAgent", "YbaMetadata", "ApplicationLogs" ],
+                "enum" : [ "UniverseLogs", "OutputFiles", "ErrorFiles", "CoreFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo", "NodeAgent", "YbaMetadata", "PrometheusMetrics", "ApplicationLogs" ],
                 "type" : "string"
               },
               "type" : "array"
@@ -23767,7 +24073,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "enum" : [ "UniverseLogs", "OutputFiles", "ErrorFiles", "CoreFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo", "NodeAgent", "YbaMetadata", "ApplicationLogs" ],
+                "enum" : [ "UniverseLogs", "OutputFiles", "ErrorFiles", "CoreFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo", "NodeAgent", "YbaMetadata", "PrometheusMetrics", "ApplicationLogs" ],
                 "type" : "string"
               },
               "type" : "array"
@@ -25412,7 +25718,7 @@
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/schedules/{sUUID}/delete_backup_schedule_async" : {
       "delete" : {
-        "description" : "WARNING: This is a preview API that could change.",
+        "description" : "WARNING: This is a preview API that could change. Delete a backup schedule async.",
         "operationId" : "deleteBackupScheduleAsync",
         "parameters" : [ {
           "format" : "uuid",
@@ -25462,7 +25768,7 @@
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/schedules/{sUUID}/edit_backup_schedule_async" : {
       "put" : {
-        "description" : "WARNING: This is a preview API that could change.",
+        "description" : "WARNING: This is a preview API that could change. Edit a backup schedule async.",
         "operationId" : "editBackupScheduleAsync",
         "parameters" : [ {
           "format" : "uuid",

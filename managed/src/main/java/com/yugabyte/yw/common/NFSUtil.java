@@ -11,8 +11,8 @@ import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.BackupUtil.PerLocationBackupInfo;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.forms.BackupTableParams;
-import com.yugabyte.yw.forms.RestorePreflightParams;
 import com.yugabyte.yw.forms.RestorePreflightResponse;
+import com.yugabyte.yw.forms.backuprestore.AdvancedRestorePreflightParams;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
@@ -264,17 +264,16 @@ public class NFSUtil implements StorageUtil {
 
   @Override
   public RestorePreflightResponse generateYBBackupRestorePreflightResponseWithoutBackupObject(
-      RestorePreflightParams preflightParams, CustomerConfigData configData) {
+      AdvancedRestorePreflightParams preflightParams, CustomerConfigData configData) {
     return generateYBBackupRestorePreflightResponseWithoutBackupObject(preflightParams);
   }
 
   public RestorePreflightResponse generateYBBackupRestorePreflightResponseWithoutBackupObject(
-      RestorePreflightParams preflightParams) {
+      AdvancedRestorePreflightParams preflightParams) {
     Universe universe = Universe.getOrBadRequest(preflightParams.getUniverseUUID());
     RestorePreflightResponse.RestorePreflightResponseBuilder restorePreflightResponseBuilder =
         RestorePreflightResponse.builder();
     restorePreflightResponseBuilder.backupCategory(BackupCategory.YB_BACKUP_SCRIPT);
-    boolean isSelectiveRestoreSupported = false;
 
     // Bundle up exact file locations for search in NFS locations( reduce SSH )
     List<String> absoluteLocationsList = new ArrayList<>();
@@ -321,10 +320,11 @@ public class NFSUtil implements StorageUtil {
             bL -> {
               PerLocationBackupInfo.PerLocationBackupInfoBuilder perLocationBackupInfoBuilder =
                   PerLocationBackupInfo.builder();
-              perLocationBackupInfoBuilder.isSelectiveRestoreSupported(isSelectiveRestoreSupported);
+              perLocationBackupInfoBuilder.isSelectiveRestoreSupported(
+                  false /* isSelectiveRestoreSupported */);
               if (cloudLocationsFileExistenceMap.get(
                   BackupUtil.getPathWithPrefixSuffixJoin(bL, BackupUtil.YSQL_DUMP))) {
-                perLocationBackupInfoBuilder.isYSQLBackup(true);
+                perLocationBackupInfoBuilder.isYSQLBackup(true /* isYSQLBackup */);
               }
               perLocationBackupInfoMap.put(bL, perLocationBackupInfoBuilder.build());
             });

@@ -3,14 +3,19 @@ import logging.config
 import os
 
 
-def setup_logger():
-    # move to config
+def setup_logger(config):
+    key = next(iter(config), None)
+    log_file = "app.log"
     log_dir = "./logs"
-    log_file = "ynp.log"
+    if key is not None:
+        context = config[key]
+        log_file = context.get('logfile')
+        log_dir = context.get("logdir")
 
     # Create log directory if it doesn't exist
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
+    # Ensure the log directory has the correct permissions (755)
+    # We need execute set on directory for traversal, don't need it on all files.
+    os.makedirs(log_dir, mode=0o755, exist_ok=True)
 
     logging_config = {
         'version': 1,
@@ -42,5 +47,9 @@ def setup_logger():
             }
         }
     }
-
     logging.config.dictConfig(logging_config)
+    # Ensure the log file has the correct permissions (644)
+    # No execute set, root can read/write, group can read, others can read
+    os.chmod(os.path.join(log_dir, log_file), 0o644)
+    logger = logging.getLogger()
+    logger.info("Logging Setup Done")

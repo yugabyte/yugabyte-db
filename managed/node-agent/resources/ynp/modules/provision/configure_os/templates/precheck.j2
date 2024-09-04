@@ -125,3 +125,16 @@ for mount_point in "${mount_point_array[@]}"; do
     fi
     add_result "$mount_point Free space check" "$result" "$message"
 done
+
+platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"')
+if [[ "$platform_id" == "platform:el8" ]]; then
+    # Check if selinux module can be imported
+    python3 -c "import selinux" 2>/dev/null
+    if [ $? -eq 0 ]; then
+        echo "libselinux bindings are correctly working for the system's default Python."
+        add_result "python libselinux check" "PASS" ""
+    else
+        echo "libselinux bindings are NOT installed or working for the system's default Python."
+        add_result "python libselinux check" "FAIL" "cannot import selinux in system python3"
+    fi
+fi

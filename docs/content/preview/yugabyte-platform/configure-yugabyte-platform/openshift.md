@@ -122,7 +122,7 @@ The `kubeconfig` file needs to be generated for each OpenShift cluster if you ar
 
 ## Configure OpenShift
 
-Navigate to **Configs > Infrastructure > Red Hat OpenShift** to see a list of all currently configured Kubernetes providers.
+Navigate to **Integrations > Infrastructure > Red Hat OpenShift** to see a list of all currently configured Kubernetes providers.
 
 This lists all currently configured OpenShift providers.
 

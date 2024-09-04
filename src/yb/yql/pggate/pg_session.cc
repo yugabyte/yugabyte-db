@@ -465,7 +465,6 @@ bool ExplicitRowLockBuffer::IsEmpty() const {
 
 PgSession::PgSession(
     PgClient* pg_client,
-    const std::string& database_name,
     scoped_refptr<PgTxnManager> pg_txn_manager,
     const YBCPgCallbacks& pg_callbacks,
     YBCPgExecStatsState* stats_state)
@@ -474,25 +473,19 @@ PgSession::PgSession(
       explicit_row_lock_buffer_(&aux_ybctid_container_provider_),
       metrics_(stats_state),
       pg_callbacks_(pg_callbacks),
-      wait_starter_(pg_callbacks_.PgstatReportWaitStart),
       buffer_(
           [this](BufferableOperations&& ops, bool transactional)
               -> Result<PgOperationBuffer::PerformFutureEx> {
             return PgOperationBuffer::PerformFutureEx{
                 VERIFY_RESULT(FlushOperations(std::move(ops), transactional)), this};
           },
-          &metrics_, wait_starter_, buffering_settings_) {
+          metrics_, buffering_settings_) {
   Update(&buffering_settings_);
 }
 
 PgSession::~PgSession() = default;
 
 //--------------------------------------------------------------------------------------------------
-
-Status PgSession::ConnectDatabase(const std::string& database_name) {
-  connected_database_ = database_name;
-  return Status::OK();
-}
 
 Status PgSession::IsDatabaseColocated(const PgOid database_oid, bool *colocated,
                                       bool *legacy_colocated_database) {
@@ -1111,7 +1104,7 @@ Result<tserver::PgGetReplicationSlotResponsePB> PgSession::GetReplicationSlot(
 }
 
 PgWaitEventWatcher PgSession::StartWaitEvent(ash::WaitStateCode wait_event) {
-  return {wait_starter_, wait_event};
+  return {pg_callbacks_.PgstatReportWaitStart, wait_event};
 }
 
 Result<tserver::PgYCQLStatementStatsResponsePB> PgSession::YCQLStatementStats() {

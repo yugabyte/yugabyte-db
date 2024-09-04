@@ -15,6 +15,8 @@
 // eslint-disable-next-line no-duplicate-imports
 import type { ErrorsAndSuggestionsDetails } from './ErrorsAndSuggestionsDetails';
 // eslint-disable-next-line no-duplicate-imports
+import type { SchemaAnalysisReport } from './SchemaAnalysisReport';
+// eslint-disable-next-line no-duplicate-imports
 import type { SqlObjectsDetails } from './SqlObjectsDetails';
 
 
@@ -60,6 +62,18 @@ export interface MigrateSchemaTaskInfo  {
    * @memberof MigrateSchemaTaskInfo
    */
   suggestions_errors?: ErrorsAndSuggestionsDetails[];
+  /**
+   * 
+   * @type {SchemaAnalysisReport}
+   * @memberof MigrateSchemaTaskInfo
+   */
+  current_analysis_report?: SchemaAnalysisReport;
+  /**
+   * 
+   * @type {SchemaAnalysisReport[]}
+   * @memberof MigrateSchemaTaskInfo
+   */
+  analysis_history?: SchemaAnalysisReport[];
   /**
    * 
    * @type {SqlObjectsDetails[]}

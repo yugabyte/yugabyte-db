@@ -24,7 +24,7 @@ NOTE:
         https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2.20.2.4/yugabyte-2.20.2.4-1bb0a188802ed9d0b5c5b45b0cc58a50bdaeef84-debug-clang-darwin-arm64.tar.gz
     </darwin_debug_arm64>
     <darwin_release_arm64>
-        https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2.20.2.4/"yugabyte-2.20.2.4-5e022cea206152dbec17575f15d8fffc47fa2646-release-clang-darwin-arm64.tar.gz
+        https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/local-provider-test/2.20.2.4/yugabyte-2.20.2.4-5e022cea206152dbec17575f15d8fffc47fa2646-release-clang-darwin-arm64.tar.gz
     </darwin_release_arm64>
   </build>
   <build version="2024.1.0.1">

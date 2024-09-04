@@ -53,6 +53,7 @@
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb/yql/pggate/util/ybc_util.h"
+#include "yb_query_diagnostics.h"
 
 /* The number of columns in different versions of the view */
 #define ACTIVE_SESSION_HISTORY_COLS_V1 12
@@ -139,6 +140,17 @@ static YBCAshSample *YbAshGetNextCircularBufferSlot(void);
 static void uchar_to_uuid(unsigned char *in, pg_uuid_t *out);
 static void client_ip_to_string(unsigned char *client_addr, uint16 client_port,
 								uint8_t addr_family, char *client_ip);
+static void PrintUuidToBuffer(StringInfo buffer, unsigned char *uuid);
+static int BinarySearchAshIndex(TimestampTz target_time, int left, int right);
+static void GetAshRangeIndexes(TimestampTz start_time, TimestampTz end_time, int64 query_id,
+							   int *start_index, int *end_index, char *description);
+static void FormatAshSampleAsCsv(YBCAshSample *ash_data_buffer, int total_elements_to_dump,
+								 StringInfo buffer);
+static YBCAshSample *ExtractAshDataFromRange(int start_index, int end_index,
+											 int *total_elements_to_dump);
+void GetAshDataForQueryDiagnosticsBundle(TimestampTz start_time, TimestampTz end_time,
+										 int64 query_id, StringInfo output_buffer,
+										 char *description);
 
 bool
 yb_enable_ash_check_hook(bool *newval, void **extra, GucSource source)
@@ -1092,4 +1104,244 @@ yb_wait_event_desc(PG_FUNCTION_ARGS)
 	tuplestore_donestoring(tupstore);
 
 	return (Datum) 0;
+}
+
+/*
+ * Print UUID to buffer with hyphens at specific positions.
+ */
+static void
+PrintUuidToBuffer(StringInfo buffer, unsigned char *uuid)
+{
+	for (int i = 0; i < UUID_LEN; ++i)
+	{
+		appendStringInfo(buffer, "%02x", uuid[i]);
+		/* Add hyphens to format the UUID in the standard pattern */
+		if (i == 3 || i == 5 || i == 7 || i == 9)
+			appendStringInfoChar(buffer, '-');
+	}
+}
+
+/*
+ * GetAshDataForQueryDiagnosticsBundle
+ * 		This function is a part of queryDiagnostics feature and is called
+ * 		at the end of the diagnostics_interval to fetch ASH's data.
+ * 		This function retrieves ASH's data for the specified time range and formats it in CSV format.
+ */
+void
+GetAshDataForQueryDiagnosticsBundle(TimestampTz start_time, TimestampTz end_time,
+									int64 query_id, StringInfo output_buffer,
+									char *description)
+{
+	YBCAshSample *ash_data_buffer = NULL;
+	int			total_elements_to_dump = 0;
+	int			start_index = -1;
+	int			end_index = -1;
+
+	Assert(start_time < end_time);
+
+	YbAshAcquireBufferLock(false /* exclusive*/);
+
+	GetAshRangeIndexes(start_time, end_time, query_id, &start_index,
+					   &end_index, description);
+
+	if (start_index != -1 && end_index != -1)
+		ash_data_buffer = ExtractAshDataFromRange(start_index, end_index,
+												  &total_elements_to_dump);
+
+	YbAshReleaseBufferLock();
+
+	if (ash_data_buffer)
+	{
+		FormatAshSampleAsCsv(ash_data_buffer, total_elements_to_dump, output_buffer);
+		pfree(ash_data_buffer);
+	}
+}
+
+/*
+ * BinarySearchAshIndex
+ * 		Performs binary search on a range of the circular buffer to find an index.
+ *
+ * Returns:
+ * 		Index of the element within circular buffer
+ *		whose sample_time is just less than or equal to target_time.
+ */
+static int
+BinarySearchAshIndex(TimestampTz target_time, int left, int right)
+{
+	Assert(left <= right);
+	Assert(left >= 0 && right < yb_ash->max_entries);
+	Assert(target_time >= yb_ash->circular_buffer[left].sample_time);
+	Assert(target_time < yb_ash->circular_buffer[right].sample_time);
+
+	while (left <= right)
+	{
+		int			mid = left + (right - left) / 2;
+		TimestampTz mid_time = yb_ash->circular_buffer[mid].sample_time;
+
+		if (target_time < mid_time)
+			right = mid - 1;
+		else
+			left = mid + 1;
+	}
+
+	return right;
+}
+
+/*
+ * GetAshRangeIndexes
+ * 		Gives [start_index, end_index] ASH circular buffer range for the given time range.
+ *
+ * Parameters:
+ * 		start_time - The start of the time range whose ASH data is to be fetched
+ * 		end_time - The end of the time range whose ASH data is to be fetched
+ * 		start_index - Pointer to store the start index corresponding to start_time
+ * 		end_index - Pointer to store the end index corresponding to end_time
+ *		query_id - Unique identifier for each query, required for logging errors
+ *		description - Pointer to store error/warning descriptions
+ */
+static void
+GetAshRangeIndexes(TimestampTz start_time, TimestampTz end_time, int64 query_id,
+				   int *start_index, int *end_index, char *description)
+{
+	int			max_time_index = (yb_ash->index - 1 + yb_ash->max_entries) % yb_ash->max_entries;
+	int			min_time_index = yb_ash->circular_buffer[yb_ash->index].sample_time ?
+								 yb_ash->index : 0;
+	TimestampTz buffer_min_time = yb_ash->circular_buffer[min_time_index].sample_time;
+	TimestampTz buffer_max_time = yb_ash->circular_buffer[max_time_index].sample_time;
+	TimestampTz buffer_first_entry_time = yb_ash->circular_buffer[0].sample_time;
+
+	Assert(start_index != NULL);
+	Assert(end_index != NULL);
+
+	/* Time range is not there in the buffer */
+	if (start_time > buffer_max_time || end_time < buffer_min_time)
+	{
+		const char *message = (end_time < buffer_min_time) ?
+							   "ASH circular buffer has wrapped around, " \
+							   "Unable to fetch ASH data" :
+							   "No data available in ASH for the given time range";
+		snprintf(description, YB_QD_DESCRIPTION_LEN, "%s; ", message);
+		return;
+	}
+
+	/* Find the start_index */
+	if (start_time <= buffer_min_time)
+		*start_index = min_time_index;
+	else if (start_time < buffer_first_entry_time)
+		*start_index = BinarySearchAshIndex(start_time, yb_ash->index,
+											yb_ash->max_entries - 1);
+	else
+		*start_index = BinarySearchAshIndex(start_time, 0, max_time_index);
+
+	/* Find the end_index */
+	if (end_time >= buffer_max_time)
+		*end_index = max_time_index;
+	else if (end_time < buffer_first_entry_time)
+		*end_index = BinarySearchAshIndex(end_time, yb_ash->index,
+										  yb_ash->max_entries - 1);
+	else
+		*end_index = BinarySearchAshIndex(end_time, 0, max_time_index);
+
+	if (yb_ash->circular_buffer[*start_index].sample_time != start_time)
+		*start_index = (*start_index + 1) % yb_ash->max_entries;
+
+	Assert(*start_index >= 0 && *start_index < yb_ash->max_entries);
+	Assert(*end_index >= 0 && *end_index < yb_ash->max_entries);
+}
+
+/*
+ * ExtractAshDataFromRange
+ * 		Extract ASH data from the circular buffer for a given range.
+ *
+ * Returns:
+ * 		Pointer to the extracted ASH data buffer
+ */
+static YBCAshSample *
+ExtractAshDataFromRange(int start_index, int end_index, int *total_elements_to_dump)
+{
+	YBCAshSample *ash_data_buffer;
+
+	if (start_index > end_index)
+	{
+		/* Range wraps around the circular buffer */
+		int			tail_segment_size = yb_ash->max_entries - start_index;
+		int			head_segment_size = end_index + 1;
+
+		*total_elements_to_dump = head_segment_size + tail_segment_size;
+		Assert(*total_elements_to_dump > 0);
+
+		ash_data_buffer = (YBCAshSample *) palloc((*total_elements_to_dump) *
+												  sizeof(YBCAshSample));
+		Assert(ash_data_buffer != NULL);
+
+		memcpy(ash_data_buffer, &yb_ash->circular_buffer[start_index],
+			   tail_segment_size * sizeof(YBCAshSample));
+		memcpy(ash_data_buffer + tail_segment_size, yb_ash->circular_buffer,
+			   head_segment_size * sizeof(YBCAshSample));
+	}
+	else
+	{
+		*total_elements_to_dump = end_index - start_index + 1;
+		Assert(*total_elements_to_dump > 0);
+
+		ash_data_buffer = (YBCAshSample *) palloc((*total_elements_to_dump) *
+												  sizeof(YBCAshSample));
+		Assert(ash_data_buffer != NULL);
+
+		memcpy(ash_data_buffer, &yb_ash->circular_buffer[start_index],
+			   (*total_elements_to_dump) * sizeof(YBCAshSample));
+	}
+
+	return ash_data_buffer;
+}
+
+static void
+FormatAshSampleAsCsv(YBCAshSample *ash_data_buffer, int total_elements_to_dump,
+					 StringInfo output_buffer)
+{
+	Assert(output_buffer != NULL);
+	Assert(total_elements_to_dump > 0);
+
+	if (total_elements_to_dump)
+		appendStringInfoString(output_buffer, "sample_time,root_request_id,rpc_request_id,"
+												"wait_event_component,wait_event_class,wait_event,"
+												"top_level_node_id,query_id,pid,"
+												"client_node_ip,wait_event_aux,sample_weight,"
+												"wait_event_type,ysql_dbid\n");
+
+	for (int i = 0; i < total_elements_to_dump; ++i)
+	{
+		char		client_node_ip[48];
+		YBCAshSample *sample = &ash_data_buffer[i];
+
+		if (sample->metadata.addr_family == AF_INET || sample->metadata.addr_family == AF_INET6)
+			client_ip_to_string(sample->metadata.client_addr,
+								sample->metadata.client_port,
+								sample->metadata.addr_family, client_node_ip);
+		else
+		{
+			Assert(sample->metadata.addr_family == AF_UNIX ||
+				   sample->metadata.addr_family == AF_UNSPEC);
+			client_node_ip[0] = '\0';
+		}
+
+		appendStringInfo(output_buffer, "%s,", timestamptz_to_str(sample->sample_time));
+		PrintUuidToBuffer(output_buffer, sample->metadata.root_request_id);
+		appendStringInfo(output_buffer, ",%ld,%s,%s,%s,",
+						 (int64) sample->rpc_request_id,
+						 YBCGetWaitEventComponent(sample->encoded_wait_event_code),
+						 YBCGetWaitEventClass(sample->encoded_wait_event_code),
+						 pgstat_get_wait_event(sample->encoded_wait_event_code));
+
+		/* Top level node id */
+		PrintUuidToBuffer(output_buffer, sample->yql_endpoint_tserver_uuid);
+		appendStringInfo(output_buffer, ",%ld,%d,%s,%s,%f,%s,%d\n",
+						 (int64) sample->metadata.query_id,
+						 sample->metadata.pid,
+						 client_node_ip,
+						 sample->aux_info,
+						 sample->sample_weight,
+						 pgstat_get_wait_event_type(sample->encoded_wait_event_code),
+						 sample->metadata.database_id);
+	}
 }

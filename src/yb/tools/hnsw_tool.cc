@@ -30,6 +30,8 @@
 #include "yb/vector/ann_validation.h"
 #include "yb/vector/graph_repr_defs.h"
 #include "yb/vector/usearch_wrapper.h"
+#include "yb/vector/distance.h"
+#include "yb/vector/hnsw_util.h"
 
 #include "yb/tools/tool_arguments.h"
 
@@ -70,18 +72,20 @@ const std::string kBenchmarkDescription =
 
 // See the command-line help below for the documentation of these options.
 struct BenchmarkArguments {
-  std::string build_vecs_path;
-  std::string ground_truth_path;
+  bool validate_ground_truth = false;
+  CoordinateKind coordinate_kind = CoordinateKind::kFloat32;
   HNSWOptions hnsw_options;
   size_t k = 0;
+  size_t max_memory_for_loading_vectors_mb = 4096;
   size_t num_indexing_threads = 0;
   size_t num_query_threads = 0;
   size_t num_threads = 0;
-  size_t num_validation_queries = 1000;
+  size_t num_validation_queries = 0;
   size_t num_vectors_to_insert = 0;
-  std::string query_vecs_path;
   size_t report_num_keys = 1000;
-  bool validate_ground_truth = false;
+  std::string build_vecs_path;
+  std::string ground_truth_path;
+  std::string query_vecs_path;
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
@@ -99,6 +103,19 @@ struct BenchmarkArguments {
         validate_ground_truth
     );
   }
+
+  // Set default values of some options, potentially based on the values of other options.
+  void FinalizeDefaults() {
+    if (num_threads == 0) {
+      num_threads = std::thread::hardware_concurrency();
+    }
+    if (num_indexing_threads == 0) {
+      num_indexing_threads = num_threads;
+    }
+    if (num_query_threads == 0) {
+      num_query_threads = num_threads;
+    }
+  }
 };
 
 std::unique_ptr<OptionsDescription> BenchmarkOptions() {
@@ -107,7 +124,11 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
   const HNSWOptions default_hnsw_options;
 
 #define OPTIONAL_ARG_FIELD(field_name) \
-    BOOST_PP_STRINGIZE(field_name), po::value(&args.field_name)
+    BOOST_PP_STRINGIZE(field_name), po::value(&args.field_name)->default_value( \
+        args.field_name)
+
+#define BOOL_SWITCH_ARG_FIELD(field_name) \
+    BOOST_PP_STRINGIZE(field_name), po::bool_switch(&args.field_name)
 
 #define HNSW_OPTION_ARG(field_name) \
     BOOST_PP_STRINGIZE(field_name), \
@@ -115,24 +136,23 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
 
 // TODO: we only support bool options where default values are false.
 #define HNSW_OPTION_BOOL_ARG(field_name) \
-    BOOST_PP_STRINGIZE(field_name), \
-    po::bool_switch(&args.hnsw_options.field_name)
+    BOOST_PP_STRINGIZE(field_name), po::bool_switch(&args.hnsw_options.field_name)
 
   result->desc.add_options()
       (OPTIONAL_ARG_FIELD(num_vectors_to_insert),
        "Number of vectors to use for building the index. This is used if no input file is "
        "specified.")
       (OPTIONAL_ARG_FIELD(build_vecs_path),
-       "Input file containing vectors to build the index on, in the fvecs/bvecs format.")
+       "Input file containing vectors to build the index on, in the fvecs/bvecs/ivecs format.")
       (OPTIONAL_ARG_FIELD(query_vecs_path),
-       "Input file containing vectors to query the dataset with, in the fvecs/bvecs format.")
+       "Input file containing vectors to query the dataset with, in the fvecs/bvecs/ivecs format.")
       (OPTIONAL_ARG_FIELD(ground_truth_path),
        "Input file containing integer vectors of correct nearest neighbor vector identifiers "
        "(0-based in the input dataset) for each query.")
       ("input_file_name_fvec", po::value(&args.num_vectors_to_insert),
        "Number of randomly generated vectors to add")
       (OPTIONAL_ARG_FIELD(k),
-       "Number of results to retrieve with each validatino query")
+       "Number of results to retrieve with each validation query")
       (OPTIONAL_ARG_FIELD(num_validation_queries),
        "Number of validation queries to execute")
       ("dimensions", po::value(&args.hnsw_options.dimensions),
@@ -173,43 +193,69 @@ std::unique_ptr<OptionsDescription> BenchmarkOptions() {
        "Number of threads to use for indexing. Defaults to num_threads.")
       (OPTIONAL_ARG_FIELD(num_query_threads),
        "Number of threads to use for validation. Defaults to num_threads.")
-      (OPTIONAL_ARG_FIELD(validate_ground_truth),
+      (BOOL_SWITCH_ARG_FIELD(validate_ground_truth),
        "Validate the ground truth data provided in a file by recomputing our own ground truth "
-       "result sets using brute-force precise nearest neighbor search. Could be slow.");
+       "result sets using brute-force precise nearest neighbor search. Could be slow.")
+      (OPTIONAL_ARG_FIELD(max_memory_for_loading_vectors_mb),
+       "Maximum amount of memory to use for loading raw input vectors. Used to avoid memory "
+       "overflow on large datasets. Specify 0 to disable.");
 
+#undef OPTIONAL_ARG_FIELD
+#undef BOOL_SWITCH_ARG_FIELD
 #undef HNSW_OPTION_ARG
 #undef HNSW_OPTION_BOOL_ARG
-#undef OPTIONAL_ARG_FIELD
 
   return result;
 }
 
+Result<CoordinateKind> DetermineCoordinateKind(BenchmarkArguments& args) {
+  std::optional<CoordinateKind> coordinate_kind;
+  for (const std::string& file_path : {args.build_vecs_path, args.query_vecs_path}) {
+    if (!file_path.empty()) {
+      auto file_coordinate_kind = VERIFY_RESULT(GetCoordinateKindFromVecsFileName(file_path));
+      if (coordinate_kind.has_value() &&
+          *coordinate_kind != file_coordinate_kind) {
+        return STATUS_FORMAT(
+            InvalidArgument,
+            "Indexed vectors and query vectors must use the same coordinate type.");
+      }
+      coordinate_kind = file_coordinate_kind;
+    }
+  }
+  if (coordinate_kind.has_value()) {
+    args.coordinate_kind = *coordinate_kind;
+  }
+  return args.coordinate_kind;
+}
+
+std::unique_ptr<FloatVectorSource> CreateRandomFloatVectorSource(
+    size_t num_vectors, size_t dimensions) {
+  return vectorindex::CreateUniformRandomVectorSource(num_vectors, dimensions, 0.0f, 1.0f);
+}
+
+// We instantiate this template as soon as we determine what coordinate type we are working with.
+template<IndexableVectorType Vector>
 class BenchmarkTool {
  public:
+  // Usearch HNSW currently does not support other types of vectors, so we cast the input vectors to
+  // float for now. See also: https://github.com/unum-cloud/usearch/issues/469
+  using HNSWVectorType = FloatVector;
+  using HNSWImpl = UsearchIndex<HNSWVectorType>;
+
   explicit BenchmarkTool(const BenchmarkArguments& args) : args_(args) {}
 
   Status Execute() {
-    if (args_.num_threads == 0) {
-      args_.num_threads = std::thread::hardware_concurrency();
-    }
-    if (args_.num_indexing_threads == 0) {
-      args_.num_indexing_threads = args_.num_threads;
-    }
-    if (args_.num_query_threads == 0) {
-      args_.num_query_threads = args_.num_threads;
-    }
-    distance_fn_ = vectorindex::GetDistanceImpl(hnsw_options().distance_type);
+    LOG(INFO) << "Uisng input file coordinate type: " << args_.coordinate_kind;
 
-    RETURN_NOT_OK(InitIndexingVectorSource());
-    RETURN_NOT_OK(InitQueryVectorSource());
-    RETURN_NOT_OK(PrepareInputVectors());
+    indexed_vector_source_ = VERIFY_RESULT(CreateVectorSource(
+      args_.build_vecs_path, "vectors to build index on", args_.num_vectors_to_insert));
+    query_vector_source_ = VERIFY_RESULT(CreateVectorSource(
+        args_.query_vecs_path, "vectors to query", args_.num_validation_queries));
     RETURN_NOT_OK(LoadPrecomputedGroundTruth());
 
-    // The booleans indexed_from_file_ and queries_from_file_ are set based on the presence of
-    // build_vecs_path and query_vecs_path command-line arguments. Those two command-line arguments
-    // specify separate file paths, so it is impractical to try to reduce both of them to a single
-    // command-line argument.
-    if (indexed_from_file_ != queries_from_file_) {
+    RETURN_NOT_OK(PrepareInputVectors());
+
+    if (indexed_vector_source_->is_file() != query_vector_source_->is_file()) {
       return STATUS(
           InvalidArgument,
           "We must either load vectors to index from a file and load validation quries from "
@@ -219,7 +265,7 @@ class BenchmarkTool {
 
     PrintConfiguration();
 
-    hnsw_ = std::make_unique<UsearchIndex>(hnsw_options());
+    hnsw_ = std::make_unique<HNSWImpl>(hnsw_options());
 
     RETURN_NOT_OK(BuildIndex());
 
@@ -236,71 +282,55 @@ class BenchmarkTool {
     LOG(INFO) << "Benchmark settings: " << args_.ToString();
   }
 
-  void SetDimensions(size_t dimensions) {
-    hnsw_options().dimensions = dimensions;
+  Status SetDimensions(size_t dimensions) {
+    SCHECK_GE(dimensions, static_cast<size_t>(0),
+              InvalidArgument, "The number of dimensions must be at least 1");
+    auto& current_dimensions = hnsw_options().dimensions;
+    if (current_dimensions == 0) {
+      current_dimensions = dimensions;
+    } else if (current_dimensions != dimensions) {
+      return STATUS_FORMAT(
+          IllegalState,
+          "The number of dimensions was already set to $0 but we are trying to set it to $1",
+          current_dimensions, dimensions);
+    }
+    return Status::OK();
   }
 
   size_t dimensions() const {
     return hnsw_options().dimensions;
   }
 
-  Status InitIndexingVectorSource() {
-    indexed_from_file_ = false;
-    if (!args_.build_vecs_path.empty()) {
-      auto fvec_reader = std::make_unique<FvecsFileReader>(args_.build_vecs_path);
-      RETURN_NOT_OK(fvec_reader->Open());
-      SetDimensions(fvec_reader->dimensions());
-      LOG(INFO) << "Opened indexed dataset: " << fvec_reader->ToString();
-      size_t num_points = fvec_reader->num_points();
-      if (args_.num_vectors_to_insert) {
-        if (num_points < args_.num_vectors_to_insert) {
-          LOG(INFO) << "Number of vectors to insert from the command line: "
-                    << num_points << ", but the file only contains " << num_points
-                    << "vectors, ignoring the specified value.";
-        } else if (num_points > args_.num_vectors_to_insert) {
-          LOG(INFO) << "Will only use the first " << args_.num_vectors_to_insert << " vectors out "
-                    << "of the " << num_points << " available in the file.";
-        }
-      }
-      indexed_vector_source_ = std::move(fvec_reader);
-      indexed_from_file_ = true;
-    } else if (args_.num_vectors_to_insert > 0) {
-      indexed_vector_source_ = vectorindex::CreateUniformRandomVectorSource(
-          args_.num_vectors_to_insert, dimensions(), 0.0f, 1.0f);
-    } else {
-      return STATUS(
-          InvalidArgument,
-          "Neither an input file name nor the number of random vectors to generate is specified.");
+  Result<std::unique_ptr<VectorSource<Vector>>> CreateVectorSource(
+      const std::string& vectors_file_path,
+      const std::string& description,
+      size_t num_vectors_to_use) {
+    if (!vectors_file_path.empty()) {
+      auto vec_reader = VERIFY_RESULT(OpenVecsFile<Vector>(vectors_file_path, description));
+      RETURN_NOT_OK(vec_reader->Open());
+      RETURN_NOT_OK(SetDimensions(vec_reader->dimensions()));
+      return vec_reader;
     }
-    return Status::OK();
-  }
 
-  Status InitQueryVectorSource() {
-    queries_from_file_ = false;
-    if (!args_.query_vecs_path.empty()) {
-      auto fvec_reader = std::make_unique<FvecsFileReader>(args_.query_vecs_path);
-      RETURN_NOT_OK(fvec_reader->Open());
-      SetDimensions(fvec_reader->dimensions());
-      LOG(INFO) << "Opened query dataset: " << fvec_reader->ToString();
-      query_vector_source_ = std::move(fvec_reader);
-      // We ignore args_.num_validation_queries in this case.
-      queries_from_file_ = true;
-    } else if (args_.num_validation_queries > 0) {
-      query_vector_source_ = vectorindex::CreateUniformRandomVectorSource(
-          args_.num_validation_queries, dimensions(), 0.0f, 1.0f);
-    } else {
-      return STATUS(
-          InvalidArgument,
-          "Could not determine what queries to use for validation");
+    if (num_vectors_to_use > 0) {
+      if constexpr (std::is_same<Vector, FloatVector>::value) {
+        return CreateRandomFloatVectorSource(args_.num_validation_queries, dimensions());
+      }
+      return STATUS(InvalidArgument,
+                    "Random vector generation is currently only supported for Float32");
     }
-    return Status::OK();
+
+    return STATUS_FORMAT(
+        InvalidArgument,
+        "Could not determine $0", description);
   }
 
   Status LoadPrecomputedGroundTruth() {
     if (args_.ground_truth_path.empty()) {
       return Status::OK();
     }
-    if (!queries_from_file_) {
+    CHECK_NOTNULL(query_vector_source_);
+    if (!query_vector_source_->is_file()) {
       return STATUS(
           InvalidArgument,
           "Loading ground truth from file is only allowed when the queries are also loaded from "
@@ -309,7 +339,7 @@ class BenchmarkTool {
     // The ground truth file contains result sets composed of 0-based vector indexes in the
     // corresponding "base" input file. Convert them to our vertex ids.
     auto ground_truth_by_index = VERIFY_RESULT(
-        LoadVecsFile<int32_t>(args_.ground_truth_path, "precomputed ground truth file"));
+        LoadVecsFile<Int32Vector>(args_.ground_truth_path, "precomputed ground truth file"));
     if (ground_truth_by_index.size() != query_vector_source_->num_points()) {
       return STATUS_FORMAT(
           IllegalState,
@@ -333,11 +363,12 @@ class BenchmarkTool {
       auto& correct_top_k_vertex_ids = loaded_ground_truth_.back();
       correct_top_k_vertex_ids.reserve(ground_truth_vec.size());
       used_indexes.clear();
+      size_t total_num_vectors = indexed_vector_source_->num_points();
       for (auto idx : ground_truth_vec) {
         static const char* kInvalidMsg =
             "0-based vector index in a ground truth file is out of range";
         SCHECK_GE(idx, 0, IllegalState, kInvalidMsg);
-        SCHECK_LT(idx, input_vectors_.size(), IllegalState, kInvalidMsg);
+        SCHECK_LT(idx, total_num_vectors, IllegalState, kInvalidMsg);
         correct_top_k_vertex_ids.push_back(InputVectorIndexToVertexId(idx));
         auto [_, inserted] = used_indexes.insert(idx);
         if (!inserted) {
@@ -351,7 +382,7 @@ class BenchmarkTool {
   }
 
   Status Validate() {
-    std::vector<FloatVector> query_vectors;
+    std::vector<Vector> query_vectors;
     for (;;) {
       auto query = VERIFY_RESULT(query_vector_source_->Next());
       if (query.empty()) {
@@ -360,13 +391,15 @@ class BenchmarkTool {
       query_vectors.push_back(query);
     }
 
-    vectorindex::GroundTruth ground_truth(
-        [this](VertexId vertex_id, const FloatVector& v) {
+    std::vector<FloatVector> float_query_vectors = ToFloatVectorOfVectors(query_vectors);
+
+    vectorindex::GroundTruth<FloatVector> ground_truth(
+        [this](VertexId vertex_id, const FloatVector& v) -> float {
           const auto& vertex_v = input_vectors_[VertexIdToInputVectorIndex(vertex_id)];
-          return distance_fn_(vertex_v, v);
+          return distance::DistanceL2Squared<Vector, FloatVector>(vertex_v, v);
         },
         args_.k,
-        query_vectors,
+        float_query_vectors,
         loaded_ground_truth_,
         args_.validate_ground_truth,
         *hnsw_,
@@ -377,8 +410,11 @@ class BenchmarkTool {
         // vectors we've inserted.
         loaded_ground_truth_.empty() ? vertex_ids_to_insert_ : all_vertex_ids_);
 
-    LOG(INFO) << "Validating of " << query_vectors.size() << " queries using "
-              << args_.num_query_threads << " threads";
+    LOG(INFO) << "Validating with " << query_vectors.size() << " queries using "
+              << args_.num_query_threads << " threads "
+              << (args_.validate_ground_truth ? "(also recomputing and validating provided"
+                                                " ground truth)"
+                                              : "");
 
     auto start_time = MonoTime::Now();
     auto result = VERIFY_RESULT(ground_truth.EvaluateRecall(args_.num_query_threads));
@@ -421,16 +457,24 @@ class BenchmarkTool {
   }
 
   Status PrepareInputVectors() {
-    input_vectors_ = VERIFY_RESULT(indexed_vector_source_->LoadAllVectors());
+    size_t num_vectors_to_load = max_num_vectors_to_insert();
+    double total_mem_required_mb =
+        num_vectors_to_load * sizeof(typename Vector::value_type) * dimensions() / 1024.0 / 1024;
+    if (args_.max_memory_for_loading_vectors_mb != 0 &&
+        total_mem_required_mb > args_.max_memory_for_loading_vectors_mb) {
+      return STATUS_FORMAT(
+          IllegalState,
+          "Decided that we should load $0 vectors, but the amount of memory required would be "
+          "$1 MiB, which is more than the $2 MiB limit.",
+          num_vectors_to_load, total_mem_required_mb, args_.max_memory_for_loading_vectors_mb);
+    }
+
+    input_vectors_ = VERIFY_RESULT(indexed_vector_source_->LoadVectors(num_vectors_to_load));
     size_t num_points_used = 0;
     const size_t max_to_insert = max_num_vectors_to_insert();
-    for (size_t i = 0; i < input_vectors_.size(); ++i) {
-      if (num_points_used >= max_to_insert) {
-        LOG(INFO) << "Stopping after inserting " << max_to_insert << " input vectors";
-        break;
-      }
-      auto vertex_id = InputVectorIndexToVertexId(i);
-      vertex_ids_to_insert_.push_back(vertex_id);
+
+    for (size_t i = 0; i < max_to_insert; ++i) {
+      vertex_ids_to_insert_.push_back(InputVectorIndexToVertexId(i));
       num_points_used++;
     }
 
@@ -447,7 +491,12 @@ class BenchmarkTool {
 
   Status InsertOneVector(VertexId vertex_id, MonoTime load_start_time) {
     const auto& v = GetVectorByVertexId(vertex_id);
-    Status s = hnsw_->Insert(vertex_id, v);
+    Status s;
+    if constexpr (std::is_same<HNSWVectorType, Vector>::value) {
+      s = hnsw_->Insert(vertex_id, v);
+    } else {
+      s = hnsw_->Insert(vertex_id, ToFloatVector(v));
+    }
     if (s.ok()) {
       auto new_num_inserted = num_vectors_inserted_.fetch_add(1, std::memory_order_acq_rel) + 1;
       ReportIndexingProgress(load_start_time, new_num_inserted);
@@ -503,7 +552,7 @@ class BenchmarkTool {
   static constexpr VertexId kMinVertexId = 100;
 
   VertexId InputVectorIndexToVertexId(size_t input_vector_index) {
-    CHECK_LE(input_vector_index, input_vectors_.size());
+    CHECK_LE(input_vector_index, indexed_vector_source_->num_points());
     // Start from a small but round number to avoid making assumptions that the 0-based index of
     // a vector in the input file is the same as its vertex id.
     return input_vector_index + kMinVertexId;
@@ -513,11 +562,11 @@ class BenchmarkTool {
     CHECK_GE(vertex_id, kMinVertexId);
     size_t index = vertex_id - kMinVertexId;
     CHECK_GE(index, 0);
-    CHECK_LT(index, input_vectors_.size());
+    CHECK_LT(index, indexed_vector_source_->num_points());
     return index;
   }
 
-  const FloatVector& GetVectorByVertexId(VertexId vertex_id) {
+  const Vector& GetVectorByVertexId(VertexId vertex_id) {
     auto vector_index = VertexIdToInputVectorIndex(vertex_id);
     return input_vectors_[vector_index];
   }
@@ -525,16 +574,12 @@ class BenchmarkTool {
   BenchmarkArguments args_;
 
   // Source from which we take vectors to build the index on.
-  std::unique_ptr<FloatVectorSource> indexed_vector_source_;
-  bool indexed_from_file_ = false;
+  std::unique_ptr<VectorSource<Vector>> indexed_vector_source_;
 
   // Source for vectors to run validation queries on.
-  std::unique_ptr<FloatVectorSource> query_vector_source_;
-  bool queries_from_file_ = false;
+  std::unique_ptr<VectorSource<Vector>> query_vector_source_;
 
-  std::unique_ptr<UsearchIndex> hnsw_;
-
-  DistanceFunction distance_fn_;
+  std::unique_ptr<HNSWImpl> hnsw_;
 
   // Atomics used in multithreaded index construction.
   std::atomic<size_t> num_vectors_inserted_{0};  // Total # vectors inserted.
@@ -547,12 +592,23 @@ class BenchmarkTool {
   std::vector<VertexId> all_vertex_ids_;
 
   // Raw input vectors in the order they appeared in the input file.
-  std::vector<FloatVector> input_vectors_;
+  std::vector<Vector> input_vectors_;
 };
 
 Status BenchmarkExecute(const BenchmarkArguments& args) {
-  BenchmarkTool benchmark_tool(args);
-  return benchmark_tool.Execute();
+  auto args_copy = args;
+  args_copy.FinalizeDefaults();
+  auto coordinate_kind = VERIFY_RESULT(DetermineCoordinateKind(args_copy));
+  switch (coordinate_kind) {
+    case CoordinateKind::kFloat32:
+      return BenchmarkTool<std::vector<float>>(args_copy).Execute();
+    case CoordinateKind::kUInt8:
+      return BenchmarkTool<std::vector<uint8_t>>(args_copy).Execute();
+    default:
+      return STATUS_FORMAT(
+          InvalidArgument,
+          "Input files with coordinate type $0 are not supported", coordinate_kind);
+  }
 }
 
 YB_TOOL_ARGUMENTS(HnswAction, HNSW_ACTIONS);

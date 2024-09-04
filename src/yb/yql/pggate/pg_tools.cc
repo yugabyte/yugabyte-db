@@ -17,6 +17,9 @@
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
+DECLARE_uint32(TEST_yb_ash_sleep_at_wait_state_ms);
+DECLARE_uint32(TEST_yb_ash_wait_code_to_sleep_at);
+
 namespace yb::pggate {
 
 RowMarkType GetRowMarkType(const PgExecParameters* exec_params) {
@@ -28,7 +31,12 @@ RowMarkType GetRowMarkType(const PgExecParameters* exec_params) {
 PgWaitEventWatcher::PgWaitEventWatcher(
     Starter starter, ash::WaitStateCode wait_event)
     : starter_(starter),
-      prev_wait_event_(starter_(yb::to_underlying(wait_event))) {}
+      prev_wait_event_(starter_(yb::to_underlying(wait_event))) {
+  if (PREDICT_FALSE(FLAGS_TEST_yb_ash_wait_code_to_sleep_at == to_underlying(wait_event) &&
+      PREDICT_FALSE(FLAGS_TEST_yb_ash_sleep_at_wait_state_ms > 0))) {
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_yb_ash_sleep_at_wait_state_ms));
+  }
+}
 
 PgWaitEventWatcher::~PgWaitEventWatcher() {
   starter_(prev_wait_event_);

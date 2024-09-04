@@ -111,23 +111,14 @@ func (plat Platform) Install() error {
 	log.Info("Starting Platform install")
 	config.GenerateTemplate(plat)
 
-	if err := plat.createNecessaryDirectories(); err != nil {
+	if err := plat.createSoftwareDirectories(); err != nil {
 		return err
 	}
 
 	if err := plat.untarDevopsAndYugawarePackages(); err != nil {
 		return err
 	}
-	if err := plat.copyYbcPackages(); err != nil {
-		return err
-	}
-	if err := plat.copyNodeAgentPackages(); err != nil {
-		return err
-	}
 	if err := plat.renameAndCreateSymlinks(); err != nil {
-		return err
-	}
-	if err := createPemFormatKeyAndCert(); err != nil {
 		return err
 	}
 
@@ -152,10 +143,28 @@ func (plat Platform) Install() error {
 		}
 	}
 
+	log.Info("Finishing Platform install")
+	return nil
+}
+
+func (plat Platform) Initialize() error {
+	log.Info("Starting Platform initialize")
+	if err := plat.createDataDirectiories(); err != nil {
+		return err
+	}
+	if err := plat.copyYbcPackages(); err != nil {
+		return err
+	}
+	if err := plat.copyNodeAgentPackages(); err != nil {
+		return err
+	}
+	if err := createPemFormatKeyAndCert(); err != nil {
+		return err
+	}
 	if err := plat.Start(); err != nil {
 		return err
 	}
-	log.Info("Finishing Platform install")
+	log.Info("Finishing Platform initialize")
 	return nil
 }
 
@@ -168,32 +177,26 @@ func (plat Platform) SetDataDirPerms() error {
 	return nil
 }
 
-func (plat Platform) createNecessaryDirectories() error {
+func (plat Platform) createSoftwareDirectories() error {
 	dirs := []string{
 		common.GetSoftwareRoot() + "/yb-platform",
-		common.GetBaseInstall() + "/data/yb-platform/releases",
-		common.GetBaseInstall() + "/data/yb-platform/ybc/release",
-		common.GetBaseInstall() + "/data/yb-platform/ybc/releases",
-		common.GetBaseInstall() + "/data/yb-platform/node-agent/releases",
 		plat.devopsDir(),
 		plat.yugawareDir(),
 	}
-	userName := viper.GetString("service_username")
-	for _, dir := range dirs {
-		if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
-			if mkErr := common.MkdirAll(dir, common.DirMode); mkErr != nil {
-				log.Error("failed to make " + dir + ": " + err.Error())
-				return mkErr
-			}
-			if common.HasSudoAccess() {
-				if chErr := common.Chown(dir, userName, userName, true); chErr != nil {
-					log.Error("failed to set ownership of " + dir + ": " + chErr.Error())
-					return chErr
-				}
-			}
-		}
+	return common.CreateDirs(dirs)
+}
+
+func (plat Platform) createDataDirectiories() error {
+	dirs := []string{
+		common.GetBaseInstall() + "/data/yb-platform",
+		common.GetBaseInstall() + "/data/yb-platform/releases",
+		common.GetBaseInstall() + "/data/yb-platform/ybc",
+		common.GetBaseInstall() + "/data/yb-platform/ybc/release",
+		common.GetBaseInstall() + "/data/yb-platform/ybc/releases",
+		common.GetBaseInstall() + "/data/yb-platform/node-agent",
+		common.GetBaseInstall() + "/data/yb-platform/node-agent/releases",
 	}
-	return nil
+	return common.CreateDirs(dirs)
 }
 
 func (plat Platform) untarDevopsAndYugawarePackages() error {
@@ -435,7 +438,10 @@ func (plat Platform) Upgrade() error {
 	if err := config.GenerateTemplate(plat); err != nil {
 		return err
 	} // systemctl reload is not needed, start handles it for us.
-	if err := plat.createNecessaryDirectories(); err != nil {
+	if err := plat.createSoftwareDirectories(); err != nil {
+		return err
+	}
+	if err := plat.createDataDirectiories(); err != nil {
 		return err
 	}
 	if err := plat.untarDevopsAndYugawarePackages(); err != nil {
@@ -491,7 +497,10 @@ func changeAllPermissions(user string) error {
 func (plat Platform) MigrateFromReplicated() error {
 	config.GenerateTemplate(plat)
 
-	if err := plat.createNecessaryDirectories(); err != nil {
+	if err := plat.createSoftwareDirectories(); err != nil {
+		return err
+	}
+	if err := plat.createDataDirectiories(); err != nil {
 		return err
 	}
 	if err := plat.untarDevopsAndYugawarePackages(); err != nil {

@@ -907,11 +907,8 @@ YBInitPostgresBackend(
 		/*
 		 * For each process, we create one YBC session for PostgreSQL to use
 		 * when accessing YugaByte storage.
-		 *
-		 * TODO: do we really need to DB name / username here?
 		 */
-		HandleYBStatus(YBCPgInitSession(db_name ? db_name : user_name,
-										&yb_session_stats.current_state));
+		HandleYBStatus(YBCPgInitSession(&yb_session_stats.current_state));
 		YBCSetTimeout(StatementTimeout, NULL);
 
 		/*
@@ -1718,7 +1715,19 @@ YBDecrementDdlNestingLevel()
 		 * if DDL txn commit succeeds.)
 		 */
 		if (increment_done)
+		{
 			YbUpdateCatalogCacheVersion(YbGetCatalogCacheVersion() + 1);
+			if (YbIsClientYsqlConnMgr())
+			{
+				/* Wait for tserver hearbeat */
+				int32_t sleep = 1000 * 2 * YBGetHeartbeatIntervalMs();
+				elog(LOG,
+					 "connection manager: adding sleep of %d microseconds "
+					 "after DDL commit",
+					 sleep);
+				pg_usleep(sleep);
+			}
+		}
 
 		List *handles = YBGetDdlHandles();
 		ListCell *lc = NULL;
@@ -4572,7 +4581,7 @@ static bool YbIsConnectionMadeStickyUsingGUC()
  * connection and returns whether or not the client connection
  * requires stickiness. i.e. if there is any `WITH HOLD CURSOR` or `TEMP TABLE`
  * at the end of the transaction.
- * 
+ *
  * Also check if any GUC variable is set that requires a sticky connection.
  */
 bool YbIsStickyConnection(int *change)
@@ -4881,8 +4890,7 @@ bool
 YbIsUpdateOptimizationEnabled()
 {
 	/* TODO(kramanathan): Placeholder until a flag strategy is agreed upon */
-	return (!YBCIsEnvVarTrue("FLAGS_ysql_skip_row_lock_for_update")) &&
-		   yb_update_optimization_options.num_cols_to_compare > 0 &&
+	return yb_update_optimization_options.num_cols_to_compare > 0 &&
 		   yb_update_optimization_options.max_cols_size_to_compare > 0;
 }
 
@@ -4985,6 +4993,11 @@ YbReadTimePointHandle YbBuildCurrentReadTimePointHandle()
 // fast backward scan capability.
 bool YbUseFastBackwardScan() {
   return *(YBCGetGFlags()->ysql_use_fast_backward_scan);
+}
+
+bool YbIsYsqlConnMgrWarmupModeEnabled()
+{
+	return strcmp(YBCGetGFlags()->TEST_ysql_conn_mgr_dowarmup_all_pools_mode, "none") != 0;
 }
 
 /* Used in YB to check if an attribute is a key column. */

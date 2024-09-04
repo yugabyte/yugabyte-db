@@ -1063,9 +1063,9 @@ public class YBClient implements AutoCloseable {
     Deferred<GetFlagResponse> d = asyncClient.getFlag(hp, flag);
     GetFlagResponse result = d.join(getDefaultAdminOperationTimeoutMs());
     if (result.getValid()) {
-      LOG.warn("Invalid flag {}", flag);
       return result.getValue();
     }
+    LOG.warn("Invalid flag {}", flag);
     return "";
   }
 
