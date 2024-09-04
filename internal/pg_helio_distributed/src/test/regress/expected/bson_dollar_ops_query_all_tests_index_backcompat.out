@@ -1,0 +1,615 @@
+set search_path to helio_core,helio_api,helio_api_catalog,pg_catalog;
+SET citus.next_shard_id TO 440000;
+SET helio_api.next_collection_id TO 4400;
+SET helio_api.next_collection_index_id TO 4400;
+\set QUIET on
+\set prevEcho :ECHO
+\set ECHO none
+NOTICE:  creating collection
+-- avoid plans that use the primary key index
+SELECT helio_distributed_test_helpers.drop_primary_key('db','dollaralltests');
+ drop_primary_key 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+BEGIN;
+set local helio_api.enableGenerateNonExistsTerm to off;
+set local enable_seqscan TO off;
+set local helio_api.forceUseIndexIfAvailable to on;
+\i sql/bson_dollar_ops_query_all_tests_core.sql
+-- top level
+SELECT helio_api.insert_one('db','dollaralltests','{"_id": 1, "a": "b"}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollaralltests','{"_id": 2, "a": ["a", "b"]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollaralltests','{"_id": 3, "a": ["a", "b", "c"]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollaralltests','{"_id": 4, "a": ["y", "z", "a"]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollaralltests','{"_id": 5, "a": ["y", "z", "a", { "d": 1 }, 2]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- nested and empty arrays
+SELECT helio_api.insert_one('db','dollaralltests','{"_id": 6, "a": [[["x", "y"], ["z"]]]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollaralltests','{"_id": 7, "a": []}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollaralltests','{"_id": 8, "a": [[]]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- nested objects
+SELECT helio_api.insert_one('db','dollaralltests','{"_id": 9, "a": {"b": [ ["a", "z", "b"] ]}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollaralltests','{"_id": 10, "a": {"b": [ ["a", "z", "b"], ["x", "y"] ]}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollaralltests','{"_id": 11, "a": {"b": [ ["a", "z", "b"], ["x", "y"], ["c"] ]}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollaralltests','{"_id": 12, "a": {"b": { "c": ["d"] }}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollaralltests','{"_id": 13, "a": {"b": { "c": { "d": 1 }}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- objects with elements that sort after arrays
+SELECT helio_api.insert_one('db','dollaralltests','{"_id": 14, "foo": true}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollaralltests','{"_id": 15, "foo": false}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollaralltests','{"_id": 16, "foo": [ 1, "a", true]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollaralltests','{"_id": 17, "foo": [true]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- objects with null and NaN
+SELECT helio_api.insert_one('db','dollaralltests','{"_id": 18, "other": [ 1, null]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollaralltests','{"_id": 19, "other": [null]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollaralltests','{"_id": 20, "other": [1, NaN]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollaralltests','{"_id": 21, "other": [1, 0.0]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollaralltests','{"_id": 22, "other": [1, 0.0, NaN]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollaralltests','{"_id": 23, "other": [null, NaN]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- documents inside array
+SELECT helio_api.insert_one('db','dollaralltests','{"_id": 24, "array": [ {"x": 1}, {"x": 2}]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollaralltests','{"_id": 25, "array": [ {"x": 2}, {"x": 3}]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollaralltests','{"_id": 26, "array": [ {"x": 3}, {"x": 4}]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- top level simple
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a" : ["b"] }';
+                          document                           
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "b" }
+ { "_id" : { "$numberInt" : "2" }, "a" : [ "a", "b" ] }
+ { "_id" : { "$numberInt" : "3" }, "a" : [ "a", "b", "c" ] }
+(3 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a" : ["b", "a"] }';
+                          document                           
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : [ "a", "b" ] }
+ { "_id" : { "$numberInt" : "3" }, "a" : [ "a", "b", "c" ] }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a" : ["b", "c"] }';
+                          document                           
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : [ "a", "b", "c" ] }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a" : ["a", "z"] }';
+                                                       document                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "a" : [ "y", "z", "a" ] }
+ { "_id" : { "$numberInt" : "5" }, "a" : [ "y", "z", "a", { "d" : { "$numberInt" : "1" } }, { "$numberInt" : "2" } ] }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a" : ["a", "y", "z"] }';
+                                                       document                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "a" : [ "y", "z", "a" ] }
+ { "_id" : { "$numberInt" : "5" }, "a" : [ "y", "z", "a", { "d" : { "$numberInt" : "1" } }, { "$numberInt" : "2" } ] }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a" : [{ "d": 1 }, "a", "y", "z"] }';
+                                                       document                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : [ "y", "z", "a", { "d" : { "$numberInt" : "1" } }, { "$numberInt" : "2" } ] }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a" : [{ "d": 1 }]}';
+                                                       document                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : [ "y", "z", "a", { "d" : { "$numberInt" : "1" } }, { "$numberInt" : "2" } ] }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a" : [{ "d": 2 }]}';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a" : [2]}';
+                                                       document                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : [ "y", "z", "a", { "d" : { "$numberInt" : "1" } }, { "$numberInt" : "2" } ] }
+(1 row)
+
+-- array indexes selector
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a.0" : ["b"] }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a.1" : ["b"] }';
+                          document                           
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : [ "a", "b" ] }
+ { "_id" : { "$numberInt" : "3" }, "a" : [ "a", "b", "c" ] }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a.0.0" : ["x"] }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a.0.0" : ["y"] }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a.0.0" : ["y", "x"] }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a.0.0" : [ ["x", "y"] ] }';
+                                document                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : [ [ [ "x", "y" ], [ "z" ] ] ] }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a.0.1" : [ ["z"] ] }';
+                                document                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : [ [ [ "x", "y" ], [ "z" ] ] ] }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a.0.0.0" : ["x"] }';
+                                document                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : [ [ [ "x", "y" ], [ "z" ] ] ] }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a.3" : [{ "d": 1 }] }';
+                                                       document                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : [ "y", "z", "a", { "d" : { "$numberInt" : "1" } }, { "$numberInt" : "2" } ] }
+(1 row)
+
+-- top level nested arrays
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a" : [[["z"]]] }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a" : [[["x", "y"]]] }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a" : [[["x", "y"], ["z"]]] }';
+                                document                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : [ [ [ "x", "y" ], [ "z" ] ] ] }
+(1 row)
+
+-- empty arrays
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a" : [] }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a" : [ [] ]}';
+                      document                      
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "a" : [  ] }
+ { "_id" : { "$numberInt" : "8" }, "a" : [ [  ] ] }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a" : [ [ [] ] ]}';
+                      document                      
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "8" }, "a" : [ [  ] ] }
+(1 row)
+
+-- nested objects and arrays
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a.b" : [ ["a", "z", "b"] ] }';
+                                             document                                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : [ [ "a", "z", "b" ] ] } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "b" : [ [ "a", "z", "b" ], [ "x", "y" ] ] } }
+ { "_id" : { "$numberInt" : "11" }, "a" : { "b" : [ [ "a", "z", "b" ], [ "x", "y" ], [ "c" ] ] } }
+(3 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a.b" : [ ["a", "z", "b"], ["x", "y"] ] }';
+                                             document                                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "10" }, "a" : { "b" : [ [ "a", "z", "b" ], [ "x", "y" ] ] } }
+ { "_id" : { "$numberInt" : "11" }, "a" : { "b" : [ [ "a", "z", "b" ], [ "x", "y" ], [ "c" ] ] } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a.b" : [ ["a", "z", "b"], ["x", "y"], ["c"] ] }';
+                                             document                                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" }, "a" : { "b" : [ [ "a", "z", "b" ], [ "x", "y" ], [ "c" ] ] } }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a.b" : [ ["a", "z", "b"], ["c"] ] }';
+                                             document                                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" }, "a" : { "b" : [ [ "a", "z", "b" ], [ "x", "y" ], [ "c" ] ] } }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a.b" : [ ["x", "y"] ] }';
+                                             document                                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "10" }, "a" : { "b" : [ [ "a", "z", "b" ], [ "x", "y" ] ] } }
+ { "_id" : { "$numberInt" : "11" }, "a" : { "b" : [ [ "a", "z", "b" ], [ "x", "y" ], [ "c" ] ] } }
+(2 rows)
+
+-- nested objects and arrays with objects
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a.b.c" : [ "d" ] }';
+                                document                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "12" }, "a" : { "b" : { "c" : [ "d" ] } } }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a.b.c" : [ [ "d" ] ] }';
+                                document                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "12" }, "a" : { "b" : { "c" : [ "d" ] } } }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a.b.c" : [ { "d": 1 } ] }';
+                                            document                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "13" }, "a" : { "b" : { "c" : { "d" : { "$numberInt" : "1" } } } } }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a.b.c" : [{ }] }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a.b.c.d" : [ 1 ] }';
+                                            document                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "13" }, "a" : { "b" : { "c" : { "d" : { "$numberInt" : "1" } } } } }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a.b.c.d" : [ 1, 2 ] }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+-- objects with elements that sort after arrays
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "foo" : [ true ] }';
+                                      document                                      
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "14" }, "foo" : true }
+ { "_id" : { "$numberInt" : "16" }, "foo" : [ { "$numberInt" : "1" }, "a", true ] }
+ { "_id" : { "$numberInt" : "17" }, "foo" : [ true ] }
+(3 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "foo" : [ false ] }';
+                      document                      
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "15" }, "foo" : false }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "foo" : [ true, false ] }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "foo" : [ 1, "a" ] }';
+                                      document                                      
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "16" }, "foo" : [ { "$numberInt" : "1" }, "a", true ] }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "foo" : [ 1, true ] }';
+                                      document                                      
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "16" }, "foo" : [ { "$numberInt" : "1" }, "a", true ] }
+(1 row)
+
+-- null and NaN
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "other" : [ null ] }';
+                                                       document                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "b" }
+ { "_id" : { "$numberInt" : "2" }, "a" : [ "a", "b" ] }
+ { "_id" : { "$numberInt" : "3" }, "a" : [ "a", "b", "c" ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ "y", "z", "a" ] }
+ { "_id" : { "$numberInt" : "5" }, "a" : [ "y", "z", "a", { "d" : { "$numberInt" : "1" } }, { "$numberInt" : "2" } ] }
+ { "_id" : { "$numberInt" : "6" }, "a" : [ [ [ "x", "y" ], [ "z" ] ] ] }
+ { "_id" : { "$numberInt" : "7" }, "a" : [  ] }
+ { "_id" : { "$numberInt" : "8" }, "a" : [ [  ] ] }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : [ [ "a", "z", "b" ] ] } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "b" : [ [ "a", "z", "b" ], [ "x", "y" ] ] } }
+ { "_id" : { "$numberInt" : "11" }, "a" : { "b" : [ [ "a", "z", "b" ], [ "x", "y" ], [ "c" ] ] } }
+ { "_id" : { "$numberInt" : "12" }, "a" : { "b" : { "c" : [ "d" ] } } }
+ { "_id" : { "$numberInt" : "13" }, "a" : { "b" : { "c" : { "d" : { "$numberInt" : "1" } } } } }
+ { "_id" : { "$numberInt" : "14" }, "foo" : true }
+ { "_id" : { "$numberInt" : "15" }, "foo" : false }
+ { "_id" : { "$numberInt" : "16" }, "foo" : [ { "$numberInt" : "1" }, "a", true ] }
+ { "_id" : { "$numberInt" : "17" }, "foo" : [ true ] }
+ { "_id" : { "$numberInt" : "18" }, "other" : [ { "$numberInt" : "1" }, null ] }
+ { "_id" : { "$numberInt" : "19" }, "other" : [ null ] }
+ { "_id" : { "$numberInt" : "23" }, "other" : [ null, { "$numberDouble" : "NaN" } ] }
+ { "_id" : { "$numberInt" : "24" }, "array" : [ { "x" : { "$numberInt" : "1" } }, { "x" : { "$numberInt" : "2" } } ] }
+ { "_id" : { "$numberInt" : "25" }, "array" : [ { "x" : { "$numberInt" : "2" } }, { "x" : { "$numberInt" : "3" } } ] }
+ { "_id" : { "$numberInt" : "26" }, "array" : [ { "x" : { "$numberInt" : "3" } }, { "x" : { "$numberInt" : "4" } } ] }
+(23 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a" : [ null ] }';
+                                                              document                                                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "14" }, "foo" : true }
+ { "_id" : { "$numberInt" : "15" }, "foo" : false }
+ { "_id" : { "$numberInt" : "16" }, "foo" : [ { "$numberInt" : "1" }, "a", true ] }
+ { "_id" : { "$numberInt" : "17" }, "foo" : [ true ] }
+ { "_id" : { "$numberInt" : "18" }, "other" : [ { "$numberInt" : "1" }, null ] }
+ { "_id" : { "$numberInt" : "19" }, "other" : [ null ] }
+ { "_id" : { "$numberInt" : "20" }, "other" : [ { "$numberInt" : "1" }, { "$numberDouble" : "NaN" } ] }
+ { "_id" : { "$numberInt" : "21" }, "other" : [ { "$numberInt" : "1" }, { "$numberDouble" : "0.0" } ] }
+ { "_id" : { "$numberInt" : "22" }, "other" : [ { "$numberInt" : "1" }, { "$numberDouble" : "0.0" }, { "$numberDouble" : "NaN" } ] }
+ { "_id" : { "$numberInt" : "23" }, "other" : [ null, { "$numberDouble" : "NaN" } ] }
+ { "_id" : { "$numberInt" : "24" }, "array" : [ { "x" : { "$numberInt" : "1" } }, { "x" : { "$numberInt" : "2" } } ] }
+ { "_id" : { "$numberInt" : "25" }, "array" : [ { "x" : { "$numberInt" : "2" } }, { "x" : { "$numberInt" : "3" } } ] }
+ { "_id" : { "$numberInt" : "26" }, "array" : [ { "x" : { "$numberInt" : "3" } }, { "x" : { "$numberInt" : "4" } } ] }
+(13 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a" : [ null, null, null, null ] }';
+                                                              document                                                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "14" }, "foo" : true }
+ { "_id" : { "$numberInt" : "15" }, "foo" : false }
+ { "_id" : { "$numberInt" : "16" }, "foo" : [ { "$numberInt" : "1" }, "a", true ] }
+ { "_id" : { "$numberInt" : "17" }, "foo" : [ true ] }
+ { "_id" : { "$numberInt" : "18" }, "other" : [ { "$numberInt" : "1" }, null ] }
+ { "_id" : { "$numberInt" : "19" }, "other" : [ null ] }
+ { "_id" : { "$numberInt" : "20" }, "other" : [ { "$numberInt" : "1" }, { "$numberDouble" : "NaN" } ] }
+ { "_id" : { "$numberInt" : "21" }, "other" : [ { "$numberInt" : "1" }, { "$numberDouble" : "0.0" } ] }
+ { "_id" : { "$numberInt" : "22" }, "other" : [ { "$numberInt" : "1" }, { "$numberDouble" : "0.0" }, { "$numberDouble" : "NaN" } ] }
+ { "_id" : { "$numberInt" : "23" }, "other" : [ null, { "$numberDouble" : "NaN" } ] }
+ { "_id" : { "$numberInt" : "24" }, "array" : [ { "x" : { "$numberInt" : "1" } }, { "x" : { "$numberInt" : "2" } } ] }
+ { "_id" : { "$numberInt" : "25" }, "array" : [ { "x" : { "$numberInt" : "2" } }, { "x" : { "$numberInt" : "3" } } ] }
+ { "_id" : { "$numberInt" : "26" }, "array" : [ { "x" : { "$numberInt" : "3" } }, { "x" : { "$numberInt" : "4" } } ] }
+(13 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a" : [ null, null, null, null, "foo" ] }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "a" : [ "foo", null, null, null ] }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "other" : [ [ null ] ] }';
+                        document                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "19" }, "other" : [ null ] }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "other" : [ [ null ], [null] ] }';
+                        document                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "19" }, "other" : [ null ] }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "other" : [ null, NaN ] }';
+                                       document                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "23" }, "other" : [ null, { "$numberDouble" : "NaN" } ] }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "other" : [ 0.0 ] }';
+                                                              document                                                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "21" }, "other" : [ { "$numberInt" : "1" }, { "$numberDouble" : "0.0" } ] }
+ { "_id" : { "$numberInt" : "22" }, "other" : [ { "$numberInt" : "1" }, { "$numberDouble" : "0.0" }, { "$numberDouble" : "NaN" } ] }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "other" : [ 0.0, NaN ] }';
+                                                              document                                                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "22" }, "other" : [ { "$numberInt" : "1" }, { "$numberDouble" : "0.0" }, { "$numberDouble" : "NaN" } ] }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "other" : [ NaN ] }';
+                                                              document                                                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "20" }, "other" : [ { "$numberInt" : "1" }, { "$numberDouble" : "NaN" } ] }
+ { "_id" : { "$numberInt" : "22" }, "other" : [ { "$numberInt" : "1" }, { "$numberDouble" : "0.0" }, { "$numberDouble" : "NaN" } ] }
+ { "_id" : { "$numberInt" : "23" }, "other" : [ null, { "$numberDouble" : "NaN" } ] }
+(3 rows)
+
+-- all with repeated elements
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "foo" : [ true, true, true, true ] }';
+                                      document                                      
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "14" }, "foo" : true }
+ { "_id" : { "$numberInt" : "16" }, "foo" : [ { "$numberInt" : "1" }, "a", true ] }
+ { "_id" : { "$numberInt" : "17" }, "foo" : [ true ] }
+(3 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "foo" : [ true, true, true, true, false ] }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "foo" : [[true], [true], [true], [true]] }';
+                       document                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "17" }, "foo" : [ true ] }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "foo" : [ false, false, false, false ] }';
+                      document                      
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "15" }, "foo" : false }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "foo" : [ true, false, true, false, true ] }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "foo" : [ 1, "a", "a", "a", "a", "a", 1 ] }';
+                                      document                                      
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "16" }, "foo" : [ { "$numberInt" : "1" }, "a", true ] }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "foo" : [ 1, 1, 1, 1, 1, true ] }';
+                                      document                                      
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "16" }, "foo" : [ { "$numberInt" : "1" }, "a", true ] }
+(1 row)
+
+-- query for path inside array
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "array.x" : [ 1, 2 ] }';
+                                                       document                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "24" }, "array" : [ { "x" : { "$numberInt" : "1" } }, { "x" : { "$numberInt" : "2" } } ] }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "array.x" : [ 2, 3 ] }';
+                                                       document                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "25" }, "array" : [ { "x" : { "$numberInt" : "2" } }, { "x" : { "$numberInt" : "3" } } ] }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "array.x" : [ 3 ] }';
+                                                       document                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "25" }, "array" : [ { "x" : { "$numberInt" : "2" } }, { "x" : { "$numberInt" : "3" } } ] }
+ { "_id" : { "$numberInt" : "26" }, "array" : [ { "x" : { "$numberInt" : "3" } }, { "x" : { "$numberInt" : "4" } } ] }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollaralltests') where document @&= '{ "array.x" : [ 1, 3 ] }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+ROLLBACK;
+\set QUIET off

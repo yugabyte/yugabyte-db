@@ -1,0 +1,57 @@
+set search_path to helio_core,helio_api,helio_api_catalog,pg_catalog;
+SET citus.next_shard_id TO 450000;
+SET helio_api.next_collection_id TO 4500;
+SET helio_api.next_collection_index_id TO 4500;
+BEGIN;
+set local enable_seqscan = off;
+\i sql/bson_dollar_ops_basic_text_ops_tests_core.sql
+/* Insert documents based off the mongo help example for $regex */
+SELECT helio_api.insert_one('db','queryregexopstest', '{"_id": 1, "sku" : "abc123", "description" : "Single line description."}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','queryregexopstest', '{"_id": 2, "sku" : "abc789", "description" : "First line\nSecond line"}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','queryregexopstest', '{"_id": 3, "sku" : "xyz456", "description" : "Many spaces before     line"}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','queryregexopstest', '{"_id": 4,  "sku" : "xyz789", "description" : "Multiple\nline description" }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+/* now query regex */
+/* db.products.find( { sku: { $regex: /789$/ } } ) */
+SELECT object_id, document FROM helio_api.collection('db','queryregexopstest') WHERE document @~ '{ "sku": "789$" }';
+            object_id            |                                              document                                              
+---------------------------------------------------------------------
+ { "" : { "$numberInt" : "2" } } | { "_id" : { "$numberInt" : "2" }, "sku" : "abc789", "description" : "First line\nSecond line" }
+ { "" : { "$numberInt" : "4" } } | { "_id" : { "$numberInt" : "4" }, "sku" : "xyz789", "description" : "Multiple\nline description" }
+(2 rows)
+
+/* TODO: passing options: db.products.find( { sku: { $regex: /^ABC/i } } ) */
+SELECT object_id, document FROM helio_api.collection('db','queryregexopstest') WHERE document @~ '{ "sku": "^abc" }';
+            object_id            |                                             document                                             
+---------------------------------------------------------------------
+ { "" : { "$numberInt" : "1" } } | { "_id" : { "$numberInt" : "1" }, "sku" : "abc123", "description" : "Single line description." }
+ { "" : { "$numberInt" : "2" } } | { "_id" : { "$numberInt" : "2" }, "sku" : "abc789", "description" : "First line\nSecond line" }
+(2 rows)
+
+/* Match multiple spaces */
+SELECT object_id, document FROM helio_api.collection('db','queryregexopstest') WHERE document @~ '{ "description": "\\s\\s+" }';
+            object_id            |                                              document                                               
+---------------------------------------------------------------------
+ { "" : { "$numberInt" : "3" } } | { "_id" : { "$numberInt" : "3" }, "sku" : "xyz456", "description" : "Many spaces before     line" }
+(1 row)
+
+ROLLBACK;

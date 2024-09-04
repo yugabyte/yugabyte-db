@@ -1,0 +1,340 @@
+set search_path to helio_core,helio_api,helio_api_catalog,pg_catalog;
+SET citus.next_shard_id TO 9600000;
+SET helio_api.next_collection_id TO 9600;
+SET helio_api.next_collection_index_id TO 9600;
+--insert data
+SELECT helio_api.insert_one('db','dollarmodtests_explain','{"_id": 100, "a": 10}', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests_explain','{"_id": 201, "a": [-10, -11]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests_explain','{"_id": 302, "a": [[[10, 11], [5]]]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests_explain','{"_id": 104, "a": {"b": [10, 11], "c": 11}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests_explain','{"_id": 105, "a": {"b": { "c": [10, 11] }}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests_explain','{"_id": 202, "a": {"b": -10}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests_explain','{"_id": 204, "a": {"b": [-10, -11], "c": -11}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests_explain','{"_id": 106, "a": [ {"b": 10}, {"c": 11}]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests_explain','{"_id": 110, "a": {"$numberDecimal" : "10.6"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests_explain','{"_id": 207, "a": {"$numberInt" : "-10"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests_explain','{"_id": 311, "a": false}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests_explain','{"_id": 313, "a": ["Hello", "World"]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests_explain','{"_id": 314, "a": { "$timestamp": { "t": 1234567890, "i": 1 }}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests_explain','{"_id": 315, "a": { "$date": { "$numberLong" : "1234567890000" }}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests_explain','{"_id": 123, "a": NaN}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests_explain','{"_id": 126, "a": [null, NaN]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests_explain','{"_id": 127, "a": {"$numberDecimal" : "NaN"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Explain Plan on runtime
+SELECT helio_distributed_test_helpers.drop_primary_key('db', 'dollarmodtests_explain');
+ drop_primary_key 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+BEGIN;
+    set local enable_seqscan TO ON;
+    set local helio_api.forceRumIndexScantoBitmapHeapScan TO OFF;
+    EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'dollarmodtests_explain') where document @@ '{ "a" : {"$mod" : [5,0]} }';
+                                                                   QUERY PLAN                                                                    
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_9600_9600000 collection
+               Filter: (document OPERATOR(helio_api_catalog.@%) '{ "a" : [ { "$numberInt" : "5" }, { "$numberInt" : "0" } ] }'::helio_core.bson)
+(7 rows)
+
+    EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'dollarmodtests_explain') where document @@ '{ "a.b" : {"$mod" : [5,0]} }';
+                                                                    QUERY PLAN                                                                     
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_9600_9600000 collection
+               Filter: (document OPERATOR(helio_api_catalog.@%) '{ "a.b" : [ { "$numberInt" : "5" }, { "$numberInt" : "0" } ] }'::helio_core.bson)
+(7 rows)
+
+    EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'dollarmodtests_explain') where document @@ '{ "a.c" : {"$mod" : [5,0]} }';
+                                                                    QUERY PLAN                                                                     
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_9600_9600000 collection
+               Filter: (document OPERATOR(helio_api_catalog.@%) '{ "a.c" : [ { "$numberInt" : "5" }, { "$numberInt" : "0" } ] }'::helio_core.bson)
+(7 rows)
+
+    EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'dollarmodtests_explain') where document @@ '{ "a.b.c" : {"$mod" : [5,0]} }';
+                                                                     QUERY PLAN                                                                      
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_9600_9600000 collection
+               Filter: (document OPERATOR(helio_api_catalog.@%) '{ "a.b.c" : [ { "$numberInt" : "5" }, { "$numberInt" : "0" } ] }'::helio_core.bson)
+(7 rows)
+
+    EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'dollarmodtests_explain') where document @@ '{ "a" : {"$mod" : [3,-2]} }';
+                                                                    QUERY PLAN                                                                    
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_9600_9600000 collection
+               Filter: (document OPERATOR(helio_api_catalog.@%) '{ "a" : [ { "$numberInt" : "3" }, { "$numberInt" : "-2" } ] }'::helio_core.bson)
+(7 rows)
+
+    EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'dollarmodtests_explain') where document @@ '{ "a.b" : {"$mod" : [3,-2]} }';
+                                                                     QUERY PLAN                                                                     
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_9600_9600000 collection
+               Filter: (document OPERATOR(helio_api_catalog.@%) '{ "a.b" : [ { "$numberInt" : "3" }, { "$numberInt" : "-2" } ] }'::helio_core.bson)
+(7 rows)
+
+    EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'dollarmodtests_explain') where document @@ '{ "a.c" : {"$mod" : [3,-2]} }';
+                                                                     QUERY PLAN                                                                     
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_9600_9600000 collection
+               Filter: (document OPERATOR(helio_api_catalog.@%) '{ "a.c" : [ { "$numberInt" : "3" }, { "$numberInt" : "-2" } ] }'::helio_core.bson)
+(7 rows)
+
+    EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'dollarmodtests_explain') where document @@ '{ "a.b.c" : {"$mod" : [3,-2]} }';
+                                                                      QUERY PLAN                                                                      
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_9600_9600000 collection
+               Filter: (document OPERATOR(helio_api_catalog.@%) '{ "a.b.c" : [ { "$numberInt" : "3" }, { "$numberInt" : "-2" } ] }'::helio_core.bson)
+(7 rows)
+
+END;
+-- Explain Plan on Index 
+SELECT helio_api_internal.create_indexes_non_concurrently('db', helio_distributed_test_helpers.generate_create_index_arg('dollarmodtests_explain', 'index_mod_a1', '{"a": 1}'), TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "0" }, "numIndexesAfter" : { "$numberInt" : "1" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT helio_api_internal.create_indexes_non_concurrently('db', helio_distributed_test_helpers.generate_create_index_arg('dollarmodtests_explain', 'index_mod_ab1', '{"a.b": -1}'), TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT helio_api_internal.create_indexes_non_concurrently('db', helio_distributed_test_helpers.generate_create_index_arg('dollarmodtests_explain', 'index_mod_ac1', '{"a.c": 1}'), TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT helio_api_internal.create_indexes_non_concurrently('db', helio_distributed_test_helpers.generate_create_index_arg('dollarmodtests_explain', 'index_mod_abc1', '{"a.b.c": -1}'), TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+BEGIN;
+set local enable_seqscan TO OFF;
+set local helio_api.forceRumIndexScantoBitmapHeapScan TO OFF;
+    EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'dollarmodtests_explain') where document @@ '{ "a" : {"$mod" : [5,0]} }';
+                                                                     QUERY PLAN                                                                      
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using index_mod_a1 on documents_9600_9600000 collection
+               Index Cond: (document OPERATOR(helio_api_catalog.@%) '{ "a" : [ { "$numberInt" : "5" }, { "$numberInt" : "0" } ] }'::helio_core.bson)
+(7 rows)
+
+    EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'dollarmodtests_explain') where document @@ '{ "a.b" : {"$mod" : [5,0]} }';
+                                                                      QUERY PLAN                                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using index_mod_ab1 on documents_9600_9600000 collection
+               Index Cond: (document OPERATOR(helio_api_catalog.@%) '{ "a.b" : [ { "$numberInt" : "5" }, { "$numberInt" : "0" } ] }'::helio_core.bson)
+(7 rows)
+
+    EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'dollarmodtests_explain') where document @@ '{ "a.c" : {"$mod" : [5,0]} }';
+                                                                      QUERY PLAN                                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using index_mod_ac1 on documents_9600_9600000 collection
+               Index Cond: (document OPERATOR(helio_api_catalog.@%) '{ "a.c" : [ { "$numberInt" : "5" }, { "$numberInt" : "0" } ] }'::helio_core.bson)
+(7 rows)
+
+    EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'dollarmodtests_explain') where document @@ '{ "a.b.c" : {"$mod" : [5,0]} }';
+                                                                       QUERY PLAN                                                                        
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using index_mod_abc1 on documents_9600_9600000 collection
+               Index Cond: (document OPERATOR(helio_api_catalog.@%) '{ "a.b.c" : [ { "$numberInt" : "5" }, { "$numberInt" : "0" } ] }'::helio_core.bson)
+(7 rows)
+
+    EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'dollarmodtests_explain') where document @@ '{ "a" : {"$mod" : [3,-2]} }';
+                                                                      QUERY PLAN                                                                      
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using index_mod_a1 on documents_9600_9600000 collection
+               Index Cond: (document OPERATOR(helio_api_catalog.@%) '{ "a" : [ { "$numberInt" : "3" }, { "$numberInt" : "-2" } ] }'::helio_core.bson)
+(7 rows)
+
+    EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'dollarmodtests_explain') where document @@ '{ "a.b" : {"$mod" : [3,-2]} }';
+                                                                       QUERY PLAN                                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using index_mod_ab1 on documents_9600_9600000 collection
+               Index Cond: (document OPERATOR(helio_api_catalog.@%) '{ "a.b" : [ { "$numberInt" : "3" }, { "$numberInt" : "-2" } ] }'::helio_core.bson)
+(7 rows)
+
+    EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'dollarmodtests_explain') where document @@ '{ "a.c" : {"$mod" : [3,-2]} }';
+                                                                       QUERY PLAN                                                                       
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using index_mod_ac1 on documents_9600_9600000 collection
+               Index Cond: (document OPERATOR(helio_api_catalog.@%) '{ "a.c" : [ { "$numberInt" : "3" }, { "$numberInt" : "-2" } ] }'::helio_core.bson)
+(7 rows)
+
+    EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'dollarmodtests_explain') where document @@ '{ "a.b.c" : {"$mod" : [3,-2]} }';
+                                                                        QUERY PLAN                                                                        
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using index_mod_abc1 on documents_9600_9600000 collection
+               Index Cond: (document OPERATOR(helio_api_catalog.@%) '{ "a.b.c" : [ { "$numberInt" : "3" }, { "$numberInt" : "-2" } ] }'::helio_core.bson)
+(7 rows)
+
+END;

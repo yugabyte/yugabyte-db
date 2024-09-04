@@ -1,0 +1,1320 @@
+set search_path to helio_core,helio_api,helio_api_catalog,pg_catalog;
+SET citus.next_shard_id TO 7700000;
+SET helio_api.next_collection_id TO 7700;
+SET helio_api.next_collection_index_id TO 7700;
+SELECT helio_api.insert_one('db', 'colJsonSchQry', '{ 
+    "_id": 0, "vehicle": "car", "seats" : 4, "ac" : true, 
+    "height" : 5.8, "width" : { "$numberDecimal": "4.2" }, 
+    "model" : { "year" : 2020, "color" : "black" }, 
+    "options": ["sunroof", {"drive": "FWD"}, {"drl": true, "free": true} ], 
+    "engine": { "cc": 1500, "fuel": "petrol" }
+}');
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'colJsonSchQry', '{ 
+    "_id": 1, "vehicle": 20, "seats" : "many", "ac" : "1 ton", 
+    "height" : "very high", "width" : { "upper" : 10, "lower" : 20 }, 
+    "model" : 2010, 
+    "options": null, 
+    "engine": 1500
+}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+---------------------------------------------------------------------
+--                         Common Validations                                --
+---------------------------------------------------------------------
+---------------------------- "type" -------------------------------------------
+-- All docs Match
+SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { } } }');
+                                                                                                                                                                                                             document                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "0" }, "vehicle" : "car", "seats" : { "$numberInt" : "4" }, "ac" : true, "height" : { "$numberDouble" : "5.7999999999999998224" }, "width" : { "$numberDecimal" : "4.2" }, "model" : { "year" : { "$numberInt" : "2020" }, "color" : "black" }, "options" : [ "sunroof", { "drive" : "FWD" }, { "drl" : true, "free" : true } ], "engine" : { "cc" : { "$numberInt" : "1500" }, "fuel" : "petrol" } }
+ { "_id" : { "$numberInt" : "1" }, "vehicle" : { "$numberInt" : "20" }, "seats" : "many", "ac" : "1 ton", "height" : "very high", "width" : { "upper" : { "$numberInt" : "10" }, "lower" : { "$numberInt" : "20" } }, "model" : { "$numberInt" : "2010" }, "options" : null, "engine" : { "$numberInt" : "1500" } }
+(2 rows)
+
+-- All docs Match, as none of docs have given field
+SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "cosmosdb" : { "type" : "string" } } } }');
+                                                                                                                                                                                                             document                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "0" }, "vehicle" : "car", "seats" : { "$numberInt" : "4" }, "ac" : true, "height" : { "$numberDouble" : "5.7999999999999998224" }, "width" : { "$numberDecimal" : "4.2" }, "model" : { "year" : { "$numberInt" : "2020" }, "color" : "black" }, "options" : [ "sunroof", { "drive" : "FWD" }, { "drl" : true, "free" : true } ], "engine" : { "cc" : { "$numberInt" : "1500" }, "fuel" : "petrol" } }
+ { "_id" : { "$numberInt" : "1" }, "vehicle" : { "$numberInt" : "20" }, "seats" : "many", "ac" : "1 ton", "height" : "very high", "width" : { "upper" : { "$numberInt" : "10" }, "lower" : { "$numberInt" : "20" } }, "model" : { "$numberInt" : "2010" }, "options" : null, "engine" : { "$numberInt" : "1500" } }
+(2 rows)
+
+-- No Match
+SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "vehicle" : { "type" : "boolean" } } } }');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+-- Matches where "vehicle" is "string"
+SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "vehicle" : { "type" : "string" } } } }');
+                                                                                                                                                                                                             document                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "0" }, "vehicle" : "car", "seats" : { "$numberInt" : "4" }, "ac" : true, "height" : { "$numberDouble" : "5.7999999999999998224" }, "width" : { "$numberDecimal" : "4.2" }, "model" : { "year" : { "$numberInt" : "2020" }, "color" : "black" }, "options" : [ "sunroof", { "drive" : "FWD" }, { "drl" : true, "free" : true } ], "engine" : { "cc" : { "$numberInt" : "1500" }, "fuel" : "petrol" } }
+(1 row)
+
+-- Matches where "seats" is "number"
+SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "seats" : { "type" : "number" } } } }');
+                                                                                                                                                                                                             document                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "0" }, "vehicle" : "car", "seats" : { "$numberInt" : "4" }, "ac" : true, "height" : { "$numberDouble" : "5.7999999999999998224" }, "width" : { "$numberDecimal" : "4.2" }, "model" : { "year" : { "$numberInt" : "2020" }, "color" : "black" }, "options" : [ "sunroof", { "drive" : "FWD" }, { "drl" : true, "free" : true } ], "engine" : { "cc" : { "$numberInt" : "1500" }, "fuel" : "petrol" } }
+(1 row)
+
+-- Matches where "height" is "number"
+SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "height" : { "type" : "number" } } } }');
+                                                                                                                                                                                                             document                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "0" }, "vehicle" : "car", "seats" : { "$numberInt" : "4" }, "ac" : true, "height" : { "$numberDouble" : "5.7999999999999998224" }, "width" : { "$numberDecimal" : "4.2" }, "model" : { "year" : { "$numberInt" : "2020" }, "color" : "black" }, "options" : [ "sunroof", { "drive" : "FWD" }, { "drl" : true, "free" : true } ], "engine" : { "cc" : { "$numberInt" : "1500" }, "fuel" : "petrol" } }
+(1 row)
+
+-- Matches where "width" is "number"
+SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "width" : { "type" : "number" } } } }');
+                                                                                                                                                                                                             document                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "0" }, "vehicle" : "car", "seats" : { "$numberInt" : "4" }, "ac" : true, "height" : { "$numberDouble" : "5.7999999999999998224" }, "width" : { "$numberDecimal" : "4.2" }, "model" : { "year" : { "$numberInt" : "2020" }, "color" : "black" }, "options" : [ "sunroof", { "drive" : "FWD" }, { "drl" : true, "free" : true } ], "engine" : { "cc" : { "$numberInt" : "1500" }, "fuel" : "petrol" } }
+(1 row)
+
+-- Matches where "model" is "object"
+SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "model" : { "type" : "object" } } } }');
+                                                                                                                                                                                                             document                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "0" }, "vehicle" : "car", "seats" : { "$numberInt" : "4" }, "ac" : true, "height" : { "$numberDouble" : "5.7999999999999998224" }, "width" : { "$numberDecimal" : "4.2" }, "model" : { "year" : { "$numberInt" : "2020" }, "color" : "black" }, "options" : [ "sunroof", { "drive" : "FWD" }, { "drl" : true, "free" : true } ], "engine" : { "cc" : { "$numberInt" : "1500" }, "fuel" : "petrol" } }
+(1 row)
+
+-- Matches where "options" is "array"
+SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "options" : { "type" : "array" } } } }');
+                                                                                                                                                                                                             document                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "0" }, "vehicle" : "car", "seats" : { "$numberInt" : "4" }, "ac" : true, "height" : { "$numberDouble" : "5.7999999999999998224" }, "width" : { "$numberDecimal" : "4.2" }, "model" : { "year" : { "$numberInt" : "2020" }, "color" : "black" }, "options" : [ "sunroof", { "drive" : "FWD" }, { "drl" : true, "free" : true } ], "engine" : { "cc" : { "$numberInt" : "1500" }, "fuel" : "petrol" } }
+(1 row)
+
+-- Matches where "ac" is "boolean"
+SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "ac" : { "type" : "boolean" } } } }');
+                                                                                                                                                                                                             document                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "0" }, "vehicle" : "car", "seats" : { "$numberInt" : "4" }, "ac" : true, "height" : { "$numberDouble" : "5.7999999999999998224" }, "width" : { "$numberDecimal" : "4.2" }, "model" : { "year" : { "$numberInt" : "2020" }, "color" : "black" }, "options" : [ "sunroof", { "drive" : "FWD" }, { "drl" : true, "free" : true } ], "engine" : { "cc" : { "$numberInt" : "1500" }, "fuel" : "petrol" } }
+(1 row)
+
+-- Matches where "vehicle" is "string" and "seats" is "number"
+SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "vehicle" : { "type" : "string" }, "seats" : { "type" : "number" } } } }');
+                                                                                                                                                                                                             document                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "0" }, "vehicle" : "car", "seats" : { "$numberInt" : "4" }, "ac" : true, "height" : { "$numberDouble" : "5.7999999999999998224" }, "width" : { "$numberDecimal" : "4.2" }, "model" : { "year" : { "$numberInt" : "2020" }, "color" : "black" }, "options" : [ "sunroof", { "drive" : "FWD" }, { "drl" : true, "free" : true } ], "engine" : { "cc" : { "$numberInt" : "1500" }, "fuel" : "petrol" } }
+(1 row)
+
+-- Unsupported: "integer" type
+SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "seats" : { "type" : "integer" } } } }');
+ERROR:  $jsonSchema type 'integer' is not currently supported.
+---------------------------- "bsonType" -------------------------------------------
+-- All docs Match, as none of docs have given field
+SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "cosmosdb" : { "bsonType" : "string" } } } }');
+                                                                                                                                                                                                             document                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "0" }, "vehicle" : "car", "seats" : { "$numberInt" : "4" }, "ac" : true, "height" : { "$numberDouble" : "5.7999999999999998224" }, "width" : { "$numberDecimal" : "4.2" }, "model" : { "year" : { "$numberInt" : "2020" }, "color" : "black" }, "options" : [ "sunroof", { "drive" : "FWD" }, { "drl" : true, "free" : true } ], "engine" : { "cc" : { "$numberInt" : "1500" }, "fuel" : "petrol" } }
+ { "_id" : { "$numberInt" : "1" }, "vehicle" : { "$numberInt" : "20" }, "seats" : "many", "ac" : "1 ton", "height" : "very high", "width" : { "upper" : { "$numberInt" : "10" }, "lower" : { "$numberInt" : "20" } }, "model" : { "$numberInt" : "2010" }, "options" : null, "engine" : { "$numberInt" : "1500" } }
+(2 rows)
+
+-- No Match
+SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "vehicle" : { "bsonType" : "bool" } } } }');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+-- Matches where "vehicle" is "string"
+SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "vehicle" : { "bsonType" : "string" } } } }');
+                                                                                                                                                                                                             document                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "0" }, "vehicle" : "car", "seats" : { "$numberInt" : "4" }, "ac" : true, "height" : { "$numberDouble" : "5.7999999999999998224" }, "width" : { "$numberDecimal" : "4.2" }, "model" : { "year" : { "$numberInt" : "2020" }, "color" : "black" }, "options" : [ "sunroof", { "drive" : "FWD" }, { "drl" : true, "free" : true } ], "engine" : { "cc" : { "$numberInt" : "1500" }, "fuel" : "petrol" } }
+(1 row)
+
+-- Matches where "seats" is "int"
+SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "seats" : { "bsonType" : "int" } } } }');
+                                                                                                                                                                                                             document                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "0" }, "vehicle" : "car", "seats" : { "$numberInt" : "4" }, "ac" : true, "height" : { "$numberDouble" : "5.7999999999999998224" }, "width" : { "$numberDecimal" : "4.2" }, "model" : { "year" : { "$numberInt" : "2020" }, "color" : "black" }, "options" : [ "sunroof", { "drive" : "FWD" }, { "drl" : true, "free" : true } ], "engine" : { "cc" : { "$numberInt" : "1500" }, "fuel" : "petrol" } }
+(1 row)
+
+-- Matches where "height" is "double"
+SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "height" : { "bsonType" : "double" } } } }');
+                                                                                                                                                                                                             document                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "0" }, "vehicle" : "car", "seats" : { "$numberInt" : "4" }, "ac" : true, "height" : { "$numberDouble" : "5.7999999999999998224" }, "width" : { "$numberDecimal" : "4.2" }, "model" : { "year" : { "$numberInt" : "2020" }, "color" : "black" }, "options" : [ "sunroof", { "drive" : "FWD" }, { "drl" : true, "free" : true } ], "engine" : { "cc" : { "$numberInt" : "1500" }, "fuel" : "petrol" } }
+(1 row)
+
+-- Matches where "width" is "decimal"
+SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "width" : { "bsonType" : "decimal" } } } }');
+                                                                                                                                                                                                             document                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "0" }, "vehicle" : "car", "seats" : { "$numberInt" : "4" }, "ac" : true, "height" : { "$numberDouble" : "5.7999999999999998224" }, "width" : { "$numberDecimal" : "4.2" }, "model" : { "year" : { "$numberInt" : "2020" }, "color" : "black" }, "options" : [ "sunroof", { "drive" : "FWD" }, { "drl" : true, "free" : true } ], "engine" : { "cc" : { "$numberInt" : "1500" }, "fuel" : "petrol" } }
+(1 row)
+
+-- Matches where "model" is "object"
+SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "model" : { "bsonType" : "object" } } } }');
+                                                                                                                                                                                                             document                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "0" }, "vehicle" : "car", "seats" : { "$numberInt" : "4" }, "ac" : true, "height" : { "$numberDouble" : "5.7999999999999998224" }, "width" : { "$numberDecimal" : "4.2" }, "model" : { "year" : { "$numberInt" : "2020" }, "color" : "black" }, "options" : [ "sunroof", { "drive" : "FWD" }, { "drl" : true, "free" : true } ], "engine" : { "cc" : { "$numberInt" : "1500" }, "fuel" : "petrol" } }
+(1 row)
+
+-- Matches where "options" is "array"
+SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "options" : { "bsonType" : "array" } } } }');
+                                                                                                                                                                                                             document                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "0" }, "vehicle" : "car", "seats" : { "$numberInt" : "4" }, "ac" : true, "height" : { "$numberDouble" : "5.7999999999999998224" }, "width" : { "$numberDecimal" : "4.2" }, "model" : { "year" : { "$numberInt" : "2020" }, "color" : "black" }, "options" : [ "sunroof", { "drive" : "FWD" }, { "drl" : true, "free" : true } ], "engine" : { "cc" : { "$numberInt" : "1500" }, "fuel" : "petrol" } }
+(1 row)
+
+-- Matches where "ac" is "boolean"
+SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "ac" : { "bsonType" : "bool" } } } }');
+                                                                                                                                                                                                             document                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "0" }, "vehicle" : "car", "seats" : { "$numberInt" : "4" }, "ac" : true, "height" : { "$numberDouble" : "5.7999999999999998224" }, "width" : { "$numberDecimal" : "4.2" }, "model" : { "year" : { "$numberInt" : "2020" }, "color" : "black" }, "options" : [ "sunroof", { "drive" : "FWD" }, { "drl" : true, "free" : true } ], "engine" : { "cc" : { "$numberInt" : "1500" }, "fuel" : "petrol" } }
+(1 row)
+
+-- Matches where "vehicle" is "string" and "seats" is "int"
+SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "vehicle" : { "bsonType" : "string" }, "seats" : { "bsonType" : "int" } } } }');
+                                                                                                                                                                                                             document                                                                                                                                                                                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "0" }, "vehicle" : "car", "seats" : { "$numberInt" : "4" }, "ac" : true, "height" : { "$numberDouble" : "5.7999999999999998224" }, "width" : { "$numberDecimal" : "4.2" }, "model" : { "year" : { "$numberInt" : "2020" }, "color" : "black" }, "options" : [ "sunroof", { "drive" : "FWD" }, { "drl" : true, "free" : true } ], "engine" : { "cc" : { "$numberInt" : "1500" }, "fuel" : "petrol" } }
+(1 row)
+
+-- Unsupported: "integer" type
+SELECT document FROM helio_api.collection('db', 'colJsonSchQry') WHERE helio_api_catalog.bson_dollar_json_schema(document,'{ "$jsonSchema": { "properties": { "seats" : { "type" : "integer" } } } }');
+ERROR:  $jsonSchema type 'integer' is not currently supported.
+---------------------------------------------------------------------
+--                         Numeric Validations                               --
+---------------------------------------------------------------------
+--------------------------- multipleOf ----------------------------------------
+-- Doc is valid as field's value is a multiple of "multipleOf"
+SELECT bson_dollar_json_schema('{"size": 0}','{ "$jsonSchema": { "properties": { "size" : { "multipleOf" : 2 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4}','{ "$jsonSchema": { "properties": { "size" : { "multipleOf" : 2 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4.4}','{ "$jsonSchema": { "properties": { "size" : { "multipleOf" : 2.2 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+--In the following test doc is evaluated as invalid, because psql converts double value of 1.1 to 1.1000000000000001, which is not a multiple of 11
+--This would not happen when req comes from gateway. So commenting out this test in psql, but will add this test as JS test in Gateway
+--SELECT bson_dollar_json_schema('{"size": 11}','{ "$jsonSchema": { "properties": { "size" : { "multipleOf" : {"$numberDouble" : "1.1"} } } } }');
+-- Doc is invalid as field's value is not a multiple of "multipleOf"
+SELECT bson_dollar_json_schema('{"size": 4}','{ "$jsonSchema": { "properties": { "size" : { "multipleOf" : 3 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4.4}','{ "$jsonSchema": { "properties": { "size" : { "multipleOf" : 2.1 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+-- Doc is valid if field is not numeric
+SELECT bson_dollar_json_schema('{"size": "hello"}','{ "$jsonSchema": { "properties": { "size" : { "multipleOf" : 2 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": [5]}','{ "$jsonSchema": { "properties": { "size" : { "multipleOf" : 2 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+--------------------------- maximum ----------------------------------------
+-- Doc is valid as field's value is less than or equal to given value of "maximum"
+SELECT bson_dollar_json_schema('{"size": 2}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : 4 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : 4 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : 4.1 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4.1}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : 4.1 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4.1}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : {"$numberDecimal" : "INF"} } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "-INF"}}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : 4.1 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "INF"}}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : {"$numberDecimal" : "INF"} } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "-INF"}}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : {"$numberDecimal" : "-INF"} } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "-INF"}}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : {"$numberDecimal" : "INF"} } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "NaN"}}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : {"$numberDecimal" : "NaN"} } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- Doc is invalid as field's value is more than the given value of "maximum"
+SELECT bson_dollar_json_schema('{"size": 5}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : 4 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4.1}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : 4 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4.2}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : 4.1 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4.1}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : {"$numberDecimal" : "NaN"} } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4.1}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : {"$numberDecimal" : "-INF"} } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "INF"}}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : {"$numberDecimal" : "-INF"} } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "INF"}}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : {"$numberDecimal" : "NaN"} } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "NaN"}}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : {"$numberDecimal" : "INF"} } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+-- Doc is valid if field is not numeric
+SELECT bson_dollar_json_schema('{"size": "hello"}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : 4 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": [5]}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : 4 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+--------------------------- exclusiveMaximum -------------------------------
+-- When "exclusiveMaximum" is true, these doc are valid as field's value is strictly less than the given value of "maximum"
+SELECT bson_dollar_json_schema('{"size": 3}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : 4, "exclusiveMaximum" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 3.99}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : 4, "exclusiveMaximum" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 3.99}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : {"$numberDecimal" : "INF"}, "exclusiveMaximum" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "-INF"}}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : {"$numberDecimal" : "INF"}, "exclusiveMaximum" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- When "exclusiveMaximum" is true, these doc are invalid as field's value is more than or equal to the given value of "maximum"
+SELECT bson_dollar_json_schema('{"size": 4}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : 4, "exclusiveMaximum" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4.1}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : 4, "exclusiveMaximum" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4.1}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : 4.1, "exclusiveMaximum" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 5}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : 4.1, "exclusiveMaximum" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "INF"}}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : {"$numberDecimal" : "INF"}, "exclusiveMaximum" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "-INF"}}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : {"$numberDecimal" : "-INF"}, "exclusiveMaximum" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "NaN"}}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : {"$numberDecimal" : "NaN"}, "exclusiveMaximum" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+-- When "exclusiveMaximum" is false, these doc are valid as field's value is less than or equal to the given value of "maximum"
+SELECT bson_dollar_json_schema('{"size": 2}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : 4, "exclusiveMaximum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : 4, "exclusiveMaximum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : 4.1, "exclusiveMaximum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4.1}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : 4.1, "exclusiveMaximum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4.1}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : {"$numberDecimal" : "INF"}, "exclusiveMaximum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "-INF"}}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : 4.1, "exclusiveMaximum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "INF"}}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : {"$numberDecimal" : "INF"}, "exclusiveMaximum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "-INF"}}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : {"$numberDecimal" : "INF"}, "exclusiveMaximum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "NaN"}}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : {"$numberDecimal" : "NaN"}, "exclusiveMaximum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- When "exclusiveMaximum" is false, these doc are invalid as field's value is more than the given value of "maximum"
+SELECT bson_dollar_json_schema('{"size": 5}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : 4, "exclusiveMaximum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4.1}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : 4, "exclusiveMaximum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4.2}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : 4.1, "exclusiveMaximum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4.1}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : {"$numberDecimal" : "NaN"}, "exclusiveMaximum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4.1}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : {"$numberDecimal" : "-INF"}, "exclusiveMaximum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "INF"}}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : {"$numberDecimal" : "-INF"}, "exclusiveMaximum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "INF"}}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : {"$numberDecimal" : "NaN"}, "exclusiveMaximum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "NaN"}}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : {"$numberDecimal" : "INF"}, "exclusiveMaximum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+-- Doc is valid if field is not numeric
+SELECT bson_dollar_json_schema('{"size": "hello"}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : 4, "exclusiveMaximum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": [5]}','{ "$jsonSchema": { "properties": { "size" : { "maximum" : 4, "exclusiveMaximum" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+--------------------------- minimum ----------------------------------------
+-- Doc is valid as field's value is more than or equal to given value of "minimum"
+SELECT bson_dollar_json_schema('{"size": 4}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : 4 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 5}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : 4 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4.1}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : 4.1 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4.2}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : 4.1 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 5}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : 4.1 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4.1}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : {"$numberDecimal" : "-INF"} } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "INF"}}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : 4.1 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "INF"}}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : {"$numberDecimal" : "INF"} } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "INF"}}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : {"$numberDecimal" : "-INF"} } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "-INF"}}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : {"$numberDecimal" : "-INF"} } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "NaN"}}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : {"$numberDecimal" : "NaN"} } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- Doc is invalid as field's value is less than the given value of "minimum"
+SELECT bson_dollar_json_schema('{"size": 3}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : 4 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 3.9}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : 4 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : 4.1 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4.1}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : 4.11 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "-INF"}}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : {"$numberDecimal" : "INF"} } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "NaN"}}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : {"$numberDecimal" : "INF"} } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "NaN"}}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : {"$numberDecimal" : "-INF"} } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+-- Doc is valid if field is not numeric
+SELECT bson_dollar_json_schema('{"size": "hello"}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : 4 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": [5]}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : 4 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+--------------------------- exclusiveMinimum -------------------------------
+-- When "exclusiveMinimum" is true, these doc are valid as field's value is strictly more than the given value of "minimum"
+SELECT bson_dollar_json_schema('{"size": 5}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : 4, "exclusiveMinimum" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4.1}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : 4, "exclusiveMinimum" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4.11}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : 4.1, "exclusiveMinimum" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "INF"}}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : {"$numberDecimal" : "-INF"}, "exclusiveMinimum" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- When "exclusiveMinimum" is true, these doc are invalid as field's value is less than or equal to the given value of "minimum"
+SELECT bson_dollar_json_schema('{"size": 3}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : 4, "exclusiveMinimum" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 3.99}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : 4, "exclusiveMinimum" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : 4, "exclusiveMinimum" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : 4.1, "exclusiveMinimum" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4.1}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : 4.1, "exclusiveMinimum" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "INF"}}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : {"$numberDecimal" : "INF"}, "exclusiveMinimum" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "-INF"}}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : {"$numberDecimal" : "-INF"}, "exclusiveMinimum" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "NaN"}}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : {"$numberDecimal" : "NaN"}, "exclusiveMinimum" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+-- When "exclusiveMinimum" is false, these doc are valid as field's value is more than or equal to the given value of "minimum"
+SELECT bson_dollar_json_schema('{"size": 4}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : 4, "exclusiveMinimum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 5}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : 4, "exclusiveMinimum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4.1}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : 4.1, "exclusiveMinimum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4.2}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : 4.1, "exclusiveMinimum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 5}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : 4.1, "exclusiveMinimum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4.1}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : {"$numberDecimal" : "-INF"}, "exclusiveMinimum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "INF"}}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : 4.1, "exclusiveMinimum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "INF"}}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : {"$numberDecimal" : "INF"}, "exclusiveMinimum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "INF"}}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : {"$numberDecimal" : "-INF"}, "exclusiveMinimum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "-INF"}}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : {"$numberDecimal" : "-INF"}, "exclusiveMinimum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "NaN"}}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : {"$numberDecimal" : "NaN"}, "exclusiveMinimum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- When "exclusiveMinimum" is false, these doc are invalid as field's value is less than the given value of "minimum"
+SELECT bson_dollar_json_schema('{"size": 3}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : 4, "exclusiveMinimum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 3.9}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : 4, "exclusiveMinimum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : 4.1, "exclusiveMinimum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": 4.1}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : 4.11, "exclusiveMinimum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "-INF"}}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : {"$numberDecimal" : "INF"}, "exclusiveMinimum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "NaN"}}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : {"$numberDecimal" : "INF"}, "exclusiveMinimum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": {"$numberDecimal" : "NaN"}}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : {"$numberDecimal" : "-INF"}, "exclusiveMinimum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+-- Doc is valid if field is not numeric
+SELECT bson_dollar_json_schema('{"size": "hello"}','{ "$jsonSchema": { "properties": { "size" : { "minimum" : 4, "exclusiveMinimum" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"size": [3] }','{ "$jsonSchema": { "properties": { "size" : { "minimum" : 4, "exclusiveMinimum" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+---------------------------------------------------------------------
+--                         String Validations                                --
+---------------------------------------------------------------------
+--------------------------- maxLength ----------------------------------------
+-- Doc is valid as length of string is less than or eq to maxLength
+SELECT bson_dollar_json_schema('{"name":"Pazu"}','{ "$jsonSchema": { "properties": { "name" : { "maxLength" : 10 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"name":"Pazu"}','{ "$jsonSchema": { "properties": { "name" : { "maxLength" : 4 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- Doc is invalid as length of string is less than or eq to maxLength
+SELECT bson_dollar_json_schema('{"name":"Pazu"}','{ "$jsonSchema": { "properties": { "name" : { "maxLength" : 2 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+-- Doc is valid if property is not a string
+SELECT bson_dollar_json_schema('{"name": 2}','{ "$jsonSchema": { "properties": { "name" : { "maxLength" : 4 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+--------------------------- minLength ----------------------------------------
+-- Doc is valid as length of string is more than or eq to minLength
+SELECT bson_dollar_json_schema('{"name":"Pazu"}','{ "$jsonSchema": { "properties": { "name" : { "minLength" : 2 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"name":"Pazu"}','{ "$jsonSchema": { "properties": { "name" : { "minLength" : 4 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- Doc is invalid as length of string is more than the minLength
+SELECT bson_dollar_json_schema('{"name":"Pazu"}','{ "$jsonSchema": { "properties": { "name" : { "minLength" : 10 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+-- Doc is valid if property is not a string
+SELECT bson_dollar_json_schema('{"name": 2}','{ "$jsonSchema": { "properties": { "name" : { "minLength" : 4 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+---------------------------- pattern -----------------------------------------
+-- Doc is valid as given pattern matches the string
+SELECT bson_dollar_json_schema('{"name":"Pazu"}','{ "$jsonSchema": { "properties": { "name" : { "pattern" : "^P" } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"name":"Pazu"}','{ "$jsonSchema": { "properties": { "name" : { "pattern" : "[auzP]" } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- Doc is invalid as given pattern does not matches the string
+SELECT bson_dollar_json_schema('{"name":"Pazu"}','{ "$jsonSchema": { "properties": { "name" : { "pattern" : "^a" } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"name":"Pazu"}','{ "$jsonSchema": { "properties": { "name" : { "pattern" : "$z" } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+---------------------------------------------------------------------
+--                         Array Validations                                --
+---------------------------------------------------------------------
+---------------------------- items --------------------------------------------
+-- Doc is valid as "data" array's each value matches the schema given in "items"
+SELECT bson_dollar_json_schema('{"data" : [ ] }','{ "$jsonSchema": { "properties": { "data" : { "items" : [{ "type" : "string" } ] } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ "Hello", {"a":1}, 2 ] }','{ "$jsonSchema": { "properties": { "data" : { "items" : [{ "type" : "string" }] } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ "Hello", {"a":1}, 2 ] }','{ "$jsonSchema": { "properties": { "data" : { "items" : [{ "type" : "string" }, { "type":"object" }] } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ "Hello", {"a":1}, 2 ] }','{ "$jsonSchema": { "properties": { "data" : { "items" : [{ "type" : "string" }, { "type":"object" }, { "type": "number"}] } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ "Hello", {"a":1}, 2 ] }','{ "$jsonSchema": { "properties": { "data" : { "items" : [{ "type" : "string" }, { "type":"object" }, { "type": "number"}, { "type" : "boolean" }] } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ "Hello", {"a":1}, 2 ] }','{ "$jsonSchema": { "properties": { "data" : { "items" : [{ "minLength" : 1, "maxLength" : 10 }, { "type":"object" }, { "minimum" : 1, "maximum": 5 }] } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- Doc is invalid as "data" array's each value does matches the schema given in "items"
+SELECT bson_dollar_json_schema('{"data" : [ "Hello", {"a":1}, 2 ] }','{ "$jsonSchema": { "properties": { "data" : { "items" : [{ "type" : "object" }] } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ "Hello", {"a":1}, 2 ] }','{ "$jsonSchema": { "properties": { "data" : { "items" : [{ "type" : "string" }, { "type":"number" }] } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+-- Doc is valid when "items" is given for Non-Array fields
+SELECT bson_dollar_json_schema('{"data" : 2 }','{ "$jsonSchema": { "properties": { "data" : { "items" : [{ "type" : "string" } ] } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : "Hello" }','{ "$jsonSchema": { "properties": { "data" : { "items" : [{ "type" : "number" } ] } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+---------------------------- additionalItems ----------------------------------
+-- Doc is valid as "data" array values matches the schema given in "items", and data array has no more members than the number of members listed in "items"
+SELECT bson_dollar_json_schema('{"data" : [ ] }','{ "$jsonSchema": { "properties": { "data" : { "items" : [{ "type" : "string" }], "additionalItems" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ "Hello", {"a":1}, 2 ] }','{ "$jsonSchema": { "properties": { "data" : { "items" : [{ "type" : "string" }, { "type":"object" }, { "type": "number"}], "additionalItems" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ "Hello", {"a":1}, 2 ] }','{ "$jsonSchema": { "properties": { "data" : { "items" : [{ "type" : "string" }, { "type":"object" }, { "type": "number"}, { "type" : "boolean" }], "additionalItems" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ "Hello", {"a":1}, 2 ] }','{ "$jsonSchema": { "properties": { "data" : { "items" : [{ "minLength" : 1, "maxLength" : 10 }, { "type":"object" }, { "minimum" : 1, "maximum": 5 }], "additionalItems" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- Doc is invalid as "data" array has more members than the number of members listed in "items"
+SELECT bson_dollar_json_schema('{"data" : [ "Hello", {"a":1}, 2 ] }','{ "$jsonSchema": { "properties": { "data" : { "items" : [{ "type" : "string" }], "additionalItems" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ "Hello", {"a":1}, 2 ] }','{ "$jsonSchema": { "properties": { "data" : { "items" : [{ "type" : "string" }, { "type":"object" }], "additionalItems" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+-- Doc is valid as "data" array values matches the schema given in "items", while data array can have more members than number of members listed in "items"
+SELECT bson_dollar_json_schema('{"data" : [ ] }','{ "$jsonSchema": { "properties": { "data" : { "items" : [{ "type" : "string" }], "additionalItems" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ "Hello", {"a":1}, 2 ] }','{ "$jsonSchema": { "properties": { "data" : { "items" : [{ "type" : "string" }], "additionalItems" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ "Hello", {"a":1}, 2 ] }','{ "$jsonSchema": { "properties": { "data" : { "items" : [{ "type" : "string" }, { "type":"object" }], "additionalItems" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ "Hello", {"a":1}, 2 ] }','{ "$jsonSchema": { "properties": { "data" : { "items" : [{ "type" : "string" }, { "type":"object" }, { "type": "number"}], "additionalItems" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ "Hello", {"a":1}, 2 ] }','{ "$jsonSchema": { "properties": { "data" : { "items" : [{ "type" : "string" }, { "type":"object" }, { "type": "number"}, { "type" : "boolean" }], "additionalItems" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ "Hello", {"a":1}, 2 ] }','{ "$jsonSchema": { "properties": { "data" : { "items" : [{ "minLength" : 1, "maxLength" : 10 }, { "type":"object" }, { "minimum" : 1, "maximum": 5 }], "additionalItems" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- Doc is valid, if "items" keyword is not provided, since "additionalItems" has no effect without "items"
+SELECT bson_dollar_json_schema('{"data" : [ ] }','{ "$jsonSchema": { "properties": { "data" : { "additionalItems" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ ] }','{ "$jsonSchema": { "properties": { "data" : { "additionalItems" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ "Hello" ] }','{ "$jsonSchema": { "properties": { "data" : { "additionalItems" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ "Hello" ] }','{ "$jsonSchema": { "properties": { "data" : { "additionalItems" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- Doc is valid, if "additionalItems" is provided for Non-Array fields
+SELECT bson_dollar_json_schema('{"data" : 2 }','{ "$jsonSchema": { "properties": { "data" : { "items" : [{ "type" : "string" }], "additionalItems" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : 2 }','{ "$jsonSchema": { "properties": { "data" : { "items" : [{ "type" : "string" }], "additionalItems" : false } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+---------------------------- maxItems -----------------------------------------
+-- Doc is valid as "data" array members are less than or equal to given "maxItems"
+SELECT bson_dollar_json_schema('{"data" : [ ] }','{ "$jsonSchema": { "properties": { "data" : { "maxItems" : 0 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ ] }','{ "$jsonSchema": { "properties": { "data" : { "maxItems" : 2 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ "Hello" ] }','{ "$jsonSchema": { "properties": { "data" : { "maxItems" : 2 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ "Hello", {"a":1} ] }','{ "$jsonSchema": { "properties": { "data" : { "maxItems" : 2 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- Doc is invalid as "data" array members are more than the given "maxItems"
+SELECT bson_dollar_json_schema('{"data" : [ "Hello", {"a":1}, 2 ] }','{ "$jsonSchema": { "properties": { "data" : { "maxItems" : 2 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+-- Doc is valid when "maxItems" is given for Non-Array fields
+SELECT bson_dollar_json_schema('{"data" : 2 }','{ "$jsonSchema": { "properties": { "data" : { "maxItems" : 2 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+---------------------------- minItems -----------------------------------------
+-- Doc is valid as "data" array members are more than or equal to given "minItems"
+SELECT bson_dollar_json_schema('{"data" : [ ] }','{ "$jsonSchema": { "properties": { "data" : { "minItems" : 0 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ "Hello", {"a":1} ] }','{ "$jsonSchema": { "properties": { "data" : { "minItems" : 2 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ "Hello", {"a":1}, 2 ] }','{ "$jsonSchema": { "properties": { "data" : { "minItems" : 2 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- Doc is invalid as "data" array members are less than the given "minItems"
+SELECT bson_dollar_json_schema('{"data" : [ ] }','{ "$jsonSchema": { "properties": { "data" : { "minItems" : 2 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ "Hello" ] }','{ "$jsonSchema": { "properties": { "data" : { "minItems" : 2 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+-- Doc is valid when "minItems" is given for Non-Array fields
+SELECT bson_dollar_json_schema('{"data" : 2 }','{ "$jsonSchema": { "properties": { "data" : { "minItems" : 1 } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+---------------------------- uniqueItems --------------------------------------
+-- Doc is valid as all items in the given array are unique
+SELECT bson_dollar_json_schema('{"data" : [ ] }','{ "$jsonSchema": { "properties": { "data" : { "uniqueItems" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ 1, 2 ] }','{ "$jsonSchema": { "properties": { "data" : { "uniqueItems" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ 1, 1.1 ] }','{ "$jsonSchema": { "properties": { "data" : { "uniqueItems" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ 1, {"1":1}, "1" ] }','{ "$jsonSchema": { "properties": { "data" : { "uniqueItems" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ 1, {"1":1}, "1", true ] }','{ "$jsonSchema": { "properties": { "data" : { "uniqueItems" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ 1, {"a":1}, {"b":1} ] }','{ "$jsonSchema": { "properties": { "data" : { "uniqueItems" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ 1, {"a":1, "b":1}, {"a":2, "b":2} ] }','{ "$jsonSchema": { "properties": { "data" : { "uniqueItems" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ 1, {"a":1, "b":1}, {"a":2, "b":2} ] }','{ "$jsonSchema": { "properties": { "data" : { "uniqueItems" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- Doc is invalid as all items in the given array are not unique
+SELECT bson_dollar_json_schema('{"data" : [ 1, 1 ] }','{ "$jsonSchema": { "properties": { "data" : { "uniqueItems" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ 1, 1.0 ] }','{ "$jsonSchema": { "properties": { "data" : { "uniqueItems" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ 1, true, true ] }','{ "$jsonSchema": { "properties": { "data" : { "uniqueItems" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ false, 1, false ] }','{ "$jsonSchema": { "properties": { "data" : { "uniqueItems" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ "Hi", "Hi", 1 ] }','{ "$jsonSchema": { "properties": { "data" : { "uniqueItems" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+-- Doc is invalid, as objects that have same key-value pairs, even in different orders, are not unique. Applicable to objects recursively (i.e. objects in objects)
+SELECT bson_dollar_json_schema('{"data" : [ 1, {"a":1, "b":2}, {"b":2, "a":1} ] }','{ "$jsonSchema": { "properties": { "data" : { "uniqueItems" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT bson_dollar_json_schema('{"data" : [ 1, {"a": {"x":5, "y": 6}, "b":2}, {"b":2, "a": {"y":6, "x":5}} ] }','{ "$jsonSchema": { "properties": { "data" : { "uniqueItems" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+-- Doc is valid when "uniqueItems" is given for Non-Array fields
+SELECT bson_dollar_json_schema('{"data" : 1 }','{ "$jsonSchema": { "properties": { "data" : { "uniqueItems" : true } } } }');
+ bson_dollar_json_schema 
+---------------------------------------------------------------------
+ t
+(1 row)
+

@@ -1,0 +1,2166 @@
+set search_path to helio_core,helio_api,helio_api_catalog,pg_catalog;
+SET citus.next_shard_id TO 420000;
+SET helio_api.next_collection_id TO 4200;
+SET helio_api.next_collection_index_id TO 4200;
+\set prevEcho :ECHO
+\set ECHO none
+NOTICE:  creating collection
+BEGIN;
+set local enable_seqscan TO OFF;
+set local helio_api.forceUseIndexIfAvailable to on;
+\i sql/bson_dollar_ops_query_bits_tests_core.sql;
+set search_path to helio_core,helio_api,helio_api_catalog,pg_catalog;
+-- Tests on numbers.
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 1, "a": 0}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 2, "a": 1}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 3, "a": 54}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 4, "a": 88}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 5, "a": 255}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+--Test with bitmask $bitsAllClear
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : 0 } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "54" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "$numberInt" : "88" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "255" } }
+(5 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : 1 } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "54" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "$numberInt" : "88" } }
+(3 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : 16 } }';
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "1" } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : 129 } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "54" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "$numberInt" : "88" } }
+(3 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : 255 } }';
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "0" } }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : 12984 } }';
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "1" } }
+(2 rows)
+
+--Test with bitmask $bitsAnyClear
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : 0 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : 18 } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "$numberInt" : "88" } }
+(3 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : 24 } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "54" } }
+(3 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : 255 } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "54" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "$numberInt" : "88" } }
+(4 rows)
+
+--Test with bitmask $bitsAllSet
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : 0 } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "54" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "$numberInt" : "88" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "255" } }
+(5 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : 1 } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "255" } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : 16 } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "54" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "$numberInt" : "88" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "255" } }
+(3 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : 54 } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "54" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "255" } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : 55 } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "255" } }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : 88 } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "a" : { "$numberInt" : "88" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "255" } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : 255 } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "255" } }
+(1 row)
+
+--Test with bitmask $bitsAnySet
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : 0 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : 9 } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "$numberInt" : "88" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "255" } }
+(3 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : 255 } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "54" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "$numberInt" : "88" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "255" } }
+(4 rows)
+
+--Test with bit position $bitsAllClear
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : [] } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "54" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "$numberInt" : "88" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "255" } }
+(5 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : [ 0 ] } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "54" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "$numberInt" : "88" } }
+(3 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : [ 4 ] } }';
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "1" } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : [ 1, 7 ] } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "$numberInt" : "88" } }
+(3 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : [ 0, 1, 2, 3, 4, 5, 6, 7  ] } }';
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "0" } }
+(1 row)
+
+--Test with bit position $bitsAnyClear
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : [  ] } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : [ 1, 4 ] } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "$numberInt" : "88" } }
+(3 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : [ 3, 4 ] } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "54" } }
+(3 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : [ 0, 1, 2, 3, 4, 5, 6, 7  ] } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "54" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "$numberInt" : "88" } }
+(4 rows)
+
+--Test with bit position $bitsAllSet
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : [  ] } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "54" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "$numberInt" : "88" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "255" } }
+(5 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : [ 0 ] } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "255" } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : [ 4 ] } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "54" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "$numberInt" : "88" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "255" } }
+(3 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : [ 1, 2, 4, 5 ] } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "54" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "255" } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : [ 0, 1, 2, 4, 5 ] } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "255" } }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : [ 3, 4, 6 ] } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "a" : { "$numberInt" : "88" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "255" } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : [ 0, 1, 2, 3, 4, 5, 6, 7 ] } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "255" } }
+(1 row)
+
+--Test with bit position $bitsAnySet
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : [  ] } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : [ 1, 3 ] } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "54" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "$numberInt" : "88" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "255" } }
+(3 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : [ 0, 1, 2, 3, 4, 5, 6, 7 ] } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "54" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "$numberInt" : "88" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "255" } }
+(4 rows)
+
+--Test On negative Number
+SELECT helio_api.delete('db', '{"delete":"bitwiseOperators", "deletes":[{"q":{},"limit":0}]}');
+                                         delete                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""5"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 6, "a": -0}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 7, "a": -1}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 8, "a": -54}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+--Test With BitMask $bitsAllClear
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : 0  } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberInt" : "-1" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "-54" } }
+(3 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : 53 } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "-54" } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : 127 } }';
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "0" } }
+(1 row)
+
+--Test With BitMask $bitsAnyClear
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : 0  } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : 53 } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "-54" } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : 127 } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "-54" } }
+(2 rows)
+
+--Test With BitMask $bitsAllSet
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : 0  } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberInt" : "-1" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "-54" } }
+(3 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : 2 } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberInt" : "-1" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "-54" } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : 127 } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberInt" : "-1" } }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : 74 } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberInt" : "-1" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "-54" } }
+(2 rows)
+
+--Test With BitMask $bitsAnySet
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : 0  } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : 2 } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberInt" : "-1" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "-54" } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : 127 } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberInt" : "-1" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "-54" } }
+(2 rows)
+
+--Test With bit positions $bitsAllClear
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : [  ] } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberInt" : "-1" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "-54" } }
+(3 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : [ 5, 4, 2, 0 ] } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "-54" } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : [ 0, 1, 2, 3, 4, 5, 6, 7 ] } }';
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "0" } }
+(1 row)
+
+--Test With bit positions $bitsAnyClear
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : [  ] } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : [ 0, 2, 4, 5, 100 ] } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "-54" } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : [ 0, 1, 2, 3, 4, 5, 6, 7 ] } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "-54" } }
+(2 rows)
+
+--Test With bit positions $bitsAllSet
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : [  ] } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberInt" : "-1" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "-54" } }
+(3 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : [ 1 ] } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberInt" : "-1" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "-54" } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : [ 0, 1, 2, 3, 4, 5, 6, 7 ] } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberInt" : "-1" } }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : [ 0, 7, 6, 3 ,100 ] } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberInt" : "-1" } }
+(1 row)
+
+--Test With bit positions $bitsAnySet
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : [  ] } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : [ 1 ] } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberInt" : "-1" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "-54" } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : [ 0, 1, 2, 3, 4, 5, 6, 7 ] } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberInt" : "-1" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "-54" } }
+(2 rows)
+
+--Test With bit positions with not int32 Type $bitsAllClear
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : [ { "$numberLong" : "5"}, { "$numberLong" : "4"}, { "$numberLong" : "2"}, { "$numberLong" : "0"} ] } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "-54" } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : [ { "$numberDouble" : "5"}, { "$numberDouble" : "4"}, { "$numberDouble" : "2"}, { "$numberDouble" : "0"} ] } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "-54" } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : [ { "$numberDecimal" : "5"}, { "$numberDecimal" : "4"}, { "$numberDecimal" : "2"}, { "$numberDecimal" : "0"} ] } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "-54" } }
+(2 rows)
+
+--Test With bit positions with not int32 Type $bitsAnyClear
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : [ { "$numberLong" : "5"}, { "$numberLong" : "4"}, { "$numberLong" : "2"}, { "$numberLong" : "0"} ] } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "-54" } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : [ { "$numberDouble" : "5"}, { "$numberDouble" : "4"}, { "$numberDouble" : "2"}, { "$numberDouble" : "0"} ] } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "-54" } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : [ { "$numberDecimal" : "5"}, { "$numberDecimal" : "4"}, { "$numberDecimal" : "2"}, { "$numberDecimal" : "0"} ] } }';
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "-54" } }
+(2 rows)
+
+--Test With bit positions with not int32 Type $bitsAllSet
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : [ { "$numberLong" : "5"}, { "$numberLong" : "4"}, { "$numberLong" : "2"}, { "$numberLong" : "0"} ] } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberInt" : "-1" } }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : [ { "$numberDouble" : "5"}, { "$numberDouble" : "4"}, { "$numberDouble" : "2"}, { "$numberDouble" : "0"} ] } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberInt" : "-1" } }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : [ { "$numberDecimal" : "5"}, { "$numberDecimal" : "4"}, { "$numberDecimal" : "2"}, { "$numberDecimal" : "0"} ] } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberInt" : "-1" } }
+(1 row)
+
+--Test With bit positions with not int32 Type $bitsAnySet
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : [ { "$numberLong" : "5"}, { "$numberLong" : "4"}, { "$numberLong" : "2"}, { "$numberLong" : "0"} ] } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberInt" : "-1" } }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : [ { "$numberDouble" : "5"}, { "$numberDouble" : "4"}, { "$numberDouble" : "2"}, { "$numberDouble" : "0"} ] } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberInt" : "-1" } }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : [ { "$numberDecimal" : "5"}, { "$numberDecimal" : "4"}, { "$numberDecimal" : "2"}, { "$numberDecimal" : "0"} ] } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberInt" : "-1" } }
+(1 row)
+
+--Test On BinData with different subtypes
+SELECT helio_api.delete('db', '{"delete":"bitwiseOperators", "deletes":[{"q":{},"limit":0}]}');
+                                         delete                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""3"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id":"9", "a": {"$binary": { "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType": "01"}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id":"10", "a": {"$binary": { "base64": "AANgAAAAAAAAAAAAAAAAAAAAAAAA", "subType": "01"}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id":"11", "a": {"$binary": { "base64": "JANgqwetkqwklEWRbWERKKJREtbq", "subType": "01"}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id":"12", "a": {"$binary": { "base64": "////////////////////////////", "subType": "01"}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id":"13", "a": {"$binary": { "base64": "////////////////////////////", "subType": "02"}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id":"14", "a": {"$binary": { "base64": "////////////////////////////", "subType": "03"}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+--Test with bin data $bitsAllClear
+ SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : { "$binary": { "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType": "01"} } } }';
+                                                document                                                
+---------------------------------------------------------------------
+ { "_id" : "9", "a" : { "$binary" : { "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "01" } } }
+ { "_id" : "10", "a" : { "$binary" : { "base64": "AANgAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "01" } } }
+ { "_id" : "11", "a" : { "$binary" : { "base64": "JANgqwetkqwklEWRbWERKKJREtbq", "subType" : "01" } } }
+ { "_id" : "12", "a" : { "$binary" : { "base64": "////////////////////////////", "subType" : "01" } } }
+ { "_id" : "13", "a" : { "$binary" : { "base64": "////////////////////////////", "subType" : "02" } } }
+ { "_id" : "14", "a" : { "$binary" : { "base64": "////////////////////////////", "subType" : "03" } } }
+(6 rows)
+
+ SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : { "$binary": { "base64": "AAyfAAAAAAAAAAAAAAAAAAAAAAAA", "subType": "01"} } } }';
+                                                document                                                
+---------------------------------------------------------------------
+ { "_id" : "9", "a" : { "$binary" : { "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "01" } } }
+ { "_id" : "10", "a" : { "$binary" : { "base64": "AANgAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "01" } } }
+ { "_id" : "11", "a" : { "$binary" : { "base64": "JANgqwetkqwklEWRbWERKKJREtbq", "subType" : "01" } } }
+(3 rows)
+
+ SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : { "$binary": { "base64": "JAyfqwetkqwklEWRbWERKKJREtbq", "subType": "01"} } } }';
+                                                document                                                
+---------------------------------------------------------------------
+ { "_id" : "9", "a" : { "$binary" : { "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "01" } } }
+ { "_id" : "10", "a" : { "$binary" : { "base64": "AANgAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "01" } } }
+(2 rows)
+
+ SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : { "$binary": { "base64": "////////////////////////////", "subType": "01"} } } }';
+                                               document                                                
+---------------------------------------------------------------------
+ { "_id" : "9", "a" : { "$binary" : { "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "01" } } }
+(1 row)
+
+ SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : { "$binary": { "base64": "////////////////////////////", "subType": "02"} } } }';
+                                               document                                                
+---------------------------------------------------------------------
+ { "_id" : "9", "a" : { "$binary" : { "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "01" } } }
+(1 row)
+
+ SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : { "$binary": { "base64": "////////////////////////////", "subType": "03"} } } }';
+                                               document                                                
+---------------------------------------------------------------------
+ { "_id" : "9", "a" : { "$binary" : { "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "01" } } }
+(1 row)
+
+--Test with bin data $bitsAnyClear
+ SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : { "$binary": { "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType": "01"} } } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+ SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : { "$binary": { "base64": "AANgAAAAAAAAAAAAAAAAAAAAAAAA", "subType": "01"} } } }';
+                                               document                                                
+---------------------------------------------------------------------
+ { "_id" : "9", "a" : { "$binary" : { "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "01" } } }
+(1 row)
+
+ SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : { "$binary": { "base64": "JANgqwetkqwklEWRbWERKKJREtbq", "subType": "02"} } } }';
+                                                document                                                
+---------------------------------------------------------------------
+ { "_id" : "9", "a" : { "$binary" : { "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "01" } } }
+ { "_id" : "10", "a" : { "$binary" : { "base64": "AANgAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "01" } } }
+(2 rows)
+
+ SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : { "$binary": { "base64": "////////////////////////////", "subType": "03"} } } }';
+                                                document                                                
+---------------------------------------------------------------------
+ { "_id" : "9", "a" : { "$binary" : { "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "01" } } }
+ { "_id" : "10", "a" : { "$binary" : { "base64": "AANgAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "01" } } }
+ { "_id" : "11", "a" : { "$binary" : { "base64": "JANgqwetkqwklEWRbWERKKJREtbq", "subType" : "01" } } }
+(3 rows)
+
+--Test with bin data $bitsAllSet
+ SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : { "$binary": { "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType": "01"} } } }';
+                                                document                                                
+---------------------------------------------------------------------
+ { "_id" : "9", "a" : { "$binary" : { "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "01" } } }
+ { "_id" : "10", "a" : { "$binary" : { "base64": "AANgAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "01" } } }
+ { "_id" : "11", "a" : { "$binary" : { "base64": "JANgqwetkqwklEWRbWERKKJREtbq", "subType" : "01" } } }
+ { "_id" : "12", "a" : { "$binary" : { "base64": "////////////////////////////", "subType" : "01" } } }
+ { "_id" : "13", "a" : { "$binary" : { "base64": "////////////////////////////", "subType" : "02" } } }
+ { "_id" : "14", "a" : { "$binary" : { "base64": "////////////////////////////", "subType" : "03" } } }
+(6 rows)
+
+ SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : { "$binary": { "base64": "AANgAAAAAAAAAAAAAAAAAAAAAAAA", "subType": "01"} } } }';
+                                                document                                                
+---------------------------------------------------------------------
+ { "_id" : "10", "a" : { "$binary" : { "base64": "AANgAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "01" } } }
+ { "_id" : "11", "a" : { "$binary" : { "base64": "JANgqwetkqwklEWRbWERKKJREtbq", "subType" : "01" } } }
+ { "_id" : "12", "a" : { "$binary" : { "base64": "////////////////////////////", "subType" : "01" } } }
+ { "_id" : "13", "a" : { "$binary" : { "base64": "////////////////////////////", "subType" : "02" } } }
+ { "_id" : "14", "a" : { "$binary" : { "base64": "////////////////////////////", "subType" : "03" } } }
+(5 rows)
+
+ SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : { "$binary": { "base64": "JANgqwetkqwklEWRbWERKKJREtbq", "subType": "02"} } } }';
+                                                document                                                
+---------------------------------------------------------------------
+ { "_id" : "11", "a" : { "$binary" : { "base64": "JANgqwetkqwklEWRbWERKKJREtbq", "subType" : "01" } } }
+ { "_id" : "12", "a" : { "$binary" : { "base64": "////////////////////////////", "subType" : "01" } } }
+ { "_id" : "13", "a" : { "$binary" : { "base64": "////////////////////////////", "subType" : "02" } } }
+ { "_id" : "14", "a" : { "$binary" : { "base64": "////////////////////////////", "subType" : "03" } } }
+(4 rows)
+
+ SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : { "$binary": { "base64": "////////////////////////////", "subType": "03"} } } }';
+                                                document                                                
+---------------------------------------------------------------------
+ { "_id" : "12", "a" : { "$binary" : { "base64": "////////////////////////////", "subType" : "01" } } }
+ { "_id" : "13", "a" : { "$binary" : { "base64": "////////////////////////////", "subType" : "02" } } }
+ { "_id" : "14", "a" : { "$binary" : { "base64": "////////////////////////////", "subType" : "03" } } }
+(3 rows)
+
+--Test with bin data $bitsAnySet
+ SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : { "$binary": { "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType": "01"} } } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+ SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : { "$binary": { "base64": "AAyfAAAAAAAAAAAAAAAAAAAAAAAA", "subType": "01"} } } }';
+                                                document                                                
+---------------------------------------------------------------------
+ { "_id" : "12", "a" : { "$binary" : { "base64": "////////////////////////////", "subType" : "01" } } }
+ { "_id" : "13", "a" : { "$binary" : { "base64": "////////////////////////////", "subType" : "02" } } }
+ { "_id" : "14", "a" : { "$binary" : { "base64": "////////////////////////////", "subType" : "03" } } }
+(3 rows)
+
+ SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : { "$binary": { "base64": "JAyfqwetkqwklEWRbWERKKJREtbq", "subType": "02"} } } }';
+                                                document                                                
+---------------------------------------------------------------------
+ { "_id" : "11", "a" : { "$binary" : { "base64": "JANgqwetkqwklEWRbWERKKJREtbq", "subType" : "01" } } }
+ { "_id" : "12", "a" : { "$binary" : { "base64": "////////////////////////////", "subType" : "01" } } }
+ { "_id" : "13", "a" : { "$binary" : { "base64": "////////////////////////////", "subType" : "02" } } }
+ { "_id" : "14", "a" : { "$binary" : { "base64": "////////////////////////////", "subType" : "03" } } }
+(4 rows)
+
+ SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : { "$binary": { "base64": "////////////////////////////", "subType": "03"} } } }';
+                                                document                                                
+---------------------------------------------------------------------
+ { "_id" : "10", "a" : { "$binary" : { "base64": "AANgAAAAAAAAAAAAAAAAAAAAAAAA", "subType" : "01" } } }
+ { "_id" : "11", "a" : { "$binary" : { "base64": "JANgqwetkqwklEWRbWERKKJREtbq", "subType" : "01" } } }
+ { "_id" : "12", "a" : { "$binary" : { "base64": "////////////////////////////", "subType" : "01" } } }
+ { "_id" : "13", "a" : { "$binary" : { "base64": "////////////////////////////", "subType" : "02" } } }
+ { "_id" : "14", "a" : { "$binary" : { "base64": "////////////////////////////", "subType" : "03" } } }
+(5 rows)
+
+ --Sign Extension Check
+SELECT helio_api.delete('db', '{"delete":"bitwiseOperators", "deletes":[{"q":{},"limit":0}]}');
+                                         delete                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""6"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 6, "a": -2}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 7, "a": 2}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 8, "a": -1}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 9, "a": -8}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 10, "a": 5}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+--Sign Extension check with $bitsAllClear
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : [ 1000 ] } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberInt" : "2" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "$numberInt" : "5" } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : [ 0 ] } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "-2" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberInt" : "2" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "$numberInt" : "-8" } }
+(3 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : [ 0, 2000 ] } }';
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberInt" : "2" } }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : [ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70] } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+--Sign Extension check with $bitsAnyClear
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : [ 1000 ] } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberInt" : "2" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "$numberInt" : "5" } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : [ 0 ] } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "-2" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberInt" : "2" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "$numberInt" : "-8" } }
+(3 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : [ 0, 2000 ] } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "-2" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberInt" : "2" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "$numberInt" : "-8" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "$numberInt" : "5" } }
+(4 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : [ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70] } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "-2" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberInt" : "2" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "$numberInt" : "-8" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "$numberInt" : "5" } }
+(4 rows)
+
+--Sign Extension check with $bitsAllSet
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : [ 1000 ] } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "-2" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "-1" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "$numberInt" : "-8" } }
+(3 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : [ 0 ] } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "-1" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "$numberInt" : "5" } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : [ 0, 2000 ] } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "-1" } }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : [ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70] } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "-1" } }
+(1 row)
+
+--Sign Extension check with $bitsAnySet
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : [ 1000 ] } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "-2" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "-1" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "$numberInt" : "-8" } }
+(3 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : [ 0 ] } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "-1" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "$numberInt" : "5" } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : [ 0, 2000 ] } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "-2" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "-1" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "$numberInt" : "-8" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "$numberInt" : "5" } }
+(4 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : [ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70] } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "-2" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberInt" : "2" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "-1" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "$numberInt" : "-8" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "$numberInt" : "5" } }
+(5 rows)
+
+--Test when Document has neither bindata nor Number
+SELECT helio_api.delete('db', '{"delete":"bitwiseOperators", "deletes":[{"q":{},"limit":0}]}');
+                                         delete                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""5"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 6, "a": "B"}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 7, "a": 1.2832}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 8, "a": "apple"}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 9, "a": "A"}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : 1 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : 0 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : 2 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : 3 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : 10 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : 3 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : 10 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : 3 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : 10 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : 3 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : 10 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+--Test on Double , Int64, Decimal128
+SELECT helio_api.delete('db', '{"delete":"bitwiseOperators", "deletes":[{"q":{},"limit":0}]}');
+                                         delete                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""4"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 1, "a": {"$numberDouble" : "1.00000000"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 3, "a": {"$numberDouble" : "2.00000000"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 5, "a": {"$numberLong" : "6"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 6, "a": {"$numberLong" : "9999999999999999"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+--Test with bitmask $bitsAllClear
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : 0 } }';
+                                    document                                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberDouble" : "2.0" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberLong" : "6"} }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberLong" : "9999999999999999"} }
+(4 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : 1 } }';
+                               document                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberDouble" : "2.0" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberLong" : "6"} }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : 2 } }';
+                               document                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : 3 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+--Test with bitmask $bitsAnyClear
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : 0 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : 1 } }';
+                               document                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberDouble" : "2.0" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberLong" : "6"} }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : 2 } }';
+                               document                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : 3 } }';
+                               document                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberDouble" : "2.0" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberLong" : "6"} }
+(3 rows)
+
+--Test with bitmask $bitsAllSet
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : 0 } }';
+                                    document                                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberDouble" : "2.0" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberLong" : "6"} }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberLong" : "9999999999999999"} }
+(4 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : 1 } }';
+                                    document                                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberLong" : "9999999999999999"} }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : 2 } }';
+                                    document                                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberDouble" : "2.0" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberLong" : "6"} }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberLong" : "9999999999999999"} }
+(3 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : 3 } }';
+                                    document                                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberLong" : "9999999999999999"} }
+(1 row)
+
+--Test with bitmask $bitsAnySet
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : 0 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : 1 } }';
+                                    document                                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberLong" : "9999999999999999"} }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : 2 } }';
+                                    document                                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberDouble" : "2.0" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberLong" : "6"} }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberLong" : "9999999999999999"} }
+(3 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : 3 } }';
+                                    document                                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberDouble" : "2.0" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberLong" : "6"} }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberLong" : "9999999999999999"} }
+(4 rows)
+
+-- Tests on array.
+SELECT helio_api.delete('db', '{"delete":"bitwiseOperators", "deletes":[{"q":{},"limit":0}]}');
+                                         delete                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""4"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 1, "a": [10,12,14,16]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 2, "a": [10,12,14,16,1]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 3, "a": [1,3,5,7]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 4, "a": [1,3,4]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 5, "a": [10.01, "hello", "Test", 11, 2]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 6, "a": [10.01, "hello", "Test"]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 7, "a": ["hello", "Test"]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 8, "a": [10.11, 11.12, 13.24]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 9, "a": [10.0, 11.0, 13.0]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 10, "a": [1, 1, 1, 1]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+--Test with bitmask $bitsAllClear
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : 0 } }';
+                                                                                 document                                                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "12" }, { "$numberInt" : "14" }, { "$numberInt" : "16" } ] }
+ { "_id" : { "$numberInt" : "2" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "12" }, { "$numberInt" : "14" }, { "$numberInt" : "16" }, { "$numberInt" : "1" } ] }
+ { "_id" : { "$numberInt" : "3" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "3" }, { "$numberInt" : "5" }, { "$numberInt" : "7" } ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }
+ { "_id" : { "$numberInt" : "5" }, "a" : [ { "$numberDouble" : "10.009999999999999787" }, "hello", "Test", { "$numberInt" : "11" }, { "$numberInt" : "2" } ] }
+ { "_id" : { "$numberInt" : "9" }, "a" : [ { "$numberDouble" : "10.0" }, { "$numberDouble" : "11.0" }, { "$numberDouble" : "13.0" } ] }
+ { "_id" : { "$numberInt" : "10" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" }, { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }
+(7 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : 1 } }';
+                                                                                 document                                                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "12" }, { "$numberInt" : "14" }, { "$numberInt" : "16" } ] }
+ { "_id" : { "$numberInt" : "2" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "12" }, { "$numberInt" : "14" }, { "$numberInt" : "16" }, { "$numberInt" : "1" } ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }
+ { "_id" : { "$numberInt" : "5" }, "a" : [ { "$numberDouble" : "10.009999999999999787" }, "hello", "Test", { "$numberInt" : "11" }, { "$numberInt" : "2" } ] }
+ { "_id" : { "$numberInt" : "9" }, "a" : [ { "$numberDouble" : "10.0" }, { "$numberDouble" : "11.0" }, { "$numberDouble" : "13.0" } ] }
+(5 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a":{ "$elemMatch" : { "$bitsAllClear" : 1, "$gt" : 5 } } }';
+                                                                                 document                                                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "12" }, { "$numberInt" : "14" }, { "$numberInt" : "16" } ] }
+ { "_id" : { "$numberInt" : "2" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "12" }, { "$numberInt" : "14" }, { "$numberInt" : "16" }, { "$numberInt" : "1" } ] }
+ { "_id" : { "$numberInt" : "9" }, "a" : [ { "$numberDouble" : "10.0" }, { "$numberDouble" : "11.0" }, { "$numberDouble" : "13.0" } ] }
+(3 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a":{ "$elemMatch" : { "$bitsAllClear" : 1, "$lte" : 5 } } }';
+                                                                           document                                                                            
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }
+ { "_id" : { "$numberInt" : "5" }, "a" : [ { "$numberDouble" : "10.009999999999999787" }, "hello", "Test", { "$numberInt" : "11" }, { "$numberInt" : "2" } ] }
+(2 rows)
+
+--Test with bitmask $bitsAnyClear
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : 0 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : 1 } }';
+                                                                                 document                                                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "12" }, { "$numberInt" : "14" }, { "$numberInt" : "16" } ] }
+ { "_id" : { "$numberInt" : "2" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "12" }, { "$numberInt" : "14" }, { "$numberInt" : "16" }, { "$numberInt" : "1" } ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }
+ { "_id" : { "$numberInt" : "5" }, "a" : [ { "$numberDouble" : "10.009999999999999787" }, "hello", "Test", { "$numberInt" : "11" }, { "$numberInt" : "2" } ] }
+ { "_id" : { "$numberInt" : "9" }, "a" : [ { "$numberDouble" : "10.0" }, { "$numberDouble" : "11.0" }, { "$numberDouble" : "13.0" } ] }
+(5 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a":{ "$elemMatch" : { "$bitsAnyClear" : 1, "$gt" : 5 } } }';
+                                                                                 document                                                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "12" }, { "$numberInt" : "14" }, { "$numberInt" : "16" } ] }
+ { "_id" : { "$numberInt" : "2" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "12" }, { "$numberInt" : "14" }, { "$numberInt" : "16" }, { "$numberInt" : "1" } ] }
+ { "_id" : { "$numberInt" : "9" }, "a" : [ { "$numberDouble" : "10.0" }, { "$numberDouble" : "11.0" }, { "$numberDouble" : "13.0" } ] }
+(3 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a":{ "$elemMatch" : { "$bitsAnyClear" : 1, "$lte" : 5 } } }';
+                                                                           document                                                                            
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }
+ { "_id" : { "$numberInt" : "5" }, "a" : [ { "$numberDouble" : "10.009999999999999787" }, "hello", "Test", { "$numberInt" : "11" }, { "$numberInt" : "2" } ] }
+(2 rows)
+
+--Test with bitmask $bitsAllSet
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : 0 } }';
+                                                                                 document                                                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "12" }, { "$numberInt" : "14" }, { "$numberInt" : "16" } ] }
+ { "_id" : { "$numberInt" : "2" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "12" }, { "$numberInt" : "14" }, { "$numberInt" : "16" }, { "$numberInt" : "1" } ] }
+ { "_id" : { "$numberInt" : "3" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "3" }, { "$numberInt" : "5" }, { "$numberInt" : "7" } ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }
+ { "_id" : { "$numberInt" : "5" }, "a" : [ { "$numberDouble" : "10.009999999999999787" }, "hello", "Test", { "$numberInt" : "11" }, { "$numberInt" : "2" } ] }
+ { "_id" : { "$numberInt" : "9" }, "a" : [ { "$numberDouble" : "10.0" }, { "$numberDouble" : "11.0" }, { "$numberDouble" : "13.0" } ] }
+ { "_id" : { "$numberInt" : "10" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" }, { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }
+(7 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : 1 } }';
+                                                                                 document                                                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "12" }, { "$numberInt" : "14" }, { "$numberInt" : "16" }, { "$numberInt" : "1" } ] }
+ { "_id" : { "$numberInt" : "3" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "3" }, { "$numberInt" : "5" }, { "$numberInt" : "7" } ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }
+ { "_id" : { "$numberInt" : "5" }, "a" : [ { "$numberDouble" : "10.009999999999999787" }, "hello", "Test", { "$numberInt" : "11" }, { "$numberInt" : "2" } ] }
+ { "_id" : { "$numberInt" : "9" }, "a" : [ { "$numberDouble" : "10.0" }, { "$numberDouble" : "11.0" }, { "$numberDouble" : "13.0" } ] }
+ { "_id" : { "$numberInt" : "10" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" }, { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }
+(6 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a":{ "$elemMatch" : { "$bitsAllSet" : 1, "$gt" : 5 } } }';
+                                                                           document                                                                            
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "3" }, { "$numberInt" : "5" }, { "$numberInt" : "7" } ] }
+ { "_id" : { "$numberInt" : "5" }, "a" : [ { "$numberDouble" : "10.009999999999999787" }, "hello", "Test", { "$numberInt" : "11" }, { "$numberInt" : "2" } ] }
+ { "_id" : { "$numberInt" : "9" }, "a" : [ { "$numberDouble" : "10.0" }, { "$numberDouble" : "11.0" }, { "$numberDouble" : "13.0" } ] }
+(3 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a":{ "$elemMatch" : { "$bitsAllSet" : 1, "$lte" : 5 } } }';
+                                                                                 document                                                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "12" }, { "$numberInt" : "14" }, { "$numberInt" : "16" }, { "$numberInt" : "1" } ] }
+ { "_id" : { "$numberInt" : "3" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "3" }, { "$numberInt" : "5" }, { "$numberInt" : "7" } ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }
+ { "_id" : { "$numberInt" : "10" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" }, { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }
+(4 rows)
+
+--Test with bitmask $bitsAnySet
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : 0 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : 1 } }';
+                                                                                 document                                                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "12" }, { "$numberInt" : "14" }, { "$numberInt" : "16" }, { "$numberInt" : "1" } ] }
+ { "_id" : { "$numberInt" : "3" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "3" }, { "$numberInt" : "5" }, { "$numberInt" : "7" } ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }
+ { "_id" : { "$numberInt" : "5" }, "a" : [ { "$numberDouble" : "10.009999999999999787" }, "hello", "Test", { "$numberInt" : "11" }, { "$numberInt" : "2" } ] }
+ { "_id" : { "$numberInt" : "9" }, "a" : [ { "$numberDouble" : "10.0" }, { "$numberDouble" : "11.0" }, { "$numberDouble" : "13.0" } ] }
+ { "_id" : { "$numberInt" : "10" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" }, { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }
+(6 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a":{ "$elemMatch" : { "$bitsAnySet" : 1, "$gt" : 5 } } }';
+                                                                           document                                                                            
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "3" }, { "$numberInt" : "5" }, { "$numberInt" : "7" } ] }
+ { "_id" : { "$numberInt" : "5" }, "a" : [ { "$numberDouble" : "10.009999999999999787" }, "hello", "Test", { "$numberInt" : "11" }, { "$numberInt" : "2" } ] }
+ { "_id" : { "$numberInt" : "9" }, "a" : [ { "$numberDouble" : "10.0" }, { "$numberDouble" : "11.0" }, { "$numberDouble" : "13.0" } ] }
+(3 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a":{ "$elemMatch" : { "$bitsAnySet" : 1, "$lte" : 5 } } }';
+                                                                                 document                                                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "12" }, { "$numberInt" : "14" }, { "$numberInt" : "16" }, { "$numberInt" : "1" } ] }
+ { "_id" : { "$numberInt" : "3" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "3" }, { "$numberInt" : "5" }, { "$numberInt" : "7" } ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }
+ { "_id" : { "$numberInt" : "10" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" }, { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }
+(4 rows)
+
+--insert multiple field in document
+SELECT helio_api.delete('db', '{"delete":"bitwiseOperators", "deletes":[{"q":{},"limit":0}]}');
+                                         delete                                          
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""10"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 1, "a": 0, "b":3}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 2, "a": 1, "b":2}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 3, "a": 2, "b":1}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 3, "a": 3, "b":0}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+--Test with non exist field or on multi field document $bitsAllClear
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : 0 } }';
+                                            document                                            
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "0" }, "b" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "2" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "2" }, "b" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "3" }, "b" : { "$numberInt" : "0" } }
+(4 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "c": { "$bitsAllClear" : 2 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+--Test with non exist field or on multi field document $bitsAllClear
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : 0 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "c": { "$bitsAnyClear" : 2 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+--Test with non exist field or on multi field document $bitsAllSet
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : 0 } }';
+                                            document                                            
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "0" }, "b" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "2" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "2" }, "b" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "3" }, "b" : { "$numberInt" : "0" } }
+(4 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "c": { "$bitsAllSet" : 2 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+--Test with non exist field or on multi field document $bitsAnySet
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : 0 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "c": { "$bitsAnySet" : 2 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+--Test on array of array
+SELECT helio_api.delete('db', '{"delete":"bitwiseOperators", "deletes":[{"q":{},"limit":0}]}');
+                                         delete                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""4"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 1, "a": [[1,2,3],[3,2,1]]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 2, "a": [[1,3,5],[5,3,1]]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 3, "a": [[0,2,4],[4,2,0]]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 3, "a": [[0,0,0],[0,0,0]]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+--Test with bitmask $bitsAllClear
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : 0 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : 1 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : 2 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+--Test with bitmask $bitsAnyClear
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : 0 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : 1 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : 2 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+--Test with bitmask $bitsAllSet
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : 0 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : 1 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : 2 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+--Test with bitmask $bitsAnySet
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : 0 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : 1 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : 2 } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+--Multiple Bits Operator Test
+SELECT helio_api.delete('db', '{"delete":"bitwiseOperators", "deletes":[{"q":{},"limit":0}]}');
+                                         delete                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""4"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 1, "a": 0}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 2, "a": 1}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 3, "a": 2}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 4, "a": 3}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 5, "a": 4}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 6, "a": 5}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 7, "a": 6}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 8, "a": 7}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 9, "a": 8}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 10, "a": 9}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : 1, "$bitsAllSet" : 1 } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "5" } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "$numberInt" : "7" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "$numberInt" : "9" } }
+(5 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : 1, "$bitsAllClear" : 1 } }';
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "2" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberInt" : "6" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "$numberInt" : "8" } }
+(5 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : 3, "$bitsAnyClear" : 3 } }';
+                             document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "2" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "5" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberInt" : "6" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "$numberInt" : "9" } }
+(5 rows)
+
+--Decimal 128 Test
+SELECT helio_api.delete('db', '{"delete":"bitwiseOperators", "deletes":[{"q":{},"limit":0}]}');
+                                         delete                                          
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""10"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 0, "a": { "$numberDecimal" : "0" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 1, "a": { "$numberDecimal" : "1" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 2, "a": { "$numberDecimal" : "1.1234" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 3, "a": { "$numberDecimal" : "1.0000" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 4, "a": { "$numberDecimal" : "2.0020" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 5, "a": { "$numberDecimal" : "3.0000" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 6, "a": { "$numberDecimal" : "NaN" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 7, "a": { "$numberDecimal" : "Infinity" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : [ { "$numberDecimal"  : "0" }, { "$numberDecimal"  : "1" }] } }';
+                                 document                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberDecimal" : "3.0000" } }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : [ { "$numberDecimal"  : "0.112"}, { "$numberDecimal"  : "1.321" }] } }';
+                                 document                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberDecimal" : "3.0000" } }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : { "$numberDecimal"  : "1"} } }';
+                                  document                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "0" }, "a" : { "$numberDecimal" : "0" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "$numberDecimal" : "2.0020" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberDecimal" : "NaN" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberDecimal" : "Infinity" } }
+(4 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : { "$numberDecimal"  : "1.000"} } }';
+                                  document                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "0" }, "a" : { "$numberDecimal" : "0" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "$numberDecimal" : "2.0020" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberDecimal" : "NaN" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberDecimal" : "Infinity" } }
+(4 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : { "$numberDecimal"  : "1.000"} } }';
+                                 document                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberDecimal" : "1" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberDecimal" : "1.1234" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberDecimal" : "1.0000" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberDecimal" : "3.0000" } }
+(4 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : { "$numberDecimal"  : "0"} } }';
+                                  document                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "0" }, "a" : { "$numberDecimal" : "0" } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberDecimal" : "1" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberDecimal" : "1.1234" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberDecimal" : "1.0000" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "$numberDecimal" : "2.0020" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberDecimal" : "3.0000" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberDecimal" : "NaN" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "$numberDecimal" : "Infinity" } }
+(8 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : { "$numberDecimal"  : "0.000"} } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : { "$numberDecimal"  : "0.000"} } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+-- double range test
+SELECT helio_api.delete('db', '{"delete":"bitwiseOperators", "deletes":[{"q":{},"limit":0}]}');
+                                         delete                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""8"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{ "_id": "double-whole", "a" : {  "$numberDouble" : "42.0" } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{ "_id": "double-zero", "a" : {  "$numberDouble" : "0.0"} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{ "_id": "double-big", "a" : {  "$numberDouble" : "2305843009213693952.0"} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{ "_id": "double-1", "a" : {  "$numberDouble" : "-9223372036854775808"} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{ "_id": "double-2", "a" : {  "$numberDouble" : "-123456789"} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{ "_id": "double-3", "a" : {  "$numberDouble" : "123456789"} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{ "_id": "double-4", "a" : {  "$numberDouble" : "9223372036854775807"} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{ "_id": "int64-max", "a" : {  "$numberDouble" : "9223372036854775807"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{ "_id": "double-max", "a" : {  "$numberDouble" : "1.7976931348623157e+308"} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{ "_id": "double-smallest", "a" : {  "$numberDouble" : "5e-324"} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : { "$numberDecimal"  : "0" } } }';
+                                   document                                    
+---------------------------------------------------------------------
+ { "_id" : "double-whole", "a" : { "$numberDouble" : "42.0" } }
+ { "_id" : "double-zero", "a" : { "$numberDouble" : "0.0" } }
+ { "_id" : "double-big", "a" : { "$numberDouble" : "2305843009213693952.0" } }
+ { "_id" : "double-1", "a" : { "$numberDouble" : "-9223372036854775808.0" } }
+ { "_id" : "double-2", "a" : { "$numberDouble" : "-123456789.0" } }
+ { "_id" : "double-3", "a" : { "$numberDouble" : "123456789.0" } }
+(6 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : [1,5] } }';
+                                   document                                    
+---------------------------------------------------------------------
+ { "_id" : "double-zero", "a" : { "$numberDouble" : "0.0" } }
+ { "_id" : "double-big", "a" : { "$numberDouble" : "2305843009213693952.0" } }
+ { "_id" : "double-1", "a" : { "$numberDouble" : "-9223372036854775808.0" } }
+ { "_id" : "double-3", "a" : { "$numberDouble" : "123456789.0" } }
+(4 rows)
+
+-- decimal range test
+SELECT helio_api.delete('db', '{"delete":"bitwiseOperators", "deletes":[{"q":{},"limit":0}]}');
+                                         delete                                          
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""10"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{ "_id": "decimal-whole", "a" : {  "$numberDecimal" : "42.0" } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{ "_id": "decimal-zero", "a" : {  "$numberDecimal" : "0.0"} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{ "_id": "decimal-big", "a" : {  "$numberDecimal" : "2305843009213693952.0"} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{ "_id": "decimal-1", "a" : {  "$numberDecimal" : "-9223372036854775808"} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{ "_id": "decimal-2", "a" : {  "$numberDecimal" : "-123456789"} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{ "_id": "decimal-3", "a" : {  "$numberDecimal" : "123456789"} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{ "_id": "decimal-4", "a" : {  "$numberDecimal" : "9223372036854775807"} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{ "_id": "int64-max", "a" : {  "$numberDecimal" : "9223372036854775807"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{ "_id": "double-max", "a" : {  "$numberDecimal" : "1.7976931348623157e+308"} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{ "_id": "double-smallest", "a" : {  "$numberDecimal" : "5e-324"} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : { "$numberDecimal"  : "0" } } }';
+                                    document                                     
+---------------------------------------------------------------------
+ { "_id" : "decimal-whole", "a" : { "$numberDecimal" : "42.0" } }
+ { "_id" : "decimal-zero", "a" : { "$numberDecimal" : "0.0" } }
+ { "_id" : "decimal-big", "a" : { "$numberDecimal" : "2305843009213693952.0" } }
+ { "_id" : "decimal-1", "a" : { "$numberDecimal" : "-9223372036854775808" } }
+ { "_id" : "decimal-2", "a" : { "$numberDecimal" : "-123456789" } }
+ { "_id" : "decimal-3", "a" : { "$numberDecimal" : "123456789" } }
+ { "_id" : "decimal-4", "a" : { "$numberDecimal" : "9223372036854775807" } }
+ { "_id" : "int64-max", "a" : { "$numberDecimal" : "9223372036854775807" } }
+ { "_id" : "double-smallest", "a" : { "$numberDecimal" : "5E-324" } }
+(9 rows)
+
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : [1,5] } }';
+                                    document                                     
+---------------------------------------------------------------------
+ { "_id" : "decimal-zero", "a" : { "$numberDecimal" : "0.0" } }
+ { "_id" : "decimal-big", "a" : { "$numberDecimal" : "2305843009213693952.0" } }
+ { "_id" : "decimal-1", "a" : { "$numberDecimal" : "-9223372036854775808" } }
+ { "_id" : "decimal-3", "a" : { "$numberDecimal" : "123456789" } }
+ { "_id" : "double-smallest", "a" : { "$numberDecimal" : "5E-324" } }
+(5 rows)
+
+ROLLBACK;
+--Negative Test Cases $bitsAllClear
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : -1  } }';
+ERROR:  Expected a positive number in: $bitsAllClear: -1.0
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : 23.04  } }';
+ERROR:  Expected an integer: $bitsAllClear: 23.04
+HINT:  Expected an integer: $bitsAllClear: double
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : "NegTest"  } }';
+ERROR:  a takes an Array, a number, or a BinData but received: $bitsAllClear: \"NegTest"\
+HINT:  Path takes an Array, a number, or a BinData but received: $bitsAllClear: \string\
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : 99999999999 } }';
+ERROR:  Cannot represent as a 32-bit integer: $bitsAllClear: 99999999999.0
+HINT:  Cannot represent argument of type long as a 32-bit integer in operator: $bitsAllClear
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : [ -1 ] } }';
+ERROR:  bit positions must be >= 0 but got: 0: \-1\
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : [ 99999999999 ] } }';
+ERROR:  bit positions cannot be represented as a 32-bit signed integer: 99999999999.0
+HINT:  bit positions of type long cannot be represented as a 32-bit signed integer
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : [ "NegTest" ] } }';
+ERROR:  bit positions must be an integer but got: 0: \"NegTest"\
+HINT:  bit positions must be an integer but got: \string\ arrayLength: 0
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : { "$numberDecimal" : "99999999999" }} }';
+ERROR:  Cannot represent as a 32-bit integer: $bitsAllClear: 99999999999.0
+HINT:  Cannot represent argument of type decimal as a 32-bit integer in operator: $bitsAllClear
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : { "$numberDecimal" : "1.0232" }} }';
+ERROR:  Cannot represent as a 32-bit integer: $bitsAllClear: 1.0232.0
+HINT:  Cannot represent argument of type decimal as a 32-bit integer in operator: $bitsAllClear
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : { "$numberDecimal" : "-1" }} }';
+ERROR:  Expected a positive number in: $bitsAllClear: -1.0
+HINT:  Expected a positive number in: $bitsAllClear: -1.0
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "bitwiseOperators",
+      "indexes": [
+        {
+          "key": {"c.d": 1},
+          "name": "new_idx",
+          "partialFilterExpression": {"a": {"$bitsAllClear": 1}}
+        }
+      ]
+    }', TRUE);
+ERROR:  Error in specification { "key" : { "c.d" : 1 }, "name" : "new_idx", "partialFilterExpression" : { "a" : { "$bitsAllClear" : 1 } } } :: caused by :: unsupported expression in partial index: a $bitsAllClear [ 0 ]
+
+--Negative Test Cases $bitsAnyClear
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : -1  } }';
+ERROR:  Expected a positive number in: $bitsAnyClear: -1.0
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : 23.04  } }';
+ERROR:  Expected an integer: $bitsAnyClear: 23.04
+HINT:  Expected an integer: $bitsAnyClear: double
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : "NegTest"  } }';
+ERROR:  a takes an Array, a number, or a BinData but received: $bitsAnyClear: \"NegTest"\
+HINT:  Path takes an Array, a number, or a BinData but received: $bitsAnyClear: \string\
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : 99999999999 } }';
+ERROR:  Cannot represent as a 32-bit integer: $bitsAnyClear: 99999999999.0
+HINT:  Cannot represent argument of type long as a 32-bit integer in operator: $bitsAnyClear
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : [ -1 ] } }';
+ERROR:  bit positions must be >= 0 but got: 0: \-1\
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : [ 99999999999 ] } }';
+ERROR:  bit positions cannot be represented as a 32-bit signed integer: 99999999999.0
+HINT:  bit positions of type long cannot be represented as a 32-bit signed integer
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : [ "NegTest" ] } }';
+ERROR:  bit positions must be an integer but got: 0: \"NegTest"\
+HINT:  bit positions must be an integer but got: \string\ arrayLength: 0
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : { "$numberDecimal" : "99999999999" }} }';
+ERROR:  Cannot represent as a 32-bit integer: $bitsAnyClear: 99999999999.0
+HINT:  Cannot represent argument of type decimal as a 32-bit integer in operator: $bitsAnyClear
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : { "$numberDecimal" : "1.0232" }} }';
+ERROR:  Cannot represent as a 32-bit integer: $bitsAnyClear: 1.0232.0
+HINT:  Cannot represent argument of type decimal as a 32-bit integer in operator: $bitsAnyClear
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : { "$numberDecimal" : "-1" }} }';
+ERROR:  Expected a positive number in: $bitsAnyClear: -1.0
+HINT:  Expected a positive number in: $bitsAnyClear: -1.0
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "bitwiseOperators",
+      "indexes": [
+        {
+          "key": {"c.d": 1},
+          "name": "new_idx",
+          "partialFilterExpression": {"a": {"$bitsAnyClear": 1}}
+        }
+      ]
+    }', TRUE);
+ERROR:  Error in specification { "key" : { "c.d" : 1 }, "name" : "new_idx", "partialFilterExpression" : { "a" : { "$bitsAnyClear" : 1 } } } :: caused by :: unsupported expression in partial index: a $bitsAnyClear [ 0 ]
+
+--Negative Test Cases $bitsAllSet
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : -1  } }';
+ERROR:  Expected a positive number in: $bitsAllSet: -1.0
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : 23.04  } }';
+ERROR:  Expected an integer: $bitsAllSet: 23.04
+HINT:  Expected an integer: $bitsAllSet: double
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : "NegTest"  } }';
+ERROR:  a takes an Array, a number, or a BinData but received: $bitsAllSet: \"NegTest"\
+HINT:  Path takes an Array, a number, or a BinData but received: $bitsAllSet: \string\
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : 99999999999 } }';
+ERROR:  Cannot represent as a 32-bit integer: $bitsAllSet: 99999999999.0
+HINT:  Cannot represent argument of type long as a 32-bit integer in operator: $bitsAllSet
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : [ -1 ] } }';
+ERROR:  bit positions must be >= 0 but got: 0: \-1\
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : [ 99999999999 ] } }';
+ERROR:  bit positions cannot be represented as a 32-bit signed integer: 99999999999.0
+HINT:  bit positions of type long cannot be represented as a 32-bit signed integer
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : [ "NegTest" ] } }';
+ERROR:  bit positions must be an integer but got: 0: \"NegTest"\
+HINT:  bit positions must be an integer but got: \string\ arrayLength: 0
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : { "$numberDecimal" : "99999999999" }} }';
+ERROR:  Cannot represent as a 32-bit integer: $bitsAllSet: 99999999999.0
+HINT:  Cannot represent argument of type decimal as a 32-bit integer in operator: $bitsAllSet
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : { "$numberDecimal" : "1.0232" }} }';
+ERROR:  Cannot represent as a 32-bit integer: $bitsAllSet: 1.0232.0
+HINT:  Cannot represent argument of type decimal as a 32-bit integer in operator: $bitsAllSet
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : { "$numberDecimal" : "-1" }} }';
+ERROR:  Expected a positive number in: $bitsAllSet: -1.0
+HINT:  Expected a positive number in: $bitsAllSet: -1.0
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "bitwiseOperators",
+      "indexes": [
+        {
+          "key": {"c.d": 1},
+          "name": "new_idx",
+          "partialFilterExpression": {"a": {"$bitsAllSet": 1}}
+        }
+      ]
+    }', TRUE);
+ERROR:  Error in specification { "key" : { "c.d" : 1 }, "name" : "new_idx", "partialFilterExpression" : { "a" : { "$bitsAllSet" : 1 } } } :: caused by :: unsupported expression in partial index: a $bitsAllSet [ 0 ]
+
+--Negative Test Cases $bitsAnySet
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : -1  } }';
+ERROR:  Expected a positive number in: $bitsAnySet: -1.0
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : 23.04  } }';
+ERROR:  Expected an integer: $bitsAnySet: 23.04
+HINT:  Expected an integer: $bitsAnySet: double
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : "NegTest"  } }';
+ERROR:  a takes an Array, a number, or a BinData but received: $bitsAnySet: \"NegTest"\
+HINT:  Path takes an Array, a number, or a BinData but received: $bitsAnySet: \string\
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : 99999999999 } }';
+ERROR:  Cannot represent as a 32-bit integer: $bitsAnySet: 99999999999.0
+HINT:  Cannot represent argument of type long as a 32-bit integer in operator: $bitsAnySet
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : [ -1 ] } }';
+ERROR:  bit positions must be >= 0 but got: 0: \-1\
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : [ 99999999999 ] } }';
+ERROR:  bit positions cannot be represented as a 32-bit signed integer: 99999999999.0
+HINT:  bit positions of type long cannot be represented as a 32-bit signed integer
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : [ "NegTest" ] } }';
+ERROR:  bit positions must be an integer but got: 0: \"NegTest"\
+HINT:  bit positions must be an integer but got: \string\ arrayLength: 0
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : { "$numberDecimal" : "99999999999" }} }';
+ERROR:  Cannot represent as a 32-bit integer: $bitsAnySet: 99999999999.0
+HINT:  Cannot represent argument of type decimal as a 32-bit integer in operator: $bitsAnySet
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : { "$numberDecimal" : "1.0232" }} }';
+ERROR:  Cannot represent as a 32-bit integer: $bitsAnySet: 1.0232.0
+HINT:  Cannot represent argument of type decimal as a 32-bit integer in operator: $bitsAnySet
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : { "$numberDecimal" : "-1" }} }';
+ERROR:  Expected a positive number in: $bitsAnySet: -1.0
+HINT:  Expected a positive number in: $bitsAnySet: -1.0
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : { "$numberDecimal" : "NaN" }} }';
+ERROR:  Cannot represent as a 32-bit integer: $bitsAnySet: NaN.0
+HINT:  Cannot represent argument of type decimal as a 32-bit integer in operator: $bitsAnySet
+SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : { "$numberDecimal" : "Infinity" }} }';
+ERROR:  Cannot represent as a 32-bit integer: $bitsAllSet: Infinity.0
+HINT:  Cannot represent argument of type decimal as a 32-bit integer in operator: $bitsAllSet
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "bitwiseOperators",
+      "indexes": [
+        {
+          "key": {"c.d": 1},
+          "name": "new_idx",
+          "partialFilterExpression": {"a": {"$bitsAnySet": 1}}
+        }
+      ]
+    }', TRUE);
+ERROR:  Error in specification { "key" : { "c.d" : 1 }, "name" : "new_idx", "partialFilterExpression" : { "a" : { "$bitsAnySet" : 1 } } } :: caused by :: unsupported expression in partial index: a $bitsAnySet [ 0 ]
+
+--drop collection
+SELECT drop_collection('db','bitwiseOperators');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+

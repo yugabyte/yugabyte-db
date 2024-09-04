@@ -1,0 +1,999 @@
+set search_path to helio_core,helio_api,helio_api_catalog,pg_catalog;
+SET citus.next_shard_id TO 410000;
+SET helio_api.next_collection_id TO 4100;
+SET helio_api.next_collection_index_id TO 4100;
+\set prevEcho :ECHO
+\set ECHO none
+NOTICE:  creating collection
+BEGIN;
+set local enable_seqscan TO OFF;
+set local helio_api.forceUseIndexIfAvailable to on;
+\i sql/bson_dollar_ops_query_mod_tests_core.sql
+set search_path to helio_core,helio_api,helio_api_catalog,pg_catalog;
+-- Basic
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 100, "a": 10}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 101, "a": [10, 11]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 200, "a": -10}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 201, "a": [-10, -11]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- nested and empty arrays. These docs should not be in result set as $mod can not be applied on arr of arr
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 300, "a": []}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 301, "a": [[]]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 302, "a": [[[10, 11], [5]]]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 303, "a": [[[-10, -11], [-5]]]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- nested objects
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 102, "a": {"b": 10}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 103, "a": {"b": [10, 11]}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 104, "a": {"b": [10, 11], "c": 11}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 105, "a": {"b": { "c": [10, 11] }}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 202, "a": {"b": -10}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 203, "a": {"b": [-10, -11]}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 204, "a": {"b": [-10, -11], "c": -11}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 205, "a": {"b": { "c": [-10, -11] }}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- documents inside array
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 106, "a": [ {"b": 10}, {"c": 11}]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 206, "a": [ {"b": -10}, {"c": -11}]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+--various numeric types
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 107, "a": {"$numberInt" : "10"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 108, "a": {"$numberLong" : "10"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 109, "a": {"$numberDouble" : "10.4"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 110, "a": {"$numberDecimal" : "10.6"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 207, "a": {"$numberInt" : "-10"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 208, "a": {"$numberLong" : "-10"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 209, "a": {"$numberDouble" : "-10.4"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 210, "a": {"$numberDecimal" : "-10.6"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Min Max Boundary
+-- Int32
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 130, "a": {"$numberInt" : "2147483647"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 131, "a": {"$numberInt" : "-2147483648"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Int64
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 132, "a": {"$numberLong" : "9223372036854775807"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 133, "a": {"$numberLong" : "-9223372036854775808"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Double - (double only takes 15 significand digits)
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 134, "a": {"$numberDouble" : "922337203685477e4"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 135, "a": {"$numberDouble" : "-922337203685477e4"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Decimal128
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 136, "a": {"$numberDecimal" : "9223372036854775807"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 137, "a": {"$numberDecimal" : "-9223372036854775808"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Decimal128 - values that are more than 64 bits
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 140, "a": {"$numberDecimal" : "9223372036854775807.5"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 141, "a": {"$numberDecimal" : "9223372036854775808"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 142, "a": {"$numberDecimal" : "-9223372036854775808.5"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 143, "a": {"$numberDecimal" : "-9223372036854775809"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- non-numeric fields
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 310, "a": true}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 311, "a": false}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 312, "a": "Hello"}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 313, "a": ["Hello", "World"]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 314, "a": { "$timestamp": { "t": 1234567890, "i": 1 }}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 315, "a": { "$date": { "$numberLong" : "1234567890000" }}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- objects with null and NaN
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 121, "a": 0}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 122, "a": null}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 123, "a": NaN}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 124, "a": [10, null]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 125, "a": [null]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 126, "a": [null, NaN]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 127, "a": {"$numberDecimal" : "NaN"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 221, "a": [-10, NaN]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','dollarmodtests','{"_id": 222, "a": [-0, -0.0]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Test for $mod with positive divisor and 0 remainder
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a" : {"$mod" : [5,0]} }';
+                                               document                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "100" }, "a" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "101" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" } ] }
+ { "_id" : { "$numberInt" : "200" }, "a" : { "$numberInt" : "-10" } }
+ { "_id" : { "$numberInt" : "201" }, "a" : [ { "$numberInt" : "-10" }, { "$numberInt" : "-11" } ] }
+ { "_id" : { "$numberInt" : "107" }, "a" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "108" }, "a" : { "$numberLong" : "10"} }
+ { "_id" : { "$numberInt" : "109" }, "a" : { "$numberDouble" : "10.400000000000000355" } }
+ { "_id" : { "$numberInt" : "110" }, "a" : { "$numberDecimal" : "10.6" } }
+ { "_id" : { "$numberInt" : "207" }, "a" : { "$numberInt" : "-10" } }
+ { "_id" : { "$numberInt" : "208" }, "a" : { "$numberLong" : "-10"} }
+ { "_id" : { "$numberInt" : "209" }, "a" : { "$numberDouble" : "-10.400000000000000355" } }
+ { "_id" : { "$numberInt" : "210" }, "a" : { "$numberDecimal" : "-10.6" } }
+ { "_id" : { "$numberInt" : "121" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "124" }, "a" : [ { "$numberInt" : "10" }, null ] }
+ { "_id" : { "$numberInt" : "221" }, "a" : [ { "$numberInt" : "-10" }, { "$numberDouble" : "NaN" } ] }
+ { "_id" : { "$numberInt" : "222" }, "a" : [ { "$numberInt" : "0" }, { "$numberDouble" : "-0.0" } ] }
+(16 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a.b" : {"$mod" : [5,0]} }';
+                                                                   document                                                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "102" }, "a" : { "b" : { "$numberInt" : "10" } } }
+ { "_id" : { "$numberInt" : "103" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" } ] } }
+ { "_id" : { "$numberInt" : "104" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" } ], "c" : { "$numberInt" : "11" } } }
+ { "_id" : { "$numberInt" : "202" }, "a" : { "b" : { "$numberInt" : "-10" } } }
+ { "_id" : { "$numberInt" : "203" }, "a" : { "b" : [ { "$numberInt" : "-10" }, { "$numberInt" : "-11" } ] } }
+ { "_id" : { "$numberInt" : "204" }, "a" : { "b" : [ { "$numberInt" : "-10" }, { "$numberInt" : "-11" } ], "c" : { "$numberInt" : "-11" } } }
+ { "_id" : { "$numberInt" : "106" }, "a" : [ { "b" : { "$numberInt" : "10" } }, { "c" : { "$numberInt" : "11" } } ] }
+ { "_id" : { "$numberInt" : "206" }, "a" : [ { "b" : { "$numberInt" : "-10" } }, { "c" : { "$numberInt" : "-11" } } ] }
+(8 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a.c" : {"$mod" : [5,0]} }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a.b.c" : {"$mod" : [5,0]} }';
+                                                        document                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "105" }, "a" : { "b" : { "c" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" } ] } } }
+ { "_id" : { "$numberInt" : "205" }, "a" : { "b" : { "c" : [ { "$numberInt" : "-10" }, { "$numberInt" : "-11" } ] } } }
+(2 rows)
+
+-- Test for $mod with negative divisor and 0 remainder
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a" : {"$mod" : [-5,0]} }';
+                                               document                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "100" }, "a" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "101" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" } ] }
+ { "_id" : { "$numberInt" : "200" }, "a" : { "$numberInt" : "-10" } }
+ { "_id" : { "$numberInt" : "201" }, "a" : [ { "$numberInt" : "-10" }, { "$numberInt" : "-11" } ] }
+ { "_id" : { "$numberInt" : "107" }, "a" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "108" }, "a" : { "$numberLong" : "10"} }
+ { "_id" : { "$numberInt" : "109" }, "a" : { "$numberDouble" : "10.400000000000000355" } }
+ { "_id" : { "$numberInt" : "110" }, "a" : { "$numberDecimal" : "10.6" } }
+ { "_id" : { "$numberInt" : "207" }, "a" : { "$numberInt" : "-10" } }
+ { "_id" : { "$numberInt" : "208" }, "a" : { "$numberLong" : "-10"} }
+ { "_id" : { "$numberInt" : "209" }, "a" : { "$numberDouble" : "-10.400000000000000355" } }
+ { "_id" : { "$numberInt" : "210" }, "a" : { "$numberDecimal" : "-10.6" } }
+ { "_id" : { "$numberInt" : "121" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "124" }, "a" : [ { "$numberInt" : "10" }, null ] }
+ { "_id" : { "$numberInt" : "221" }, "a" : [ { "$numberInt" : "-10" }, { "$numberDouble" : "NaN" } ] }
+ { "_id" : { "$numberInt" : "222" }, "a" : [ { "$numberInt" : "0" }, { "$numberDouble" : "-0.0" } ] }
+(16 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a.b" : {"$mod" : [-5,0]} }';
+                                                                   document                                                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "102" }, "a" : { "b" : { "$numberInt" : "10" } } }
+ { "_id" : { "$numberInt" : "103" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" } ] } }
+ { "_id" : { "$numberInt" : "104" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" } ], "c" : { "$numberInt" : "11" } } }
+ { "_id" : { "$numberInt" : "202" }, "a" : { "b" : { "$numberInt" : "-10" } } }
+ { "_id" : { "$numberInt" : "203" }, "a" : { "b" : [ { "$numberInt" : "-10" }, { "$numberInt" : "-11" } ] } }
+ { "_id" : { "$numberInt" : "204" }, "a" : { "b" : [ { "$numberInt" : "-10" }, { "$numberInt" : "-11" } ], "c" : { "$numberInt" : "-11" } } }
+ { "_id" : { "$numberInt" : "106" }, "a" : [ { "b" : { "$numberInt" : "10" } }, { "c" : { "$numberInt" : "11" } } ] }
+ { "_id" : { "$numberInt" : "206" }, "a" : [ { "b" : { "$numberInt" : "-10" } }, { "c" : { "$numberInt" : "-11" } } ] }
+(8 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a.c" : {"$mod" : [-5,0]} }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a.b.c" : {"$mod" : [-5,0]} }';
+                                                        document                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "105" }, "a" : { "b" : { "c" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" } ] } } }
+ { "_id" : { "$numberInt" : "205" }, "a" : { "b" : { "c" : [ { "$numberInt" : "-10" }, { "$numberInt" : "-11" } ] } } }
+(2 rows)
+
+-- Test for $mod with positive divisor and positive remainder
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a" : {"$mod" : [3,2]} }';
+                                             document                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "101" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" } ] }
+ { "_id" : { "$numberInt" : "134" }, "a" : { "$numberDouble" : "9223372036854769664.0" } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a.b" : {"$mod" : [3,2]} }';
+                                                                 document                                                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "103" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" } ] } }
+ { "_id" : { "$numberInt" : "104" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" } ], "c" : { "$numberInt" : "11" } } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a.c" : {"$mod" : [3,2]} }';
+                                                                 document                                                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "104" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" } ], "c" : { "$numberInt" : "11" } } }
+ { "_id" : { "$numberInt" : "106" }, "a" : [ { "b" : { "$numberInt" : "10" } }, { "c" : { "$numberInt" : "11" } } ] }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a.b.c" : {"$mod" : [3,2]} }';
+                                                       document                                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "105" }, "a" : { "b" : { "c" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" } ] } } }
+(1 row)
+
+-- Test for $mod with positive divisor and negative remainder
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a" : {"$mod" : [3,-2]} }';
+                                              document                                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "201" }, "a" : [ { "$numberInt" : "-10" }, { "$numberInt" : "-11" } ] }
+ { "_id" : { "$numberInt" : "131" }, "a" : { "$numberInt" : "-2147483648" } }
+ { "_id" : { "$numberInt" : "133" }, "a" : { "$numberLong" : "-9223372036854775808"} }
+ { "_id" : { "$numberInt" : "135" }, "a" : { "$numberDouble" : "-9223372036854769664.0" } }
+ { "_id" : { "$numberInt" : "137" }, "a" : { "$numberDecimal" : "-9223372036854775808" } }
+ { "_id" : { "$numberInt" : "142" }, "a" : { "$numberDecimal" : "-9223372036854775808.5" } }
+(6 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a.b" : {"$mod" : [3,-2]} }';
+                                                                   document                                                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "203" }, "a" : { "b" : [ { "$numberInt" : "-10" }, { "$numberInt" : "-11" } ] } }
+ { "_id" : { "$numberInt" : "204" }, "a" : { "b" : [ { "$numberInt" : "-10" }, { "$numberInt" : "-11" } ], "c" : { "$numberInt" : "-11" } } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a.c" : {"$mod" : [3,-2]} }';
+                                                                   document                                                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "204" }, "a" : { "b" : [ { "$numberInt" : "-10" }, { "$numberInt" : "-11" } ], "c" : { "$numberInt" : "-11" } } }
+ { "_id" : { "$numberInt" : "206" }, "a" : [ { "b" : { "$numberInt" : "-10" } }, { "c" : { "$numberInt" : "-11" } } ] }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a.b.c" : {"$mod" : [3,-2]} }';
+                                                        document                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "205" }, "a" : { "b" : { "c" : [ { "$numberInt" : "-10" }, { "$numberInt" : "-11" } ] } } }
+(1 row)
+
+-- Test for $mod with negative divisor and positive remainder
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a" : {"$mod" : [-3,2]} }';
+                                             document                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "101" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" } ] }
+ { "_id" : { "$numberInt" : "134" }, "a" : { "$numberDouble" : "9223372036854769664.0" } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a.b" : {"$mod" : [-3,2]} }';
+                                                                 document                                                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "103" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" } ] } }
+ { "_id" : { "$numberInt" : "104" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" } ], "c" : { "$numberInt" : "11" } } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a.c" : {"$mod" : [-3,2]} }';
+                                                                 document                                                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "104" }, "a" : { "b" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" } ], "c" : { "$numberInt" : "11" } } }
+ { "_id" : { "$numberInt" : "106" }, "a" : [ { "b" : { "$numberInt" : "10" } }, { "c" : { "$numberInt" : "11" } } ] }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a.b.c" : {"$mod" : [-3,2]} }';
+                                                       document                                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "105" }, "a" : { "b" : { "c" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" } ] } } }
+(1 row)
+
+-- Test for $mod with negative divisor and negative remainder
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a" : {"$mod" : [-3,-2]} }';
+                                              document                                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "201" }, "a" : [ { "$numberInt" : "-10" }, { "$numberInt" : "-11" } ] }
+ { "_id" : { "$numberInt" : "131" }, "a" : { "$numberInt" : "-2147483648" } }
+ { "_id" : { "$numberInt" : "133" }, "a" : { "$numberLong" : "-9223372036854775808"} }
+ { "_id" : { "$numberInt" : "135" }, "a" : { "$numberDouble" : "-9223372036854769664.0" } }
+ { "_id" : { "$numberInt" : "137" }, "a" : { "$numberDecimal" : "-9223372036854775808" } }
+ { "_id" : { "$numberInt" : "142" }, "a" : { "$numberDecimal" : "-9223372036854775808.5" } }
+(6 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a.b" : {"$mod" : [-3,-2]} }';
+                                                                   document                                                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "203" }, "a" : { "b" : [ { "$numberInt" : "-10" }, { "$numberInt" : "-11" } ] } }
+ { "_id" : { "$numberInt" : "204" }, "a" : { "b" : [ { "$numberInt" : "-10" }, { "$numberInt" : "-11" } ], "c" : { "$numberInt" : "-11" } } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a.c" : {"$mod" : [-3,-2]} }';
+                                                                   document                                                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "204" }, "a" : { "b" : [ { "$numberInt" : "-10" }, { "$numberInt" : "-11" } ], "c" : { "$numberInt" : "-11" } } }
+ { "_id" : { "$numberInt" : "206" }, "a" : [ { "b" : { "$numberInt" : "-10" } }, { "c" : { "$numberInt" : "-11" } } ] }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a.b.c" : {"$mod" : [-3,-2]} }';
+                                                        document                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "205" }, "a" : { "b" : { "c" : [ { "$numberInt" : "-10" }, { "$numberInt" : "-11" } ] } } }
+(1 row)
+
+-- Tests where Positive Divisor is different types of numeric
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a" : {"$mod" : [{"$numberInt" : "5"}, 0]} }';
+                                               document                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "100" }, "a" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "101" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" } ] }
+ { "_id" : { "$numberInt" : "200" }, "a" : { "$numberInt" : "-10" } }
+ { "_id" : { "$numberInt" : "201" }, "a" : [ { "$numberInt" : "-10" }, { "$numberInt" : "-11" } ] }
+ { "_id" : { "$numberInt" : "107" }, "a" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "108" }, "a" : { "$numberLong" : "10"} }
+ { "_id" : { "$numberInt" : "109" }, "a" : { "$numberDouble" : "10.400000000000000355" } }
+ { "_id" : { "$numberInt" : "110" }, "a" : { "$numberDecimal" : "10.6" } }
+ { "_id" : { "$numberInt" : "207" }, "a" : { "$numberInt" : "-10" } }
+ { "_id" : { "$numberInt" : "208" }, "a" : { "$numberLong" : "-10"} }
+ { "_id" : { "$numberInt" : "209" }, "a" : { "$numberDouble" : "-10.400000000000000355" } }
+ { "_id" : { "$numberInt" : "210" }, "a" : { "$numberDecimal" : "-10.6" } }
+ { "_id" : { "$numberInt" : "121" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "124" }, "a" : [ { "$numberInt" : "10" }, null ] }
+ { "_id" : { "$numberInt" : "221" }, "a" : [ { "$numberInt" : "-10" }, { "$numberDouble" : "NaN" } ] }
+ { "_id" : { "$numberInt" : "222" }, "a" : [ { "$numberInt" : "0" }, { "$numberDouble" : "-0.0" } ] }
+(16 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a" : {"$mod" : [{"$numberLong" : "-5"}, 0]} }';
+                                               document                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "100" }, "a" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "101" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" } ] }
+ { "_id" : { "$numberInt" : "200" }, "a" : { "$numberInt" : "-10" } }
+ { "_id" : { "$numberInt" : "201" }, "a" : [ { "$numberInt" : "-10" }, { "$numberInt" : "-11" } ] }
+ { "_id" : { "$numberInt" : "107" }, "a" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "108" }, "a" : { "$numberLong" : "10"} }
+ { "_id" : { "$numberInt" : "109" }, "a" : { "$numberDouble" : "10.400000000000000355" } }
+ { "_id" : { "$numberInt" : "110" }, "a" : { "$numberDecimal" : "10.6" } }
+ { "_id" : { "$numberInt" : "207" }, "a" : { "$numberInt" : "-10" } }
+ { "_id" : { "$numberInt" : "208" }, "a" : { "$numberLong" : "-10"} }
+ { "_id" : { "$numberInt" : "209" }, "a" : { "$numberDouble" : "-10.400000000000000355" } }
+ { "_id" : { "$numberInt" : "210" }, "a" : { "$numberDecimal" : "-10.6" } }
+ { "_id" : { "$numberInt" : "121" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "124" }, "a" : [ { "$numberInt" : "10" }, null ] }
+ { "_id" : { "$numberInt" : "221" }, "a" : [ { "$numberInt" : "-10" }, { "$numberDouble" : "NaN" } ] }
+ { "_id" : { "$numberInt" : "222" }, "a" : [ { "$numberInt" : "0" }, { "$numberDouble" : "-0.0" } ] }
+(16 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a" : {"$mod" : [{"$numberDouble" : "5.0"}, 0]} }';
+                                               document                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "100" }, "a" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "101" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" } ] }
+ { "_id" : { "$numberInt" : "200" }, "a" : { "$numberInt" : "-10" } }
+ { "_id" : { "$numberInt" : "201" }, "a" : [ { "$numberInt" : "-10" }, { "$numberInt" : "-11" } ] }
+ { "_id" : { "$numberInt" : "107" }, "a" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "108" }, "a" : { "$numberLong" : "10"} }
+ { "_id" : { "$numberInt" : "109" }, "a" : { "$numberDouble" : "10.400000000000000355" } }
+ { "_id" : { "$numberInt" : "110" }, "a" : { "$numberDecimal" : "10.6" } }
+ { "_id" : { "$numberInt" : "207" }, "a" : { "$numberInt" : "-10" } }
+ { "_id" : { "$numberInt" : "208" }, "a" : { "$numberLong" : "-10"} }
+ { "_id" : { "$numberInt" : "209" }, "a" : { "$numberDouble" : "-10.400000000000000355" } }
+ { "_id" : { "$numberInt" : "210" }, "a" : { "$numberDecimal" : "-10.6" } }
+ { "_id" : { "$numberInt" : "121" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "124" }, "a" : [ { "$numberInt" : "10" }, null ] }
+ { "_id" : { "$numberInt" : "221" }, "a" : [ { "$numberInt" : "-10" }, { "$numberDouble" : "NaN" } ] }
+ { "_id" : { "$numberInt" : "222" }, "a" : [ { "$numberInt" : "0" }, { "$numberDouble" : "-0.0" } ] }
+(16 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a" : {"$mod" : [{"$numberDecimal" : "-5.0"}, 0]} }';
+                                               document                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "100" }, "a" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "101" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" } ] }
+ { "_id" : { "$numberInt" : "200" }, "a" : { "$numberInt" : "-10" } }
+ { "_id" : { "$numberInt" : "201" }, "a" : [ { "$numberInt" : "-10" }, { "$numberInt" : "-11" } ] }
+ { "_id" : { "$numberInt" : "107" }, "a" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "108" }, "a" : { "$numberLong" : "10"} }
+ { "_id" : { "$numberInt" : "109" }, "a" : { "$numberDouble" : "10.400000000000000355" } }
+ { "_id" : { "$numberInt" : "110" }, "a" : { "$numberDecimal" : "10.6" } }
+ { "_id" : { "$numberInt" : "207" }, "a" : { "$numberInt" : "-10" } }
+ { "_id" : { "$numberInt" : "208" }, "a" : { "$numberLong" : "-10"} }
+ { "_id" : { "$numberInt" : "209" }, "a" : { "$numberDouble" : "-10.400000000000000355" } }
+ { "_id" : { "$numberInt" : "210" }, "a" : { "$numberDecimal" : "-10.6" } }
+ { "_id" : { "$numberInt" : "121" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "124" }, "a" : [ { "$numberInt" : "10" }, null ] }
+ { "_id" : { "$numberInt" : "221" }, "a" : [ { "$numberInt" : "-10" }, { "$numberDouble" : "NaN" } ] }
+ { "_id" : { "$numberInt" : "222" }, "a" : [ { "$numberInt" : "0" }, { "$numberDouble" : "-0.0" } ] }
+(16 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a" : {"$mod" : [{"$numberInt" : "3"}, 2]} }';
+                                             document                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "101" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" } ] }
+ { "_id" : { "$numberInt" : "134" }, "a" : { "$numberDouble" : "9223372036854769664.0" } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a" : {"$mod" : [{"$numberLong" : "-3"}, -2]} }';
+                                              document                                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "201" }, "a" : [ { "$numberInt" : "-10" }, { "$numberInt" : "-11" } ] }
+ { "_id" : { "$numberInt" : "131" }, "a" : { "$numberInt" : "-2147483648" } }
+ { "_id" : { "$numberInt" : "133" }, "a" : { "$numberLong" : "-9223372036854775808"} }
+ { "_id" : { "$numberInt" : "135" }, "a" : { "$numberDouble" : "-9223372036854769664.0" } }
+ { "_id" : { "$numberInt" : "137" }, "a" : { "$numberDecimal" : "-9223372036854775808" } }
+ { "_id" : { "$numberInt" : "142" }, "a" : { "$numberDecimal" : "-9223372036854775808.5" } }
+(6 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a" : {"$mod" : [{"$numberDouble" : "3.0"}, 2]} }';
+                                             document                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "101" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" } ] }
+ { "_id" : { "$numberInt" : "134" }, "a" : { "$numberDouble" : "9223372036854769664.0" } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a" : {"$mod" : [{"$numberDecimal" : "-3.0"}, -2]} }';
+                                              document                                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "201" }, "a" : [ { "$numberInt" : "-10" }, { "$numberInt" : "-11" } ] }
+ { "_id" : { "$numberInt" : "131" }, "a" : { "$numberInt" : "-2147483648" } }
+ { "_id" : { "$numberInt" : "133" }, "a" : { "$numberLong" : "-9223372036854775808"} }
+ { "_id" : { "$numberInt" : "135" }, "a" : { "$numberDouble" : "-9223372036854769664.0" } }
+ { "_id" : { "$numberInt" : "137" }, "a" : { "$numberDecimal" : "-9223372036854775808" } }
+ { "_id" : { "$numberInt" : "142" }, "a" : { "$numberDecimal" : "-9223372036854775808.5" } }
+(6 rows)
+
+-- Tests where remainder is different types of numeric
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a" : {"$mod" : [3, {"$numberInt" : "-2"}]} }';
+                                              document                                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "201" }, "a" : [ { "$numberInt" : "-10" }, { "$numberInt" : "-11" } ] }
+ { "_id" : { "$numberInt" : "131" }, "a" : { "$numberInt" : "-2147483648" } }
+ { "_id" : { "$numberInt" : "133" }, "a" : { "$numberLong" : "-9223372036854775808"} }
+ { "_id" : { "$numberInt" : "135" }, "a" : { "$numberDouble" : "-9223372036854769664.0" } }
+ { "_id" : { "$numberInt" : "137" }, "a" : { "$numberDecimal" : "-9223372036854775808" } }
+ { "_id" : { "$numberInt" : "142" }, "a" : { "$numberDecimal" : "-9223372036854775808.5" } }
+(6 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a" : {"$mod" : [3, {"$numberLong" : "2"}]} }';
+                                             document                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "101" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" } ] }
+ { "_id" : { "$numberInt" : "134" }, "a" : { "$numberDouble" : "9223372036854769664.0" } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a" : {"$mod" : [3, {"$numberDouble" : "-2.0"}]} }';
+                                              document                                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "201" }, "a" : [ { "$numberInt" : "-10" }, { "$numberInt" : "-11" } ] }
+ { "_id" : { "$numberInt" : "131" }, "a" : { "$numberInt" : "-2147483648" } }
+ { "_id" : { "$numberInt" : "133" }, "a" : { "$numberLong" : "-9223372036854775808"} }
+ { "_id" : { "$numberInt" : "135" }, "a" : { "$numberDouble" : "-9223372036854769664.0" } }
+ { "_id" : { "$numberInt" : "137" }, "a" : { "$numberDecimal" : "-9223372036854775808" } }
+ { "_id" : { "$numberInt" : "142" }, "a" : { "$numberDecimal" : "-9223372036854775808.5" } }
+(6 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a" : {"$mod" : [3, {"$numberDecimal" : "2.0"}]} }';
+                                             document                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "101" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" } ] }
+ { "_id" : { "$numberInt" : "134" }, "a" : { "$numberDouble" : "9223372036854769664.0" } }
+(2 rows)
+
+-- Tests where Divisor is not a decimal number
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a" : {"$mod" : [{"$numberDouble" : "5.2"}, 0]} }';
+                                               document                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "100" }, "a" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "101" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" } ] }
+ { "_id" : { "$numberInt" : "200" }, "a" : { "$numberInt" : "-10" } }
+ { "_id" : { "$numberInt" : "201" }, "a" : [ { "$numberInt" : "-10" }, { "$numberInt" : "-11" } ] }
+ { "_id" : { "$numberInt" : "107" }, "a" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "108" }, "a" : { "$numberLong" : "10"} }
+ { "_id" : { "$numberInt" : "109" }, "a" : { "$numberDouble" : "10.400000000000000355" } }
+ { "_id" : { "$numberInt" : "110" }, "a" : { "$numberDecimal" : "10.6" } }
+ { "_id" : { "$numberInt" : "207" }, "a" : { "$numberInt" : "-10" } }
+ { "_id" : { "$numberInt" : "208" }, "a" : { "$numberLong" : "-10"} }
+ { "_id" : { "$numberInt" : "209" }, "a" : { "$numberDouble" : "-10.400000000000000355" } }
+ { "_id" : { "$numberInt" : "210" }, "a" : { "$numberDecimal" : "-10.6" } }
+ { "_id" : { "$numberInt" : "121" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "124" }, "a" : [ { "$numberInt" : "10" }, null ] }
+ { "_id" : { "$numberInt" : "221" }, "a" : [ { "$numberInt" : "-10" }, { "$numberDouble" : "NaN" } ] }
+ { "_id" : { "$numberInt" : "222" }, "a" : [ { "$numberInt" : "0" }, { "$numberDouble" : "-0.0" } ] }
+(16 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a" : {"$mod" : [{"$numberDouble" : "-3.5"}, 2]} }';
+                                             document                                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "101" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" } ] }
+ { "_id" : { "$numberInt" : "134" }, "a" : { "$numberDouble" : "9223372036854769664.0" } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a" : {"$mod" : [{"$numberDouble" : "3.9"}, {"$numberDouble" : "-2.0"}]} }';
+                                              document                                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "201" }, "a" : [ { "$numberInt" : "-10" }, { "$numberInt" : "-11" } ] }
+ { "_id" : { "$numberInt" : "131" }, "a" : { "$numberInt" : "-2147483648" } }
+ { "_id" : { "$numberInt" : "133" }, "a" : { "$numberLong" : "-9223372036854775808"} }
+ { "_id" : { "$numberInt" : "135" }, "a" : { "$numberDouble" : "-9223372036854769664.0" } }
+ { "_id" : { "$numberInt" : "137" }, "a" : { "$numberDecimal" : "-9223372036854775808" } }
+ { "_id" : { "$numberInt" : "142" }, "a" : { "$numberDecimal" : "-9223372036854775808.5" } }
+(6 rows)
+
+-- Tests for overflow check. If Dividend is INT_MAX and divisor is -1, mod operation should not overflow
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a" : {"$mod" : [{"$numberInt" : "1"}, 0]} }';
+                                               document                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "100" }, "a" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "101" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" } ] }
+ { "_id" : { "$numberInt" : "200" }, "a" : { "$numberInt" : "-10" } }
+ { "_id" : { "$numberInt" : "201" }, "a" : [ { "$numberInt" : "-10" }, { "$numberInt" : "-11" } ] }
+ { "_id" : { "$numberInt" : "107" }, "a" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "108" }, "a" : { "$numberLong" : "10"} }
+ { "_id" : { "$numberInt" : "109" }, "a" : { "$numberDouble" : "10.400000000000000355" } }
+ { "_id" : { "$numberInt" : "110" }, "a" : { "$numberDecimal" : "10.6" } }
+ { "_id" : { "$numberInt" : "207" }, "a" : { "$numberInt" : "-10" } }
+ { "_id" : { "$numberInt" : "208" }, "a" : { "$numberLong" : "-10"} }
+ { "_id" : { "$numberInt" : "209" }, "a" : { "$numberDouble" : "-10.400000000000000355" } }
+ { "_id" : { "$numberInt" : "210" }, "a" : { "$numberDecimal" : "-10.6" } }
+ { "_id" : { "$numberInt" : "130" }, "a" : { "$numberInt" : "2147483647" } }
+ { "_id" : { "$numberInt" : "131" }, "a" : { "$numberInt" : "-2147483648" } }
+ { "_id" : { "$numberInt" : "132" }, "a" : { "$numberLong" : "9223372036854775807"} }
+ { "_id" : { "$numberInt" : "133" }, "a" : { "$numberLong" : "-9223372036854775808"} }
+ { "_id" : { "$numberInt" : "134" }, "a" : { "$numberDouble" : "9223372036854769664.0" } }
+ { "_id" : { "$numberInt" : "135" }, "a" : { "$numberDouble" : "-9223372036854769664.0" } }
+ { "_id" : { "$numberInt" : "136" }, "a" : { "$numberDecimal" : "9223372036854775807" } }
+ { "_id" : { "$numberInt" : "137" }, "a" : { "$numberDecimal" : "-9223372036854775808" } }
+ { "_id" : { "$numberInt" : "140" }, "a" : { "$numberDecimal" : "9223372036854775807.5" } }
+ { "_id" : { "$numberInt" : "142" }, "a" : { "$numberDecimal" : "-9223372036854775808.5" } }
+ { "_id" : { "$numberInt" : "121" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "124" }, "a" : [ { "$numberInt" : "10" }, null ] }
+ { "_id" : { "$numberInt" : "221" }, "a" : [ { "$numberInt" : "-10" }, { "$numberDouble" : "NaN" } ] }
+ { "_id" : { "$numberInt" : "222" }, "a" : [ { "$numberInt" : "0" }, { "$numberDouble" : "-0.0" } ] }
+(26 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a" : {"$mod" : [{"$numberInt" : "-1"}, 0]} }';
+                                               document                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "100" }, "a" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "101" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" } ] }
+ { "_id" : { "$numberInt" : "200" }, "a" : { "$numberInt" : "-10" } }
+ { "_id" : { "$numberInt" : "201" }, "a" : [ { "$numberInt" : "-10" }, { "$numberInt" : "-11" } ] }
+ { "_id" : { "$numberInt" : "107" }, "a" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "108" }, "a" : { "$numberLong" : "10"} }
+ { "_id" : { "$numberInt" : "109" }, "a" : { "$numberDouble" : "10.400000000000000355" } }
+ { "_id" : { "$numberInt" : "110" }, "a" : { "$numberDecimal" : "10.6" } }
+ { "_id" : { "$numberInt" : "207" }, "a" : { "$numberInt" : "-10" } }
+ { "_id" : { "$numberInt" : "208" }, "a" : { "$numberLong" : "-10"} }
+ { "_id" : { "$numberInt" : "209" }, "a" : { "$numberDouble" : "-10.400000000000000355" } }
+ { "_id" : { "$numberInt" : "210" }, "a" : { "$numberDecimal" : "-10.6" } }
+ { "_id" : { "$numberInt" : "130" }, "a" : { "$numberInt" : "2147483647" } }
+ { "_id" : { "$numberInt" : "131" }, "a" : { "$numberInt" : "-2147483648" } }
+ { "_id" : { "$numberInt" : "132" }, "a" : { "$numberLong" : "9223372036854775807"} }
+ { "_id" : { "$numberInt" : "133" }, "a" : { "$numberLong" : "-9223372036854775808"} }
+ { "_id" : { "$numberInt" : "134" }, "a" : { "$numberDouble" : "9223372036854769664.0" } }
+ { "_id" : { "$numberInt" : "135" }, "a" : { "$numberDouble" : "-9223372036854769664.0" } }
+ { "_id" : { "$numberInt" : "136" }, "a" : { "$numberDecimal" : "9223372036854775807" } }
+ { "_id" : { "$numberInt" : "137" }, "a" : { "$numberDecimal" : "-9223372036854775808" } }
+ { "_id" : { "$numberInt" : "140" }, "a" : { "$numberDecimal" : "9223372036854775807.5" } }
+ { "_id" : { "$numberInt" : "142" }, "a" : { "$numberDecimal" : "-9223372036854775808.5" } }
+ { "_id" : { "$numberInt" : "121" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "124" }, "a" : [ { "$numberInt" : "10" }, null ] }
+ { "_id" : { "$numberInt" : "221" }, "a" : [ { "$numberInt" : "-10" }, { "$numberDouble" : "NaN" } ] }
+ { "_id" : { "$numberInt" : "222" }, "a" : [ { "$numberInt" : "0" }, { "$numberDouble" : "-0.0" } ] }
+(26 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a" : {"$mod" : [{"$numberLong" : "-1"}, 0]} }';
+                                               document                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "100" }, "a" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "101" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" } ] }
+ { "_id" : { "$numberInt" : "200" }, "a" : { "$numberInt" : "-10" } }
+ { "_id" : { "$numberInt" : "201" }, "a" : [ { "$numberInt" : "-10" }, { "$numberInt" : "-11" } ] }
+ { "_id" : { "$numberInt" : "107" }, "a" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "108" }, "a" : { "$numberLong" : "10"} }
+ { "_id" : { "$numberInt" : "109" }, "a" : { "$numberDouble" : "10.400000000000000355" } }
+ { "_id" : { "$numberInt" : "110" }, "a" : { "$numberDecimal" : "10.6" } }
+ { "_id" : { "$numberInt" : "207" }, "a" : { "$numberInt" : "-10" } }
+ { "_id" : { "$numberInt" : "208" }, "a" : { "$numberLong" : "-10"} }
+ { "_id" : { "$numberInt" : "209" }, "a" : { "$numberDouble" : "-10.400000000000000355" } }
+ { "_id" : { "$numberInt" : "210" }, "a" : { "$numberDecimal" : "-10.6" } }
+ { "_id" : { "$numberInt" : "130" }, "a" : { "$numberInt" : "2147483647" } }
+ { "_id" : { "$numberInt" : "131" }, "a" : { "$numberInt" : "-2147483648" } }
+ { "_id" : { "$numberInt" : "132" }, "a" : { "$numberLong" : "9223372036854775807"} }
+ { "_id" : { "$numberInt" : "133" }, "a" : { "$numberLong" : "-9223372036854775808"} }
+ { "_id" : { "$numberInt" : "134" }, "a" : { "$numberDouble" : "9223372036854769664.0" } }
+ { "_id" : { "$numberInt" : "135" }, "a" : { "$numberDouble" : "-9223372036854769664.0" } }
+ { "_id" : { "$numberInt" : "136" }, "a" : { "$numberDecimal" : "9223372036854775807" } }
+ { "_id" : { "$numberInt" : "137" }, "a" : { "$numberDecimal" : "-9223372036854775808" } }
+ { "_id" : { "$numberInt" : "140" }, "a" : { "$numberDecimal" : "9223372036854775807.5" } }
+ { "_id" : { "$numberInt" : "142" }, "a" : { "$numberDecimal" : "-9223372036854775808.5" } }
+ { "_id" : { "$numberInt" : "121" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "124" }, "a" : [ { "$numberInt" : "10" }, null ] }
+ { "_id" : { "$numberInt" : "221" }, "a" : [ { "$numberInt" : "-10" }, { "$numberDouble" : "NaN" } ] }
+ { "_id" : { "$numberInt" : "222" }, "a" : [ { "$numberInt" : "0" }, { "$numberDouble" : "-0.0" } ] }
+(26 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a" : {"$mod" : [{"$numberDouble" : "-1.0"}, 0]} }';
+                                               document                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "100" }, "a" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "101" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" } ] }
+ { "_id" : { "$numberInt" : "200" }, "a" : { "$numberInt" : "-10" } }
+ { "_id" : { "$numberInt" : "201" }, "a" : [ { "$numberInt" : "-10" }, { "$numberInt" : "-11" } ] }
+ { "_id" : { "$numberInt" : "107" }, "a" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "108" }, "a" : { "$numberLong" : "10"} }
+ { "_id" : { "$numberInt" : "109" }, "a" : { "$numberDouble" : "10.400000000000000355" } }
+ { "_id" : { "$numberInt" : "110" }, "a" : { "$numberDecimal" : "10.6" } }
+ { "_id" : { "$numberInt" : "207" }, "a" : { "$numberInt" : "-10" } }
+ { "_id" : { "$numberInt" : "208" }, "a" : { "$numberLong" : "-10"} }
+ { "_id" : { "$numberInt" : "209" }, "a" : { "$numberDouble" : "-10.400000000000000355" } }
+ { "_id" : { "$numberInt" : "210" }, "a" : { "$numberDecimal" : "-10.6" } }
+ { "_id" : { "$numberInt" : "130" }, "a" : { "$numberInt" : "2147483647" } }
+ { "_id" : { "$numberInt" : "131" }, "a" : { "$numberInt" : "-2147483648" } }
+ { "_id" : { "$numberInt" : "132" }, "a" : { "$numberLong" : "9223372036854775807"} }
+ { "_id" : { "$numberInt" : "133" }, "a" : { "$numberLong" : "-9223372036854775808"} }
+ { "_id" : { "$numberInt" : "134" }, "a" : { "$numberDouble" : "9223372036854769664.0" } }
+ { "_id" : { "$numberInt" : "135" }, "a" : { "$numberDouble" : "-9223372036854769664.0" } }
+ { "_id" : { "$numberInt" : "136" }, "a" : { "$numberDecimal" : "9223372036854775807" } }
+ { "_id" : { "$numberInt" : "137" }, "a" : { "$numberDecimal" : "-9223372036854775808" } }
+ { "_id" : { "$numberInt" : "140" }, "a" : { "$numberDecimal" : "9223372036854775807.5" } }
+ { "_id" : { "$numberInt" : "142" }, "a" : { "$numberDecimal" : "-9223372036854775808.5" } }
+ { "_id" : { "$numberInt" : "121" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "124" }, "a" : [ { "$numberInt" : "10" }, null ] }
+ { "_id" : { "$numberInt" : "221" }, "a" : [ { "$numberInt" : "-10" }, { "$numberDouble" : "NaN" } ] }
+ { "_id" : { "$numberInt" : "222" }, "a" : [ { "$numberInt" : "0" }, { "$numberDouble" : "-0.0" } ] }
+(26 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a" : {"$mod" : [{"$numberDecimal" : "-1.0"}, 0]} }';
+                                               document                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "100" }, "a" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "101" }, "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" } ] }
+ { "_id" : { "$numberInt" : "200" }, "a" : { "$numberInt" : "-10" } }
+ { "_id" : { "$numberInt" : "201" }, "a" : [ { "$numberInt" : "-10" }, { "$numberInt" : "-11" } ] }
+ { "_id" : { "$numberInt" : "107" }, "a" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "108" }, "a" : { "$numberLong" : "10"} }
+ { "_id" : { "$numberInt" : "109" }, "a" : { "$numberDouble" : "10.400000000000000355" } }
+ { "_id" : { "$numberInt" : "110" }, "a" : { "$numberDecimal" : "10.6" } }
+ { "_id" : { "$numberInt" : "207" }, "a" : { "$numberInt" : "-10" } }
+ { "_id" : { "$numberInt" : "208" }, "a" : { "$numberLong" : "-10"} }
+ { "_id" : { "$numberInt" : "209" }, "a" : { "$numberDouble" : "-10.400000000000000355" } }
+ { "_id" : { "$numberInt" : "210" }, "a" : { "$numberDecimal" : "-10.6" } }
+ { "_id" : { "$numberInt" : "130" }, "a" : { "$numberInt" : "2147483647" } }
+ { "_id" : { "$numberInt" : "131" }, "a" : { "$numberInt" : "-2147483648" } }
+ { "_id" : { "$numberInt" : "132" }, "a" : { "$numberLong" : "9223372036854775807"} }
+ { "_id" : { "$numberInt" : "133" }, "a" : { "$numberLong" : "-9223372036854775808"} }
+ { "_id" : { "$numberInt" : "134" }, "a" : { "$numberDouble" : "9223372036854769664.0" } }
+ { "_id" : { "$numberInt" : "135" }, "a" : { "$numberDouble" : "-9223372036854769664.0" } }
+ { "_id" : { "$numberInt" : "136" }, "a" : { "$numberDecimal" : "9223372036854775807" } }
+ { "_id" : { "$numberInt" : "137" }, "a" : { "$numberDecimal" : "-9223372036854775808" } }
+ { "_id" : { "$numberInt" : "140" }, "a" : { "$numberDecimal" : "9223372036854775807.5" } }
+ { "_id" : { "$numberInt" : "142" }, "a" : { "$numberDecimal" : "-9223372036854775808.5" } }
+ { "_id" : { "$numberInt" : "121" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "124" }, "a" : [ { "$numberInt" : "10" }, null ] }
+ { "_id" : { "$numberInt" : "221" }, "a" : [ { "$numberInt" : "-10" }, { "$numberDouble" : "NaN" } ] }
+ { "_id" : { "$numberInt" : "222" }, "a" : [ { "$numberInt" : "0" }, { "$numberDouble" : "-0.0" } ] }
+(26 rows)
+
+-- Tests for overflow check. Divison if INT_MIN/MAX value
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a" : {"$mod" : [{"$numberInt" : "2147483647"}, 0]} }';
+                                               document                                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "130" }, "a" : { "$numberInt" : "2147483647" } }
+ { "_id" : { "$numberInt" : "121" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "222" }, "a" : [ { "$numberInt" : "0" }, { "$numberDouble" : "-0.0" } ] }
+(3 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a" : {"$mod" : [{"$numberInt" : "-2147483648"}, 0]} }';
+                                               document                                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "131" }, "a" : { "$numberInt" : "-2147483648" } }
+ { "_id" : { "$numberInt" : "133" }, "a" : { "$numberLong" : "-9223372036854775808"} }
+ { "_id" : { "$numberInt" : "137" }, "a" : { "$numberDecimal" : "-9223372036854775808" } }
+ { "_id" : { "$numberInt" : "142" }, "a" : { "$numberDecimal" : "-9223372036854775808.5" } }
+ { "_id" : { "$numberInt" : "121" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "222" }, "a" : [ { "$numberInt" : "0" }, { "$numberDouble" : "-0.0" } ] }
+(6 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a" : {"$mod" : [{"$numberLong" : "9223372036854775807"}, 0]} }';
+                                               document                                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "132" }, "a" : { "$numberLong" : "9223372036854775807"} }
+ { "_id" : { "$numberInt" : "136" }, "a" : { "$numberDecimal" : "9223372036854775807" } }
+ { "_id" : { "$numberInt" : "140" }, "a" : { "$numberDecimal" : "9223372036854775807.5" } }
+ { "_id" : { "$numberInt" : "121" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "222" }, "a" : [ { "$numberInt" : "0" }, { "$numberDouble" : "-0.0" } ] }
+(5 rows)
+
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') where document @@ '{ "a" : {"$mod" : [{"$numberLong" : "-9223372036854775808"}, 0]} }';
+                                               document                                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "133" }, "a" : { "$numberLong" : "-9223372036854775808"} }
+ { "_id" : { "$numberInt" : "137" }, "a" : { "$numberDecimal" : "-9223372036854775808" } }
+ { "_id" : { "$numberInt" : "142" }, "a" : { "$numberDecimal" : "-9223372036854775808.5" } }
+ { "_id" : { "$numberInt" : "121" }, "a" : { "$numberInt" : "0" } }
+ { "_id" : { "$numberInt" : "222" }, "a" : [ { "$numberInt" : "0" }, { "$numberDouble" : "-0.0" } ] }
+(5 rows)
+
+ROLLBACK;
+-- Error case : Divisor Zero
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') WHERE document @@ '{ "a" : {"$mod" : [0,2]} }';
+ERROR:  divisor cannot be 0
+-- Error case : Less than 2 args
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') WHERE document @@ '{ "a" : {"$mod" : []} }';
+ERROR:  malformed mod, not enough elements
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') WHERE document @@ '{ "a" : {"$mod" : [2]} }';
+ERROR:  malformed mod, not enough elements
+-- Error case : More than 2 args
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') WHERE document @@ '{ "a" : {"$mod" : [1,2,3]} }';
+ERROR:  malformed mod, too many elements
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') WHERE document @@ '{ "a" : {"$mod" : [-1,-2,3,4]} }';
+ERROR:  malformed mod, too many elements
+-- Error case : NaN, Inf and overflow (Double & Decimal128) in Divisor
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') WHERE document @@ '{ "a" : {"$mod" : [{"$numberDecimal" : "9223372036854775808"}, 2]} }';
+ERROR:  malformed mod, divisor value is invalid :: caused by :: Out of bounds coercing to integral value
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') WHERE document @@ '{ "a" : {"$mod" : [{"$numberDecimal" : "NaN"}, 2]} }';
+ERROR:  malformed mod, divisor value is invalid :: caused by :: Unable to coerce NaN/Inf to integral type
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') WHERE document @@ '{ "a" : {"$mod" : [{"$numberDecimal" : "Inf"}, 2]} }';
+ERROR:  malformed mod, divisor value is invalid :: caused by :: Unable to coerce NaN/Inf to integral type
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') WHERE document @@ '{ "a" : {"$mod" : [{"$numberDecimal" : "-Inf"}, 2]} }';
+ERROR:  malformed mod, divisor value is invalid :: caused by :: Unable to coerce NaN/Inf to integral type
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') WHERE document @@ '{ "a" : {"$mod" : [{"$numberDouble" : "9223372036854775808"}, 2]} }';
+ERROR:  malformed mod, divisor value is invalid :: caused by :: Out of bounds coercing to integral value
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') WHERE document @@ '{ "a" : {"$mod" : [{"$numberDouble" : "NaN"}, 0]} }';
+ERROR:  malformed mod, divisor value is invalid :: caused by :: Unable to coerce NaN/Inf to integral type
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') WHERE document @@ '{ "a" : {"$mod" : [{"$numberDouble" : "Inf"}, 0]} }';
+ERROR:  malformed mod, divisor value is invalid :: caused by :: Unable to coerce NaN/Inf to integral type
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') WHERE document @@ '{ "a" : {"$mod" : [{"$numberDouble" : "-Inf"}, 1]} }';
+ERROR:  malformed mod, divisor value is invalid :: caused by :: Unable to coerce NaN/Inf to integral type
+-- Error case : NaN, Inf and overflow (Double & Decimal128) in Remainder
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') WHERE document @@ '{ "a" : {"$mod" : [3, {"$numberDecimal" : "9223372036854775808"}]} }';
+ERROR:  malformed mod, remainder value is invalid :: caused by :: Out of bounds coercing to integral value
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') WHERE document @@ '{ "a" : {"$mod" : [3, {"$numberDecimal" : "NaN"}]} }';
+ERROR:  malformed mod, remainder value is invalid :: caused by :: Unable to coerce NaN/Inf to integral type
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') WHERE document @@ '{ "a" : {"$mod" : [-3, {"$numberDecimal" : "Inf"}]} }';
+ERROR:  malformed mod, remainder value is invalid :: caused by :: Unable to coerce NaN/Inf to integral type
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') WHERE document @@ '{ "a" : {"$mod" : [-3, {"$numberDecimal" : "-Inf"}]} }';
+ERROR:  malformed mod, remainder value is invalid :: caused by :: Unable to coerce NaN/Inf to integral type
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') WHERE document @@ '{ "a" : {"$mod" : [3, {"$numberDouble" : "9223372036854775808"}]} }';
+ERROR:  malformed mod, remainder value is invalid :: caused by :: Out of bounds coercing to integral value
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') WHERE document @@ '{ "a" : {"$mod" : [3, {"$numberDouble" : "NaN"}]} }';
+ERROR:  malformed mod, remainder value is invalid :: caused by :: Unable to coerce NaN/Inf to integral type
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') WHERE document @@ '{ "a" : {"$mod" : [-3, {"$numberDouble" : "Inf"}]} }';
+ERROR:  malformed mod, remainder value is invalid :: caused by :: Unable to coerce NaN/Inf to integral type
+SELECT document FROM helio_api.collection('db', 'dollarmodtests') WHERE document @@ '{ "a" : {"$mod" : [-3, {"$numberDouble" : "-Inf"}]} }';
+ERROR:  malformed mod, remainder value is invalid :: caused by :: Unable to coerce NaN/Inf to integral type

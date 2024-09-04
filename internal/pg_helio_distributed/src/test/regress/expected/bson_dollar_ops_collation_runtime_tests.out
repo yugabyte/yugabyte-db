@@ -1,0 +1,1309 @@
+SET search_path to helio_core,helio_api,helio_api_catalog,pg_catalog;
+SET citus.next_shard_id TO 7990000;
+SET helio_api.next_collection_id TO 7990;
+SET helio_api.next_collection_index_id TO 7990;
+SET helio_api.enableCollation TO on;
+-- (1) insert some docs
+SELECT helio_api.insert_one('db', 'ci_search', '{ "_id": 1, "a": "Cat" }');
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search', '{ "_id": 2, "a": "dog" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search', '{ "_id": 3, "a": "cat" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search', '{ "_id": 4, "a": "Dog" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search', '{ "_id": 5, "a": "caT" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search', '{ "_id": 6, "a": "doG" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search', '{ "_id": 7, "a": "goat" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search', '{ "_id": 8, "a": "Goat" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search', '{ "_id": 9, "b": "Cat" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search', '{ "_id": 10, "b": "dog" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search', '{ "_id": 11, "b": "cat" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search', '{ "_id": 12, "b": "Dog" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search', '{ "_id": 13, "b": "caT", "a" : "raBbIt" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search', '{ "_id": 14, "b": "doG" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search', '{ "_id": 15, "b": "goat" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search', '{ "_id": 16, "b": "Goat" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search', '{ "_id": 17, "a": ["Cat", "CAT", "dog"] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search', '{ "_id": 18, "a": ["dog", "cat", "CAT"] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search', '{ "_id": 19, "a": ["cat", "rabbit", "bAt"] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search', '{ "_id": 20, "a": ["Cat"] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search', '{ "_id": 21, "a": ["dog"] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search', '{ "_id": 22, "a": ["cat"] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search', '{ "_id": 23, "a": ["CAT"] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search', '{ "_id": 24, "a": ["cAt"] }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- (2) Find query unsharded collection
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "a": { "$eq": "cat" } }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "Cat" }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cat" }
+ { "_id" : { "$numberInt" : "5" }, "a" : "caT" }
+ { "_id" : { "$numberInt" : "17" }, "a" : [ "Cat", "CAT", "dog" ] }
+ { "_id" : { "$numberInt" : "18" }, "a" : [ "dog", "cat", "CAT" ] }
+(5 rows)
+
+EXPLAIN(VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "a": { "$eq": "cat" } }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
+                                                                                                                                                                                                   QUERY PLAN                                                                                                                                                                                                    
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM helio_data.documents_7990_7990004 collection WHERE ((document OPERATOR(helio_api_catalog.#=) '{ "a" : "cat", "collation" : "en-u-ks-level1" }'::helio_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '7990'::bigint)) ORDER BY (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST LIMIT '5'::bigint
+         Node: host=localhost port=58070 dbname=regression
+         ->  Limit
+               Output: document, (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson))
+               ->  Sort
+                     Output: document, (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson))
+                     Sort Key: (helio_api_catalog.bson_orderby(collection.document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST
+                     ->  Bitmap Heap Scan on helio_data.documents_7990_7990004 collection
+                           Output: document, helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)
+                           Recheck Cond: (collection.shard_key_value = '7990'::bigint)
+                           Filter: (collection.document OPERATOR(helio_api_catalog.@=) '{ "a" : "cat", "collation" : "en-u-ks-level1" }'::helio_core.bson)
+                           ->  Bitmap Index Scan on _id_
+                                 Index Cond: (collection.shard_key_value = '7990'::bigint)
+(18 rows)
+
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "b": { "$eq": "cat" } }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "9" }, "b" : "Cat" }
+ { "_id" : { "$numberInt" : "11" }, "b" : "cat" }
+ { "_id" : { "$numberInt" : "13" }, "b" : "caT", "a" : "raBbIt" }
+(3 rows)
+
+EXPLAIN(VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "b": { "$eq": "cat" } }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
+                                                                                                                                                                                                   QUERY PLAN                                                                                                                                                                                                    
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM helio_data.documents_7990_7990004 collection WHERE ((document OPERATOR(helio_api_catalog.#=) '{ "b" : "cat", "collation" : "en-u-ks-level1" }'::helio_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '7990'::bigint)) ORDER BY (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST LIMIT '5'::bigint
+         Node: host=localhost port=58070 dbname=regression
+         ->  Limit
+               Output: document, (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson))
+               ->  Sort
+                     Output: document, (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson))
+                     Sort Key: (helio_api_catalog.bson_orderby(collection.document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST
+                     ->  Bitmap Heap Scan on helio_data.documents_7990_7990004 collection
+                           Output: document, helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)
+                           Recheck Cond: (collection.shard_key_value = '7990'::bigint)
+                           Filter: (collection.document OPERATOR(helio_api_catalog.@=) '{ "b" : "cat", "collation" : "en-u-ks-level1" }'::helio_core.bson)
+                           ->  Bitmap Index Scan on _id_
+                                 Index Cond: (collection.shard_key_value = '7990'::bigint)
+(18 rows)
+
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "a": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
+                    document                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "Cat" }
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog" }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cat" }
+ { "_id" : { "$numberInt" : "4" }, "a" : "Dog" }
+ { "_id" : { "$numberInt" : "5" }, "a" : "caT" }
+(5 rows)
+
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 10, "collation": { "locale": "en", "strength" : 1 } }');
+                               document                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "Cat" }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cat" }
+ { "_id" : { "$numberInt" : "5" }, "a" : "caT" }
+ { "_id" : { "$numberInt" : "10" }, "b" : "dog" }
+ { "_id" : { "$numberInt" : "12" }, "b" : "Dog" }
+ { "_id" : { "$numberInt" : "14" }, "b" : "doG" }
+ { "_id" : { "$numberInt" : "17" }, "a" : [ "Cat", "CAT", "dog" ] }
+ { "_id" : { "$numberInt" : "18" }, "a" : [ "dog", "cat", "CAT" ] }
+ { "_id" : { "$numberInt" : "19" }, "a" : [ "cat", "rabbit", "bAt" ] }
+ { "_id" : { "$numberInt" : "20" }, "a" : [ "Cat" ] }
+(10 rows)
+
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "a": { "$all": ["cAt", "DOG"] } }, "skip": 0, "limit":
+ 5, "collation": { "locale": "en", "strength": 1} }');
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "17" }, "a" : [ "Cat", "CAT", "dog" ] }
+ { "_id" : { "$numberInt" : "18" }, "a" : [ "dog", "cat", "CAT" ] }
+(2 rows)
+
+-- range query without index on path "a"
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "a": { "$gt": "CAT" }, "a" : {"$lt" : "RABBIT"} }, "collation": { "locale": "en", "strength" : 1.93 } }');
+                               document                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : "dog" }
+ { "_id" : { "$numberInt" : "4" }, "a" : "Dog" }
+ { "_id" : { "$numberInt" : "6" }, "a" : "doG" }
+ { "_id" : { "$numberInt" : "7" }, "a" : "goat" }
+ { "_id" : { "$numberInt" : "8" }, "a" : "Goat" }
+ { "_id" : { "$numberInt" : "17" }, "a" : [ "Cat", "CAT", "dog" ] }
+ { "_id" : { "$numberInt" : "18" }, "a" : [ "dog", "cat", "CAT" ] }
+ { "_id" : { "$numberInt" : "19" }, "a" : [ "cat", "rabbit", "bAt" ] }
+ { "_id" : { "$numberInt" : "21" }, "a" : [ "dog" ] }
+(9 rows)
+
+EXPLAIN(VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "a": { "$gt": "CAT" }, "a" : {"$lt" : "RABBIT"} }, "collation": { "locale": "en", "strength" : 1.93 } }');
+                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM helio_data.documents_7990_7990004 collection WHERE ((document OPERATOR(helio_api_catalog.#>) '{ "a" : "CAT", "collation" : "en-u-ks-level1" }'::helio_core.bsonquery) AND (document OPERATOR(helio_api_catalog.#<) '{ "a" : "RABBIT", "collation" : "en-u-ks-level1" }'::helio_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '7990'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on helio_data.documents_7990_7990004 collection
+               Output: document
+               Recheck Cond: (collection.shard_key_value = '7990'::bigint)
+               Filter: ((collection.document OPERATOR(helio_api_catalog.@>) '{ "a" : "CAT", "collation" : "en-u-ks-level1" }'::helio_core.bson) AND (collection.document OPERATOR(helio_api_catalog.@<) '{ "a" : "RABBIT", "collation" : "en-u-ks-level1" }'::helio_core.bson))
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (collection.shard_key_value = '7990'::bigint)
+(13 rows)
+
+-- (3) Shard collection
+SELECT helio_api.shard_collection('db', 'ci_search', '{ "_id": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- (4) Find query sharded collection
+BEGIN;
+SET LOCAL helio_api.enableCollation TO on;
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "a": { "$eq": "cat" } }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
+                              document                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "Cat" }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cat" }
+ { "_id" : { "$numberInt" : "5" }, "a" : "caT" }
+ { "_id" : { "$numberInt" : "17" }, "a" : [ "Cat", "CAT", "dog" ] }
+ { "_id" : { "$numberInt" : "18" }, "a" : [ "dog", "cat", "CAT" ] }
+(5 rows)
+
+END; 
+BEGIN;
+SET LOCAL helio_api.enableCollation TO on;
+EXPLAIN(VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "a": { "$eq": "cat" } }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
+                                                                                                                                                                                                                                 QUERY PLAN                                                                                                                                                                                                                                 
+---------------------------------------------------------------------
+ Limit
+   Output: remote_scan.document, remote_scan."?sort?"
+   ->  Sort
+         Output: remote_scan.document, remote_scan."?sort?"
+         Sort Key: remote_scan."?sort?" NULLS FIRST
+         ->  Custom Scan (Citus Adaptive)
+               Output: remote_scan.document, remote_scan."?sort?"
+               Task Count: 8
+               Tasks Shown: One of 8
+               ->  Task
+                     Query: SELECT document, helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson) AS "?sort?" FROM helio_data.documents_7990_7990016 collection WHERE (document OPERATOR(helio_api_catalog.#=) '{ "a" : "cat", "collation" : "en-u-ks-level1" }'::helio_core.bsonquery) ORDER BY (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST LIMIT '5'::bigint
+                     Node: host=localhost port=58070 dbname=regression
+                     ->  Limit
+                           Output: document, (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson))
+                           ->  Sort
+                                 Output: document, (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson))
+                                 Sort Key: (helio_api_catalog.bson_orderby(collection.document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST
+                                 ->  Seq Scan on helio_data.documents_7990_7990016 collection
+                                       Output: document, helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)
+                                       Filter: (collection.document OPERATOR(helio_api_catalog.@=) '{ "a" : "cat", "collation" : "en-u-ks-level1" }'::helio_core.bson)
+(20 rows)
+
+END;
+BEGIN;
+SET LOCAL helio_api.enableCollation TO on;
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "b": { "$eq": "cat" } }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "9" }, "b" : "Cat" }
+ { "_id" : { "$numberInt" : "11" }, "b" : "cat" }
+ { "_id" : { "$numberInt" : "13" }, "b" : "caT", "a" : "raBbIt" }
+(3 rows)
+
+END;
+BEGIN;
+SET LOCAL helio_api.enableCollation TO on;
+EXPLAIN(VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "b": { "$eq": "cat" } }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
+                                                                                                                                                                                                                                 QUERY PLAN                                                                                                                                                                                                                                 
+---------------------------------------------------------------------
+ Limit
+   Output: remote_scan.document, remote_scan."?sort?"
+   ->  Sort
+         Output: remote_scan.document, remote_scan."?sort?"
+         Sort Key: remote_scan."?sort?" NULLS FIRST
+         ->  Custom Scan (Citus Adaptive)
+               Output: remote_scan.document, remote_scan."?sort?"
+               Task Count: 8
+               Tasks Shown: One of 8
+               ->  Task
+                     Query: SELECT document, helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson) AS "?sort?" FROM helio_data.documents_7990_7990016 collection WHERE (document OPERATOR(helio_api_catalog.#=) '{ "b" : "cat", "collation" : "en-u-ks-level1" }'::helio_core.bsonquery) ORDER BY (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST LIMIT '5'::bigint
+                     Node: host=localhost port=58070 dbname=regression
+                     ->  Limit
+                           Output: document, (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson))
+                           ->  Sort
+                                 Output: document, (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson))
+                                 Sort Key: (helio_api_catalog.bson_orderby(collection.document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST
+                                 ->  Seq Scan on helio_data.documents_7990_7990016 collection
+                                       Output: document, helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)
+                                       Filter: (collection.document OPERATOR(helio_api_catalog.@=) '{ "b" : "cat", "collation" : "en-u-ks-level1" }'::helio_core.bson)
+(20 rows)
+
+END;
+-- elemMatch with collation
+BEGIN;
+SET LOCAL helio_api.enableCollation TO on;
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "a": { "$elemMatch": {"$eq": "cAt"} } }, "skip": 0, "limit": 7, "collation": { "locale": "en", "strength" : 1} }');
+                               document                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "22" }, "a" : [ "cat" ] }
+ { "_id" : { "$numberInt" : "20" }, "a" : [ "Cat" ] }
+ { "_id" : { "$numberInt" : "23" }, "a" : [ "CAT" ] }
+ { "_id" : { "$numberInt" : "19" }, "a" : [ "cat", "rabbit", "bAt" ] }
+ { "_id" : { "$numberInt" : "24" }, "a" : [ "cAt" ] }
+ { "_id" : { "$numberInt" : "17" }, "a" : [ "Cat", "CAT", "dog" ] }
+ { "_id" : { "$numberInt" : "18" }, "a" : [ "dog", "cat", "CAT" ] }
+(7 rows)
+
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "a": { "$elemMatch": {"$gt": "cAt"} } }, "skip": 0, "limit": 7, "collation": { "locale": "en", "strength" : 1} }');
+                               document                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "21" }, "a" : [ "dog" ] }
+ { "_id" : { "$numberInt" : "19" }, "a" : [ "cat", "rabbit", "bAt" ] }
+ { "_id" : { "$numberInt" : "17" }, "a" : [ "Cat", "CAT", "dog" ] }
+ { "_id" : { "$numberInt" : "18" }, "a" : [ "dog", "cat", "CAT" ] }
+(4 rows)
+
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "a": { "$elemMatch": {"$lt": "cAt"} } }, "skip": 0, "limit": 7, "collation": { "locale": "en", "strength" : 1} }');
+                               document                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "19" }, "a" : [ "cat", "rabbit", "bAt" ] }
+(1 row)
+
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "a": { "$elemMatch": {"$eq": "cAt", "gte" : "BAT"} } }, "skip": 0, "limit": 7, "collation": { "locale": "en", "strength" : 1} }');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+END;
+-- (5) Aggregation queries sharded collection
+BEGIN;
+SET LOCAL helio_api.enableCollation TO on;
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "ci_search", "pipeline": [ { "$sort": { "_id": 1 } }, { "$match": { "a": { "$eq": "cat" } } } ], "cursor": {}, "collation": { "locale": "en", "strength" : 1}  }');
+                               document                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "Cat" }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cat" }
+ { "_id" : { "$numberInt" : "5" }, "a" : "caT" }
+ { "_id" : { "$numberInt" : "17" }, "a" : [ "Cat", "CAT", "dog" ] }
+ { "_id" : { "$numberInt" : "18" }, "a" : [ "dog", "cat", "CAT" ] }
+ { "_id" : { "$numberInt" : "19" }, "a" : [ "cat", "rabbit", "bAt" ] }
+ { "_id" : { "$numberInt" : "20" }, "a" : [ "Cat" ] }
+ { "_id" : { "$numberInt" : "22" }, "a" : [ "cat" ] }
+ { "_id" : { "$numberInt" : "23" }, "a" : [ "CAT" ] }
+ { "_id" : { "$numberInt" : "24" }, "a" : [ "cAt" ] }
+(10 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "ci_search", "pipeline": [ { "$match": { "a": { "$gt": "DOG" } } }], "cursor": {}, "collation": { "locale": "en", "strength" : 1} }');
+                               document                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "8" }, "a" : "Goat" }
+ { "_id" : { "$numberInt" : "19" }, "a" : [ "cat", "rabbit", "bAt" ] }
+ { "_id" : { "$numberInt" : "7" }, "a" : "goat" }
+ { "_id" : { "$numberInt" : "13" }, "b" : "caT", "a" : "raBbIt" }
+(4 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "ci_search", "pipeline": [ { "$match": { "a": { "$eq": "RABBIT" } } }, { "$project": { "b": 1 } }], "cursor": {}, "collation": { "locale": "en", "strength" : 1} }');
+                     document                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "19" } }
+ { "_id" : { "$numberInt" : "13" }, "b" : "caT" }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "ci_search", "pipeline": [ { "$match": { "_id": { "$gt": 1 } } }, { "$project": { "b": 1, "c": "$a", "_id": 0 } }, { "$match": { "c": { "$eq": "rAbBiT" } } }], "cursor": {}, "collation": { "locale": "en", "strength" : 1} }');
+               document               
+---------------------------------------------------------------------
+ { "c" : [ "cat", "rabbit", "bAt" ] }
+ { "b" : "caT", "c" : "raBbIt" }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "ci_search", "pipeline": [ { "$unwind": "$a" },  {"$match": { "a": { "$gt": "POP", "$lt": "TOP" } } } ], "cursor": {}, "collation": { "locale": "en", "strength" : 1} }');
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "19" }, "a" : "rabbit" }
+ { "_id" : { "$numberInt" : "13" }, "b" : "caT", "a" : "raBbIt" }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "ci_search", "pipeline": [ { "$match": { "a": { "$gte": "hobbit" } } }, { "$unwind": "$a" } ], "cursor": {}, "collation": { "locale": "en", "strength" : 1} }');
+                             document                             
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "19" }, "a" : "cat" }
+ { "_id" : { "$numberInt" : "19" }, "a" : "rabbit" }
+ { "_id" : { "$numberInt" : "19" }, "a" : "bAt" }
+ { "_id" : { "$numberInt" : "13" }, "b" : "caT", "a" : "raBbIt" }
+(4 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "ci_search", "pipeline": [ { "$addFields": { "x": "mANgO" } }, { "$addFields": { "Y": "TANGO" } }, { "$match": { "$and" : [{ "a": { "$gte": "POMELO" }}, { "x": { "$eq": "MANGO" }}]}} ], "cursor": {}, "collation": { "locale": "en", "strength" : 1} }');
+                                              document                                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "19" }, "a" : [ "cat", "rabbit", "bAt" ], "x" : "mANgO", "Y" : "TANGO" }
+ { "_id" : { "$numberInt" : "13" }, "b" : "caT", "a" : "raBbIt", "x" : "mANgO", "Y" : "TANGO" }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "ci_search", "pipeline": [ { "$addFields": { "e": {  "f": "$a" } } }, { "$replaceRoot": { "newRoot": "$e" } }, { "$match" : { "f": { "$elemMatch": {"$eq": "cAt"} } } } ],
+ "cursor": {}, "collation": { "locale": "en", "strength" : 1} }');
+               document               
+---------------------------------------------------------------------
+ { "f" : [ "cat" ] }
+ { "f" : [ "Cat" ] }
+ { "f" : [ "CAT" ] }
+ { "f" : [ "cat", "rabbit", "bAt" ] }
+ { "f" : [ "cAt" ] }
+ { "f" : [ "Cat", "CAT", "dog" ] }
+ { "f" : [ "dog", "cat", "CAT" ] }
+(7 rows)
+
+END;
+-- (6) currently unsupported scenarions: 
+-- (6.A) $in,$nin are not yet suported with collation
+BEGIN;
+SET LOCAL helio_api.enableCollation TO on;
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search", "filter": { "a" : {"$in" : ["cat", "DOG" ] }}, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
+ERROR:  operator $in or operators that can be optimized to $in is not supported with collation
+HINT:  operator $in or operators that can be optimized to $in is not supported with collation : en-u-ks-level1
+END;
+-- (6.B) $cond needs collationString to be plumbed
+BEGIN;
+SET LOCAL helio_api.enableCollation TO on;
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "ci_search", "pipeline": [ { "$sort": { "_id": 1 } }, { "$addFields": { "e": {  "f": "$a" } } }, { "$replaceRoot": { "newRoot": "$e" } }, { "$match" : { "f": { "$elemMatch": {"$eq": "cAt"} } } }, {"$project": { "items" : { "$filter" : { "input" : "$f", "as" : "animal", "cond" : { "$eq" : ["$$animal", "CAT"] } }} }} ],
+ "cursor": {}, "collation": { "locale": "en", "strength" : 1} }');
+        document         
+---------------------------------------------------------------------
+ { "items" : [ "CAT" ] }
+ { "items" : [ "CAT" ] }
+ { "items" : [  ] }
+ { "items" : [  ] }
+ { "items" : [  ] }
+ { "items" : [ "CAT" ] }
+ { "items" : [  ] }
+(7 rows)
+
+END;
+-- (7) Insert More docs
+SELECT helio_api.insert_one('db', 'ci_search2', '{ "_id": 1, "a": "Cat" }');
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search2', '{ "_id": 2, "a": "dog" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search2', '{ "_id": 3, "a": "cat" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search2', '{ "_id": 4, "a": "CaT" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search2', '{ "_id": 5, "b": "Dog" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search2', '{ "_id": 6, "b": "DoG" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- (8) Query results with different collations
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search2", "filter": { "a": { "$eq": "cat" } }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
+                    document                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "Cat" }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cat" }
+ { "_id" : { "$numberInt" : "4" }, "a" : "CaT" }
+(3 rows)
+
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search2", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
+                    document                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "Cat" }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cat" }
+ { "_id" : { "$numberInt" : "4" }, "a" : "CaT" }
+ { "_id" : { "$numberInt" : "5" }, "b" : "Dog" }
+ { "_id" : { "$numberInt" : "6" }, "b" : "DoG" }
+(5 rows)
+
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search2", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 3, "caseLevel": true, "caseFirst": "off", "numericOrdering": true } }');
+                    document                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : "cat" }
+(1 row)
+
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search2", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1.93 } }');
+                    document                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "Cat" }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cat" }
+ { "_id" : { "$numberInt" : "4" }, "a" : "CaT" }
+ { "_id" : { "$numberInt" : "5" }, "b" : "Dog" }
+ { "_id" : { "$numberInt" : "6" }, "b" : "DoG" }
+(5 rows)
+
+-- (8) a. collation has no effect on $regex
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search2", "filter": { "a": { "$regex": "^c", "$options": "" } }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1 } }');
+                    document                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : "cat" }
+(1 row)
+
+-- (9) Native Mongo error message compatibility, 
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search2", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1, "caseLevel": true, "caseFirst": "upper", "numericOrdering": true, "alternate": "none"} }');
+ERROR:  unable to parse collation :: caused by :: Enumeration value 'none' for field 'collation.alternate' is not a valid value.
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search2", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en_DB", "strength" : 1, "caseLevel": true, "caseFirst": "upper", "numericOrdering": true, "alternate": "shifted"} }');
+ERROR:  unable to parse collation :: caused by :: Field 'locale' is invalid in: { locale: "en_DB", strength: 1 }.
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search2", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1, "caseLevel": true, "caseFirst": "bad", "numericOrdering": true} }');
+ERROR:  unable to parse collation :: caused by :: Enumeration value 'bad' for field 'collation.caseFirst' is not a valid value.
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search2", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 0, "caseLevel": true, "caseFirst": "bad", "numericOrdering": true} }');
+ERROR:  unable to parse collation :: caused by :: Enumeration value '0' for field 'collation.strength' is not a valid value
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search2", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : -1, "caseLevel": true, "caseFirst": "bad", "numericOrdering": true} }');
+ERROR:  unable to parse collation :: caused by :: BSON field 'strength' value must be >= 0, actual value '-1'
+HINT:  unable to parse collation :: caused by :: BSON field 'strength' value must be >= 0, actual value '-1'
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search2", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 6, "caseLevel": true, "caseFirst": "bad", "numericOrdering": true} }');
+ERROR:  unable to parse collation :: caused by :: BSON field 'strength' value must be <= 5, actual value '6'
+HINT:  unable to parse collation :: caused by :: BSON field 'strength' value must be <= 5, actual value '6'
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search2", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "abcd", "strength" : 1, "caseLevel": true, "caseFirst": "upper", "numericOrdering": true} }');
+ERROR:  unable to parse collation :: caused by :: Field 'locale' is invalid in: { locale: "abcd", strength: 1 }.
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search2", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "fr_FR", "strength" : 1, "caseLevel": true, "caseFirst": "lower", "numericOrdering": true} }');
+ERROR:  unable to parse collation :: caused by :: Field 'locale' is invalid in: { locale: "fr_FR", strength: 1 }.
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search2", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1, "caseLevel": true, "caseFirst": "upper", "numericOrdering": true, "alternate": "shifted", "backwards" : "0"} }');
+ERROR:  unable to parse collation :: caused by :: BSON field 'collation.backwards' is the wrong type 'string', expected type 'bool'
+HINT:  unable to parse collation :: caused by :: BSON field 'collation.backwards' is the wrong type 'string', expected type 'bool'
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search2", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1, "caseLevel": true, "caseFirst": "lower", "numericOrdering": true, "alternate": "non-ignorable", "backwards" : true, "normalization" : 1} }');
+ERROR:  unable to parse collation :: caused by :: BSON field 'collation.normalization' is the wrong type 'int', expected type 'bool'
+HINT:  unable to parse collation :: caused by :: BSON field 'collation.normalization' is the wrong type 'int', expected type 'bool'
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search2", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1, "caseLevel": true, "caseFirst": "lower", "numericOrdering": true, "alternate": "non-ignorable", "backwards" : true, "normalization" : true} }');
+                    document                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : "cat" }
+(1 row)
+
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search2", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 0.9 } }');
+ERROR:  unable to parse collation :: caused by :: Enumeration value '0' for field 'collation.strength' is not a valid value
+-- (10) collation variations
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search2", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 2, "caseLevel": false, "caseFirst": "lower", "numericOrdering": true } }');
+                    document                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "Cat" }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cat" }
+ { "_id" : { "$numberInt" : "4" }, "a" : "CaT" }
+ { "_id" : { "$numberInt" : "5" }, "b" : "Dog" }
+ { "_id" : { "$numberInt" : "6" }, "b" : "DoG" }
+(5 rows)
+
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search2", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1, "caseLevel": true, "caseFirst": "lower", "numericOrdering": true} }');
+                    document                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : "cat" }
+(1 row)
+
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search2", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "fr", "strength" : 1, "caseLevel": false, "caseFirst": "lower", "numericOrdering": true} }');
+                    document                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "Cat" }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cat" }
+ { "_id" : { "$numberInt" : "4" }, "a" : "CaT" }
+ { "_id" : { "$numberInt" : "5" }, "b" : "Dog" }
+ { "_id" : { "$numberInt" : "6" }, "b" : "DoG" }
+(5 rows)
+
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search2", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "de", "strength" : 1, "caseLevel": false, "caseFirst": "lower", "numericOrdering": true} }');
+                    document                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "Cat" }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cat" }
+ { "_id" : { "$numberInt" : "4" }, "a" : "CaT" }
+ { "_id" : { "$numberInt" : "5" }, "b" : "Dog" }
+ { "_id" : { "$numberInt" : "6" }, "b" : "DoG" }
+(5 rows)
+
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search2", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "bn", "strength" : 1, "caseLevel": false, "caseFirst": "lower", "numericOrdering": true} }');
+                    document                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "Cat" }
+ { "_id" : { "$numberInt" : "3" }, "a" : "cat" }
+ { "_id" : { "$numberInt" : "4" }, "a" : "CaT" }
+ { "_id" : { "$numberInt" : "5" }, "b" : "Dog" }
+ { "_id" : { "$numberInt" : "6" }, "b" : "DoG" }
+(5 rows)
+
+-- (11) Unsupported scenarios
+SELECT helio_api.find_and_modify('fam', '{"findAndModify": "ci_search2", "query": {"a": 1}, "update": {"_id": 1, "b": 1}, "collation" : {"locale" : "en", "strength": 1} }');
+ERROR:  findAndModify.collation is not implemented yet
+SELECT helio_api.update('update', '{"update":"ci_search2", "updates":[{"q":{"_id": 134111, "b": [ 5, 2, 4 ] },"u":{"$set" : {"b.$[a]":3} },"upsert":true, "collation" : {"locale" : "en", "strength": 1}, "arrayFilters": [ { "a": 2 } ]}]}');
+ERROR:  BSON field 'update.updates.collation' is not yet supported
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "ci_search2", "indexes": [{"key": {"asparse": 1}, "name": "my_sparse_idx1", "sparse": true, "collation" : {"locale" : "en", "strength": 1}}]}', TRUE);
+ERROR:  Error in specification { "key" : { "asparse" : 1 }, "name" : "my_sparse_idx1", "sparse" : true, "collation" : { "locale" : "en", "strength" : 1 } } :: caused by :: createIndex.collation is not implemented yet
+-- (12) Test Id filters respect collation
+SELECT helio_api.insert_one('db', 'ci_search3', '{ "_id": "Cat" }');
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search3', '{ "_id": "dog" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search3', '{ "_id": "cat" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search3', '{ "_id": "CaT" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search3', '{ "_id": "Dog" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search3', '{ "_id": "DoG" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search3', '{ "_id": { "a" : "cat" } }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search3',' { "_id": { "a": "CAT"} }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search3', '{ "a": { "a": "Dog" } } ');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'ci_search3', '{ "_id": [ "cat", "CAT "] }');
+                                                                                                          insert_one                                                                                                           
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "687865858" }, "errmsg" : "The '_id' value cannot be of type array" } ] }
+(1 row)
+
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search3", "filter": { "$or" : [{ "_id": { "$eq": "cat" } }, { "_id": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
+     document      
+---------------------------------------------------------------------
+ { "_id" : "CaT" }
+ { "_id" : "Cat" }
+ { "_id" : "DoG" }
+ { "_id" : "Dog" }
+ { "_id" : "cat" }
+(5 rows)
+
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search3", "filter": { "$or" : [{ "_id.a": { "$eq": "cat" } }, { "_id.a": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
+          document           
+---------------------------------------------------------------------
+ { "_id" : { "a" : "CAT" } }
+ { "_id" : { "a" : "cat" } }
+(2 rows)
+
+EXPLAIN(VERBOSE ON, COSTS OFF)SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search3", "filter": { "$or" : [{ "_id.a": { "$eq": "cat" } }, { "_id.a": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
+                                                                                                                                                                                                                                                                   QUERY PLAN                                                                                                                                                                                                                                                                   
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM helio_data.documents_7992_7990047 collection WHERE (((document OPERATOR(helio_api_catalog.#=) '{ "_id.a" : "cat", "collation" : "en-u-ks-level1" }'::helio_core.bsonquery) OR (document OPERATOR(helio_api_catalog.#=) '{ "_id.a" : "DOG", "collation" : "en-u-ks-level1" }'::helio_core.bsonquery)) AND (shard_key_value OPERATOR(pg_catalog.=) '7992'::bigint)) ORDER BY (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST LIMIT '5'::bigint
+         Node: host=localhost port=58070 dbname=regression
+         ->  Limit
+               Output: document, (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson))
+               ->  Sort
+                     Output: document, (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson))
+                     Sort Key: (helio_api_catalog.bson_orderby(collection.document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST
+                     ->  Bitmap Heap Scan on helio_data.documents_7992_7990047 collection
+                           Output: document, helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)
+                           Recheck Cond: (collection.shard_key_value = '7992'::bigint)
+                           Filter: ((collection.document OPERATOR(helio_api_catalog.@=) '{ "_id.a" : "cat", "collation" : "en-u-ks-level1" }'::helio_core.bson) OR (collection.document OPERATOR(helio_api_catalog.@=) '{ "_id.a" : "DOG", "collation" : "en-u-ks-level1" }'::helio_core.bson))
+                           ->  Bitmap Index Scan on _id_
+                                 Index Cond: (collection.shard_key_value = '7992'::bigint)
+(18 rows)
+
+SELECT helio_api.shard_collection('db', 'ci_search', '{ "_id": "hashed" }', false);
+NOTICE:  Skipping Sharding for collection db.ci_search as the same options were passed in.
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+BEGIN;
+SET LOCAL helio_api.enableCollation TO on;
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search3", "filter": { "$or" : [{ "_id": { "$eq": "cat" } }, { "_id": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
+     document      
+---------------------------------------------------------------------
+ { "_id" : "CaT" }
+ { "_id" : "Cat" }
+ { "_id" : "DoG" }
+ { "_id" : "Dog" }
+ { "_id" : "cat" }
+(5 rows)
+
+END;
+BEGIN;
+SET LOCAL helio_api.enableCollation TO on;
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search3", "filter": { "$or" : [{ "_id.a": { "$eq": "cat" } }, { "_id.a": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
+          document           
+---------------------------------------------------------------------
+ { "_id" : { "a" : "CAT" } }
+ { "_id" : { "a" : "cat" } }
+(2 rows)
+
+END;
+EXPLAIN(VERBOSE ON, COSTS OFF)SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search3", "filter": { "$or" : [{ "_id.a": { "$eq": "cat" } }, { "_id.a": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
+                                                                                                                                                                                                                                                                   QUERY PLAN                                                                                                                                                                                                                                                                   
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM helio_data.documents_7992_7990047 collection WHERE (((document OPERATOR(helio_api_catalog.#=) '{ "_id.a" : "cat", "collation" : "en-u-ks-level1" }'::helio_core.bsonquery) OR (document OPERATOR(helio_api_catalog.#=) '{ "_id.a" : "DOG", "collation" : "en-u-ks-level1" }'::helio_core.bsonquery)) AND (shard_key_value OPERATOR(pg_catalog.=) '7992'::bigint)) ORDER BY (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST LIMIT '5'::bigint
+         Node: host=localhost port=58070 dbname=regression
+         ->  Limit
+               Output: document, (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson))
+               ->  Sort
+                     Output: document, (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson))
+                     Sort Key: (helio_api_catalog.bson_orderby(collection.document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST
+                     ->  Bitmap Heap Scan on helio_data.documents_7992_7990047 collection
+                           Output: document, helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)
+                           Recheck Cond: (collection.shard_key_value = '7992'::bigint)
+                           Filter: ((collection.document OPERATOR(helio_api_catalog.@=) '{ "_id.a" : "cat", "collation" : "en-u-ks-level1" }'::helio_core.bson) OR (collection.document OPERATOR(helio_api_catalog.@=) '{ "_id.a" : "DOG", "collation" : "en-u-ks-level1" }'::helio_core.bson))
+                           ->  Bitmap Index Scan on _id_
+                                 Index Cond: (collection.shard_key_value = '7992'::bigint)
+(18 rows)
+
+-- (12) Check index with partial filter expression with collation
+SELECT helio_api.insert_one('db','ci_search4', '{"_id": 1, "a" : { "b" : "DOG" }}', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','ci_search4', '{"_id": 2, "a" : { "b" : "dog" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','ci_search4', '{"_id": 3, "a" : { "b" : "Cat" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','ci_search4', '{"_id": 4, "a" : { "b" : "Dog" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','ci_search4', '{"_id": 5, "a" : { "b" : "cAT" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','ci_search4', '{"_id": 6, "a" : { "b" : "DoG" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','ci_search4', '{"_id": 7, "a" : { "b" : "DOG" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api_internal.create_indexes_non_concurrently(
+  'db',
+  '{
+     "createIndexes": "ci_search4",
+     "indexes": [
+       {
+         "key": {"a.b": 1}, "name": "my_idx_1",
+         "partialFilterExpression":
+         {
+           "a.b": {"$eq": "dog" }
+         },
+         "collation" : {"locale" : "en", "strength" : 2}
+       }
+     ]
+   }',
+   TRUE
+);
+ERROR:  Error in specification { "key" : { "a.b" : 1 }, "name" : "my_idx_1", "partialFilterExpression" : { "a.b" : { "$eq" : "dog" } }, "collation" : { "locale" : "en", "strength" : 2 } } :: caused by :: createIndex.collation is not implemented yet
+SELECT helio_api_internal.create_indexes_non_concurrently(
+  'db',
+  '{
+     "createIndexes": "ci_search4",
+     "indexes": [
+       {
+         "key": {"a.b": 1}, "name": "my_idx_1",
+         "partialFilterExpression":
+         {
+           "a.b": {"$eq": "dog" }
+         }
+       }
+     ]
+   }',
+   TRUE
+);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+BEGIN;
+SET LOCAL seq_page_cost TO 100;
+SET LOCAL helio_api.forceUseIndexIfAvailable to true;
+-- query pushed to the index when no collattion
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search4", "filter": { "a.b": { "$eq": "dog" }, "a": { "$ne" :  null } } }');
+                         document                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : "dog" } }
+(1 row)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search4", "filter": { "a.b": { "$eq": "dog" }, "a": { "$ne" :  null } } }');
+                                                                                                                                                         QUERY PLAN                                                                                                                                                         
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM helio_data.documents_7993_7990058 collection WHERE ((document OPERATOR(helio_api_catalog.#=) '{ "a.b" : "dog" }'::helio_core.bsonquery) AND helio_api_catalog.bson_dollar_ne(document, '{ "a" : null }'::helio_core.bson) AND (shard_key_value OPERATOR(pg_catalog.=) '7993'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on helio_data.documents_7993_7990058 collection
+               Output: document
+               Recheck Cond: (collection.document OPERATOR(helio_api_catalog.#=) '{ "a.b" : "dog" }'::helio_core.bsonquery)
+               Filter: ((collection.document OPERATOR(helio_api_catalog.@=) '{ "a.b" : "dog" }'::helio_core.bson) AND (collection.document OPERATOR(helio_api_catalog.@!=) '{ "a" : null }'::helio_core.bson))
+               ->  Bitmap Index Scan on my_idx_1
+(12 rows)
+
+ROLLBACK;
+BEGIN;
+SET LOCAL helio_api.enableCollation TO on;
+SET LOCAL seq_page_cost TO 100;
+SET LOCAL helio_api.forceUseIndexIfAvailable to true;
+-- query not pushed to the index when collattion is specified
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search4", "filter": { "a.b": { "$eq": "dog" }, "a": { "$ne" :  null } }, "collation": { "locale": "en", "strength" : 1}  }');
+                         document                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : "DOG" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : "dog" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : "Dog" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : "DoG" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : "DOG" } }
+(5 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search4", "filter": { "a.b": { "$eq": "dog" }, "a": { "$ne" :  null } }, "collation": { "locale": "en", "strength" : 1}  }');
+                                                                                                                                                                                         QUERY PLAN                                                                                                                                                                                         
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM helio_data.documents_7993_7990058 collection WHERE ((document OPERATOR(helio_api_catalog.#=) '{ "a.b" : "dog", "collation" : "en-u-ks-level1" }'::helio_core.bsonquery) AND helio_api_catalog.bson_dollar_ne(document, '{ "a" : null, "collation" : "en-u-ks-level1" }'::helio_core.bson) AND (shard_key_value OPERATOR(pg_catalog.=) '7993'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using _id_ on helio_data.documents_7993_7990058 collection
+               Output: document
+               Index Cond: (collection.shard_key_value = '7993'::bigint)
+               Filter: ((collection.document OPERATOR(helio_api_catalog.@=) '{ "a.b" : "dog", "collation" : "en-u-ks-level1" }'::helio_core.bson) AND (collection.document OPERATOR(helio_api_catalog.@!=) '{ "a" : null, "collation" : "en-u-ks-level1" }'::helio_core.bson))
+(11 rows)
+
+END;
+SELECT helio_api.shard_collection('db', 'ci_search4', '{ "_id": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+BEGIN;
+SET LOCAL helio_api.enableCollation TO on;
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search4", "filter": { "$or" : [{ "a.b": { "$eq": "cat" } }, { "a.b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
+                         document                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : "DOG" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : "dog" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : "Cat" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : "Dog" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : "cAT" } }
+(5 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search4", "filter": { "$or" : [{ "a.b": { "$eq": "cat" } }, { "a.b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
+                                                                                                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                                                                                                               
+---------------------------------------------------------------------
+ Limit
+   Output: remote_scan.document, remote_scan."?sort?"
+   ->  Sort
+         Output: remote_scan.document, remote_scan."?sort?"
+         Sort Key: remote_scan."?sort?" NULLS FIRST
+         ->  Custom Scan (Citus Adaptive)
+               Output: remote_scan.document, remote_scan."?sort?"
+               Task Count: 8
+               Tasks Shown: One of 8
+               ->  Task
+                     Query: SELECT document, helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson) AS "?sort?" FROM helio_data.documents_7993_7990072 collection WHERE ((document OPERATOR(helio_api_catalog.#=) '{ "a.b" : "cat", "collation" : "en-u-ks-level1" }'::helio_core.bsonquery) OR (document OPERATOR(helio_api_catalog.#=) '{ "a.b" : "DOG", "collation" : "en-u-ks-level1" }'::helio_core.bsonquery)) ORDER BY (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST LIMIT '5'::bigint
+                     Node: host=localhost port=58070 dbname=regression
+                     ->  Limit
+                           Output: document, (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson))
+                           ->  Sort
+                                 Output: document, (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson))
+                                 Sort Key: (helio_api_catalog.bson_orderby(collection.document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST
+                                 ->  Seq Scan on helio_data.documents_7993_7990072 collection
+                                       Output: document, helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)
+                                       Filter: ((collection.document OPERATOR(helio_api_catalog.@=) '{ "a.b" : "cat", "collation" : "en-u-ks-level1" }'::helio_core.bson) OR (collection.document OPERATOR(helio_api_catalog.@=) '{ "a.b" : "DOG", "collation" : "en-u-ks-level1" }'::helio_core.bson))
+(20 rows)
+
+END;
+-- (13) Check index behavior with collation (TODO: update when index pushdown of collation is supported)
+SELECT helio_api.insert_one('db','ci_search5', '{"_id": 1, "a" : { "b" : "DOG" }}', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','ci_search5', '{"_id": 2, "a" : { "b" : "dog" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','ci_search5', '{"_id": 3, "a" : { "b" : "Cat" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','ci_search5', '{"_id": 4, "a" : { "b" : "Dog" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','ci_search5', '{"_id": 5, "a" : { "b" : "cAT" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','ci_search5', '{"_id": 6, "a" : { "b" : "DoG" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','ci_search5', '{"_id": 7, "a" : { "b" : "DOG" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api_internal.create_indexes_non_concurrently(
+  'db',
+  '{
+     "createIndexes": "ci_search5",
+     "indexes": [
+       {
+         "key": {"a.b": 1}, "name": "my_idx_1",
+         "collation" : {"locale" : "en", "strength" : 2}
+       }
+     ]
+   }',
+   TRUE
+);
+ERROR:  Error in specification { "key" : { "a.b" : 1 }, "name" : "my_idx_1", "collation" : { "locale" : "en", "strength" : 2 } } :: caused by :: createIndex.collation is not implemented yet
+SELECT helio_api_internal.create_indexes_non_concurrently(
+  'db',
+  '{
+     "createIndexes": "ci_search5",
+     "indexes": [
+       {
+         "key": {"a.b": 1}, "name": "my_idx_1"
+       }
+     ]
+   }',
+   TRUE
+);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+BEGIN;
+SET LOCAL seq_page_cost TO 100;
+SET LOCAL helio_api.forceUseIndexIfAvailable to true;
+-- query pushed to the index when no collattion
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search5", "filter": { "$or" : [{ "a.b": { "$eq": "cat" } }, { "a.b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5 }');
+                         document                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : "DOG" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : "DOG" } }
+(2 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search5", "filter": { "$or" : [{ "a.b": { "$eq": "cat" } }, { "a.b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5 }');
+                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                         
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM helio_data.documents_7994_7990080 collection WHERE (helio_api_catalog.bson_dollar_in(document, '{ "a.b" : [ "cat", "DOG" ] }'::helio_core.bson) AND (shard_key_value OPERATOR(pg_catalog.=) '7994'::bigint)) ORDER BY (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST LIMIT '5'::bigint
+         Node: host=localhost port=58070 dbname=regression
+         ->  Limit
+               Output: document, (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson))
+               ->  Sort
+                     Output: document, (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson))
+                     Sort Key: (helio_api_catalog.bson_orderby(collection.document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST
+                     ->  Bitmap Heap Scan on helio_data.documents_7994_7990080 collection
+                           Output: document, helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)
+                           Recheck Cond: (collection.document OPERATOR(helio_api_catalog.@*=) '{ "a.b" : [ "cat", "DOG" ] }'::helio_core.bson)
+                           ->  Bitmap Index Scan on my_idx_1
+                                 Index Cond: (collection.document OPERATOR(helio_api_catalog.@*=) '{ "a.b" : [ "cat", "DOG" ] }'::helio_core.bson)
+(17 rows)
+
+ROLLBACK;
+BEGIN;
+SET LOCAL helio_api.enableCollation TO on;
+SET LOCAL seq_page_cost TO 100;
+SET LOCAL helio_api.forceUseIndexIfAvailable to true;
+-- query not pushed to the index when collation is specified
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search5", "filter": { "$or" : [{ "a.b": { "$eq": "cat" } }, { "a.b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
+                         document                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : "DOG" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : "dog" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : "Cat" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : "Dog" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : "cAT" } }
+(5 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search5", "filter": { "$or" : [{ "a.b": { "$eq": "cat" } }, { "a.b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
+                                                                                                                                                                                                                                                                 QUERY PLAN                                                                                                                                                                                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM helio_data.documents_7994_7990080 collection WHERE (((document OPERATOR(helio_api_catalog.#=) '{ "a.b" : "cat", "collation" : "en-u-ks-level1" }'::helio_core.bsonquery) OR (document OPERATOR(helio_api_catalog.#=) '{ "a.b" : "DOG", "collation" : "en-u-ks-level1" }'::helio_core.bsonquery)) AND (shard_key_value OPERATOR(pg_catalog.=) '7994'::bigint)) ORDER BY (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST LIMIT '5'::bigint
+         Node: host=localhost port=58070 dbname=regression
+         ->  Limit
+               Output: document, (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson))
+               ->  Sort
+                     Output: document, (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson))
+                     Sort Key: (helio_api_catalog.bson_orderby(collection.document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST
+                     ->  Index Scan using _id_ on helio_data.documents_7994_7990080 collection
+                           Output: document, helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)
+                           Index Cond: (collection.shard_key_value = '7994'::bigint)
+                           Filter: ((collection.document OPERATOR(helio_api_catalog.@=) '{ "a.b" : "cat", "collation" : "en-u-ks-level1" }'::helio_core.bson) OR (collection.document OPERATOR(helio_api_catalog.@=) '{ "a.b" : "DOG", "collation" : "en-u-ks-level1" }'::helio_core.bson))
+(16 rows)
+
+END;
+-- range query with index on path "a.b"
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search5", "filter": { "a.b": { "$gt": "CAT" }, "a.b" : {"$lte" : "DOG"} }, "collation": { "locale": "en", "strength" : 1.93 } }');
+                         document                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : "DOG" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : "dog" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : "Dog" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : "DoG" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : "DOG" } }
+(5 rows)
+
+EXPLAIN(VERBOSE ON, COSTS OFF)SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search5", "filter": { "a.b": { "$gt": "CAT" }, "a.b" : {"$lte" : "DOG"} }, "collation": { "locale": "en", "strength" : 1.93 } }');
+                                                                                                                                                                                            QUERY PLAN                                                                                                                                                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM helio_data.documents_7994_7990080 collection WHERE ((document OPERATOR(helio_api_catalog.#>) '{ "a.b" : "CAT", "collation" : "en-u-ks-level1" }'::helio_core.bsonquery) AND (document OPERATOR(helio_api_catalog.#<=) '{ "a.b" : "DOG", "collation" : "en-u-ks-level1" }'::helio_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '7994'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on helio_data.documents_7994_7990080 collection
+               Output: document
+               Filter: ((collection.document OPERATOR(helio_api_catalog.@>) '{ "a.b" : "CAT", "collation" : "en-u-ks-level1" }'::helio_core.bson) AND (collection.document OPERATOR(helio_api_catalog.@<=) '{ "a.b" : "DOG", "collation" : "en-u-ks-level1" }'::helio_core.bson))
+(10 rows)
+
+SELECT helio_api.shard_collection('db', 'ci_search5', '{ "_id": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+BEGIN;
+SET LOCAL helio_api.enableCollation TO on;
+SET LOCAL seq_page_cost TO 100;
+SET LOCAL helio_api.forceUseIndexIfAvailable to true;
+SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search5", "filter": { "$or" : [{ "a.b": { "$eq": "cat" } }, { "a.b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
+                         document                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : "DOG" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : "dog" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : "Cat" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : "Dog" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : "cAT" } }
+(5 rows)
+
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search5", "filter": { "$or" : [{ "a.b": { "$eq": "cat" } }, { "a.b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1} }');
+                                                                                                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                                                                                                               
+---------------------------------------------------------------------
+ Limit
+   Output: remote_scan.document, remote_scan."?sort?"
+   ->  Sort
+         Output: remote_scan.document, remote_scan."?sort?"
+         Sort Key: remote_scan."?sort?" NULLS FIRST
+         ->  Custom Scan (Citus Adaptive)
+               Output: remote_scan.document, remote_scan."?sort?"
+               Task Count: 8
+               Tasks Shown: One of 8
+               ->  Task
+                     Query: SELECT document, helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson) AS "?sort?" FROM helio_data.documents_7994_7990096 collection WHERE ((document OPERATOR(helio_api_catalog.#=) '{ "a.b" : "cat", "collation" : "en-u-ks-level1" }'::helio_core.bsonquery) OR (document OPERATOR(helio_api_catalog.#=) '{ "a.b" : "DOG", "collation" : "en-u-ks-level1" }'::helio_core.bsonquery)) ORDER BY (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST LIMIT '5'::bigint
+                     Node: host=localhost port=58070 dbname=regression
+                     ->  Limit
+                           Output: document, (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson))
+                           ->  Sort
+                                 Output: document, (helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson))
+                                 Sort Key: (helio_api_catalog.bson_orderby(collection.document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)) NULLS FIRST
+                                 ->  Seq Scan on helio_data.documents_7994_7990096 collection
+                                       Output: document, helio_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::helio_core.bson)
+                                       Filter: ((collection.document OPERATOR(helio_api_catalog.@=) '{ "a.b" : "cat", "collation" : "en-u-ks-level1" }'::helio_core.bson) OR (collection.document OPERATOR(helio_api_catalog.@=) '{ "a.b" : "DOG", "collation" : "en-u-ks-level1" }'::helio_core.bson))
+(20 rows)
+
+END;
+-- nested pipleline tests
+SELECT helio_api.insert_one('db','ci_search6', '{"_id": 1, "a" : { "b" : "DOG" }}', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','ci_search6', '{"_id": 2, "a" : { "b" : "dog" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','ci_search6', '{"_id": 3, "a" : { "b" : "Cat" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','ci_search6', '{"_id": 4, "a" : { "b" : "Dog" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','ci_search6', '{"_id": 5, "a" : { "b" : "cAT" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','ci_search6', '{"_id": 6, "a" : { "b" : "DoG" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','ci_search6', '{"_id": 7, "a" : { "b" : "DOG" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', 
+    '{ "aggregate": "ci_search6", "pipeline": [ { "$lookup": { "from": "ci_search6", "as": "matched_docs", "localField": "_id", "foreignField": "_id", "pipeline": [ { "$match": { "a.b": "cat" } } ] } } ], "cursor": {}, "collation": { "locale": "en", "strength" : 1}  }');
+ERROR:  collation is not supported with $lookup yet
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "ci_search6", "pipeline": [ { "$graphLookup": { "from": "ci_search6", "startWith": "$a.b", "connectFromField": "a.b", "connectToField": "a.b", "as": "destinations", "depthField": "depth" } } ],  "collation": { "locale": "en", "strength" : 1} }');
+ERROR:  collation is not supported with $graphLookup yet
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "ci_search6", "pipeline": [{"$merge" : { "into": "ci_search7", "whenMatched" : "replace" }} ], "collation": { "locale": "en", "strength" : 1} }');
+ERROR:  collation is not supported with $merge yet
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "ci_search6", "pipeline": [ { "$facet": { "a" : [ { "$match": { "a.b": "cat" } }, { "$count": "catCount" } ], "b" : [ { "$match": { "a.b": "dog" } }, { "$count": "dogCount" } ]  } } ], "cursor": {}, "collation": { "locale": "en", "strength" : 1}}');
+                                                 document                                                 
+---------------------------------------------------------------------
+ { "a" : [ { "catCount" : { "$numberInt" : "2" } } ], "b" : [ { "dogCount" : { "$numberInt" : "5" } } ] }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "ci_search6", "pipeline": [ { "$unionWith": { "coll": "ci_search6", "pipeline" : [ { "$match": { "a.b": "cat" }}] } }], "cursor": {}, "collation": { "locale": "en", "strength" : 1} }');
+                         document                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : "DOG" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : "dog" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : "Cat" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : "Dog" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : "cAT" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : "DoG" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : "DOG" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : "Cat" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : "cAT" } }
+(9 rows)
+
+RESET helio_api.enableCollation;

@@ -1,0 +1,382 @@
+set search_path to helio_core,helio_api,helio_api_catalog,pg_catalog;
+SET citus.next_shard_id TO 7980000;
+SET helio_api.next_collection_id TO 7980;
+SET helio_api.next_collection_index_id TO 7980;
+-- insert some docs
+SELECT helio_api.insert_one('db', 'text_search', '{ "_id": 1, "a": "this is a cat" }');
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'text_search', '{ "_id": 2, "a": "this is a dog" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'text_search', '{ "_id": 3, "a": "these are dogs" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'text_search', '{ "_id": 4, "a": "these are cats" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'text_search', '{ "_id": 5, "a": "these are catatonic" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- do a $text query. Should fail (there's no index)
+SELECT document FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "cat" } }';
+ERROR:  <bson> $text <bson> operator not defined
+-- create a text index.
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "text_search", "indexes": [ { "key": { "a": "text" }, "name": "a_text" } ] }', TRUE);
+ERROR:  operator class "helio_api_catalog.bson_rum_text_path_ops" does not exist for access method "helio_rum"
+CONTEXT:  SQL statement "CREATE INDEX  documents_rum_index_7981 ON helio_data.documents_7980 USING helio_rum ( document helio_api_catalog.bson_rum_text_path_ops(weights='{ "a" : 1.0 }')) "
+-- now do a $text query. Should succeed.
+SELECT document FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "cat" } }';
+ERROR:  <bson> $text <bson> operator not defined
+SELECT document FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "dog" } }';
+ERROR:  <bson> $text <bson> operator not defined
+SELECT document FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "cat | dog" } }';
+ERROR:  <bson> $text <bson> operator not defined
+EXPLAIN (COSTS OFF) SELECT document FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "cat" } }';
+ERROR:  <bson> $text <bson> operator not defined
+-- invalid queries
+-- $text on subsequent stages should fail.
+WITH r1 AS (SELECT bson_dollar_project(document, '{ "a": 1 }') AS document FROM helio_api.collection('db', 'text_search'))
+SELECT document FROM r1 WHERE document @@ '{ "$text": { "$search": "cat" } }';
+ERROR:  <bson> $text <bson> operator not defined
+-- no more than 1 $text:
+SELECT document FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "$and": [ { "$text": { "$search": "cat" } }, { "$text": { "$search": "dogs" } }] }';
+ERROR:  <bson> $text <bson> operator not defined
+-- now let's try Mongo's text search example
+CALL helio_api.drop_indexes('db', '{ "dropIndexes": "text_search", "index": "a_text" }');
+ERROR:  index not found with name [a_text]
+SELECT helio_api.insert_one('db', 'text_search', '{ "_id": 11, "subject": "coffee", "author": "xyz", "views": 50 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'text_search', '{ "_id": 12, "subject": "Coffee Shopping", "author": "efg", "views": 5 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'text_search', '{ "_id": 13, "subject": "Baking a cake", "author": "abc", "views": 90  }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'text_search', '{ "_id": 14, "subject": "baking", "author": "xyz", "views": 100 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'text_search', '{ "_id": 15, "subject": "Café Con Leche", "author": "abc", "views": 200 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'text_search', '{ "_id": 16, "subject": "Сырники", "author": "jkl", "views": 80 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'text_search', '{ "_id": 17, "subject": "coffee and cream", "author": "efg", "views": 10 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'text_search', '{ "_id": 18, "subject": "Cafe con Leche", "author": "xyz", "views": 10 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "text_search", "indexes": [ { "key": { "subject": "text" }, "name": "subject_text" } ] }', TRUE);
+ERROR:  operator class "helio_api_catalog.bson_rum_text_path_ops" does not exist for access method "helio_rum"
+CONTEXT:  SQL statement "CREATE INDEX  documents_rum_index_7982 ON helio_data.documents_7980 USING helio_rum ( document helio_api_catalog.bson_rum_text_path_ops(weights='{ "subject" : 1.0 }')) "
+SELECT document FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "coffee" } }' ORDER BY object_id;
+ERROR:  <bson> $text <bson> operator not defined
+SELECT document FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "bake coffee cake" } }' ORDER BY object_id;
+ERROR:  <bson> $text <bson> operator not defined
+SELECT document FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "\"coffee shop\"" } }' ORDER BY object_id;
+ERROR:  <bson> $text <bson> operator not defined
+SELECT document FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "coffee -shop" } }' ORDER BY object_id;
+ERROR:  <bson> $text <bson> operator not defined
+-- TODO: this is incorrect, we aren’t diacritic insensitive by default like Native Mongo, it should return more documents.
+-- See: https://www.postgresql.org/docs/current/unaccent.html
+SELECT document FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "сы́рники CAFÉS" } }';
+ERROR:  <bson> $text <bson> operator not defined
+-- this partially works:
+SELECT document FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "leche", "$language": "es" } }';
+ERROR:  <bson> $text <bson> operator not defined
+-- invalid language
+SELECT document FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "leche", "$language": "ok" } }';
+ERROR:  unsupported language: "ok" for text index version 3
+-- try these with the function.
+SELECT document FROM helio_api.collection('db', 'text_search') WHERE bson_dollar_text(document, '{ "": { "$search": "coffee" } }') ORDER BY object_id;
+ERROR:  function bson_dollar_text(bson, unknown) does not exist
+LINE 1: ...M helio_api.collection('db', 'text_search') WHERE bson_dolla...
+                                                             ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT document FROM helio_api.collection('db', 'text_search') WHERE bson_dollar_text(document, '{ "": { "$search": "bake coffee cake" } }') ORDER BY object_id;
+ERROR:  function bson_dollar_text(bson, unknown) does not exist
+LINE 1: ...M helio_api.collection('db', 'text_search') WHERE bson_dolla...
+                                                             ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT document FROM helio_api.collection('db', 'text_search') WHERE bson_dollar_text(document, '{ "": { "$search": "\"coffee shop\"" } }') ORDER BY object_id;
+ERROR:  function bson_dollar_text(bson, unknown) does not exist
+LINE 1: ...M helio_api.collection('db', 'text_search') WHERE bson_dolla...
+                                                             ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+-- shard collection & try the query again
+SELECT helio_api.shard_collection('db', 'text_search', '{ "_id": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT document FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "coffee" } }' ORDER BY object_id;
+ERROR:  <bson> $text <bson> operator not defined
+SELECT document FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "bake coffee cake" } }' ORDER BY object_id;
+ERROR:  <bson> $text <bson> operator not defined
+SELECT document FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "\"coffee shop\"" } }' ORDER BY object_id;
+ERROR:  <bson> $text <bson> operator not defined
+SELECT document FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "coffee -shop" } }' ORDER BY object_id;
+ERROR:  <bson> $text <bson> operator not defined
+-- now repeat the above with default_languages.
+CALL helio_api.drop_indexes('db', '{ "dropIndexes": "text_search", "index": "subject_text" }');
+ERROR:  index not found with name [subject_text]
+SELECT helio_api.insert_one('db', 'text_search', '{ "_id": 21, "sujeito": "Café", "author": "xyz", "views": 50 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'text_search', '{ "_id": 22, "sujeito": "Comprar Café", "author": "efg", "views": 5 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'text_search', '{ "_id": 23, "sujeito": "Cozinhando um bolo", "author": "abc", "views": 90  }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'text_search', '{ "_id": 24, "sujeito": "Cozinhar", "author": "xyz", "views": 100 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'text_search', '{ "_id": 25, "sujeito": "Café com leite", "author": "abc", "views": 200 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'text_search', '{ "_id": 27, "sujeito": "Café com azeite", "author": "efg", "views": 10 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'text_search', '{ "_id": 28, "sujeito": "Cafe com azeite e leite", "author": "xyz", "views": 10 }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "text_search", "indexes": [ { "key": { "sujeito": "text" }, "name": "sujeito_text", "default_language": "pt" } ] }', TRUE);
+ERROR:  operator class "helio_api_catalog.bson_rum_text_path_ops" does not exist for access method "helio_rum"
+CONTEXT:  SQL statement "CREATE INDEX  documents_rum_index_7984 ON helio_data.documents_7980 USING helio_rum ( document helio_api_catalog.bson_rum_text_path_ops(weights='{ "sujeito" : 1.0 }',defaultlanguage='pt')) "
+SELECT document FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "Café" } }' ORDER BY object_id;
+ERROR:  <bson> $text <bson> operator not defined
+SELECT document FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "Cozinhar" } }' ORDER BY object_id;
+ERROR:  <bson> $text <bson> operator not defined
+SELECT document FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "Comprando Café" } }' ORDER BY object_id;
+ERROR:  <bson> $text <bson> operator not defined
+-- now add projection.
+SELECT bson_dollar_project(document, '{ "_id": 1, "sujeito": 1, "rank": { "$meta": "textScore" }}') FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "Café bolo cozinhar" } }';
+ERROR:  <bson> $text <bson> operator not defined
+SELECT bson_dollar_add_fields(document, '{ "rank": { "$meta": "textScore" }}') FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "Café bolo cozinhar" } }';
+ERROR:  <bson> $text <bson> operator not defined
+SELECT bson_dollar_project_find(document, '{ "_id": 1, "sujeito": 1, "rank": { "$meta": "textScore" }}') FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "Café bolo cozinhar" } }';
+ERROR:  <bson> $text <bson> operator not defined
+SELECT cursorPage, continuation, persistConnection FROM helio_api.find_cursor_first_page('db', '{ "find": "text_search", "filter": { "$text": { "$search": "Café bolo cozinhar" } }, "projection": { "_id": 1, "sujeito": 1, "rank": { "$meta": "textScore" }} }');
+ERROR:  <bson> $text <bson> operator not defined
+-- pipeline cases
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "text_search", "cursor": {}, "pipeline": [ { "$project": { "_id": 1 } }, { "$match": { "$text": { "$search": "Café bolo cozinhar" } } } ] }');
+ERROR:  <bson> $text <bson> operator not defined
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "text_search", "cursor": {}, "pipeline": [ { "$match": { "$text": { "$search": "Café bolo cozinhar" } } }, { "$sort": { "_id": 1 } } ] }');
+ERROR:  <bson> $text <bson> operator not defined
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "text_search", "cursor": {}, "pipeline": [ { "$match": { "$text": { "$search": "Café bolo cozinhar" } } }, { "$project": { "_id": 1, "sujeito": 1, "rank": { "$meta": "textScore" } } } ] }');
+ERROR:  <bson> $text <bson> operator not defined
+-- now add sort
+SELECT document FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "Café Cozinhando" } }' ORDER BY bson_orderby(document, '{ "score": {"$meta": "textScore"} }') DESC;
+ERROR:  <bson> $text <bson> operator not defined
+-- now add project & sort 
+SELECT bson_dollar_project(document, '{ "_id": 1, "sujeito": 1, "rank": { "$meta": "textScore" }}') FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "Café Comprando leite" } }' ORDER BY bson_orderby(document, '{ "score": {"$meta": "textScore"} }') DESC;
+ERROR:  <bson> $text <bson> operator not defined
+-- now do group
+WITH r1 AS (SELECT document FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "Café" } }' )
+SELECT BSONMAX(bson_expression_get(document, '{ "": "$views" }')), bson_expression_get(document, '{ "": { "$meta": "textScore" } }') FROM r1 GROUP BY bson_expression_get(document, '{ "": { "$meta": "textScore" } }');
+ERROR:  <bson> $text <bson> operator not defined
+-- scenarios without $text should return 'query requires text score metadata, but it is not available'
+SELECT bson_dollar_project(document, '{ "_id": 1, "sujeito": 1, "rank": { "$meta": "textScore" }}') FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "views": { "$exists": true } }';
+ERROR:  query requires text score metadata, but it is not available
+CONTEXT:  while executing command on localhost:58070
+SELECT bson_dollar_add_fields(document, '{ "_id": 1, "sujeito": 1, "rank": { "$meta": "textScore" }}') FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "views": { "$exists": true } }';
+ERROR:  query requires text score metadata, but it is not available
+CONTEXT:  while executing command on localhost:58070
+SELECT bson_dollar_project_find(document, '{ "_id": 1, "sujeito": 1, "rank": { "$meta": "textScore" }}') FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "views": { "$exists": true } }';
+ERROR:  query requires text score metadata, but it is not available
+CONTEXT:  while executing command on localhost:58070
+SELECT document FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "views": { "$exists": true } }' ORDER BY bson_orderby(document, '{ "score": {"$meta": "textScore"} }') DESC;
+ERROR:  query requires text score metadata, but it is not available
+CONTEXT:  while executing command on localhost:58070
+WITH r1 AS (SELECT document FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "views": { "$exists": true } }' )
+SELECT BSONMAX(bson_expression_get(document, '{ "": "$views" }')) FROM r1 GROUP BY bson_expression_get(document, '{ "": { "$meta": "textScore" } }');
+ERROR:  query requires text score metadata, but it is not available
+CONTEXT:  while executing command on localhost:58070
+-- test with custom weights.
+CALL helio_api.drop_indexes('db', '{ "dropIndexes": "text_search", "index": "sujeito_text" }');
+ERROR:  index not found with name [sujeito_text]
+SELECT helio_api.insert_one('db', 'text_search', '{ "_id": 31, "x": "az b x", "y": "c d m" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db', 'text_search', '{ "_id": 32, "x": "c d y", "y": "az b n" }');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "text_search", "indexes": [ { "key": { "x": "text" }, "name": "x_1", "weights": { "x": 10, "y": 1 } } ] }', TRUE);
+ERROR:  operator class "helio_api_catalog.bson_rum_text_path_ops" does not exist for access method "helio_rum"
+CONTEXT:  SQL statement "CREATE INDEX  documents_rum_index_7985 ON helio_data.documents_7980 USING helio_rum ( document helio_api_catalog.bson_rum_text_path_ops(weights='{ "x" : 10.0, "y" : 1.0 }')) "
+-- returns 31, 32
+SELECT bson_dollar_add_fields(document, '{ "rank": { "$meta": "textScore" }}') FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "az" } }' ORDER BY bson_orderby(document, '{ "score": {"$meta": "textScore"} }') DESC;
+ERROR:  <bson> $text <bson> operator not defined
+-- Returns 32, 31
+SELECT bson_dollar_add_fields(document, '{ "rank": { "$meta": "textScore" }}') FROM helio_api.collection('db', 'text_search') WHERE document @@ '{ "$text": { "$search": "d" } }' ORDER BY bson_orderby(document, '{ "score": {"$meta": "textScore"} }') DESC;
+ERROR:  <bson> $text <bson> operator not defined
+-- Test TSQuery generation.
+SELECT helio_api_internal.bson_query_to_tsquery('{ "$search": "\"ssl certificate\"" }'::helio_core.bson);
+ERROR:  function helio_api_internal.bson_query_to_tsquery(bson) does not exist
+LINE 1: SELECT helio_api_internal.bson_query_to_tsquery('{ "$search"...
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT helio_api_internal.bson_query_to_tsquery('{ "$search": "\"ssl certificate\" authority key" }'::helio_core.bson);
+ERROR:  function helio_api_internal.bson_query_to_tsquery(bson) does not exist
+LINE 1: SELECT helio_api_internal.bson_query_to_tsquery('{ "$search"...
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT helio_api_internal.bson_query_to_tsquery('{ "$search": "bake coffee cake" }'::helio_core.bson);
+ERROR:  function helio_api_internal.bson_query_to_tsquery(bson) does not exist
+LINE 1: SELECT helio_api_internal.bson_query_to_tsquery('{ "$search"...
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT helio_api_internal.bson_query_to_tsquery('{ "$search": "\"coffee shop\"" }'::helio_core.bson);
+ERROR:  function helio_api_internal.bson_query_to_tsquery(bson) does not exist
+LINE 1: SELECT helio_api_internal.bson_query_to_tsquery('{ "$search"...
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT helio_api_internal.bson_query_to_tsquery('{ "$search": "coffee -shop" }'::helio_core.bson);
+ERROR:  function helio_api_internal.bson_query_to_tsquery(bson) does not exist
+LINE 1: SELECT helio_api_internal.bson_query_to_tsquery('{ "$search"...
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT helio_api_internal.bson_query_to_tsquery('{ "$search": "coffee -shop -nightmare" }'::helio_core.bson);
+ERROR:  function helio_api_internal.bson_query_to_tsquery(bson) does not exist
+LINE 1: SELECT helio_api_internal.bson_query_to_tsquery('{ "$search"...
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT helio_api_internal.bson_query_to_tsquery('{ "$search": "\"coffee shop\" -track -nightmare" }'::helio_core.bson);
+ERROR:  function helio_api_internal.bson_query_to_tsquery(bson) does not exist
+LINE 1: SELECT helio_api_internal.bson_query_to_tsquery('{ "$search"...
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT helio_api_internal.bson_query_to_tsquery('{ "$search": "\"coffee shop\" cow -track -nightmare" }'::helio_core.bson);
+ERROR:  function helio_api_internal.bson_query_to_tsquery(bson) does not exist
+LINE 1: SELECT helio_api_internal.bson_query_to_tsquery('{ "$search"...
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT helio_api_internal.bson_query_to_tsquery('{ "$search": "\"coffee shop\" cow -track -nightmare search" }'::helio_core.bson);
+ERROR:  function helio_api_internal.bson_query_to_tsquery(bson) does not exist
+LINE 1: SELECT helio_api_internal.bson_query_to_tsquery('{ "$search"...
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+-- this matches
+SELECT to_tsvector('the coffee shop cows searches the barn') @@ helio_api_internal.bson_query_to_tsquery('{ "$search": "\"coffee shop\" cow -track -nightmare search" }'::helio_core.bson);
+ERROR:  function helio_api_internal.bson_query_to_tsquery(bson) does not exist
+LINE 1: ...ctor('the coffee shop cows searches the barn') @@ helio_api_...
+                                                             ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+-- this shouldn't match
+SELECT to_tsvector('the coffee shop cows track me') @@ helio_api_internal.bson_query_to_tsquery('{ "$search": "\"coffee shop\" cow -track -nightmare search" }'::helio_core.bson);
+ERROR:  function helio_api_internal.bson_query_to_tsquery(bson) does not exist
+LINE 1: ...T to_tsvector('the coffee shop cows track me') @@ helio_api_...
+                                                             ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT to_tsvector('the coffee shop cows searches the track') @@ helio_api_internal.bson_query_to_tsquery('{ "$search": "\"coffee shop\" cow -track -nightmare search" }'::helio_core.bson);
+ERROR:  function helio_api_internal.bson_query_to_tsquery(bson) does not exist
+LINE 1: ...tor('the coffee shop cows searches the track') @@ helio_api_...
+                                                             ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT to_tsvector('coffee shop searches my nightmares') @@ helio_api_internal.bson_query_to_tsquery('{ "$search": "\"coffee shop\" cow -track -nightmare search" }'::helio_core.bson);
+ERROR:  function helio_api_internal.bson_query_to_tsquery(bson) does not exist
+LINE 1: ...tsvector('coffee shop searches my nightmares') @@ helio_api_...
+                                                             ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+-- Phrase: First one doesn't match, second one does.
+SELECT to_tsvector('google is the paragon of search') @@ helio_api_internal.bson_query_to_tsquery('{ "$search": "\"coffee shop\" cow -track -nightmare search" }'::helio_core.bson);
+ERROR:  function helio_api_internal.bson_query_to_tsquery(bson) does not exist
+LINE 1: ...to_tsvector('google is the paragon of search') @@ helio_api_...
+                                                             ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT to_tsvector('google is the paragon of search') @@ helio_api_internal.bson_query_to_tsquery('{ "$search": "cow -track -nightmare search" }'::helio_core.bson);
+ERROR:  function helio_api_internal.bson_query_to_tsquery(bson) does not exist
+LINE 1: ...to_tsvector('google is the paragon of search') @@ helio_api_...
+                                                             ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+-- Use language check
+-- synonyms within a language work.
+SELECT to_tsvector('portuguese', 'Em atualidade, Sempre e possivel') @@ helio_api_internal.bson_query_to_tsquery('{ "$search": "atualmente", "$language": "pt" }'::helio_core.bson);
+ERROR:  function helio_api_internal.bson_query_to_tsquery(bson) does not exist
+LINE 1: ...rtuguese', 'Em atualidade, Sempre e possivel') @@ helio_api_...
+                                                             ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+-- Only one text index allowed
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "text_search2", "indexes": [ { "key": { "c": "text" }, "name": "c_text" } ] }', TRUE);
+NOTICE:  creating collection
+ERROR:  operator class "helio_api_catalog.bson_rum_text_path_ops" does not exist for access method "helio_rum"
+CONTEXT:  SQL statement "CREATE INDEX  documents_rum_index_7987 ON helio_data.documents_7981 USING helio_rum ( document helio_api_catalog.bson_rum_text_path_ops(weights='{ "c" : 1.0 }')) "
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "text_search2", "indexes": [ { "key": { "c": "text" }, "name": "c_text" } ] }', TRUE);
+NOTICE:  creating collection
+ERROR:  operator class "helio_api_catalog.bson_rum_text_path_ops" does not exist for access method "helio_rum"
+CONTEXT:  SQL statement "CREATE INDEX  documents_rum_index_7989 ON helio_data.documents_7982 USING helio_rum ( document helio_api_catalog.bson_rum_text_path_ops(weights='{ "c" : 1.0 }')) "
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "text_search", "indexes": [ { "key": { "a": "text", "b": "text" }, "name": "a_text" } ] }', TRUE);
+ERROR:  operator class "helio_api_catalog.bson_rum_text_path_ops" does not exist for access method "helio_rum"
+CONTEXT:  SQL statement "CREATE INDEX  documents_rum_index_7990 ON helio_data.documents_7980 USING helio_rum ( document helio_api_catalog.bson_rum_text_path_ops(weights='{ "a" : 1.0, "b" : 1.0 }')) "

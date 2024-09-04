@@ -1,0 +1,160 @@
+set search_path to helio_core,helio_api,helio_api_catalog,pg_catalog;
+SET citus.next_shard_id TO 430000;
+SET helio_api.next_collection_id TO 4300;
+SET helio_api.next_collection_index_id TO 4300;
+\set QUIET on
+\set prevEcho :ECHO
+\set ECHO none
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+NOTICE:  creating collection
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+-- avoid plans that use the primary key index
+SELECT helio_distributed_test_helpers.drop_primary_key('db','arraysize');
+ drop_primary_key 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+BEGIN;
+set local enable_seqscan TO on;
+\i sql/bson_dollar_ops_query_array_size_tests_core.sql
+-- top level
+SELECT helio_api.insert_one('db','arraysize','{"_id": 1, "a": []}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','arraysize','{"_id": 2, "a": [1, 2]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','arraysize','{"_id": 3, "a": ["a", "a"]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','arraysize','{"_id": 4, "a": 1}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','arraysize','{"_id": 5, "b": [1, 2]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- nested object
+SELECT helio_api.insert_one('db','arraysize','{"_id": 6, "a": {"b":[]}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','arraysize','{"_id": 7, "a": {"b":[1, 2]}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','arraysize','{"_id": 8, "a": {"b":["a", "a"]}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','arraysize','{"_id": 9, "a": {"b":1}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','arraysize','{"_id": 10, "b": {"b":[1, 2]}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- nested array
+SELECT helio_api.insert_one('db','arraysize','{"_id": 11, "c": [{"b":[]}]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','arraysize','{"_id": 12, "c": [{"b":[1, 2]}]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','arraysize','{"_id": 13, "c": [{"b":["a", "a"]}]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','arraysize','{"_id": 14, "c": [{"b":1}]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','arraysize','{"_id": 15, "b": [{"b":[1, 2]}]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- assert that size returns the correct number of rows.
+SELECT COUNT(*) FROM helio_api.collection('db', 'arraysize') where document @@# '{ "a" : 0 }';
+ count 
+---------------------------------------------------------------------
+     1
+(1 row)
+
+SELECT COUNT(*) FROM helio_api.collection('db', 'arraysize') where document @@# '{ "a" : 2 }';
+ count 
+---------------------------------------------------------------------
+     2
+(1 row)
+
+SELECT COUNT(*) FROM helio_api.collection('db', 'arraysize') where document @@# '{ "a.b" : 0 }';
+ count 
+---------------------------------------------------------------------
+     1
+(1 row)
+
+SELECT COUNT(*) FROM helio_api.collection('db', 'arraysize') where document @@# '{ "a.b" : 2 }';
+ count 
+---------------------------------------------------------------------
+     2
+(1 row)
+
+SELECT COUNT(*) FROM helio_api.collection('db', 'arraysize') where document @@# '{ "c.b" : 0 }';
+ count 
+---------------------------------------------------------------------
+     1
+(1 row)
+
+SELECT COUNT(*) FROM helio_api.collection('db', 'arraysize') where document @@# '{ "c.b" : 2 }';
+ count 
+---------------------------------------------------------------------
+     2
+(1 row)
+
+ROLLBACK;
+\set QUIET off

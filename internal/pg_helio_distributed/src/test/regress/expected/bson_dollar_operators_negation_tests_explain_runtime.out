@@ -1,0 +1,306 @@
+set search_path to helio_core,helio_api,helio_api_catalog,pg_catalog;
+SET citus.next_shard_id TO 513000;
+SET helio_api.next_collection_id TO 5130;
+SET helio_api.next_collection_index_id TO 5130;
+SET client_min_messages=WARNING;
+SELECT helio_api.drop_collection('db', 'negation_tests_explain');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT helio_api.create_collection('db', 'negation_tests_explain');
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+BEGIN;
+SET local search_path to helio_core,helio_api,helio_api_catalog,pg_catalog;
+\o /dev/null
+\o
+set local enable_seqscan to off;
+set local helio_api.forceUseIndexIfAvailable to on;
+\i sql/bson_dollar_operators_negation_tests_explain_core.sql
+SELECT helio_api.insert_one('db','negation_tests_explain', '{"_id": 1, "a" : { "b" : 0 }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','negation_tests_explain', '{"_id": 2, "a" : { "b" : 1 }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','negation_tests_explain', '{"_id": 3, "a" : { "b" : 2.0 }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','negation_tests_explain', '{"_id": 4, "a" : { "b" : null }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','negation_tests_explain', '{"_id": 5, "a" : { "b" : true }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','negation_tests_explain', '{"_id": 6, "a" : { "b" : { "$numberDouble": "Infinity" } }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','negation_tests_explain', '{"_id": 7, "a" : { "b" : { "$numberDouble": "NaN" } }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','negation_tests_explain', '{"_id": 8, "a" : { "b" : "someString" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','negation_tests_explain', '{"_id": 9, "a" : { "b" : "earlierString" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','negation_tests_explain', '{"_id": 10, "a" : { "b" : "xafterString" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- do a search
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM helio_api.collection('db', 'negation_tests_explain') WHERE document @@ '{ "a.b": { "$gt": 2 }}';
+                                                                                                                        QUERY PLAN                                                                                                                        
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM helio_data.documents_5130_513007 collection WHERE ((document OPERATOR(helio_api_catalog.#>) '{ "a.b" : { "$numberInt" : "2" } }'::helio_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '5130'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on helio_data.documents_5130_513007 collection
+               Output: document
+               Recheck Cond: (collection.shard_key_value = '5130'::bigint)
+               Filter: (collection.document @> '{ "a.b" : { "$numberInt" : "2" } }'::bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (collection.shard_key_value = '5130'::bigint)
+(13 rows)
+
+-- do the complement
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM helio_api.collection('db', 'negation_tests_explain') WHERE document @@ '{ "a.b": { "$lte": 2 }}';
+                                                                                                                        QUERY PLAN                                                                                                                         
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM helio_data.documents_5130_513007 collection WHERE ((document OPERATOR(helio_api_catalog.#<=) '{ "a.b" : { "$numberInt" : "2" } }'::helio_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '5130'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on helio_data.documents_5130_513007 collection
+               Output: document
+               Recheck Cond: (collection.shard_key_value = '5130'::bigint)
+               Filter: (collection.document @<= '{ "a.b" : { "$numberInt" : "2" } }'::bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (collection.shard_key_value = '5130'::bigint)
+(13 rows)
+
+-- do the NOTs
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM helio_api.collection('db', 'negation_tests_explain') WHERE document @@ '{ "a.b": { "$not": { "$gt": 2 } }}';
+                                                                                                                         QUERY PLAN                                                                                                                         
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM helio_data.documents_5130_513007 collection WHERE (helio_api_internal.bson_dollar_not_gt(document, '{ "a.b" : { "$numberInt" : "2" } }'::helio_core.bson) AND (shard_key_value OPERATOR(pg_catalog.=) '5130'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on helio_data.documents_5130_513007 collection
+               Output: document
+               Recheck Cond: (collection.shard_key_value = '5130'::bigint)
+               Filter: (collection.document OPERATOR(helio_api_internal.@!>) '{ "a.b" : { "$numberInt" : "2" } }'::bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (collection.shard_key_value = '5130'::bigint)
+(13 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM helio_api.collection('db', 'negation_tests_explain') WHERE document @@ '{ "a.b": { "$not": { "$lte": 2 } }}';
+                                                                                                                         QUERY PLAN                                                                                                                          
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM helio_data.documents_5130_513007 collection WHERE (helio_api_internal.bson_dollar_not_lte(document, '{ "a.b" : { "$numberInt" : "2" } }'::helio_core.bson) AND (shard_key_value OPERATOR(pg_catalog.=) '5130'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on helio_data.documents_5130_513007 collection
+               Output: document
+               Recheck Cond: (collection.shard_key_value = '5130'::bigint)
+               Filter: (collection.document OPERATOR(helio_api_internal.@!<=) '{ "a.b" : { "$numberInt" : "2" } }'::bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (collection.shard_key_value = '5130'::bigint)
+(13 rows)
+
+-- Now try $gte/$lt
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM helio_api.collection('db', 'negation_tests_explain') WHERE document @@ '{ "a.b": { "$gte": 2 }}';
+                                                                                                                        QUERY PLAN                                                                                                                         
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM helio_data.documents_5130_513007 collection WHERE ((document OPERATOR(helio_api_catalog.#>=) '{ "a.b" : { "$numberInt" : "2" } }'::helio_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '5130'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on helio_data.documents_5130_513007 collection
+               Output: document
+               Recheck Cond: (collection.shard_key_value = '5130'::bigint)
+               Filter: (collection.document @>= '{ "a.b" : { "$numberInt" : "2" } }'::bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (collection.shard_key_value = '5130'::bigint)
+(13 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM helio_api.collection('db', 'negation_tests_explain') WHERE document @@ '{ "a.b": { "$lt": 2 }}';
+                                                                                                                        QUERY PLAN                                                                                                                        
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM helio_data.documents_5130_513007 collection WHERE ((document OPERATOR(helio_api_catalog.#<) '{ "a.b" : { "$numberInt" : "2" } }'::helio_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '5130'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on helio_data.documents_5130_513007 collection
+               Output: document
+               Recheck Cond: (collection.shard_key_value = '5130'::bigint)
+               Filter: (collection.document @< '{ "a.b" : { "$numberInt" : "2" } }'::bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (collection.shard_key_value = '5130'::bigint)
+(13 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM helio_api.collection('db', 'negation_tests_explain') WHERE document @@ '{ "a.b": { "$not": { "$gte": 2 } }}';
+                                                                                                                         QUERY PLAN                                                                                                                          
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM helio_data.documents_5130_513007 collection WHERE (helio_api_internal.bson_dollar_not_gte(document, '{ "a.b" : { "$numberInt" : "2" } }'::helio_core.bson) AND (shard_key_value OPERATOR(pg_catalog.=) '5130'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on helio_data.documents_5130_513007 collection
+               Output: document
+               Recheck Cond: (collection.shard_key_value = '5130'::bigint)
+               Filter: (collection.document OPERATOR(helio_api_internal.@!>=) '{ "a.b" : { "$numberInt" : "2" } }'::bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (collection.shard_key_value = '5130'::bigint)
+(13 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM helio_api.collection('db', 'negation_tests_explain') WHERE document @@ '{ "a.b": { "$not": { "$lt": 2 } }}';
+                                                                                                                         QUERY PLAN                                                                                                                         
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM helio_data.documents_5130_513007 collection WHERE (helio_api_internal.bson_dollar_not_lt(document, '{ "a.b" : { "$numberInt" : "2" } }'::helio_core.bson) AND (shard_key_value OPERATOR(pg_catalog.=) '5130'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on helio_data.documents_5130_513007 collection
+               Output: document
+               Recheck Cond: (collection.shard_key_value = '5130'::bigint)
+               Filter: (collection.document OPERATOR(helio_api_internal.@!<) '{ "a.b" : { "$numberInt" : "2" } }'::bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (collection.shard_key_value = '5130'::bigint)
+(13 rows)
+
+-- $gte: Minkey (Exists doesn't factor in this)
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM helio_api.collection('db', 'negation_tests_explain') WHERE document @@ '{ "a.b": { "$exists": true } }';
+                                                                                                                      QUERY PLAN                                                                                                                      
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM helio_data.documents_5130_513007 collection WHERE ((document OPERATOR(helio_api_catalog.#>=) '{ "a.b" : { "$minKey" : 1 } }'::helio_core.bsonquery) AND (shard_key_value OPERATOR(pg_catalog.=) '5130'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on helio_data.documents_5130_513007 collection
+               Output: document
+               Recheck Cond: (collection.shard_key_value = '5130'::bigint)
+               Filter: (collection.document @>= '{ "a.b" : { "$minKey" : 1 } }'::bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (collection.shard_key_value = '5130'::bigint)
+(13 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM helio_api.collection('db', 'negation_tests_explain') WHERE document @@ '{ "a.b": { "$exists": false } }';
+                                                                                                                QUERY PLAN                                                                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM helio_data.documents_5130_513007 collection WHERE (helio_api_catalog.bson_dollar_exists(document, '{ "a.b" : false }'::helio_core.bson) AND (shard_key_value OPERATOR(pg_catalog.=) '5130'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on helio_data.documents_5130_513007 collection
+               Output: document
+               Recheck Cond: (collection.shard_key_value = '5130'::bigint)
+               Filter: (collection.document @? '{ "a.b" : false }'::bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (collection.shard_key_value = '5130'::bigint)
+(13 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM helio_api.collection('db', 'negation_tests_explain') WHERE document @@ '{ "a.b": { "$not": { "$exists": true } } }';
+                                                                                                                                 QUERY PLAN                                                                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM helio_data.documents_5130_513007 collection WHERE ((NOT COALESCE((document OPERATOR(helio_api_catalog.#>=) '{ "a.b" : { "$minKey" : 1 } }'::helio_core.bsonquery), false)) AND (shard_key_value OPERATOR(pg_catalog.=) '5130'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on helio_data.documents_5130_513007 collection
+               Output: document
+               Recheck Cond: (collection.shard_key_value = '5130'::bigint)
+               Filter: (NOT COALESCE((collection.document #>= '{ "a.b" : { "$minKey" : 1 } }'::bsonquery), false))
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (collection.shard_key_value = '5130'::bigint)
+(13 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM helio_api.collection('db', 'negation_tests_explain') WHERE document @@ '{ "a.b": { "$not": { "$exists": false } } }';
+                                                                                                                           QUERY PLAN                                                                                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT document FROM helio_data.documents_5130_513007 collection WHERE ((NOT COALESCE(helio_api_catalog.bson_dollar_exists(document, '{ "a.b" : false }'::helio_core.bson), false)) AND (shard_key_value OPERATOR(pg_catalog.=) '5130'::bigint))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Bitmap Heap Scan on helio_data.documents_5130_513007 collection
+               Output: document
+               Recheck Cond: (collection.shard_key_value = '5130'::bigint)
+               Filter: (NOT COALESCE(bson_dollar_exists(collection.document, '{ "a.b" : false }'::bson), false))
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (collection.shard_key_value = '5130'::bigint)
+(13 rows)
+
+ROLLBACK;

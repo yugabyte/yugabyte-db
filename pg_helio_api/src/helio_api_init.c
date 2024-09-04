@@ -576,7 +576,7 @@ InitApiConfigurations(char *prefix)
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
-		psprintf("%s.enableGenerateNonExistsTerm", prefix),
+		"helio_api.enableGenerateNonExistsTerm",
 		gettext_noop(
 			"Enables generating the non exists term for new documents in a collection."),
 		NULL, &EnableGenerateNonExistsTerm, DEFAULT_ENABLE_GENERATE_NON_EXISTS_TERM,

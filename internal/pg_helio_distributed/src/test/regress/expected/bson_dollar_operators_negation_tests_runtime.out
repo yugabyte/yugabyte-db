@@ -1,0 +1,405 @@
+set search_path to helio_core,helio_api,helio_api_catalog,pg_catalog;
+SET citus.next_shard_id TO 512000;
+SET helio_api.next_collection_id TO 5120;
+SET helio_api.next_collection_index_id TO 5120;
+SET client_min_messages=WARNING;
+SELECT helio_api.drop_collection('db', 'negation_tests') IS NULL;
+ ?column? 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+SELECT helio_api.create_collection('db', 'negation_tests') IS NULL;
+ ?column? 
+---------------------------------------------------------------------
+ f
+(1 row)
+
+\o /dev/null
+\o
+BEGIN;
+set local enable_seqscan to off;
+set local helio_api.forceUseIndexIfAvailable to on;
+\i sql/bson_dollar_operators_negation_tests_core.sql
+SELECT helio_api.insert_one('db','negation_tests', '{"_id": 1, "a" : { "b" : 0 }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','negation_tests', '{"_id": 2, "a" : { "b" : 1 }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','negation_tests', '{"_id": 3, "a" : { "b" : 2.0 }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','negation_tests', '{"_id": 4, "a" : { "b" : null }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','negation_tests', '{"_id": 5, "a" : { "b" : true }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','negation_tests', '{"_id": 6, "a" : { "b" : { "$numberDouble": "Infinity" } }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','negation_tests', '{"_id": 7, "a" : { "b" : { "$numberDouble": "NaN" } }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','negation_tests', '{"_id": 8, "a" : { "b" : "someString" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','negation_tests', '{"_id": 9, "a" : { "b" : "earlierString" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','negation_tests', '{"_id": 10, "a" : { "b" : "xafterString" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- do a search
+SELECT document FROM helio_api.collection('db', 'negation_tests') WHERE document @@ '{ "a.b": { "$gt": 2 }}';
+                                       document                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberDouble" : "Infinity" } } }
+(1 row)
+
+-- do the complement
+SELECT document FROM helio_api.collection('db', 'negation_tests') WHERE document @@ '{ "a.b": { "$lte": 2 }}';
+                                    document                                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "0" } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberDouble" : "2.0" } } }
+(3 rows)
+
+-- do the NOTs
+SELECT document FROM helio_api.collection('db', 'negation_tests') WHERE document @@ '{ "a.b": { "$not": { "$gt": 2 } }}';
+                                    document                                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "0" } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberDouble" : "2.0" } } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : null } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : true } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberDouble" : "NaN" } } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : "someString" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : "earlierString" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "b" : "xafterString" } }
+(9 rows)
+
+SELECT document FROM helio_api.collection('db', 'negation_tests') WHERE document @@ '{ "a.b": { "$not": { "$lte": 2 } }}';
+                                       document                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : null } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : true } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberDouble" : "Infinity" } } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberDouble" : "NaN" } } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : "someString" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : "earlierString" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "b" : "xafterString" } }
+(7 rows)
+
+-- Now try $gte/$lt
+SELECT document FROM helio_api.collection('db', 'negation_tests') WHERE document @@ '{ "a.b": { "$gte": 2 }}';
+                                       document                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberDouble" : "2.0" } } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberDouble" : "Infinity" } } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'negation_tests') WHERE document @@ '{ "a.b": { "$lt": 2 }}';
+                                  document                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "0" } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" } } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'negation_tests') WHERE document @@ '{ "a.b": { "$not": { "$gte": 2 } }}';
+                                    document                                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "0" } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : null } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : true } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberDouble" : "NaN" } } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : "someString" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : "earlierString" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "b" : "xafterString" } }
+(8 rows)
+
+SELECT document FROM helio_api.collection('db', 'negation_tests') WHERE document @@ '{ "a.b": { "$not": { "$lt": 2 } }}';
+                                       document                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberDouble" : "2.0" } } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : null } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : true } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberDouble" : "Infinity" } } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberDouble" : "NaN" } } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : "someString" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : "earlierString" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "b" : "xafterString" } }
+(8 rows)
+
+-- $gte: Minkey (Exists doesn't factor in this)
+SELECT document FROM helio_api.collection('db', 'negation_tests') WHERE document @@ '{ "a.b": { "$exists": true } }';
+                                       document                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "0" } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberDouble" : "2.0" } } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : null } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : true } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberDouble" : "Infinity" } } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberDouble" : "NaN" } } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : "someString" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : "earlierString" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "b" : "xafterString" } }
+(10 rows)
+
+SELECT document FROM helio_api.collection('db', 'negation_tests') WHERE document @@ '{ "a.b": { "$exists": false } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'negation_tests') WHERE document @@ '{ "a.b": { "$not": { "$exists": true } } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'negation_tests') WHERE document @@ '{ "a.b": { "$not": { "$exists": false } } }';
+                                       document                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "0" } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberDouble" : "2.0" } } }
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : null } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : true } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberDouble" : "Infinity" } } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberDouble" : "NaN" } } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : "someString" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : "earlierString" } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "b" : "xafterString" } }
+(10 rows)
+
+ROLLBACK;
+SELECT helio_api.shard_collection('db', 'negation_tests', '{ "_id": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+BEGIN;
+set local enable_seqscan to off;
+set local helio_api.forceUseIndexIfAvailable to on;
+\i sql/bson_dollar_operators_negation_tests_core.sql
+SELECT helio_api.insert_one('db','negation_tests', '{"_id": 1, "a" : { "b" : 0 }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','negation_tests', '{"_id": 2, "a" : { "b" : 1 }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','negation_tests', '{"_id": 3, "a" : { "b" : 2.0 }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','negation_tests', '{"_id": 4, "a" : { "b" : null }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','negation_tests', '{"_id": 5, "a" : { "b" : true }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','negation_tests', '{"_id": 6, "a" : { "b" : { "$numberDouble": "Infinity" } }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','negation_tests', '{"_id": 7, "a" : { "b" : { "$numberDouble": "NaN" } }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','negation_tests', '{"_id": 8, "a" : { "b" : "someString" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','negation_tests', '{"_id": 9, "a" : { "b" : "earlierString" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','negation_tests', '{"_id": 10, "a" : { "b" : "xafterString" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- do a search
+SELECT document FROM helio_api.collection('db', 'negation_tests') WHERE document @@ '{ "a.b": { "$gt": 2 }}';
+                                       document                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberDouble" : "Infinity" } } }
+(1 row)
+
+-- do the complement
+SELECT document FROM helio_api.collection('db', 'negation_tests') WHERE document @@ '{ "a.b": { "$lte": 2 }}';
+                                    document                                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberDouble" : "2.0" } } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "0" } } }
+(3 rows)
+
+-- do the NOTs
+SELECT document FROM helio_api.collection('db', 'negation_tests') WHERE document @@ '{ "a.b": { "$not": { "$gt": 2 } }}';
+                                    document                                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : null } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberDouble" : "2.0" } } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : "someString" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : "earlierString" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberDouble" : "NaN" } } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : true } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "0" } } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "b" : "xafterString" } }
+(9 rows)
+
+SELECT document FROM helio_api.collection('db', 'negation_tests') WHERE document @@ '{ "a.b": { "$not": { "$lte": 2 } }}';
+                                       document                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : null } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberDouble" : "Infinity" } } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : "someString" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : "earlierString" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberDouble" : "NaN" } } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : true } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "b" : "xafterString" } }
+(7 rows)
+
+-- Now try $gte/$lt
+SELECT document FROM helio_api.collection('db', 'negation_tests') WHERE document @@ '{ "a.b": { "$gte": 2 }}';
+                                       document                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberDouble" : "Infinity" } } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberDouble" : "2.0" } } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'negation_tests') WHERE document @@ '{ "a.b": { "$lt": 2 }}';
+                                  document                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "0" } } }
+(2 rows)
+
+SELECT document FROM helio_api.collection('db', 'negation_tests') WHERE document @@ '{ "a.b": { "$not": { "$gte": 2 } }}';
+                                    document                                     
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : null } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : "someString" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : "earlierString" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberDouble" : "NaN" } } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : true } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "0" } } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "b" : "xafterString" } }
+(8 rows)
+
+SELECT document FROM helio_api.collection('db', 'negation_tests') WHERE document @@ '{ "a.b": { "$not": { "$lt": 2 } }}';
+                                       document                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : null } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberDouble" : "Infinity" } } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberDouble" : "2.0" } } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : "someString" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : "earlierString" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberDouble" : "NaN" } } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : true } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "b" : "xafterString" } }
+(8 rows)
+
+-- $gte: Minkey (Exists doesn't factor in this)
+SELECT document FROM helio_api.collection('db', 'negation_tests') WHERE document @@ '{ "a.b": { "$exists": true } }';
+                                       document                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : null } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberDouble" : "Infinity" } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberDouble" : "2.0" } } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : "someString" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : "earlierString" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberDouble" : "NaN" } } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : true } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "0" } } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "b" : "xafterString" } }
+(10 rows)
+
+SELECT document FROM helio_api.collection('db', 'negation_tests') WHERE document @@ '{ "a.b": { "$exists": false } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'negation_tests') WHERE document @@ '{ "a.b": { "$not": { "$exists": true } } }';
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM helio_api.collection('db', 'negation_tests') WHERE document @@ '{ "a.b": { "$not": { "$exists": false } } }';
+                                       document                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "a" : { "b" : null } }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : { "$numberDouble" : "Infinity" } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "b" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "b" : { "$numberDouble" : "2.0" } } }
+ { "_id" : { "$numberInt" : "8" }, "a" : { "b" : "someString" } }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "b" : "earlierString" } }
+ { "_id" : { "$numberInt" : "7" }, "a" : { "b" : { "$numberDouble" : "NaN" } } }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : true } }
+ { "_id" : { "$numberInt" : "1" }, "a" : { "b" : { "$numberInt" : "0" } } }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "b" : "xafterString" } }
+(10 rows)
+
+ROLLBACK;

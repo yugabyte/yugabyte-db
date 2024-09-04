@@ -1,0 +1,564 @@
+set search_path to helio_core,helio_api,helio_api_catalog,pg_catalog;
+SET citus.next_shard_id TO 9500000;
+SET helio_api.next_collection_id TO 9500;
+SET helio_api.next_collection_index_id TO 9500;
+SELECT helio_api.create_collection('db', 'bitwiseOperators');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+--insert data
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 1, "a": 0}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 2, "a": 1}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 3, "a": 54}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 4, "a": 88}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id": 5, "a": 255}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id":"9", "a": {"$binary": { "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType": "01"}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','bitwiseOperators','{"_id":"10", "a": {"$binary": { "base64": "AANgAAAAAAAAAAAAAAAAAAAAAAAA", "subType": "01"}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Explain Plan on runtime
+SELECT helio_distributed_test_helpers.drop_primary_key('db', 'bitwiseOperators');
+ drop_primary_key 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+BEGIN;
+set local enable_seqscan TO ON;
+set local helio_api.forceRumIndexScantoBitmapHeapScan TO OFF;
+--$bitsAllClear runtime
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : 0} }';
+                                             QUERY PLAN                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_9500_9500007 collection
+               Filter: (document OPERATOR(helio_api_catalog.@!&) '{ "a" : [  ] }'::helio_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : 1, "$lt": 10} }';
+                                                                                                          QUERY PLAN                                                                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_9500_9500007 collection
+               Filter: ((document OPERATOR(helio_api_catalog.@!&) '{ "a" : [ { "$numberInt" : "0" } ] }'::helio_core.bson) AND (document OPERATOR(helio_api_catalog.@<) '{ "a" : { "$numberInt" : "10" } }'::helio_core.bson))
+(7 rows)
+
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : [1,5,7]} }';
+                                                                                QUERY PLAN                                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_9500_9500007 collection
+               Filter: (document OPERATOR(helio_api_catalog.@!&) '{ "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "5" }, { "$numberInt" : "7" } ] }'::helio_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : { "$binary": { "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType": "01"} } } }';
+                                             QUERY PLAN                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_9500_9500007 collection
+               Filter: (document OPERATOR(helio_api_catalog.@!&) '{ "a" : [  ] }'::helio_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : { "$binary": { "base64": "AAyfAAAAAAAAAAAAAAAAAAAAAAAA", "subType": "01"} } } }';
+                                                                                                                                                QUERY PLAN                                                                                                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_9500_9500007 collection
+               Filter: (document OPERATOR(helio_api_catalog.@!&) '{ "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" }, { "$numberInt" : "16" }, { "$numberInt" : "17" }, { "$numberInt" : "18" }, { "$numberInt" : "19" }, { "$numberInt" : "20" }, { "$numberInt" : "23" } ] }'::helio_core.bson)
+(7 rows)
+
+--$bitsAnyClear runtime
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : 0} }';
+                                             QUERY PLAN                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_9500_9500007 collection
+               Filter: (document OPERATOR(helio_api_catalog.@!|) '{ "a" : [  ] }'::helio_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : 1, "$lt": 10} }';
+                                                                                                          QUERY PLAN                                                                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_9500_9500007 collection
+               Filter: ((document OPERATOR(helio_api_catalog.@!|) '{ "a" : [ { "$numberInt" : "0" } ] }'::helio_core.bson) AND (document OPERATOR(helio_api_catalog.@<) '{ "a" : { "$numberInt" : "10" } }'::helio_core.bson))
+(7 rows)
+
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : [1,5,7]} }';
+                                                                                QUERY PLAN                                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_9500_9500007 collection
+               Filter: (document OPERATOR(helio_api_catalog.@!|) '{ "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "5" }, { "$numberInt" : "7" } ] }'::helio_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : { "$binary": { "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType": "01"} } } }';
+                                             QUERY PLAN                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_9500_9500007 collection
+               Filter: (document OPERATOR(helio_api_catalog.@!|) '{ "a" : [  ] }'::helio_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : { "$binary": { "base64": "AAyfAAAAAAAAAAAAAAAAAAAAAAAA", "subType": "01"} } } }';
+                                                                                                                                                QUERY PLAN                                                                                                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_9500_9500007 collection
+               Filter: (document OPERATOR(helio_api_catalog.@!|) '{ "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" }, { "$numberInt" : "16" }, { "$numberInt" : "17" }, { "$numberInt" : "18" }, { "$numberInt" : "19" }, { "$numberInt" : "20" }, { "$numberInt" : "23" } ] }'::helio_core.bson)
+(7 rows)
+
+--$bitsAllSet runtime
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : 0} }';
+                                            QUERY PLAN                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_9500_9500007 collection
+               Filter: (document OPERATOR(helio_api_catalog.@&) '{ "a" : [  ] }'::helio_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : 1, "$lt": 10} }';
+                                                                                                          QUERY PLAN                                                                                                          
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_9500_9500007 collection
+               Filter: ((document OPERATOR(helio_api_catalog.@&) '{ "a" : [ { "$numberInt" : "0" } ] }'::helio_core.bson) AND (document OPERATOR(helio_api_catalog.@<) '{ "a" : { "$numberInt" : "10" } }'::helio_core.bson))
+(7 rows)
+
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : [1,5,7]} }';
+                                                                               QUERY PLAN                                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_9500_9500007 collection
+               Filter: (document OPERATOR(helio_api_catalog.@&) '{ "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "5" }, { "$numberInt" : "7" } ] }'::helio_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : { "$binary": { "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType": "01"} } } }';
+                                            QUERY PLAN                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_9500_9500007 collection
+               Filter: (document OPERATOR(helio_api_catalog.@&) '{ "a" : [  ] }'::helio_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : { "$binary": { "base64": "AAyfAAAAAAAAAAAAAAAAAAAAAAAA", "subType": "01"} } } }';
+                                                                                                                                               QUERY PLAN                                                                                                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_9500_9500007 collection
+               Filter: (document OPERATOR(helio_api_catalog.@&) '{ "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" }, { "$numberInt" : "16" }, { "$numberInt" : "17" }, { "$numberInt" : "18" }, { "$numberInt" : "19" }, { "$numberInt" : "20" }, { "$numberInt" : "23" } ] }'::helio_core.bson)
+(7 rows)
+
+--$bitsAnySet runtime
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : 0} }';
+                                            QUERY PLAN                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_9500_9500007 collection
+               Filter: (document OPERATOR(helio_api_catalog.@|) '{ "a" : [  ] }'::helio_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : 1, "$lt": 10} }';
+                                                                                                          QUERY PLAN                                                                                                          
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_9500_9500007 collection
+               Filter: ((document OPERATOR(helio_api_catalog.@|) '{ "a" : [ { "$numberInt" : "0" } ] }'::helio_core.bson) AND (document OPERATOR(helio_api_catalog.@<) '{ "a" : { "$numberInt" : "10" } }'::helio_core.bson))
+(7 rows)
+
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : [1,5,7]} }';
+                                                                               QUERY PLAN                                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_9500_9500007 collection
+               Filter: (document OPERATOR(helio_api_catalog.@|) '{ "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "5" }, { "$numberInt" : "7" } ] }'::helio_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : { "$binary": { "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType": "01"} } } }';
+                                            QUERY PLAN                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_9500_9500007 collection
+               Filter: (document OPERATOR(helio_api_catalog.@|) '{ "a" : [  ] }'::helio_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : { "$binary": { "base64": "AAyfAAAAAAAAAAAAAAAAAAAAAAAA", "subType": "01"} } } }';
+                                                                                                                                               QUERY PLAN                                                                                                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Seq Scan on documents_9500_9500007 collection
+               Filter: (document OPERATOR(helio_api_catalog.@|) '{ "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" }, { "$numberInt" : "16" }, { "$numberInt" : "17" }, { "$numberInt" : "18" }, { "$numberInt" : "19" }, { "$numberInt" : "20" }, { "$numberInt" : "23" } ] }'::helio_core.bson)
+(7 rows)
+
+END;
+-- Explain Plan on Index 
+SELECT helio_api_internal.create_indexes_non_concurrently('db', helio_distributed_test_helpers.generate_create_index_arg('bitwiseOperators', 'index_1', '{"a": 1}'), TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "0" }, "numIndexesAfter" : { "$numberInt" : "1" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+BEGIN;
+set local enable_seqscan TO OFF;
+set local helio_api.forceRumIndexScantoBitmapHeapScan TO OFF;
+--$bitsAllClear Index
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : 0} }';
+                                               QUERY PLAN                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using index_1 on documents_9500_9500007 collection
+               Index Cond: (document OPERATOR(helio_api_catalog.@!&) '{ "a" : [  ] }'::helio_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : 1, "$lt": 10} }';
+                                                                                                            QUERY PLAN                                                                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using index_1 on documents_9500_9500007 collection
+               Index Cond: ((document OPERATOR(helio_api_catalog.@!&) '{ "a" : [ { "$numberInt" : "0" } ] }'::helio_core.bson) AND (document OPERATOR(helio_api_catalog.@<) '{ "a" : { "$numberInt" : "10" } }'::helio_core.bson))
+(7 rows)
+
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : [1,5,7]} }';
+                                                                                  QUERY PLAN                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using index_1 on documents_9500_9500007 collection
+               Index Cond: (document OPERATOR(helio_api_catalog.@!&) '{ "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "5" }, { "$numberInt" : "7" } ] }'::helio_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : { "$binary": { "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType": "01"} } } }';
+                                               QUERY PLAN                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using index_1 on documents_9500_9500007 collection
+               Index Cond: (document OPERATOR(helio_api_catalog.@!&) '{ "a" : [  ] }'::helio_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllClear" : { "$binary": { "base64": "AAyfAAAAAAAAAAAAAAAAAAAAAAAA", "subType": "01"} } } }';
+                                                                                                                                                  QUERY PLAN                                                                                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using index_1 on documents_9500_9500007 collection
+               Index Cond: (document OPERATOR(helio_api_catalog.@!&) '{ "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" }, { "$numberInt" : "16" }, { "$numberInt" : "17" }, { "$numberInt" : "18" }, { "$numberInt" : "19" }, { "$numberInt" : "20" }, { "$numberInt" : "23" } ] }'::helio_core.bson)
+(7 rows)
+
+--$bitsAnyClear Index
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : 0} }';
+                                               QUERY PLAN                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using index_1 on documents_9500_9500007 collection
+               Index Cond: (document OPERATOR(helio_api_catalog.@!|) '{ "a" : [  ] }'::helio_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : 1, "$lt": 10} }';
+                                                                                                            QUERY PLAN                                                                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using index_1 on documents_9500_9500007 collection
+               Index Cond: ((document OPERATOR(helio_api_catalog.@!|) '{ "a" : [ { "$numberInt" : "0" } ] }'::helio_core.bson) AND (document OPERATOR(helio_api_catalog.@<) '{ "a" : { "$numberInt" : "10" } }'::helio_core.bson))
+(7 rows)
+
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : [1,5,7]} }';
+                                                                                  QUERY PLAN                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using index_1 on documents_9500_9500007 collection
+               Index Cond: (document OPERATOR(helio_api_catalog.@!|) '{ "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "5" }, { "$numberInt" : "7" } ] }'::helio_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : { "$binary": { "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType": "01"} } } }';
+                                               QUERY PLAN                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using index_1 on documents_9500_9500007 collection
+               Index Cond: (document OPERATOR(helio_api_catalog.@!|) '{ "a" : [  ] }'::helio_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnyClear" : { "$binary": { "base64": "AAyfAAAAAAAAAAAAAAAAAAAAAAAA", "subType": "01"} } } }';
+                                                                                                                                                  QUERY PLAN                                                                                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using index_1 on documents_9500_9500007 collection
+               Index Cond: (document OPERATOR(helio_api_catalog.@!|) '{ "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" }, { "$numberInt" : "16" }, { "$numberInt" : "17" }, { "$numberInt" : "18" }, { "$numberInt" : "19" }, { "$numberInt" : "20" }, { "$numberInt" : "23" } ] }'::helio_core.bson)
+(7 rows)
+
+--$bitsAllSet Index
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : 0} }';
+                                              QUERY PLAN                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using index_1 on documents_9500_9500007 collection
+               Index Cond: (document OPERATOR(helio_api_catalog.@&) '{ "a" : [  ] }'::helio_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : 1, "$lt": 10} }';
+                                                                                                            QUERY PLAN                                                                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using index_1 on documents_9500_9500007 collection
+               Index Cond: ((document OPERATOR(helio_api_catalog.@&) '{ "a" : [ { "$numberInt" : "0" } ] }'::helio_core.bson) AND (document OPERATOR(helio_api_catalog.@<) '{ "a" : { "$numberInt" : "10" } }'::helio_core.bson))
+(7 rows)
+
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : [1,5,7]} }';
+                                                                                 QUERY PLAN                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using index_1 on documents_9500_9500007 collection
+               Index Cond: (document OPERATOR(helio_api_catalog.@&) '{ "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "5" }, { "$numberInt" : "7" } ] }'::helio_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : { "$binary": { "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType": "01"} } } }';
+                                              QUERY PLAN                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using index_1 on documents_9500_9500007 collection
+               Index Cond: (document OPERATOR(helio_api_catalog.@&) '{ "a" : [  ] }'::helio_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAllSet" : { "$binary": { "base64": "AAyfAAAAAAAAAAAAAAAAAAAAAAAA", "subType": "01"} } } }';
+                                                                                                                                                 QUERY PLAN                                                                                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using index_1 on documents_9500_9500007 collection
+               Index Cond: (document OPERATOR(helio_api_catalog.@&) '{ "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" }, { "$numberInt" : "16" }, { "$numberInt" : "17" }, { "$numberInt" : "18" }, { "$numberInt" : "19" }, { "$numberInt" : "20" }, { "$numberInt" : "23" } ] }'::helio_core.bson)
+(7 rows)
+
+--$bitsAnySet Index
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : 0} }';
+                                              QUERY PLAN                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using index_1 on documents_9500_9500007 collection
+               Index Cond: (document OPERATOR(helio_api_catalog.@|) '{ "a" : [  ] }'::helio_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : 1, "$lt": 10} }';
+                                                                                                            QUERY PLAN                                                                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using index_1 on documents_9500_9500007 collection
+               Index Cond: ((document OPERATOR(helio_api_catalog.@|) '{ "a" : [ { "$numberInt" : "0" } ] }'::helio_core.bson) AND (document OPERATOR(helio_api_catalog.@<) '{ "a" : { "$numberInt" : "10" } }'::helio_core.bson))
+(7 rows)
+
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : [1,5,7]} }';
+                                                                                 QUERY PLAN                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using index_1 on documents_9500_9500007 collection
+               Index Cond: (document OPERATOR(helio_api_catalog.@|) '{ "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "5" }, { "$numberInt" : "7" } ] }'::helio_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : { "$binary": { "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", "subType": "01"} } } }';
+                                              QUERY PLAN                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using index_1 on documents_9500_9500007 collection
+               Index Cond: (document OPERATOR(helio_api_catalog.@|) '{ "a" : [  ] }'::helio_core.bson)
+(7 rows)
+
+EXPLAIN (COSTS OFF)  SELECT document FROM helio_api.collection('db', 'bitwiseOperators') WHERE document @@ '{ "a": { "$bitsAnySet" : { "$binary": { "base64": "AAyfAAAAAAAAAAAAAAAAAAAAAAAA", "subType": "01"} } } }';
+                                                                                                                                                 QUERY PLAN                                                                                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Index Scan using index_1 on documents_9500_9500007 collection
+               Index Cond: (document OPERATOR(helio_api_catalog.@|) '{ "a" : [ { "$numberInt" : "10" }, { "$numberInt" : "11" }, { "$numberInt" : "16" }, { "$numberInt" : "17" }, { "$numberInt" : "18" }, { "$numberInt" : "19" }, { "$numberInt" : "20" }, { "$numberInt" : "23" } ] }'::helio_core.bson)
+(7 rows)
+
+END;
