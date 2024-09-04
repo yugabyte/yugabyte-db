@@ -1,9 +1,9 @@
 ---
 title: YugabyteDB Anywhere node software requirements
-headerTitle: Software requirements for universe nodes
+headerTitle: Software requirements for nodes
 linkTitle: Software requirements
-description: Prerequisites for installing YugabyteDB.
-headContent: Prepare a VM for deployment in a universe
+description: Software prerequisites for nodes running YugabyteDB.
+headContent: Operating system and additional software required for YugabyteDB
 menu:
   preview_yugabyte-platform:
     identifier: server-nodes-software

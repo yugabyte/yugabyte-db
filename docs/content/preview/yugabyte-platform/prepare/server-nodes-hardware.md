@@ -1,9 +1,9 @@
 ---
-title: YugabyteDB Anywhere networking requirements
+title: YugabyteDB Anywhere hardware requirements
 headerTitle: Hardware requirements for nodes
 linkTitle: Hardware requirements
-description: Prerequisites for installing YugabyteDB Anywhere.
-headContent: Prepare a VM for deployment in a universe
+description: Hardware prerequisites for cluster nodes.
+headContent: CPU, memory, disk, and instance types required for YugabyteDB
 menu:
   preview_yugabyte-platform:
     identifier: server-nodes-hardware
@@ -53,7 +53,7 @@ type: docs
 <div class="tab-content">
   <div id="onprem" class="tab-pane fade show active" role="tabpanel" aria-labelledby="onprem-tab">
 
-Refer to [Hardware requirements](../../../deploy/checklist/#hardware-requirements) for database cluster node hardware requirements. In particular, note the following sections:
+Refer to [Hardware requirements](../../../deploy/checklist/#hardware-requirements) for database cluster nodes. In particular, note the following sections:
 
 - [CPU and RAM](../../../deploy/checklist/#cpu-and-ram)
 - [Verify support for SSE2 and SSE4.2](../../../deploy/checklist/#verify-support-for-sse2-and-sse4-2)
@@ -65,7 +65,7 @@ It is recommended to use separate disks for the Linux OS and for the data.
 
   <div id="aws" class="tab-pane fade" role="tabpanel" aria-labelledby="aws-tab">
 
-Refer to [Hardware requirements](../../../deploy/checklist/#hardware-requirements) for database cluster node hardware requirements. In particular, note the following sections:
+Refer to [Hardware requirements](../../../deploy/checklist/#hardware-requirements) for database cluster nodes. In particular, note the following sections:
 
 - [CPU and RAM](../../../deploy/checklist/#cpu-and-ram)
 - [Verify support for SSE2 and SSE4.2](../../../deploy/checklist/#verify-support-for-sse2-and-sse4-2)
@@ -78,7 +78,7 @@ Refer to [Hardware requirements](../../../deploy/checklist/#hardware-requirement
 
   <div id="gcp" class="tab-pane fade" role="tabpanel" aria-labelledby="gcp-tab">
 
-Refer to [Hardware requirements](../../../deploy/checklist/#hardware-requirements) for database cluster node hardware requirements. In particular, note the following sections:
+Refer to [Hardware requirements](../../../deploy/checklist/#hardware-requirements) for database cluster nodes. In particular, note the following sections:
 
 - [CPU and RAM](../../../deploy/checklist/#cpu-and-ram)
 - [Verify support for SSE2 and SSE4.2](../../../deploy/checklist/#verify-support-for-sse2-and-sse4-2)
@@ -91,7 +91,7 @@ Refer to [Hardware requirements](../../../deploy/checklist/#hardware-requirement
 
   <div id="azure" class="tab-pane fade" role="tabpanel" aria-labelledby="azure-tab">
 
-Refer to [Hardware requirements](../../../deploy/checklist/#hardware-requirements) for database cluster node hardware requirements. In particular, note the following sections:
+Refer to [Hardware requirements](../../../deploy/checklist/#hardware-requirements) for database cluster nodes. In particular, note the following sections:
 
 - [CPU and RAM](../../../deploy/checklist/#cpu-and-ram)
 - [Verify support for SSE2 and SSE4.2](../../../deploy/checklist/#verify-support-for-sse2-and-sse4-2)
