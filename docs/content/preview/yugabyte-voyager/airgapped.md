@@ -57,7 +57,7 @@ You can perform an airgapped installation on RHEL 8 and CentOS 8.
 1. Download the airgapped bundle:
 
     ```sh
-    wget https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/airgapped/yb-voyager-1.8.0-rhel-8-x86_64.tar.gz
+    wget https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/airgapped/yb-voyager-1.8.0-0-rhel-8-x86_64.tar.gz
     ```
 
 1. Extract the bundle.
@@ -166,12 +166,12 @@ You can download the oracle instant client rpms from the following links:
 
 {{% tab header="Ubuntu" %}}
 
-You can perform an airgapped installation on Ubhuntu 22 and leter.
+You can perform an airgapped installation on Ubuntu 22 and later.
 
 1. Download the airgapped bundle:
 
     ```sh
-    wget https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/airgapped/yb-voyager-1.8.0_debian.tar.gz
+    wget https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/airgapped/yb-voyager-1.8.0_0_debian.tar.gz
     ```
 
 1. Extract the bundle.
@@ -263,7 +263,7 @@ The options are as follows.
 
 ### Oracle Instant Client installation help for Ubuntu
 
-You can download the oracle instant client rpms from the following links:
+You can download the oracle instant client RPM packages from the following links:
 
 - [oracle-instantclient-tools](https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/repos/apt/pool/main/oracle-instantclient-tools_21.5.0.0.0-1_amd64.debrpm)
 
