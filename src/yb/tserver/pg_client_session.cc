@@ -849,7 +849,9 @@ Status PgClientSession::CreateReplicationSlot(
       /* populate_namespace_id_as_table_id */ false,
       ReplicationSlotName(req.replication_slot_name()),
       req.output_plugin_name(), snapshot_option,
-      context->GetClientDeadline(), &consistent_snapshot_time));
+      context->GetClientDeadline(),
+      CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED,
+      &consistent_snapshot_time));
   *resp->mutable_stream_id() = stream_result.ToString();
   resp->set_cdcsdk_consistent_snapshot_time(consistent_snapshot_time);
   return Status::OK();
@@ -1106,7 +1108,7 @@ Status PgClientSession::FinishTransaction(
       // as the poller in the YB-Master will figure out the status of this transaction using the
       // transaction status tablet and PG catalog.
       ERROR_NOT_OK(client().ReportYsqlDdlTxnStatus(*metadata, req.commit()),
-                  "Sending ReportYsqlDdlTxnStatus call failed");
+                   Format("Sending ReportYsqlDdlTxnStatus call of $0 failed", req.commit()));
     }
 
     if (FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) {

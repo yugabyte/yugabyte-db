@@ -137,7 +137,12 @@ public class SupportBundle extends Model {
       supportBundle.endDate = bundleData.endDate;
       supportBundle.bundleDetails =
           new BundleDetails(
-              bundleData.components, bundleData.maxNumRecentCores, bundleData.maxCoreFileSize);
+              bundleData.components,
+              bundleData.maxNumRecentCores,
+              bundleData.maxCoreFileSize,
+              bundleData.promDumpStartDate,
+              bundleData.promDumpEndDate,
+              bundleData.prometheusMetricsTypes);
     }
     supportBundle.status = SupportBundleStatusType.Running;
     supportBundle.save();

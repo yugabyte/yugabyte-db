@@ -1764,5 +1764,16 @@ TEST_F(PgDdlAtomicityTest, TestPartitionedTableSchemaVerification) {
   ASSERT_EQ(ASSERT_RESULT(client->ListTables("test_parent")).size(), 0);
   ASSERT_EQ(ASSERT_RESULT(client->ListTables("test_child")).size(), 0);
 }
+
+TEST_F(PgDdlAtomicityTest, TestCreateColocatedTable) {
+  auto conn = ASSERT_RESULT(Connect());
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+      "report_ysql_ddl_txn_status_to_master", "false"));
+  ASSERT_OK(conn.Execute("CREATE DATABASE colocated_db colocation = true"));
+  conn = ASSERT_RESULT(ConnectToDB("colocated_db"));
+  ASSERT_OK(conn.Execute("CREATE TABLE foo(id int)"));
+}
+
 } // namespace pgwrapper
 } // namespace yb

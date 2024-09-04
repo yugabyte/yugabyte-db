@@ -125,11 +125,18 @@ auto BuildRowOrders(const LWPgsqlResponsePB& response,
   return orders;
 }
 
-[[nodiscard]] inline ash::WaitStateCode ResolveWaitEventCode(TableType table_type) {
+[[nodiscard]] inline ash::WaitStateCode ResolveWaitEventCode(
+    TableType table_type, IsForWritePgDoc is_write) {
   switch (table_type) {
-    case TableType::SYSTEM: return ash::WaitStateCode::kCatalogRead;
-    case TableType::INDEX: return ash::WaitStateCode::kIndexRead;
-    case TableType::USER: return ash::WaitStateCode::kStorageRead;
+    case TableType::SYSTEM:
+      return is_write ? ash::WaitStateCode::kCatalogWrite
+                      : ash::WaitStateCode::kCatalogRead;
+    case TableType::INDEX:
+      return is_write ? ash::WaitStateCode::kIndexWrite
+                      : ash::WaitStateCode::kIndexRead;
+    case TableType::USER:
+      return is_write ? ash::WaitStateCode::kTableWrite
+                      : ash::WaitStateCode::kTableRead;
   }
   FATAL_INVALID_ENUM_VALUE(TableType, table_type);
 }
@@ -169,7 +176,8 @@ Result<PgDocResponse::Data> GetResponse(
 
   RETURN_NOT_OK(UpdateMetricOnGettingResponse(make_lw_function(
       [&result, &future = future_info.future, &metric_info, &session] () -> Status {
-        auto event_watcher = session.StartWaitEvent(ResolveWaitEventCode(metric_info.table_type));
+        auto event_watcher = session.StartWaitEvent(
+            ResolveWaitEventCode(metric_info.table_type, metric_info.is_write));
         result = VERIFY_RESULT(future.Get(session));
         return Status::OK();
       }),

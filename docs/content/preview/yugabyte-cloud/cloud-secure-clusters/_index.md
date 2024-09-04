@@ -25,7 +25,7 @@ YugabyteDB Aeon clusters include the following security features:
 
 ### Security profile
 
-YugabyteDB Managed clusters all feature essential security features, such as encryption at rest, encryption in transit, RBAC, and auditing.
+YugabyteDB Aeon clusters all feature essential security features, such as encryption at rest, encryption in transit, RBAC, and auditing.
 
 You can also create clusters using the **Advanced** security profile, which additionally enforces the following security features:
 

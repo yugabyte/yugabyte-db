@@ -131,8 +131,11 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     ((kYSQLReserved, YB_ASH_MAKE_EVENT(TServerWait)))
     (kCatalogRead)
     (kIndexRead)
-    (kStorageRead)
+    (kTableRead)
     (kStorageFlush)
+    (kCatalogWrite)
+    (kIndexWrite)
+    (kTableWrite)
 
     // Common wait states
     ((kOnCpu_Active, YB_ASH_MAKE_EVENT(Common)))

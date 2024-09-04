@@ -19,13 +19,18 @@ import com.yugabyte.yw.common.KubernetesManager.RoleData;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.UniverseResp;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.SupportBundle;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.XClusterNamespaceConfig;
+import com.yugabyte.yw.models.XClusterTableConfig;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
@@ -50,6 +55,7 @@ import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
@@ -110,6 +116,16 @@ public class SupportBundleUtil {
   // Checks if a given date is between 2 other given dates (startDate and endDate both inclusive)
   public boolean checkDateBetweenDates(Date dateToCheck, Date startDate, Date endDate) {
     return !dateToCheck.before(startDate) && !dateToCheck.after(endDate);
+  }
+
+  // Checks if the startDate is before the endDate
+  public boolean checkDatesValid(Date startDate, Date endDate) {
+    return startDate.before(endDate);
+  }
+
+  public Date getDateNMinutesAgo(Date date, int minutes) {
+    Date dateNMinutesAgo = new DateTime(date).minusMinutes(minutes).toDate();
+    return dateNMinutesAgo;
   }
 
   public List<String> sortDatesWithPattern(List<String> datesList, String sdfPattern) {
@@ -834,12 +850,59 @@ public class SupportBundleUtil {
     saveMetadata(customer, destDir, jsonData, "instance_type.json");
   }
 
-  public void gatherAndSaveAllMetadata(Customer customer, String destDir) {
+  public void getHaMetadata(Customer customer, String destDir) {
+    // There can be atmost one config.
+    Optional<HighAvailabilityConfig> haConf = HighAvailabilityConfig.get();
+    if (haConf.isEmpty()) {
+      log.info("No HA config present!");
+      return;
+    }
+    JsonNode jsonData =
+        RedactingService.filterSecretFields(Json.toJson(haConf.get()), RedactionTarget.LOGS);
+    saveMetadata(customer, destDir, jsonData, "high_availability_config.json");
+  }
+
+  public void getAuditLogs(Customer customer, String destDir, Date startDate, Date endDate) {
+    List<Audit> audits =
+        Audit.getAll(customer.getUuid()).stream()
+            .filter(
+                audit ->
+                    audit.getTimestamp().after(startDate) && audit.getTimestamp().before(endDate))
+            .collect(Collectors.toList());
+    JsonNode jsonData =
+        RedactingService.filterSecretFields(Json.toJson(audits), RedactionTarget.LOGS);
+    saveMetadata(customer, destDir, jsonData, "audit.json");
+  }
+
+  public void getXclusterMetadata(Customer customer, String destDir) {
+    List<XClusterConfig> xClusterConfigs = XClusterConfig.getAllXClusterConfigs();
+    JsonNode jsonData =
+        RedactingService.filterSecretFields(Json.toJson(xClusterConfigs), RedactionTarget.LOGS);
+    saveMetadata(customer, destDir, jsonData, "xcluster_config.json");
+
+    List<XClusterTableConfig> xClusterTableConfigs = XClusterTableConfig.find.all();
+    jsonData =
+        RedactingService.filterSecretFields(
+            Json.toJson(xClusterTableConfigs), RedactionTarget.LOGS);
+    saveMetadata(customer, destDir, jsonData, "xcluster_table_config.json");
+
+    List<XClusterNamespaceConfig> xClusterNamespaceConfigs = XClusterNamespaceConfig.find.all();
+    jsonData =
+        RedactingService.filterSecretFields(
+            Json.toJson(xClusterNamespaceConfigs), RedactionTarget.LOGS);
+    saveMetadata(customer, destDir, jsonData, "xcluster_namespace_config.json");
+  }
+
+  public void gatherAndSaveAllMetadata(
+      Customer customer, String destDir, Date startDate, Date endDate) {
     ignoreExceptions(() -> getCustomerMetadata(customer, destDir));
     ignoreExceptions(() -> getUniversesMetadata(customer, destDir));
     ignoreExceptions(() -> getProvidersMetadata(customer, destDir));
     ignoreExceptions(() -> getUsersMetadata(customer, destDir));
     ignoreExceptions(() -> getTaskMetadata(customer, destDir));
     ignoreExceptions(() -> getInstanceTypeMetadata(customer, destDir));
+    ignoreExceptions(() -> getHaMetadata(customer, destDir));
+    ignoreExceptions(() -> getXclusterMetadata(customer, destDir));
+    ignoreExceptions(() -> getAuditLogs(customer, destDir, startDate, endDate));
   }
 }

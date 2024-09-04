@@ -7,6 +7,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
@@ -19,6 +20,7 @@ import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
@@ -90,6 +92,7 @@ public class Universe extends Model {
   public static final String DUAL_NET_LEGACY = "dualNetLegacy";
   public static final String USE_CUSTOM_IMAGE = "useCustomImage";
   public static final String IS_MULTIREGION = "isMultiRegion";
+  public static final String NEW_INSTALL_GFLAGS = "new_install_gflags";
   // Flag for whether we have https on for master/tserver UI
   public static final String HTTPS_ENABLED_UI = "httpsEnabledUI";
   // Whether all the Kubernetes resources are labeled with universe
@@ -1289,5 +1292,29 @@ public class Universe extends Model {
   @PostRemove
   public void cleanupUniverse() {
     RoleBindingUtil.cleanupRoleBindings(ResourceType.UNIVERSE, this.getUniverseUUID());
+  }
+
+  @JsonIgnore
+  public void setNewInstallGFlags(PerProcessFlags newInstallGFlags) {
+    updateConfig(Map.of(Universe.NEW_INSTALL_GFLAGS, Json.toJson(newInstallGFlags).toString()));
+  }
+
+  @JsonIgnore
+  public Map<String, String> getNewInstallGFlags(ServerType serverType) {
+    Map<String, String> newInstallGFlags = new HashMap<>();
+    if (config != null && config.containsKey(Universe.NEW_INSTALL_GFLAGS)) {
+      try {
+        PerProcessFlags allnewInstallGFlags =
+            Json.mapper().readValue(config.get(Universe.NEW_INSTALL_GFLAGS), PerProcessFlags.class);
+        newInstallGFlags = allnewInstallGFlags.value.getOrDefault(serverType, new HashMap<>());
+      } catch (JsonProcessingException jex) {
+        LOG.warn(
+            "Unexpected error reading new install gflags json {} in universe config {} {}",
+            config.get(Universe.NEW_INSTALL_GFLAGS),
+            getName(),
+            jex);
+      }
+    }
+    return newInstallGFlags;
   }
 }

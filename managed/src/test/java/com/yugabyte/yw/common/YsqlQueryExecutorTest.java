@@ -5,6 +5,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
@@ -80,6 +81,8 @@ public class YsqlQueryExecutorTest extends PlatformGuiceApplicationBaseTest {
     when(universe.getVersions()).thenReturn(ImmutableList.of("2.15.0.0-b1"));
 
     details = mock(UniverseDefinitionTaskParams.class);
+    details.communicationPorts = new UniverseDefinitionTaskParams.CommunicationPorts();
+    details.communicationPorts.internalYsqlServerRpcPort = 6433;
     when(universe.getUniverseDetails()).thenReturn(details);
 
     cluster =
@@ -115,7 +118,7 @@ public class YsqlQueryExecutorTest extends PlatformGuiceApplicationBaseTest {
   public void createUser(boolean failure, int errorCode) {
     when(universe.getMasterLeaderNode()).thenReturn(errorCode == 500 ? null : node);
     when(mockNodeUniverseManager.runYsqlCommand(
-            any(), any(), any(), any(), anyLong(), anyBoolean()))
+            any(), any(), any(), any(), anyLong(), anyBoolean(), anyBoolean(), anyInt()))
         .thenReturn(errorCode == 400 ? failureResponse : new ShellResponse());
     if (failure) {
       PlatformServiceException exception =
@@ -132,7 +135,7 @@ public class YsqlQueryExecutorTest extends PlatformGuiceApplicationBaseTest {
   public void createRestrictedUser(boolean failure, int errorCode) {
     when(universe.getMasterLeaderNode()).thenReturn(errorCode == 500 ? null : node);
     when(mockNodeUniverseManager.runYsqlCommand(
-            any(), any(), any(), any(), anyLong(), anyBoolean()))
+            any(), any(), any(), any(), anyLong(), anyBoolean(), anyBoolean(), anyInt()))
         .thenReturn(errorCode == 400 ? failureResponse : new ShellResponse());
     if (failure) {
       PlatformServiceException exception =
@@ -154,7 +157,7 @@ public class YsqlQueryExecutorTest extends PlatformGuiceApplicationBaseTest {
 
     when(universe.getMasterLeaderNode()).thenReturn(errorCode == 500 ? null : node);
     when(mockNodeUniverseManager.runYsqlCommand(
-            any(), any(), any(), any(), anyLong(), anyBoolean()))
+            any(), any(), any(), any(), anyLong(), anyBoolean(), anyBoolean(), anyInt()))
         .thenReturn(errorCode == 400 ? failureResponse : new ShellResponse());
     if (failure) {
       PlatformServiceException exception =

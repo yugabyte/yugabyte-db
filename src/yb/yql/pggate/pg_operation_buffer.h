@@ -57,8 +57,8 @@ class PgOperationBuffer {
   using OperationsFlusher = std::function<Result<PerformFutureEx>(BufferableOperations&&, bool)>;
 
   PgOperationBuffer(
-      OperationsFlusher&& ops_flusher, PgDocMetrics* metrics,
-      PgWaitEventWatcher::Starter wait_starter, const BufferingSettings& buffering_settings);
+      OperationsFlusher&& ops_flusher, PgDocMetrics& metrics,
+      const BufferingSettings& buffering_settings);
   ~PgOperationBuffer();
   Status Add(const PgTableDesc& table, PgsqlWriteOpPtr op, bool transactional);
   Status Flush();

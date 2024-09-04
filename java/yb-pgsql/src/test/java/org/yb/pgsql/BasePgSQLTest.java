@@ -423,6 +423,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return miniCluster.getPostgresContactPoints().get(tserverIndex).getPort();
   }
 
+  public int getYsqlConnMgrPort(int tserverIndex) {
+    return miniCluster.getYsqlConnMgrContactPoints().get(tserverIndex).getPort();
+  }
+
   @After
   public void cleanUpAfter() throws Exception {
     LOG.info("Cleaning up after {}", getCurrentTestMethodName());

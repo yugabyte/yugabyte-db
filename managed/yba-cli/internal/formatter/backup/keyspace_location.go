@@ -16,7 +16,9 @@ import (
 )
 
 const (
-	defaultKeyspaceLocation = "table {{.Keyspace}}\t{{.DefaultLocation}}\t{{.BackupSizeInBytes}}\t{{.TableUUIDList}}\t{{.TableNameList}}"
+	defaultKeyspaceLocation  = "table {{.Keyspace}}\t{{.BackupSizeInBytes}}\t{{.DefaultLocation}}"
+	keyspaceLocationDetails1 = "table {{.TableUUIDList}}"
+	keyspaceLocationDetails2 = "table {{.TableNameList}}"
 
 	keyspaceHeader          = "Keyspace"
 	defaultLocationHeader   = "Default Location"
@@ -68,6 +70,30 @@ func (k *KeyspaceLocationContext) Write(index int) error {
 	}
 	k.Output.Write([]byte(formatter.Colorize(fmt.Sprintf("Keyspace %d Details", index+1), formatter.BlueColor)))
 	k.Output.Write([]byte("\n"))
+	if err := k.ContextFormat(tmpl, kc.KeyspaceLocation); err != nil {
+		logrus.Errorf("%s", err.Error())
+		return err
+	}
+	k.PostFormat(tmpl, NewKeyspaceLocationContext())
+	k.Output.Write([]byte("\n"))
+
+	tmpl, err = k.startSubsection(keyspaceLocationDetails1)
+	if err != nil {
+		logrus.Errorf("%s", err.Error())
+		return err
+	}
+	if err := k.ContextFormat(tmpl, kc.KeyspaceLocation); err != nil {
+		logrus.Errorf("%s", err.Error())
+		return err
+	}
+	k.PostFormat(tmpl, NewKeyspaceLocationContext())
+	k.Output.Write([]byte("\n"))
+
+	tmpl, err = k.startSubsection(keyspaceLocationDetails2)
+	if err != nil {
+		logrus.Errorf("%s", err.Error())
+		return err
+	}
 	if err := k.ContextFormat(tmpl, kc.KeyspaceLocation); err != nil {
 		logrus.Errorf("%s", err.Error())
 		return err
