@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.commissioner.UpgradeTaskBase.SPLIT_FALLBACK;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
@@ -13,6 +15,7 @@ import com.yugabyte.yw.commissioner.ITask;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
+import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
@@ -57,6 +60,7 @@ import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.ConfigureDBApiParams;
+import com.yugabyte.yw.forms.RollMaxBatchSize;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -3127,5 +3131,59 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           }
         };
     return createRunNodeCommandTask(universe, nodes, command, consumer, null /* shell context */);
+  }
+
+  protected <X> void addParallelTasks(
+      Collection<X> vals,
+      Function<X, ITask> taskInitializer,
+      String subTaskGroupName,
+      UserTaskDetails.SubTaskGroupType subTaskGroupType) {
+    addParallelTasks(vals, taskInitializer, subTaskGroupName, subTaskGroupType, false);
+  }
+
+  protected <X> void addParallelTasks(
+      Collection<X> vals,
+      Function<X, ITask> taskInitializer,
+      String subTaskGroupName,
+      UserTaskDetails.SubTaskGroupType subTaskGroupType,
+      boolean ignoreErrors) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup(subTaskGroupName, ignoreErrors);
+    vals.forEach(
+        value -> {
+          subTaskGroup.addSubTask(taskInitializer.apply(value));
+        });
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    subTaskGroup.setSubTaskGroupType(subTaskGroupType);
+  }
+
+  protected RollMaxBatchSize getCurrentRollBatchSize(
+      Universe universe, RollMaxBatchSize rollMaxBatchSizeFromParams) {
+    RollMaxBatchSize rollMaxBatchSize = new RollMaxBatchSize();
+    if (rollMaxBatchSizeFromParams != null
+        && confGetter.getConfForScope(universe, UniverseConfKeys.upgradeBatchRollEnabled)) {
+      rollMaxBatchSize = rollMaxBatchSizeFromParams;
+    } else {
+      RollMaxBatchSize max = UpgradeTaskBase.getMaxNodesToRoll(universe);
+      int percent =
+          confGetter.getConfForScope(universe, UniverseConfKeys.upgradeBatchRollAutoPercent);
+      int number =
+          confGetter.getConfForScope(universe, UniverseConfKeys.upgradeBatchRollAutoNumber);
+      int numberToSet = 0;
+      if (percent > 0) {
+        numberToSet = max.getPrimaryBatchSize() * percent / 100;
+      } else if (number > 1) {
+        numberToSet = Math.min(number, max.getPrimaryBatchSize());
+      }
+      if (numberToSet > 1) {
+        rollMaxBatchSize.setPrimaryBatchSize(numberToSet);
+        rollMaxBatchSize.setReadReplicaBatchSize(numberToSet);
+      }
+    }
+    if (getTaskCache() != null && getTaskCache().get(SPLIT_FALLBACK) != null) {
+      RollMaxBatchSize fallback = getTaskCache().get(SPLIT_FALLBACK, RollMaxBatchSize.class);
+      // Setting this only for primary cluster, RR still can be rolled with any speed.
+      rollMaxBatchSize.setPrimaryBatchSize(fallback.getPrimaryBatchSize());
+    }
+    return rollMaxBatchSize;
   }
 }

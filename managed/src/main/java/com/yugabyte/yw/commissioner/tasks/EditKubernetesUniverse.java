@@ -495,7 +495,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           curPlacement,
           ServerType.MASTER,
           newIntent.ybSoftwareVersion,
-          DEFAULT_WAIT_TIME_MS,
           universeOverrides,
           azOverrides,
           true,
@@ -505,7 +504,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
           universe.isYbcEnabled(),
           universe.getUniverseDetails().getYbcSoftwareVersion(),
-          /* addDelayAfterStartup */ false);
+          PodUpgradeParams.DEFAULT);
 
       upgradePodsTask(
           universe.getName(),
@@ -514,7 +513,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           curPlacement,
           ServerType.TSERVER,
           newIntent.ybSoftwareVersion,
-          DEFAULT_WAIT_TIME_MS,
           universeOverrides,
           azOverrides,
           false,
@@ -524,7 +522,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
           universe.isYbcEnabled(),
           universe.getUniverseDetails().getYbcSoftwareVersion(),
-          /* addDelayAfterStartup */ false);
+          PodUpgradeParams.DEFAULT);
     } else if (instanceTypeChanged) {
       upgradePodsTask(
           universe.getName(),
@@ -533,7 +531,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           curPlacement,
           ServerType.TSERVER,
           newIntent.ybSoftwareVersion,
-          DEFAULT_WAIT_TIME_MS,
           universeOverrides,
           azOverrides,
           false,
@@ -543,7 +540,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
           universe.isYbcEnabled(),
           universe.getUniverseDetails().getYbcSoftwareVersion(),
-          /* addDelayAfterStartup */ false);
+          PodUpgradeParams.DEFAULT);
     } else if (masterAddressesChanged) {
       // Update master_addresses flag on Master
       // and tserver_master_addrs flag on tserver without restart.
