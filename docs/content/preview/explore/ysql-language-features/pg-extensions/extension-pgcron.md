@@ -69,20 +69,22 @@ For more information on how to schedule jobs, refer to the [pg_cron documentatio
 
 The `cron.job_run_details` table is part of the `pg_cron` extension in PostgreSQL. This table logs information about each cron job run, including its start and end time, status, and any exit messages or errors that occurred during the execution. The records in `cron.job_run_details` are not cleaned automatically, so in scenarios where you have jobs that run frequently, set up a periodic cleanup task for the table using `pg_cron` to ensure old data doesn't accumulate and affect database performance.
 
-### View job details and clean up records
+### View job details
 
-1. You can view the status of running and recently completed jobs in the `cron.job_run_details` table using the following command:
+You can view the status of running and recently completed jobs in the `cron.job_run_details` table using the following command:
 
-    ```sql
-    select * from cron.job_run_details order by start_time desc limit 5;
-    ```
+```sql
+select * from cron.job_run_details order by start_time desc limit 5;
+```
 
-1. Create a periodoc cleaning task for the table using `pg_cron` as follows:
+### Set up a periodic cleanup task
 
-    ```sql
-    -- Delete old cron.job_run_details records of the current user every day at noon
-    SELECT  cron.schedule('delete-job-run-details', '0 12 * * *', $$DELETE FROM cron.job_run_details WHERE end_time < now() - interval '7 days'$$);
-    ```
+Create a periodoc cleaning task for the `cron.job_run_details` table using `pg_cron` similar to the following example:
+
+```sql
+-- Delete old cron.job_run_details records of the current user every day at noon
+SELECT  cron.schedule('delete-job-run-details', '0 12 * * *', $$DELETE FROM cron.job_run_details WHERE end_time < now() - interval '7 days'$$);
+```
 
 ## Examples
 
