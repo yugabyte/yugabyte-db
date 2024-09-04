@@ -108,16 +108,16 @@ These are the wait events introduced by YugabyteDB, however some of the followin
 | Common | OnCpu_Passive | CPU | | An RPC or task is waiting for a thread to pick it up. |
 | Common | OnCpu_Active | CPU |  | An RPC or task is being actively processed on a thread. |
 | Common | Idle | WaitOnCondition | | The raft log appender/sync thread is idle |
-| Common | Rpc_Done | WaitOnCondition | | An RPC is done and waiting for the reactor to send the response to a YSQL backend. |
+| Common | Rpc_Done | WaitOnCondition | | An RPC is done and waiting for the reactor to send the response to a YSQL/YCQL backend. |
 | Common | RetryableRequests_SaveToDisk | DiskIO | | The in-memory state of the retryable requests is being saved to the disk. |
-| TabletWait | MVCC_WaitForSafeTime | WaitOnCondition | | A read/write RPC is waiting for the SafeTime to be at least the desired read-time. |
+| TabletWait | MVCC_WaitForSafeTime | WaitOnCondition | | A read/write RPC is waiting for the safe time to be at least the desired read-time. |
 | TabletWait | LockedBatchEntry_Lock | WaitOnCondition | | A read/write RPC is waiting for a DocDB row level lock. |
 | TabletWait | BackfillIndex_WaitForAFreeSlot | WaitOnCondition | | A backfill index RPC is waiting for a slot to open if there are too many backfill requests at the same time. |
 | TabletWait | CreatingNewTablet | DiskIO | | The CreateTablet RPC is creating a new tablet, this may involve writing metadata files, causing I/O wait. |
-| TabletWait | SaveRaftGroupMetadataToDisk | DiskIO | | The raft/tablet metadata is being written to disk generally during snapshot or restore operations. |
+| TabletWait | SaveRaftGroupMetadataToDisk | DiskIO | | The Raft/tablet metadata is being written to disk, generally during snapshot or restore operations. |
 | TabletWait | TransactionStatusCache_DoGetCommitData | Network | | An RPC needs to look up the commit status of a particular transaction. |
 | TabletWait | WaitForYSQLBackendsCatalogVersion | WaitOnCondition | | CREATE INDEX is waiting for YSQL backends to have up-to-date pg_catalog. |
-| TabletWait | WriteSysCatalogSnapshotToDisk | DiskIO | | Writing initial system catalog snapshot. |
+| TabletWait | WriteSysCatalogSnapshotToDisk | DiskIO | | Writing initial system catalog snapshot during initdb.|
 | TabletWait | DumpRunningRpc_WaitOnReactor | WaitOnCondition | | DumpRunningRpcs is waiting on reactor threads. |
 | TabletWait | ConflictResolution_ResolveConficts | Network | | A read/write RPC is waiting to identify conflicting transactions. |
 | TabletWait | ConflictResolution_WaitOnConflictingTxns | WaitOnCondition |  | A read/write RPC is waiting for conflicting transactions to complete. |
@@ -125,7 +125,7 @@ These are the wait events introduced by YugabyteDB, however some of the followin
 | Consensus | WAL_Sync | DiskIO | \<tablet-id>| A write RPC is synchronizing WAL edits. |
 | Consensus | Raft_WaitingForReplication | Network | \<tablet-id>| A write RPC is waiting for Raft replication. |
 | Consensus | Raft_ApplyingEdits | Lock/CPU | \<tablet-id>| A write RPC is applying Raft edits locally. |
-| Consensus | ConsensusMeta_Flush | DiskIO | | ConsensusMetadata is flushed, for example, during raft term, configuration change, remote bootstrap, and so on. |
+| Consensus | ConsensusMeta_Flush | DiskIO | | ConsensusMetadata is flushed, for example, during Raft term, configuration change, remote bootstrap, and so on. |
 | Consensus | ReplicaState_TakeUpdateLock | WaitOnCondition | | A write/alter RPC needs to wait for the ReplicaState lock to replicate a batch of writes through Raft. |
 | RocksDB | RocksDB_ReadBlockFromFile | DiskIO  | | RocksDB is reading a block from a file. |
 | RocksDB | RocksDB_OpenFile | DiskIO | | RocksDB is opening a file. |
