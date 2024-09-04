@@ -32,10 +32,10 @@ else
 fi
 
 # Set ownership and permissions
-chown -R prometheus:prometheus /opt/prometheus
-chown -R prometheus:prometheus /etc/prometheus
-chown -R prometheus:prometheus /var/log/prometheus
-chown -R prometheus:prometheus /var/run/prometheus
+chown -R prometheus:{{ yb_user }} /opt/prometheus
+chown -R prometheus:{{ yb_user }} /etc/prometheus
+chown -R prometheus:{{ yb_user }} /var/log/prometheus
+chown -R prometheus:{{ yb_user }} /var/run/prometheus
 chown -R yugabyte:yugabyte /tmp/yugabyte/metrics
 chmod -R 755 /tmp/yugabyte/metrics
 
@@ -64,7 +64,7 @@ Type=simple
 Restart=on-failure
 
 User=prometheus
-Group=prometheus
+Group={{ yb_user }}
 
 ExecStart=/opt/prometheus/node_exporter-1.7.0.linux-amd64/node_exporter  \
 --web.listen-address=:9300 \
