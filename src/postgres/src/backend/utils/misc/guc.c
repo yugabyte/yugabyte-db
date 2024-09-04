@@ -11595,6 +11595,12 @@ read_gucstate_binary(char **srcptr, char *srcend, void *dest, Size size)
 	*srcptr += size;
 }
 
+void YbSetParallelWorker()
+{
+	yb_is_parallel_worker = true;
+	elog(LOG, "yb_is_parallel_worker has been set to true");
+}
+
 /*
  * RestoreGUCState:
  * Reads the GUC state at the specified address and updates the GUCs with the
