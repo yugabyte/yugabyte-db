@@ -12,7 +12,7 @@
     "hugo-base-build": "run-s webpack-build hugo-build stop-diagrams",
     "debug-build": "rm -rf public && npm ci && run-p start-diagrams hugo-base-debug-build",
     "hugo-base-debug-build": "run-s webpack-build hugo-build-with-metrics stop-diagrams",
-    "hugo-build": "hugo -v -b https://docs.yugabyte.com",
+    "hugo-build": "hugo -b https://docs.yugabyte.com",
     "hugo-build-with-metrics": "hugo --templateMetrics --templateMetricsHints -b https://docs.yugabyte.com",
     "hugo-server": "hugo server --bind 0.0.0.0 --baseURL ${YB_HUGO_BASE:-localhost}",
     "hugo-server-fast": "hugo server --bind 0.0.0.0 --baseURL ${YB_HUGO_BASE:-localhost} --environment fast",

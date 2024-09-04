@@ -15,7 +15,6 @@ unversioned: true
   <li class="active">
     <a href="../quick-start-yugabytedb-managed/" class="nav-link">
       <img src="/icons/cloud.svg" alt="Cloud Icon">
-
       Use a cloud cluster
     </a>
   </li>
