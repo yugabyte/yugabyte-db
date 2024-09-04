@@ -250,3 +250,8 @@ Although creating a clone database is quick and doesn't take up much disk space 
 - Higher CPU usage due to the additional tablets
 - Increased memory consumption from the extra tablets
 - Potentially up to twice the disk usage (after major compactions) due to the retention of older data versions
+
+## Limitations
+
+- Cloning is not supported for databases that use sequences. See GitHub issue [21467](https://github.com/yugabyte/yugabyte-db/issues/21467) for tracking.
+- Cloning to a time before dropping Materialized views is not supported. See GitHub issue [23740](https://github.com/yugabyte/yugabyte-db/issues/23740) for tracking.
