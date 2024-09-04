@@ -132,7 +132,7 @@ These are the wait events introduced by YugabyteDB, however some of the followin
 | RocksDB | RocksDB_WriteToFile | DiskIO | | RocksDB is writing to a file. |
 | RocksDB | RocksDB_Flush | CPU | | RocksDB is doing a flush. |
 | RocksDB | RocksDB_Compaction | CPU | | RocksDB is doing a compaction. |
-| RocksDB | RocksDB_PriorityThreadPoolTaskPaused | WaitOnCondition | | RocksDB paused a flush/compaction tasks for another with a higher priority. |
+| RocksDB | RocksDB_PriorityThreadPoolTaskPaused | WaitOnCondition | | RocksDB paused for another task, or another flush compaction task with a higher priority. |
 | RocksDB | RocksDB_CloseFile | DiskIO | | RocksDB is closing a file. |
 | RocksDB | RocksDB_RateLimiter | WaitOnCondition | | RocksDB flush/compaction is slowing down due to rate limiter throttling access to disk. |
 | RocksDB | RocksDB_WaitForSubcompaction | WaitOnCondition | | RocksDB is waiting for a compaction to complete. |
