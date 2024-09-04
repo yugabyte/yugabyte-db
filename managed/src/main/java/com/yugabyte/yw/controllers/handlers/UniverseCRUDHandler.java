@@ -358,7 +358,10 @@ public class UniverseCRUDHandler {
 
     userIntent.masterGFlags = trimFlags(userIntent.masterGFlags);
     userIntent.tserverGFlags = trimFlags(userIntent.tserverGFlags);
-    if (StringUtils.isEmpty(userIntent.accessKeyCode)) {
+    Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+    if (StringUtils.isEmpty(userIntent.accessKeyCode)
+        && !(userIntent.providerType.equals(Common.CloudType.onprem)
+            && provider.getDetails().skipProvisioning)) {
       userIntent.accessKeyCode = appConfig.getString("yb.security.default.access.key");
     }
     try {

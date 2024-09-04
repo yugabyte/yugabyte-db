@@ -75,8 +75,14 @@ const VALIDATION_SCHEMA = object().shape({
       ACCEPTABLE_CHARS,
       'Provider name cannot contain special characters other than "-", and "_"'
     ),
-  sshUser: string().required('SSH user is required.'),
-  sshPrivateKeyContent: mixed().required('SSH private key is required.'),
+  sshUser: string().when('skipProvisioning', {
+    is: false,
+    then: string().required('SSH user is required.')
+  }),
+  sshPrivateKeyContent: mixed().when('skipProvisioning', {
+    is: false,
+    then: mixed().required('SSH private key is required.')
+  }),
   ntpServers: array().when('ntpSetupType', {
     is: NTPSetupType.SPECIFIED,
     then: array().of(
