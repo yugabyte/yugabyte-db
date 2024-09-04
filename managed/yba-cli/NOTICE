@@ -48,8 +48,8 @@ The following subcomponents are used:
 ## github.com/aws/aws-sdk-go
 
 * Name: github.com/aws/aws-sdk-go
-* Version: v1.45.24
-* License: [Apache-2.0](https://github.com/aws/aws-sdk-go/blob/v1.45.24/LICENSE.txt)
+* Version: v1.55.5
+* License: [Apache-2.0](https://github.com/aws/aws-sdk-go/blob/v1.55.5/LICENSE.txt)
 
 
 ## github.com/aws/aws-sdk-go/internal/sync/singleflight

@@ -34,6 +34,7 @@ yba ear gcp [flags]
 ### SEE ALSO
 
 * [yba ear](yba_ear.md)	 - Manage YugabyteDB Anywhere Encryption at Rest Configurations
+* [yba ear gcp create](yba_ear_gcp_create.md)	 - Create a YugabyteDB Anywhere GCP encryption at rest configuration
 * [yba ear gcp delete](yba_ear_gcp_delete.md)	 - Delete a YugabyteDB Anywhere GCP encryption at rest configuration
 * [yba ear gcp describe](yba_ear_gcp_describe.md)	 - Describe a GCP YugabyteDB Anywhere Encryption In Transit (EAR) configuration
 * [yba ear gcp list](yba_ear_gcp_list.md)	 - List GCP YugabyteDB Anywhere Encryption In Transit (EAR) configurations

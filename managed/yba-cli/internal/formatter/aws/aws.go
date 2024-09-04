@@ -24,7 +24,10 @@ const (
 	EAR1 = "table {{.AccessKeyID}}\t{{.AccessKeySecret}}\t{{.EndPoint}}"
 
 	// EAR2 for EAR listing
-	EAR2 = "table {{.Region}}\t{{.CMKPolicy}}\t{{.CMKID}}"
+	EAR2 = "table {{.Region}}\t{{.CMKID}}"
+
+	// EAR3 for EAR listing
+	EAR3 = "table {{.CMKPolicy}}"
 
 	// AccessKeyIDHeader for Access key ID header
 	AccessKeyIDHeader = "AWS Access Key ID"

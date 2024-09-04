@@ -25,7 +25,7 @@ var AWSEARCmd = &cobra.Command{
 func init() {
 	AWSEARCmd.Flags().SortFlags = false
 
-	// AWSEARCmd.AddCommand(createAWSEARCmd)
+	AWSEARCmd.AddCommand(createAWSEARCmd)
 	// AWSEARCmd.AddCommand(updateAWSEARCmd)
 	AWSEARCmd.AddCommand(listAWSEARCmd)
 	AWSEARCmd.AddCommand(describeAWSEARCmd)
