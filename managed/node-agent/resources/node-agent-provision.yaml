@@ -32,3 +32,8 @@ yba:
     volume_size: size
     mount_points:
     - /mnt/d1
+
+logging:
+  level: INFO
+  directory: ./logs
+  file: app.log

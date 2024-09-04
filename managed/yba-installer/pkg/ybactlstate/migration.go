@@ -206,7 +206,7 @@ func migratePrometheusTLSCipherSuites(state *State) error {
 func migrateAsRootConfig(state *State) error {
 	if !viper.IsSet("as_root") {
 		viper.ReadConfig(bytes.NewBufferString(config.ReferenceYbaCtlConfig))
-		err := common.SetYamlValue(common.InputFile(), "as_root", viper.GetBool("as_root"))
+		err := common.SetYamlValue(common.InputFile(), "as_root", common.HasSudoAccess())
 		if err != nil {
 			return fmt.Errorf("Error migrating as_root config: %s", err.Error())
 		}

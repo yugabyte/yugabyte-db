@@ -20,7 +20,11 @@ YugabyteDB Anywhere allows you to protect data in transit by using the following
 
 ## Manage certificates
 
-Use YugabyteDB Anywhere to manage certificates used for encryption in transit.
+YugabyteDB Anywhere uses TLS certificates to encrypt and validate connections. These certificates can be automatically generated and managed by YugabyteDB Anywhere, or you can add your own custom certificates.
+
+Navigate to **Integrations > Security > Encryption in Transit** to view and add the certificates used for encryption in transit.
+
+To view certificate details, click **Show details** for the certificate you want to view.
 
 {{<index/block>}}
 

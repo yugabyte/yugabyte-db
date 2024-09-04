@@ -20,28 +20,39 @@
 
 #include "yb/vector/distance.h"
 #include "yb/vector/hnsw_options.h"
+#include "yb/vector/coordinate_types.h"
 #include "yb/vector/vector_index_if.h"
+
+// Derived from the available add() overloads in index_dense.hpp.
+#define YB_USEARCH_SUPPORTED_COORDINATE_TYPES \
+    (float) /* NOLINT */  \
+    (double) /* NOLINT */ \
+    (int8_t)
 
 namespace yb::vectorindex {
 
-class UsearchIndex : public VectorIndexReader {
+template<IndexableVectorType Vector>
+class UsearchIndex : public VectorIndexReaderIf<Vector>, public VectorIndexWriterIf<Vector> {
  public:
   explicit UsearchIndex(const HNSWOptions& options);
   virtual ~UsearchIndex();
 
-  void Reserve(size_t num_vectors);
+  void Reserve(size_t num_vectors) override;
 
-  Status Insert(VertexId vertex_id, const FloatVector& vector);
+  Status Insert(VertexId vertex_id, const Vector& vector) override;
 
   std::vector<VertexWithDistance> Search(
-      const FloatVector& query_vector, size_t max_num_results) const override;
+      const Vector& query_vector, size_t max_num_results) const override;
 
-  FloatVector GetVector(VertexId vertex_id) const override;
+  Vector GetVector(VertexId vertex_id) const override;
 
  private:
   class Impl;
 
   std::unique_ptr<Impl> impl_;
 };
+
+// Maps the given coordinate kind to a type supported by the usearch.
+CoordinateKind UsearchSupportedCoordinateKind(CoordinateKind coordinate_kind);
 
 }  // namespace yb::vectorindex

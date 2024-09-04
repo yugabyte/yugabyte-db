@@ -52,7 +52,7 @@ YugabyteDB Voyager supports migrating schema and data from your existing RDBMS, 
 
 | Source&nbsp;database&nbsp;type | Migration&nbsp;type | Supported&nbsp;versions&nbsp;and&nbsp;flavors | Migration&nbsp;demo&nbsp;videos |
 | :--------------------| :------------- |:----------------------------------- | :--------------- |
-| PostgreSQL | Offline and Live | PostgreSQL 9.x - 11.x <br> [Amazon Aurora PostgreSQL](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Aurora.AuroraPostgreSQL.html) <br> [Amazon RDS for PostgreSQL](https://aws.amazon.com/rds/postgresql/) <br> [Cloud SQL for PostgreSQL](https://cloud.google.com/sql/docs/postgres) <br> [Azure&nbsp;Database&nbsp;for&nbsp;PostgreSQL](https://azure.microsoft.com/en-ca/services/postgresql/) | [Migrating from PostgreSQL to YugabyteDB](https://www.youtube.com/watch?v=GXjttCbc4dw) |
+| PostgreSQL | Offline and Live | PostgreSQL 9.x - 11.x (Offline) <br> PostgreSQL 10.x - 11.x (Live) <br> [Amazon Aurora PostgreSQL](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Aurora.AuroraPostgreSQL.html) <br> [Amazon RDS for PostgreSQL](https://aws.amazon.com/rds/postgresql/) <br> [Cloud SQL for PostgreSQL](https://cloud.google.com/sql/docs/postgres) <br> [Azure&nbsp;Database&nbsp;for&nbsp;PostgreSQL](https://azure.microsoft.com/en-ca/services/postgresql/) | [Migrating from PostgreSQL to YugabyteDB](https://www.youtube.com/watch?v=GXjttCbc4dw) |
 | MySQL | Offline | MySQL 8.x <br> MariaDB <br> [Amazon Aurora MySQL](https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Aurora.AuroraMySQL.html) <br> [Amazon RDS for MySQL](https://aws.amazon.com/rds/mysql/) <br> [Cloud SQL for MySQL](https://cloud.google.com/sql/docs/mysql) | [Migrating from MySQL to YugabyteDB](https://www.youtube.com/watch?v=tLs0043_z5E) |
 | Oracle | Offline and Live |Oracle 11g - 19c <br> [Amazon RDS for Oracle](https://aws.amazon.com/rds/oracle/) | [Migrating from Oracle to YugabyteDB](https://www.youtube.com/watch?v=Bh2Wz537TGM) |
 
@@ -62,9 +62,9 @@ The following table shows the target database support for each migration type.
 
 | Migration type | Supported YugabyteDB Versions | Supported products |
 | :------------- | :--------------------------- | ------------------ |
-| Offline | {{<release "2.18.5.0">}} or later <br> {{<release "2.20.1.0">}} or later <br> {{<release "2.21.0.0">}} or later | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/)<br>[YugabyteDB Aeon](../../yugabyte-cloud/cloud-basics/) |
-| Live | {{<release "2.18.7.0">}} or later <br> {{<release "2.20.3.0">}} or later <br>{{<release "2.21.1.0">}} or later | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/)<br>[YugabyteDB Aeon](../../yugabyte-cloud/cloud-basics/) |
-| Live with fall-forward/fall-back | {{<release "2.18.8.0">}} or later <br> {{<release "2.20.4.0">}} or later | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/) |
+| Offline | {{<release "2.20.1.0">}} or later <br> {{<release "2.21.0.0">}} or later <br> {{<release "2024.1.1">}} or later | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/)<br>[YugabyteDB Aeon](../../yugabyte-cloud/cloud-basics/) |
+| Live | {{<release "2.20.3.0">}} or later <br>{{<release "2.21.1.0">}} or later  <br> {{<release "2024.1.1">}} or later | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/)<br>[YugabyteDB Aeon](../../yugabyte-cloud/cloud-basics/) |
+| Live with fall-forward/fall-back | {{<release "2.20.4.0">}} or later  <br> {{<release "2024.1.1">}} or later | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/) |
 
 ## Learn more
 

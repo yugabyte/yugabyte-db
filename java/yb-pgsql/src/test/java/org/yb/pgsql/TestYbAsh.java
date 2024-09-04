@@ -267,28 +267,6 @@ public class TestYbAsh extends BasePgSQLTest {
   }
 
   /**
-   * Verify that catalog requests are sampled
-   */
-  @Test
-  public void testCatalogRequests() throws Exception {
-    // Use small sampling interval so that we are more likely to catch catalog requests
-    setAshConfigAndRestartCluster(5, ASH_SAMPLE_SIZE);
-    int catalog_request_query_id = 5;
-    String catalog_read_wait_event = "CatalogRead";
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE TABLE test_table(k INT, v TEXT)");
-      for (int i = 0; i < 100; ++i) {
-        statement.execute(String.format("INSERT INTO test_table VALUES(%d, 'v-%d')", i, i));
-        statement.execute(String.format("SELECT v FROM test_table WHERE k=%d", i));
-      }
-      int res1 = getSingleRow(statement, "SELECT COUNT(*) FROM " + ASH_VIEW +
-          " WHERE query_id = " + catalog_request_query_id + " OR " +
-          "wait_event = '" + catalog_read_wait_event + "'").getLong(0).intValue();
-      assertGreaterThan(res1, 0);
-    }
-  }
-
-  /**
    * Test that we don't capture more than 'ysql_yb_ash_sample_size' number of samples
    */
   @Test

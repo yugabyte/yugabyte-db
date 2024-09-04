@@ -22,6 +22,8 @@
 namespace yb {
 
 using FloatVector = std::vector<float>;
+using Int32Vector = std::vector<int32_t>;
 using UInt64Vector = std::vector<uint64_t>;
+using UInt8Vector = std::vector<uint8_t>;
 
 }  // namespace yb

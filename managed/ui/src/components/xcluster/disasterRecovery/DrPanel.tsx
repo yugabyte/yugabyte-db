@@ -8,13 +8,14 @@ import { useInterval } from 'react-use';
 import { CreateConfigModal } from './createConfig/CreateConfigModal';
 import { DeleteConfigModal } from './deleteConfig/DeleteConfigModal';
 import { DrConfigDetails } from './drConfig/DrConfigDetails';
-import { DrConfigActions } from './constants';
+import { DrConfigAction } from './constants';
 import { EditTablesModal } from './editTables/EditTablesModal';
 import { EnableDrPrompt } from './EnableDrPrompt';
 import {
   PollingIntervalMs,
   TRANSITORY_XCLUSTER_CONFIG_STATUSES,
-  XClusterConfigAction
+  XClusterConfigAction,
+  XClusterConfigType
 } from '../constants';
 import { YBButton } from '../../../redesign/components';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
@@ -22,9 +23,15 @@ import {
   api,
   drConfigQueryKey,
   metricQueryKey,
-  universeQueryKey
+  universeQueryKey,
+  xClusterQueryKey
 } from '../../../redesign/helpers/api';
-import { getEnabledConfigActions, getXClusterConfigUuids } from '../ReplicationUtils';
+import {
+  getEnabledConfigActions,
+  getInConfigTableUuid,
+  getIsXClusterConfigAllBidirectional,
+  getXClusterConfigUuids
+} from '../ReplicationUtils';
 import { getEnabledDrConfigActions, getXClusterConfig } from './utils';
 import { RestartConfigModal } from '../restartConfig/RestartConfigModal';
 import { EditConfigTargetModal } from './editConfigTarget/EditConfigTargetModal';
@@ -47,6 +54,7 @@ import { getUniverseStatus, UniverseState } from '../../universes/helpers/univer
 import { EditConfigModal } from './editConfig/EditConfigModal';
 import { UNIVERSE_TASKS } from '../../../redesign/helpers/constants';
 import { isActionFrozen } from '../../../redesign/helpers/utils';
+import { isBootstrapRequired } from '../../../actions/xClusterReplication';
 
 interface DrPanelProps {
   currentUniverseUuid: string;
@@ -164,6 +172,25 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
       ? [currentUniverseQuery.data, participantUniverseQuery.data]
       : [participantUniverseQuery.data, currentUniverseQuery.data];
 
+  const inConfigTableUuids = getInConfigTableUuid(drConfigQuery.data?.tableDetails ?? []);
+  const bootstrapRequirementQuery = useQuery(
+    xClusterQueryKey.needBootstrap({
+      sourceUniverseUuid: drConfigQuery.data?.primaryUniverseUuid,
+      targetUniverseUuid: drConfigQuery.data?.drReplicaUniverseUuid,
+      tableUuids: inConfigTableUuids,
+      configType: XClusterConfigType.TXN,
+      includeDetails: true
+    }),
+    () =>
+      isBootstrapRequired(
+        drConfigQuery.data?.primaryUniverseUuid ?? '',
+        drConfigQuery.data?.drReplicaUniverseUuid ?? '',
+        inConfigTableUuids,
+        XClusterConfigType.TXN,
+        true
+      ),
+    { enabled: !!drConfigQuery.data }
+  );
   // Polling for live metrics and config updates.
   useInterval(() => {
     if (getUniverseStatus(sourceUniverse)?.state === UniverseState.PENDING) {
@@ -285,11 +312,16 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
     sourceUniverse,
     targetUniverse
   );
+
+  const isXClusterConfigAllBidirectional = bootstrapRequirementQuery.data
+    ? getIsXClusterConfigAllBidirectional(bootstrapRequirementQuery.data)
+    : false;
   const xClusterConfig = getXClusterConfig(drConfig);
   const enabledXClusterConfigActions = getEnabledConfigActions(
     xClusterConfig,
     sourceUniverse,
     targetUniverse,
+    isXClusterConfigAllBidirectional,
     drConfig.state
   );
 
@@ -313,6 +345,8 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
           drConfig={drConfig}
           openRepairConfigModal={openRepairConfigModal}
           openRestartConfigModal={openRestartConfigModal}
+          enabledDrConfigActions={enabledDrConfigActions}
+          enabledXClusterConfigActions={enabledXClusterConfigActions}
         />
         <div className={classes.header}>
           <Typography variant="h3">{t('heading')}</Typography>
@@ -337,7 +371,7 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
                 size="large"
                 type="button"
                 onClick={openSwitchoverModal}
-                disabled={!enabledDrConfigActions.includes(DrConfigActions.SWITCHOVER)}
+                disabled={!enabledDrConfigActions.includes(DrConfigAction.SWITCHOVER)}
                 data-testid={`${PANEL_ID}-switchover`}
               >
                 {t('actionButton.switchover')}
@@ -401,9 +435,9 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
                       isControl
                     >
                       <MenuItem
-                        eventKey={DrConfigActions.EDIT}
+                        eventKey={DrConfigAction.EDIT}
                         onSelect={openEditConfigModal}
-                        disabled={!enabledDrConfigActions.includes(DrConfigActions.EDIT)}
+                        disabled={!enabledDrConfigActions.includes(DrConfigAction.EDIT)}
                       >
                         <YBMenuItemLabel
                           label={t('actionButton.actionMenu.editDrConfig')}
@@ -428,9 +462,9 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
                       isControl
                     >
                       <MenuItem
-                        eventKey={DrConfigActions.EDIT_TARGET}
+                        eventKey={DrConfigAction.EDIT_TARGET}
                         onSelect={openEditTargetConfigModal}
-                        disabled={!enabledDrConfigActions.includes(DrConfigActions.EDIT_TARGET)}
+                        disabled={!enabledDrConfigActions.includes(DrConfigAction.EDIT_TARGET)}
                       >
                         <YBMenuItemLabel
                           label={t('actionButton.actionMenu.editDrConfigTarget')}
@@ -470,16 +504,16 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
                       isControl
                     >
                       <MenuItem
-                        eventKey={DrConfigActions.SWITCHOVER}
+                        eventKey={DrConfigAction.SWITCHOVER}
                         onSelect={openSwitchoverModal}
-                        disabled={!enabledDrConfigActions.includes(DrConfigActions.SWITCHOVER)}
+                        disabled={!enabledDrConfigActions.includes(DrConfigAction.SWITCHOVER)}
                       >
                         <YBMenuItemLabel
                           label={t('actionButton.actionMenu.switchover')}
                           preLabelElement={
                             <SwitchoverIcon
                               isDisabled={
-                                !enabledDrConfigActions.includes(DrConfigActions.SWITCHOVER)
+                                !enabledDrConfigActions.includes(DrConfigAction.SWITCHOVER)
                               }
                             />
                           }
@@ -503,17 +537,15 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
                       isControl
                     >
                       <MenuItem
-                        eventKey={DrConfigActions.FAILOVER}
+                        eventKey={DrConfigAction.FAILOVER}
                         onSelect={openFailoverModal}
-                        disabled={!enabledDrConfigActions.includes(DrConfigActions.FAILOVER)}
+                        disabled={!enabledDrConfigActions.includes(DrConfigAction.FAILOVER)}
                       >
                         <YBMenuItemLabel
                           label={t('actionButton.actionMenu.failover')}
                           preLabelElement={
                             <FailoverIcon
-                              isDisabled={
-                                !enabledDrConfigActions.includes(DrConfigActions.FAILOVER)
-                              }
+                              isDisabled={!enabledDrConfigActions.includes(DrConfigAction.FAILOVER)}
                             />
                           }
                         />
@@ -537,9 +569,9 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
                       isControl
                     >
                       <MenuItem
-                        eventKey={DrConfigActions.DELETE}
+                        eventKey={DrConfigAction.DELETE}
                         onSelect={openDeleteConfigModal}
-                        disabled={!enabledDrConfigActions.includes(DrConfigActions.DELETE)}
+                        disabled={!enabledDrConfigActions.includes(DrConfigAction.DELETE)}
                       >
                         <YBMenuItemLabel
                           label={t('actionButton.actionMenu.deleteConfig')}

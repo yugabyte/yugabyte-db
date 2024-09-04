@@ -140,7 +140,7 @@ public class JobSchedulerControllerTest extends FakeDBApplication {
     JobSchedule jobSchedule =
         jobSchedulerApi.getJobSchedule(customer.getUuid(), jobSchedules.get(0).getUuid());
     assertEquals(jobSchedules.get(0).getUuid(), jobSchedule.getInfo().getUuid());
-    assertEquals(jobSchedules.get(0).getName(), jobSchedule.getInfo().getName());
+    assertEquals(jobSchedules.get(0).getName(), jobSchedule.getSpec().getName());
     assertEquals(
         jobSchedules.get(0).getScheduleConfig().getType().name(),
         jobSchedule.getSpec().getScheduleConfig().getType().getValue());

@@ -55,10 +55,9 @@ void PgMiniTestBase::DoTearDown() {
 void PgMiniTestBase::SetUp() {
   HybridTime::TEST_SetPrettyToString(true);
 
+  EnableYSQLFlags();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 120000 * kTimeMultiplier;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_hide_pg_catalog_table_creation_logs) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_auto_run_initdb) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_rpc_timeout_secs) = 120;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_disable_index_backfill) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_num_shards_per_tserver) = 1;
@@ -87,19 +86,7 @@ void PgMiniTestBase::SetUp() {
 
   ASSERT_OK(cluster_->Start(ExtraTServerOptions()));
 
-  ASSERT_OK(WaitForInitDb(cluster_.get()));
-
-  auto pg_process_conf = ASSERT_RESULT(CreatePgProcessConf(pg_port, pg_ts_idx));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_webserver_port) = cluster_->AllocateFreePort();
-
-  LOG(INFO) << "Starting PostgreSQL server listening on "
-            << pg_process_conf.listen_addresses << ":" << pg_process_conf.pg_port << ", data: "
-            << pg_process_conf.data_dir
-            << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
-
-  BeforePgProcessStart();
-  pg_supervisor_ = std::make_unique<PgSupervisor>(pg_process_conf, nullptr /* tserver */);
-  ASSERT_OK(pg_supervisor_->Start());
+  StartPgSupervisor(pg_port, pg_ts_idx);
 
   DontVerifyClusterBeforeNextTearDown();
 
@@ -122,6 +109,11 @@ Result<master::CatalogManagerIf*> PgMiniTestBase::catalog_manager() const {
   return &CHECK_NOTNULL(VERIFY_RESULT(cluster_->GetLeaderMiniMaster()))->catalog_manager();
 }
 
+void PgMiniTestBase::EnableYSQLFlags() {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_auto_run_initdb) = true;
+}
+
 Result<PgProcessConf> PgMiniTestBase::CreatePgProcessConf(uint16_t port, size_t ts_idx) {
   auto* pg_ts = cluster_->mini_tablet_server(ts_idx);
   PgProcessConf pg_process_conf = VERIFY_RESULT(PgProcessConf::CreateValidateAndRunInitDb(
@@ -134,6 +126,22 @@ Result<PgProcessConf> PgMiniTestBase::CreatePgProcessConf(uint16_t port, size_t 
   pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
 
   return pg_process_conf;
+}
+
+void PgMiniTestBase::StartPgSupervisor(uint16_t pg_port, const int pg_ts_idx) {
+  ASSERT_OK(WaitForInitDb(cluster_.get()));
+
+  auto pg_process_conf = ASSERT_RESULT(CreatePgProcessConf(pg_port, pg_ts_idx));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_webserver_port) = cluster_->AllocateFreePort();
+
+  LOG(INFO) << "Starting PostgreSQL server listening on "
+            << pg_process_conf.listen_addresses << ":" << pg_process_conf.pg_port << ", data: "
+            << pg_process_conf.data_dir
+            << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
+
+  BeforePgProcessStart();
+  pg_supervisor_ = std::make_unique<PgSupervisor>(pg_process_conf, nullptr /* tserver */);
+  ASSERT_OK(pg_supervisor_->Start());
 }
 
 Status PgMiniTestBase::RestartCluster() {

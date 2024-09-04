@@ -174,11 +174,11 @@ libraryDependencies ++= Seq(
   "org.yaml" % "snakeyaml" % "2.1",
   "org.bouncycastle" % "bcpkix-jdk15on" % "1.61",
   "org.springframework.security" % "spring-security-core" % "5.8.11",
-  "com.amazonaws" % "aws-java-sdk-ec2" % "1.12.599",
-  "com.amazonaws" % "aws-java-sdk-kms" % "1.12.599",
-  "com.amazonaws" % "aws-java-sdk-iam" % "1.12.599",
-  "com.amazonaws" % "aws-java-sdk-sts" % "1.12.599",
-  "com.amazonaws" % "aws-java-sdk-s3" % "1.12.599",
+  "com.amazonaws" % "aws-java-sdk-ec2" % "1.12.768",
+  "com.amazonaws" % "aws-java-sdk-kms" % "1.12.768",
+  "com.amazonaws" % "aws-java-sdk-iam" % "1.12.768",
+  "com.amazonaws" % "aws-java-sdk-sts" % "1.12.768",
+  "com.amazonaws" % "aws-java-sdk-s3" % "1.12.768",
   "com.amazonaws" % "aws-java-sdk-elasticloadbalancingv2" % "1.12.327",
   "com.amazonaws" % "aws-java-sdk-route53" % "1.12.400",
   "com.amazonaws" % "aws-java-sdk-cloudtrail" % "1.12.498",
@@ -927,7 +927,7 @@ runPlatform := {
 }
 
 libraryDependencies += "org.yb" % "yb-client" % "0.8.94-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.0-b4"
+libraryDependencies += "org.yb" % "ybc-client" % "2.2.0.0-b5"
 libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b33"
 
 libraryDependencies ++= Seq(

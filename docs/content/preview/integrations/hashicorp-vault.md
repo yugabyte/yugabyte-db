@@ -23,7 +23,7 @@ For more details, refer to [YSQL plugin for Hashicorp Vault](https://github.com/
 
 ## Setup
 
-Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB Prerequisites](../../tools/#yugabytedb-prerequisites).
+Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB Prerequisites](../tools/#yugabytedb-prerequisites).
 
 Install Hashicorp Vault. See [Installing Vault](https://developer.hashicorp.com/vault/docs/install).
 

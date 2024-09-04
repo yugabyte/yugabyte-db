@@ -1,10 +1,10 @@
 ## yba backup
 
-Manage YugabyteDB Anywhere backups
+Manage YugabyteDB Anywhere universe backups
 
 ### Synopsis
 
-Manage YugabyteDB Anywhere backups
+Manage YugabyteDB Anywhere universe backups
 
 ```
 yba backup [flags]

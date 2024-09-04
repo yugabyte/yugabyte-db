@@ -56,7 +56,7 @@ To understand how the various features and configuration of the connector, see [
 * A single stream can only be used to stream data from one namespace only.
 * There should be a primary key on the table you want to stream the changes from.
 * CDC is not supported on a target table for xCluster replication [11829](https://github.com/yugabyte/yugabyte-db/issues/11829).
-* Currently we don't support schema evolution for changes that require table rewrites (ex: ALTER TYPE).
+* Currently, CDC doesn't support schema evolution for changes that require table rewrites (for example, [ALTER TYPE](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-type-with-table-rewrite)), or DROP TABLE and TRUNCATE TABLE operations.
 * YCQL tables aren't currently supported. Issue [11320](https://github.com/yugabyte/yugabyte-db/issues/11320).
 
 In addition, CDC support for the following features will be added in upcoming releases:
@@ -68,6 +68,7 @@ In addition, CDC support for the following features will be added in upcoming re
 
 ## Learn more
 
+* [CDC architecture](../../../architecture/docdb-replication/change-data-capture/)
 * [Examples of CDC usage and patterns](https://github.com/yugabyte/cdc-examples/tree/main) {{<icon/github>}}
 * [Tutorials to deploy in different Kafka environments](/preview/tutorials/cdc-tutorials/) {{<icon/tutorial>}}
 * [Data Streaming Using YugabyteDB CDC, Kafka, and SnowflakeSinkConnector](https://www.yugabyte.com/blog/data-streaming-using-yugabytedb-cdc-kafka-and-snowflakesinkconnector/) {{<icon/blog>}}

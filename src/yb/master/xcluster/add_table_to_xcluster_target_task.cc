@@ -261,8 +261,8 @@ Status AddTableToXClusterTargetTask::WaitForXClusterSafeTimeCaughtUp() {
     return Status::OK();
   }
 
-  LOG(INFO) << "Table " << table_info_->ToString()
-            << " successfully added to xCluster universe replication";
+  LOG_WITH_PREFIX(INFO) << "Table " << table_info_->ToString()
+                        << " successfully added to xCluster universe replication";
 
   RETURN_NOT_OK(CleanupAndComplete());
   return Status::OK();

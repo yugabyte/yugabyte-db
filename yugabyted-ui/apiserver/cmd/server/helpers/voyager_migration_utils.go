@@ -117,7 +117,14 @@ type TableColumnsDataTypes struct {
 
 type UnsupportedFeature struct {
     FeatureName string   `json:"FeatureName"`
-    ObjectNames []string `json:"ObjectNames"`
+    // ObjectNames []string `json:"ObjectNames"`
+    Objects            []ObjectInfo `json:"Objects"`
+    DocsLink           string       `json:"DocsLink,omitempty"`
+}
+
+type ObjectInfo struct {
+    ObjectName   string
+    SqlStatement string
 }
 
 type TableIndexStats struct {

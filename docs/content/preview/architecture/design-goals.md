@@ -66,7 +66,7 @@ YugabyteDB monitors and automatically re-balances the number of tablet leaders a
 
 ## Data locality
 
-YugabyteDB supports colocated tables and databases which enables related data to be kept together on the same node for performance reasons. {{<link "../docdb-sharding/colocated-tables">}}
+YugabyteDB supports colocated tables and databases which enables related data to be kept together on the same node for performance reasons. {{<link "../../explore/colocation">}}
 
 ## Security
 

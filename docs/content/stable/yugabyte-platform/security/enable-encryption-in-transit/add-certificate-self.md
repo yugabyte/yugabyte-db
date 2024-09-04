@@ -51,7 +51,7 @@ If the key is protected by a passphrase in the PKCS12 archive, you are prompted 
 
 To add self-signed certificates to YugabyteDB Anywhere:
 
-1. Navigate to **Configs > Security > Encryption in Transit**.
+1. Navigate to **Integrations > Security > Encryption in Transit**.
 
 1. Click **Add Certificate** to open the **Add Certificate** dialog.
 
@@ -68,6 +68,8 @@ To add self-signed certificates to YugabyteDB Anywhere:
 1. In the **Expiration Date** field, specify the expiration date of the root certificate. To find this information, execute the `openssl x509 -in <root-crt-file-path> -text -noout` command and note the **Validity Not After** date.
 
 1. Click **Add** to make the certificate available.
+
+To view the certificate details, navigate to **Integrations > Security > Encryption in Transit**, find the certificate in the list, and click **Show details**.
 
 ## Validate certificates
 

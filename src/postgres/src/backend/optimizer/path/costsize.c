@@ -616,11 +616,7 @@ cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	 * We don't bother to save indexStartupCost or indexCorrelation, because a
 	 * bitmap scan doesn't care about either.
 	 */
-	if (IsYugaByteEnabled() && baserel->is_yb_relation)
-		// TODO(#20573): YB Bitmap cost
-		path->indextotalcost = indexTotalCost * YB_BITMAP_DISCOURAGE_MODIFIER;
-	else
-		path->indextotalcost = indexTotalCost;
+	path->indextotalcost = indexTotalCost;
 	path->indexselectivity = indexSelectivity;
 
 	/* all costs for touching index itself included here */
@@ -1108,7 +1104,9 @@ cost_bitmap_heap_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	run_cost += path->pathtarget->cost.per_tuple * path->rows;
 
 	path->startup_cost = startup_cost;
-	path->total_cost = startup_cost + run_cost;
+	path->total_cost = (IsYugaByteEnabled() && baserel->is_yb_relation)
+		? (startup_cost + run_cost) * YB_BITMAP_DISCOURAGE_MODIFIER
+		: startup_cost + run_cost;
 }
 
 /*
@@ -7012,7 +7010,7 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		 */
 		list_free(index_conditions);
 		index_conditions = NIL;
-		for (int index_col = 0; index_col < index->ncolumns; ++index_col)
+		for (int index_col = 0; index_col < index->nkeycolumns; ++index_col)
 		{
 			if (list_length(index_conditions_on_each_column[index_col]) > 0)
 			{
@@ -7207,9 +7205,8 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 		(index_ybctid_num_nexts * per_next_cost);
 
 	path->indextotalcost =
-		(yb_local_latency_cost + startup_cost + run_cost +
-		index_ybctid_transfer_cost + index_ybctid_paging_seek_next_costs) *
-		YB_BITMAP_DISCOURAGE_MODIFIER;
+		yb_local_latency_cost + startup_cost + run_cost +
+		index_ybctid_transfer_cost + index_ybctid_paging_seek_next_costs;
 	path->indexselectivity = index_selectivity;
 	path->ybctid_width = index_ybctid_width;
 
@@ -7404,6 +7401,85 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	yb_parallel_cost((Path *) path);
 }
 
+
+/*
+ * yb_get_bitmap_index_quals
+ *	  Return the list of quals used by the Bitmap Index Scans. This includes the
+ *	  index conditions themselves, and any additional remote filters that are
+ *	  applied by each Bitmap Index Scan.
+ *
+ * 'bitmapqual' is a tree of IndexPaths, BitmapAndPaths, and BitmapOrPaths
+ * 'scan_clauses' is a list of all conditions given to the bitmap path
+ */
+List *
+yb_get_bitmap_index_quals(PlannerInfo *root, Path *bitmapqual,
+						  List *scan_clauses)
+{
+	if (IsA(bitmapqual, BitmapAndPath))
+	{
+		BitmapAndPath *apath = (BitmapAndPath *) bitmapqual;
+		List	   *subindexquals = NIL;
+		ListCell   *l;
+
+		foreach(l, apath->bitmapquals)
+		{
+			List *subindexqual = yb_get_bitmap_index_quals(
+				root, (Path *) lfirst(l), scan_clauses);
+
+			subindexquals = list_concat_unique(subindexquals, subindexqual);
+		}
+
+		return subindexquals;
+	}
+	else if (IsA(bitmapqual, BitmapOrPath))
+	{
+		BitmapOrPath *opath = (BitmapOrPath *) bitmapqual;
+		List	   *subindexquals = NIL;
+		ListCell   *l;
+
+		foreach(l, opath->bitmapquals)
+		{
+			List *subindexqual = yb_get_bitmap_index_quals(
+				root, (Path *) lfirst(l), scan_clauses);
+
+			subindexquals = lappend(subindexquals,
+									make_ands_explicit(subindexqual));
+		}
+
+		if (list_length(subindexquals) <= 1)
+			return subindexquals;
+		return list_make1(make_orclause(subindexquals));
+	}
+	else if (IsA(bitmapqual, IndexPath))
+	{
+		IndexPath  *ipath = (IndexPath *) bitmapqual;
+		IndexScan  *iscan;
+		List	   *indexqual;
+
+		/* Use the regular indexscan plan build machinery... */
+		iscan = castNode(IndexScan,
+						 create_indexscan_plan(root, ipath,
+											   NIL, scan_clauses,
+											   false /* indexonly */,
+											   true /* bitmapindex */));
+
+		indexqual = get_actual_clauses(ipath->indexquals);
+
+		if (iscan->yb_idx_pushdown.quals)
+			indexqual = lappend(indexqual,
+								make_ands_explicit(iscan->yb_idx_pushdown.quals));
+
+		pfree(iscan);
+
+		return indexqual;
+	}
+	else
+	{
+		elog(ERROR, "unrecognized node type: %d", nodeTag(bitmapqual));
+	}
+}
+
+
 /*
  * yb_cost_bitmap_table_scan
  *	  Determines and returns the cost of scanning a relation using a YB bitmap
@@ -7440,11 +7516,15 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	Cost		per_seek_cost = 0.0;
 	Cost		per_next_cost = 0.0;
 	List	   *local_clauses = NIL;
-	double		remote_filtered_rows;
+	List	   *non_index_clauses = NIL;
 	int 		num_nexts;
 	int 		num_seeks;
 	int			docdb_result_width;
 	double		tuples_fetched;
+	double		tuples_scanned;
+	QualCost	qual_cost;
+	List	   *indexquals;
+	ListCell   *l;
 
 	/* Should only be applied to Yugabyte base relations */
 	Assert(IsA(baserel, RelOptInfo));
@@ -7487,14 +7567,55 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 		return;
 	}
 
-	/* TODO: account for local and remote quals */
-	tuples_fetched =
-		clamp_row_est(baserel->tuples *
-					  clauselist_selectivity(root, baserel->baserestrictinfo,
-											 baserel->relid, JOIN_INNER, NULL));
+	indexquals = yb_get_bitmap_index_quals(root, bitmapqual,
+										   baserel->baserestrictinfo);
+
+	/* Determine what clauses remain to be checked by this node */
+	foreach(l, baserel->baserestrictinfo)
+	{
+		RestrictInfo *rinfo = lfirst_node(RestrictInfo, l);
+		Node	   *clause = (Node *) rinfo->clause;
+
+		if (rinfo->pseudoconstant)
+			continue;			/* we may drop pseudoconstants here */
+		if (list_member(indexquals, clause))
+			continue;			/* simple duplicate */
+		if (!contain_mutable_functions(clause) &&
+			predicate_implied_by(list_make1(clause), indexquals, false))
+			continue;			/* provably implied by indexquals */
+		non_index_clauses = lappend(non_index_clauses, rinfo);
+	}
+
+	/* Determine remote and local quals */
+	List	   *local_quals = NIL;
+	List	   *rel_remote_quals = NIL;
+	List	   *rel_colrefs = NIL;
+
+	extract_pushdown_clauses(non_index_clauses, NULL /* index_info */,
+							 false /* bitmapindex */, &local_quals,
+							 &rel_remote_quals, &rel_colrefs,
+							 NULL /* idx_remote_quals */,
+							 NULL /* idx_colrefs */);
+
+	tuples_scanned = clamp_row_est(baserel->tuples *
+						clauselist_selectivity(root, indexquals, baserel->relid,
+											   JOIN_INNER, NULL));
+
+	cost_qual_eval(&qual_cost, rel_remote_quals, root);
+	startup_cost += qual_cost.startup;
+	run_cost +=
+		(qual_cost.per_tuple + list_length(rel_remote_quals) *
+		 yb_docdb_remote_filter_overhead_cycles *
+		 cpu_operator_cost) *
+		tuples_scanned;
+
+	tuples_fetched = clamp_row_est(baserel->tuples *
+						clauselist_selectivity(root,
+											   list_union(indexquals, rel_remote_quals),
+											   baserel->relid, JOIN_INNER, NULL));
 
 	/* Block fetch cost from disk */
-	num_blocks = ceil(tuples_fetched * tuple_width / YB_DEFAULT_DOCDB_BLOCK_SIZE);
+	num_blocks = ceil(tuples_scanned * tuple_width / YB_DEFAULT_DOCDB_BLOCK_SIZE);
 	run_cost += yb_random_block_cost * num_blocks;
 
 	/* DocDB costs for merging key-value pairs to form tuples */
@@ -7502,9 +7623,9 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 					 yb_docdb_merge_cpu_cycles * cpu_operator_cost;
 
 	/* Seek to first key cost */
-	if (tuples_fetched > 0)
+	if (tuples_scanned > 0)
 	{
-		per_seek_cost = yb_get_lsm_seek_cost(tuples_fetched,
+		per_seek_cost = yb_get_lsm_seek_cost(tuples_scanned,
 											 num_key_value_pairs_per_tuple,
 											 num_sst_files) +
 						per_merge_cost;
@@ -7513,9 +7634,6 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 	/* Next for remaining keys */
 	per_next_cost = (yb_docdb_next_cpu_cycles * cpu_operator_cost) +
 					per_merge_cost;
-
-	/* TODO: account for table pushdown quals */
-	remote_filtered_rows = tuples_fetched;
 
 	/* tlist eval costs are paid per output row, not per tuple scanned */
 	startup_cost += path->pathtarget->cost.startup;
@@ -7530,8 +7648,8 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 												   baserel, reloid);
 	path->yb_plan_info.estimated_docdb_result_width = docdb_result_width;
 
-	num_seeks = tuples_fetched;
-	num_nexts = (max_nexts_to_avoid_seek + 1) * tuples_fetched;
+	num_seeks = tuples_scanned;
+	num_nexts = (max_nexts_to_avoid_seek + 1) * tuples_scanned;
 
 	path->yb_plan_info.estimated_num_nexts = num_nexts;
 	path->yb_plan_info.estimated_num_seeks = num_seeks;
@@ -7541,12 +7659,21 @@ yb_cost_bitmap_table_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 
 	/* Network latency cost is added to startup cost */
 	startup_cost += yb_local_latency_cost;
-	run_cost += yb_compute_result_transfer_cost(remote_filtered_rows,
+	run_cost += yb_compute_result_transfer_cost(tuples_fetched,
 												docdb_result_width);
+	/* Local filter costs */
+	cost_qual_eval(&qual_cost, local_clauses, root);
+	startup_cost += qual_cost.startup;
+	run_cost += qual_cost.per_tuple * tuples_fetched;
+
+	path->rows =
+		clamp_row_est(baserel->tuples *
+					  clauselist_selectivity(root, baserel->baserestrictinfo,
+											 baserel->relid, JOIN_INNER, NULL));
 
 	path->rows = tuples_fetched;
-	path->startup_cost = startup_cost;
-	path->total_cost = startup_cost + run_cost;
+	path->startup_cost = startup_cost * YB_BITMAP_DISCOURAGE_MODIFIER;
+	path->total_cost = (startup_cost + run_cost) * YB_BITMAP_DISCOURAGE_MODIFIER;
 	path->yb_plan_info.estimated_num_nexts = num_nexts;
 	path->yb_plan_info.estimated_num_seeks = num_seeks;
 	yb_parallel_cost(path);

@@ -3,18 +3,36 @@ title: Set up transactional xCluster replication
 headerTitle: Set up transactional xCluster replication
 linkTitle: Set up replication
 description: Setting up transactional (active-standby) replication between universes
-headContent: Set up unidirectional transactional replication
+headContent: Set up transactional replication manually
 menu:
   stable:
     parent: async-replication-transactional
-    identifier: async-transactional-setup
+    identifier: async-transactional-setup-2-manual
     weight: 10
+badges: ysql
 type: docs
 ---
 
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="../async-transactional-setup-dblevel/" class="nav-link">
+      <i class="icon-shell"></i>
+      Semi-Automatic
+    </a>
+  </li>
+  <li >
+    <a href="../async-transactional-setup/" class="nav-link active">
+      <i class="icon-shell"></i>
+      Manual
+    </a>
+  </li>
+</ul>
+
 The following assumes you have set up Primary and Standby universes. Refer to [Set up universes](../async-deployment/#set-up-universes).
 
-## Set up replication
+Note that when making DDL changes on universes in manually-configured transactional xCluster, the statements must be executed on both the Primary/Source and Standby/Target and the xCluster configuration must be updated. See [Make manual DDL changes](../async-transactional-tables/).
+
+## Set up replication manually
 
 <ul class="nav nav-tabs-alt nav-tabs-yb custom-tabs">
   <li>
@@ -188,7 +206,7 @@ To set up unidirectional transactional replication using YugabyteDB Anywhere, do
 
     This is because setting up replication requires backing up the Primary database and restoring the backup to the Standby database after cleaning up any pre-existing data on the Standby. Close any connections to the Standby database and retry the replication setup operation.
 
-    For more information on setting up replication in YugabyteDB Anywhere, refer to [Set up replication](../../../../yugabyte-platform/create-deployments/async-replication-platform/#set-up-replication).
+    For more information on setting up replication in YugabyteDB Anywhere, refer to [xCluster replication](../../../../yugabyte-platform/manage-deployments/xcluster-replication/).
 
 **Adding a database to an existing replication**
 

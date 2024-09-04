@@ -84,7 +84,14 @@ public class CommonUtils {
   // Sensisitve field substrings
   private static final List<String> sensitiveFieldSubstrings =
       Arrays.asList(
-          "KEY", "SECRET", "CREDENTIALS", "API", "POLICY", "HC_VAULT_TOKEN", "vaultToken");
+          "KEY",
+          "SECRET",
+          "CREDENTIALS",
+          "API",
+          "POLICY",
+          "HC_VAULT_TOKEN",
+          "vaultToken",
+          "SAS_TOKEN");
   // Exclude following strings from being sensitive fields
   private static final List<String> excludedFieldNames =
       Arrays.asList(

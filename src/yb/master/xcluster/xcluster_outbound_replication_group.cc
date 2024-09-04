@@ -320,7 +320,9 @@ void XClusterOutboundReplicationGroup::MarkCheckpointNamespaceAsFailed(
   // FAILED is a terminal state. RemoveNamespace or Delete Replication Group is the way to clean it
   // up.
   ns_info->set_state(NamespaceInfoPB::FAILED);
-  StatusToPB(status, ns_info->mutable_error_status());
+  StatusToPB(
+      STATUS_FORMAT(InternalError, "Failed to checkpoint namespace $0: $1", namespace_id, status),
+      ns_info->mutable_error_status());
 
   WARN_NOT_OK(Upsert(*lock_result, epoch), ToString());
 }
@@ -1130,6 +1132,19 @@ Result<std::vector<NamespaceId>> XClusterOutboundReplicationGroup::GetNamespaces
   }
 
   return namespace_ids;
+}
+
+Result<std::string> XClusterOutboundReplicationGroup::GetStreamId(
+    const NamespaceId& namespace_id, const TableId& table_id) const {
+  SharedLock mutex_lock(mutex_);
+  auto l = VERIFY_RESULT(LockForRead());
+
+  auto* ns_info = VERIFY_RESULT(GetNamespaceInfo(namespace_id));
+  auto* table_info = FindOrNull(ns_info->table_infos(), table_id);
+
+  SCHECK(table_info, NotFound, "Table $0 not found in $1", table_id, namespace_id);
+
+  return table_info->stream_id();
 }
 
 }  // namespace yb::master

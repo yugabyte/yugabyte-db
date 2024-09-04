@@ -13,4 +13,4 @@ Use the yb-tserver binary and its flags to configure the [YB-TServer](../../../a
 
 For a list of all YB-Master flags, see [All YB-Master flags](../all-flags-yb-master/).
 
-{{<flags/flag-table process="tserver">}}
+{{%all-flags-list process="tserver"%}}

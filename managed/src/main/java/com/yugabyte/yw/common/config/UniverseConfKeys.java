@@ -1006,7 +1006,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
       new ConfKeyInfo<>(
           "yb.security.ldap.ldap_universe_sync",
           ScopeType.UNIVERSE,
-          "To perform sync of user-groups between the Universe DB nodes and LDAP Server",
+          "Sync user-groups between the Universe DB nodes and LDAP Server",
           "If configured, this feature allows users to synchronise user groups configured"
               + " on the upstream LDAP Server with user roles in YBDB nodes associated"
               + " with the universe.",
