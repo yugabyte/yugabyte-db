@@ -107,14 +107,14 @@ These are the wait events introduced by YugabyteDB, however some of the followin
 |:---------------- | :--------- |:--------------- | :--- | :---------- |
 | Common | OnCpu_Passive | CPU | | An RPC or task is waiting for a thread to pick it up. |
 | Common | OnCpu_Active | CPU |  | An RPC or task is being actively processed on a thread. |
-| Common | Idle | WaitOnCondition | | The raft log appender/sync thread is idle |
+| Common | Idle | WaitOnCondition | | The raft log appender/sync thread is idle. |
 | Common | Rpc_Done | WaitOnCondition | | An RPC is done and waiting for the reactor to send the response to a YSQL/YCQL backend. |
 | Common | RetryableRequests_SaveToDisk | DiskIO | | The in-memory state of the retryable requests is being saved to the disk. |
 | TabletWait | MVCC_WaitForSafeTime | WaitOnCondition | | A read/write RPC is waiting for the safe time to be at least the desired read-time. |
-| TabletWait | LockedBatchEntry_Lock | WaitOnCondition | | A read/write RPC is waiting for a DocDB row level lock. |
+| TabletWait | LockedBatchEntry_Lock | WaitOnCondition | | A read/write RPC is waiting for a DocDB row-level lock. |
 | TabletWait | BackfillIndex_WaitForAFreeSlot | WaitOnCondition | | A backfill index RPC is waiting for a slot to open if there are too many backfill requests at the same time. |
 | TabletWait | CreatingNewTablet | DiskIO | | The CreateTablet RPC is creating a new tablet, this may involve writing metadata files, causing I/O wait. |
-| TabletWait | SaveRaftGroupMetadataToDisk | DiskIO | | The Raft/tablet metadata is being written to disk, generally during snapshot or restore operations. |
+| TabletWait | SaveRaftGroupMetadataToDisk | DiskIO | | The RAFT/tablet metadata is being written to disk, generally during snapshot or restore operations. |
 | TabletWait | TransactionStatusCache_DoGetCommitData | Network | | An RPC needs to look up the commit status of a particular transaction. |
 | TabletWait | WaitForYSQLBackendsCatalogVersion | WaitOnCondition | | CREATE INDEX is waiting for YSQL backends to have up-to-date pg_catalog. |
 | TabletWait | WriteSysCatalogSnapshotToDisk | DiskIO | | Writing initial system catalog snapshot during initdb.|
@@ -132,7 +132,7 @@ These are the wait events introduced by YugabyteDB, however some of the followin
 | RocksDB | RocksDB_WriteToFile | DiskIO | | RocksDB is writing to a file. |
 | RocksDB | RocksDB_Flush | CPU | | RocksDB is doing a flush. |
 | RocksDB | RocksDB_Compaction | CPU | | RocksDB is doing a compaction. |
-| RocksDB | RocksDB_PriorityThreadPoolTaskPaused | WaitOnCondition | | RocksDB paused one of flush/compaction tasks for another one with a higher priority. |
+| RocksDB | RocksDB_PriorityThreadPoolTaskPaused | WaitOnCondition | | RocksDB paused a flush/compaction tasks for another with a higher priority. |
 | RocksDB | RocksDB_CloseFile | DiskIO | | RocksDB is closing a file. |
 | RocksDB | RocksDB_RateLimiter | WaitOnCondition | | RocksDB flush/compaction is slowing down due to rate limiter throttling access to disk. |
 | RocksDB | RocksDB_WaitForSubcompaction | WaitOnCondition | | RocksDB is waiting for a compaction to complete. |
