@@ -8,7 +8,7 @@
  *-------------------------------------------------------------------------
  */
 #ifndef WKBBufferITERATOR_H
-#define WKBBUfferITERATOR_H
+#define WKBBufferITERATOR_H
 
 #include "postgres.h"
 
