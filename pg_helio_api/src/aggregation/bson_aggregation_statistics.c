@@ -11,8 +11,12 @@
 
 #include <postgres.h>
 #include <fmgr.h>
+#include <windowapi.h>
+#include <executor/nodeWindowAgg.h>
+#include <executor/executor.h>
 #include <catalog/pg_type.h>
 #include <math.h>
+#include <nodes/pg_list.h>
 
 #include "utils/mongo_errors.h"
 #include "types/decimal128.h"
@@ -34,6 +38,22 @@ typedef struct BsonCovarianceAndVarianceAggState
 	/* number of decimal values in current window, used to determine if we need to return decimal128 value */
 	int decimalCount;
 } BsonCovarianceAndVarianceAggState;
+
+typedef struct BsonExpMovingAvg
+{
+	bool init;
+	bool isAlpha;
+	bson_value_t weight;
+	bson_value_t preValue;
+} BsonExpMovingAvg;
+
+enum InputValidFlags
+{
+	InputValidFlags_Unknown = 0,
+	InputValidFlags_N = 1,
+	InputValidFlags_Alpha = 2,
+	InputValidFlags_Input = 4
+};
 
 
 /* --------------------------------------------------------- */
@@ -57,6 +77,11 @@ typedef struct BsonCovarianceAndVarianceAggState
 		} \
 	} while (0)
 
+bool ParseInputWeightForExpMovingAvg(const bson_value_t *opValue,
+									 bson_value_t *inputExpression,
+									 bson_value_t *weightExpression,
+									 bson_value_t *decimalWeightValue);
+
 static bytea * AllocateBsonCovarianceOrVarianceAggState(void);
 static void CalculateCombineFuncForCovarianceOrVarianceWithYCAlgr(const
 																  BsonCovarianceAndVarianceAggState
@@ -75,6 +100,9 @@ static void CalculateSFuncForCovarianceOrVarianceWithYCAlgr(const bson_value_t *
 															const bson_value_t *newYValue,
 															BsonCovarianceAndVarianceAggState
 															*currentState);
+static bool CalculateExpMovingAvg(bson_value_t *currentValue, bson_value_t *perValue,
+								  bson_value_t *weightValue, bool isAlpha,
+								  bson_value_t *resultValue);
 
 
 /* --------------------------------------------------------- */
@@ -90,6 +118,7 @@ PG_FUNCTION_INFO_V1(bson_std_dev_pop_samp_transition);
 PG_FUNCTION_INFO_V1(bson_std_dev_pop_samp_combine);
 PG_FUNCTION_INFO_V1(bson_std_dev_pop_final);
 PG_FUNCTION_INFO_V1(bson_std_dev_samp_final);
+PG_FUNCTION_INFO_V1(bson_exp_moving_avg);
 
 
 /*
@@ -716,6 +745,134 @@ bson_std_dev_samp_final(PG_FUNCTION_ARGS)
 }
 
 
+/*
+ * Function that calculate expMovingAvg value one by one.
+ */
+Datum
+bson_exp_moving_avg(PG_FUNCTION_ARGS)
+{
+	WindowObject winobj = PG_WINDOW_OBJECT();
+	BsonExpMovingAvg *stateData;
+
+	stateData = (BsonExpMovingAvg *)
+				WinGetPartitionLocalMemory(winobj, sizeof(BsonExpMovingAvg));
+
+	bool isnull = false;
+
+	pgbson *currentValue = DatumGetPgBson(WinGetFuncArgCurrent(winobj, 0, &isnull));
+
+	pgbsonelement currentValueElement;
+	PgbsonToSinglePgbsonElement(currentValue, &currentValueElement);
+	bson_value_t bsonCurrentValue = currentValueElement.bsonValue;
+
+	pgbsonelement finalValue;
+	finalValue.path = "";
+	finalValue.pathLength = 0;
+
+	/* if currentValue is not a numeric type, return null. */
+	if (BsonValueIsNumber(&bsonCurrentValue))
+	{
+		/* first call, init stateData. */
+		if (!stateData->init)
+		{
+			/* get weight value, if isAlpha == true, the weightValue is Alpha, if isAlpha == false, the weightValue is N. */
+			pgbson *weightValue = DatumGetPgBson(WinGetFuncArgCurrent(winobj, 1,
+																	  &isnull));
+			bool isAlpha = DatumGetBool(WinGetFuncArgCurrent(winobj, 2, &isnull));
+
+			pgbsonelement weightValueElement;
+			PgbsonToSinglePgbsonElement(weightValue, &weightValueElement);
+			bson_value_t bsonWeightValue = weightValueElement.bsonValue;
+
+			stateData->init = true;
+			stateData->isAlpha = isAlpha;
+			stateData->preValue = bsonCurrentValue;
+			stateData->weight = bsonWeightValue;
+			finalValue.bsonValue = bsonCurrentValue;
+			PG_RETURN_POINTER(PgbsonElementToPgbson(&finalValue));
+		}
+		else
+		{
+			bson_value_t bsonPerValue = stateData->preValue;
+			bson_value_t bsonResultValue;
+
+			/*
+			 * CalculateExpMovingAvg will compute the result of expMovingAvg.
+			 *
+			 * If the parameter is N,
+			 * the calculation is: current result = current value * ( 2 / ( N + 1 ) ) + previous result * ( 1 - ( 2 / ( N + 1 ) ) )
+			 * To improve calculation accuracy, we need to convert the calculation to: (currentValue * 2 + preValue * ( N - 1 ) ) / ( N + 1 )
+			 *
+			 * If the parameter is alpha,
+			 * the calculation is: current result = current value * alpha + previous result * ( 1 - alpha )
+			 */
+			if (!CalculateExpMovingAvg(&bsonCurrentValue, &bsonPerValue,
+									   &stateData->weight,
+									   stateData->isAlpha, &bsonResultValue))
+			{
+				ereport(ERROR, (errcode(MongoInternalError)),
+						errmsg(
+							"CalculateStandardVariance: currentValue = %s, preValue = %s, weightValue = %s",
+							BsonValueToJsonForLogging(
+								&bsonCurrentValue),
+							BsonValueToJsonForLogging(&bsonPerValue),
+							BsonValueToJsonForLogging(&stateData->weight)),
+						errhint(
+							"CalculateStandardVariance: currentValue = %s, preValue = %s, weightValue = %s",
+							BsonValueToJsonForLogging(
+								&bsonCurrentValue),
+							BsonValueToJsonForLogging(&bsonPerValue),
+							BsonValueToJsonForLogging(&stateData->weight)));
+			}
+
+			/* If currentValue is of type decimal128, then expMovingResult will also be of type decimal128, */
+			/* and all subsequent expMoving results will also be of type decimal128. */
+			if (bsonCurrentValue.value_type == BSON_TYPE_DECIMAL128 ||
+				stateData->preValue.value_type == BSON_TYPE_DECIMAL128)
+			{
+				stateData->preValue = bsonResultValue;
+			}
+			else
+			{
+				/* If result can be represented as an integer, we need to keep only the integer part. : 5.0 -> 5 */
+				/* If result overflows int32, IsBsonValue32BitInteger will return false. */
+				bool checkFixedInteger = true;
+				if (IsBsonValue32BitInteger(&bsonResultValue, checkFixedInteger))
+				{
+					stateData->preValue.value_type = BSON_TYPE_INT32;
+					stateData->preValue.value.v_int32 = BsonValueAsInt32(
+						&bsonResultValue);
+				}
+				else
+				{
+					/* If result can be represented as an integer, we need to keep only the integer part. : 5.0 -> 5 */
+					if (IsBsonValue64BitInteger(&bsonResultValue, checkFixedInteger))
+					{
+						stateData->preValue.value_type = BSON_TYPE_INT64;
+						stateData->preValue.value.v_int64 = BsonValueAsInt64(
+							&bsonResultValue);
+					}
+					else
+					{
+						stateData->preValue.value_type = BSON_TYPE_DOUBLE;
+						stateData->preValue.value.v_double = BsonValueAsDouble(
+							&bsonResultValue);
+					}
+				}
+			}
+
+			finalValue.bsonValue = stateData->preValue;
+			PG_RETURN_POINTER(PgbsonElementToPgbson(&finalValue));
+		}
+	}
+	else
+	{
+		finalValue.bsonValue.value_type = BSON_TYPE_NULL;
+		PG_RETURN_POINTER(PgbsonElementToPgbson(&finalValue));
+	}
+}
+
+
 /* --------------------------------------------------------- */
 /* Private helper methods */
 /* --------------------------------------------------------- */
@@ -1205,4 +1362,288 @@ CalculateSFuncForCovarianceOrVarianceWithYCAlgr(const bson_value_t *newXValue,
 	}
 
 	currentState->count = decimalN;
+}
+
+
+bool
+ParseInputWeightForExpMovingAvg(const bson_value_t *opValue,
+								bson_value_t *inputExpression,
+								bson_value_t *weightExpression,
+								bson_value_t *decimalWeightValue)
+{
+	bson_iter_t docIter;
+	BsonValueInitIterator(opValue, &docIter);
+
+
+	/*
+	 * The $expMovingAvg accumulator expects a document in the form of
+	 * { "input": <value>, "alpha": <value> } or { "input": <value>, "N": <value> }
+	 * input is required parameter, both N and alpha are optional, but must specify either N or alpha, cannot specify both.
+	 * paramsValid is initially 0 and is used to check if params are valid:
+	 * if N is available, paramsValid |= 1;
+	 * if Alpha is available, paramsValid |= 2;
+	 * if input is available, paramsValid |= 4;
+	 *
+	 * So the opValue is only valid when paramsValid is equal to 5 (101) or 6(101).
+	 */
+	int32 paramsValid = InputValidFlags_Unknown;
+
+	while (bson_iter_next(&docIter))
+	{
+		const char *key = bson_iter_key(&docIter);
+
+		if (strcmp(key, "input") == 0)
+		{
+			*inputExpression = *bson_iter_value(&docIter);
+			paramsValid |= InputValidFlags_Input;
+		}
+		else if (strcmp(key, "alpha") == 0)
+		{
+			/*
+			 * Alpha is a float number, must be between 0 and 1 (exclusive).
+			 */
+			*weightExpression = *bson_iter_value(&docIter);
+
+			if (BsonValueAsDouble(weightExpression) <= 0 || BsonValueAsDouble(
+					weightExpression) >= 1)
+			{
+				ereport(ERROR, (errcode(MongoFailedToParse),
+								errmsg(
+									"'alpha' must be between 0 and 1 (exclusive), found alpha: %lf",
+									BsonValueAsDouble(weightExpression))));
+			}
+			decimalWeightValue->value_type = BSON_TYPE_DECIMAL128;
+			decimalWeightValue->value.v_decimal128 = GetBsonValueAsDecimal128Quantized(
+				weightExpression);
+			paramsValid |= InputValidFlags_Alpha;
+		}
+		else if (strcmp(key, "N") == 0)
+		{
+			/*
+			 * N is a integer, must be greater than 1.
+			 */
+			*weightExpression = *bson_iter_value(&docIter);
+
+			if (BsonTypeIsNumber(weightExpression->value_type))
+			{
+				bool checkFixedInteger = true;
+				if (!IsBsonValue64BitInteger(weightExpression, checkFixedInteger) &&
+					!IsBsonValueNegativeNumber(weightExpression))
+				{
+					ereport(ERROR, (errcode(MongoFailedToParse),
+									errmsg(
+										"'N' field must be an integer, but found  N: %lf. To use a non-integer, use the 'alpha' argument instead",
+										BsonValueAsDouble(weightExpression))));
+				}
+				else if (IsBsonValueNegativeNumber(weightExpression))
+				{
+					ereport(ERROR, (errcode(MongoFailedToParse),
+									errmsg(
+										"'N' must be greater than zero. Got %d",
+										BsonValueAsInt32(weightExpression))));
+				}
+			}
+			else
+			{
+				ereport(ERROR, (errcode(MongoFailedToParse),
+								errmsg(
+									"'N' field must be an integer, but found type %s",
+									BsonTypeName(weightExpression->value_type))));
+			}
+
+
+			decimalWeightValue->value_type = BSON_TYPE_DECIMAL128;
+			decimalWeightValue->value.v_decimal128 = GetBsonValueAsDecimal128(
+				weightExpression);
+			paramsValid |= InputValidFlags_N;
+		}
+		else
+		{
+			/*incorrect parameter,like "alpah" */
+			ereport(ERROR, (errcode(MongoFailedToParse),
+							errmsg(
+								"Got unrecognized field in $expMovingAvg, $expMovingAvg sub object must have exactly two fields: An 'input' field, and either an 'N' field or an 'alpha' field")));
+		}
+	}
+
+	if (paramsValid <= InputValidFlags_Input || paramsValid == (InputValidFlags_Input |
+																InputValidFlags_N |
+																InputValidFlags_Alpha))
+	{
+		ereport(ERROR, (errcode(MongoFailedToParse),
+						errmsg(
+							"$expMovingAvg sub object must have exactly two fields: An 'input' field, and either an 'N' field or an 'alpha' field")));
+	}
+
+	return (paramsValid & InputValidFlags_Alpha) ? true : false;
+}
+
+
+/*
+ * Function to calculate expMovingAvg.
+ *
+ * If the parameter is N,
+ * the calculation is: current result = current value * ( 2 / ( N + 1 ) ) + previous result * ( 1 - ( 2 / ( N + 1 ) ) )
+ * To improve calculation accuracy, we need to convert the calculation to: (currentValue * 2 + preValue * ( N - 1 ) ) / ( N + 1 )
+ *
+ * If the parameter is alpha,
+ * the calculation is: current result = current value * alpha + previous result * ( 1 - alpha )
+ */
+static bool
+CalculateExpMovingAvg(bson_value_t *bsonCurrentValue, bson_value_t *bsonPerValue,
+					  bson_value_t *bsonWeightValue, bool isAlpha,
+					  bson_value_t *bsonResultValue)
+{
+	bool isDecimalOpSuccess = true;
+
+	bson_value_t decimalCurrentValue;
+	decimalCurrentValue.value_type = BSON_TYPE_DECIMAL128;
+	decimalCurrentValue.value.v_decimal128 = GetBsonValueAsDecimal128Quantized(
+		bsonCurrentValue);
+
+	bson_value_t decimalPreValue;
+	decimalPreValue.value_type = BSON_TYPE_DECIMAL128;
+	decimalPreValue.value.v_decimal128 = GetBsonValueAsDecimal128Quantized(bsonPerValue);
+
+	bson_value_t decimalWeightValue;
+	decimalWeightValue.value_type = BSON_TYPE_DECIMAL128;
+	decimalWeightValue.value.v_decimal128 = GetBsonValueAsDecimal128Quantized(
+		bsonWeightValue);
+
+	bson_value_t decimalOne;
+	decimalOne.value_type = BSON_TYPE_DECIMAL128;
+	decimalOne.value.v_decimal128 = GetDecimal128FromInt64(1);
+
+	bson_value_t decimalTwo;
+	decimalTwo.value_type = BSON_TYPE_DECIMAL128;
+	decimalTwo.value.v_decimal128 = GetDecimal128FromInt64(2);
+
+	if (isAlpha)
+	{
+		/*
+		 *  current result = current value * alpha + previous result * ( 1 - alpha )
+		 */
+		bson_value_t decimalPreWeight;
+		Decimal128Result decimalOpResult;
+
+		/* 1 - alpha */
+		decimalOpResult = SubtractDecimal128Numbers(&decimalOne, &decimalWeightValue,
+													&decimalPreWeight);
+		if (decimalOpResult != Decimal128Result_Success && decimalOpResult !=
+			Decimal128Result_Inexact)
+		{
+			isDecimalOpSuccess = false;
+			return isDecimalOpSuccess;
+		}
+
+		/* previous result * ( 1 - alpha ) */
+		decimalOpResult = MultiplyDecimal128Numbers(&decimalPreValue, &decimalPreWeight,
+													&decimalPreValue);
+		if (decimalOpResult != Decimal128Result_Success && decimalOpResult !=
+			Decimal128Result_Inexact)
+		{
+			isDecimalOpSuccess = false;
+			return isDecimalOpSuccess;
+		}
+
+		/* current value * alpha */
+		decimalOpResult = MultiplyDecimal128Numbers(&decimalCurrentValue,
+													&decimalWeightValue,
+													&decimalCurrentValue);
+		if (decimalOpResult != Decimal128Result_Success && decimalOpResult !=
+			Decimal128Result_Inexact)
+		{
+			isDecimalOpSuccess = false;
+			return isDecimalOpSuccess;
+		}
+
+		/* decimalPreValue = previous result * ( 1 - alpha ) */
+		/* decimalCurrentValue = current value * alpha */
+		/* bsonResultValue = decimalPreValue + decimalCurrentValue */
+		decimalOpResult = AddDecimal128Numbers(&decimalPreValue, &decimalCurrentValue,
+											   bsonResultValue);
+		if (decimalOpResult != Decimal128Result_Success && decimalOpResult !=
+			Decimal128Result_Inexact)
+		{
+			isDecimalOpSuccess = false;
+			return isDecimalOpSuccess;
+		}
+	}
+	else
+	{
+		/*
+		 *  current result = current value * ( 2 / ( N + 1 ) ) + previous result * ( 1 - ( 2 / ( N + 1 ) ) )
+		 *  To improve calculation accuracy, we need to convert the calculation:
+		 *  (currentValue * 2 + preValue * ( N - 1 ) ) / ( N + 1 )
+		 */
+		bson_value_t decimalWeightSubtractOne;  /* N-1 */
+		bson_value_t decimalWeightAddOne;  /* N+1 */
+
+		Decimal128Result decimalOpResult;
+
+		/*currentValue * 2 */
+		decimalOpResult = MultiplyDecimal128Numbers(&decimalCurrentValue, &decimalTwo,
+													&decimalCurrentValue);
+		if (decimalOpResult != Decimal128Result_Success && decimalOpResult !=
+			Decimal128Result_Inexact)
+		{
+			isDecimalOpSuccess = false;
+			return isDecimalOpSuccess;
+		}
+
+		/* N - 1 */
+		decimalOpResult = SubtractDecimal128Numbers(&decimalWeightValue, &decimalOne,
+													&decimalWeightSubtractOne);
+		if (decimalOpResult != Decimal128Result_Success && decimalOpResult !=
+			Decimal128Result_Inexact)
+		{
+			isDecimalOpSuccess = false;
+			return isDecimalOpSuccess;
+		}
+
+		/* preValue * (N - 1) */
+		decimalOpResult = MultiplyDecimal128Numbers(&decimalPreValue,
+													&decimalWeightSubtractOne,
+													&decimalPreValue);
+		if (decimalOpResult != Decimal128Result_Success && decimalOpResult !=
+			Decimal128Result_Inexact)
+		{
+			isDecimalOpSuccess = false;
+			return isDecimalOpSuccess;
+		}
+
+		/* currentValue*2 + preValue * (N-1) */
+		decimalOpResult = AddDecimal128Numbers(&decimalPreValue, &decimalCurrentValue,
+											   bsonResultValue);
+		if (decimalOpResult != Decimal128Result_Success && decimalOpResult !=
+			Decimal128Result_Inexact)
+		{
+			isDecimalOpSuccess = false;
+			return isDecimalOpSuccess;
+		}
+
+		/*bsonWeightValue = N; */
+		/* N + 1 */
+		decimalOpResult = AddDecimal128Numbers(&decimalWeightValue, &decimalOne,
+											   &decimalWeightAddOne);
+		if (decimalOpResult != Decimal128Result_Success && decimalOpResult !=
+			Decimal128Result_Inexact)
+		{
+			isDecimalOpSuccess = false;
+			return isDecimalOpSuccess;
+		}
+
+		/* bsonResultValue = currentValue * 2 + preValue*(N - 1); */
+		/* decimalWeightAddOne =  N + 1 */
+		/* bsonResultValue / decimalWeightAddOne */
+		decimalOpResult = DivideDecimal128Numbers(bsonResultValue, &decimalWeightAddOne,
+												  bsonResultValue);
+		if (decimalOpResult != Decimal128Result_Success && decimalOpResult !=
+			Decimal128Result_Inexact)
+		{
+			isDecimalOpSuccess = false;
+			return isDecimalOpSuccess;
+		}
+	}
+	return isDecimalOpSuccess;
 }

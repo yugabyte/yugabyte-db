@@ -669,6 +669,9 @@ typedef struct HelioApiOidCacheData
 	/* OID of the bson_merge_objects function */
 	Oid ApiCatalogBsonMergeObjectsFunctionOid;
 
+	/* OID of the BSONEXPMOVINGAVG window function */
+	Oid ApiCatalogBsonExpMovingAvgAggregateFunctionOid;
+
 	/* OID of the BSONMAX aggregate function */
 	Oid ApiCatalogBsonMaxAggregateFunctionOid;
 
@@ -3335,6 +3338,26 @@ BsonArrayAggregateAllArgsFunctionOid(void)
 	bool allArgs = true;
 	return GetBsonArrayAggregateFunctionOid(
 		&Cache.ApiCatalogBsonArrayAggregateAllArgsFunctionOid, allArgs);
+}
+
+
+Oid
+BsonExpMovingAvgAggregateFunctionOid(void)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (Cache.ApiCatalogBsonExpMovingAvgAggregateFunctionOid == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString("helio_api_internal"),
+											makeString("bson_exp_moving_avg"));
+		Oid paramOids[3] = { BsonTypeId(), BsonTypeId(), BOOLOID };
+		bool missingOK = false;
+
+		Cache.ApiCatalogBsonExpMovingAvgAggregateFunctionOid =
+			LookupFuncName(functionNameList, 3, paramOids, missingOK);
+	}
+
+	return Cache.ApiCatalogBsonExpMovingAvgAggregateFunctionOid;
 }
 
 

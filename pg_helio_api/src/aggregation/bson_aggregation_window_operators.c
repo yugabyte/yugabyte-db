@@ -20,12 +20,14 @@
 #include <utils/fmgroids.h>
 
 #include "aggregation/bson_aggregation_window_operators.h"
+#include "aggregation/bson_aggregation_statistics.h"
 #include "commands/parse_error.h"
 #include "query/helio_bson_compare.h"
 #include "query/query_operator.h"
 #include "utils/date_utils.h"
 #include "utils/feature_counter.h"
 #include "utils/mongo_errors.h"
+#include "types/decimal128.h"
 
 /* --------------------------------------------------------- */
 /* Data types */
@@ -164,6 +166,8 @@ static WindowFunc * HandleDollarRankWindowOperator(const bson_value_t *opValue,
 												   WindowOperatorContext *context);
 static WindowFunc * HandleDollarSumWindowOperator(const bson_value_t *opValue,
 												  WindowOperatorContext *context);
+static WindowFunc * HandleDollarExpMovingAvgWindowOperator(const bson_value_t *opValue,
+														   WindowOperatorContext *context);
 
 
 /* GUC to enable SetWindowFields stage */
@@ -218,7 +222,7 @@ static const WindowOperatorDefinition WindowOperatorDefinitions[] =
 	},
 	{
 		.operatorName = "$expMovingAvg",
-		.windowOperatorFunc = NULL
+		.windowOperatorFunc = &HandleDollarExpMovingAvgWindowOperator
 	},
 	{
 		.operatorName = "$first",
@@ -1649,4 +1653,98 @@ ValidateInputForRankFunctions(const bson_value_t *opValue,
 							"%s must be specified with a top level sortBy expression with exactly one element",
 							opName)));
 	}
+}
+
+
+/*
+ * Handle for $expMovingAvg window aggregation operator.
+ * $expMovingAvg syntax:
+ * {
+ *  $expMovingAvg: {
+ *     input: <input expression>,
+ *     N: <integer>,
+ *     alpha: <float>
+ *  }
+ * }
+ *
+ */
+static WindowFunc *
+HandleDollarExpMovingAvgWindowOperator(const bson_value_t *opValue,
+									   WindowOperatorContext *context)
+{
+	if (!(IsClusterVersionAtleastThis(1, 22, 0)))
+	{
+		ereport(ERROR, (errcode(MongoCommandNotSupported),
+						errmsg(
+							"$expMovingAvg is only supported on vCore 1.21.0 and above")));
+	}
+
+	if (list_length(context->sortOptions) == 0)
+	{
+		ereport(ERROR, (errcode(MongoFailedToParse),
+						errmsg(
+							"$expMovingAvg requires an explicit 'sortBy'")));
+	}
+
+	/* $expMovingAvg is not support window parameter*/
+	if (context->isWindowPresent == true || opValue->value_type != BSON_TYPE_DOCUMENT)
+	{
+		ereport(ERROR, (errcode(MongoFailedToParse),
+						errmsg(
+							"$expMovingAvg must have exactly one argument that is an object")));
+	}
+
+	WindowFunc *windowFunc = makeNode(WindowFunc);
+	windowFunc->winfnoid = BsonExpMovingAvgAggregateFunctionOid();
+	windowFunc->wintype = BsonTypeId();
+	windowFunc->winref = context->winRef;
+	windowFunc->winstar = false;
+	windowFunc->winagg = false;
+
+	bson_value_t inputExpression = { 0 };
+	bson_value_t weightExpression = { 0 };
+	bson_value_t decimalWeightValue;
+
+	/* Used to determine N or Alpha. */
+
+	bool isAlpha = ParseInputWeightForExpMovingAvg(opValue, &inputExpression,
+												   &weightExpression,
+												   &decimalWeightValue);
+
+	Expr *inputConstValue = (Expr *) MakeBsonConst(BsonValueToDocumentPgbson(
+													   &inputExpression));
+
+	Const *trueConst = makeConst(BOOLOID, -1, InvalidOid, 1, BoolGetDatum(true), false,
+								 true);
+
+	/* If isAlpha == true, decimalWeightValue stores the value of Alpha. */
+	/* If isAlpha == false, decimalWeightValue stores the value of N. */
+	Const *weightConstValue = MakeBsonConst(BsonValueToDocumentPgbson(
+												&decimalWeightValue));
+
+	Const *isAlphaConst = makeConst(BOOLOID, -1, InvalidOid, 1, BoolGetDatum(isAlpha),
+									false,
+									true);
+
+	List *argsInput;
+	Oid functionOid;
+
+	if (context->variableContext != NULL)
+	{
+		functionOid = BsonExpressionGetWithLetFunctionOid();
+		argsInput = list_make4(context->docExpr, inputConstValue, trueConst,
+							   context->variableContext);
+	}
+	else
+	{
+		functionOid = BsonExpressionGetFunctionOid();
+		argsInput = list_make3(context->docExpr, inputConstValue, trueConst);
+	}
+
+	FuncExpr *accumFunc = makeFuncExpr(
+		functionOid, BsonTypeId(), argsInput, InvalidOid,
+		InvalidOid, COERCE_EXPLICIT_CALL);
+
+	windowFunc->args = list_make3(accumFunc, weightConstValue, isAlphaConst);
+	return windowFunc;
 }

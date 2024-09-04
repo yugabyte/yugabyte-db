@@ -296,6 +296,7 @@ Oid BsonMinAggregateFunctionOid(void);
 Oid PgRandomFunctionOid(void);
 Oid BsonArrayAggregateFunctionOid(void);
 Oid BsonArrayAggregateAllArgsFunctionOid(void);
+Oid BsonExpMovingAvgAggregateFunctionOid(void);
 Oid BsonObjectAggregateFunctionOid(void);
 Oid BsonMergeObjectsOnSortedFunctionOid(void);
 Oid BsonMergeObjectsFunctionOid(void);
