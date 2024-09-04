@@ -7,8 +7,8 @@
 {{ $previewVersion := "" }}
 {{ $stableVersion := "" }}
 {{ $previewBehindStable := false }}
-
-{{ $pathsplit := after 1 (split .Page.File "/")}}
+{{ $fullpath := printf "%s" .Page.File.Path}}
+{{ $pathsplit := after 1 (split $fullpath "/")}}
 {{/** Keep track of whether preview version exists for this file **/}}
 {{ $previewPath := path.Join "content/preview" $pathsplit }}
 {{ $previewExists := fileExists $previewPath }}
@@ -18,7 +18,6 @@
 {{ $stableExists := fileExists $stablePath }}
 
 {{ warnf "%s(%s) - %s(%s)" $previewPath $previewExists $stablePath $stableExists }}
-{{/* warn "%s(%s) - %s(%s)" $previewPath $previewExists $stablePath $stableExists */}}
 
 {{/** Identify is preview is behind stable and which versions are preview and stable **/}}
 {{ range .Site.Data.currentVersions.dbVersions }}
@@ -30,7 +29,6 @@
   {{- else if eq .alias "preview" -}}
     {{- $previewVersion = .series -}}
   {{- end -}}
-
 {{- end -}}
 
 {{/** Do nothing if this is the latest stable and preview is behind stable **/}}
