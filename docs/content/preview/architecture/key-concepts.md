@@ -31,7 +31,7 @@ YugabyteDB provides ACID guarantees for all [transactions](#transaction).
 
 ## CDC - Change data capture
 
-CDC is a software design pattern used in database systems to capture and propagate data changes from one database to another in real-time or near real-time. YugabyteDB supports transactional CDC guaranteeing changes across tables are captured together. This enables use cases like real-time analytics, data warehousing, operational data replication, and event-driven architectures. {{<link "../docdb-replication/change-data-capture/">}}
+CDC is a software design pattern used in database systems to capture and propagate data changes from one database to another in real-time or near real-time. YugabyteDB supports transactional CDC guaranteeing changes across tables are captured together. This enables use cases like real-time analytics, data warehousing, operational data replication, and event-driven architectures. {{<link dest="../docdb-replication/change-data-capture/">}}
 
 ## Cluster
 
@@ -43,25 +43,25 @@ Sometimes the term *cluster* is used interchangeably with the term *universe*. H
 
 ## DocDB
 
-DocDB is the underlying document storage engine of YugabyteDB and is built on top of a highly customized and optimized verison of [RocksDB](http://rocksdb.org/). {{<link "../docdb">}}
+DocDB is the underlying document storage engine of YugabyteDB and is built on top of a highly customized and optimized verison of [RocksDB](http://rocksdb.org/). {{<link dest="../docdb">}}
 
 ## Fault domain
 
-A fault domain is a potential point of failure. Examples of fault domains would be nodes, racks, zones, or entire regions. {{<link "../../explore/fault-tolerance/#fault-domains">}}
+A fault domain is a potential point of failure. Examples of fault domains would be nodes, racks, zones, or entire regions. {{<link dest="../../explore/fault-tolerance/#fault-domains">}}
 
 ## Follower reads
 
 Normally, only the [tablet leader](#tablet-leader) can process user-facing write and read requests. Follower reads allow you to lower read latencies by serving reads from the tablet followers. This is similar to reading from a cache, which can provide more read IOPS with low latency. The data might be slightly stale, but is timeline-consistent, meaning no out of order data is possible.
 
-Follower reads are particularly beneficial in applications that can tolerate staleness. For instance, in a social media application where a post gets a million likes continuously, slightly stale reads are acceptable, and immediate updates are not necessary because the absolute number may not really matter to the end-user reading the post. In such cases, a slightly older value from the closest replica can achieve improved performance with lower latency. Follower reads are required when reading from [read replicas](#read-replica-cluster). {{<link "../../explore/going-beyond-sql/follower-reads-ysql/">}}
+Follower reads are particularly beneficial in applications that can tolerate staleness. For instance, in a social media application where a post gets a million likes continuously, slightly stale reads are acceptable, and immediate updates are not necessary because the absolute number may not really matter to the end-user reading the post. In such cases, a slightly older value from the closest replica can achieve improved performance with lower latency. Follower reads are required when reading from [read replicas](#read-replica-cluster). {{<link dest="../../explore/going-beyond-sql/follower-reads-ysql/">}}
 
 ## Hybrid time
 
-Hybrid time/timestamp is a monotonically increasing timestamp derived using [Hybrid Logical clock](../transactions/transactions-overview/#hybrid-logical-clocks). Multiple aspects of YugabyteDB's transaction model are based on hybrid time. {{<link "../transactions/transactions-overview#hybrid-logical-clocks">}}
+Hybrid time/timestamp is a monotonically increasing timestamp derived using [Hybrid Logical clock](../transactions/transactions-overview/#hybrid-logical-clocks). Multiple aspects of YugabyteDB's transaction model are based on hybrid time. {{<link dest="../transactions/transactions-overview#hybrid-logical-clocks">}}
 
 ## Isolation levels
 
-[Transaction](#transaction) isolation levels define the degree to which transactions are isolated from each other. Isolation levels determine how changes made by one transaction become visible to other concurrent transactions. {{<link "../../explore/transactions/isolation-levels/">}}
+[Transaction](#transaction) isolation levels define the degree to which transactions are isolated from each other. Isolation levels determine how changes made by one transaction become visible to other concurrent transactions. {{<link dest="../../explore/transactions/isolation-levels/">}}
 
 {{<tip>}}
 YugabyteDB offers 3 isolation levels - [Serializable](../../explore/transactions/isolation-levels/#serializable-isolation), [Snapshot](../../explore/transactions/isolation-levels/#snapshot-isolation) and [Read committed](../../explore/transactions/isolation-levels/#read-committed-isolation) - in the {{<product "ysql">}} API and one isolation level - [Snapshot](../../develop/learn/transactions/acid-transactions-ycql/) - in the {{<product "ycql">}} API.
@@ -73,11 +73,11 @@ YugabyteDB tries to keep the number of leaders evenly distributed across the [no
 
 ## Leader election
 
-Amongst the [tablet](#tablet) replicas, one tablet is elected [leader](#tablet-leader) as per the [Raft](../docdb-replication/raft) protocol. {{<link "../docdb-replication/raft/#leader-election">}}
+Amongst the [tablet](#tablet) replicas, one tablet is elected [leader](#tablet-leader) as per the [Raft](../docdb-replication/raft) protocol. {{<link dest="../docdb-replication/raft/#leader-election">}}
 
 ## Master server
 
-The [YB-Master](../yb-master/) service is responsible for keeping system metadata, coordinating system-wide operations, such as creating, altering, and dropping tables, as well as initiating maintenance operations such as load balancing. {{<link "../yb-master">}}
+The [YB-Master](../yb-master/) service is responsible for keeping system metadata, coordinating system-wide operations, such as creating, altering, and dropping tables, as well as initiating maintenance operations such as load balancing. {{<link dest="../yb-master">}}
 
 {{<tip>}}
 The master server is also typically referred as just **master**.
@@ -85,7 +85,7 @@ The master server is also typically referred as just **master**.
 
 ## MVCC
 
-MVCC stands for Multi-version Concurrency Control. It is a concurrency control method used by YugabyteDB to provide access to data in a way that allows concurrent queries and updates without causing conflicts. {{<link "../transactions/transactions-overview/#hybrid-logical-clocks">}}
+MVCC stands for Multi-version Concurrency Control. It is a concurrency control method used by YugabyteDB to provide access to data in a way that allows concurrent queries and updates without causing conflicts. {{<link dest="../transactions/transactions-overview/#hybrid-logical-clocks">}}
 
 ## Namespace
 
@@ -117,7 +117,7 @@ Designating one region as preferred can reduce the number of network hops needed
 
 Regardless of the preferred region setting, data is replicated across all the regions in the cluster to ensure region-level fault tolerance.
 
-You can enable [follower reads](#follower-reads) to serve reads from non-preferred regions. In cases where the cluster has [read replicas](#read-replica-cluster) and a client connects to a read replica, reads are served from the replica; writes continue to be handled by the preferred region. {{<link "../../develop/build-global-apps/global-database/">}}
+You can enable [follower reads](#follower-reads) to serve reads from non-preferred regions. In cases where the cluster has [read replicas](#read-replica-cluster) and a client connects to a read replica, reads are served from the replica; writes continue to be handled by the preferred region. {{<link dest="../../develop/build-global-apps/global-database/">}}
 
 ## Primary cluster
 
@@ -125,17 +125,17 @@ A primary cluster can perform both writes and reads, unlike a [read replica clus
 
 ## Raft
 
-Raft stands for Replication for availability and fault tolerance. This is the algorithm that YugabyteDB uses for replication guaranteeing consistency. {{<link "../docdb-replication/replication/">}}
+Raft stands for Replication for availability and fault tolerance. This is the algorithm that YugabyteDB uses for replication guaranteeing consistency. {{<link dest="../docdb-replication/replication/">}}
 
 ## Read replica cluster
 
 Read replica clusters are optional clusters that can be set up in conjunction with a [primary cluster](#primary-cluster) to perform only reads; writes sent to read replica clusters get automatically rerouted to the primary cluster of the [universe](#universe). These clusters enable reads in regions that are far away from the primary cluster with timeline-consistent data. This ensures low latency reads for geo-distributed applications.
 
-Data is brought into the read replica clusters through asynchronous replication from the primary cluster. In other words, [nodes](#node) in a read replica cluster act as Raft observers that do not participate in the write path involving the Raft leader and Raft followers present in the primary cluster. Reading from read replicas requires enabling [follower reads](#follower-reads). {{<link "../docdb-replication/read-replicas">}}
+Data is brought into the read replica clusters through asynchronous replication from the primary cluster. In other words, [nodes](#node) in a read replica cluster act as Raft observers that do not participate in the write path involving the Raft leader and Raft followers present in the primary cluster. Reading from read replicas requires enabling [follower reads](#follower-reads). {{<link dest="../docdb-replication/read-replicas">}}
 
 ## Rebalancing
 
-Rebalancing is the process of keeping an even distribution of tablets across the [nodes](#node) in a cluster. {{<link "../../explore/linear-scalability/data-distribution/#rebalancing">}}
+Rebalancing is the process of keeping an even distribution of tablets across the [nodes](#node) in a cluster. {{<link dest="../../explore/linear-scalability/data-distribution/#rebalancing">}}
 
 ## Region
 
@@ -145,22 +145,22 @@ A region refers to a defined geographical area or location where a cloud provide
 
 The number of copies of data in a YugabyteDB universe. YugabyteDB replicates data across zones (or fault domains) in order to tolerate faults. Fault tolerance (FT) and RF are correlated. To achieve a FT of k nodes, the universe has to be configured with a RF of (2k + 1).
 
-The RF should be an odd number to ensure majority consensus can be established during failures. {{<link "../docdb-replication/replication/#replication-factor">}}
+The RF should be an odd number to ensure majority consensus can be established during failures. {{<link dest="../docdb-replication/replication/#replication-factor">}}
 
 ## Sharding
 
-Sharding is the process of mapping a table row to a [tablet](#tablet). YugabyteDB supports 2 types of sharding, Hash and Range. {{<link "../docdb-sharding">}}
+Sharding is the process of mapping a table row to a [tablet](#tablet). YugabyteDB supports 2 types of sharding, Hash and Range. {{<link dest="../docdb-sharding">}}
 
 ## Smart driver
 
 A smart driver in the context of YugabyteDB is essentially a PostgreSQL driver with additional "smart" features that leverage the distributed nature of YugabyteDB. These smart drivers intelligently distribute application connections across the nodes and regions of a YugabyteDB cluster, eliminating the need for external load balancers. This results in balanced connections that provide lower latencies and prevent hot nodes. For geographically-distributed applications, the driver can seamlessly connect to the geographically nearest regions and availability zones for lower latency.
 
 Smart drivers are optimized for use with a distributed SQL database, and are both cluster-aware and topology-aware. They keep track of the members of the cluster as well as their locations. As nodes are added or removed from clusters, the driver updates its membership and topology information. The drivers read the database cluster topology from the metadata table, and route new connections to individual instance endpoints without relying on high-level cluster endpoints. The smart drivers are also capable of load balancing read-only connections across the available YB-TServers.
-. {{<link "../../drivers-orms/smart-drivers/">}}
+. {{<link dest="../../drivers-orms/smart-drivers/">}}
 
 ## Tablet
 
-YugabyteDB splits a table into multiple small pieces called tablets for data distribution. The word "tablet" finds its origins in ancient history, when civilizations utilized flat slabs made of clay or stone as surfaces for writing and maintaining records. {{<link "../../explore/linear-scalability/data-distribution/">}}
+YugabyteDB splits a table into multiple small pieces called tablets for data distribution. The word "tablet" finds its origins in ancient history, when civilizations utilized flat slabs made of clay or stone as surfaces for writing and maintaining records. {{<link dest="../../explore/linear-scalability/data-distribution/">}}
 
 {{<tip>}}
 Tablets are also referred as shards.
@@ -176,15 +176,15 @@ In a cluster, each [tablet](#tablet) is replicated as per the [replication facto
 
 ## Tablet splitting
 
-When a tablet reaches a threshold size, it splits into 2 new [tablets](#tablet). This is a very quick operation. {{<link "../docdb-sharding/tablet-splitting">}}
+When a tablet reaches a threshold size, it splits into 2 new [tablets](#tablet). This is a very quick operation. {{<link dest="../docdb-sharding/tablet-splitting">}}
 
 ## Transaction
 
-A transaction is a sequence of operations performed as a single logical unit of work. YugabyteDB provides [ACID](#acid) guarantees for transactions. {{<link "/:version/explore/transactions">}}
+A transaction is a sequence of operations performed as a single logical unit of work. YugabyteDB provides [ACID](#acid) guarantees for transactions. {{<link dest="/:version/explore/transactions">}}
 
 ## TServer
 
-The [YB-TServer](../yb-tserver) service is responsible for maintaining and managing table data in the form of tablets, as well as dealing with all the queries. {{<link "../yb-tserver">}}
+The [YB-TServer](../yb-tserver) service is responsible for maintaining and managing table data in the form of tablets, as well as dealing with all the queries. {{<link dest="../yb-tserver">}}
 
 ## Universe
 
@@ -196,19 +196,19 @@ Sometimes the terms *universe* and *cluster* are used interchangeably. However, 
 
 ## xCluster
 
-xCluster is a type of deployment where data is replicated asynchronously between two [universes](#universe) - a primary and a standby. The standby can be used for disaster recovery. YugabyteDB supports transactional xCluster {{<link "../docdb-replication/async-replication/">}}.
+xCluster is a type of deployment where data is replicated asynchronously between two [universes](#universe) - a primary and a standby. The standby can be used for disaster recovery. YugabyteDB supports transactional xCluster {{<link dest="../docdb-replication/async-replication/">}}.
 
 ## YCQL
 
-Semi-relational SQL API that is best fit for internet-scale OLTP and HTAP apps needing massive write scalability as well as blazing-fast queries. It supports distributed transactions, strongly consistent secondary indexes, and a native JSON column type. YCQL has its roots in the Cassandra Query Language. {{<link "../../api/ycql">}}
+Semi-relational SQL API that is best fit for internet-scale OLTP and HTAP apps needing massive write scalability as well as blazing-fast queries. It supports distributed transactions, strongly consistent secondary indexes, and a native JSON column type. YCQL has its roots in the Cassandra Query Language. {{<link dest="../../api/ycql">}}
 
 ## YQL
 
-The YugabyteDB Query Layer (YQL) is the primary layer that provides interfaces for applications to interact with using client drivers. This layer deals with the API-specific aspects such as query/command compilation and the run-time (data type representations, built-in operations, and more). {{<link "../query-layer">}}
+The YugabyteDB Query Layer (YQL) is the primary layer that provides interfaces for applications to interact with using client drivers. This layer deals with the API-specific aspects such as query/command compilation and the run-time (data type representations, built-in operations, and more). {{<link dest="../query-layer">}}
 
 ## YSQL
 
-Fully-relational SQL API that is wire compatible with the SQL language in PostgreSQL. It is best fit for RDBMS workloads that need horizontal write scalability and global data distribution while also using relational modeling features such as JOINs, distributed transactions, and referential integrity (such as foreign keys). Note that YSQL reuses the native query layer of the PostgreSQL open source project. {{<link "../../api/ysql">}}
+Fully-relational SQL API that is wire compatible with the SQL language in PostgreSQL. It is best fit for RDBMS workloads that need horizontal write scalability and global data distribution while also using relational modeling features such as JOINs, distributed transactions, and referential integrity (such as foreign keys). Note that YSQL reuses the native query layer of the PostgreSQL open source project. {{<link dest="../../api/ysql">}}
 
 ## Zone
 

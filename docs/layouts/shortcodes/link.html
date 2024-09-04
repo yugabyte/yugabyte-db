@@ -1,6 +1,7 @@
 {{/* <link "http://www.yugabyte.com">*/}}
-{{- $url :=.Get 0 -}}
-{{- $text := .Get 1 -}}
+{{- $url :=.Get "dest" -}}
+{{- $text := .Get "text" -}}
+{{- $before := eq (.Get "icon-before") "true" -}}
 {{/* get the page path so determine depth and version */}}
 {{- $path := split $.Page.File.Dir "/" -}}
 {{/* version is the first path of the path. eg: preview/stable/v2.12 ...*/}}
@@ -11,5 +12,9 @@
 {{- if and (strings.HasPrefix $url "http") (not (strings.HasPrefix  $url "https://docs.yugabyte")) -}}
 {{- $icon = "fa-arrow-up-right-from-square" -}}
 {{- end -}}
+<a href="{{$url}}">
+    {{- if $before -}} <i class="fa-sharp fa-regular {{$icon}}" aria-hidden="true"></i> {{ end -}}
+    {{if $text}}{{$text}} {{end}}
 
-<a href="{{$url}}">{{if $text}}{{$text}} {{end}}<i class="fa-sharp fa-regular {{$icon}}" aria-hidden="true"></i></a>
+    {{- if not $before -}} <i class="fa-sharp fa-regular {{$icon}}" aria-hidden="true"></i>{{- end -}}
+</a>

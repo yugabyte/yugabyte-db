@@ -17,15 +17,15 @@ type: docs
 
 ## Scalability
 
-YugabyteDB scales out horizontally by adding more nodes to handle increasing data volumes and higher workloads. With YugabyteDB, you can also opt for vertical scaling choosing more powerful infrastructure components. {{<link "../../explore/linear-scalability/">}}
+YugabyteDB scales out horizontally by adding more nodes to handle increasing data volumes and higher workloads. With YugabyteDB, you can also opt for vertical scaling choosing more powerful infrastructure components. {{<link dest="../../explore/linear-scalability/">}}
 
 ## High Availability
 
-YugabyteDB ensures continuous availability, even in the face of individual node failures or network partitions. YugabyteDB achieves this by replicating data across multiple nodes and implementing failover mechanisms via leader election. {{<link "../../explore/fault-tolerance">}}
+YugabyteDB ensures continuous availability, even in the face of individual node failures or network partitions. YugabyteDB achieves this by replicating data across multiple nodes and implementing failover mechanisms via leader election. {{<link dest="../../explore/fault-tolerance">}}
 
 ## Fault Tolerance
 
-YugabyteDB is resilient to various types of failures, such as node crashes, network partitions, disk failures, and other hardware or software faults and failure of various fault domains. It can automatically recover from these failures without data loss or corruption. {{<link "../../explore/fault-tolerance">}}
+YugabyteDB is resilient to various types of failures, such as node crashes, network partitions, disk failures, and other hardware or software faults and failure of various fault domains. It can automatically recover from these failures without data loss or corruption. {{<link dest="../../explore/fault-tolerance">}}
 
 ## Consistency
 
@@ -66,7 +66,7 @@ YugabyteDB monitors and automatically re-balances the number of tablet leaders a
 
 ## Data locality
 
-YugabyteDB supports colocated tables and databases which enables related data to be kept together on the same node for performance reasons. {{<link "../../explore/colocation">}}
+YugabyteDB supports colocated tables and databases which enables related data to be kept together on the same node for performance reasons. {{<link dest="../../explore/colocation">}}
 
 ## Security
 
@@ -113,7 +113,7 @@ In addition:
 
 ## Cassandra compatibility
 
-[YCQL](../../api/ycql/) is a [semi-relational CQL API](../../explore/ycql-language/) that is best suited for internet-scale OLTP and HTAP applications needing massive write scalability and fast queries. YCQL supports distributed transactions, strongly-consistent secondary indexes, and a native JSON column type. YCQL has its roots in the Cassandra Query Language. {{<link "../query-layer">}}
+[YCQL](../../api/ycql/) is a [semi-relational CQL API](../../explore/ycql-language/) that is best suited for internet-scale OLTP and HTAP applications needing massive write scalability and fast queries. YCQL supports distributed transactions, strongly-consistent secondary indexes, and a native JSON column type. YCQL has its roots in the Cassandra Query Language. {{<link dest="../query-layer">}}
 
 ## Performance
 
@@ -143,7 +143,7 @@ YugabyteDB has been designed with several cloud-native principles in mind.
 
 ## Kubernetes-ready
 
-YugabyteDB works natively in Kubernetes and other containerized environments as a stateful application. {{<link "../../deploy/kubernetes/">}}
+YugabyteDB works natively in Kubernetes and other containerized environments as a stateful application. {{<link dest="../../deploy/kubernetes/">}}
 
 ## Open source
 
