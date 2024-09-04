@@ -110,6 +110,11 @@ class StreamMetadata {
     SharedLock l(table_ids_mutex_);
     return table_ids_;
   }
+  std::vector<TableId> GetUnqualifiedTableIds() const {
+    DCHECK(loaded_);
+    SharedLock l(table_ids_mutex_);
+    return unqualified_table_ids_;
+  }
   std::optional<uint64_t> GetConsistentSnapshotTime() const {
     DCHECK(loaded_);
     return consistent_snapshot_time_.load(std::memory_order_acquire);
@@ -151,6 +156,7 @@ class StreamMetadata {
 
   mutable std::shared_mutex table_ids_mutex_;
   std::vector<TableId> table_ids_ GUARDED_BY(table_ids_mutex_);
+  std::vector<TableId> unqualified_table_ids_ GUARDED_BY(table_ids_mutex_);
 
   mutable std::shared_mutex tablet_metadata_map_mutex_;
   std::unordered_map<TabletId, std::shared_ptr<StreamTabletMetadata>> tablet_metadata_map_

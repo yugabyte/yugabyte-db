@@ -511,6 +511,7 @@ message GetCDCDBStreamInfoResponsePB {
   optional CDCErrorPB error = 1;
   optional bytes namespace_id = 2;
   repeated TableInfo table_info = 3;
+  repeated TableInfo unqualified_table_info = 4;
 }
 message SetCDCCheckpointRequestPB {
   optional CDCCheckpointPB checkpoint = 1;

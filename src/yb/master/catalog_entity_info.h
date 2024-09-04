@@ -1204,6 +1204,10 @@ struct PersistentCDCStreamInfo : public Persistent<SysCDCStreamEntryPB> {
     return pb.table_id();
   }
 
+  const google::protobuf::RepeatedPtrField<std::string>& unqualified_table_id() const {
+    return pb.unqualified_table_id();
+  }
+
   const NamespaceId& namespace_id() const {
     return pb.namespace_id();
   }

@@ -583,7 +583,8 @@ class YBClient {
   // Create a new CDC stream.
   Status GetCDCDBStreamInfo(
       const std::string& db_stream_id,
-      std::vector<std::pair<std::string, std::string>>* db_stream_info);
+      std::vector<std::pair<std::string, std::string>>* db_stream_qualified_table_info,
+      std::vector<std::pair<std::string, std::string>>* db_stream_unqualified_table_info);
 
   void GetCDCDBStreamInfo(
       const std::string& db_stream_id,
@@ -599,7 +600,8 @@ class YBClient {
       cdc::StreamModeTransactional* transactional,
       std::optional<uint64_t>* consistent_snapshot_time = nullptr,
       std::optional<CDCSDKSnapshotOption>* consistent_snapshot_option = nullptr,
-      std::optional<uint64_t>* stream_creation_time = nullptr);
+      std::optional<uint64_t>* stream_creation_time = nullptr,
+      std::vector<TableId>* unqualified_table_ids = nullptr);
 
   void GetCDCStream(
       const xrepl::StreamId& stream_id,

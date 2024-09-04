@@ -1517,7 +1517,8 @@ Status YBClient::GetCDCStream(
     cdc::StreamModeTransactional* transactional,
     std::optional<uint64_t>* consistent_snapshot_time,
     std::optional<CDCSDKSnapshotOption>* consistent_snapshot_option,
-    std::optional<uint64_t>* stream_creation_time) {
+    std::optional<uint64_t>* stream_creation_time,
+    std::vector<TableId>* unqualified_table_ids) {
 
   // Setting up request.
   GetCDCStreamRequestPB req;
@@ -1534,6 +1535,12 @@ Status YBClient::GetCDCStream(
 
   for (auto id : resp.stream().table_id()) {
     object_ids->push_back(id);
+  }
+
+  if (unqualified_table_ids && resp.stream().unqualified_table_id_size() > 0) {
+    for (const auto& unqualified_table_id : resp.stream().unqualified_table_id()) {
+      unqualified_table_ids->push_back(unqualified_table_id);
+    }
   }
 
   options->clear();
@@ -1616,21 +1623,33 @@ void YBClient::DeleteCDCStream(const xrepl::StreamId& stream_id, StatusCallback 
 }
 
 Status YBClient::GetCDCDBStreamInfo(
-  const std::string &db_stream_id,
-  std::vector<pair<std::string, std::string>>* db_stream_info) {
+    const std::string& db_stream_id,
+    std::vector<pair<std::string, std::string>>* db_stream_qualified_table_info,
+    std::vector<pair<std::string, std::string>>* db_stream_unqualified_table_info) {
   // Setting up request.
   GetCDCDBStreamInfoRequestPB req;
   req.set_db_stream_id(db_stream_id);
 
   GetCDCDBStreamInfoResponsePB resp;
   CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, GetCDCDBStreamInfo);
-  db_stream_info->clear();
-  db_stream_info->reserve(resp.table_info_size());
+  db_stream_qualified_table_info->clear();
+  db_stream_qualified_table_info->reserve(resp.table_info_size());
   for (const auto& tabinfo : resp.table_info()) {
     std::string stream_id = tabinfo.stream_id();
     std::string table_id = tabinfo.table_id();
 
-    db_stream_info->push_back(std::make_pair(stream_id, table_id));
+    db_stream_qualified_table_info->push_back(std::make_pair(stream_id, table_id));
+  }
+
+  if (resp.unqualified_table_info_size() > 0) {
+    db_stream_unqualified_table_info->clear();
+    db_stream_unqualified_table_info->reserve(resp.unqualified_table_info_size());
+    for (const auto& tabinfo : resp.unqualified_table_info()) {
+      std::string stream_id = tabinfo.stream_id();
+      std::string unqualified_table_id = tabinfo.table_id();
+
+      db_stream_unqualified_table_info->push_back(std::make_pair(stream_id, unqualified_table_id));
+    }
   }
 
   return Status::OK();

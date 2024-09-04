@@ -1473,7 +1473,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   void FindAllTablesMissingInCDCSDKStream(
       const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<std::string>& table_ids,
-      const std::vector<TableInfoPtr>& eligible_tables_info) REQUIRES(mutex_);
+      const std::vector<TableInfoPtr>& eligible_tables_info,
+      const google::protobuf::RepeatedPtrField<std::string>& unqualified_table_ids)
+      REQUIRES(mutex_);
 
   // This method compares all tables in the namespace eligible for a CDCSDK stream to all the tables
   // added to a CDCSDK stream, to find indexes / mat views that are part of the CDCSDK streams.
@@ -1507,8 +1509,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status CleanUpDeletedCDCStreams(
       const LeaderEpoch& epoch, const std::vector<CDCStreamInfoPtr>& streams);
 
-  void GetValidTabletsAndDroppedTablesForStream(
+  Status GetValidTabletsAndDroppedTablesForStream(
       const CDCStreamInfoPtr stream, std::set<TabletId>* tablets_with_streams,
+      std::set<TableId>* dropped_tables);
+
+  Status GetDroppedTablesFromCDCSDKStream(
+      const std::unordered_set<TableId>& table_ids, std::set<TabletId>* tablets_with_streams,
       std::set<TableId>* dropped_tables);
 
   // Delete specified CDC streams metadata.

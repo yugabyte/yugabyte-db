@@ -519,5 +519,34 @@ TEST_F(CDCSDKStreamTest, DropNamespaceWithLiveCDCStream) {
   ASSERT_OK(DropDatabase(&test_cluster_));
 }
 
+TEST_F(CDCSDKStreamTest, TestStreamRetentionWithTableDeletion) {
+  ASSERT_OK(
+      SetUpWithParams(3 /* replication_factor */, 1 /* num_masters */, false /* colocated */));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream());
+  auto resp = GetDBStreamInfo(stream_id);
+
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", kTableName));
+
+  // Drop table will trigger the background thread to start the stream metadata cleanup.
+  // Wait for the metadata cleanup to finish by the background thread.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto resp = GetDBStreamInfo(stream_id);
+        if (!resp.ok()) {
+          return false;
+        }
+        if (resp.ok() && resp->has_error()) {
+          LOG(INFO) << "GetDBStreamInfo response = " << resp.ToString();
+          RETURN_NOT_OK(StatusFromPB(resp->error().status()));
+        }
+        return (resp->table_info_size() == 0);
+      },
+      MonoDelta::FromSeconds(60), "Waiting for stream metadata update with no table info."));
+}
+
 }  // namespace cdc
 }  // namespace yb

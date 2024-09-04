@@ -112,11 +112,11 @@ Status StreamMetadata::GetStreamInfoFromMaster(
   std::optional<uint64> consistent_snapshot_time;
   std::optional<CDCSDKSnapshotOption> consistent_snapshot_option;
   std::optional<uint64> stream_creation_time;
+  std::vector<TableId> unqualified_table_ids;
 
-  RETURN_NOT_OK(
-      client->GetCDCStream(
-          stream_id, &namespace_id, &object_ids, &options, &transactional,
-          &consistent_snapshot_time, &consistent_snapshot_option, &stream_creation_time));
+  RETURN_NOT_OK(client->GetCDCStream(
+      stream_id, &namespace_id, &object_ids, &options, &transactional, &consistent_snapshot_time,
+      &consistent_snapshot_option, &stream_creation_time, &unqualified_table_ids));
 
   AddDefaultOptionsIfMissing(&options);
 
@@ -153,6 +153,7 @@ Status StreamMetadata::GetStreamInfoFromMaster(
 
       std::lock_guard l_table(table_ids_mutex_);
       table_ids_.swap(object_ids);
+      unqualified_table_ids_.swap(unqualified_table_ids);
     } else if (key == kStreamState) {
       master::SysCDCStreamEntryPB_State state;
       SCHECK(
