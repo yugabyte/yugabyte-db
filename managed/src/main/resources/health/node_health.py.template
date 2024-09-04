@@ -226,7 +226,7 @@ YB_NODE_CONTROLLER_CHECK = MetricDefinition(
 YB_NODE_CLOCK_DRIFT_CHECK = MetricDefinition(
     "yb_node_clock_drift_check_ms",
     "Time Drift between nodes within limits",
-    "millisec")
+    "ms")
 YB_NODE_NTP_SERVICE_STATUS = MetricDefinition(
     "yb_node_ntp_service_status",
     "If chronyd or ntp(d) services are running")

@@ -128,6 +128,12 @@ public class MetricsController extends Controller {
         // Prometheus client library expects empty string in case metric has no unit
         unit = StringUtils.EMPTY;
       }
+      if (!unit.isEmpty() && !metricName.endsWith("_" + unit)) {
+        // Seems like one of the metrics have invalid unit.
+        // Let's just clean unit for this one and log it.
+        log.warn("Metric name {} should end with '{}'", metricName, "_" + unit);
+        unit = StringUtils.EMPTY;
+      }
       Collector.Type type = metrics.get(0).getType().getPrometheusType();
 
       List<Collector.MetricFamilySamples.Sample> samples =
