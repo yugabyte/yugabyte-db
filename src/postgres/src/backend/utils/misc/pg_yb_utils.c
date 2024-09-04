@@ -5012,3 +5012,19 @@ bool YbIsAttrPrimaryKeyColumn(Relation rel, AttrNumber attnum)
 	return bms_is_member(attnum -
 		YBGetFirstLowInvalidAttributeNumber(rel), pkey);
 }
+
+/* Retrieve the sort ordering of the first key element of an index. */
+SortByDir YbGetIndexKeySortOrdering(Relation indexRel)
+{
+	if (IndexRelationGetNumberOfKeyAttributes(indexRel) == 0)
+		return SORTBY_DEFAULT;
+	/*
+	 * If there are key columns, check the indoption of the first
+	 * key attribute.
+	 */
+	if (indexRel->rd_indoption[0] & INDOPTION_HASH)
+		return SORTBY_HASH;
+	if (indexRel->rd_indoption[0] & INDOPTION_DESC)
+		return SORTBY_DESC;
+	return SORTBY_ASC;
+}

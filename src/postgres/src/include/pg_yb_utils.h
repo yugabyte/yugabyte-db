@@ -1177,4 +1177,6 @@ extern bool YbIsYsqlConnMgrWarmupModeEnabled();
 
 bool YbIsAttrPrimaryKeyColumn(Relation rel, AttrNumber attnum);
 
+SortByDir YbGetIndexKeySortOrdering(Relation indexRel);
+
 #endif /* PG_YB_UTILS_H */

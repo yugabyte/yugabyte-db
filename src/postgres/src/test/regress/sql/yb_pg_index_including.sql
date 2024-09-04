@@ -50,16 +50,13 @@ SELECT pg_get_indexdef(i.indexrelid)
 FROM pg_index i JOIN pg_class c ON i.indexrelid = c.oid
 WHERE i.indrelid = 'tbl_include_pk'::regclass ORDER BY c.relname;
 
--- NOT SUPPORTED
---
--- CREATE TABLE tbl_include_c4 (c1 int, c2 int, c3 int, c4 int);
--- INSERT INTO tbl_include_c4 SELECT 1, 2*x, 3*x, 4 FROM generate_series(1,10) AS x;
--- CREATE UNIQUE INDEX tbl_include_c4_idx_unique ON tbl_include_c4 using lsm (c1, c2) INCLUDE (c3, c4);
--- ALTER TABLE tbl_include_c4 add PRIMARY KEY USING INDEX tbl_include_c4_idx_unique;
--- SELECT pg_get_indexdef(i.indexrelid)
--- FROM pg_index i JOIN pg_class c ON i.indexrelid = c.oid
--- WHERE i.indrelid = 'tbl_include_c4'::regclass ORDER BY c.relname;
---
+CREATE TABLE tbl_include_c4 (c1 int, c2 int, c3 int, c4 int);
+INSERT INTO tbl_include_c4 SELECT 1, 2*x, 3*x, 4 FROM generate_series(1,10) AS x;
+CREATE UNIQUE INDEX tbl_include_c4_idx_unique ON tbl_include_c4 using lsm (c1, c2) INCLUDE (c3, c4);
+ALTER TABLE tbl_include_c4 add PRIMARY KEY USING INDEX tbl_include_c4_idx_unique;
+SELECT pg_get_indexdef(i.indexrelid)
+FROM pg_index i JOIN pg_class c ON i.indexrelid = c.oid
+WHERE i.indrelid = 'tbl_include_c4'::regclass ORDER BY c.relname;
 
 -- PK constraint. Must fail.
 CREATE TABLE tbl_include_c4_pk (c1 int, c2 int, c3 int, c4 int);
