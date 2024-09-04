@@ -59,9 +59,6 @@ func Install(version string) error {
 		return err
 	}
 
-	if err := createDataInstallDirs(); err != nil {
-		return err
-	}
 	if err := copyBits(version); err != nil {
 		return err
 	}
@@ -97,6 +94,28 @@ func Install(version string) error {
 		if _, err := bashrc.WriteString("export XDG_RUNTIME_DIR=/run/user/$(id -u)\n"); err != nil {
 			return fmt.Errorf("could not write XDG_RUNTIME_DIR to bashrc: %w", err)
 		}
+	}
+	return nil
+}
+
+// Initialize creates does setup of the common data directories.
+func Initialize() error {
+	if err := createDataInstallDirs(); err != nil {
+		return err
+	}
+
+	// Generate certs if required.
+	var serverCertPath, serverKeyPath string
+	if len(viper.GetString("server_cert_path")) == 0 {
+		log.Info("Generating self-signed server certificates")
+		serverCertPath, serverKeyPath = GenerateSelfSignedCerts()
+		if err := SetYamlValue(InputFile(), "server_cert_path", serverCertPath); err != nil {
+			return err
+		}
+		if err := SetYamlValue(InputFile(), "server_key_path", serverKeyPath); err != nil {
+			return err
+		}
+		InitViper()
 	}
 	return nil
 }
@@ -472,19 +491,6 @@ func FixConfigValues() error {
 		InitViper()
 	}
 
-	var serverCertPath, serverKeyPath string
-	if len(viper.GetString("server_cert_path")) == 0 {
-		log.Info("Generating self-signed server certificates")
-		serverCertPath, serverKeyPath = GenerateSelfSignedCerts()
-		if err := SetYamlValue(InputFile(), "server_cert_path", serverCertPath); err != nil {
-			return err
-		}
-		if err := SetYamlValue(InputFile(), "server_key_path", serverKeyPath); err != nil {
-			return err
-		}
-		InitViper()
-	}
-
 	if viper.GetBool("postgres.install.enabled") &&
 		len(viper.GetString("postgres.install.password")) == 0 {
 		log.Info("Generating default password for postgres")
@@ -532,6 +538,10 @@ func GenerateSelfSignedCerts() (string, string) {
 	err := MkdirAll(certsDir, DirMode)
 	if err != nil && !os.IsExist(err) {
 		log.Fatal(fmt.Sprintf("Unable to create dir %s", certsDir))
+	}
+	username := viper.GetString("service_username")
+	if err := Chown(certsDir, username, username, true); err != nil {
+		log.Fatal(fmt.Sprintf("Unable to chown dir %s", certsDir))
 	}
 	log.Debug("Created dir " + certsDir)
 

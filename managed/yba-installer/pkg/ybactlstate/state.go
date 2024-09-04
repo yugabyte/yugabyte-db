@@ -16,6 +16,7 @@ type State struct {
 	Version         string                   `json:"version"`
 	RootInstall     string                   `json:"root_install"`
 	Username        string                   `json:"username"`
+	Initialized     bool                     `json:"initialized"`
 	Postgres        PostgresState            `json:"postgres"`
 	Ybdb            YbdbState                `json:"ybdb"`
 	CurrentStatus   status                   `json:"current_status"`
