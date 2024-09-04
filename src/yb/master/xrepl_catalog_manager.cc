@@ -915,6 +915,7 @@ Status CatalogManager::CreateNewXReplStream(
 
   bool has_consistent_snapshot_option = false;
   bool consistent_snapshot_option_use = false;
+  bool disable_dynamic_tables = false;
 
   CDCStreamInfoPtr stream;
   xrepl::StreamId stream_id = xrepl::StreamId::Nil();
@@ -974,6 +975,13 @@ Status CatalogManager::CreateNewXReplStream(
     has_consistent_snapshot_option =
       has_consistent_snapshot_option && FLAGS_yb_enable_cdc_consistent_snapshot_streams;
 
+    // Check for dynamic tables option
+    if (req.has_cdcsdk_stream_create_options() &&
+        req.cdcsdk_stream_create_options().has_cdcsdk_dynamic_tables_option()) {
+      disable_dynamic_tables = req.cdcsdk_stream_create_options().cdcsdk_dynamic_tables_option() ==
+                               CDCSDKDynamicTablesOption::DYNAMIC_TABLES_DISABLED;
+    }
+
     // Construct the CDC stream if the producer wasn't bootstrapped.
     stream_id =
       VERIFY_RESULT(xrepl::StreamId::FromString(GenerateIdUnlocked(SysRowEntryType::CDC_STREAM)));
@@ -1006,6 +1014,8 @@ Status CatalogManager::CreateNewXReplStream(
     if (has_replication_slot_name) {
       metadata->set_cdcsdk_ysql_replication_slot_name(req.cdcsdk_ysql_replication_slot_name());
     }
+
+    metadata->set_cdcsdk_disable_dynamic_table_addition(disable_dynamic_tables);
 
     // Add the stream to the in-memory map.
     cdc_stream_map_[stream->StreamId()] = stream;

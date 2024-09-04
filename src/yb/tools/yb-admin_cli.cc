@@ -1728,7 +1728,8 @@ Status create_cdc_stream_action(
 }
 
 const auto create_change_data_stream_args =
-    "<namespace> [<checkpoint_type>] [<record_type>] [<consistent_snapshot_option>]";
+    "<namespace> [<checkpoint_type>] [<record_type>] [<consistent_snapshot_option>] "
+    "[<dynamic_tables_option>] (default DYNAMIC_TABLES_ENABLED)";
 Status create_change_data_stream_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   if (args.size() < 1) {
@@ -1738,9 +1739,11 @@ Status create_change_data_stream_action(
   std::string checkpoint_type = yb::ToString("EXPLICIT");
   std::string record_type = yb::ToString("CHANGE");
   std::string consistent_snapshot_option = "USE_SNAPSHOT";
+  std::string dynamic_tables_option = "DYNAMIC_TABLES_ENABLED";
   std::string uppercase_checkpoint_type;
   std::string uppercase_record_type;
   std::string uppercase_consistent_snapshot_option;
+  std::string uppercase_dynamic_tables_option;
 
 
   if (args.size() > 1) {
@@ -1772,12 +1775,22 @@ Status create_change_data_stream_action(
     consistent_snapshot_option = uppercase_consistent_snapshot_option;
   }
 
+  if (args.size() > 4) {
+    ToUpperCase(args[4], &uppercase_dynamic_tables_option);
+    if (uppercase_dynamic_tables_option != "DYNAMIC_TABLES_ENABLED" &&
+        uppercase_dynamic_tables_option != "DYNAMIC_TABLES_DISABLED") {
+      return ClusterAdminCli::kInvalidArguments;
+    }
+    dynamic_tables_option = uppercase_dynamic_tables_option;
+  }
+
   const string namespace_name = args[0];
   const TypedNamespaceName database = VERIFY_RESULT(ParseNamespaceName(args[0]));
 
   RETURN_NOT_OK_PREPEND(
       client->CreateCDCSDKDBStream(
-          database, checkpoint_type, record_type, consistent_snapshot_option),
+          database, checkpoint_type, record_type, consistent_snapshot_option,
+          dynamic_tables_option == "DYNAMIC_TABLES_ENABLED"),
       Format("Unable to create CDC stream for database $0", namespace_name));
   return Status::OK();
 }

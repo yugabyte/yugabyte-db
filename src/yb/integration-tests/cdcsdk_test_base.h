@@ -211,11 +211,17 @@ class CDCSDKTestBase : public YBTest {
       CreateCDCStreamRequestPB* create_req,
       const CDCCheckpointType& checkpoint_type = CDCCheckpointType::EXPLICIT,
       const CDCRecordType& record_type = CDCRecordType::CHANGE,
-      const std::string& namespace_name = kNamespaceName);
+      const std::string& namespace_name = kNamespaceName,
+      CDCSDKDynamicTablesOption dynamic_tables_option =
+          CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED);
 
   Result<xrepl::StreamId> CreateDBStream(
       CDCCheckpointType checkpoint_type = CDCCheckpointType::EXPLICIT,
-      CDCRecordType record_type = CDCRecordType::CHANGE);
+      CDCRecordType record_type = CDCRecordType::CHANGE,
+      std::string namespace_name = kNamespaceName,
+      CDCSDKDynamicTablesOption dynamic_tables_option =
+          CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED);
+
 
   Result<xrepl::StreamId> CreateConsistentSnapshotStream(
       CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT,

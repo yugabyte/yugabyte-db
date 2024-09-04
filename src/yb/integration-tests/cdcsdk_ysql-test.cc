@@ -9377,5 +9377,43 @@ TEST_F(CDCSDKYsqlTest, TestCleanupOfUnqualifiedTableOnDrop) {
       "Waiting for cdc_state table to be in sync after table drop");
 }
 
+TEST_F(CDCSDKYsqlTest, TestDisablingDynamicTableAdditionAtStreamCreationTime) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+
+  // Setup cluster.
+  ASSERT_OK(SetUpWithParams(3, 3, false));
+
+  auto table_1 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "table_1"));
+  auto table_2 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "table_2"));
+
+  // Create a yb-admin stream with dynamic tables enabled and one with dynamic tables disabled.
+  auto stream_id_1 = ASSERT_RESULT(CreateDBStream(
+      CDCCheckpointType::EXPLICIT, CDCRecordType::CHANGE, kNamespaceName,
+      CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED));
+  auto stream_id_2 = ASSERT_RESULT(CreateDBStream(
+      CDCCheckpointType::EXPLICIT, CDCRecordType::CHANGE, kNamespaceName,
+      CDCSDKDynamicTablesOption::DYNAMIC_TABLES_DISABLED));
+
+  auto stream_info = ASSERT_RESULT(GetDBStreamInfo(stream_id_1));
+  ASSERT_EQ(stream_info.table_info_size(), 2);
+
+  stream_info = ASSERT_RESULT(GetDBStreamInfo(stream_id_2));
+  ASSERT_EQ(stream_info.table_info_size(), 2);
+
+  // Create a dynamic table.
+  auto table_3 = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, "table_3"));
+
+  // Sleep for 10 seconds for master bg thread to run.
+  SleepFor(MonoDelta::FromSeconds(10 * kTimeMultiplier));
+
+  // Stream_id_1 will have the dynamic table added.
+  stream_info = ASSERT_RESULT(GetDBStreamInfo(stream_id_1));
+  ASSERT_EQ(stream_info.table_info_size(), 3);
+
+  // Stream_id_2 will not have the dynamic table added.
+  stream_info = ASSERT_RESULT(GetDBStreamInfo(stream_id_2));
+  ASSERT_EQ(stream_info.table_info_size(), 2);
+}
+
 }  // namespace cdc
 }  // namespace yb

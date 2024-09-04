@@ -620,3 +620,9 @@ message PgDatumPB {
     bool datum_missing = 8;
   }
 }
+
+// This message should be used for specifying stream creation options for CDCSDK streams.
+message CDCSDKStreamCreateOptionsPB {
+  optional
+      CDCSDKDynamicTablesOption cdcsdk_dynamic_tables_option = 1 [default = DYNAMIC_TABLES_ENABLED];
+}

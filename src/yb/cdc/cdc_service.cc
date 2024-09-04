@@ -989,9 +989,18 @@ Status CDCServiceImpl::CreateCDCStreamForNamespace(
      snapshot_option = req->cdcsdk_consistent_snapshot_option();
   }
 
+  // Dynamic Tables option
+  CDCSDKDynamicTablesOption dynamic_tables_option =
+      CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED;
+  if (req->has_cdcsdk_stream_create_options() &&
+      req->cdcsdk_stream_create_options().has_cdcsdk_dynamic_tables_option()) {
+     dynamic_tables_option = req->cdcsdk_stream_create_options().cdcsdk_dynamic_tables_option();
+  }
+
   xrepl::StreamId db_stream_id = VERIFY_RESULT_OR_SET_CODE(
       client()->CreateCDCSDKStreamForNamespace(ns_id, options, populate_namespace_id_as_table_id,
-                                               ReplicationSlotName(""), snapshot_option, deadline),
+                                               ReplicationSlotName(""), snapshot_option, deadline,
+                                               dynamic_tables_option),
       CDCError(CDCErrorPB::INTERNAL_ERROR));
   resp->set_db_stream_id(db_stream_id.ToString());
   return Status::OK();

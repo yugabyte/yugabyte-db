@@ -173,3 +173,9 @@ enum CDCSDKSnapshotOption {
   NOEXPORT_SNAPSHOT = 1; // Client does not wish to consume snapshot
   USE_SNAPSHOT = 2; // Client wishes to consume snapshot from the source universe
 }
+
+enum CDCSDKDynamicTablesOption {
+  DYNAMIC_TABLES_UNDEFINED = 0;
+  DYNAMIC_TABLES_ENABLED = 1;
+  DYNAMIC_TABLES_DISABLED = 2;
+}

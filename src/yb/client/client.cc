@@ -1481,7 +1481,8 @@ Result<xrepl::StreamId> YBClient::CreateCDCSDKStreamForNamespace(
     bool populate_namespace_id_as_table_id,
     const ReplicationSlotName& replication_slot_name,
     const std::optional<CDCSDKSnapshotOption>& consistent_snapshot_option,
-    CoarseTimePoint deadline) {
+    CoarseTimePoint deadline,
+    const CDCSDKDynamicTablesOption& dynamic_tables_option) {
   CreateCDCStreamRequestPB req;
 
   if (populate_namespace_id_as_table_id) {
@@ -1502,6 +1503,8 @@ Result<xrepl::StreamId> YBClient::CreateCDCSDKStreamForNamespace(
   if (consistent_snapshot_option.has_value()) {
     req.set_cdcsdk_consistent_snapshot_option(*consistent_snapshot_option);
   }
+  req.mutable_cdcsdk_stream_create_options()->set_cdcsdk_dynamic_tables_option(
+      dynamic_tables_option);
 
   CreateCDCStreamResponsePB resp;
   deadline = PatchAdminDeadline(deadline);

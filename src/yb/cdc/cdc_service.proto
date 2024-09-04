@@ -134,6 +134,9 @@ message CreateCDCStreamRequestPB {
   optional bool transactional = 7; // [default = false]
   optional YQLDatabase db_type = 8 [default = YQL_DATABASE_PGSQL] ;
   optional CDCSDKSnapshotOption cdcsdk_consistent_snapshot_option = 9;
+  // cdcsdk_stream_create_options field should be used for adding more stream creation options
+  // related to CDCSDK in future.
+  optional CDCSDKStreamCreateOptionsPB cdcsdk_stream_create_options = 10;
 }
 
 message CreateCDCStreamResponsePB {
