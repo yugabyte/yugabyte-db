@@ -1715,7 +1715,19 @@ YBDecrementDdlNestingLevel()
 		 * if DDL txn commit succeeds.)
 		 */
 		if (increment_done)
+		{
 			YbUpdateCatalogCacheVersion(YbGetCatalogCacheVersion() + 1);
+			if (YbIsClientYsqlConnMgr())
+			{
+				/* Wait for tserver hearbeat */
+				int32_t sleep = 1000 * 2 * YBGetHeartbeatIntervalMs();
+				elog(LOG,
+					 "connection manager: adding sleep of %d microseconds "
+					 "after DDL commit",
+					 sleep);
+				pg_usleep(sleep);
+			}
+		}
 
 		List *handles = YBGetDdlHandles();
 		ListCell *lc = NULL;
@@ -4878,8 +4890,7 @@ bool
 YbIsUpdateOptimizationEnabled()
 {
 	/* TODO(kramanathan): Placeholder until a flag strategy is agreed upon */
-	return (!YBCIsEnvVarTrue("FLAGS_ysql_skip_row_lock_for_update")) &&
-		   yb_update_optimization_options.num_cols_to_compare > 0 &&
+	return yb_update_optimization_options.num_cols_to_compare > 0 &&
 		   yb_update_optimization_options.max_cols_size_to_compare > 0;
 }
 
@@ -4982,6 +4993,11 @@ YbReadTimePointHandle YbBuildCurrentReadTimePointHandle()
 // fast backward scan capability.
 bool YbUseFastBackwardScan() {
   return *(YBCGetGFlags()->ysql_use_fast_backward_scan);
+}
+
+bool YbIsYsqlConnMgrWarmupRandomEnabled()
+{
+	return *(YBCGetGFlags()->TEST_ysql_conn_mgr_dowarmup_all_pools_random_attach);
 }
 
 /* Used in YB to check if an attribute is a key column. */

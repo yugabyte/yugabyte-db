@@ -240,7 +240,9 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
   auto read_data = VERIFY_RESULT(sys_catalog->TableReadData(pg_catalog_table_id, read_time));
   auto oid_col_id = VERIFY_RESULT(read_data.ColumnByName("oid")).rep();
   auto relname_col_id = VERIFY_RESULT(read_data.ColumnByName(name_col)).rep();
-  auto relkind_col_id = VERIFY_RESULT(read_data.ColumnByName("relkind")).rep();
+  // relkind_col_id is only used for pg_class. It is not used for pg_yb_tablegroup.
+  auto relkind_col_id = table->IsColocationParentTable() ? kInvalidColumnId.rep() :
+      VERIFY_RESULT(read_data.ColumnByName("relkind")).rep();
   dockv::ReaderProjection projection;
 
   ColumnIdRep relfilenode_col_id = kInvalidColumnId.rep();

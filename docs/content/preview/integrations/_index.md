@@ -62,15 +62,15 @@ Version refers to the latest tested version of the integration.
 
 | Tool            | Version | Support | Tutorial |
 | :-------------- | :------ | :------ | :------- |
-| Apache Superset |         | Full    | [Apache Superset](../tools/superset/) |
-| Arctype         |         | Full    | [Arctype](../tools/arctype/) |
+| Apache Superset |         | Full    | [Apache Superset](tools/superset/) |
+| Arctype         |         | Full    | [Arctype](tools/arctype/) |
 | DataGrip        | 2023.2.2 | Full   |  |
-| DBeaver         | 23.2.2  | Full    | [DBeaver](../tools/dbeaver-ysql/) |
-| DbSchema        |         | Full    | [DbSchema](../tools/dbschema/) |
-| Metabase        |         | Full    | [Metabase](../tools/metabase/) |
-| pgAdmin         |         | Full    | [pgAdmin](../tools/pgadmin/) |
-| SQL Workbench/J |         | Full    | [SQL Workbench/J](../tools/sql-workbench/) |
-| TablePlus       | 2.18    | Full    | [TablePlus](../tools/tableplus/) |
+| DBeaver         | 23.2.2  | Full    | [DBeaver](tools/dbeaver-ysql/) |
+| DbSchema        |         | Full    | [DbSchema](tools/dbschema/) |
+| Metabase        |         | Full    | [Metabase](tools/metabase/) |
+| pgAdmin         |         | Full    | [pgAdmin](tools/pgadmin/) |
+| SQL Workbench/J |         | Full    | [SQL Workbench/J](tools/sql-workbench/) |
+| TablePlus       | 2.18    | Full    | [TablePlus](tools/tableplus/) |
 
 ### Application frameworks
 
@@ -87,6 +87,7 @@ Version refers to the latest tested version of the integration.
 
 | IDE         | Version | Support | Tutorial |
 | :---------- | :------ | :------ | :------- |
+| Budibase    |         | Partial | [Budibase](budibase/) |
 | Caspio      |         | Partial | [Caspio](caspio/) |
 | Retool      | 3.1     | Partial | [Retool](retool/) |
 | Superblocks |         | Partial | [Superblocks](superblocks/) |

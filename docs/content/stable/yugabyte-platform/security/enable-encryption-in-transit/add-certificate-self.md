@@ -69,6 +69,8 @@ To add self-signed certificates to YugabyteDB Anywhere:
 
 1. Click **Add** to make the certificate available.
 
+To view the certificate details, navigate to **Integrations > Security > Encryption in Transit**, find the certificate in the list, and click **Show details**.
+
 ## Validate certificates
 
 When configuring and using certificates, SSL issues may occasionally arise. You can validate your certificates and keys as follows:

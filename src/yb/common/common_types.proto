@@ -181,6 +181,12 @@ enum CDCSDKSnapshotOption {
   USE_SNAPSHOT = 2; // Client wishes to consume snapshot from the source universe
 }
 
+enum CDCSDKDynamicTablesOption {
+  DYNAMIC_TABLES_UNDEFINED = 0;
+  DYNAMIC_TABLES_ENABLED = 1;
+  DYNAMIC_TABLES_DISABLED = 2;
+}
+
 // Available replica identity modes for use in CDC
 enum PgReplicaIdentity {
   // Entire updated row as new image, only key as old image for DELETE

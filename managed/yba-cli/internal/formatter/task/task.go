@@ -110,6 +110,7 @@ func (c *Context) Target() string {
 
 // Status fetches the task state
 func (c *Context) Status() string {
+	// Put colours here too
 	return c.t.GetStatus()
 }
 

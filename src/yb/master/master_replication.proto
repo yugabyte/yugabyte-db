@@ -28,6 +28,7 @@ import "yb/common/common.proto";
 
 message CDCStreamInfoPB {
   optional bytes stream_id = 1;
+  // For CDCSDK, table_id contains the qualified list of tables for the stream.
   repeated bytes table_id = 2;
   repeated CDCStreamOptionsPB options = 3;
   optional bytes namespace_id = 4;
@@ -47,6 +48,10 @@ message CDCStreamInfoPB {
   // This field controls if dynamic tables should automatically be added to the CDC stream or not.
   // If set to true, dynamic table wont get added to the CDC stream.
   optional bool cdcsdk_disable_dynamic_table_addition = 12;
+
+  // This field stores the list of user created tables that have been removed from CDCSDK
+  // stream.
+  repeated bytes unqualified_table_id = 13;
 }
 
 message ValidateReplicationInfoRequestPB {
@@ -71,6 +76,9 @@ message CreateCDCStreamRequestPB {
   optional string cdcsdk_ysql_replication_slot_name = 8;
   optional CDCSDKSnapshotOption cdcsdk_consistent_snapshot_option = 9;
   optional string cdcsdk_ysql_replication_slot_plugin_name = 10;
+  // cdcsdk_stream_create_options field should be used for adding more stream creation options
+  // related to CDCSDK in future.
+  optional CDCSDKStreamCreateOptionsPB cdcsdk_stream_create_options = 11;
 }
 
 message CreateCDCStreamResponsePB {
@@ -145,6 +153,7 @@ message GetCDCDBStreamInfoResponsePB {
   optional MasterErrorPB error = 1;
   repeated TableInfo table_info = 2;
   optional bytes namespace_id = 3;
+  repeated TableInfo unqualified_table_info = 4;
 }
 
 message UpdateCDCStreamRequestPB {
@@ -777,6 +786,15 @@ message ValidateAndSyncCDCStateEntriesForCDCSDKStreamResponsePB {
   repeated string updated_tablet_entries = 2;
 }
 
+message RemoveTablesFromCDCSDKStreamRequestPB {
+  optional string stream_id = 1;
+  repeated string table_ids = 2;
+}
+
+message RemoveTablesFromCDCSDKStreamResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 service MasterReplication {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -902,4 +920,7 @@ service MasterReplication {
   rpc ValidateAndSyncCDCStateEntriesForCDCSDKStream(
       ValidateAndSyncCDCStateEntriesForCDCSDKStreamRequestPB)
       returns (ValidateAndSyncCDCStateEntriesForCDCSDKStreamResponsePB);
+  // Introduced for bug (#22876, #22773)
+  rpc RemoveTablesFromCDCSDKStream (RemoveTablesFromCDCSDKStreamRequestPB)
+      returns (RemoveTablesFromCDCSDKStreamResponsePB);
 }

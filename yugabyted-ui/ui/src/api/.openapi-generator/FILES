@@ -80,6 +80,7 @@ src/models/RaftConfig.ts
 src/models/RecommendedRefactoringGraph.ts
 src/models/RefactoringCount.ts
 src/models/RestoreDetails.ts
+src/models/SchemaAnalysisReport.ts
 src/models/SlowQueryResponseData.ts
 src/models/SlowQueryResponseSchema.ts
 src/models/SlowQueryResponseYSQLData.ts
@@ -98,6 +99,7 @@ src/models/TargetClusterSpec.ts
 src/models/TargetRecommendationItem.ts
 src/models/TargetSchemaRecommendations.ts
 src/models/UnsupportedSqlInfo.ts
+src/models/UnsupportedSqlWithDetails.ts
 src/models/VersionInfo.ts
 src/models/VoyagerMigrateDataMetrics.ts
 src/models/VoyagerMigrateDataMetricsDetails.ts

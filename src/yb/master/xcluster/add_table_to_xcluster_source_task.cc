@@ -65,6 +65,12 @@ Status AddTableToXClusterSourceTask::MarkTableAsCheckpointed() {
   RETURN_NOT_OK(outbound_replication_group_->MarkNewTablesAsCheckpointed(
       table_info_->namespace_id(), table_info_->id(), epoch_));
 
+  const auto stream_id = VERIFY_RESULT(
+      outbound_replication_group_->GetStreamId(table_info_->namespace_id(), table_info_->id()));
+  LOG_WITH_PREFIX(INFO)
+      << "Table " << table_info_->ToString()
+      << " successfully checkpointed for xCluster universe replication with Stream: " << stream_id;
+
   Complete();
   return Status::OK();
 }

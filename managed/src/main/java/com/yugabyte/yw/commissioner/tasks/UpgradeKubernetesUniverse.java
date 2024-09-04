@@ -249,7 +249,6 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           null,
           ServerType.MASTER,
           ybSoftwareVersion,
-          getOrCreateExecutionContext().getWaitForServerReadyTimeout().toMillis(),
           universeOverrides,
           azOverrides,
           masterChanged,
@@ -259,7 +258,9 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           CommandType.HELM_UPGRADE,
           enableYbc,
           ybcSoftwareVersion,
-          /* addDelayAfterStartup */ true);
+          PodUpgradeParams.builder()
+              .delayAfterStartup(taskParams().sleepAfterMasterRestartMillis)
+              .build());
     }
     if (tserverChanged) {
       createLoadBalancerStateChangeTask(false /*enable*/)
@@ -273,7 +274,6 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           null,
           ServerType.TSERVER,
           ybSoftwareVersion,
-          taskParams().sleepAfterTServerRestartMillis,
           universeOverrides,
           azOverrides,
           false /* master change is false since it has already been upgraded.*/,
@@ -283,7 +283,10 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           CommandType.HELM_UPGRADE,
           enableYbc,
           ybcSoftwareVersion,
-          /* addDelayAfterStartup */ true);
+          PodUpgradeParams.builder()
+              .rollMaxBatchSize(getCurrentRollBatchSize(universe, taskParams().rollMaxBatchSize))
+              .delayAfterStartup(taskParams().sleepAfterTServerRestartMillis)
+              .build());
 
       if (enableYbc) {
         if (isReadOnlyCluster) {

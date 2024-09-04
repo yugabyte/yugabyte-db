@@ -1,4 +1,4 @@
-export const DrConfigActions = {
+export const DrConfigAction = {
   CREATE: 'createDrConfig',
   DELETE: 'deleteDrConfig',
   EDIT: 'editDrConfig',
@@ -6,7 +6,7 @@ export const DrConfigActions = {
   SWITCHOVER: 'switchover',
   FAILOVER: 'failover'
 } as const;
-export type DrConfigActions = typeof DrConfigActions[keyof typeof DrConfigActions];
+export type DrConfigAction = typeof DrConfigAction[keyof typeof DrConfigAction];
 
 export const DurationUnit = {
   SECOND: 'second',

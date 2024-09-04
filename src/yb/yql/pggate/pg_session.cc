@@ -473,14 +473,13 @@ PgSession::PgSession(
       explicit_row_lock_buffer_(&aux_ybctid_container_provider_),
       metrics_(stats_state),
       pg_callbacks_(pg_callbacks),
-      wait_starter_(pg_callbacks_.PgstatReportWaitStart),
       buffer_(
           [this](BufferableOperations&& ops, bool transactional)
               -> Result<PgOperationBuffer::PerformFutureEx> {
             return PgOperationBuffer::PerformFutureEx{
                 VERIFY_RESULT(FlushOperations(std::move(ops), transactional)), this};
           },
-          &metrics_, wait_starter_, buffering_settings_) {
+          metrics_, buffering_settings_) {
   Update(&buffering_settings_);
 }
 
@@ -1105,7 +1104,7 @@ Result<tserver::PgGetReplicationSlotResponsePB> PgSession::GetReplicationSlot(
 }
 
 PgWaitEventWatcher PgSession::StartWaitEvent(ash::WaitStateCode wait_event) {
-  return {wait_starter_, wait_event};
+  return {pg_callbacks_.PgstatReportWaitStart, wait_event};
 }
 
 Result<tserver::PgYCQLStatementStatsResponsePB> PgSession::YCQLStatementStats() {

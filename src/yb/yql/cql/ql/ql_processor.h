@@ -156,6 +156,7 @@ class QLProcessor : public Rescheduler {
       params_ = &params;
       cb_ = std::move(cb);
       wait_state_ = ash::WaitStateInfo::CurrentWaitState();
+      ASH_ENABLE_CONCURRENT_UPDATES();
       return *this;
     }
 

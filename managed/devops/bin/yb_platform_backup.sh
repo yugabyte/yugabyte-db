@@ -837,7 +837,7 @@ case $command in
     while (( "$#" )); do
       case "$1" in
         -o|--output)
-          output_path=$2
+          output_path=$(realpath $2)
           shift 2
           ;;
         -m|--exclude_prometheus)
@@ -849,7 +849,7 @@ case $command in
           shift
           ;;
         -d|--data_dir)
-          data_dir=$2
+          data_dir=$(realpath $2)
           shift 2
           ;;
         -v|--verbose)
@@ -906,11 +906,11 @@ case $command in
           shift
           ;;
         --pg_dump_path)
-          pgdump_path=$2
+          pgdump_path=$(realpath $2)
           shift 2
           ;;
         --pgpass_path)
-          pgpass_path=$2
+          pgpass_path=$(realpath $2)
           shift 2
           ;;
         --ybdb)
@@ -918,7 +918,7 @@ case $command in
           shift
           ;;
         --ysql_dump_path)
-          ysql_dump_path=$2
+          ysql_dump_path=$(realpath $2)
           shift 2
           ;;
         --disable_version_check)
@@ -962,15 +962,15 @@ case $command in
     while (( "$#" )); do
       case "$1" in
         -i|--input)
-          input_path=$2
+          input_path=$(realpath $2)
           shift 2
           ;;
         -o|--destination)
-          destination=$2
+          destination=$(realpath $2)
           shift 2
           ;;
         -d|--data_dir)
-          data_dir=$2
+          data_dir=$(realpath $2)
           shift 2
           ;;
         -v|--verbose)
@@ -1030,11 +1030,11 @@ case $command in
           shift
           ;;
         --pg_restore_path)
-          pgrestore_path=$2
+          pgrestore_path=$(realpath $2)
           shift 2
           ;;
         --pgpass_path)
-          pgpass_path=$2
+          pgpass_path=$(realpath $2)
           shift 2
           ;;
         --ybdb)
@@ -1042,7 +1042,7 @@ case $command in
           shift
           ;;
         --ysqlsh_path)
-          ysqlsh_path=$2
+          ysqlsh_path=$(realpath $2)
           shift 2
           ;;
         --yugabundle)
@@ -1055,7 +1055,7 @@ case $command in
           shift
           ;;
         --ybai_data_dir)
-          ybai_data_dir=$2
+          ybai_data_dir=$(realpath $2)
           shift 2
           ;;
         -U|--yba_user)

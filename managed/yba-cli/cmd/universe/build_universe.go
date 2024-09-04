@@ -119,10 +119,12 @@ func buildClusters(
 
 	linuxVersionsInterface := v1.Get("linux-version")
 	var linuxVersionsInput []string
-	if reflect.TypeOf(linuxVersionsInterface) == reflect.TypeOf(checkInterfaceType) {
-		linuxVersionsInput = *util.StringSlice(linuxVersionsInterface.([]interface{}))
-	} else {
-		linuxVersionsInput = linuxVersionsInterface.([]string)
+	if linuxVersionsInterface != nil {
+		if reflect.TypeOf(linuxVersionsInterface) == reflect.TypeOf(checkInterfaceType) {
+			linuxVersionsInput = *util.StringSlice(linuxVersionsInterface.([]interface{}))
+		} else {
+			linuxVersionsInput = linuxVersionsInterface.([]string)
+		}
 	}
 
 	var imageBundleUUIDs []string

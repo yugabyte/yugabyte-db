@@ -13,9 +13,9 @@ yba backup edit [flags]
 ### Options
 
 ```
-      --backup-uuid string             [Required] The uuid of the backup to be described.
-      --time-before-delete-in-ms int   [Required] Time before delete from the current time in ms
-      --storage-config-name string     [Optional] Change the storage config assigned to the backup
+      --uuid string                    [Required] The UUID of the backup to be edited.
+      --time-before-delete-in-ms int   [Optional] Time before delete from the current time in ms.
+      --storage-config-name string     [Optional] Change the storage configuration assigned to the backup.
   -h, --help                           help for edit
 ```
 
@@ -35,5 +35,5 @@ yba backup edit [flags]
 
 ### SEE ALSO
 
-* [yba backup](yba_backup.md)	 - Manage YugabyteDB Anywhere backups
+* [yba backup](yba_backup.md)	 - Manage YugabyteDB Anywhere universe backups
 

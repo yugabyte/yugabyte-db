@@ -231,7 +231,6 @@ public class ResizeNode extends UpgradeTaskBase {
                 },
                 instanceChangingNodes,
                 UpgradeContext.builder()
-                    .reconfigureMaster(userIntent.replicationFactor > 1)
                     .runBeforeStopping(false)
                     .processInactiveMaster(false)
                     .postAction(

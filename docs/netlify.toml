@@ -16,6 +16,7 @@
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
   SEGMENT_API_KEY = "TUxwdnFRYlNlQzl5V0hNdnRBNVQ1TVhUZ0Rpc1ZMZE0="
+  RUDDERSTACK_API_KEY = "Mmo5Zmp5M1lONWFLM2xYS044N3k5cGhic3R4"
 
 [context.branch-deploy.environment]
   GO_VERSION = "1.20"
@@ -23,6 +24,7 @@
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
   SEGMENT_API_KEY = "TUxwdnFRYlNlQzl5V0hNdnRBNVQ1TVhUZ0Rpc1ZMZE0="
+  RUDDERSTACK_API_KEY = "Mmo5Zmp5M1lONWFLM2xYS044N3k5cGhic3R4"
 
 [context.production.environment]
   GO_VERSION = "1.20"
@@ -30,6 +32,7 @@
   NODE_VERSION = "20"
   CXXFLAGS = "-std=c++17"
   SEGMENT_API_KEY = "WFp1RWk3dUVBbjM2NmpncnNnbzBMZUpIVXB1ZVRvTHg="
+  RUDDERSTACK_API_KEY = "Mmo5Y252MjZ6R290ZjhPa3BROUx4cFl6VFVK"
 
 ################ REDIRECTS ################
 #
@@ -1360,6 +1363,9 @@
             https://api.segment.io/
             https://cdn.segment.com/
             https://ingesteer.services-prod.nsvcs.net/rum_collection
+            https://yugabyteklhgka.dataplane.rudderstack.com/v1/page
+            https://api.rudderstack.com/
+            https://sessions.bugsnag.com/
         ;
 
         script-src 'self' 'unsafe-eval' 'unsafe-inline'
@@ -1384,6 +1390,9 @@
             https://x.clearbitjs.com
             https://js.driftt.com/
             https://cdn.segment.com/
+            https://j.6sc.co/
+            https://cdn.rudderlabs.com/
+            https://d2wy8f7a9ursnm.cloudfront.net/v6/bugsnag.min.js
         ;
 
         style-src 'self' 'unsafe-inline'

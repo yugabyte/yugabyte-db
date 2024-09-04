@@ -100,6 +100,8 @@ struct TabletCDCCheckpointInfo {
 using TabletIdCDCCheckpointMap = std::unordered_map<TabletId, TabletCDCCheckpointInfo>;
 using TabletIdStreamIdSet = std::set<std::pair<TabletId, xrepl::StreamId>>;
 using StreamIdSet = std::set<xrepl::StreamId>;
+using TableIdToStreamIdMap =
+    std::unordered_map<TableId, std::pair<TabletId, std::unordered_set<xrepl::StreamId>>>;
 using RollBackTabletIdCheckpointMap =
     std::unordered_map<const std::string*, std::pair<int64_t, OpId>>;
 class CDCServiceImpl : public CDCServiceIf {
@@ -167,7 +169,8 @@ class CDCServiceImpl : public CDCServiceIf {
       TabletIdCDCCheckpointMap& tablet_min_checkpoint_map,
       StreamIdSet* slot_entries_to_be_deleted = nullptr,
       const std::unordered_map<NamespaceId, uint64_t>& namespace_to_min_record_id_commit_time =
-      std::unordered_map<NamespaceId, uint64_t>{});
+      std::unordered_map<NamespaceId, uint64_t>{},
+      TableIdToStreamIdMap* expired_tables_map = nullptr);
 
   void ProcessEntryForXCluster(
       const CDCStateTableEntry& entry,
@@ -437,6 +440,10 @@ class CDCServiceImpl : public CDCServiceIf {
       const std::unordered_set<TabletId>& failed_tablet_ids,
       const StreamIdSet& slot_entries_to_be_deleted);
 
+  // This method sends an rpc to the master to remove the expired / not of interest tables from the
+  // stream metadata and update the checkpoint of cdc_state entries to max.
+  Status CleanupExpiredTables(const TableIdToStreamIdMap& expired_tables_map);
+
   MicrosTime GetLastReplicatedTime(const std::shared_ptr<tablet::TabletPeer>& tablet_peer);
 
   bool ShouldUpdateMetrics(MonoTime time_since_update_metrics);
@@ -469,7 +476,13 @@ class CDCServiceImpl : public CDCServiceIf {
   Status PopulateTabletCheckPointInfo(
       TabletIdCDCCheckpointMap& cdcsdk_min_checkpoint_map,
       std::unordered_map<TabletId, OpId>& xcluster_tablet_min_opid_map,
-      TabletIdStreamIdSet& tablet_stream_to_be_deleted, StreamIdSet& slot_entries_to_be_deleted);
+      TabletIdStreamIdSet& tablet_stream_to_be_deleted, StreamIdSet& slot_entries_to_be_deleted,
+      TableIdToStreamIdMap& expired_tables_map);
+
+  void AddTableToExpiredTablesMap(
+      const tablet::TabletPeerPtr& tablet_peer,
+      const xrepl::StreamId& stream_id,
+      TableIdToStreamIdMap* expired_tables_map);
 
   Result<TabletCDCCheckpointInfo> PopulateCDCSDKTabletCheckPointInfo(
       const TabletId& input_tablet_id);

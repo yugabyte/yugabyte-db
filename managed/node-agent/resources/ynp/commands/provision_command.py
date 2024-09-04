@@ -49,6 +49,12 @@ class ProvisionCommand(Command):
         with tempfile.NamedTemporaryFile(mode="w+", delete=False) as temp_file:
             temp_file.write("#!/bin/bash\n\n")
             temp_file.write("set -e\n")
+            key = next(iter(self.config), None)
+            if key is not None:
+                context = self.config[key]
+                loglevel = context.get('loglevel')
+                if loglevel == "DEBUG":
+                    temp_file.write("set -x\n")
             self.add_results_helper(temp_file)
             self.populate_sudo_check(temp_file)
             for key in all_templates:
@@ -153,7 +159,8 @@ class ProvisionCommand(Command):
             sys.exit()
 
     def _validate_permissions(self):
-        gp_dir = os.path.dirname(os.path.dirname(self.config["ynp_dir"]))
+        key = next(iter(self.config), None)
+        gp_dir = os.path.dirname(os.path.dirname(self.config[key]["ynp_dir"]))
         installer_dir = os.path.join(gp_dir, "bin")
         mode = os.stat(installer_dir).st_mode
         yugabyte_has_read = bool(mode & stat.S_IROTH)

@@ -15,7 +15,6 @@ import com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareUpgrade;
 import com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareUpgradeYB;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.RollMaxBatchSize;
@@ -194,36 +193,10 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   }
 
   private RollMaxBatchSize getCurrentRollBatchSize(Universe universe) {
-    RollMaxBatchSize rollMaxBatchSize = new RollMaxBatchSize();
-    if (taskParams().rollMaxBatchSize != null
-        && confGetter.getConfForScope(universe, UniverseConfKeys.upgradeBatchRollEnabled)) {
-      rollMaxBatchSize = taskParams().rollMaxBatchSize;
-    } else {
-      RollMaxBatchSize max = getMaxNodesToRoll(universe);
-      int percent =
-          confGetter.getConfForScope(universe, UniverseConfKeys.upgradeBatchRollAutoPercent);
-      int number =
-          confGetter.getConfForScope(universe, UniverseConfKeys.upgradeBatchRollAutoNumber);
-      int numberToSet = 0;
-      if (percent > 0) {
-        numberToSet = max.getPrimaryBatchSize() * percent / 100;
-      } else if (number > 1) {
-        numberToSet = Math.min(number, max.getPrimaryBatchSize());
-      }
-      if (numberToSet > 1) {
-        rollMaxBatchSize.setPrimaryBatchSize(numberToSet);
-        rollMaxBatchSize.setReadReplicaBatchSize(numberToSet);
-      }
-    }
-    if (getTaskCache() != null && getTaskCache().get(SPLIT_FALLBACK) != null) {
-      RollMaxBatchSize fallback = getTaskCache().get(SPLIT_FALLBACK, RollMaxBatchSize.class);
-      // Setting this only for primary cluster, RR still can be rolled with any speed.
-      rollMaxBatchSize.setPrimaryBatchSize(fallback.getPrimaryBatchSize());
-    }
-    return rollMaxBatchSize;
+    return getCurrentRollBatchSize(universe, taskParams().rollMaxBatchSize);
   }
 
-  private List<MastersAndTservers> split(
+  public static List<MastersAndTservers> split(
       Universe universe, MastersAndTservers forCluster, RollMaxBatchSize rollMaxBatchSize) {
     List<MastersAndTservers> result = new ArrayList<>();
     forCluster.mastersList.forEach(

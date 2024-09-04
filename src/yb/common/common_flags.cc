@@ -215,6 +215,15 @@ DEFINE_RUNTIME_bool(ysql_enable_auto_analyze_service, false,
                     "configurable threshold.");
 TAG_FLAG(ysql_enable_auto_analyze_service, experimental);
 
+DEFINE_RUNTIME_AUTO_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup,
+                        kLocalPersisted,
+                        false,
+                        true,
+                        "This flag needs to be true in order to support addition of dynamic tables "
+                        "along with removal of not of interest/expired tables from a CDCSDK "
+                        "stream.");
+TAG_FLAG(cdcsdk_enable_dynamic_table_addition_with_table_cleanup, advanced);
+
 namespace yb {
 
 void InitCommonFlags() {
