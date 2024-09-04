@@ -444,6 +444,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const CDCSDKCheckpointPB* cp = nullptr,
       int tablet_idx = 0);
 
+  Result<GetChangesResponsePB> GetChangesFromCDC(
+      const GetChangesRequestPB& change_req, bool should_retry = true);
+
   Result<GetChangesResponsePB> GetChangesFromCDCWithoutRetry(
       const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,

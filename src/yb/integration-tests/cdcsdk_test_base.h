@@ -45,6 +45,7 @@ DECLARE_bool(TEST_ysql_yb_enable_replication_commands);
 DECLARE_uint32(cdcsdk_retention_barrier_no_revision_interval_secs);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
+DECLARE_bool(TEST_stop_committed_op_id_updation);
 
 namespace yb {
 using client::YBClient;
