@@ -223,7 +223,7 @@ public class PlatformReplicationHelper {
     }
   }
 
-  boolean demoteRemoteInstance(PlatformInstance remoteInstance) {
+  boolean demoteRemoteInstance(PlatformInstance remoteInstance, boolean promote) {
     try {
       if (remoteInstance.getIsLocal()) {
         LOG.warn("Cannot perform demoteRemoteInstance action on a local instance");
@@ -243,7 +243,7 @@ public class PlatformReplicationHelper {
               localInstance -> {
                 // Send step down request to remote instance.
                 client.demoteInstance(
-                    localInstance.getAddress(), config.getLastFailover().getTime());
+                    localInstance.getAddress(), config.getLastFailover().getTime(), promote);
 
                 return true;
               })
@@ -276,6 +276,7 @@ public class PlatformReplicationHelper {
 
   void switchPrometheusToFederated(URL remoteAddr) {
     try {
+      LOG.info("Switching local prometheus to federated");
       File configFile = prometheusConfigHelper.getPrometheusConfigFile();
       File configDir = configFile.getParentFile();
       File previousConfigFile = new File(configDir, "previous_prometheus.yml");
@@ -287,6 +288,7 @@ public class PlatformReplicationHelper {
 
       // Move the old file if it hasn't already been moved.
       if (configFile.exists() && !previousConfigFile.exists()) {
+        LOG.info("Creating previous_prometheus.yml from existing prometheus.yml");
         FileUtils.moveFile(configFile.toPath(), previousConfigFile.toPath());
       }
 
@@ -299,6 +301,7 @@ public class PlatformReplicationHelper {
       String federatedPoint = remoteAddr.getHost() + ":" + federatedURL.getPort();
       boolean https = federatedURL.getScheme().equalsIgnoreCase("https");
       this.writeFederatedPrometheusConfig(federatedPoint, configFile, https);
+      LOG.info("Wrote federated prometheus config.");
 
       // Reload the config.
       prometheusConfigHelper.reloadPrometheusConfig();
@@ -309,6 +312,7 @@ public class PlatformReplicationHelper {
 
   void switchPrometheusToStandalone() {
     try {
+      LOG.info("Switching prometheus to standalone.");
       File configFile = prometheusConfigHelper.getPrometheusConfigFile();
       File configDir = configFile.getParentFile();
       File previousConfigFile = new File(configDir, "previous_prometheus.yml");
@@ -320,6 +324,7 @@ public class PlatformReplicationHelper {
       FileUtils.moveFile(previousConfigFile.toPath(), configFile.toPath());
       prometheusConfigHelper.reloadPrometheusConfig();
       prometheusConfigManager.updateK8sScrapeConfigs();
+      LOG.info("Moved previous_prometheus.yml to prometheus.yml");
     } catch (Exception e) {
       LOG.error("Error switching prometheus config to standalone", e);
     }
@@ -403,7 +408,7 @@ public class PlatformReplicationHelper {
     LOG.debug("Syncing data to " + remoteAddr + "...");
 
     // Ensure that the remote instance is demoted if this instance is the most current leader.
-    if (!this.demoteRemoteInstance(remoteInstance)) {
+    if (!this.demoteRemoteInstance(remoteInstance, false)) {
       LOG.error("Error demoting remote instance " + remoteAddr);
       return false;
     }

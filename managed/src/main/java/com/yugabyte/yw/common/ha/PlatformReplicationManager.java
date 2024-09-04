@@ -154,6 +154,7 @@ public class PlatformReplicationManager {
 
   public void demoteLocalInstance(PlatformInstance localInstance, String leaderAddr)
       throws MalformedURLException {
+    log.info("Demoting local instance.");
     if (!localInstance.getIsLocal()) {
       throw new RuntimeException("Cannot perform this action on a remote instance");
     }
@@ -169,6 +170,7 @@ public class PlatformReplicationManager {
   }
 
   public void promoteLocalInstance(PlatformInstance newLeader) {
+    log.info("Promoting local instance to active.");
     HighAvailabilityConfig config = newLeader.getConfig();
     Optional<PlatformInstance> previousLocal = config.getLocal();
 
@@ -185,6 +187,7 @@ public class PlatformReplicationManager {
               i.updateIsLocal(i.getUuid().equals(newLeader.getUuid()));
               try {
                 // Clear out any old backups.
+                log.info("Cleaning up received backups.");
                 replicationHelper.cleanupReceivedBackups(new URL(i.getAddress()), 0);
               } catch (MalformedURLException ignored) {
               }
@@ -194,7 +197,13 @@ public class PlatformReplicationManager {
     config.updateLastFailover();
     // Attempt to ensure all remote instances are in follower state.
     // Remotely demote any instance reporting to be a leader.
-    config.getRemoteInstances().forEach(replicationHelper::demoteRemoteInstance);
+    config
+        .getRemoteInstances()
+        .forEach(
+            instance -> {
+              log.info("Demoting remote instance {}", instance.getAddress());
+              replicationHelper.demoteRemoteInstance(instance, true);
+            });
     // Promote the new local leader.
     // we need to refresh because i.setIsLocalAndUpdate updated the underlying db bypassing
     // newLeader bean.
