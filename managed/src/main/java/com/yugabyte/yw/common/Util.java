@@ -1227,17 +1227,10 @@ public class Util {
 
   public static UUID retreiveImageBundleUUID(
       Architecture arch, UserIntent userIntent, Provider provider) {
-    return retreiveImageBundleUUID(arch, userIntent, provider, false);
-  }
-
-  public static UUID retreiveImageBundleUUID(
-      Architecture arch, UserIntent userIntent, Provider provider, boolean cloudEnabled) {
     UUID imageBundleUUID = null;
     if (userIntent.imageBundleUUID != null) {
       imageBundleUUID = userIntent.imageBundleUUID;
-    } else if (provider.getUuid() != null && !cloudEnabled) {
-      // Don't use defaultProvider bundle for YBM, as they will
-      // specify machineImage for provisioning the node.
+    } else if (provider.getUuid() != null) {
       List<ImageBundle> bundles = ImageBundle.getDefaultForProvider(provider.getUuid());
       if (bundles.size() > 0) {
         ImageBundle bundle = ImageBundleUtil.getDefaultBundleForUniverse(arch, bundles);
