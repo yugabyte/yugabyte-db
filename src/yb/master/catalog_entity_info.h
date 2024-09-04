@@ -608,7 +608,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
     return GetTableType() == REDIS_TABLE_TYPE;
   }
 
-  bool IsBeingDroppedDueToDdlTxn(const std::string& txn_id_pb, bool txn_success) const;
+  bool IsBeingDroppedDueToDdlTxn(
+      const std::string& txn_id_pb, std::optional<bool> txn_success) const;
 
   // Add a tablet to this table.
   void AddTablet(const TabletInfoPtr& tablet);

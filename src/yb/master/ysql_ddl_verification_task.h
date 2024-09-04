@@ -149,7 +149,7 @@ class TableSchemaVerificationTask : public MultiStepTableTaskBase,
     CatalogManager& catalog_manager,
     scoped_refptr<TableInfo> table,
     const TransactionMetadata& transaction,
-    std::function<void(Result<bool>)> complete_callback,
+    std::function<void(Result<std::optional<bool>>)> complete_callback,
     SysCatalogTable* sys_catalog,
     std::shared_future<client::YBClient*> client_future,
     rpc::Messenger& messenger,
@@ -172,7 +172,7 @@ class TableSchemaVerificationTask : public MultiStepTableTaskBase,
     CatalogManager& catalog_manager,
     scoped_refptr<TableInfo> table,
     const TransactionMetadata& transaction,
-    std::function<void(Result<bool>)> complete_callback,
+    std::function<void(Result<std::optional<bool>>)> complete_callback,
     SysCatalogTable* sys_catalog,
     std::shared_future<client::YBClient*> client_future,
     rpc::Messenger& messenger,
@@ -185,14 +185,14 @@ class TableSchemaVerificationTask : public MultiStepTableTaskBase,
   Status ValidateRunnable() override;
   Status CheckTableExists(Status s);
   Status CompareSchema(Status s);
-  Status FinishTask(Result<bool> is_committed);
+  Status FinishTask(Result<std::optional<bool>> is_committed);
   void FinishPollTransaction(Status s) override;
   void TaskCompleted(const Status& status) override;
   void PerformAbort() override;
 
   SysCatalogTable& sys_catalog_;
   bool ddl_atomicity_enabled_;
-  bool is_committed_ = false;
+  std::optional<bool> is_committed_{std::nullopt};
 };
 
 }  // namespace master

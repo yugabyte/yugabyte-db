@@ -191,7 +191,13 @@ YB_DEFINE_ENUM(YsqlDdlVerificationState,
     (kDdlPostProcessing)
     (kDdlPostProcessingFailed));
 
-YB_DEFINE_ENUM(TxnState, (kUnknown) (kCommitted) (kAborted));
+// kNoChange is used when a PG DDL statement only increments the table's schema version
+// without any real DocDB table schema change (e.g., alter table t alter column c set not null).
+// In this case we cannot decide whether the PG DDL txn has committed or aborted by doing
+// schema comparison of DocDB current schema or previous schema against the PG catalog schema.
+// That's fine because whether the PG DDL txn has committed or aborted makes no difference for
+// this table's DocDB schema.
+YB_DEFINE_ENUM(TxnState, (kUnknown) (kCommitted) (kAborted) (kNoChange));
 
 struct YsqlTableDdlTxnState;
 
@@ -353,7 +359,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const TableInfoPtr& table, const LeaderEpoch& epoch);
 
   // Called when transaction associated with table create finishes. Verifies postgres layer present.
-  Status VerifyTablePgLayer(scoped_refptr<TableInfo> table, Result<bool> exists,
+  Status VerifyTablePgLayer(scoped_refptr<TableInfo> table, Result<std::optional<bool>> exists,
     const LeaderEpoch& epoch);
 
   // Truncate the specified table.
@@ -468,16 +474,17 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status YsqlTableSchemaChecker(TableInfoPtr table,
                                 const std::string& pb_txn_id,
-                                Result<bool> is_committed,
+                                Result<std::optional<bool>> is_committed,
                                 const LeaderEpoch& epoch);
 
   Status YsqlDdlTxnCompleteCallback(const std::string& pb_txn_id,
-                                    bool is_committed,
+                                    std::optional<bool> is_committed,
                                     const LeaderEpoch& epoch,
                                     const std::string& debug_caller_info);
 
   Status YsqlDdlTxnCompleteCallbackInternal(
-      TableInfo* table, const TransactionId& txn_id, bool success, const LeaderEpoch& epoch);
+      TableInfo* table, const TransactionId& txn_id, std::optional<bool> success,
+      const LeaderEpoch& epoch);
 
   Status HandleSuccessfulYsqlDdlTxn(const YsqlTableDdlTxnState txn_data);
 

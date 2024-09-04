@@ -101,7 +101,7 @@ Status PgEntryExistsWithReadTime(
 Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
                                    const scoped_refptr<TableInfo>& table,
                                    const ReadHybridTime& read_time,
-                                   bool* result,
+                                   std::optional<bool>* result,
                                    HybridTime* read_restart_ht);
 
 bool MatchPgDocDBSchemaColumns(const scoped_refptr<TableInfo>& table,
@@ -205,8 +205,9 @@ Status PgEntryExistsWithReadTime(
   return Status::OK();
 }
 
-Result<bool> PgSchemaChecker(SysCatalogTable& sys_catalog, const scoped_refptr<TableInfo>& table) {
-  bool result = false;
+Result<std::optional<bool>> PgSchemaChecker(
+    SysCatalogTable& sys_catalog, const scoped_refptr<TableInfo>& table) {
+  std::optional<bool> result{std::nullopt};
   RETURN_NOT_OK(sys_catalog.ReadWithRestarts(
     std::bind(&PgSchemaCheckerWithReadTime, &sys_catalog, table, std::placeholders::_1, &result,
       std::placeholders::_2)));
@@ -216,7 +217,7 @@ Result<bool> PgSchemaChecker(SysCatalogTable& sys_catalog, const scoped_refptr<T
 Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
                                    const scoped_refptr<TableInfo>& table,
                                    const ReadHybridTime& read_time,
-                                   bool* result,
+                                   std::optional<bool>* result,
                                    HybridTime* read_restart_ht) {
   PgOid oid = kPgInvalidOid;
   string pg_catalog_table_id, name_col;
@@ -333,6 +334,7 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
 
   // Table was being altered. Check whether its current DocDB schema matches
   // that of PG catalog.
+  VLOG(3) << "Comparing with the PG schema for alter table";
   CHECK(l->ysql_ddl_txn_verifier_state().contains_alter_table_op());
   const auto& relname_col = row.GetValue(relname_col_id);
   const string& table_name = relname_col->string_value();
@@ -355,17 +357,28 @@ Status PgSchemaCheckerWithReadTime(SysCatalogTable* sys_catalog,
 
   Schema schema;
   RETURN_NOT_OK(table->GetSchema(&schema));
+  Schema previous_schema;
+  RETURN_NOT_OK(SchemaFromPB(l->ysql_ddl_txn_verifier_state().previous_schema(), &previous_schema));
+  // CompareDdlAtomicity takes marked_for_deletion() into comparison. If a column is marked for
+  // deletion in the current schema and not in the previous schema, then CompareByDefault would
+  // return true which isn't right for correct handling.
+  if (schema.Equals(previous_schema, ColumnSchema::CompareDdlAtomicity)) {
+    VLOG(3) << "The current DocDB schema is the same as the previous DocDB schema";
+    *result = std::nullopt;
+    return Status::OK();
+  }
+
   if (MatchPgDocDBSchemaColumns(table, schema, pg_cols)) {
     // The PG catalog schema matches the current DocDB schema. The transaction was a success.
+    VLOG(3) << "PG schema matches the current DocDB schema";
     *result = true;
     return Status::OK();
   }
 
-  Schema previous_schema;
-  RETURN_NOT_OK(SchemaFromPB(l->ysql_ddl_txn_verifier_state().previous_schema(), &previous_schema));
   if (MatchPgDocDBSchemaColumns(table, previous_schema, pg_cols)) {
     // The PG catalog schema matches the DocDB schema of the table prior to this transaction. The
     // transaction must have aborted.
+    VLOG(3) << "PG schema matches the previous DocDB schema";
     *result = false;
     return Status::OK();
   }
@@ -713,7 +726,8 @@ void NamespaceVerificationTask::PerformAbort() {
 
 TableSchemaVerificationTask::TableSchemaVerificationTask(
     CatalogManager& catalog_manager, scoped_refptr<TableInfo> table,
-    const TransactionMetadata& transaction, std::function<void(Result<bool>)> complete_callback,
+    const TransactionMetadata& transaction,
+    std::function<void(Result<std::optional<bool>>)> complete_callback,
     SysCatalogTable* sys_catalog, std::shared_future<client::YBClient*> client_future,
     rpc::Messenger& messenger, const LeaderEpoch& epoch, bool ddl_atomicity_enabled)
     : MultiStepTableTaskBase(
@@ -735,7 +749,7 @@ void TableSchemaVerificationTask::CreateAndStartTask(
     CatalogManager& catalog_manager,
     scoped_refptr<TableInfo> table,
     const TransactionMetadata& transaction,
-    std::function<void(Result<bool>)> complete_callback,
+    std::function<void(Result<std::optional<bool>>)> complete_callback,
     SysCatalogTable* sys_catalog,
     std::shared_future<client::YBClient*> client_future,
     rpc::Messenger& messenger,
@@ -788,7 +802,7 @@ void TableSchemaVerificationTask::FinishPollTransaction(Status status) {
   }, "Compare Schema");
 }
 
-Status TableSchemaVerificationTask::FinishTask(Result<bool> is_committed) {
+Status TableSchemaVerificationTask::FinishTask(Result<std::optional<bool>> is_committed) {
   RETURN_NOT_OK(is_committed);
 
   is_committed_ = *is_committed;
