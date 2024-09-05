@@ -23,7 +23,8 @@ import { DEFAULT_SLEEP_INTERVAL_IN_MS } from '../../universe-form/utils/constant
 import { GFLAG_GROUPS } from '../../../../helpers/constants';
 
 //icons
-import InfoMessage from '../../../../assets/info-blue.svg';
+import InfoBlue from '../../../../assets/info-blue.svg';
+import InfoError from '../../../../assets/info-red.svg';
 
 interface PGCompatibilityModalProps {
   open: boolean;
@@ -68,6 +69,17 @@ const useStyles = makeStyles((theme) => ({
     alignItems: 'flex-start',
     columnGap: '8px'
   },
+  errorContainer: {
+    display: 'flex',
+    flexDirection: 'row',
+    height: 'auto',
+    width: '100%',
+    padding: theme.spacing(1),
+    backgroundColor: '#FDE2E2',
+    borderRadius: 8,
+    alignItems: 'flex-start',
+    columnGap: '8px'
+  },
   learnLink: {
     color: 'inherit',
     marginLeft: 24
@@ -83,10 +95,6 @@ type PGFormValues = {
   enablePGCompatibitilty: boolean;
 };
 
-const defaultValues: PGFormValues = {
-  enablePGCompatibitilty: false
-};
-
 export const EditPGCompatibilityModal: FC<PGCompatibilityModalProps> = ({
   open,
   onClose,
@@ -98,6 +106,7 @@ export const EditPGCompatibilityModal: FC<PGCompatibilityModalProps> = ({
   const { nodePrefix } = universeDetails;
   let primaryCluster = cloneDeep(getPrimaryCluster(universeDetails));
   const universeName = get(primaryCluster, 'userIntent.universeName');
+  const currentRF = get(primaryCluster, 'userIntent.replicationFactor');
   const isPGEnabled = primaryCluster ? isPGEnabledFromIntent(primaryCluster?.userIntent) : false;
 
   const { control, handleSubmit, watch } = useForm<PGFormValues>({
@@ -213,35 +222,59 @@ export const EditPGCompatibilityModal: FC<PGCompatibilityModalProps> = ({
             />
           </Box>
         </Box>
+        {/* Enabling PG Compatibility */}
         {!isPGEnabled && pgToggleValue && (
-          <Box mt={2} className={classes.infoContainer}>
-            <img src={InfoMessage} alt="--" />
+          <Box mt={2} className={currentRF >= 3 ? classes.infoContainer : classes.errorContainer}>
+            <img src={currentRF >= 3 ? InfoBlue : InfoError} alt="--" />
             <Typography variant="body2">
               <Trans
-                i18nKey={'universeActions.pgCompatibility.enableWarning'}
+                i18nKey={
+                  currentRF >= 3
+                    ? 'universeActions.pgCompatibility.enableWarning'
+                    : 'universeActions.pgCompatibility.enableWarningRF1'
+                }
                 values={{ universeName }}
               />
             </Typography>
           </Box>
         )}
+        {/* Disabling PG Compatibility */}
         {isPGEnabled && !pgToggleValue && (
-          <Box mt={2} className={classes.infoContainer}>
-            <img src={InfoMessage} alt="--" />
-            <Typography variant="body2">
-              <Trans i18nKey={'universeActions.pgCompatibility.disableWarning1'} /> <br />
-              <ul className={classes.uList}>
-                <li>
-                  <Trans
-                    i18nKey={'universeActions.pgCompatibility.disableWarning2'}
-                    values={{ universeName }}
-                  />
-                </li>
-                <li>{t('universeActions.pgCompatibility.disableWarning3')}</li>
-              </ul>
-              {/* <Link underline="always" className={classes.learnLink}>
-                {t('common.learnMore')}
-              </Link> */}
-            </Typography>
+          <Box mt={2} className={currentRF >= 3 ? classes.infoContainer : classes.errorContainer}>
+            <img src={currentRF >= 3 ? InfoBlue : InfoError} alt="--" />
+            {currentRF >= 3 ? (
+              <Typography variant="body2">
+                <Trans i18nKey={'universeActions.pgCompatibility.disableWarning1'} /> <br />
+                <ul className={classes.uList}>
+                  <li>
+                    <Trans
+                      i18nKey={'universeActions.pgCompatibility.disableWarning2'}
+                      values={{ universeName }}
+                    />
+                  </li>
+                  <li>{t('universeActions.pgCompatibility.disableWarning3')}</li>
+                </ul>
+                <br />
+                <Link
+                  underline="always"
+                  className={classes.learnLink}
+                  href="https://docs.yugabyte.com/preview/explore/ysql-language-features/postgresql-compatibility/"
+                  target="_blank"
+                >
+                  {t('common.learnMore')}
+                </Link>
+              </Typography>
+            ) : (
+              <Typography variant="body2">
+                <Trans
+                  values={{ universeName }}
+                  i18nKey={'universeActions.pgCompatibility.disableWarning1RF1'}
+                />
+                <br />
+                <br />
+                <Trans i18nKey={'universeActions.pgCompatibility.disableWarning2RF1'} />
+              </Typography>
+            )}
           </Box>
         )}
       </Box>

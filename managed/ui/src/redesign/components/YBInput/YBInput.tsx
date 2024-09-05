@@ -9,7 +9,6 @@ export type YBInputProps = { tooltip?: ReactNode; trimWhitespace?: boolean } & O
 
 export const YBInput: FC<YBInputProps> = ({ label, tooltip, trimWhitespace = true, ...props }) => (
   <TextField
-    {...props}
     onBlur={(e) => {
       // Trim whitespace from the input value on blur
       const trimmed = e.target.value.trim();
@@ -25,6 +24,7 @@ export const YBInput: FC<YBInputProps> = ({ label, tooltip, trimWhitespace = tru
         }
       }
     }}
+    {...props}
     label={
       label && (
         <>
