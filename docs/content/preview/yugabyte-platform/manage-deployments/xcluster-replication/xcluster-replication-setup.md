@@ -139,7 +139,7 @@ A full copy is done by first backing up the data to external storage, and then r
 
 ### YSQL tables
 
-You can add databases containing colocated tables to the xCluster configuration as long as the underlying database is v2.18.1.0 or later. Colocated tables on the source and target should be created with the same colocation ID if they already exist on both the source and target prior to setup. Refer to [xCluster and colocation](../../../../architecture/docdb-sharding/colocated-tables/#xcluster-and-colocation).
+You can add databases containing colocated tables to the xCluster configuration as long as the underlying database is v2.18.1.0 or later. Colocated tables on the source and target should be created with the same colocation ID if they already exist on both the source and target prior to setup. Refer to [xCluster and colocation](../../../../explore/colocation/#xcluster-and-colocation).
 
 If a [full copy](#full-copy-during-xcluster-setup) is required, the entire database is recreated on the target universe from the current database on the source universe. Be sure to keep the set of tables the same at all times on both the source and target universes in these databases by following the steps in [Manage tables and indexes](../xcluster-replication-ddl/).
 

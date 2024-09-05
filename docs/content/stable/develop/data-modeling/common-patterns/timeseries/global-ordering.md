@@ -4,6 +4,7 @@ headerTitle: Global ordering by time
 linkTitle: Global ordering by time
 description: Distribute your time-ordered data and retrieve data efficiently
 headcontent: Distribute time-ordered data and retrieve data efficiently
+badges: ysql
 menu:
   stable:
     identifier: timeseries-global-ordering
