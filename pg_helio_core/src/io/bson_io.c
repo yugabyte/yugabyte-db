@@ -24,7 +24,6 @@
 #include <utils/uuid.h>
 
 #include "utils/type_cache.h"
-#include "utils/mongo_errors.h"
 #include "io/helio_bson_core.h"
 #include "utils/helio_errors.h"
 
@@ -442,7 +441,7 @@ bson_repath_and_build(PG_FUNCTION_ARGS)
 		if (pathView.length == 0 || StringViewStartsWith(&pathView, '$'))
 		{
 			/* We don't support dollar prefixed-paths here */
-			ereport(ERROR, (errcode(MongoDollarPrefixedFieldName),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARPREFIXEDFIELDNAME),
 							errmsg("The field name %.*s cannot be an operator name",
 								   len, path)));
 		}

@@ -10,6 +10,7 @@
 
 #include <postgres.h>
 #include <utils/builtins.h>
+#include <lib/stringinfo.h>
 
 #define PRIVATE_PGBSON_H
 #include "io/pgbson.h"
@@ -17,7 +18,7 @@
 #undef PRIVATE_PGBSON_H
 
 #include "io/bsonvalue_utils.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "utils/string_view.h"
 
 /* --------------------------------------------------------- */

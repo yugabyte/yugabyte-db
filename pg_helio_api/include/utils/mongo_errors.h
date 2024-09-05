@@ -66,7 +66,6 @@ typedef int MongoErrorEreportCode;
  * so that we can make the following ereport() call to report a
  * "BadValue" error:
  *
- * ereport(ERROR, (errcode(MongoBadValue), errmsg(".....")));
  */
 _DEFINE_MONGO_ERROR(InternalError, 1);
 _DEFINE_MONGO_ERROR(BadValue, 2);

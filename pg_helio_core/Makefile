@@ -72,7 +72,7 @@ trim_installed_data_files:
 
 build-sql: $(generated_sql_files)
 
-generate_errors_file: $(HELIO_CORE_DIR)include/utils/helio_errors.h
+generate_errors_file: $(HELIO_CORE_DIR)include/utils/helio_errors.h $(OSS_SRC_DIR)/mongoerrors.csv
 
 all: generate_errors_file
 

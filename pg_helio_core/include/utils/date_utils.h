@@ -159,7 +159,7 @@ GetPgTimestampFromUnixEpoch(int64_t epochInMs)
 	if (seconds < (float8) SECS_PER_DAY * (DATETIME_MIN_JULIAN - UNIX_EPOCH_JDATE) ||
 		seconds >= (float8) SECS_PER_DAY * (TIMESTAMP_END_JULIAN - UNIX_EPOCH_JDATE))
 	{
-		ereport(ERROR, (errcode(MongoOverflow),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_OVERFLOW),
 						errmsg("Invalid conversion to date time.")));
 	}
 

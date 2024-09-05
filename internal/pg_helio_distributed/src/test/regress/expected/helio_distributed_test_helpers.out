@@ -20,11 +20,11 @@ CREATE OR REPLACE FUNCTION helio_distributed_test_helpers.generate_create_index_
 RETURNS helio_core.bson LANGUAGE C STRICT AS 'pg_helio_api', $$generate_create_index_arg$$;
 CREATE OR REPLACE FUNCTION helio_distributed_test_helpers.convert_mongo_error_to_postgres(
   mongoErrorCode int4)
-RETURNS void LANGUAGE C STRICT AS 'pg_helio_core', $$command_convert_mongo_error_to_postgres$$;
+RETURNS void LANGUAGE C STRICT AS 'pg_helio_api', $$command_convert_mongo_error_to_postgres$$;
 \set VERBOSITY verbose
 SELECT helio_distributed_test_helpers.convert_mongo_error_to_postgres(1);
 INFO:  1000Y: Converted mongo error code to PG
-LOCATION:  command_convert_mongo_error_to_postgres, error_utils.c:60
+LOCATION:  command_convert_mongo_error_to_postgres, error_utils.c:61
  convert_mongo_error_to_postgres 
 ---------------------------------------------------------------------
  

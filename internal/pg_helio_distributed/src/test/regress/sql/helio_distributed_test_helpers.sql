@@ -13,7 +13,7 @@ RETURNS helio_core.bson LANGUAGE C STRICT AS 'pg_helio_api', $$generate_create_i
 
 CREATE OR REPLACE FUNCTION helio_distributed_test_helpers.convert_mongo_error_to_postgres(
   mongoErrorCode int4)
-RETURNS void LANGUAGE C STRICT AS 'pg_helio_core', $$command_convert_mongo_error_to_postgres$$;
+RETURNS void LANGUAGE C STRICT AS 'pg_helio_api', $$command_convert_mongo_error_to_postgres$$;
 
 \set VERBOSITY verbose
 SELECT helio_distributed_test_helpers.convert_mongo_error_to_postgres(1);

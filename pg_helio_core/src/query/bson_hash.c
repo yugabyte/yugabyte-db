@@ -16,6 +16,7 @@
 
 #include "io/helio_bson_core.h"
 #include "types/decimal128.h"
+#include "utils/helio_errors.h"
 
 /* --------------------------------------------------------- */
 /* Data-types */
@@ -663,11 +664,11 @@ HashBsonValueCompare(const bson_value_t *value,
 
 		default:
 		{
-			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 							errmsg(
 								"invalid bson type for hash value bson- not supported yet"),
-							errhint(
-								"invalid bson type for hash value bson- not supported yet: %d",
+							errdetail_log(
+								"bson value hash - encountered unsupported type: %d",
 								value->value_type)));
 		}
 	}

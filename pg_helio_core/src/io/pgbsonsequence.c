@@ -24,7 +24,7 @@
 #include "io/pgbsonsequence.h"
 #include "io/pgbsonelement.h"
 #include "io/bson_set_returning_functions.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 
 extern char * BsonTypeName(bson_type_t type);
 
@@ -206,7 +206,7 @@ bson_to_bsonsequence(PG_FUNCTION_ARGS)
 	if (!bson_init_static(&currentDoc, currentValue.value.v_doc.data,
 						  currentValue.value.v_doc.data_len))
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg("Failed to initialize single bson value")));
 	}
 
@@ -373,7 +373,7 @@ PgbsonSequenceInitFromJson(const char *jsonString)
 
 		if (!bson_writer_begin(writer, &doc))
 		{
-			ereport(ERROR, (errcode(MongoFailedToParse),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 							errmsg("Could not initialize bson writer for sequence")));
 		}
 
@@ -381,13 +381,13 @@ PgbsonSequenceInitFromJson(const char *jsonString)
 							  currentValue->value.v_doc.data,
 							  currentValue->value.v_doc.data_len))
 		{
-			ereport(ERROR, (errcode(MongoFailedToParse),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 							errmsg("Could not initialize bson from value")));
 		}
 
 		if (!bson_concat(doc, &currentbson))
 		{
-			ereport(ERROR, (errcode(MongoFailedToParse),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 							errmsg(
 								"Could not write value into bson writer for sequence")));
 		}

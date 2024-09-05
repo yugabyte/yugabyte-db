@@ -34,8 +34,7 @@ _PG_init(void)
 	if (!process_shared_preload_libraries_in_progress)
 	{
 		ereport(ERROR, (errmsg(
-							"pg_helio_core can only be loaded via shared_preload_libraries"),
-						errhint(
+							"pg_helio_core can only be loaded via shared_preload_libraries"
 							"Add pg_helio_core to shared_preload_libraries configuration "
 							"variable in postgresql.conf. ")));
 	}

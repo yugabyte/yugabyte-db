@@ -18,7 +18,7 @@
 
 #include "io/helio_bson_core.h"
 #include "query/helio_bson_compare.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
@@ -150,7 +150,7 @@ inline static void
 pg_attribute_noreturn()
 ThrowUnexpectedFieldError(bool leftNext, bool rightNext)
 {
-	ereport(ERROR, (errcode(MongoInternalError), errmsg(
+	ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR), errmsg(
 						"Unexpected bsonquery %s value had more than one field.",
 						leftNext ? "left" :
 						"right")));

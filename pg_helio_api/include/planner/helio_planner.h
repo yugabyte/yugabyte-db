@@ -65,7 +65,7 @@ ThrowIfWriteCommandNotAllowed(void)
 		 *  error to appropriate Mongo Client error code and error message.
 		 */
 		ereport(ERROR, (errcode(ERRCODE_DISK_FULL), errmsg(
-							"Can't execute write operation, disk is full.")));
+							"Can't execute write operation, The database disk is full")));
 	}
 }
 

@@ -11,8 +11,9 @@
 #include <postgres.h>
 #include <fmgr.h>
 #include <utils/builtins.h>
-
 #include "utils/mongo_errors.h"
+
+#include "utils/helio_errors.h"
 
 
 /* --------------------------------------------------------- */

@@ -275,7 +275,6 @@ ERROR:  $jsonSchema keyword 'pattern' must be a string
 -- Must be a valid regex
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "pattern": "\\" } } } }');
 ERROR:  Regular expression is invalid: \ at end of pattern
-HINT:  PCRE returned invalid regex: error code 101
 -- Valid Schemas
 SELECT bson_dollar_json_schema('{ "name":"pazu" }', '{ "$jsonSchema": { "properties" : { "name" : { "pattern": "" } } } }');
  bson_dollar_json_schema 
