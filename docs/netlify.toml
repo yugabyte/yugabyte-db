@@ -1382,8 +1382,6 @@
             https://www.google.com/recaptcha/
             https://www.googletagmanager.com/
             https://www.gstatic.com/recaptcha/
-            https://x.clearbitjs.com
-            https://js.driftt.com/
             https://cdn.segment.com/
             https://j.6sc.co/
             https://cdn.rudderlabs.com/
@@ -1429,7 +1427,6 @@
             https://app.supademo.com/
             https://www.google.com/
             https://www.youtube.com/
-            https://js.driftt.com/
         ;
 
         frame-ancestors 'self'
@@ -1439,7 +1436,6 @@
         ;
 
         media-src 'self' 'unsafe-inline'
-        https://js.driftt.com/conductor/assets/
         ;
 '''
     X-Content-Type-Options = "nosniff"
