@@ -47,7 +47,7 @@ export const CONST_VALUES = {
   SINGLE_QUOTES_SEPARATOR: "'",
   COMMA_SEPARATOR: ',',
   EQUALS: '=',
-  JWKS: 'jwks',
+  JWKS_EQUALS: 'jwks=',
   JWT_JWKS_URL: 'jwt_jwks_url'
 };
 
@@ -325,11 +325,10 @@ export const unformatConf = (GFlagInput) => {
     }
 
     // Extract jwks content from the row input if it exists
-    if (
-      GFlagRowConfSubset.includes(CONST_VALUES.JWKS) &&
-      !GFlagRowConfSubset.includes(CONST_VALUES.JWT_JWKS_URL)
-    ) {
-      const JWKSKey = GFlagRowConfSubset.substring(GFlagRowConfSubset.indexOf(CONST_VALUES.JWKS));
+    if (GFlagRowConfSubset.includes(CONST_VALUES.JWKS_EQUALS)) {
+      const JWKSKey = GFlagRowConfSubset.substring(
+        GFlagRowConfSubset.indexOf(CONST_VALUES.JWKS_EQUALS)
+      );
       if (isNonEmptyString(JWKSKey)) {
         GFlagRowConfSubset = GFlagRowConfSubset.replace(JWKSKey, '');
         GFlagRowConfSubset = GFlagRowConfSubset.trimEnd();
