@@ -3,7 +3,6 @@ description = "YugabyteDB, the transactional, high-performance database for buil
 copyright = "Yugabyte, Inc."
 privacy_policy = "https://www.yugabyte.com/privacy-policy/"
 kapa_ai = true
-drift_snippet = true
 search_banner = false
 version_menu = "Releases"
 
