@@ -285,11 +285,20 @@ public class XClusterConfig extends Model {
         .findAny();
   }
 
-  public Optional<XClusterNamespaceConfig> maybeGetNamespaceById(String namespaceId) {
-    // There will be at most one namespaceConfig for a namespaceId within each xCluster config.
-    return this.getNamespaceDetails().stream()
-        .filter(namespaceConfig -> namespaceConfig.getSourceNamespaceId().equals(namespaceId))
-        .findAny();
+  public Optional<XClusterNamespaceConfig> maybeGetNamespaceById(String sourceNamespaceId) {
+    // There will be at most one namespaceConfig for a sourceNamespaceId within each xCluster
+    // config.
+    Optional<XClusterNamespaceConfig> optClusterNamespaceConfig =
+        this.getNamespaceDetails().stream()
+            .filter(
+                namespaceConfig -> namespaceConfig.getSourceNamespaceId().equals(sourceNamespaceId))
+            .findAny();
+
+    if (!optClusterNamespaceConfig.isPresent()) {
+      log.info(
+          "Cannot find an xClusterNamespaceConfig with sourceNamespaceId {}", sourceNamespaceId);
+    }
+    return optClusterNamespaceConfig;
   }
 
   public Optional<DrConfig> maybeGetDrConfig() {
