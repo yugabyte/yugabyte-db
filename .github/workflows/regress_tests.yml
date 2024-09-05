@@ -29,6 +29,14 @@ jobs:
 
       - name: Install package dependencies
         run: |
+          export PG_VERSION=16
+          export CITUS_VERSION=12.1
+
+          export LC_ALL=en_US.UTF-8
+          export LANGUAGE=en_US
+          export LC_COLLATE=en_US.UTF-8
+          export LC_CTYPE=en_US.UTF-8
+
           # Create the file repository configuration:
           sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main 16" > /etc/apt/sources.list.d/pgdg.list'
           # Import the repository signing key:
@@ -69,7 +77,12 @@ jobs:
           sudo make install
 
       - name: Run Tests
-        run: make check
+        run:
+          export LC_ALL=en_US.UTF-8
+          export LANGUAGE=en_US
+          export LC_COLLATE=en_US.UTF-8
+          export LC_CTYPE=en_US.UTF-8
+          make check
 
       - name: Citus Indent
         run: |
