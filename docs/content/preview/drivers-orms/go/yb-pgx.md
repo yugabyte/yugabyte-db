@@ -5,9 +5,9 @@ linkTitle: Connect an app
 description: Connect a Go application using YugabyteDB PGX Smart Driver
 menu:
   preview:
-    identifier: yb-pgx-driver
+    identifier: go-1-yb-pgx-driver
     parent: go-drivers
-    weight: 400
+    weight: 500
 type: docs
 ---
 

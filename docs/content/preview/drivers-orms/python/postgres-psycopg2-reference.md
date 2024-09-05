@@ -11,7 +11,7 @@ menu:
     name: Python Drivers
     identifier: ref-postgres-psycopg2-driver
     parent: python-drivers
-    weight: 660
+    weight: 110
 type: docs
 ---
 

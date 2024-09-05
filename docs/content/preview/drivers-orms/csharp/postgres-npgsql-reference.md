@@ -9,7 +9,7 @@ aliases:
 menu:
   preview:
     name: C# Drivers
-    identifier: ref-postgres-npgsql-driver
+    identifier: ref-2-postgres-npgsql-driver
     parent: csharp-drivers
     weight: 100
 type: docs

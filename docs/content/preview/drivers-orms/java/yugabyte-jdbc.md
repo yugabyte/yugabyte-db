@@ -12,9 +12,9 @@ aliases:
   - /preview/integrations/jdbc-drivers/
 menu:
   preview:
-    identifier: yugabyte-jdbc-driver
+    identifier: java-driver-1-yugabyte-jdbc
     parent: java-drivers
-    weight: 100
+    weight: 500
 type: docs
 ---
 

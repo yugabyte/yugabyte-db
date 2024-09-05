@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: yugabyte-psycopg2-driver
     parent: python-drivers
-    weight: 400
+    weight: 500
 type: docs
 ---
 

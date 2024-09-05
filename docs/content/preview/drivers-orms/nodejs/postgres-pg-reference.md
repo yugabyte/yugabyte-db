@@ -11,7 +11,7 @@ menu:
     name: Node.js Drivers
     identifier: ref-postgres-pg-driver
     parent: nodejs-drivers
-    weight: 601
+    weight: 100
 type: docs
 ---
 

@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: java-orm-ebean
     parent: java-drivers
-    weight: 200
+    weight: 600
 type: docs
 ---
 

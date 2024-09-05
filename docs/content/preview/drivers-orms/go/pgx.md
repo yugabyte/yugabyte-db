@@ -5,9 +5,9 @@ linkTitle: Connect an app
 description: Connect a Go application using PGX Driver
 menu:
   preview:
-    identifier: pgx-driver
+    identifier: go-2-pgx-driver
     parent: go-drivers
-    weight: 410
+    weight: 500
 type: docs
 ---
 

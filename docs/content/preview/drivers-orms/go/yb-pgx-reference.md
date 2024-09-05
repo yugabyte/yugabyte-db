@@ -10,9 +10,9 @@ aliases:
 menu:
   preview:
     name: Go Drivers
-    identifier: ref-yb-pgx-go-driver
+    identifier: ref-1-yb-pgx-go-driver
     parent: go-drivers
-    weight: 700
+    weight: 100
 type: docs
 ---
 

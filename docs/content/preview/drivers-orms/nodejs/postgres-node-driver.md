@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: postgres-node-driver
     parent: nodejs-drivers
-    weight: 600
+    weight: 500
 type: docs
 ---
 

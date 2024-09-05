@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: ycql-node-driver
     parent: nodejs-drivers
-    weight: 600
+    weight: 500
 type: docs
 ---
 

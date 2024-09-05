@@ -9,9 +9,9 @@ aliases:
 menu:
   preview:
     name: JDBC Drivers
-    identifier: ref-postgres-jdbc-driver
+    identifier: ref-2-postgres-jdbc-driver
     parent: java-drivers
-    weight: 300
+    weight: 100
 type: docs
 ---
 

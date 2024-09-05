@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: pg-orm
     parent: go-drivers
-    weight: 610
+    weight: 600
 type: docs
 ---
 

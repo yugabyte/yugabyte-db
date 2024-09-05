@@ -9,9 +9,9 @@ aliases:
 menu:
   preview:
     name: JDBC Drivers
-    identifier: ref-yugabyte-jdbc-driver
+    identifier: ref-1-yugabyte-jdbc-driver
     parent: java-drivers
-    weight: 300
+    weight: 100
 type: docs
 ---
 

@@ -6,7 +6,7 @@ description: Connect a Java application using PostgreSQL JDBC driver
 badges: ysql
 menu:
   preview:
-    identifier: postgres-jdbc-driver
+    identifier: java-driver-3-jdbc-postgres
     parent: java-drivers
     weight: 500
 type: docs

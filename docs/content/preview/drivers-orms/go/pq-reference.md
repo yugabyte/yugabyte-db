@@ -9,9 +9,9 @@ aliases:
 menu:
   preview:
     name: Go Drivers
-    identifier: ref-pq-go-driver
+    identifier: ref-3-pq-go-driver
     parent: go-drivers
-    weight: 720
+    weight: 100
 type: docs
 ---
 

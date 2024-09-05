@@ -9,7 +9,7 @@ menu:
   preview:
     identifier: ysql-aiopg
     parent: python-drivers
-    weight: 571
+    weight: 520
 type: docs
 ---
 

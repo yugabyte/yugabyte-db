@@ -5,7 +5,7 @@ linkTitle: Connect an app
 description: Connect a C# application using Npgsql Smart Driver
 menu:
   preview:
-    identifier: csharp-driver-ysql
+    identifier: csharp-1-driver-ysql
     parent: csharp-drivers
     weight: 500
 type: docs

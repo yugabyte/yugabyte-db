@@ -11,7 +11,7 @@ menu:
     name: Node.js Drivers
     identifier: ref-yugabyte-pg-driver
     parent: nodejs-drivers
-    weight: 600
+    weight: 100
 type: docs
 ---
 
