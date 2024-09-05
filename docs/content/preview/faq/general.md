@@ -37,31 +37,31 @@ YugabyteDB stands out as a unique database solution due to its combination of fe
 
 YugabyteDB is 100% open source. It is licensed under Apache 2.0.
 
-{{<link dest="https://github.com/yugabyte/yugabyte-db" text="Source code">}}
+{{<link dest="https://github.com/yugabyte/yugabyte-db" text="Source code" icon-before="true">}}
 
 ### How many major releases YugabyteDB has had so far?
 
 YugabyteDB released its first beta, [v0.9](https://www.yugabyte.com/blog/yugabyte-has-arrived/) in November 2017. Since then, several stable and preview versions have been released. The current stable version is {{<release "stable">}} and the current preview version is {{<release "preview">}}.
 
-{{<link dest="/preview/releases/ybdb-releases/" text="Releases">}}
+{{<link dest="/preview/releases/ybdb-releases/" text="Releases" icon-before="true">}}
 
 ### What is the difference between preview and stable versions
 
 Preview releases include features under active development and are recommended for development and testing only. Stable releases undergo rigorous testing for a longer period of time and are ready for production use.
 
-{{<link dest="/preview/releases/versioning/#feature-maturity" text="Release versioning">}}
+{{<link dest="/preview/releases/versioning/#feature-maturity" text="Release versioning" icon-before="true">}}
 
 ### What are the upcoming features
 
 The roadmap for upcoming releases and the list of recently released featured can be found on the [yugabyte-db](https://github.com/yugabyte/yugabyte-db) repository on GitHub.
 
-{{<link dest="https://github.com/yugabyte/yugabyte-db#whats-being-worked-on" text="Current roadmap">}}
+{{<link dest="https://github.com/yugabyte/yugabyte-db#whats-being-worked-on" text="Current roadmap" icon-before="true">}}
 
 ### Which companies are currently using YugabyteDB in production?
 
 Global organizations of all sizes leverage YugabyteDB to fulfill their application requirements.
 
-{{<link dest="https://www.yugabyte.com/success-stories/" text="Success Stories">}}
+{{<link dest="https://www.yugabyte.com/success-stories/" text="Success Stories" icon-before="true">}}
 
 ### How do I report a security vulnerability?
 
@@ -75,7 +75,7 @@ Follow the steps in the [vulnerability disclosure policy](../../secure/vulnerabi
 
 **[YugabyteDB Aeon](../../yugabyte-cloud/)** is a fully-managed cloud service on Amazon Web Services (AWS), Microsoft Azure, and Google Cloud Platform (GCP). [Sign up](https://cloud.yugabyte.com/) to get started.
 
-{{<link dest="https://www.yugabyte.com/compare-products/" text="Compare deployment options">}}
+{{<link dest="https://www.yugabyte.com/compare-products/" text="Compare deployment options" icon-before="true">}}
 
 ### When is YugabyteDB a good fit?
 
@@ -95,19 +95,19 @@ YugabyteDB is not a good fit for traditional Online Analytical Processing (OLAP)
 
 A YugabyteDB [universe](/preview/architecture/key-concepts/#universe) comprises one [primary cluster](/preview/architecture/key-concepts/#primary-cluster) and zero or more [read replica clusters](/preview/architecture/key-concepts/#read-replica-cluster) that collectively function as a resilient and scalable distributed database. It is common to have just a primary cluster and hence the terms cluster and universe are sometimes used interchangeably but it is worthwhile to note that they are different.
 
-{{<link dest="/preview/architecture/key-concepts/" text="More key concepts">}}
+{{<link dest="/preview/architecture/key-concepts/" text="More key concepts" icon-before="true">}}
 
 ### Are there any performance benchmarks available?
 
 YugabyteDB is regularly benchmarked using a variety of standard benchmarks like [TPC-C](/preview/benchmark/tpcc/), [YCSB](/preview/benchmark/ycsb-ysql/), and [sysbench](/preview/benchmark/sysbench-ysql/).
 
-{{<link dest="/preview/benchmark/" text="Benchmark">}}
+{{<link dest="/preview/benchmark/" text="Benchmark" icon-before="true">}}
 
 ### How is YugabyteDB tested for correctness
 
 Apart from the rigorous failure testing, YugabyteDB passes most of the scenarios in [Jepsen](https://jepsen.io/) testing. Jepsen is a methodology and toolset used to verify the correctness of distributed systems, particularly in the context of consistency models and fault tolerance and has become a standard for stress-testing distributed databases, data stores, and other distributed systems.
 
-{{<link dest="/preview/benchmark/resilience/jepsen-testing/" text="Jepsen testing">}}
+{{<link dest="/preview/benchmark/resilience/jepsen-testing/" text="Jepsen testing" icon-before="true">}}
 
 ### How does YugabyteDB compare to other databases
 
@@ -116,7 +116,7 @@ We have published detailed comparison information against multiple SQL and NoSQL
 - **SQL** - [CockroachDB](../comparisons/cockroachdb/), [TiDB](../comparisons/tidb/), [Vitess](../comparisons/vitess/), [Amazon Aurora](../comparisons/amazon-aurora/), [Google Spanner](../comparisons/google-spanner/)
 - **NOSQL** - [MongoDB](../comparisons/mongodb/), [FoundationDB](../comparisons/foundationdb/), [Cassandra](../comparisons/cassandra/), [DynamoDB](../comparisons/amazon-dynamodb/), [CosmosDB](../comparisons/azure-cosmos/)
 
-{{<link dest="../comparisons/" text="Compare YugabyteDB to other databases">}}
+{{<link dest="../comparisons/" text="Compare YugabyteDB to other databases" icon-before="true">}}
 
 ## PostgreSQL support
 
@@ -124,25 +124,25 @@ We have published detailed comparison information against multiple SQL and NoSQL
 
 YugabyteDB is [wire-protocol, syntax, feature and runtime](https://www.yugabyte.com/postgresql/postgresql-compatibility/) compatible with PostgreSQL. But that said, supporting all PostgreSQL features in a distributed system is not always feasible.
 
-{{<link dest="/preview/explore/ysql-language-features/postgresql-compatibility/#unsupported-postgresql-features" text="PostgreSQL compatibility">}}
+{{<link dest="/preview/explore/ysql-language-features/postgresql-compatibility/#unsupported-postgresql-features" text="PostgreSQL compatibility" icon-before="true">}}
 
 ### Can I use my existing PostgreSQL tools and drivers with YugabyteDB
 
 Yes. YugabyteDB is [fully compatible](#how-compatible-is-yugabytedb-with-postgresql) with PostgreSQL and automatically works well with most of PostgreSQL tools.
 
-{{<link dest="/preview/integrations/" text="Integrations">}}
+{{<link dest="/preview/integrations/" text="Integrations" icon-before="true">}}
 
 ### Are PostgreSQL extensions supported
 
 YugabyteDB pre-bundles many popular extensions and these should be readily available on your cluster. But given the distributed nature of YugabyteDB, not all extensions are supported by default.
 
-{{<link dest="/preview/explore/ysql-language-features/pg-extensions/" text="PostgreSQL extensions">}}
+{{<link dest="/preview/explore/ysql-language-features/pg-extensions/" text="PostgreSQL extensions" icon-before="true">}}
 
 ### How can I migrate from PostgreSQL
 
 YugabyteDB is fully compatible with PostgreSQL and hence most PostgreSQL applications should work as is. To address corner cases, we have published a [comprehensive guide](https://docs.yugabyte.com/stable/manage/data-migration/migrate-from-postgres/) to help you migrate from PostgreSQL.
 
-{{<link dest="/preview/manage/data-migration/" text="Migrate data">}}
+{{<link dest="/preview/manage/data-migration/" text="Migrate data" icon-before="true">}}
 
 ## Architecture
 
@@ -150,41 +150,42 @@ YugabyteDB is fully compatible with PostgreSQL and hence most PostgreSQL applica
 
 The table data is split into [tablets](/preview/architecture/key-concepts/#tablet) and the table rows are mapped to the tablets via [sharding](/preview/explore/linear-scalability/data-distribution/). The tablets themselves are distributed across the various nodes in the cluster.
 
-{{<link dest="/preview/explore/linear-scalability/data-distribution/" text="Data distribution">}}
+{{<link dest="/preview/explore/linear-scalability/data-distribution/" text="Data distribution" icon-before="true">}}
 
 ### How does YugabyteDB scale
 
 YugabyteDB scales seamlessly when new nodes are added to the cluster without any service disruption. Table data is [stored distributed](#how-does-yugabytedb-distribute-data) in tablets. When new nodes are added, the rebalancer moves certain tablets to other nodes and keeps the number of tablets on each node more or less the same. As data grows, these tablets also split into two and are moved to other nodes.
 
-{{<link dest="/preview/explore/linear-scalability/" text="Horizontal scalability">}}
+{{<link dest="/preview/explore/linear-scalability/" text="Horizontal scalability" icon-before="true">}}
 
 ### How does YugabyteDB provide high availability
 
 YugabyteDB replicates [tablet](/preview/architecture/key-concepts/#tablet) data onto [followers](/preview/architecture/key-concepts/#tablet-follower) of the tablet via [RAFT](/preview/architecture/docdb-replication/raft/) consensus. This ensures that a consistent copy of the data is available in case of failures. On failures, one of the tablet followers is promoted to be the [leader](/preview/architecture/key-concepts/#tablet-leader).
 
-{{<link dest="/preview/explore/fault-tolerance/" text="Resiliency and high availability">}}
+{{<link dest="/preview/explore/fault-tolerance/" text="Resiliency and high availability" icon-before="true">}}
 
 ### How is data consistency maintained across multiple nodes
 
 Every write (insert, update, delete) to the data is replicated via [RAFT](/preview/architecture/docdb-replication/raft/) consensus to [tablet followers](/preview/architecture/key-concepts/#tablet-follower) as per the [replication factor (RF)](/stable/architecture/key-concepts/#replication-factor-rf) of the cluster. Before acknowledging the write operation back to the client, YugabyteDB ensures that the data is replicated to a quorum (RF/2 + 1) of followers.
 
-{{<link dest="/preview/architecture/docdb-replication/replication/" text="Synchronous replication">}}
+{{<link dest="/preview/architecture/docdb-replication/replication/" text="Synchronous replication" icon-before="true">}}
 
 ### What is tablet splitting
 
 Data is stored in [tablets](/preview/architecture/key-concepts/#tablet). As the tablet grows, the tablet splits into two. This enables some data to be moved to other nodes in the cluster.
 
-{{<link dest="/preview/architecture/docdb-sharding/tablet-splitting/" text="Tablet splitting">}}
+{{<link dest="/preview/architecture/docdb-sharding/tablet-splitting/" text="Tablet splitting" icon-before="true">}}
 
 ### Are indexes colocated with tables
 
 Indexes are not typically colocated with the base table. The sharding of indexes is based on the primary key of the index and is independent of how the main table is sharded/distributed which is based on the primary key of the table.
 
-{{<link dest="/preview/explore/ysql-language-features/indexes-constraints/" text="Explore indexes">}}
-{{<link dest="/preview/explore/colocation/" text="Colocating tables">}}
+{{<link dest="/preview/explore/ysql-language-features/indexes-constraints/" text="Explore indexes" icon-before="true">}}
+<br>
+{{<link dest="/preview/explore/colocation/" text="Colocating tables" icon-before="true">}}
 
 ### How can YugabyteDB be both CP and ensure high availability at the same time?
 
 In terms of the [CAP theorem](https://www.yugabyte.com/blog/a-for-apple-b-for-ball-c-for-cap-theorem-8e9b78600e6d), YugabyteDB is a consistent and partition-tolerant (CP) database. It ensures high availability (HA) for most practical situations even while remaining strongly consistent. While this may seem to be a violation of the CAP theorem, that is not the case. CAP treats availability as a binary option whereas YugabyteDB treats availability as a percentage that can be tuned to achieve high write availability (reads are always available as long as a single node is available).
 
-{{<link dest="/preview/architecture/design-goals/#partition-tolerance-cap" text="Partition Tolerance - CAP">}}
+{{<link dest="/preview/architecture/design-goals/#partition-tolerance-cap" text="Partition Tolerance - CAP" icon-before="true">}}
