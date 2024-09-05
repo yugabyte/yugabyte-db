@@ -1,5 +1,5 @@
 ---
-title: Export PostgreSQL logs from YugabyteDB Aeon clusters
+title: Export YSQL logs from YugabyteDB Aeon clusters
 headerTitle: Export logs
 linkTitle: Export logs
 description: Export cluster metrics to third-party tools.
@@ -43,7 +43,7 @@ To enable database query logging for a cluster, do the following:
 
 YugabyteDB Aeon begins the (rolling) restart.
 
-Logs are exported to the third-party tool in near real time. After the setup is complete and YSQL database queries are submitted, verify that the YSQL database query logs are visible in the tool; they should be available in minutes. Logs are exported with preset tags and a [log line prefix](#include-in-the-log-prefix-log_line_prefix) so that you can filter them further by cloud, region, availability zone, cluster_id, node-type, and node-name. Depending on your tool, you can also perform text searches of the logs.
+Logs are exported to the third-party tool in near real time. After the setup is complete and YSQL database queries are submitted, verify that the YSQL database query logs are visible in the tool; they should be available in minutes. Logs are exported with preset tags and a [log line prefix](#include-in-the-log-prefix-log-line-prefix) so that you can filter them further by cloud, region, availability zone, cluster_id, node-type, and node-name. Depending on your tool, you can also perform text searches of the logs.
 
 ### Logging settings
 

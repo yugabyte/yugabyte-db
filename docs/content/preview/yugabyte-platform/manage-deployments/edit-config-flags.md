@@ -22,6 +22,14 @@ For more information about the available configuration flags, see the following:
 - [YB-TServer configuration reference](../../../reference/configuration/yb-tserver/)
 - [YB-Master configuration reference](../../../reference/configuration/yb-master/)
 
+## Enhanced Postgres Compatibility
+
+If your cluster database version is v2024.2 or later, you can enable early access features for PostgreSQL compatibility by navigating to the universe and clicking **Actions > Edit Postgres Compatibility**. For more information, refer to [Enhanced PostgreSQL Compatibility Mode](../../../explore/ysql-language-features/postgresql-compatibility/#enhanced-postgresql-compatibility-mode).
+
+{{<warning title="Flag settings">}}
+Enabling Enhanced Postgres Compatibility sets several flags, and overrides any settings you may have set for the same flags on the **G-Flags** tab. The **G-Flags** tab will however continue to display the setting that you customized.
+{{</warning>}}
+
 ## Modify configuration flags
 
 You can add and edit configuration flags by navigating to the universe and clicking **Actions > Edit Flags** to open the **G-Flags** dialog shown in the following illustration:

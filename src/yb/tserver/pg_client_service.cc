@@ -1419,7 +1419,6 @@ class PgClientServiceImpl::Impl {
       tserver::WaitStatesPB* resp, int sample_size, int& samples_considered) {
     auto* messenger = tablet_server_.GetMessenger(component);
     if (!messenger) {
-      LOG_WITH_FUNC(ERROR) << "got no messenger for " << yb::ToString(component);
       return;
     }
 

@@ -55,7 +55,11 @@ func Install(version string) error {
 		return fmt.Errorf("could not set ownership of %s: %v", YbactlLogFile(), err)
 	}
 
-	if err := createInstallDirs(); err != nil {
+	if err := createSoftwareInstallDirs(); err != nil {
+		return err
+	}
+
+	if err := createDataInstallDirs(); err != nil {
 		return err
 	}
 	if err := copyBits(version); err != nil {
@@ -97,16 +101,37 @@ func Install(version string) error {
 	return nil
 }
 
-func createInstallDirs() error {
-	createDirs := []string{
+func createSoftwareInstallDirs() error {
+	dirs := []string{
 		GetSoftwareRoot(),
 		dm.WorkingDirectory(),
-		filepath.Join(GetBaseInstall(), "data"),
-		filepath.Join(GetBaseInstall(), "data/logs"),
 		GetInstallerSoftwareDir(),
 		GetBaseInstall(),
 	}
+	if err := CreateDirs(dirs); err != nil {
+		return err
+	}
+	// Remove the symlink if one exists
+	SetActiveInstallSymlink()
+	return nil
+}
 
+func createDataInstallDirs() error {
+	dirs := []string{
+		filepath.Join(GetBaseInstall(), "data"),
+		filepath.Join(GetBaseInstall(), "data/logs"),
+	}
+	return CreateDirs(dirs)
+}
+
+func createUpgradeDirs() error {
+	dirs := []string{
+		GetInstallerSoftwareDir(),
+	}
+	return CreateDirs(dirs)
+}
+
+func CreateDirs(createDirs []string) error {
 	for _, dir := range createDirs {
 		_, err := os.Stat(dir)
 		if os.IsNotExist(err) {
@@ -121,30 +146,6 @@ func createInstallDirs() error {
 			if err != nil {
 				return fmt.Errorf("failed to change ownership of " + dir + " to " +
 					serviceuser + ": " + err.Error())
-			}
-		}
-	}
-
-	// Remove the symlink if one exists
-	SetActiveInstallSymlink()
-	return nil
-}
-
-func createUpgradeDirs() error {
-	createDirs := []string{
-		GetInstallerSoftwareDir(),
-	}
-
-	for _, dir := range createDirs {
-		if err := MkdirAll(dir, DirMode); err != nil {
-			return fmt.Errorf("failed creating directory %s: %s", dir, err.Error())
-		}
-		if HasSudoAccess() {
-			err := Chown(dir, viper.GetString("service_username"), viper.GetString("service_username"),
-				true)
-			if err != nil {
-				return fmt.Errorf("failed to change ownership of " + dir + " to " +
-					viper.GetString("service_username") + ": " + err.Error())
 			}
 		}
 	}

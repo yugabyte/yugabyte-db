@@ -8,11 +8,11 @@ menu:
   preview_yugabyte-platform:
     parent: alerts-monitoring
     identifier: prometheus-custom
-weight: 670
+weight: 90
 type: indexpage
 ---
 
-Prometheus is a popular standard for time-series monitoring of cloud native infrastructure that treats time-series data as a data source for generating alerts. The format is easy to parse and can be massaged to work with other third-party monitoring systems like Grafana. While YugabyteDB Anywhere includes an [embedded Prometheus instance](../anywhere-metrics/) and uses it for storing time-series metrics data, you can also set up your own independent and separately-managed Prometheus instance.
+Prometheus is a popular standard for time-series monitoring of cloud native infrastructure that treats time-series data as a data source for generating alerts. The format is straightforward to parse and can be massaged to work with other third-party monitoring systems like Grafana. While YugabyteDB Anywhere includes an [embedded Prometheus instance](../anywhere-metrics/) and uses it for storing time-series metrics data, you can also set up your own independent and separately-managed Prometheus instance.
 
 You can use this additional Prometheus instance to collect, visualize, alert on, and analyze universe metrics in your own observability tools, whether in Prometheus itself, or any tool able to use Prometheus as a data source (such as Grafana).
 

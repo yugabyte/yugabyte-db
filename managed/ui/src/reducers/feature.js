@@ -58,7 +58,7 @@ const initialStateFeatureReleased = {
   supportBundle: true,
   enableThirdpartyUpgrade: false,
   enableYbc: true,
-  enableMultiRegionConfig: true,
+  enableMultiRegionConfig: false,
   enableGcpKMS: true,
   enableAzuKMS: true,
   enableRunTimeConfig: true,
@@ -67,7 +67,7 @@ const initialStateFeatureReleased = {
   enableRestore: true,
   enablePrefillKubeConfig: true,
   enableCustomEmailTemplates: true,
-  enableBackupPITR: true
+  enableBackupPITR: false
   // enableRRGflags: true
 };
 

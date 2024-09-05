@@ -626,9 +626,10 @@ select unique2 from onek2 where unique2 = 11 and stringu1 < 'B';
                 QUERY PLAN
 ------------------------------------------
  YB Bitmap Table Scan on onek2
+   Storage Filter: (stringu1 < 'B'::name)
    ->  Bitmap Index Scan on onek2_u2_prtl
          Index Cond: (unique2 = 11)
-(3 rows)
+(4 rows)
 
 select unique2 from onek2 where unique2 = 11 and stringu1 < 'B';
  unique2
@@ -673,17 +674,18 @@ SELECT * FROM (
 select unique1, unique2 from onek2
   where (unique2 = 11 and stringu1 < 'B') or unique1 = 0
 LIMIT ALL) ybview ORDER BY unique2;
-                      QUERY PLAN
-------------------------------------------------------
+                                       QUERY PLAN
+----------------------------------------------------------------------------------------
  Sort
    Sort Key: onek2.unique2
    ->  YB Bitmap Table Scan on onek2
+         Storage Filter: (((unique2 = 11) AND (stringu1 < 'B'::name)) OR (unique1 = 0))
          ->  BitmapOr
                ->  Bitmap Index Scan on onek2_u2_prtl
                      Index Cond: (unique2 = 11)
                ->  Bitmap Index Scan on onek2_u1_prtl
                      Index Cond: (unique1 = 0)
-(8 rows)
+(9 rows)
 
 SELECT * FROM (
 select unique1, unique2 from onek2

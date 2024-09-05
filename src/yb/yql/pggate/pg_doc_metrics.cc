@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugaByteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -68,7 +68,7 @@ PgDocMetrics::DurationWatcher::~DurationWatcher() {
   *duration_ = GetNow(use_zero_duration_, use_high_res_timer_) - start_;
 }
 
-PgDocMetrics::PgDocMetrics(YBCPgExecStatsState* state) : state_(*state) {}
+PgDocMetrics::PgDocMetrics(YBCPgExecStatsState& state) : state_(state) {}
 
 void PgDocMetrics::ReadRequest(TableType relation, uint64_t wait_time) {
   IncRead(&GetStat(&state_, relation), wait_time);

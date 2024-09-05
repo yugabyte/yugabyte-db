@@ -136,7 +136,7 @@ XClusterPoller::XClusterPoller(
 }
 
 XClusterPoller::~XClusterPoller() {
-  VLOG(1) << "Destroying XClusterPoller";
+  VLOG_WITH_PREFIX(1) << "Destroying XClusterPoller";
   DCHECK(shutdown_);
 }
 
@@ -154,7 +154,7 @@ void XClusterPoller::InitDDLQueuePoller(
   Init(use_local_tserver, rate_limiter);
 
   ddl_queue_handler_ = std::make_shared<XClusterDDLQueueHandler>(
-      &local_client_, namespace_name, consumer_namespace_id_, xcluster_context,
+      &local_client_, namespace_name, consumer_namespace_id_, LogPrefix(), xcluster_context,
       std::move(connect_to_pg_func));
 }
 
@@ -261,9 +261,10 @@ void XClusterPoller::DoSetSchemaVersion(
     // Re-enable polling. last_task_schedule_time_ is already current as it was set by the caller
     // function ScheduleSetSchemaVersionIfNeeded.
     if (!is_polling_.exchange(true)) {
-      LOG(INFO) << "Restarting polling on " << producer_tablet_info_.tablet_id
-                << " Producer schema version : " << validated_schema_version_
-                << " Consumer schema version : " << last_compatible_consumer_schema_version_;
+      LOG_WITH_PREFIX(INFO) << "Restarting polling on " << producer_tablet_info_.tablet_id
+                            << " Producer schema version : " << validated_schema_version_
+                            << " Consumer schema version : "
+                            << last_compatible_consumer_schema_version_;
       ScheduleFunc(BIND_FUNCTION_AND_ARGS(XClusterPoller::DoPoll));
     }
   }
@@ -277,7 +278,7 @@ HybridTime XClusterPoller::GetSafeTime() const {
 void XClusterPoller::UpdateSafeTime(int64 new_time) {
   HybridTime new_hybrid_time(new_time);
   if (new_hybrid_time.is_special()) {
-    LOG(WARNING) << "Received invalid xCluster safe time: " << new_hybrid_time;
+    LOG_WITH_PREFIX(WARNING) << "Received invalid xCluster safe time: " << new_hybrid_time;
     return;
   }
 
@@ -522,9 +523,11 @@ void XClusterPoller::HandleApplyChangesResponse(XClusterOutputClientResponse res
       if (s.IsTryAgain()) {
         // The handler will return try again when waiting for safe time to catch up, so can log
         // these errors less frequently.
-        YB_LOG_EVERY_N(WARNING, 300) << "ProcessDDLQueueTable Error: " << s << " " << THROTTLE_MSG;
+        YB_LOG_WITH_PREFIX_EVERY_N(WARNING, 300)
+            << "ProcessDDLQueueTable Error: " << s << " " << THROTTLE_MSG;
       } else {
-        YB_LOG_EVERY_N(WARNING, 30) << "ProcessDDLQueueTable Error: " << s << " " << THROTTLE_MSG;
+        YB_LOG_WITH_PREFIX_EVERY_N(WARNING, 30)
+            << "ProcessDDLQueueTable Error: " << s << " " << THROTTLE_MSG;
       }
       StoreNOKReplicationError();
       if (FLAGS_enable_xcluster_stat_collection) {
@@ -563,8 +566,10 @@ void XClusterPoller::HandleApplyChangesResponse(XClusterOutputClientResponse res
     idle_polls_ = (response.processed_record_count == 0) ? idle_polls_ + 1 : 0;
 
     if (validated_schema_version_ < response.wait_for_version) {
-      LOG(WARNING) << "Pausing Poller since producer schema version " << response.wait_for_version
-                   << " is higher than consumer schema version " << validated_schema_version_;
+      LOG_WITH_PREFIX(WARNING) << "Pausing Poller since producer schema version "
+                               << response.wait_for_version
+                               << " is higher than consumer schema version "
+                               << validated_schema_version_;
       is_polling_ = false;
       validated_schema_version_ = response.wait_for_version - 1;
       return;

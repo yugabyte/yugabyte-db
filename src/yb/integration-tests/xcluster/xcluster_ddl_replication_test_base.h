@@ -19,25 +19,12 @@ namespace yb {
 
 class XClusterDDLReplicationTestBase : public XClusterYsqlTestBase {
  public:
-  struct SetupParams {
-    // By default start with no consumer or producer tables.
-    std::vector<uint32_t> num_consumer_tablets = {};
-    std::vector<uint32_t> num_producer_tablets = {};
-    // We only create one pg proxy per cluster, so we need to ensure that the target ddl_queue table
-    // leader is on the that tserver (so that setting xcluster context works properly).
-    uint32_t replication_factor = 1;
-    uint32_t num_masters = 1;
-    bool ranged_partitioned = false;
-  };
-
   XClusterDDLReplicationTestBase() = default;
   ~XClusterDDLReplicationTestBase() = default;
 
   virtual void SetUp() override;
 
-  Status SetUpClusters();
-
-  Status SetUpClusters(const SetupParams& params);
+  Status SetUpClusters(bool is_colocated = false);
 
   Status EnableDDLReplicationExtension();
 

@@ -233,6 +233,10 @@ yb-voyager export data --export-dir <EXPORT_DIR> \
         --source-db-schema <SOURCE_DB_SCHEMA> # Not applicable for MySQL
 ```
 
+{{< note title="PostgreSQL and parallel jobs" >}}
+For PostgreSQL, make sure that no other processes are running on the source database that can try to take locks; with more than one parallel job, Voyager will not be able to take locks to dump the data.
+{{< /note >}}
+
 Note that the `source-db-schema` argument is required for PostgreSQL and Oracle, and is _not_ applicable for MySQL.
 Refer to [export data](../../reference/data-migration/export-data) for details about the arguments.
 

@@ -153,7 +153,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
             .put("instanceType", i.getInstanceTypeCode())
             .put("replicationFactor", 3)
             .put("numNodes", 3)
-            .put("provider", p.getUuid().toString());
+            .put("provider", p.getUuid().toString())
+            .put("ybSoftwareVersion", "0.0.0.1-b1");
     ArrayNode regionList = Json.newArray().add(r.getUuid().toString());
     userIntentJson.set("regionList", regionList);
     bodyJson.set("clusters", clustersArray(userIntentJson, Json.newObject()));
@@ -192,7 +193,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
             .put("numNodes", 3)
             .put("provider", p.getUuid().toString())
             .put("enableYSQL", "false")
-            .put("accessKeyCode", accessKeyCode);
+            .put("accessKeyCode", accessKeyCode)
+            .put("ybSoftwareVersion", "0.0.0.1-b1");
     ArrayNode regionList = Json.newArray().add(r.getUuid().toString());
     userIntentJson.set("regionList", regionList);
     userIntentJson.set("deviceInfo", createValidDeviceInfo(Common.CloudType.aws));
@@ -253,7 +255,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
             .put("numNodes", 3)
             .put("provider", p.getUuid().toString())
             .put("enableYSQL", "false")
-            .put("accessKeyCode", accessKeyCode);
+            .put("accessKeyCode", accessKeyCode)
+            .put("ybSoftwareVersion", "0.0.0.1-b1");
     ArrayNode regionList = Json.newArray().add(r.getUuid().toString());
     userIntentJson.set("regionList", regionList);
     userIntentJson.set("deviceInfo", createValidDeviceInfo(Common.CloudType.aws));
@@ -304,7 +307,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
             .put("numNodes", 3)
             .put("provider", p.getUuid().toString())
             .put("accessKeyCode", accessKeyCode)
-            .put("enableYCQL", "false");
+            .put("enableYCQL", "false")
+            .put("ybSoftwareVersion", "0.0.0.1-b1");
     ArrayNode regionList = Json.newArray().add(r.getUuid().toString());
     userIntentJson.set("regionList", regionList);
     userIntentJson.set("deviceInfo", createValidDeviceInfo(Common.CloudType.aws));
@@ -381,7 +385,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
             .put("numNodes", 3)
             .put("provider", p.getUuid().toString())
             .put("accessKeyCode", accessKeyCode)
-            .put("enableYSQL", "true");
+            .put("enableYSQL", "true")
+            .put("ybSoftwareVersion", "0.0.0.1-b1");
     userIntentJson
         .putArray("masterGFlags")
         .add(Json.newObject().put("name", "enable_ysql").put("value", "false"));
@@ -433,7 +438,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
             .put("provider", p.getUuid().toString())
             .put("accessKeyCode", accessKeyCode)
             .put("enableYSQL", "false")
-            .put("enableYCQL", "false");
+            .put("enableYCQL", "false")
+            .put("ybSoftwareVersion", "0.0.0.1-b1");
     ArrayNode regionList = Json.newArray().add(r.getUuid().toString());
     userIntentJson.set("regionList", regionList);
     userIntentJson.set("deviceInfo", createValidDeviceInfo(Common.CloudType.aws));
@@ -545,7 +551,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
             .put("instanceType", i.getInstanceTypeCode())
             .put("replicationFactor", 3)
             .put("numNodes", 3)
-            .put("provider", p.getUuid().toString());
+            .put("provider", p.getUuid().toString())
+            .put("ybSoftwareVersion", "0.0.0.1-b1");
     ArrayNode regionList = Json.newArray().add(r.getUuid().toString());
     userIntentJson.set("regionList", regionList);
     userIntentJson.set("deviceInfo", createValidDeviceInfo(Common.CloudType.kubernetes));
@@ -636,7 +643,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
             .put("replicationFactor", 3)
             .put("numNodes", 3)
             .put("enableYEDIS", "false")
-            .put("provider", p.getUuid().toString());
+            .put("provider", p.getUuid().toString())
+            .put("ybSoftwareVersion", "0.0.0.1-b1");
     ArrayNode regionList = Json.newArray().add(r.getUuid().toString());
     userIntentJson.set("regionList", regionList);
     userIntentJson.put("accessKeyCode", accessKeyCode);
@@ -1284,7 +1292,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
             .put("instanceType", "a-instance")
             .put("replicationFactor", 3)
             .put("numNodes", 3)
-            .put("provider", p.getUuid().toString());
+            .put("provider", p.getUuid().toString())
+            .put("ybSoftwareVersion", "0.0.0.1-b1");
     ArrayNode regionList = Json.newArray().add(r.getUuid().toString());
     userIntentJson.set("regionList", regionList);
     bodyJson.set("clusters", clustersArray(userIntentJson, Json.newObject()));
@@ -1336,6 +1345,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     primaryCluster.userIntent.enableYCQL = false;
     primaryCluster.userIntent.ysqlPassword = "@123Byte";
     primaryCluster.userIntent.enableYCQLAuth = false;
+    primaryCluster.userIntent.ybSoftwareVersion = "0.0.0.1-b1";
 
     String accessKeyCode = "someKeyCode";
     AccessKey.create(p.getUuid(), accessKeyCode, new AccessKey.KeyInfo());
@@ -1420,7 +1430,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
             .put("numNodes", 3)
             .put("provider", p.getUuid().toString())
             .put("accessKeyCode", accessKeyCode)
-            .put("enableYSQL", "true");
+            .put("enableYSQL", "true")
+            .put("ybSoftwareVersion", "0.0.0.1-b1");
 
     ArrayNode regionList = Json.newArray().add(r.getUuid().toString());
     userIntentJson.set("regionList", regionList);
@@ -1515,7 +1526,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
             .put("provider", p.getUuid().toString())
             .put("accessKeyCode", accessKeyCode)
             .put("enableYCQLAuth", "true")
-            .put("ycqlPassword", "");
+            .put("ycqlPassword", "")
+            .put("ybSoftwareVersion", "0.0.0.1-b1");
     ArrayNode regionList = Json.newArray().add(r.getUuid().toString());
     userIntentJson.set("regionList", regionList);
     userIntentJson.set("deviceInfo", createValidDeviceInfo(Common.CloudType.aws));
@@ -1553,7 +1565,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
             .put("provider", p.getUuid().toString())
             .put("accessKeyCode", accessKeyCode)
             .put("enableYSQLAuth", "true")
-            .put("ysqlPassword", "");
+            .put("ysqlPassword", "")
+            .put("ybSoftwareVersion", "0.0.0.1-b1");
     ArrayNode regionList = Json.newArray().add(r.getUuid().toString());
     userIntentJson.set("regionList", regionList);
     userIntentJson.set("deviceInfo", createValidDeviceInfo(Common.CloudType.aws));

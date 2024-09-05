@@ -104,11 +104,12 @@ extern int yb_locks_txn_locks_per_tablet;
 extern bool yb_binary_restore;
 
 /*
- * Guc variable for ignoring requests to set heap pg_class oids when yb_binary_restore is set.
+ * Guc variable for ignoring requests to set pg_class oids when yb_binary_restore is set.
  *
- * If true then calls to pg_catalog.binary_upgrade_set_next_heap_pg_class_oid will have no effect.
+ * If true then calls to pg_catalog.binary_upgrade_set_next_{heap|index}_pg_class_oid will have no
+ * effect.
  */
-extern bool yb_ignore_heap_pg_class_oids;
+extern bool yb_ignore_pg_class_oids;
 
 /*
  * Set to true only for runs with EXPLAIN ANALYZE
@@ -347,6 +348,7 @@ const char* YBCGetWaitEventType(uint32_t wait_event_info);
 uint8_t YBCGetQueryIdForCatalogRequests();
 int YBCGetRandomUniformInt(int a, int b);
 YBCWaitEventDescriptor YBCGetWaitEventDescription(size_t index);
+int YBCGetCircularBufferSizeInKiBs();
 
 int YBCGetCallStackFrames(void** result, int max_depth, int skip_count);
 

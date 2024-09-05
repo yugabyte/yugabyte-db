@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.commissioner.UpgradeTaskBase.SPLIT_FALLBACK;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
@@ -13,6 +15,7 @@ import com.yugabyte.yw.commissioner.ITask;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
+import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
@@ -39,6 +42,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseIntent;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ValidateNodeDiskSize;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitStartingFromTime;
+import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckCertificateConfig;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -47,6 +51,7 @@ import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -57,6 +62,7 @@ import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.ConfigureDBApiParams;
+import com.yugabyte.yw.forms.RollMaxBatchSize;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -67,6 +73,7 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
+import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HookScope.TriggerType;
 import com.yugabyte.yw.models.NodeInstance;
@@ -2079,6 +2086,125 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
+   * Create preflight node check to check certificateConfig for on-prem nodes in the universe
+   *
+   * @param clusters the clusters
+   * @param nodesToBeProvisioned the nodes to be provisioned
+   * @param rootCA the rootCA UUID (Null if not required)
+   * @param clientRootCA the clientRootCA UUID (Null if not required)
+   */
+  public void createCheckCertificateConfigTask(
+      Collection<Cluster> clusters,
+      Set<NodeDetails> nodes,
+      @Nullable UUID rootCA,
+      @Nullable UUID clientRootCA,
+      boolean enableClientToNodeEncrypt,
+      @Nullable String sshUserOverride) {
+    // If both rootCA and clientRootCA are empty, then we don't need to check the certificate config
+    // simply return.
+    boolean rootCAisValidCustomCertHostPath =
+        (rootCA != null
+            && CertificateInfo.get(rootCA).getCertType() == CertConfigType.CustomCertHostPath);
+    boolean clientRootCAisValidCustomCertHostPath =
+        (clientRootCA != null
+            && CertificateInfo.get(clientRootCA).getCertType()
+                == CertConfigType.CustomCertHostPath);
+    // If both certs are null, or not of type CustomCertHostPath, skip validation
+    if (!rootCAisValidCustomCertHostPath && !clientRootCAisValidCustomCertHostPath) {
+      return;
+    }
+    // Skip if yb.tls.skip_cert_validation is set to ALL
+    NodeManager.SkipCertValidationType skipType =
+        confGetter.getConfForScope(getUniverse(), UniverseConfKeys.tlsSkipCertValidation);
+    if (skipType == NodeManager.SkipCertValidationType.ALL) {
+      log.info(
+          "Skipping certificate validation as it is disabled."
+              + " Set yb.tls.skip_cert_validation"
+              + " to NONE OR HOSTNAME to enable it back.");
+      return;
+    }
+
+    boolean skipHostNameCheck = skipType == NodeManager.SkipCertValidationType.HOSTNAME;
+    SubTaskGroup subTaskGroup = createSubTaskGroup("CheckCertificateConfig");
+    clusters.stream()
+        .filter(cluster -> cluster.userIntent.providerType == CloudType.onprem)
+        .forEach(
+            cluster -> {
+              nodes.stream()
+                  .filter(node -> cluster.uuid.equals(node.placementUuid))
+                  .forEach(
+                      node -> {
+                        CheckCertificateConfig task = createTask(CheckCertificateConfig.class);
+                        CheckCertificateConfig.Params params = new CheckCertificateConfig.Params();
+                        params.nodeName = node.nodeName;
+                        params.nodeUuid = node.nodeUuid;
+                        params.azUuid = node.azUuid; // Required for using getProvider() in task.
+                        params.placementUuid = node.placementUuid; // Required for getting gFlags.
+                        params.setUniverseUUID(taskParams().getUniverseUUID());
+                        params.rootAndClientRootCASame =
+                            enableClientToNodeEncrypt
+                                && taskParams()
+                                    .rootAndClientRootCASame; // Required till we fix PLAT-14979
+                        params.rootCA = rootCA;
+                        params.setClientRootCA(clientRootCA);
+                        params.SkipHostNameCheck = skipHostNameCheck;
+                        // If ssh user is passed, then always use that
+                        if (StringUtils.isNotBlank(sshUserOverride)) {
+                          params.sshUserOverride = sshUserOverride;
+                        }
+                        task.initialize(params);
+                        subTaskGroup.addSubTask(task);
+                      });
+            });
+    if (subTaskGroup.getSubTaskCount() > 0) {
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
+  }
+
+  /**
+   * Create check certificate config tasks for on-prem nodes in the universe if the nodes are in
+   * ToBeAdded state.
+   *
+   * @param universe the universe
+   * @param clusters the clusters
+   */
+  public void createCheckCertificateConfigTask(Universe universe, Collection<Cluster> clusters) {
+    log.info("Checking certificate config for on-prem nodes in the universe.");
+    Set<Cluster> onPremClusters =
+        clusters.stream()
+            .filter(cluster -> cluster.userIntent.providerType == CloudType.onprem)
+            .collect(Collectors.toSet());
+    if (onPremClusters.isEmpty()) {
+      log.info("No on-prem clusters found in the universe.");
+      return;
+    }
+    UUID rootCA =
+        EncryptionInTransitUtil.isRootCARequired(taskParams()) ? taskParams().rootCA : null;
+    UUID clientRootCA =
+        EncryptionInTransitUtil.isClientRootCARequired(taskParams())
+            ? taskParams().getClientRootCA()
+            : null;
+    boolean enableClientToNodeEncrypt =
+        taskParams().getPrimaryCluster().userIntent.enableClientToNodeEncrypt;
+    // If both rootCA and clientRootCA are empty, then we don't need to check the certificate config
+    if (rootCA == null && clientRootCA == null) {
+      return;
+    }
+
+    Set<NodeDetails> nodesToProvision =
+        PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet);
+    applyOnNodesWithStatus(
+        universe,
+        nodesToProvision,
+        false,
+        NodeStatus.builder().nodeState(NodeState.ToBeAdded).build(),
+        filteredNodes -> {
+          createCheckCertificateConfigTask(
+              clusters, filteredNodes, rootCA, clientRootCA, enableClientToNodeEncrypt, null);
+        });
+  }
+
+  /**
    * Creates the hook tasks (pre/post NodeProvision) based on the triggerType specified.
    *
    * @param nodes a collection of nodes to be processed.
@@ -3127,5 +3253,59 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           }
         };
     return createRunNodeCommandTask(universe, nodes, command, consumer, null /* shell context */);
+  }
+
+  protected <X> void addParallelTasks(
+      Collection<X> vals,
+      Function<X, ITask> taskInitializer,
+      String subTaskGroupName,
+      UserTaskDetails.SubTaskGroupType subTaskGroupType) {
+    addParallelTasks(vals, taskInitializer, subTaskGroupName, subTaskGroupType, false);
+  }
+
+  protected <X> void addParallelTasks(
+      Collection<X> vals,
+      Function<X, ITask> taskInitializer,
+      String subTaskGroupName,
+      UserTaskDetails.SubTaskGroupType subTaskGroupType,
+      boolean ignoreErrors) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup(subTaskGroupName, ignoreErrors);
+    vals.forEach(
+        value -> {
+          subTaskGroup.addSubTask(taskInitializer.apply(value));
+        });
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    subTaskGroup.setSubTaskGroupType(subTaskGroupType);
+  }
+
+  protected RollMaxBatchSize getCurrentRollBatchSize(
+      Universe universe, RollMaxBatchSize rollMaxBatchSizeFromParams) {
+    RollMaxBatchSize rollMaxBatchSize = new RollMaxBatchSize();
+    if (rollMaxBatchSizeFromParams != null
+        && confGetter.getConfForScope(universe, UniverseConfKeys.upgradeBatchRollEnabled)) {
+      rollMaxBatchSize = rollMaxBatchSizeFromParams;
+    } else {
+      RollMaxBatchSize max = UpgradeTaskBase.getMaxNodesToRoll(universe);
+      int percent =
+          confGetter.getConfForScope(universe, UniverseConfKeys.upgradeBatchRollAutoPercent);
+      int number =
+          confGetter.getConfForScope(universe, UniverseConfKeys.upgradeBatchRollAutoNumber);
+      int numberToSet = 0;
+      if (percent > 0) {
+        numberToSet = max.getPrimaryBatchSize() * percent / 100;
+      } else if (number > 1) {
+        numberToSet = Math.min(number, max.getPrimaryBatchSize());
+      }
+      if (numberToSet > 1) {
+        rollMaxBatchSize.setPrimaryBatchSize(numberToSet);
+        rollMaxBatchSize.setReadReplicaBatchSize(numberToSet);
+      }
+    }
+    if (getTaskCache() != null && getTaskCache().get(SPLIT_FALLBACK) != null) {
+      RollMaxBatchSize fallback = getTaskCache().get(SPLIT_FALLBACK, RollMaxBatchSize.class);
+      // Setting this only for primary cluster, RR still can be rolled with any speed.
+      rollMaxBatchSize.setPrimaryBatchSize(fallback.getPrimaryBatchSize());
+    }
+    return rollMaxBatchSize;
   }
 }

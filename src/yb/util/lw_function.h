@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugaByteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -27,7 +27,7 @@ template<class Ret, class... Args>
 class LightweightFunction<Ret(Args...)> {
  public:
   Ret operator()(Args... args) const {
-    return Call(std::move(args)...);
+    return Call(std::forward<decltype(args)>(args)...);
   }
 
  protected:
@@ -71,7 +71,7 @@ class LightweightFunctionImpl : public LWFunction<Ret(Args...)> {
 
  private:
   Ret Call(Args... args) const override {
-    return Trans::Transform(functor_)(std::move(args)...);
+    return Trans::Transform(functor_)(std::forward<decltype(args)>(args)...);
   }
 
   const Func& functor_;

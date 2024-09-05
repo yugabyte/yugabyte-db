@@ -21,6 +21,7 @@ import {
 
 function mapStateToProps(state) {
   return {
+    accessKeys: state.cloud.accessKeys,
     universe: state.universe,
     customer: state.customer,
     providers: state.cloud.providers

@@ -13,7 +13,7 @@ yba backup list-increments [flags]
 ### Options
 
 ```
-      --backup-uuid string   [Required] Base backup uuid
+      --backup-uuid string   [Required] Base backup uuid to list incremental backups.
   -h, --help                 help for list-increments
 ```
 
@@ -33,5 +33,5 @@ yba backup list-increments [flags]
 
 ### SEE ALSO
 
-* [yba backup](yba_backup.md)	 - Manage YugabyteDB Anywhere backups
+* [yba backup](yba_backup.md)	 - Manage YugabyteDB Anywhere universe backups
 

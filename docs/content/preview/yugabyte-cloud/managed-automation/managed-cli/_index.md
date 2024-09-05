@@ -1,5 +1,5 @@
 ---
-title: ybm CLI
+title: YugabyteDB Aeon CLI (ybm)
 headerTitle: YugabyteDB Aeon CLI
 linkTitle: ybm CLI
 description: Use YugabyteDB Aeon CLI to create and manage YugabyteDB clusters.

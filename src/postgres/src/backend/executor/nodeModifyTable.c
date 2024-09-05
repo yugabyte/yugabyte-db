@@ -1473,11 +1473,17 @@ ExecUpdate(ModifyTableState *mtstate,
 		bool row_found = false;
 
 		/*
-		 * A bitmapset of columns that have been marked as being updated at
-		 * planning time. This set needs to be updated below if either:
-		 * - The update optimization comparing new and old values to identify
-		 *   actually modified columns is enabled.
-		 * - Before row triggers were fired.
+		 * A bitmapset of columns whose values are written to the main table.
+		 * This is initialized to the set of columns marked for update at
+		 * planning time. This set is updated as follows:
+		 * - Columns modified by before row triggers are added.
+		 * - Primary key columns in the setlist that are unmodified are removed.
+		 *
+		 * Maintaining this bitmapset allows us to continue writing out
+		 * unmodified columns to the main table as a safety guardrail, while
+		 * selectively skipping index updates and constraint checks.
+		 * This guardrail may be removed in the future. This also helps avoid
+		 * having a dependency on row locking.
 		 */
 		Bitmapset *cols_marked_for_update = bms_copy(rte->updatedCols);
 
@@ -1565,6 +1571,8 @@ ExecUpdate(ModifyTableState *mtstate,
 			recheckIndexes = ExecInsertIndexTuplesOptimized(
 				slot, tuple, estate, false, NULL, NIL);
 		}
+
+		bms_free(cols_marked_for_update);
 	}
 	else
 	{

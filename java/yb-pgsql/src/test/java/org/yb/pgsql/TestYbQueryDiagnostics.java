@@ -18,6 +18,7 @@ import static org.yb.AssertionWrappers.*;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Timestamp;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -35,29 +36,68 @@ import org.junit.runner.RunWith;
 
 @RunWith(value = YBTestRunner.class)
 public class TestYbQueryDiagnostics extends BasePgSQLTest {
+    public class QueryDiagnosticsParams {
+        private final int diagnosticsInterval;
+        private final int explainSampleRate;
+        private final boolean explainAnalyze;
+        private final boolean explainDist;
+        private final boolean explainDebug;
+        private final int bindVarQueryMinDuration;
+
+        public QueryDiagnosticsParams(int diagnosticsInterval, int explainSampleRate,
+                                      boolean explainAnalyze, boolean explainDist,
+                                      boolean explainDebug, int bindVarQueryMinDuration) {
+            this.diagnosticsInterval = diagnosticsInterval;
+            this.explainSampleRate = explainSampleRate;
+            this.explainAnalyze = explainAnalyze;
+            this.explainDist = explainDist;
+            this.explainDebug = explainDebug;
+            this.bindVarQueryMinDuration = bindVarQueryMinDuration;
+        }
+    }
+
+    private static final int ASH_SAMPLING_INTERVAL_MS = 500;
 
     @Before
     public void setUp() throws Exception {
         /* Set Gflags and restart cluster */
         Map<String, String> flagMap = super.getTServerFlags();
         flagMap.put("TEST_yb_enable_query_diagnostics", "true");
+        /* Enable ASH for active_session_history.csv */
+        if (isTestRunningWithConnectionManager()) {
+            flagMap.put("allowed_preview_flags_csv",
+                    "ysql_yb_ash_enable_infra,ysql_yb_enable_ash,enable_ysql_conn_mgr");
+        } else {
+            flagMap.put("allowed_preview_flags_csv",
+                        "ysql_yb_ash_enable_infra,ysql_yb_enable_ash");
+        }
+        flagMap.put("ysql_yb_ash_enable_infra", "true");
+        flagMap.put("ysql_yb_enable_ash", "true");
+        flagMap.put("ysql_yb_ash_sampling_interval_ms",
+                    String.valueOf(ASH_SAMPLING_INTERVAL_MS));
+
         restartClusterWithFlags(Collections.emptyMap(), flagMap);
 
+        setUpPreparedStatement();
+    }
+
+    public void setUpPreparedStatement() throws Exception {
         try (Statement statement = connection.createStatement()) {
             /* Creating test table and filling dummy data */
             statement.execute("CREATE TABLE test_table(a TEXT, b INT, c FLOAT)");
             statement.execute("PREPARE stmt(TEXT, INT, FLOAT) AS SELECT * FROM test_table " +
-            "WHERE a = $1 AND b = $2 AND c = $3;");
+                              "WHERE a = $1 AND b = $2 AND c = $3;");
             statement.execute("EXECUTE stmt('var', 1, 1.1)");
         }
     }
 
-    private String getQueryIdOfPreparedStmt(Statement statement) throws Exception {
+    private String getQueryIdFromPgStatStatements(Statement statement, String pattern)
+                                                  throws Exception {
         /* Get query id of the prepared statement */
         ResultSet resultSet = statement.executeQuery("SELECT queryid FROM pg_stat_statements " +
-                                                     "WHERE query LIKE 'PREPARE%'");
+                                                     "WHERE query LIKE '" + pattern + "'");
         if (!resultSet.next())
-            fail("Query id not found for the prepared statement");
+            fail("Query id not found in pg_stat_statements");
 
         return resultSet.getString("queryid");
     }
@@ -129,21 +169,23 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
 
         try (Statement statement = connection.createStatement()) {
             /* Run query diagnostics on the prepared stmt */
-            String queryId = getQueryIdOfPreparedStmt(statement);
+            String queryId = getQueryIdFromPgStatStatements(statement, "PREPARE%");
             Path bundleDataPath = runQueryDiagnostics(statement, queryId, params);
 
             /* Generate some data to be dumped */
             statement.execute("EXECUTE stmt('var1', 1, 1.1)");
             statement.execute("EXECUTE stmt('var2', 2, 2.2)");
 
-            /* Thread sleeps for diagnosticsInterval + 1 sec to ensure that the bundle has expired*/
+            /*
+             * Thread sleeps for diagnosticsInterval + 1 sec to ensure that the bundle has expired
+            */
             Thread.sleep((diagnosticsInterval + 1) * 1000);
 
             Path bindVarPath = bundleDataPath.resolve("bind_variables.csv");
 
             assertTrue("Bind variables file does not exist", Files.exists(bindVarPath));
             assertGreaterThan("bind_variables.csv file size is not greater than 0",
-                               Files.size(bindVarPath) , 0L);
+                              Files.size(bindVarPath) , 0L);
 
             List<String> lines = Files.readAllLines(bindVarPath);
             assertEquals("Number of lines in bind_variables.csv is not as expected",
@@ -154,33 +196,14 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
         }
     }
 
-    public class QueryDiagnosticsParams {
-        private final int diagnosticsInterval;
-        private final int explainSampleRate;
-        private final boolean explainAnalyze;
-        private final boolean explainDist;
-        private final boolean explainDebug;
-        private final int bindVarQueryMinDuration;
-
-        public QueryDiagnosticsParams(int diagnosticsInterval, int explainSampleRate,
-                                      boolean explainAnalyze, boolean explainDist,
-                                      boolean explainDebug, int bindVarQueryMinDuration) {
-            this.diagnosticsInterval = diagnosticsInterval;
-            this.explainSampleRate = explainSampleRate;
-            this.explainAnalyze = explainAnalyze;
-            this.explainDist = explainDist;
-            this.explainDebug = explainDebug;
-            this.bindVarQueryMinDuration = bindVarQueryMinDuration;
-        }
-    }
-
     @Test
     public void testYbQueryDiagnosticsStatus() throws Exception {
         int diagnosticsInterval = 2;
+        int sleep_time_s = diagnosticsInterval + 1;
 
         try (Statement statement = connection.createStatement()) {
             /* Run query diagnostics on the prepared stmt */
-            String queryId = getQueryIdOfPreparedStmt(statement);
+            String queryId = getQueryIdFromPgStatStatements(statement, "PREPARE%");
             QueryDiagnosticsParams successfulRunParams = new QueryDiagnosticsParams(
                 diagnosticsInterval,
                 100 /* explainSampleRate */,
@@ -205,6 +228,9 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
                 false /* explainDebug */,
                 15 /* bindVarQueryMinDuration */);
 
+            /*
+             * Trigger the successful bundle
+             */
             Path successfulBundlePath = runQueryDiagnostics(statement, queryId,
                                                             successfulRunParams);
 
@@ -212,9 +238,14 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             statement.execute("EXECUTE stmt('var1', 2, 2.2)");
             statement.execute("EXECUTE stmt('var2', 3, 3.3)");
 
-            /* Thread sleeps for diagnosticsInterval + 1 sec to ensure that the bundle has expired*/
-            Thread.sleep((diagnosticsInterval + 1) * 1000);
+            /*
+             * Thread sleeps for diagnosticsInterval + 1 sec to ensure that the bundle has expired
+            */
+            statement.execute("SELECT pg_sleep(" + sleep_time_s + ")");
 
+            /*
+             * Trigger the bundle with file error
+             */
             Path fileErrorBundlePath = runQueryDiagnostics(statement, queryId, fileErrorRunParams);
 
             /* Generate some data to be dumped */
@@ -226,13 +257,17 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             /* Postgres cannot write to query-diagnostics folder */
             recreateFolderWithPermissions(query_diagnostics_path, 400);
 
-            /* Thread sleeps for diagnosticsInterval + 1 sec to ensure that the bundle has expired*/
-            Thread.sleep((diagnosticsInterval + 1) * 1000);
+            /*
+             * Thread sleeps for diagnosticsInterval + 1 sec to ensure that the bundle has expired
+            */
+            statement.execute("SELECT pg_sleep(" + sleep_time_s + ")");
 
             /* Reset permissions to allow test cleanup */
             recreateFolderWithPermissions(query_diagnostics_path, 666);
 
-            /* Run diagnostics for 120 seconds to ensure it remains in In Progress state */
+            /*
+             * Trigger the bundle for 120 seconds to ensure it remains in In Progress state
+             */
             Path inProgressBundlePath = runQueryDiagnostics(statement, queryId,
                                                             inProgressRunParams);
             ResultSet resultSet = statement.executeQuery(
@@ -259,7 +294,8 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
                                          fileErrorBundlePath.getParent() /* expectedViewPath */,
                                          "Error" /* expectedStatus */,
                                          "Failed to create query " +
-                                         "diagnostics directory" /* expectedDescription */,
+                                         "diagnostics directory, " +
+                                         "Permission denied;" /* expectedDescription */,
                                          fileErrorRunParams);
 
             resultSet = statement.executeQuery(
@@ -364,5 +400,122 @@ public class TestYbQueryDiagnostics extends BasePgSQLTest {
             }
         }
         fail("Buffer never wrapped around");
+    }
+
+    @Test
+    public void checkAshData() throws Exception {
+        int diagnosticsInterval = (5 * ASH_SAMPLING_INTERVAL_MS) / 1000; /* convert to seconds */
+        QueryDiagnosticsParams params = new QueryDiagnosticsParams(
+                diagnosticsInterval /* diagnosticsInterval */,
+                100 /* explainSampleRate */,
+                true /* explainAnalyze */,
+                true /* explainDist */,
+                false /* explainDebug */,
+                0 /* bindVarQueryMinDuration */);
+
+        /* sleep time is diagnosticsInterval + 1 sec to ensure that the bundle has expired */
+        long sleep_time_s = diagnosticsInterval + 1;
+
+        try (Statement statement = connection.createStatement()) {
+            String queryId = getQueryIdFromPgStatStatements(statement, "PREPARE%");
+            Path bundleDataPath = runQueryDiagnostics(statement, queryId, params);
+            statement.execute("SELECT pg_sleep(" + sleep_time_s + ")");
+            Path ashPath = bundleDataPath.resolve("active_session_history.csv");
+
+            assertTrue("active_session_history file does not exist",
+                       Files.exists(ashPath));
+            assertGreaterThan("active_session_history.csv file is empty",
+                              Files.size(ashPath) , 0L);
+
+            ResultSet resultSet = statement.executeQuery(
+                                  "SELECT * FROM yb_query_diagnostics_status");
+            if (!resultSet.next())
+                fail("yb_query_diagnostics_status view does not have expected data");
+
+            Timestamp startTime = resultSet.getTimestamp("start_time");
+            long diagnosticsIntervalSec = resultSet.getLong("diagnostics_interval_sec");
+            Timestamp endTime = new Timestamp(startTime.getTime() +
+                                              (diagnosticsIntervalSec * 1000L));
+
+            statement.execute("CREATE TABLE temp_ash_data" +
+                              "(LIKE yb_active_session_history INCLUDING ALL)");
+            String copyCmd = "COPY temp_ash_data FROM '" + ashPath.toString() +
+                             "' WITH (FORMAT CSV, HEADER)";
+            statement.execute(copyCmd);
+
+            resultSet = statement.executeQuery("SELECT COUNT(*) FROM temp_ash_data");
+            long validTimeEntriesCount = getSingleRow(statement,
+                                         "SELECT COUNT(*) FROM temp_ash_data").getLong(0);
+
+            assertGreaterThan("active_session_history.csv file is empty",
+                              validTimeEntriesCount, 0L);
+
+            long invalidTimeEntriesCount = getSingleRow(statement,
+                                           "SELECT COUNT(*) FROM temp_ash_data " +
+                                           "WHERE sample_time < '" + startTime + "' " +
+                                           "OR sample_time > '" + endTime + "'").getLong(0);
+
+            assertEquals("active_session_history.csv contains invalid time entries",
+                         invalidTimeEntriesCount, 0);
+        }
+    }
+
+    @Test
+    public void checkPgssData() throws Exception {
+        int diagnosticsInterval = 10;
+        QueryDiagnosticsParams queryDiagnosticsParams = new QueryDiagnosticsParams(
+            diagnosticsInterval,
+            100 /* explainSampleRate */,
+            true /* explainAnalyze */,
+            true /* explainDist */,
+            false /* explainDebug */,
+            0 /* bindVarQueryMinDuration */);
+
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("SELECT pg_sleep(0.5)");
+
+            String queryId = getQueryIdFromPgStatStatements(statement, "%pg_sleep%");
+            Path bundleDataPath = runQueryDiagnostics(statement, queryId, queryDiagnosticsParams);
+
+            statement.execute("SELECT pg_sleep(0.1)");
+            statement.execute("SELECT * from pg_class");
+            statement.execute("SELECT pg_sleep(0.2)");
+
+            /*
+             * Thread sleeps for diagnosticsInterval + 1 sec to ensure that the bundle has expired
+            */
+            Thread.sleep((diagnosticsInterval + 1) * 1000);
+
+            Path pgssPath = bundleDataPath.resolve("pg_stat_statements.csv");
+
+            assertTrue("pg_stat_statements file does not exist", Files.exists(pgssPath));
+            assertGreaterThan("pg_stat_statements.csv file is empty",
+                              Files.size(pgssPath) , 0L);
+
+            /* Unit is ms */
+            float epsilon = 10;
+            int expectedTotalTime = 300;
+            int expectedMinTime = 100;
+            int expectedMaxTime = 200;
+            int expectedMeanTime = 150;
+            List<String> pgssData = Files.readAllLines(pgssPath);
+            String[] tokens = pgssData.get(1).split(",");
+
+            assertEquals("pg_stat_statements data size is not as expected",
+                         2, pgssData.size());
+            assertEquals("pg_stat_statements query is incorrect", queryId, tokens[0]);
+            assertTrue("pg_stat_statements contains unnecessary data",
+                       !tokens[1].contains("pg_class"));
+            assertEquals("Number of calls are incorrect", "2", tokens[2]);
+            /* pg_stat_statements outputs data in ms */
+            assertLessThan("total_time is incorrect",
+                           Math.abs(Float.parseFloat(tokens[3]) - expectedTotalTime), epsilon);
+            assertLessThan("min_time is incorrect",
+                           Math.abs(Float.parseFloat(tokens[4]) - expectedMinTime), epsilon);
+            assertLessThan("max_time is incorrect",
+                           Math.abs(Float.parseFloat(tokens[5]) - expectedMaxTime), epsilon);
+            assertLessThan("mean_time is incorrect",
+                           Math.abs(Float.parseFloat(tokens[6]) - expectedMeanTime), epsilon);
+        }
     }
 }

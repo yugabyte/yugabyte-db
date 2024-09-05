@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugaByteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <functional>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -49,9 +50,6 @@ YB_STRONGLY_TYPED_BOOL(OpBuffered);
 YB_STRONGLY_TYPED_BOOL(InvalidateOnPgClient);
 YB_STRONGLY_TYPED_BOOL(UseCatalogSession);
 YB_STRONGLY_TYPED_BOOL(ForceNonBufferable);
-
-class PgTxnManager;
-class PgSession;
 
 struct LightweightTableYbctid {
   LightweightTableYbctid(PgOid table_id_, const std::string_view& ybctid_)
@@ -134,6 +132,11 @@ class TableYbctidVectorProvider {
   TableYbctidVector container_;
 };
 
+using ExecParametersMutator = LWFunction<void(PgExecParameters&)>;
+
+using YbctidReader =
+    std::function<Status(PgOid, TableYbctidVector&, const OidSet&, const ExecParametersMutator&)>;
+
 class ExplicitRowLockBuffer {
  public:
   struct Info {
@@ -145,20 +148,20 @@ class ExplicitRowLockBuffer {
     friend bool operator==(const Info&, const Info&) = default;
   };
 
-  using YbctidReader = LWFunction<Status(TableYbctidVector*, const Info&, const OidSet&)>;
-
-  explicit ExplicitRowLockBuffer(TableYbctidVectorProvider* ybctid_container_provider);
+  ExplicitRowLockBuffer(
+      TableYbctidVectorProvider& ybctid_container_provider,
+      std::reference_wrapper<const YbctidReader> ybctid_reader);
   Status Add(
-      Info&& info, const LightweightTableYbctid& key, bool is_region_local,
-      const YbctidReader& reader);
-  Status Flush(const YbctidReader& reader);
+      Info&& info, const LightweightTableYbctid& key, bool is_region_local);
+  Status Flush();
   void Clear();
   bool IsEmpty() const;
 
  private:
-  Status DoFlush(const YbctidReader& reader);
+  Status DoFlush();
 
   TableYbctidVectorProvider& ybctid_container_provider_;
+  const YbctidReader& ybctid_reader_;
   TableYbctidSet intents_;
   OidSet region_local_tables_;
   std::optional<Info> info_;
@@ -173,11 +176,12 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   // Constructors.
   PgSession(
-      PgClient* pg_client,
+      PgClient& pg_client,
       scoped_refptr<PgTxnManager> pg_txn_manager,
       const YBCPgCallbacks& pg_callbacks,
-      YBCPgExecStatsState* stats_state);
-  virtual ~PgSession();
+      YBCPgExecStatsState& stats_state,
+      YbctidReader&& ybctid_reader);
+  ~PgSession();
 
   // Resets the read point for catalog tables.
   // Next catalog read operation will read the very latest catalog's state.
@@ -341,9 +345,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Check if initdb has already been run before. Needed to make initdb idempotent.
   Result<bool> IsInitDbDone();
 
-  using YbctidReader = LWFunction<Status(TableYbctidVector*, const OidSet&)>;
-  Result<bool> ForeignKeyReferenceExists(
-      const LightweightTableYbctid& key, const YbctidReader& reader);
+  Result<bool> ForeignKeyReferenceExists(PgOid database_id, const LightweightTableYbctid& key);
   void AddForeignKeyReferenceIntent(const LightweightTableYbctid& key, bool is_region_local);
   void AddForeignKeyReference(const LightweightTableYbctid& key);
 
@@ -445,6 +447,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   CoarseTimePoint invalidate_table_cache_time_;
   std::unordered_map<PgObjectId, PgTableDescPtr, PgObjectIdHash> table_cache_;
+  const YbctidReader ybctid_reader_;
   TableYbctidSet fk_reference_cache_;
   TableYbctidSet fk_reference_intent_;
   OidSet fk_intent_region_local_tables_;
@@ -454,7 +457,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   PgDocMetrics metrics_;
 
   const YBCPgCallbacks& pg_callbacks_;
-  const PgWaitEventWatcher::Starter wait_starter_;
 
   // Should write operations be buffered?
   bool buffering_enabled_ = false;

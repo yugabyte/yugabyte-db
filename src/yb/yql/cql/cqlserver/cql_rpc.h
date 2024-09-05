@@ -147,11 +147,7 @@ class CQLInboundCall : public rpc::InboundCall {
   void GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_pb) const;
   void SetRequest(std::shared_ptr<const ql::CQLRequest> request, CQLServiceImpl* service_impl) {
     service_impl_ = service_impl;
-#ifdef THREAD_SANITIZER
-    request_ = request;
-#else
     std::atomic_store_explicit(&request_, request, std::memory_order_release);
-#endif
   }
 
   size_t ObjectSize() const override { return sizeof(*this); }

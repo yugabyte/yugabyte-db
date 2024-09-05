@@ -7,6 +7,7 @@ import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.mock;
 
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
@@ -33,7 +34,7 @@ public class KubernetesTaskBaseTest {
   public void testGetK8sNodeName(String podName, String server, boolean isMultiAz) {
     ServerType serverType = server.equals("master") ? ServerType.MASTER : ServerType.TSERVER;
     NodeDetails node =
-        kubernetesTaskBase.getKubernetesNodeName(1, "az-1", serverType, isMultiAz, false);
+        KubernetesUtil.getKubernetesNodeName(1, "az-1", serverType, isMultiAz, false);
     assertEquals(podName, node.nodeName);
   }
 
@@ -54,7 +55,7 @@ public class KubernetesTaskBaseTest {
       boolean isReadOnlyCluster) {
     ServerType serverType = server.equals("master") ? ServerType.MASTER : ServerType.TSERVER;
     String pod =
-        kubernetesTaskBase.getPodName(
+        KubernetesUtil.getPodName(
             1,
             "az-1",
             serverType,

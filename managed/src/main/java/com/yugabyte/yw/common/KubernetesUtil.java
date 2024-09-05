@@ -8,6 +8,7 @@ import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Multimap;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
@@ -41,6 +42,8 @@ public class KubernetesUtil {
 
   public static String MIN_VERSION_NON_RESTART_GFLAGS_UPGRADE_SUPPORT_PREVIEW = "2.23.0.0-b539";
   public static String MIN_VERSION_NON_RESTART_GFLAGS_UPGRADE_SUPPORT_STABLE = "2024.2.0.0-b999";
+  // Kubelet secret sync time + k8s_parent template sync time.
+  public static final int WAIT_FOR_GFLAG_SYNC_SECS = 90;
 
   public static boolean isNonRestartGflagsUpgradeSupported(String universeSoftwareVersion) {
     return Util.compareYBVersions(
@@ -634,5 +637,43 @@ public class KubernetesUtil {
           regionToAZ.put(region, zone);
         });
     return regionToAZ;
+  }
+
+  public static String getPodName(
+      int partition,
+      String azCode,
+      UniverseTaskBase.ServerType serverType,
+      String nodePrefix,
+      boolean isMultiAz,
+      boolean newNamingStyle,
+      String universeName,
+      boolean isReadOnlyCluster) {
+    String sType = serverType == UniverseTaskBase.ServerType.MASTER ? "yb-master" : "yb-tserver";
+    String helmFullName =
+        getHelmFullNameWithSuffix(
+            isMultiAz, nodePrefix, universeName, azCode, newNamingStyle, isReadOnlyCluster);
+    return String.format("%s%s-%d", helmFullName, sType, partition);
+  }
+
+  // TODO(bhavin192): should we just override the getNodeName from
+  // UniverseDefinitionTaskBase?
+  /*
+  Returns the NodeDetails of the pod that we need to wait for.
+  */
+  public static NodeDetails getKubernetesNodeName(
+      int partition,
+      String azCode,
+      UniverseTaskBase.ServerType serverType,
+      boolean isMultiAz,
+      boolean isReadCluster) {
+    String sType = serverType == UniverseTaskBase.ServerType.MASTER ? "yb-master" : "yb-tserver";
+    String nodeName =
+        isMultiAz
+            ? String.format("%s-%d_%s", sType, partition, azCode)
+            : String.format("%s-%d", sType, partition);
+    nodeName = isReadCluster ? String.format("%s%s", nodeName, Universe.READONLY) : nodeName;
+    NodeDetails node = new NodeDetails();
+    node.nodeName = nodeName;
+    return node;
   }
 }

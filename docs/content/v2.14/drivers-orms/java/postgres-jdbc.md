@@ -159,4 +159,4 @@ After completing these steps, you should have a working Java application that us
 ## Next Steps
 
 - Learn how to build Java applications using [Hibernate ORM](../hibernate/).
-- Learn how to [develop Spring Boot applications using the YugabyteDB JDBC Driver](../../../integrations/spring-framework/sdyb/).
+- Learn how to [develop Spring Boot applications using the YugabyteDB JDBC Driver](/preview/integrations/spring-framework/sdyb/).

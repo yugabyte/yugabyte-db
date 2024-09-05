@@ -10,7 +10,10 @@ import { UniverseFormData, Provider, DEFAULT_CLOUD_CONFIG } from '../../../utils
 import { PROVIDER_FIELD } from '../../../utils/constants';
 import { useFormFieldStyles } from '../../../universeMainStyle';
 import { YBProvider } from '../../../../../../../components/configRedesign/providerRedesign/types';
-import { ProviderStatus } from '../../../../../../../components/configRedesign/providerRedesign/constants';
+import {
+  ProviderCode,
+  ProviderStatus
+} from '../../../../../../../components/configRedesign/providerRedesign/constants';
 
 interface ProvidersFieldProps {
   disabled?: boolean;
@@ -18,7 +21,9 @@ interface ProvidersFieldProps {
 }
 
 // simplified provider object with minimum fields needed in UI
-export type ProviderMin = Pick<Provider, 'uuid' | 'code'>;
+export type ProviderMin = Pick<Provider, 'uuid' | 'code'> & {
+  isOnPremManuallyProvisioned: boolean;
+};
 const getOptionLabel = (option: Record<string, string>): string => option.name;
 
 export const ProvidersField = ({
@@ -32,9 +37,12 @@ export const ProvidersField = ({
     onSuccess: (providers) => {
       // Pre-select provider by default
       if (_.isEmpty(getValues(PROVIDER_FIELD)) && providers.length >= 1) {
+        const provider = providers[0];
+        const isOnPremManuallyProvisioned =
+          provider?.code === ProviderCode.ON_PREM && provider?.details?.skipProvisioning;
         setValue(
           PROVIDER_FIELD,
-          { code: providers[0]?.code, uuid: providers[0]?.uuid },
+          { code: provider?.code, uuid: provider?.uuid, isOnPremManuallyProvisioned },
           { shouldValidate: true }
         );
       }
@@ -54,7 +62,13 @@ export const ProvidersField = ({
   const handleChange = (e: ChangeEvent<{}>, option: any) => {
     if (option) {
       const { code, uuid } = option;
-      setValue(PROVIDER_FIELD, { code, uuid }, { shouldValidate: true });
+      const isOnPremManuallyProvisioned =
+        option?.code === ProviderCode.ON_PREM && option?.details?.skipProvisioning;
+      setValue(
+        PROVIDER_FIELD,
+        { code, uuid, isOnPremManuallyProvisioned },
+        { shouldValidate: true }
+      );
     } else {
       setValue(PROVIDER_FIELD, DEFAULT_CLOUD_CONFIG.provider, { shouldValidate: true });
     }

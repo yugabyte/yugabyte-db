@@ -263,6 +263,8 @@ public class PlatformInstanceController extends AuthenticatedController {
             instanceUUID.toString(),
             Audit.ActionType.Promote);
 
+    replicationManager.oneOffSync();
+
     if (runtimeConfGetter.getGlobalConf(GlobalConfKeys.haShutdownLevel) > 0) {
       Util.shutdownYbaProcess(5);
     }
