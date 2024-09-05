@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: postgres-npgsql-driver
     parent: csharp-drivers
-    weight: 420
+    weight: 500
 type: docs
 ---
 

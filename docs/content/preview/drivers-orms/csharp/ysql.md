@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: csharp-driver-ysql
     parent: csharp-drivers
-    weight: 400
+    weight: 500
 type: docs
 ---
 
