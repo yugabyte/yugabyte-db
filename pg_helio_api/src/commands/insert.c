@@ -42,6 +42,8 @@
 #include "metadata/metadata_cache.h"
 #include "utils/version_utils.h"
 #include "api_hooks.h"
+#include "schema_validation/schema_validation.h"
+#include "operators/bson_expr_eval.h"
 
 /*
  * BatchInsertionSpec describes a batch of insert operations.
@@ -59,6 +61,9 @@ typedef struct BatchInsertionSpec
 
 	/* The shard OID if available */
 	Oid insertShardOid;
+
+	/* if true, bypass document validation */
+	bool bypassDocumentValidation;
 } BatchInsertionSpec;
 
 /*
@@ -92,18 +97,20 @@ static void ProcessBatchInsertion(MongoCollection *collection,
 								  text *transactionId, BatchInsertionResult *batchResult);
 static void DoBatchInsertNoTransactionId(MongoCollection *collection,
 										 BatchInsertionSpec *batchSpec,
-										 BatchInsertionResult *batchResult);
+										 BatchInsertionResult *batchResult,
+										 ExprEvalState *evalState);
 
 static uint64 ProcessInsertion(MongoCollection *collection, Oid insertShardOid, const
 							   bson_value_t *document,
-							   text *transactionId);
+							   text *transactionId, ExprEvalState *evalState);
 static pgbson * BuildResponseMessage(BatchInsertionResult *batchResult);
 static uint64_t RunInsertQuery(Query *insertQuery, ParamListInfo paramListInfo);
 static Query * CreateInsertQuery(MongoCollection *collection, Oid shardOid,
 								 List *valuesLists);
 static pgbson * PreprocessInsertionDoc(const bson_value_t *docValue,
 									   MongoCollection *collection,
-									   int64 *shardKeyHash, pgbson **objectId);
+									   int64 *shardKeyHash, pgbson **objectId,
+									   ExprEvalState *evalState);
 static uint64 InsertOneWithTransactionCore(uint64 collectionId, const
 										   char *shardTableName,
 										   int64 shardKeyValue, text *transactionId,
@@ -118,6 +125,8 @@ static uint64 CallInsertWorkerForInsertOne(MongoCollection *collection, int64
  */
 bool EnableCreateCollectionOnInsert = true;
 extern bool UseLocalExecutionShardQueries;
+extern bool EnableBypassDocumentValidation;
+extern bool EnableSchemaValidation;
 
 /*
  * command_insert implements the insert command.
@@ -267,6 +276,7 @@ BuildBatchInsertionSpec(bson_iter_t *insertCommandIter, pgbsonsequence *insertDo
 	bool isOrdered = true;
 	bool hasDocuments = false;
 	bool hasSkippedDocuments = false;
+	bool bypassDocumentValidation = false;
 
 	while (bson_iter_next(insertCommandIter))
 	{
@@ -307,6 +317,19 @@ BuildBatchInsertionSpec(bson_iter_t *insertCommandIter, pgbsonsequence *insertDo
 
 			isOrdered = bson_iter_bool(insertCommandIter);
 		}
+		else if (strcmp(field, "bypassDocumentValidation") == 0)
+		{
+			/* TODO: unsupport by default */
+			if (!EnableBypassDocumentValidation)
+			{
+				continue;
+			}
+
+			EnsureTopLevelFieldType("insert.bypassDocumentValidation", insertCommandIter,
+									BSON_TYPE_BOOL);
+
+			bypassDocumentValidation = bson_iter_bool(insertCommandIter);
+		}
 		else if (IsCommonSpecIgnoredField(field))
 		{
 			elog(DEBUG1, "Unrecognized command field: insert.%s", field);
@@ -315,7 +338,6 @@ BuildBatchInsertionSpec(bson_iter_t *insertCommandIter, pgbsonsequence *insertDo
 			 *  Silently ignore now, so that clients don't break
 			 *  TODO: implement me
 			 *      writeConcern
-			 *      bypassDocumentValidation
 			 *      comment
 			 */
 		}
@@ -362,6 +384,7 @@ BuildBatchInsertionSpec(bson_iter_t *insertCommandIter, pgbsonsequence *insertDo
 	batchSpec->collectionName = (char *) collectionName;
 	batchSpec->documents = documents;
 	batchSpec->isOrdered = isOrdered;
+	batchSpec->bypassDocumentValidation = bypassDocumentValidation;
 
 	return batchSpec;
 }
@@ -520,7 +543,7 @@ static bool
 DoMultiInsertWithoutTransactionId(MongoCollection *collection, List *inserts, Oid
 								  shardOid,
 								  BatchInsertionResult *batchResult, int insertIndex,
-								  int *insertCountResult)
+								  int *insertCountResult, ExprEvalState *evalState)
 {
 	/* declared volatile because of the longjmp in PG_CATCH */
 	volatile int insertInnerIndex = insertIndex;
@@ -555,7 +578,7 @@ DoMultiInsertWithoutTransactionId(MongoCollection *collection, List *inserts, Oi
 			pgbson *objectId;
 			pgbson *insertDoc =
 				PreprocessInsertionDoc(documentValue, collection, &shardKeyValue,
-									   &objectId);
+									   &objectId, evalState);
 
 			/* Generate a values lists for the insert as
 			 * VALUES(shard_key_value, object_id, document, creationTime)
@@ -641,7 +664,8 @@ DoSingleInsert(MongoCollection *collection,
 			   Oid insertShardOid,
 			   const bson_value_t *document,
 			   text *transactionId,
-			   BatchInsertionResult *batchResult, int insertIndex)
+			   BatchInsertionResult *batchResult, int insertIndex,
+			   ExprEvalState *evalState)
 {
 	/* declared volatile because of the longjmp in PG_CATCH */
 	volatile bool isSuccess = false;
@@ -655,7 +679,7 @@ DoSingleInsert(MongoCollection *collection,
 	PG_TRY();
 	{
 		numDocsInserted = ProcessInsertion(collection, insertShardOid, document,
-										   transactionId);
+										   transactionId, evalState);
 
 		/* Commit the inner transaction, return to outer xact context */
 		ReleaseCurrentSubTransaction();
@@ -707,6 +731,20 @@ ProcessBatchInsertion(MongoCollection *collection, BatchInsertionSpec *batchSpec
 	batchResult->rowsInserted = 0;
 	batchResult->writeErrors = NIL;
 
+	ExprEvalState *evalState = NULL;
+
+	/* In MongoDB, document validation occurs regardless of whether the validation action is set to error or warn.
+	 * If validation fails and the action is error, an error is thrown; if the action is warn, a warning is logged.
+	 * Since we do not need to log a warning in this context, we will avoid calling ValidateSchemaOnDocumentInsert when the validation action is set to warn.
+	 */
+	if (EnableSchemaValidation && !batchSpec->bypassDocumentValidation &&
+		collection->schemaValidator.validator != NULL &&
+		collection->schemaValidator.validationAction == ValidationAction_Error)
+	{
+		evalState = PrepareForSchemaValidation(collection->schemaValidator.validator,
+											   CurrentMemoryContext);
+	}
+
 	/*
 	 * We cannot pass the same transactionId to ProcessUpdate when there are
 	 * multiple updates, since they would be considered retries of each
@@ -718,14 +756,19 @@ ProcessBatchInsertion(MongoCollection *collection, BatchInsertionSpec *batchSpec
 		int insertIndex = 0;
 		DoSingleInsert(collection, batchSpec->insertShardOid, linitial(
 						   batchSpec->documents),
-					   transactionId, batchResult, insertIndex);
+					   transactionId, batchResult, insertIndex, evalState);
 	}
 	else
 	{
 		/* The else scenario - we have no transactionId (or we ignore it)
 		 * and/or we have more than 1 document. Do a batch insert directly.
 		 */
-		DoBatchInsertNoTransactionId(collection, batchSpec, batchResult);
+		DoBatchInsertNoTransactionId(collection, batchSpec, batchResult, evalState);
+	}
+
+	if (evalState != NULL)
+	{
+		FreeExprEvalState(evalState, CurrentMemoryContext);
 	}
 }
 
@@ -735,7 +778,7 @@ ProcessBatchInsertion(MongoCollection *collection, BatchInsertionSpec *batchSpec
  */
 static void
 DoBatchInsertNoTransactionId(MongoCollection *collection, BatchInsertionSpec *batchSpec,
-							 BatchInsertionResult *batchResult)
+							 BatchInsertionResult *batchResult, ExprEvalState *evalState)
 {
 	List *insertions = batchSpec->documents;
 	bool isOrdered = batchSpec->isOrdered;
@@ -758,7 +801,8 @@ DoBatchInsertNoTransactionId(MongoCollection *collection, BatchInsertionSpec *ba
 																		  insertShardOid,
 																		  batchResult,
 																		  insertIndex,
-																		  &incrementCount);
+																		  &incrementCount,
+																		  evalState);
 
 			Assert(!performedBatchInsert || incrementCount > 0);
 			if (!performedBatchInsert)
@@ -777,7 +821,7 @@ DoBatchInsertNoTransactionId(MongoCollection *collection, BatchInsertionSpec *ba
 		text *transactionId = NULL;
 		bool isSuccess = DoSingleInsert(collection, batchSpec->insertShardOid, document,
 										transactionId, batchResult,
-										insertIndex);
+										insertIndex, evalState);
 		insertIndex++;
 
 		if (!isSuccess && isOrdered)
@@ -796,7 +840,7 @@ static uint64
 ProcessInsertion(MongoCollection *collection,
 				 Oid optionalInsertShardOid,
 				 const bson_value_t *documentValue,
-				 text *transactionId)
+				 text *transactionId, ExprEvalState *evalState)
 {
 	if (transactionId != NULL &&
 		!DocumentBsonValueHasDocumentId(documentValue) &&
@@ -823,7 +867,7 @@ ProcessInsertion(MongoCollection *collection,
 	int64 shardKeyHash;
 	pgbson *objectIdPtr = NULL;
 	pgbson *insertDoc = PreprocessInsertionDoc(documentValue, collection, &shardKeyHash,
-											   &objectIdPtr);
+											   &objectIdPtr, evalState);
 
 	/* make sure the document has an _id and it is in the right place */
 	if (transactionId == NULL)
@@ -1185,8 +1229,14 @@ BuildResponseMessage(BatchInsertionResult *batchResult)
  */
 static pgbson *
 PreprocessInsertionDoc(const bson_value_t *docValue, MongoCollection *collection,
-					   int64 *shardKeyHash, pgbson **objectId)
+					   int64 *shardKeyHash, pgbson **objectId, ExprEvalState *evalState)
 {
+	if (evalState != NULL)
+	{
+		ValidateSchemaOnDocumentInsert(
+			evalState, docValue);
+	}
+
 	/* make sure the document has an _id and it is in the right place */
 	pgbson *insertDoc = RewriteDocumentValueAddObjectId(docValue);
 

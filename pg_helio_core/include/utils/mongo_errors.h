@@ -100,6 +100,7 @@ _DEFINE_MONGO_ERROR(IndexKeySpecsConflict, 86);
 _DEFINE_MONGO_ERROR(NotExactValueField, 111);
 _DEFINE_MONGO_ERROR(CommandNotSupported, 115);
 _DEFINE_MONGO_ERROR(NamespaceNotSharded, 118);
+_DEFINE_MONGO_ERROR(DocumentFailedValidation, 121);
 _DEFINE_MONGO_ERROR(ExceededMemoryLimit, 146);
 _DEFINE_MONGO_ERROR(DurationOverflow, 159);
 _DEFINE_MONGO_ERROR(ViewDepthLimitExceeded, 165);

@@ -265,6 +265,10 @@ bool EnableSchemaValidation =
 #define DEFAULT_MAX_SCHEMA_VALIDATOR_SIZE 10 * 1024
 int MaxSchemaValidatorSize = DEFAULT_MAX_SCHEMA_VALIDATOR_SIZE;
 
+#define DEFAULT_ENABLE_BYPASSDOCUMENTVALIDATION false
+bool EnableBypassDocumentValidation =
+	DEFAULT_ENABLE_BYPASSDOCUMENTVALIDATION;
+
 #define DEFAULT_ENABLE_MULTI_INDEX_RUM_JOIN false
 bool EnableMultiIndexRumJoin = DEFAULT_ENABLE_MULTI_INDEX_RUM_JOIN;
 
@@ -755,6 +759,17 @@ InitApiConfigurations(char *prefix)
 		NULL,
 		&MaxSchemaValidatorSize,
 		DEFAULT_MAX_SCHEMA_VALIDATOR_SIZE, 0, 16 * 1024 * 1024,
+		PGC_USERSET,
+		0,
+		NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.enableBypassDocumentValidation", prefix),
+		gettext_noop(
+			"Whether or not to support 'bypassDocumentValidation'."),
+		NULL,
+		&EnableBypassDocumentValidation,
+		DEFAULT_ENABLE_BYPASSDOCUMENTVALIDATION,
 		PGC_USERSET,
 		0,
 		NULL, NULL, NULL);

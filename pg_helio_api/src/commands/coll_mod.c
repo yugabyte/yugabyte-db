@@ -57,7 +57,7 @@ typedef struct
 	bson_value_t colocationOptions;
 
 	/* The validator for the collection */
-	const bson_value_t *validator;
+	bson_value_t validator;
 
 	/* The validation level for the collection */
 	char *validationLevel;
@@ -155,14 +155,7 @@ command_coll_mod(PG_FUNCTION_ARGS)
 	Datum databaseDatum = PG_GETARG_DATUM(0);
 
 	/* Validate the collMod options received because GW only checks for valid collection name */
-	CollModOptions collModOptions = {
-		.collectionName = NULL,
-		.index = { 0 },
-		.viewDefinition = { 0 },
-		.validator = NULL,
-		.validationLevel = NULL,
-		.validationAction = NULL
-	};
+	CollModOptions collModOptions = { 0 };
 	CollModSpecFlags specFlags = ParseSpecSetCollModOptions(collModSpec,
 															&collModOptions);
 
@@ -257,7 +250,7 @@ command_coll_mod(PG_FUNCTION_ARGS)
 
 		UpsertSchemaValidation(databaseDatum, CStringGetTextDatum(
 								   collModOptions.collectionName),
-							   collModOptions.validator,
+							   &collModOptions.validator,
 							   collModOptions.validationLevel,
 							   collModOptions.validationAction);
 	}
@@ -319,9 +312,17 @@ ParseSpecSetCollModOptions(const pgbson *collModSpec,
 		}
 		else if (strcmp(key, "validator") == 0)
 		{
-			collModOptions->validator = ParseAndGetValidatorSpec(&iter,
-																 "collMod.validator",
-																 &hasSchemaValidation);
+			const bson_value_t *validator = ParseAndGetValidatorSpec(&iter,
+																	 "collMod.validator",
+																	 &hasSchemaValidation);
+			if (validator == NULL)
+			{
+				collModOptions->validator.value_type = BSON_TYPE_EOD;
+			}
+			else
+			{
+				collModOptions->validator = *validator;
+			}
 		}
 		else if (strcmp(key, "validationLevel") == 0)
 		{

@@ -1710,7 +1710,9 @@ UpsertSchemaValidation(Datum databaseDatum,
 	bool isNullIgnore = false;
 
 	bool isFirst = true;
-	if (validator != NULL)
+
+	/* todo: add spec validation for validator, like unsupported keywrods, etc. */
+	if (validator != NULL && validator->value_type != BSON_TYPE_EOD)
 	{
 		appendStringInfo(query, "validator = $%d ", ++nargs);
 		argNulls[nargs - 1] = ' ';
