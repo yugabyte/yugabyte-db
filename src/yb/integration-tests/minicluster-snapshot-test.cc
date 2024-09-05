@@ -996,11 +996,25 @@ TEST_F(
   ASSERT_EQ(rows_t2[0], kRowT2);
 }
 
-TEST_F(PgCloneColocationTest, YB_DISABLE_TEST_IN_SANITIZERS(CreateTableAfterClone)) {
+TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CreateTableAfterClone)) {
+  ASSERT_OK(source_conn_->ExecuteFormat("INSERT INTO t1 VALUES (1, 1)"));
+
+  auto clone_time = ASSERT_RESULT(GetCurrentTime()).ToInt64();
+  ASSERT_OK(source_conn_->Execute("CREATE TABLE t2 (k int, v1 int)"));
+
+  // Clone before t2 was created and test that we can recreate t2.
   ASSERT_OK(source_conn_->ExecuteFormat(
-      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName1, kSourceNamespaceName));
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName,
+      clone_time));
   auto target_conn = ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
   ASSERT_OK(target_conn.Execute("CREATE TABLE t2 (k int, v1 int)"));
+
+  // Should be able to create new tables and indexes and insert into all tables.
+  ASSERT_OK(target_conn.Execute("CREATE INDEX i1 on t1(value)"));
+  ASSERT_OK(target_conn.Execute("INSERT INTO t1 VALUES (2, 2)"));
+  ASSERT_OK(target_conn.Execute("INSERT INTO t2 VALUES (1, 1)"));
+  ASSERT_OK(target_conn.Execute("CREATE TABLE t3 (k int, v1 int)"));
+  ASSERT_OK(target_conn.Execute("INSERT INTO t3 VALUES (1, 1)"));
 }
 
 TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneOfClone)) {
@@ -1015,6 +1029,24 @@ TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneOfClo
   ASSERT_OK(target_conn.Execute("CREATE TABLE t2 (k int, v1 int)"));
   ASSERT_OK(target_conn.ExecuteFormat(
       "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName2, kTargetNamespaceName1));
+  ASSERT_RESULT(ConnectToDB(kTargetNamespaceName2));
+}
+
+TEST_F(PgCloneColocationTest, YB_DISABLE_TEST_IN_SANITIZERS(NoColocatedChildTables)) {
+  ASSERT_OK(source_conn_->Execute("CREATE TABLE t2(k int, v1 int) WITH (COLOCATION = false)"));
+  ASSERT_OK(source_conn_->Execute("DROP TABLE t1"));
+  auto no_child_tables_time = ASSERT_RESULT(GetCurrentTime()).ToInt64();
+  ASSERT_OK(source_conn_->Execute("DROP TABLE t2"));
+
+  // Clone to a time when there are no colocated child tables.
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName,
+      no_child_tables_time));
+  ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+
+  // Clone to a time when there are no tables.
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName2, kSourceNamespaceName));
   ASSERT_RESULT(ConnectToDB(kTargetNamespaceName2));
 }
 

@@ -54,6 +54,7 @@ public class MetricQueryHelper {
   public static final Integer QUERY_EXECUTOR_THREAD_POOL = 5;
 
   public static final String METRICS_QUERY_PATH = "query";
+  public static final String METRICS_QUERY_RANGE_PATH = "query_range";
   public static final String ALERTS_PATH = "alerts";
 
   public static final String MANAGEMENT_COMMAND_RELOAD = "reload";
@@ -681,5 +682,22 @@ public class MetricQueryHelper {
     String username = confGetter.getGlobalConf(GlobalConfKeys.metricsAuthUsername);
     String password = confGetter.getGlobalConf(GlobalConfKeys.metricsAuthPassword);
     return AuthUtil.getBasicAuthHeader(username, password);
+  }
+
+  /*
+   * The following endpoint evaluates an expression query over a range of time:
+   * GET /api/v1/query_range  & URL query parameters:
+   * query=<string>: Prometheus expression query string.
+   * start=<rfc3339 | unix_timestamp>: Start timestamp, inclusive.
+   * end=<rfc3339 | unix_timestamp>: End timestamp, inclusive.
+   * step=<float>: Query resolution step width in float number of seconds.
+   * Example:
+   * {url}/api/v1/query_range?query=up&start=2015-07-01T20:10:30Z&end=2015-07-01T20:11:00Z&step=7
+   */
+  public JsonNode queryRange(Map<String, String> queryParams) {
+    final String queryUrl = getPrometheusQueryUrl(METRICS_QUERY_RANGE_PATH);
+    final JsonNode responseJson =
+        getApiHelper().getRequest(queryUrl, getAuthHeaders(), queryParams);
+    return responseJson;
   }
 }

@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugaByteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -49,7 +49,6 @@
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_op.h"
-#include "yb/yql/pggate/pg_txn_manager.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -100,7 +99,7 @@ bool IsNeedTransaction(const PgsqlOp& op, bool non_ddl_txn_for_sys_tables_allowe
   // Last statement inserts row with k = 1 and this is a single row transaction.
   // But row with k = 1 already exists in the t table. As a result the
   // 'duplicate key value violates unique constraint "t_pkey"' will be raised.
-  // But this error contains contraints name which is read from sys table pg_class (in case it
+  // But this error contains constraints name which is read from sys table pg_class (in case it
   // is not yet in the postgres's cache). And this read from sys table will be performed in context
   // of currently running transaction (single row) because the yb_non_ddl_txn_for_sys_tables_allowed
   // GUC variable is true. As a result there will be 2 operations in context of single row
@@ -404,15 +403,16 @@ size_t TableYbctidHasher::operator()(const TableYbctid& value) const {
   return (*this)(static_cast<LightweightTableYbctid>(value));
 }
 
-ExplicitRowLockBuffer::ExplicitRowLockBuffer(TableYbctidVectorProvider* ybctid_container_provider)
-    : ybctid_container_provider_(*ybctid_container_provider) {
+ExplicitRowLockBuffer::ExplicitRowLockBuffer(
+    TableYbctidVectorProvider& ybctid_container_provider,
+    std::reference_wrapper<const YbctidReader> ybctid_reader)
+    : ybctid_container_provider_(ybctid_container_provider), ybctid_reader_(ybctid_reader) {
 }
 
 Status ExplicitRowLockBuffer::Add(
-    Info&& info, const LightweightTableYbctid& key, bool is_region_local,
-    const YbctidReader& reader) {
+    Info&& info, const LightweightTableYbctid& key, bool is_region_local) {
   if (info_ && *info_ != info) {
-    RETURN_NOT_OK(DoFlush(reader));
+    RETURN_NOT_OK(DoFlush());
   }
   if (!info_) {
     info_.emplace(std::move(info));
@@ -426,14 +426,14 @@ Status ExplicitRowLockBuffer::Add(
   DCHECK(is_region_local || !region_local_tables_.contains(key.table_id));
   intents_.emplace(key.table_id, std::string(key.ybctid));
   return narrow_cast<int>(intents_.size()) >= yb_explicit_row_locking_batch_size
-      ? DoFlush(reader) : Status::OK();
+      ? DoFlush() : Status::OK();
 }
 
-Status ExplicitRowLockBuffer::Flush(const YbctidReader& reader) {
-  return IsEmpty() ? Status::OK() : DoFlush(reader);
+Status ExplicitRowLockBuffer::Flush() {
+  return IsEmpty() ? Status::OK() : DoFlush();
 }
 
-Status ExplicitRowLockBuffer::DoFlush(const YbctidReader& reader) {
+Status ExplicitRowLockBuffer::DoFlush() {
   DCHECK(!IsEmpty());
   auto scope = ScopeExit([this] { Clear(); });
   auto ybctids = ybctid_container_provider_.Get();
@@ -443,7 +443,14 @@ Status ExplicitRowLockBuffer::DoFlush(const YbctidReader& reader) {
     auto node = intents_.extract(it++);
     ybctids->push_back(std::move(node.value()));
   }
-  RETURN_NOT_OK(reader(&*ybctids, *info_, region_local_tables_));
+  RETURN_NOT_OK(ybctid_reader_(
+      info_->database_id, ybctids, region_local_tables_,
+      make_lw_function(
+          [&info = *info_](PgExecParameters& params) {
+            params.rowmark = info.rowmark;
+            params.pg_wait_policy = info.pg_wait_policy;
+            params.docdb_wait_policy = info.docdb_wait_policy;
+          })));
   SCHECK(initial_intents_size == ybctids->size(), NotFound,
         "Some of the requested ybctids are missing");
   return Status::OK();
@@ -464,23 +471,24 @@ bool ExplicitRowLockBuffer::IsEmpty() const {
 //--------------------------------------------------------------------------------------------------
 
 PgSession::PgSession(
-    PgClient* pg_client,
+    PgClient& pg_client,
     scoped_refptr<PgTxnManager> pg_txn_manager,
     const YBCPgCallbacks& pg_callbacks,
-    YBCPgExecStatsState* stats_state)
-    : pg_client_(*pg_client),
+    YBCPgExecStatsState& stats_state,
+    YbctidReader&& ybctid_reader)
+    : pg_client_(pg_client),
       pg_txn_manager_(std::move(pg_txn_manager)),
-      explicit_row_lock_buffer_(&aux_ybctid_container_provider_),
+      ybctid_reader_(std::move(ybctid_reader)),
+      explicit_row_lock_buffer_(aux_ybctid_container_provider_, ybctid_reader_),
       metrics_(stats_state),
       pg_callbacks_(pg_callbacks),
-      wait_starter_(pg_callbacks_.PgstatReportWaitStart),
       buffer_(
           [this](BufferableOperations&& ops, bool transactional)
               -> Result<PgOperationBuffer::PerformFutureEx> {
             return PgOperationBuffer::PerformFutureEx{
                 VERIFY_RESULT(FlushOperations(std::move(ops), transactional)), this};
           },
-          &metrics_, wait_starter_, buffering_settings_) {
+          metrics_, buffering_settings_) {
   Update(&buffering_settings_);
 }
 
@@ -857,8 +865,8 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   return PerformFuture(std::move(future), std::move(ops.relations));
 }
 
-Result<bool> PgSession::ForeignKeyReferenceExists(const LightweightTableYbctid& key,
-                                                  const YbctidReader& reader) {
+Result<bool> PgSession::ForeignKeyReferenceExists(
+    PgOid database_id, const LightweightTableYbctid& key) {
   if (fk_reference_cache_.find(key) != fk_reference_cache_.end()) {
     return true;
   }
@@ -890,7 +898,11 @@ Result<bool> PgSession::ForeignKeyReferenceExists(const LightweightTableYbctid& 
   }
 
   // Add the keys found in docdb to the FK cache.
-  RETURN_NOT_OK(reader(&ybctids, fk_intent_region_local_tables_));
+  RETURN_NOT_OK(ybctid_reader_(
+      database_id, ybctids, fk_intent_region_local_tables_,
+      make_lw_function([](PgExecParameters& params) {
+        params.rowmark = ROW_MARK_KEYSHARE;
+      })));
   for (auto& ybctid : ybctids) {
     fk_reference_cache_.insert(std::move(ybctid));
   }
@@ -1105,7 +1117,7 @@ Result<tserver::PgGetReplicationSlotResponsePB> PgSession::GetReplicationSlot(
 }
 
 PgWaitEventWatcher PgSession::StartWaitEvent(ash::WaitStateCode wait_event) {
-  return {wait_starter_, wait_event};
+  return {pg_callbacks_.PgstatReportWaitStart, wait_event};
 }
 
 Result<tserver::PgYCQLStatementStatsResponsePB> PgSession::YCQLStatementStats() {

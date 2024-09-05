@@ -178,6 +178,17 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         "variables at the beginning of transaction boundaries, causing erroneous results in " +
         "the test, leading to failure.";
 
+  // Warmup modes for Connection Manager during test runs.
+  protected static enum ConnectionManagerWarmupMode {
+    NONE,
+    RANDOM,
+    ROUND_ROBIN
+  }
+
+  protected static ConnectionManagerWarmupMode warmupMode = ConnectionManagerWarmupMode.RANDOM;
+
+  protected static final int CONN_MGR_WARMUP_BACKEND_COUNT = 3;
+
   // CQL and Redis settings, will be reset before each test via resetSettings method.
   protected boolean startCqlProxy = false;
   protected boolean startRedisProxy = false;
@@ -307,8 +318,6 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       builder.enableYsqlConnMgr(true);
       builder.addCommonTServerFlag("ysql_conn_mgr_stats_interval",
         Integer.toString(CONNECTIONS_STATS_UPDATE_INTERVAL_SECS));
-      builder.addCommonTServerFlag(
-        "TEST_ysql_conn_mgr_dowarmup_all_pools_random_attach", "true");
     }
   }
 
@@ -421,6 +430,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
   public int getPgPort(int tserverIndex) {
     return miniCluster.getPostgresContactPoints().get(tserverIndex).getPort();
+  }
+
+  public int getYsqlConnMgrPort(int tserverIndex) {
+    return miniCluster.getYsqlConnMgrContactPoints().get(tserverIndex).getPort();
   }
 
   @After
@@ -584,6 +597,25 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
         LOG.info ("expected to fail");
       }
     }
+  }
+
+  protected
+  void setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode wm) throws Exception {
+    if (!isTestRunningWithConnectionManager()) {
+      return;
+    }
+
+    Map<String, String> tsFlagMap = getTServerFlags();
+    tsFlagMap.put("TEST_ysql_conn_mgr_dowarmup_all_pools_mode",
+      warmupMode.toString().toLowerCase());
+    warmupMode = wm;
+    Map<String, String> masterFlagMap = getMasterFlags();
+    restartClusterWithFlags(masterFlagMap, tsFlagMap);
+  }
+
+  protected boolean isConnMgrWarmupRoundRobinMode() {
+    return isTestRunningWithConnectionManager() &&
+      warmupMode == ConnectionManagerWarmupMode.ROUND_ROBIN;
   }
 
   protected void recreateWithYsqlVersion(YsqlSnapshotVersion version) throws Exception {
@@ -2212,6 +2244,16 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected long getNumDocdbRequests(Statement stmt, String query) throws Exception {
     // Executing query once just in case if master catalog cache is not refreshed
     stmt.execute(query);
+
+    // Execute query twice more to deterministically populate all caches if
+    // connection manager is enabled in round robin allocation mode.
+    // Additionally execute it once more to allow rotation onto a new physical
+    // connection before executing the subsequent queries.
+    if (isConnMgrWarmupRoundRobinMode()) {
+      for (int i = 0; i < CONN_MGR_WARMUP_BACKEND_COUNT; i++) {
+        stmt.execute(query);
+      }
+    }
     Long rpc_count_before =
       getTServerMetric("handler_latency_yb_tserver_PgClientService_Perform").count;
     stmt.execute(query);

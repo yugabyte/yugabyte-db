@@ -30,7 +30,7 @@ import lombok.extern.slf4j.Slf4j;
 @Setter
 public class XClusterNamespaceConfig {
 
-  private static final Finder<String, XClusterNamespaceConfig> find =
+  public static final Finder<String, XClusterNamespaceConfig> find =
       new Finder<String, XClusterNamespaceConfig>(XClusterNamespaceConfig.class) {};
 
   @Id

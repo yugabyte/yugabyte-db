@@ -3797,12 +3797,13 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
         // Opt out of colocation if the request says so.
         (!req.has_is_colocated_via_database() || req.is_colocated_via_database()) &&
         // Opt out of colocation if the indexed table opted out of colocation.
-        (!indexed_table || indexed_table->colocated()) &&
-        // Any tables created in the xCluster DDL replication extension should not be colocated.
-        schema.SchemaName() != xcluster::kDDLQueuePgSchemaName;
+        (!indexed_table || indexed_table->colocated());
   }
 
-  const bool colocated = is_colocated_via_database || req.has_tablegroup_id();
+  const bool colocated =
+      (is_colocated_via_database || req.has_tablegroup_id()) &&
+      // Any tables created in the xCluster DDL replication extension should not be colocated.
+      schema.SchemaName() != xcluster::kDDLQueuePgSchemaName;
   SCHECK(!colocated || req.has_table_id(),
          InvalidArgument, "Colocated table should specify a table ID");
 
@@ -4012,7 +4013,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     // Check whether this CREATE TABLE request which has a tablegroup_id is for a normal user table
     // or the request to create the parent table for the tablegroup.
     YsqlTablegroupManager::TablegroupInfo* tablegroup = nullptr;
-    if (req.has_tablegroup_id()) {
+    if (colocated && req.has_tablegroup_id()) {
       tablegroup = tablegroup_manager_->Find(req.tablegroup_id());
       bool is_parent = IsTablegroupParentTableId(req.table_id());
       if (tablegroup == nullptr && !is_parent) {

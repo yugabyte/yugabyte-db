@@ -7,7 +7,7 @@ menu:
   preview_integrations:
     identifier: superblocks
     parent: development-platforms
-    weight: 900
+    weight: 400
 type: docs
 ---
 

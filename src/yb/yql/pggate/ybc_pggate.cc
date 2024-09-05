@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugaByteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -90,6 +90,15 @@ DEFINE_UNKNOWN_bool(ysql_disable_server_file_access, false,
             "File access can be re-enabled if set to false.");
 
 DEFINE_NON_RUNTIME_bool(ysql_enable_profile, false, "Enable PROFILE feature.");
+
+DEFINE_test_flag(string, ysql_conn_mgr_dowarmup_all_pools_mode, "random",
+  "Enable precreation of server connections in every pool in Ysql Connection Manager and "
+  "choose the mode of attachment of idle server connections to clients to serve their queries. "
+  "ysql_conn_mgr_dowarmup is responsible for creating server connections only in "
+  "yugabyte (user), yugabyte (database) pool during the initialization of connection "
+  "manager process. This flag will create max(ysql_conn_mgr_min_conns_per_db, "
+  "3) number of server connections in any pool whenever there is a requirement to create the "
+  "first backend process in that particular pool.");
 
 // This gflag should be deprecated but kept to avoid breaking some customer
 // clusters using it. Use ysql_catalog_preload_additional_table_list if possible.
@@ -217,8 +226,8 @@ Status InitPgGateImpl(const YBCPgTypeEntity* data_type_table,
   });
 }
 
-Status PgInitSessionImpl(YBCPgExecStatsState* session_stats) {
-  return WithMaskedYsqlSignals([session_stats] { return pgapi->InitSession(session_stats); });
+Status PgInitSessionImpl(YBCPgExecStatsState& session_stats) {
+  return WithMaskedYsqlSignals([&session_stats] { return pgapi->InitSession(session_stats); });
 }
 
 // ql_value is modified in-place.
@@ -557,7 +566,7 @@ void YBCRestorePgSessionState(const YBCPgSessionState* session_data) {
 }
 
 YBCStatus YBCPgInitSession(YBCPgExecStatsState* session_stats) {
-  return ToYBCStatus(PgInitSessionImpl(session_stats));
+  return ToYBCStatus(PgInitSessionImpl(*session_stats));
 }
 
 uint64_t YBCPgGetSessionID() { return pgapi->GetSessionID(); }
@@ -1957,6 +1966,8 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
       .TEST_generate_ybrowid_sequentially =
           &FLAGS_TEST_generate_ybrowid_sequentially,
       .ysql_use_fast_backward_scan = &FLAGS_use_fast_backward_scan,
+      .TEST_ysql_conn_mgr_dowarmup_all_pools_mode =
+          FLAGS_TEST_ysql_conn_mgr_dowarmup_all_pools_mode.c_str(),
   };
   // clang-format on
   return &accessor;

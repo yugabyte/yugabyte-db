@@ -14,6 +14,18 @@ const (
 	GCSCredentialsJSON = "GCS_CREDENTIALS_JSON"
 	// UseGCPIAM field name to denote in Json request
 	UseGCPIAM = "USE_GCP_IAM"
+	// GCPConfigField field name to denote in Json request
+	GCPConfigField = "GCP_CONFIG"
+	// GCPLocationIDField field name to denote in Json request
+	GCPLocationIDField = "LOCATION_ID"
+	// GCPProtectionLevelField field name to denote in Json request
+	GCPProtectionLevelField = "PROTECTION_LEVEL"
+	// GCPKmsEndpointField field name to denote in Json request
+	GCPKmsEndpointField = "GCP_KMS_ENDPOINT"
+	// GCPKeyRingIDField field name to denote in Json request
+	GCPKeyRingIDField = "KEY_RING_ID"
+	// GCPCryptoKeyIDField field name to denote in Json request
+	GCPCryptoKeyIDField = "CRYPTO_KEY_ID"
 
 	// AWSAccessKeyEnv env variable name for aws provider/storage config/releases
 	AWSAccessKeyEnv = "AWS_ACCESS_KEY_ID"
@@ -21,6 +33,14 @@ const (
 	AWSSecretAccessKeyEnv = "AWS_SECRET_ACCESS_KEY"
 	// IAMInstanceProfile field name to denote in Json request
 	IAMInstanceProfile = "IAM_INSTANCE_PROFILE"
+	// AWSRegionEnv env variable name for aws kmsc config
+	AWSRegionEnv = "AWS_REGION"
+	// AWSCMKIDField field name to denote in Json request
+	AWSCMKIDField = "cmk_id"
+	// AWSCMKPolicyField field name to denote in Json request
+	AWSCMKPolicyField = "cmk_policy"
+	// AWSEndpointEnv field name to denote in Json request
+	AWSEndpointEnv = "AWS_KMS_ENDPOINT"
 
 	// AzureSubscriptionIDEnv env variable name for azure provider
 	AzureSubscriptionIDEnv = "AZURE_SUBSCRIPTION_ID"
@@ -35,6 +55,47 @@ const (
 
 	// AzureStorageSasTokenEnv env variable name azure storage config
 	AzureStorageSasTokenEnv = "AZURE_STORAGE_SAS_TOKEN"
+
+	// AzureClientIDField field name to denote in Json request
+	AzureClientIDField = "CLIENT_ID"
+	// AzureClientSecretField field name to denote in Json request
+	AzureClientSecretField = "CLIENT_SECRET"
+	// AzureTenantIDField field name to denote in Json request
+	AzureTenantIDField = "TENANT_ID"
+	// AzureVaultURLField field name to denote in Json request
+	AzureVaultURLField = "AZU_VAULT_URL"
+	// AzureKeyNameField field name to denote in Json request
+	AzureKeyNameField = "AZU_KEY_NAME"
+	// AzureKeyAlgorithmField field name to denote in Json request
+	AzureKeyAlgorithmField = "AZU_KEY_ALGORITHM"
+	// AzureKeySizeField field name to denote in Json request
+	AzureKeySizeField = "AZU_KEY_SIZE"
+
+	// HashicorpVaultTokenEnv env variable name for hashicorp vault
+	HashicorpVaultTokenEnv = "VAULT_TOKEN"
+	// HashicorpVaultAddressEnv env variable name for hashicorp vault
+	HashicorpVaultAddressEnv = "VAULT_ADDR"
+	// HashicorpVaulNamespaceEnv env variable name for hashicorp vault
+	HashicorpVaultNamespaceEnv = "VAULT_NAMESPACE"
+
+	// HashicorpVaultAddressField variable name for hashicorp vault
+	HashicorpVaultAddressField = "HC_VAULT_ADDRESS"
+	// HashicorpVaultTokenField variable name for hashicorp vault
+	HashicorpVaultTokenField = "HC_VAULT_TOKEN"
+	// HashicorpVaultNamespaceField variable name for hashicorp vault
+	HashicorpVaultNamespaceField = "HC_VAULT_NAMESPACE"
+	// HashicorpVaultEngineField variable name for hashicorp vault
+	HashicorpVaultEngineField = "HC_VAULT_ENGINE"
+	// HashicorpVaultMountPathField variable name for hashicorp vault
+	HashicorpVaultMountPathField = "HC_VAULT_MOUNT_PATH"
+	// HashicorpVaultKeyNameField variable name for hashicorp vault
+	HashicorpVaultKeyNameField = "HC_VAULT_KEY_NAME"
+	// HashicorpVaultRoleIDField variable name for hashicorp vault
+	HashicorpVaultRoleIDField = "HC_VAULT_ROLE_ID"
+	// HashicorpVaultSecretIDField variable name for hashicorp vault
+	HashicorpVaultSecretIDField = "HC_VAULT_SECRET_ID"
+	// HashicorpVaultAuthNamespaceField variable name for hashicorp vault
+	HashicorpVaultAuthNamespaceField = "HC_VAULT_AUTH_NAMESPACE"
 )
 
 // Minimum YugabyteDB Anywhere versions to support operation
@@ -87,6 +148,44 @@ const (
 	ErrorProviderState = "ERROR"
 	// DeletingProviderState state
 	DeletingProviderState = "DELETING"
+)
+
+// BackupStates
+const (
+	// InProgressBackupState state
+	InProgressBackupState = "InProgress"
+	// CompletedBackupState state
+	CompletedBackupState = "Completed"
+	// FailedBackupState state
+	FailedBackupState = "Failed"
+	// SkippedBackupState state
+	SkippedBackupState = "Skipped"
+	// FailedToDeleteBackupState state
+	FailedToDeleteBackupState = "FailedToDelete"
+	// StoppingBackupState state
+	StoppingBackupState = "Stopping"
+	// StoppedBackupState state
+	StoppedBackupState = "Stopped"
+	// QueuedForDeletionBackupState state
+	QueuedForDeletionBackupState = "QueuedForDeletion"
+	// QueuedForForcedDeletionBackupState state
+	QueuedForForcedDeletionBackupState = "QueuedForForcedDeletion"
+	// DeleteInProgressBackupState state
+	DeleteInProgressBackupState = "DeleteInProgress"
+)
+
+// RestoreStates
+const (
+	// InProgressRestoreState state
+	InProgressRestoreState = "InProgress"
+	// CompletedRestoreState state
+	CompletedRestoreState = "Completed"
+	// FailedRestoreState state
+	FailedRestoreState = "Failed"
+	// AbortedRestoreState state
+	AbortedRestoreState = "Aborted"
+	// CreatedRestoreState state
+	CreatedRestoreState = "Created"
 )
 
 // Allowed states for YugabyteDB Anywhere Tasks
@@ -174,6 +273,18 @@ const (
 	OnpremProviderType = "onprem"
 )
 
+// Different kms types
+const (
+	// util.AWSEARType type
+	AWSEARType = "AWS"
+	// AzureEARType type
+	AzureEARType = "AZU"
+	// GCPEARType type
+	GCPEARType = "GCP"
+	// HashicorpVaultEARType type
+	HashicorpVaultEARType = "HASHICORP"
+)
+
 // Different storage configuration types
 const (
 	// S3StorageConfigType type
@@ -213,18 +324,32 @@ const (
 	AARCH64 = "aarch64"
 )
 
-// CompletedStates returns set of states that mark the task as completed
-func CompletedStates() []string {
+// Certificate Types
+const (
+	// SelfSignedCertificateType type
+	SelfSignedCertificateType = "SelfSigned"
+	// HashicorpVaultCertificateType type
+	HashicorpVaultCertificateType = "HashicorpVault"
+	// K8sCertManagerCertificateType type
+	K8sCertManagerCertificateType = "K8sCertManager"
+	// CustomCertHostPathCertificateType type
+	CustomCertHostPathCertificateType = "CustomCertHostPath"
+	// CustomServerCertCertificateType type
+	CustomServerCertCertificateType = "CustomServerCert"
+)
+
+// CompletedTaskStates returns set of states that mark the task as completed
+func CompletedTaskStates() []string {
 	return []string{SuccessTaskStatus, FailureTaskStatus, AbortedTaskStatus}
 }
 
-// ErrorStates return set of states that mark state as failure
-func ErrorStates() []string {
+// ErrorTaskStates return set of states that mark state as failure
+func ErrorTaskStates() []string {
 	return []string{FailureTaskStatus, AbortedTaskStatus}
 }
 
-// IncompleteStates return set of states for ongoing tasks
-func IncompleteStates() []string {
+// IncompleteTaskStates return set of states for ongoing tasks
+func IncompleteTaskStates() []string {
 	return []string{CreatedTaskStatus, InitializingTaskStatus, RunningTaskStatus, AbortTaskStatus}
 }
 

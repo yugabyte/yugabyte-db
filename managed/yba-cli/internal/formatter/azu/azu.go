@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
@@ -21,6 +22,12 @@ const (
 	// Region provides header for AZU Region Cloud Info
 	Region = "table {{.SecurityGroupID}}\t{{.VNet}}\t.{{.YbImage}}"
 
+	// EAR1 provides header for Azure KMS Info
+	EAR1 = "table {{.ClientID}}\t{{.ClientSecret}}\t{{.TenantID}}"
+
+	// EAR2 provides header for Azure KMS Info
+	EAR2 = "table {{.VaultURL}}\t{{.KeyName}}\t{{.KeyAlgorithm}}\t{{.KeySize}}"
+
 	clientIDHeader              = "Azure Client ID"
 	clientSecretHeader          = "Azure Client Secret"
 	subscriptionIDHeader        = "Azure Subscription ID"
@@ -33,6 +40,14 @@ const (
 	sgIDHeader                  = "Security Group ID"
 	vnetHeader                  = "Virual Network"
 	ybImageHeader               = "YB Image"
+
+	keyAlgorithmHeader = "Key Algorithm"
+
+	keySizeHeader = "Key Size"
+
+	vaultURLHeader = "Vault URL"
+
+	keyNameHeader = "Key Name"
 )
 
 // ProviderContext for provider outputs
@@ -47,6 +62,13 @@ type RegionContext struct {
 	formatter.HeaderContext
 	formatter.Context
 	Region ybaclient.AzureRegionCloudInfo
+}
+
+// EARContext for kms outputs
+type EARContext struct {
+	formatter.HeaderContext
+	formatter.Context
+	Azu util.AzuKmsAuthConfigField
 }
 
 // NewProviderFormat for formatting output
@@ -65,6 +87,17 @@ func NewRegionFormat(source string) formatter.Format {
 	switch source {
 	case "table", "":
 		format := Region
+		return formatter.Format(format)
+	default: // custom format or json or pretty
+		return formatter.Format(source)
+	}
+}
+
+// NewEARFormat for formatting output
+func NewEARFormat(source string) formatter.Format {
+	switch source {
+	case "table", "":
+		format := EAR1
 		return formatter.Format(format)
 	default: // custom format or json or pretty
 		return formatter.Format(source)
@@ -97,6 +130,21 @@ func NewRegionContext() *RegionContext {
 		"YbImage":         ybImageHeader,
 	}
 	return &azuRegionCtx
+}
+
+// NewEARContext creates a new context for rendering ear config
+func NewEARContext() *EARContext {
+	azuEARCtx := EARContext{}
+	azuEARCtx.Header = formatter.SubHeaderContext{
+		"ClientID":     clientIDHeader,
+		"ClientSecret": clientSecretHeader,
+		"TenantID":     tenantIDHeader,
+		"VaultURL":     vaultURLHeader,
+		"KeyName":      keyNameHeader,
+		"KeyAlgorithm": keyAlgorithmHeader,
+		"KeySize":      keySizeHeader,
+	}
+	return &azuEARCtx
 }
 
 // ClientID fetches Azure Client ID
@@ -167,4 +215,44 @@ func (c *RegionContext) YbImage() string {
 // MarshalJSON function
 func (c *RegionContext) MarshalJSON() ([]byte, error) {
 	return json.Marshal(c.Region)
+}
+
+// ClientID fetches Azure Client ID
+func (c *EARContext) ClientID() string {
+	return c.Azu.ClientID
+}
+
+// ClientSecret fetches Azure Client Secret
+func (c *EARContext) ClientSecret() string {
+	return c.Azu.ClientSecret
+}
+
+// TenantID fetches Azure Tenant ID
+func (c *EARContext) TenantID() string {
+	return c.Azu.TenantID
+}
+
+// VaultURL fetches Azure Vault URL
+func (c *EARContext) VaultURL() string {
+	return c.Azu.AzuVaultURL
+}
+
+// KeyName fetches Azure Key Name
+func (c *EARContext) KeyName() string {
+	return c.Azu.AzuKeyName
+}
+
+// KeyAlgorithm fetches Azure Key Algorithm
+func (c *EARContext) KeyAlgorithm() string {
+	return c.Azu.AzuKeyAlgorithm
+}
+
+// KeySize fetches Azure Key Size
+func (c *EARContext) KeySize() int {
+	return c.Azu.AzuKeySize
+}
+
+// MarshalJSON function
+func (c *EARContext) MarshalJSON() ([]byte, error) {
+	return json.Marshal(c.Azu)
 }

@@ -2,10 +2,10 @@ package org.yb.pgsql;
 
 import static org.junit.Assert.assertTrue;
 
+import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.List;
-import java.math.BigDecimal;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,6 +26,7 @@ public class ExplainAnalyzeUtils {
   public static final String NODE_AGGREGATE = "Aggregate";
   public static final String NODE_BITMAP_INDEX_SCAN = "Bitmap Index Scan";
   public static final String NODE_BITMAP_OR = "BitmapOr";
+  public static final String NODE_BITMAP_AND = "BitmapAnd";
   public static final String NODE_FUNCTION_SCAN = "Function Scan";
   public static final String NODE_GATHER = "Gather";
   public static final String NODE_GATHER_MERGE = "Gather Merge";

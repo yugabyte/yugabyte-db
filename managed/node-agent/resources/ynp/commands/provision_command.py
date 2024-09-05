@@ -49,6 +49,12 @@ class ProvisionCommand(Command):
         with tempfile.NamedTemporaryFile(mode="w+", delete=False) as temp_file:
             temp_file.write("#!/bin/bash\n\n")
             temp_file.write("set -e\n")
+            key = next(iter(self.config), None)
+            if key is not None:
+                context = self.config[key]
+                loglevel = context.get('loglevel')
+                if loglevel == "DEBUG":
+                    temp_file.write("set -x\n")
             self.add_results_helper(temp_file)
             self.populate_sudo_check(temp_file)
             for key in all_templates:

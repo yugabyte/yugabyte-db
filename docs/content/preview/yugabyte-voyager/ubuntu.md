@@ -17,7 +17,7 @@ Perform the following steps to install yb-voyager using apt for Ubuntu:
     sudo apt-get install ./yb-apt-repo_1.0.0_all.deb
     ```
 
-    This repository contains the `yb-voyager` debian package and the dependencies required to run `yb-voyager`.
+    This repository contains the `yb-voyager` Debian package and the dependencies required to run `yb-voyager`.
 
 1. Clean the `apt-get` cache and package lists using the following commands::
 
@@ -44,7 +44,7 @@ Perform the following steps to install yb-voyager using apt for Ubuntu:
     sudo apt-get install ora2pg=23.2-yb.2
     ```
 
-    And then, try installing yb-voyager using the following command:
+    Then try installing yb-voyager using the following command:
 
     ```sh
     sudo apt-get install yb-voyager

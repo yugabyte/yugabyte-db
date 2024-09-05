@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 
 	ybaclient "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/util"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
@@ -18,6 +19,15 @@ const (
 
 	// Region provides header for AWS Region Cloud Info
 	Region = "table {{.Arch}}\t{{.SecurityGroupID}}\t{{.VNet}}\t{{.YbImage}}"
+
+	// EAR1 for EAR listing
+	EAR1 = "table {{.AccessKeyID}}\t{{.AccessKeySecret}}\t{{.EndPoint}}"
+
+	// EAR2 for EAR listing
+	EAR2 = "table {{.Region}}\t{{.CMKID}}"
+
+	// EAR3 for EAR listing
+	EAR3 = "table {{.CMKPolicy}}"
 
 	// AccessKeyIDHeader for Access key ID header
 	AccessKeyIDHeader = "AWS Access Key ID"
@@ -31,6 +41,9 @@ const (
 	sgIDHeader           = "Security Group ID"
 	vnetHeader           = "Virual Network"
 	ybImageHeader        = "YB Image"
+	endPointHeader       = "EndPoint"
+	cmkPolicyHeader      = "CMK Policy"
+	cmkIDHeader          = "CMK ID"
 )
 
 // ProviderContext for provider outputs
@@ -45,6 +58,13 @@ type RegionContext struct {
 	formatter.HeaderContext
 	formatter.Context
 	Region ybaclient.AWSRegionCloudInfo
+}
+
+// EARContext for ksm outputs
+type EARContext struct {
+	formatter.HeaderContext
+	formatter.Context
+	Aws util.AwsKmsAuthConfigField
 }
 
 // NewProviderFormat for formatting output
@@ -63,6 +83,17 @@ func NewRegionFormat(source string) formatter.Format {
 	switch source {
 	case "table", "":
 		format := Region
+		return formatter.Format(format)
+	default: // custom format or json or pretty
+		return formatter.Format(source)
+	}
+}
+
+// NewEARFormat for formatting output
+func NewEARFormat(source string) formatter.Format {
+	switch source {
+	case "table", "":
+		format := EAR1
 		return formatter.Format(format)
 	default: // custom format or json or pretty
 		return formatter.Format(source)
@@ -92,6 +123,20 @@ func NewRegionContext() *RegionContext {
 		"YbImage":         ybImageHeader,
 	}
 	return &awsRegionCtx
+}
+
+// NewEARContext creates a new context for rendering kms config
+func NewEARContext() *EARContext {
+	awsEARCtx := EARContext{}
+	awsEARCtx.Header = formatter.SubHeaderContext{
+		"EndPoint":        endPointHeader,
+		"CMKPolicy":       cmkPolicyHeader,
+		"CMKID":           cmkIDHeader,
+		"AccessKeyID":     AccessKeyIDHeader,
+		"AccessKeySecret": AccessKeySecretHeader,
+		"Region":          formatter.RegionsHeader,
+	}
+	return &awsEARCtx
 }
 
 // AccessKeyID fetches AWS access key ID
@@ -147,4 +192,39 @@ func (c *RegionContext) YbImage() string {
 // MarshalJSON function
 func (c *RegionContext) MarshalJSON() ([]byte, error) {
 	return json.Marshal(c.Region)
+}
+
+// EndPoint fetches AWS end point
+func (c *EARContext) EndPoint() string {
+	return c.Aws.EndPoint
+}
+
+// CMKPolicy fetches AWS cmk policy
+func (c *EARContext) CMKPolicy() string {
+	return c.Aws.CMKPolicy
+}
+
+// CMKID fetches AWS cmk ID
+func (c *EARContext) CMKID() string {
+	return c.Aws.CMKID
+}
+
+// AccessKeyID fetches AWS access key ID
+func (c *EARContext) AccessKeyID() string {
+	return c.Aws.AccessKeyID
+}
+
+// AccessKeySecret fetches AWS access key secret
+func (c *EARContext) AccessKeySecret() string {
+	return c.Aws.SecretAccessKey
+}
+
+// Region fetches AWS region
+func (c *EARContext) Region() string {
+	return c.Aws.Region
+}
+
+// MarshalJSON function
+func (c *EARContext) MarshalJSON() ([]byte, error) {
+	return json.Marshal(c.Aws)
 }

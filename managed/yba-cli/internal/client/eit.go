@@ -13,3 +13,9 @@ func (a *AuthAPIClient) GetListOfCertificates() (
 	ybaclient.CertificateInfoApiApiGetListOfCertificateRequest) {
 	return a.APIClient.CertificateInfoApi.GetListOfCertificate(a.ctx, a.CustomerUUID)
 }
+
+// DeleteCertificate - delete certificate
+func (a *AuthAPIClient) DeleteCertificate(certUUID string) (
+	ybaclient.CertificateInfoApiApiDeleteCertificateRequest) {
+	return a.APIClient.CertificateInfoApi.DeleteCertificate(a.ctx, a.CustomerUUID, certUUID)
+}

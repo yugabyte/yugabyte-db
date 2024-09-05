@@ -3,8 +3,10 @@
 
 [DEFAULT]
 version = 1.0.0
-loglevel = DEBUG
-logfile = app.log
+# Keep this as debug level for printing the shell file output.
+loglevel = {{ logging.level }}
+logdir = {{ logging.directory }}
+logfile = {{ logging.file }}
 is_airgap = {{ ynp.is_airgap }}
 ynp_dir = {{ ynp_dir }}
 execution_start_time = {{ start_time }}

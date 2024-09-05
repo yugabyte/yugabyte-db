@@ -245,11 +245,7 @@ void CQLInboundCall::RespondSuccess(const RefCntBuffer& buffer) {
 
 void CQLInboundCall::GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_pb) const {
   std::shared_ptr<const CQLRequest> request =
-#ifdef THREAD_SANITIZER
-      request_;
-#else
       std::atomic_load_explicit(&request_, std::memory_order_acquire);
-#endif
   if (request == nullptr) {
     return;
   }

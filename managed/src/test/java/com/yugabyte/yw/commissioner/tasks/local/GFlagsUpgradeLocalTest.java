@@ -667,6 +667,10 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
         Map<String, String> gflags =
             GFlagsUtil.getGFlagsForNode(
                 node, serverType, cluster, universe.getUniverseDetails().clusters);
+        Map<String, String> newInstallGflags = universe.getNewInstallGFlags(serverType);
+        gflags.putAll(newInstallGflags);
+        log.info(
+            "expected gflags for node {} server type {} are {}", node.nodeName, serverType, gflags);
         Map<String, String> gflagsOnDisk = getDiskFlags(node, universe, serverType);
         gflags.forEach(
             (k, v) -> {

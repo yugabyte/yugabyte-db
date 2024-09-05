@@ -1101,8 +1101,14 @@ removing_database_from_system:
 		 */
 		if (YbGetNumYsqlConnMgrConnections(dbname, NULL, &yb_num_logical_conn,
 									   &yb_num_physical_conn_from_ysqlconnmgr))
+		{
 			yb_net_client_connections +=
 				yb_num_logical_conn - yb_num_physical_conn_from_ysqlconnmgr;
+
+			if (YbIsYsqlConnMgrWarmupModeEnabled())
+				yb_net_client_connections = yb_num_logical_conn;
+		}
+
 		/*
 		 * yb_net_client_connections can be negative if there are broken physical connections
 		 * in ysql connection manager pool.
@@ -1298,8 +1304,13 @@ RenameDatabase(const char *oldname, const char *newname)
 		 */
 		if (YbGetNumYsqlConnMgrConnections(oldname, NULL, &yb_num_logical_conn,
 									   &yb_num_physical_conn_from_ysqlconnmgr))
+		{
 			yb_net_client_connections +=
 				yb_num_logical_conn - yb_num_physical_conn_from_ysqlconnmgr;
+
+			if (YbIsYsqlConnMgrWarmupModeEnabled())
+				yb_net_client_connections = yb_num_logical_conn;
+		}
 
 		/*
 		 * yb_net_client_connections can be negative if there are broken physical connections

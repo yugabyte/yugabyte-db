@@ -465,10 +465,27 @@ struct PerformData {
           // Prevent further paging reads from read restart errors.
           // See the ProcessUsedReadTime(...) function for details.
           *op_resp.mutable_paging_state()->mutable_read_time() = resp.catalog_read_time();
-        }
-        if (transaction && transaction->isolation() == IsolationLevel::SERIALIZABLE_ISOLATION) {
-          // Delete read time from paging state since a read time is not used in serializable
-          // isolation level.
+        } else {
+          // Clear read time for the next page here unless absolutely necessary.
+          //
+          // Otherwise, if we do not clear read time here, a request for the
+          // next page with this read time can be sent back by the pg layer.
+          // Explicit read time in the request clears out existing local limits
+          // since the pg client session incorrectly believes that this passed
+          // read time is new. However, paging read time is simply a copy of
+          // the previous read time.
+          //
+          // Rely on
+          // 1. Either pg client session to set the read time.
+          //   See pg_client_session.cc's SetupSession
+          //     and transaction.cc's SetReadTimeIfNeeded
+          //     and batcher.cc's ExecuteOperations
+          // 2. Or transaction used read time logic in transaction.cc
+          // 3. Or plain session's used read time logic in CheckPlainSessionPendingUsedReadTime
+          //   to set the read time for the next page.
+          //
+          // Catalog sessions are not handled by the above logic, so
+          // we set the paging read time above.
           op_resp.mutable_paging_state()->clear_read_time();
         }
       }
@@ -849,7 +866,9 @@ Status PgClientSession::CreateReplicationSlot(
       /* populate_namespace_id_as_table_id */ false,
       ReplicationSlotName(req.replication_slot_name()),
       req.output_plugin_name(), snapshot_option,
-      context->GetClientDeadline(), &consistent_snapshot_time));
+      context->GetClientDeadline(),
+      CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED,
+      &consistent_snapshot_time));
   *resp->mutable_stream_id() = stream_result.ToString();
   resp->set_cdcsdk_consistent_snapshot_time(consistent_snapshot_time);
   return Status::OK();
@@ -1106,7 +1125,7 @@ Status PgClientSession::FinishTransaction(
       // as the poller in the YB-Master will figure out the status of this transaction using the
       // transaction status tablet and PG catalog.
       ERROR_NOT_OK(client().ReportYsqlDdlTxnStatus(*metadata, req.commit()),
-                  "Sending ReportYsqlDdlTxnStatus call failed");
+                   Format("Sending ReportYsqlDdlTxnStatus call of $0 failed", req.commit()));
     }
 
     if (FLAGS_ysql_ddl_transaction_wait_for_ddl_verification) {

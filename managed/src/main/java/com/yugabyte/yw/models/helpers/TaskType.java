@@ -954,6 +954,9 @@ public enum TaskType {
 
   CheckUpgrade(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckUpgrade.class),
 
+  CheckCertificateConfig(
+      com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckCertificateConfig.class),
+
   CheckMemory(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory.class),
 
   CheckLocale(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckLocale.class),

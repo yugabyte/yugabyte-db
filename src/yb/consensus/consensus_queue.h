@@ -401,6 +401,10 @@ class PeerMessageQueue {
       const CoarseTimePoint deadline = CoarseTimePoint::max(),
       const bool fetch_single_entry = false);
 
+  Result<ReadOpsResult> ReadReplicatedMessagesForConsistentCDC(
+      OpId last_op_id, uint64_t stream_safe_time, CoarseTimePoint deadline,
+      bool fetch_single_entry = false, int64_t* last_replicated_opid_index = nullptr);
+
   void UpdateCDCConsumerOpId(const yb::OpId& op_id);
 
   // Get the maximum op ID that can be evicted for CDC consumer from log cache.
@@ -577,6 +581,12 @@ class PeerMessageQueue {
       const std::string& peer_uuid,
       const CoarseTimePoint deadline = CoarseTimePoint::max(),
       const bool fetch_single_entry = false);
+
+  Result<ReadOpsResult> ReadFromLogCacheForCDC(
+      OpId last_op_id,
+      int64_t to_index,
+      CoarseTimePoint deadline = CoarseTimePoint::max(),
+      bool fetch_single_entry = false);
 
   void TEST_WaitForNotificationToFinish();
 

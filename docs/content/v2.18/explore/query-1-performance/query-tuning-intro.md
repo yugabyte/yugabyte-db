@@ -46,7 +46,7 @@ d80150e0eeda4477a231968440dd89a9 172.158.50.212:9100 0.20s           ALIVE    ..
 
 Next, make sure enough disk space is available, elementary components such as CPU, disk, and the network do not report errors, and the operating system does not report any malfunction.
 
-For more information on troubleshooting cluster- and node-level issues, refer to [Troubleshoot YugabyteDB](../../../troubleshoot/).
+For more information on troubleshooting cluster- and node-level issues, refer to [Troubleshoot YugabyteDB](/preview/troubleshoot/).
 
 After you know the entire cluster is running correctly, you can move to statement tuning.
 
@@ -157,7 +157,7 @@ Example log output:
     ORDER BY 2, 3;
 ```
 
-Results are written to the current `postgres*log` file. For information on the YB-TServer logs, refer to [YB-TServer logs](../../../troubleshoot/nodes/check-logs/#yb-tserver-logs).
+Results are written to the current `postgres*log` file. For information on the YB-TServer logs, refer to [YB-TServer logs](/preview/troubleshoot/nodes/check-logs/#yb-tserver-logs).
 
 {{< note title="Note" >}}
 

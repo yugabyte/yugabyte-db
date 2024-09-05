@@ -19,8 +19,8 @@ The following sections describe the prerequisites for installing YugabyteDB Voya
 
 You can install YugabyteDB Voyager on the following:
 
-- RHEL 7/8
-- CentOS 7/8
+- RHEL 8
+- CentOS 8
 - Ubuntu 18.04, 20.04, 22.04
 - macOS (For MySQL/Oracle source databases on macOS, [install yb-voyager](#install-yb-voyager) using the Docker option.)
 
@@ -31,7 +31,7 @@ You can install YugabyteDB Voyager on the following:
 
 ### Software requirement
 
-- Java 11 or later. For better performance, the recommended version is Java 17.
+- Java 17. Any higher versions of Java might lead to errors during installation or migration.
 
 ### Prepare the host
 
