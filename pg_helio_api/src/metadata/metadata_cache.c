@@ -648,6 +648,12 @@ typedef struct HelioApiOidCacheData
 	/* OID of the BSONSUM aggregate function */
 	Oid ApiCatalogBsonSumAggregateFunctionOid;
 
+	/* OID of the bson_linear_fill window function */
+	Oid ApiCatalogBsonLinearFillFunctionOid;
+
+	/* OID of the bson_locf_fill window function */
+	Oid ApiCatalogBsonLocfFillFunctionOid;
+
 	/* OID of the BSONAVERAGE aggregate function */
 	Oid ApiCatalogBsonAverageAggregateFunctionOid;
 
@@ -3244,6 +3250,46 @@ BsonSumAggregateFunctionOid(void)
 {
 	return GetAggregateFunctionByName(&Cache.ApiCatalogBsonSumAggregateFunctionOid,
 									  ApiCatalogSchemaName, "bsonsum");
+}
+
+
+Oid
+BsonLinearFillFunctionOid(void)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (Cache.ApiCatalogBsonLinearFillFunctionOid == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString("helio_api_internal"),
+											makeString("bson_linear_fill"));
+		Oid paramOids[2] = { BsonTypeId(), BsonTypeId() };
+		bool missingOK = false;
+
+		Cache.ApiCatalogBsonLinearFillFunctionOid =
+			LookupFuncName(functionNameList, 2, paramOids, missingOK);
+	}
+
+	return Cache.ApiCatalogBsonLinearFillFunctionOid;
+}
+
+
+Oid
+BsonLocfFillFunctionOid(void)
+{
+	InitializeHelioApiExtensionCache();
+
+	if (Cache.ApiCatalogBsonLocfFillFunctionOid == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString("helio_api_internal"),
+											makeString("bson_locf_fill"));
+		Oid paramOids[1] = { BsonTypeId() };
+		bool missingOK = false;
+
+		Cache.ApiCatalogBsonLocfFillFunctionOid =
+			LookupFuncName(functionNameList, 1, paramOids, missingOK);
+	}
+
+	return Cache.ApiCatalogBsonLocfFillFunctionOid;
 }
 
 

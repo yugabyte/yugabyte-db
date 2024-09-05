@@ -168,6 +168,10 @@ static WindowFunc * HandleDollarSumWindowOperator(const bson_value_t *opValue,
 												  WindowOperatorContext *context);
 static WindowFunc * HandleDollarExpMovingAvgWindowOperator(const bson_value_t *opValue,
 														   WindowOperatorContext *context);
+static WindowFunc * HandleDollarLinearFillWindowOperator(const bson_value_t *opValue,
+														 WindowOperatorContext *context);
+static WindowFunc * HandleDollarLocfFillWindowOperator(const bson_value_t *opValue,
+													   WindowOperatorContext *context);
 
 
 /* GUC to enable SetWindowFields stage */
@@ -246,11 +250,11 @@ static const WindowOperatorDefinition WindowOperatorDefinitions[] =
 	},
 	{
 		.operatorName = "$linearFill",
-		.windowOperatorFunc = NULL
+		.windowOperatorFunc = &HandleDollarLinearFillWindowOperator
 	},
 	{
 		.operatorName = "$locf",
-		.windowOperatorFunc = NULL
+		.windowOperatorFunc = &HandleDollarLocfFillWindowOperator
 	},
 	{
 		.operatorName = "$max",
@@ -1746,5 +1750,125 @@ HandleDollarExpMovingAvgWindowOperator(const bson_value_t *opValue,
 		InvalidOid, COERCE_EXPLICIT_CALL);
 
 	windowFunc->args = list_make3(accumFunc, weightConstValue, isAlphaConst);
+	return windowFunc;
+}
+
+
+/*
+ * Handle for $linearFill window aggregation operator.
+ */
+static WindowFunc *
+HandleDollarLinearFillWindowOperator(const bson_value_t *opValue,
+									 WindowOperatorContext *context)
+{
+	if (!(IsClusterVersionAtleastThis(1, 22, 0)))
+	{
+		ereport(ERROR, (errcode(MongoLocation605001),
+						errmsg(
+							" $linearFill is only supported on vCore 1.21.0 and above")));
+	}
+	if (list_length(context->sortOptions) != 1)
+	{
+		ereport(ERROR, (errcode(MongoLocation605001),
+						errmsg(
+							" $linearFill must be specified with a top level sortBy expression with exactly one element")));
+	}
+	if (context->isWindowPresent)
+	{
+		ereport(ERROR, (errcode(MongoFailedToParse),
+						errmsg(
+							" 'window' field is not allowed in $linearFill")));
+	}
+
+	WindowFunc *windowFunc = makeNode(WindowFunc);
+	windowFunc->winfnoid = BsonLinearFillFunctionOid();
+	windowFunc->wintype = BsonTypeId();
+	windowFunc->winref = context->winRef;
+	windowFunc->winstar = false;
+	windowFunc->winagg = false;
+
+	Expr *constValue = (Expr *) MakeBsonConst(BsonValueToDocumentPgbson(opValue)); \
+	Const *trueConst = (Const *) MakeBoolValueConst(true);
+	List *args;
+	Oid functionOid;
+
+	if (context->variableContext != NULL)
+	{
+		functionOid = BsonExpressionGetWithLetFunctionOid();
+		args = list_make4(context->docExpr, constValue, trueConst,
+						  context->variableContext);
+	}
+	else
+	{
+		functionOid = BsonExpressionGetFunctionOid();
+		args = list_make3(context->docExpr, constValue, trueConst);
+	}
+
+	FuncExpr *accumFunc = makeFuncExpr(
+		functionOid, BsonTypeId(), args, InvalidOid,
+		InvalidOid, COERCE_EXPLICIT_CALL);
+
+	SetWindowFieldSortOption *sortOption = (SetWindowFieldSortOption *) linitial(
+		context->sortOptions);
+	List *sortExprArgs = list_make2(context->docExpr, sortOption->sortSpecConst);
+
+	FuncExpr *sortExpr = makeFuncExpr(
+		BsonOrderByFunctionOid(), BsonTypeId(), sortExprArgs, InvalidOid,
+		InvalidOid, COERCE_EXPLICIT_CALL);
+
+	windowFunc->args = list_make2(accumFunc, sortExpr);
+	return windowFunc;
+}
+
+
+/*
+ * Handle for $locf window aggregation operator.
+ */
+static WindowFunc *
+HandleDollarLocfFillWindowOperator(const bson_value_t *opValue,
+								   WindowOperatorContext *context)
+{
+	if (!(IsClusterVersionAtleastThis(1, 22, 0)))
+	{
+		ereport(ERROR, (errcode(MongoLocation605001),
+						errmsg(
+							" $locf is only supported on vCore 1.21.0 and above")));
+	}
+	if (context->isWindowPresent)
+	{
+		ereport(ERROR, (errcode(MongoFailedToParse),
+						errmsg(
+							" 'window' field is not allowed in $locf")));
+	}
+
+	WindowFunc *windowFunc = makeNode(WindowFunc);
+	windowFunc->winfnoid = BsonLocfFillFunctionOid();
+	windowFunc->wintype = BsonTypeId();
+	windowFunc->winref = context->winRef;
+	windowFunc->winstar = false;
+	windowFunc->winagg = false;
+
+	Expr *constValue = (Expr *) MakeBsonConst(BsonValueToDocumentPgbson(opValue));
+
+	Const *trueConst = (Const *) MakeBoolValueConst(true);
+	List *args;
+	Oid functionOid;
+
+	if (context->variableContext != NULL)
+	{
+		functionOid = BsonExpressionGetWithLetFunctionOid();
+		args = list_make4(context->docExpr, constValue, trueConst,
+						  context->variableContext);
+	}
+	else
+	{
+		functionOid = BsonExpressionGetFunctionOid();
+		args = list_make3(context->docExpr, constValue, trueConst);
+	}
+
+	FuncExpr *accumFunc = makeFuncExpr(
+		functionOid, BsonTypeId(), args, InvalidOid,
+		InvalidOid, COERCE_EXPLICIT_CALL);
+	windowFunc->args = list_make1(accumFunc);
 	return windowFunc;
 }

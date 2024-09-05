@@ -60,3 +60,17 @@ CREATE OR REPLACE FUNCTION helio_api_internal.bson_exp_moving_avg(__CORE_SCHEMA_
  STABLE
  WINDOW
 AS 'MODULE_PATHNAME', $function$bson_exp_moving_avg$function$;
+
+CREATE OR REPLACE FUNCTION helio_api_internal.bson_linear_fill(__CORE_SCHEMA__.bson, __CORE_SCHEMA__.bson)
+ RETURNS __CORE_SCHEMA__.bson 
+ LANGUAGE c
+ STABLE
+ WINDOW
+AS 'MODULE_PATHNAME', $function$bson_linear_fill$function$;
+
+CREATE OR REPLACE FUNCTION helio_api_internal.bson_locf_fill(__CORE_SCHEMA__.bson)
+ RETURNS __CORE_SCHEMA__.bson 
+ LANGUAGE c
+ STABLE
+ WINDOW
+AS 'MODULE_PATHNAME', $function$bson_locf_fill$function$;

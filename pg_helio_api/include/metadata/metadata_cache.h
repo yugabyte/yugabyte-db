@@ -327,6 +327,9 @@ Oid ApiCollStatsAggregationFunctionOid(void);
 Oid ApiIndexStatsAggregationFunctionOid(void);
 Oid BsonCurrentOpAggregationFunctionId(void);
 
+/* Window functions*/
+Oid BsonLinearFillFunctionOid(void);
+Oid BsonLocfFillFunctionOid(void);
 
 /* Catalog */
 Oid ApiDataNamespaceOid(void);
