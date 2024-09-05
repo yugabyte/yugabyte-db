@@ -4,6 +4,8 @@ import { Edit } from '@material-ui/icons';
 import clsx from 'clsx';
 import { YBButton } from '../../../components';
 import { YBCopyButton } from '../../../components/YBCopyButton/YBCopyButton';
+import { RbacValidator } from '../../rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../rbac/ApiAndUserPermMapping';
 import { ModalTitle, ReleaseArtifacts, ReleasePlatform, ReleasePlatformArchitecture } from './dtos';
 
 interface ImportedArchitectureProps {
@@ -152,32 +154,38 @@ export const ImportedArchitecture = ({
 
               <Divider orientation="vertical" className={helperClasses.divider} />
               <Box>
-                <YBButton
-                  title={isDisabled ? t('releases.disableActionsTooltipMessage') : ''}
-                  variant="secondary"
-                  size="large"
-                  disabled={isDisabled}
-                  startIcon={<Edit />}
-                  onClick={() => {
-                    if (artifact.architecture === ReleasePlatformArchitecture.X86) {
-                      onSetReleaseArchitecture(ReleasePlatformArchitecture.X86);
-                      onSetModalTitle(ModalTitle.EDIT_X86);
-                    } else if (artifact.architecture === ReleasePlatformArchitecture.ARM) {
-                      onSetReleaseArchitecture(ReleasePlatformArchitecture.ARM);
-                      onSetModalTitle(ModalTitle.EDIT_AARCH);
-                    } else if (
-                      artifact.architecture === null &&
-                      artifact.platform === ReleasePlatform.KUBERNETES
-                    ) {
-                      onSetReleaseArchitecture(null);
-                      onSetModalTitle(ModalTitle.EDIT_KUBERNETES);
-                    }
-                    onEditArchitectureClick();
-                    onSidePanelClose();
-                  }}
+                <RbacValidator
+                  accessRequiredOn={ApiPermissionMap.MODIFY_YBDB_RELEASE}
+                  isControl
+                  overrideStyle={{ display: 'block' }}
                 >
-                  {t('releases.edit')}
-                </YBButton>
+                  <YBButton
+                    title={isDisabled ? t('releases.disableActionsTooltipMessage') : ''}
+                    variant="secondary"
+                    size="large"
+                    disabled={isDisabled}
+                    startIcon={<Edit />}
+                    onClick={() => {
+                      if (artifact.architecture === ReleasePlatformArchitecture.X86) {
+                        onSetReleaseArchitecture(ReleasePlatformArchitecture.X86);
+                        onSetModalTitle(ModalTitle.EDIT_X86);
+                      } else if (artifact.architecture === ReleasePlatformArchitecture.ARM) {
+                        onSetReleaseArchitecture(ReleasePlatformArchitecture.ARM);
+                        onSetModalTitle(ModalTitle.EDIT_AARCH);
+                      } else if (
+                        artifact.architecture === null &&
+                        artifact.platform === ReleasePlatform.KUBERNETES
+                      ) {
+                        onSetReleaseArchitecture(null);
+                        onSetModalTitle(ModalTitle.EDIT_KUBERNETES);
+                      }
+                      onEditArchitectureClick();
+                      onSidePanelClose();
+                    }}
+                  >
+                    {t('releases.edit')}
+                  </YBButton>
+                </RbacValidator>
               </Box>
             </Box>
           </Box>
