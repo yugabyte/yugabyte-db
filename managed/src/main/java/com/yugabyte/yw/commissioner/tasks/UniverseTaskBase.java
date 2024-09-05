@@ -476,7 +476,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     private final Duration waitForServerReadyTimeout;
     private final boolean followerLagCheckEnabled;
     private boolean loadBalancerOff = false;
-    private final Set<UUID> lockedUniversesUuid = ConcurrentHashMap.newKeySet();
+    private final Map<UUID, UniverseUpdaterConfig> lockedUniverses = new ConcurrentHashMap<>();
     private final AtomicReference<Set<NodeDetails>> masterNodes = new AtomicReference<>();
 
     ExecutionContext() {
@@ -511,16 +511,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       return waitForServerReadyTimeout;
     }
 
-    public void lockUniverse(UUID universeUUID) {
-      lockedUniversesUuid.add(universeUUID);
+    public void lockUniverse(UUID universeUUID, UniverseUpdaterConfig config) {
+      lockedUniverses.put(universeUUID, config);
     }
 
-    public boolean isLocked(UUID universeUUID) {
-      return lockedUniversesUuid.contains(universeUUID);
+    public UniverseUpdaterConfig getUniverseUpdaterConfig(UUID universeUUID) {
+      return lockedUniverses.get(universeUUID);
+    }
+
+    public boolean isUniverseLocked(UUID universeUUID) {
+      return lockedUniverses.containsKey(universeUUID);
     }
 
     public void unlockUniverse(UUID universeUUID) {
-      lockedUniversesUuid.remove(universeUUID);
+      lockedUniverses.remove(universeUUID);
     }
 
     public void setMasterNodes(Set<NodeDetails> nodes) {
@@ -824,7 +828,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return null;
   }
 
-  private UniverseUpdater getLockingUniverseUpdater(UniverseUpdaterConfig updaterConfig) {
+  protected UniverseUpdater getLockingUniverseUpdater(UniverseUpdaterConfig updaterConfig) {
     TaskType owner = getTaskExecutor().getTaskType(getClass());
     if (owner == null) {
       String msg = "TaskType not found for class " + this.getClass().getCanonicalName();
@@ -895,6 +899,59 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     };
   }
 
+  // This performs the reverse of the locking updater.
+  protected UniverseUpdater getUnlockingUniverseUpdater(UniverseUpdaterConfig updaterConfig) {
+    return new UniverseUpdater() {
+      @Override
+      public void run(Universe universe) {
+        // If this universe is not being edited, fail the request.
+        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+        if (!universeDetails.updateInProgress) {
+          String msg = "Universe " + universe.getUniverseUUID() + " is not being edited";
+          log.error(msg);
+          throw new RuntimeException(msg);
+        }
+        TaskType owner = getTaskExecutor().getTaskType(UniverseTaskBase.this.getClass());
+        universeDetails.updateInProgress = false;
+        if (updaterConfig.isFreezeUniverse()) {
+          // The below fields are set inside isFreezeUniverse conditional block in locking updater.
+          if (owner != universeDetails.updatingTask
+              || !Objects.equals(getUserTaskUUID(), universeDetails.updatingTaskUUID)) {
+            String msg =
+                String.format(
+                    "Universe %s is already locked by a different task %s (%s)",
+                    universe.getUniverseUUID(),
+                    universeDetails.updatingTask,
+                    universeDetails.updatingTaskUUID);
+            log.error(msg);
+            throw new RuntimeException(msg);
+          }
+          if (updaterConfig.getCallback() != null) {
+            updaterConfig.getCallback().accept(universe);
+          }
+          // TODO When checkSuccess = false, lock and unlock are not reverse of each other, but this
+          // existing behaviour is retained to not cause regression.
+          if (universeDetails.updateSucceeded && updaterConfig.isCheckSuccess()) {
+            if (PLACEMENT_MODIFICATION_TASKS.contains(universeDetails.updatingTask)) {
+              universeDetails.placementModificationTaskUuid = null;
+              // Do not save the transient state in the universe.
+              universeDetails.nodeDetailsSet.forEach(n -> n.masterState = null);
+            }
+            // Clear the task UUIDs only if the update succeeded.
+            universeDetails.updatingTaskUUID = null;
+          }
+          universeDetails.updatingTask = null;
+        }
+        universe.setUniverseDetails(universeDetails);
+      }
+
+      @Override
+      public UniverseUpdaterConfig getConfig() {
+        return updaterConfig;
+      }
+    };
+  }
+
   protected UniverseUpdater getFreezeUniverseUpdater(UniverseUpdaterConfig updaterConfig) {
     TaskType owner = getRunnableTask().getTaskInfo().getTaskType();
     if (owner == null) {
@@ -946,8 +1003,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       if (callback != null) {
         callback.accept(universe);
       }
-      universe.setUniverseDetails(universeDetails);
     }
+    universe.setUniverseDetails(universeDetails);
   }
 
   /**
@@ -1002,7 +1059,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       }
     }
     universe = saveUniverseDetails(universe.getUniverseUUID(), updater);
-    getOrCreateExecutionContext().lockUniverse(universe.getUniverseUUID());
+    getOrCreateExecutionContext().lockUniverse(universe.getUniverseUUID(), updater.getConfig());
     log.debug("Locked universe {}", universe.getUniverseUUID());
     return universe;
   }
@@ -1010,7 +1067,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   private Universe lockUniverseForUpdate(UUID universeUuid, UniverseUpdater updater) {
     if (!updater.getConfig().isForceUpdate()) {
       Universe universe = saveUniverseDetails(universeUuid, updater);
-      getOrCreateExecutionContext().lockUniverse(universeUuid);
+      getOrCreateExecutionContext().lockUniverse(universeUuid, updater.getConfig());
       log.debug("Locked universe {}", universeUuid);
       return universe;
     }
@@ -1033,7 +1090,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         // Override force locking to false and retry.
         updater.getConfig().setForceUpdate(false);
         universe = saveUniverseDetails(universeUuid, updater);
-        getOrCreateExecutionContext().lockUniverse(universeUuid);
+        getOrCreateExecutionContext().lockUniverse(universeUuid, updater.getConfig());
         log.debug("Locked universe {}", universeUuid);
         return universe;
       } catch (UniverseInProgressException e) {
@@ -1241,6 +1298,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     FreezeUniverse.Params params = new FreezeUniverse.Params();
     params.setUniverseUUID(universeUuid);
     params.setCallback(callback);
+    params.setExecutionContext(getOrCreateExecutionContext());
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -1258,53 +1316,32 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   public Universe unlockUniverseForUpdate(UUID universeUuid) {
-    return unlockUniverseForUpdate(universeUuid, null, true);
+    return unlockUniverseForUpdate(universeUuid, null);
   }
 
-  public Universe unlockUniverseForUpdate(boolean updateTaskDetails) {
-    return unlockUniverseForUpdate(taskParams().getUniverseUUID(), null, updateTaskDetails);
-  }
-
+  // TODO Remove this if it is not needed.
   public Universe unlockUniverseForUpdate(String error) {
-    return unlockUniverseForUpdate(taskParams().getUniverseUUID(), error, true);
+    return unlockUniverseForUpdate(taskParams().getUniverseUUID(), error);
   }
 
   public Universe unlockUniverseForUpdate() {
-    return unlockUniverseForUpdate(taskParams().getUniverseUUID(), null, true);
+    return unlockUniverseForUpdate(taskParams().getUniverseUUID(), null);
   }
 
-  private Universe unlockUniverseForUpdate(
-      UUID universeUUID, String error, boolean updateTaskDetails) {
+  private Universe unlockUniverseForUpdate(UUID universeUUID, String error) {
     ExecutionContext executionContext = getOrCreateExecutionContext();
-    if (!executionContext.isLocked(universeUUID)) {
+    if (!executionContext.isUniverseLocked(universeUUID)) {
       log.warn("Unlock universe({}) called when it was not locked.", universeUUID);
       return null;
     }
-    // Create the update lambda.
     UniverseUpdater updater =
-        universe -> {
-          // If this universe is not being edited, fail the request.
-          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-          if (!universeDetails.updateInProgress) {
-            String msg = "Universe " + universeUUID + " is not being edited.";
-            log.error(msg);
-            throw new RuntimeException(msg);
-          }
-          // Persist the updated information about the universe. Mark it as being not edited.
-          universeDetails.updateInProgress = false;
-          universeDetails.setErrorString(error);
-          if (universeDetails.updateSucceeded && updateTaskDetails) {
-            // Clear the task UUIDs only if the update succeeded.
-            universeDetails.updatingTaskUUID = null;
-            if (PLACEMENT_MODIFICATION_TASKS.contains(universeDetails.updatingTask)) {
-              universeDetails.placementModificationTaskUuid = null;
-              // Do not save the transient state in the universe.
-              universeDetails.nodeDetailsSet.forEach(n -> n.masterState = null);
-            }
-          }
-          universeDetails.updatingTask = null;
-          universe.setUniverseDetails(universeDetails);
-        };
+        getUnlockingUniverseUpdater(
+            executionContext.getUniverseUpdaterConfig(universeUUID).toBuilder()
+                .callback(
+                    u -> {
+                      u.getUniverseDetails().setErrorString(error);
+                    })
+                .build());
     // Update the progress flag to false irrespective of the version increment failure.
     // Universe version in master does not need to be updated as this does not change
     // the Universe state. It simply sets updateInProgress flag to false.
