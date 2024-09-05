@@ -645,6 +645,9 @@ typedef struct HelioApiOidCacheData
 	/* OID of the bson_dense_rank window function */
 	Oid ApiCatalogBsonDenseRankFunctionOid;
 
+	/* OID of the bson_document_number window function */
+	Oid ApiCatalogBsonDocumentNumberFunctionOid;
+
 	/* OID of the BSONSUM aggregate function */
 	Oid ApiCatalogBsonSumAggregateFunctionOid;
 
@@ -3242,6 +3245,14 @@ BsonDenseRankFunctionOid(void)
 {
 	return GetFunctionByName(&Cache.ApiCatalogBsonDenseRankFunctionOid,
 							 "helio_api_internal", "bson_dense_rank");
+}
+
+
+Oid
+BsonDocumentNumberFunctionOid(void)
+{
+	return GetFunctionByName(&Cache.ApiCatalogBsonDocumentNumberFunctionOid,
+							 "helio_api_internal", "bson_document_number");
 }
 
 

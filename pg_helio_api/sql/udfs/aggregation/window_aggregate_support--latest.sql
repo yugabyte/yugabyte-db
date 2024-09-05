@@ -74,3 +74,10 @@ CREATE OR REPLACE FUNCTION helio_api_internal.bson_locf_fill(__CORE_SCHEMA__.bso
  STABLE
  WINDOW
 AS 'MODULE_PATHNAME', $function$bson_locf_fill$function$;
+
+CREATE OR REPLACE FUNCTION helio_api_internal.bson_document_number()
+ RETURNS __CORE_SCHEMA__.bson 
+ LANGUAGE c
+ STABLE
+ WINDOW
+AS 'MODULE_PATHNAME', $function$bson_document_number$function$;

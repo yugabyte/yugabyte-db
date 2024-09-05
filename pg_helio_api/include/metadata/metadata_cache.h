@@ -282,6 +282,7 @@ Oid BsonDollarReplaceRootFunctionOid(void);
 Oid BsonDollarReplaceRootWithLetFunctionOid(void);
 Oid BsonRankFunctionOid(void);
 Oid BsonDenseRankFunctionOid(void);
+Oid BsonDocumentNumberFunctionOid(void);
 Oid BsonSumAggregateFunctionOid(void);
 Oid BsonAvgAggregateFunctionOid(void);
 Oid BsonRepathAndBuildFunctionOid(void);

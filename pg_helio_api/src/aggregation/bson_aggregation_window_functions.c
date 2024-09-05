@@ -56,6 +56,8 @@ PG_FUNCTION_INFO_V1(bson_rank);
 PG_FUNCTION_INFO_V1(bson_dense_rank);
 PG_FUNCTION_INFO_V1(bson_linear_fill);
 PG_FUNCTION_INFO_V1(bson_locf_fill);
+PG_FUNCTION_INFO_V1(bson_document_number);
+
 
 Datum
 bson_rank(PG_FUNCTION_ARGS)
@@ -409,4 +411,14 @@ CheckDecimal128Result(Decimal128Result result)
 						errhint(
 							" Unknown error when processing Decimal128 numbers in $linearFill")));
 	}
+}
+
+
+Datum
+bson_document_number(PG_FUNCTION_ARGS)
+{
+	Datum rank = window_row_number(fcinfo);
+	bson_value_t finalValue = { .value_type = BSON_TYPE_INT32 };
+	finalValue.value.v_int32 = DatumGetInt64(rank);
+	PG_RETURN_POINTER(BsonValueToDocumentPgbson(&finalValue));
 }

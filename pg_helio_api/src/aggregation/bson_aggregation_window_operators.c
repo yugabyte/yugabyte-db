@@ -160,6 +160,9 @@ static WindowFunc * HandleDollarCovarianceSampWindowOperator(const bson_value_t 
 															 context);
 static WindowFunc * HandleDollarDenseRankWindowOperator(const bson_value_t *opValue,
 														WindowOperatorContext *context);
+static WindowFunc * HandleDollarDocumentNumberWindowOperator(const bson_value_t *opValue,
+															 WindowOperatorContext *
+															 context);
 static WindowFunc * HandleDollarPushWindowOperator(const bson_value_t *opValue,
 												   WindowOperatorContext *context);
 static WindowFunc * HandleDollarRankWindowOperator(const bson_value_t *opValue,
@@ -222,7 +225,7 @@ static const WindowOperatorDefinition WindowOperatorDefinitions[] =
 	},
 	{
 		.operatorName = "$documentNumber",
-		.windowOperatorFunc = NULL
+		.windowOperatorFunc = &HandleDollarDocumentNumberWindowOperator
 	},
 	{
 		.operatorName = "$expMovingAvg",
@@ -1625,6 +1628,32 @@ HandleDollarDenseRankWindowOperator(const bson_value_t *opValue,
 	ValidateInputForRankFunctions(opValue, context, opName);
 	WindowFunc *windowFunc = makeNode(WindowFunc);
 	windowFunc->winfnoid = BsonDenseRankFunctionOid();
+	windowFunc->wintype = BsonTypeId();
+	windowFunc->winref = context->winRef;
+	windowFunc->winstar = false;
+	windowFunc->winagg = false;
+
+	return windowFunc;
+}
+
+
+/*
+ * Handle for $documentNumber window aggregation operator.
+ * Returns the WindowFunc for bson aggregate function `bson_document_number`
+ */
+static WindowFunc *
+HandleDollarDocumentNumberWindowOperator(const bson_value_t *opValue,
+										 WindowOperatorContext *context)
+{
+	if (!IsClusterVersionAtleastThis(1, 22, 0))
+	{
+		ereport(ERROR, (errcode(MongoCommandNotSupported),
+						errmsg("$documentNumber is not supported yet")));
+	}
+	char *opName = "$documentNumber";
+	ValidateInputForRankFunctions(opValue, context, opName);
+	WindowFunc *windowFunc = makeNode(WindowFunc);
+	windowFunc->winfnoid = BsonDocumentNumberFunctionOid();
 	windowFunc->wintype = BsonTypeId();
 	windowFunc->winref = context->winRef;
 	windowFunc->winstar = false;
