@@ -11,7 +11,7 @@ menu:
     name: C# Drivers
     identifier: ref-postgres-npgsql-driver
     parent: csharp-drivers
-    weight: 620
+    weight: 100
 type: docs
 ---
 

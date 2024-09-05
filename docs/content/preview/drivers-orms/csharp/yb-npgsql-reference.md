@@ -12,7 +12,7 @@ menu:
     name: C# Drivers
     identifier: ref-yb-npgsql-driver
     parent: csharp-drivers
-    weight: 600
+    weight: 100
 type: docs
 ---
 
