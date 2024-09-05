@@ -869,7 +869,9 @@ Default: `-1` (disables logging statement durations)
 
 ##### --ysql_log_min_messages
 
-Specifies the lowest YSQL message level to log.
+Specifies the [severity level](https://www.postgresql.org/docs/11/runtime-config-logging.html#RUNTIME-CONFIG-SEVERITY-LEVELS) of messages to log.
+
+Default: `WARNING`
 
 ##### --ysql_output_buffer_size
 

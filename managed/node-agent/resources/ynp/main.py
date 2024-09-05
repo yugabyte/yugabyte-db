@@ -20,8 +20,6 @@ def get_absolute_path(relative_path):
 def parse_arguments():
     parser = argparse.ArgumentParser(description="YNP: Yugabyte Node Provisioning Tool")
     parser.add_argument('--command', default="provision", required=False, help='Command to execute')
-    parser.add_argument('--logging_dir', default="./logs", help='Logging directory')
-    parser.add_argument('--log_file', default="ynp.log", help='Log file name')
     parser.add_argument('--config_file', default="./node-agent-provision.yaml",
                         help='Path to the ynp configuration file')
     parser.add_argument('--preflight_check', action="store_true",
@@ -37,15 +35,16 @@ def log_installed_packages(logger):
 
 def main():
     args = parse_arguments()
-    setup_logger.setup_logger(args.logging_dir, args.log_file)
-    logger = logging.getLogger(__name__)
-
     try:
         with open(get_absolute_path(args.config_file)) as f:
             ynp_config = yaml.safe_load(f)
     except Exception as e:
-        logger.error("Parsing YAML failed with ", e)
+        print("Parsing YAML failed with ", e)
         raise
+    conf = parse_config(ynp_config)
+    setup_logger.setup_logger(conf)
+
+    logger = logging.getLogger(__name__)
     logger.debug("YNP config %s" % pprint.pformat(ynp_config))
 
     conf = parse_config(ynp_config)

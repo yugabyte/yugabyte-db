@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -50,15 +51,12 @@ type postgresDirectories struct {
 func newPostgresDirectories() postgresDirectories {
 	return postgresDirectories{
 		SystemdFileLocation: common.SystemdDir + "/postgres.service",
-
-		ConfFileLocation: common.GetSoftwareRoot() + "/pgsql/conf",
-		// TODO: fix this (conf shd be in data dir or in its own dir)
-
-		templateFileName: "yba-installer-postgres.yml",
-		MountPath:        common.GetBaseInstall() + "/data/pgsql/run/postgresql",
-		dataDir:          common.GetBaseInstall() + "/data/postgres",
-		PgBin:            common.GetSoftwareRoot() + "/pgsql/bin",
-		LogFile:          common.GetBaseInstall() + "/data/logs/postgres.log",
+		ConfFileLocation:    common.GetSoftwareRoot() + "/pgsql/conf",
+		templateFileName:    "yba-installer-postgres.yml",
+		MountPath:           common.GetBaseInstall() + "/data/pgsql/run/postgresql",
+		dataDir:             common.GetBaseInstall() + "/data/postgres",
+		PgBin:               common.GetSoftwareRoot() + "/pgsql/bin",
+		LogFile:             common.GetBaseInstall() + "/data/logs/postgres.log",
 	}
 }
 
@@ -117,9 +115,9 @@ func (pg Postgres) Install() error {
 	if err := pg.runInitDB(); err != nil {
 		return err
 	}
-	// Then copy over data files to the intended data dir location
-	if err := pg.setUpDataDir(); err != nil {
-		return fmt.Errorf("postgres install failed to setup data directory: %w", err)
+
+	if err := pg.copyConfFiles(); err != nil {
+		return err
 	}
 
 	// Finally update the conf file location to match this new data dir location
@@ -368,7 +366,9 @@ func (pg Postgres) UpgradeMajorVersion() error {
 	if err := pg.runInitDB(); err != nil {
 		return err
 	}
-	pg.setUpDataDir()
+	if err := pg.copyConfFiles(); err != nil {
+		return err
+	}
 	if err := pg.modifyPostgresConf(); err != nil {
 		return err
 	}
@@ -419,13 +419,15 @@ func (pg Postgres) MigrateFromReplicated() error {
 	if err := pg.runInitDB(); err != nil {
 		return fmt.Errorf("Error running initdb: %s", err.Error())
 	}
-	// Then copy over data files to the intended data dir location
-	if err := pg.setUpDataDir(); err != nil {
-		return fmt.Errorf("Error setting up data directory: %s", err.Error())
-	}
 
+	// Copy Config files from initdb
+	if err := pg.copyConfFiles(); err != nil {
+		return fmt.Errorf("Error copying config files: %s", err.Error())
+	}
 	// Finally update the conf file location to match this new data dir location
-	pg.modifyPostgresConf()
+	if err := pg.modifyPostgresConf(); err != nil {
+		return fmt.Errorf("postgres replicated migration failed: %w", err)
+	}
 
 	log.Info("Finished postgres migration")
 	return nil
@@ -456,7 +458,7 @@ func (pg Postgres) extractPostgresPackage() error {
 }
 
 func (pg Postgres) runInitDB() error {
-	if _, err := os.Stat(pg.ConfFileLocation); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(pg.dataDir); !errors.Is(err, os.ErrNotExist) {
 		log.Debug(fmt.Sprintf("pg config %s already exists, skipping init db", pg.ConfFileLocation))
 		return nil
 	}
@@ -465,7 +467,7 @@ func (pg Postgres) runInitDB() error {
 		"-U",
 		pg.getPgUserName(),
 		"-D",
-		pg.ConfFileLocation,
+		pg.dataDir,
 		"--locale=" + viper.GetString("postgres.install.locale"),
 	}
 	if common.HasSudoAccess() {
@@ -512,22 +514,35 @@ func (pg Postgres) alterPassword() error {
 func (pg Postgres) modifyPostgresConf() error {
 	// work to set data directory separate in postgresql.conf
 	pgConfPath := filepath.Join(pg.ConfFileLocation, "postgresql.conf")
-	confFile, err := os.OpenFile(pgConfPath, os.O_APPEND|os.O_WRONLY, 0600)
+	conf, err := os.ReadFile(pgConfPath)
 	if err != nil {
 		return fmt.Errorf("Error opening %s: %s", pgConfPath, err.Error())
 	}
-
-	defer confFile.Close()
-
-	_, err = confFile.WriteString(
-		fmt.Sprintf("data_directory = '%s'\n", pg.dataDir))
-	if err != nil {
-		return fmt.Errorf("Error writing data directory to %s: %s", pgConfPath, err.Error())
+	lines := strings.Split(string(conf), "\n")
+	foundData := false
+	dataLine := fmt.Sprintf("data_directory = '%s'\n", pg.dataDir)
+	foundPort := false
+	portLine := fmt.Sprintf("port = %d\n", viper.GetInt("postgres.install.port"))
+	for i, line := range lines {
+		if strings.HasPrefix(line, "data_directory =") {
+			lines[i] = dataLine
+			foundData = true
+		} else if strings.HasPrefix(line, "port =") {
+			lines[i] = portLine
+			foundPort = true
+		}
 	}
 
-	_, err = confFile.WriteString(fmt.Sprintf("port = %d\n", viper.GetInt("postgres.install.port")))
+	if !foundData {
+		lines = append(lines, dataLine)
+	}
+	if !foundPort {
+		lines = append(lines, portLine)
+	}
+
+	err = os.WriteFile(pgConfPath, []byte(strings.Join(lines, "\n")), 0600)
 	if err != nil {
-		return fmt.Errorf("Error writing port to %s: %s", pgConfPath, err.Error())
+		return fmt.Errorf("error writing pg conf file to %s: %s", pgConfPath, err.Error())
 	}
 	return nil
 }
@@ -569,32 +584,6 @@ func (pg Postgres) setUpLDAP() error {
 	return nil
 }
 
-// Move required files from initdb to the new data directory
-func (pg Postgres) setUpDataDir() error {
-	if _, err := os.Stat(pg.dataDir); errors.Is(err, os.ErrNotExist) {
-		if common.HasSudoAccess() {
-			userName := viper.GetString("service_username")
-			// move init conf to data dir
-			out := shell.RunAsUser(userName, "mv", pg.ConfFileLocation, pg.dataDir)
-			if !out.SucceededOrLog() {
-				return fmt.Errorf("failed to move postgres config: %w", out.Error)
-			}
-		} else {
-			out := shell.Run("mv", pg.ConfFileLocation, pg.dataDir)
-			if !out.SucceededOrLog() {
-				return fmt.Errorf("failed to move config: %w", out.Error)
-			}
-		}
-	} else if err != nil {
-		return err
-	}
-	// move conf files back to conf location
-	if err := pg.copyConfFiles(); err != nil {
-		return err
-	}
-	return nil
-}
-
 func (pg Postgres) copyConfFiles() error {
 	// move conf files back to conf location
 	userName := viper.GetString("service_username")
@@ -605,21 +594,34 @@ func (pg Postgres) copyConfFiles() error {
 		return fmt.Errorf("Error cleaning out %s: %w", pg.ConfFileLocation, err)
 	}
 
-	// Add trailing slash to handle dataDir being a symlink
-	findArgs := []string{pg.dataDir + "/", "-iname", "*.conf", "-exec", "cp", "{}",
-		pg.ConfFileLocation, "\\;"}
+	// setup config file location
 	if common.HasSudoAccess() {
 		common.MkdirAllOrFail(pg.ConfFileLocation, 0700)
 		if err := common.Chown(pg.ConfFileLocation, userName, userName, false); err != nil {
 			return fmt.Errorf("failed to change ownership of %s: %w", pg.ConfFileLocation, err)
 		}
-		if out := shell.RunAsUser(userName, "find", findArgs...); !out.SucceededOrLog() {
-			return fmt.Errorf("failed to move config files: %w", out.Error)
-		}
 	} else {
 		common.MkdirAllOrFail(pg.ConfFileLocation, 0775)
-		if out := shell.RunShell("find", findArgs...); !out.SucceededOrLog() {
-			return fmt.Errorf("failed to move config files: %w", out.Error)
+	}
+
+	entries, err := os.ReadDir(pg.dataDir)
+	if err != nil {
+		return fmt.Errorf("failed to read pg data directory %s: %w", pg.dataDir, err)
+	}
+
+	// Get the config files
+	var confPaths []string
+	for _, entry := range entries {
+		if strings.HasSuffix(entry.Name(), ".conf") {
+			confPaths = append(confPaths, path.Join(pg.dataDir, entry.Name()))
+		}
+	}
+	// copy the config files
+	for _, confPath := range confPaths {
+		log.Debug(fmt.Sprintf("Copying pg config files %s -> %s", confPath, pg.ConfFileLocation))
+		if err := common.Copy(confPath, pg.ConfFileLocation, false, true); err != nil {
+			return fmt.Errorf("failed to copy pg config files %s -> %s: %w",
+				confPath, pg.ConfFileLocation, err)
 		}
 	}
 	return nil

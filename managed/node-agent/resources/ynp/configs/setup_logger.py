@@ -3,7 +3,14 @@ import logging.config
 import os
 
 
-def setup_logger(log_dir, log_file):
+def setup_logger(config):
+    key = next(iter(config), None)
+    log_file = "app.log"
+    log_dir = "./logs"
+    if key is not None:
+        context = config[key]
+        log_file = context.get('logfile')
+        log_dir = context.get("logdir")
 
     # Create log directory if it doesn't exist
     # Ensure the log directory has the correct permissions (755)

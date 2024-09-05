@@ -34,7 +34,7 @@ In this example, object audit logging is used to illustrate how a granular appro
 
 {{% explore-setup-single %}}
 
-Using ysqlsh, connect to the database and enable the `pgaudit` extension on the YugabyteDB cluster as follows:
+Using ysqlsh, connect to the database and enable the pgaudit extension on the YugabyteDB cluster as follows:
 
 ```sql
 \c yugabyte yugabyte;
