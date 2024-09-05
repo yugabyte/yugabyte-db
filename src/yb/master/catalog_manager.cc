@@ -7864,11 +7864,11 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
   return Status::OK();
 }
 
-scoped_refptr<TableInfo> CatalogManager::GetTableInfoUnlocked(const TableId& table_id) {
+scoped_refptr<TableInfo> CatalogManager::GetTableInfoUnlocked(const TableId& table_id) const {
   return tables_->FindTableOrNull(table_id);
 }
 
-scoped_refptr<TableInfo> CatalogManager::GetTableInfo(const TableId& table_id) {
+scoped_refptr<TableInfo> CatalogManager::GetTableInfo(const TableId& table_id) const {
   SharedLock lock(mutex_);
   return GetTableInfoUnlocked(table_id);
 }

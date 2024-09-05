@@ -787,8 +787,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   bool IsLoadBalancerEnabled() override;
 
   // Return the table info for the table with the specified UUID, if it exists.
-  TableInfoPtr GetTableInfo(const TableId& table_id) EXCLUDES(mutex_) override;
-  TableInfoPtr GetTableInfoUnlocked(const TableId& table_id) REQUIRES_SHARED(mutex_);
+  TableInfoPtr GetTableInfo(const TableId& table_id) const EXCLUDES(mutex_) override;
+  TableInfoPtr GetTableInfoUnlocked(const TableId& table_id) const REQUIRES_SHARED(mutex_);
 
   // Gets the table info for each table id, or sets it to null if the table id was not found.
   std::unordered_map<TableId, TableInfoPtr> GetTableInfos(const std::vector<TableId>& table_ids)

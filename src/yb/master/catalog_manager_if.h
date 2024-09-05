@@ -147,7 +147,7 @@ class CatalogManagerIf {
 
   virtual bool IsUserIndex(const TableInfo& table) const = 0;
 
-  virtual TableInfoPtr GetTableInfo(const TableId& table_id) = 0;
+  virtual TableInfoPtr GetTableInfo(const TableId& table_id) const = 0;
 
   virtual Result<ReplicationInfoPB> GetTableReplicationInfo(
       const ReplicationInfoPB& table_replication_info,
