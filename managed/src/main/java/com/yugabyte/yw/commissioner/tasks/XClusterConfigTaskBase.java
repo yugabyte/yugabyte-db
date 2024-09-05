@@ -1846,7 +1846,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
             replicationClusterData.getSourceUniverseReplicationInfo().getNamespaceInfos()) {
           String namespaceId = namespaceInfo.getNamespaceId();
           Optional<XClusterNamespaceConfig> namespaceConfigOptional =
-              XClusterNamespaceConfig.maybeGetByNamespaceId(namespaceId);
+              xClusterConfig.maybeGetNamespaceById(namespaceId);
 
           Map<String, String> tableStreamMap = namespaceInfo.getTableStreamsMap();
           for (String tableId : tableStreamMap.keySet()) {
