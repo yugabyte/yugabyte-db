@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByteDB, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -397,10 +397,6 @@ size_t TableYbctidHasher::operator()(const LightweightTableYbctid& value) const 
   boost::hash_combine(hash, value.table_id);
   boost::hash_range(hash, value.ybctid.begin(), value.ybctid.end());
   return hash;
-}
-
-size_t TableYbctidHasher::operator()(const TableYbctid& value) const {
-  return (*this)(static_cast<LightweightTableYbctid>(value));
 }
 
 ExplicitRowLockBuffer::ExplicitRowLockBuffer(
@@ -903,8 +899,8 @@ Result<bool> PgSession::ForeignKeyReferenceExists(
       make_lw_function([](PgExecParameters& params) {
         params.rowmark = ROW_MARK_KEYSHARE;
       })));
-  for (auto& ybctid : ybctids) {
-    fk_reference_cache_.insert(std::move(ybctid));
+  for (const auto& ybctid : ybctids) {
+    fk_reference_cache_.emplace(ybctid.table_id, ybctid.ybctid);
   }
   return fk_reference_cache_.find(key) != fk_reference_cache_.end();
 }
@@ -923,7 +919,7 @@ void PgSession::AddForeignKeyReferenceIntent(
 void PgSession::AddForeignKeyReference(const LightweightTableYbctid& key) {
   if (fk_reference_cache_.find(key) == fk_reference_cache_.end() &&
       PREDICT_TRUE(!FLAGS_TEST_ysql_ignore_add_fk_reference)) {
-    fk_reference_cache_.emplace(key.table_id, std::string(key.ybctid));
+    fk_reference_cache_.emplace(key.table_id, key.ybctid);
   }
 }
 
