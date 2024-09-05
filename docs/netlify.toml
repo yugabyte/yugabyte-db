@@ -1344,7 +1344,6 @@
         ;
 
         connect-src 'self'
-            https://app.clearbit.com
             https://ka-f.fontawesome.com/releases/
             https://kapa-widget-proxy-la7dkmplpq-uc.a.run.app
             https://raw.githubusercontent.com/
@@ -1364,7 +1363,6 @@
         ;
 
         script-src 'self' 'unsafe-eval' 'unsafe-inline'
-            https://app.clearbit.com
             https://cdn.jsdelivr.net
             https://cdnjs.cloudflare.com
             https://code.jquery.com/jquery-3.7.1.min.js
@@ -1372,7 +1370,6 @@
             https://maxcdn.bootstrapcdn.com
             https://netlify-cdp-loader.netlify.app/
             https://netlify-rum.netlify.app
-            https://tag.clearbitscripts.com
             https://umbcujcbe8-1.algolianet.com/
             https://umbcujcbe8-2.algolianet.com/
             https://umbcujcbe8-3.algolianet.com/
@@ -1382,7 +1379,6 @@
             https://www.google.com/recaptcha/
             https://www.googletagmanager.com/
             https://www.gstatic.com/recaptcha/
-            https://x.clearbitjs.com
             https://js.driftt.com/
             https://cdn.segment.com/
             https://j.6sc.co/
