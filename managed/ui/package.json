@@ -85,8 +85,6 @@
     "canvg": "4.0.2",
     "clsx": "1.1.1",
     "copy-to-clipboard": "3.3.1",
-    "cron-parser": "2.16.3",
-    "cron-validator": "1.1.1",
     "cronstrue": "1.94.0",
     "enumify": "1.0.4",
     "formik": "1.5.8",
