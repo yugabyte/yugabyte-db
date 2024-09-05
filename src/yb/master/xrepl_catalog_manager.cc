@@ -5146,40 +5146,6 @@ void CatalogManager::MarkReplicationBootstrapForCleanup(
   replication_bootstraps_to_clear_.push_back(replication_group_id);
 }
 
-Status CatalogManager::ReplaceUniverseReplication(
-    const UniverseReplicationInfo& old_replication_group,
-    UniverseReplicationInfo& new_replication_group, const ClusterConfigInfo& cluster_config,
-    const LeaderEpoch& epoch) {
-  DCHECK(old_replication_group.metadata().HasWriteLock());
-  DCHECK(new_replication_group.metadata().HasWriteLock());
-  DCHECK(cluster_config.metadata().HasWriteLock());
-
-  LockGuard lock(mutex_);
-
-  SCHECK_FORMAT(
-      !universe_replication_map_.contains(new_replication_group.ReplicationGroupId()),
-      InvalidArgument, "New replication id $0 is already in use",
-      new_replication_group.ReplicationGroupId());
-
-  {
-    // Need all three updates to be atomic.
-    auto w = sys_catalog_->NewWriter(epoch.leader_term);
-    RETURN_NOT_OK(w->Mutate<true>(QLWriteRequestPB::QL_STMT_DELETE, &old_replication_group));
-    RETURN_NOT_OK(
-        w->Mutate<true>(QLWriteRequestPB::QL_STMT_UPDATE, &new_replication_group, &cluster_config));
-    RETURN_NOT_OK(CheckStatus(
-        sys_catalog_->SyncWrite(w.get()),
-        "Updating universe replication info and cluster config in sys-catalog"));
-  }
-
-  // Update universe_replication_map after persistent data is saved.
-  universe_replication_map_[new_replication_group.ReplicationGroupId()] =
-      scoped_refptr<UniverseReplicationInfo>(&new_replication_group);
-  universe_replication_map_.erase(old_replication_group.ReplicationGroupId());
-
-  return Status::OK();
-}
-
 void CatalogManager::RemoveUniverseReplicationFromMap(
     const xcluster::ReplicationGroupId& replication_group_id) {
   LockGuard lock(mutex_);

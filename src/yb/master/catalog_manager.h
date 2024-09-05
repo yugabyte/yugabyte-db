@@ -1646,12 +1646,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   void InsertNewUniverseReplicationInfoBootstrapInfo(
       UniverseReplicationBootstrapInfo& bootstrap_info) EXCLUDES(mutex_);
 
-  // All entities must be write locked.
-  Status ReplaceUniverseReplication(
-      const UniverseReplicationInfo& old_replication_group,
-      UniverseReplicationInfo& new_replication_group, const ClusterConfigInfo& cluster_config,
-      const LeaderEpoch& epoch) EXCLUDES(mutex_);
-
   void RemoveUniverseReplicationFromMap(const xcluster::ReplicationGroupId& replication_group_id)
       EXCLUDES(mutex_);
 

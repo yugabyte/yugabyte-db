@@ -319,7 +319,7 @@ message AlterUniverseReplicationRequestPB {
   repeated HostPortPB producer_master_addresses = 2;
   repeated string producer_table_ids_to_add = 4;
   repeated string producer_table_ids_to_remove = 5;
-  optional string new_replication_group_id = 7;
+  optional string DEPRECATED_new_replication_group_id = 7;
 
   // Optional bootstrap ids for the add table operation.
   repeated string producer_bootstrap_ids_to_add = 6;
