@@ -42,6 +42,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseIntent;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ValidateNodeDiskSize;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitStartingFromTime;
+import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckCertificateConfig;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -50,6 +51,7 @@ import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -71,6 +73,7 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
+import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HookScope.TriggerType;
 import com.yugabyte.yw.models.NodeInstance;
@@ -1540,8 +1543,20 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       PlacementInfoUtil.verifyNumNodesAndRF(
           cluster.clusterType, cluster.userIntent.numNodes, cluster.userIntent.replicationFactor);
 
-      // Verify kubernetes overrides.
       if (cluster.userIntent.providerType == CloudType.kubernetes) {
+        if (opType == UniverseOpType.EDIT
+            && cluster.userIntent.deviceInfo != null
+            && cluster.userIntent.deviceInfo.volumeSize != null
+            && cluster.userIntent.deviceInfo.volumeSize
+                < univCluster.userIntent.deviceInfo.volumeSize) {
+          String errMsg =
+              String.format(
+                  "Cannot decrease disk size in a Kubernetes cluster (%dG to %dG)",
+                  univCluster.userIntent.deviceInfo.volumeSize,
+                  cluster.userIntent.deviceInfo.volumeSize);
+          throw new IllegalStateException(errMsg);
+        }
+        // Verify kubernetes overrides.
         if (cluster.clusterType == ClusterType.ASYNC) {
           // Readonly cluster should not have kubernetes overrides.
           if (StringUtils.isNotBlank(cluster.userIntent.universeOverrides)
@@ -1551,17 +1566,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           }
         } else {
           if (opType == UniverseOpType.EDIT) {
-            if (cluster.userIntent.deviceInfo != null
-                && cluster.userIntent.deviceInfo.volumeSize != null
-                && cluster.userIntent.deviceInfo.volumeSize
-                    < univCluster.userIntent.deviceInfo.volumeSize) {
-              String errMsg =
-                  String.format(
-                      "Cannot decrease disk size in a Kubernetes cluster (%dG to %dG)",
-                      univCluster.userIntent.deviceInfo.volumeSize,
-                      cluster.userIntent.deviceInfo.volumeSize);
-              throw new IllegalStateException(errMsg);
-            }
             // During edit universe, overrides can't be changed.
             Map<String, String> curUnivOverrides =
                 HelmUtils.flattenMap(
@@ -2079,6 +2083,125 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         NodeStatus.builder().nodeState(NodeState.ToBeAdded).build(),
         filteredNodes -> {
           createPreflightNodeCheckTasks(clusters, filteredNodes, null, null);
+        });
+  }
+
+  /**
+   * Create preflight node check to check certificateConfig for on-prem nodes in the universe
+   *
+   * @param clusters the clusters
+   * @param nodesToBeProvisioned the nodes to be provisioned
+   * @param rootCA the rootCA UUID (Null if not required)
+   * @param clientRootCA the clientRootCA UUID (Null if not required)
+   */
+  public void createCheckCertificateConfigTask(
+      Collection<Cluster> clusters,
+      Set<NodeDetails> nodes,
+      @Nullable UUID rootCA,
+      @Nullable UUID clientRootCA,
+      boolean enableClientToNodeEncrypt,
+      @Nullable String sshUserOverride) {
+    // If both rootCA and clientRootCA are empty, then we don't need to check the certificate config
+    // simply return.
+    boolean rootCAisValidCustomCertHostPath =
+        (rootCA != null
+            && CertificateInfo.get(rootCA).getCertType() == CertConfigType.CustomCertHostPath);
+    boolean clientRootCAisValidCustomCertHostPath =
+        (clientRootCA != null
+            && CertificateInfo.get(clientRootCA).getCertType()
+                == CertConfigType.CustomCertHostPath);
+    // If both certs are null, or not of type CustomCertHostPath, skip validation
+    if (!rootCAisValidCustomCertHostPath && !clientRootCAisValidCustomCertHostPath) {
+      return;
+    }
+    // Skip if yb.tls.skip_cert_validation is set to ALL
+    NodeManager.SkipCertValidationType skipType =
+        confGetter.getConfForScope(getUniverse(), UniverseConfKeys.tlsSkipCertValidation);
+    if (skipType == NodeManager.SkipCertValidationType.ALL) {
+      log.info(
+          "Skipping certificate validation as it is disabled."
+              + " Set yb.tls.skip_cert_validation"
+              + " to NONE OR HOSTNAME to enable it back.");
+      return;
+    }
+
+    boolean skipHostNameCheck = skipType == NodeManager.SkipCertValidationType.HOSTNAME;
+    SubTaskGroup subTaskGroup = createSubTaskGroup("CheckCertificateConfig");
+    clusters.stream()
+        .filter(cluster -> cluster.userIntent.providerType == CloudType.onprem)
+        .forEach(
+            cluster -> {
+              nodes.stream()
+                  .filter(node -> cluster.uuid.equals(node.placementUuid))
+                  .forEach(
+                      node -> {
+                        CheckCertificateConfig task = createTask(CheckCertificateConfig.class);
+                        CheckCertificateConfig.Params params = new CheckCertificateConfig.Params();
+                        params.nodeName = node.nodeName;
+                        params.nodeUuid = node.nodeUuid;
+                        params.azUuid = node.azUuid; // Required for using getProvider() in task.
+                        params.placementUuid = node.placementUuid; // Required for getting gFlags.
+                        params.setUniverseUUID(taskParams().getUniverseUUID());
+                        params.rootAndClientRootCASame =
+                            enableClientToNodeEncrypt
+                                && taskParams()
+                                    .rootAndClientRootCASame; // Required till we fix PLAT-14979
+                        params.rootCA = rootCA;
+                        params.setClientRootCA(clientRootCA);
+                        params.SkipHostNameCheck = skipHostNameCheck;
+                        // If ssh user is passed, then always use that
+                        if (StringUtils.isNotBlank(sshUserOverride)) {
+                          params.sshUserOverride = sshUserOverride;
+                        }
+                        task.initialize(params);
+                        subTaskGroup.addSubTask(task);
+                      });
+            });
+    if (subTaskGroup.getSubTaskCount() > 0) {
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
+  }
+
+  /**
+   * Create check certificate config tasks for on-prem nodes in the universe if the nodes are in
+   * ToBeAdded state.
+   *
+   * @param universe the universe
+   * @param clusters the clusters
+   */
+  public void createCheckCertificateConfigTask(Universe universe, Collection<Cluster> clusters) {
+    log.info("Checking certificate config for on-prem nodes in the universe.");
+    Set<Cluster> onPremClusters =
+        clusters.stream()
+            .filter(cluster -> cluster.userIntent.providerType == CloudType.onprem)
+            .collect(Collectors.toSet());
+    if (onPremClusters.isEmpty()) {
+      log.info("No on-prem clusters found in the universe.");
+      return;
+    }
+    UUID rootCA =
+        EncryptionInTransitUtil.isRootCARequired(taskParams()) ? taskParams().rootCA : null;
+    UUID clientRootCA =
+        EncryptionInTransitUtil.isClientRootCARequired(taskParams())
+            ? taskParams().getClientRootCA()
+            : null;
+    boolean enableClientToNodeEncrypt =
+        taskParams().getPrimaryCluster().userIntent.enableClientToNodeEncrypt;
+    // If both rootCA and clientRootCA are empty, then we don't need to check the certificate config
+    if (rootCA == null && clientRootCA == null) {
+      return;
+    }
+
+    Set<NodeDetails> nodesToProvision =
+        PlacementInfoUtil.getNodesToProvision(taskParams().nodeDetailsSet);
+    applyOnNodesWithStatus(
+        universe,
+        nodesToProvision,
+        false,
+        NodeStatus.builder().nodeState(NodeState.ToBeAdded).build(),
+        filteredNodes -> {
+          createCheckCertificateConfigTask(
+              clusters, filteredNodes, rootCA, clientRootCA, enableClientToNodeEncrypt, null);
         });
   }
 

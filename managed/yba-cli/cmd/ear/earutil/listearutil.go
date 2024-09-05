@@ -57,7 +57,7 @@ func ListEARUtil(cmd *cobra.Command, commandCall, earCode string) {
 	kmsConfigs := make([]util.KMSConfig, 0)
 	if strings.TrimSpace(earName) != "" {
 		for _, k := range kmsConfigsCode {
-			if strings.Compare(k.Name, earName) != 0 {
+			if strings.Compare(k.Name, earName) == 0 {
 				kmsConfigs = append(kmsConfigs, k)
 			}
 		}

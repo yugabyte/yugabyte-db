@@ -31,6 +31,8 @@ DEFINE_UNKNOWN_uint64(rpc_max_message_size, 255_MB,
     "The maximum size of a message of any RPC that the server will accept. The sum of "
     "consensus_max_batch_size_bytes and 1KB should be less than rpc_max_message_size");
 
+DECLARE_int32(protobuf_message_total_bytes_limit);
+
 using google::protobuf::internal::WireFormatLite;
 using google::protobuf::io::CodedOutputStream;
 
@@ -378,8 +380,7 @@ Status ParseFailed(const char* field_name) {
 }
 
 void SetupLimit(google::protobuf::io::CodedInputStream* in) {
-  in->SetTotalBytesLimit(narrow_cast<int>(FLAGS_rpc_max_message_size),
-                         narrow_cast<int>(FLAGS_rpc_max_message_size * 3 / 4));
+  in->SetTotalBytesLimit(FLAGS_protobuf_message_total_bytes_limit, 0 /* unused */);
 }
 
 ThreadSafeArena& empty_arena() {

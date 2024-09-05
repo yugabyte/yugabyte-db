@@ -1171,7 +1171,7 @@ extern YbReadTimePointHandle YbBuildCurrentReadTimePointHandle();
 
 extern bool YbUseFastBackwardScan();
 
-extern bool YbIsYsqlConnMgrWarmupRandomEnabled();
+extern bool YbIsYsqlConnMgrWarmupModeEnabled();
 
 bool YbIsAttrPrimaryKeyColumn(Relation rel, AttrNumber attnum);
 

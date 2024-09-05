@@ -599,18 +599,26 @@ od_router_status_t od_router_attach(od_router_t *router,
 	od_server_t *server;
 	int busyloop_sleep = 0;
 	int busyloop_retry = 0;
-	const char *is_warmup_needed = getenv("YB_YSQL_CONN_MGR_DOWARMUP_ALL_POOLS_RANDOM_ATTACH");
-	bool enable_warmup_and_random_allot = false;
-	if (is_warmup_needed != NULL && strcmp(is_warmup_needed, "true") == 0)
-		enable_warmup_and_random_allot = true;
+
+	const char *is_warmup_needed_flag = getenv("YB_YSQL_CONN_MGR_DOWARMUP_ALL_POOLS_MODE");
+	bool is_warmup_needed = false;
+	bool random_allot = false;
+
+	is_warmup_needed = is_warmup_needed_flag != NULL && strcmp(is_warmup_needed_flag, "none") != 0;
+	random_allot = is_warmup_needed && strcmp(is_warmup_needed_flag, "random") == 0;
 
 	for (;;) {
 
-		if (enable_warmup_and_random_allot)
+		if (is_warmup_needed)
 		{
-			server = od_server_pool_idle_random(&route->server_pool);
+			if (random_allot)
+				server = yb_od_server_pool_idle_random(&route->server_pool);
+			else /* round_robin allotment */
+				server = yb_od_server_pool_idle_last(&route->server_pool);
+
 			if (server &&
-				(od_server_pool_total(&route->server_pool) >= route->rule->min_pool_size))
+			    (od_server_pool_total(&route->server_pool) >=
+			     route->rule->min_pool_size))
 				goto attach;
 		}
 		else
@@ -691,7 +699,7 @@ od_router_status_t od_router_attach(od_router_t *router,
 
 	/* create new server object */
 	bool created_atleast_one = false;
-	while (enable_warmup_and_random_allot &&
+	while (is_warmup_needed &&
 		  (od_server_pool_total(&route->server_pool) < route->rule->min_pool_size))
 	{
 		server = od_server_allocate(

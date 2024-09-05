@@ -230,7 +230,7 @@ Status PgDml::ANNBindVector(PgExpr *query_vec) {
     return secondary_index_query_->ANNBindVector(query_vec);
   }
 
-  return STATUS(IllegalState, "Secondary index scan only supports vector search");
+  return down_cast<PgDmlRead*>(this)->ANNBindVector(query_vec);
 }
 
 Status PgDml::ANNSetPrefetchSize(int32_t prefetch_size) {
@@ -238,7 +238,7 @@ Status PgDml::ANNSetPrefetchSize(int32_t prefetch_size) {
     return secondary_index_query_->ANNSetPrefetchSize(prefetch_size);
   }
 
-  return STATUS(IllegalState, "Secondary index scan only supports vector search");
+  return down_cast<PgDmlRead*>(this)->ANNSetPrefetchSize(prefetch_size);
 }
 
 //--------------------------------------------------------------------------------------------------

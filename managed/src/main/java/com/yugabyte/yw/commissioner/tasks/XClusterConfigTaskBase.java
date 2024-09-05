@@ -1846,7 +1846,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
             replicationClusterData.getSourceUniverseReplicationInfo().getNamespaceInfos()) {
           String namespaceId = namespaceInfo.getNamespaceId();
           Optional<XClusterNamespaceConfig> namespaceConfigOptional =
-              XClusterNamespaceConfig.maybeGetByNamespaceId(namespaceId);
+              xClusterConfig.maybeGetNamespaceById(namespaceId);
 
           Map<String, String> tableStreamMap = namespaceInfo.getTableStreamsMap();
           for (String tableId : tableStreamMap.keySet()) {
@@ -2235,8 +2235,25 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
               }
             });
 
-    // Note: Tables dropped from target are already updated with status
-    // "UnableToFetch" as part of setReplicationStatus function.
+    Map<String, String> sourceTableIdToTargetTableIdMap =
+        getSourceTableIdTargetTableIdMap(sourceTableInfoList, targetTableInfoList);
+
+    // Update the status for tables that were previously being replicated but have been dropped from
+    // the target.
+    xClusterConfig.getTableDetails().stream()
+        .filter(
+            tableConfig ->
+                Arrays.asList(
+                        XClusterTableConfig.Status.Running,
+                        XClusterTableConfig.Status.UnableToFetch)
+                    .contains(tableConfig.getStatus()))
+        .forEach(
+            tableConfig -> {
+              String targetTableId = sourceTableIdToTargetTableIdMap.get(tableConfig.getTableId());
+              if (targetTableId == null) {
+                tableConfig.setStatus(XClusterTableConfig.Status.DroppedFromTarget);
+              }
+            });
 
     Pair<List<XClusterTableConfig>, List<XClusterTableConfig>> tableConfigs =
         getXClusterTableConfigNotInReplication(

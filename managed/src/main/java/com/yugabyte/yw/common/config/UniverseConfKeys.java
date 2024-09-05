@@ -1070,7 +1070,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Verify current cluster state (from db perspective) before running task",
           "Verify current cluster state (from db perspective) before running task",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> xclusterSetupAlterTimeout =
       new ConfKeyInfo<>(
           "yb.xcluster.operation_timeout",
