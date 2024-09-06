@@ -983,6 +983,16 @@ expensive when the number of yb-tservers, or the number of databases goes up.
 
 ## Advanced flags
 
+##### --allowed_preview_flags_csv
+
+This is a comma-separated values (CSV) formatted catalogue of [preview feature](../../../releases/versioning/#tech-preview-tp) flag names. Preview flags represent experimental or in-development features that are not yet fully supported. Flags that are tagged as Preview cannot be modified or configured unless they are included in this list.
+
+By adding a flag to this list, you explicitly acknowledge and accept any potential risks or instability that may arise from modifying these preview features. This process serves as a safeguard, ensuring that users are fully aware of the experimental nature of the flags they are working with.
+
+{{<warning>}}
+Inclusion in this list doesn't automatically change any settings. It simply grants permission for the flag to be modified. You'll still need to configure the flag separately after adding it to this list.
+{{</warning>}}
+
 ##### --ysql_index_backfill_rpc_timeout_ms
 
 Deadline (in milliseconds) for each internal YB-Master to YB-TServer RPC for backfilling a chunk of the index.
