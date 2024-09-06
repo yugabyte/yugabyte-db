@@ -61,6 +61,10 @@ models/model_placement_block.go
 models/model_placement_cloud_info.go
 models/model_placement_info.go
 models/model_raft_config.go
+models/model_recommended_refactoring_graph.go
+models/model_refactoring_count.go
+models/model_restore_details.go
+models/model_schema_analysis_report.go
 models/model_slow_query_response_data.go
 models/model_slow_query_response_schema.go
 models/model_slow_query_response_ysql_data.go
@@ -79,6 +83,7 @@ models/model_target_cluster_spec.go
 models/model_target_recommendation_item.go
 models/model_target_schema_recommendations.go
 models/model_unsupported_sql_info.go
+models/model_unsupported_sql_with_details.go
 models/model_version_info.go
 models/model_voyager_migrate_data_metrics.go
 models/model_voyager_migrate_data_metrics_details.go

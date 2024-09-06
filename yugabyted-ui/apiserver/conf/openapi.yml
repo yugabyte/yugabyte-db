@@ -714,6 +714,8 @@ components:
       description: Errors and suggestions details
       type: object
       properties:
+        issueType:
+          type: string
         objectType:
           type: string
         objectName:
@@ -728,6 +730,58 @@ components:
           type: string
         GH:
           type: string
+    UnsupportedSqlWithDetails:
+      title: Schema for Suggested refactoring tab in Migrate Schema page
+      description: Schema for Suggested refactoring tab in Migrate Schema page
+      type: object
+      properties:
+        suggestions_errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ErrorsAndSuggestionsDetails'
+        unsupported_type:
+          type: string
+        count:
+          type: integer
+    RefactoringCount:
+      title: Count of automatic and manual refactoring
+      description: count for automatic and manual refactoring
+      type: object
+      properties:
+        sql_object_type:
+          type: string
+        manual:
+          type: integer
+        automatic:
+          type: integer
+    RecommendedRefactoringGraph:
+      title: Refectoring recommendations per SQL object type
+      description: Refectoring recommendations for migrating SQL objects
+      type: object
+      properties:
+        refactor_details:
+          type: array
+          items:
+            $ref: '#/components/schemas/RefactoringCount'
+    SchemaAnalysisReport:
+      title: Schema Analysis report
+      description: Voyager data migration metrics details
+      type: object
+      properties:
+        unsupported_functions:
+          type: array
+          items:
+            $ref: '#/components/schemas/UnsupportedSqlWithDetails'
+        unsupported_features:
+          type: array
+          items:
+            $ref: '#/components/schemas/UnsupportedSqlWithDetails'
+        unsupported_datatypes:
+          type: array
+          items:
+            $ref: '#/components/schemas/UnsupportedSqlWithDetails'
+        recommended_refactoring:
+          $ref: '#/components/schemas/RecommendedRefactoringGraph'
     SqlObjectsDetails:
       title: Sql Objects
       description: Sql obejcts type and count
@@ -763,6 +817,12 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ErrorsAndSuggestionsDetails'
+        current_analysis_report:
+          $ref: '#/components/schemas/SchemaAnalysisReport'
+        analysis_history:
+          type: array
+          items:
+            $ref: '#/components/schemas/SchemaAnalysisReport'
         sql_objects:
           type: array
           items:
@@ -887,26 +947,6 @@ components:
           $ref: '#/components/schemas/TargetClusterSpec'
         target_schema_recommendation:
           $ref: '#/components/schemas/TargetSchemaRecommendations'
-    RefactoringCount:
-      title: Count of automatic and manual refactoring
-      description: count for automatic and manual refactoring
-      type: object
-      properties:
-        sql_object_type:
-          type: string
-        manual:
-          type: integer
-        automatic:
-          type: integer
-    RecommendedRefactoringGraph:
-      title: Refectoring recommendations per SQL object type
-      description: Refectoring recommendations for migrating SQL objects
-      type: object
-      properties:
-        refactor_details:
-          type: array
-          items:
-            $ref: '#/components/schemas/RefactoringCount'
     UnsupportedSqlInfo:
       title: Unsupported SQL Info
       description: Unsupported SQL Info
