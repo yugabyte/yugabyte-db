@@ -193,6 +193,14 @@ class PgsqlReadOperation : public DocExprExecutor {
                                HybridTime* restart_read_ht,
                                bool* has_paging_state);
 
+  // Execute a READ operator for a given vector search.
+  Result<size_t> ExecuteVectorSearch(
+      const YQLStorageIf& ql_storage, const ReadOperationData& read_operation_data,
+      bool is_explicit_request_read_time, const DocReadContext& doc_read_context,
+      const DocReadContext* index_doc_read_context,
+      std::reference_wrapper<const ScopedRWOperation> pending_op, WriteBuffer* result_buffer,
+      HybridTime* restart_read_ht, bool* has_paging_state);
+
   // Execute a READ operator for a given batch of keys.
   Result<size_t> ExecuteBatchKeys(const YQLStorageIf& ql_storage,
                                   const ReadOperationData& read_operation_data,

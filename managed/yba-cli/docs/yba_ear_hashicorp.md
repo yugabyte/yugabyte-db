@@ -34,6 +34,7 @@ yba ear hashicorp [flags]
 ### SEE ALSO
 
 * [yba ear](yba_ear.md)	 - Manage YugabyteDB Anywhere Encryption at Rest Configurations
+* [yba ear hashicorp create](yba_ear_hashicorp_create.md)	 - Create a YugabyteDB Anywhere Hashicorp Vault encryption at rest configuration
 * [yba ear hashicorp delete](yba_ear_hashicorp_delete.md)	 - Delete a YugabyteDB Anywhere Hashicorp Vault encryption at rest configuration
 * [yba ear hashicorp describe](yba_ear_hashicorp_describe.md)	 - Describe a Hashicorp Vault YugabyteDB Anywhere Encryption In Transit (EAR) configuration
 * [yba ear hashicorp list](yba_ear_hashicorp_list.md)	 - List Hashicorp Vault YugabyteDB Anywhere Encryption In Transit (EAR) configurations

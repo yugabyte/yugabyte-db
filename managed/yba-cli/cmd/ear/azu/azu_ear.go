@@ -26,7 +26,7 @@ var AzureEARCmd = &cobra.Command{
 func init() {
 	AzureEARCmd.Flags().SortFlags = false
 
-	// AzureEARCmd.AddCommand(createAzureEARCmd)
+	AzureEARCmd.AddCommand(createAzureEARCmd)
 	// AzureEARCmd.AddCommand(updateAzureEARCmd)
 	AzureEARCmd.AddCommand(listAzureEARCmd)
 	AzureEARCmd.AddCommand(describeAzureEARCmd)

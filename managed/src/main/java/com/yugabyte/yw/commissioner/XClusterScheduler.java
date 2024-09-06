@@ -322,11 +322,14 @@ public class XClusterScheduler {
 
     double value = tableStatus.getCode();
 
+    // Set both table and xCluster config UUIDs as key labels as a table can be part of multiple
+    // xCluster configs.
     return MetricService.buildMetricTemplate(PlatformMetrics.XCLUSTER_TABLE_STATUS)
         .setExpireTime(
             CommonUtils.nowPlusWithoutMillis(
                 MetricService.DEFAULT_METRIC_EXPIRY_SEC, ChronoUnit.SECONDS))
         .setKeyLabel(KnownAlertLabels.TABLE_UUID, xClusterTableConfig.getTableId())
+        .setKeyLabel(KnownAlertLabels.XCLUSTER_CONFIG_UUID, xClusterConfig.getUuid().toString())
         .setLabel(
             KnownAlertLabels.SOURCE_UNIVERSE_UUID,
             xClusterConfig.getSourceUniverseUUID().toString())
@@ -334,7 +337,6 @@ public class XClusterScheduler {
             KnownAlertLabels.TARGET_UNIVERSE_UUID,
             xClusterConfig.getTargetUniverseUUID().toString())
         .setLabel(KnownAlertLabels.TABLE_TYPE, xClusterConfig.getTableType().toString())
-        .setLabel(KnownAlertLabels.XCLUSTER_CONFIG_UUID, xClusterConfig.getUuid().toString())
         .setLabel(KnownAlertLabels.XCLUSTER_CONFIG_NAME, xClusterConfig.getName())
         .setLabel(
             KnownAlertLabels.XCLUSTER_REPLICATION_GROUP_NAME,

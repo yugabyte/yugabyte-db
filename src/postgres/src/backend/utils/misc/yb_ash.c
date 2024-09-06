@@ -152,6 +152,16 @@ yb_enable_ash_check_hook(bool *newval, void **extra, GucSource source)
 	return true;
 }
 
+bool
+yb_ash_circular_buffer_size_check_hook(int *newval, void **extra, GucSource source)
+{
+	/* Autocompute yb_ash_circular_buffer_size if zero */
+	if (*newval == 0)
+		*newval = YBCGetCircularBufferSizeInKiBs();
+
+	return true;
+}
+
 void
 YbAshRegister(void)
 {
@@ -208,6 +218,7 @@ YbAshSetDatabaseId(Oid database_id)
 static int
 yb_ash_cb_max_entries(void)
 {
+	Assert(yb_ash_circular_buffer_size != 0);
 	return yb_ash_circular_buffer_size * 1024 / sizeof(YBCAshSample);
 }
 
@@ -677,9 +688,10 @@ yb_ash_sighup(SIGNAL_ARGS)
 void
 YbAshMain(Datum main_arg)
 {
+	Assert(yb_ash_circular_buffer_size != 0);
 	ereport(LOG,
-			(errmsg("starting bgworker yb_ash collector with max buffer entries %d",
-					yb_ash->max_entries)));
+			(errmsg("starting bgworker yb_ash collector with circular buffer size %d bytes",
+					yb_ash_circular_buffer_size * 1024)));
 
 	/* Register functions for SIGTERM/SIGHUP management */
 	pqsignal(SIGHUP, yb_ash_sighup);

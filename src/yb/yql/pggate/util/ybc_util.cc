@@ -506,6 +506,10 @@ YBCWaitEventDescriptor YBCGetWaitEventDescription(size_t index) {
   return { 0, nullptr };
 }
 
+int YBCGetCircularBufferSizeInKiBs() {
+  return ash::WaitStateInfo::GetCircularBufferSizeInKiBs();
+}
+
 int YBCGetCallStackFrames(void** result, int max_depth, int skip_count) {
   return google::GetStackTrace(result, max_depth, skip_count);
 }

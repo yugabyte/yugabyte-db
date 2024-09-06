@@ -16,6 +16,7 @@
 #include <arpa/inet.h>
 
 #include "yb/util/debug-util.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/tostring.h"
 #include "yb/util/trace.h"
 
@@ -53,7 +54,7 @@ DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_ash, false,
     "and various background activities. This does nothing if "
     "ysql_yb_enable_ash_infra is disabled.");
 
-DEFINE_NON_RUNTIME_PG_FLAG(int32, yb_ash_circular_buffer_size, 16 * 1024,
+DEFINE_NON_RUNTIME_PG_FLAG(int32, yb_ash_circular_buffer_size, 0,
     "Size (in KiBs) of ASH circular buffer that stores the samples");
 
 DEFINE_RUNTIME_PG_FLAG(int32, yb_ash_sampling_interval_ms, 1000,
@@ -376,6 +377,25 @@ std::vector<WaitStatesDescription> WaitStateInfo::GetWaitStatesDescription() {
     desc.emplace_back(code, GetWaitStateDescription(code));
   }
   return desc;
+}
+
+int WaitStateInfo::GetCircularBufferSizeInKiBs() {
+  int num_cpus = base::NumCPUs();
+  int bytes;
+  if (num_cpus <= 2) {
+    bytes = 32_MB;
+  } else if (num_cpus <= 4) {
+    bytes = 64_MB;
+  } else if (num_cpus <= 8) {
+    bytes = 128_MB;
+  } else if (num_cpus <= 16) {
+    bytes = 256_MB;
+  } else if (num_cpus <= 32) {
+    bytes = 512_MB;
+  } else {
+    bytes = 1024_MB;
+  }
+  return bytes / 1024;
 }
 
 //

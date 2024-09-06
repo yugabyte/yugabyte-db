@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugaByteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -15,7 +15,6 @@
 #include "yb/yql/pggate/pggate.h"
 
 #include <algorithm>
-#include <list>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -79,8 +78,6 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 
 using namespace std::literals;
-using std::string;
-using std::vector;
 
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_string(certs_dir);
@@ -129,7 +126,7 @@ Status AddColumn(PgCreateTable* pg_stmt, const char *attr_name, int attr_num,
 }
 
 Result<PgApiContext::MessengerHolder> BuildMessenger(
-    const string& client_name,
+    const std::string& client_name,
     int32_t num_reactors,
     const scoped_refptr<MetricEntity>& metric_entity,
     const std::shared_ptr<MemTracker>& parent_mem_tracker) {
@@ -240,15 +237,13 @@ class PrecastRequestSender {
   boost::container::small_vector<OperationInfo, 16> ops_;
 };
 
-using ExecParametersMutator = std::function<void(PgExecParameters*)>;
-
 Status FetchExistingYbctids(const PgSession::ScopedRefPtr& session,
                             PgOid database_id,
-                            TableYbctidVector* ybctids,
+                            TableYbctidVector& ybctids,
                             const OidSet& region_local_tables,
                             const ExecParametersMutator& exec_params_mutator) {
   // Group the items by the table ID.
-  std::sort(ybctids->begin(), ybctids->end(), [](const auto& a, const auto& b) {
+  std::sort(ybctids.begin(), ybctids.end(), [](const auto& a, const auto& b) {
     return a.table_id < b.table_id;
   });
 
@@ -265,7 +260,7 @@ Status FetchExistingYbctids(const PgSession::ScopedRefPtr& session,
   };
   // Start all the doc_ops to read from docdb in parallel, one doc_op per table ID.
   // Each doc_op will use request_sender to send all the requests with single perform RPC.
-  for (auto it = ybctids->begin(), end = ybctids->end(); it != end;) {
+  for (auto it = ybctids.begin(), end = ybctids.end(); it != end;) {
     const auto table_id = it->table_id;
     auto desc = VERIFY_RESULT(session->LoadTable(PgObjectId(database_id, table_id)));
     bool is_region_local = region_local_tables.find(table_id) != region_local_tables.end();
@@ -279,7 +274,7 @@ Status FetchExistingYbctids(const PgSession::ScopedRefPtr& session,
         session, &read_op->table(), std::move(read_op), request_sender));
     auto& doc_op = *doc_ops.back();
     auto exec_params = doc_op.ExecParameters();
-    exec_params_mutator(&exec_params);
+    exec_params_mutator(exec_params);
     RETURN_NOT_OK(doc_op.ExecuteInit(&exec_params));
     // Populate doc_op with ybctids which belong to current table.
     RETURN_NOT_OK(doc_op.PopulateByYbctidOps({make_lw_function([&it, table_id, end] {
@@ -295,7 +290,7 @@ Status FetchExistingYbctids(const PgSession::ScopedRefPtr& session,
   // of each doc_op will be sent individually).
   precast_sender.DisableCollecting();
   // Collect the results from the docdb ops.
-  ybctids->clear();
+  ybctids.clear();
   for (auto& it : doc_ops) {
     for (;;) {
       auto rowsets = VERIFY_RESULT(it->GetResult());
@@ -305,27 +300,13 @@ Status FetchExistingYbctids(const PgSession::ScopedRefPtr& session,
       for (auto& row : rowsets) {
         RETURN_NOT_OK(row.ProcessSystemColumns());
         for (const auto& ybctid : row.ybctids()) {
-          ybctids->emplace_back(it->table()->relfilenode_id().object_oid, ybctid.ToBuffer());
+          ybctids.emplace_back(it->table()->relfilenode_id().object_oid, ybctid.ToBuffer());
         }
       }
     }
   }
 
   return Status::OK();
-}
-
-auto MakeYbctidReaderForExplicitRowLock(const PgSession::ScopedRefPtr& session) {
-  return [&session](TableYbctidVector* ybctids,
-                    const ExplicitRowLockBuffer::Info& info,
-                    const OidSet& region_local_tables) {
-    return FetchExistingYbctids(
-        session, info.database_id, ybctids, region_local_tables,
-        [&info](PgExecParameters* exec_params) {
-          exec_params->rowmark = info.rowmark;
-          exec_params->pg_wait_policy = info.pg_wait_policy;
-          exec_params->docdb_wait_policy = info.docdb_wait_policy;
-        });
-  };
 }
 
 } // namespace
@@ -558,10 +539,16 @@ const YBCPgTypeEntity *PgApiImpl::FindTypeEntity(int type_oid) {
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgApiImpl::InitSession(YBCPgExecStatsState* session_stats) {
+Status PgApiImpl::InitSession(YBCPgExecStatsState& session_stats) {
   CHECK(!pg_session_);
+
   auto session = make_scoped_refptr<PgSession>(
-      &pg_client_, pg_txn_manager_, pg_callbacks_, session_stats);
+      pg_client_, pg_txn_manager_, pg_callbacks_, session_stats,
+      [&pg_session = pg_session_](
+          PgOid database_id, TableYbctidVector& ybctids, const OidSet& region_local_tables,
+          const ExecParametersMutator& mutator) {
+        return FetchExistingYbctids(pg_session, database_id, ybctids, region_local_tables, mutator);
+      });
 
   pg_session_.swap(session);
   return Status::OK();
@@ -1851,7 +1838,7 @@ Status PgApiImpl::NewSRF(
 }
 
 Status PgApiImpl::AddFunctionParam(
-    PgFunction *handle, const std::string name, const YBCPgTypeEntity *type_entity, uint64_t datum,
+    PgFunction *handle, const std::string& name, const YBCPgTypeEntity *type_entity, uint64_t datum,
     bool is_null) {
   if (!handle) {
     return STATUS(InvalidArgument, "Invalid function handle");
@@ -1861,7 +1848,7 @@ Status PgApiImpl::AddFunctionParam(
 }
 
 Status PgApiImpl::AddFunctionTarget(
-    PgFunction *handle, const std::string name, const YBCPgTypeEntity *type_entity,
+    PgFunction *handle, const std::string& name, const YBCPgTypeEntity *type_entity,
     const YBCPgTypeAttrs type_attrs) {
   if (!handle) {
     return STATUS(InvalidArgument, "Invalid function handle");
@@ -2269,14 +2256,7 @@ void PgApiImpl::ResetCatalogReadTime() {
 Result<bool> PgApiImpl::ForeignKeyReferenceExists(
     PgOid table_id, const Slice& ybctid, PgOid database_id) {
   return pg_session_->ForeignKeyReferenceExists(
-      LightweightTableYbctid(table_id, ybctid),
-      make_lw_function(
-        [this, database_id](TableYbctidVector* ybctids,
-                            const OidSet& region_local_tables) {
-          return FetchExistingYbctids(
-              pg_session_, database_id, ybctids, region_local_tables,
-              [](PgExecParameters* exec_params) {exec_params->rowmark = ROW_MARK_KEYSHARE;});
-        }));
+      database_id, LightweightTableYbctid(table_id, ybctid));
 }
 
 void PgApiImpl::AddForeignKeyReferenceIntent(
@@ -2301,14 +2281,11 @@ Status PgApiImpl::AddExplicitRowLockIntent(
        .pg_wait_policy = params.pg_wait_policy,
        .docdb_wait_policy = params.docdb_wait_policy,
        .database_id = table_id.database_oid},
-      LightweightTableYbctid(table_id.object_oid, ybctid),
-      is_region_local,
-      make_lw_function(MakeYbctidReaderForExplicitRowLock(pg_session_)));
+      LightweightTableYbctid(table_id.object_oid, ybctid), is_region_local);
 }
 
 Status PgApiImpl::FlushExplicitRowLockIntents() {
-  return pg_session_->explicit_row_lock_buffer().Flush(
-      make_lw_function(MakeYbctidReaderForExplicitRowLock(pg_session_)));
+  return pg_session_->explicit_row_lock_buffer().Flush();
 }
 
 void PgApiImpl::SetTimeout(int timeout_ms) {

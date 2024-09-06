@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugaByteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -134,7 +134,7 @@ class PgApiImpl {
   void ResetCatalogReadTime();
 
   // Initialize a session to process statements that come from the same client connection.
-  Status InitSession(YBCPgExecStatsState* session_stats);
+  Status InitSession(YBCPgExecStatsState& session_stats);
 
   uint64_t GetSessionID() const;
 
@@ -611,11 +611,11 @@ class PgApiImpl {
   Status NewSRF(PgFunction **handle, PgFunctionDataProcessor processor);
 
   Status AddFunctionParam(
-      PgFunction *handle, const std::string name, const YBCPgTypeEntity *type_entity,
+      PgFunction *handle, const std::string& name, const YBCPgTypeEntity *type_entity,
       uint64_t datum, bool is_null);
 
   Status AddFunctionTarget(
-      PgFunction *handle, const std::string name, const YBCPgTypeEntity *type_entity,
+      PgFunction *handle, const std::string& name, const YBCPgTypeEntity *type_entity,
       const YBCPgTypeAttrs type_attrs);
 
   Status FinalizeFunctionTargets(PgFunction *handle);

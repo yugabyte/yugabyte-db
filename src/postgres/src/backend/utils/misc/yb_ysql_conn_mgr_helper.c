@@ -68,6 +68,7 @@
 #define YB_CREATE_SHMEM_FLAG 0666 | IPC_EXCL | IPC_CREAT
 
 bool yb_is_client_ysqlconnmgr = false;
+bool yb_is_parallel_worker = false;
 
 enum SESSION_PARAMETER_UPDATE_RST
 {
@@ -713,7 +714,7 @@ SetLogicalClientUserDetailsIfValid(const char *rolename, bool *is_superuser,
 		yb_net_client_connections +=
 		yb_num_logical_conn - yb_num_physical_conn_from_ysqlconnmgr;
 
-		if (YbIsYsqlConnMgrWarmupRandomEnabled())
+		if (YbIsYsqlConnMgrWarmupModeEnabled())
 			yb_net_client_connections = yb_num_logical_conn;
 	}
 	
@@ -809,7 +810,13 @@ yb_is_client_ysqlconnmgr_check_hook(bool *newval, void **extra,
 									GucSource source)
 {
 	/* Allow setting yb_is_client_ysqlconnmgr as false */
-	if (!(*newval))
+	/*
+	 * Parallel workers are created and maintained by postmaster. So physical connections
+	 * can never be of parallel worker type, therefore it makes no sense to restore
+	 * or even do check/assign hooks for ysql connection manager specific guc variables
+	 * on parallel worker process.
+	*/
+	if (!(*newval) || yb_is_parallel_worker == true)
 		return true;
 
 	/* Client needs to be connected on unix domain socket */
@@ -833,7 +840,12 @@ yb_is_client_ysqlconnmgr_assign_hook(bool newval, void *extras)
 {
 	yb_is_client_ysqlconnmgr = newval;
 
-	if (yb_is_client_ysqlconnmgr == true)
+	/*
+	 * Parallel workers are created and maintained by postmaster. So physical connections
+	 * can never be of parallel worker type, therefore it makes no sense to perform any
+	 * ysql connection manager specific operations on it.
+	*/
+	if (yb_is_client_ysqlconnmgr == true && !yb_is_parallel_worker)
 		send_oid_info('d', get_database_oid(MyProcPort->database_name, false));
 }
 

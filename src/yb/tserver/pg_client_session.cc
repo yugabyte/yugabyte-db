@@ -465,10 +465,27 @@ struct PerformData {
           // Prevent further paging reads from read restart errors.
           // See the ProcessUsedReadTime(...) function for details.
           *op_resp.mutable_paging_state()->mutable_read_time() = resp.catalog_read_time();
-        }
-        if (transaction && transaction->isolation() == IsolationLevel::SERIALIZABLE_ISOLATION) {
-          // Delete read time from paging state since a read time is not used in serializable
-          // isolation level.
+        } else {
+          // Clear read time for the next page here unless absolutely necessary.
+          //
+          // Otherwise, if we do not clear read time here, a request for the
+          // next page with this read time can be sent back by the pg layer.
+          // Explicit read time in the request clears out existing local limits
+          // since the pg client session incorrectly believes that this passed
+          // read time is new. However, paging read time is simply a copy of
+          // the previous read time.
+          //
+          // Rely on
+          // 1. Either pg client session to set the read time.
+          //   See pg_client_session.cc's SetupSession
+          //     and transaction.cc's SetReadTimeIfNeeded
+          //     and batcher.cc's ExecuteOperations
+          // 2. Or transaction used read time logic in transaction.cc
+          // 3. Or plain session's used read time logic in CheckPlainSessionPendingUsedReadTime
+          //   to set the read time for the next page.
+          //
+          // Catalog sessions are not handled by the above logic, so
+          // we set the paging read time above.
           op_resp.mutable_paging_state()->clear_read_time();
         }
       }

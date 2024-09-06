@@ -428,6 +428,7 @@ class WaitStateInfo {
   bool IsConcurrentUpdatesEnabled();
 
   static std::vector<WaitStatesDescription> GetWaitStatesDescription();
+  static int GetCircularBufferSizeInKiBs();
 
  protected:
   void VTraceTo(Trace* trace, int level, GStringPiece data);

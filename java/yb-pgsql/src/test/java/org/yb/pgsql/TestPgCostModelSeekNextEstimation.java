@@ -302,11 +302,20 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
   // in Nov/2023.
   @Test
   public void testSeekNextEstimationIndexScan() throws Exception {
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.ROUND_ROBIN);
     boolean isConnMgr = isTestRunningWithConnectionManager();
     try (Statement stmt = this.connection2.createStatement()) {
+      // Warmup the cache when Connection Manager is enabled.
+      // Additionally warmup all backends in round-robin mode.
       if (isConnMgr) {
         testExplainDebug(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 IN (4, 8)", T1_NAME, T1_NAME), null);
+        if (isConnMgrWarmupRoundRobinMode()) {
+          for (int i = 0; i < CONN_MGR_WARMUP_BACKEND_COUNT - 1; i++) {
+            testExplainDebug(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+            + "FROM %s WHERE k1 IN (4, 8)", T1_NAME, T1_NAME), null);
+          }
+        }
       }
       testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 IN (4, 8)", T1_NAME, T1_NAME),
@@ -419,12 +428,21 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
   @Test
   public void testSeekNextEstimationBitmapScan() throws Exception {
     assumeTrue("BitmapScan has much fewer nexts in fastdebug (#22052)", TestUtils.isReleaseBuild());
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.ROUND_ROBIN);
     boolean isConnMgr = isTestRunningWithConnectionManager();
     try (Statement stmt = this.connection2.createStatement()) {
       stmt.execute("SET work_mem TO '1GB'"); /* avoid getting close to work_mem */
+      // Warmup the cache when Connection Manager is enabled.
+      // Additionally warmup all backends in round-robin mode.
       if (isConnMgr) {
         testExplainDebug(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 IN (4, 8)", T1_NAME, T1_NAME), null);
+        if (isConnMgrWarmupRoundRobinMode()) {
+          for (int i = 0; i < CONN_MGR_WARMUP_BACKEND_COUNT - 1; i++) {
+            testExplainDebug(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
+            + "FROM %s WHERE k1 IN (4, 8)", T1_NAME, T1_NAME), null);
+          }
+        }
       }
       testSeekAndNextEstimationBitmapScanHelper(stmt, String.format("/*+BitmapScan(%s)*/ SELECT * "
         + "FROM %s WHERE k1 IN (4, 8)", T1_NAME, T1_NAME),

@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <functional>
 #include <limits>
+#include <queue>
 #include <string>
 #include <unordered_set>
 #include <variant>
@@ -65,9 +66,17 @@
 #include "yb/util/trace.h"
 #include "yb/util/yb_pg_errcodes.h"
 
+#include "yb/vector/vectorann.h"
+
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
 using namespace std::literals;
+
+using yb::vectorindex::ANNPagingState;
+using yb::vectorindex::DocKeyWithDistance;
+using yb::vectorindex::IndexableVectorType;
+using yb::vectorindex::DummyANNFactory;
+using yb::vectorindex::VectorANN;
 
 DECLARE_bool(ysql_disable_index_backfill);
 
@@ -1683,6 +1692,61 @@ class PgsqlReadRequestYbctidProvider : public PgsqlReadOperation::KeyProvider {
   std::optional<int64> current_order_;
 };
 
+template<IndexableVectorType Vector>
+class ANNKeyProvider : public PgsqlReadOperation::KeyProvider {
+ public:
+  explicit ANNKeyProvider(
+      const DocReadContext& doc_read_context, PgsqlResponsePB& response, size_t prefetch_size,
+      const Vector& query_vec, VectorANN<Vector>* ann, const ANNPagingState& paging_state)
+      : response_(response), prefetch_size_(prefetch_size), query_vec_(query_vec), ann_(ann) {
+    next_batch_paging_state_ = paging_state;
+    CHECK_GT(prefetch_size_, 0);
+  }
+
+  bool RefillBatch() {
+    CHECK(key_batch_.empty());
+    auto batch = ann_->GetTopKVectors(
+        query_vec_, prefetch_size_, next_batch_paging_state_.distance(),
+        next_batch_paging_state_.main_key(), false);
+
+    std::sort(batch.begin(), batch.end(), std::less<DocKeyWithDistance>());
+    key_batch_.insert(key_batch_.end(), batch.begin(), batch.end());
+    if (key_batch_.empty()) {
+      return false;
+    }
+    next_batch_paging_state_ =
+        ANNPagingState(key_batch_.back().distance_, key_batch_.back().dockey_);
+    return true;
+  }
+
+  Key FetchKey() override {
+    if (key_batch_.empty() && !RefillBatch()) {
+      return Slice();
+    }
+
+    auto ret = key_batch_.front();
+    current_entry_ = ret;
+    key_batch_.pop_front();
+    return ret.dockey_;
+  }
+
+  ANNPagingState GetNextBatchPagingState() const { return next_batch_paging_state_; }
+
+  void AddedKeyToResultSet() override { response_.add_distances(current_entry_->distance_); }
+
+  ~ANNKeyProvider() override = default;
+
+ private:
+  PgsqlResponsePB& response_;
+  size_t prefetch_size_;
+  const FloatVector& query_vec_;
+  VectorANN<Vector>* ann_;
+  std::deque<DocKeyWithDistance> key_batch_;
+  ANNPagingState next_batch_paging_state_;
+
+  std::optional<DocKeyWithDistance> current_entry_;
+};
+
 Result<size_t> PgsqlReadOperation::Execute(
     const YQLStorageIf& ql_storage,
     const ReadOperationData& read_operation_data,
@@ -1716,6 +1780,10 @@ Result<size_t> PgsqlReadOperation::Execute(
     fetched_rows = VERIFY_RESULT(ExecuteSample(
         ql_storage, read_operation_data, is_explicit_request_read_time, doc_read_context,
         pending_op, result_buffer, restart_read_ht, &has_paging_state));
+  } else if (request_.has_vector_idx_options()) {
+    fetched_rows = VERIFY_RESULT(ExecuteVectorSearch(
+        ql_storage, read_operation_data, is_explicit_request_read_time, doc_read_context,
+        index_doc_read_context, pending_op, result_buffer, restart_read_ht, &has_paging_state));
   } else {
     fetched_rows = VERIFY_RESULT(ExecuteScalar(
         ql_storage, read_operation_data, is_explicit_request_read_time, doc_read_context,
@@ -1871,6 +1939,110 @@ Result<size_t> PgsqlReadOperation::ExecuteSample(
   return fetched_rows;
 }
 
+Result<size_t> PgsqlReadOperation::ExecuteVectorSearch(
+    const YQLStorageIf& ql_storage, const ReadOperationData& read_operation_data,
+    bool is_explicit_request_read_time, const DocReadContext& doc_read_context,
+    const DocReadContext* index_doc_read_context,
+    std::reference_wrapper<const ScopedRWOperation> pending_op, WriteBuffer* result_buffer,
+    HybridTime* restart_read_ht, bool* has_paging_state) {
+  // Build the vectorann and then make an index_doc_read_context on the vectorann
+  // to get the index iterator. Then do ExecuteBatchKeys on the index iterator.
+  auto dims = doc_read_context.vector_idx_options().dimensions();
+
+  if (!request_.vector_idx_options().has_vector()) {
+    return STATUS(InvalidArgument, "Query vector not provided");
+  }
+
+  auto query_vec = request_.vector_idx_options().vector().binary_value();
+
+  auto ysql_query_vec = pointer_cast<const YSQLVector*>(query_vec.data());
+
+  SCHECK_EQ(ysql_query_vec->dim, dims, InvalidArgument, "Vector dimensions mismatch");
+
+  auto query_vec_ref = VERIFY_RESULT(
+      VectorANN<FloatVector>::GetVectorFromYSQLWire(*ysql_query_vec, query_vec.size()));
+
+  if (dims != ysql_query_vec->dim) {
+    return STATUS(InvalidArgument, "Vector dimensions mismatch");
+  }
+  DummyANNFactory<FloatVector> ann_factory;
+  auto ann_store = ann_factory.Create(dims);
+
+  auto index_extraction_schema = Schema();
+  std::vector<ColumnSchema> indexed_column_ids;
+  dockv::ReaderProjection index_doc_projection;
+
+  auto key_col_id = doc_read_context.schema().column_id(0);
+
+  // Building the schema to extract the vector and key from the main DocDB store.
+  // Vector should be the first value after the key.
+  auto vector_col_id =
+      doc_read_context.schema().column_id(doc_read_context.schema().num_key_columns());
+  index_doc_projection.Init(doc_read_context.schema(), {key_col_id, vector_col_id});
+
+  FilteringIterator table_iter(&table_iter_);
+  RETURN_NOT_OK(table_iter.Init(
+      ql_storage, request_, index_doc_projection, doc_read_context, txn_op_context_,
+      read_operation_data, is_explicit_request_read_time, pending_op));
+  dockv::PgTableRow row(index_doc_projection);
+  const auto& table_id = request_.table_id();
+
+  // Build the VectorANN.
+  for (;;) {
+    const auto fetch_result =
+        VERIFY_RESULT(FetchTableRow(table_id, &table_iter, nullptr /* index */, &row));
+    // If changing this code, see also PgsqlReadOperation::ExecuteBatchKeys.
+    if (fetch_result == FetchResult::NotFound) {
+      break;
+    }
+    ++scanned_table_rows_;
+    if (fetch_result == FetchResult::Found) {
+      auto vec_value = row.GetValueByColumnId(vector_col_id);
+      if (!vec_value.has_value()) continue;
+      // Add the vector to the ANN store
+      auto vec = VERIFY_RESULT(VectorANN<FloatVector>::GetVectorFromYSQLWire(
+          *pointer_cast<const YSQLVector*>(vec_value->binary_value().data()),
+          vec_value->binary_value().size()));
+      auto doc_iter = down_cast<DocRowwiseIterator*>(table_iter_.get());
+      ann_store->Add(vec, doc_iter->GetRowKey());
+    }
+  }
+
+  // Check for paging state.
+  ANNPagingState ann_paging_state;
+  if (request_.has_paging_state()) {
+    ann_paging_state =
+        ANNPagingState{request_.paging_state().distance(), request_.paging_state().main_key()};
+  }
+
+  // All rows have been added to the ANN store, now we can create the iterator.
+  auto initial_prefetch_size = request_.vector_idx_options().prefetch_size();
+  initial_prefetch_size = std::max(initial_prefetch_size, 25);
+
+  auto key_provider = ANNKeyProvider(
+      doc_read_context, response_, initial_prefetch_size, query_vec_ref, ann_store.get(),
+      ann_paging_state);
+  auto fetched_rows = ExecuteBatchKeys(
+      ql_storage, read_operation_data, doc_read_context, pending_op, result_buffer, restart_read_ht,
+      &key_provider);
+
+  auto next_paging_state = key_provider.GetNextBatchPagingState();
+
+  // Set paging state.
+  if (!next_paging_state.valid()) {
+    *has_paging_state = true;
+    auto* paging_state = response_.mutable_paging_state();
+    paging_state->set_distance(next_paging_state.distance());
+    paging_state->set_main_key(next_paging_state.main_key().ToBuffer());
+
+    BindReadTimeToPagingState(read_operation_data.read_time);
+  } else {
+    *has_paging_state = false;
+  }
+
+  return fetched_rows;
+}
+
 void PgsqlReadOperation::BindReadTimeToPagingState(const ReadHybridTime& read_time) {
   auto paging_state = response_.mutable_paging_state();
   if (FLAGS_pgsql_consistent_transactional_paging) {
@@ -2009,18 +2181,6 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchKeys(
     WriteBuffer* result_buffer,
     HybridTime* restart_read_ht,
     KeyProvider* key_provider) {
-  const auto& batch_args = request_.batch_arguments();
-  auto min_arg = batch_args.begin();
-  auto max_arg = batch_args.begin();
-  for(auto batch_arg_it = batch_args.begin() + 1;
-      batch_arg_it != batch_args.end(); ++batch_arg_it) {
-    SCHECK(batch_arg_it->has_ybctid(), InternalError, "ybctid arguments can be batched only");
-    if (min_arg->ybctid().value() > batch_arg_it->ybctid().value()) {
-      min_arg = batch_arg_it;
-    } else if (max_arg->ybctid().value() < batch_arg_it->ybctid().value()) {
-      max_arg = batch_arg_it;
-    }
-  }
 
   // We limit the response's size.
   auto response_size_limit = std::numeric_limits<std::size_t>::max();

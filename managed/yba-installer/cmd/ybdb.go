@@ -255,6 +255,11 @@ func (ybdb Ybdb) Install() error {
 	return nil
 }
 
+// Initialize ybdb - no op
+func (ybdb Ybdb) Initialize() error {
+	return nil
+}
+
 // Install ybdb and create the yugaware DB for YBA.
 func (ybdb Ybdb) createYugawareDatabase() error {
 	cmd := ybdb.ysqlBin

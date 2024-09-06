@@ -1548,6 +1548,7 @@ public class TestPgSelect extends BasePgSQLTest {
 
   @Test
   public void testInequalitiesRangePartitioned() throws Exception {
+      setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.ROUND_ROBIN);
       String query = "CREATE TABLE sample (key int, val int, primary key(key asc) ) " +
                      "SPLIT AT VALUES ((65535), (2000000000), (2100000000) )";
       try (Statement statement = connection.createStatement()) {
@@ -1606,6 +1607,7 @@ public class TestPgSelect extends BasePgSQLTest {
 
   @Test
   public void testINQueriesRangePartitioned() throws Exception {
+      setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.ROUND_ROBIN);
 
       // Creating a table with the same schema that is created for the previous test
       // testInequalitiesRangePartitioned.

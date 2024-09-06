@@ -98,7 +98,6 @@ func (fear *FullEARContext) Write() error {
 		return err
 	}
 	fear.PostFormat(tmpl, NewEARContext())
-	fear.Output.Write([]byte("\n"))
 
 	keyProviderType := fear.ear.KeyProvider
 	switch keyProviderType {
@@ -117,6 +116,18 @@ func (fear *FullEARContext) Write() error {
 		fear.Output.Write([]byte("\n"))
 
 		tmpl, err = fear.startSubsection(aws.EAR2)
+		if err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		if err := fear.ContextFormat(tmpl, fearc.AWSEAR); err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		fear.PostFormat(tmpl, aws.NewEARContext())
+		fear.Output.Write([]byte("\n"))
+
+		tmpl, err = fear.startSubsection(aws.EAR3)
 		if err != nil {
 			logrus.Errorf("%s", err.Error())
 			return err
@@ -175,6 +186,18 @@ func (fear *FullEARContext) Write() error {
 			return err
 		}
 		fear.PostFormat(tmpl, gcp.NewEARContext())
+		fear.Output.Write([]byte("\n"))
+
+		tmpl, err = fear.startSubsection(gcp.EAR3)
+		if err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		if err := fear.ContextFormat(tmpl, fearc.GCPEAR); err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		fear.PostFormat(tmpl, gcp.NewEARContext())
 
 	case util.HashicorpVaultEARType:
 		tmpl, err = fear.startSubsection(hashicorp.EAR1)
@@ -215,6 +238,18 @@ func (fear *FullEARContext) Write() error {
 		fear.Output.Write([]byte("\n"))
 
 		tmpl, err = fear.startSubsection(hashicorp.EAR4)
+		if err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		if err := fear.ContextFormat(tmpl, fearc.HashicorpEAR); err != nil {
+			logrus.Errorf("%s", err.Error())
+			return err
+		}
+		fear.PostFormat(tmpl, hashicorp.NewEARContext())
+		fear.Output.Write([]byte("\n"))
+
+		tmpl, err = fear.startSubsection(hashicorp.EAR5)
 		if err != nil {
 			logrus.Errorf("%s", err.Error())
 			return err

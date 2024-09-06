@@ -87,6 +87,9 @@ var installCmd = &cobra.Command{
 			if err := services[name].Install(); err != nil {
 				log.Fatal("Failed while installing " + name + ": " + err.Error())
 			}
+			if err := services[name].Initialize(); err != nil {
+				log.Fatal("Failed while initializing " + name + ": " + err.Error())
+			}
 			log.Info("Completed installing component " + name)
 		}
 
