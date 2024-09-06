@@ -633,7 +633,22 @@ restore_backup() {
       "${verbose}" "${yba_installer}" "${pgrestore_path}" "${skip_dump_check}"
   fi
 
-  # Restore prometheus data.
+  # Restore prometheus swamper targets on migration always
+  if [[ "${yba_installer}" = true ]] && [[ "${migration}" = true ]]; then
+    set +e
+    backup_targets=$(find "${untar_dir}" -name swamper_targets -type d)
+    set -e
+    if  [[ "$backup_targets" != "" ]] && [[ -d "$backup_targets" ]]; then
+      run_sudo_cmd "cp -Tr ${backup_targets} ${destination}/data/prometheus/swamper_targets"
+    fi
+    set +e
+    backup_rules=$(find "${untar_dir}" -name swamper_rules -type d)
+    set -e
+    if  [[ "$backup_rules" != "" ]] && [[ -d "$backup_rules" ]]; then
+      run_sudo_cmd "cp -Tr ${backup_rules} ${destination}/data/prometheus/swamper_rules"
+    fi
+    run_sudo_cmd "chown -R ${yba_user}:${yba_user} ${destination}/data/prometheus"
+  fi
   set +e
   prom_snapshot=$(tar -tf "${input_path}" | grep -E $prometheus_dir_regex | tail -1)
   set -e
@@ -644,24 +659,10 @@ restore_backup() {
     # Find snapshot directory in backup
     run_sudo_cmd "rm -rf ${PROMETHEUS_DATA_DIR}/*"
     run_sudo_cmd "mv ${untar_dir}/${prom_snapshot:2}* ${PROMETHEUS_DATA_DIR}"
-    if [[ "${yba_installer}" = true ]] && [[ "${migration}" = true ]]; then
-      set +e
-      backup_targets=$(find "${untar_dir}" -name swamper_targets -type d)
-      set -e
-      if  [[ "$backup_targets" != "" ]] && [[ -d "$backup_targets" ]]; then
-        run_sudo_cmd "cp -Tr ${backup_targets} ${destination}/data/prometheus/swamper_targets"
-      fi
-      set +e
-      backup_rules=$(find "${untar_dir}" -name swamper_rules -type d)
-      set -e
-      if  [[ "$backup_rules" != "" ]] && [[ -d "$backup_rules" ]]; then
-        run_sudo_cmd "cp -Tr ${backup_rules} ${destination}/data/prometheus/swamper_rules"
-      fi
+
+    if [[ "${yba_installer}" = true ]]; then
       run_sudo_cmd "chown -R ${yba_user}:${yba_user} ${destination}/data/prometheus"
-    elif [[ "${yba_installer}" = true ]]; then
-      run_sudo_cmd "chown -R ${yba_user}:${yba_user} ${destination}/data/prometheus"
-    fi
-    if [[ "$SERVICE_BASED" = true ]]; then
+    elif [[ "$SERVICE_BASED" = true ]]; then
       run_sudo_cmd "chown -R ${prometheus_user}:${prometheus_user} ${PROMETHEUS_DATA_DIR}"
     else
       run_sudo_cmd "chown -R ${NOBODY_UID}:${NOBODY_UID} ${PROMETHEUS_DATA_DIR}"
