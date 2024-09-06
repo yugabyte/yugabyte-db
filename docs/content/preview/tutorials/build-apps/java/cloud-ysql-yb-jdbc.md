@@ -167,4 +167,4 @@ try {
 
 ## Learn more
 
-[YugabyteDB JDBC driver](../../../../reference/drivers/java/yugabyte-jdbc-reference/)
+[Connect an application using the PostgreSQL JDBC driver](../../../../drivers-orms/java/postgres-jdbc/)
