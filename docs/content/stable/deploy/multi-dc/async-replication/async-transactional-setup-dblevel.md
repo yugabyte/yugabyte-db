@@ -117,7 +117,7 @@ list_xcluster_outbound_replication_groups [namespace_id]
 You should see output similar to the following:
 
 ```output
-1 Outbound Replication Groups found: 
+1 Outbound Replication Groups found:
 [repl_group1]
 ```
 
@@ -132,7 +132,7 @@ list_universe_replications [namespace_id]
 You should see output similar to the following:
 
 ```output
-1 Universe Replication Groups found: 
+1 Universe Replication Groups found:
 [repl_group1]
 ```
 
