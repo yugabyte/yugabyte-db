@@ -125,7 +125,7 @@ You need to configure HashiCorp Vault in order to use it with YugabyteDB Anywher
 
     - `period` — If specified, the token can be infinitely renewed.
 
-    YBA automatically tries to renew the token every 12 hours after it has passed 70% of its expiry window; as a result, you should set the TTL or period to be greater than 12 hours.
+    YugabyteDB Anywhere automatically tries to renew the token every 12 hours after it has passed 70% of its expiry window; as a result, you should set the TTL or period to be greater than 12 hours.
 
     For more information, refer to [Tokens](https://developer.hashicorp.com/vault/tutorials/tokens/tokens) in the Hashicorp documentation.
 
@@ -188,24 +188,36 @@ You can create a new KMS configuration that uses HashiCorp Vault as follows:
 
 1. Optionally, to confirm that the information is correct, click **Show details**. Note that sensitive configuration values are displayed partially masked.
 
-## Modify a KMS configuration
+## Replace an expiring token
 
-You can modify an existing KMS configuration as follows:
+If a KMS configuration uses a token for authentication, and that token cannot be infinitely renewed, you should replace the token before it expires (that is, reaches its TTL). You can also create a new policy, or switch to using an AppRole.
 
-1. Navigate to **Configs > Security > Encryption At Rest** to open a list of existing configurations.
+To replace a token, you create a new token for the existing policy in Vault, and add it to your KMS configuration in YugabyteDB Anywhere as follows:
 
-1. Find the configuration you want to modify and click its corresponding **Actions > Edit Configuration**.
+1. In Hashicorp Vault, create a token for your existing policy. For example:
 
-1. Provide new values for the **Vault Address** and **Secret Token** fields.
+    ```shell
+    vault token create -no-default-policy -policy=trx
+    ```
+
+    If you want to change the policy, see the steps in [Configure Hashicorp Vault](#configure-hashicorp-vault).
+
+1. In YugabyteDB Anywhere, navigate to **Configs > Security > Encryption At Rest** to open a list of existing configurations.
+
+1. Find the KMS configuration you want to modify and click its corresponding **Actions > Edit Configuration**.
+
+1. Set **Authentication Type** to **Token** and enter the token you obtained from the vault.
+
+    To switch to using an AppRole, set **Authentication Type** to **AppRole** and enter the credentials as appropriate.
 
 1. Click **Save**.
 
-1. Optionally, to confirm that the information is correct, click **Show details** or **Actions > Details**.
+To confirm that the information is correct, click **Show details** or **Actions > Details**.
 
 ## Delete a KMS configuration
 
 {{<note title="Note">}}
-You can only delete a KMS configuration if it has never been used by any universes.
+Without a KMS configuration, you would longer be able to decrypt universe keys that were encrypted using the master key in the KMS configuration. Even after a key is rotated out of service, it may still be needed to decrypt data in backups and snapshots that were created while it was active. For this reason, you can only delete a KMS configuration if it has never been used by any universes.
 {{</note>}}
 
-To delete a KMS configuration, click its corresponding **Actions > Delete Configuration**.
+To delete a KMS configuration, navigate to **Configs > Security > Encryption At Rest** to open a list of existing configurations and click its corresponding **Actions > Delete Configuration**.
