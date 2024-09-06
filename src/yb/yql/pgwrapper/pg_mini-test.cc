@@ -276,7 +276,7 @@ TEST_F(PgMiniTest, FollowerReads) {
   // Setting staleness to what we require for the test.
   // Sleep and then perform an update, such that follower reads should see the old value.
   // But current reads will see the new/updated value.
-  constexpr int32_t kStalenessMs = 4000;
+  constexpr int32_t kStalenessMs = 4000 * kTimeMultiplier;
   LOG(INFO) << "Sleeping for " << kStalenessMs << " ms";
   SleepFor(MonoDelta::FromMilliseconds(kStalenessMs));
   ASSERT_OK(conn.Execute("UPDATE t SET value = 'NEW' WHERE key = 1"));
@@ -383,7 +383,11 @@ TEST_F(PgMiniTest, FollowerReads) {
         ASSERT_OK(conn.Execute(
             yb::Format("BEGIN TRANSACTION READ ONLY ISOLATION LEVEL $0", isolation_level)));
         value = ASSERT_RESULT(conn.FetchRow<std::string>("SELECT value FROM t WHERE key = 1"));
-        ASSERT_EQ(value, local ? "NEW" : "old");
+        // If for some reason things are slow, follower reads may still see the NEW value.
+        const auto time_delta_ms = MonoTime::Now().GetDeltaSince(kUpdateTime).ToMilliseconds();
+        if (time_delta_ms < kStalenessMs) {
+          ASSERT_EQ(value, local ? "NEW" : "old");
+        }
         ASSERT_OK(conn.Execute("COMMIT"));
       }  // local
 
