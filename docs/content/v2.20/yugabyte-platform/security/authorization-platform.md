@@ -33,6 +33,8 @@ Enter the password to use for the default database admin superuser (`yugabyte` f
 
 You can also enable and disable the endpoints and authentication after deployment. Navigate to your universe, click **Actions**, and choose **Edit YSQL Configuration** or **Edit YCQL Configuration**.
 
+Note that for universes deployed using YugabyteDB Anywhere, you can't exclusively [enable authentication using flags](../../../secure/enable-authentication/authentication-ysql/). You must enable and disable authentication using the YugabyteDB Anywhere UI.
+
 ## Default roles and users
 
 The YugabyteDB database on your universe includes a set of default users and roles in YSQL and YCQL.
