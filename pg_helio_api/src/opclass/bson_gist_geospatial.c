@@ -220,7 +220,7 @@ bson_gist_geometry_2d_compress(PG_FUNCTION_ARGS)
 		bsonBoundingBox->xMin < minBound || bsonBoundingBox->yMin < minBound)
 	{
 		/* Out of bounds, throw error */
-		ereport(ERROR, (errcode(MongoLocation13027),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION13027),
 						errmsg("point not in interval of [ %g, %g ]",
 							   minBound, maxBound)));
 	}
@@ -334,7 +334,7 @@ bson_gist_geometry_consistent_2d(PG_FUNCTION_ARGS)
 		default:
 		{
 			/* We will never reach here but just in case. */
-			ereport(ERROR, (errcode(MongoInternalError),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 							errmsg("unknown geospatial query operator with strategy %d",
 								   strategy)));
 		}
@@ -462,7 +462,7 @@ PopulateGeospatialQueryState(IndexBsonGeospatialState *state,
 
 		default:
 		{
-			ereport(ERROR, (errcode(MongoInternalError),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 							errmsg("unknown geospatial query operator with strategy %d",
 								   strategy)));
 		}
@@ -657,7 +657,7 @@ bson_gist_geography_consistent(PG_FUNCTION_ARGS)
 		default:
 		{
 			/* We will never reach here but just in case. */
-			ereport(ERROR, (errcode(MongoInternalError),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 							errmsg("unknown geospatial query operator with strategy %d",
 								   strategy)));
 		}

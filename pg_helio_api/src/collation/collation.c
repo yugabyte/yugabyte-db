@@ -312,24 +312,24 @@ ParseAndGetCollationString(const bson_value_t *collationValue, const char *colat
 
 			if (strength == 0)
 			{
-				ereport(ERROR, (errcode(MongoBadValue), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 									"unable to parse collation :: caused by :: Enumeration value '0' for field 'collation.strength' is not a valid value")));
 			}
 			else if (strength < 0)
 			{
-				ereport(ERROR, (errcode(MongoLocation51024), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51024), errmsg(
 									"unable to parse collation :: caused by :: BSON field 'strength' value must be >= 0, actual value '%d'",
 									strength),
-								errhint(
+								errdetail_log(
 									"unable to parse collation :: caused by :: BSON field 'strength' value must be >= 0, actual value '%d'",
 									strength)));
 			}
 			else if (strength > 5)
 			{
-				ereport(ERROR, (errcode(MongoLocation51024), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51024), errmsg(
 									"unable to parse collation :: caused by :: BSON field 'strength' value must be <= 5, actual value '%d'",
 									strength),
-								errhint(
+								errdetail_log(
 									"unable to parse collation :: caused by :: BSON field 'strength' value must be <= 5, actual value '%d'",
 									strength)));
 			}
@@ -352,7 +352,7 @@ ParseAndGetCollationString(const bson_value_t *collationValue, const char *colat
 			}
 			else if (strcmp(caseFirst, "upper") != 0 && strcmp(caseFirst, "lower") != 0)
 			{
-				ereport(ERROR, (errcode(MongoBadValue), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 									"unable to parse collation :: caused by :: Enumeration value '%s' for field 'collation.caseFirst' is not a valid value.",
 									caseFirst)));
 			}
@@ -387,7 +387,7 @@ ParseAndGetCollationString(const bson_value_t *collationValue, const char *colat
 			}
 			else if (strcmp(alternate, "shifted") != 0)
 			{
-				ereport(ERROR, (errcode(MongoBadValue), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 									"unable to parse collation :: caused by :: Enumeration value '%s' for field 'collation.alternate' is not a valid value.",
 									alternate)));
 			}
@@ -404,14 +404,14 @@ ParseAndGetCollationString(const bson_value_t *collationValue, const char *colat
 			}
 			else if (strcmp(maxVariable, "space") != 0)
 			{
-				ereport(ERROR, (errcode(MongoBadValue), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 									"unable to parse collation :: caused by :: Enumeration value '%s' for field 'collation.maxVariable' is not a valid value.",
 									maxVariable)));
 			}
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoUnknownBsonField), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_UNKNOWNBSONFIELD), errmsg(
 								"unable to parse collation :: caused by :: BSON field 'collation.%s' is an unknown field.",
 								key)));
 		}
@@ -746,7 +746,7 @@ inline static void
 pg_attribute_noreturn()
 ThrowInvalidLocaleError(const char * locale)
 {
-	ereport(ERROR, (errcode(MongoBadValue), errmsg(
+	ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 						"unable to parse collation :: caused by :: Field 'locale' is invalid in: { locale: \"%s\", strength: 1 }.",
 						locale)));
 }
@@ -764,10 +764,10 @@ CheckCollationInputParamType(bson_type_t expectedType, bson_type_t foundType, co
 		return;
 	}
 
-	ereport(ERROR, (errcode(MongoTypeMismatch), errmsg(
+	ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH), errmsg(
 						"unable to parse collation :: caused by :: BSON field 'collation.%s' is the wrong type '%s', expected type '%s'",
 						paramName, BsonTypeName(foundType), BsonTypeName(expectedType)),
-					errhint(
+					errdetail_log(
 						"unable to parse collation :: caused by :: BSON field 'collation.%s' is the wrong type '%s', expected type '%s'",
 						paramName, BsonTypeName(foundType), BsonTypeName(expectedType))));
 }

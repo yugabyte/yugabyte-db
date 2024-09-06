@@ -2160,7 +2160,7 @@ GinBsonExtractQueryIn(BsonExtractQueryArgs *args)
 
 	if (queryElement.bsonValue.value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(MongoBadValue), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 							"$in should have an array of values")));
 	}
 
@@ -2176,7 +2176,8 @@ GinBsonExtractQueryIn(BsonExtractQueryArgs *args)
 		/* if it is bson document and valid one for $in/$nin array. It fails with exact same error for both $in/$nin. */
 		if (!IsValidBsonDocumentForDollarInOrNinOp(arrayValue))
 		{
-			ereport(ERROR, (errcode(MongoBadValue), errmsg("cannot nest $ under $in")));
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+								"cannot nest $ under $in")));
 		}
 
 		inArraySize++;
@@ -2297,7 +2298,7 @@ GinBsonExtractQueryNotIn(BsonExtractQueryArgs *args)
 
 	if (queryElement.bsonValue.value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(MongoBadValue), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 							"$in needs an array")));
 	}
 
@@ -2313,7 +2314,8 @@ GinBsonExtractQueryNotIn(BsonExtractQueryArgs *args)
 		/* Make sure there is no $op (except $regex) in the $in/$nin array. It fails with exact same error for both $in/$nin. */
 		if (!IsValidBsonDocumentForDollarInOrNinOp(arrayValue))
 		{
-			ereport(ERROR, (errcode(MongoBadValue), errmsg("cannot nest $ under $in")));
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+								"cannot nest $ under $in")));
 		}
 		termCount++;
 	}
@@ -2448,7 +2450,7 @@ GinBsonExtractQueryRegex(BsonExtractQueryArgs *args)
 	if ((queryElement.bsonValue.value_type != BSON_TYPE_UTF8) &&
 		(queryElement.bsonValue.value_type != BSON_TYPE_REGEX))
 	{
-		ereport(ERROR, (errcode(MongoBadValue), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 							"$regex has to be a string")));
 	}
 
@@ -2929,7 +2931,7 @@ GinBsonExtractQueryDollarAll(BsonExtractQueryArgs *args)
 
 	if (filterElement.bsonValue.value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(MongoBadValue), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 							"$all needs an array")));
 	}
 
@@ -3277,11 +3279,11 @@ GinBsonComparePartialCore(BsonIndexStrategy strategy, BsonIndexTerm *queryValue,
 
 		default:
 		{
-			ereport(ERROR, (errcode(MongoInternalError),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 							errmsg("compare_partial_bson: Unsupported strategy %d",
 								   strategy),
-							errhint("compare_partial_bson: Unsupported strategy %d",
-									strategy)));
+							errdetail_log("compare_partial_bson: Unsupported strategy %d",
+										  strategy)));
 		}
 	}
 }

@@ -94,11 +94,12 @@ extern bool EnableIndexBuildBackground;
 /* Do not retry the index build if error code belongs to following list. */
 static const SkippableError SkippableErrors[] = {
 	{ 16908482 /* Postgres ERRCODE_EXCLUSION_VIOLATION */, NULL },
+	{ ERRCODE_HELIO_DUPLICATEKEY /* Postgres ERRCODE_HELIO_DUPLICATEKEY */, NULL },
 	{ 2600, "column cannot have more than 2000 dimensions for ivfflat index" },
 	{ 2600, "column cannot have more than 2000 dimensions for hnsw index" },
 	{ 261 /* Postgres ERRCODE_PROGRAM_LIMIT_EXCEEDED */, "index row size " },
 	{ 261 /* ERRCODE_PROGRAM_LIMIT_EXCEEDED */, "memory required is " },
-	{ 687865923, "unsupported language: " },
+	{ ERRCODE_HELIO_CANNOTCREATEINDEX, "unsupported language: " },
 	{ 687882611, "Can't extract geo keys" }
 };
 static const int NumberOfSkippableErrors = sizeof(SkippableErrors) /
@@ -999,8 +1000,9 @@ IsSkippableError(int targetErrorCode, char *errMsg)
 {
 	if (targetErrorCode != -1)
 	{
-		if (targetErrorCode >= MongoBadValue && targetErrorCode <=
-			_ERRCODE_MONGO_ERROR_LAST)
+		if (EreportCodeIsMongoError(targetErrorCode) &&
+			targetErrorCode != MongoInternalError &&
+			targetErrorCode != ERRCODE_HELIO_INTERNALERROR)
 		{
 			/* Mongo errors that are not internal errors are skippable */
 			return true;

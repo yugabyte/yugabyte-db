@@ -262,13 +262,13 @@ ValidateExclusionPathSpec(const char *prefix)
 	int32_t stringLength = strlen(prefix);
 	if (stringLength == 0)
 	{
-		ereport(ERROR, (errcode(MongoBadValue), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 							"Unique hash index path must not be empty")));
 	}
 
 	if (prefix[stringLength - 1] == '.')
 	{
-		ereport(ERROR, (errcode(MongoBadValue), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 							"Unique hash path must not have a trailing '.'")));
 	}
 }

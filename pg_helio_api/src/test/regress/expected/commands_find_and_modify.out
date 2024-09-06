@@ -330,7 +330,6 @@ SELECT helio_api.find_and_modify('fam', '{"findAndModify": "dne", "query": {"a":
 ERROR:  Updating the path 'a' would create a conflict at 'a'
 SELECT helio_api.find_and_modify('fam', '{"findAndModify": "dne", "query": {"$a": 1}, "update": { "$set": { "a": 1 } } }');
 ERROR:  unknown top level operator: $a. If you have a field name that starts with a '$' symbol, consider using $getField or $setField.
-HINT:  unknown top level operator: $a. If you have a field name that starts with a '$' symbol, consider using $getField or $setField.
 SELECT helio_api.create_collection('fam', 'no_match');
 NOTICE:  creating collection
  create_collection 

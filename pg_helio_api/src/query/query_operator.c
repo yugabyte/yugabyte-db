@@ -209,7 +209,7 @@ static inline void
 pg_attribute_noreturn()
 ThrowInvalidRegexOptions(char c)
 {
-	ereport(ERROR, (errcode(MongoLocation51108), errmsg(
+	ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION51108), errmsg(
 						"invalid flag in regex options %c", c),
 					errhint("invalid flag in regex options %c", c)));
 }
@@ -414,7 +414,7 @@ CreateQualForBsonValueExpression(const bson_value_t *expression, const
 {
 	if (expression->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoBadValue), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 							"expression should be a document")));
 	}
 
@@ -447,7 +447,7 @@ CreateQualForBsonValueArrayExpression(const bson_value_t *expression)
 {
 	if (expression->value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(MongoBadValue), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 							"expression should be an array")));
 	}
 
@@ -533,7 +533,7 @@ CreateQualForBsonExpression(const bson_value_t *expression, const
 {
 	if (expression->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoBadValue), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 							"expression should be a document")));
 	}
 
@@ -1071,7 +1071,7 @@ CreateQualsForDBRef(bson_iter_t *refIterator,
 	/*todo support optional fields */
 	if (hasUnknownKey)
 	{
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg(
 							"unknown key for DBRef, only $ref, $id and $db are allowed")));
 	}
@@ -1190,13 +1190,13 @@ CreateBoolExprFromLogicalExpression(bson_iter_t *queryDocIterator,
 	{
 		/* invalid query operator such as $eq at top level of query document */
 		/* We throw feature not supported since $where and such might be specified here */
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg(
 							"unknown top level operator: %s. If you have a field "
 							"name that starts with a '$' symbol, consider using "
 							"$getField or $setField.",
 							mongoOperatorName),
-						errhint(
+						errdetail_log(
 							"unknown top level operator: %s. If you have a field "
 							"name that starts with a '$' symbol, consider using "
 							"$getField or $setField.",
@@ -1209,7 +1209,7 @@ CreateBoolExprFromLogicalExpression(bson_iter_t *queryDocIterator,
 		const bson_value_t *value = bson_iter_value(queryDocIterator);
 		if (!BsonValueIsNumberOrBool(value) || BsonValueAsInt32(value) != 1)
 		{
-			ereport(ERROR, (errcode(MongoFailedToParse),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 							errmsg("%s must be an integer value of 1",
 								   operatorType == QUERY_OPERATOR_ALWAYS_TRUE ?
 								   "$alwaysTrue" : "$alwaysFalse")));
@@ -1226,7 +1226,7 @@ CreateBoolExprFromLogicalExpression(bson_iter_t *queryDocIterator,
 		const bson_value_t *sampleRate = bson_iter_value(queryDocIterator);
 		if (!BsonValueIsNumber(sampleRate))
 		{
-			ereport(ERROR, (errcode(MongoBadValue),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 							errmsg(
 								"argument to $sampleRate must be a numeric type"),
 							errhint("argument to $sampleRate is: %s",
@@ -1239,7 +1239,7 @@ CreateBoolExprFromLogicalExpression(bson_iter_t *queryDocIterator,
 		 * ref: https://standards.ieee.org/ieee/754/6210, boolean sameQuantum(source, source) */
 		if (!(sampleRateValue >= 0 && sampleRateValue <= 1))
 		{
-			ereport(ERROR, (errcode(MongoBadValue),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 							errmsg(
 								"numeric argument to $sampleRate must be in [0, 1]"),
 							errhint(
@@ -1269,7 +1269,7 @@ CreateBoolExprFromLogicalExpression(bson_iter_t *queryDocIterator,
 	{
 		if (context->inputType != MongoQueryOperatorInputType_Bson)
 		{
-			ereport(ERROR, (errcode(MongoBadValue),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 							errmsg(
 								"$expr can only be applied to the top-level document")));
 		}
@@ -1298,7 +1298,7 @@ CreateBoolExprFromLogicalExpression(bson_iter_t *queryDocIterator,
 	{
 		if (context->inputType != MongoQueryOperatorInputType_Bson)
 		{
-			ereport(ERROR, (errcode(MongoBadValue),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 							errmsg(
 								"$text can only be applied to the top-level document")));
 		}
@@ -1317,7 +1317,7 @@ CreateBoolExprFromLogicalExpression(bson_iter_t *queryDocIterator,
 	/* type safety checks */
 	if (bson_iter_type(queryDocIterator) != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(MongoBadValue), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 							"%s must be an array",
 							mongoOperatorName)));
 	}
@@ -1418,7 +1418,7 @@ CreateBoolExprFromLogicalExpression(bson_iter_t *queryDocIterator,
 		context->targetEntries != NULL &&
 		TargetListContainsGeonearOp(context->targetEntries))
 	{
-		ereport(ERROR, (errcode(MongoBadValue), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 							"geo $near must be top-level expr")));
 	}
 
@@ -1441,7 +1441,7 @@ CreateQualsFromLogicalExpressionArrayIterator(bson_iter_t *expressionsArrayItera
 	{
 		if (bson_iter_type(expressionsArrayIterator) != BSON_TYPE_DOCUMENT)
 		{
-			ereport(ERROR, (errcode(MongoBadValue), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 								"$or/$and/$nor entries need to be full objects")));
 		}
 
@@ -1463,7 +1463,7 @@ CreateQualsFromLogicalExpressionArrayIterator(bson_iter_t *expressionsArrayItera
 
 	if (quals == NIL)
 	{
-		ereport(ERROR, (errcode(MongoBadValue), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 							"$or/$and/$nor arrays must have at least one entry")));
 	}
 
@@ -1483,10 +1483,11 @@ ValidateIfIteratorValueUndefined(bson_iter_t *iter, bool isInMatchExpression)
 	{
 		if (isInMatchExpression)
 		{
-			ereport(ERROR, (errcode(MongoBadValue), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 								"InMatchExpression equality cannot be undefined")));
 		}
-		ereport(ERROR, (errcode(MongoBadValue), errmsg("cannot compare to undefined")));
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
+							"cannot compare to undefined")));
 	}
 }
 
@@ -1619,7 +1620,7 @@ CreateOpExprFromOperatorDocIterator(const char *path,
 	 * $options present as an orphan without a $regex. Hence throw error */
 	if (options != NULL)
 	{
-		ereport(ERROR, (errcode(MongoBadValue), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 							"$options needs a $regex")));
 	}
 
@@ -1656,7 +1657,7 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 		{
 			if (!BSON_ITER_HOLDS_ARRAY(operatorDocIterator))
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg("%s needs an array", mongoOperatorName)));
 			}
 
@@ -1672,7 +1673,7 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 					if (!IsValidBsonDocumentForDollarInOrNinOp(
 							&currentValue))
 					{
-						ereport(ERROR, (errcode(MongoBadValue), errmsg(
+						ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 											"cannot nest $ under %s",
 											operator->mongoOperatorName)));
 					}
@@ -1712,7 +1713,7 @@ CreateOpExprFromOperatorDocIteratorCore(bson_iter_t *operatorDocIterator,
 		{
 			if (!BSON_ITER_HOLDS_ARRAY(operatorDocIterator))
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg("%s needs an array", mongoOperatorName)));
 			}
 

@@ -1018,7 +1018,7 @@ ReplaceFunctionOperatorsInPlanPath(PlannerInfo *root, RelOptInfo *rel, Path *pat
 					}
 					else
 					{
-						ereport(ERROR, (errcode(MongoBadValue),
+						ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 										errmsg("Too many text expressions")));
 					}
 

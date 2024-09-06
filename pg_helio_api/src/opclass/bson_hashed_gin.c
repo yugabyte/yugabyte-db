@@ -335,7 +335,7 @@ GenerateTermsForDollarIn(pgbsonelement *queryElement, int *nentries)
 {
 	if (queryElement->bsonValue.value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(MongoBadValue), errmsg("$in expects an array")));
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg("$in expects an array")));
 	}
 
 	bson_iter_t queryInIterator;
@@ -343,7 +343,7 @@ GenerateTermsForDollarIn(pgbsonelement *queryElement, int *nentries)
 								  queryElement->bsonValue.value.v_doc.data,
 								  queryElement->bsonValue.value.v_doc.data_len))
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 						errmsg("Unable to read array for $in")));
 	}
 
@@ -406,7 +406,7 @@ ThrowErrorArraysNotSupported(const char * path, int pathLength)
 	/* pathLength + 1 for \0 terminator */
 	errorPath = (char *) palloc0(sizeof(char) * (pathLength + 1));
 	memcpy(errorPath, path, pathLength);
-	ereport(ERROR, errcode(MongoHashedIndexDoNotSupportArrayValues), errmsg(
+	ereport(ERROR, errcode(ERRCODE_HELIO_HASHEDINDEXDONOTSUPPORTARRAYVALUES), errmsg(
 				"hashed indexes do not currently support array values. Found array at path: %s",
 				errorPath));
 }
@@ -464,13 +464,13 @@ ValidateHashedPathSpec(const char *prefix)
 	int32_t stringLength = strlen(prefix);
 	if (stringLength == 0)
 	{
-		ereport(ERROR, (errcode(MongoBadValue), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 							"Hashed index path must not be empty")));
 	}
 
 	if (prefix[stringLength - 1] == '.')
 	{
-		ereport(ERROR, (errcode(MongoBadValue), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 							"Index path must not have a trailing '.'")));
 	}
 }

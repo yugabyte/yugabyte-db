@@ -385,7 +385,7 @@ EvaluateMetaTextScore(pgbson *document)
 {
 	if (QueryTextData == NULL)
 	{
-		ereport(ERROR, (errcode(MongoLocation40218),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40218),
 						errmsg(
 							"query requires text score metadata, but it is not available")));
 	}
@@ -394,10 +394,10 @@ EvaluateMetaTextScore(pgbson *document)
 		QueryTextData->query == (Datum) 0)
 	{
 		bool isDatumQueryNull = QueryTextData->query == (Datum) 0;
-		ereport(ERROR, (errcode(MongoInternalError),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 						errmsg(
 							"query text data is provided, but required properties are null."),
-						errhint(
+						errdetail_log(
 							"query text data is provided, but required properties are null - indexOptions %d, query %d",
 							QueryTextData->indexOptions == NULL,
 							isDatumQueryNull)));
@@ -455,7 +455,7 @@ TryCheckMetaScoreOrderBy(const bson_value_t *value)
 	{
 		if (metaOrderingElement.bsonValue.value_type != BSON_TYPE_UTF8)
 		{
-			ereport(ERROR, (errcode(MongoLocation31138),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31138),
 							errmsg("Illegal $meta sort: $meta: \"%s\"",
 								   BsonValueToJsonForLogging(
 									   &metaOrderingElement.bsonValue))));
@@ -464,7 +464,7 @@ TryCheckMetaScoreOrderBy(const bson_value_t *value)
 		if (metaOrderingElement.bsonValue.value.v_utf8.len != 9 ||
 			strncmp(metaOrderingElement.bsonValue.value.v_utf8.str, "textScore", 9) != 0)
 		{
-			ereport(ERROR, (errcode(MongoLocation31138),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION31138),
 							errmsg("$meta for sort only allows textScore not %s",
 								   metaOrderingElement.bsonValue.value.v_utf8.str)));
 		}
@@ -474,7 +474,7 @@ TryCheckMetaScoreOrderBy(const bson_value_t *value)
 		if (!TryGetSinglePgbsonElementFromBsonIterator(&documentIterator,
 													   &metaOrderingElement))
 		{
-			ereport(ERROR, (errcode(MongoFailedToParse),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 							errmsg(
 								"Cannot have additional keys in a $meta sort specification")));
 		}
@@ -496,7 +496,7 @@ BsonTextGenerateTSQueryCore(const bson_value_t *queryValue, bytea *indexOptions,
 {
 	if (queryValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg("$text expects an object")));
 	}
 
@@ -673,7 +673,7 @@ RewriteQueryTree(QTNode *node, bool *rewrote)
 				default:
 				{
 					/* This is unexpected - error for now */
-					ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 									errmsg("Unsupported text search query")));
 				}
 			}
@@ -883,7 +883,8 @@ ExtractTsConfigFromLanguage(const StringView *language,
 		}
 	}
 
-	int errorCode = isCreateIndex ? MongoCannotCreateIndex : MongoBadValue;
+	int errorCode = isCreateIndex ? ERRCODE_HELIO_CANNOTCREATEINDEX :
+					ERRCODE_HELIO_BADVALUE;
 	ereport(ERROR, (errcode(errorCode),
 					errmsg("unsupported language: \"%.*s\" for text index version 3",
 						   language->length, language->string)));
@@ -904,7 +905,7 @@ BsonValidateAndExtractTextQuery(const bson_value_t *queryValue,
 {
 	if (queryValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg("$text expects an object")));
 	}
 
@@ -938,13 +939,13 @@ BsonValidateAndExtractTextQuery(const bson_value_t *queryValue,
 
 	if (searchValue->value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg("Missing expected field \"$search\"")));
 	}
 
 	if (searchValue->value_type != BSON_TYPE_UTF8)
 	{
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg("$search had the wrong type. Expected string, found %s",
 							   BsonTypeName(searchValue->value_type))));
 	}
@@ -952,7 +953,7 @@ BsonValidateAndExtractTextQuery(const bson_value_t *queryValue,
 	if (languageValue.value_type != BSON_TYPE_EOD &&
 		languageValue.value_type != BSON_TYPE_UTF8)
 	{
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg("$language had the wrong type. Expected string, found %s",
 							   BsonTypeName(languageValue.value_type))));
 	}
@@ -960,7 +961,7 @@ BsonValidateAndExtractTextQuery(const bson_value_t *queryValue,
 	if (caseSensitive->value_type != BSON_TYPE_EOD &&
 		caseSensitive->value_type != BSON_TYPE_BOOL)
 	{
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg(
 							"$caseSensitive had the wrong type. Expected bool, found %s",
 							BsonTypeName(caseSensitive->value_type))));
@@ -969,7 +970,7 @@ BsonValidateAndExtractTextQuery(const bson_value_t *queryValue,
 	if (diacriticSensitive->value_type != BSON_TYPE_EOD &&
 		diacriticSensitive->value_type != BSON_TYPE_BOOL)
 	{
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg(
 							"$diacriticSensitive had the wrong type. Expected bool, found %s",
 							BsonTypeName(diacriticSensitive->value_type))));
@@ -979,7 +980,7 @@ BsonValidateAndExtractTextQuery(const bson_value_t *queryValue,
 		caseSensitive->value.v_bool)
 	{
 		/* We don't yet support case sensitive searches */
-		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 						errmsg("$caseSensitive searches are not supported yet")));
 	}
 
@@ -987,7 +988,7 @@ BsonValidateAndExtractTextQuery(const bson_value_t *queryValue,
 		!diacriticSensitive->value.v_bool)
 	{
 		/* We don't yet support diacriticSensitive searches */
-		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 						errmsg("$diacritic insensitive searches are not supported yet")));
 	}
 
@@ -1081,7 +1082,7 @@ FillWeightsSpec(const char *weightsSpec, void *buffer)
 		StringView pathView = bson_iter_key_string_view(&weightsIter);
 		if (pathView.length == 0)
 		{
-			ereport(ERROR, (errcode(MongoBadValue), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 								"filter must have a valid path")));
 		}
 
@@ -1140,7 +1141,7 @@ FillWeightsSpec(const char *weightsSpec, void *buffer)
 				/* Since we reserve "D" as weight 1, we can only have 3 custom weights */
 				if (weightChar >= 4)
 				{
-					ereport(ERROR, (errcode(MongoCommandNotSupported),
+					ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 									errmsg(
 										"Cannot have more than 3 custom weights in the index")));
 				}
@@ -1198,7 +1199,7 @@ ValidateWeightsSpec(const char *weightsSpec)
 	{
 		if (bson_iter_key_len(&weightsIter) == 0)
 		{
-			ereport(ERROR, (errcode(MongoInvalidIndexSpecificationOption),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDINDEXSPECIFICATIONOPTION),
 							errmsg("Weights must have a valid path")));
 		}
 
@@ -1213,7 +1214,7 @@ ValidateWeightsSpec(const char *weightsSpec)
 	/* Since we reserve "D" as weight 1, we can only have 3 custom weights */
 	if (numCustomWeights > 3)
 	{
-		ereport(ERROR, (errcode(MongoCommandNotSupported),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 						errmsg("Cannot have more than 3 custom weights in the index")));
 	}
 }
@@ -1273,7 +1274,7 @@ GetLanguagePathOverride(const StringView *pathView, StringView *lastParentPath,
 	{
 		if (bson_iter_type(&docIterator) != BSON_TYPE_UTF8)
 		{
-			ereport(ERROR, (errcode(MongoLocation17261),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION17261),
 							errmsg(
 								"found language override field in document with non-string type")));
 		}

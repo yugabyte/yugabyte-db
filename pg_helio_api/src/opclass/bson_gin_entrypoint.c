@@ -793,7 +793,7 @@ ValidateIndexForQualifierValue(bytea *indexOptions, Datum queryValue, BsonIndexS
 
 				if (StringViewEndsWith(&fieldPathName, '.'))
 				{
-					ereport(ERROR, (errcode(MongoDottedFieldName), errmsg(
+					ereport(ERROR, (errcode(ERRCODE_HELIO_DOTTEDFIELDNAME), errmsg(
 										"FieldPath must not end with a '.'.")));
 				}
 			}
@@ -889,7 +889,7 @@ ValidateIndexForQualifierPathForDollarIn(bytea *indexOptions, const StringView *
 			{
 				if (StringViewEndsWith(queryPath, '.'))
 				{
-					ereport(ERROR, (errcode(MongoDottedFieldName), errmsg(
+					ereport(ERROR, (errcode(ERRCODE_HELIO_DOTTEDFIELDNAME), errmsg(
 										"FieldPath must not end with a '.'.")));
 				}
 			}
@@ -960,8 +960,6 @@ GetIndexTermMetadata(void *indexOptions)
 				singlePathOptions->generateNotFoundTerm)
 			{
 				ereport(ERROR, (errmsg(
-									"Index term version V1 is not supported by unique path indexes"),
-								errhint(
 									"Index term version V1 is not supported by unique path indexes")));
 			}
 
@@ -977,8 +975,6 @@ GetIndexTermMetadata(void *indexOptions)
 		else if (options->version >= IndexOptionsVersion_V1)
 		{
 			ereport(ERROR, (errmsg(
-								"Index version V1 is not supported by hashed, text or 2d sphere indexes"),
-							errhint(
 								"Index version V1 is not supported by hashed, text or 2d sphere indexes")));
 		}
 
@@ -1244,7 +1240,7 @@ ValidateWildcardProjectPathSpec(const char *prefix)
 	int32_t stringLength = strlen(prefix);
 	if (stringLength < 3)
 	{
-		ereport(ERROR, (errcode(MongoBadValue), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 							"at least one filter path must be specified")));
 	}
 }
@@ -1266,7 +1262,7 @@ FillWildcardProjectPathSpec(const char *prefix, void *buffer)
 {
 	if (prefix == NULL)
 	{
-		ereport(ERROR, (errcode(MongoBadValue), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 							"at least one filter path must be specified")));
 	}
 
@@ -1281,7 +1277,7 @@ FillWildcardProjectPathSpec(const char *prefix, void *buffer)
 	{
 		if (!BSON_ITER_HOLDS_UTF8(&bsonIterator))
 		{
-			ereport(ERROR, (errcode(MongoBadValue), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 								"filter must have a valid string path")));
 		}
 
@@ -1289,7 +1285,7 @@ FillWildcardProjectPathSpec(const char *prefix, void *buffer)
 		bson_iter_utf8(&bsonIterator, &pathLength);
 		if (pathLength == 0)
 		{
-			ereport(ERROR, (errcode(MongoBadValue), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 								"filter must have a valid path")));
 		}
 

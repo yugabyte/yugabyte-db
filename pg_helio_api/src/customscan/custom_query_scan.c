@@ -352,7 +352,7 @@ AddCustomPathForVectorCore(PlannerInfo *planner, List *pathList, RelOptInfo *rel
 			return NIL;
 		}
 
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg(
 							"Similarity index was not found for a vector similarity search query during planning.")));
 	}

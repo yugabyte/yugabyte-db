@@ -598,20 +598,16 @@ SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search2", "filte
 ERROR:  unable to parse collation :: caused by :: Enumeration value '0' for field 'collation.strength' is not a valid value
 SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search2", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : -1, "caseLevel": true, "caseFirst": "bad", "numericOrdering": true} }');
 ERROR:  unable to parse collation :: caused by :: BSON field 'strength' value must be >= 0, actual value '-1'
-HINT:  unable to parse collation :: caused by :: BSON field 'strength' value must be >= 0, actual value '-1'
 SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search2", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 6, "caseLevel": true, "caseFirst": "bad", "numericOrdering": true} }');
 ERROR:  unable to parse collation :: caused by :: BSON field 'strength' value must be <= 5, actual value '6'
-HINT:  unable to parse collation :: caused by :: BSON field 'strength' value must be <= 5, actual value '6'
 SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search2", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "abcd", "strength" : 1, "caseLevel": true, "caseFirst": "upper", "numericOrdering": true} }');
 ERROR:  unable to parse collation :: caused by :: Field 'locale' is invalid in: { locale: "abcd", strength: 1 }.
 SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search2", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "fr_FR", "strength" : 1, "caseLevel": true, "caseFirst": "lower", "numericOrdering": true} }');
 ERROR:  unable to parse collation :: caused by :: Field 'locale' is invalid in: { locale: "fr_FR", strength: 1 }.
 SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search2", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1, "caseLevel": true, "caseFirst": "upper", "numericOrdering": true, "alternate": "shifted", "backwards" : "0"} }');
 ERROR:  unable to parse collation :: caused by :: BSON field 'collation.backwards' is the wrong type 'string', expected type 'bool'
-HINT:  unable to parse collation :: caused by :: BSON field 'collation.backwards' is the wrong type 'string', expected type 'bool'
 SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search2", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1, "caseLevel": true, "caseFirst": "lower", "numericOrdering": true, "alternate": "non-ignorable", "backwards" : true, "normalization" : 1} }');
 ERROR:  unable to parse collation :: caused by :: BSON field 'collation.normalization' is the wrong type 'int', expected type 'bool'
-HINT:  unable to parse collation :: caused by :: BSON field 'collation.normalization' is the wrong type 'int', expected type 'bool'
 SELECT document FROM bson_aggregation_find('db', '{ "find": "ci_search2", "filter": { "$or" : [{ "a": { "$eq": "cat" } }, { "b": { "$eq": "DOG" } }] }, "sort": { "_id": 1 }, "skip": 0, "limit": 5, "collation": { "locale": "en", "strength" : 1, "caseLevel": true, "caseFirst": "lower", "numericOrdering": true, "alternate": "non-ignorable", "backwards" : true, "normalization" : true} }');
                     document                     
 ---------------------------------------------------------------------

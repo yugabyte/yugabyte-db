@@ -195,12 +195,12 @@ TruncateStringOrBinaryTerm(int32_t dataSize, int32_t indexTermSizeLimit,
 		int32_t excess = requiredLength - indexTermSizeLimit;
 		if (excess >= stringLen)
 		{
-			ereport(ERROR, (errcode(MongoInternalError),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 							errmsg(
 								"Cannot create index key required length %d for type %s exceeds max size %d.",
 								stringLen, BsonTypeName(bsonValueType),
 								indexTermSizeLimit),
-							errhint(
+							errdetail_log(
 								"Cannot create index key required length %d for type %s exceeds max size %d.",
 								stringLen, BsonTypeName(bsonValueType),
 								indexTermSizeLimit)));
@@ -610,12 +610,10 @@ SerializeTermToWriter(pgbson_writer *writer, pgbsonelement *indexElement,
 	{
 		if (!StringViewEquals(&indexPath, &termMetadata->pathPrefix))
 		{
-			ereport(ERROR, (errcode(MongoInternalError),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 							errmsg(
 								"Wildcard Prefix path encountered with non-wildcard index - path %s, prefix %s",
-								indexPath.string, termMetadata->pathPrefix.string),
-							errhint(
-								"Wildcard Prefix path encountered with non-wildcard index")));
+								indexPath.string, termMetadata->pathPrefix.string)));
 		}
 
 		/* Index term should occupy a minimal amount of space */
@@ -653,7 +651,7 @@ SerializeTermToWriter(pgbson_writer *writer, pgbsonelement *indexElement,
 
 		if (indexPath.length > termMetadata->wildcardIndexTruncatedPathLimit)
 		{
-			ereport(ERROR, (errcode(MongoBadValue),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 							errmsg(
 								"Wildcard index key exceeded the maximum allowed size of %d.",
 								termMetadata->wildcardIndexTruncatedPathLimit)));
@@ -672,11 +670,11 @@ SerializeTermToWriter(pgbson_writer *writer, pgbsonelement *indexElement,
 
 	if (dataSize >= termMetadata->indexTermSizeLimit)
 	{
-		ereport(ERROR, (errcode(MongoInternalError),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 						errmsg(
 							"Cannot create index key because the path length %d exceeds truncation limit %d.",
 							dataSize, termMetadata->indexTermSizeLimit),
-						errhint(
+						errdetail_log(
 							"Cannot create index key because the path length %d exceeds truncation limit %d.",
 							dataSize, termMetadata->indexTermSizeLimit)));
 	}
@@ -896,13 +894,13 @@ SerializeBsonIndexTermCore(pgbsonelement *indexElement,
 	if (createMetadata->indexTermSizeLimit > 0 &&
 		dataSize > (uint32_t) createMetadata->indexTermSizeLimit)
 	{
-		ereport(ERROR, (errcode(MongoInternalError),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 						errmsg(
 							"Truncation size limit specified %d, but index term with type %s was larger %d - isTruncated %d",
 							createMetadata->indexTermSizeLimit, BsonTypeName(
 								indexElement->bsonValue.value_type), dataSize,
 							indexTerm.isIndexTermTruncated),
-						errhint(
+						errdetail_log(
 							"Truncation size limit specified %d, but index term with type %s was larger %d - isTruncated %d",
 							createMetadata->indexTermSizeLimit, BsonTypeName(
 								indexElement->bsonValue.value_type), dataSize,

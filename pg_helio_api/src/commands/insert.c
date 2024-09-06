@@ -626,21 +626,17 @@ DoMultiInsertWithoutTransactionId(MongoCollection *collection, List *inserts, Oi
 		insertCount = 0;
 
 		int errorCode = errorData->sqlerrcode;
-		if (errorCode >= _ERRCODE_MONGO_ERROR_FIRST && errorCode <=
-			_ERRCODE_MONGO_ERROR_LAST)
+		const char *errorCodeStr = unpack_sql_state(errorCode);
+		if (EreportCodeIsMongoError(errorCode))
 		{
 			errorCode = errorCode - _ERRCODE_MONGO_ERROR_FIRST;
 			ereport(LOG, (
 						errmsg(
-							"Optimistic Batch Insert failed. Retrying with single insert. mongoErrorCode %d",
-							errorCode),
-						errhint(
-							"Optimistic Batch Insert failed. Retrying with single insert. mongoErrorCode %d",
-							errorCode)));
+							"Optimistic Batch Insert failed. Retrying with single insert. mongoErrorCode %d - sqlstate %s",
+							errorCode, errorCodeStr)));
 		}
 		else
 		{
-			const char *errorCodeStr = unpack_sql_state(errorCode);
 			ereport(LOG, (
 						errmsg(
 							"Optimistic Batch Insert failed. Retrying with single insert. SQL Error %s",
