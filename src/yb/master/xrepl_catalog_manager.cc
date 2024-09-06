@@ -115,10 +115,7 @@ DEFINE_test_flag(bool, cdcsdk_skip_updating_cdc_state_entries_on_table_removal, 
 
 DEFINE_test_flag(bool, cdcsdk_add_indexes_to_stream, false, "Allows addition of index to a stream");
 
-DEFINE_RUNTIME_bool(cdcsdk_enable_cleanup_of_non_eligible_tables_from_stream, false,
-    "When enabled, all CDCSDK streams will be scanned for non-eligible tables like indexes, "
-    "materialised view etc. in their stream metadata and these tables will be marked for removal "
-    "by catalog manager background thread.");
+DEPRECATE_FLAG(bool, cdcsdk_enable_cleanup_of_non_eligible_tables_from_stream, "09_2024");
 
 DEFINE_test_flag(bool, cdcsdk_disable_drop_table_cleanup, false,
                  "When enabled, cleanup of dropped tables from CDC streams will be skipped.");
@@ -284,8 +281,7 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
 
       // Check for any non-eligible tables like indexes, matview etc in CDC stream only if the
       // stream is not associated with a replication slot.
-      if (FLAGS_cdcsdk_enable_identification_of_non_eligible_tables &&
-          stream->GetCdcsdkYsqlReplicationSlotName().empty()) {
+      if (stream->GetCdcsdkYsqlReplicationSlotName().empty()) {
         catalog_manager_->FindAllNonEligibleTablesInCDCSDKStream(
             stream_id, metadata.table_id(), eligible_tables_info);
       }
@@ -1780,7 +1776,15 @@ Status CatalogManager::FindCDCSDKStreamsForNonEligibleTables(
           break;
         }
       }
+
+      if (found_non_user_tables == FLAGS_cdcsdk_table_processing_limit_per_run) {
+        break;
+      }
     }
+  }
+
+  if (namespace_to_non_user_table_map.empty()) {
+    return Status::OK();
   }
 
   {
@@ -1790,8 +1794,8 @@ Status CatalogManager::FindCDCSDKStreamsForNonEligibleTables(
         continue;
       }
 
-      // Removal of non-eligible tables will only be done on CDC stream that are not associated with
-      // a replication slot.
+      // Removal of non-eligible tables will only be done on CDC stream that are not associated
+      // with a replication slot.
       if (!stream_info->GetCdcsdkYsqlReplicationSlotName().empty()) {
         continue;
       }
@@ -3121,8 +3125,7 @@ Status CatalogManager::UpdateCDCProducerOnTabletSplit(
   std::vector<CDCStreamInfoPtr> streams;
   std::vector<cdc::CDCStateTableEntry> entries;
   for (const auto stream_type : {cdc::XCLUSTER, cdc::CDCSDK}) {
-    if (stream_type == cdc::CDCSDK &&
-        FLAGS_cdcsdk_enable_cleanup_of_non_eligible_tables_from_stream) {
+    if (stream_type == cdc::CDCSDK) {
       const auto table_info = GetTableInfo(producer_table_id);
       if (table_info) {
         // Skip adding children tablet entries in cdc state if the table is an index or a mat view.
