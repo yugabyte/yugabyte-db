@@ -170,7 +170,7 @@ GetAggregationPipelineUpdateState(pgbson *updateSpec)
 	if (!BSON_ITER_HOLDS_ARRAY(&updateIterator) ||
 		!bson_iter_recurse(&updateIterator, &updateIterator))
 	{
-		ereport(ERROR, (errcode(MongoBadValue), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 							"aggregation pipeline should be an array")));
 	}
 
@@ -207,9 +207,9 @@ GetAggregationPipelineUpdateState(pgbson *updateSpec)
 
 			if (AggregationOperators[i].populateFunc == NULL)
 			{
-				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED), errmsg(
 									"%s not supported yet",
-									aggregationElement.path), errhint(
+									aggregationElement.path), errdetail_log(
 									"%s not supported yet",
 									aggregationElement.path)));
 			}
@@ -228,7 +228,7 @@ GetAggregationPipelineUpdateState(pgbson *updateSpec)
 
 		if (!operatorFound)
 		{
-			ereport(ERROR, (errcode(MongoInvalidOptions), errmsg(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDOPTIONS), errmsg(
 								"Invalid aggregation pipeline operator for update %s",
 								aggregationElement.path)));
 		}
@@ -378,7 +378,7 @@ PopulateDollarProjectState(const bson_value_t *projectionValue,
 {
 	if (projectionValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoBadValue), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 							"$project should be a document")));
 	}
 
@@ -503,7 +503,7 @@ ValidateReplaceRootElement(const bson_value_t *value)
 
 			if (StringViewContains(&keyView, '.'))
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg("FieldPath field names may not contain '.'."
 									   " Consider using $getField or $setField")));
 			}

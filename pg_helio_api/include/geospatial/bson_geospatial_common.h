@@ -222,7 +222,7 @@ EnsureGeospatialFeatureEnabled()
 	if (!EnableGeospatialSupport)
 	{
 		ereport(ERROR, (
-					errcode(MongoCommandNotSupported),
+					errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 					errmsg("Geospatial features are not supported yet")));
 	}
 }

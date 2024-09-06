@@ -75,7 +75,6 @@ select helio_api.update('db', '{"update":["updateme"], "updates":[{"q":{},"u":{"
 ERROR:  collection name has invalid type array
 select helio_api.update('db', '{"update":"updateme", "updates":{"q":{},"u":{"$set":{"b":0}},"multi":true}}');
 ERROR:  BSON field 'update.updates' is the wrong type 'object', expected type 'array'
-HINT:  BSON field 'update.updates' is the wrong type 'object', expected type 'array'
 select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":true}], "extra":1}');
 ERROR:  BSON field 'update.extra' is an unknown field
 select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{}}]}');
@@ -90,24 +89,20 @@ select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":"tex
 ERROR:  BSON field 'update.updates.u' is the wrong type 'string', expected type 'object' or 'array'
 select helio_api.update('db', '{"update":"updateme", "updates":[{"q":[],"u":{"$set":{"b":0}},"multi":true}]}');
 ERROR:  BSON field 'update.updates.q' is the wrong type 'array', expected type 'object'
-HINT:  BSON field 'update.updates.q' is the wrong type 'array', expected type 'object'
 select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":1}]}');
 ERROR:  BSON field 'update.updates.multi' is the wrong type 'int', expected type 'bool'
-HINT:  BSON field 'update.updates.multi' is the wrong type 'int', expected type 'bool'
 select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":true,"extra":1}]}');
 ERROR:  BSON field 'update.updates.extra' is an unknown field
 select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":true}],"ordered":1}');
 ERROR:  BSON field 'update.ordered' is the wrong type 'int', expected type 'bool'
-HINT:  BSON field 'update.ordered' is the wrong type 'int', expected type 'bool'
 select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$bork":{"b":0}},"multi":true}]}');
-                                                                                                                                                                                     update                                                                                                                                                                                     
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""687865865"" }, ""errmsg"" : ""Unknown modifier: $bork. Expected a valid update modifier or pipeline-style update specified as an array"" } ] }",f)
+                                                                                                                                                                                    update                                                                                                                                                                                     
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""50331677"" }, ""errmsg"" : ""Unknown modifier: $bork. Expected a valid update modifier or pipeline-style update specified as an array"" } ] }",f)
 (1 row)
 
 select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"upsert":[]}]}');
 ERROR:  BSON field 'update.updates.upsert' is the wrong type 'array', expected type 'bool'
-HINT:  BSON field 'update.updates.upsert' is the wrong type 'array', expected type 'bool'
 -- Disallow writes to system.views
 select helio_api.update('db', '{"update":"system.views", "updates":[{"q":{},"u":{"$set":{"b":0}}}]}');
 ERROR:  cannot write to db.system.views
@@ -253,7 +248,7 @@ begin;
 select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":3},"u":{"_id":0,"b":0},"multi":false}]}');
                                                                                                                                                                            update                                                                                                                                                                            
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""687865922"" }, ""errmsg"" : ""After applying the update, the (immutable) field '_id' was found to have been altered"" } ] }",f)
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""486539293"" }, ""errmsg"" : ""After applying the update, the (immutable) field '_id' was found to have been altered"" } ] }",f)
 (1 row)
 
 rollback;
@@ -1099,7 +1094,7 @@ SELECT helio_api.update(
 );
                                                                                                                                                            update                                                                                                                                                           
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""687865896"" }, ""errmsg"" : ""Updating the path 'p' would create a conflict at 'p'"" } ] }",f)
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""335544349"" }, ""errmsg"" : ""Updating the path 'p' would create a conflict at 'p'"" } ] }",f)
 (1 row)
 
 -- ii) ordered=false
@@ -1119,7 +1114,7 @@ SELECT helio_api.update(
 );
                                                                                                                                                                                                                                             update                                                                                                                                                                                                                                            
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""687865896"" }, ""errmsg"" : ""Updating the path 'p' would create a conflict at 'p'"" }, { ""index"" : { ""$numberInt"" : ""3"" }, ""code"" : { ""$numberInt"" : ""687865896"" }, ""errmsg"" : ""Updating the path 'p' would create a conflict at 'p'"" } ] }",f)
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""335544349"" }, ""errmsg"" : ""Updating the path 'p' would create a conflict at 'p'"" }, { ""index"" : { ""$numberInt"" : ""3"" }, ""code"" : { ""$numberInt"" : ""335544349"" }, ""errmsg"" : ""Updating the path 'p' would create a conflict at 'p'"" } ] }",f)
 (1 row)
 
 -- show that we validate "query" document even if collection doesn't exist
@@ -1188,7 +1183,7 @@ SELECT helio_api.update(
 );
                                                                                                                                                            update                                                                                                                                                           
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""687865896"" }, ""errmsg"" : ""Updating the path 'p' would create a conflict at 'p'"" } ] }",f)
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""335544349"" }, ""errmsg"" : ""Updating the path 'p' would create a conflict at 'p'"" } ] }",f)
 (1 row)
 
 -- ii) ordered=false
@@ -1208,7 +1203,7 @@ SELECT helio_api.update(
 );
                                                                                                                                                                                                                                             update                                                                                                                                                                                                                                            
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""687865896"" }, ""errmsg"" : ""Updating the path 'p' would create a conflict at 'p'"" }, { ""index"" : { ""$numberInt"" : ""3"" }, ""code"" : { ""$numberInt"" : ""687865896"" }, ""errmsg"" : ""Updating the path 'p' would create a conflict at 'p'"" } ] }",f)
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""335544349"" }, ""errmsg"" : ""Updating the path 'p' would create a conflict at 'p'"" }, { ""index"" : { ""$numberInt"" : ""3"" }, ""code"" : { ""$numberInt"" : ""335544349"" }, ""errmsg"" : ""Updating the path 'p' would create a conflict at 'p'"" } ] }",f)
 (1 row)
 
 -- show that we validate "query" document even if we can't match any documents
@@ -1415,19 +1410,19 @@ select helio_api.update('update', '{"update":"single", "updates":[{"q":{"_id":67
 select helio_api.update('update', '{"update":"single", "updates":[{"q":{"_id": 1, "_id": 2},"u":{},"upsert":true}]}');
                                                                                                                                                                update                                                                                                                                                                
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""687865910"" }, ""errmsg"" : ""cannot infer query fields to set, path '_id' is matched twice"" } ] }",f)
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""419430429"" }, ""errmsg"" : ""cannot infer query fields to set, path '_id' is matched twice"" } ] }",f)
 (1 row)
 
 select helio_api.update('update', '{"update":"single", "updates":[{"q":{"x": 1, "x": 5},"u":{"$set" : {"x":10}},"upsert":true}]}');
                                                                                                                                                               update                                                                                                                                                               
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""687865910"" }, ""errmsg"" : ""cannot infer query fields to set, path 'x' is matched twice"" } ] }",f)
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""419430429"" }, ""errmsg"" : ""cannot infer query fields to set, path 'x' is matched twice"" } ] }",f)
 (1 row)
 
 select helio_api.update('update', '{"update":"single", "updates":[{"q":{"_id": 1, "_id.b": 2},"u":{"_id":3, "a":4},"upsert":true}]}');
                                                                                                                                                                      update                                                                                                                                                                     
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""687865967"" }, ""errmsg"" : ""field at '_id' must be exactly specified, field at sub-path '_id.b'found"" } ] }",f)
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""603979805"" }, ""errmsg"" : ""field at '_id' must be exactly specified, field at sub-path '_id.b'found"" } ] }",f)
 (1 row)
 
 select helio_api.update('update', '{"update":"single", "updates":[{"q":{"_idab.b": 2},"u":{"_id":3, "a":4},"upsert":true}]}');
@@ -1439,19 +1434,19 @@ select helio_api.update('update', '{"update":"single", "updates":[{"q":{"_idab.b
 select helio_api.update('update', '{"update":"single", "updates":[{"q":{"_id.c": 2},"u":{"_id":3, "a":4},"upsert":true}]}');
                                                                                                                                                                      update                                                                                                                                                                     
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""687865967"" }, ""errmsg"" : ""field at '_id' must be exactly specified, field at sub-path '_id.c'found"" } ] }",f)
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""603979805"" }, ""errmsg"" : ""field at '_id' must be exactly specified, field at sub-path '_id.c'found"" } ] }",f)
 (1 row)
 
 select helio_api.update('update', '{"update":"single", "updates":[{"q":{"_id": 1, "_id": 2},"u":{"_id":3},"upsert":true}]}');
                                                                                                                                                                update                                                                                                                                                                
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""687865910"" }, ""errmsg"" : ""cannot infer query fields to set, path '_id' is matched twice"" } ] }",f)
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""419430429"" }, ""errmsg"" : ""cannot infer query fields to set, path '_id' is matched twice"" } ] }",f)
 (1 row)
 
 select helio_api.update('update', '{"update":"single", "updates":[{"q":{"_id": 1, "_id": 2},"u":{"$set" : {"_id":3} },"upsert":true}]}');
                                                                                                                                                                update                                                                                                                                                                
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""687865910"" }, ""errmsg"" : ""cannot infer query fields to set, path '_id' is matched twice"" } ] }",f)
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""419430429"" }, ""errmsg"" : ""cannot infer query fields to set, path '_id' is matched twice"" } ] }",f)
 (1 row)
 
 -- array filters sent to final update command.

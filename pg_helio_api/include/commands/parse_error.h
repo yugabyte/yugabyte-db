@@ -21,13 +21,13 @@ static inline void
 ThrowTopLevelTypeMismatchError(const char *fieldName, const char *fieldTypeName,
 							   const char *expectedTypeName)
 {
-	ereport(ERROR, (errcode(MongoTypeMismatch),
+	ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 					errmsg("BSON field '%s' is the wrong type '%s', "
 						   "expected type '%s'",
 						   fieldName, fieldTypeName, expectedTypeName),
-					errhint("BSON field '%s' is the wrong type '%s', "
-							"expected type '%s'",
-							fieldName, fieldTypeName, expectedTypeName)));
+					errdetail_log("BSON field '%s' is the wrong type '%s', "
+								  "expected type '%s'",
+								  fieldName, fieldTypeName, expectedTypeName)));
 }
 
 
@@ -127,15 +127,15 @@ EnsureTopLevelFieldIsBooleanLike(const char *fieldName, const bson_iter_t *iter)
 {
 	if (!BsonTypeIsNumberOrBool(bson_iter_type(iter)))
 	{
-		ereport(ERROR, (errcode(MongoTypeMismatch),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
 						errmsg("BSON field '%s' is the wrong type '%s', "
 							   "expected types '[bool, long, int, decimal, "
 							   "double']",
 							   fieldName, BsonIterTypeName(iter)),
-						errhint("BSON field '%s' is the wrong type '%s', "
-								"expected types '[bool, long, int, decimal, "
-								"double']",
-								fieldName, BsonIterTypeName(iter))));
+						errdetail_log("BSON field '%s' is the wrong type '%s', "
+									  "expected types '[bool, long, int, decimal, "
+									  "double']",
+									  fieldName, BsonIterTypeName(iter))));
 	}
 }
 
@@ -168,7 +168,7 @@ EnsureTopLevelFieldIsBooleanLikeNullOk(const char *fieldName, const bson_iter_t 
 static inline void
 ThrowTopLevelMissingFieldError(const char *fieldName)
 {
-	ereport(ERROR, (errcode(MongoBadValue),
+	ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 					errmsg("BSON field '%s' is missing but a required field",
 						   fieldName)));
 }

@@ -12,10 +12,8 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes
 ERROR:  collection name has invalid type null
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": null}');
 ERROR:  BSON field 'createIndexes.indexes' is the wrong type 'null', expected type 'array'
-HINT:  BSON field 'createIndexes.indexes' is the wrong type 'null', expected type 'array'
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": 5}');
 ERROR:  BSON field 'createIndexes.indexes' is the wrong type 'int', expected type 'array'
-HINT:  BSON field 'createIndexes.indexes' is the wrong type 'int', expected type 'array'
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": []}');
 ERROR:  Must specify at least one index to create
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1"}');
@@ -26,10 +24,8 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes
 ERROR:  collection name has invalid type int
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": 1}');
 ERROR:  BSON field 'createIndexes.indexes' is the wrong type 'int', expected type 'array'
-HINT:  BSON field 'createIndexes.indexes' is the wrong type 'int', expected type 'array'
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [1,2]}');
 ERROR:  BSON field 'createIndexes.indexes.0' is the wrong type 'int', expected type 'object'
-HINT:  BSON field 'createIndexes.indexes.0' is the wrong type 'int', expected type 'object'
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": 1}]}');
 ERROR:  Error in specification { "key" : 1 } :: caused by :: The field 'key' must be an object, but got int
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"name": 1}]}');

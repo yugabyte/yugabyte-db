@@ -73,28 +73,21 @@ SELECT helio_api.find_and_modify('fam', '{"findAndModify": []}');
 ERROR:  collection name has invalid type array
 SELECT helio_api.find_and_modify('fam', '{"findAndModify": "invalid_type", "query": 1}');
 ERROR:  BSON field 'findAndModify.query' is the wrong type 'int', expected type 'object'
-HINT:  BSON field 'findAndModify.query' is the wrong type 'int', expected type 'object'
 SELECT helio_api.find_and_modify('fam', '{"findAndModify": "invalid_type", "sort": "text"}');
 ERROR:  BSON field 'findAndModify.sort' is the wrong type 'string', expected type 'object'
-HINT:  BSON field 'findAndModify.sort' is the wrong type 'string', expected type 'object'
 SELECT helio_api.find_and_modify('fam', '{"findAndModify": "invalid_type", "remove": {}}');
 ERROR:  BSON field 'findAndModify.remove' is the wrong type 'object', expected types '[bool, long, int, decimal, double']
-HINT:  BSON field 'findAndModify.remove' is the wrong type 'object', expected types '[bool, long, int, decimal, double']
 SELECT helio_api.find_and_modify('fam', '{"findAndModify": "invalid_type", "update": 1}');
 ERROR:  Update argument must be either an object or an array
 SELECT helio_api.find_and_modify('fam', '{"findAndModify": "invalid_type", "new": []}');
 ERROR:  BSON field 'findAndModify.new' is the wrong type 'array', expected types '[bool, long, int, decimal, double']
-HINT:  BSON field 'findAndModify.new' is the wrong type 'array', expected types '[bool, long, int, decimal, double']
 SELECT helio_api.find_and_modify('fam', '{"findAndModify": "invalid_type", "fields": "text"}');
 ERROR:  BSON field 'findAndModify.fields' is the wrong type 'string', expected type 'object'
-HINT:  BSON field 'findAndModify.fields' is the wrong type 'string', expected type 'object'
 SELECT helio_api.find_and_modify('fam', '{"findAndModify": "invalid_type", "upsert": []}');
 ERROR:  BSON field 'findAndModify.upsert' is the wrong type 'array', expected types '[bool, long, int, decimal, double']
-HINT:  BSON field 'findAndModify.upsert' is the wrong type 'array', expected types '[bool, long, int, decimal, double']
 -- hard errors for unsupported options
 SELECT helio_api.find_and_modify('fam', '{"findAndModify": "not_supported", "arrayFilters": 1}');
 ERROR:  BSON field 'findAndModify.arrayFields' is the wrong type 'int', expected type 'array'
-HINT:  BSON field 'findAndModify.arrayFields' is the wrong type 'int', expected type 'array'
 SELECT helio_api.find_and_modify('fam', '{"findAndModify": "not_supported", "hint": 1}');
 ERROR:  findAndModify.hint is not implemented yet
 -- unknown option

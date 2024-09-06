@@ -275,7 +275,7 @@ ParseIVFCreationSpec(bson_iter_t *vectorOptionsIter,
 		{
 			if (!BsonValueIsNumber(keyValue))
 			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg("%s must be a number not %s",
 									   VECTOR_PARAMETER_NAME_IVF_NLISTS,
 									   BsonTypeName(bson_iter_type(vectorOptionsIter)))));
@@ -285,7 +285,7 @@ ParseIVFCreationSpec(bson_iter_t *vectorOptionsIter,
 
 			if (vectorIndexOptions->numLists < IVFFLAT_MIN_LISTS)
 			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg(
 									"%s must be greater than or equal to %d not %d",
 									VECTOR_PARAMETER_NAME_IVF_NLISTS,
@@ -295,7 +295,7 @@ ParseIVFCreationSpec(bson_iter_t *vectorOptionsIter,
 
 			if (vectorIndexOptions->numLists > IVFFLAT_MAX_LISTS)
 			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg(
 									"%s must be less or equal than or equal to %d not %d",
 									VECTOR_PARAMETER_NAME_IVF_NLISTS,
@@ -323,7 +323,7 @@ ParseHNSWCreationSpec(bson_iter_t *vectorOptionsIter,
 	if (!EnableVectorHNSWIndex)
 	{
 		/* Safe guard against the helio_api.enableVectorHNSWIndex GUC */
-		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 						errmsg(
 							"hnsw index is not supported for this cluster tier")));
 	}
@@ -344,7 +344,7 @@ ParseHNSWCreationSpec(bson_iter_t *vectorOptionsIter,
 		{
 			if (!BsonValueIsNumber(keyValue))
 			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg("%s must be a number not %s",
 									   VECTOR_PARAMETER_NAME_HNSW_M,
 									   BsonTypeName(bson_iter_type(vectorOptionsIter)))));
@@ -354,7 +354,7 @@ ParseHNSWCreationSpec(bson_iter_t *vectorOptionsIter,
 
 			if (vectorIndexOptions->m < HNSW_MIN_M)
 			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg("%s must be greater than or equal to %d not %d",
 									   VECTOR_PARAMETER_NAME_HNSW_M,
 									   HNSW_MIN_M,
@@ -363,7 +363,7 @@ ParseHNSWCreationSpec(bson_iter_t *vectorOptionsIter,
 
 			if (vectorIndexOptions->m > HNSW_MAX_M)
 			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg("%s must be less than or equal to %d not %d",
 									   VECTOR_PARAMETER_NAME_HNSW_M,
 									   HNSW_MAX_M,
@@ -375,7 +375,7 @@ ParseHNSWCreationSpec(bson_iter_t *vectorOptionsIter,
 		{
 			if (!BsonValueIsNumber(keyValue))
 			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg("%s must be a number not %s",
 									   VECTOR_PARAMETER_NAME_HNSW_EF_CONSTRUCTION,
 									   BsonTypeName(bson_iter_type(vectorOptionsIter)))));
@@ -386,7 +386,7 @@ ParseHNSWCreationSpec(bson_iter_t *vectorOptionsIter,
 
 			if (vectorIndexOptions->efConstruction < HNSW_MIN_EF_CONSTRUCTION)
 			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg(
 									"%s must be greater than or equal to %d not %d",
 									VECTOR_PARAMETER_NAME_HNSW_EF_CONSTRUCTION,
@@ -396,7 +396,7 @@ ParseHNSWCreationSpec(bson_iter_t *vectorOptionsIter,
 
 			if (vectorIndexOptions->efConstruction > HNSW_MAX_EF_CONSTRUCTION)
 			{
-				ereport(ERROR, (errcode(MongoCannotCreateIndex),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 								errmsg(
 									"%s must be less than or equal to %d not %d",
 									VECTOR_PARAMETER_NAME_HNSW_EF_CONSTRUCTION,
@@ -421,7 +421,7 @@ ParseHNSWCreationSpec(bson_iter_t *vectorOptionsIter,
 	/* Check efConstruction is greater than or equal to m * 2 */
 	if ((vectorIndexOptions->efConstruction < vectorIndexOptions->m * 2))
 	{
-		ereport(ERROR, (errcode(MongoCannotCreateIndex),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_CANNOTCREATEINDEX),
 						errmsg(
 							"%s must be greater than or equal to 2 * m for vector-hnsw indexes",
 							VECTOR_PARAMETER_NAME_HNSW_EF_CONSTRUCTION)));
@@ -487,42 +487,32 @@ ParseIVFIndexSearchSpec(const pgbson *vectorSearchSpecPgbson)
 		{
 			if (!BSON_ITER_HOLDS_NUMBER(&specIter))
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
-									"$%s must be an integer value.",
-									VECTOR_PARAMETER_NAME_IVF_NPROBES),
-								errhint("$nProbes must be an integer value.")));
+									"$nProbes must be an integer value.")));
 			}
 
 			int32_t nProbes = BsonValueAsInt32(value);
 
 			if (nProbes < IVFFLAT_MIN_NPROBES)
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
-									"$%s must be greater than or equal to %d.",
-									VECTOR_PARAMETER_NAME_IVF_NPROBES,
-									IVFFLAT_MIN_NPROBES),
-								errhint(
 									"$nProbes must be greater than or equal to %d.",
 									IVFFLAT_MIN_NPROBES)));
 			}
 
 			if (nProbes > IVFFLAT_MAX_NPROBES)
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
-									"$%s must be less than or equal to %d.",
-									VECTOR_PARAMETER_NAME_IVF_NPROBES,
-									IVFFLAT_MAX_NPROBES),
-								errhint(
 									"$nProbes must be less than or equal to %d.",
 									IVFFLAT_MAX_NPROBES)));
 			}
 
 			if (searchSpec != NULL)
 			{
-				ereport(ERROR, (errcode(MongoFailedToParse),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 								errmsg("Only one search option can be specified. "
 									   "You have specified options nProbes already,"
 									   " and the second option nProbes is not allowed.")));
@@ -549,11 +539,11 @@ ParseHNSWIndexSearchSpec(const pgbson *vectorSearchSpecPgbson)
 	if (!EnableVectorHNSWIndex)
 	{
 		/* Safe guard against the helio_api.enableVectorHNSWIndex GUC */
-		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 						errmsg(
-							"hnsw index is not supported for this cluster tier"),
-						errhint(
-							"hnsw index is not supported for this cluster tier. Set helio_api.enableVectorHNSWIndex to true to enable hnsw index.")));
+							"hnsw index is not supported."),
+						errdetail(
+							"hnsw index configuration is not enabled. Set helio_api.enableVectorHNSWIndex to true to enable hnsw index.")));
 	}
 
 	ReportFeatureUsage(FEATURE_STAGE_SEARCH_VECTOR_HNSW);
@@ -571,42 +561,32 @@ ParseHNSWIndexSearchSpec(const pgbson *vectorSearchSpecPgbson)
 		{
 			if (!BSON_ITER_HOLDS_NUMBER(&specIter))
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
-									"$%s must be an integer value.",
-									VECTOR_PARAMETER_NAME_HNSW_EF_SEARCH),
-								errhint("$efSearch must be an integer value.")));
+									"$efSearch must be an integer value.")));
 			}
 
 			int32_t efSearch = BsonValueAsInt32(value);
 
 			if (efSearch < HNSW_MIN_EF_SEARCH)
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
-									"$%s must be greater than or equal to %d.",
-									VECTOR_PARAMETER_NAME_HNSW_EF_SEARCH,
-									HNSW_MIN_EF_SEARCH),
-								errhint(
 									"$efSearch must be greater than or equal to %d.",
 									HNSW_MIN_EF_SEARCH)));
 			}
 
 			if (efSearch > HNSW_MAX_EF_SEARCH)
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
-									"$%s must be less than or equal to %d.",
-									VECTOR_PARAMETER_NAME_HNSW_EF_SEARCH,
-									HNSW_MAX_EF_SEARCH),
-								errhint(
 									"$efSearch must be less than or equal to %d.",
 									HNSW_MAX_EF_SEARCH)));
 			}
 
 			if (searchSpec != NULL)
 			{
-				ereport(ERROR, (errcode(MongoFailedToParse),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 								errmsg("Only one search option can be specified. "
 									   "You have specified options efSearch already, "
 									   "and the second option efSearch is not allowed.")));
@@ -641,11 +621,11 @@ GetIVFSimilarityOpOidByFamilyOid(Oid operatorFamilyOid)
 	}
 	else
 	{
-		ereport(ERROR, (errcode(MongoInternalError),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 						errmsg(
 							"Unsupported vector search operator for ivf index"),
-						errhint(
-							"Unsupported vector search operator for ivf index, operatorFamilyOid: %u",
+						errdetail_log(
+							"Vector search operator for ivf index, operatorFamilyOid: %u",
 							operatorFamilyOid)));
 	}
 }
@@ -668,10 +648,10 @@ GetHNSWSimilarityOpOidByFamilyOid(Oid operatorFamilyOid)
 	}
 	else
 	{
-		ereport(ERROR, (errcode(MongoInternalError),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 						errmsg(
 							"Unsupported vector search operator for hnsw index"),
-						errhint(
+						errdetail_log(
 							"Unsupported vector search operator for hnsw index, operatorFamilyOid: %u",
 							operatorFamilyOid)));
 	}

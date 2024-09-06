@@ -351,15 +351,12 @@ SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_d
 -- update scenario negative tests: $bit
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "expdata" :"abc"}', '{ "": { "$bit": { "expdata" : { "or" :10 }  }  }}', '{}');
 ERROR:  Cannot apply $bit to a value of non-integral type.{ "_id" : 1 } has the field expdata of non-integer type string
-HINT:  Cannot apply $bit to a value of non-integral type string
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "expdata" :13}', '{ "": { "$bit": { "expdata" : { "or" :10.0 }  }  }}', '{}');
 ERROR:  The $bit modifier field must be an Integer(32/64 bit); a 'double' is not supported here: { "or" : 10 }
-HINT:  The $bit modifier field must be an Integer(32/64 bit); a 'double' is not supported here
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "expdata" :13}', '{ "": { "$bit": { "expdata" : { "ors" :10 }  }  }}', '{}');
 ERROR:  The $bit modifier only supports 'and', 'or', and 'xor', not 'ors' which is an unknown operator: { "ors" : 10 }
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "expdata" :[1,2,3]}', '{ "": { "$bit": { "expdata" : { "or" :10 }  }  }}', '{}');
 ERROR:  Cannot apply $bit to a value of non-integral type.{ "_id" : 1 } has the field expdata of non-integer type array
-HINT:  Cannot apply $bit to a value of non-integral type array
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "expdata" :13}', '{ "": { "$bit": { "expdata" : {  }} }}', '{}');
 ERROR:  You must pass in at least one bitwise operation. The format is: {$bit: {field: {and/or/xor: #}}
 /* TODO: Make the error compatible with mongo: "errmsg" : "Cannot create field 'y' in element {x: [ { y: 10 } ]}"  */
@@ -546,13 +543,10 @@ ERROR:  Cannot create field '2' in element {2 : 3}
 -- update scenario negative tests: $inc
 SELECT helio_api_internal.bson_update_document('{"_id": 5, "a": [1,2] }', '{ "": { "$inc": { "a": 30 } } }', '{}');
 ERROR:  Cannot apply $inc to a value of non-numeric type. { _id: 5 } has the field 'a' of non-numeric type array
-HINT:  Cannot apply $inc to a value of non-numeric type array
 SELECT helio_api_internal.bson_update_document('{"_id": 5, "a": {"x":1} }', '{ "": { "$inc": { "a": 30 } } }', '{}');
 ERROR:  Cannot apply $inc to a value of non-numeric type. { _id: 5 } has the field 'a' of non-numeric type object
-HINT:  Cannot apply $inc to a value of non-numeric type object
 SELECT helio_api_internal.bson_update_document('{"_id": 5, "a": "b" }', '{ "": { "$inc": { "a": 30 } } }', '{}');
 ERROR:  Cannot apply $inc to a value of non-numeric type. { _id: 5 } has the field 'a' of non-numeric type string
-HINT:  Cannot apply $inc to a value of non-numeric type string
 -- update scenario negative tests: $addToSet
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "colors": "blue, green, red" }', '{ "": { "$addToSet": { "colors": "mauve" } }}', '{}');
 ERROR:  Cannot apply $addToSet to non-array field. Field named 'colors' has non-array type string
@@ -896,22 +890,16 @@ ERROR:  Failed to apply $mul operations to current ((NumberLong)-922337203685477
 -- update scenario error tests: $mul
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": { "b": 2 } }','{ "": { "$mul": { "a.b": "Hello" } } }', '{}');
 ERROR:  Cannot multiply with non-numeric argument: { a.b : "Hello" }
-HINT:  Cannot multiply with non-numeric argument of type string 
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": { "b": "Text" } }','{ "": { "$mul": { "a.b": 2 } } }', '{}');
 ERROR:  Cannot apply $mul to a value of non-numeric type. { _id: 1 } has the field 'b' of non-numeric type string
-HINT:  Cannot apply $mul to a value of non-numeric type string
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": { "b": [1,2,3] } }','{ "": { "$mul": { "a.b": 2 } } }', '{}');
 ERROR:  Cannot apply $mul to a value of non-numeric type. { _id: 1 } has the field 'b' of non-numeric type array
-HINT:  Cannot apply $mul to a value of non-numeric type array
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": { "b": {} } }','{ "": { "$mul": { "a.b": 2 } } }', '{}');
 ERROR:  Cannot apply $mul to a value of non-numeric type. { _id: 1 } has the field 'b' of non-numeric type object
-HINT:  Cannot apply $mul to a value of non-numeric type object
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": { "b": null } }','{ "": { "$mul": { "a.b": 2 } } }', '{}');
 ERROR:  Cannot apply $mul to a value of non-numeric type. { _id: 1 } has the field 'b' of non-numeric type null
-HINT:  Cannot apply $mul to a value of non-numeric type null
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": { "b": true } }','{ "": { "$mul": { "a.b": 2 } } }', '{}');
 ERROR:  Cannot apply $mul to a value of non-numeric type. { _id: 1 } has the field 'b' of non-numeric type bool
-HINT:  Cannot apply $mul to a value of non-numeric type bool
 -- $pullAll operator- positive testcases
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id" : 1, "scores" : [ 0, 2, 5, 5, 1, 0 ] }', '{ "": { "$pullAll": { "scores": [0,5] } }}', '{}');
                                        bson_update_document                                        
@@ -1486,22 +1474,16 @@ ERROR:  The target field of a rename cannot be an array element
 -- $push top level input validation with all modifiers
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": {"$numberInt" : "2"}}', '{ "": { "$push" :{"a":"0"}} }', '{}');
 ERROR:  The field 'a' must be an array but is of type int in document { _id: 1 }
-HINT:  The field in $push must be an array but is of type int
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": {"$numberLong" : "2"}}', '{ "": { "$push" :{"a":"0"}} }', '{}');
 ERROR:  The field 'a' must be an array but is of type long in document { _id: 1 }
-HINT:  The field in $push must be an array but is of type long
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": {"$numberDouble" : "2.0"}}', '{ "": { "$push" :{"a":"0"}} }', '{}');
 ERROR:  The field 'a' must be an array but is of type double in document { _id: 1 }
-HINT:  The field in $push must be an array but is of type double
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": {"b" : [1,2,3]}}', '{ "": { "$push" :{"a":"0"}} }', '{}');
 ERROR:  The field 'a' must be an array but is of type object in document { _id: 1 }
-HINT:  The field in $push must be an array but is of type object
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": false}', '{ "": { "$push" :{"a":"0"}} }', '{}');
 ERROR:  The field 'a' must be an array but is of type bool in document { _id: 1 }
-HINT:  The field in $push must be an array but is of type bool
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": NaN}', '{ "": { "$push" :{"a":"0"}} }', '{}');
 ERROR:  The field 'a' must be an array but is of type double in document { _id: 1 }
-HINT:  The field in $push must be an array but is of type double
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$push" :{"a": { "$each": "6" }}} }', '{}');
 ERROR:  The argument to $each in $push must be an array but it was of type: string
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$push" :{"a": { "$each": 6 }}} }', '{}');
@@ -2256,49 +2238,35 @@ SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_d
 -- -- Error Cases : $pop on Non-Array Fields
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": { "b" : { "c" : {"$numberInt" : "2"} }} }', '{ "": { "$pop" :{"a.b.c": 1}} }', '{}');
 ERROR:  Path 'a.b.c' contains an element of non-array type 'int'
-HINT:  Path in $pop contains an element of non-array type 'int'
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": { "b" : { "c" : {"$numberLong" : "2"} }} }', '{ "": { "$pop" :{"a.b.c": 1}} }', '{}');
 ERROR:  Path 'a.b.c' contains an element of non-array type 'long'
-HINT:  Path in $pop contains an element of non-array type 'long'
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": { "b" : { "c" : {"$numberDouble" : "2.0"} }} }', '{ "": { "$pop" :{"a.b.c": 1}} }', '{}');
 ERROR:  Path 'a.b.c' contains an element of non-array type 'double'
-HINT:  Path in $pop contains an element of non-array type 'double'
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": { "b" : { "c" : "Hello" }} }', '{ "": { "$pop" :{"a.b.c": 1}} }', '{}');
 ERROR:  Path 'a.b.c' contains an element of non-array type 'string'
-HINT:  Path in $pop contains an element of non-array type 'string'
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": { "b" : { "c" : false }} }', '{ "": { "$pop" :{"a.b.c": 1}} }', '{}');
 ERROR:  Path 'a.b.c' contains an element of non-array type 'bool'
-HINT:  Path in $pop contains an element of non-array type 'bool'
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": { "b" : { "c" : NaN }} }', '{ "": { "$pop" :{"a.b.c": 1}} }', '{}');
 ERROR:  Path 'a.b.c' contains an element of non-array type 'double'
-HINT:  Path in $pop contains an element of non-array type 'double'
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": { "b" : { "c" : [5,6,7,8], "d" : "Hello" }} }', '{ "": { "$pop" :{"a.b.c": 1, "a.b.d": -1 }} }', '{}');
 ERROR:  Path 'a.b.d' contains an element of non-array type 'string'
-HINT:  Path in $pop contains an element of non-array type 'string'
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": { "b" : { "c" : [5,6,7,8], "d" : "Hello" }} }', '{ "": { "$pop" :{"a" : {"b" : { "c": 1 ,  "d": -1} }} } }', '{}');
 ERROR:  Expected a number in: a: { "b" : { "c" : 1, "d" : -1 } }
-HINT:  Expected a number in $pop, found: object
 -- -- Error Cases : $pop's key's value is neither -1 nor 1
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pop" : {"a": "Hello"}} }', '{}');
 ERROR:  Expected a number in: a: "Hello"
-HINT:  Expected a number in $pop, found: string
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pop" : {"a": true}} }', '{}');
 ERROR:  Expected a number in: a: true
-HINT:  Expected a number in $pop, found: bool
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pop" : {"a": NaN}} }', '{}');
 ERROR:  Expected an integer: a: NaN
-HINT:  Expected a number in $pop, found: double
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pop" : {"a": []}} }', '{}');
 ERROR:  Expected a number in: a: [  ]
-HINT:  Expected a number in $pop, found: array
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pop" : {"a": {}}} }', '{}');
 ERROR:  Expected a number in: a: { }
-HINT:  Expected a number in $pop, found: object
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pop" : {"a": {"$numberInt" : "2"}}} }', '{}');
 ERROR:  $pop expects 1 or -1, found: 2
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pop" : {"a": {"$numberDouble" : "-1.5"}}} }', '{}');
 ERROR:  Expected an integer: a: -1.5
-HINT:  Expected a number in $pop, found: double
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": { "b" : { "c" : [5,6,7,8]}} }', '{ "": { "$pop" : {"a.b.c": 2 }} }', '{}');
 ERROR:  $pop expects 1 or -1, found: 2
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": { "b" : { "c" : [5,6,7,8], "d" : "Hello" }} }', '{ "": { "$pop" :{"a.b.c": 25, "a.b.d": -1 }} }', '{}');
@@ -2308,28 +2276,20 @@ ERROR:  $pop expects 1 or -1, found: -25
 -- -- Error Cases : $pop is not a document
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pop" : []} }', '{}');
 ERROR:  Modifiers operate on fields but we found type array instead. For example: {$mod: {<field>: ...}} not {$pop: [  ]}
-HINT:  Modifiers operate on fields but we found type array instead for operator name: $pop
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pop" : [{"a" : 1}]} }', '{}');
 ERROR:  Modifiers operate on fields but we found type array instead. For example: {$mod: {<field>: ...}} not {$pop: [ { "a" : 1 } ]}
-HINT:  Modifiers operate on fields but we found type array instead for operator name: $pop
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pop" : "Hello"} }', '{}');
 ERROR:  Modifiers operate on fields but we found type string instead. For example: {$mod: {<field>: ...}} not {$pop: "Hello"}
-HINT:  Modifiers operate on fields but we found type string instead for operator name: $pop
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pop" : false} }', '{}');
 ERROR:  Modifiers operate on fields but we found type bool instead. For example: {$mod: {<field>: ...}} not {$pop: false}
-HINT:  Modifiers operate on fields but we found type bool instead for operator name: $pop
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pop" : NaN} }', '{}');
 ERROR:  Modifiers operate on fields but we found type double instead. For example: {$mod: {<field>: ...}} not {$pop: NaN}
-HINT:  Modifiers operate on fields but we found type double instead for operator name: $pop
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pop" : {"$numberInt" : "1"}} }', '{}');
 ERROR:  Modifiers operate on fields but we found type int instead. For example: {$mod: {<field>: ...}} not {$pop: 1}
-HINT:  Modifiers operate on fields but we found type int instead for operator name: $pop
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pop" : {"$numberLong" : "-1"}} }', '{}');
 ERROR:  Modifiers operate on fields but we found type long instead. For example: {$mod: {<field>: ...}} not {$pop: -1}
-HINT:  Modifiers operate on fields but we found type long instead for operator name: $pop
 SELECT helio_api_internal.bson_update_document('{"_id": 1, "a": [1,2,3,4,5]}', '{ "": { "$pop" : {"$numberDouble" : "2.5"}} }', '{}');
 ERROR:  Modifiers operate on fields but we found type double instead. For example: {$mod: {<field>: ...}} not {$pop: 2.5}
-HINT:  Modifiers operate on fields but we found type double instead for operator name: $pop
 -- --Update the Field with Periods (.) and Dollar Signs ($)
 SELECT newDocument as bson_update_document FROM helio_api_internal.bson_update_document('{"_id": 1, "a": { "$b": 2 } }', '{ "": { "$inc": { "a.$b": 2 } } }', '{}');
                             bson_update_document                             

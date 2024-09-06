@@ -46,13 +46,13 @@ ValidateSortSpecAndSetSortContext(bson_value_t sortBsonValue, SortContext *sortC
 				int keyLength = strlen(key);
 				if (keyLength == 0)
 				{
-					ereport(ERROR, (errcode(MongoBadValue), errmsg(
+					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 										"The $sort field cannot be empty")));
 				}
 
 				if (key[0] == '.' || key[keyLength - 1] == '.')
 				{
-					ereport(ERROR, (errcode(MongoBadValue),
+					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 									errmsg(
 										"The $sort field is a dotted field but has an empty part: %s",
 										key)));
@@ -61,7 +61,7 @@ ValidateSortSpecAndSetSortContext(bson_value_t sortBsonValue, SortContext *sortC
 				if (!BsonValueIsNumber(sortVal) || (BsonValueAsDouble(sortVal) != 1 &&
 													BsonValueAsDouble(sortVal) != -1))
 				{
-					ereport(ERROR, (errcode(MongoBadValue),
+					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 									errmsg(
 										"The $sort element value must be either 1 or -1")));
 				}
@@ -75,7 +75,7 @@ ValidateSortSpecAndSetSortContext(bson_value_t sortBsonValue, SortContext *sortC
 			}
 			if (sortFields == 0)
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"The $sort pattern is empty when it should be a set of fields.")));
 			}
@@ -84,7 +84,7 @@ ValidateSortSpecAndSetSortContext(bson_value_t sortBsonValue, SortContext *sortC
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoBadValue),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 							errmsg(
 								"The $sort is invalid: use 1/-1 to sort the whole element, or {field:1/-1} to sort embedded fields")));
 		}
@@ -102,7 +102,7 @@ ValidateSortSpecAndSetSortContext(bson_value_t sortBsonValue, SortContext *sortC
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoBadValue),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 							errmsg(
 								"The $sort element value must be either 1 or -1")));
 		}

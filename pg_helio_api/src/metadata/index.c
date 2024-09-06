@@ -1720,7 +1720,7 @@ MergeTextIndexWeights(List *textIndexes, const bson_value_t *weights, bool *isWi
 		const bson_value_t *currentValue = bson_iter_value(&weightsIter);
 		if (!BsonValueIsNumber(currentValue))
 		{
-			ereport(ERROR, (errcode(MongoInvalidIndexSpecificationOption),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDINDEXSPECIFICATIONOPTION),
 							errmsg("weight for text index needs numeric type")));
 		}
 

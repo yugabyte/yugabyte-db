@@ -26,8 +26,8 @@ Check constraints:
 SELECT helio_api.create_indexes_background('db', NULL);
 ERROR:  arg cannot be NULL
 SELECT helio_api.create_indexes_background('db', '{}');
-                                                                                                                     create_indexes_background                                                                                                                     
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- ("{ ""raw"" : { ""defaultShard"" : { ""ok"" : { ""$numberInt"" : ""0"" }, ""errmsg"" : ""BSON field 'createIndexes.indexes' is missing but a required field"", ""code"" : { ""$numberInt"" : ""687865858"" } } }, ""ok"" : { ""$numberInt"" : ""0"" } }",f,"{ }")
+                                                                                                                    create_indexes_background                                                                                                                     
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""raw"" : { ""defaultShard"" : { ""ok"" : { ""$numberInt"" : ""0"" }, ""errmsg"" : ""BSON field 'createIndexes.indexes' is missing but a required field"", ""code"" : { ""$numberInt"" : ""16777245"" } } }, ""ok"" : { ""$numberInt"" : ""0"" } }",f,"{ }")
 (1 row)
 

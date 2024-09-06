@@ -29,8 +29,7 @@ _PG_init(void)
 	if (!process_shared_preload_libraries_in_progress)
 	{
 		ereport(ERROR, (errmsg(
-							"pg_helio_distributed can only be loaded via shared_preload_libraries"),
-						errhint(
+							"pg_helio_distributed can only be loaded via shared_preload_libraries. "
 							"Add pg_helio_distributed to shared_preload_libraries configuration "
 							"variable in postgresql.conf in coordinator and workers. "
 							"Note that pg_helio_distributed should be placed right after citus and pg_helio_api.")));

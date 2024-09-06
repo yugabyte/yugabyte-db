@@ -37,8 +37,9 @@ typedef int MongoErrorEreportCode;
  * static assertion.
  */
 #define EreportCodeIsMongoError(mongoErrorEreportCode) \
-	(mongoErrorEreportCode >= _ERRCODE_MONGO_ERROR_FIRST && \
-	 mongoErrorEreportCode <= _ERRCODE_MONGO_ERROR_LAST)
+	((mongoErrorEreportCode >= _ERRCODE_MONGO_ERROR_FIRST && \
+	  mongoErrorEreportCode <= _ERRCODE_MONGO_ERROR_LAST) || \
+	 PGUNSIXBIT(mongoErrorEreportCode) == 'M')
 
 
 #define _DEFINE_MONGO_ERROR(mongoErrorCodeName, mongoErrorCode) \

@@ -118,11 +118,11 @@ IncrementWKBBufferIteratorByNBytes(WKBBufferIterator *iter, size_t bytes)
 	{
 		size_t overflow = bytes - remainingLength;
 		ereport(ERROR, (
-					errcode(MongoInternalError),
+					errcode(ERRCODE_HELIO_INTERNALERROR),
 					errmsg(
 						"Requested to increment WKB buffer %ld bytes beyond limit.",
 						overflow),
-					errhint(
+					errdetail_log(
 						"Requested to increment WKB buffer %ld bytes beyond limit.",
 						overflow)));
 	}

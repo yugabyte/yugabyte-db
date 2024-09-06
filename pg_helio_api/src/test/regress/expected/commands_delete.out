@@ -85,7 +85,6 @@ select helio_api.delete('db', '{"delete":["removeme"], "deletes":[{"q":{},"limit
 ERROR:  collection name has invalid type array
 select helio_api.delete('db', '{"delete":"removeme", "deletes":{"q":{},"limit":0}}');
 ERROR:  BSON field 'delete.deletes' is the wrong type 'object', expected type 'array'
-HINT:  BSON field 'delete.deletes' is the wrong type 'object', expected type 'array'
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{},"limit":0}], "extra":1}');
 ERROR:  BSON field 'delete.extra' is an unknown field
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{}}]}');
@@ -94,12 +93,10 @@ select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"limit":0}]}');
 ERROR:  BSON field 'delete.deletes.q' is missing but a required field
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":[],"limit":0}]}');
 ERROR:  BSON field 'delete.deletes.q' is the wrong type 'array', expected type 'object'
-HINT:  BSON field 'delete.deletes.q' is the wrong type 'array', expected type 'object'
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{},"limit":0,"extra":1}]}');
 ERROR:  BSON field 'delete.deletes.extra' is an unknown field
 select helio_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{},"limit":0}],"ordered":1}');
 ERROR:  BSON field 'delete.ordered' is the wrong type 'int', expected type 'bool'
-HINT:  BSON field 'delete.ordered' is the wrong type 'int', expected type 'bool'
 -- Disallow writes to system.views
 select helio_api.delete('db', '{"delete":"system.views", "deletes":[{"q":{},"limit":0}]}');
 ERROR:  cannot write to db.system.views

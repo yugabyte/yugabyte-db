@@ -79,14 +79,14 @@ inline static void
 pg_attribute_noreturn()
 ThrowErrorOnIntermediateMismatch(BsonPathNode * node, const StringView * relativePath)
 {
-	int errorCode = MongoLocation31250;
+	int errorCode = ERRCODE_HELIO_LOCATION31250;
 	StringInfo errorMessageStr = makeStringInfo();
 	appendStringInfo(errorMessageStr, "Path collision at %.*s", relativePath->length,
 					 relativePath->string);
 
 	if (node->field.length < relativePath->length)
 	{
-		errorCode = MongoLocation31249;
+		errorCode = ERRCODE_HELIO_LOCATION31249;
 		StringView substring = StringViewSubstring(relativePath,
 												   node->field.length +
 												   1);

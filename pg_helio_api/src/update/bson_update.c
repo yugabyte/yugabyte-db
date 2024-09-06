@@ -116,7 +116,7 @@ static bool LastBsonUpdateReturnedNewValue = false;
 inline static void
 ThrowIdPathModifiedError(void)
 {
-	ereport(ERROR, (errcode(MongoImmutableField),
+	ereport(ERROR, (errcode(ERRCODE_HELIO_IMMUTABLEFIELD),
 					errmsg(
 						"After applying the update, the (immutable) field '_id' was found to have been altered")));
 }
@@ -131,7 +131,7 @@ ValidateIdForUpdateTypeReplacement(const bson_value_t *idValue)
 {
 	if (idValue->value_type == BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(MongoNotSingleValueField),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_NOTSINGLEVALUEFIELD),
 						errmsg(
 							"After applying the update to the document, the (immutable) field"
 							" '_id' was found to be an array or array descendant.")));
@@ -420,7 +420,7 @@ BuildBsonUpdateMetadata(BsonUpdateMetadata *metadata, pgbson *updateSpec,
 				PgbsonToSinglePgbsonElement(arrayFilters, &arrayFiltersElement);
 				if (!IsBsonValueEmptyArray(&arrayFiltersElement.bsonValue))
 				{
-					ereport(ERROR, (errcode(MongoBadValue),
+					ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 									errmsg(
 										"arrayFilters may not be specified for pipeline-style updates")));
 				}
@@ -444,7 +444,7 @@ BuildBsonUpdateMetadata(BsonUpdateMetadata *metadata, pgbson *updateSpec,
 			PgbsonInitIteratorAtPath(updateSpec, "", &updateIterator);
 			if (!BSON_ITER_HOLDS_DOCUMENT(&updateIterator))
 			{
-				ereport(ERROR, (errcode(MongoBadValue), errmsg(
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 									"Replace should be a document")));
 			}
 			break;
@@ -499,7 +499,7 @@ DetermineUpdateType(pgbson *updateSpec)
 				}
 				else
 				{
-					ereport(ERROR, (errcode(MongoDollarPrefixedFieldName),
+					ereport(ERROR, (errcode(ERRCODE_HELIO_DOLLARPREFIXEDFIELDNAME),
 									errmsg(
 										"The dollar ($) prefixed field '%s' in '%s' is not allowed in the context of an update's"
 										" replacement document. Consider using an aggregation pipeline with $replaceWith.",
@@ -540,7 +540,7 @@ ProcessReplaceDocument(pgbson *sourceDoc, pgbson *updateSpec,
 	PgbsonInitIteratorAtPath(updateSpec, "", &updateIterator);
 	if (!BSON_ITER_HOLDS_DOCUMENT(&updateIterator))
 	{
-		ereport(ERROR, (errcode(MongoBadValue), errmsg(
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE), errmsg(
 							"Replace should be a document")));
 	}
 
@@ -723,7 +723,7 @@ ProcessQueryProjectionValue(void *context, const char *path, const bson_value_t 
 	/* Native mongo gives an error when update type is replacement and querySpec has dotted id field */
 	if (isUpdateTypeReplacement && isDocumentDottedIdField)
 	{
-		ereport(ERROR, (errcode(MongoNotExactValueField),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_NOTEXACTVALUEFIELD),
 						errmsg(
 							"field at '_id' must be exactly specified, field at sub-path '%s'found",
 							path)));
@@ -731,7 +731,7 @@ ProcessQueryProjectionValue(void *context, const char *path, const bson_value_t 
 
 	if ((!isUpdateTypeReplacement || isDocumentIdField) && !nodeCreated)
 	{
-		ereport(ERROR, (errcode(MongoNotSingleValueField),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_NOTSINGLEVALUEFIELD),
 						errmsg(
 							"cannot infer query fields to set, path '%s' is matched twice",
 							path)));

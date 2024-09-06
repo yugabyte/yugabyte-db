@@ -577,7 +577,6 @@ SELECT database_name, collection_name, shard_key FROM helio_api_catalog.collecti
 -- reshard on non existing collections or non-sharded collections should fail
 SELECT helio_api.shard_collection('db', 'nonExistingCollection', '{ "a.b": "hashed" }', true);
 ERROR:  Collection db.nonExistingCollection is not sharded
-HINT:  Can not reshard collection that doesn't exist: db.nonExistingCollection
 SELECT helio_api.create_collection('db', 'nonShardedCollection');
 NOTICE:  creating collection
  create_collection 
@@ -587,4 +586,3 @@ NOTICE:  creating collection
 
 SELECT helio_api.shard_collection('db', 'nonShardedCollection', '{ "a.b": "hashed" }', true);
 ERROR:  Collection db.nonShardedCollection is not sharded
-HINT:  Can not reshard collection that is not sharded: db.nonShardedCollection

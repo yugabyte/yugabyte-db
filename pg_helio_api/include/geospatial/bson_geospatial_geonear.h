@@ -190,7 +190,7 @@ pg_attribute_noreturn()
 ThrowGeoNearNotAllowedInContextError()
 {
 	ereport(ERROR, (
-				errcode(MongoLocation5626500),
+				errcode(ERRCODE_HELIO_LOCATION5626500),
 				errmsg(
 					"$geoNear, $near, and $nearSphere are not allowed in this context")));
 }

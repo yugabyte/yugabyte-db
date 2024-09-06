@@ -10,26 +10,20 @@ SELECT helio_api.create_collection_view('db', '{ "create": "create_view_tests", 
 ERROR:  Capped collections not supported yet
 SELECT helio_api.create_collection_view('db', '{ "create": "create_view_tests", "capped": "true"}');
 ERROR:  BSON field 'create.capped' is the wrong type 'string', expected types '[bool, long, int, decimal, double']
-HINT:  BSON field 'create.capped' is the wrong type 'string', expected types '[bool, long, int, decimal, double']
 SELECT helio_api.create_collection_view('db', '{ "create": "create_view_tests", "capped": "false"}');
 ERROR:  BSON field 'create.capped' is the wrong type 'string', expected types '[bool, long, int, decimal, double']
-HINT:  BSON field 'create.capped' is the wrong type 'string', expected types '[bool, long, int, decimal, double']
 SELECT helio_api.create_collection_view('db', '{ "create": "create_view_tests", "timeseries": { "timeField": "a" } }');
 ERROR:  time series collections not supported yet
 SELECT helio_api.create_collection_view('db', '{ "create": "create_view_tests", "clusteredIndex": { } }');
 ERROR:  clusteredIndex not supported yet
 SELECT helio_api.create_collection_view('db', '{ "create": 2 }');
 ERROR:  BSON field 'create.create' is the wrong type 'int', expected type 'string'
-HINT:  BSON field 'create.create' is the wrong type 'int', expected type 'string'
 SELECT helio_api.create_collection_view('db', '{ "create": false }');
 ERROR:  BSON field 'create.create' is the wrong type 'bool', expected type 'string'
-HINT:  BSON field 'create.create' is the wrong type 'bool', expected type 'string'
 SELECT helio_api.create_collection_view('db', '{ "create": null }');
 ERROR:  BSON field 'create.create' is the wrong type 'null', expected type 'string'
-HINT:  BSON field 'create.create' is the wrong type 'null', expected type 'string'
 SELECT helio_api.create_collection_view('db', '{ "create": {"$undefined": true} }');
 ERROR:  BSON field 'create.create' is the wrong type 'undefined', expected type 'string'
-HINT:  BSON field 'create.create' is the wrong type 'undefined', expected type 'string'
 SELECT helio_api.create_collection_view('db', '{ "create": "" }');   -- empty string not allowed
 ERROR:  Invalid namespace specified 'db.'
 -- create valid collections
@@ -71,10 +65,8 @@ SELECT helio_api.create_collection_view('db', '{ "create": "create_view_tests" }
 -- Views error out if the viewOn is not a string, or empty string
 SELECT helio_api.create_collection_view('db', '{ "create": "create_view_tests_view", "viewOn": 2 }');
 ERROR:  BSON field 'create.viewOn' is the wrong type 'int', expected type 'string'
-HINT:  BSON field 'create.viewOn' is the wrong type 'int', expected type 'string'
 SELECT helio_api.create_collection_view('db', '{ "create": "create_view_tests_view", "viewOn": false }');
 ERROR:  BSON field 'create.viewOn' is the wrong type 'bool', expected type 'string'
-HINT:  BSON field 'create.viewOn' is the wrong type 'bool', expected type 'string'
 SELECT helio_api.create_collection_view('db', '{ "create": "create_view_tests_view", "viewOn": "" }');   -- empty string not allowed
 ERROR:  'viewOn' cannot be empty
 -- viewOn can be null or undefined. It is treated as if it was not specified

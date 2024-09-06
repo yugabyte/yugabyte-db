@@ -175,21 +175,20 @@ HandleDistributedColocation(MongoCollection *collection, const
 {
 	if (collection == NULL)
 	{
-		ereport(ERROR, (errcode(MongoInternalError),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 						errmsg("unexpected - collection for colocation was null")));
 	}
 
 	if (!EnableNativeColocation)
 	{
-		ereport(ERROR, (errcode(MongoCommandNotSupported),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 						errmsg("Colocation is not supported yet")));
 	}
 
 	if (colocationValue->value_type != BSON_TYPE_DOCUMENT)
 	{
-		ereport(ERROR, (errcode(MongoFailedToParse),
-						errmsg("colocation options must be a document."),
-						errhint("colocation options must be a document.")));
+		ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
+						errmsg("colocation options must be a document.")));
 	}
 
 	char *tableWithNamespace = psprintf("%s.%s", ApiDataSchemaName,
@@ -216,26 +215,26 @@ HandleDistributedColocation(MongoCollection *collection, const
 			}
 			else
 			{
-				ereport(ERROR, (errcode(MongoBadValue),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 								errmsg(
 									"colocation.collection must be a string or null. not %s",
 									BsonTypeName(bson_iter_type(&colocationIter))),
-								errhint(
+								errdetail_log(
 									"colocation.collection must be a string or null. not %s",
 									BsonTypeName(bson_iter_type(&colocationIter)))));
 			}
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoFailedToParse),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_FAILEDTOPARSE),
 							errmsg("Unknown field colocation.%s", key),
-							errhint("Unknown field colocation.%s", key)));
+							errdetail_log("Unknown field colocation.%s", key)));
 		}
 	}
 
 	if (collectionName.length == 0 && !colocateWithNull)
 	{
-		ereport(ERROR, (errcode(MongoInvalidOptions),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDOPTIONS),
 						errmsg("Must specify collection for colocation")));
 	}
 
@@ -243,10 +242,8 @@ HandleDistributedColocation(MongoCollection *collection, const
 	bool isSharded = collection->shardKey != NULL;
 	if (isSharded && !colocateWithNull)
 	{
-		ereport(ERROR, (errcode(MongoInvalidOptions),
-						errmsg("Cannot colocate a collection that is already sharded."),
-						errhint(
-							"Cannot colocate a collection that is already sharded.")));
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDOPTIONS),
+						errmsg("Cannot colocate a collection that is already sharded.")));
 	}
 
 	const char *retryTableShardKeyValue = NULL;
@@ -267,9 +264,8 @@ HandleDistributedColocation(MongoCollection *collection, const
 		const char *targetCollectionName = CreateStringFromStringView(&collectionName);
 		if (strcmp(collection->name.collectionName, targetCollectionName) == 0)
 		{
-			ereport(ERROR, (errcode(MongoInvalidNamespace),
-							errmsg("Source and target cannot be the same for colocation"),
-							errhint(
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE),
+							errmsg(
 								"Source and target cannot be the same for colocation")));
 		}
 
@@ -279,13 +275,13 @@ HandleDistributedColocation(MongoCollection *collection, const
 			AccessShareLock);
 		if (targetCollection == NULL)
 		{
-			ereport(ERROR, (errcode(MongoInvalidNamespace),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INVALIDNAMESPACE),
 							errmsg("ns %s.%s does not exist",
 								   collection->name.databaseName,
 								   targetCollectionName),
-							errhint("ns %s.%s does not exist",
-									collection->name.databaseName,
-									targetCollectionName)));
+							errdetail_log("ns %s.%s does not exist",
+										  collection->name.databaseName,
+										  targetCollectionName)));
 		}
 
 		/* Validate that targetCollection is not colocated with mongo_data.changes
@@ -307,34 +303,32 @@ HandleDistributedColocation(MongoCollection *collection, const
 															   mongoDataWithNamespace);
 		if (colocationId == colocationIdOfChangesTable)
 		{
-			ereport(ERROR, (errcode(MongoCommandNotSupported),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 							errmsg(
 								"Colocation for this collection in the current configuration is not supported. "
 								"Please first colocate %s with colocation: null",
 								targetCollectionName)),
-					(errhint(
+					(errdetail_log(
 						 "Colocation for this table in the current configuration is not supported - legacy table")));
 		}
 
 		if (targetCollection->shardKey != NULL)
 		{
-			ereport(ERROR, (errcode(MongoCommandNotSupported),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 							errmsg(
-								"Cannot colocate current collection with a sharded collection.")),
-					(errhint(
-						 "Colocation for sharded tables is not supported yet")));
+								"Cannot colocate current collection with a sharded collection.")));
 		}
 
 		/* Also check if the colocated source has only 1 shard (otherwise require colocate=null explicitly) */
 		int shardCount = GetShardCountForDistributedTable(targetCollection->relationId);
 		if (shardCount != 1)
 		{
-			ereport(ERROR, (errcode(MongoCommandNotSupported),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 							errmsg(
 								"Colocation for this collection in the current configuration is not supported. "
 								"Please first colocate %s with colocation: null",
 								targetCollectionName)),
-					(errhint(
+					(errdetail_log(
 						 "Colocation for this table in the current configuration is not supported - shard count is not 1: %d",
 						 shardCount)));
 		}
@@ -367,8 +361,7 @@ RewriteListCollectionsQueryForDistribution(Query *source)
 {
 	if (list_length(source->rtable) != 1)
 	{
-		ereport(ERROR, (errmsg("Unexpected error - source query has more than 1 rte"),
-						errhint("Unexpected error - source query has more than 1 rte")));
+		ereport(ERROR, (errmsg("Unexpected error - source query has more than 1 rte")));
 	}
 
 	RangeTblEntry *partitionRte = makeNode(RangeTblEntry);
@@ -1030,7 +1023,7 @@ ColocateUnshardedCitusTables(const char *tableToColocate, const
 						  sourceShardCount)));
 	if (sourceShardCount != 1)
 	{
-		ereport(ERROR, (errcode(MongoCommandNotSupported),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_COMMANDNOTSUPPORTED),
 						errmsg(
 							"Cannot colocate collection to source in current state. Please colocate the source collection with colocation: none")));
 	}
@@ -1177,11 +1170,11 @@ GetColocationForTable(Oid tableOid, const char *collectionName, const char *tabl
 													   &isNull);
 	if (isNull)
 	{
-		ereport(ERROR, (errcode(MongoInternalError),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 						errmsg(
 							"Could not find collection in internal colocation metadata: %s",
 							collectionName),
-						errhint(
+						errdetail_log(
 							"Could not find collection in internal colocation metadata %s: %s",
 							collectionName, tableName)));
 	}
@@ -1221,10 +1214,10 @@ GetNodeNamePortForPostgresTable(const char *postgresTable, char **nodeName, int 
 
 	if (isNull)
 	{
-		ereport(ERROR, (errcode(MongoInternalError),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 						errmsg("Could not extract shard_id for newly created table"),
-						errhint("Could not get shardId value for postgres table %s",
-								postgresTable)));
+						errdetail_log("Could not get shardId value for postgres table %s",
+									  postgresTable)));
 	}
 
 	/* Now get the source node/port for this shard */
@@ -1246,10 +1239,10 @@ GetNodeNamePortForPostgresTable(const char *postgresTable, char **nodeName, int 
 
 	if (currentNodeIsNulls[0] || currentNodeIsNulls[1])
 	{
-		ereport(ERROR, (errcode(MongoInternalError),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 						errmsg(
 							"Could not find shard placement for newly created table shard"),
-						errhint(
+						errdetail_log(
 							"Could not find shardId %ld in the placement table for table %s: node is null %d, port is null %d",
 							DatumGetInt64(shardIdValue), postgresTable,
 							currentNodeIsNulls[0], currentNodeIsNulls[1])));
@@ -1466,12 +1459,12 @@ GetShardMapNodes(void)
 	PgbsonToSinglePgbsonElement(queryResult, &singleElement);
 	if (singleElement.bsonValue.value_type != BSON_TYPE_ARRAY)
 	{
-		ereport(ERROR, (errcode(MongoInternalError),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 						errmsg(
 							"Unexpected - getShardMap path %s should have an array not %s",
 							singleElement.path,
 							BsonTypeName(singleElement.bsonValue.value_type)),
-						errhint(
+						errdetail_log(
 							"Unexpected - getShardMap path %s should have an array not %s",
 							singleElement.path,
 							BsonTypeName(singleElement.bsonValue.value_type))));
@@ -1485,12 +1478,12 @@ GetShardMapNodes(void)
 	{
 		if (!BSON_ITER_HOLDS_DOCUMENT(&arrayIter))
 		{
-			ereport(ERROR, (errcode(MongoInternalError),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 							errmsg(
 								"Unexpected - getShardMap inner groupId %d should have a document not %s",
 								currentGroup,
 								BsonTypeName(bson_iter_type(&arrayIter))),
-							errhint(
+							errdetail_log(
 								"Unexpected - getShardMap inner groupId %d should have a document not %s",
 								currentGroup,
 								BsonTypeName(bson_iter_type(&arrayIter)))));
@@ -1534,11 +1527,11 @@ GetShardMapNodes(void)
 
 			if (numFields != 5)
 			{
-				ereport(ERROR, (errcode(MongoInternalError),
+				ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 								errmsg(
 									"Found missing fields in querying shard table: Found %d fields",
 									numFields),
-								errhint(
+								errdetail_log(
 									"Found missing fields in querying shard table: Found %d fields",
 									numFields)));
 			}

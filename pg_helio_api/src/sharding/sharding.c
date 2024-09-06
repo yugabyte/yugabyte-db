@@ -67,11 +67,11 @@ command_shard_collection(PG_FUNCTION_ARGS)
 
 		if (!result.success)
 		{
-			ereport(ERROR, (errcode(MongoInternalError),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 							errmsg(
 								"Internal error sharding collection in metadata coordinator"),
-							errhint(
-								"Internal error sharding collection in metadata coordinator %s",
+							errdetail_log(
+								"Internal error sharding collection in metadata coordinator via distributed call %s",
 								text_to_cstring(result.response))));
 		}
 
@@ -85,10 +85,10 @@ command_shard_collection(PG_FUNCTION_ARGS)
 	{
 		if (isReshard)
 		{
-			ereport(ERROR, (errcode(MongoNamespaceNotSharded),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_NAMESPACENOTSHARDED),
 							errmsg("Collection %s.%s is not sharded",
 								   databaseName, collectionName),
-							errhint(
+							errdetail_log(
 								"Can not reshard collection that doesn't exist: %s.%s",
 								databaseName, collectionName)));
 		}
@@ -102,11 +102,12 @@ command_shard_collection(PG_FUNCTION_ARGS)
 
 	if (collection->shardKey == NULL && isReshard)
 	{
-		ereport(ERROR, (errcode(MongoNamespaceNotSharded),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_NAMESPACENOTSHARDED),
 						errmsg("Collection %s.%s is not sharded",
 							   databaseName, collectionName),
-						errhint("Can not reshard collection that is not sharded: %s.%s",
-								databaseName, collectionName)));
+						errdetail_log(
+							"Can not reshard collection that is not sharded: %s.%s",
+							databaseName, collectionName)));
 	}
 
 	if (collection->shardKey != NULL && PgbsonEquals(collection->shardKey, shardKey))
@@ -119,7 +120,7 @@ command_shard_collection(PG_FUNCTION_ARGS)
 
 	if (collection->shardKey != NULL && !isReshard)
 	{
-		ereport(ERROR, (errcode(MongoAlreadyInitialized),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_ALREADYINITIALIZED),
 						errmsg(
 							"Sharding already enabled for collection %s.%s with options { \"_id\": \"%s.%s\", \"dropped\" : false, \"key\" : %s, \"unique\": false }.",
 							databaseName, collectionName, databaseName, collectionName,

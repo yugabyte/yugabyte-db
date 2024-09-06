@@ -17,12 +17,10 @@ CALL helio_api.drop_indexes('db', '{}');
 ERROR:  BSON field 'dropIndexes.dropIndexes' is missing but a required field
 CALL helio_api.drop_indexes('db', '{"dropIndexes": null, "index": ["my_idx_1", "does_not_exist"]}');
 ERROR:  BSON field 'dropIndexes.dropIndexes' is the wrong type 'null', expected type 'string'
-HINT:  BSON field 'dropIndexes.dropIndexes' is the wrong type 'null', expected type 'string'
 CALL helio_api.drop_indexes('db', '{"dropIndexes": "collection_3", "unknown_field": 1}');
 ERROR:  BSON field 'dropIndexes.unknown_field' is an unknown field
 CALL helio_api.drop_indexes('db', '{"dropIndexes": "collection_3", "index": null}');
 ERROR:  BSON field 'dropIndexes.index' is the wrong type 'null', expected type '[string, object]'
-HINT:  BSON field 'dropIndexes.index' is the wrong type 'null', expected type '[string, object]'
 CALL helio_api.drop_indexes('db', '{"dropIndexes": "collection_3"}');
 ERROR:  BSON field 'dropIndexes.index' is missing but a required field
 -- this is ok
@@ -34,10 +32,8 @@ CALL helio_api.drop_indexes('db', '{"dropIndexes": "collection_3", "index":[]}')
 
 CALL helio_api.drop_indexes('db', '{"dropIndexes": 1, "index":[]}');
 ERROR:  BSON field 'dropIndexes.dropIndexes' is the wrong type 'int', expected type 'string'
-HINT:  BSON field 'dropIndexes.dropIndexes' is the wrong type 'int', expected type 'string'
 CALL helio_api.drop_indexes('db', '{"dropIndexes": "collection_3", "index": 1}');
 ERROR:  BSON field 'dropIndexes.index' is the wrong type 'int', expected type '[string, object]'
-HINT:  BSON field 'dropIndexes.index' is the wrong type 'int', expected type '[string, object]'
 ---- dropIndexes - top level - not implemented yet ----
 CALL helio_api.drop_indexes('db', '{"dropIndexes": "collection_3", "index": {}}');
 ERROR:  can't find index with key: { }

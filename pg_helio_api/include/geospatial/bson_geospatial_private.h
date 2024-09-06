@@ -63,9 +63,9 @@
  * if (some error condition )
  * {
  *      RETURN_FALSE_IF_ERROR_NOT_EXPECTED(shouldThrowError, (
- *          errcode(MongoBadValue),
+ *          errcode(ERRCODE_HELIO_BADVALUE),
  *          errmsg("Error"),
- *          errhint("Hint")
+ *          errdetail_log("PII Safe error")
  *      ));
  * }
  */

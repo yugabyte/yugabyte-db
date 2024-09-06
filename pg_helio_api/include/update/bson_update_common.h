@@ -51,7 +51,7 @@ inline static void
 pg_attribute_noreturn()
 ThrowIdPathModifiedErrorForOperatorUpdate()
 {
-	ereport(ERROR, (errcode(MongoImmutableField),
+	ereport(ERROR, (errcode(ERRCODE_HELIO_IMMUTABLEFIELD),
 					errmsg(
 						"Performing an update on the path '_id' would modify the immutable field '_id'")));
 }
@@ -65,7 +65,7 @@ inline static void
 pg_attribute_noreturn()
 ThrowPathConflictError(const char * requestedPath, const char * existingPath)
 {
-	ereport(ERROR, (errcode(MongoConflictingUpdateOperators),
+	ereport(ERROR, (errcode(ERRCODE_HELIO_CONFLICTINGUPDATEOPERATORS),
 					errmsg("Updating the path '%s' would create a conflict at '%s'",
 						   requestedPath, existingPath)));
 }

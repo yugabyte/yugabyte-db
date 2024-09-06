@@ -56,7 +56,7 @@ CreateFCInfoForScoreCalculation(const SearchQueryEvalData *queryEvalData)
 											queryEvalData->SimilaritySearchOpOid));
 	if (!HeapTupleIsValid(opertup))
 	{
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg(
 							"unsupported vector search operator type")));
 	}
@@ -111,7 +111,7 @@ EvaluateMetaSearchScore(pgbson *document)
 		}
 		else
 		{
-			ereport(ERROR, (errcode(MongoLocation40218),
+			ereport(ERROR, (errcode(ERRCODE_HELIO_LOCATION40218),
 							errmsg(
 								"query requires search score metadata, but it is not available")));
 		}
@@ -124,7 +124,7 @@ EvaluateMetaSearchScore(pgbson *document)
 
 	if (isNull)
 	{
-		ereport(ERROR, (errcode(MongoInternalError),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 						errmsg("Vector field should not be null.")));
 	}
 
@@ -156,7 +156,7 @@ EvaluateMetaSearchScore(pgbson *document)
 	}
 	else
 	{
-		ereport(ERROR, (errcode(MongoBadValue),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 						errmsg(
 							"unsupported vector search operator type")));
 	}
@@ -205,11 +205,11 @@ CalculateSearchParamBsonForIndexPath(IndexPath *vectorSearchPath)
 
 	if (searchParamBson == NULL)
 	{
-		ereport(ERROR, (errcode(MongoInternalError),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 						errmsg(
 							"The vector index type is not supported for dynamic calculation of search parameters."),
-						errhint(
-							"The vector index type %d does not support dynamic calculation of search parameters",
+						errdetail_log(
+							"Index type %d does not support dynamic calculation of search parameters",
 							indexRelam)));
 	}
 
@@ -449,9 +449,9 @@ GetSimilarityOperatorOidByFamilyOid(Oid operatorFamilyOid, Oid accessMethodOid)
 	if (operatorOid == InvalidOid)
 	{
 		const char *accessMethodName = get_am_name(accessMethodOid);
-		ereport(ERROR, (errcode(MongoInternalError),
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
 						errmsg("Unsupported vector search operator"),
-						errhint(
+						errdetail_log(
 							"Unsupported vector index type: %s, operatorFamilyOid: %u",
 							accessMethodName, operatorFamilyOid)));
 	}
