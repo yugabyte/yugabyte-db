@@ -26477,6 +26477,13 @@
           "in" : "query",
           "name" : "request",
           "required" : false
+        }, {
+          "in" : "body",
+          "name" : "SetUniverseKeyRequest",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/EncryptionAtRestConfig"
+          }
         } ],
         "responses" : {
           "200" : {
