@@ -98,8 +98,8 @@ These are the wait events introduced by YugabyteDB, however some of the followin
 | TServerWait | IndexRead | Network |   | A YSQL backend is waiting for a secondary index read from DocDB.  |
 | TServerWait | StorageFlush  | Network |  | A YSQL backend is waiting for a table/index read/write from DocDB. |
 | YSQLQuery | QueryProcessing| CPU |  | Doing CPU work |
-| YSQLQuery | yb_ash_metadata | LWLock |  | Waiting to update ASH metadata for a query. |
-| Timeout | YBTxnConflictBackoff | Timeout |  | Waiting due to conflict in DocDB. |
+| YSQLQuery | yb_ash_metadata | LWLock |  | A YSQL backend is waiting to update ASH metadata for a query. |
+| Timeout | YBTxnConflictBackoff | Timeout |  | A YSQL backend is waiting due to conflict in DocDB. |
 
 ### YB-TServer
 
