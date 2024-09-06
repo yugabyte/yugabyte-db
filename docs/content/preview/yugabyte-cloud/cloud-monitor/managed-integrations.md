@@ -140,7 +140,7 @@ The VictoriaMetrics integration requires the following:
 
 - VictoriaMetrics instance
   - deployed in a VPC on AWS
-  - publically-accessible endpoint URL that resolves to the private IP of the VictoriaMetrics instance; the DNS for the endpoint must be in a public hosted zone in AWS.
+  - publically-accessible endpoint URL that resolves to the private IP of the VictoriaMetrics instance; the DNS for the endpoint must be in a public hosted zone in AWS. The URL must be in the form as described in [How to use OpenTelemetry metrics with VictoriaMetrics](https://docs.victoriametrics.com/guides/getting-started-with-opentelemetry/).
   - VPC hosting the VictoriaMetrics instance has the following Inbound Security Group rules:
     - Allow HTTP inbound traffic on port 80 for VictoriaMetrics endpoint URL (HTTP)
     - Allow HTTPS inbound traffic on port 443 for VictoriaMetrics endpoint URL (HTTPS)
