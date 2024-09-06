@@ -358,7 +358,6 @@ TruncateNestedEntry(pgbson_element_writer *elementWriter, const
 		case BSON_TYPE_CODEWSCOPE:
 		case BSON_TYPE_DBPOINTER:
 		case BSON_TYPE_REGEX:
-		case BSON_TYPE_CODE:
 		{
 			/* TODO: Support truncating this?  We fail when obejct or arrays or arrays of arrays/objects goes over 2K limit*/
 			*forceAsNotTruncated = true;
@@ -366,6 +365,7 @@ TruncateNestedEntry(pgbson_element_writer *elementWriter, const
 			return false;
 		}
 
+		case BSON_TYPE_CODE:
 		case BSON_TYPE_BINARY:
 		case BSON_TYPE_SYMBOL:
 		case BSON_TYPE_UTF8:
@@ -382,6 +382,15 @@ TruncateNestedEntry(pgbson_element_writer *elementWriter, const
 				stringPrefixLength,
 				valueSizeLimit, currentValue->value_type,
 				&valueCopy.value.v_utf8.len);
+
+			/* Code ignores code_len when writing. We need to manually truncate */
+			if (isTruncated && currentValue->value_type == BSON_TYPE_CODE)
+			{
+				valueCopy.value.v_code.code = pnstrdup(
+					valueCopy.value.v_code.code,
+					valueCopy.value.v_code.code_len);
+			}
+
 			PgbsonElementWriterWriteValue(elementWriter, &valueCopy);
 
 			return isTruncated;
@@ -517,7 +526,7 @@ TruncateDocumentTerm(int32_t existingTermSize, int32_t softLimit, int32_t hardLi
 
 		/* Determine how we're going to write this value */
 		int32_t requiredLengthWithPath = currentLength + existingTermSize +
-										 (int32_t) pathView.length + 1;
+										 (int32_t) pathView.length + 2;
 
 		bool truncated;
 		if (requiredLengthWithPath < softLimit)
@@ -527,7 +536,7 @@ TruncateDocumentTerm(int32_t existingTermSize, int32_t softLimit, int32_t hardLi
 										  pathView.length);
 
 			/* Since the path is under the limit, the value for this path can go until the hard limit */
-			int32_t valueLengthLeft = hardLimit - existingTermSize - pathView.length - 1;
+			int32_t valueLengthLeft = hardLimit - existingTermSize - pathView.length - 2;
 			truncated = TruncateNestedEntry(&elementWriter, iterValue,
 											&forceAsNotTruncated,
 											valueLengthLeft, currentLength);
@@ -658,6 +667,7 @@ SerializeTermToWriter(pgbson_writer *writer, pgbsonelement *indexElement,
 		return false;
 	}
 
+	/* BSON document metadata (int32 + unsigned_byte(0)) + indexPath.length + typecode + unsigned_byte(0) */
 	int32_t dataSize = 5 + indexPath.length + 2;
 
 	if (dataSize >= termMetadata->indexTermSizeLimit)
@@ -759,7 +769,6 @@ SerializeTermToWriter(pgbson_writer *writer, pgbsonelement *indexElement,
 											 &documentIterator,
 											 &documentWriter);
 			PgbsonWriterEndDocument(writer, &documentWriter);
-
 			break;
 		}
 
