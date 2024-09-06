@@ -27,7 +27,7 @@ func init() {
 	HashicorpVaultEARCmd.Flags().SortFlags = false
 
 	HashicorpVaultEARCmd.AddCommand(createHashicorpVaultEARCmd)
-	// HashicorpVaultEARCmd.AddCommand(updateHashicorpVaultEARCmd)
+	HashicorpVaultEARCmd.AddCommand(updateHashicorpVaultEARCmd)
 	HashicorpVaultEARCmd.AddCommand(listHashicorpVaultEARCmd)
 	HashicorpVaultEARCmd.AddCommand(describeHashicorpVaultEARCmd)
 	HashicorpVaultEARCmd.AddCommand(deleteHashicorpVaultEARCmd)

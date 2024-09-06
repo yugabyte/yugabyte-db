@@ -61,9 +61,9 @@ func (fear *FullEARContext) Write() error {
 	}
 	fearc.EAR.ear = fear.ear
 
-	if fear.ear.HashiCorp != nil {
+	if fear.ear.Hashicorp != nil {
 		fearc.HashicorpEAR = &hashicorp.EARContext{
-			Hashicorp: *fear.ear.HashiCorp,
+			Hashicorp: *fear.ear.Hashicorp,
 		}
 	}
 

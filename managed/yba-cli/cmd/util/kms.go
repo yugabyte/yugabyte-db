@@ -21,7 +21,7 @@ type KMSConfig struct {
 	AWS          *AwsKmsAuthConfigField  `json:"aws,omitempty"`
 	GCP          *GcpKmsAuthConfigField  `json:"gcp,omitempty"`
 	Azure        *AzuKmsAuthConfigField  `json:"azure,omitempty"`
-	HashiCorp    *HcVaultAuthConfigField `json:"hashicorp,omitempty"`
+	Hashicorp    *HcVaultAuthConfigField `json:"hashicorp,omitempty"`
 }
 
 // AwsKmsAuthConfigField is a struct to hold values retrieved by parsing the AWS KMS config map
@@ -55,7 +55,7 @@ type AzuKmsAuthConfigField struct {
 	AzuKeySize      int    `json:"AZU_KEY_SIZE"`
 }
 
-// HcVaultAuthConfigField is a struct to hold values related to HashiCorp Vault configuration.
+// HcVaultAuthConfigField is a struct to hold values related to Hashicorp Vault configuration.
 type HcVaultAuthConfigField struct {
 	HcVaultToken     string `json:"HC_VAULT_TOKEN"`
 	HcVaultAddress   string `json:"HC_VAULT_ADDRESS"`
@@ -207,7 +207,7 @@ func ConvertToKMSConfig(r map[string]interface{}) (KMSConfig, error) {
 				hashicorp.HcVaultTTLExpiry = vaultTTLExpiry
 			}
 
-			kmsConfig.HashiCorp = &hashicorp
+			kmsConfig.Hashicorp = &hashicorp
 
 		}
 	}
