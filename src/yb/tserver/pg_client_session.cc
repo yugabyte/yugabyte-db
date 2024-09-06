@@ -825,7 +825,7 @@ Status PgClientSession::AlterTable(
     client::YBTablePtr yb_table;
     RETURN_NOT_OK(GetTable(table_id, &table_cache_, &yb_table));
     auto table_properties = yb_table->schema().table_properties();
-    PgReplicaIdentity replica_identity;
+    PgReplicaIdentity replica_identity = PgReplicaIdentity::DEFAULT;
     RETURN_NOT_OK(
         GetReplicaIdentityEnumValue(req.replica_identity().replica_identity(), &replica_identity));
     table_properties.SetReplicaIdentity(replica_identity);
