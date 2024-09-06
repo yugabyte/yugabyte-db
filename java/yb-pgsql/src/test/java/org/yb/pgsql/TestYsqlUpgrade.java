@@ -355,8 +355,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           + ", relfrozenxid        xid       NOT NULL"
           + ", relminmxid          xid       NOT NULL"
           + ", relacl              aclitem[]"
-          + ", reloptions          text[]"
-          + ", relpartbound        pg_node_tree"
+          + ", reloptions          text[] COLLATE \"C\""
+          + ", relpartbound        pg_node_tree COLLATE \"C\""
           + ", CONSTRAINT " + newTi.indexes.get(0).getLeft() + " PRIMARY KEY (oid ASC)"
           + "    WITH (table_oid = " + newTi.indexes.get(0).getRight() + ")"
           + ") WITH ("
@@ -1232,12 +1232,12 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     assertEquals("Invalid table definition", origTi.indexes.size(), newTi.indexes.size());
     assertEquals("TableInfos are of different class!", origTi.getClass(), newTi.getClass());
 
-    // For exactly four non-shared tables (and their indexes), relfilenode is expected to be zero.
-    // This is not typical and happens because:
-    // - pg_class.dat contains initial data for each of them;
-    // - Their BKI headers are marked with BKI_BOOTSTRAP.
-    // if we want to test creating a similar table, we'd have to ignore this mismatch.
-    boolean expectRelfilenodeMismatch = //
+    // For BKI_BOOTSTRAP relations (the ones present in pg_class.dat), default
+    // values are used for columns relfilenode, relfrozenxid, and relminmxidand.
+    // These column values are expected to mismatch that of newTi's.
+    // If we want to test creating a similar table, we'd have to ignore these
+    // mismatches.
+    boolean bootstrapRelation = //
         Arrays.asList("pg_type", "pg_attribute", "pg_proc", "pg_class").contains(origTi.name);
 
     // Determine OIDs for tables if not predefined.
@@ -1278,9 +1278,11 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       return getRowList(stmtForOrig, sql)
           .stream()
           .map(r -> excluded(r, "reltuples"))
-          .map(r -> expectRelfilenodeMismatch ? excluded(r, "relfilenode") : r)
+          .map(r -> bootstrapRelation ? excluded(r, "relfilenode") : r)
           .map(r -> excluded(r, "relacl")) // pg_class.relacl will be compared separately.
           .map(r -> excluded(r, "initprivs")) // pg_init_privs.initprivs will be compared separately.
+          .map(r -> bootstrapRelation ? excluded(r, "relfrozenxid") : r)
+          .map(r -> bootstrapRelation ? excluded(r, "relminmxid") : r)
           .collect(Collectors.toList());
     };
 
@@ -1290,10 +1292,12 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
           .map(r -> excluded(r, "reltuples"))
           .map(r -> excluded(r, "relacl")) // pg_class.relacl will be compared separately.
           .map(r -> excluded(r, "initprivs")) // pg_init_privs.initprivs will be compared separately.
-          .map(r -> expectRelfilenodeMismatch ? excluded(r, "relfilenode") : r)
+          .map(r -> bootstrapRelation ? excluded(r, "relfilenode") : r)
           .map(r -> replaced(r, newTi.getOid(), origTi.getOid()))
           .map(r -> replaced(r, newTi.getTypeOid(), origTi.getTypeOid()))
           .map(r -> replaced(r, newTi.getArrayTypeOid(), origTi.getArrayTypeOid()))
+          .map(r -> bootstrapRelation ? excluded(r, "relfrozenxid") : r)
+          .map(r -> bootstrapRelation ? excluded(r, "relminmxid") : r)
           .map(r -> origTi instanceof ViewInfo
               ? replaced(r, ((ViewInfo) newTi).getRuleOid(), ((ViewInfo) origTi).getRuleOid())
               : r)

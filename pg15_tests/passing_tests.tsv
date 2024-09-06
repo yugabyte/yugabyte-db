@@ -184,6 +184,7 @@ JAVA	org.yb.pgsql.TestYsqlUpgrade#creatingSharedRelsCreatesThemEverywhere
 JAVA	org.yb.pgsql.TestYsqlUpgrade#creatingSharedRelsIsLikeInitdb
 JAVA	org.yb.pgsql.TestYsqlUpgrade#creatingSystemRelsAfterFailure
 JAVA	org.yb.pgsql.TestYsqlUpgrade#creatingSystemRelsByNonSuperuser
+JAVA	org.yb.pgsql.TestYsqlUpgrade#creatingSystemRelsIsLikeInitdb
 JAVA	org.yb.pgsql.TestYsqlUpgrade#dmlsUpdatePgCache
 JAVA	org.yb.pgsql.TestYsqlUpgrade#insertOnConflictWithOidsWorks
 JAVA	org.yb.pgsql.TestYsqlUpgrade#invalidUpgradeActions
