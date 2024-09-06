@@ -360,6 +360,8 @@ class OutboundCall : public RpcCall {
     expires_at_.store(expires_at, std::memory_order_release);
   }
 
+  static size_t HeaderTotalLength(size_t header_pb_len);
+
   // ----------------------------------------------------------------------------------------------
   // Getters
   // ----------------------------------------------------------------------------------------------

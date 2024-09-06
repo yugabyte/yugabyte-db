@@ -61,7 +61,10 @@ namespace rpc {
 
 size_t SerializedMessageSize(size_t body_size, size_t additional_size) {
   auto full_size = body_size + additional_size;
-  return body_size + CodedOutputStream::VarintSize32(narrow_cast<uint32_t>(full_size));
+  // VarintSize64 used to avoid casting errors. There is a separate constraint later enforced where
+  // size <= rpc_max_message_size <= protobuf_message_total_bytes_limit < 512 MB, so we never end up
+  // in a case where we actually send RPCs with size that doesn't fit in 32 bits.
+  return body_size + CodedOutputStream::VarintSize64(full_size);
 }
 
 Status SerializeMessage(
@@ -103,6 +106,10 @@ Status SerializeHeader(const MessageLite& header,
             narrow_cast<uint32_t>(header_pb_len))      // Varint delimiter for header PB.
       + header_pb_len;                                  // Length for the header PB itself.
   size_t total_size = header_tot_len + param_len;
+
+  if (total_size > FLAGS_rpc_max_message_size) {
+    return STATUS_FORMAT(InvalidArgument, "Sending too long RPC message ($0 bytes)", total_size);
+  }
 
   *header_buf = RefCntBuffer(header_tot_len + reserve_for_param);
   if (header_size != nullptr) {

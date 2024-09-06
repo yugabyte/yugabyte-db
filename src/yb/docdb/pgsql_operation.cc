@@ -122,6 +122,9 @@ DEFINE_RUNTIME_AUTO_bool(ysql_skip_row_lock_for_update, kExternal, true, false,
     "take finer column-level locks instead of locking the whole row. This may cause issues with "
     "data integrity for operations with implicit dependencies between columns.");
 
+
+DECLARE_uint64(rpc_max_message_size);
+
 namespace yb::docdb {
 
 using dockv::DocKey;
@@ -1709,11 +1712,15 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(
     row_count_limit = request_.limit();
   }
 
-  // We also limit the response's size.
-  auto response_size_limit = std::numeric_limits<std::size_t>::max();
+  // We also limit the response's size. Responses that exceed rpc_max_message_size will error
+  // anyways, so we use that as an upper bound for the limit. This limit only applies on the data
+  // in the response, and excludes headers, etc., but since we add rows until we *exceed*
+  // the limit, this already won't avoid hitting rpc max size and is just an effort to limit the
+  // damage.
+  auto response_size_limit = GetAtomicFlag(&FLAGS_rpc_max_message_size);
 
   if (request_.has_size_limit() && request_.size_limit() > 0) {
-    response_size_limit = request_.size_limit();
+    response_size_limit = std::min(response_size_limit, request_.size_limit());
   }
 
   VLOG(4) << "Row count limit: " << row_count_limit << ", size limit: " << response_size_limit;

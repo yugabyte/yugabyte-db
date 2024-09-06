@@ -82,6 +82,8 @@ DEFINE_RUNTIME_string(ysql_sequence_cache_method, "connection",
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
 DECLARE_bool(ysql_ddl_rollback_enabled);
 
+DECLARE_uint64(rpc_max_message_size);
+
 namespace yb {
 namespace tserver {
 
@@ -392,8 +394,16 @@ struct PerformData {
     if (status.ok()) {
       status = ProcessResponse();
     }
+
+    size_t max_size = GetAtomicFlag(&FLAGS_rpc_max_message_size);
+    if (status.ok() && sidecars.size() > max_size) {
+      status = STATUS_FORMAT(
+          InvalidArgument, "Sending too long RPC message ($0 bytes of data)", sidecars.size());
+    }
+
     if (!status.ok()) {
       StatusToPB(status, resp.mutable_status());
+      sidecars.Reset();
     }
     if (cache_setter) {
       cache_setter({resp, ExtractRowsSidecar(resp, sidecars)});

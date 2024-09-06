@@ -56,7 +56,7 @@ DEFINE_test_flag(double, simulate_skip_process_batch, 0.0,
                  "Probability that the preparer will skip invoking ProcessAndClearLeaderSideBatch "
                  "after processing an item.");
 
-DECLARE_int32(protobuf_message_total_bytes_limit);
+DECLARE_uint32(protobuf_message_total_bytes_limit);
 DECLARE_uint64(rpc_max_message_size);
 
 using namespace std::literals;

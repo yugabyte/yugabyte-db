@@ -90,6 +90,15 @@ message EchoResponsePB {
   required string data = 1;
 }
 
+message RepeatedEchoRequestPB {
+  required int32 character = 1;
+  required uint64 count = 2;
+}
+
+message RepeatedEchoResponsePB {
+  required string data = 1;
+}
+
 message WhoAmIRequestPB {
 }
 
@@ -136,6 +145,7 @@ service CalculatorService {
   rpc Add(AddRequestPB) returns(AddResponsePB);
   rpc Sleep(SleepRequestPB) returns(SleepResponsePB);
   rpc Echo(EchoRequestPB) returns(EchoResponsePB);
+  rpc RepeatedEcho(RepeatedEchoRequestPB) returns(RepeatedEchoResponsePB);
   rpc WhoAmI(WhoAmIRequestPB) returns (WhoAmIResponsePB);
   rpc TestArgumentsInDiffPackage(yb.rpc_test_diff_package.ReqDiffPackagePB)
     returns(yb.rpc_test_diff_package.RespDiffPackagePB);
