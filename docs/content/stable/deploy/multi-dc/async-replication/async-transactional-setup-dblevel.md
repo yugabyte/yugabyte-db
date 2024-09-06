@@ -88,7 +88,7 @@ To set up unidirectional transactional replication, do the following:
     Checkpointing of yugabyte completed. Bootstrap is not required for setting up xCluster replication
     ```
 
-1. If needed, perform a full copy of the database on the Primary to the Standby using distributed backup and restore. See [Distributed snapshots for YSQL](../../../manage/backup-restore/snapshot-ysql/). Otherwise, create the necessary schema objects (tables and indexes) on the Standby.
+1. If needed, perform a full copy of the database on the Primary to the Standby using distributed backup and restore. See [Distributed snapshots for YSQL](../../../../manage/backup-restore/snapshot-ysql/). Otherwise, create the necessary schema objects (tables and indexes) on the Standby.
 
 1. Set up the xCluster replication group.
 
