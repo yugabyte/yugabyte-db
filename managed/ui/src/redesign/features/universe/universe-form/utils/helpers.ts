@@ -33,7 +33,9 @@ import {
 import {
   GFLAG_GROUPS,
   MIN_PG_SUPPORTED_PREVIEW_VERSION,
-  MIN_PG_SUPPORTED_STABLE_VERSION
+  MIN_PG_SUPPORTED_STABLE_VERSION,
+  CONNECTION_POOL_SUPPORTED_PREV_VERSION,
+  CONNECTION_POOL_SUPPORTED_STABLE_VERSION
 } from '../../../../helpers/constants';
 import { YBProvider } from '../../../../../components/configRedesign/providerRedesign/types';
 import { ProviderCode } from '../../../../../components/configRedesign/providerRedesign/constants';
@@ -250,6 +252,10 @@ export const getFormData = (
     inheritFlagsFromPrimary: userIntent?.specificGFlags?.inheritFromPrimary
   };
 
+  if (!_.isEmpty(userIntent?.enableConnectionPooling)) {
+    data.advancedConfig.enableConnectionPooling = userIntent.enableConnectionPooling;
+  }
+
   if (data.cloudConfig.masterPlacement === MasterPlacementMode.DEDICATED) {
     data.instanceConfig.masterInstanceType = userIntent.masterInstanceType;
     data.instanceConfig.masterDeviceInfo = userIntent.masterDeviceInfo;
@@ -348,6 +354,9 @@ export const getUserIntent = (
   if (!_.isEmpty(azOverrides)) intent.userIntentOverrides = { azOverrides };
   if (!_.isEmpty(proxyConfig)) intent.proxyConfig = proxyConfig;
   if (!_.isEmpty(universeOverrides)) intent.universeOverrides = universeOverrides;
+  if (!_.isEmpty(advancedConfig?.enableConnectionPooling)) {
+    intent.enableConnectionPooling = advancedConfig.enableConnectionPooling;
+  }
 
   if (
     cloudConfig.provider?.code === CloudType.kubernetes &&
@@ -532,6 +541,20 @@ export const isVersionPGSupported = (dbVersion: string) => {
       versionB: isVersionStable(dbVersion)
         ? MIN_PG_SUPPORTED_STABLE_VERSION
         : MIN_PG_SUPPORTED_PREVIEW_VERSION,
+      options: {
+        suppressFormatError: true
+      }
+    }) >= 0
+  );
+};
+
+export const isVersionConnectionPoolSupported = (dbVersion: string) => {
+  return (
+    compareYBSoftwareVersions({
+      versionA: dbVersion,
+      versionB: isVersionStable(dbVersion)
+        ? CONNECTION_POOL_SUPPORTED_STABLE_VERSION
+        : CONNECTION_POOL_SUPPORTED_PREV_VERSION,
       options: {
         suppressFormatError: true
       }

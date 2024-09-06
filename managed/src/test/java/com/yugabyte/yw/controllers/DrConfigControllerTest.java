@@ -23,6 +23,7 @@ import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.protobuf.ByteString;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.XClusterScheduler;
 import com.yugabyte.yw.common.DrConfigStates.State;
@@ -59,6 +60,7 @@ import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterNamespaceConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -72,10 +74,16 @@ import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.CommonTypes;
+import org.yb.CommonTypes.TableType;
+import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.GetUniverseReplicationInfoResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
+import org.yb.master.CatalogEntityInfo;
+import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterReplicationOuterClass;
+import org.yb.master.MasterTypes;
+import org.yb.master.MasterTypes.RelationType;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
@@ -102,6 +110,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
   private String authToken;
   private BootstrapBackupParams backupRequestParams;
   private SettableRuntimeConfigFactory settableRuntimeConfigFactory;
+  private String namespaceId;
 
   private CustomerConfig createData(Customer customer) {
     JsonNode formData =
@@ -117,12 +126,40 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
     createForm.name = name;
     createForm.sourceUniverseUUID = sourceUniverse.getUniverseUUID();
     createForm.targetUniverseUUID = targetUniverse.getUniverseUUID();
-    createForm.dbs = Set.of("db1");
+    createForm.dbs = Set.of(namespaceId);
     createForm.bootstrapParams = new RestartBootstrapParams();
     createForm.bootstrapParams.backupRequestParams = backupRequestParams;
 
     if (dbScoped != null) {
       createForm.dbScoped = dbScoped;
+    }
+
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList = new ArrayList<>();
+    MasterDdlOuterClass.ListTablesResponsePB.TableInfo.Builder table1TableInfoBuilder =
+        MasterDdlOuterClass.ListTablesResponsePB.TableInfo.newBuilder();
+    table1TableInfoBuilder.setTableType(TableType.PGSQL_TABLE_TYPE);
+    table1TableInfoBuilder.setId(ByteString.copyFromUtf8(UUID.randomUUID().toString()));
+    table1TableInfoBuilder.setName("table_1");
+    table1TableInfoBuilder.setRelationType(RelationType.USER_TABLE_RELATION);
+    table1TableInfoBuilder.setNamespace(
+        MasterTypes.NamespaceIdentifierPB.newBuilder()
+            .setName("db1")
+            .setId(ByteString.copyFromUtf8(namespaceId))
+            .build());
+    tableInfoList.add(table1TableInfoBuilder.build());
+
+    try {
+      ListTablesResponse mockListTablesResponse = mock(ListTablesResponse.class);
+      when(mockListTablesResponse.getTableInfoList()).thenReturn(tableInfoList);
+      when(mockYBClient.getTablesList(nullable(String.class), eq(false), nullable(String.class)))
+          .thenReturn(mockListTablesResponse);
+
+      GetMasterClusterConfigResponse fakeClusterConfigResponse =
+          new GetMasterClusterConfigResponse(
+              0, "", CatalogEntityInfo.SysClusterConfigEntryPB.getDefaultInstance(), null);
+      when(mockYBClient.getMasterClusterConfig()).thenReturn(fakeClusterConfigResponse);
+    } catch (Exception e) {
+      e.printStackTrace();
     }
 
     return createForm;
@@ -158,6 +195,7 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
     TestHelper.updateUniverseVersion(sourceUniverse, "2.23.0.0-b394");
     targetUniverse = createUniverse("target Universe");
     TestHelper.updateUniverseVersion(targetUniverse, "2.23.0.0-b394");
+    namespaceId = UUID.randomUUID().toString().replace("-", "");
 
     backupRequestParams = new BootstrapBackupParams();
     backupRequestParams.storageConfigUUID = config.getConfigUUID();
@@ -281,10 +319,10 @@ public class DrConfigControllerTest extends PlatformGuiceApplicationBaseTest {
     assertNotNull(drConfig);
     UUID drConfigId = drConfig.getUuid();
     DrConfigSetDatabasesForm setDatabasesData = new DrConfigSetDatabasesForm();
-    setDatabasesData.databases = new HashSet<>(Set.of("db1"));
+    setDatabasesData.databases = new HashSet<>(Set.of(namespaceId));
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
     xClusterConfig.updateStatus(XClusterConfigStatusType.Running);
-    xClusterConfig.updateStatusForNamespace("db1", XClusterNamespaceConfig.Status.Running);
+    xClusterConfig.updateStatusForNamespace(namespaceId, XClusterNamespaceConfig.Status.Running);
 
     // Trying to add the existing databases.
     Exception exception =

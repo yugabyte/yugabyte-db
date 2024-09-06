@@ -64,9 +64,11 @@ import org.junit.Before;
 import org.junit.Test;
 import org.yb.CommonTypes;
 import org.yb.Schema;
+import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
+import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterTypes;
 import play.libs.Json;
@@ -239,6 +241,10 @@ public class AttachDetachControllerTest extends FakeDBApplication {
       lenient()
           .when(mockClient.getTableSchemaByUUID(exampleTableID1))
           .thenReturn(mockTableSchemaResponseTable1);
+      GetMasterClusterConfigResponse fakeClusterConfigResponse =
+          new GetMasterClusterConfigResponse(
+              0, "", CatalogEntityInfo.SysClusterConfigEntryPB.getDefaultInstance(), null);
+      lenient().when(mockClient.getMasterClusterConfig()).thenReturn(fakeClusterConfigResponse);
     } catch (Exception ignored) {
     }
 

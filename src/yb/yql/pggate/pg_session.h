@@ -1,4 +1,4 @@
-// Copyright (c) YugaByteDB, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -13,8 +13,10 @@
 
 #pragma once
 
+#include <cstring>
 #include <functional>
 #include <optional>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -65,7 +67,7 @@ struct TableYbctid {
   TableYbctid(PgOid table_id_, std::string ybctid_)
       : table_id(table_id_), ybctid(std::move(ybctid_)) {}
 
-  explicit operator LightweightTableYbctid() const {
+  operator LightweightTableYbctid() const {
     return LightweightTableYbctid(table_id, static_cast<std::string_view>(ybctid));
   }
 
@@ -73,26 +75,32 @@ struct TableYbctid {
   std::string ybctid;
 };
 
+struct MemoryOptimizedTableYbctid {
+  MemoryOptimizedTableYbctid(PgOid table_id_, std::string_view ybctid_)
+      : table_id(table_id_),
+        ybctid_size(static_cast<uint32_t>(ybctid_.size())),
+        ybctid_data(new char[ybctid_size]) {
+    std::memcpy(ybctid_data.get(), ybctid_.data(), ybctid_size);
+  }
+
+  operator LightweightTableYbctid() const {
+    return LightweightTableYbctid(table_id, std::string_view(ybctid_data.get(), ybctid_size));
+  }
+
+  PgOid table_id;
+  uint32_t ybctid_size;
+  std::unique_ptr<char[]> ybctid_data;
+};
+
+static_assert(
+    sizeof(MemoryOptimizedTableYbctid) == 16 &&
+    sizeof(MemoryOptimizedTableYbctid) < sizeof(TableYbctid));
+
 struct TableYbctidComparator {
   using is_transparent = void;
 
   bool operator()(const LightweightTableYbctid& l, const LightweightTableYbctid& r) const {
     return l.table_id == r.table_id && l.ybctid == r.ybctid;
-  }
-
-  template<class T1, class T2>
-  bool operator()(const T1& l, const T2& r) const {
-    return (*this)(AsLightweightTableYbctid(l), AsLightweightTableYbctid(r));
-  }
-
- private:
-  static const LightweightTableYbctid& AsLightweightTableYbctid(
-      const LightweightTableYbctid& value) {
-    return value;
-  }
-
-  static LightweightTableYbctid AsLightweightTableYbctid(const TableYbctid& value) {
-    return LightweightTableYbctid(value);
   }
 };
 
@@ -100,11 +108,14 @@ struct TableYbctidHasher {
   using is_transparent = void;
 
   size_t operator()(const LightweightTableYbctid& value) const;
-  size_t operator()(const TableYbctid& value) const;
 };
 
 using OidSet = std::unordered_set<PgOid>;
-using TableYbctidSet = std::unordered_set<TableYbctid, TableYbctidHasher, TableYbctidComparator>;
+template <class T>
+using TableYbctidSetHelper =
+    std::unordered_set<T, TableYbctidHasher, TableYbctidComparator>;
+using MemoryOptimizedTableYbctidSet = TableYbctidSetHelper<MemoryOptimizedTableYbctid>;
+using TableYbctidSet = TableYbctidSetHelper<TableYbctid>;
 using TableYbctidVector = std::vector<TableYbctid>;
 
 class TableYbctidVectorProvider {
@@ -448,7 +459,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   CoarseTimePoint invalidate_table_cache_time_;
   std::unordered_map<PgObjectId, PgTableDescPtr, PgObjectIdHash> table_cache_;
   const YbctidReader ybctid_reader_;
-  TableYbctidSet fk_reference_cache_;
+  MemoryOptimizedTableYbctidSet fk_reference_cache_;
   TableYbctidSet fk_reference_intent_;
   OidSet fk_intent_region_local_tables_;
 

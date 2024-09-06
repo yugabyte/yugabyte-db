@@ -53,6 +53,7 @@ export const ACCESS_KEY_FIELD = 'advancedConfig.accessKeyCode';
 export const SOFTWARE_VERSION_FIELD = 'advancedConfig.ybSoftwareVersion';
 export const COMMUNICATION_PORTS_FIELD = 'advancedConfig.communicationPorts';
 export const PG_COMPATIBILITY_FIELD = 'advancedConfig.enablePGCompatibitilty';
+export const CONNECTION_POOLING_FIELD = 'advancedConfig.enableConnectionPooling';
 
 //Gflags
 export const GFLAGS_FIELD = 'gFlags';

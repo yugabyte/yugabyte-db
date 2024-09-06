@@ -160,6 +160,10 @@ NOTE: THIS FEATURE IS EARLY ACCESS
 		if err := common.Install(ybaCtl.Version()); err != nil {
 			log.Fatal(fmt.Sprintf("error installing new ybactl %s: %s", ybaCtl.Version(), err.Error()))
 		}
+		if err := common.Initialize(); err != nil {
+			log.Fatal("error initializing common components: " + err.Error())
+		}
+
 		for _, name := range serviceOrder {
 			log.Info("About to migrate component " + name)
 			if err := services[name].MigrateFromReplicated(); err != nil {

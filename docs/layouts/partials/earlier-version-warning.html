@@ -17,7 +17,7 @@
 {{ $stablePath := path.Join "content/stable" $pathsplit }}
 {{ $stableExists := fileExists $stablePath }}
 
-{{ warnf "%s(%s) - %s(%s)" $previewPath $previewExists $stablePath $stableExists }}
+{{/* warnf "%s(%s) - %s(%s)" $previewPath $previewExists $stablePath $stableExists */}}
 
 {{/** Identify is preview is behind stable and which versions are preview and stable **/}}
 {{ range .Site.Data.currentVersions.dbVersions }}
