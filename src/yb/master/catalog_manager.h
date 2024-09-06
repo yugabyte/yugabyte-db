@@ -1505,6 +1505,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status RemoveNonEligibleTablesFromCDCSDKStreams(
       const TableStreamIdsMap& non_user_tables_to_streams_map, const LeaderEpoch& epoch);
 
+  Status ValidateStreamForTableRemoval(const CDCStreamInfoPtr& stream);
+
+  Status ValidateTableForRemovalFromCDCSDKStream(
+      const scoped_refptr<TableInfo>& table, bool check_for_ineligibility);
+
   // Find all the CDC streams that have been marked as provided state.
   Status FindCDCStreamsMarkedForMetadataDeletion(
       std::vector<CDCStreamInfoPtr>* streams, SysCDCStreamEntryPB::State state);
@@ -3158,10 +3163,16 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   void ValidateIndexTablesPostLoad(std::unordered_map<TableId, TableIdSet>&& indexes_map,
                                    TableIdSet* tables_to_persist) EXCLUDES(mutex_);
 
-  Result<std::vector<cdc::CDCStateTableEntry>> UpdateCheckpointForTabletEntriesInCDCState(
+  Status UpdateCheckpointForTabletEntriesInCDCState(
       const xrepl::StreamId& stream_id,
       const std::unordered_set<TableId>& tables_in_stream_metadata,
-      const TableId& table_to_be_removed = "");
+      const TableInfoPtr& table_to_be_removed);
+
+  // Scans all the entries in cdc_state table. Updates the checkpoint to max if the table of the
+  // entry's tablet is not present in qualified table list of the stream.
+  Result<std::vector<cdc::CDCStateTableEntry>> SyncCDCStateTableEntries(
+      const xrepl::StreamId& stream_id,
+      const std::unordered_set<TableId>& tables_in_stream_metadata);
 
   Status RemoveTableFromCDCStreamMetadataAndMaps(
       const CDCStreamInfoPtr stream, const TableId table_id);
