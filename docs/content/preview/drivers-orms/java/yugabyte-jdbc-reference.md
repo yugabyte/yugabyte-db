@@ -37,8 +37,8 @@ YugabyteDB JDBC smart driver is a JDBC driver for [YSQL](../../../api/ysql/) bui
 
 For more information on the YugabyteDB Java smart driver, see the following:
 
-- [YugabyteDB smart drivers for YSQL](../../../drivers-orms/smart-drivers/)
-- [CRUD operations](../../../drivers-orms/java/yugabyte-jdbc)
+- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
+- [CRUD operations](../yugabyte-jdbc)
 - [GitHub repository](https://github.com/yugabyte/pgjdbc)
 - [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
 

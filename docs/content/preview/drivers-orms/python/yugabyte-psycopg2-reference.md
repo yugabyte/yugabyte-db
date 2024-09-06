@@ -35,8 +35,8 @@ Yugabyte Psycopg2 smart driver is a Python driver for [YSQL](../../../api/ysql/)
 
 For more information on the YugabyteDB node-postgres smart driver, see the following:
 
-- [YugabyteDB smart drivers for YSQL](../../../drivers-orms/smart-drivers/)
-- [CRUD operations](../../../drivers-orms/python/yugabyte-psycopg2/)
+- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
+- [CRUD operations](../yugabyte-psycopg2/)
 - [GitHub repository](https://github.com/yugabyte/psycopg2)
 - [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
 

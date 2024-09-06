@@ -44,8 +44,8 @@ YugabyteDB PGX smart driver is a Go driver for [YSQL](../../../api/ysql/) based 
 
 For more information on the YugabyteDB PGX smart driver, see the following:
 
-- [YugabyteDB smart drivers for YSQL](../../../drivers-orms/smart-drivers/)
-- [CRUD operations](../../../drivers-orms/go/yb-pgx)
+- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
+- [CRUD operations](../yb-pgx)
 - [GitHub repository](https://github.com/yugabyte/pgx)
 - [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
 

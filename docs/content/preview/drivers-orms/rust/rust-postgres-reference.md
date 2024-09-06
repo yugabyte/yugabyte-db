@@ -24,8 +24,8 @@ Rust smart drivers offers two different clients similar to rust-postgres:
 
 For more information on the YugabyteDB Rust smart driver, see the following:
 
-- [YugabyteDB smart drivers for YSQL](../../../drivers-orms/smart-drivers/)
-- [CRUD operations](../../../drivers-orms/rust/yb-rust-postgres/#crud-operations)
+- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
+- [CRUD operations](../yb-rust-postgres/#crud-operations)
 - [GitHub repository](https://github.com/yugabyte/rust-postgres)
 - [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
 
@@ -59,8 +59,8 @@ Learn how to perform common tasks required for Rust application development usin
 
 The following connection properties need to be added to enable load balancing:
 
-- `load_balance` - enable [cluster-aware load balancing](../../../drivers-orms/smart-drivers/#cluster-aware-connection-load-balancing) by setting this property to true; disabled by default.
-- `topology_keys` - provide comma-separated geo-location values to enable [topology-aware load balancing](../../../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing). Geo-locations can be provided as `cloud.region.zone`. Specify all zones in a region as `cloud.region.*`. To designate fallback locations for when the primary location is unreachable, specify a priority in the form `:n`, where `n` is the order of precedence. For example, `cloud1.datacenter1.rack1:1,cloud1.datacenter1.rack2:2`.
+- `load_balance` - enable [cluster-aware load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) by setting this property to true; disabled by default.
+- `topology_keys` - provide comma-separated geo-location values to enable [topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing). Geo-locations can be provided as `cloud.region.zone`. Specify all zones in a region as `cloud.region.*`. To designate fallback locations for when the primary location is unreachable, specify a priority in the form `:n`, where `n` is the order of precedence. For example, `cloud1.datacenter1.rack1:1,cloud1.datacenter1.rack2:2`.
 
 By default, the driver refreshes the list of nodes every 300 seconds (5 minutes). You can change this value by including the `yb_servers_refresh_interval` parameter.
 
