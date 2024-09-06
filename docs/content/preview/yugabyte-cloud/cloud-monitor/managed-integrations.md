@@ -23,6 +23,7 @@ Currently, you can export data to the following tools:
 - [Grafana Cloud](https://grafana.com/docs/grafana-cloud/)
 - [Sumo Logic](https://www.sumologic.com)
 - [Prometheus](https://prometheus.io/docs/introduction/overview/) {{<badge/tp>}}
+- [VictoriaMetrics](https://docs.victoriametrics.com/) {{<badge/tp>}}
 
 Exporting cluster metrics and logs counts against your data transfer allowance. This may incur additional costs for network transfer, especially for cross-region and internet-based transfers, if usage exceeds your cluster allowance. Refer to [Data transfer costs](../../cloud-admin/cloud-billing-costs/#data-transfer-costs).
 
@@ -127,6 +128,36 @@ To create an export configuration, do the following:
 1. On the **Integrations** page, click **Configure** for the Prometheus provider or, if a configuration is already available, **Add Configuration**.
 1. Enter a name for the configuration.
 1. Enter the endpoint URL of the Prometheus instance.
+1. Click **Create Configuration**.
+
+  {{% /tab %}}
+
+  {{% tab header="VictoriaMetrics" lang="victoria" %}}
+
+VictoriaMetrics integration is {{<badge/tp>}} and only available for clusters deployed on AWS.
+
+The VictoriaMetrics integration requires the following:
+
+- VictoriaMetrics instance
+  - deployed in a VPC on AWS
+  - publically-accessible endpoint URL that resolves to the private IP of the VictoriaMetrics instance; the DNS for the endpoint must be in a public hosted zone in AWS.
+  - VPC hosting the VictoriaMetrics instance has the following Inbound Security Group rules:
+    - Allow HTTP inbound traffic on port 80 for Prometheus endpoint URL (HTTP)
+    - Allow HTTPS inbound traffic on port 443 for Prometheus endpoint URL (HTTPS)
+
+    See [Control traffic to your AWS resources using security groups](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html) in the AWS documentation.
+
+- YugabyteDB Aeon cluster from which you want to export metrics
+  - the cluster is [deployed in VPCs](../../cloud-basics/cloud-vpcs/cloud-add-vpc/) on AWS
+  - each region VPC is peered with the VPC hosting VictoriaMetrics. See [Peer VPCs](../../cloud-basics/cloud-vpcs/cloud-add-vpc-aws/).
+
+  As each region of a cluster deployed in AWS has its own VPC, make sure that all the VPCs are peered and allow inbound access from VictoriaMetrics; this also applies to regions you add or change after deployment, and to read replicas. For information on VPC networking in YugabyteDB Aeon, see [VPC network overview](../../cloud-basics/cloud-vpcs/cloud-vpc-intro/).
+
+To create an export configuration, do the following:
+
+1. On the **Integrations** page, click **Configure** for the VictoriaMetrics provider or, if a configuration is already available, **Add Configuration**.
+1. Enter a name for the configuration.
+1. Enter the endpoint URL of the VictoriaMetrics instance.
 1. Click **Create Configuration**.
 
   {{% /tab %}}
