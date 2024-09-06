@@ -190,7 +190,7 @@ You can create a new KMS configuration that uses HashiCorp Vault as follows:
 
 ## Replace an expiring token
 
-If a KMS configuration uses a token for authentication, and that token cannot be infinitely renewed, you should replace the token before it expires (that is, reaches its TTL). You can also create a new policy.
+If a KMS configuration uses a token for authentication, and that token cannot be infinitely renewed, you should replace the token before it expires (that is, reaches its TTL). You can also create a new policy, or switch to using an AppRole.
 
 To replace a token, you create a new token for the existing policy in Vault, and add it to your KMS configuration in YugabyteDB Anywhere as follows:
 
@@ -208,7 +208,7 @@ To replace a token, you create a new token for the existing policy in Vault, and
 
 1. Set **Authentication Type** to **Token** and enter the token you obtained from the vault.
 
-    If you changed the policy, set **Authentication Type** to **AppRole** and enter the credentials as appropriate.
+    To switch to using an AppRole, set **Authentication Type** to **AppRole** and enter the credentials as appropriate.
 
 1. Click **Save**.
 
