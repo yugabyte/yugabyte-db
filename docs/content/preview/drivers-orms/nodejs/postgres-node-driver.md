@@ -117,7 +117,7 @@ const config = {
 
 If you created a cluster on YugabyteDB Aeon, use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).
 
-Refer to [Configure SSL/TLS](../../../reference/drivers/nodejs/postgres-pg-reference/#configure-ssl-tls) for more information on node-postgresql default and supported SSL modes, and other examples for setting up your connection strings when using SSL.
+Refer to [Configure SSL/TLS](../postgres-pg-reference/#configure-ssl-tls) for more information on node-postgresql default and supported SSL modes, and other examples for setting up your connection strings when using SSL.
 
 ### Step 3: Write your application
 
@@ -275,7 +275,4 @@ If there is no output or you get an error, verify the parameters included in the
 
 ## Learn more
 
-- [PostgreSQL node-postgres driver reference](../../../reference/drivers/nodejs/postgres-pg-reference/)
-- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
-- Build Node.js applications using [Sequelize ORM](../sequelize/)
-- Build Node.js applications using [Prisma ORM](../prisma/)
+[YugabyteDB smart drivers for YSQL](../../smart-drivers/)

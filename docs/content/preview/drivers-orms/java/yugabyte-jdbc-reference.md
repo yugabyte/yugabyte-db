@@ -171,7 +171,7 @@ To use the driver, do the following:
 
 ## Try it out
 
-This tutorial shows how to use the YugabyteDB JDBC Driver with YugabyteDB. It starts by creating a three-node cluster with a replication factor of 3. This tutorial uses the [yb-ctl](../../../admin/yb-ctl/#root) utility.
+This tutorial shows how to use the YugabyteDB JDBC Driver with YugabyteDB. It starts by creating a three-node cluster with a replication factor of 3. This tutorial uses the [yugabyted](../../../reference/configuration/yugabyted/) utility.
 
 Next, you use [yb-sample-apps](https://github.com/yugabyte/yb-sample-apps/tree/master) to demonstrate the driver's load balancing features and create a Maven project to learn how to use the driver in an application.
 

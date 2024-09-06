@@ -272,8 +272,4 @@ Currently, [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2) and
 
 ## Learn more
 
-- Refer to [YugabyteDB Psycopg2 driver reference](../../../reference/drivers/python/yugabyte-psycopg2-reference/) and [Try it out](../../../reference/drivers/python/yugabyte-psycopg2-reference/#try-it-out) for detailed smart driver examples.
-- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
-- Build Python applications using [PostgreSQL Psycopg2 smart driver](../postgres-psycopg2/)
-- Build Python applications using [Django](../django/)
-- Build Python applications using [SQLAlchemy](../sqlalchemy/)
+[YugabyteDB smart drivers for YSQL](../../smart-drivers/)

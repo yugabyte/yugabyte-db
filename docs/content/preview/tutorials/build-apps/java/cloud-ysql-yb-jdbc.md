@@ -13,7 +13,9 @@ menu:
 type: docs
 ---
 
-The following tutorial shows a small [Java application](https://github.com/yugabyte/yugabyte-simple-java-app) that connects to a YugabyteDB cluster using the topology-aware [YugabyteDB JDBC driver](../../../../reference/drivers/java/yugabyte-jdbc-reference/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Aeon in Java.
+YugabyteDB YSQL is fully compatible with the [PostgreSQL JDBC driver](../../../../drivers-orms/java/postgres-jdbc-reference/), allowing Java programmers to connect to YugabyteDB database to execute DMLs and DDLs using the JDBC APIs. The [YugabyteDB JDBC smart driver](../../../../drivers-orms/java/yugabyte-jdbc-reference/) is built on the PostgreSQL JDBC driver, with additional connection load balancing features.
+
+The following tutorial shows a small [Java application](https://github.com/yugabyte/yugabyte-simple-java-app) that connects to a YugabyteDB cluster using the topology-aware YugabyteDB JDBC driver and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Aeon in Java.
 
 ## Prerequisites
 

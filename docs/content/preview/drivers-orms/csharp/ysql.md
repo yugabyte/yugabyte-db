@@ -204,5 +204,3 @@ John  35   CSharp
 
 - [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
 - [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
-- [YugabyteDB Npgsql Smart Driver reference](../../../reference/drivers/csharp/yb-npgsql-reference/)
-- Build C# applications using [Entity Framework ORM](../entityframework)

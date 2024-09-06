@@ -105,19 +105,19 @@ if err != nil {
 
 | Parameter | Description | Default |
 | :-------- | :---------- | :------ |
-| user | User connecting to the database | yugabyte
-| password | User password | yugabyte
-| host | Hostname of the YugabyteDB instance | localhost
-| port |  Listen port for YSQL | 5433
-| dbname | Database name | yugabyte
+| user | User connecting to the database | yugabyte |
+| password | User password | yugabyte |
+| host | Hostname of the YugabyteDB instance | localhost |
+| port |  Listen port for YSQL | 5433 |
+| dbname | Database name | yugabyte |
 
 #### Use SSL
 
-For a YugabyteDB Aeon cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below at the client side. SSL/TLS is enabled by default for client-side authentication. Refer to [Configure SSL/TLS](../../../reference/drivers/go/pq-reference/#ssl-modes) for the default and supported modes.
+For a YugabyteDB Aeon cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below at the client side. SSL/TLS is enabled by default for client-side authentication. Refer to [Configure SSL/TLS](../pq-reference/#ssl-modes) for the default and supported modes.
 
 ```sh
 $ export PGSSLMODE=verify-ca
-$ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded as `root.crt` under home directory. Modify your path accordingly.
+$ export PGSSLROOTCERT=~/root.crt  # CA certificate file is downloaded as `root.crt` under home directory. Modify your path accordingly.
 ```
 
 | Environment Variable | Description |
@@ -234,7 +234,4 @@ Query for id=1 returned: Row[John, 35, Go]
 ## Learn more
 
 - [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
-- [YugabyteDB PQ driver reference](../../../reference/drivers/go/pq-reference/)
 - [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
-- Build Go applications using [GORM](../gorm/)
-- Build Go applications using [PG](../pg/)

@@ -81,7 +81,7 @@ cd yb-pgx
 go mod init hello
 ```
 
-Optionally, you can choose to import the pgxpool package instead. Refer to [Use pgxpool API](../../../reference/drivers/go/yb-pgx-reference/#use-pgxpool-api) to learn more.
+Optionally, you can choose to import the pgxpool package instead. Refer to [Use pgxpool API](../yb-pgx-reference/#use-pgxpool-api) to learn more.
 
 ### Step 2: Set up the database connection
 
@@ -93,14 +93,14 @@ The following table describes the connection parameters required to connect, inc
 
 | Parameter | Description | Default |
 | :-------- | :---------- | :------ |
-| host | Host name of the YugabyteDB instance. You can also enter [multiple addresses](#use-multiple-addresses). | localhost
-| port |  Listen port for YSQL | 5433
-| user | User connecting to the database | yugabyte
-| password | User password | yugabyte
-| dbname | Database name | yugabyte
-| `load_balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to 'true'
-| `yb_servers_refresh_interval` | If `load_balance` is true, the interval in seconds to refresh the servers list | 300
-| `topology_keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `load_balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`.
+| host | Host name of the YugabyteDB instance. You can also enter [multiple addresses](#use-multiple-addresses). | localhost |
+| port |  Listen port for YSQL | 5433 |
+| user | User connecting to the database | yugabyte |
+| password | User password | yugabyte |
+| dbname | Database name | yugabyte |
+| `load_balance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to 'true' |
+| `yb_servers_refresh_interval` | If `load_balance` is true, the interval in seconds to refresh the servers list | 300 |
+| `topology_keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `load_balance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`. |
 
 The following is an example connection string for connecting to YugabyteDB with uniform load balancing:
 
@@ -178,11 +178,11 @@ The hosts are only used during the initial connection attempt. If the first host
 
 #### Use SSL
 
-For a YugabyteDB Aeon cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the following SSL-related environment variables at the client side. SSL/TLS is enabled by default for client-side authentication. Refer to [Configure SSL/TLS](../../../reference/drivers/go/yb-pgx-reference/#configure-ssl-tls) for the default and supported modes.
+For a YugabyteDB Aeon cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the following SSL-related environment variables at the client side. SSL/TLS is enabled by default for client-side authentication. Refer to [Configure SSL/TLS](../yb-pgx-reference/#configure-ssl-tls) for the default and supported modes.
 
 ```sh
 $ export PGSSLMODE=verify-ca
-$ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded as `root.crt` under home directory. Modify your path accordingly.
+$ export PGSSLROOTCERT=~/root.crt  # CA certificate file is downloaded as `root.crt` under home directory. Modify your path accordingly.
 ```
 
 | Environment Variable | Description |
@@ -681,7 +681,4 @@ Closing the application ...
 ## Learn more
 
 - [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
-- [YugabyteDB PGX smart driver reference](../../../reference/drivers/go/yb-pgx-reference/)
 - [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
-- Build Go applications using [GORM](../gorm/)
-- Build Go applications using [PG](../pg/)
