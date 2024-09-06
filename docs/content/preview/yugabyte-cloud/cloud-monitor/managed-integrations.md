@@ -142,8 +142,8 @@ The VictoriaMetrics integration requires the following:
   - deployed in a VPC on AWS
   - publically-accessible endpoint URL that resolves to the private IP of the VictoriaMetrics instance; the DNS for the endpoint must be in a public hosted zone in AWS.
   - VPC hosting the VictoriaMetrics instance has the following Inbound Security Group rules:
-    - Allow HTTP inbound traffic on port 80 for Prometheus endpoint URL (HTTP)
-    - Allow HTTPS inbound traffic on port 443 for Prometheus endpoint URL (HTTPS)
+    - Allow HTTP inbound traffic on port 80 for VictoriaMetrics endpoint URL (HTTP)
+    - Allow HTTPS inbound traffic on port 443 for VictoriaMetrics endpoint URL (HTTPS)
 
     See [Control traffic to your AWS resources using security groups](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html) in the AWS documentation.
 
