@@ -98,6 +98,10 @@ TP features aren't supported by Customer Support and may change at any time duri
 
 If you are interested in a TP feature, contact {{% support-general %}}.
 
+{{<tip title="Enabling preview features">}}
+Configuration of preview feature-specific flags is restricted to those listed in the [allowed_preview_flags_csv](../../reference/configuration/yb-master/#allowed-preview-flags-csv) flag. This measure acts as a safeguard, ensuring users are aware they are modifying settings for preview features.
+{{</tip>}}
+
 Participating customers agree to provide feedback to the Product Team. However, the timeline for addressing specific areas of feedback (including bugs) is at the discretion of Yugabyte.
 
 Documentation (if provided) for TP features is marked as such.
