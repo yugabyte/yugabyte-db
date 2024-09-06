@@ -53,6 +53,7 @@ bool AddNumberToBsonValue(bson_value_t *state, const bson_value_t *number,
 						  bool *overflowedFromInt64);
 bool SubtractNumberFromBsonValue(bson_value_t *state, const bson_value_t *subtrahend,
 								 bool *overflowedFromInt64);
+bool DivideBsonValueNumbers(bson_value_t *dividend, const bson_value_t *divisor);
 void BitwiseAndToBsonValue(bson_value_t *state, const bson_value_t *number);
 void BitwiseOrToBsonValue(bson_value_t *state, const bson_value_t *number);
 void BitwiseXorToBsonValue(bson_value_t *state, const bson_value_t *number);

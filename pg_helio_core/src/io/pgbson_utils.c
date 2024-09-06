@@ -212,6 +212,61 @@ SubtractNumberFromBsonValue(bson_value_t *state, const bson_value_t *subtrahend,
 
 
 /*
+ * Divides the number stored in dividend by divisor and modifies dividend.
+ * returns true if division happened because of valid types
+ */
+bool
+DivideBsonValueNumbers(bson_value_t *dividend, const bson_value_t *divisor)
+{
+	if (!BsonValueIsNumberOrBool(dividend) || !BsonValueIsNumberOrBool(divisor))
+	{
+		return false;
+	}
+
+	if (dividend->value_type == BSON_TYPE_DECIMAL128 ||
+		divisor->value_type == BSON_TYPE_DECIMAL128)
+	{
+		bson_value_t dividend128 = *dividend;
+		bson_value_t divisor128 = *divisor;
+		if (divisor->value_type == BSON_TYPE_DECIMAL128)
+		{
+			dividend128.value_type = BSON_TYPE_DECIMAL128;
+			dividend128.value.v_decimal128 = GetBsonValueAsDecimal128Quantized(dividend);
+		}
+		else
+		{
+			divisor128.value_type = BSON_TYPE_DECIMAL128;
+			divisor128.value.v_decimal128 = GetBsonValueAsDecimal128Quantized(divisor);
+		}
+
+		if (IsDecimal128Zero(&divisor128))
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+							errmsg("can't $divide by zero")));
+		}
+
+		dividend->value_type = BSON_TYPE_DECIMAL128;
+		DivideDecimal128Numbers(&dividend128, &divisor128, dividend);
+	}
+	else
+	{
+		double dividendDouble = BsonValueAsDouble(dividend);
+		double divisorDouble = BsonValueAsDouble(divisor);
+
+		if (divisorDouble == 0.0)
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
+							errmsg("can't $divide by zero")));
+		}
+
+		dividend->value_type = BSON_TYPE_DOUBLE;
+		dividend->value.v_double = dividendDouble / divisorDouble;
+	}
+	return true;
+}
+
+
+/*
  * Bitwise AND the number stored in number to state and modifies state.
  */
 void
