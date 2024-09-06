@@ -45,7 +45,7 @@ Build the REST API server (written using Diesel and Rocket) as follows:
 $ cargo build --release
 ```
 
-If you encounter a build failure, install [libpq](../../../../drivers-orms/ysql-client-drivers/#libpq) and try again.
+If you encounter a build failure, install [libpq](../../ysql-client-drivers/#libpq) and try again.
 
 ## Set up the database connection
 

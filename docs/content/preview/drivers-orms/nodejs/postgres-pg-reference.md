@@ -34,7 +34,7 @@ The [PostgreSQL node-postgres driver](https://node-postgres.com/) is the officia
 
 For details on installing and using node-postgres, see the [node-postgres documentation](https://node-postgres.com/).
 
-For a tutorial on building a Node.js application with node-postgres, see [Connect an application](../../../drivers-orms/nodejs/postgres-node-driver/).
+For a tutorial on building a Node.js application with node-postgres, see [Connect an application](../postgres-node-driver/).
 
 ## Fundamentals
 

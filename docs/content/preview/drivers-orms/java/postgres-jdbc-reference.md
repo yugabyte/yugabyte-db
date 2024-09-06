@@ -35,7 +35,7 @@ type: docs
 
 The [PostgreSQL JDBC driver](https://jdbc.postgresql.org/) is the official JDBC driver for PostgreSQL, and can be used for connecting to YugabyteDB YSQL. YugabyteDB YSQL has full compatibility with the PostgreSQL JDBC Driver, allowing Java programmers to connect to YugabyteDB database to execute DMLs and DDLs using the JDBC APIs. The driver supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For building a sample Java application with the PostgreSQL JDBC driver, see [Connect an application](../../../drivers-orms/java/postgres-jdbc/).
+For building a sample Java application with the PostgreSQL JDBC driver, see [Connect an application](../postgres-jdbc/).
 
 ## Download the driver dependency
 

@@ -43,7 +43,7 @@ The [PQ driver](https://github.com/lib/pq/) is a popular driver for PostgreSQL t
 
 The driver allows Go programmers to connect to YugabyteDB database to execute DMLs and DDLs using the standard `database/sql` package. The driver supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
 
-For a tutorial on building a sample Go application with pq, see [Connect an application](../../../drivers-orms/go/pq/).
+For a tutorial on building a sample Go application with pq, see [Connect an application](../pq/).
 
 ## Fundamentals
 

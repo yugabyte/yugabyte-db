@@ -113,7 +113,7 @@ var connStringBuilder = new NpgsqlConnectionStringBuilder();
 
 YugabyteDB Aeon clusters require SSL. Refer to [Connect applications](../../../yugabyte-cloud/cloud-connect/connect-applications/) for instructions on how to obtain the cluster connection parameters and download the CA certificate.
 
-Refer to [Configure SSL/TLS](../../../drivers-orms/csharp/postgres-npgsql-reference/#configure-ssl-tls) for more information on Npgsql default and supported SSL modes, and examples for setting up your connection strings when using SSL.
+Refer to [Configure SSL/TLS](../postgres-npgsql-reference/#configure-ssl-tls) for more information on Npgsql default and supported SSL modes, and examples for setting up your connection strings when using SSL.
 
 ### Step 3: Write your application
 

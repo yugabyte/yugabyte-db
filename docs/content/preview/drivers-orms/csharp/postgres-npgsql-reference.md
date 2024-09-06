@@ -37,7 +37,7 @@ Npgsql is an open source ADO.NET Data Provider for PostgreSQL; it allows program
 
 For details on Npgsql, refer to the [Npgsql documentation](https://www.npgsql.org/doc/).
 
-For building a sample C# application with Npgsql, see [Connect an application](../../../drivers-orms/csharp/postgres-npgsql/).
+For building a sample C# application with Npgsql, see [Connect an application](../postgres-npgsql/).
 
 ## Download the driver dependency
 

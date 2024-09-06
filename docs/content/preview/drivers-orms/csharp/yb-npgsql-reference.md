@@ -82,7 +82,7 @@ var connStringBuilder = "Host=127.0.0.1,127.0.0.2,127.0.0.3;Port=5433;Database=y
 NpgsqlConnection conn = new NpgsqlConnection(connStringBuilder)
 ```
 
-You can specify [multiple hosts](../../../drivers-orms/csharp/ysql/#use-multiple-addresses) in the connection string in case the primary address fails. After the driver establishes the initial connection, it fetches the list of available servers from the universe, and performs load balancing of subsequent connection requests across these servers.
+You can specify [multiple hosts](../ysql/#use-multiple-addresses) in the connection string in case the primary address fails. After the driver establishes the initial connection, it fetches the list of available servers from the universe, and performs load balancing of subsequent connection requests across these servers.
 
 To specify topology keys, you set the `Topology Keys` property to comma separated values, as per the following example:
 

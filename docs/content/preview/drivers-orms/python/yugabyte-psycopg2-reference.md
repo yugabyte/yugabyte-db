@@ -88,7 +88,7 @@ To enable uniform load balancing across all servers, you set the `load-balance` 
     conn = psycopg2.connect(user = 'username', password='password', host = 'hostname', port = '5433', dbname = 'database_name', load_balance='True')
     ```
 
-You can specify [multiple hosts](../../../drivers-orms/go/yb-pgx/#use-multiple-addresses) in the connection string in case the primary address fails. After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
+You can specify [multiple hosts](../yugabyte-psycopg2/#use-multiple-addresses) in the connection string in case the primary address fails. After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
 
 To specify topology keys, you set the `topology_keys` property to comma-separated values in the Connection string or dictionary, as per the following examples:
 

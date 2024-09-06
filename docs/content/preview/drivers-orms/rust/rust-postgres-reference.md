@@ -81,7 +81,7 @@ let url: String = String::from( "postgresql://localhost:5434/yugabyte?user=yugab
 let conn = yb_postgres::Client::connect(&connection_url,NoTls,)?;
 ```
 
-You can specify [multiple hosts](../../../drivers-orms/rust/yb-rust-postgres/#use-multiple-addresses) in the connection string to use as fallbacks in case the primary address fails during the initial connection attempt. After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across those servers.
+You can specify [multiple hosts](../yb-rust-postgres/#use-multiple-addresses) in the connection string to use as fallbacks in case the primary address fails during the initial connection attempt. After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across those servers.
 
 To specify topology keys, you set the `topology_keys` property to comma-separated values in the connection string or dictionary, as per the following example:
 
@@ -96,7 +96,7 @@ This tutorial shows how to use the asynchronous yb-tokio-postgres client with Yu
 
 Next, you use a Rust application to demonstrate the driver's load balancing features.
 
-For an example using the synchronous yb-postgres client, see [Connect an application](../../../drivers-orms/rust/yb-rust-postgres).
+For an example using the synchronous yb-postgres client, see [Connect an application](../yb-rust-postgres).
 
 ### Create a local cluster
 

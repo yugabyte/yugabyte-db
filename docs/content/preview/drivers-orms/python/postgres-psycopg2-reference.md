@@ -34,7 +34,7 @@ Psycopg is the most popular PostgreSQL database adapter for the Python programmi
 
 For details on using psycopg2, see [Psycopg documentation](https://www.psycopg.org/docs/).
 
-For a tutorial on building a sample Python application that uses psycopg2, see [Connect an application](../../../drivers-orms/python/postgres-psycopg2/).
+For a tutorial on building a sample Python application that uses psycopg2, see [Connect an application](../postgres-psycopg2/).
 
 ## Fundamentals
 

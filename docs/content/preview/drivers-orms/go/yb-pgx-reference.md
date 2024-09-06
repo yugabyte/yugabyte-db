@@ -87,7 +87,7 @@ url := fmt.Sprintf("%s?load_balance=true", baseUrl)
 conn, err := pgx.Connect(context.Background(), url)
 ```
 
-You can specify [multiple hosts](../../../drivers-orms/go/yb-pgx/#use-multiple-addresses) in the connection string in case the primary address fails. After the driver establishes the initial connection, it fetches the list of available servers from the universe, and performs load balancing of subsequent connection requests across these servers.
+You can specify [multiple hosts](../yb-pgx/#use-multiple-addresses) in the connection string in case the primary address fails. After the driver establishes the initial connection, it fetches the list of available servers from the universe, and performs load balancing of subsequent connection requests across these servers.
 
 To specify topology keys, you set the `topology_keys` property to comma separated values, as per the following example:
 
