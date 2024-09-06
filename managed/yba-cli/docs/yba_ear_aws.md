@@ -38,4 +38,5 @@ yba ear aws [flags]
 * [yba ear aws delete](yba_ear_aws_delete.md)	 - Delete a YugabyteDB Anywhere AWS encryption at rest configuration
 * [yba ear aws describe](yba_ear_aws_describe.md)	 - Describe an AWS YugabyteDB Anywhere Encryption In Transit (EAR) configuration
 * [yba ear aws list](yba_ear_aws_list.md)	 - List AWS YugabyteDB Anywhere Encryption In Transit (EAR) configurations
+* [yba ear aws update](yba_ear_aws_update.md)	 - Update a YugabyteDB Anywhere AWS encryption at rest (EAR) configuration
 

@@ -14,7 +14,7 @@ yba ear hashicorp create [flags]
 
 ```
       --vault-address string    Hashicorp Vault address. Can also be set using environment variable VAULT_ADDR
-      --role-id string          [Optional] Hashicorp Vault AppRole ID. 
+      --role-id string          [Optional] Hashicorp Vault AppRole ID.
       --secret-id string        [Optional] Hashicorp Vault AppRole Secret ID.
       --auth-namespace string   [Optional] Hashicorp Vault AppRole Auth Namespace.
       --token string            [Optional] Hashicorp Vault Token. Required if AppRole credentials are not provided. Can also be set using environment variable VAULT_TOKEN

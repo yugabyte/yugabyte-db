@@ -26,7 +26,7 @@ func init() {
 	GCPEARCmd.Flags().SortFlags = false
 
 	GCPEARCmd.AddCommand(createGCPEARCmd)
-	// GCPEARCmd.AddCommand(updateGCPEARCmd)
+	GCPEARCmd.AddCommand(updateGCPEARCmd)
 	GCPEARCmd.AddCommand(listGCPEARCmd)
 	GCPEARCmd.AddCommand(describeGCPEARCmd)
 	GCPEARCmd.AddCommand(deleteGCPEARCmd)
