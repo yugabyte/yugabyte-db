@@ -9,7 +9,7 @@ aliases:
 menu:
   preview:
     name: Node.js Drivers
-    identifier: ref-yugabyte-pg-driver
+    identifier: ref-1-yugabyte-pg-driver
     parent: nodejs-drivers
     weight: 100
 type: docs

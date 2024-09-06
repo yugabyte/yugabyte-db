@@ -9,7 +9,7 @@ aliases:
 menu:
   preview:
     name: Node.js Drivers
-    identifier: ref-postgres-pg-driver
+    identifier: ref-2-postgres-pg-driver
     parent: nodejs-drivers
     weight: 100
 type: docs
