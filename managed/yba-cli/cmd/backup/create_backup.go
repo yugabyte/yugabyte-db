@@ -267,8 +267,9 @@ var createBackupCmd = &cobra.Command{
 				}
 
 				backupCtx := formatter.Context{
-					Output: os.Stdout,
-					Format: backup.NewBackupFormat(viper.GetString("output")),
+					Command: "create",
+					Output:  os.Stdout,
+					Format:  backup.NewBackupFormat(viper.GetString("output")),
 				}
 				backup.Write(backupCtx, r.GetEntities())
 

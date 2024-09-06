@@ -41,8 +41,9 @@ func CreateStorageConfigurationUtil(
 	}
 	storageConfigData = storageConfigsUUID
 	storageConfigsCtx := formatter.Context{
-		Output: os.Stdout,
-		Format: storageConfigFormatter.NewStorageConfigFormat(viper.GetString("output")),
+		Command: "create",
+		Output:  os.Stdout,
+		Format:  storageConfigFormatter.NewStorageConfigFormat(viper.GetString("output")),
 	}
 	storageConfigFormatter.Write(storageConfigsCtx, storageConfigData)
 
@@ -69,8 +70,9 @@ func UpdateStorageConfigurationUtil(
 	}
 	storageConfigData = storageConfigsUUID
 	storageConfigsCtx := formatter.Context{
-		Output: os.Stdout,
-		Format: storageConfigFormatter.NewStorageConfigFormat(viper.GetString("output")),
+		Command: "update",
+		Output:  os.Stdout,
+		Format:  storageConfigFormatter.NewStorageConfigFormat(viper.GetString("output")),
 	}
 
 	storageConfigFormatter.Write(storageConfigsCtx, storageConfigData)

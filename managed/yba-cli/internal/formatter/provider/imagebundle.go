@@ -44,7 +44,7 @@ type ImageBundleContext struct {
 // NewImageBundleFormat for formatting output
 func NewImageBundleFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultImageBundle
 		return formatter.Format(format)
 	default: // custom format or json or pretty

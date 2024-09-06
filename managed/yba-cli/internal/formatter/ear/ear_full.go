@@ -37,7 +37,7 @@ func (fear *FullEARContext) SetFullEAR(ear util.KMSConfig) {
 // NewFullEARFormat for formatting output
 func NewFullEARFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultEARListing
 		return formatter.Format(format)
 	default: // custom format or json or pretty

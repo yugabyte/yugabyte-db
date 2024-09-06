@@ -31,6 +31,8 @@ const (
 	jsonFormat         = "{{json .}}"
 	prettyFormat       = "{{. | toPrettyJson}}"
 
+	ListCommandKey = "list"
+
 	// default header use accross multiple formatter
 	// UniverseHeader
 	UniversesHeader = "Universes"
@@ -68,6 +70,9 @@ const (
 // Format is the format string rendered using the Context
 type Format string
 
+// Command represets the type of command being executed
+type Command string
+
 // IsTable returns true if the format is a table-type format
 func (f Format) IsTable() bool {
 	return strings.HasPrefix(string(f), TableFormatKey)
@@ -88,12 +93,20 @@ func (f Format) Contains(sub string) bool {
 	return strings.Contains(string(f), sub)
 }
 
+// IsListCommand returns true if the command is a list command
+func (c Command) IsListCommand() bool {
+	return string(c) == ListCommandKey
+}
+
 // Context contains information required by the formatter to print the output as desired.
 type Context struct {
 	// Output is the output stream to which the formatted string is written.
 	Output io.Writer
 	// Format is used to choose raw, table or custom format for the output.
 	Format Format
+
+	// Command is the command being executed
+	Command Command
 
 	// internal element
 	finalFormat string

@@ -85,7 +85,7 @@ var describeBackupCmd = &cobra.Command{
 			}
 		}
 
-		if len(r.GetEntities()) > 0 && util.IsOutputType("table") {
+		if len(r.GetEntities()) > 0 && util.IsOutputType(formatter.TableFormatKey) {
 			fullBackupContext := *backup.NewFullBackupContext()
 			fullBackupContext.Output = os.Stdout
 			fullBackupContext.Format = backup.NewBackupFormat(viper.GetString("output"))
@@ -103,8 +103,9 @@ var describeBackupCmd = &cobra.Command{
 		}
 
 		backupCtx := formatter.Context{
-			Output: os.Stdout,
-			Format: backup.NewBackupFormat(viper.GetString("output")),
+			Command: "describe",
+			Output:  os.Stdout,
+			Format:  backup.NewBackupFormat(viper.GetString("output")),
 		}
 		backup.Write(backupCtx, r.GetEntities())
 	},

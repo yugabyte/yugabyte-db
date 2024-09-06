@@ -46,7 +46,7 @@ type Context struct {
 // NewBackupFormat for formatting output
 func NewBackupFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultBackupListing
 		return formatter.Format(format)
 	default: // custom format or json or pretty
@@ -57,7 +57,7 @@ func NewBackupFormat(source string) formatter.Format {
 // Write renders the context for a list of backups
 func Write(ctx formatter.Context, backups []ybaclient.BackupResp) error {
 	// Check if the format is JSON or Pretty JSON
-	if ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON() {
+	if (ctx.Format.IsJSON() || ctx.Format.IsPrettyJSON()) && ctx.Command.IsListCommand() {
 		// Marshal the slice of backups into JSON
 		var output []byte
 		var err error

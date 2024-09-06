@@ -37,7 +37,7 @@ type KeyspaceLocationContext struct {
 // NewKeyspaceLocationFormat for formatting output
 func NewKeyspaceLocationFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultKeyspaceLocation
 		return formatter.Format(format)
 	default: // custom format or json or pretty

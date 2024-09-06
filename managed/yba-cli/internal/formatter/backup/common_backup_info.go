@@ -40,7 +40,7 @@ type CommonBackupInfoContext struct {
 // NewCommonBackupInfoFormat for formatting output
 func NewCommonBackupInfoFormat(source string) formatter.Format {
 	switch source {
-	case "table", "":
+	case formatter.TableFormatKey, "":
 		format := defaultCommonBackupInfo
 		return formatter.Format(format)
 	default: // custom format or json or pretty

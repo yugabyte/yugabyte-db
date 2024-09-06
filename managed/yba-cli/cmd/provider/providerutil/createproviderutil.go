@@ -49,8 +49,9 @@ func WaitForCreateProviderTask(
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		providersCtx := formatter.Context{
-			Output: os.Stdout,
-			Format: providerFormatter.NewProviderFormat(viper.GetString("output")),
+			Command: "create",
+			Output:  os.Stdout,
+			Format:  providerFormatter.NewProviderFormat(viper.GetString("output")),
 		}
 
 		providerFormatter.Write(providersCtx, providerData)

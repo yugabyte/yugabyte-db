@@ -80,7 +80,7 @@ func DescribeEARUtil(cmd *cobra.Command, commandCall, earCode string) {
 		}
 	}
 
-	if len(r) > 0 && util.IsOutputType("table") {
+	if len(r) > 0 && util.IsOutputType(formatter.TableFormatKey) {
 		fullEARContext := *ear.NewFullEARContext()
 		fullEARContext.Output = os.Stdout
 		fullEARContext.Format = ear.NewFullEARFormat(viper.GetString("output"))
@@ -98,8 +98,9 @@ func DescribeEARUtil(cmd *cobra.Command, commandCall, earCode string) {
 	}
 
 	earCtx := formatter.Context{
-		Output: os.Stdout,
-		Format: ear.NewEARFormat(viper.GetString("output")),
+		Command: "describe",
+		Output:  os.Stdout,
+		Format:  ear.NewEARFormat(viper.GetString("output")),
 	}
 	ear.Write(earCtx, r)
 }
