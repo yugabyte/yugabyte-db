@@ -97,7 +97,7 @@ var RestartCmd = &cobra.Command{
 			fmt.Sprintf("Restarting universe %s\n",
 				formatter.Colorize(universeName, formatter.GreenColor)))
 
-		waitForUpgradeUniverseTask(authAPI, universeName, universeUUID, taskUUID)
+		WaitForUpgradeUniverseTask(authAPI, universeName, universeUUID, taskUUID)
 	},
 }
 

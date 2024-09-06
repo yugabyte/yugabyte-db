@@ -22,7 +22,8 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-func waitForUpgradeUniverseTask(
+// WaitForUpgradeUniverseTask waits for the upgrade task to complete
+func WaitForUpgradeUniverseTask(
 	authAPI *ybaAuthClient.AuthAPIClient, universeName, universeUUID, taskUUID string) {
 
 	var universeData []ybaclient.UniverseResp

@@ -168,7 +168,7 @@ var upgradeGflagsCmd = &cobra.Command{
 				universeUUID,
 			))
 
-		waitForUpgradeUniverseTask(authAPI, universeName, universeUUID, taskUUID)
+		WaitForUpgradeUniverseTask(authAPI, universeName, universeUUID, taskUUID)
 	},
 }
 

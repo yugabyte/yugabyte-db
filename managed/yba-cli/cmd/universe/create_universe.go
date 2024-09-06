@@ -113,7 +113,7 @@ var createUniverseCmd = &cobra.Command{
 		enableVolumeEncryption := v1.GetBool("enable-volume-encryption")
 
 		if enableVolumeEncryption {
-			opType = "ENABLE"
+			opType = util.EnableKMSOpType
 			kmsConfigName, err := cmd.Flags().GetString("kms-config")
 			if err != nil {
 				logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
