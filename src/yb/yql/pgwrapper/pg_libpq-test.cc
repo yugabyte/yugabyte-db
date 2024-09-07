@@ -4077,6 +4077,39 @@ static std::vector<YsqlMetric> ParsePrometheusMetrics(const std::string& metrics
   return parsed_metrics;
 }
 
+// Parse metrics from the JSON output of the /metrics endpoint.
+// Ignores the "sum" field for each metric, as it is empty for the catcache metrics.
+static std::vector<YsqlMetric> ParseJsonMetrics(const std::string& metrics_output) {
+  std::vector<YsqlMetric> parsed_metrics;
+
+  // Parse the JSON string
+  rapidjson::Document document;
+  document.Parse(metrics_output.c_str());
+
+  EXPECT_TRUE(document.IsArray() && document.Size() > 0);
+  const auto& server = document[0];
+  EXPECT_TRUE(server.HasMember("metrics") && server["metrics"].IsArray());
+  const auto& metrics = server["metrics"];
+  for (const auto& metric : metrics.GetArray()) {
+    EXPECT_TRUE(
+        metric.HasMember("name") && metric.HasMember("count") && metric.HasMember("sum") &&
+        metric.HasMember("rows"));
+    std::unordered_map<std::string, std::string> labels;
+    if (metric.HasMember("table_name")) {
+      labels["table_name"] = metric["table_name"].GetString();
+    } else {
+      LOG(INFO) << "No table name found for metric: " << metric["name"].GetString();
+    }
+
+    parsed_metrics.emplace_back(
+        metric["name"].GetString(), std::move(labels), metric["count"].GetInt64(),
+        0  // JSON doesn't include timestamp
+    );
+  }
+
+  return parsed_metrics;
+}
+
 TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
   auto conn = ASSERT_RESULT(Connect());
   // Make a new connection to see more cache misses (by default we will only
@@ -4087,58 +4120,75 @@ TEST_F(PgLibPqTest, CatalogCacheIdMissMetricsTest) {
   auto result = ASSERT_RESULT(conn.Fetch("SELECT * FROM t"));
   ExternalTabletServer* ts = cluster_->tablet_server(0);
   auto hostport = Format("$0:$1", ts->bind_host(), ts->pgsql_http_port());
-  auto pg_metrics_url =
-      Substitute("http://$0/prometheus-metrics?reset_histograms=false&show_help=false", hostport);
   EasyCurl c;
   faststring buf;
-  ASSERT_OK(c.FetchURL(pg_metrics_url, &buf));
-  string page_content = buf.ToString();
-  auto metrics = ParsePrometheusMetrics(page_content);
 
-  int64_t expected_total_cache_misses = 0;
-  for (const auto& metric : metrics) {
-    if (metric.name == "handler_latency_yb_ysqlserver_SQLProcessor_CatalogCacheMisses_count" &&
-        metric.labels.find("table_name") == metric.labels.end()) {
-      expected_total_cache_misses = metric.value;
-      break;
+  auto prometheus_metrics_url =
+      Substitute("http://$0/prometheus-metrics?reset_histograms=false&show_help=false", hostport);
+  ASSERT_OK(c.FetchURL(prometheus_metrics_url, &buf));
+  auto prometheus_metrics = ParsePrometheusMetrics(buf.ToString());
+  // Filter out metrics ending with "_sum", as they are empty for the catcache metrics and
+  // ignoring them here simplifies the logic below.
+  prometheus_metrics.erase(
+      std::remove_if(
+          prometheus_metrics.begin(), prometheus_metrics.end(),
+          [](const YsqlMetric& metric) {
+            return metric.name.length() >= 4 &&
+                   metric.name.substr(metric.name.length() - 4) == "_sum";
+          }),
+      prometheus_metrics.end());
+
+  auto json_metrics_url =
+      Substitute("http://$0/metrics?reset_histograms=false&show_help=false", hostport);
+  ASSERT_OK(c.FetchURL(json_metrics_url, &buf));
+  auto json_metrics = ParseJsonMetrics(buf.ToString());
+
+  for (const auto& metrics : {json_metrics, prometheus_metrics}) {
+    int64_t expected_total_cache_misses = 0;
+    for (const auto& metric : metrics) {
+      if (metric.name.find("CatalogCacheMisses") != std::string::npos &&
+          metric.labels.find("table_name") == metric.labels.end()) {
+        expected_total_cache_misses = metric.value;
+        break;
+      }
     }
-  }
-  ASSERT_GT(expected_total_cache_misses, 0);
-  LOG(INFO) << "Expected total cache misses: " << expected_total_cache_misses;
+    ASSERT_GT(expected_total_cache_misses, 0);
+    LOG(INFO) << "Expected total cache misses: " << expected_total_cache_misses;
 
-  // Sum the cache miss metrics for each index.
-  int64_t total_index_cache_misses = 0;
-  std::unordered_map<std::string, int64_t> per_table_index_cache_misses;
-  for (const auto& metric : metrics) {
-    if (metric.name == "handler_latency_yb_ysqlserver_SQLProcessor_CatalogCacheMisses_count" &&
-        metric.labels.find("table_name") != metric.labels.end()) {
-      auto table_name = GetCatalogTableNameFromIndexName(metric.labels.at("table_name"));
-      ASSERT_TRUE(table_name) << "Failed to get table name from index name: "
-                              << metric.labels.at("table_name");
+    // Go through the per-index metrics and aggregate them by table.
+    int64_t total_index_cache_misses = 0;
+    std::unordered_map<std::string, int64_t> per_table_index_cache_misses;
+    for (const auto& metric : metrics) {
+      if (metric.name.find("CatalogCacheMisses") != std::string::npos &&
+          metric.labels.find("table_name") != metric.labels.end()) {
+        auto table_name = GetCatalogTableNameFromIndexName(metric.labels.at("table_name"));
+        ASSERT_TRUE(table_name) << "Failed to get table name from index name: "
+                                << metric.labels.at("table_name");
 
-      per_table_index_cache_misses[*table_name] += metric.value;
-      total_index_cache_misses += metric.value;
-      LOG_IF(INFO, metric.value > 0) << "Index " << metric.labels.at("table_name") << " has "
-                                     << metric.value << " cache misses";
+        per_table_index_cache_misses[*table_name] += metric.value;
+        total_index_cache_misses += metric.value;
+        LOG_IF(INFO, metric.value > 0) << "Index " << metric.labels.at("table_name") << " has "
+                                       << metric.value << " cache misses";
+      }
     }
-  }
-  ASSERT_EQ(expected_total_cache_misses, total_index_cache_misses);
+    ASSERT_EQ(expected_total_cache_misses, total_index_cache_misses);
 
-  // Check that the sum of the cache misses for all the indexes on each table is equal to the
-  // table-level cache miss metric.
-  int64_t total_table_cache_misses = 0;
-  for (const auto& metric : metrics) {
-    if (metric.name == "handler_latency_yb_ysqlserver_SQLProcessor_CatalogCacheTableMisses_count") {
-      auto table_name = metric.labels.at("table_name");
-      ASSERT_EQ(per_table_index_cache_misses[table_name], metric.value)
-          << "Expected sum of index cache misses for table " << table_name
-          << " to be equal to the table cache misses";
-      total_table_cache_misses += metric.value;
-      LOG_IF(INFO, metric.value > 0)
-          << "Table " << table_name << " has " << metric.value << " cache misses";
+    // Check that the sum of the cache misses for all the indexes on each table is equal to the
+    // table-level cache miss metric.
+    int64_t total_table_cache_misses = 0;
+    for (const auto& metric : metrics) {
+      if (metric.name.find("CatalogCacheTableMisses") != std::string::npos) {
+        auto table_name = metric.labels.at("table_name");
+        ASSERT_EQ(per_table_index_cache_misses[table_name], metric.value)
+            << "Expected sum of index cache misses for table " << table_name
+            << " to be equal to the table cache misses";
+        total_table_cache_misses += metric.value;
+        LOG_IF(INFO, metric.value > 0)
+            << "Table " << table_name << " has " << metric.value << " cache misses";
+      }
     }
+    ASSERT_EQ(expected_total_cache_misses, total_table_cache_misses);
   }
-  ASSERT_EQ(expected_total_cache_misses, total_table_cache_misses);
 }
 
 class PgLibPqCreateSequenceNamespaceRaceTest : public PgLibPqTest {

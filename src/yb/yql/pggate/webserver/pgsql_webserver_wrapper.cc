@@ -252,6 +252,10 @@ static void PgMetricsHandler(const Webserver::WebRequest &req, Webserver::WebRes
     writer.Int64(entry->total_time);
     writer.String("rows");
     writer.Int64(entry->rows);
+    if (strlen(entry->table_name) > 0) {
+      writer.String("table_name");
+      writer.String(entry->table_name);
+    }
     writer.EndObject();
   }
 
