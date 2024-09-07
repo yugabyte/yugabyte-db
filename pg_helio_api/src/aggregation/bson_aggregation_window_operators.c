@@ -1058,6 +1058,12 @@ ParseAndSetFrameOption(const bson_value_t *value, WindowClause *windowClause,
 					frameNode = (Node *) MakeBsonConst(BsonValueToDocumentPgbson(
 														   frameValue));
 				}
+
+				/**
+				 * Range-based bounds require an ascending sortBy. Thus we set the inRangeAsc and inRangeNullsFirst always set to be true
+				 */
+				windowClause->inRangeAsc = true;
+				windowClause->inRangeNullsFirst = true;
 			}
 
 			if (index == 0)
