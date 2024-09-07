@@ -8,8 +8,8 @@ image: /images/section_icons/architecture/distributed_acid.png
 menu:
   stable:
     identifier: common-patterns
-    parent: develop
-    weight: 400
+    parent: data-modeling
+    weight: 600
 type: indexpage
 showRightNav: true
 ---
@@ -35,7 +35,9 @@ A good example would be the speed sensor in a car that tracks the speed of a car
 
 An insurance company could use the data to investigate accidents or an automobile company could track various sensors and improve the performance of the car. This could amount to billions of data points.
 
+{{<lead link="./timeseries">}}
 For more information on storing and retrieving such vast amounts of ordered data in YugabyteDB, see [Time series data model](./timeseries).
+{{</lead>}}
 
 ## Key-value
 
@@ -50,13 +52,17 @@ user2.name = "Harry Potter"
 user2.country = "UK"
 ```
 
-Key-value stores are expected to be some of the fastest storage data models. For more information on using YugabyteDB for key-value stores, see [Key-value data model](./keyvalue).
+Key-value stores are expected to be some of the fastest storage data models.
+
+{{<lead link="./keyvalue">}}
+For more information on using YugabyteDB for key-value stores, see [Key-value data model](./keyvalue).
+{{</lead>}}
 
 ## Wide-column
 
 In a wide-column data model, the data is organized as rows and columns. Each row is identified by a row `id` or `name` and each column is identified by a column `id` or `name`. Each row can have any number of columns attached to it. You can visualize it as a table-like structure where some of the cells are empty. For example:
 
-```sql{.nocopy}
+```caddyfile{.nocopy}
 |       | col-1 | col-2 | col-3 |
 | ----- | ----- | ----- | ----- |
 | row-1 | a     |       | c     |
@@ -66,7 +72,7 @@ In a wide-column data model, the data is organized as rows and columns. Each row
 
 To retrieve specific cells, you can issue commands similar to the following:
 
-```sql{.nocopy}
+```python{.nocopy}
 get(row-1, col-3) ==> c
 get(row-3, col-2) ==> NULL
 ```

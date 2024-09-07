@@ -77,5 +77,5 @@ To learn more about how to use browser-based IDEs, see [Cloud-native development
 Yugabyte provides multiple step-by-step guides for building scalable and fault-tolerant applications with YugabyteDB using your favorite programming language, services, and frameworks, including Kafka, Gen-AI, and more.
 
 {{<lead link="../tutorials/">}}
-For step-by-step guides for various frameworks, see [Tutorials](../tutorials/).
+For step-by-step guides for various frameworks, see [Tutorials](/preview/tutorials/).
 {{</lead>}}
