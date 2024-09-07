@@ -10,6 +10,8 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
+import static com.yugabyte.yw.common.Util.CONNECTION_POOLING_PREVIEW_VERSION;
+import static com.yugabyte.yw.common.Util.CONNECTION_POOLING_STABLE_VERSION;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
@@ -358,7 +360,10 @@ public class UniverseCRUDHandler {
 
     userIntent.masterGFlags = trimFlags(userIntent.masterGFlags);
     userIntent.tserverGFlags = trimFlags(userIntent.tserverGFlags);
-    if (StringUtils.isEmpty(userIntent.accessKeyCode)) {
+    Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+    if (StringUtils.isEmpty(userIntent.accessKeyCode)
+        && !(userIntent.providerType.equals(Common.CloudType.onprem)
+            && provider.getDetails().skipProvisioning)) {
       userIntent.accessKeyCode = appConfig.getString("yb.security.default.access.key");
     }
     try {
@@ -832,6 +837,19 @@ public class UniverseCRUDHandler {
               BAD_REQUEST,
               "Connection pooling is not allowed. Please set runtime flag"
                   + " 'yb.universe.allow_connection_pooling' to true.");
+        }
+
+        if (Util.compareYBVersions(
+                taskParams.getPrimaryCluster().userIntent.ybSoftwareVersion,
+                CONNECTION_POOLING_STABLE_VERSION,
+                CONNECTION_POOLING_PREVIEW_VERSION,
+                true)
+            < 0) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              String.format(
+                  "Connection pooling needs minimum stable version '%s' and preview version '%s'.",
+                  CONNECTION_POOLING_STABLE_VERSION, CONNECTION_POOLING_PREVIEW_VERSION));
         }
 
         if (taskParams.communicationPorts.ysqlServerRpcPort

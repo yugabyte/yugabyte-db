@@ -714,6 +714,7 @@ public class HealthChecker {
                 .setNodeIdentifier(nodeIdentifier)
                 .setYbSoftwareVersion(userIntent.ybSoftwareVersion)
                 .setEnableYSQL(userIntent.enableYSQL)
+                .setEnableConnectionPooling(userIntent.enableConnectionPooling)
                 .setEnableYCQL(userIntent.enableYCQL)
                 .setEnableYEDIS(userIntent.enableYEDIS)
                 .setEnableTls(userIntent.enableNodeToNodeEncrypt)
@@ -751,6 +752,9 @@ public class HealthChecker {
         if (nodeInfo.enableYSQL && nodeDetails.isYsqlServer) {
           nodeInfo.setYsqlPort(nodeDetails.ysqlServerRpcPort);
           nodeInfo.setYsqlServerHttpPort(nodeDetails.ysqlServerHttpPort);
+          if (nodeInfo.enableConnectionPooling) {
+            nodeInfo.setInternalYsqlPort(nodeDetails.internalYsqlServerRpcPort);
+          }
         }
         if (nodeInfo.enableYCQL && nodeDetails.isYqlServer) {
           nodeInfo.setYcqlPort(nodeDetails.yqlServerRpcPort);
@@ -1147,9 +1151,11 @@ public class HealthChecker {
     private boolean rootAndClientRootCASame = true;
     private String sslProtocol = "";
     private boolean enableYSQL = false;
+    private boolean enableConnectionPooling = false;
     private boolean enableYCQL = false;
     private boolean enableYSQLAuth = false;
     private int ysqlPort = 5433;
+    private int internalYsqlPort = 6433;
     private int ycqlPort = 9042;
     private boolean enableYEDIS = false;
     private int redisPort = 6379;

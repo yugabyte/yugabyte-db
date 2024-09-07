@@ -11,25 +11,31 @@
 // under the License.
 //
 
-#include "yb/vector/distance.h"
+#include "yb/util/thread_holder.h"
 
-#include <cmath>
+namespace yb {
 
-#include "yb/util/logging.h"
-
-namespace yb::vectorindex {
-
-namespace distance {
-
-}  // namespace distance
-
-std::vector<VertexId> VertexIdsOnly(const VerticesWithDistances& vertices_with_distances) {
-  std::vector<VertexId> result;
-  result.reserve(vertices_with_distances.size());
-  for (const auto& v_dist : vertices_with_distances) {
-    result.push_back(v_dist.vertex_id);
+void ThreadHolder::JoinAll() {
+  if (verbose_) {
+    LOG(INFO) << __func__;
   }
-  return result;
 
+  for (auto& thread : threads_) {
+    if (thread.joinable()) {
+      thread.join();
+    }
+  }
+
+  if (verbose_) {
+    LOG(INFO) << __func__ << " done";
+  }
 }
-}  // namespace yb::vectorindex
+
+void WaitStopped(const CoarseDuration& duration, std::atomic<bool>* stop) {
+  auto end = CoarseMonoClock::now() + duration;
+  while (!stop->load(std::memory_order_acquire) && CoarseMonoClock::now() < end) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+}
+
+}  // namespace yb

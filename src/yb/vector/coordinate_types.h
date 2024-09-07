@@ -31,7 +31,7 @@ namespace yb::vectorindex {
 // The usearch counterpart of this is scalar_kind_t in index_plugins.hpp.
 // Columns:
 // 1. This goes into enum element naming, e.g. kFloat64 or kFloat32.
-// 2. The corresponding (mostly) standard C/C++ data type.
+// 2. The corresponding standard C/C++ data type or a ..._t type from stdint.h.
 // 3. The prefix of what usearch calls this type (e.g. f64_k for the scalar_kind_t enum element and
 //    f64_t for the typedef). This is also a convenient short identifer.
 #define YB_COORDINATE_TYPE_INFO   \
@@ -53,22 +53,6 @@ namespace yb::vectorindex {
 #define YB_EXTRACT_COORDINATE_TYPE_NAME_CAPITALIZED(tuple) BOOST_PP_TUPLE_ELEM(3, 0, tuple)
 #define YB_EXTRACT_COORDINATE_TYPE(tuple)                  BOOST_PP_TUPLE_ELEM(3, 1, tuple)
 #define YB_EXTRACT_COORDINATE_TYPE_SHORT_NAME(tuple)       BOOST_PP_TUPLE_ELEM(3, 2, tuple)
-
-#define YB_EXTRACT_COORDINATE_TYPE_WITH_COMMA(r, data, i, coordinate_info_tuple) \
-  BOOST_PP_COMMA_IF(i) YB_EXTRACT_COORDINATE_TYPE(coordinate_info_tuple)
-
-// Comma-separated list of scalar types
-#define YB_COORDINATE_TYPES_COMMA_SEPARATED \
-  BOOST_PP_SEQ_FOR_EACH_I(YB_EXTRACT_COORDINATE_TYPE_WITH_COMMA, _, YB_COORDINATE_TYPE_INFO)
-
-#define YB_VECTOR_TYPE_WITH_COMMA(r, data, i, coordinate_info_tuple) \
-  BOOST_PP_COMMA_IF(i) std::vector<YB_EXTRACT_COORDINATE_TYPE(coordinate_info_tuple)>
-
-// Comma-separated list of vector types
-#define YB_VECTOR_TYPES_COMMA_SEPARATED \
-  BOOST_PP_SEQ_FOR_EACH_I(YB_VECTOR_TYPE_WITH_COMMA, _, YB_COORDINATE_TYPE_INFO)
-
-#undef YB_MAKE_VECTOR_TYPE_WITH_COMMA
 
 // ------------------------------------------------------------------------------------------------
 // CoordinateKind enum
@@ -132,12 +116,13 @@ struct CoordinateTypeTraits {
   using Vector = std::vector<T>;
 };
 
-#define YB_DEFINE_COORDINATE_TYPE_TRAITS(capitalized_name, scalar_type_name, short_type_name) \
+#define YB_DEFINE_COORDINATE_TYPE_TRAITS( \
+        capitalized_name, \
+        scalar_type_name, \
+        short_type_name) \
     template <> \
     struct CoordinateTypeTraits<scalar_type_name> { \
-      static constexpr CoordinateKind Kind() { \
-        return CoordinateKind::BOOST_PP_CAT(k, capitalized_name); \
-      } \
+      static constexpr CoordinateKind kKind = CoordinateKind::BOOST_PP_CAT(k, capitalized_name); \
       static constexpr const char* ShortTypeNameStr() { \
         /* Short type name such as f32, u8, etc. */ \
         return BOOST_PP_STRINGIZE(short_type_name); \
@@ -193,5 +178,38 @@ ReturnType HandleCoordinateKindSwitch(CoordinateKind coordinate_kind, Functor&& 
     BOOST_PP_SEQ_FOR_EACH(YB_INSTANTIATE_TEMPLATE_FOR_VECTOR_FROM_TUPLE, \
                           template_name, \
                           YB_COORDINATE_TYPE_INFO)
+
+
+// ------------------------------------------------------------------------------------------------
+// Vector cast
+// ------------------------------------------------------------------------------------------------
+
+template<IndexableVectorType ToVector, IndexableVectorType FromVector>
+ToVector vector_cast(const FromVector& from_vector) {
+  if constexpr (std::is_same_v<FromVector, ToVector>) {
+    return from_vector;
+  }
+  ToVector to_vector;
+  to_vector.reserve(from_vector.size());
+  for (const auto& from_element : from_vector) {
+    to_vector.push_back(static_cast<typename ToVector::value_type>(from_element));
+  }
+  return to_vector;
+}
+
+// Cast for vector of vectors
+template<IndexableVectorType ToVector, IndexableVectorType FromVector>
+auto vector_cast(const std::vector<FromVector>& v) {
+  if constexpr (std::is_same_v<FromVector, ToVector>) {
+    return v;
+  }
+  std::vector<ToVector> result;
+  result.reserve(v.size());
+  for (const auto& subvector : v) {
+    result.push_back(vector_cast<ToVector>(subvector));
+  }
+  return result;
+}
+
 
 }  // namespace yb::vectorindex

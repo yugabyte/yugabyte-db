@@ -91,47 +91,64 @@ List of wait events by the wait event components.
 
 These are the wait events introduced by YugabyteDB, however some of the following [wait events](https://www.postgresql.org/docs/current/monitoring-stats.html) inherited from PostgreSQL might also show up in the [yb_active_session_history](#yb-active-session-history) view.
 
-| Class | Wait Event | Wait Event Type | Wait Event Aux | Description |
+| Wait Event Class | Wait Event | Wait Event Type | Wait Event Aux | Description |
 | :--------------- |:---------- | :-------------- |:--- | :---------- |
-| TServer Wait | StorageRead | Network  |  | Waiting for a DocDB read operation |
-| TServer Wait | CatalogRead | Network  |   | Waiting for a catalog read operation |
-| TServer Wait | IndexRead | Network |   | Waiting for a secondary index read operation  |
-| TServer Wait | StorageFlush  | Network |  | Waiting for a storage flush request |
+| TServerWait | StorageRead | Network  |  | A YSQL backend is waiting for a table read from DocDB. |
+| TServerWait | CatalogRead | Network  |   | A YSQL backend is waiting for a catalog read from master. |
+| TServerWait | IndexRead | Network |   | A YSQL backend is waiting for a secondary index read from DocDB.  |
+| TServerWait | StorageFlush  | Network |  | A YSQL backend is waiting for a table/index read/write from DocDB. |
 | YSQLQuery | QueryProcessing| CPU |  | Doing CPU work |
-| YSQLQuery | yb_ash_metadata | LWLock |  | Waiting to update ASH metadata for a query |
-| Timeout | YBTxnConflictBackoff | Timeout |  | Waiting due to conflict in DocDB |
+| YSQLQuery | yb_ash_metadata | LWLock |  | A YSQL backend is waiting to update ASH metadata for a query. |
+| Timeout | YBTxnConflictBackoff | Timeout |  | A YSQL backend is waiting due to conflict in DocDB. |
 
 ### YB-TServer
 
-| Class | Wait Event | Wait Event Type | Wait Event Aux | Description |
+| Wait Event Class | Wait Event | Wait Event Type | Wait Event Aux | Description |
 |:---------------- | :--------- |:--------------- | :--- | :---------- |
-| Common | OnCpu_Passive | CPU | | Waiting for a thread to pick it up |
-| Common | OnCpu_Active | CPU |  | RPC is being actively processed on a thread |
-| Common | ResponseQueued | Network | | Waiting for response to be transferred |
-| Tablet | AcquiringLocks | Lock | \<tablet&#8209;id>| Taking row-wise locks. May need to wait for other rpcs to release the lock. |
-| Tablet | MVCC_WaitForSafeTime | Lock | \<tablet-id>| Waiting for the SafeTime to be at least the desired read-time. |
-| Tablet | BackfillIndex_WaitForAFreeSlot | Lock | \<tablet-id> | Waiting for a slot to open if there are too many backfill requests at the same time. |
-| Tablet | CreatingNewTablet | I/O  | \<tablet-id>| Creating a new tablet may involve writing metadata files, causing I/O wait.  |
-| Tablet | WaitOnConflictingTxn | Lock | \<tablet-id>| Waiting for the conflicting transactions to complete. |
-| Consensus | WAL_Append | I/O | \<tablet-id>| Persisting Wal edits |
-| Consensus | WAL_Sync | I/O | \<tablet-id>| Persisting Wal edits |
-| Consensus | Raft_WaitingForReplication | Network | \<tablet-id>| Waiting for Raft replication |
-| Consensus | Raft_ApplyingEdits | Lock/CPU | \<tablet-id>| Applying the edits locally |
-| RocksDB  | BlockCacheReadFromDisk | I/O  | \<tablet-id>| Populating block cache from disk |
-| RocksDB | Flush  | I/O | \<tablet-id> | Doing RocksDB flush  |
-| RocksDB | Compaction | I/O | \<tablet-id>| Doing RocksDB compaction |
-| RocksDB | RateLimiter | I/O | | Slow down due to rate limiter throttling access to disk |
+| Common | OnCpu_Passive | CPU | | An RPC or task is waiting for a thread to pick it up. |
+| Common | OnCpu_Active | CPU |  | An RPC or task is being actively processed on a thread. |
+| Common | Idle | WaitOnCondition | | The Raft log appender/sync thread is idle. |
+| Common | Rpc_Done | WaitOnCondition | | An RPC is done and waiting for the reactor to send the response to a YSQL/YCQL backend. |
+| Common | RetryableRequests_SaveToDisk | DiskIO | | The in-memory state of the retryable requests is being saved to the disk. |
+| TabletWait | MVCC_WaitForSafeTime | WaitOnCondition | | A read/write RPC is waiting for the safe time to be at least the desired read-time. |
+| TabletWait | LockedBatchEntry_Lock | WaitOnCondition | | A read/write RPC is waiting for a DocDB row-level lock. |
+| TabletWait | BackfillIndex_WaitForAFreeSlot | WaitOnCondition | | A backfill index RPC is waiting for a slot to open if there are too many backfill requests at the same time. |
+| TabletWait | CreatingNewTablet | DiskIO | | The CreateTablet RPC is creating a new tablet, this may involve writing metadata files, causing I/O wait. |
+| TabletWait | SaveRaftGroupMetadataToDisk | DiskIO | | The Raft/tablet metadata is being written to disk, generally during snapshot or restore operations. |
+| TabletWait | TransactionStatusCache_DoGetCommitData | Network | | An RPC needs to look up the commit status of a particular transaction. |
+| TabletWait | WaitForYSQLBackendsCatalogVersion | WaitOnCondition | | CREATE INDEX is waiting for YSQL backends to have up-to-date pg_catalog. |
+| TabletWait | WriteSysCatalogSnapshotToDisk | DiskIO | | Writing initial system catalog snapshot during initdb.|
+| TabletWait | DumpRunningRpc_WaitOnReactor | WaitOnCondition | | DumpRunningRpcs is waiting on reactor threads. |
+| TabletWait | ConflictResolution_ResolveConficts | Network | | A read/write RPC is waiting to identify conflicting transactions. |
+| TabletWait | ConflictResolution_WaitOnConflictingTxns | WaitOnCondition |  | A read/write RPC is waiting for conflicting transactions to complete. |
+| Consensus | WAL_Append | DiskIO | \<tablet-id>| A write RPC is persisting WAL edits. |
+| Consensus | WAL_Sync | DiskIO | \<tablet-id>| A write RPC is synchronizing WAL edits. |
+| Consensus | Raft_WaitingForReplication | Network | \<tablet-id>| A write RPC is waiting for Raft replication. |
+| Consensus | Raft_ApplyingEdits | Lock/CPU | \<tablet-id>| A write RPC is applying Raft edits locally. |
+| Consensus | ConsensusMeta_Flush | DiskIO | | ConsensusMetadata is flushed, for example, during Raft term, configuration change, remote bootstrap, and so on. |
+| Consensus | ReplicaState_TakeUpdateLock | WaitOnCondition | | A write/alter RPC needs to wait for the ReplicaState lock to replicate a batch of writes through Raft. |
+| RocksDB | RocksDB_ReadBlockFromFile | DiskIO  | | RocksDB is reading a block from a file. |
+| RocksDB | RocksDB_OpenFile | DiskIO | | RocksDB is opening a file. |
+| RocksDB | RocksDB_WriteToFile | DiskIO | | RocksDB is writing to a file. |
+| RocksDB | RocksDB_Flush | CPU | | RocksDB is doing a flush. |
+| RocksDB | RocksDB_Compaction | CPU | | RocksDB is doing a compaction. |
+| RocksDB | RocksDB_PriorityThreadPoolTaskPaused | WaitOnCondition | | RocksDB pauses a flush or compaction task for another flush or compaction task with a higher priority. |
+| RocksDB | RocksDB_CloseFile | DiskIO | | RocksDB is closing a file. |
+| RocksDB | RocksDB_RateLimiter | WaitOnCondition | | RocksDB flush/compaction is slowing down due to rate limiter throttling access to disk. |
+| RocksDB | RocksDB_WaitForSubcompaction | WaitOnCondition | | RocksDB is waiting for a compaction to complete. |
+| RocksDB | RocksDB_NewIterator | DiskIO | | RocksDB is waiting for a new iterator to be created. |
 
 ### YCQL
 
-| Class | Wait Event | Wait Event Type | Wait Event Aux | Description |
+| Wait Event Class | Wait Event | Wait Event Type | Wait Event Aux | Description |
 | :--------------- |:---------- | :-------------- |:--- | :---------- |
-| YCQLQuery | YCQL_Parse | CPU  | | CQL call is being actively processed |
-| YCQLQuery | YCQL_Read | Network | \<table&#8209;id> | Waiting for DocDB read operation |
-| YCQLQuery | YCQL_Write | Network | \<table-id> | Waiting for DocDB write operation  |
-| YBClient | LookingUpTablet | Network |  | Looking up tablet information  |
-| YBClient | YBCSyncLeaderMasterRpc  | Network |  | Waiting on an RPC to the master/master-service  |
-| YBClient | YBCFindMasterProxy | Network  | | Waiting on establishing the proxy to master leader |
+| YCQLQuery | YCQL_Parse | CPU  | | YCQL is parsing a query. |
+| YCQLQuery | YCQL_Read | CPU | \<table&#8209;id> | YCQL is processing a read query.|
+| YCQLQuery | YCQL_Write | CPU | \<table-id> | YCQL is processing a write query.  |
+| YCQLQuery | YCQL_Analyze | CPU |  | YCQL is analyzing a query. |
+| YCQLQuery | YCQL_Execute | CPU |  | YCQL is executing a query. |
+| Client | YBClient_WaitingOnDocDB | Network | | YB Client is waiting on DocDB to return a response. |
+| Client | YBClient_LookingUpTablet | Network | | YB Client is looking up tablet information from the master. |
 
 ## Examples
 

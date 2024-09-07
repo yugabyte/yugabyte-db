@@ -143,6 +143,10 @@ public class Util {
 
   public static final String GFLAG_GROUPS_PREVIEW_VERSION = "2.23.0.0-b416";
 
+  public static final String CONNECTION_POOLING_PREVIEW_VERSION = "2.23.0.0";
+
+  public static final String CONNECTION_POOLING_STABLE_VERSION = "2024.1.0.0";
+
   public static final String AUTO_FLAG_FILENAME = "auto_flags.json";
 
   public static final String GFLAG_GROUPS_FILENAME = "gflag_groups.json";

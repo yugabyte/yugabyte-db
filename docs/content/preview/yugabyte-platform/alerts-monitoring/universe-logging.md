@@ -25,7 +25,7 @@ The Audit log export feature is {{<badge/ea>}}. To enable the feature in Yugabyt
 
 To export logs, you need to first create an export configuration. A configuration defines the sign in credentials and settings for the tool that you want to export your logs to. Refer to [Manage export configurations](../anywhere-export-configuration).
 
-If you want to set pgaudit.log_level to a [severity level](https://www.postgresql.org/docs/11/runtime-config-logging.html#RUNTIME-CONFIG-SEVERITY-LEVELS) greater than WARNING (that is, DEBUG1-5, INFO, NOTICE), you must set the YB-TServer [ysql_log_min_messages](../../../reference/configuration/yb-tserver/#--ysql-log-min-messages) flag accordingly.
+If you want to set pgaudit.log_level to a [severity level](https://www.postgresql.org/docs/11/runtime-config-logging.html#RUNTIME-CONFIG-SEVERITY-LEVELS) greater than WARNING (that is, DEBUG1-5, INFO, NOTICE), you must set the YB-TServer [ysql_log_min_messages](../../../reference/configuration/yb-tserver/#ysql-log-min-messages) flag accordingly.
 
 ## Limitations
 

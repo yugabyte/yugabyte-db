@@ -90,6 +90,7 @@ DECLARE_int64(memory_limit_hard_bytes);
 DECLARE_string(vmodule);
 DECLARE_uint64(rpc_connection_timeout_ms);
 DECLARE_uint64(rpc_read_buffer_size);
+DECLARE_uint64(rpc_max_message_size);
 
 using namespace std::chrono_literals;
 using std::string;
@@ -1169,6 +1170,54 @@ void TestCantAllocateReadBuffer(CalculatorServiceProxy* proxy) {
 
 TEST_F(TestRpc, YB_DISABLE_TEST_ON_MACOS(CantAllocateReadBuffer)) {
   RunPlainTest(&TestCantAllocateReadBuffer, SetupServerForTestCantAllocateReadBuffer());
+}
+
+namespace {
+
+void TestMaxSizeRpcResponse(CalculatorServiceProxy* proxy) {
+  using google::protobuf::io::CodedOutputStream;
+
+  const size_t rpc_max_size = FLAGS_rpc_max_message_size;
+  const size_t rpc_max_size_varint_size =
+      CodedOutputStream::VarintSize32(narrow_cast<uint32_t>(rpc_max_size));
+
+  ResponseHeader resp_header;
+  resp_header.set_call_id(1);
+  resp_header.set_is_error(false);
+
+  const size_t header_pb_len = resp_header.ByteSize();
+  const size_t header_tot_len = OutboundCall::HeaderTotalLength(header_pb_len);
+
+  // We assume that length of data field/entire message is close enough to rpc_max_size for
+  // simplicity; this should hold for the values we use for rpc_max_size.
+  const size_t msg_len_without_data = 1                       // Field tag.
+      + rpc_max_size_varint_size                              // Length of data field.
+      + rpc_max_size_varint_size;                             // Length of entire message.
+
+  const size_t data_length = rpc_max_size - header_tot_len - msg_len_without_data;
+
+  RpcController controller;
+  controller.set_timeout(5s * kTimeMultiplier);
+
+  rpc_test::RepeatedEchoRequestPB req;
+  req.set_character('0');
+  req.set_count(data_length);
+
+  rpc_test::RepeatedEchoResponsePB resp;
+  ASSERT_OK(proxy->RepeatedEcho(req, &resp, &controller));
+
+  controller.Reset();
+
+  req.set_character('0');
+  req.set_count(data_length + 1);
+  ASSERT_NOK(proxy->RepeatedEcho(req, &resp, &controller));
+}
+
+} // namespace
+
+TEST_F(TestRpc, MaxSizeResponse) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_max_message_size) = 10_MB;
+  RunPlainTest(&TestMaxSizeRpcResponse);
 }
 
 class TestRpcSecure : public RpcTestBase {

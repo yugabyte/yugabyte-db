@@ -55,7 +55,7 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
     builder.addCommonTServerFlag("ysql_conn_mgr_dowarmup", "false");
     if (warmup_random_mode) {
       builder.addCommonTServerFlag(
-      "TEST_ysql_conn_mgr_dowarmup_all_pools_random_attach", "true");
+      "TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "random");
     }
   }
 
@@ -65,7 +65,7 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
 
   protected void disableWarmupRandomMode(MiniYBClusterBuilder builder) {
     builder.addCommonTServerFlag(
-        "TEST_ysql_conn_mgr_dowarmup_all_pools_random_attach", "false");
+        "TEST_ysql_conn_mgr_dowarmup_all_pools_mode", "none");
     warmup_random_mode = false;
     return;
   }

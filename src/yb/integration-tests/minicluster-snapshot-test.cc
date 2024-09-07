@@ -1032,5 +1032,23 @@ TEST_P(PgCloneTestWithColocatedDBParam, YB_DISABLE_TEST_IN_SANITIZERS(CloneOfClo
   ASSERT_RESULT(ConnectToDB(kTargetNamespaceName2));
 }
 
+TEST_F(PgCloneColocationTest, YB_DISABLE_TEST_IN_SANITIZERS(NoColocatedChildTables)) {
+  ASSERT_OK(source_conn_->Execute("CREATE TABLE t2(k int, v1 int) WITH (COLOCATION = false)"));
+  ASSERT_OK(source_conn_->Execute("DROP TABLE t1"));
+  auto no_child_tables_time = ASSERT_RESULT(GetCurrentTime()).ToInt64();
+  ASSERT_OK(source_conn_->Execute("DROP TABLE t2"));
+
+  // Clone to a time when there are no colocated child tables.
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1 AS OF $2", kTargetNamespaceName1, kSourceNamespaceName,
+      no_child_tables_time));
+  ASSERT_RESULT(ConnectToDB(kTargetNamespaceName1));
+
+  // Clone to a time when there are no tables.
+  ASSERT_OK(source_conn_->ExecuteFormat(
+      "CREATE DATABASE $0 TEMPLATE $1", kTargetNamespaceName2, kSourceNamespaceName));
+  ASSERT_RESULT(ConnectToDB(kTargetNamespaceName2));
+}
+
 }  // namespace master
 }  // namespace yb

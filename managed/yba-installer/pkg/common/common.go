@@ -55,9 +55,10 @@ func Install(version string) error {
 		return fmt.Errorf("could not set ownership of %s: %v", YbactlLogFile(), err)
 	}
 
-	if err := createInstallDirs(); err != nil {
+	if err := createSoftwareInstallDirs(); err != nil {
 		return err
 	}
+
 	if err := copyBits(version); err != nil {
 		return err
 	}
@@ -97,16 +98,59 @@ func Install(version string) error {
 	return nil
 }
 
-func createInstallDirs() error {
-	createDirs := []string{
+// Initialize creates does setup of the common data directories.
+func Initialize() error {
+	if err := createDataInstallDirs(); err != nil {
+		return err
+	}
+
+	// Generate certs if required.
+	var serverCertPath, serverKeyPath string
+	if len(viper.GetString("server_cert_path")) == 0 {
+		log.Info("Generating self-signed server certificates")
+		serverCertPath, serverKeyPath = GenerateSelfSignedCerts()
+		if err := SetYamlValue(InputFile(), "server_cert_path", serverCertPath); err != nil {
+			return err
+		}
+		if err := SetYamlValue(InputFile(), "server_key_path", serverKeyPath); err != nil {
+			return err
+		}
+		InitViper()
+	}
+	return nil
+}
+
+func createSoftwareInstallDirs() error {
+	dirs := []string{
 		GetSoftwareRoot(),
 		dm.WorkingDirectory(),
-		filepath.Join(GetBaseInstall(), "data"),
-		filepath.Join(GetBaseInstall(), "data/logs"),
 		GetInstallerSoftwareDir(),
 		GetBaseInstall(),
 	}
+	if err := CreateDirs(dirs); err != nil {
+		return err
+	}
+	// Remove the symlink if one exists
+	SetActiveInstallSymlink()
+	return nil
+}
 
+func createDataInstallDirs() error {
+	dirs := []string{
+		filepath.Join(GetBaseInstall(), "data"),
+		filepath.Join(GetBaseInstall(), "data/logs"),
+	}
+	return CreateDirs(dirs)
+}
+
+func createUpgradeDirs() error {
+	dirs := []string{
+		GetInstallerSoftwareDir(),
+	}
+	return CreateDirs(dirs)
+}
+
+func CreateDirs(createDirs []string) error {
 	for _, dir := range createDirs {
 		_, err := os.Stat(dir)
 		if os.IsNotExist(err) {
@@ -121,30 +165,6 @@ func createInstallDirs() error {
 			if err != nil {
 				return fmt.Errorf("failed to change ownership of " + dir + " to " +
 					serviceuser + ": " + err.Error())
-			}
-		}
-	}
-
-	// Remove the symlink if one exists
-	SetActiveInstallSymlink()
-	return nil
-}
-
-func createUpgradeDirs() error {
-	createDirs := []string{
-		GetInstallerSoftwareDir(),
-	}
-
-	for _, dir := range createDirs {
-		if err := MkdirAll(dir, DirMode); err != nil {
-			return fmt.Errorf("failed creating directory %s: %s", dir, err.Error())
-		}
-		if HasSudoAccess() {
-			err := Chown(dir, viper.GetString("service_username"), viper.GetString("service_username"),
-				true)
-			if err != nil {
-				return fmt.Errorf("failed to change ownership of " + dir + " to " +
-					viper.GetString("service_username") + ": " + err.Error())
 			}
 		}
 	}
@@ -471,19 +491,6 @@ func FixConfigValues() error {
 		InitViper()
 	}
 
-	var serverCertPath, serverKeyPath string
-	if len(viper.GetString("server_cert_path")) == 0 {
-		log.Info("Generating self-signed server certificates")
-		serverCertPath, serverKeyPath = GenerateSelfSignedCerts()
-		if err := SetYamlValue(InputFile(), "server_cert_path", serverCertPath); err != nil {
-			return err
-		}
-		if err := SetYamlValue(InputFile(), "server_key_path", serverKeyPath); err != nil {
-			return err
-		}
-		InitViper()
-	}
-
 	if viper.GetBool("postgres.install.enabled") &&
 		len(viper.GetString("postgres.install.password")) == 0 {
 		log.Info("Generating default password for postgres")
@@ -531,6 +538,10 @@ func GenerateSelfSignedCerts() (string, string) {
 	err := MkdirAll(certsDir, DirMode)
 	if err != nil && !os.IsExist(err) {
 		log.Fatal(fmt.Sprintf("Unable to create dir %s", certsDir))
+	}
+	username := viper.GetString("service_username")
+	if err := Chown(certsDir, username, username, true); err != nil {
+		log.Fatal(fmt.Sprintf("Unable to chown dir %s", certsDir))
 	}
 	log.Debug("Created dir " + certsDir)
 

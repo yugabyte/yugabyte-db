@@ -46,6 +46,7 @@ public class TestPgConstraintCache extends BasePgSQLTest {
    */
   @Test
   public void groupByTest() throws Exception {
+    setConnMgrWarmupModeAndRestartCluster(ConnectionManagerWarmupMode.ROUND_ROBIN);
     try (Statement stmt = connection.createStatement()) {
       // Set up the table and data
       stmt.execute("CREATE TABLE t(a INT PRIMARY KEY, b INT, c INT);");
@@ -67,6 +68,14 @@ public class TestPgConstraintCache extends BasePgSQLTest {
 
         assertEquals(1, groupKeyArray.length());
         assertEquals("a", groupKeyArray.getString(0));
+      }
+
+      // Run the query a few times to warm up the caches of all backends when
+      // Connection Manager is in round-robin warmup mode
+      if (isConnMgrWarmupRoundRobinMode()) {
+        for (int i = 0; i < CONN_MGR_WARMUP_BACKEND_COUNT; i++) {
+          stmt.execute(query);
+        }
       }
 
       // Run the query again and check that we're not doing catalog read requests

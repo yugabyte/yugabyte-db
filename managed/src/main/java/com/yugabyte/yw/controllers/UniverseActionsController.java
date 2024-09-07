@@ -41,6 +41,8 @@ import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
 import com.yugabyte.yw.rbac.annotations.Resource;
 import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.io.IOException;
@@ -178,6 +180,12 @@ public class UniverseActionsController extends AuthenticatedController {
       value = "Set a universe's key",
       nickname = "setUniverseKey",
       response = UniverseResp.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "SetUniverseKeyRequest",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.EncryptionAtRestConfig",
+          required = true))
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.2.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(

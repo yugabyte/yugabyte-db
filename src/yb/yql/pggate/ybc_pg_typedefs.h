@@ -394,7 +394,7 @@ typedef struct PgGFlagsAccessor {
   const bool*     TEST_ysql_hide_catalog_version_increment_log;
   const bool*     TEST_generate_ybrowid_sequentially;
   const bool*     ysql_use_fast_backward_scan;
-  const bool*     TEST_ysql_conn_mgr_dowarmup_all_pools_random_attach;
+  const char*     TEST_ysql_conn_mgr_dowarmup_all_pools_mode;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {

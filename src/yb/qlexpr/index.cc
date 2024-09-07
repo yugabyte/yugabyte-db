@@ -112,6 +112,7 @@ IndexInfo::IndexInfo(const IndexInfoPB& pb)
   }
 
   if (pb.has_vector_idx_options()) {
+    has_vector_idx_options_ = true;
     vector_idx_options_ = pb.vector_idx_options();
   }
 }

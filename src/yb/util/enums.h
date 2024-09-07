@@ -15,6 +15,7 @@
 
 #include <bitset>
 #include <string>
+#include <unordered_map>
 
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/core/demangle.hpp>
@@ -30,6 +31,7 @@
 
 #include "yb/util/math_util.h" // For constexpr_max
 #include "yb/util/result.h"
+#include "yb/util/string_util.h"
 
 namespace yb {
 
@@ -104,10 +106,6 @@ class AllEnumItemsIterable {
     BOOST_PP_TUPLE_ELEM(2, 0, data):: \
         BOOST_PP_CAT(BOOST_PP_APPLY(BOOST_PP_TUPLE_ELEM(2, 1, data)), YB_ENUM_ITEM_NAME(elem))
 
-#define YB_ENUM_LIST_ITEM(s, data, elem) \
-    BOOST_PP_TUPLE_ELEM(2, 0, data):: \
-        BOOST_PP_CAT(BOOST_PP_APPLY(BOOST_PP_TUPLE_ELEM(2, 1, data)), YB_ENUM_ITEM_NAME(elem))
-
 #define YB_ENUM_CASE_NAME(s, data, elem) \
   case BOOST_PP_TUPLE_ELEM(2, 0, data):: \
       BOOST_PP_CAT(BOOST_PP_APPLY(BOOST_PP_TUPLE_ELEM(2, 1, data)), YB_ENUM_ITEM_NAME(elem)): \
@@ -133,7 +131,6 @@ class AllEnumItemsIterable {
     } \
     return nullptr; \
   } \
-  \
   inline __attribute__((unused)) std::string ToString(enum_name value) { \
     const char* c_str = ToCString(value); \
     if (c_str != nullptr) \
@@ -144,7 +141,10 @@ class AllEnumItemsIterable {
   inline __attribute__((unused)) std::ostream& operator<<(std::ostream& out, enum_name value) { \
     return out << ToString(value); \
   } \
-  \
+  inline __attribute__((unused)) std::istream& operator>>(std::istream& in, enum_name& value) { \
+    ::yb::detail::EnumFromInputStreamHelper<enum_name>(in, value); \
+    return in; \
+  } \
   constexpr __attribute__((unused)) size_t BOOST_PP_CAT(kElementsIn, enum_name) = \
       BOOST_PP_SEQ_SIZE(list); \
   constexpr __attribute__((unused)) size_t BOOST_PP_CAT(k, BOOST_PP_CAT(enum_name, MapSize)) =  \
@@ -435,5 +435,31 @@ template<typename EnumType>
 Result<EnumType> ParseEnumInsensitive(const std::string& str) {
   return ParseEnumInsensitive<EnumType>(str.c_str());
 }
+
+
+namespace detail {
+
+template<typename EnumType>
+void EnumFromInputStreamHelper(std::istream& in, EnumType& value) {
+  std::string token;
+  in >> token;
+  if (in.fail()) {
+    return;
+  }
+  auto parse_result = ParseEnumInsensitive<EnumType>(token);
+  if (parse_result.ok()) {
+    value = parse_result.get();
+    return;
+  }
+  // The vast majority of enums are defined with kFoo, kBar, etc. as their values.
+  parse_result = ParseEnumInsensitive<EnumType>("k" + token);
+  if (parse_result.ok()) {
+    value = parse_result.get();
+    return;
+  }
+  in.setstate(std::ios_base::failbit);
+}
+
+}  // namespace detail
 
 }  // namespace yb

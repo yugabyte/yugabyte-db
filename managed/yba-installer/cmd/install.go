@@ -14,6 +14,8 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/ybactlstate"
 )
 
+var dataless bool
+
 var installCmd = &cobra.Command{
 	Use:   "install",
 	Short: "Install YugabyteDB Anywhere.",
@@ -82,10 +84,23 @@ var installCmd = &cobra.Command{
 			log.Fatal(fmt.Sprintf("error installing new ybactl %s: %s", ybaCtl.Version(), err.Error()))
 		}
 
+		if !dataless {
+			if err := common.Initialize(); err != nil {
+				log.Fatal("error initializing common components: " + err.Error())
+			}
+		}
+
 		for _, name := range serviceOrder {
 			log.Info("About to install component " + name)
 			if err := services[name].Install(); err != nil {
 				log.Fatal("Failed while installing " + name + ": " + err.Error())
+			}
+			if !dataless {
+				if err := services[name].Initialize(); err != nil {
+					log.Fatal("Failed while initializing " + name + ": " + err.Error())
+				}
+			} else {
+				log.Debug("skipping initializing of service" + name)
 			}
 			log.Info("Completed installing component " + name)
 		}
@@ -93,35 +108,49 @@ var installCmd = &cobra.Command{
 		// Update state config now that install is complete.
 		state.Config.Hostname = viper.GetString("host")
 		state.CurrentStatus = ybactlstate.InstalledStatus
+		// We are initialized if a full install has taken place.
+		state.Initialized = !dataless
 		if err := ybactlstate.StoreState(state); err != nil {
 			log.Fatal("after full install, failed to update state: " + err.Error())
+		}
+
+		if dataless {
+			log.Info("Install without data complete. Please run \"ybactl start\" to start " +
+				"YugabyteDB Anywhere.")
+			return
 		}
 		if err := common.WaitForYBAReady(ybaCtl.Version()); err != nil {
 			log.Fatal(err.Error())
 		}
 
-		var statuses []common.Status
-		for _, name := range serviceOrder {
-			status, err := services[name].Status()
-			if err != nil {
-				log.Fatal("failed to get status: " + err.Error())
-			}
-			statuses = append(statuses, status)
-			if !common.IsHappyStatus(status) {
-				log.Fatal(status.Service + " is not running! Install might have failed, please check " +
-					common.YbactlLogFile())
-			}
-		}
-
-		common.PrintStatus(statuses...)
+		getAndPrintStatus()
 		log.Info("Successfully installed YugabyteDB Anywhere!")
 	},
+}
+
+func getAndPrintStatus() {
+	var statuses []common.Status
+	for _, name := range serviceOrder {
+		status, err := services[name].Status()
+		if err != nil {
+			log.Fatal("failed to get status: " + err.Error())
+		}
+		statuses = append(statuses, status)
+		if !common.IsHappyStatus(status) {
+			log.Fatal(status.Service + " is not running! Install might have failed, please check " +
+				common.YbactlLogFile())
+		}
+	}
+
+	common.PrintStatus(statuses...)
 }
 
 func init() {
 	installCmd.Flags().StringSliceVarP(&skippedPreflightChecks, "skip_preflight", "s",
 		[]string{}, "Preflight checks to skip by name")
 	installCmd.Flags().StringVarP(&licensePath, "license-path", "l", "", "path to license file")
+	installCmd.Flags().BoolVar(&dataless, "without-data", false,
+		"Install without initializing the data directory or starting services")
 
 	// Install must be run from directory of yba version
 	rootCmd.AddCommand(installCmd)

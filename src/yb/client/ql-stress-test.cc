@@ -74,8 +74,10 @@ DECLARE_bool(detect_duplicates_for_retryable_requests);
 DECLARE_bool(enable_ondisk_compression);
 DECLARE_bool(ycql_enable_packed_row);
 DECLARE_double(TEST_respond_write_failed_probability);
+DECLARE_double(TEST_simulate_lookup_partition_list_mismatch_probability);
 DECLARE_double(transaction_max_missed_heartbeat_periods);
 DECLARE_int32(TEST_max_write_waiters);
+DECLARE_int32(TEST_sleep_before_metacache_lookup_ms);
 DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_int32(log_cache_size_limit_mb);
 DECLARE_int32(log_min_seconds_to_retain);
@@ -435,6 +437,12 @@ TEST_F(QLStressTest, RetryWrites) {
 
 TEST_F(QLStressTest, RetryWritesWithRestarts) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_detect_duplicates_for_retryable_requests) = true;
+  TestRetryWrites(true /* restarts */);
+}
+
+TEST_F(QLStressTest, ReproMetaCacheDeadlock) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_simulate_lookup_partition_list_mismatch_probability) = 0.8;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_before_metacache_lookup_ms) = 50;
   TestRetryWrites(true /* restarts */);
 }
 

@@ -334,6 +334,12 @@ message PgsqlPagingStatePB {
 
   // Used read time.
   optional ReadHybridTimePB read_time = 6;
+
+  // Paging state fields for geometric indexes.
+  optional double distance = 7;
+  // Value of the next geometric index row that can be used as a key into the
+  // main RocksDB store.
+  optional bytes main_key = 8;
 }
 
 // Given: master --chunk--> tserver --batch--> postgres --page--> tserver
@@ -615,6 +621,10 @@ message PgsqlResponsePB {
   // to place it here, separated from paging status for singular request.
   optional int64 batch_arg_count = 10 [ default = 1 ];
   repeated int64 batch_orders = 12;
+
+  // For use with geometric indexes. The nth value here is the distance of the
+  // nth returned row from the query point/vector.
+  repeated double distances = 18;
 
   // Number of rows affected by the operation. Currently only used for update and delete.
   optional int32 rows_affected_count = 7;

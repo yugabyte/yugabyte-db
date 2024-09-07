@@ -61,7 +61,7 @@ struct HNSWOptions {
   // This is not used by usearch.
   float robust_prune_alpha = 1.0;
 
-  VectorDistanceType distance_type = VectorDistanceType::kL2Squared;
+  DistanceKind distance_kind = DistanceKind::kL2Squared;
 
   std::string ToString() const;
 };

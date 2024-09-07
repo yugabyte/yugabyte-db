@@ -143,6 +143,55 @@ typedef enum statementType
   CatCacheIdMisses_77,
   CatCacheIdMisses_78,
   CatCacheIdMisses_End = CatCacheIdMisses_78,
+  CatCacheTableMisses_Start,
+  CatCacheTableMisses_0 = CatCacheTableMisses_Start,
+  CatCacheTableMisses_1,
+  CatCacheTableMisses_2,
+  CatCacheTableMisses_3,
+  CatCacheTableMisses_4,
+  CatCacheTableMisses_5,
+  CatCacheTableMisses_6,
+  CatCacheTableMisses_7,
+  CatCacheTableMisses_8,
+  CatCacheTableMisses_9,
+  CatCacheTableMisses_10,
+  CatCacheTableMisses_11,
+  CatCacheTableMisses_12,
+  CatCacheTableMisses_13,
+  CatCacheTableMisses_14,
+  CatCacheTableMisses_15,
+  CatCacheTableMisses_16,
+  CatCacheTableMisses_17,
+  CatCacheTableMisses_18,
+  CatCacheTableMisses_19,
+  CatCacheTableMisses_20,
+  CatCacheTableMisses_21,
+  CatCacheTableMisses_22,
+  CatCacheTableMisses_23,
+  CatCacheTableMisses_24,
+  CatCacheTableMisses_25,
+  CatCacheTableMisses_26,
+  CatCacheTableMisses_27,
+  CatCacheTableMisses_28,
+  CatCacheTableMisses_29,
+  CatCacheTableMisses_30,
+  CatCacheTableMisses_31,
+  CatCacheTableMisses_32,
+  CatCacheTableMisses_33,
+  CatCacheTableMisses_34,
+  CatCacheTableMisses_35,
+  CatCacheTableMisses_36,
+  CatCacheTableMisses_37,
+  CatCacheTableMisses_38,
+  CatCacheTableMisses_39,
+  CatCacheTableMisses_40,
+  CatCacheTableMisses_41,
+  CatCacheTableMisses_42,
+  CatCacheTableMisses_43,
+  CatCacheTableMisses_44,
+  CatCacheTableMisses_45,
+  CatCacheTableMisses_46,
+  CatCacheTableMisses_End = CatCacheTableMisses_46,
   kMaxStatementType
 } statementType;
 int num_entries = kMaxStatementType;
@@ -186,6 +235,7 @@ extern int MaxConnections;
 
 static long last_cache_misses_val = 0;
 static long last_cache_id_misses_val[SysCacheSize] = {0};
+static long last_cache_table_misses_val[YbNumCatalogCacheTables] = {0};
 
 static volatile sig_atomic_t got_SIGHUP = false;
 static volatile sig_atomic_t got_SIGTERM = false;
@@ -262,32 +312,45 @@ DecBlockNestingLevel(void)
 void
 set_metric_names(void)
 {
-  strcpy(ybpgm_table[Select].name, YSQL_METRIC_PREFIX "SelectStmt");
-  strcpy(ybpgm_table[Insert].name, YSQL_METRIC_PREFIX "InsertStmt");
-  strcpy(ybpgm_table[Delete].name, YSQL_METRIC_PREFIX "DeleteStmt");
-  strcpy(ybpgm_table[Update].name, YSQL_METRIC_PREFIX "UpdateStmt");
-  strcpy(ybpgm_table[Begin].name, YSQL_METRIC_PREFIX "BeginStmt");
-  strcpy(ybpgm_table[Commit].name, YSQL_METRIC_PREFIX "CommitStmt");
-  strcpy(ybpgm_table[Rollback].name, YSQL_METRIC_PREFIX "RollbackStmt");
-  strcpy(ybpgm_table[Other].name, YSQL_METRIC_PREFIX "OtherStmts");
-  // Deprecated. Names with "_"s may cause confusion to metric conumsers.
-  strcpy(
-      ybpgm_table[Single_Shard_Transaction].name, YSQL_METRIC_PREFIX "Single_Shard_Transactions");
+	for (int i = 0; i < kMaxStatementType; i++)
+		ybpgm_table[i].table_name[0] = '\0';
 
-  strcpy(ybpgm_table[SingleShardTransaction].name, YSQL_METRIC_PREFIX "SingleShardTransactions");
-  strcpy(ybpgm_table[Transaction].name, YSQL_METRIC_PREFIX "Transactions");
-  strcpy(ybpgm_table[AggregatePushdown].name, YSQL_METRIC_PREFIX "AggregatePushdowns");
-  strcpy(ybpgm_table[CatCacheMisses].name, YSQL_METRIC_PREFIX "CatalogCacheMisses");
-  for (int i = CatCacheIdMisses_Start; i <= CatCacheIdMisses_End; ++i)
-  {
-	int cache_id = i - CatCacheIdMisses_Start;
-	char index_name[NAMEDATALEN + 16];
-	strcpy(ybpgm_table[i].name, YSQL_METRIC_PREFIX "CatalogCacheMisses");
-	sprintf(index_name, "_%s", YbGetCatalogCacheIndexName(cache_id));
-	Assert(strlen(ybpgm_table[i].name) + strlen(index_name) <
-		   sizeof(ybpgm_table[i].name));
-	strcat(ybpgm_table[i].name, index_name);
-  }
+	strcpy(ybpgm_table[Select].name, YSQL_METRIC_PREFIX "SelectStmt");
+	strcpy(ybpgm_table[Insert].name, YSQL_METRIC_PREFIX "InsertStmt");
+	strcpy(ybpgm_table[Delete].name, YSQL_METRIC_PREFIX "DeleteStmt");
+	strcpy(ybpgm_table[Update].name, YSQL_METRIC_PREFIX "UpdateStmt");
+	strcpy(ybpgm_table[Begin].name, YSQL_METRIC_PREFIX "BeginStmt");
+	strcpy(ybpgm_table[Commit].name, YSQL_METRIC_PREFIX "CommitStmt");
+	strcpy(ybpgm_table[Rollback].name, YSQL_METRIC_PREFIX "RollbackStmt");
+	strcpy(ybpgm_table[Other].name, YSQL_METRIC_PREFIX "OtherStmts");
+	// Deprecated. Names with "_"s may cause confusion to metric conumsers.
+	strcpy(ybpgm_table[Single_Shard_Transaction].name,
+		   YSQL_METRIC_PREFIX "Single_Shard_Transactions");
+	strcpy(ybpgm_table[SingleShardTransaction].name, 
+    YSQL_METRIC_PREFIX "SingleShardTransactions");
+	strcpy(ybpgm_table[Transaction].name, YSQL_METRIC_PREFIX "Transactions");
+	strcpy(ybpgm_table[AggregatePushdown].name, 
+       YSQL_METRIC_PREFIX "AggregatePushdowns");
+	strcpy(ybpgm_table[CatCacheMisses].name, YSQL_METRIC_PREFIX "CatalogCacheMisses");
+	for (int i = CatCacheIdMisses_Start; i <= CatCacheIdMisses_End; ++i)
+	{
+		int cache_id = i - CatCacheIdMisses_Start;
+		strcpy(ybpgm_table[i].name, YSQL_METRIC_PREFIX "CatalogCacheMisses");
+		const char *index_name = YbGetCatalogCacheIndexName(cache_id);
+		Assert(strlen(index_name) < YB_PG_METRIC_NAME_LEN);
+		snprintf(ybpgm_table[i].table_name, YB_PG_METRIC_NAME_LEN, "%s",
+				 index_name);
+	}
+
+	for (int i = CatCacheTableMisses_Start; i <= CatCacheTableMisses_End; ++i)
+	{
+		int table_id = i - CatCacheTableMisses_Start;
+		strcpy(ybpgm_table[i].name, YSQL_METRIC_PREFIX "CatalogCacheTableMisses");
+		const char *table_name = YbGetCatalogCacheTableNameFromTableId(table_id);
+		Assert(strlen(table_name) < YB_PG_METRIC_NAME_LEN);
+		snprintf(ybpgm_table[i].table_name, YB_PG_METRIC_NAME_LEN, "%s",
+				 table_name);
+	}
 }
 
 /*
@@ -752,43 +815,52 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
    *   use this not-null check for now.
    */
   if (isTopLevelStatement() && queryDesc->totaltime) {
-	InstrEndLoop(queryDesc->totaltime);
-	const uint64_t time = (uint64_t) (queryDesc->totaltime->total * 1000000.0);
-	const uint64 rows_count = queryDesc->estate->es_processed;
+    InstrEndLoop(queryDesc->totaltime);
+    const uint64_t time = (uint64_t) (queryDesc->totaltime->total * 1000000.0);
+    const uint64 rows_count = queryDesc->estate->es_processed;
 
-	ybpgm_Store(type, time, rows_count);
+    ybpgm_Store(type, time, rows_count);
 
-	if (queryDesc->estate->yb_es_is_single_row_modify_txn)
-	{
-		ybpgm_Store(Single_Shard_Transaction, time, rows_count);
-		ybpgm_Store(SingleShardTransaction, time, rows_count);
-	}
+    if (queryDesc->estate->yb_es_is_single_row_modify_txn)
+    {
+      ybpgm_Store(Single_Shard_Transaction, time, rows_count);
+      ybpgm_Store(SingleShardTransaction, time, rows_count);
+    }
 
-	if (!is_inside_transaction_block)
-	  ybpgm_Store(Transaction, time, rows_count);
+    if (!is_inside_transaction_block)
+      ybpgm_Store(Transaction, time, rows_count);
 
-	if (IsA(queryDesc->planstate, AggState) &&
-		castNode(AggState, queryDesc->planstate)->yb_pushdown_supported)
-	ybpgm_Store(AggregatePushdown, time, rows_count);
+    if (IsA(queryDesc->planstate, AggState) &&
+      castNode(AggState, queryDesc->planstate)->yb_pushdown_supported)
+    ybpgm_Store(AggregatePushdown, time, rows_count);
 
-	long current_cache_misses = YbGetCatCacheMisses();
-	long* current_cache_id_misses = YbGetCatCacheIdMisses();
+    long current_cache_misses = YbGetCatCacheMisses();
+    long* current_cache_id_misses = YbGetCatCacheIdMisses();
+    long *current_cache_table_misses = YbGetCatCacheTableMisses();
 
-	long total_delta = current_cache_misses - last_cache_misses_val;
-	last_cache_misses_val = current_cache_misses;
+    long total_delta = current_cache_misses - last_cache_misses_val;
+    last_cache_misses_val = current_cache_misses;
 
-	/* Currently we set the time parameter to 0 as we don't have metrics
-	 * for that available
-	 * TODO: Get timing metrics for catalog cache misses
-	 */
-	ybpgm_StoreCount(CatCacheMisses, 0, total_delta);
-	if (total_delta > 0)
-		for (int i = CatCacheIdMisses_Start; i <= CatCacheIdMisses_End; ++i)
-		{
-			int j = i - CatCacheIdMisses_Start;
-			ybpgm_StoreCount(i, 0, current_cache_id_misses[j] - last_cache_id_misses_val[j]);
-			last_cache_id_misses_val[j] = current_cache_id_misses[j];
-		}
+    /* Currently we set the time parameter to 0 as we don't have metrics
+    * for that available
+    * TODO: Get timing metrics for catalog cache misses
+    */
+    ybpgm_StoreCount(CatCacheMisses, 0, total_delta);
+    if (total_delta > 0)
+      for (int i = CatCacheIdMisses_Start; i <= CatCacheIdMisses_End; ++i)
+      {
+        int j = i - CatCacheIdMisses_Start;
+        ybpgm_StoreCount(i, 0, current_cache_id_misses[j] - last_cache_id_misses_val[j]);
+        last_cache_id_misses_val[j] = current_cache_id_misses[j];
+      }
+    for (int i = CatCacheTableMisses_Start; i <= CatCacheTableMisses_End; ++i)
+    {
+      int j = i - CatCacheTableMisses_Start;
+      ybpgm_StoreCount(i, 0,
+              current_cache_table_misses[j] -
+                last_cache_table_misses_val[j]);
+      last_cache_table_misses_val[j] = current_cache_table_misses[j];
+    }
   }
 
   IncStatementNestingLevel();

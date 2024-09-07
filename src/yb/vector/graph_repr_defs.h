@@ -28,6 +28,9 @@ using VertexId = uint64_t;
 
 constexpr VertexId kInvalidVertexId = 0;
 
+template<typename T>
+concept VertexIdCompatible = std::is_unsigned_v<T> && std::is_integral_v<T> && sizeof(T) == 8;
+
 using VectorIndexLevel = uint8_t;
 using VectorNodeNeighbors = std::set<VertexId>;
 

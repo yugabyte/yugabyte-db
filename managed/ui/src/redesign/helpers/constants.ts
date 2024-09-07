@@ -75,7 +75,8 @@ export const RuntimeConfigKey = {
   DOWNLOAD_METRICS_PDF: 'yb.ui.metrics.enable_download_pdf',
   ENABLE_AUTO_MASTER_FAILOVER: 'yb.auto_master_failover.enabled',
   ENABLE_ROLLBACK_SUPPORT: 'yb.upgrade.enable_rollback_support',
-  PER_PROCESS_METRICS_FEATURE_FLAG: 'yb.ui.feature_flags.enable_per_process_metrics'
+  PER_PROCESS_METRICS_FEATURE_FLAG: 'yb.ui.feature_flags.enable_per_process_metrics',
+  ENABLE_CONNECTION_POOLING: 'yb.universe.allow_connection_pooling'
 } as const;
 
 /**
@@ -198,6 +199,9 @@ export const UNIVERSE_TASKS = {
 
 export const MIN_PG_SUPPORTED_PREVIEW_VERSION = '2.23.0.0-b416';
 export const MIN_PG_SUPPORTED_STABLE_VERSION = '2024.1.0.0-b129';
+
+export const CONNECTION_POOL_SUPPORTED_PREV_VERSION = '2.23.1.0-b75';
+export const CONNECTION_POOL_SUPPORTED_STABLE_VERSION = '2024.1.0.0-b129';
 
 export const GFLAG_GROUPS = {
   ENHANCED_POSTGRES_COMPATIBILITY: 'ENHANCED_POSTGRES_COMPATIBILITY'
