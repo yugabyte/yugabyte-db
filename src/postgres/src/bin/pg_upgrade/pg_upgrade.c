@@ -183,16 +183,16 @@ main(int argc, char **argv)
 	 * Destructive Changes to New Cluster
 	 */
 #ifdef YB_TODO
-	/* Investigate these functions for setting up node */
+	/* Investigate whether this should be permanently disabled */
 	copy_xact_xlog_xid();
 
 	/* New now using xids of the old system */
 
 	/* -- NEW -- */
 	start_postmaster(&new_cluster, true);
+#endif
 
 	prepare_new_globals();
-#endif
 
 	create_new_objects();
 

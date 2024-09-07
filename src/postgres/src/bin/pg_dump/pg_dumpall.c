@@ -106,6 +106,8 @@ static int	include_yb_metadata = 0;	/* In this mode DDL statements include YB sp
 										 * metadata such as tablet partitions. */
 static int	dump_single_database = 0;	/* Dump only one DB specified by '--database' argument. */
 
+static bool IsYugabyteEnabled = true;
+
 int
 main(int argc, char *argv[])
 {
@@ -837,6 +839,30 @@ dumpRoles(PGconn *conn)
 		{
 			pg_log_warning("role name starting with \"pg_\" skipped (%s)",
 						   rolename);
+			continue;
+		}
+
+		/*
+		 * In Yugabyte, there are additional roles created by initdb that emit
+		 * an error if re-created.
+		 */
+		if (IsYugabyteEnabled && binary_upgrade &&
+			strncmp(rolename, "yb_", 3) == 0)
+		{
+			pg_log_warning("role name starting with \"yb_\" skipped (%s)",
+						   rolename);
+			continue;
+		}
+
+		/*
+		 * In Yugabyte, we run as user yugabyte during the PG major version
+		 * upgrade, and the postgres install user has already been created by
+		 * initdb, so we skip creating it which would create a conflict.
+		 */
+		if (IsYugabyteEnabled && binary_upgrade &&
+			strcmp(rolename, "postgres") == 0)
+		{
+			pg_log_warning("role name \"postgres\" skipped");
 			continue;
 		}
 

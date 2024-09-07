@@ -40,16 +40,18 @@ run_and_pushd_pg11() {
   if [[ $OSTYPE = linux* ]]; then
     "$prefix/yugabyte-$ybversion_pg11/bin/post_install.sh"
   fi
+
   pg11path="$prefix/yugabyte-$ybversion_pg11"
   pushd "$pg11path"
-  yb_ctl_destroy_create --rf=3 \
-  --tserver_flags="$common_tserver_flags,$pg11_enable_db_catalog_flag" \
-  --master_flags="$pg11_enable_db_catalog_flag"
+  yb_ctl_destroy_create --rf=3
   ysqlsh <<EOT
   SET yb_non_ddl_txn_for_sys_tables_allowed=true;
   SELECT yb_fix_catalog_version_table(true);
   SET yb_non_ddl_txn_for_sys_tables_allowed = false;
 EOT
+  yb_ctl restart \
+  --tserver_flags="$common_tserver_flags,$pg11_enable_db_catalog_flag" \
+  --master_flags="$pg11_enable_db_catalog_flag"
 }
 
 upgrade_masters() {
