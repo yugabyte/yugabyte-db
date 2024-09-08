@@ -107,3 +107,25 @@ Use the following YB-TServer targets for the various API metrics:
 | ------- | ------------------------- |
 | YSQL    | `<yb-tserver-address>:13000` |
 | YCQL    | `<yb-tserver-address>:12000` |
+
+### Port changes for CIS hardened images
+
+Running YugabyteDB on CIS hardened Linux requires the following changes to the [default ports](default-ports/):
+
+```sh
+#!/bin/bash
+
+sudo dnf repolist
+sudo dnf config-manager --set-enabled extras
+sudo dnf install -y firewalld
+sudo systemctl start firewalld
+
+
+ports=(5433 9042 7100 9100 18018 9070 7000 9000 15433)
+
+for port in "${ports[@]}"; do
+   sudo firewall-cmd --zone=public --add-port=${port}/tcp --permanent
+done
+
+sudo firewall-cmd --reload
+```
