@@ -60,7 +60,7 @@ Perform DDL operations in the order as shown in the following table. The order v
 | :-- | :----- | :----- | :----- |
 | CREATE TABLE | Execute on Source | Execute on Target | [Add table to replication](#add-a-table-to-replication) |
 | DROP TABLE   | [Remove table from replication](#remove-a-table-from-replication) | Execute on Target | Execute on Source |
-| CREATE INDEX | Execute on Source | Execute&nbsp;on&nbsp;Target | [Reconcile&nbsp;configuration](#reconcile-configuration) |
+| CREATE INDEX | Execute on Source | Execute&nbsp;on&nbsp;Target | [Add table to replication](#add-a-table-to-replication)  |
 | DROP INDEX   | [Remove index table from replication](#remove-a-table-from-replication) | Execute on Target | Execute on Source |
 | ALTER TABLE or INDEX | Execute&nbsp;on&nbsp;Target | Execute&nbsp;on&nbsp;Source | No changes needed |
 
