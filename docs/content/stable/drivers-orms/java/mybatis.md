@@ -8,7 +8,7 @@ menu:
   stable:
     identifier: java-orm-mybatis
     parent: java-drivers
-    weight: 700
+    weight: 600
 type: docs
 ---
 
@@ -34,7 +34,7 @@ type: docs
 
 </ul>
 
-[MyBatis](https://mybatis.org/mybatis-3/) is a Java persistence framework with support for custom SQL, stored procedures, and advanced object mapping. MyBatis eliminates the need for writing native JDBC code, manual results mapping, and setting of DB parameters. MyBatis provides simple XML- and annotation-based support for query-to-object mapping for retrieving database records.
+[MyBatis](https://mybatis.org/mybatis-3/) is a Java persistence framework with support for custom SQL, stored procedures, and advanced object mapping. MyBatis eliminates the need for writing native JDBC code, manual results mapping, and setting of DB parameters. MyBatis provides basic XML- and annotation-based support for query-to-object mapping for retrieving database records.
 
 YugabyteDB YSQL API has full compatibility with MyBatis for Data persistence in Java applications. This page provides details for building Java applications using MyBatis for connecting to a YugabyteDB database.
 
@@ -96,35 +96,35 @@ Create the XML file `UserMapper.xml` in the resources folder of your Java projec
 
 <mapper namespace="mybatis.mapper.UserMapper">
 
-	<insert id="save" useGeneratedKeys = "true" parameterType = "User">
+    <insert id="save" useGeneratedKeys = "true" parameterType = "User">
         insert into users (email, first_name, last_name) values (#{email}, #{firstName}, #{lastName})
     </insert>
-    
+
     <resultMap id="userResultMap" type="User">
         <id property="userId" column="user_id"/>
         <result property="email" column="email"/>
         <result property="firstName" column="first_name"/>
         <result property="lastName" column="last_ame"/>
     </resultMap>
-    
+
     <select id="findById" resultMap="userResultMap">
         select * from users where user_id = #{userId}
     </select>
-    
+
     <select id="findAll" resultMap="userResultMap" fetchSize="10" flushCache="false" useCache="false" timeout="60000" statementType="PREPARED" resultSetType="FORWARD_ONLY">
         select * from users
     </select>
-    
+
     <delete id = "delete" parameterType = "User">
       delete from users where user_id = #{userId};
     </delete>
-    
+
 </mapper>
 ```
 
 ### Step 4: Configure the data mappers and datasource in MyBatis configuration file
 
-All the data mappers must be defined in the MyBatis configuration file. Create `mybatis-config.xml` in the resources folder to configure the MyBatis framework. 
+All the data mappers must be defined in the MyBatis configuration file. Create `mybatis-config.xml` in the resources folder to configure the MyBatis framework.
 
 In `mybatis-config.xml`, define the User data mapper and the datasource for connecting to the YugabyteDB database.
 
@@ -178,20 +178,20 @@ import org.apache.ibatis.session.SqlSessionFactory;
 import org.apache.ibatis.session.SqlSessionFactoryBuilder;
 
 public class MybatisUtil {
-	
-	private static SqlSessionFactory sqlSessionFactory;
-	
-	public static SqlSessionFactory getSessionFactory() {
+
+    private static SqlSessionFactory sqlSessionFactory;
+
+    public static SqlSessionFactory getSessionFactory() {
         String resource = "mybatis-config.xml";
         InputStream inputStream;
-		try {
-			inputStream = Resources.getResourceAsStream(resource);
-			sqlSessionFactory =
-			          new SqlSessionFactoryBuilder().build(inputStream);
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-		return sqlSessionFactory;
+        try {
+            inputStream = Resources.getResourceAsStream(resource);
+            sqlSessionFactory =
+                      new SqlSessionFactoryBuilder().build(inputStream);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return sqlSessionFactory;
     }
 }
 ```
@@ -217,33 +217,31 @@ public class UserDAO {
     }
 
     public void save(final User entity) {
-    	
+    
         try (SqlSession session = sqlSessionFactory.openSession()) {
-        	session.insert("mybatis.mapper.UserMapper.save", entity);
-        	session.commit();
+            session.insert("mybatis.mapper.UserMapper.save", entity);
+            session.commit();
          } catch (RuntimeException rte) {} 
     }
 
     public User findById(final Long id) {
-    	
-    	User user = null;
+
+        User user = null;
 
         try (SqlSession session = sqlSessionFactory.openSession()) {
-        	user =  session.selectOne("mybatis.mapper.UserMapper.findById", id);
-        	
+            user =  session.selectOne("mybatis.mapper.UserMapper.findById", id);
         } catch (RuntimeException rte) {} 
         
         return user;
     }
 
     public List<User> findAll() {
-    	
-    	List<User> users = null;
+        List<User> users = null;
         try (SqlSession session = sqlSessionFactory.openSession()) {
             users = session.selectList("mybatis.mapper.UserMapper.findAll");
         } catch (RuntimeException rte) {}
-    	
-    	return users;
+
+        return users;
     }
 
     public void delete(final User user) {
@@ -266,26 +264,26 @@ import java.sql.SQLException;
 import org.apache.ibatis.session.SqlSessionFactory;
 
 public class MyBatisExample {
-	
-	  public static void main(String[] args) throws ClassNotFoundException, SQLException {
 
-		  SqlSessionFactory sessionFactory = MybatisUtil.getSessionFactory();
+    public static void main(String[] args) throws ClassNotFoundException, SQLException {
 
-		    System.out.println("Connected to the YugabyteDB Cluster successfully.");
-			  UserDAO userDAO = new UserDAO(sessionFactory);
-			  User user = new User();
-			  user.setEmail("demo@yugabyte.com");
-			  user.setFirstName("Alice");
-			  user.setLastName("yugabeing");
-			  
-			  // Save an user
-			  userDAO.save(user);
-			  System.out.println("Inserted user record: " + user.getFirstName());
+        SqlSessionFactory sessionFactory = MybatisUtil.getSessionFactory();
 
-			  // Find the user
-			  User userFromDB = userDAO.findById(new Long(201));
-			  System.out.println("Query returned:" + userFromDB.toString());
-		  }
+        System.out.println("Connected to the YugabyteDB Cluster successfully.");
+        UserDAO userDAO = new UserDAO(sessionFactory);
+        User user = new User();
+        user.setEmail("demo@yugabyte.com");
+        user.setFirstName("Alice");
+        user.setLastName("yugabeing");
+
+        // Save an user
+        userDAO.save(user);
+        System.out.println("Inserted user record: " + user.getFirstName());
+
+        // Find the user
+        User userFromDB = userDAO.findById(new Long(201));
+        System.out.println("Query returned:" + userFromDB.toString());
+    }
 
 }
 ```
@@ -300,4 +298,4 @@ Query returned:User [userId=101, firstName=Alice, lastName=Yugabeing, email=demo
 
 ## Learn more
 
-- [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
+[YugabyteDB smart drivers for YSQL](../../smart-drivers/)

@@ -426,6 +426,7 @@ Nokogiri
 Northwind
 noteable
 noteables
+Npgsql
 npm
 nullability
 nullable
