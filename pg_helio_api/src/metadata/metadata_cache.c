@@ -362,6 +362,9 @@ typedef struct HelioApiOidCacheData
 	/* OID of the $type function for bson */
 	Oid BsonTypeMatchFunctionId;
 
+	/* OID of the command_bson_get_value function */
+	Oid BsonGetValueFunctionId;
+
 	/* OID of the $exists function for bson */
 	Oid BsonExistsMatchFunctionId;
 
@@ -617,9 +620,6 @@ typedef struct HelioApiOidCacheData
 
 	/* OID of the bson_dollar_project_expression function */
 	Oid ApiCatalogBsonDollarLookupExpressionEvalMergeOid;
-
-	/* OID of the command_bson_get_value function */
-	Oid ApiCatalogBsonGetValueFunctionId;
 
 	/* OID of the bson_dollar_project_find function */
 	Oid ApiCatalogBsonDollarProjectFindFunctionOid;
@@ -3147,8 +3147,20 @@ BsonDollarMergeJoinFunctionOid(void)
 Oid
 BsonGetValueFunctionOid(void)
 {
-	return GetBinaryOperatorFunctionId(&Cache.ApiCatalogBsonGetValueFunctionId,
-									   "bson_get_value", BsonTypeId(), TEXTOID);
+	InitializeHelioApiExtensionCache();
+
+	if (Cache.BsonGetValueFunctionId == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString(CoreSchemaName),
+											makeString("bson_get_value"));
+		Oid paramOids[2] = { BsonTypeId(), TEXTOID };
+		bool missingOK = false;
+
+		Cache.BsonGetValueFunctionId =
+			LookupFuncName(functionNameList, 2, paramOids, missingOK);
+	}
+
+	return Cache.BsonGetValueFunctionId;
 }
 
 

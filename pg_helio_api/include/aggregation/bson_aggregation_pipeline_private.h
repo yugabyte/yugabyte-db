@@ -176,6 +176,8 @@ Query * HandleSearch(const bson_value_t *existingValue, Query *query,
 /* output to collection related aggregation pipeline */
 Query * HandleMerge(const bson_value_t *existingValue, Query *query,
 					AggregationPipelineBuildContext *context);
+Query * HandleOut(const bson_value_t *existingValue, Query *query,
+				  AggregationPipelineBuildContext *context);
 
 /* atlas vector search related aggregation stages */
 Query * HandleMongoNativeVectorSearch(const bson_value_t *existingValue, Query *query,

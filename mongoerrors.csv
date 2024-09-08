@@ -53,6 +53,7 @@ BackgroundOperationInProgressForNamespace,12587,50
 Location13026,13026,51
 Location13027,13027,52
 Location13068,13068,53
+Location13111,13111,461
 MergeStageNoMatchingDocument,13113,54
 DbAlreadyExists,13297,55
 Location13548,13548,56
@@ -96,7 +97,8 @@ Location16879,16879,94
 Location16880,16880,95
 Location16882,16882,96
 Location16883,16883,97
-DollarOutTempCollectionCantBeCreated,16994,98
+Location16990,16990,460
+Location16994,16994,98
 Location17040,17040,99
 Location17041,17041,100
 Location17042,17042,101

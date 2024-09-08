@@ -302,7 +302,7 @@ bson_out_transition(PG_FUNCTION_ARGS)
 			if (stagingCollection == NULL)
 			{
 				/* failed to create the staging collection. We use the word 'temporary' to match Mongo error message */
-				ereport(ERROR, (errcode(MongoDollarOutTempCollectionCantBeCreated),
+				ereport(ERROR, (errcode(MongoLocation16994),
 								errmsg(
 									"failed to create temporary $out collection")));
 			}

@@ -34,6 +34,7 @@
 #include <catalog/namespace.h>
 #include <rewrite/rewriteSearchCycle.h>
 #include <utils/version_utils.h>
+#include <executor/spi.h>
 
 #include "io/helio_bson_core.h"
 #include "metadata/metadata_cache.h"
@@ -51,6 +52,7 @@
 #include "aggregation/bson_tree.h"
 #include "aggregation/bson_tree_write.h"
 #include "optimizer/optimizer.h"
+#include "utils/query_utils.h"
 
 #include "aggregation/bson_aggregation_pipeline_private.h"
 
@@ -99,6 +101,19 @@ typedef struct MergeArgs
 	WhenNotMatchedAction whenNotMatched;
 } MergeArgs;
 
+
+/*
+ * Struct having parsed view of the arguments to $out stage.
+ */
+typedef struct OutArgs
+{
+	/* name of input target Databse */
+	StringView targetDB;
+
+	/* name of input target collection */
+	StringView targetCollection;
+} OutArgs;
+
 /* GUC to enable $merge aggregation stage */
 extern bool EnableMergeStage;
 
@@ -108,8 +123,15 @@ extern bool EnableMergeTargetCreation;
 /* GUC to enable $merge across databases */
 extern bool EnableMergeAcrossDB;
 
+/* GUC to enable $out aggregation stage */
+extern bool EnableOutStage;
+
+extern bool EnableCollation;
+
 static void ParseMergeStage(const bson_value_t *existingValue, const
 							char *currentNameSpace, MergeArgs *args);
+static void ParseOutStage(const bson_value_t *existingValue, const char *currentNameSpace,
+						  OutArgs *args);
 static void VaildateMergeOnFieldValues(const bson_value_t *onArray, uint64
 									   collectionId);
 static void RearrangeTargetListForMerge(Query *query, MongoCollection *targetCollection,
@@ -145,7 +167,7 @@ static inline void AddTargetCollectionRTEDollarMerge(Query *query,
 													 MongoCollection *targetCollection);
 static HTAB * InitHashTableFromStringArray(const bson_value_t *onValues, int
 										   onValuesArraySize);
-static inline bool ValidatePreviousStagesOfDollarMerge(Query *query);
+static inline bool ValidatePreOutputStages(Query *query);
 static bool MergeQueryCTEWalker(Node *node, void *context);
 static inline void ValidateFinalPgbsonBeforeWriting(const pgbson *sourceDocument);
 static inline Expr * CreateSingleJoinExpr(const char *joinField,
@@ -162,6 +184,7 @@ static void WriteJoinConditionToQueryDollarMergeLegacy(Query *query, Var *source
 													   Var *sourceShardKeyValueVar,
 													   Var *targetShardKeyValueVar,
 													   MergeArgs mergeArgs);
+static void TruncateDataTable(int collectionId);
 
 PG_FUNCTION_INFO_V1(bson_dollar_merge_handle_when_matched);
 PG_FUNCTION_INFO_V1(bson_dollar_merge_add_object_id);
@@ -439,7 +462,7 @@ HandleMerge(const bson_value_t *existingValue, Query *query,
 		return query;
 	}
 
-	ValidatePreviousStagesOfDollarMerge(query);
+	ValidatePreOutputStages(query);
 
 	MergeArgs mergeArgs;
 	memset(&mergeArgs, 0, sizeof(mergeArgs));
@@ -1064,9 +1087,9 @@ RearrangeTargetListForMerge(Query *query, MongoCollection *targetCollection,
 	newTargetList = lappend(newTargetList, generatedObjectIdTE);
 
 
-	if (IsClusterVersionAtleastThis(1, 20, 0))
+	/* 4. append bson_dollar_extract_merge_filter function so all on fields so that we can use extracted source in join condition */
+	if (onValues && IsClusterVersionAtleastThis(1, 20, 0))
 	{
-		/* 4. append bson_dollar_extract_merge_filter function so all on fields so that we can use extracted source in join condition */
 		if (onValues->value_type == BSON_TYPE_UTF8)
 		{
 			newTargetList = lappend(newTargetList,
@@ -1096,7 +1119,7 @@ RearrangeTargetListForMerge(Query *query, MongoCollection *targetCollection,
 		}
 	}
 
-	/* 4. Move all Remaining entries from the existing target list to the new target list. */
+	/* 5. Move all Remaining entries from the existing target list to the new target list. */
 	int targetEntryIndex = 0;
 	ListCell *cell;
 
@@ -1170,6 +1193,7 @@ AddTargetCollectionRTEDollarMerge(Query *query, MongoCollection *targetCollectio
 	RangeTblEntry *existingrte = list_nth(query->rtable, 0);
 	query->rtable = list_make2(rte, existingrte);
 	query->resultRelation = 1;
+	query->jointree->fromlist = list_make1(rte);
 }
 
 
@@ -1524,10 +1548,10 @@ InitHashTableFromStringArray(const bson_value_t *inputKeyArray, int arraySize)
 
 
 /*
- * ValidatePreviousStagesOfDollarMerge traverse query tree to fail early if $merge is used with $graphLookup
+ * ValidatePreOutputStages traverse query tree to fail early if $merge/$out is used with $graphLookup or contains any mutable function.
  */
 static inline bool
-ValidatePreviousStagesOfDollarMerge(Query *query)
+ValidatePreOutputStages(Query *query)
 {
 	/* An example of this could be when the target collection for the $lookup operation is missing, and the empty_data_table function is invoked. */
 	if (contain_mutable_functions((Node *) query))
@@ -1735,4 +1759,243 @@ WriteJoinConditionToQueryDollarMergeLegacy(Query *query, Var *sourceDocVar,
 	}
 
 	query->jointree->quals = (Node *) make_ands_explicit(joinFilterList);
+}
+
+
+/*
+ * Mutates the query for the $out stage
+ *
+ * Example mongo command : { $out: { "db": "targetDb", "coll" : "targetColl" } }
+ * sql query :
+ *
+ * MERGE INTO ONLY mongo_data.documents_3 documents_3
+ * USING ( SELECT collection.document,
+ *            '3'::bigint AS target_shard_key_value,
+ *            helio_api_internal.bson_dollar_merge_generate_object_id(collection.document) AS generated_object_id
+ *           FROM mongo_data.documents_2 collection
+ *          WHERE collection.shard_key_value = '2'::bigint) agg_stage_0
+ *   ON documents_3.shard_key_value OPERATOR(pg_catalog.=) agg_stage_0.target_shard_key_value AND FALSE
+ *   WHEN NOT MATCHED
+ *    THEN INSERT (shard_key_value, object_id, document, creation_time)
+ *     VALUES (agg_stage_0.target_shard_key_value, COALESCE(bson_get_value(agg_stage_0.document, '_id'::text), agg_stage_0.generated_object_id), helio_api_internal.bson_dollar_merge_add_object_id(agg_stage_0.document, agg_stage_0.generated_object_id), '2024-08-21 11:06:38.323204+00'::timestamp with time zone)
+ */
+Query *
+HandleOut(const bson_value_t *existingValue, Query *query,
+		  AggregationPipelineBuildContext *context)
+{
+	ReportFeatureUsage(FEATURE_STAGE_OUT);
+
+	if (!EnableOutStage)
+	{
+		ereport(ERROR, (errcode(MongoCommandNotSupported),
+						errmsg("$out aggregation stage is not supported yet.")));
+	}
+
+	OutArgs outArgs = { 0 };
+
+	memset(&outArgs, 0, sizeof(outArgs));
+	ParseOutStage(existingValue, context->namespaceName, &outArgs);
+	ValidatePreOutputStages(query);
+
+	MongoCollection *targetCollection =
+		GetMongoCollectionOrViewByNameDatum(StringViewGetTextDatum(&outArgs.targetDB),
+											StringViewGetTextDatum(
+												&outArgs.targetCollection),
+											RowExclusiveLock);
+
+
+	if (targetCollection)
+	{
+		bool isSourceSameAsTarget = targetCollection->collectionId ==
+									context->mongoCollection->collectionId;
+
+		if (targetCollection->viewDefinition != NULL)
+		{
+			ereport(ERROR, (errcode(MongoCommandNotSupportedOnView),
+							errmsg("Namespace %s.%s is a view, not a collection",
+								   targetCollection->name.databaseName,
+								   targetCollection->name.collectionName),
+							errhint("Namespace %s.%s is a view, not a collection",
+									targetCollection->name.databaseName,
+									targetCollection->name.collectionName)));
+		}
+		else if (targetCollection && targetCollection->shardKey != NULL)
+		{
+			ereport(ERROR, (errcode(MongoLocation28769),
+							errmsg("%s.%s cannot be sharded", outArgs.targetDB.string,
+								   outArgs.targetCollection.string)));
+		}
+		else if (isSourceSameAsTarget)
+		{
+			ereport(ERROR, (errcode(MongoCommandNotSupported),
+							errmsg(
+								"The target collection cannot be the same as the source collection in $out stage.")));
+		}
+
+		/* Truncate the target data table to delete all entries. This allows us to write new data into it */
+		TruncateDataTable(targetCollection->collectionId);
+	}
+	else
+	{
+		/* Create the target collection if it does not exist */
+		targetCollection =
+			CreateCollectionForInsert(StringViewGetTextDatum(&outArgs.targetDB),
+									  StringViewGetTextDatum(&outArgs.targetCollection));
+	}
+
+	RearrangeTargetListForMerge(query, targetCollection, false, NULL);
+	context->expandTargetList = true;
+	query = MigrateQueryToSubQuery(query, context);
+	query->commandType = CMD_MERGE;
+	AddTargetCollectionRTEDollarMerge(query, targetCollection);
+
+	/* constant for source collection */
+	const int sourceCollectionVarNo = 2; /* In merge query source table is 2nd table */
+	const int sourceDocAttrNo = 1; /* In source table first projector is document */
+	const int sourceShardKeyValueAttrNo = 2; /* we will append shard_key_value in source query at 2nd position after document column */
+	const int generatedObjectIdAttrNo = 3;  /* we will append generated object_id in source query at 3rd position after shard_key_value column */
+	const int targetCollectionVarNo = 1; /* In merge query target table is 1st table */
+	const int targetShardKeyValueAttrNo = 1; /* From Target table we are just selecting 3 columns first one is shard_key_value */
+
+	Var *sourceDocVar = makeVar(sourceCollectionVarNo, sourceDocAttrNo,
+								BsonTypeId(), -1,
+								InvalidOid, 0);
+	Var *sourceShardKeyValueVar = makeVar(sourceCollectionVarNo,
+										  sourceShardKeyValueAttrNo, INT8OID, -1, 0, 0);
+	Var *generatedObjectIdVar = makeVar(sourceCollectionVarNo,
+										generatedObjectIdAttrNo, BsonTypeId(), -1, 0, 0);
+
+	Var *targetShardKeyValueVar = makeVar(targetCollectionVarNo,
+										  targetShardKeyValueAttrNo, INT8OID, -1, 0, 0);
+
+	query->mergeActionList = list_make1(MakeActionWhenNotMatched(WhenNotMatched_INSERT,
+																 sourceDocVar,
+																 generatedObjectIdVar,
+																 sourceShardKeyValueVar,
+																 targetCollection));
+
+	/* Write the join condition for $out, which will be in the form of
+	 * `ON target.shard_key_value = source.target_shard_key_value`
+	 * This is necessary because Citus requires the target's distributed column in the join condition.
+	 * In any case, for $out, we always write to an empty table, so it's always whenNotMatched. */
+	RangeTblRef *rtr = makeNode(RangeTblRef);
+	rtr->rtindex = 2;
+	query->jointree = makeFromExpr(list_make1(rtr), NULL);
+	query->jointree->quals = (Node *) make_opclause(PostgresInt4EqualOperatorOid(),
+													BOOLOID, false,
+													(Expr *) targetShardKeyValueVar,
+													(Expr *) sourceShardKeyValueVar,
+													InvalidOid,
+													InvalidOid);
+	return query;
+}
+
+
+/*
+ * Truncate data table corresponding to the input collection id.
+ */
+static void
+TruncateDataTable(int collectionId)
+{
+	StringInfo cmdStr = makeStringInfo();
+
+	appendStringInfo(cmdStr,
+					 "TRUNCATE TABLE %s.documents_%d",
+					 ApiDataSchemaName, collectionId);
+
+	bool isNull = false;
+	bool readOnly = false;
+	ExtensionExecuteQueryViaSPI(cmdStr->data, readOnly, SPI_OK_UTILITY, &isNull);
+}
+
+
+/*
+ * Parses & validates the input $out spec.
+ * first way :   { $out : "collection-name" }
+ * second way : { $out : {"db" : "database-name", "coll" : "collection-name"} }
+ *
+ * Parsed outputs are placed in the OutArgs struct.
+ */
+static void
+ParseOutStage(const bson_value_t *existingValue, const char *currentNameSpace,
+			  OutArgs *args)
+{
+	if (existingValue->value_type != BSON_TYPE_DOCUMENT && existingValue->value_type !=
+		BSON_TYPE_UTF8)
+	{
+		ereport(ERROR, (errcode(MongoLocation16990),
+						errmsg(
+							"$out only supports a string or object argument, but found %s",
+							BsonTypeName(existingValue->value_type))));
+	}
+
+	if (existingValue->value_type == BSON_TYPE_UTF8)
+	{
+		char *dbName = NULL;
+		char *dotPosition = strchr(currentNameSpace, '.');
+		if (dotPosition != NULL)
+		{
+			size_t dbNameLength = dotPosition - currentNameSpace;
+			dbName = pnstrdup(currentNameSpace, dbNameLength);
+		}
+
+		args->targetCollection = (StringView) {
+			.length = existingValue->value.v_utf8.len,
+			.string = existingValue->value.v_utf8.str
+		};
+
+		args->targetDB = CreateStringViewFromString(dbName);
+		return;
+	}
+
+	/* parse when input is a document */
+	bson_iter_t mergeIter;
+	BsonValueInitIterator(existingValue, &mergeIter);
+
+	while (bson_iter_next(&mergeIter))
+	{
+		const char *key = bson_iter_key(&mergeIter);
+		const bson_value_t *bsonValue = bson_iter_value(&mergeIter);
+		if (strcmp(key, "db") == 0)
+		{
+			if (bsonValue->value_type != BSON_TYPE_UTF8)
+			{
+				ereport(ERROR, (errcode(MongoLocation13111),
+								errmsg("wrong type for field (db) %s != string",
+									   BsonTypeName(bsonValue->value_type))));
+			}
+
+			args->targetDB = (StringView) {
+				.length = bsonValue->value.v_utf8.len,
+				.string = bsonValue->value.v_utf8.str
+			};
+		}
+		else if (strcmp(key, "coll") == 0)
+		{
+			if (bsonValue->value_type != BSON_TYPE_UTF8)
+			{
+				ereport(ERROR, (errcode(MongoLocation13111),
+								errmsg("wrong type for field (coll) %s != string",
+									   BsonTypeName(bsonValue->value_type))));
+			}
+
+			args->targetCollection = (StringView) {
+				.length = bsonValue->value.v_utf8.len,
+				.string = bsonValue->value.v_utf8.str
+			};
+		}
+		else
+		{
+			ereport(ERROR, (errcode(MongoLocation16990),
+							errmsg(
+								"If an object is passed to $out it must have exactly 2 fields: 'db' and 'coll'")));
+		}
+	}
+
+	if (args->targetDB.length == 0 || args->targetCollection.length == 0)
+	{
+		ereport(ERROR, (errcode(MongoLocation16994),
+						errmsg(
+							"If an object is passed to $out it must have exactly 2 fields: 'db' and 'coll'")));
+	}
 }

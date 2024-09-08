@@ -34,3 +34,4 @@ test: bson_dollar_ops_text_search_tests bson_dollar_ops_expr_tests
 test: bson_dollar_ops_json_schema_build_tree_tests bson_dollar_ops_json_schema_query_tests
 
 test: bson_dollar_ops_collation_runtime_tests
+test: bson_aggregation_stage_out_tests_2

@@ -523,7 +523,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 	},
 	{
 		.stage = "$out",
-		.mutateFunc = NULL,
+		.mutateFunc = &HandleOut,
 		.requiresPersistentCursor = &RequiresPersistentCursorTrue,
 		.canInlineLookupStageFunc = NULL,
 		.preservesStableSortOrder = false,

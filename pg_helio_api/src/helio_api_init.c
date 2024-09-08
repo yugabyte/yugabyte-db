@@ -244,6 +244,9 @@ bool EnableRumIndexScan = DEFAULT_ENABLE_RUM_INDEX_SCAN;
 #define DEFAULT_ENABLE_MERGE_STAGE true
 bool EnableMergeStage = DEFAULT_ENABLE_MERGE_STAGE;
 
+#define DEFAULT_ENABLE_OUT_STAGE false
+bool EnableOutStage = DEFAULT_ENABLE_OUT_STAGE;
+
 #define DEFAULT_ENABLE_MERGE_TARGET_CREATION false
 bool EnableMergeTargetCreation = DEFAULT_ENABLE_MERGE_TARGET_CREATION;
 
@@ -709,6 +712,13 @@ InitApiConfigurations(char *prefix)
 		gettext_noop(
 			"Enables support for merge stage in pg_helio_api."),
 		NULL, &EnableMergeStage, DEFAULT_ENABLE_MERGE_STAGE,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		"helio_api.enableOutStage",
+		gettext_noop(
+			"Enables support for out stage in pg_helio_api."),
+		NULL, &EnableOutStage, DEFAULT_ENABLE_OUT_STAGE,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
