@@ -155,10 +155,7 @@ DEFINE_test_flag(bool, cdcsdk_skip_updating_cdc_state_entries_on_table_removal, 
 
 DEFINE_test_flag(bool, cdcsdk_add_indexes_to_stream, false, "Allows addition of index to a stream");
 
-DEFINE_RUNTIME_bool(cdcsdk_enable_cleanup_of_non_eligible_tables_from_stream, false,
-    "When enabled, all CDCSDK streams will be scanned for non-eligible tables like indexes, "
-    "materialised view etc. in their stream metadata and these tables will be marked for removal "
-    "by catalog manager background thread.");
+DEPRECATE_FLAG(bool, cdcsdk_enable_cleanup_of_non_eligible_tables_from_stream, "09_2024");
 
 DEFINE_test_flag(bool, cdcsdk_disable_drop_table_cleanup, false,
                  "When enabled, cleanup of dropped tables from CDC streams will be skipped.");
@@ -360,8 +357,7 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
 
       // Check for any non-eligible tables like indexes, matview etc in CDC stream only if the
       // stream is not associated with a replication slot.
-      if (FLAGS_cdcsdk_enable_identification_of_non_eligible_tables &&
-          stream->GetCdcsdkYsqlReplicationSlotName().empty()) {
+      if (stream->GetCdcsdkYsqlReplicationSlotName().empty()) {
         catalog_manager_->FindAllNonEligibleTablesInCDCSDKStream(
             stream_id, metadata.table_id(), eligible_tables_info);
       }
@@ -1888,7 +1884,15 @@ Status CatalogManager::FindCDCSDKStreamsForNonEligibleTables(
           break;
         }
       }
+
+      if (found_non_user_tables == FLAGS_cdcsdk_table_processing_limit_per_run) {
+        break;
+      }
     }
+  }
+
+  if (namespace_to_non_user_table_map.empty()) {
+    return Status::OK();
   }
 
   {
@@ -1898,8 +1902,8 @@ Status CatalogManager::FindCDCSDKStreamsForNonEligibleTables(
         continue;
       }
 
-      // Removal of non-eligible tables will only be done on CDC stream that are not associated with
-      // a replication slot.
+      // Removal of non-eligible tables will only be done on CDC stream that are not associated
+      // with a replication slot.
       if (!stream_info->GetCdcsdkYsqlReplicationSlotName().empty()) {
         continue;
       }
@@ -2305,6 +2309,50 @@ Status CatalogManager::ProcessNewTablesForCDCSDKStreams(
   return Status::OK();
 }
 
+Status CatalogManager::ValidateStreamForTableRemoval(const CDCStreamInfoPtr& stream) {
+  if (stream == nullptr || stream->LockForRead()->is_deleting()) {
+    return STATUS(
+        NotFound, "Could not find CDC stream", MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
+  }
+
+  if (!stream->IsCDCSDKStream()) {
+    return STATUS(NotSupported, "Not a CDC stream");
+  }
+
+  if (!stream->GetCdcsdkYsqlReplicationSlotName().empty()) {
+    return STATUS(
+        NotSupported,
+        "Operation not supported on CDC streams that are associated with a replication slot");
+  }
+
+  return Status::OK();
+}
+
+Status CatalogManager::ValidateTableForRemovalFromCDCSDKStream(
+    const scoped_refptr<TableInfo>& table, const bool check_for_ineligibility) {
+  if (table == nullptr || table->LockForRead()->is_deleting()) {
+    return STATUS(NotFound, "Could not find table", MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
+  }
+
+  if (check_for_ineligibility) {
+    Schema schema;
+    Status status = table->GetSchema(&schema);
+    if (!status.ok()) {
+      return STATUS(
+          InternalError, Format("Error while getting schema for table: $0", table->name()));
+    }
+
+    {
+      SharedLock lock(mutex_);
+      if (!IsTableEligibleForCDCSDKStream(table, schema)) {
+        return STATUS(InvalidArgument, "Only allowed to remove user tables from CDC streams");
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
 Status CatalogManager::RemoveNonEligibleTablesFromCDCSDKStreams(
     const TableStreamIdsMap& non_user_tables_to_streams_map, const LeaderEpoch& epoch) {
   int32_t removed_non_user_tables = 0;
@@ -2316,13 +2364,31 @@ Status CatalogManager::RemoveNonEligibleTablesFromCDCSDKStreams(
       break;
     }
 
+    scoped_refptr<TableInfo> table;
+    {
+      SharedLock lock(mutex_);
+      table = tables_->FindTableOrNull(table_id);
+    }
+
+    Status s = ValidateTableForRemovalFromCDCSDKStream(table, /* check_for_ineligibility */ false);
+    if (!s.ok()) {
+      LOG(WARNING) << "Table " << table_id
+                   << " not available for removal from CDC streams: " << s;
+      // Table is not available for cleanup. We can remove the entry from the map.
+      RemoveTableFromCDCSDKNonEligibleTableMap(table_id, streams.begin()->get()->namespace_id());
+      continue;
+    }
+
     // Delete the table from all streams now.
     NamespaceId namespace_id;
     bool stream_pending = false;
     Status status;
     for (const auto& stream : streams) {
-      if PREDICT_FALSE (stream == nullptr) {
-        LOG(WARNING) << "Could not find CDC stream: " << stream->id();
+      auto stream_id = stream->StreamId();
+      status = ValidateStreamForTableRemoval(stream);
+
+      if (!status.ok()) {
+        LOG(WARNING) << "Stream " << stream_id << " not available for table removal: " << status;
         continue;
       }
 
@@ -2338,12 +2404,12 @@ Status CatalogManager::RemoveNonEligibleTablesFromCDCSDKStreams(
       // table from the cdc state table.
       tables_in_stream_metadata.erase(table_id);
       auto result = UpdateCheckpointForTabletEntriesInCDCState(
-          stream->StreamId(), tables_in_stream_metadata, table_id);
+          stream_id, tables_in_stream_metadata, table);
 
       if (!result.ok()) {
         LOG(WARNING) << "Encountered error while trying to update/delete tablets entries of table: "
-                     << table_id << ", from cdc_state table for stream: " << stream->id() << " - "
-                     << result.status();
+                     << table_id << ", from cdc_state table for stream: " << stream_id << " - "
+                     << result;
         stream_pending = true;
         continue;
       }
@@ -2361,7 +2427,7 @@ Status CatalogManager::RemoveNonEligibleTablesFromCDCSDKStreams(
       Status status = RemoveTableFromCDCStreamMetadataAndMaps(stream, table_id);
       if (!status.ok()) {
         LOG(WARNING) << "Encountered error while trying to remove non-eligible table " << table_id
-                     << " from metadata of stream " << stream->StreamId() << " and maps. - "
+                     << " from metadata of stream " << stream_id << " and maps. - "
                      << status;
         stream_pending = true;
         continue;
@@ -2370,7 +2436,7 @@ Status CatalogManager::RemoveNonEligibleTablesFromCDCSDKStreams(
       LOG(INFO)
           << "Succesfully removed non-eligible table " << table_id
           << " from stream metadata and updated corresponding cdc_state table entries for stream: "
-          << stream->id();
+          << stream_id;
 
       namespace_id = stream->namespace_id();
     }
@@ -4678,8 +4744,7 @@ Status CatalogManager::UpdateCDCProducerOnTabletSplit(
   std::vector<CDCStreamInfoPtr> streams;
   std::vector<cdc::CDCStateTableEntry> entries;
   for (const auto stream_type : {cdc::XCLUSTER, cdc::CDCSDK}) {
-    if (stream_type == cdc::CDCSDK &&
-        FLAGS_cdcsdk_enable_cleanup_of_non_eligible_tables_from_stream) {
+    if (stream_type == cdc::CDCSDK) {
       const auto table_info = GetTableInfo(producer_table_id);
       if (table_info) {
         // Skip adding children tablet entries in cdc state if the table is an index or a mat view.
@@ -6522,21 +6587,7 @@ Status CatalogManager::DisableDynamicTableAdditionOnCDCSDKStream(
     stream = FindPtrOrNull(cdc_stream_map_, stream_id);
   }
 
-  if (stream == nullptr || stream->LockForRead()->is_deleting()) {
-    return STATUS(
-        NotFound, "Could not find CDC stream", MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
-  }
-
-  if (!stream->IsCDCSDKStream()) {
-    RETURN_INVALID_REQUEST_STATUS("Not a CDC stream");
-  }
-
-  // We only want to allow disabling dynamic table addition on older streams that are not associated
-  // with a replication slot.
-  if (!stream->GetCdcsdkYsqlReplicationSlotName().empty()) {
-    RETURN_INVALID_REQUEST_STATUS(
-        "Cannot disable dynamic table addition on CDC streams associated with a replication slot");
-  }
+  RETURN_NOT_OK(ValidateStreamForTableRemoval(stream));
 
   if (stream->IsDynamicTableAdditionDisabled()) {
     return STATUS(AlreadyPresent, "Dynamic table addition already disabled on the CDC stream");
@@ -6586,19 +6637,7 @@ Status CatalogManager::RemoveUserTableFromCDCSDKStream(
     stream = FindPtrOrNull(cdc_stream_map_, stream_id);
   }
 
-  if (stream == nullptr || stream->LockForRead()->is_deleting()) {
-    return STATUS(
-        NotFound, "Could not find CDC stream", MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
-  }
-
-  if (!stream->IsCDCSDKStream()) {
-    RETURN_INVALID_REQUEST_STATUS("Not a CDC stream");
-  }
-
-  if (!stream->GetCdcsdkYsqlReplicationSlotName().empty()) {
-    RETURN_INVALID_REQUEST_STATUS(
-        "Cannot remove table from CDC streams that are associated with a replication slot");
-  }
+  RETURN_NOT_OK(ValidateStreamForTableRemoval(stream));
 
   auto stream_ns_id = stream->LockForRead()->namespace_id();
 
@@ -6608,23 +6647,7 @@ Status CatalogManager::RemoveUserTableFromCDCSDKStream(
     table = tables_->FindTableOrNull(table_id);
   }
 
-  if (table == nullptr || table->LockForRead()->is_deleting()) {
-    return STATUS(NotFound, "Could not find table", MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
-  }
-
-  Schema schema;
-  Status status = table->GetSchema(&schema);
-  if (!status.ok()) {
-    return STATUS(InternalError, Format("Error while getting schema for table: $0", table->name()));
-  }
-
-  {
-    SharedLock lock(mutex_);
-    if (!IsTableEligibleForCDCSDKStream(table, schema)) {
-      RETURN_INVALID_REQUEST_STATUS(
-          "Only allowed to remove user tables from CDC streams via this command.");
-    }
-  }
+  RETURN_NOT_OK(ValidateTableForRemovalFromCDCSDKStream(table, /* check_for_ineligibility */ true));
 
   auto table_ns_id = table->LockForRead()->namespace_id();
   if (table_ns_id != stream_ns_id) {
@@ -6648,7 +6671,7 @@ Status CatalogManager::RemoveUserTableFromCDCSDKStream(
     // table from the cdc state table.
     tables_in_stream_metadata.erase(table_id);
     RETURN_NOT_OK_PREPEND(
-        UpdateCheckpointForTabletEntriesInCDCState(stream_id, tables_in_stream_metadata, table_id),
+        UpdateCheckpointForTabletEntriesInCDCState(stream_id, tables_in_stream_metadata, table),
         "Error updating/deleting tablet entries from cdc state table");
   }
 
@@ -6686,20 +6709,7 @@ Status CatalogManager::ValidateAndSyncCDCStateEntriesForCDCSDKStream(
     stream = FindPtrOrNull(cdc_stream_map_, stream_id);
   }
 
-  if (stream == nullptr || stream->LockForRead()->is_deleting()) {
-    return STATUS(
-        NotFound, "Could not find CDC stream", MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
-  }
-
-  if (!stream->IsCDCSDKStream()) {
-    RETURN_INVALID_REQUEST_STATUS("Not a CDC stream");
-  }
-
-  if (!stream->GetCdcsdkYsqlReplicationSlotName().empty()) {
-    RETURN_INVALID_REQUEST_STATUS(
-        "Cannot validate and sync cdc state table entries for CDC streams that are associated with "
-        "a replication slot");
-  }
+  RETURN_NOT_OK(ValidateStreamForTableRemoval(stream));
 
   std::unordered_set<TableId> tables_in_stream_metadata;
   {
@@ -6710,8 +6720,8 @@ Status CatalogManager::ValidateAndSyncCDCStateEntriesForCDCSDKStream(
     }
   }
 
-  auto updated_state_table_entries = VERIFY_RESULT(
-      UpdateCheckpointForTabletEntriesInCDCState(stream_id, tables_in_stream_metadata));
+  auto updated_state_table_entries =
+      VERIFY_RESULT(SyncCDCStateTableEntries(stream_id, tables_in_stream_metadata));
 
   for (const auto& entry : updated_state_table_entries) {
     resp->add_updated_tablet_entries(entry.key.tablet_id);
@@ -8083,16 +8093,75 @@ void CatalogManager::CDCSDKPopulateDeleteRetainerInfoForTabletDrop(
   delete_retainer.active_cdcsdk = IsTablePartOfCDCSDK(tablet_info.table()->id());
 }
 
-Result<std::vector<cdc::CDCStateTableEntry>>
-CatalogManager::UpdateCheckpointForTabletEntriesInCDCState(
+Status CatalogManager::UpdateCheckpointForTabletEntriesInCDCState(
     const xrepl::StreamId& stream_id, const std::unordered_set<TableId>& tables_in_stream_metadata,
-    const TableId& table_to_be_removed) {
+    const TableInfoPtr& table_to_be_removed) {
+  bool is_colocated_table = table_to_be_removed->IsColocatedUserTable();
+  TabletInfos tablets = table_to_be_removed->GetTablets(IncludeInactive::kTrue);
+  if (tablets.empty()) {
+    return Status::OK();
+  }
 
-  // This will only contain entries for colocated tables that have a composite value in the
-  // stream_id column i.e. in the form of stream_id_table_id. Such entries will have to be directly
-  // deleted as UpdatePeersAndMetrics ignores these entries.
-  std::vector<cdc::CDCStateTableKey> cdc_state_entries_to_be_deleted;
+  std::vector<cdc::CDCStateTableEntry> entries_to_update;
+  if (is_colocated_table) {
+    DCHECK_EQ(tablets.size(), 1);
+    auto tablet_info = VERIFY_RESULT(GetTabletInfo(tablets[0]->tablet_id()));
+    if (tablet_info) {
+      bool should_update_streaming_entry = true;
+      for (const auto& table_id : tablet_info->GetTableIds()) {
+        if (tables_in_stream_metadata.contains(table_id)) {
+          should_update_streaming_entry = false;
+          break;
+        }
+      }
 
+      if (should_update_streaming_entry) {
+        cdc::CDCStateTableEntry update_entry(tablets[0]->tablet_id(), stream_id);
+        update_entry.checkpoint = OpId::Max();
+        entries_to_update.emplace_back(std::move(update_entry));
+        LOG_WITH_FUNC(INFO)
+            << "Setting checkpoint to OpId::Max() for cdc state table entry (tablet,stream) - "
+            << tablets[0]->tablet_id() << ", " << stream_id;
+      }
+
+      // Snapshot entries for colocated tables (containing the colocated table id) are not processed
+      // by UpdatePeersAndMetrics, hence we delete them directly instead of setting the checkpoint
+      // to max.
+      cdc::CDCStateTableKey delete_entry(
+          tablets[0]->tablet_id(), stream_id, table_to_be_removed->id());
+      LOG_WITH_FUNC(INFO) << "Deleting cdc state table entry (tablet, stream, table) - "
+                          << delete_entry.ToString();
+      RETURN_NOT_OK_PREPEND(
+          cdc_state_table_->DeleteEntries({delete_entry}),
+          "Error deleting entries from cdc_state table");
+    }
+  } else {
+    for (const auto& tablet : tablets) {
+      if (tablet) {
+        cdc::CDCStateTableEntry update_entry(tablet->tablet_id(), stream_id);
+        update_entry.checkpoint = OpId::Max();
+        entries_to_update.emplace_back(std::move(update_entry));
+        LOG_WITH_FUNC(INFO)
+            << "Setting checkpoint to OpId::Max() for cdc state table entry (tablet,stream) - "
+            << tablet->tablet_id() << ", " << stream_id;
+      }
+    }
+  }
+
+  if (!entries_to_update.empty()) {
+    LOG_WITH_FUNC(INFO) << "Setting checkpoint to max for " << entries_to_update.size()
+                        << " cdc state entries for CDC stream: " << stream_id;
+    RETURN_NOT_OK_PREPEND(
+        cdc_state_table_->UpdateEntries(entries_to_update),
+        "Error setting checkpoint to OpId::Max() in cdc_state table");
+  }
+
+  return Status::OK();
+}
+
+Result<std::vector<cdc::CDCStateTableEntry>> CatalogManager::SyncCDCStateTableEntries(
+    const xrepl::StreamId& stream_id,
+    const std::unordered_set<TableId>& tables_in_stream_metadata) {
   // Scan all the rows of state table and get the TabletInfo for each of them.
   Status iteration_status;
   auto all_entry_keys =
@@ -8105,15 +8174,9 @@ CatalogManager::UpdateCheckpointForTabletEntriesInCDCState(
     const auto& entry = *entry_result;
 
     if (entry.key.stream_id == stream_id) {
-      // For updating the checkpoint, only consider entries that do not have a colocated table_id as
-      // the ones with colocated table_id will be manually deleted.
+      // For updating the checkpoint, only consider entries that do not have a colocated table_id.
       if (entry.key.colocated_table_id.empty()) {
-          cdc_state_tablet_entries.push_back(entry.key.tablet_id);
-      } else if (entry.key.colocated_table_id == table_to_be_removed) {
-        // If the entry contain a colocated_table_id, it belongs to one of the colocated
-        // tables on that tablet. If this colocated_table_id matches with the table being removed,
-        // then we'll delete this entry directly.
-        cdc_state_entries_to_be_deleted.push_back(entry.key);
+        cdc_state_tablet_entries.push_back(entry.key.tablet_id);
       }
     }
   }
@@ -8131,42 +8194,13 @@ CatalogManager::UpdateCheckpointForTabletEntriesInCDCState(
       continue;
     }
 
-    bool should_update_entry = false;
-
-    // A state table entry can qualify for checkpoint update based on if a particular table is being
-    // removed or if all the state table entries are just being validated and synced with tables in
+    bool should_update_entry = true;
+    // The state table entry can only be updated if it belongs to none of the tables present in
     // stream metadata.
-    if (!table_to_be_removed.empty()) {
-      bool belongs_to_removed_table = false;
-      // tablet belongs to other colocated tables in addition to the table being removed.
-      bool belongs_to_other_tables_in_stream = false;
-
-      // The state table entry can only be updated in either of the two cases:
-      // 1. If the table being removed is not a colocated table, therefore the tablet exclusively
-      // belongs to the table being removed.
-      // 2. If the table being removed is a colocated table, then all the other colocated
-      // tables on the tablet should not be present in stream metadata.
-      for (const auto& table_id : tablet_info->GetTableIds()) {
-        if (table_id == table_to_be_removed) {
-          belongs_to_removed_table = true;
-        }
-
-        if (table_id != table_to_be_removed && belongs_to_removed_table &&
-            tables_in_stream_metadata.contains(table_id)) {
-          belongs_to_other_tables_in_stream = true;
-        }
-      }
-
-      should_update_entry = belongs_to_removed_table && !belongs_to_other_tables_in_stream;
-    } else {
-      // The state table entry can only be updated if it belongs to none of the tables present in
-      // stream metadata.
-      for (const auto& table_id : tablet_info->GetTableIds()) {
-        if (tables_in_stream_metadata.contains(table_id)) {
-          should_update_entry = false;
-          break;
-        }
-        should_update_entry = true;
+    for (const auto& table_id : tablet_info->GetTableIds()) {
+      if (tables_in_stream_metadata.contains(table_id)) {
+        should_update_entry = false;
+        break;
       }
     }
 
@@ -8186,21 +8220,6 @@ CatalogManager::UpdateCheckpointForTabletEntriesInCDCState(
     RETURN_NOT_OK_PREPEND(
         cdc_state_table_->UpdateEntries(entries_to_update),
         "Error setting checkpoint to OpId::Max() in cdc_state table");
-  }
-
-  if (!cdc_state_entries_to_be_deleted.empty()) {
-    // Only 1 entry is expected for a colocated table that is being removed.
-    RSTATUS_DCHECK(
-        cdc_state_entries_to_be_deleted.size() == 1, IllegalState,
-        "Found more than one cdc state table entry that needs to be deleted for removing table $0 "
-        "from CDC stream $1",
-        table_to_be_removed, stream_id);
-
-    LOG_WITH_FUNC(INFO) << "Deleting cdc state table entry (tablet, stream, table) - "
-                        << cdc_state_entries_to_be_deleted[0].ToString();
-    RETURN_NOT_OK_PREPEND(
-        cdc_state_table_->DeleteEntries(cdc_state_entries_to_be_deleted),
-        "Error deleting entries from cdc_state table");
   }
 
   return entries_to_update;
