@@ -34,6 +34,7 @@ yba eit custom-ca [flags]
 ### SEE ALSO
 
 * [yba eit](yba_eit.md)	 - Manage YugabyteDB Anywhere Encryption In Transit (EIT) configurations
+* [yba eit custom-ca create](yba_eit_custom-ca_create.md)	 - Create a YugabyteDB Anywhere Custom CA encryption in transit configuration
 * [yba eit custom-ca delete](yba_eit_custom-ca_delete.md)	 - Delete a YugabyteDB Anywhere Custom CA encryption in transit configuration
 * [yba eit custom-ca describe](yba_eit_custom-ca_describe.md)	 - Describe a Custom CA YugabyteDB Anywhere Encryption In Transit (EIT) configuration
 * [yba eit custom-ca list](yba_eit_custom-ca_list.md)	 - List Custom CA YugabyteDB Anywhere Encryption In Transit (EIT) certificate configurations

@@ -34,6 +34,7 @@ yba eit k8s-cert-manager [flags]
 ### SEE ALSO
 
 * [yba eit](yba_eit.md)	 - Manage YugabyteDB Anywhere Encryption In Transit (EIT) configurations
+* [yba eit k8s-cert-manager create](yba_eit_k8s-cert-manager_create.md)	 - Create a YugabyteDB Anywhere K8s Cert Manager encryption in transit configuration
 * [yba eit k8s-cert-manager delete](yba_eit_k8s-cert-manager_delete.md)	 - Delete a YugabyteDB Anywhere K8s Cert Manager encryption in transit configuration
 * [yba eit k8s-cert-manager describe](yba_eit_k8s-cert-manager_describe.md)	 - Describe a K8s Cert Manager YugabyteDB Anywhere Encryption In Transit (EIT) configuration
 * [yba eit k8s-cert-manager list](yba_eit_k8s-cert-manager_list.md)	 - List K8s Cert Manager YugabyteDB Anywhere Encryption In Transit (EIT) certificate configurations

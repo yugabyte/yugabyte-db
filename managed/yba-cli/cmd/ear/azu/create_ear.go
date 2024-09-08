@@ -23,17 +23,7 @@ var createAzureEARCmd = &cobra.Command{
 	Short:   "Create a YugabyteDB Anywhere Azure encryption at rest configuration",
 	Long:    "Create an Azure encryption at rest configuration in YugabyteDB Anywhere",
 	PreRun: func(cmd *cobra.Command, args []string) {
-		configNameFlag, err := cmd.Flags().GetString("name")
-		if err != nil {
-			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
-		}
-		if len(strings.TrimSpace(configNameFlag)) == 0 {
-			cmd.Help()
-			logrus.Fatalln(
-				formatter.Colorize(
-					"No encryption at rest config name found to create\n",
-					formatter.RedColor))
-		}
+		earutil.CreateEARValidation(cmd)
 		isIAM, err := cmd.Flags().GetBool("use-managed-identity")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
