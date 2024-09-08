@@ -8,7 +8,7 @@ menu:
   preview:
     identifier: rust-postgres-driver
     parent: rust-drivers
-    weight: 600
+    weight: 500
 type: docs
 ---
 

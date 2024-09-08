@@ -11,7 +11,7 @@ menu:
     name: Rust Drivers
     identifier: ref-rust-postgres-driver
     parent: rust-drivers
-    weight: 800
+    weight: 100
 type: docs
 ---
 
