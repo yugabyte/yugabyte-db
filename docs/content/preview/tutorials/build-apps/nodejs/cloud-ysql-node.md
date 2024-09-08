@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-The following tutorial shows a small [Node.js application](https://github.com/yugabyte/yugabyte-simple-node-app) that connects to a YugabyteDB cluster using the [node-postgres module](../../../../reference/drivers/ysql-client-drivers/#node-postgres) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Aeon in Node.js.
+The following tutorial shows a small [Node.js application](https://github.com/yugabyte/yugabyte-simple-node-app) that connects to a YugabyteDB cluster using the [node-postgres module](../../../../drivers-orms/nodejs/postgres-node-driver/) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Aeon in Node.js.
 
 ## Prerequisites
 
@@ -179,4 +179,4 @@ try {
 
 ## Learn more
 
-[node-postgres module](../../../../reference/drivers/ysql-client-drivers/#node-postgres)
+[node-postgres module](../../../../drivers-orms/nodejs/postgres-node-driver/)

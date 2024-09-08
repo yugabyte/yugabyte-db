@@ -14,14 +14,14 @@ menu:
 type: docs
 ---
 
-The following tutorial shows a small [C application](https://github.com/yugabyte/yugabyte-simple-c-app) that connects to a YugabyteDB cluster using the [libpq driver](../../../../reference/drivers/ysql-client-drivers/#libpq) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Aeon in C.
+The following tutorial shows a small [C application](https://github.com/yugabyte/yugabyte-simple-c-app) that connects to a YugabyteDB cluster using the [libpq driver](../../../../drivers-orms/ysql-client-drivers/#libpq) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Aeon in C.
 
 ## Prerequisites
 
 - 32-bit (x86) or 64-bit (x64) architecture machine. (Use [Rosetta](https://support.apple.com/en-us/HT211861) to build and run on Apple silicon.)
 - gcc 4.1.2 or later, or clang 3.4 or later installed.
 - OpenSSL 1.1.1 or later (used by libpq to establish secure SSL connections).
-- [libpq](../../../../reference/drivers/ysql-client-drivers/#libpq). Homebrew users on macOS can install using `brew install libpq`. You can download the PostgreSQL binaries and source from [PostgreSQL Downloads](https://www.postgresql.org/download/).
+- [libpq](../../../../drivers-orms/ysql-client-drivers/#libpq). Homebrew users on macOS can install using `brew install libpq`. You can download the PostgreSQL binaries and source from [PostgreSQL Downloads](https://www.postgresql.org/download/).
 
 ### Clone the application from GitHub
 
@@ -180,4 +180,4 @@ if (PQresultStatus(res) != PGRES_COMMAND_OK) {
 
 ## Learn more
 
-[libpq driver](../../../../reference/drivers/ysql-client-drivers/#libpq)
+[libpq driver](../../../../drivers-orms/ysql-client-drivers/#libpq)
