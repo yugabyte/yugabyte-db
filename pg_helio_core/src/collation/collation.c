@@ -11,14 +11,25 @@
 #include <postgres.h>
 #include <unicode/ures.h>
 #include <unicode/uloc.h>
+#include <utils/hsearch.h>
+#include <utils/memutils.h>
+#include <unicode/umachine.h>
+#include <utils/pg_locale.h>
+
 
 #include "io/helio_bson_core.h"
-#include "utils/feature_counter.h"
 #include "lib/stringinfo.h"
-#include "utils/mongo_errors.h"
+#include "utils/helio_errors.h"
 #include "collation/collation.h"
 
 #define ALPHABET_SIZE 26
+#define DEFAULT_ICU_COLLATION_SORT_KEY_LENGTH 512
+
+typedef struct
+{
+	unsigned long collationKey;
+	UCollator *collator; /* locale_t struct, or 0 if not valid */
+} ucollator_cache_entry;
 
 /*
  *
@@ -72,13 +83,11 @@ char supported_locale_codes[ALPHABET_SIZE][ALPHABET_SIZE] = {
 
 	/*         p    q    r    s    t    u    v    w    x    y    z  */
 
-
 	/*         a    b    c    d    e    f    g    h    i    j    k    l    m    n    o  */
 	/* b */ { ' ', ' ', ' ', ' ', 't', ' ', 't', ' ', ' ', ' ', ' ', ' ', ' ', 'T', 't',
 			  ' ', ' ', ' ', 'G', ' ', ' ', ' ', ' ', ' ', ' ', ' ' },
 
 	/*         p    q    r    s    t    u    v    w    x    y    z  */
-
 
 	/*         a    b    c    d    e    f    g    h    i    j    k    l    m    n    o  */
 	/* c */ { 'S', ' ', ' ', ' ', ' ', ' ', ' ', 'R', ' ', ' ', ' ', ' ', ' ', ' ', ' ',
@@ -86,13 +95,11 @@ char supported_locale_codes[ALPHABET_SIZE][ALPHABET_SIZE] = {
 
 	/*         p    q    r    s    t    u    v    w    x    y    z  */
 
-
 	/*         a    b    c    d    e    f    g    h    i    j    k    l    m    n    o  */
 	/* d */ { 'S', ' ', ' ', ' ', 'D', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ',
 			  ' ', ' ', ' ', 'B', ' ', ' ', ' ', ' ', ' ', ' ', 't' },
 
 	/*         p    q    r    s    t    u    v    w    x    y    z  */
-
 
 	/*         a    b    c    d    e    f    g    h    i    j    k    l    m    n    o  */
 	/* e */ { ' ', ' ', ' ', ' ', 't', ' ', ' ', ' ', ' ', ' ', ' ', 't', ' ', 'E', 't',
@@ -100,13 +107,11 @@ char supported_locale_codes[ALPHABET_SIZE][ALPHABET_SIZE] = {
 
 	/*         p    q    r    s    t    u    v    w    x    y    z  */
 
-
 	/*         a    b    c    d    e    f    g    h    i    j    k    l    m    n    o  */
 	/* f */ { 'F', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'I', ' ', ' ', ' ', ' ', ' ', 'S',
 			  ' ', ' ', 'A', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ' },
 
 	/*         p    q    r    s    t    u    v    w    x    y    z  */
-
 
 	/*         a    b    c    d    e    f    g    h    i    j    k    l    m    n    o  */
 	/* g */ { 't', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'S', ' ', ' ', ' ',
@@ -114,13 +119,11 @@ char supported_locale_codes[ALPHABET_SIZE][ALPHABET_SIZE] = {
 
 	/*         p    q    r    s    t    u    v    w    x    y    z  */
 
-
 	/*         a    b    c    d    e    f    g    h    i    j    k    l    m    n    o  */
 	/* h */ { 'H', ' ', ' ', ' ', 'S', ' ', ' ', ' ', 't', ' ', ' ', ' ', ' ', ' ', ' ',
 			  ' ', ' ', 'S', 'O', ' ', 't', ' ', ' ', ' ', 't', ' ' },
 
 	/*         p    q    r    s    t    u    v    w    x    y    z  */
-
 
 	/*         a    b    c    d    e    f    g    h    i    j    k    l    m    n    o  */
 	/* i */ { ' ', ' ', ' ', 't', ' ', ' ', 't', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ',
@@ -128,13 +131,11 @@ char supported_locale_codes[ALPHABET_SIZE][ALPHABET_SIZE] = {
 
 	/*         p    q    r    s    t    u    v    w    x    y    z  */
 
-
 	/*         a    b    c    d    e    f    g    h    i    j    k    l    m    n    o  */
 	/* j */ { 'J', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ',
 			  ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ' },
 
 	/*         p    q    r    s    t    u    v    w    x    y    z  */
-
 
 	/*         a    b    c    d    e    f    g    h    i    j    k    l    m    n    o  */
 	/* k */ { 't', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'M', 'S', 't', 'T', 'K',
@@ -142,20 +143,17 @@ char supported_locale_codes[ALPHABET_SIZE][ALPHABET_SIZE] = {
 
 	/*         p    q    r    s    t    u    v    w    x    y    z  */
 
-
 	/*         a    b    c    d    e    f    g    h    i    j    k    l    m    n    o  */
 	/* l */ { ' ', 't', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'C', ' ', ' ', 'P', 't',
 			  ' ', ' ', ' ', ' ', 't', ' ', 't', ' ', ' ', ' ', ' ' },
 
 	/*         p    q    r    s    t    u    v    w    x    y    z  */
 
-
 	/*         a    b    c    d    e    f    g    h    i    j    k    l    m    n    o  */
 	/* m */ { ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 't', 't', ' ', 't', ' ',
 			  ' ', ' ', 't', 't', 't', ' ', ' ', ' ', ' ', 't', ' ' },
 
 	/*         p    q    r    s    t    u    v    w    x    y    z  */
-
 
 	/*         a    b    c    d    e    f    g    h    i    j    k    l    m    n    o  */
 	/* n */ { ' ', 'S', ' ', ' ', 't', ' ', ' ', ' ', ' ', ' ', ' ', 't', ' ', 'S', ' ',
@@ -169,13 +167,11 @@ char supported_locale_codes[ALPHABET_SIZE][ALPHABET_SIZE] = {
 
 	/*         p    q    r    s    t    u    v    w    x    y    z  */
 
-
 	/*         a    b    c    d    e    f    g    h    i    j    k    l    m    n    o  */
 	/* p */ { 't', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 't', ' ', ' ', ' ',
 			  ' ', ' ', ' ', 't', 't', ' ', ' ', ' ', ' ', ' ', ' ' },
 
 	/*         p    q    r    s    t    u    v    w    x    y    z  */
-
 
 	/*         a    b    c    d    e    f    g    h    i    j    k    l    m    n    o  */
 	/* q */ { ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ',
@@ -183,13 +179,11 @@ char supported_locale_codes[ALPHABET_SIZE][ALPHABET_SIZE] = {
 
 	/*         p    q    r    s    t    u    v    w    x    y    z  */
 
-
 	/*         a    b    c    d    e    f    g    h    i    j    k    l    m    n    o  */
 	/* r */ { ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 't',
 			  ' ', ' ', ' ', ' ', ' ', 't', ' ', ' ', ' ', ' ', ' ' },
 
 	/*         p    q    r    s    t    u    v    w    x    y    z  */
-
 
 	/*         a    b    c    d    e    f    g    h    i    j    k    l    m    n    o  */
 	/* s */ { ' ', ' ', ' ', ' ', 'S', ' ', ' ', ' ', 'Y', ' ', 'S', 't', 'N', ' ', ' ',
@@ -197,13 +191,11 @@ char supported_locale_codes[ALPHABET_SIZE][ALPHABET_SIZE] = {
 
 	/*         p    q    r    s    t    u    v    w    x    y    z  */
 
-
 	/*         a    b    c    d    e    f    g    h    i    j    k    l    m    n    o  */
 	/* t */ { 't', ' ', ' ', ' ', 't', ' ', ' ', 't', ' ', ' ', ' ', ' ', ' ', ' ', 't',
 			  ' ', ' ', 'S', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ' },
 
 	/*         p    q    r    s    t    u    v    w    x    y    z  */
-
 
 	/*         a    b    c    d    e    f    g    h    i    j    k    l    m    n    o  */
 	/* u */ { ' ', ' ', ' ', ' ', ' ', ' ', 't', ' ', ' ', ' ', 't', ' ', ' ', ' ', ' ',
@@ -211,13 +203,11 @@ char supported_locale_codes[ALPHABET_SIZE][ALPHABET_SIZE] = {
 
 	/*         p    q    r    s    t    u    v    w    x    y    z  */
 
-
 	/*         a    b    c    d    e    f    g    h    i    j    k    l    m    n    o  */
 	/* v */ { ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'T', ' ', ' ', ' ', ' ', ' ', ' ',
 			  ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ' },
 
 	/*         p    q    r    s    t    u    v    w    x    y    z  */
-
 
 	/*         a    b    c    d    e    f    g    h    i    j    k    l    m    n    o  */
 	/* w */ { 'W', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ',
@@ -225,13 +215,11 @@ char supported_locale_codes[ALPHABET_SIZE][ALPHABET_SIZE] = {
 
 	/*         p    q    r    s    t    u    v    w    x    y    z  */
 
-
 	/*         a    b    c    d    e    f    g    h    i    j    k    l    m    n    o  */
 	/* x */ { ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ',
 			  ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ' },
 
 	/*         p    q    r    s    t    u    v    w    x    y    z  */
-
 
 	/*         a    b    c    d    e    f    g    h    i    j    k    l    m    n    o  */
 	/* y */ { ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'S', ' ', ' ', ' ', ' ', ' ', 't',
@@ -239,16 +227,19 @@ char supported_locale_codes[ALPHABET_SIZE][ALPHABET_SIZE] = {
 
 	/*         p    q    r    s    t    u    v    w    x    y    z  */
 
-
 	/*         a    b    c    d    e    f    g    h    i    j    k    l    m    n    o  */
 	/* z */ { ' ', ' ', ' ', ' ', ' ', ' ', ' ', 'Z', ' ', ' ', ' ', ' ', ' ', ' ', ' ',
 			  ' ', ' ', ' ', ' ', ' ', 't', ' ', ' ', ' ', ' ', ' ' }
 
 	/*         p    q    r    s    t    u    v    w    x    y    z  */
 };
+
+static HTAB *collation_cache = NULL;
+
+static ucollator_cache_entry * LookupUCollatorCache(const char *collationString);
+
 inline static void CheckCollationInputParamType(bson_type_t expectedType, bson_type_t
-												foundType, const
-												char *paramName);
+												foundType, const char *paramName);
 
 inline static bool CheckIfValidLocale(const char *locale);
 inline static void ThrowInvalidLocaleError(const char *locale);
@@ -263,18 +254,17 @@ inline static void ThrowInvalidLocaleError(const char *locale);
 void
 ParseAndGetCollationString(const bson_value_t *collationValue, const char *colationString)
 {
-	ReportFeatureUsage(FEATURE_COLLATION);
 	bson_iter_t docIter;
 	BsonValueInitIterator(collationValue, &docIter);
 
-	const char *locale = NULL; /* required */
-	int strength = 3; /* optional, default = 3 */
-	const char *caseFirst = NULL; /* optional, default = off */
-	bool caseLevel = false; /* optional, default = false */
-	bool numericOrdering = false; /* optional, default = false */
-	bool backwards = false; /* optional, default = false */
-	bool normalization = false; /* optional, default = false */
-	const char *alternate = NULL; /* optional, default = non-ignorable */
+	const char *locale = NULL;      /* required */
+	int strength = 3;               /* optional, default = 3 */
+	const char *caseFirst = NULL;   /* optional, default = off */
+	bool caseLevel = false;         /* optional, default = false */
+	bool numericOrdering = false;   /* optional, default = false */
+	bool backwards = false;         /* optional, default = false */
+	bool normalization = false;     /* optional, default = false */
+	const char *alternate = NULL;   /* optional, default = non-ignorable */
 	const char *maxVariable = NULL; /* optional, default not specified. ICU default punct. */
 
 	while (bson_iter_next(&docIter))
@@ -467,6 +457,75 @@ ParseAndGetCollationString(const bson_value_t *collationValue, const char *colat
 	{
 		appendStringInfo(&icuCollation, "-kv-%s", maxVariable);
 	}
+}
+
+
+/*
+ *  Compares two strings using an ICU collation string. The code
+ *  follows same logic as how postgres performs ICU based string
+ *  comparison given an ICU standard collation string (e.g., en-u-kf-upper-kr-grek)
+ *
+ *  Reference: https://unicode-org.github.io/icu-docs/apidoc/dev/icu4c/ucol_8h.html
+ */
+int
+StringCompareWithCollation(const char *left, uint32_t leftLength,
+						   const char *right, uint32_t rightLength, const
+						   char *collationStr)
+{
+	ucollator_cache_entry *collation_entry = LookupUCollatorCache(collationStr);
+
+	UErrorCode status = U_ZERO_ERROR;
+
+	/* Reference: varstr_cmp() in varlena.c */
+	int result = ucol_strcollUTF8(collation_entry->collator,
+								  left, leftLength,
+								  right, rightLength, &status);
+
+	if (U_FAILURE(status))
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+						errmsg(
+							"Collation aware string comparison failed for collation language tag: %s",
+							collationStr),
+						errdetail_log(
+							"Collation aware string comparison failed for collation language tag: %s",
+							collationStr)));
+	}
+
+	return result;
+}
+
+
+/*
+ *  Convenience function to generate a collation aware sortkey that can be used in strcmp().
+ *
+ *  Two calls to ucol_getSortKey() is a pattern used in pg code. This is to know the expected size
+ *  of the sort key so that we allocate a larger buffer if needed.
+ *  Reference: https://unicode-org.github.io/icu-docs/apidoc/dev/icu4c/ucol_8h.html#a58be2c76d01184cb1821ff0af28081c2
+ *  Reference: https://unicode-org.github.io/icu/userguide/collation/api.html
+ */
+inline char *
+GetCollationSortKey(const char *collationString, char *key, int keyLength)
+{
+	ucollator_cache_entry *collation_entry = LookupUCollatorCache(collationString);
+
+	uint8_t *sortKeyPtr = palloc(DEFAULT_ICU_COLLATION_SORT_KEY_LENGTH);
+	UChar *uchar;
+	int32_t ulen;
+
+	ulen = icu_to_uchar(&uchar, key, keyLength);
+	Size expectedLength = ucol_getSortKey(collation_entry->collator, uchar, ulen,
+										  sortKeyPtr,
+										  DEFAULT_ICU_COLLATION_SORT_KEY_LENGTH);
+	if (expectedLength > DEFAULT_ICU_COLLATION_SORT_KEY_LENGTH)
+	{
+		sortKeyPtr = repalloc(sortKeyPtr, expectedLength);
+		ucol_getSortKey(collation_entry->collator, uchar, ulen, sortKeyPtr,
+						expectedLength);
+	}
+
+	pfree(uchar);
+	return (char *) sortKeyPtr;
 }
 
 
@@ -751,7 +810,6 @@ ThrowInvalidLocaleError(const char * locale)
 						locale)));
 }
 
-
 /*
  *  Checks the input type of the parameters of the collation spec document against the expected types.
  */
@@ -770,4 +828,81 @@ CheckCollationInputParamType(bson_type_t expectedType, bson_type_t foundType, co
 					errdetail_log(
 						"unable to parse collation :: caused by :: BSON field 'collation.%s' is the wrong type '%s', expected type '%s'",
 						paramName, BsonTypeName(foundType), BsonTypeName(expectedType))));
+}
+
+
+/*
+ * Well known hash function to efficiently calculate hash of a string. While it may have collections it's unlikely in our case
+ * where is hash function is used to generate hash code for limited number of collation strings. Even if there is collision,
+ * the functionality will not be broken, we will just generate a few more cache entries
+ */
+static unsigned long
+djb2(const char *str)
+{
+	unsigned long hash = 5381;
+	int c;
+	while ((c = *str++))
+	{
+		hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
+	}
+	return hash;
+}
+
+
+/*
+ * Cache that live the lifetime of a backend process and caches a Ucollator object for performing
+ * collation related operations. Open a collator object can be expensive and hence we create this cache.
+ * When the backend process dies all memory associated with the collator cache is cleaned up.
+ *
+ * This is inspired by lookup_collation_cache() in pg_locale.c
+ */
+static ucollator_cache_entry *
+LookupUCollatorCache(const char *collationString)
+{
+	ucollator_cache_entry *cache_entry;
+	bool found;
+
+	if (collation_cache == NULL)
+	{
+		/* First time through, initialize the hash table */
+		HASHCTL ctl;
+		memset(&ctl, 0, sizeof(ctl));
+
+		ctl.keysize = sizeof(char *);
+		ctl.entrysize = sizeof(ucollator_cache_entry);
+
+		MemoryContext tempContext = AllocSetContextCreate(CurrentMemoryContext,
+														  "Collation Context",
+														  ALLOCSET_DEFAULT_SIZES);
+
+		MemoryContext oldContext = MemoryContextSwitchTo(tempContext);
+		collation_cache = hash_create("Collator cache", 100, &ctl,
+									  HASH_ELEM | HASH_BLOBS);
+		MemoryContextSwitchTo(oldContext);
+	}
+
+	unsigned long collationKey = djb2(collationString);
+
+	cache_entry = hash_search(collation_cache, &collationKey, HASH_ENTER, &found);
+	if (!found)
+	{
+		cache_entry->collationKey = collationKey;
+		UErrorCode status = U_ZERO_ERROR;
+		UCollator *collator = ucol_open(collationString, &status);
+
+		if (U_FAILURE(status))
+		{
+			ereport(ERROR, (errcode(ERRCODE_HELIO_INTERNALERROR),
+							errmsg(
+								"Collation is not supported by ICU for collation language tag: %s",
+								collationString),
+							errdetail_log(
+								"Collation is not supported by ICU for collation language tag: %s",
+								collationString)));
+		}
+
+		cache_entry->collator = collator;
+	}
+
+	return cache_entry;
 }

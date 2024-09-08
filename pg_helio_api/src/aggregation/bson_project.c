@@ -37,6 +37,8 @@
 #include "aggregation/bson_project_operator.h"
 #include "utils/fmgr_utils.h"
 #include "commands/commands_common.h"
+#include "collation/collation.h"
+
 
 /* --------------------------------------------------------- */
 /* Error-Messages */
@@ -134,7 +136,8 @@ static bool TraverseDocumentAndWriteLookupIndexCondition(pgbson_array_writer *ar
 														 pathLength);
 
 static pgbson * BsonLookUpGetFilterExpression(pgbson *sourceDocument,
-											  pgbsonelement *lookupSpecElement);
+											  pgbsonelement *lookupSpecElement, const
+											  char *collationString);
 
 static pgbson * BsonLookUpProject(pgbson *sourceDocument, int numMatchedDocuments,
 								  Datum *mathedArray, char *matchedDocsFieldName);
@@ -827,9 +830,11 @@ bson_dollar_lookup_extract_filter_expression(PG_FUNCTION_ARGS)
 	pgbson *filterExpressionSpec = PG_GETARG_PGBSON(1);
 
 	pgbsonelement pgbsonElement;
-	PgbsonToSinglePgbsonElement(filterExpressionSpec, &pgbsonElement);
+	const char *collationString = PgbsonToSinglePgbsonElementWithCollation(
+		filterExpressionSpec, &pgbsonElement);
 
-	PG_RETURN_POINTER(BsonLookUpGetFilterExpression(document, &pgbsonElement));
+	PG_RETURN_POINTER(BsonLookUpGetFilterExpression(document, &pgbsonElement,
+													collationString));
 }
 
 
@@ -844,9 +849,11 @@ bson_dollar_lookup_extract_filter_array(PG_FUNCTION_ARGS)
 	pgbson *filterExpressionSpec = PG_GETARG_PGBSON(1);
 
 	pgbsonelement pgbsonElement;
-	PgbsonToSinglePgbsonElement(filterExpressionSpec, &pgbsonElement);
+	const char *collationString = PgbsonToSinglePgbsonElementWithCollation(
+		filterExpressionSpec, &pgbsonElement);
 
-	pgbson *result = BsonLookUpGetFilterExpression(document, &pgbsonElement);
+	pgbson *result = BsonLookUpGetFilterExpression(document, &pgbsonElement,
+												   collationString);
 	pgbsonelement element;
 	PgbsonToSinglePgbsonElement(result, &element);
 
@@ -1351,7 +1358,8 @@ BuildBsonPathTreeForDollarUnset(BsonProjectionQueryState *state,
  */
 static pgbson *
 BsonLookUpGetFilterExpression(pgbson *sourceDocument,
-							  pgbsonelement *lookupSpecElement)
+							  pgbsonelement *lookupSpecElement, const
+							  char *collationString)
 {
 	const char *foreignField = lookupSpecElement->path;
 	bson_value_t localFieldPath = lookupSpecElement->bsonValue;
@@ -1392,6 +1400,11 @@ BsonLookUpGetFilterExpression(pgbson *sourceDocument,
 	}
 
 	PgbsonWriterEndArray(&writer, &arrayWriter);
+
+	if (IsCollationApplicable(collationString))
+	{
+		PgbsonWriterAppendUtf8(&writer, "collation", 9, collationString);
+	}
 
 	return PgbsonWriterGetPgbson(&writer);
 }

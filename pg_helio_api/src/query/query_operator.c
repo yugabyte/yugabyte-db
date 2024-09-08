@@ -888,7 +888,7 @@ ExpandBsonQueryOperator(OpExpr *queryOpExpr, Node *queryNode,
 
 				/* include _id filter in quals */
 				if (idFilter != NULL &&
-					!(isCollationAware && IS_COLLATION_APPLICABLE(
+					!(isCollationAware && IsCollationApplicable(
 						  context.collationString)))
 				{
 					quals = lappend(quals, idFilter);
@@ -2488,7 +2488,7 @@ CreateConstFromBsonValue(const char *path, const bson_value_t *value, const
 	PgbsonWriterInit(&writer);
 	PgbsonWriterAppendValue(&writer, path, strlen(path), value);
 
-	if (IS_COLLATION_APPLICABLE(collationString))
+	if (IsCollationApplicable(collationString))
 	{
 		PgbsonWriterAppendUtf8(&writer, "collation", 9, collationString);
 	}
@@ -2823,9 +2823,12 @@ CheckAndAddIdFilter(List *opArgs, IdFilterWalkerContext *context,
 	{
 		PgbsonToSinglePgbsonElementWithCollation(qual, &qualElement);
 
-		/* _id can't be array, regex. _id can take Code, but Code is agnostic to collation */
+		/*  regex. _id can take Code, but Code is agnostic to collation
+		 * _id can't be array accrording to mongo senmantics, but it can
+		 * be an array in helio since we rewrite $or conditions on _id as $in. */
 		if (qualElement.bsonValue.value_type == BSON_TYPE_UTF8 ||
-			qualElement.bsonValue.value_type == BSON_TYPE_DOCUMENT)
+			qualElement.bsonValue.value_type == BSON_TYPE_DOCUMENT ||
+			qualElement.bsonValue.value_type == BSON_TYPE_ARRAY)
 		{
 			context->isCollationAware = true;
 		}
@@ -3021,12 +3024,13 @@ Expr *
 CreateIdFilterForQuery(List *existingQuals,
 					   Index collectionVarno, bool *isCollationAware)
 {
-	*isCollationAware = false;
 	IdFilterWalkerContext walkerContext = { 0 };
 	walkerContext.idQuals = NIL;
 	walkerContext.collectionVarno = collectionVarno;
 	expression_tree_walker((Node *) existingQuals, VisitIdFilterExpression,
 						   &walkerContext);
+
+	*isCollationAware = walkerContext.isCollationAware;
 	if (walkerContext.idQuals == NIL)
 	{
 		return NULL;
@@ -3521,12 +3525,6 @@ static Expr *
 TryProcessOrIntoDollarIn(BsonQueryOperatorContext *context,
 						 List *orQuals)
 {
-	if (IS_COLLATION_APPLICABLE(context->collationString))
-	{
-		/* TODO: Support collation with $in (workitem: 3412412). See details in PopulateDollarInStateFromQuery() */
-		return NULL;
-	}
-
 	const MongoQueryOperator *op = GetMongoQueryOperatorByQueryOperatorType(
 		QUERY_OPERATOR_EQ, context->inputType);
 

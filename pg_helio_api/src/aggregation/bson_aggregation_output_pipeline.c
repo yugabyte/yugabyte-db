@@ -108,8 +108,6 @@ extern bool EnableMergeTargetCreation;
 /* GUC to enable $merge across databases */
 extern bool EnableMergeAcrossDB;
 
-extern bool EnableCollation;
-
 static void ParseMergeStage(const bson_value_t *existingValue, const
 							char *currentNameSpace, MergeArgs *args);
 static void VaildateMergeOnFieldValues(const bson_value_t *onArray, uint64
@@ -415,7 +413,7 @@ HandleMerge(const bson_value_t *existingValue, Query *query,
 {
 	ReportFeatureUsage(FEATURE_STAGE_MERGE);
 
-	if (EnableCollation && IS_COLLATION_VALID(context->collationString))
+	if (IsCollationApplicable(context->collationString))
 	{
 		ereport(ERROR, (errcode(MongoCommandNotSupported), errmsg(
 							"collation is not supported with $merge yet")));

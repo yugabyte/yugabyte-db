@@ -21,8 +21,7 @@
 #include "utils/helio_errors.h"
 #include "utils/date_utils.h"
 #include "utils/hashset_utils.h"
-#include "unicode/umachine.h"
-#include "utils/pg_locale.h"
+#include "collation/collation.h"
 
 /* --------------------------------------------------------- */
 /* Data-types */
@@ -1020,42 +1019,6 @@ CompareSortOrderType(bson_type_t left, bson_type_t right)
 /* --------------------------------------------------------- */
 /* Helpers */
 /* --------------------------------------------------------- */
-
-
-/*
- *  Compares two strings using an ICU collation string. The code
- *  follows same logic as how postgres performs ICU based string
- *  comparison given an ICU standard collation string (e.g., en-u-kf-upper-kr-grek)
- *  gi
- */
-static int
-StringCompareWithCollation(const char *left, uint32_t leftLength,
-						   const char *right, uint32_t rightLength, const
-						   char *collationStr)
-{
-	int32_t ulen1, ulen2;
-	UChar *uchar1, *uchar2;
-
-	ulen1 = icu_to_uchar(&uchar1, left, leftLength);
-	ulen2 = icu_to_uchar(&uchar2, right, rightLength);
-
-	struct pg_locale_struct newCollator = { 0 };
-
-#if PG_VERSION_NUM >= 160000
-	const char *icurules = NULL;
-	make_icu_collator(collationStr, icurules, &newCollator);
-#else
-	make_icu_collator(collationStr, &newCollator);
-#endif
-	int result = ucol_strcoll(newCollator.info.icu.ucol,
-							  uchar1, ulen1,
-							  uchar2, ulen2);
-
-	pfree(uchar1);
-	pfree(uchar2);
-
-	return result;
-}
 
 
 /*

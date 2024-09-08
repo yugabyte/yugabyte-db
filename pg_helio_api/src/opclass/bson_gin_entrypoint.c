@@ -739,7 +739,7 @@ ValidateIndexForQualifierValue(bytea *indexOptions, Datum queryValue, BsonIndexS
 																			   &
 																			   filterElement);
 
-		if (IS_COLLATION_VALID(collationString))
+		if (IsCollationValid(collationString))
 		{
 			/* We don't yet support collated index, until then we can't use index is operator has collation */
 			return false;

@@ -55,5 +55,25 @@ bool IsSafeToReuseFmgrFunctionExtraMultiArgs(PG_FUNCTION_ARGS, int *argPositions
 										populateStateFunc, __VA_ARGS__); \
 	}
 
+/*
+ *
+ * Convenience function to register a callback to cleanup any state that may be allocated
+ * by thrid party (e.g, ucol_open() i.e., not allocated by PG). When the PG tries to clean up
+ * the current memory context, it will issue a call to the registered callback to perform
+ * any additional clean up.
+ *
+ * We need to be careful to not register the same call back multiple times. One option is
+ * decide when to register the call back by checking if fcinfo->flinfo->fn_extra is set to NULL.
+ *
+ */
+#define SetCachedFunctionStateCleanupCallback(stateVariable, callbackFunction) \
+	{ \
+		MemoryContextCallback *cb = MemoryContextAlloc(fcinfo->flinfo->fn_mcxt, \
+													   sizeof(MemoryContextCallback)); \
+		cb->func = callbackFunction; \
+		cb->arg = (void *) stateVariable; \
+		MemoryContextRegisterResetCallback(fcinfo->flinfo->fn_mcxt, cb); \
+	}
+
 
 #endif

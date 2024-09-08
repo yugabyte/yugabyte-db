@@ -1313,6 +1313,7 @@ GenerateAggregationQuery(Datum database, pgbson *aggregationSpec, QueryData *que
 		{
 			EnsureTopLevelFieldType("collation", &aggregationIterator,
 									BSON_TYPE_DOCUMENT);
+			ReportFeatureUsage(FEATURE_COLLATION);
 			ParseAndGetCollationString(value, context.collationString);
 		}
 		else if (!IsCommonSpecIgnoredField(keyView.string))
@@ -1495,6 +1496,7 @@ GenerateFindQuery(Datum databaseDatum, pgbson *findSpec, QueryData *queryData, b
 		else if (EnableCollation && StringViewEqualsCString(&keyView, "collation"))
 		{
 			EnsureTopLevelFieldType("collation", &findIterator, BSON_TYPE_DOCUMENT);
+			ReportFeatureUsage(FEATURE_COLLATION);
 			ParseAndGetCollationString(value, context.collationString);
 		}
 		else if (StringViewEqualsCString(&keyView, "singleBatch"))
@@ -2759,7 +2761,7 @@ AddShardKeyAndIdFilters(const bson_value_t *existingValue, Query *query,
 												&isCollationAware);
 
 		if (idFilter != NULL &&
-			!(isCollationAware && IS_COLLATION_APPLICABLE(context->collationString)))
+			!(isCollationAware && IsCollationApplicable(context->collationString)))
 		{
 			existingQuals = lappend(existingQuals, idFilter);
 		}

@@ -29,6 +29,7 @@
 #include "collation/collation.h"
 #include "utils/version_utils.h"
 
+
 /*
  * Custom bson_orderBy options to allow specific types when sorting.
  */
@@ -98,6 +99,9 @@ typedef struct BsonDollarInQueryState
 
 	/* true if array has any null value */
 	bool hasNull;
+
+	/* ICU standard colation string. See AggregationPipelineBuildContext for more details. */
+	const char *collationString;
 } BsonDollarInQueryState;
 
 /* State for comparison operations order by traversal */
@@ -137,6 +141,9 @@ typedef struct TraverseInValidateState
 
 	/* true if array has any null value */
 	bool hasNull;
+
+	/* ICU standard colation string. See AggregationPipelineBuildContext for more details. */
+	const char *collationString;
 } TraverseInValidateState;
 
 
@@ -1155,7 +1162,7 @@ bson_dollar_range(PG_FUNCTION_ARGS)
 																			   &
 																			   filterElement);
 
-		if (IS_COLLATION_VALID(collationString))
+		if (IsCollationValid(collationString))
 		{
 			/* TODO (workitem=3423305): Index pushdwon on $range operator with collation (see method description for more details) */
 			/* This code path is not expected to be excercised until $range with collation is pushed down to the index. */
@@ -1336,7 +1343,7 @@ bson_dollar_in(PG_FUNCTION_ARGS)
 {
 	pgbson *document = PG_GETARG_PGBSON(0);
 	bson_iter_t documentIterator;
-	TraverseInValidateState state = { { 0 }, NULL, NIL, NULL, false };
+	TraverseInValidateState state = { 0 };
 
 	pgbsonelement filterElement = { 0 };
 	PopulateDollarInValidationState(fcinfo, &state, &filterElement);
@@ -1449,7 +1456,7 @@ Datum
 bson_value_dollar_in(PG_FUNCTION_ARGS)
 {
 	pgbsonelement *element = (pgbsonelement *) PG_GETARG_POINTER(0);
-	TraverseInValidateState state = { { 0 }, NULL, NIL, NULL, false };
+	TraverseInValidateState state = { 0 };
 
 	pgbsonelement filterElement = { 0 };
 	PopulateDollarInValidationState(fcinfo, &state, &filterElement);
@@ -1475,7 +1482,7 @@ bson_dollar_nin(PG_FUNCTION_ARGS)
 {
 	pgbson *document = PG_GETARG_PGBSON(0);
 	bson_iter_t documentIterator;
-	TraverseInValidateState state = { { 0 }, NULL, NIL, NULL, false };
+	TraverseInValidateState state = { 0 };
 
 	pgbsonelement filterElement = { 0 };
 	PopulateDollarInValidationState(fcinfo, &state, &filterElement);
@@ -1506,7 +1513,7 @@ Datum
 bson_value_dollar_nin(PG_FUNCTION_ARGS)
 {
 	pgbsonelement *element = (pgbsonelement *) PG_GETARG_POINTER(0);
-	TraverseInValidateState state = { { 0 }, NULL, NIL, NULL, false };
+	TraverseInValidateState state = { 0 };
 
 	pgbsonelement filterElement = { 0 };
 	PopulateDollarInValidationState(fcinfo, &state, &filterElement);
@@ -2671,8 +2678,43 @@ CompareInMatch(const pgbsonelement *documentIterator,
 	}
 
 	/* 2: verify if document matches with any entry of $in which are hashed */
-	hash_search(inValidationState->bsonValueHashSet, &documentIterator->bsonValue,
-				HASH_FIND, &match);
+
+	if (IsCollationApplicable(inValidationState->collationString) &&
+		(documentIterator->bsonValue.value_type == BSON_TYPE_UTF8 ||
+		 documentIterator->bsonValue.value_type == BSON_TYPE_ARRAY ||
+		 documentIterator->bsonValue.value_type == BSON_TYPE_DOCUMENT))
+	{
+		char *sortKey;
+
+		if (documentIterator->bsonValue.value_type != BSON_TYPE_UTF8)
+		{
+			/*
+			 *  See comments in PopulateDollarInStateFromQuery()
+			 *  We don't support nested objects with collation in $in query.
+			 *
+			 *  So, we can return `false` here safely until we support such case.
+			 */
+
+			return false;
+		}
+
+		sortKey = GetCollationSortKey(inValidationState->collationString,
+									  documentIterator->bsonValue.value.v_utf8.str,
+									  documentIterator->bsonValue.value.v_utf8.len);
+
+		bson_value_t bsonValue = { 0 };
+		bsonValue.value_type = BSON_TYPE_UTF8;
+		bsonValue.value.v_utf8.len = strlen(sortKey);
+		bsonValue.value.v_utf8.str = sortKey;
+
+		hash_search(inValidationState->bsonValueHashSet, &bsonValue,
+					HASH_FIND, &match);
+	}
+	else
+	{
+		hash_search(inValidationState->bsonValueHashSet, &documentIterator->bsonValue,
+					HASH_FIND, &match);
+	}
 
 	if (match)
 	{
@@ -3342,10 +3384,10 @@ PopulateDollarInValidationState(PG_FUNCTION_ARGS,
 {
 	pgbson *filter = PG_GETARG_PGBSON(1);
 
-	BsonDollarInQueryState *dollarInState;
+	BsonDollarInQueryState *dollarInState = NULL;
 
 	/* State populated iff cached state is unavailable */
-	BsonDollarInQueryState localState = { { 0 }, NULL, NULL, false };
+	BsonDollarInQueryState localState = { 0 };
 
 	SetCachedFunctionState(
 		dollarInState,
@@ -3361,6 +3403,7 @@ PopulateDollarInValidationState(PG_FUNCTION_ARGS,
 	}
 
 	*filterElement = dollarInState->filterElement;
+	state->collationString = dollarInState->collationString;
 
 	state->filter = filterElement;
 	state->traverseState.matchFunc = CompareInMatch;
@@ -3380,23 +3423,14 @@ PopulateDollarInStateFromQuery(BsonDollarInQueryState *dollarInState,
 {
 	pgbsonelement filterElement;
 	bson_iter_t arrayIterator;
+	const char *collationString = NULL;
 
 	if (EnableCollation)
 	{
-		const char *collationString = PgbsonToSinglePgbsonElementWithCollation(
+		collationString = PgbsonToSinglePgbsonElementWithCollation(
 			(pgbson *) filter, &filterElement);
 
-		if (IS_COLLATION_VALID(collationString))
-		{
-			/* TODO: $in query is implemnet using postgres's HasMap implementation. */
-			/* But the key comparison of the the HashMap is not collation aware */
-			/* We will need a collation-aware implementation later */
-			ereport(ERROR, (errcode(MongoBadValue), errmsg(
-								"operator $in or operators that can be optimized to $in is not supported with collation"),
-							errhint(
-								"operator $in or operators that can be optimized to $in is not supported with collation : %s",
-								collationString)));
-		}
+		dollarInState->collationString = collationString;
 	}
 	else
 	{
@@ -3431,7 +3465,56 @@ PopulateDollarInStateFromQuery(BsonDollarInQueryState *dollarInState,
 		else
 		{
 			bool found = false;
-			hash_search(dollarInState->bsonValueHashSet, arrayValue, HASH_ENTER, &found);
+
+			if (IsCollationApplicable(collationString) &&
+				(arrayValue->value_type == BSON_TYPE_UTF8 ||
+				 arrayValue->value_type == BSON_TYPE_ARRAY ||
+				 arrayValue->value_type == BSON_TYPE_DOCUMENT))
+			{
+				char *sortKey = NULL;
+
+				if (arrayValue->value_type == BSON_TYPE_UTF8)
+				{
+					sortKey = GetCollationSortKey(collationString,
+												  arrayValue->value.v_utf8.str,
+												  arrayValue->value.v_utf8.len);
+				}
+				else
+				{
+					/*
+					 *  TODO: Traverse nested object and replace UTF8 with sortKeys, or do a
+					 *  for loop based $in matching
+					 *
+					 *  $in queries of the folllowing for are collation aware, i.e., collation is
+					 *  applicable to any nested UTF8. Note that, serializing the nested objects to
+					 *  JSON and generating sort keys does not solve the problem, as the path names
+					 *  need to be collation agnostic.
+					 *
+					 *  ex1: {"$in" : [[{ "b" : "cat"}]]}   ex2: {"$in" : [{ "b" : "cat"}] }
+					 */
+					ereport(ERROR, (errcode(MongoCommandNotSupported), errmsg(
+										"operator $in or operators that can be optimized to $in is not supported with collation, when $in contains nested objects"),
+									errhint(
+										"operator $in or operators that can be optimized to $in is not supported with collation, when $in contains nested objects : %s",
+										collationString)));
+				}
+
+
+				bson_value_t *bsonValue = palloc0(sizeof(bson_value_t));
+				bsonValue->value_type = BSON_TYPE_UTF8;
+				bsonValue->value.v_utf8.len = strlen(sortKey);
+				bsonValue->value.v_utf8.str = palloc0(bsonValue->value.v_utf8.len);
+				strncpy(bsonValue->value.v_utf8.str, sortKey,
+						bsonValue->value.v_utf8.len);
+
+				hash_search(dollarInState->bsonValueHashSet, bsonValue, HASH_ENTER,
+							&found);
+			}
+			else
+			{
+				hash_search(dollarInState->bsonValueHashSet, arrayValue, HASH_ENTER,
+							&found);
+			}
 		}
 	}
 }

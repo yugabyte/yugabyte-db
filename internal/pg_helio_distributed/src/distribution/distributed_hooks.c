@@ -10,7 +10,6 @@
 #include <miscadmin.h>
 #include <utils/builtins.h>
 #include <utils/timestamp.h>
-#include <utils/mongo_errors.h>
 #include <nodes/makefuncs.h>
 #include <catalog/namespace.h>
 #include <utils/lsyscache.h>
@@ -21,6 +20,7 @@
 #include "utils/guc_utils.h"
 #include "utils/version_utils.h"
 #include "metadata/metadata_cache.h"
+#include "utils/mongo_errors.h"
 
 #include "metadata/collection.h"
 #include "api_hooks_def.h"

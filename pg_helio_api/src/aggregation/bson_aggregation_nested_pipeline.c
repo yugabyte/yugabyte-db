@@ -51,7 +51,7 @@ const int MaximumLookupPipelineDepth = 20;
 
 extern bool EnableLookupLetSupport;
 
-extern bool EnableCollation;
+extern bool EnableLookupIdJoinOptimizationOnCollation;
 
 /*
  * Struct having parsed view of the
@@ -384,12 +384,6 @@ HandleLookup(const bson_value_t *existingValue, Query *query,
 {
 	ReportFeatureUsage(FEATURE_STAGE_LOOKUP);
 
-	if (EnableCollation && IS_COLLATION_VALID(context->collationString))
-	{
-		ereport(ERROR, (errcode(MongoCommandNotSupported), errmsg(
-							"collation is not supported with $lookup yet")));
-	}
-
 	LookupArgs lookupArgs;
 	memset(&lookupArgs, 0, sizeof(LookupArgs));
 
@@ -424,7 +418,7 @@ HandleGraphLookup(const bson_value_t *existingValue, Query *query,
 {
 	ReportFeatureUsage(FEATURE_STAGE_GRAPH_LOOKUP);
 
-	if (EnableCollation && IS_COLLATION_VALID(context->collationString))
+	if (IsCollationApplicable(context->collationString))
 	{
 		ereport(ERROR, (errcode(MongoCommandNotSupported), errmsg(
 							"collation is not supported with $graphLookup yet")));
@@ -2411,6 +2405,16 @@ OptimizeLookup(LookupArgs *lookupArgs,
 		StringViewEquals(&lookupArgs->foreignField, &IdFieldStringView) &&
 		!optimizationArgs->isLookupAgnostic;
 
+	if (IsCollationApplicable(leftQueryContext->collationString) &&
+		!EnableLookupIdJoinOptimizationOnCollation)
+	{
+		/* Can't perform _id join when collation is applicable (since _id can
+		 * contain UTF8 which is collation aware), unless it is explicitly instructed
+		 * via GUC `EnableLookupIdJoinOptimizationOnCollation` (e.g., for cases when _id
+		 * contains collation agnostic datatype) */
+		optimizationArgs->isLookupJoinOnRightId = false;
+	}
+
 	if (optimizationArgs->isLookupJoinOnRightId &&
 		list_length(optimizationArgs->rightBaseQuery->rtable) == 1 &&
 		list_length(optimizationArgs->rightBaseQuery->targetList) == 1 &&
@@ -2537,7 +2541,15 @@ OptimizeLookup(LookupArgs *lookupArgs,
 		TargetEntry *firstEntry = linitial(leftQuery->targetList);
 		if (entry->rtekind == RTE_RELATION && IsA(firstEntry->expr, Var))
 		{
-			/* These cases can't do lookup on _id on the left */
+			/*
+			 *  These cases can't do lookup on _id on the left.
+			 *
+			 *  Additionally, optimizationArgs->isLookupJoinOnLeftId also needs
+			 *  to be set to `false` when collation is applicable. But, if that's
+			 *  the case optimizationArgs->isLookupJoinOnRightId will be already
+			 *  set to false and optimizationArgs->isLookupJoinOnLeftId will remain
+			 *  at default `false`.
+			 */
 			optimizationArgs->isLookupJoinOnLeftId = true;
 		}
 	}
@@ -2661,6 +2673,13 @@ ProcessLookupCoreWithLet(Query *query, AggregationPipelineBuildContext *context,
 		PgbsonWriterAppendUtf8(&filterWriter, lookupArgs->foreignField.string,
 							   lookupArgs->foreignField.length,
 							   lookupArgs->localField.string);
+
+		if (IsCollationApplicable(context->collationString))
+		{
+			PgbsonWriterAppendUtf8(&filterWriter, "collation", 9,
+								   context->collationString);
+		}
+
 		pgbson *filterBson = PgbsonWriterGetPgbson(&filterWriter);
 
 		/* Create the bson_dollar_lookup_extract_filter_expression(document, 'filter') */

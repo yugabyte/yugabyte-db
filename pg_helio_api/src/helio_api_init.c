@@ -309,6 +309,10 @@ bool EnableIndexTermTruncationOnNestedObjects =
 #define DEFAULT_SKIP_FAIL_ON_COLLATION false
 bool SkipFailOnCollation = DEFAULT_SKIP_FAIL_ON_COLLATION;
 
+#define DEFAULT_ENABLE_LOOKUP_ID_JOIN_OPTIMIZATION_ON_COLLATION false
+bool EnableLookupIdJoinOptimizationOnCollation =
+	DEFAULT_ENABLE_LOOKUP_ID_JOIN_OPTIMIZATION_ON_COLLATION;
+
 #define DEFAULT_ENABLE_USER_CRUD false
 bool EnableUserCrud = DEFAULT_ENABLE_USER_CRUD;
 
@@ -857,6 +861,14 @@ InitApiConfigurations(char *prefix)
 		gettext_noop(
 			"Determines whether we can skip failing when collation is specified but collation is not supported"),
 		NULL, &SkipFailOnCollation, DEFAULT_SKIP_FAIL_ON_COLLATION,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		"helio_api.enableLookupIdJoinOptimizationOnCollation",
+		gettext_noop(
+			"Determines whether we can perform _id join opetimization on collation. It would be a customer input confiriming that _id does not contain collation aware data types (i.e., UTF8 and DOCUMENT)."),
+		NULL, &EnableLookupIdJoinOptimizationOnCollation,
+		DEFAULT_ENABLE_LOOKUP_ID_JOIN_OPTIMIZATION_ON_COLLATION,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomBoolVariable(
