@@ -29,6 +29,7 @@
  */
 
 #include "postgres.h"
+#include "utils/jsonfuncs.h"
 
 #include <float.h>
 
@@ -95,7 +96,8 @@ static void agtype_in_array_start(void *pstate);
 static void agtype_in_array_end(void *pstate);
 static void agtype_in_object_field_start(void *pstate, char *fname,
                                          bool isnull);
-static void agtype_put_escaped_value(StringInfo out, agtype_value *scalar_val);
+static void agtype_put_escaped_value(StringInfo out, agtype_value *scalar_val,
+                                     bool extend);
 static void escape_agtype(StringInfo buf, const char *str);
 bool is_decimal_needed(char *numstr);
 static void agtype_in_scalar(void *pstate, char *token,
@@ -113,7 +115,8 @@ static void datum_to_agtype(Datum val, bool is_null, agtype_in_state *result,
                             agt_type_category tcategory, Oid outfuncoid,
                             bool key_scalar);
 static char *agtype_to_cstring_worker(StringInfo out, agtype_container *in,
-                                      int estimated_len, bool indent);
+                                      int estimated_len, bool indent,
+                                      bool extend);
 static text *agtype_value_to_text(agtype_value *scalar_val,
                                   bool err_not_scalar);
 static void add_indent(StringInfo out, bool indent, int level);
@@ -807,7 +810,8 @@ static bool is_array_path(agtype_value *agtv)
     return true;
 }
 
-static void agtype_put_escaped_value(StringInfo out, agtype_value *scalar_val)
+static void agtype_put_escaped_value(StringInfo out, agtype_value *scalar_val,
+                                     bool extend)
 {
     char *numstr;
 
@@ -824,7 +828,10 @@ static void agtype_put_escaped_value(StringInfo out, agtype_value *scalar_val)
         appendStringInfoString(
             out, DatumGetCString(DirectFunctionCall1(
                      numeric_out, PointerGetDatum(scalar_val->val.numeric))));
-        appendBinaryStringInfo(out, "::numeric", 9);
+        if (extend)
+        {
+            appendBinaryStringInfo(out, "::numeric", 9);
+        }
         break;
     case AGTV_INTEGER:
         appendStringInfoString(
@@ -850,8 +857,12 @@ static void agtype_put_escaped_value(StringInfo out, agtype_value *scalar_val)
         agtype *prop;
         scalar_val->type = AGTV_OBJECT;
         prop = agtype_value_to_agtype(scalar_val);
-        agtype_to_cstring_worker(out, &prop->root, prop->vl_len_, false);
-        appendBinaryStringInfo(out, "::vertex", 8);
+        agtype_to_cstring_worker(out, &prop->root, prop->vl_len_,
+                                 false, extend);
+        if (extend)
+        {
+            appendBinaryStringInfo(out, "::vertex", 8);
+        }
         break;
     }
     case AGTV_EDGE:
@@ -859,8 +870,12 @@ static void agtype_put_escaped_value(StringInfo out, agtype_value *scalar_val)
         agtype *prop;
         scalar_val->type = AGTV_OBJECT;
         prop = agtype_value_to_agtype(scalar_val);
-        agtype_to_cstring_worker(out, &prop->root, prop->vl_len_, false);
-        appendBinaryStringInfo(out, "::edge", 6);
+        agtype_to_cstring_worker(out, &prop->root, prop->vl_len_,
+                                 false, extend);
+        if (extend)
+        {
+            appendBinaryStringInfo(out, "::edge", 6);
+        }
         break;
     }
     case AGTV_PATH:
@@ -868,8 +883,12 @@ static void agtype_put_escaped_value(StringInfo out, agtype_value *scalar_val)
         agtype *prop;
         scalar_val->type = AGTV_ARRAY;
         prop = agtype_value_to_agtype(scalar_val);
-        agtype_to_cstring_worker(out, &prop->root, prop->vl_len_, false);
-        appendBinaryStringInfo(out, "::path", 6);
+        agtype_to_cstring_worker(out, &prop->root, prop->vl_len_,
+                                 false, extend);
+        if (extend)
+        {
+            appendBinaryStringInfo(out, "::path", 6);
+        }
         break;
     }
 
@@ -1067,7 +1086,8 @@ static void agtype_in_scalar(void *pstate, char *token,
 char *agtype_to_cstring(StringInfo out, agtype_container *in,
                         int estimated_len)
 {
-    return agtype_to_cstring_worker(out, in, estimated_len, false);
+    return agtype_to_cstring_worker(out, in, estimated_len, false,
+                                    true);
 }
 
 /*
@@ -1076,14 +1096,16 @@ char *agtype_to_cstring(StringInfo out, agtype_container *in,
 char *agtype_to_cstring_indent(StringInfo out, agtype_container *in,
                                int estimated_len)
 {
-    return agtype_to_cstring_worker(out, in, estimated_len, true);
+    return agtype_to_cstring_worker(out, in, estimated_len, true,
+                                    true);
 }
 
 /*
  * common worker for above two functions
  */
 static char *agtype_to_cstring_worker(StringInfo out, agtype_container *in,
-                                      int estimated_len, bool indent)
+                                      int estimated_len, bool indent,
+                                      bool extend)
 {
     bool first = true;
     agtype_iterator *it;
@@ -1151,14 +1173,14 @@ static char *agtype_to_cstring_worker(StringInfo out, agtype_container *in,
             add_indent(out, use_indent, level);
 
             /* agtype rules guarantee this is a string */
-            agtype_put_escaped_value(out, &v);
+            agtype_put_escaped_value(out, &v, extend);
             appendBinaryStringInfo(out, ": ", 2);
 
             type = agtype_iterator_next(&it, &v, false);
             if (type == WAGT_VALUE)
             {
                 first = false;
-                agtype_put_escaped_value(out, &v);
+                agtype_put_escaped_value(out, &v, extend);
             }
             else
             {
@@ -1179,7 +1201,7 @@ static char *agtype_to_cstring_worker(StringInfo out, agtype_container *in,
 
             if (!raw_scalar)
                 add_indent(out, use_indent, level);
-            agtype_put_escaped_value(out, &v);
+            agtype_put_escaped_value(out, &v, extend);
             break;
         case WAGT_END_ARRAY:
             level--;
@@ -3177,6 +3199,47 @@ Datum agtype_to_text(PG_FUNCTION_ARGS)
     PG_RETURN_TEXT_P(text_value);
 }
 
+PG_FUNCTION_INFO_V1(agtype_to_json);
+
+/*
+ * Cast agtype to json.
+ *
+ * If the input agtype is vertex, edge or path, the trailing
+ * type(::vertex, ::edge, ::path) is removed.
+ */
+Datum agtype_to_json(PG_FUNCTION_ARGS)
+{
+    Datum result;
+    char *json_str;
+    agtype *agt;
+
+    agt = AG_GET_ARG_AGTYPE_P(0);
+
+    if (AGT_ROOT_IS_SCALAR(agt))
+    {
+        enum agtype_value_type type;
+
+        type = get_ith_agtype_value_type(&agt->root, 0);
+        if (type >= AGTV_NUMERIC && type <= AGTV_BOOL)
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                     errmsg("cannot cast agtype %s to json",
+                             agtype_value_type_to_string(type))));
+        }
+    }
+
+    json_str = agtype_to_cstring_worker(NULL, &agt->root, VARSIZE(agt),
+                                        false, false);
+
+    result = DirectFunctionCall1(json_in, CStringGetDatum(json_str));
+
+    PG_FREE_IF_COPY(agt, 0);
+    pfree(json_str);
+
+    PG_RETURN_DATUM(result);
+}
+
 PG_FUNCTION_INFO_V1(bool_to_agtype);
 
 /*
@@ -3701,7 +3764,7 @@ static Datum process_access_operator_result(FunctionCallInfo fcinfo,
 
                 str = agtype_to_cstring_worker(out, agtc,
                                                agtv->val.binary.len,
-                                               false);
+                                               false, true);
                 result = cstring_to_text(str);
             }
             else

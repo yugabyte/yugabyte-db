@@ -146,3 +146,14 @@ CREATE OR REPLACE FUNCTION ag_catalog.create_elabel(graph_name cstring, label_na
     RETURNS void
     LANGUAGE c
     AS 'MODULE_PATHNAME';
+
+CREATE FUNCTION ag_catalog.agtype_to_json(agtype)
+    RETURNS json
+    LANGUAGE c
+    IMMUTABLE
+RETURNS NULL ON NULL INPUT
+PARALLEL SAFE
+AS 'MODULE_PATHNAME';
+
+CREATE CAST (agtype AS json)
+    WITH FUNCTION ag_catalog.agtype_to_json(agtype);

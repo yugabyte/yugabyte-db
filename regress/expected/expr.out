@@ -2426,6 +2426,185 @@ SELECT agtype_typecast_path(null);
  
 (1 row)
 
+--
+-- Tests for explicit typecast to json
+--
+-- Should pass
+SELECT agtype_to_json('{}'::agtype);
+ agtype_to_json 
+----------------
+ {}
+(1 row)
+
+SELECT agtype_to_json('{ "hello": "world" }'::agtype);
+   agtype_to_json   
+--------------------
+ {"hello": "world"}
+(1 row)
+
+SELECT agtype_to_json('{ "hello": "world" }'::agtype)->>'hello';
+ ?column? 
+----------
+ world
+(1 row)
+
+SELECT agtype_to_json('[]'::agtype);
+ agtype_to_json 
+----------------
+ []
+(1 row)
+
+SELECT agtype_to_json('[1, 2, 3]'::agtype);
+ agtype_to_json 
+----------------
+ [1, 2, 3]
+(1 row)
+
+SELECT agtype_to_json(null::agtype);
+ agtype_to_json 
+----------------
+ 
+(1 row)
+
+SELECT cast('{}'::agtype as json);
+ json 
+------
+ {}
+(1 row)
+
+SELECT cast('{ "hello": "world" }'::agtype as json);
+        json        
+--------------------
+ {"hello": "world"}
+(1 row)
+
+SELECT cast('{ "hello": "world" }'::agtype as json)->>'hello';
+ ?column? 
+----------
+ world
+(1 row)
+
+SELECT cast('[]'::agtype as json);
+ json 
+------
+ []
+(1 row)
+
+SELECT cast('[1, 2, 3]'::agtype as json);
+   json    
+-----------
+ [1, 2, 3]
+(1 row)
+
+SELECT cast('[1, 2, 3]'::agtype as json)->1;
+ ?column? 
+----------
+ 2
+(1 row)
+
+SELECT cast(null::agtype as json);
+ json 
+------
+ 
+(1 row)
+
+SELECT vertex_in_json, vertex_in_json->'id' as id, pg_typeof(vertex_in_json) FROM cypher('type_coercion', $$ MATCH (a) RETURN a $$) AS (vertex_in_json json);
+                     vertex_in_json                     |       id        | pg_typeof 
+--------------------------------------------------------+-----------------+-----------
+ {"id": 281474976710657, "label": "", "properties": {}} | 281474976710657 | json
+ {"id": 281474976710658, "label": "", "properties": {}} | 281474976710658 | json
+(2 rows)
+
+SELECT edge_in_json, edge_in_json->'id' as id, pg_typeof(edge_in_json) FROM cypher('type_coercion', $$ MATCH ()-[e]->() RETURN e $$) AS (edge_in_json json);
+                                                    edge_in_json                                                    |       id        | pg_typeof 
+--------------------------------------------------------------------------------------------------------------------+-----------------+-----------
+ {"id": 844424930131969, "label": "edge", "end_id": 281474976710658, "start_id": 281474976710657, "properties": {}} | 844424930131969 | json
+(1 row)
+
+SELECT vle_in_json, vle_in_json->0 as first_edge, pg_typeof(vle_in_json) FROM cypher('type_coercion', $$ MATCH ()-[e *]->() RETURN e $$) AS (vle_in_json json);
+                                                     vle_in_json                                                      |                                                     first_edge                                                     | pg_typeof 
+----------------------------------------------------------------------------------------------------------------------+--------------------------------------------------------------------------------------------------------------------+-----------
+ [{"id": 844424930131969, "label": "edge", "end_id": 281474976710658, "start_id": 281474976710657, "properties": {}}] | {"id": 844424930131969, "label": "edge", "end_id": 281474976710658, "start_id": 281474976710657, "properties": {}} | json
+(1 row)
+
+SELECT *, pg_typeof(props_in_json) FROM cypher('type_coercion', $$ MATCH (a) RETURN properties(a) $$) AS (props_in_json json);
+ props_in_json | pg_typeof 
+---------------+-----------
+ {}            | json
+ {}            | json
+(2 rows)
+
+SELECT path_in_json, path_in_json->0 as first_node FROM cypher('type_coercion', $$ MATCH p=()-[]->() RETURN p $$) AS (path_in_json json);
+                                                                                                             path_in_json                                                                                                             |                       first_node                       
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+--------------------------------------------------------
+ [{"id": 281474976710657, "label": "", "properties": {}}, {"id": 844424930131969, "label": "edge", "end_id": 281474976710658, "start_id": 281474976710657, "properties": {}}, {"id": 281474976710658, "label": "", "properties": {}}] | {"id": 281474976710657, "label": "", "properties": {}}
+(1 row)
+
+SELECT *, pg_typeof(nodes_in_json) FROM cypher('type_coercion', $$ MATCH p=()-[]->() RETURN nodes(p) $$) AS (nodes_in_json json);
+                                                  nodes_in_json                                                   | pg_typeof 
+------------------------------------------------------------------------------------------------------------------+-----------
+ [{"id": 281474976710657, "label": "", "properties": {}}, {"id": 281474976710658, "label": "", "properties": {}}] | json
+(1 row)
+
+SELECT *, pg_typeof(rels_in_json) FROM cypher('type_coercion', $$ MATCH p=()-[]->() RETURN relationships(p) $$) AS (rels_in_json json);
+                                                     rels_in_json                                                     | pg_typeof 
+----------------------------------------------------------------------------------------------------------------------+-----------
+ [{"id": 844424930131969, "label": "edge", "end_id": 281474976710658, "start_id": 281474976710657, "properties": {}}] | json
+(1 row)
+
+SELECT cast(result as json) FROM cypher('type_coercion', $$ MATCH (a) RETURN a $$) AS (result agtype);
+                         result                         
+--------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {}}
+ {"id": 281474976710658, "label": "", "properties": {}}
+(2 rows)
+
+SELECT cast(result as json) FROM cypher('type_coercion', $$ MATCH ()-[e]-() RETURN e $$) AS (result agtype);
+                                                       result                                                       
+--------------------------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "edge", "end_id": 281474976710658, "start_id": 281474976710657, "properties": {}}
+ {"id": 844424930131969, "label": "edge", "end_id": 281474976710658, "start_id": 281474976710657, "properties": {}}
+(2 rows)
+
+SELECT cast(result as json) FROM cypher('type_coercion', $$ MATCH ()-[e *]->() RETURN e $$) AS (result agtype);
+                                                        result                                                        
+----------------------------------------------------------------------------------------------------------------------
+ [{"id": 844424930131969, "label": "edge", "end_id": 281474976710658, "start_id": 281474976710657, "properties": {}}]
+(1 row)
+
+SELECT cast(result as json) FROM cypher('type_coercion', $$ MATCH p=()-[]->() RETURN p $$) AS (result agtype);
+                                                                                                                result                                                                                                                
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 281474976710657, "label": "", "properties": {}}, {"id": 844424930131969, "label": "edge", "end_id": 281474976710658, "start_id": 281474976710657, "properties": {}}, {"id": 281474976710658, "label": "", "properties": {}}]
+(1 row)
+
+SELECT pg_typeof(cast(result as json)) FROM cypher('type_coercion', $$ MATCH p=()-[]->() RETURN p $$) AS (result agtype);
+ pg_typeof 
+-----------
+ json
+(1 row)
+
+-- Should fail
+SELECT agtype_to_json('1'::agtype);
+ERROR:  cannot cast agtype integer to json
+SELECT agtype_to_json('1.111'::agtype);
+ERROR:  cannot cast agtype float to json
+SELECT agtype_to_json('true'::agtype);
+ERROR:  cannot cast agtype boolean to json
+SELECT agtype_to_json('false'::agtype);
+ERROR:  cannot cast agtype boolean to json
+SELECT agtype_to_json('1::numeric'::agtype);
+ERROR:  cannot cast agtype numeric to json
+SELECT cast(result as json) FROM cypher('type_coercion', $$ RETURN 1 $$) AS (result agtype);
+ERROR:  cannot cast agtype integer to json
+SELECT cast(result as json) FROM cypher('type_coercion', $$ RETURN 1.111 $$) AS (result agtype);
+ERROR:  cannot cast agtype float to json
+SELECT cast(result as json) FROM cypher('type_coercion', $$ RETURN true $$) AS (result agtype);
+ERROR:  cannot cast agtype boolean to json
+SELECT cast(result as json) FROM cypher('type_coercion', $$ RETURN false $$) AS (result agtype);
+ERROR:  cannot cast agtype boolean to json
+SELECT cast(result as json) FROM cypher('type_coercion', $$ RETURN 1::numeric $$) AS (result agtype);
+ERROR:  cannot cast agtype numeric to json
 -- test functions
 -- create some vertices and edges
 SELECT * FROM cypher('expr', $$CREATE (:v)$$) AS (a agtype);
