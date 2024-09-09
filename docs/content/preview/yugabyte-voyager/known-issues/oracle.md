@@ -326,6 +326,52 @@ ERROR: invalid type name "employees.salary%TYPE" (SQLSTATE 42601)
 
 **Workaround**: Fix the syntax to include the actual type name instead of referencing the type of a column.
 
+
+**Example**
+
+An example of exported schema from the source database is as follows:
+
+```sql
+CREATE TABLE public.employees (
+    employee_id integer NOT NULL,
+    employee_name text,
+    salary numeric
+);
+
+
+CREATE FUNCTION public.get_employee_salary(emp_id integer) RETURNS numeric
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    emp_salary employees.salary%TYPE;  -- Declare a variable with the same type as employees.salary
+BEGIN
+    SELECT salary INTO emp_salary
+    FROM employees
+    WHERE employee_id = emp_id;
+
+    RETURN emp_salary;
+END;
+$$;
+```
+
+Suggested change to CREATE FUNCTION is as follows:
+
+```sql
+CREATE FUNCTION public.get_employee_salary(emp_id integer) RETURNS numeric
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    Emp_salary NUMERIC;  -- Declare a variable with the same type as employees.salary
+BEGIN
+    SELECT salary INTO emp_salary
+    FROM employees
+    WHERE employee_id = emp_id;
+
+    RETURN emp_salary;
+END;
+$$;
+```
+
 ---
 
 ### TRANSLATE USING is unsupported
