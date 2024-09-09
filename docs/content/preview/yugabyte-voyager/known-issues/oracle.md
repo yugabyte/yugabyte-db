@@ -318,7 +318,7 @@ OR
 
 **GitHub**: [Issue #23619](https://github.com/yugabyte/yugabyte-db/issues/23619)
 
-**Description**: In Oracle, the `%TYPE` is a virtual column that is used to declare a variable, column, or parameter with the same data type as an existing database column. This syntax is not supported in target YugabyteDB yet and errors out in import schema with error:
+**Description**: In Oracle, the `%TYPE` is a virtual column that is used to declare a variable, column, or parameter with the same data type as an existing database column. This syntax is not supported in target YugabyteDB yet and errors out in import schema as follows:
 
 ```output
 ERROR: invalid type name "employees.salary%TYPE" (SQLSTATE 42601)
