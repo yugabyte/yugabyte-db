@@ -333,6 +333,7 @@
         "pgTooltip": "Access to enhanced Postgres compatible features is only available for database version 2024.2 or later. <1>Learn more</1>",
         "enableConnectionPooling": "Enable Connection Pooling",
         "conPoolTooltip": "Use built-in YSQL service for maximizing the number of simultaneous connections to your database",
+        "conPoolVersionTooltip": "Built-in connection pooling is only available for database version 2024.2 or later.",
         "conPoolYSQLWarn": "Enable YSQL first to use connection pooling.",
         "conPoolDBVersionWarn": "Built-in connection pooling is only available for database version 2024.2 or later",
         "dbRPCPortTooltip": "Port for connecting to your application clients.",

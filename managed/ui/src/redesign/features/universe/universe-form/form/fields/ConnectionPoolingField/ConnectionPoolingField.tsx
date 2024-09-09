@@ -2,7 +2,7 @@ import { FC } from 'react';
 import { useUpdateEffect } from 'react-use';
 import { useTranslation } from 'react-i18next';
 import { useFormContext, useWatch } from 'react-hook-form';
-import { Box } from '@material-ui/core';
+import { Box, makeStyles, Typography } from '@material-ui/core';
 import { YBToggleField, YBLabel, YBTooltip, YBEarlyAccessTag } from '../../../../../../components';
 import { isVersionConnectionPoolSupported } from '../../../utils/helpers';
 import { UniverseFormData } from '../../../utils/dto';
@@ -18,9 +18,19 @@ interface ConnectionPoolFieldProps {
   disabled: boolean;
 }
 
+const useStyles = makeStyles((theme) => ({
+  subText: {
+    fontSize: '11.5px',
+    lineHeight: '16px',
+    fontWeight: 400,
+    color: '#67666C'
+  }
+}));
+
 export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled }) => {
   const { control, setValue } = useFormContext<UniverseFormData>();
   const { t } = useTranslation();
+  const classes = useStyles();
 
   //watchers
   const isYSQLEnabled = useWatch({ name: YSQL_FIELD });
@@ -43,11 +53,13 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled 
       <YBTooltip
         interactive={true}
         title={
-          isYSQLEnabled
-            ? isConnectionPoolSupported
-              ? ''
-              : t('universeForm.advancedConfig.ysqlConPortTooltip')
-            : t('universeForm.advancedConfig.conPoolYSQLWarn')
+          <Typography className={classes.subText}>
+            {isYSQLEnabled
+              ? isConnectionPoolSupported
+                ? ''
+                : t('universeForm.advancedConfig.conPoolVersionTooltip')
+              : t('universeForm.advancedConfig.conPoolYSQLWarn')}
+          </Typography>
         }
       >
         <div>
@@ -57,7 +69,7 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled 
               'data-testid': 'PGCompatibiltyField-Toggle'
             }}
             control={control}
-            disabled={disabled || !isYSQLEnabled}
+            disabled={disabled || !isYSQLEnabled || !isConnectionPoolSupported}
           />
         </div>
       </YBTooltip>
