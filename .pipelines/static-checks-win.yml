@@ -5,7 +5,6 @@ trigger:
   batch: true
 
 pr:
-  batch: true
   branches:
     include:
       - "main"
