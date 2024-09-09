@@ -938,13 +938,13 @@ BsonTypeIsNumber(bson_type_t type)
 bool
 IsBsonValueNaN(const bson_value_t *value)
 {
-	if (value->value_type == BSON_TYPE_DECIMAL128 ||
-		value->value_type == BSON_TYPE_DOUBLE)
+	if (value->value_type == BSON_TYPE_DECIMAL128)
 	{
-		if (isnan(BsonValueAsDouble(value)))
-		{
-			return true;
-		}
+		return IsDecimal128NaN(value);
+	}
+	else if (value->value_type == BSON_TYPE_DOUBLE)
+	{
+		return isnan(BsonValueAsDouble(value));
 	}
 
 	return false;
@@ -959,8 +959,15 @@ IsBsonValueNaN(const bson_value_t *value)
 int
 IsBsonValueInfinity(const bson_value_t *value)
 {
-	if (value->value_type == BSON_TYPE_DECIMAL128 ||
-		value->value_type == BSON_TYPE_DOUBLE)
+	if (value->value_type == BSON_TYPE_DECIMAL128)
+	{
+		bool isPositiveInfinity = false;
+		if (IsDecimal128Infinity(value, &isPositiveInfinity))
+		{
+			return isPositiveInfinity ? 1 : -1;
+		}
+	}
+	else if (value->value_type == BSON_TYPE_DOUBLE)
 	{
 		double doubleValue = BsonValueAsDouble(value);
 

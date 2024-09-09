@@ -73,7 +73,7 @@ bool IsDecimal128InInt64Range(const bson_value_t *value);
 bool IsDecimal128InInt32Range(const bson_value_t *value);
 bool IsDecimal128InDoubleRange(const bson_value_t *value);
 bool IsDecimal128NaN(const bson_value_t *value);
-bool IsDecimal128Infinity(const bson_value_t *value);
+bool IsDecimal128Infinity(const bson_value_t *value, bool *isPositiveInfinity);
 bool IsDecimal128Finite(const bson_value_t *value);
 bool IsDecimal128AFixedInteger(const bson_value_t *value);
 bool IsDecimal128Zero(const bson_value_t *value);

@@ -416,10 +416,15 @@ IsDecimal128NaN(const bson_value_t *value)
  * Checks if decimal128 value is infinite
  */
 bool
-IsDecimal128Infinity(const bson_value_t *value)
+IsDecimal128Infinity(const bson_value_t *value, bool *isPositiveInfinity)
 {
 	BID_UINT128 bid = GetBIDUINT128FromBsonValue(value);
-	return bid128_isInf(bid);
+	bool result = bid128_isInf(bid);
+	if (result)
+	{
+		*isPositiveInfinity = (HIGH_BITS(value)) != SINFINITY_MASK64;
+	}
+	return result;
 }
 
 
