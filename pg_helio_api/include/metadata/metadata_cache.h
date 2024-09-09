@@ -81,6 +81,7 @@ Oid ApiCurrentCursorStateFunctionId(void);
 Oid ExtensionTableSampleSystemRowsFunctionId(void);
 Oid BsonInRangeNumericFunctionId(void);
 Oid BsonInRangeIntervalFunctionId(void);
+Oid BsonDensifyPartitionFunctionId(void);
 
 /* bson_value functions */
 Oid BsonValueEqualMatchFunctionId(void);
@@ -337,6 +338,12 @@ Oid BsonRankFunctionOid(void);
 Oid BsonDenseRankFunctionOid(void);
 Oid BsonShiftFunctionOid(void);
 Oid BsonDocumentNumberFunctionOid(void);
+
+/* Window functions */
+Oid BsonDensifyRangeWindowFunctionOid(void);
+Oid BsonDensifyPartitionWindowFunctionOid(void);
+Oid BsonDensifyFullWindowFunctionOid(void);
+
 
 /* Catalog */
 Oid ApiDataNamespaceOid(void);

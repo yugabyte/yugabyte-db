@@ -39,10 +39,21 @@ static const uint32_t BsonHexPrefixLength = 7;
 /*
  * Compares to pgbson structures for strict equality:
  * returns true if they are byte-wise equal.
+ *
+ * Also performs a NULL based equality check
  */
 bool
 PgbsonEquals(const pgbson *left, const pgbson *right)
 {
+	if (left == NULL || right == NULL)
+	{
+		if (left == NULL && right == NULL)
+		{
+			return true;
+		}
+		return false;
+	}
+
 	if (VARSIZE_ANY_EXHDR(left) != VARSIZE_ANY_EXHDR(right))
 	{
 		return false;
@@ -639,6 +650,28 @@ PgbsonInitIteratorAtPath(const pgbson *bson, const char *path, bson_iter_t *iter
 	bson_iter_t documentIterator;
 	PgbsonInitIterator(bson, &documentIterator);
 	return bson_iter_find_descendant(&documentIterator, path, iterator);
+}
+
+
+/*
+ * Initializes the iterator from a pgbson at given path and sets the bson_value_t
+ * struct found at the path
+ */
+void
+PgbsonGetBsonValueAtPath(const pgbson *bson, const char *path, bson_value_t *value)
+{
+	bson_iter_t documentIterator;
+	bson_iter_t iterator;
+	PgbsonInitIterator(bson, &documentIterator);
+
+	if (!bson_iter_find_descendant(&documentIterator, path, &iterator))
+	{
+		value->value_type = BSON_TYPE_EOD;
+	}
+	else
+	{
+		*value = *bson_iter_value(&iterator);
+	}
 }
 
 

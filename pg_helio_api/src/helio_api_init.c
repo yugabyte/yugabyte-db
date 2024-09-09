@@ -319,6 +319,9 @@ bool EnableLookupIdJoinOptimizationOnCollation =
 #define DEFAULT_ENABLE_USER_CRUD false
 bool EnableUserCrud = DEFAULT_ENABLE_USER_CRUD;
 
+#define DEFAULT_ENABLE_DENSIFY_STAGE true
+bool EnableDensifyStage = DEFAULT_ENABLE_DENSIFY_STAGE;
+
 #define DEFAULT_CLUSTER_ADMIN_ROLE ""
 char *ClusterAdminRole = DEFAULT_CLUSTER_ADMIN_ROLE;
 
@@ -886,6 +889,13 @@ InitApiConfigurations(char *prefix)
 		gettext_noop(
 			"Enables user crud through the data plane."),
 		NULL, &EnableUserCrud, DEFAULT_ENABLE_USER_CRUD,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		"helio_api.enableDensifyStage",
+		gettext_noop(
+			"Enables $densify aggregation stage."),
+		NULL, &EnableDensifyStage, DEFAULT_ENABLE_DENSIFY_STAGE,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomStringVariable(

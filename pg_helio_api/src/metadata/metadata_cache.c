@@ -185,6 +185,8 @@ typedef struct HelioApiOidCacheData
 	/* OID of the bson_in_range_numeric function (in_range support function for btree to support RANGE in PARTITION clause) */
 	Oid BsonInRangeNumericFunctionId;
 
+	Oid BsonDensifyPartitionFunctionId;
+
 	/* OID of ApiSchema.collection() UDF */
 	Oid CollectionFunctionId;
 
@@ -451,6 +453,15 @@ typedef struct HelioApiOidCacheData
 
 	/* OID of the $bitsAnySet function function for bson_values */
 	Oid BsonValueBitsAnySetFunctionId;
+
+	/* Oid of the bson_densify_range window function */
+	Oid BsonDensifyRangeWindowFunctionOid;
+
+	/* Oid of the bson_densify_partition window function */
+	Oid BsonDensifyPartitionWindowFunctionOid;
+
+	/* Oid of the bson_densify_full window function */
+	Oid BsonDensifyFullWindowFunctionOid;
 
 	/* OID of the drandom postgres method which generates a random float number in range [0 - 1) */
 	Oid PostgresDrandomFunctionId;
@@ -2571,6 +2582,45 @@ BsonTrueFunctionId(void)
 }
 
 
+Oid
+BsonDensifyRangeWindowFunctionOid(void)
+{
+	int nargs = 2;
+	Oid argTypes[2] = { BsonTypeId(), BsonTypeId() };
+	bool missingOk = false;
+	return GetSchemaFunctionIdWithNargs(&Cache.BsonDensifyRangeWindowFunctionOid,
+										"helio_api_internal",
+										"bson_densify_range", nargs, argTypes,
+										missingOk);
+}
+
+
+Oid
+BsonDensifyPartitionWindowFunctionOid(void)
+{
+	int nargs = 2;
+	Oid argTypes[2] = { BsonTypeId(), BsonTypeId() };
+	bool missingOk = false;
+	return GetSchemaFunctionIdWithNargs(&Cache.BsonDensifyPartitionWindowFunctionOid,
+										"helio_api_internal",
+										"bson_densify_partition", nargs, argTypes,
+										missingOk);
+}
+
+
+Oid
+BsonDensifyFullWindowFunctionOid(void)
+{
+	int nargs = 2;
+	Oid argTypes[2] = { BsonTypeId(), BsonTypeId() };
+	bool missingOk = false;
+	return GetSchemaFunctionIdWithNargs(&Cache.BsonDensifyFullWindowFunctionOid,
+										"helio_api_internal",
+										"bson_densify_full", nargs, argTypes,
+										missingOk);
+}
+
+
 /*
  * Returns the OID of the ApiSchema.cursor_state function.
  */
@@ -2861,6 +2911,19 @@ BsonInRangeIntervalFunctionId(void)
 	}
 
 	return Cache.BsonInRangeIntervalFunctionId;
+}
+
+
+Oid
+BsonDensifyPartitionFunctionId(void)
+{
+	int nargs = 2;
+	Oid argTypes[2] = { BsonTypeId(), BsonTypeId() };
+	bool missingOk = false;
+	return GetSchemaFunctionIdWithNargs(&Cache.BsonDensifyPartitionFunctionId,
+										"helio_api_internal",
+										"densify_partition_by_fields", nargs, argTypes,
+										missingOk);
 }
 
 

@@ -10,6 +10,7 @@
 #include <postgres.h>
 #include <utils/guc.h>
 
+#include "commands/commands_common.h"
 #include "infrastructure/helio_external_configs.h"
 
 #define DEFAULT_FEATURE_FLAG_COLL_MOD_INDEX_UNIQUE false
@@ -23,6 +24,11 @@ bool PEC_FeatureFlagTimeseriesMetricIndexes =
 int PEC_TransactionTimeoutLimitSeconds =
 	DEFAULT_TRANSACTION_TIMEOUT_LIMIT_SECONDS;
 
+#define DEFAULT_MAX_ALLOWED_DOCS_IN_DENSIFY 500000
+int32 PEC_InternalQueryMaxAllowedDensifyDocs = DEFAULT_MAX_ALLOWED_DOCS_IN_DENSIFY;
+
+int32 PEC_InternalDocumentSourceDensifyMaxMemoryBytes =
+	BSON_MAX_ALLOWED_SIZE_INTERMEDIATE;
 bool PEC_FailurePointDisablePipelineOptimization = false;
 bool PEC_InternalQueryForceClassicEngine = true;
 bool PEC_InternalQueryEnableSlotBasedExecutionEngine = false;
@@ -88,6 +94,24 @@ static const ExtensionExternalConfigInfo ExtensionExternalConfigurations[] = {
 		}
 	},
 
+	/* internalQueryMaxAllowedDensifyDocs */
+	{
+		.name = "internalDocumentSourceDensifyMaxMemoryBytes",
+		.description =
+			"Maximum memory allowed for the generated documents in $densify stage.",
+		.settableProperties = {
+			.isSettableAtStartup = true,
+			.isSettableAtRuntime = true
+		},
+		.values = {
+			.RuntimeValue = (void *) &PEC_InternalDocumentSourceDensifyMaxMemoryBytes,
+			.DefaultValue.integerValue = BSON_MAX_ALLOWED_SIZE_INTERMEDIATE,
+			.valueType = ConfigValueType_Integer,
+			.MinValue.integerValue = 0,
+			.MaxValue.integerValue = BSON_MAX_ALLOWED_SIZE_INTERMEDIATE
+		}
+	},
+
 	/* internalQueryEnableSlotBasedExecutionEngine */
 	{
 		.name = "internalQueryEnableSlotBasedExecutionEngine",
@@ -115,6 +139,24 @@ static const ExtensionExternalConfigInfo ExtensionExternalConfigurations[] = {
 			.RuntimeValue = (void *) &PEC_InternalQueryForceClassicEngine,
 			.DefaultValue.boolValue = true,
 			.valueType = ConfigValueType_Bool
+		}
+	},
+
+	/* internalQueryMaxAllowedDensifyDocs */
+	{
+		.name = "internalQueryMaxAllowedDensifyDocs",
+		.description =
+			"Number of maximum documents that can be generated using $densify stage.",
+		.settableProperties = {
+			.isSettableAtStartup = true,
+			.isSettableAtRuntime = true
+		},
+		.values = {
+			.RuntimeValue = (void *) &PEC_InternalQueryMaxAllowedDensifyDocs,
+			.DefaultValue.integerValue = DEFAULT_MAX_ALLOWED_DOCS_IN_DENSIFY,
+			.valueType = ConfigValueType_Integer,
+			.MinValue.integerValue = 0,
+			.MaxValue.integerValue = INT32_MAX
 		}
 	},
 

@@ -52,6 +52,10 @@ IsSafeToReuseFmgrFunctionExtraMultiArgs(PG_FUNCTION_ARGS, int *argLocations, int
 		/* If the expression itself is const, we can safely reuse the cache */
 		return true;
 	}
+	else if (IsA(expr, WindowFunc))
+	{
+		args = ((WindowFunc *) expr)->args;
+	}
 	else
 	{
 		return false;

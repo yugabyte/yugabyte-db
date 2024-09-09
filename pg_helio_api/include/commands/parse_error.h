@@ -141,6 +141,26 @@ EnsureTopLevelFieldIsBooleanLike(const char *fieldName, const bson_iter_t *iter)
 
 
 /*
+ * Throw an error if type of the value that given iterator holds cannot be
+ * interpreted as a number.
+ */
+static inline void
+EnsureTopLevelFieldIsNumberLike(const char *fieldName, const bson_value_t *value)
+{
+	if (!BsonTypeIsNumber(value->value_type))
+	{
+		ereport(ERROR, (errcode(ERRCODE_HELIO_TYPEMISMATCH),
+						errmsg("BSON field '%s' is the wrong type '%s', "
+							   "expected types '[int, decimal, double, long']",
+							   fieldName, BsonTypeName(value->value_type)),
+						errdetail_log("BSON field '%s' is the wrong type '%s', "
+									  "expected types '[int, decimal, double, long']",
+									  fieldName, BsonTypeName(value->value_type))));
+	}
+}
+
+
+/*
  * Similar to EnsureTopLevelFieldIsBooleanLike, but null value is also ok.
  *
  * That means;
@@ -171,6 +191,30 @@ ThrowTopLevelMissingFieldError(const char *fieldName)
 	ereport(ERROR, (errcode(ERRCODE_HELIO_BADVALUE),
 					errmsg("BSON field '%s' is missing but a required field",
 						   fieldName)));
+}
+
+
+static inline void
+ThrowTopLevelMissingFieldErrorWithCode(const char *fieldName, int code)
+{
+	ereport(ERROR, (errcode(code),
+					errmsg("BSON field '%s' is missing but a required field",
+						   fieldName),
+					errdetail_log("BSON field '%s' is missing but a required field",
+								  fieldName)));
+}
+
+
+static inline void
+EnsureStringValueNotDollarPrefixed(const char *fieldValue, int fieldLength)
+{
+	if (fieldLength > 0 && fieldValue[0] == '$')
+	{
+		ereport(ERROR, (
+					errcode(ERRCODE_HELIO_LOCATION16410),
+					errmsg(
+						"FieldPath field names may not start with '$'. Consider using $getField or $setField.")));
+	}
 }
 
 

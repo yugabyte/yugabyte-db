@@ -61,6 +61,7 @@
 #include "operators/bson_expression_bucket_operator.h"
 #include "geospatial/bson_geospatial_common.h"
 #include "geospatial/bson_geospatial_geonear.h"
+#include "aggregation/bson_densify.h"
 #include "utils/version_utils.h"
 #include "collation/collation.h"
 #include "api_hooks.h"
@@ -335,7 +336,7 @@ static const AggregationStageDefinition StageDefinitions[] =
 	},
 	{
 		.stage = "$densify",
-		.mutateFunc = NULL,
+		.mutateFunc = &HandleDensify,
 		.requiresPersistentCursor = &RequiresPersistentCursorTrue,
 		.canInlineLookupStageFunc = NULL,
 		.preservesStableSortOrder = false,

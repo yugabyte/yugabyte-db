@@ -1,0 +1,1272 @@
+SET search_path TO helio_core,helio_api,helio_api_catalog,mongo_catalog,helio_api_internal;
+SET citus.next_shard_id TO 477000;
+SET helio_api.next_collection_id TO 4770;
+SET helio_api.next_collection_index_id TO 4770;
+SELECT insert_one('db','densify','{ "_id": 1, "a": "abc", "cost": 10, "quantity": 501, "date": { "$date": { "$numberLong": "1718841600000" } } }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','densify','{ "_id": 2, "a": "abc", "cost": 5, "quantity": 507, "date": { "$date": { "$numberLong": "1718841605000" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','densify','{ "_id": 3, "a": "abc", "cost": 3, "quantity": 503, "date": { "$date": { "$numberLong": "1718841610000" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','densify','{ "_id": 4, "a": "abc", "cost": 7, "quantity": 504, "date": { "$date": { "$numberLong": "1718841615000" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','densify','{ "_id": 11, "a": "def", "cost": 16, "quantity": 501, "date": { "$date": { "$numberLong": "1718841600000" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','densify','{ "_id": 12, "a": "def", "cost": 11, "quantity": 507, "date": { "$date": { "$numberLong": "1718841605000" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','densify','{ "_id": 13, "a": "def", "cost": -5, "quantity": 503, "date": { "$date": { "$numberLong": "1718841610000" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','densify','{ "_id": 14, "a": "def", "cost": 9, "quantity": 504, "date": { "$date": { "$numberLong": "1718841615000" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Validations of $densify stage and negative test cases
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": "Not an object" }]}');
+ERROR:  The $densify stage specification must be an object, found string
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { } }]}');
+ERROR:  BSON field '$densify.field' is missing but a required field
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": [ ] }]}');
+ERROR:  The $densify stage specification must be an object, found array
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": 1 } }]}');
+ERROR:  BSON field '$densify.field' is the wrong type 'int', expected type 'string'
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a" } }]}');
+ERROR:  BSON field '$densify.range' is missing but a required field
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": "A" } }]}');
+ERROR:  BSON field '$densify.range' is the wrong type 'string', expected type 'object'
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { } } }]}');
+ERROR:  BSON field '$densify.range.bounds' is missing but a required field
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { "bounds" : 1 } } }]}');
+ERROR:  the bounds in a range statement must be the string 'full', 'partition', or an ascending array of two numbers or two dates
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { "bounds" : "na" } } }]}');
+ERROR:  Bounds string must either be 'full' or 'partition'
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { "bounds" : "full" } } }]}');
+ERROR:  BSON field '$densify.range.step' is missing but a required field
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { "bounds" : "partition" } } }]}');
+ERROR:  BSON field '$densify.range.step' is missing but a required field
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { "bounds" : [1] } } }]}');
+ERROR:  a bounding array in a range statement must have exactly two elements
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { "bounds" : [1, 2, 3] } } }]}');
+ERROR:  a bounding array in a range statement must have exactly two elements
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { "bounds" : [1, { "$date": { "$numberLong": "1718841600000" } }] } } }]}');
+ERROR:  BSON field '$densify.range.step' is missing but a required field
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { "bounds" : "full", "step": "Hello" } } }]}');
+ERROR:  BSON field '$densify.range.step' is the wrong type 'string', expected types '[int, decimal, double, long']
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { "bounds" : "partition", "step": "Hello" } } }]}');
+ERROR:  BSON field '$densify.range.step' is the wrong type 'string', expected types '[int, decimal, double, long']
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { "bounds" : [1, {"$numberDouble": 2}], "step": 1 } } }]}');
+ERROR:  invalid input syntax JSON for BSON: Code: '2', Message 'Unexpected integer 2 in type "double"'
+LINE 1: ...ECT document FROM bson_aggregation_pipeline('db', '{ "aggreg...
+                                                             ^
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { "bounds" : [1, 2], "step": {"$numberDecimal": "1"} } } }]}');
+ERROR:  Upper bound, lower bound, and step must all have the same type
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { "bounds" : [1, 2], "step": 1, "unit": "sec" } } }]}');
+ERROR:  unknown time unit value: sec
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { "bounds" : [1, 2], "step": 1, "unit": "Hour" } } }]}');
+ERROR:  unknown time unit value: Hour
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { "bounds" : [1, 2], "step": -1 } } }]}');
+ERROR:  the step parameter in a range statement must be a strictly positive numeric value
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { "bounds" : [1, 2], "step": 0 } } }]}');
+ERROR:  the step parameter in a range statement must be a strictly positive numeric value
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { "bounds" : [1, 2], "step": {"$numberDecimal": "-1e1000"} } } }]}');
+ERROR:  the step parameter in a range statement must be a strictly positive numeric value
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "range": { "bounds" : [2, 1], "step": 1 } } }]}');
+ERROR:  the bounds in a range statement must be the string 'full', 'partition', or an ascending array of two numbers or two dates
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "partitionByFields": "a", "range": { "bounds" : "full", "step": 1 } } }]}');
+ERROR:  BSON field '$densify.partitionByFields' is the wrong type 'string', expected type 'array'
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "a", "partitionByFields": ["$a"], "range": { "bounds" : "full", "step": 1 } } }]}');
+ERROR:  FieldPath field names may not start with '$'. Consider using $getField or $setField.
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "$a", "partitionByFields": ["a"], "range": { "bounds" : "full", "step": 1 } } }]}');
+ERROR:  FieldPath field names may not start with '$'. Consider using $getField or $setField.
+-- Valid cases that works
+-- Check an empty table returns value when used with range based partition
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "empty_table", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": [1, 10], "step": 1 } } }]}');
+              document               
+---------------------------------------------------------------------
+ { "cost" : { "$numberInt" : "1" } }
+ { "cost" : { "$numberInt" : "2" } }
+ { "cost" : { "$numberInt" : "3" } }
+ { "cost" : { "$numberInt" : "4" } }
+ { "cost" : { "$numberInt" : "5" } }
+ { "cost" : { "$numberInt" : "6" } }
+ { "cost" : { "$numberInt" : "7" } }
+ { "cost" : { "$numberInt" : "8" } }
+ { "cost" : { "$numberInt" : "9" } }
+(9 rows)
+
+-- Range with lower and upper bounds
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": [8, 12], "step": 1 } } }]}');
+                                                                                       document                                                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "3" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "quantity" : { "$numberInt" : "507" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "7" }, "quantity" : { "$numberInt" : "504" }, "date" : { "$date" : { "$numberLong" : "1718841615000" } } }
+ { "a" : "abc", "cost" : { "$numberInt" : "8" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "9" } }
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "10" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
+ { "a" : "abc", "cost" : { "$numberInt" : "11" } }
+ { "_id" : { "$numberInt" : "13" }, "a" : "def", "cost" : { "$numberInt" : "-5" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } } }
+ { "a" : "def", "cost" : { "$numberInt" : "8" } }
+ { "_id" : { "$numberInt" : "14" }, "a" : "def", "cost" : { "$numberInt" : "9" }, "quantity" : { "$numberInt" : "504" }, "date" : { "$date" : { "$numberLong" : "1718841615000" } } }
+ { "a" : "def", "cost" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "12" }, "a" : "def", "cost" : { "$numberInt" : "11" }, "quantity" : { "$numberInt" : "507" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } } }
+ { "_id" : { "$numberInt" : "11" }, "a" : "def", "cost" : { "$numberInt" : "16" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
+(13 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": [8, 12], "step": 1.2 } } }]}');
+ERROR:  Upper bound, lower bound, and step must all have the same type
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": [-10, -5], "step": 1 } } }]}');
+                                                                                       document                                                                                        
+---------------------------------------------------------------------
+ { "a" : "abc", "cost" : { "$numberInt" : "-10" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "-9" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "-8" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "-7" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "-6" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "3" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "quantity" : { "$numberInt" : "507" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "7" }, "quantity" : { "$numberInt" : "504" }, "date" : { "$date" : { "$numberLong" : "1718841615000" } } }
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "10" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
+ { "a" : "def", "cost" : { "$numberInt" : "-10" } }
+ { "a" : "def", "cost" : { "$numberInt" : "-9" } }
+ { "a" : "def", "cost" : { "$numberInt" : "-8" } }
+ { "a" : "def", "cost" : { "$numberInt" : "-7" } }
+ { "a" : "def", "cost" : { "$numberInt" : "-6" } }
+ { "_id" : { "$numberInt" : "13" }, "a" : "def", "cost" : { "$numberInt" : "-5" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } } }
+ { "_id" : { "$numberInt" : "14" }, "a" : "def", "cost" : { "$numberInt" : "9" }, "quantity" : { "$numberInt" : "504" }, "date" : { "$date" : { "$numberLong" : "1718841615000" } } }
+ { "_id" : { "$numberInt" : "12" }, "a" : "def", "cost" : { "$numberInt" : "11" }, "quantity" : { "$numberInt" : "507" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } } }
+ { "_id" : { "$numberInt" : "11" }, "a" : "def", "cost" : { "$numberInt" : "16" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
+(18 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": [11, 15], "step": 1 } } }]}');
+                                                                                       document                                                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "3" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "quantity" : { "$numberInt" : "507" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "7" }, "quantity" : { "$numberInt" : "504" }, "date" : { "$date" : { "$numberLong" : "1718841615000" } } }
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "10" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
+ { "a" : "abc", "cost" : { "$numberInt" : "11" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "12" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "13" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "13" }, "a" : "def", "cost" : { "$numberInt" : "-5" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } } }
+ { "_id" : { "$numberInt" : "14" }, "a" : "def", "cost" : { "$numberInt" : "9" }, "quantity" : { "$numberInt" : "504" }, "date" : { "$date" : { "$numberLong" : "1718841615000" } } }
+ { "_id" : { "$numberInt" : "12" }, "a" : "def", "cost" : { "$numberInt" : "11" }, "quantity" : { "$numberInt" : "507" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } } }
+ { "a" : "def", "cost" : { "$numberInt" : "12" } }
+ { "a" : "def", "cost" : { "$numberInt" : "13" } }
+ { "a" : "def", "cost" : { "$numberInt" : "14" } }
+ { "_id" : { "$numberInt" : "11" }, "a" : "def", "cost" : { "$numberInt" : "16" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
+(15 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": [3, 10], "step": 1 } } }]}');
+                                                                                       document                                                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "3" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } } }
+ { "a" : "abc", "cost" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "quantity" : { "$numberInt" : "507" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } } }
+ { "a" : "abc", "cost" : { "$numberInt" : "6" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "7" }, "quantity" : { "$numberInt" : "504" }, "date" : { "$date" : { "$numberLong" : "1718841615000" } } }
+ { "a" : "abc", "cost" : { "$numberInt" : "8" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "9" } }
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "10" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
+ { "_id" : { "$numberInt" : "13" }, "a" : "def", "cost" : { "$numberInt" : "-5" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } } }
+ { "a" : "def", "cost" : { "$numberInt" : "3" } }
+ { "a" : "def", "cost" : { "$numberInt" : "4" } }
+ { "a" : "def", "cost" : { "$numberInt" : "5" } }
+ { "a" : "def", "cost" : { "$numberInt" : "6" } }
+ { "a" : "def", "cost" : { "$numberInt" : "7" } }
+ { "a" : "def", "cost" : { "$numberInt" : "8" } }
+ { "_id" : { "$numberInt" : "14" }, "a" : "def", "cost" : { "$numberInt" : "9" }, "quantity" : { "$numberInt" : "504" }, "date" : { "$date" : { "$numberLong" : "1718841615000" } } }
+ { "_id" : { "$numberInt" : "12" }, "a" : "def", "cost" : { "$numberInt" : "11" }, "quantity" : { "$numberInt" : "507" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } } }
+ { "_id" : { "$numberInt" : "11" }, "a" : "def", "cost" : { "$numberInt" : "16" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
+(18 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "date", "partitionByFields": ["a"], "range": { "bounds": [{ "$date" : { "$numberLong" : "1718841610000" } }, { "$date" : { "$numberLong" : "1718841615000" } }], "step": 1, "unit": "second" } } }, {"$project": { "formatted": { "$dateToString": { "date": "$date" } }}}]}')
+-- Partition mode
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": "partition", "step": 1 } } }]}');
+ERROR:  syntax error at or near "SELECT"
+LINE 4: SELECT document FROM bson_aggregation_pipeline('db',
+        ^
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "date", "partitionByFields": ["a"], "range": { "bounds": "partition", "step": 1, "unit": "second" } } }, {"$project": { "formatted": { "$dateToString": { "date": "$date" } }}}]}');
+                                   document                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "formatted" : "2024-06-20T00:00:00.000Z" }
+ { "formatted" : "2024-06-20T00:00:01.000Z" }
+ { "formatted" : "2024-06-20T00:00:02.000Z" }
+ { "formatted" : "2024-06-20T00:00:03.000Z" }
+ { "formatted" : "2024-06-20T00:00:04.000Z" }
+ { "_id" : { "$numberInt" : "2" }, "formatted" : "2024-06-20T00:00:05.000Z" }
+ { "formatted" : "2024-06-20T00:00:06.000Z" }
+ { "formatted" : "2024-06-20T00:00:07.000Z" }
+ { "formatted" : "2024-06-20T00:00:08.000Z" }
+ { "formatted" : "2024-06-20T00:00:09.000Z" }
+ { "_id" : { "$numberInt" : "3" }, "formatted" : "2024-06-20T00:00:10.000Z" }
+ { "formatted" : "2024-06-20T00:00:11.000Z" }
+ { "formatted" : "2024-06-20T00:00:12.000Z" }
+ { "formatted" : "2024-06-20T00:00:13.000Z" }
+ { "formatted" : "2024-06-20T00:00:14.000Z" }
+ { "_id" : { "$numberInt" : "4" }, "formatted" : "2024-06-20T00:00:15.000Z" }
+ { "_id" : { "$numberInt" : "11" }, "formatted" : "2024-06-20T00:00:00.000Z" }
+ { "formatted" : "2024-06-20T00:00:01.000Z" }
+ { "formatted" : "2024-06-20T00:00:02.000Z" }
+ { "formatted" : "2024-06-20T00:00:03.000Z" }
+ { "formatted" : "2024-06-20T00:00:04.000Z" }
+ { "_id" : { "$numberInt" : "12" }, "formatted" : "2024-06-20T00:00:05.000Z" }
+ { "formatted" : "2024-06-20T00:00:06.000Z" }
+ { "formatted" : "2024-06-20T00:00:07.000Z" }
+ { "formatted" : "2024-06-20T00:00:08.000Z" }
+ { "formatted" : "2024-06-20T00:00:09.000Z" }
+ { "_id" : { "$numberInt" : "13" }, "formatted" : "2024-06-20T00:00:10.000Z" }
+ { "formatted" : "2024-06-20T00:00:11.000Z" }
+ { "formatted" : "2024-06-20T00:00:12.000Z" }
+ { "formatted" : "2024-06-20T00:00:13.000Z" }
+ { "formatted" : "2024-06-20T00:00:14.000Z" }
+ { "_id" : { "$numberInt" : "14" }, "formatted" : "2024-06-20T00:00:15.000Z" }
+(32 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "date", "partitionByFields": ["a"], "range": { "bounds": "partition", "step": 3, "unit": "second" } } }, {"$project": { "formatted": { "$dateToString": { "date": "$date" } }}}]}');
+                                   document                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "formatted" : "2024-06-20T00:00:00.000Z" }
+ { "formatted" : "2024-06-20T00:00:03.000Z" }
+ { "_id" : { "$numberInt" : "2" }, "formatted" : "2024-06-20T00:00:05.000Z" }
+ { "formatted" : "2024-06-20T00:00:06.000Z" }
+ { "formatted" : "2024-06-20T00:00:09.000Z" }
+ { "_id" : { "$numberInt" : "3" }, "formatted" : "2024-06-20T00:00:10.000Z" }
+ { "formatted" : "2024-06-20T00:00:12.000Z" }
+ { "_id" : { "$numberInt" : "4" }, "formatted" : "2024-06-20T00:00:15.000Z" }
+ { "_id" : { "$numberInt" : "11" }, "formatted" : "2024-06-20T00:00:00.000Z" }
+ { "formatted" : "2024-06-20T00:00:03.000Z" }
+ { "_id" : { "$numberInt" : "12" }, "formatted" : "2024-06-20T00:00:05.000Z" }
+ { "formatted" : "2024-06-20T00:00:06.000Z" }
+ { "formatted" : "2024-06-20T00:00:09.000Z" }
+ { "_id" : { "$numberInt" : "13" }, "formatted" : "2024-06-20T00:00:10.000Z" }
+ { "formatted" : "2024-06-20T00:00:12.000Z" }
+ { "_id" : { "$numberInt" : "14" }, "formatted" : "2024-06-20T00:00:15.000Z" }
+(16 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": "partition", "step": { "$numberDecimal": "1.5"} } } }]}');
+                                                                                       document                                                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "3" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } } }
+ { "a" : "abc", "cost" : { "$numberDecimal" : "4.5" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "quantity" : { "$numberInt" : "507" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } } }
+ { "a" : "abc", "cost" : { "$numberDecimal" : "6.0" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "7" }, "quantity" : { "$numberInt" : "504" }, "date" : { "$date" : { "$numberLong" : "1718841615000" } } }
+ { "a" : "abc", "cost" : { "$numberDecimal" : "7.5" } }
+ { "a" : "abc", "cost" : { "$numberDecimal" : "9.0" } }
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "10" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
+ { "_id" : { "$numberInt" : "13" }, "a" : "def", "cost" : { "$numberInt" : "-5" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } } }
+ { "a" : "def", "cost" : { "$numberDecimal" : "-3.5" } }
+ { "a" : "def", "cost" : { "$numberDecimal" : "-2.0" } }
+ { "a" : "def", "cost" : { "$numberDecimal" : "-0.5" } }
+ { "a" : "def", "cost" : { "$numberDecimal" : "1.0" } }
+ { "a" : "def", "cost" : { "$numberDecimal" : "2.5" } }
+ { "a" : "def", "cost" : { "$numberDecimal" : "4.0" } }
+ { "a" : "def", "cost" : { "$numberDecimal" : "5.5" } }
+ { "a" : "def", "cost" : { "$numberDecimal" : "7.0" } }
+ { "a" : "def", "cost" : { "$numberDecimal" : "8.5" } }
+ { "_id" : { "$numberInt" : "14" }, "a" : "def", "cost" : { "$numberInt" : "9" }, "quantity" : { "$numberInt" : "504" }, "date" : { "$date" : { "$numberLong" : "1718841615000" } } }
+ { "a" : "def", "cost" : { "$numberDecimal" : "10.0" } }
+ { "_id" : { "$numberInt" : "12" }, "a" : "def", "cost" : { "$numberInt" : "11" }, "quantity" : { "$numberInt" : "507" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } } }
+ { "a" : "def", "cost" : { "$numberDecimal" : "11.5" } }
+ { "a" : "def", "cost" : { "$numberDecimal" : "13.0" } }
+ { "a" : "def", "cost" : { "$numberDecimal" : "14.5" } }
+ { "_id" : { "$numberInt" : "11" }, "a" : "def", "cost" : { "$numberInt" : "16" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
+(25 rows)
+
+-- Full mode
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": "full", "step": 1 } } }]}');
+                                                                                       document                                                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "13" }, "a" : "def", "cost" : { "$numberInt" : "-5" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } } }
+ { "a" : "abc", "cost" : { "$numberInt" : "-5" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "-4" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "-3" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "-2" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "-1" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "0" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "1" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "2" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "3" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } } }
+ { "a" : "abc", "cost" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "quantity" : { "$numberInt" : "507" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } } }
+ { "a" : "abc", "cost" : { "$numberInt" : "6" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "7" }, "quantity" : { "$numberInt" : "504" }, "date" : { "$date" : { "$numberLong" : "1718841615000" } } }
+ { "a" : "def", "cost" : { "$numberInt" : "-4" } }
+ { "a" : "def", "cost" : { "$numberInt" : "-3" } }
+ { "a" : "def", "cost" : { "$numberInt" : "-2" } }
+ { "a" : "def", "cost" : { "$numberInt" : "-1" } }
+ { "a" : "def", "cost" : { "$numberInt" : "0" } }
+ { "a" : "def", "cost" : { "$numberInt" : "1" } }
+ { "a" : "def", "cost" : { "$numberInt" : "2" } }
+ { "a" : "def", "cost" : { "$numberInt" : "3" } }
+ { "a" : "def", "cost" : { "$numberInt" : "4" } }
+ { "a" : "def", "cost" : { "$numberInt" : "5" } }
+ { "a" : "def", "cost" : { "$numberInt" : "6" } }
+ { "a" : "def", "cost" : { "$numberInt" : "7" } }
+ { "a" : "def", "cost" : { "$numberInt" : "8" } }
+ { "_id" : { "$numberInt" : "14" }, "a" : "def", "cost" : { "$numberInt" : "9" }, "quantity" : { "$numberInt" : "504" }, "date" : { "$date" : { "$numberLong" : "1718841615000" } } }
+ { "a" : "abc", "cost" : { "$numberInt" : "8" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "9" } }
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "10" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
+ { "a" : "def", "cost" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "12" }, "a" : "def", "cost" : { "$numberInt" : "11" }, "quantity" : { "$numberInt" : "507" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } } }
+ { "a" : "def", "cost" : { "$numberInt" : "12" } }
+ { "a" : "def", "cost" : { "$numberInt" : "13" } }
+ { "a" : "def", "cost" : { "$numberInt" : "14" } }
+ { "a" : "def", "cost" : { "$numberInt" : "15" } }
+ { "_id" : { "$numberInt" : "11" }, "a" : "def", "cost" : { "$numberInt" : "16" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
+ { "a" : "abc", "cost" : { "$numberInt" : "11" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "12" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "13" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "14" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "15" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "16" } }
+(44 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "date", "partitionByFields": ["a"], "range": { "bounds": "full", "step": 1, "unit": "second" } } }, {"$project": { "a": 1, "formatted": { "$dateToString": { "date": "$date" } }}}]}');
+                                          document                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "formatted" : "2024-06-20T00:00:00.000Z" }
+ { "_id" : { "$numberInt" : "11" }, "a" : "def", "formatted" : "2024-06-20T00:00:00.000Z" }
+ { "a" : "def", "formatted" : "2024-06-20T00:00:01.000Z" }
+ { "a" : "def", "formatted" : "2024-06-20T00:00:02.000Z" }
+ { "a" : "def", "formatted" : "2024-06-20T00:00:03.000Z" }
+ { "a" : "def", "formatted" : "2024-06-20T00:00:04.000Z" }
+ { "_id" : { "$numberInt" : "12" }, "a" : "def", "formatted" : "2024-06-20T00:00:05.000Z" }
+ { "a" : "abc", "formatted" : "2024-06-20T00:00:01.000Z" }
+ { "a" : "abc", "formatted" : "2024-06-20T00:00:02.000Z" }
+ { "a" : "abc", "formatted" : "2024-06-20T00:00:03.000Z" }
+ { "a" : "abc", "formatted" : "2024-06-20T00:00:04.000Z" }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "formatted" : "2024-06-20T00:00:05.000Z" }
+ { "a" : "abc", "formatted" : "2024-06-20T00:00:06.000Z" }
+ { "a" : "abc", "formatted" : "2024-06-20T00:00:07.000Z" }
+ { "a" : "abc", "formatted" : "2024-06-20T00:00:08.000Z" }
+ { "a" : "abc", "formatted" : "2024-06-20T00:00:09.000Z" }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "formatted" : "2024-06-20T00:00:10.000Z" }
+ { "a" : "def", "formatted" : "2024-06-20T00:00:06.000Z" }
+ { "a" : "def", "formatted" : "2024-06-20T00:00:07.000Z" }
+ { "a" : "def", "formatted" : "2024-06-20T00:00:08.000Z" }
+ { "a" : "def", "formatted" : "2024-06-20T00:00:09.000Z" }
+ { "_id" : { "$numberInt" : "13" }, "a" : "def", "formatted" : "2024-06-20T00:00:10.000Z" }
+ { "a" : "abc", "formatted" : "2024-06-20T00:00:11.000Z" }
+ { "a" : "abc", "formatted" : "2024-06-20T00:00:12.000Z" }
+ { "a" : "abc", "formatted" : "2024-06-20T00:00:13.000Z" }
+ { "a" : "abc", "formatted" : "2024-06-20T00:00:14.000Z" }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "formatted" : "2024-06-20T00:00:15.000Z" }
+ { "a" : "def", "formatted" : "2024-06-20T00:00:11.000Z" }
+ { "a" : "def", "formatted" : "2024-06-20T00:00:12.000Z" }
+ { "a" : "def", "formatted" : "2024-06-20T00:00:13.000Z" }
+ { "a" : "def", "formatted" : "2024-06-20T00:00:14.000Z" }
+ { "_id" : { "$numberInt" : "14" }, "a" : "def", "formatted" : "2024-06-20T00:00:15.000Z" }
+(32 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "date", "partitionByFields": ["a"], "range": { "bounds": "full", "step": 3, "unit": "second" } } }, {"$project": { "a": 1, "formatted": { "$dateToString": { "date": "$date" } }}}]}');
+                                          document                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "formatted" : "2024-06-20T00:00:00.000Z" }
+ { "_id" : { "$numberInt" : "11" }, "a" : "def", "formatted" : "2024-06-20T00:00:00.000Z" }
+ { "a" : "def", "formatted" : "2024-06-20T00:00:03.000Z" }
+ { "_id" : { "$numberInt" : "12" }, "a" : "def", "formatted" : "2024-06-20T00:00:05.000Z" }
+ { "a" : "abc", "formatted" : "2024-06-20T00:00:03.000Z" }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "formatted" : "2024-06-20T00:00:05.000Z" }
+ { "a" : "abc", "formatted" : "2024-06-20T00:00:06.000Z" }
+ { "a" : "abc", "formatted" : "2024-06-20T00:00:09.000Z" }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "formatted" : "2024-06-20T00:00:10.000Z" }
+ { "a" : "def", "formatted" : "2024-06-20T00:00:06.000Z" }
+ { "a" : "def", "formatted" : "2024-06-20T00:00:09.000Z" }
+ { "_id" : { "$numberInt" : "13" }, "a" : "def", "formatted" : "2024-06-20T00:00:10.000Z" }
+ { "a" : "abc", "formatted" : "2024-06-20T00:00:12.000Z" }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "formatted" : "2024-06-20T00:00:15.000Z" }
+ { "a" : "def", "formatted" : "2024-06-20T00:00:12.000Z" }
+ { "_id" : { "$numberInt" : "14" }, "a" : "def", "formatted" : "2024-06-20T00:00:15.000Z" }
+(16 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": "full", "step": { "$numberDecimal": "1.5"} } } }]}');
+                                                                                       document                                                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "13" }, "a" : "def", "cost" : { "$numberInt" : "-5" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } } }
+ { "a" : "abc", "cost" : { "$numberInt" : "-5" } }
+ { "a" : "abc", "cost" : { "$numberDecimal" : "-3.5" } }
+ { "a" : "abc", "cost" : { "$numberDecimal" : "-2.0" } }
+ { "a" : "abc", "cost" : { "$numberDecimal" : "-0.5" } }
+ { "a" : "abc", "cost" : { "$numberDecimal" : "1.0" } }
+ { "a" : "abc", "cost" : { "$numberDecimal" : "2.5" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "3" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } } }
+ { "a" : "abc", "cost" : { "$numberDecimal" : "4.0" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "quantity" : { "$numberInt" : "507" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } } }
+ { "a" : "abc", "cost" : { "$numberDecimal" : "5.5" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "7" }, "quantity" : { "$numberInt" : "504" }, "date" : { "$date" : { "$numberLong" : "1718841615000" } } }
+ { "a" : "def", "cost" : { "$numberDecimal" : "-3.5" } }
+ { "a" : "def", "cost" : { "$numberDecimal" : "-2.0" } }
+ { "a" : "def", "cost" : { "$numberDecimal" : "-0.5" } }
+ { "a" : "def", "cost" : { "$numberDecimal" : "1.0" } }
+ { "a" : "def", "cost" : { "$numberDecimal" : "2.5" } }
+ { "a" : "def", "cost" : { "$numberDecimal" : "4.0" } }
+ { "a" : "def", "cost" : { "$numberDecimal" : "5.5" } }
+ { "a" : "def", "cost" : { "$numberDecimal" : "7.0" } }
+ { "a" : "def", "cost" : { "$numberDecimal" : "8.5" } }
+ { "_id" : { "$numberInt" : "14" }, "a" : "def", "cost" : { "$numberInt" : "9" }, "quantity" : { "$numberInt" : "504" }, "date" : { "$date" : { "$numberLong" : "1718841615000" } } }
+ { "a" : "abc", "cost" : { "$numberDecimal" : "8.5" } }
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "10" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
+ { "a" : "def", "cost" : { "$numberDecimal" : "10.0" } }
+ { "_id" : { "$numberInt" : "12" }, "a" : "def", "cost" : { "$numberInt" : "11" }, "quantity" : { "$numberInt" : "507" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } } }
+ { "a" : "def", "cost" : { "$numberDecimal" : "11.5" } }
+ { "a" : "def", "cost" : { "$numberDecimal" : "13.0" } }
+ { "a" : "def", "cost" : { "$numberDecimal" : "14.5" } }
+ { "_id" : { "$numberInt" : "11" }, "a" : "def", "cost" : { "$numberInt" : "16" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
+ { "a" : "abc", "cost" : { "$numberDecimal" : "11.5" } }
+ { "a" : "abc", "cost" : { "$numberDecimal" : "13.0" } }
+ { "a" : "abc", "cost" : { "$numberDecimal" : "14.5" } }
+ { "a" : "abc", "cost" : { "$numberDecimal" : "16.0" } }
+(34 rows)
+
+-- Explains
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "empty_table", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": [1, 10], "step": 1 } } }]}');
+                                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                                  
+---------------------------------------------------------------------
+ ProjectSet
+   Output: bson_lookup_unwind((bson_densify_range(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : [ { "$numberInt" : "1" }, { "$numberInt" : "10" } ], "step" : { "$numberInt" : "1" } } }'::bson) OVER (?)), '_'::text)
+   ->  WindowAgg
+         Output: bson_densify_range(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : [ { "$numberInt" : "1" }, { "$numberInt" : "10" } ], "step" : { "$numberInt" : "1" } } }'::bson) OVER (?), (densify_partition_by_fields(collection.document, '{ "" : [ "a" ] }'::bson)), (bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::bson))
+         ->  Sort
+               Output: (densify_partition_by_fields(collection.document, '{ "" : [ "a" ] }'::bson)), (bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::bson)), collection.document
+               Sort Key: (densify_partition_by_fields(collection.document, '{ "" : [ "a" ] }'::bson)), (bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::bson)) NULLS FIRST
+               ->  Result
+                     Output: densify_partition_by_fields(collection.document, '{ "" : [ "a" ] }'::bson), bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::bson), collection.document
+                     ->  Append
+                           ->  Function Scan on helio_api_internal.empty_data_table collection
+                                 Output: collection.document
+                                 Function Call: empty_data_table()
+                           ->  Result
+                                 Output: NULL::bson
+(15 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": [8, 12], "step": 1 } } }]}');
+                                                                                                                                                                                                                                                                                                                                                                                                                                         QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                          
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT helio_api_catalog.bson_lookup_unwind(document, '_'::text) AS document FROM (SELECT helio_api_internal.bson_densify_range(agg_stage_0_1.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : [ { "$numberInt" : "8" }, { "$numberInt" : "12" } ], "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (PARTITION BY (helio_api_internal.densify_partition_by_fields(agg_stage_0_1.document, '{ "" : [ "a" ] }'::helio_core.bson)) ORDER BY (helio_api_catalog.bson_orderby(agg_stage_0_1.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)) NULLS FIRST) AS document FROM (SELECT collection.document FROM helio_data.documents_4770_477002 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '4770'::bigint) UNION ALL SELECT NULL::helio_core.bson AS document) agg_stage_0_1) agg_stage_0
+         Node: host=localhost port=58070 dbname=regression
+         ->  ProjectSet
+               Output: helio_api_catalog.bson_lookup_unwind((helio_api_internal.bson_densify_range(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : [ { "$numberInt" : "8" }, { "$numberInt" : "12" } ], "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?)), '_'::text)
+               ->  WindowAgg
+                     Output: helio_api_internal.bson_densify_range(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : [ { "$numberInt" : "8" }, { "$numberInt" : "12" } ], "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?), (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)), (helio_api_internal.densify_partition_by_fields(collection.document, '{ "" : [ "a" ] }'::helio_core.bson))
+                     ->  Sort
+                           Output: (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)), (helio_api_internal.densify_partition_by_fields(collection.document, '{ "" : [ "a" ] }'::helio_core.bson)), collection.document
+                           Sort Key: (helio_api_internal.densify_partition_by_fields(collection.document, '{ "" : [ "a" ] }'::helio_core.bson)), (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)) NULLS FIRST
+                           ->  Result
+                                 Output: helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson), helio_api_internal.densify_partition_by_fields(collection.document, '{ "" : [ "a" ] }'::helio_core.bson), collection.document
+                                 ->  Append
+                                       ->  Bitmap Heap Scan on helio_data.documents_4770_477002 collection
+                                             Output: collection.document
+                                             Recheck Cond: (collection.shard_key_value = '4770'::bigint)
+                                             ->  Bitmap Index Scan on _id_
+                                                   Index Cond: (collection.shard_key_value = '4770'::bigint)
+                                       ->  Result
+                                             Output: NULL::helio_core.bson
+(24 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": "partition", "step": 1 } } }]}');
+                                                                                                                                                                                                                                                                                                                                                                 QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT helio_api_catalog.bson_lookup_unwind(document, '_'::text) AS document FROM (SELECT helio_api_internal.bson_densify_partition(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : "partition", "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (PARTITION BY (helio_api_internal.densify_partition_by_fields(collection.document, '{ "" : [ "a" ] }'::helio_core.bson)) ORDER BY (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)) NULLS FIRST) AS document FROM helio_data.documents_4770_477002 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '4770'::bigint)) agg_stage_0
+         Node: host=localhost port=58070 dbname=regression
+         ->  ProjectSet
+               Output: helio_api_catalog.bson_lookup_unwind((helio_api_internal.bson_densify_partition(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : "partition", "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?)), '_'::text)
+               ->  WindowAgg
+                     Output: helio_api_internal.bson_densify_partition(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : "partition", "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?), (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)), (helio_api_internal.densify_partition_by_fields(collection.document, '{ "" : [ "a" ] }'::helio_core.bson))
+                     ->  Sort
+                           Output: (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)), (helio_api_internal.densify_partition_by_fields(collection.document, '{ "" : [ "a" ] }'::helio_core.bson)), collection.document
+                           Sort Key: (helio_api_internal.densify_partition_by_fields(collection.document, '{ "" : [ "a" ] }'::helio_core.bson)), (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)) NULLS FIRST
+                           ->  Bitmap Heap Scan on helio_data.documents_4770_477002 collection
+                                 Output: helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson), helio_api_internal.densify_partition_by_fields(collection.document, '{ "" : [ "a" ] }'::helio_core.bson), collection.document
+                                 Recheck Cond: (collection.shard_key_value = '4770'::bigint)
+                                 ->  Bitmap Index Scan on _id_
+                                       Index Cond: (collection.shard_key_value = '4770'::bigint)
+(19 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": "full", "step": 1 } } }]}');
+                                                                                                                                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                                                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT helio_api_catalog.bson_lookup_unwind(document, '_'::text) AS document FROM (SELECT helio_api_internal.bson_densify_full(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : "full", "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (ORDER BY (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)) NULLS FIRST) AS document FROM helio_data.documents_4770_477002 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '4770'::bigint)) agg_stage_0
+         Node: host=localhost port=58070 dbname=regression
+         ->  ProjectSet
+               Output: helio_api_catalog.bson_lookup_unwind((helio_api_internal.bson_densify_full(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : "full", "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?)), '_'::text)
+               ->  WindowAgg
+                     Output: helio_api_internal.bson_densify_full(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : "full", "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?), (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson))
+                     ->  Sort
+                           Output: (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)), collection.document
+                           Sort Key: (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)) NULLS FIRST
+                           ->  Bitmap Heap Scan on helio_data.documents_4770_477002 collection
+                                 Output: helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson), collection.document
+                                 Recheck Cond: (collection.shard_key_value = '4770'::bigint)
+                                 ->  Bitmap Index Scan on _id_
+                                       Index Cond: (collection.shard_key_value = '4770'::bigint)
+(19 rows)
+
+-- Shard collection
+SELECT helio_api.shard_collection('db', 'densify', '{"a": "hashed"}', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": [8, 12], "step": 1 } } }]}');
+                                                                                       document                                                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "3" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "quantity" : { "$numberInt" : "507" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "7" }, "quantity" : { "$numberInt" : "504" }, "date" : { "$date" : { "$numberLong" : "1718841615000" } } }
+ { "a" : "abc", "cost" : { "$numberInt" : "8" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "9" } }
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "10" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
+ { "a" : "abc", "cost" : { "$numberInt" : "11" } }
+ { "_id" : { "$numberInt" : "13" }, "a" : "def", "cost" : { "$numberInt" : "-5" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } } }
+ { "a" : "def", "cost" : { "$numberInt" : "8" } }
+ { "_id" : { "$numberInt" : "14" }, "a" : "def", "cost" : { "$numberInt" : "9" }, "quantity" : { "$numberInt" : "504" }, "date" : { "$date" : { "$numberLong" : "1718841615000" } } }
+ { "a" : "def", "cost" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "12" }, "a" : "def", "cost" : { "$numberInt" : "11" }, "quantity" : { "$numberInt" : "507" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } } }
+ { "_id" : { "$numberInt" : "11" }, "a" : "def", "cost" : { "$numberInt" : "16" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
+(13 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": "partition", "step": 1 } } }]}');
+                                                                                       document                                                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "13" }, "a" : "def", "cost" : { "$numberInt" : "-5" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } } }
+ { "a" : "def", "cost" : { "$numberInt" : "-4" } }
+ { "a" : "def", "cost" : { "$numberInt" : "-3" } }
+ { "a" : "def", "cost" : { "$numberInt" : "-2" } }
+ { "a" : "def", "cost" : { "$numberInt" : "-1" } }
+ { "a" : "def", "cost" : { "$numberInt" : "0" } }
+ { "a" : "def", "cost" : { "$numberInt" : "1" } }
+ { "a" : "def", "cost" : { "$numberInt" : "2" } }
+ { "a" : "def", "cost" : { "$numberInt" : "3" } }
+ { "a" : "def", "cost" : { "$numberInt" : "4" } }
+ { "a" : "def", "cost" : { "$numberInt" : "5" } }
+ { "a" : "def", "cost" : { "$numberInt" : "6" } }
+ { "a" : "def", "cost" : { "$numberInt" : "7" } }
+ { "a" : "def", "cost" : { "$numberInt" : "8" } }
+ { "_id" : { "$numberInt" : "14" }, "a" : "def", "cost" : { "$numberInt" : "9" }, "quantity" : { "$numberInt" : "504" }, "date" : { "$date" : { "$numberLong" : "1718841615000" } } }
+ { "a" : "def", "cost" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "12" }, "a" : "def", "cost" : { "$numberInt" : "11" }, "quantity" : { "$numberInt" : "507" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } } }
+ { "a" : "def", "cost" : { "$numberInt" : "12" } }
+ { "a" : "def", "cost" : { "$numberInt" : "13" } }
+ { "a" : "def", "cost" : { "$numberInt" : "14" } }
+ { "a" : "def", "cost" : { "$numberInt" : "15" } }
+ { "_id" : { "$numberInt" : "11" }, "a" : "def", "cost" : { "$numberInt" : "16" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "3" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } } }
+ { "a" : "abc", "cost" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "quantity" : { "$numberInt" : "507" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } } }
+ { "a" : "abc", "cost" : { "$numberInt" : "6" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "7" }, "quantity" : { "$numberInt" : "504" }, "date" : { "$date" : { "$numberLong" : "1718841615000" } } }
+ { "a" : "abc", "cost" : { "$numberInt" : "8" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "9" } }
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "10" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
+(30 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": "full", "step": 1 } } }]}');
+                                                                                       document                                                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "13" }, "a" : "def", "cost" : { "$numberInt" : "-5" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } } }
+ { "a" : "abc", "cost" : { "$numberInt" : "-5" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "-4" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "-3" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "-2" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "-1" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "0" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "1" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "2" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "3" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } } }
+ { "a" : "abc", "cost" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "quantity" : { "$numberInt" : "507" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } } }
+ { "a" : "abc", "cost" : { "$numberInt" : "6" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "7" }, "quantity" : { "$numberInt" : "504" }, "date" : { "$date" : { "$numberLong" : "1718841615000" } } }
+ { "a" : "def", "cost" : { "$numberInt" : "-4" } }
+ { "a" : "def", "cost" : { "$numberInt" : "-3" } }
+ { "a" : "def", "cost" : { "$numberInt" : "-2" } }
+ { "a" : "def", "cost" : { "$numberInt" : "-1" } }
+ { "a" : "def", "cost" : { "$numberInt" : "0" } }
+ { "a" : "def", "cost" : { "$numberInt" : "1" } }
+ { "a" : "def", "cost" : { "$numberInt" : "2" } }
+ { "a" : "def", "cost" : { "$numberInt" : "3" } }
+ { "a" : "def", "cost" : { "$numberInt" : "4" } }
+ { "a" : "def", "cost" : { "$numberInt" : "5" } }
+ { "a" : "def", "cost" : { "$numberInt" : "6" } }
+ { "a" : "def", "cost" : { "$numberInt" : "7" } }
+ { "a" : "def", "cost" : { "$numberInt" : "8" } }
+ { "_id" : { "$numberInt" : "14" }, "a" : "def", "cost" : { "$numberInt" : "9" }, "quantity" : { "$numberInt" : "504" }, "date" : { "$date" : { "$numberLong" : "1718841615000" } } }
+ { "a" : "abc", "cost" : { "$numberInt" : "8" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "9" } }
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "10" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
+ { "a" : "def", "cost" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "12" }, "a" : "def", "cost" : { "$numberInt" : "11" }, "quantity" : { "$numberInt" : "507" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } } }
+ { "a" : "def", "cost" : { "$numberInt" : "12" } }
+ { "a" : "def", "cost" : { "$numberInt" : "13" } }
+ { "a" : "def", "cost" : { "$numberInt" : "14" } }
+ { "a" : "def", "cost" : { "$numberInt" : "15" } }
+ { "_id" : { "$numberInt" : "11" }, "a" : "def", "cost" : { "$numberInt" : "16" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
+ { "a" : "abc", "cost" : { "$numberInt" : "11" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "12" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "13" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "14" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "15" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "16" } }
+(44 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": [8, 12], "step": 1 } } }]}');
+                                                                                                                                                                                                                                                                                                                                                                                                                   QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                   
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   ->  Distributed Subplan 53_1
+         ->  Custom Scan (Citus Adaptive)
+               Output: remote_scan.document
+               Task Count: 8
+               Tasks Shown: One of 8
+               ->  Task
+                     Query: SELECT document FROM helio_data.documents_4770_477016 collection WHERE true
+                     Node: host=localhost port=58070 dbname=regression
+                     ->  Seq Scan on helio_data.documents_4770_477016 collection
+                           Output: document
+   ->  Distributed Subplan 53_2
+         ->  Custom Scan (Citus Adaptive)
+               Output: remote_scan.document
+               Task Count: 1
+               Tasks Shown: All
+               ->  Task
+                     Query: SELECT intermediate_result.document FROM read_intermediate_result('53_1'::text, 'binary'::citus_copy_format) intermediate_result(document helio_core.bson) UNION ALL SELECT NULL::helio_core.bson AS document
+                     Node: host=localhost port=58070 dbname=regression
+                     ->  Append
+                           ->  Function Scan on pg_catalog.read_intermediate_result intermediate_result
+                                 Output: intermediate_result.document
+                                 Function Call: read_intermediate_result('53_1'::text, 'binary'::citus_copy_format)
+                           ->  Result
+                                 Output: NULL::helio_core.bson
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT helio_api_catalog.bson_lookup_unwind(document, '_'::text) AS document FROM (SELECT helio_api_internal.bson_densify_range(agg_stage_0_1.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : [ { "$numberInt" : "8" }, { "$numberInt" : "12" } ], "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (PARTITION BY (helio_api_internal.densify_partition_by_fields(agg_stage_0_1.document, '{ "" : [ "a" ] }'::helio_core.bson)) ORDER BY (helio_api_catalog.bson_orderby(agg_stage_0_1.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)) NULLS FIRST) AS document FROM (SELECT intermediate_result.document FROM read_intermediate_result('53_2'::text, 'binary'::citus_copy_format) intermediate_result(document helio_core.bson)) agg_stage_0_1) agg_stage_0
+         Node: host=localhost port=58070 dbname=regression
+         ->  ProjectSet
+               Output: helio_api_catalog.bson_lookup_unwind((helio_api_internal.bson_densify_range(intermediate_result.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : [ { "$numberInt" : "8" }, { "$numberInt" : "12" } ], "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?)), '_'::text)
+               ->  WindowAgg
+                     Output: helio_api_internal.bson_densify_range(intermediate_result.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : [ { "$numberInt" : "8" }, { "$numberInt" : "12" } ], "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?), (helio_api_catalog.bson_orderby(intermediate_result.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)), (helio_api_internal.densify_partition_by_fields(intermediate_result.document, '{ "" : [ "a" ] }'::helio_core.bson))
+                     ->  Sort
+                           Output: (helio_api_catalog.bson_orderby(intermediate_result.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)), (helio_api_internal.densify_partition_by_fields(intermediate_result.document, '{ "" : [ "a" ] }'::helio_core.bson)), intermediate_result.document
+                           Sort Key: (helio_api_internal.densify_partition_by_fields(intermediate_result.document, '{ "" : [ "a" ] }'::helio_core.bson)), (helio_api_catalog.bson_orderby(intermediate_result.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)) NULLS FIRST
+                           ->  Function Scan on pg_catalog.read_intermediate_result intermediate_result
+                                 Output: helio_api_catalog.bson_orderby(intermediate_result.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson), helio_api_internal.densify_partition_by_fields(intermediate_result.document, '{ "" : [ "a" ] }'::helio_core.bson), intermediate_result.document
+                                 Function Call: read_intermediate_result('53_2'::text, 'binary'::citus_copy_format)
+(41 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": "partition", "step": 1 } } }]}');
+                                                                                                                                                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                                                                                                                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Query: SELECT helio_api_catalog.bson_lookup_unwind(worker_column_1, '_'::text) AS document FROM (SELECT agg_stage_0.document AS worker_column_1 FROM (SELECT helio_api_internal.bson_densify_partition(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : "partition", "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (PARTITION BY collection.shard_key_value ORDER BY (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)) NULLS FIRST) AS document FROM helio_data.documents_4770_477016 collection) agg_stage_0) worker_subquery
+         Node: host=localhost port=58070 dbname=regression
+         ->  ProjectSet
+               Output: helio_api_catalog.bson_lookup_unwind((helio_api_internal.bson_densify_partition(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : "partition", "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?)), '_'::text)
+               ->  WindowAgg
+                     Output: helio_api_internal.bson_densify_partition(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : "partition", "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?), (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)), collection.shard_key_value
+                     ->  Sort
+                           Output: (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)), collection.shard_key_value, collection.document
+                           Sort Key: collection.shard_key_value, (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)) NULLS FIRST
+                           ->  Seq Scan on helio_data.documents_4770_477016 collection
+                                 Output: helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson), collection.shard_key_value, collection.document
+(16 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": "full", "step": 1 } } }]}');
+                                                                                                                                QUERY PLAN                                                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   ->  Distributed Subplan 57_1
+         ->  WindowAgg
+               Output: bson_densify_full(remote_scan.document, '{ "field" : "cost", "partitionByFields" : [ "a" ], "range" : { "bounds" : "full", "step" : { "$numberInt" : "1" } } }'::bson) OVER (?), remote_scan.worker_column_2
+               ->  Sort
+                     Output: remote_scan.worker_column_2, remote_scan.document
+                     Sort Key: remote_scan.worker_column_2 NULLS FIRST
+                     ->  Custom Scan (Citus Adaptive)
+                           Output: remote_scan.worker_column_2, remote_scan.document
+                           Task Count: 8
+                           Tasks Shown: One of 8
+                           ->  Task
+                                 Query: SELECT document, helio_api_catalog.bson_orderby(document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson) AS worker_column_2 FROM helio_data.documents_4770_477016 collection WHERE true
+                                 Node: host=localhost port=58070 dbname=regression
+                                 ->  Seq Scan on helio_data.documents_4770_477016 collection
+                                       Output: document, helio_api_catalog.bson_orderby(document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT helio_api_catalog.bson_lookup_unwind(document, '_'::text) AS document FROM (SELECT intermediate_result.document FROM read_intermediate_result('57_1'::text, 'binary'::citus_copy_format) intermediate_result(document helio_core.bson)) agg_stage_0
+         Node: host=localhost port=58070 dbname=regression
+         ->  ProjectSet
+               Output: helio_api_catalog.bson_lookup_unwind(intermediate_result.document, '_'::text)
+               ->  Function Scan on pg_catalog.read_intermediate_result intermediate_result
+                     Output: intermediate_result.document
+                     Function Call: read_intermediate_result('57_1'::text, 'binary'::citus_copy_format)
+(27 rows)
+
+-- Reshard multikey
+SELECT helio_api.shard_collection('db', 'densify', '{"a": "hashed", "quantity": "hashed"}', true);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a", "quantity"], "range": { "bounds": [8, 12], "step": 1 } } }]}');
+                                                                                       document                                                                                        
+---------------------------------------------------------------------
+ { "a" : "abc", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "8" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "9" } }
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "10" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "11" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "3" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "8" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "9" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "10" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "11" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "7" }, "quantity" : { "$numberInt" : "504" }, "date" : { "$date" : { "$numberLong" : "1718841615000" } } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "8" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "9" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "10" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "11" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "quantity" : { "$numberInt" : "507" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "8" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "9" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "10" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "11" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "8" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "9" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "10" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "11" } }
+ { "_id" : { "$numberInt" : "11" }, "a" : "def", "cost" : { "$numberInt" : "16" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
+ { "_id" : { "$numberInt" : "13" }, "a" : "def", "cost" : { "$numberInt" : "-5" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } } }
+ { "a" : "def", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "8" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "9" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "10" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "11" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "8" } }
+ { "_id" : { "$numberInt" : "14" }, "a" : "def", "cost" : { "$numberInt" : "9" }, "quantity" : { "$numberInt" : "504" }, "date" : { "$date" : { "$numberLong" : "1718841615000" } } }
+ { "a" : "def", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "10" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "11" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "8" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "9" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "12" }, "a" : "def", "cost" : { "$numberInt" : "11" }, "quantity" : { "$numberInt" : "507" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } } }
+(37 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a", "quantity"], "range": { "bounds": "partition", "step": 1 } } }]}');
+                                                                                       document                                                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "quantity" : { "$numberInt" : "507" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "7" }, "quantity" : { "$numberInt" : "504" }, "date" : { "$date" : { "$numberLong" : "1718841615000" } } }
+ { "_id" : { "$numberInt" : "12" }, "a" : "def", "cost" : { "$numberInt" : "11" }, "quantity" : { "$numberInt" : "507" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } } }
+ { "_id" : { "$numberInt" : "14" }, "a" : "def", "cost" : { "$numberInt" : "9" }, "quantity" : { "$numberInt" : "504" }, "date" : { "$date" : { "$numberLong" : "1718841615000" } } }
+ { "_id" : { "$numberInt" : "13" }, "a" : "def", "cost" : { "$numberInt" : "-5" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "3" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } } }
+ { "_id" : { "$numberInt" : "11" }, "a" : "def", "cost" : { "$numberInt" : "16" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "10" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
+(8 rows)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a", "quantity"], "range": { "bounds": "full", "step": 1 } } }]}');
+                                                                                       document                                                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "13" }, "a" : "def", "cost" : { "$numberInt" : "-5" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "-5" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "-4" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "-3" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "-2" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "-1" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "0" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "1" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "2" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "abc", "cost" : { "$numberInt" : "3" }, "quantity" : { "$numberInt" : "503" }, "date" : { "$date" : { "$numberLong" : "1718841610000" } } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "-5" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "-4" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "-3" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "-2" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "-1" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "0" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "1" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "2" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "3" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "quantity" : { "$numberInt" : "507" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "-5" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "-4" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "-3" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "-2" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "-1" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "0" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "1" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "2" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "3" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "4" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "5" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "6" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "abc", "cost" : { "$numberInt" : "7" }, "quantity" : { "$numberInt" : "504" }, "date" : { "$date" : { "$numberLong" : "1718841615000" } } }
+ { "a" : "def", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "-5" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "-4" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "-3" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "-2" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "-1" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "0" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "1" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "2" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "3" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "4" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "5" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "6" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "7" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "8" } }
+ { "_id" : { "$numberInt" : "14" }, "a" : "def", "cost" : { "$numberInt" : "9" }, "quantity" : { "$numberInt" : "504" }, "date" : { "$date" : { "$numberLong" : "1718841615000" } } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "-5" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "-4" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "-3" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "-2" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "-1" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "0" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "1" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "2" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "3" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "4" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "5" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "6" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "7" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "8" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "9" } }
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "10" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
+ { "a" : "def", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "-5" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "-4" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "-3" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "-2" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "-1" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "0" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "1" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "2" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "3" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "4" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "5" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "6" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "7" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "8" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "9" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "10" } }
+ { "_id" : { "$numberInt" : "12" }, "a" : "def", "cost" : { "$numberInt" : "11" }, "quantity" : { "$numberInt" : "507" }, "date" : { "$date" : { "$numberLong" : "1718841605000" } } }
+ { "a" : "def", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "-5" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "-4" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "-3" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "-2" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "-1" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "0" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "1" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "2" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "3" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "4" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "5" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "6" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "7" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "8" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "9" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "10" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "11" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "12" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "13" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "14" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "15" } }
+ { "_id" : { "$numberInt" : "11" }, "a" : "def", "cost" : { "$numberInt" : "16" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "6" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "7" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "8" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "9" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "10" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "11" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "12" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "13" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "14" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "15" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "16" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "4" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "5" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "6" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "7" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "8" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "9" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "10" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "11" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "12" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "13" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "14" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "15" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "16" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "8" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "9" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "10" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "11" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "12" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "13" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "14" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "15" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "16" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "-4" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "-3" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "-2" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "-1" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "0" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "1" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "2" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "3" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "4" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "5" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "6" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "7" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "8" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "9" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "10" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "11" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "12" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "13" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "14" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "15" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "503" }, "cost" : { "$numberInt" : "16" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "10" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "11" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "12" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "13" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "14" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "15" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "504" }, "cost" : { "$numberInt" : "16" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "12" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "13" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "14" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "15" } }
+ { "a" : "def", "quantity" : { "$numberInt" : "507" }, "cost" : { "$numberInt" : "16" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "11" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "12" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "13" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "14" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "15" } }
+ { "a" : "abc", "quantity" : { "$numberInt" : "501" }, "cost" : { "$numberInt" : "16" } }
+(176 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a", "quantity"], "range": { "bounds": [8, 12], "step": 1 } } }]}');
+                                                                                                                                                                                                                                                                                                                                                                                                                               QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   ->  Distributed Subplan 78_1
+         ->  Custom Scan (Citus Adaptive)
+               Output: remote_scan.document
+               Task Count: 8
+               Tasks Shown: One of 8
+               ->  Task
+                     Query: SELECT document FROM helio_data.documents_4770_477024 collection WHERE true
+                     Node: host=localhost port=58070 dbname=regression
+                     ->  Seq Scan on helio_data.documents_4770_477024 collection
+                           Output: document
+   ->  Distributed Subplan 78_2
+         ->  Custom Scan (Citus Adaptive)
+               Output: remote_scan.document
+               Task Count: 1
+               Tasks Shown: All
+               ->  Task
+                     Query: SELECT intermediate_result.document FROM read_intermediate_result('78_1'::text, 'binary'::citus_copy_format) intermediate_result(document helio_core.bson) UNION ALL SELECT NULL::helio_core.bson AS document
+                     Node: host=localhost port=58070 dbname=regression
+                     ->  Append
+                           ->  Function Scan on pg_catalog.read_intermediate_result intermediate_result
+                                 Output: intermediate_result.document
+                                 Function Call: read_intermediate_result('78_1'::text, 'binary'::citus_copy_format)
+                           ->  Result
+                                 Output: NULL::helio_core.bson
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT helio_api_catalog.bson_lookup_unwind(document, '_'::text) AS document FROM (SELECT helio_api_internal.bson_densify_range(agg_stage_0_1.document, '{ "field" : "cost", "partitionByFields" : [ "a", "quantity" ], "range" : { "bounds" : [ { "$numberInt" : "8" }, { "$numberInt" : "12" } ], "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (PARTITION BY (helio_api_internal.densify_partition_by_fields(agg_stage_0_1.document, '{ "" : [ "a", "quantity" ] }'::helio_core.bson)) ORDER BY (helio_api_catalog.bson_orderby(agg_stage_0_1.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)) NULLS FIRST) AS document FROM (SELECT intermediate_result.document FROM read_intermediate_result('78_2'::text, 'binary'::citus_copy_format) intermediate_result(document helio_core.bson)) agg_stage_0_1) agg_stage_0
+         Node: host=localhost port=58070 dbname=regression
+         ->  ProjectSet
+               Output: helio_api_catalog.bson_lookup_unwind((helio_api_internal.bson_densify_range(intermediate_result.document, '{ "field" : "cost", "partitionByFields" : [ "a", "quantity" ], "range" : { "bounds" : [ { "$numberInt" : "8" }, { "$numberInt" : "12" } ], "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?)), '_'::text)
+               ->  WindowAgg
+                     Output: helio_api_internal.bson_densify_range(intermediate_result.document, '{ "field" : "cost", "partitionByFields" : [ "a", "quantity" ], "range" : { "bounds" : [ { "$numberInt" : "8" }, { "$numberInt" : "12" } ], "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?), (helio_api_catalog.bson_orderby(intermediate_result.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)), (helio_api_internal.densify_partition_by_fields(intermediate_result.document, '{ "" : [ "a", "quantity" ] }'::helio_core.bson))
+                     ->  Sort
+                           Output: (helio_api_catalog.bson_orderby(intermediate_result.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)), (helio_api_internal.densify_partition_by_fields(intermediate_result.document, '{ "" : [ "a", "quantity" ] }'::helio_core.bson)), intermediate_result.document
+                           Sort Key: (helio_api_internal.densify_partition_by_fields(intermediate_result.document, '{ "" : [ "a", "quantity" ] }'::helio_core.bson)), (helio_api_catalog.bson_orderby(intermediate_result.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)) NULLS FIRST
+                           ->  Function Scan on pg_catalog.read_intermediate_result intermediate_result
+                                 Output: helio_api_catalog.bson_orderby(intermediate_result.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson), helio_api_internal.densify_partition_by_fields(intermediate_result.document, '{ "" : [ "a", "quantity" ] }'::helio_core.bson), intermediate_result.document
+                                 Function Call: read_intermediate_result('78_2'::text, 'binary'::citus_copy_format)
+(41 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a", "quantity"], "range": { "bounds": "partition", "step": 1 } } }]}');
+                                                                                                                                                                                                                                                                                                                                 QUERY PLAN                                                                                                                                                                                                                                                                                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 8
+   Tasks Shown: One of 8
+   ->  Task
+         Query: SELECT helio_api_catalog.bson_lookup_unwind(worker_column_1, '_'::text) AS document FROM (SELECT agg_stage_0.document AS worker_column_1 FROM (SELECT helio_api_internal.bson_densify_partition(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a", "quantity" ], "range" : { "bounds" : "partition", "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (PARTITION BY collection.shard_key_value ORDER BY (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)) NULLS FIRST) AS document FROM helio_data.documents_4770_477024 collection) agg_stage_0) worker_subquery
+         Node: host=localhost port=58070 dbname=regression
+         ->  ProjectSet
+               Output: helio_api_catalog.bson_lookup_unwind((helio_api_internal.bson_densify_partition(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a", "quantity" ], "range" : { "bounds" : "partition", "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?)), '_'::text)
+               ->  WindowAgg
+                     Output: helio_api_internal.bson_densify_partition(collection.document, '{ "field" : "cost", "partitionByFields" : [ "a", "quantity" ], "range" : { "bounds" : "partition", "step" : { "$numberInt" : "1" } } }'::helio_core.bson) OVER (?), (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)), collection.shard_key_value
+                     ->  Sort
+                           Output: (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)), collection.shard_key_value, collection.document
+                           Sort Key: collection.shard_key_value, (helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)) NULLS FIRST
+                           ->  Seq Scan on helio_data.documents_4770_477024 collection
+                                 Output: helio_api_catalog.bson_orderby(collection.document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson), collection.shard_key_value, collection.document
+(16 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a", "quantity"], "range": { "bounds": "full", "step": 1 } } }]}');
+                                                                                                                                QUERY PLAN                                                                                                                                 
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   ->  Distributed Subplan 82_1
+         ->  WindowAgg
+               Output: bson_densify_full(remote_scan.document, '{ "field" : "cost", "partitionByFields" : [ "a", "quantity" ], "range" : { "bounds" : "full", "step" : { "$numberInt" : "1" } } }'::bson) OVER (?), remote_scan.worker_column_2
+               ->  Sort
+                     Output: remote_scan.worker_column_2, remote_scan.document
+                     Sort Key: remote_scan.worker_column_2 NULLS FIRST
+                     ->  Custom Scan (Citus Adaptive)
+                           Output: remote_scan.worker_column_2, remote_scan.document
+                           Task Count: 8
+                           Tasks Shown: One of 8
+                           ->  Task
+                                 Query: SELECT document, helio_api_catalog.bson_orderby(document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson) AS worker_column_2 FROM helio_data.documents_4770_477024 collection WHERE true
+                                 Node: host=localhost port=58070 dbname=regression
+                                 ->  Seq Scan on helio_data.documents_4770_477024 collection
+                                       Output: document, helio_api_catalog.bson_orderby(document, '{ "cost" : { "$numberLong" : "1"} }'::helio_core.bson)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT helio_api_catalog.bson_lookup_unwind(document, '_'::text) AS document FROM (SELECT intermediate_result.document FROM read_intermediate_result('82_1'::text, 'binary'::citus_copy_format) intermediate_result(document helio_core.bson)) agg_stage_0
+         Node: host=localhost port=58070 dbname=regression
+         ->  ProjectSet
+               Output: helio_api_catalog.bson_lookup_unwind(intermediate_result.document, '_'::text)
+               ->  Function Scan on pg_catalog.read_intermediate_result intermediate_result
+                     Output: intermediate_result.document
+                     Function Call: read_intermediate_result('82_1'::text, 'binary'::citus_copy_format)
+(27 rows)
+
+-- Test that internal number of documents generated limits are working
+-- Tests inspired from aggregation/sources/densify/generated_limit.js, currently we don't support setParameter so only a unit test should be suffice to test internal limits
+SET helio_api.external.internalQueryMaxAllowedDensifyDocs TO 10;
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify_limit", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": [0, 11], "step": 1 } } }]}');
+ERROR:  PlanExecutor error during aggregation :: caused by :: Generated 11 documents in $densify, which is over the limit of 10. Increase the 'internalQueryMaxAllowedDensifyDocs' parameter to allow more generated documents
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify_limit", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": [0, 45], "step": 4 } } }]}');  
+ERROR:  PlanExecutor error during aggregation :: caused by :: Generated 11 documents in $densify, which is over the limit of 10. Increase the 'internalQueryMaxAllowedDensifyDocs' parameter to allow more generated documents
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify_limit", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": [0, 10], "step": 4 } } }]}'); -- should pass
+              document               
+---------------------------------------------------------------------
+ { "cost" : { "$numberInt" : "0" } }
+ { "cost" : { "$numberInt" : "4" } }
+ { "cost" : { "$numberInt" : "8" } }
+(3 rows)
+
+SELECT insert_one('db','densify_limit','{ "_id": 1, "a": "abc", "cost": 0, "quantity": 501, "date": { "$date": { "$numberLong": "1718841600000" } } }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','densify_limit','{ "_id": 2, "a": "abc", "cost": 12, "quantity": 501, "date": { "$date": { "$numberLong": "1718841600000" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify_limit", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": "full", "step": 1 } } }]}');
+ERROR:  PlanExecutor error during aggregation :: caused by :: Generated 11 documents in $densify, which is over the limit of 10. Increase the 'internalQueryMaxAllowedDensifyDocs' parameter to allow more generated documents
+SELECT insert_one('db','densify_limit','{ "_id": 3, "a": "def", "cost": 0, "quantity": 501, "date": { "$date": { "$numberLong": "1718841600000" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','densify_limit','{ "_id": 4, "a": "def", "cost": 12, "quantity": 501, "date": { "$date": { "$numberLong": "1718841600000" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Test limit works across partitions
+SET helio_api.external.internalQueryMaxAllowedDensifyDocs TO 20;
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify_limit", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": "full", "step": 1 } } }]}');
+ERROR:  PlanExecutor error during aggregation :: caused by :: Generated 21 documents in $densify, which is over the limit of 20. Increase the 'internalQueryMaxAllowedDensifyDocs' parameter to allow more generated documents
+-- Verify existing documents don't count towards the limit
+SELECT insert_one('db','densify_limit','{ "_id": 5, "a": "abc", "cost": 5, "quantity": 501, "date": { "$date": { "$numberLong": "1718841600000" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','densify_limit','{ "_id": 6, "a": "def", "cost": 5, "quantity": 501, "date": { "$date": { "$numberLong": "1718841600000" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify_limit", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": "full", "step": 1 } } }]}'); -- Should pass now
+                                                                                       document                                                                                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "abc", "cost" : { "$numberInt" : "0" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
+ { "_id" : { "$numberInt" : "3" }, "a" : "def", "cost" : { "$numberInt" : "0" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
+ { "a" : "abc", "cost" : { "$numberInt" : "1" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "2" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "3" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "5" }, "a" : "abc", "cost" : { "$numberInt" : "5" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
+ { "a" : "def", "cost" : { "$numberInt" : "1" } }
+ { "a" : "def", "cost" : { "$numberInt" : "2" } }
+ { "a" : "def", "cost" : { "$numberInt" : "3" } }
+ { "a" : "def", "cost" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "6" }, "a" : "def", "cost" : { "$numberInt" : "5" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
+ { "a" : "abc", "cost" : { "$numberInt" : "6" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "7" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "8" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "9" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "10" } }
+ { "a" : "abc", "cost" : { "$numberInt" : "11" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : "abc", "cost" : { "$numberInt" : "12" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
+ { "a" : "def", "cost" : { "$numberInt" : "6" } }
+ { "a" : "def", "cost" : { "$numberInt" : "7" } }
+ { "a" : "def", "cost" : { "$numberInt" : "8" } }
+ { "a" : "def", "cost" : { "$numberInt" : "9" } }
+ { "a" : "def", "cost" : { "$numberInt" : "10" } }
+ { "a" : "def", "cost" : { "$numberInt" : "11" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : "def", "cost" : { "$numberInt" : "12" }, "quantity" : { "$numberInt" : "501" }, "date" : { "$date" : { "$numberLong" : "1718841600000" } } }
+(26 rows)
+
+-- Check time also works
+SELECT drop_collection('db', 'densify_limit') IS NOT NULL;
+ ?column? 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT insert_one('db','densify_limit','{ "_id": 1, "a": "abc", "cost": 0, "quantity": 501, "date": { "$date": { "$numberLong": "1718841600000" } } }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT insert_one('db','densify_limit','{ "_id": 2, "a": "abc", "cost": 12, "quantity": 501, "date": { "$date": { "$numberLong": "1718841610000" } } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SET helio_api.external.internalQueryMaxAllowedDensifyDocs TO 5;
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify_limit", "pipeline":  [{"$densify": { "field": "date", "partitionByFields": ["a"], "range": { "bounds": "partition", "step": 1 , "unit": "second"} } }]}');
+ERROR:  PlanExecutor error during aggregation :: caused by :: Generated 6 documents in $densify, which is over the limit of 5. Increase the 'internalQueryMaxAllowedDensifyDocs' parameter to allow more generated documents
+RESET helio_api.external.internalQueryMaxAllowedDensifyDocs;
+-- Test memory limit too
+SET helio_api.external.internaldocumentsourcedensifymaxmemorybytes TO 100;
+SELECT document FROM bson_aggregation_pipeline('db',
+    '{ "aggregate": "densify_limit", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": [0, 40], "step": 1 } } }]}');
+ERROR:  PlanExecutor error during aggregation :: caused by :: $densify exceeded memory limit of 100
+RESET helio_api.external.internalDocumentSourceDensifyMaxmemoryBytes;
+SHOW helio_api.external.internalQueryMaxAllowedDensifyDocs;
+ helio_api.external.internalQueryMaxAllowedDensifyDocs 
+---------------------------------------------------------------------
+ 500000
+(1 row)
+
+SHOW helio_api.external.internalDocumentSourceDensifyMaxmemoryBytes;
+ helio_api.external.internalDocumentSourceDensifyMaxMemoryBytes 
+---------------------------------------------------------------------
+ 104857600
+(1 row)
+

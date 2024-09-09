@@ -240,4 +240,21 @@ GetMergeDocumentsFunctionOid(void)
 }
 
 
+/*
+ * Helper function that creates a UNION ALL Set operation statement
+ * that returns a single BSON field.
+ */
+inline static SetOperationStmt *
+MakeBsonSetOpStatement(void)
+{
+	SetOperationStmt *setOpStatement = makeNode(SetOperationStmt);
+	setOpStatement->all = true;
+	setOpStatement->op = SETOP_UNION;
+	setOpStatement->colCollations = list_make1_oid(InvalidOid);
+	setOpStatement->colTypes = list_make1_oid(BsonTypeId());
+	setOpStatement->colTypmods = list_make1_int(-1);
+	return setOpStatement;
+}
+
+
 #endif

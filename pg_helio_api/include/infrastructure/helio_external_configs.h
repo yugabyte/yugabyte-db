@@ -96,6 +96,8 @@ typedef struct ExtensionExternalConfigInfo
 extern bool PEC_FeatureFlagCollModIndexUnique;
 extern bool PEC_FeatureFlagTimeseriesMetricIndexes;
 extern int PEC_TransactionTimeoutLimitSeconds;
+extern int32 PEC_InternalQueryMaxAllowedDensifyDocs;
+extern int PEC_InternalDocumentSourceDensifyMaxMemoryBytes;
 
 void InitializeExtensionExternalConfigs(char *prefix);
 const ExtensionExternalConfigInfo * GetExtensionExternalConfigByName(const

@@ -639,9 +639,8 @@ HandleSetWindowFields(const bson_value_t *existingValue, Query *query,
 	/* Required fields check */
 	if (outputSpec.value_type == BSON_TYPE_EOD)
 	{
-		ereport(ERROR, (errcode(MongoLocation40414),
-						errmsg(
-							"BSON field '$setWindowFields.output' is missing but a required field")));
+		ThrowTopLevelMissingFieldErrorWithCode("$setWindowFields.output",
+											   ERRCODE_HELIO_LOCATION40414);
 	}
 
 	/* Construct all the window clauses */

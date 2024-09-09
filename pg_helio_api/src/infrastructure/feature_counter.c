@@ -251,6 +251,7 @@ static char FeatureMapping[MAX_FEATURE_COUNT][MAX_FEATURE_NAME_LENGTH] = {
 	[FEATURE_STAGE_COUNT] = "count",
 	[FEATURE_STAGE_CHANGE_STREAM] = "change_stream",
 	[FEATURE_STAGE_CURRENTOP] = "current_op_agg",
+	[FEATURE_STAGE_DENSIFY] = "densify",
 	[FEATURE_STAGE_DOCUMENTS] = "documents_agg",
 	[FEATURE_STAGE_FACET] = "facet",
 	[FEATURE_STAGE_GEONEAR] = "geo_near",

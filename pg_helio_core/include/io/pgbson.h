@@ -101,6 +101,7 @@ pgbson * PgbsonGetDocumentId(const pgbson *document);
 
 pgbson * PgbsonDeduplicateFields(const pgbson *document);
 List * PgbsonDecomposeFields(const pgbson *document);
+void PgbsonGetBsonValueAtPath(const pgbson *bson, const char *path, bson_value_t *value);
 
 /*
  * Validate if the pgbson is an empty document.
