@@ -81,6 +81,10 @@ DEFINE_test_flag(bool, pause_catalog_manager_bg_loop_end, false,
 DEFINE_test_flag(bool, cdcsdk_skip_processing_dynamic_table_addition, false,
                 "Skip finding unprocessed tables for cdcsdk streams");
 
+DEFINE_test_flag(bool, cdcsdk_skip_processing_unqualified_tables, false,
+                 "Skip the bg task that finds and removes unprocessed unqualified tables from "
+                 "cdcsdk streams.");
+
 DECLARE_bool(enable_ysql);
 DECLARE_bool(TEST_echo_service_enabled);
 DECLARE_bool(cdcsdk_enable_dynamic_table_addition_with_table_cleanup);
@@ -303,13 +307,35 @@ void CatalogManagerBgTasks::Run() {
               &non_user_tables_to_streams_map);
 
           if (s.ok() && !non_user_tables_to_streams_map.empty()) {
-            s = catalog_manager_->RemoveNonEligibleTablesFromCDCSDKStreams(
-                non_user_tables_to_streams_map, l.epoch());
+            s = catalog_manager_->ProcessTablesToBeRemovedFromCDCSDKStreams(
+                non_user_tables_to_streams_map, /* non_eligible_table_cleanup */ true, l.epoch());
           }
           if (!s.ok()) {
             YB_LOG_EVERY_N(WARNING, 10)
                 << "Encountered failure while trying to remove non eligible "
                    "tables from cdc_state table: "
+                << s.ToString();
+          }
+        }
+      }
+
+      {
+        if (FLAGS_cdcsdk_enable_dynamic_table_addition_with_table_cleanup &&
+            !FLAGS_TEST_cdcsdk_skip_processing_unqualified_tables) {
+          TableStreamIdsMap tables_to_be_removed_streams_map;
+          Status s = catalog_manager_->FindCDCSDKStreamsForUnprocessedUnqualifiedTables(
+              &tables_to_be_removed_streams_map);
+
+          if (s.ok() && !tables_to_be_removed_streams_map.empty()) {
+            s = catalog_manager_->ProcessTablesToBeRemovedFromCDCSDKStreams(
+                tables_to_be_removed_streams_map, /* non_eligible_table_cleanup */ false,
+                l.epoch());
+          }
+
+          if (!s.ok()) {
+            YB_LOG_EVERY_N(WARNING, 10)
+                << "Encountered failure while trying to remove unqualified "
+                   "tables from stream metadata & updating cdc_state table: "
                 << s.ToString();
           }
         }

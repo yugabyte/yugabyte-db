@@ -677,6 +677,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status UpdateCDCProducerOnTabletSplit(
       const TableId& producer_table_id, const SplitTabletIds& split_tablet_ids) override;
 
+  // Re-fetch all CDCSDK streams for the table and confirm the inserted childrent tablet entries
+  // belong to one of these streams. If not, update such entries and set the checkpoint to max. This
+  // is to handle race condition where the table being removed from the stream splits
+  // simultaneously.
+  Status ReVerifyChildrenEntriesOnTabletSplit(
+      const TableId& producer_table_id, const std::vector<cdc::CDCStateTableEntry>& entries,
+      const std::unordered_set<xrepl::StreamId>& cdcsdk_stream_ids);
+
   Result<uint64_t> IncrementYsqlCatalogVersion() override;
 
   // Records the fact that initdb has succesfully completed.
@@ -1488,6 +1496,14 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const google::protobuf::RepeatedPtrField<std::string>& table_ids,
       const std::vector<TableInfoPtr>& eligible_tables_info) REQUIRES(mutex_);
 
+  // This method finds the intersection of tables between the qualified & unqualified table list of
+  // a stream to find unprocessed unqualified tables that needs to be removed from the stream.
+  void FindAllUnproccesedUnqualifiedTablesInCDCSDKStream(
+      const xrepl::StreamId& stream_id,
+      const google::protobuf::RepeatedPtrField<std::string>& qualified_table_ids,
+      const google::protobuf::RepeatedPtrField<std::string>& unqualified_table_ids,
+      const std::vector<TableInfoPtr>& eligible_tables_info);
+
   Status ValidateCDCSDKRequestProperties(
       const CreateCDCStreamRequestPB& req, const std::string& source_type_option_value,
       const std::string& id_type_option_value);
@@ -1502,13 +1518,27 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Find all the CDC streams that have been marked as DELETED.
   Status FindCDCStreamsMarkedAsDeleting(std::vector<CDCStreamInfoPtr>* streams);
 
-  Status RemoveNonEligibleTablesFromCDCSDKStreams(
-      const TableStreamIdsMap& non_user_tables_to_streams_map, const LeaderEpoch& epoch);
+  // Process the removal of tables from CDCSDK streams. This function is common for removal of
+  // non-eligible tables as well as unprocessed unqualified tables from a CDC stream.
+  Status ProcessTablesToBeRemovedFromCDCSDKStreams(
+      const TableStreamIdsMap& unprocessed_tables_to_streams_map, bool non_eligible_table_cleanup,
+      const LeaderEpoch& epoch);
+
+  Status AddTableForRemovalFromCDCSDKStream(
+      const std::unordered_set<TableId>& table_ids, const CDCStreamInfoPtr& stream);
 
   Status ValidateStreamForTableRemoval(const CDCStreamInfoPtr& stream);
 
   Status ValidateTableForRemovalFromCDCSDKStream(
       const scoped_refptr<TableInfo>& table, bool check_for_ineligibility);
+
+  // Validate the streams in 'cdcsdk_unprocessed_unqualified_tables_to_streams_' for table removal
+  // and get the StreamInfo.
+  Status FindCDCSDKStreamsForUnprocessedUnqualifiedTables(
+      TableStreamIdsMap* tables_to_be_removed_streams_map);
+
+  void RemoveStreamsFromUnprocessedRemovedTableMap(
+      const TableId& table_id, const std::unordered_set<xrepl::StreamId>& stream_ids);
 
   // Find all the CDC streams that have been marked as provided state.
   Status FindCDCStreamsMarkedForMetadataDeletion(
@@ -3253,6 +3283,17 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Map of all consumer tables that are part of xcluster replication, to a map of the stream infos.
   std::unordered_map<TableId, XClusterConsumerTableStreamIds>
       xcluster_consumer_table_stream_ids_map_ GUARDED_BY(mutex_);
+
+  mutable MutexType cdcsdk_unqualified_table_removal_mutex_;
+  // In-memory map containing user tables to be removed from a CDCSDK stream. Will be
+  // populated by two entities:
+  // 1. Table removal requested by yb-admin command
+  // 2. Automatic table removal by UpdatePeersAndMetrics for tables not of interest/expired.
+  // Will be refreshed on master restart / leadership change through the funcion:
+  //  'FindAllUnproccesedUnqualifiedTablesInCDCSDKStream'
+  std::unordered_map<TableId, std::unordered_set<xrepl::StreamId>>
+      cdcsdk_unprocessed_unqualified_tables_to_streams_
+          GUARDED_BY(cdcsdk_unqualified_table_removal_mutex_);
 
   std::unordered_map<TableId, std::unordered_set<xrepl::StreamId>> cdcsdk_tables_to_stream_map_
       GUARDED_BY(mutex_);
