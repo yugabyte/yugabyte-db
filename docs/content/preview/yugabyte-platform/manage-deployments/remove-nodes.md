@@ -94,6 +94,12 @@ In general, you shouldn't stop more than one node at a time. For example, two st
 
 You can restart the node's processes by navigating to **Universes**, selecting your universe, then selecting **Nodes**, and then clicking **Actions > Start Processes** corresponding to the node. This returns the node to the Live state.
 
+{{< warning title="Prevent backup failure due to NFS unmount on cloud VM restart" >}}
+When a cloud VM is restarted, the NFS mount may get unmounted if its entry is not present in `/etc/fstab`. This configuration oversight can lead to backup failures, causing errors during [backup](../../back-up-restore-universes/back-up-universe-data/) or [restoration](../../back-up-restore-universes/restore-universe-data/) processes.
+
+Add the NFS mount entry to /etc/fstab to prevent the unmounting of the disk upon VM restart, and avoid potential backup or restore errors later.
+{{< /warning >}}
+
 ## Remove node
 
 To perform the remove action on the **yb-15-aws-ys-n6** node, click its corresponding **Actions > Remove Node**. This changes the value in the **Status** column from **Unreachable** to **Removed** and prevents access to data from this node.
@@ -152,11 +158,11 @@ A typical universe has an RF of 3 or 5. At the end of the [node removal](#remove
 
 If a master process is down for more than its [WAL log retention period](../../../reference/configuration/yb-master/#log-min-seconds-to-retain) (defaults to 2 hrs) and then becomes healthy, it will be unable to catch up to its peers. In this scenario, the **Nodes** tab shows that the master is in a healthy state but YugabyteDB Anywhere generates an "under-replicated masters" alert. To fix this situation, do the following:
 
-1. Identify the lagging master.  Navigate to **Universes**, select your universe, open the **Metrics** tab, and select **Master > Master Follower Lag** metric. 
+1. Identify the lagging master.  Navigate to **Universes**, select your universe, open the **Metrics** tab, and select **Master > Master Follower Lag** metric.
 1. On the **Nodes** page, click the [**Actions > Stop Processes**](#stop-a-process) action on the node with the lagging master. As part of the execution of this action, a new master process might be started on a different node in the same Availability Zone (if possible).
 1. When the "Stop Processes" task completes, click the [**Actions > Start Processes**](#start-a-process) action on the same node.
 1. Verify that the cluster has an [RF](../../../architecture/key-concepts/#replication-factor-rf) count of healthy masters.
-   
+
 ## Release node instance
 
 To release the IP address associated with the **yb-15-aws-ys-n6** node, click its corresponding **Actions > Release Instance**. This changes the value in the **Status** column from **Removed** to **Decommissioned**.
